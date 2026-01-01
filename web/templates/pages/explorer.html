@@ -9,10 +9,19 @@
                 <!-- Search -->
                 <div class="flex-1 min-w-[200px]">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-                    <input type="text" name="search" value="{{.Search}}" placeholder="Search descriptions..."
-                        hx-get="/explorer/transactions" hx-target="#transactions-container"
-                        hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <div class="relative">
+                        <input type="text" name="search" id="search-input" value="{{.Search}}" placeholder="Search descriptions..."
+                            hx-get="/explorer/transactions" hx-target="#transactions-container"
+                            hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <button type="button" onclick="clearSearch()"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 {{if not .Search}}hidden{{end}}"
+                            id="clear-search-btn" title="Clear search">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Category Filter -->
@@ -49,6 +58,19 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">To</label>
                         <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
                             class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <!-- Quick Date Range Shortcuts -->
+                    <div class="flex items-end">
+                        <div class="flex gap-1">
+                            <button type="button" onclick="setDateRange(3)"
+                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">3M</button>
+                            <button type="button" onclick="setDateRange(6)"
+                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">6M</button>
+                            <button type="button" onclick="setDateRange(12)"
+                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">12M</button>
+                            <button type="button" onclick="setDateRange(0)"
+                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">All</button>
+                        </div>
                     </div>
                 </div>
 
@@ -107,13 +129,79 @@
 </div>
 
 <script>
+    // Clear search input
+    function clearSearch() {
+        const form = document.getElementById('explorer-filter-form');
+        const searchInput = document.getElementById('search-input');
+        const clearBtn = document.getElementById('clear-search-btn');
+        const pageInput = form.querySelector('input[name="page"]');
+
+        searchInput.value = '';
+        clearBtn.classList.add('hidden');
+        pageInput.value = '1';
+
+        htmx.trigger(form, 'submit');
+    }
+
+    // Show/hide clear button based on search input
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('search-input');
+        const clearBtn = document.getElementById('clear-search-btn');
+
+        if (searchInput && clearBtn) {
+            searchInput.addEventListener('input', function() {
+                if (this.value) {
+                    clearBtn.classList.remove('hidden');
+                } else {
+                    clearBtn.classList.add('hidden');
+                }
+            });
+        }
+    });
+
+    // Set date range (months back from max date, or 0 for all)
+    function setDateRange(months) {
+        const form = document.getElementById('explorer-filter-form');
+        const startInput = form.querySelector('input[name="start"]');
+        const endInput = form.querySelector('input[name="end"]');
+        const pageInput = form.querySelector('input[name="page"]');
+
+        const minDate = startInput.getAttribute('min');
+        const maxDate = endInput.getAttribute('max');
+
+        if (months === 0) {
+            // All - use full range
+            startInput.value = minDate;
+            endInput.value = maxDate;
+        } else {
+            // Calculate start date as X months before max date
+            const end = new Date(maxDate);
+            const start = new Date(end);
+            start.setMonth(start.getMonth() - months);
+
+            // Ensure start doesn't go before min date
+            const minDateObj = new Date(minDate);
+            if (start < minDateObj) {
+                start.setTime(minDateObj.getTime());
+            }
+
+            startInput.value = start.toISOString().split('T')[0];
+            endInput.value = maxDate;
+        }
+
+        pageInput.value = '1';
+        htmx.trigger(form, 'submit');
+    }
+
     // Filter by clicking on a description
     function filterByDescription(description) {
         const form = document.getElementById('explorer-filter-form');
         const searchInput = form.querySelector('input[name="search"]');
+        const clearBtn = document.getElementById('clear-search-btn');
         const pageInput = form.querySelector('input[name="page"]');
 
         searchInput.value = description;
+        if (clearBtn) clearBtn.classList.remove('hidden');
         pageInput.value = '1';
 
         htmx.trigger(form, 'submit');

@@ -273,20 +273,25 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!dropZone) return;
 
     // Prevent default drag behaviors on the whole document
+    // Use capture phase (true) to intercept before browser default handling
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         document.addEventListener(eventName, function(e) {
             e.preventDefault();
             e.stopPropagation();
-        }, false);
+        }, true);
     });
 
     // Highlight drop zone on drag over
-    dropZone.addEventListener('dragenter', function() {
+    dropZone.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.remove('border-gray-300', 'bg-gray-50');
         dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
     }, false);
 
-    dropZone.addEventListener('dragover', function() {
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.remove('border-gray-300', 'bg-gray-50');
         dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
     }, false);
@@ -297,6 +302,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }, false);
 
     dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
         dropZone.classList.add('border-gray-300', 'bg-gray-50');
         const files = e.dataTransfer.files;

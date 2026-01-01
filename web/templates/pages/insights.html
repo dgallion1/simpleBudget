@@ -75,36 +75,62 @@
         <!-- Daily Burn Rate -->
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex items-center justify-between">
+                {{with .Insights.Velocity}}
                 <div>
                     <p class="text-sm font-medium text-gray-500">Daily Spending</p>
-                    <p class="text-2xl font-bold {{if lt .Insights.Velocity.BurnRateChange 0}}text-green-600{{else if gt .Insights.Velocity.BurnRateChange 10}}text-red-600{{else}}text-amber-600{{end}}">
-                        {{formatMoney .Insights.Velocity.DailyAverage}}
+                    <p class="text-2xl font-bold {{if lt .BurnRateChange 0.0}}text-green-600{{else if gt .BurnRateChange 10.0}}text-red-600{{else}}text-amber-600{{end}}">
+                        {{formatMoney .DailyAverage}}
                     </p>
-                    <p class="text-xs {{if lt .Insights.Velocity.BurnRateChange 0}}text-green-500{{else if gt .Insights.Velocity.BurnRateChange 10}}text-red-500{{else}}text-gray-400{{end}}">
-                        {{if gt .Insights.Velocity.BurnRateChange 0}}+{{end}}{{printf "%.1f" .Insights.Velocity.BurnRateChange}}% vs avg
+                    <p class="text-xs {{if lt .BurnRateChange 0.0}}text-green-500{{else if gt .BurnRateChange 10.0}}text-red-500{{else}}text-gray-400{{end}}">
+                        {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}% vs avg
                     </p>
                 </div>
-                <div class="p-3 {{if lt .Insights.Velocity.BurnRateChange 0}}bg-green-100{{else if gt .Insights.Velocity.BurnRateChange 10}}bg-red-100{{else}}bg-amber-100{{end}} rounded-full">
-                    <svg class="w-6 h-6 {{if lt .Insights.Velocity.BurnRateChange 0}}text-green-600{{else if gt .Insights.Velocity.BurnRateChange 10}}text-red-600{{else}}text-amber-600{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="p-3 {{if lt .BurnRateChange 0.0}}bg-green-100{{else if gt .BurnRateChange 10.0}}bg-red-100{{else}}bg-amber-100{{end}} rounded-full">
+                    <svg class="w-6 h-6 {{if lt .BurnRateChange 0.0}}text-green-600{{else if gt .BurnRateChange 10.0}}text-red-600{{else}}text-amber-600{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                     </svg>
                 </div>
+                {{else}}
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Daily Spending</p>
+                    <p class="text-2xl font-bold text-gray-400">$0.00</p>
+                    <p class="text-xs text-gray-400">No data</p>
+                </div>
+                <div class="p-3 bg-gray-100 rounded-full">
+                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                    </svg>
+                </div>
+                {{end}}
             </div>
         </div>
 
         <!-- Month Projection -->
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex items-center justify-between">
+                {{with .Insights.Velocity}}
                 <div>
                     <p class="text-sm font-medium text-gray-500">Month Projection</p>
-                    <p class="text-2xl font-bold text-indigo-600">{{formatMoney .Insights.Velocity.MonthProjection}}</p>
-                    <p class="text-xs text-gray-400">{{.Insights.Velocity.DaysRemaining}} days remaining</p>
+                    <p class="text-2xl font-bold text-indigo-600">{{formatMoney .MonthProjection}}</p>
+                    <p class="text-xs text-gray-400">{{.DaysRemaining}} days remaining</p>
                 </div>
                 <div class="p-3 bg-indigo-100 rounded-full">
                     <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                 </div>
+                {{else}}
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Month Projection</p>
+                    <p class="text-2xl font-bold text-gray-400">$0.00</p>
+                    <p class="text-xs text-gray-400">No data</p>
+                </div>
+                <div class="p-3 bg-gray-100 rounded-full">
+                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                {{end}}
             </div>
         </div>
     </div>
@@ -277,7 +303,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
                                     </svg>
                                     {{end}}
-                                    {{if gt .ChangePercent 0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
+                                    {{if gt .ChangePercent 0.0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
                                 </span>
                             </td>
                         </tr>
@@ -290,6 +316,7 @@
     </div>
 
     <!-- Spending Velocity Gauge -->
+    {{with .Insights.Velocity}}
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
             <svg class="w-5 h-5 mr-2 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -300,21 +327,21 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div class="text-center">
                 <p class="text-sm text-gray-500">Current Daily Avg</p>
-                <p class="text-3xl font-bold {{if lt .Insights.Velocity.BurnRateChange 0}}text-green-600{{else if gt .Insights.Velocity.BurnRateChange 10}}text-red-600{{else}}text-amber-600{{end}}">
-                    {{formatMoney .Insights.Velocity.DailyAverage}}
+                <p class="text-3xl font-bold {{if lt .BurnRateChange 0.0}}text-green-600{{else if gt .BurnRateChange 10.0}}text-red-600{{else}}text-amber-600{{end}}">
+                    {{formatMoney .DailyAverage}}
                 </p>
             </div>
             <div class="text-center">
                 <p class="text-sm text-gray-500">Historical Daily Avg</p>
-                <p class="text-3xl font-bold text-gray-600">{{formatMoney .Insights.Velocity.HistoricalDaily}}</p>
+                <p class="text-3xl font-bold text-gray-600">{{formatMoney .HistoricalDaily}}</p>
             </div>
             <div class="text-center">
                 <p class="text-sm text-gray-500">Month Projection</p>
-                <p class="text-3xl font-bold text-indigo-600">{{formatMoney .Insights.Velocity.MonthProjection}}</p>
+                <p class="text-3xl font-bold text-indigo-600">{{formatMoney .MonthProjection}}</p>
             </div>
             <div class="text-center">
                 <p class="text-sm text-gray-500">Days Remaining</p>
-                <p class="text-3xl font-bold text-gray-800">{{.Insights.Velocity.DaysRemaining}}</p>
+                <p class="text-3xl font-bold text-gray-800">{{.DaysRemaining}}</p>
             </div>
         </div>
 
@@ -322,25 +349,25 @@
         <div class="mt-6">
             <div class="flex justify-between text-sm text-gray-500 mb-1">
                 <span>Burn Rate vs Historical</span>
-                <span class="{{if lt .Insights.Velocity.BurnRateChange 0}}text-green-600{{else if gt .Insights.Velocity.BurnRateChange 10}}text-red-600{{else}}text-amber-600{{end}}">
-                    {{if gt .Insights.Velocity.BurnRateChange 0}}+{{end}}{{printf "%.1f" .Insights.Velocity.BurnRateChange}}%
+                <span class="{{if lt .BurnRateChange 0.0}}text-green-600{{else if gt .BurnRateChange 10.0}}text-red-600{{else}}text-amber-600{{end}}">
+                    {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}%
                 </span>
             </div>
             <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                {{$pct := .Insights.Velocity.BurnRateChange}}
+                {{$pct := .BurnRateChange}}
                 {{$width := 50.0}}
-                {{if gt $pct 0}}
+                {{if gt $pct 0.0}}
                     {{$width = 50.0}}
                 {{else}}
                     {{$width = 50.0}}
                 {{end}}
                 <div class="h-4 rounded-full transition-all duration-500
-                    {{if lt $pct -10}}bg-green-500
-                    {{else if lt $pct 0}}bg-green-400
-                    {{else if lt $pct 10}}bg-amber-400
-                    {{else if lt $pct 20}}bg-orange-500
+                    {{if lt $pct -10.0}}bg-green-500
+                    {{else if lt $pct 0.0}}bg-green-400
+                    {{else if lt $pct 10.0}}bg-amber-400
+                    {{else if lt $pct 20.0}}bg-orange-500
                     {{else}}bg-red-500{{end}}"
-                    style="width: {{if lt $pct -50}}0{{else if gt $pct 50}}100{{else}}{{printf "%.0f" (add 50 $pct)}}{{end}}%">
+                    style="width: {{if lt $pct -50.0}}0{{else if gt $pct 50.0}}100{{else}}{{printf "%.0f" (add 50 $pct)}}{{end}}%">
                 </div>
             </div>
             <div class="flex justify-between text-xs text-gray-400 mt-1">
@@ -350,6 +377,7 @@
             </div>
         </div>
     </div>
+    {{end}}
 </div>
 
 <script>
@@ -456,7 +484,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
             <td class="p-3 text-sm text-right text-gray-800">{{formatMoney .CurrentAmount}}</td>
             <td class="p-3 text-sm text-right text-gray-500">{{formatMoney .PreviousAmount}}</td>
             <td class="p-3 text-sm text-right {{if eq .Direction "up"}}text-red-600{{else if eq .Direction "down"}}text-green-600{{else}}text-gray-500{{end}}">
-                {{if gt .ChangePercent 0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
+                {{if gt .ChangePercent 0.0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
             </td>
         </tr>
         {{end}}

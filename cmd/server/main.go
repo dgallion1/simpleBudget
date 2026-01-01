@@ -45,7 +45,7 @@ func main() {
 	var err error
 	renderer, err = templates.New(cfg.TemplatesDirectory, true) // force debug for template hot reload
 	if err != nil {
-		log.Printf("Warning: could not load templates: %v", err)
+		log.Fatalf("FATAL: Template validation failed: %v", err)
 	}
 
 	// Initialize retirement settings manager

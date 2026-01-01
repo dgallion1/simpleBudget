@@ -1,12 +1,15 @@
 package templates
 
 import (
+	"bufio"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -32,10 +35,9 @@ func New(templateDir string, debug bool) (*Renderer, error) {
 	return r, nil
 }
 
-// loadTemplates parses all templates
-func (r *Renderer) loadTemplates() error {
-	// Define template functions
-	funcMap := template.FuncMap{
+// getFuncMap returns the template function map
+func getFuncMap() template.FuncMap {
+	return template.FuncMap{
 		"formatMoney":    formatMoney,
 		"formatPercent":  formatPercent,
 		"formatDate":     formatDate,
@@ -70,23 +72,191 @@ func (r *Renderer) loadTemplates() error {
 		"percentOf":      percentOf,
 		"deref":          deref,
 	}
+}
 
-	// Create base template with functions
+// loadTemplates parses all templates with strict validation
+func (r *Renderer) loadTemplates() error {
+	funcMap := getFuncMap()
 	tmpl := template.New("").Funcs(funcMap)
 
-	// Parse templates from each subdirectory
+	// Collect all template files
+	var templateFiles []string
 	for _, subdir := range []string{"layouts", "pages", "partials", "components"} {
 		subPattern := filepath.Join(r.baseDir, subdir, "*.html")
-		parsed, err := tmpl.ParseGlob(subPattern)
+		matches, err := filepath.Glob(subPattern)
 		if err != nil {
-			// Ignore if directory doesn't exist or is empty
-			log.Printf("Note: no templates in %s", subdir)
-		} else {
-			tmpl = parsed
+			return fmt.Errorf("error globbing %s: %w", subPattern, err)
+		}
+		templateFiles = append(templateFiles, matches...)
+	}
+
+	if len(templateFiles) == 0 {
+		return fmt.Errorf("no template files found in %s", r.baseDir)
+	}
+
+	// Parse each template file individually for better error reporting
+	var parseErrors []string
+	for _, file := range templateFiles {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			parseErrors = append(parseErrors, fmt.Sprintf("  %s: failed to read: %v", file, err))
+			continue
+		}
+
+		_, err = tmpl.New(filepath.Base(file)).Parse(string(content))
+		if err != nil {
+			// Extract detailed error info
+			errMsg := formatTemplateError(file, string(content), err)
+			parseErrors = append(parseErrors, errMsg)
 		}
 	}
 
+	if len(parseErrors) > 0 {
+		log.Printf("\n" + strings.Repeat("=", 60))
+		log.Printf("TEMPLATE PARSING ERRORS")
+		log.Printf(strings.Repeat("=", 60))
+		for _, e := range parseErrors {
+			log.Printf("%s", e)
+		}
+		log.Printf(strings.Repeat("=", 60) + "\n")
+		return fmt.Errorf("template parsing failed with %d error(s)", len(parseErrors))
+	}
+
+	// Validate template references
+	if err := r.validateTemplateReferences(tmpl, templateFiles); err != nil {
+		return err
+	}
+
 	r.templates = tmpl
+	log.Printf("Templates loaded successfully: %d files", len(templateFiles))
+	return nil
+}
+
+// formatTemplateError formats a template error with file context
+func formatTemplateError(file, content string, err error) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n  File: %s\n", file))
+
+	// Try to extract line number from error message
+	errStr := err.Error()
+	lineNum := extractLineNumber(errStr)
+
+	if lineNum > 0 {
+		sb.WriteString(fmt.Sprintf("  Line: %d\n", lineNum))
+		sb.WriteString(fmt.Sprintf("  Error: %s\n", errStr))
+		sb.WriteString("  Context:\n")
+
+		// Show surrounding lines
+		lines := strings.Split(content, "\n")
+		start := lineNum - 3
+		if start < 0 {
+			start = 0
+		}
+		end := lineNum + 2
+		if end > len(lines) {
+			end = len(lines)
+		}
+
+		for i := start; i < end; i++ {
+			marker := "   "
+			if i+1 == lineNum {
+				marker = ">>>"
+			}
+			sb.WriteString(fmt.Sprintf("    %s %4d | %s\n", marker, i+1, lines[i]))
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("  Error: %s\n", errStr))
+	}
+
+	return sb.String()
+}
+
+// extractLineNumber tries to extract a line number from a template error
+func extractLineNumber(errStr string) int {
+	// Go template errors often contain ":LINE:" pattern
+	re := regexp.MustCompile(`:(\d+):`)
+	matches := re.FindStringSubmatch(errStr)
+	if len(matches) >= 2 {
+		var lineNum int
+		fmt.Sscanf(matches[1], "%d", &lineNum)
+		return lineNum
+	}
+	return 0
+}
+
+// validateTemplateReferences checks that all {{template "name"}} calls reference defined templates
+func (r *Renderer) validateTemplateReferences(tmpl *template.Template, files []string) error {
+	// Get all defined template names
+	definedTemplates := make(map[string]bool)
+	for _, t := range tmpl.Templates() {
+		if t.Name() != "" {
+			definedTemplates[t.Name()] = true
+		}
+	}
+
+	// Regex to find {{template "name"}} and {{define "name"}} patterns
+	templateCallRe := regexp.MustCompile(`\{\{\s*template\s+"([^"]+)"`)
+	defineRe := regexp.MustCompile(`\{\{\s*define\s+"([^"]+)"`)
+
+	var refErrors []string
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		// Find all template definitions in this file (for better error messages)
+		fileDefines := make(map[string]int) // template name -> line number
+		scanner := bufio.NewScanner(strings.NewReader(string(content)))
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			if matches := defineRe.FindStringSubmatch(line); len(matches) >= 2 {
+				fileDefines[matches[1]] = lineNum
+			}
+		}
+
+		// Check all template calls
+		scanner = bufio.NewScanner(strings.NewReader(string(content)))
+		lineNum = 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			matches := templateCallRe.FindAllStringSubmatch(line, -1)
+			for _, match := range matches {
+				if len(match) >= 2 {
+					refName := match[1]
+					if !definedTemplates[refName] {
+						refErrors = append(refErrors, fmt.Sprintf(
+							"  %s:%d: undefined template %q\n    Line: %s",
+							file, lineNum, refName, strings.TrimSpace(line),
+						))
+					}
+				}
+			}
+		}
+	}
+
+	if len(refErrors) > 0 {
+		log.Printf("\n" + strings.Repeat("=", 60))
+		log.Printf("UNDEFINED TEMPLATE REFERENCES")
+		log.Printf(strings.Repeat("=", 60))
+		for _, e := range refErrors {
+			log.Printf("%s", e)
+		}
+		log.Printf(strings.Repeat("=", 60))
+		log.Printf("Defined templates:")
+		for name := range definedTemplates {
+			if name != "" && !strings.HasSuffix(name, ".html") {
+				log.Printf("  - %s", name)
+			}
+		}
+		log.Printf(strings.Repeat("=", 60) + "\n")
+		return fmt.Errorf("found %d undefined template reference(s)", len(refErrors))
+	}
+
 	return nil
 }
 

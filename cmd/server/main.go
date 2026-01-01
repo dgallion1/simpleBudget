@@ -1888,7 +1888,8 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 	}
 
 	for desc, txns := range groups {
-		if len(txns) < 2 {
+		if len(txns) < 3 {
+			// Require at least 3 occurrences to establish a recurring pattern
 			continue
 		}
 
@@ -1956,9 +1957,17 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 
 		switch {
 		case medianInterval >= 5 && medianInterval <= 9:
+			// Weekly requires at least 4 occurrences (4 weeks of data)
+			if len(txns) < 4 {
+				continue
+			}
 			frequency = "weekly"
 			annualMultiplier = 52
 		case medianInterval >= 12 && medianInterval <= 16:
+			// Biweekly requires at least 4 occurrences (2 months of data)
+			if len(txns) < 4 {
+				continue
+			}
 			frequency = "biweekly"
 			annualMultiplier = 26
 		case medianInterval >= 25 && medianInterval <= 35:

@@ -59,11 +59,15 @@ func ClassifyTransactions(transactions []models.Transaction) []models.Transactio
 		transactions[i].TransactionType = classifyTransaction(&transactions[i])
 
 		// Normalize amounts: positive for income, negative for outflow
+		// Exception: positive amounts that aren't classified as income are likely
+		// credits/refunds - keep them positive so they don't get grouped with outflows
 		if transactions[i].TransactionType == models.Income {
 			transactions[i].Amount = math.Abs(transactions[i].Amount)
-		} else {
+		} else if transactions[i].Amount < 0 {
+			// Only make negative if originally negative (actual purchases)
 			transactions[i].Amount = -math.Abs(transactions[i].Amount)
 		}
+		// Positive amounts that aren't income stay positive (credits/refunds)
 	}
 	return transactions
 }

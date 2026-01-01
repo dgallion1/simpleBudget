@@ -799,6 +799,12 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		settings = models.DefaultWhatIfSettings()
 	}
 
+	// If no income sources saved yet, auto-sync from dashboard on first load
+	if len(settings.IncomeSources) == 0 {
+		syncSettingsFromDashboard(settings)
+		retirementMgr.Save(settings)
+	}
+
 	// Run full analysis
 	calc := retirement.NewCalculator(settings)
 	analysis := calc.RunFullAnalysis()
@@ -1134,36 +1140,20 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
-	// Sync settings from dashboard data
-	data, err := loader.LoadData()
+	settings, err := retirementMgr.Load()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Calculate average monthly expenses from last 12 months
-	now := time.Now()
-	yearAgo := now.AddDate(-1, 0, 0)
-	filtered := data.FilterByDateRange(yearAgo, now)
-	outflows := filtered.FilterByType(models.Outflow)
-
-	totalExpenses := outflows.SumAbsAmount()
-	months := 12.0
-	if filtered.MinDate().After(yearAgo) {
-		months = now.Sub(filtered.MinDate()).Hours() / 24 / 30
-		if months < 1 {
-			months = 1
-		}
-	}
-	avgMonthlyExpenses := totalExpenses / months
-
-	// Update settings
-	updates := map[string]interface{}{
-		"monthly_living_expenses": avgMonthlyExpenses,
+	// Sync expenses and income from dashboard
+	if err := syncSettingsFromDashboard(settings); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	settings, err := retirementMgr.UpdateSettings(updates)
-	if err != nil {
+	// Save the synced settings
+	if err := retirementMgr.Save(settings); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1172,9 +1162,8 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	analysis := calc.RunFullAnalysis()
 
 	partialData := map[string]interface{}{
-		"Settings":     settings,
-		"Analysis":     analysis,
-		"SyncedAmount": avgMonthlyExpenses,
+		"Settings": settings,
+		"Analysis": analysis,
 	}
 
 	if renderer != nil {
@@ -1183,6 +1172,49 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+// syncSettingsFromDashboard updates settings with values from dashboard data
+func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
+	data, err := loader.LoadData()
+	if err != nil {
+		return err
+	}
+
+	// Calculate average monthly values from last 12 months
+	now := time.Now()
+	yearAgo := now.AddDate(-1, 0, 0)
+	filtered := data.FilterByDateRange(yearAgo, now)
+	outflows := filtered.FilterByType(models.Outflow)
+	income := filtered.FilterByType(models.Income)
+
+	months := 12.0
+	if filtered.MinDate().After(yearAgo) {
+		months = now.Sub(filtered.MinDate()).Hours() / 24 / 30
+		if months < 1 {
+			months = 1
+		}
+	}
+
+	// Calculate and set average monthly expenses
+	totalExpenses := outflows.SumAbsAmount()
+	settings.MonthlyLivingExpenses = totalExpenses / months
+
+	// Calculate and set average monthly income
+	totalIncome := income.SumAmount()
+	avgMonthlyIncome := totalIncome / months
+	if avgMonthlyIncome > 0 {
+		settings.IncomeSources = []models.IncomeSource{
+			{
+				ID:     "dashboard-income",
+				Name:   "Current Income",
+				Amount: avgMonthlyIncome,
+				Type:   models.IncomeFixed,
+			},
+		}
+	}
+
+	return nil
 }
 
 func handleInsights(w http.ResponseWriter, r *http.Request) {

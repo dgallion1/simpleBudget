@@ -107,6 +107,18 @@
 </div>
 
 <script>
+    // Filter by clicking on a description
+    function filterByDescription(description) {
+        const form = document.getElementById('explorer-filter-form');
+        const searchInput = form.querySelector('input[name="search"]');
+        const pageInput = form.querySelector('input[name="page"]');
+
+        searchInput.value = description;
+        pageInput.value = '1';
+
+        htmx.trigger(form, 'submit');
+    }
+
     // Update sort parameters and trigger refresh
     function sortBy(column) {
         const form = document.getElementById('explorer-filter-form');
@@ -311,7 +323,9 @@
     $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
     <td class="w-24 p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
-    <td class="p-3 text-sm text-gray-800 truncate" title="{{.Description}}">{{.Description}}</td>
+    <td class="p-3 text-sm text-gray-800 truncate cursor-pointer hover:text-indigo-600 hover:underline"
+        title="Click to filter: {{.Description}}"
+        onclick="filterByDescription('{{js .Description}}')">{{.Description}}</td>
     <td class="w-32 p-3 text-sm">
         <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs truncate block">{{if
             .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>

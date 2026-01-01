@@ -1,9 +1,420 @@
 {{define "whatif-content"}}
-<div class="bg-white rounded-lg shadow p-8 text-center">
-    <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-    </svg>
-    <h2 class="text-xl font-semibold text-gray-800 mb-2">What-If Analysis</h2>
-    <p class="text-gray-600">Retirement projections and scenario planning coming in Phase 5.</p>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column: Settings -->
+    <div class="space-y-4">
+        <!-- Portfolio & Expenses Card -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-800">Portfolio & Expenses</h3>
+                <button hx-post="/whatif/sync"
+                        hx-target="#whatif-results"
+                        hx-indicator="#sync-loading"
+                        class="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Sync from Dashboard
+                    <span id="sync-loading" class="htmx-indicator">
+                        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                </button>
+            </div>
+
+            <form hx-post="/whatif/settings"
+                  hx-target="#whatif-results"
+                  hx-trigger="change delay:500ms"
+                  class="space-y-3">
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Portfolio Value</label>
+                    <div class="mt-1 relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input type="number" name="portfolio_value" value="{{printf "%.0f" .Settings.PortfolioValue}}"
+                               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 rounded-md"
+                               step="1000" min="0">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Monthly Living Expenses</label>
+                    <div class="mt-1 relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input type="number" name="monthly_living_expenses" value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
+                               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 rounded-md"
+                               step="100" min="0">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Monthly Healthcare</label>
+                    <div class="mt-1 relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input type="number" name="monthly_healthcare" value="{{printf "%.0f" .Settings.MonthlyHealthcare}}"
+                               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 rounded-md"
+                               step="50" min="0">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Healthcare Starts In (Years)</label>
+                    <input type="number" name="healthcare_start_years" value="{{.Settings.HealthcareStartYears}}"
+                           class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full py-2 px-3 sm:text-sm border-gray-300 rounded-md"
+                           min="0" max="30">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Projection Years</label>
+                    <input type="number" name="projection_years" value="{{.Settings.ProjectionYears}}"
+                           class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full py-2 px-3 sm:text-sm border-gray-300 rounded-md"
+                           min="5" max="50">
+                </div>
+            </form>
+        </div>
+
+        <!-- Rate Assumptions Card -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Rate Assumptions</h3>
+
+            <form hx-post="/whatif/settings"
+                  hx-target="#whatif-results"
+                  hx-trigger="change delay:500ms"
+                  class="space-y-3">
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Max Withdrawal Rate (%)</label>
+                    <input type="range" name="max_withdrawal_rate" value="{{printf "%.1f" .Settings.MaxWithdrawalRate}}"
+                           min="1" max="10" step="0.5"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-sm text-gray-500">{{printf "%.1f" .Settings.MaxWithdrawalRate}}%</span>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Inflation Rate (%)</label>
+                    <input type="range" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
+                           min="0" max="10" step="0.5"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-sm text-gray-500">{{printf "%.1f" .Settings.InflationRate}}%</span>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Healthcare Inflation (%)</label>
+                    <input type="range" name="healthcare_inflation" value="{{printf "%.1f" .Settings.HealthcareInflation}}"
+                           min="0" max="15" step="0.5"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-sm text-gray-500">{{printf "%.1f" .Settings.HealthcareInflation}}%</span>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Spending Decline Rate (%)</label>
+                    <input type="range" name="spending_decline_rate" value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
+                           min="0" max="5" step="0.25"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-sm text-gray-500">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Investment Return (%)</label>
+                    <input type="range" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
+                           min="0" max="15" step="0.5"
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                           oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-sm text-gray-500">{{printf "%.1f" .Settings.InvestmentReturn}}%</span>
+                </div>
+            </form>
+        </div>
+
+        <!-- Income Sources Card -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Income Sources</h3>
+
+            <div id="income-sources-list" class="space-y-2 mb-4">
+                {{range .Settings.IncomeSources}}
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                    <div>
+                        <span class="font-medium">{{.Name}}</span>
+                        <span class="text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+                        {{if gt .StartMonth 0}}<span class="text-xs text-gray-400">(starts yr {{div .StartMonth 12}})</span>{{end}}
+                    </div>
+                    <button hx-delete="/whatif/income/{{.ID}}"
+                            hx-target="#whatif-results"
+                            class="text-red-500 hover:text-red-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                {{else}}
+                <p class="text-sm text-gray-500 italic">No income sources added</p>
+                {{end}}
+            </div>
+
+            <form hx-post="/whatif/income"
+                  hx-target="#whatif-results"
+                  class="space-y-2 border-t pt-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" name="name" placeholder="Name (e.g., Social Security)"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" required>
+                    <input type="number" name="amount" placeholder="Monthly $"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" min="0" required>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" name="start_year" placeholder="Start Year (0=now)"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" value="0" min="0">
+                    <input type="number" name="end_year" placeholder="End Year (0=never)"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" value="0" min="0">
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center text-sm">
+                        <input type="checkbox" name="cola" class="rounded border-gray-300 text-indigo-600 mr-2">
+                        Apply COLA (2%/yr)
+                    </label>
+                    <button type="submit" class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+                        Add Income
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Expense Sources Card -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Additional Expenses</h3>
+
+            <div id="expense-sources-list" class="space-y-2 mb-4">
+                {{range .Settings.ExpenseSources}}
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                    <div>
+                        <span class="font-medium">{{.Name}}</span>
+                        <span class="text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+                        {{if gt .StartYear 0}}<span class="text-xs text-gray-400">(yr {{.StartYear}}-{{if gt .EndYear 0}}{{.EndYear}}{{else}}end{{end}})</span>{{end}}
+                    </div>
+                    <button hx-delete="/whatif/expense/{{.ID}}"
+                            hx-target="#whatif-results"
+                            class="text-red-500 hover:text-red-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                {{else}}
+                <p class="text-sm text-gray-500 italic">No additional expenses added</p>
+                {{end}}
+            </div>
+
+            <form hx-post="/whatif/expense"
+                  hx-target="#whatif-results"
+                  class="space-y-2 border-t pt-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" name="name" placeholder="Name (e.g., Travel)"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" required>
+                    <input type="number" name="amount" placeholder="Monthly $"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" min="0" required>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" name="start_year" placeholder="Start Year (0=now)"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" value="0" min="0">
+                    <input type="number" name="end_year" placeholder="End Year (0=never)"
+                           class="text-sm border-gray-300 rounded-md py-1 px-2" value="0" min="0">
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center text-sm">
+                        <input type="checkbox" name="inflation" class="rounded border-gray-300 text-indigo-600 mr-2" checked>
+                        Adjust for Inflation
+                    </label>
+                    <button type="submit" class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+                        Add Expense
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Column: Results -->
+    <div class="lg:col-span-2 space-y-4" id="whatif-results">
+        {{template "whatif-results" .}}
+    </div>
 </div>
+{{end}}
+
+{{define "whatif-results"}}
+<!-- Budget Fit Analysis -->
+<div class="bg-white rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">Monthly Budget Analysis</h3>
+    <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+            <p class="text-sm text-gray-500">Monthly Gap</p>
+            <p class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0}}text-green-600{{else}}text-red-600{{end}}">
+                {{if lt .Analysis.BudgetFit.MonthlyGap 0}}+{{end}}{{formatMoney .Analysis.BudgetFit.MonthlyGap}}
+            </p>
+            <p class="text-xs text-gray-400">Expenses - Income</p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500">Required Rate</p>
+            <p class="text-2xl font-bold {{if le .Analysis.BudgetFit.RequiredRate 4}}text-green-600{{else if le .Analysis.BudgetFit.RequiredRate 6}}text-amber-600{{else}}text-red-600{{end}}">
+                {{printf "%.1f" .Analysis.BudgetFit.RequiredRate}}%
+            </p>
+            <p class="text-xs text-gray-400">Withdrawal needed</p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500">Max Safe Withdrawal</p>
+            <p class="text-2xl font-bold text-indigo-600">
+                {{formatMoney .Analysis.BudgetFit.MaxSafeWithdrawal}}
+            </p>
+            <p class="text-xs text-gray-400">At {{printf "%.1f" .Settings.MaxWithdrawalRate}}% rate</p>
+        </div>
+    </div>
+</div>
+
+<!-- Present Value Analysis -->
+<div class="bg-white rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">Present Value Analysis</h3>
+    <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+            <p class="text-sm text-gray-500">PV Expenses</p>
+            <p class="text-2xl font-bold text-red-600">{{formatMoney .Analysis.PresentValue.PVExpenses}}</p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500">PV Income</p>
+            <p class="text-2xl font-bold text-green-600">{{formatMoney .Analysis.PresentValue.PVIncome}}</p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500">Coverage Ratio</p>
+            <p class="text-2xl font-bold {{if ge .Analysis.PresentValue.CoverageRatio 1}}text-green-600{{else}}text-amber-600{{end}}">
+                {{printf "%.1f" .Analysis.PresentValue.CoverageRatio}}x
+            </p>
+        </div>
+    </div>
+    <div class="mt-4 pt-4 border-t text-center">
+        <p class="text-sm text-gray-500">Surplus / Deficit</p>
+        <p class="text-3xl font-bold {{if ge .Analysis.PresentValue.SurplusDeficit 0}}text-green-600{{else}}text-red-600{{end}}">
+            {{if ge .Analysis.PresentValue.SurplusDeficit 0}}+{{end}}{{formatMoney .Analysis.PresentValue.SurplusDeficit}}
+        </p>
+    </div>
+</div>
+
+<!-- Portfolio Projection Chart -->
+<div class="bg-white rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">Portfolio Longevity</h3>
+    <div id="projection-chart" class="chart-container"
+         hx-get="/whatif/chart/projection"
+         hx-trigger="load"
+         hx-swap="none">
+        <div class="flex items-center justify-center h-64 text-gray-400">
+            Loading chart...
+        </div>
+    </div>
+    <div class="mt-4 grid grid-cols-2 gap-4 text-center">
+        <div>
+            <p class="text-sm text-gray-500">Portfolio Longevity</p>
+            <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-green-600{{else}}text-red-600{{end}}">
+                {{if .Analysis.Projection.Survives}}
+                    {{.Settings.ProjectionYears}}+ years
+                {{else}}
+                    {{printf "%.1f" (deref .Analysis.Projection.LongevityYears)}} years
+                {{end}}
+            </p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500">Final Balance</p>
+            <p class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0}}text-green-600{{else}}text-gray-600{{end}}">
+                {{formatMoney .Analysis.Projection.FinalBalance}}
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Sustainability Score Gauge -->
+<div class="bg-white rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">Sustainability Score</h3>
+    <div class="flex items-center justify-center">
+        <div class="relative w-48 h-24">
+            <!-- SVG Gauge -->
+            <svg viewBox="0 0 200 100" class="w-full h-full">
+                <!-- Background arc -->
+                <path d="M 20 90 A 80 80 0 0 1 180 90"
+                      fill="none" stroke="#e5e7eb" stroke-width="12" stroke-linecap="round"/>
+                <!-- Score arc -->
+                <path d="M 20 90 A 80 80 0 0 1 180 90"
+                      fill="none"
+                      stroke="{{if ge .Analysis.Sustainability.Score 75}}#22c55e{{else if ge .Analysis.Sustainability.Score 50}}#eab308{{else if ge .Analysis.Sustainability.Score 25}}#f97316{{else}}#ef4444{{end}}"
+                      stroke-width="12"
+                      stroke-linecap="round"
+                      stroke-dasharray="{{mul .Analysis.Sustainability.Score 2.51}} 251"
+                      transform="rotate(180 100 90)"/>
+                <!-- Score text -->
+                <text x="100" y="75" text-anchor="middle" class="text-3xl font-bold" fill="currentColor">
+                    {{.Analysis.Sustainability.Score}}
+                </text>
+                <text x="100" y="95" text-anchor="middle" class="text-sm" fill="#6b7280">
+                    {{.Analysis.Sustainability.Label}}
+                </text>
+            </svg>
+        </div>
+    </div>
+    <p class="text-center text-sm text-gray-500 mt-2">{{.Analysis.Sustainability.Description}}</p>
+</div>
+
+<!-- Sensitivity Analysis -->
+<div class="bg-white rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4">Sensitivity Analysis</h3>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="text-left p-3 font-medium text-gray-500">Scenario</th>
+                    <th class="text-center p-3 font-medium text-gray-500">Change</th>
+                    <th class="text-right p-3 font-medium text-gray-500">Longevity</th>
+                    <th class="text-right p-3 font-medium text-gray-500">Final Balance</th>
+                    <th class="text-center p-3 font-medium text-gray-500">Score Impact</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {{range .Analysis.Sensitivity}}
+                <tr class="hover:bg-gray-50">
+                    <td class="p-3 text-gray-800">{{.Scenario.Name}}</td>
+                    <td class="p-3 text-center text-gray-500">{{.Scenario.Change}}</td>
+                    <td class="p-3 text-right {{if .Survives}}text-green-600{{else}}text-red-600{{end}}">
+                        {{if .Survives}}
+                            Survives
+                        {{else}}
+                            {{printf "%.1f" (deref .LongevityYears)}} yrs
+                        {{end}}
+                    </td>
+                    <td class="p-3 text-right">{{formatMoney .FinalBalance}}</td>
+                    <td class="p-3 text-center {{if gt .ScoreChange 0}}text-green-600{{else if lt .ScoreChange 0}}text-red-600{{else}}text-gray-500{{end}}">
+                        {{if gt .ScoreChange 0}}+{{end}}{{.ScoreChange}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// Handle chart data responses
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    const target = evt.detail.target;
+    if (target && target.id === 'projection-chart') {
+        try {
+            const data = JSON.parse(evt.detail.xhr.responseText);
+            renderChart('projection-chart', data);
+        } catch (e) {
+            console.error('Error parsing chart data:', e);
+        }
+    }
+});
+</script>
 {{end}}

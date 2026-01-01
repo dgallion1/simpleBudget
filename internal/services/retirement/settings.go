@@ -1,0 +1,212 @@
+package retirement
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+
+	"budget2/internal/models"
+)
+
+// SettingsManager handles persistence of what-if settings
+type SettingsManager struct {
+	settingsDir string
+	filename    string
+}
+
+// NewSettingsManager creates a new settings manager
+func NewSettingsManager(settingsDir string) *SettingsManager {
+	return &SettingsManager{
+		settingsDir: settingsDir,
+		filename:    "whatif.json",
+	}
+}
+
+// filepath returns the full path to the settings file
+func (sm *SettingsManager) filepath() string {
+	return filepath.Join(sm.settingsDir, sm.filename)
+}
+
+// Load reads settings from disk, returning defaults if file doesn't exist
+func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
+	// Ensure settings directory exists
+	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
+		return nil, err
+	}
+
+	path := sm.filepath()
+
+	// Check if file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Return defaults and save them
+		defaults := models.DefaultWhatIfSettings()
+		if err := sm.Save(defaults); err != nil {
+			return defaults, nil // Return defaults even if save fails
+		}
+		return defaults, nil
+	}
+
+	// Read file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return models.DefaultWhatIfSettings(), err
+	}
+
+	// Parse JSON
+	var settings models.WhatIfSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return models.DefaultWhatIfSettings(), err
+	}
+
+	// Ensure slices are initialized
+	if settings.IncomeSources == nil {
+		settings.IncomeSources = []models.IncomeSource{}
+	}
+	if settings.ExpenseSources == nil {
+		settings.ExpenseSources = []models.ExpenseSource{}
+	}
+
+	return &settings, nil
+}
+
+// Save writes settings to disk
+func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
+	// Ensure settings directory exists
+	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
+		return err
+	}
+
+	// Marshal to JSON with indentation for readability
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	// Write file
+	return os.WriteFile(sm.filepath(), data, 0644)
+}
+
+// AddIncomeSource adds a new income source and saves
+func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	settings.IncomeSources = append(settings.IncomeSources, source)
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RemoveIncomeSource removes an income source by ID and saves
+func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.IncomeSource, 0, len(settings.IncomeSources))
+	for _, source := range settings.IncomeSources {
+		if source.ID != id {
+			filtered = append(filtered, source)
+		}
+	}
+	settings.IncomeSources = filtered
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// AddExpenseSource adds a new expense source and saves
+func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	settings.ExpenseSources = append(settings.ExpenseSources, source)
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RemoveExpenseSource removes an expense source by ID and saves
+func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.ExpenseSource, 0, len(settings.ExpenseSources))
+	for _, source := range settings.ExpenseSources {
+		if source.ID != id {
+			filtered = append(filtered, source)
+		}
+	}
+	settings.ExpenseSources = filtered
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// UpdateSettings updates all settings fields from form data and saves
+func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply updates
+	if v, ok := updates["portfolio_value"].(float64); ok {
+		settings.PortfolioValue = v
+	}
+	if v, ok := updates["monthly_living_expenses"].(float64); ok {
+		settings.MonthlyLivingExpenses = v
+	}
+	if v, ok := updates["monthly_healthcare"].(float64); ok {
+		settings.MonthlyHealthcare = v
+	}
+	if v, ok := updates["healthcare_start_years"].(int); ok {
+		settings.HealthcareStartYears = v
+	}
+	if v, ok := updates["max_withdrawal_rate"].(float64); ok {
+		settings.MaxWithdrawalRate = v
+	}
+	if v, ok := updates["inflation_rate"].(float64); ok {
+		settings.InflationRate = v
+	}
+	if v, ok := updates["healthcare_inflation"].(float64); ok {
+		settings.HealthcareInflation = v
+	}
+	if v, ok := updates["spending_decline_rate"].(float64); ok {
+		settings.SpendingDeclineRate = v
+	}
+	if v, ok := updates["investment_return"].(float64); ok {
+		settings.InvestmentReturn = v
+	}
+	if v, ok := updates["discount_rate"].(float64); ok {
+		settings.DiscountRate = v
+	}
+	if v, ok := updates["projection_years"].(int); ok {
+		settings.ProjectionYears = v
+	}
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}

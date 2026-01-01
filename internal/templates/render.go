@@ -66,6 +66,7 @@ func (r *Renderer) loadTemplates() error {
 		"isPositive":     func(v float64) bool { return v > 0 },
 		"colorClass":     colorClass,
 		"percentOf":      percentOf,
+		"deref":          deref,
 	}
 
 	// Parse all templates
@@ -324,4 +325,12 @@ func percentOf(part, whole float64) float64 {
 		return 0
 	}
 	return (part / whole) * 100
+}
+
+// deref safely dereferences a pointer, returning 0 if nil
+func deref(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }

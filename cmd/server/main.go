@@ -734,6 +734,20 @@ func sortTransactions(ts *models.TransactionSet, field, order string) *models.Tr
 			}
 			return sorted.Transactions[i].Amount > sorted.Transactions[j].Amount
 		})
+	case "type":
+		sort.Slice(sorted.Transactions, func(i, j int) bool {
+			if order == "asc" {
+				return sorted.Transactions[i].TransactionType < sorted.Transactions[j].TransactionType
+			}
+			return sorted.Transactions[i].TransactionType > sorted.Transactions[j].TransactionType
+		})
+	case "source":
+		sort.Slice(sorted.Transactions, func(i, j int) bool {
+			if order == "asc" {
+				return strings.ToLower(sorted.Transactions[i].SourceFile) < strings.ToLower(sorted.Transactions[j].SourceFile)
+			}
+			return strings.ToLower(sorted.Transactions[i].SourceFile) > strings.ToLower(sorted.Transactions[j].SourceFile)
+		})
 	default:
 		// Default to date descending
 		sort.Slice(sorted.Transactions, func(i, j int) bool {

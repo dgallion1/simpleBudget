@@ -211,8 +211,32 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="w-20 text-center p-3 text-sm font-medium text-gray-600">Type</th>
-                    <th class="w-24 text-center p-3 text-sm font-medium text-gray-600">Source</th>
+                    <th class="w-20 text-center p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                        onclick="sortBy('type')">
+                        <div class="flex items-center justify-center gap-1">
+                            Type
+                            {{if eq .Sort "type"}}
+                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                                </path>
+                            </svg>
+                            {{end}}
+                        </div>
+                    </th>
+                    <th class="w-24 text-center p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                        onclick="sortBy('source')">
+                        <div class="flex items-center justify-center gap-1">
+                            Source
+                            {{if eq .Sort "source"}}
+                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                                </path>
+                            </svg>
+                            {{end}}
+                        </div>
+                    </th>
                 </tr>
             </thead>
         </table>

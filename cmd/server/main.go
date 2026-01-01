@@ -150,7 +150,10 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Default to YTD
 		startDate = time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Local)
-		if startDate.Before(minDate) {
+		// If YTD range starts after our data ends, default to all-time
+		if !maxDate.IsZero() && startDate.After(maxDate) {
+			startDate = minDate
+		} else if startDate.Before(minDate) {
 			startDate = minDate
 		}
 	}

@@ -2,30 +2,25 @@
 <div class="space-y-6">
     <!-- Filter Controls -->
     <div class="bg-white rounded-lg shadow p-4">
-        <form id="explorer-filter-form"
-              hx-get="/explorer/transactions"
-              hx-target="#transactions-container"
-              hx-trigger="submit, change from:select, change from:input[type=date]"
-              hx-indicator="#loading-indicator"
-              class="space-y-4">
+        <form id="explorer-filter-form" hx-get="/explorer/transactions" hx-target="#transactions-container"
+            hx-trigger="submit, change from:select, change from:input[type=date]" hx-indicator="#loading-indicator"
+            class="space-y-4">
 
             <div class="flex flex-wrap items-center gap-4">
                 <!-- Search -->
                 <div class="flex-1 min-w-[200px]">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-                    <input type="text" name="search" value="{{.Search}}"
-                           placeholder="Search descriptions..."
-                           hx-get="/explorer/transactions"
-                           hx-target="#transactions-container"
-                           hx-trigger="keyup changed delay:300ms"
-                           hx-include="#explorer-filter-form"
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <input type="text" name="search" value="{{.Search}}" placeholder="Search descriptions..."
+                        hx-get="/explorer/transactions" hx-target="#transactions-container"
+                        hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                 </div>
 
                 <!-- Category Filter -->
                 <div class="min-w-[150px]">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <select name="category" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <select name="category"
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">All Categories</option>
                         {{range .Categories}}
                         <option value="{{.}}" {{if eq $.Category .}}selected{{end}}>{{.}}</option>
@@ -36,10 +31,11 @@
                 <!-- Type Filter -->
                 <div class="min-w-[120px]">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                    <select name="type" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <select name="type"
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">All Types</option>
-                        <option value="Income" {{if eq .Type "Income"}}selected{{end}}>Income</option>
-                        <option value="Outflow" {{if eq .Type "Outflow"}}selected{{end}}>Expenses</option>
+                        <option value="Income" {{if eq .Type "Income" }}selected{{end}}>Income</option>
+                        <option value="Outflow" {{if eq .Type "Outflow" }}selected{{end}}>Expenses</option>
                     </select>
                 </div>
 
@@ -47,31 +43,34 @@
                 <div class="flex items-center space-x-2">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">From</label>
-                        <input type="date" name="start" value="{{.StartDate}}"
-                               min="{{.MinDate}}" max="{{.MaxDate}}"
-                               class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <input type="date" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                            class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">To</label>
-                        <input type="date" name="end" value="{{.EndDate}}"
-                               min="{{.MinDate}}" max="{{.MaxDate}}"
-                               class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                            class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                 </div>
 
                 <!-- Loading Indicator -->
                 <div class="flex items-end pb-2">
                     <span id="loading-indicator" class="htmx-indicator">
-                        <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none"
+                            viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
                         </svg>
                     </span>
                 </div>
 
                 <!-- Clear Filters -->
                 <div class="flex items-end pb-2 ml-auto">
-                    <a href="/explorer" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+                    <a href="/explorer"
+                        class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
                         Clear Filters
                     </a>
                 </div>
@@ -92,13 +91,11 @@
 
     <!-- File Manager Button -->
     <div class="flex justify-end">
-        <button type="button"
-                hx-get="/explorer/files"
-                hx-target="#file-manager-container"
-                hx-swap="innerHTML"
-                class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2">
+        <button type="button" hx-get="/explorer/files" hx-target="#file-manager-container" hx-swap="innerHTML"
+            class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
             </svg>
             Manage Data Files
         </button>
@@ -112,54 +109,54 @@
 </div>
 
 <script>
-// Update sort parameters and trigger refresh
-function sortBy(column) {
-    const form = document.getElementById('explorer-filter-form');
-    const sortInput = form.querySelector('input[name="sort"]');
-    const orderInput = form.querySelector('input[name="order"]');
-    const pageInput = form.querySelector('input[name="page"]');
+    // Update sort parameters and trigger refresh
+    function sortBy(column) {
+        const form = document.getElementById('explorer-filter-form');
+        const sortInput = form.querySelector('input[name="sort"]');
+        const orderInput = form.querySelector('input[name="order"]');
+        const pageInput = form.querySelector('input[name="page"]');
 
-    if (sortInput.value === column) {
-        // Toggle order
-        orderInput.value = orderInput.value === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortInput.value = column;
-        orderInput.value = column === 'date' ? 'desc' : 'asc';
+        if (sortInput.value === column) {
+            // Toggle order
+            orderInput.value = orderInput.value === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortInput.value = column;
+            orderInput.value = column === 'date' ? 'desc' : 'asc';
+        }
+
+        // Reset to page 1 when sorting changes
+        pageInput.value = '1';
+
+        // Trigger HTMX request
+        htmx.trigger(form, 'submit');
     }
 
-    // Reset to page 1 when sorting changes
-    pageInput.value = '1';
-
-    // Trigger HTMX request
-    htmx.trigger(form, 'submit');
-}
-
-// Go to specific page
-function goToPage(page) {
-    const form = document.getElementById('explorer-filter-form');
-    const pageInput = form.querySelector('input[name="page"]');
-    pageInput.value = page;
-    htmx.trigger(form, 'submit');
-}
-
-// Close modals
-function closeFileManager(event) {
-    if (event && event.target !== event.currentTarget) return;
-    document.getElementById('file-manager-container').innerHTML = '';
-}
-
-function closeTransactionDetail(event) {
-    if (event && event.target !== event.currentTarget) return;
-    document.getElementById('transaction-detail-container').innerHTML = '';
-}
-
-// Close modal on escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeFileManager();
-        closeTransactionDetail();
+    // Go to specific page
+    function goToPage(page) {
+        const form = document.getElementById('explorer-filter-form');
+        const pageInput = form.querySelector('input[name="page"]');
+        pageInput.value = page;
+        htmx.trigger(form, 'submit');
     }
-});
+
+    // Close modals
+    function closeFileManager(event) {
+        if (event && event.target !== event.currentTarget) return;
+        document.getElementById('file-manager-container').innerHTML = '';
+    }
+
+    function closeTransactionDetail(event) {
+        if (event && event.target !== event.currentTarget) return;
+        document.getElementById('transaction-detail-container').innerHTML = '';
+    }
+
+    // Close modal on escape key
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            closeFileManager();
+            closeTransactionDetail();
+        }
+    });
 </script>
 {{end}}
 
@@ -171,12 +168,12 @@ document.addEventListener('keydown', function(e) {
             <span class="text-gray-600">
                 <span class="font-medium text-gray-900">{{.TotalCount}}</span> transactions
             </span>
-            {{if gt .TotalIncome 0}}
+            {{if isPositive .TotalIncome}}
             <span class="text-green-600">
                 Income: <span class="font-medium">{{formatMoney .TotalIncome}}</span>
             </span>
             {{end}}
-            {{if gt .TotalExpenses 0}}
+            {{if isPositive .TotalExpenses}}
             <span class="text-red-600">
                 Expenses: <span class="font-medium">{{formatMoney .TotalExpenses}}</span>
             </span>
@@ -187,8 +184,9 @@ document.addEventListener('keydown', function(e) {
         </div>
         <div class="flex items-center gap-2 text-sm text-gray-600">
             <label>Per page:</label>
-            <select onchange="document.querySelector('input[name=perPage]').value = this.value; document.querySelector('input[name=page]').value = '1'; htmx.trigger(document.getElementById('explorer-filter-form'), 'submit');"
-                    class="border border-gray-300 rounded px-2 py-1 text-sm">
+            <select
+                onchange="document.querySelector('input[name=perPage]').value = this.value; document.querySelector('input[name=page]').value = '1'; htmx.trigger(document.getElementById('explorer-filter-form'), 'submit');"
+                class="border border-gray-300 rounded px-2 py-1 text-sm">
                 <option value="25" {{if eq .PerPage 25}}selected{{end}}>25</option>
                 <option value="50" {{if eq .PerPage 50}}selected{{end}}>50</option>
                 <option value="100" {{if eq .PerPage 100}}selected{{end}}>100</option>
@@ -206,8 +204,10 @@ document.addEventListener('keydown', function(e) {
                         <div class="flex items-center gap-1">
                             Date
                             {{if eq .Sort "date"}}
-                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                                </path>
                             </svg>
                             {{end}}
                         </div>
@@ -217,8 +217,10 @@ document.addEventListener('keydown', function(e) {
                         <div class="flex items-center gap-1">
                             Description
                             {{if eq .Sort "description"}}
-                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                                </path>
                             </svg>
                             {{end}}
                         </div>
@@ -228,8 +230,10 @@ document.addEventListener('keydown', function(e) {
                         <div class="flex items-center gap-1">
                             Category
                             {{if eq .Sort "category"}}
-                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                                </path>
                             </svg>
                             {{end}}
                         </div>
@@ -239,8 +243,10 @@ document.addEventListener('keydown', function(e) {
                         <div class="flex items-center justify-end gap-1">
                             Amount
                             {{if eq .Sort "amount"}}
-                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                            <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                                </path>
                             </svg>
                             {{end}}
                         </div>
@@ -252,12 +258,11 @@ document.addEventListener('keydown', function(e) {
             <tbody class="divide-y divide-gray-100">
                 {{if .Transactions}}
                 {{range .Transactions}}
-                <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
-                    hx-get="/explorer/transaction/{{.Hash}}"
-                    hx-target="#transaction-detail-container"
-                    hx-swap="innerHTML">
+                <tr class="hover:bg-gray-50 cursor-pointer transition-colors" hx-get="/explorer/transaction/{{.Hash}}"
+                    hx-target="#transaction-detail-container" hx-swap="innerHTML">
                     <td class="p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
-                    <td class="p-3 text-sm text-gray-800 max-w-xs truncate" title="{{.Description}}">{{.Description}}</td>
+                    <td class="p-3 text-sm text-gray-800 max-w-xs truncate" title="{{.Description}}">{{.Description}}
+                    </td>
                     <td class="p-3 text-sm">
                         <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
                     </td>
@@ -271,14 +276,18 @@ document.addEventListener('keydown', function(e) {
                         <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Expense</span>
                         {{end}}
                     </td>
-                    <td class="p-3 text-xs text-gray-400 text-center truncate max-w-[100px]" title="{{.SourceFile}}">{{.SourceFile}}</td>
+                    <td class="p-3 text-xs text-gray-400 text-center truncate max-w-[100px]" title="{{.SourceFile}}">
+                        {{.SourceFile}}</td>
                 </tr>
                 {{end}}
                 {{else}}
                 <tr>
                     <td colspan="6" class="p-8 text-center text-gray-500">
-                        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                            </path>
                         </svg>
                         <p class="font-medium">No transactions found</p>
                         <p class="text-sm mt-1">Try adjusting your filters</p>
@@ -297,21 +306,26 @@ document.addEventListener('keydown', function(e) {
         </div>
         <div class="flex items-center gap-1">
             {{if gt .Page 1}}
-            <button onclick="goToPage(1)" class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">First</button>
-            <button onclick="goToPage({{sub .Page 1}})" class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Prev</button>
+            <button onclick="goToPage(1)"
+                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">First</button>
+            <button onclick="goToPage({{sub .Page 1}})"
+                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Prev</button>
             {{end}}
 
             {{range .PageRange}}
             {{if eq . $.Page}}
             <span class="px-3 py-1 text-sm bg-indigo-600 text-white rounded">{{.}}</span>
             {{else}}
-            <button onclick="goToPage({{.}})" class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">{{.}}</button>
+            <button onclick="goToPage({{.}})"
+                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">{{.}}</button>
             {{end}}
             {{end}}
 
             {{if lt .Page .TotalPages}}
-            <button onclick="goToPage({{add .Page 1}})" class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Next</button>
-            <button onclick="goToPage({{.TotalPages}})" class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Last</button>
+            <button onclick="goToPage({{add .Page 1}})"
+                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Next</button>
+            <button onclick="goToPage({{.TotalPages}})"
+                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Last</button>
             {{end}}
         </div>
     </div>
@@ -320,13 +334,15 @@ document.addEventListener('keydown', function(e) {
 {{end}}
 
 {{define "transaction-detail"}}
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="closeTransactionDetail(event)">
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    onclick="closeTransactionDetail(event)">
     <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4" onclick="event.stopPropagation()">
         <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
             <h3 class="text-lg font-semibold text-gray-800">Transaction Details</h3>
             <button onclick="closeTransactionDetail()" class="text-gray-500 hover:text-gray-700">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
                 </svg>
             </button>
         </div>
@@ -345,7 +361,8 @@ document.addEventListener('keydown', function(e) {
                 </div>
                 <div class="flex justify-between py-2 border-b border-gray-100">
                     <span class="text-sm text-gray-500">Category</span>
-                    <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{{if .Transaction.Category}}{{.Transaction.Category}}{{else}}Uncategorized{{end}}</span>
+                    <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{{if
+                        .Transaction.Category}}{{.Transaction.Category}}{{else}}Uncategorized{{end}}</span>
                 </div>
                 <div class="flex justify-between py-2 border-b border-gray-100">
                     <span class="text-sm text-gray-500">Type</span>
@@ -366,7 +383,8 @@ document.addEventListener('keydown', function(e) {
             </div>
         </div>
         <div class="p-4 bg-gray-50 rounded-b-lg">
-            <button onclick="closeTransactionDetail()" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
+            <button onclick="closeTransactionDetail()"
+                class="w-full px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
                 Close
             </button>
         </div>
@@ -375,27 +393,28 @@ document.addEventListener('keydown', function(e) {
 {{end}}
 
 {{define "file-manager"}}
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="closeFileManager(event)">
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden" onclick="event.stopPropagation()">
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    onclick="closeFileManager(event)">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
+        onclick="event.stopPropagation()">
         <div class="p-4 border-b flex justify-between items-center bg-gray-50">
             <h3 class="text-lg font-semibold text-gray-800">Data File Manager</h3>
             <button onclick="closeFileManager()" class="text-gray-500 hover:text-gray-700">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
                 </svg>
             </button>
         </div>
 
         <!-- Upload Section -->
         <div class="p-4 border-b bg-gray-50">
-            <form hx-post="/explorer/upload"
-                  hx-target="#file-list"
-                  hx-swap="innerHTML"
-                  hx-encoding="multipart/form-data"
-                  class="flex items-center gap-4">
+            <form hx-post="/explorer/upload" hx-target="#file-list" hx-swap="innerHTML"
+                hx-encoding="multipart/form-data" class="flex items-center gap-4">
                 <input type="file" name="file" accept=".csv"
-                       class="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
-                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition-colors">
+                    class="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                <button type="submit"
+                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition-colors">
                     Upload CSV
                 </button>
             </form>
@@ -407,7 +426,8 @@ document.addEventListener('keydown', function(e) {
         </div>
 
         <div class="p-4 bg-gray-50 border-t">
-            <button onclick="closeFileManager(); location.reload();" class="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+            <button onclick="closeFileManager(); location.reload();"
+                class="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
                 Done
             </button>
         </div>
@@ -438,19 +458,15 @@ document.addEventListener('keydown', function(e) {
                 {{if .MinDate}}{{.MinDate}} - {{.MaxDate}}{{else}}-{{end}}
             </td>
             <td class="p-3 text-center">
-                <input type="checkbox" {{if .Enabled}}checked{{end}}
-                       hx-post="/explorer/files/toggle"
-                       hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
-                       hx-target="#file-list"
-                       hx-swap="innerHTML"
-                       class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
+                <input type="checkbox" {{if .Enabled}}checked{{end}} hx-post="/explorer/files/toggle"
+                    hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
+                    hx-target="#file-list" hx-swap="innerHTML"
+                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
             </td>
             <td class="p-3 text-center">
-                <button hx-delete="/explorer/files/{{.Name}}"
-                        hx-target="#file-list"
-                        hx-swap="innerHTML"
-                        hx-confirm="Delete {{.Name}}? This cannot be undone."
-                        class="text-red-600 hover:text-red-800 text-sm">
+                <button hx-delete="/explorer/files/{{.Name}}" hx-target="#file-list" hx-swap="innerHTML"
+                    hx-confirm="Delete {{.Name}}? This cannot be undone."
+                    class="text-red-600 hover:text-red-800 text-sm">
                     Delete
                 </button>
             </td>

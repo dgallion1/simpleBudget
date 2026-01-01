@@ -164,24 +164,7 @@
 <div class="bg-white rounded-lg shadow overflow-hidden">
     <!-- Summary Bar -->
     <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between">
-        <div class="flex items-center gap-6 text-sm">
-            <span class="text-gray-600">
-                <span class="font-medium text-gray-900">{{.TotalCount}}</span> transactions
-            </span>
-            {{if isPositive .TotalIncome}}
-            <span class="text-green-600">
-                Income: <span class="font-medium">{{formatMoney .TotalIncome}}</span>
-            </span>
-            {{end}}
-            {{if isPositive .TotalExpenses}}
-            <span class="text-red-600">
-                Expenses: <span class="font-medium">{{formatMoney .TotalExpenses}}</span>
-            </span>
-            {{end}}
-            <span class="{{colorClass .NetAmount}}">
-                Net: <span class="font-medium">{{formatMoney .NetAmount}}</span>
-            </span>
-        </div>
+        {{template "summary-stats" .}}
         <div class="flex items-center gap-2 text-sm text-gray-600">
             <label>Per page:</label>
             <select
@@ -255,81 +238,16 @@
                     <th class="text-center p-3 text-sm font-medium text-gray-600">Source</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
-                {{if .Transactions}}
-                {{range .Transactions}}
-                <tr class="hover:bg-gray-50 cursor-pointer transition-colors" hx-get="/explorer/transaction/{{.Hash}}"
-                    hx-target="#transaction-detail-container" hx-swap="innerHTML">
-                    <td class="p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
-                    <td class="p-3 text-sm text-gray-800 max-w-xs truncate" title="{{.Description}}">{{.Description}}
-                    </td>
-                    <td class="p-3 text-sm">
-                        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
-                    </td>
-                    <td class="p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600{{else}}text-red-600{{end}}">
-                        {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
-                    </td>
-                    <td class="p-3 text-center">
-                        {{if eq .TransactionType "Income"}}
-                        <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Income</span>
-                        {{else}}
-                        <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Expense</span>
-                        {{end}}
-                    </td>
-                    <td class="p-3 text-xs text-gray-400 text-center truncate max-w-[100px]" title="{{.SourceFile}}">
-                        {{.SourceFile}}</td>
-                </tr>
-                {{end}}
-                {{else}}
-                <tr>
-                    <td colspan="6" class="p-8 text-center text-gray-500">
-                        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor"
-                            viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-                            </path>
-                        </svg>
-                        <p class="font-medium">No transactions found</p>
-                        <p class="text-sm mt-1">Try adjusting your filters</p>
-                    </td>
-                </tr>
-                {{end}}
+            <tbody id="transaction-rows" class="divide-y divide-gray-100">
+                {{template "transaction-rows" .}}
             </tbody>
         </table>
     </div>
 
-    <!-- Pagination -->
-    {{if gt .TotalPages 1}}
-    <div class="bg-gray-50 px-4 py-3 border-t flex items-center justify-between">
-        <div class="text-sm text-gray-600">
-            Showing {{.PageStart}} to {{.PageEnd}} of {{.TotalCount}}
-        </div>
-        <div class="flex items-center gap-1">
-            {{if gt .Page 1}}
-            <button onclick="goToPage(1)"
-                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">First</button>
-            <button onclick="goToPage({{sub .Page 1}})"
-                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Prev</button>
-            {{end}}
-
-            {{range .PageRange}}
-            {{if eq . $.Page}}
-            <span class="px-3 py-1 text-sm bg-indigo-600 text-white rounded">{{.}}</span>
-            {{else}}
-            <button onclick="goToPage({{.}})"
-                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">{{.}}</button>
-            {{end}}
-            {{end}}
-
-            {{if lt .Page .TotalPages}}
-            <button onclick="goToPage({{add .Page 1}})"
-                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Next</button>
-            <button onclick="goToPage({{.TotalPages}})"
-                class="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors">Last</button>
-            {{end}}
-        </div>
+    <!-- Infinity Scroll Info -->
+    <div class="bg-gray-50 px-4 py-2 border-t text-center text-xs text-gray-400 italic">
+        Scroll for more transactions
     </div>
-    {{end}}
 </div>
 {{end}}
 
@@ -391,6 +309,50 @@
     </div>
 </div>
 {{end}}
+{{define "transaction-rows"}}
+{{if .Transactions}}
+{{$perPage := .PerPage}}
+{{$currentPage := .Page}}
+{{$totalPages := .TotalPages}}
+{{range $index, $txn := .Transactions}}
+<tr class="hover:bg-gray-50 cursor-pointer transition-colors" hx-get="/explorer/transaction/{{.Hash}}"
+    hx-target="#transaction-detail-container" hx-swap="innerHTML" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
+    $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
+    hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
+    <td class="p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
+    <td class="p-3 text-sm text-gray-800 max-w-xs truncate" title="{{.Description}}">{{.Description}}</td>
+    <td class="p-3 text-sm">
+        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{{if
+            .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
+    </td>
+    <td class="p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600{{else}}text-red-600{{end}}">
+        {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
+    </td>
+    <td class="p-3 text-center">
+        {{if eq .TransactionType "Income"}}
+        <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Income</span>
+        {{else}}
+        <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Expense</span>
+        {{end}}
+    </td>
+    <td class="p-3 text-xs text-gray-400 text-center truncate max-w-[100px]" title="{{.SourceFile}}">{{.SourceFile}}
+    </td>
+</tr>
+{{end}}
+{{else if eq .Page 1}}
+<tr>
+    <td colspan="6" class="p-8 text-center text-gray-500">
+        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+            </path>
+        </svg>
+        <p class="font-medium">No transactions found</p>
+        <p class="text-sm mt-1">Try adjusting your filters</p>
+    </td>
+</tr>
+{{end}}
+{{end}}
 
 {{define "file-manager"}}
 <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
@@ -451,7 +413,7 @@
         <tr class="hover:bg-gray-50">
             <td class="p-3">
                 <div class="text-sm font-medium text-gray-900">{{.Name}}</div>
-                <div class="text-xs text-gray-500">{{printf "%.1f" (div .Size 1024.0)}} KB</div>
+                <div class="text-xs text-gray-500">{{printf "%.1f" (div (toFloat .Size) 1024.0)}} KB</div>
             </td>
             <td class="p-3 text-center text-sm text-gray-600">{{.Transactions}}</td>
             <td class="p-3 text-center text-xs text-gray-500">
@@ -480,4 +442,26 @@
         {{end}}
     </tbody>
 </table>
+{{end}}
+
+
+{{define "summary-stats"}}
+<div id="summary-stats" class="flex items-center gap-6 text-sm" hx-swap-oob="true">
+    <span class="text-gray-600">
+        <span class="font-medium text-gray-900">{{.TotalCount}}</span> transactions
+    </span>
+    {{if isPositive .TotalIncome}}
+    <span class="text-green-600">
+        Income: <span class="font-medium">{{formatMoney .TotalIncome}}</span>
+    </span>
+    {{end}}
+    {{if isPositive .TotalExpenses}}
+    <span class="text-red-600">
+        Expenses: <span class="font-medium">{{formatMoney .TotalExpenses}}</span>
+    </span>
+    {{end}}
+    <span class="{{colorClass .NetAmount}}">
+        Net: <span class="font-medium">{{formatMoney .NetAmount}}</span>
+    </span>
+</div>
 {{end}}

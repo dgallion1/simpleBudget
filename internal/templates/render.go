@@ -46,6 +46,7 @@ func (r *Renderer) loadTemplates() error {
 		"mul":            mul,
 		"div":            div,
 		"mod":            mod,
+		"toFloat":        toFloat,
 		"seq":            seq,
 		"dict":           dict,
 		"json":           jsonMarshal,
@@ -62,8 +63,8 @@ func (r *Renderer) loadTemplates() error {
 		"safeHTML":       safeHTML,
 		"safeJS":         safeJS,
 		"now":            time.Now,
-		"isNegative":     func(v float64) bool { return v < 0 },
-		"isPositive":     func(v float64) bool { return v > 0 },
+		"isNegative":     func(v interface{}) bool { return toFloat(v) < 0 },
+		"isPositive":     func(v interface{}) bool { return toFloat(v) > 0 },
 		"isNonNegative":  isNonNegative,
 		"colorClass":     colorClass,
 		"percentOf":      percentOf,
@@ -207,7 +208,13 @@ func abs(v float64) float64 {
 	return v
 }
 
-func add(a, b interface{}) float64 {
+func add(a, b interface{}) interface{} {
+	// If both are ints, return int to preserve type for comparisons
+	if ai, ok := a.(int); ok {
+		if bi, ok := b.(int); ok {
+			return ai + bi
+		}
+	}
 	af := toFloat(a)
 	bf := toFloat(b)
 	return af + bf

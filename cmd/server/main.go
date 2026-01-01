@@ -503,32 +503,40 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 		pageEnd = 0
 	}
 
-	partialData := map[string]interface{}{
-		"Transactions":  paginated.Transactions,
-		"Search":        search,
-		"Category":      category,
-		"Type":          txnType,
-		"Sort":          sortField,
-		"Order":         order,
-		"Page":          page,
-		"PerPage":       perPage,
-		"TotalPages":    totalPages,
-		"TotalCount":    totalCount,
-		"TotalIncome":   totalIncome,
-		"TotalExpenses": totalExpenses,
-		"NetAmount":     netAmount,
-		"PageRange":     pageRange,
-		"PageStart":     pageStart,
-		"PageEnd":       pageEnd,
-	}
-
-	if renderer != nil {
-		renderer.RenderPartial(w, "transactions-table", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
-	}
-}
+	appendRows := r.URL.Query().Get("append") == "true"
+ 
+ 	partialData := map[string]interface{}{
+ 		"Transactions":  paginated.Transactions,
+ 		"Search":        search,
+ 		"Category":      category,
+ 		"Type":          txnType,
+ 		"Sort":          sortField,
+ 		"Order":         order,
+ 		"Page":          page,
+ 		"PerPage":       perPage,
+ 		"TotalPages":    totalPages,
+ 		"TotalCount":    totalCount,
+ 		"TotalIncome":   totalIncome,
+ 		"TotalExpenses": totalExpenses,
+ 		"NetAmount":     netAmount,
+ 		"PageRange":     pageRange,
+ 		"PageStart":     pageStart,
+ 		"PageEnd":       pageEnd,
+ 	}
+ 
+ 	if renderer != nil {
+ 		if appendRows {
+ 			renderer.RenderPartial(w, "transaction-rows", partialData)
+ 			// Also render summary stats for OOB update
+ 			renderer.RenderPartial(w, "summary-stats", partialData)
+ 		} else {
+ 			renderer.RenderPartial(w, "transactions-table", partialData)
+ 		}
+ 	} else {
+ 		w.Header().Set("Content-Type", "application/json")
+ 		json.NewEncoder(w).Encode(partialData)
+ 	}
+ }
 
 func handleTransactionDetail(w http.ResponseWriter, r *http.Request) {
 	hash := chi.URLParam(r, "hash")

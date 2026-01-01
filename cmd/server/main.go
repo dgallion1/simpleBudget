@@ -43,7 +43,7 @@ func main() {
 
 	// Initialize template renderer
 	var err error
-	renderer, err = templates.New(cfg.TemplatesDirectory, cfg.Debug)
+	renderer, err = templates.New(cfg.TemplatesDirectory, true) // force debug for template hot reload
 	if err != nil {
 		log.Printf("Warning: could not load templates: %v", err)
 	}

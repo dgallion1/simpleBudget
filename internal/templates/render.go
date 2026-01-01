@@ -64,6 +64,7 @@ func (r *Renderer) loadTemplates() error {
 		"now":            time.Now,
 		"isNegative":     func(v float64) bool { return v < 0 },
 		"isPositive":     func(v float64) bool { return v > 0 },
+		"isNonNegative":  isNonNegative,
 		"colorClass":     colorClass,
 		"percentOf":      percentOf,
 		"deref":          deref,
@@ -327,4 +328,9 @@ func deref(v *float64) float64 {
 		return 0
 	}
 	return *v
+}
+
+// isNonNegative returns true if v >= 0
+func isNonNegative(v float64) bool {
+	return v >= 0
 }

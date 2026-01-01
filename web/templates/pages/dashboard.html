@@ -273,12 +273,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!dropZone) return;
 
     // Prevent default drag behaviors on the whole document
-    // Use capture phase (true) to intercept before browser default handling
+    // Only use preventDefault - do NOT use stopPropagation as it blocks the dropZone handlers
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         document.addEventListener(eventName, function(e) {
             e.preventDefault();
-            e.stopPropagation();
-        }, true);
+        }, false);
     });
 
     // Highlight drop zone on drag over
@@ -390,7 +389,7 @@ function uploadFile(file) {
                 <p class="text-2xl font-bold text-green-600">{{formatMoney .Metrics.TotalIncome}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="text-sm {{if ge .PeriodComparison.IncomeChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
                     {{formatPercent .PeriodComparison.IncomeChange}}%
                 </p>
                 {{end}}
@@ -413,7 +412,7 @@ function uploadFile(file) {
                 <p class="text-2xl font-bold text-red-600">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="text-sm {{if le .PeriodComparison.ExpensesChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
                     {{formatPercent .PeriodComparison.ExpensesChange}}%
                 </p>
                 {{end}}
@@ -436,14 +435,14 @@ function uploadFile(file) {
                 <p class="text-2xl font-bold {{colorClass .Metrics.NetSavings}}">{{formatMoney .Metrics.NetSavings}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="text-sm {{if ge .PeriodComparison.SavingsChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="text-sm {{if ge .PeriodComparison.SavingsChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
                     {{formatPercent .PeriodComparison.SavingsChange}}%
                 </p>
                 {{end}}
                 {{end}}
             </div>
-            <div class="p-3 {{if ge .Metrics.NetSavings 0}}bg-green-100{{else}}bg-red-100{{end}} rounded-full">
-                <svg class="w-6 h-6 {{if ge .Metrics.NetSavings 0}}text-green-600{{else}}text-red-600{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 {{if isNonNegative .Metrics.NetSavings}}bg-green-100{{else}}bg-red-100{{end}} rounded-full">
+                <svg class="w-6 h-6 {{if isNonNegative .Metrics.NetSavings}}text-green-600{{else}}text-red-600{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
             </div>
@@ -456,12 +455,12 @@ function uploadFile(file) {
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-sm font-medium text-gray-500">Savings Rate</p>
-                <p class="text-2xl font-bold {{if ge .Metrics.SavingsRate 20}}text-green-600{{else if ge .Metrics.SavingsRate 10}}text-yellow-600{{else}}text-red-600{{end}}">
+                <p class="text-2xl font-bold {{if ge .Metrics.SavingsRate 20.0}}text-green-600{{else if ge .Metrics.SavingsRate 10.0}}text-yellow-600{{else}}text-red-600{{end}}">
                     {{printf "%.1f" .Metrics.SavingsRate}}%
                 </p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="text-sm {{if ge .PeriodComparison.SavingsRateChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="text-sm {{if ge .PeriodComparison.SavingsRateChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
                     {{printf "%+.1f" .PeriodComparison.SavingsRateChange}}pp
                 </p>
                 {{end}}

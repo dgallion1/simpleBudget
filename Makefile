@@ -37,8 +37,9 @@ deps:
 	$(GO) get github.com/xuri/excelize/v2
 	$(GO) mod tidy
 
-# Development with hot reload (requires air)
+# Development with hot reload (installs air if needed)
 watch:
+	@test -x ~/go/bin/air || $(GO) install github.com/air-verse/air@latest
 	~/go/bin/air
 
 # Download vendor JS libraries

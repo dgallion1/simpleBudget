@@ -157,6 +157,46 @@
             closeFileManager();
         }
     });
+
+    // Infinite scroll handler for nested scrollable container
+    // HTMX's revealed trigger doesn't work with nested scroll containers
+    function setupInfiniteScroll() {
+        const scrollContainer = document.querySelector('#transactions-container .overflow-y-auto');
+        if (!scrollContainer) return;
+
+        let loading = false;
+
+        scrollContainer.addEventListener('scroll', function() {
+            if (loading) return;
+
+            // Check if we're near the bottom (within 100px)
+            const scrollBottom = this.scrollTop + this.clientHeight;
+            const threshold = this.scrollHeight - 100;
+
+            if (scrollBottom >= threshold) {
+                // Find the LAST row with hx-get attribute (the infinite scroll trigger)
+                // querySelector returns first match, but we need the last one after appends
+                const triggerRows = document.querySelectorAll('#transaction-rows tr[hx-get]');
+                const lastTriggerRow = triggerRows.length > 0 ? triggerRows[triggerRows.length - 1] : null;
+                if (lastTriggerRow) {
+                    loading = true;
+                    htmx.trigger(lastTriggerRow, 'revealed');
+                    // Reset loading flag after request completes
+                    setTimeout(() => { loading = false; }, 500);
+                }
+            }
+        });
+    }
+
+    // Setup on initial load
+    setupInfiniteScroll();
+
+    // Re-setup after HTMX swaps content
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target.id === 'transactions-container') {
+            setupInfiniteScroll();
+        }
+    });
 </script>
 {{end}}
 
@@ -232,7 +272,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="w-24 text-center p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-36 text-center p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
                         onclick="sortBy('source')">
                         <div class="flex items-center justify-center gap-1">
                             Source
@@ -286,7 +326,7 @@
         <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Expense</span>
         {{end}}
     </td>
-    <td class="w-24 p-3 text-xs text-gray-400 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
+    <td class="w-36 p-3 text-xs text-gray-400 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
 </tr>
 {{end}}
 {{else if eq .Page 1}}

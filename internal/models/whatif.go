@@ -29,7 +29,7 @@ type WhatIfSettings struct {
 // DefaultWhatIfSettings returns sensible defaults for retirement planning
 func DefaultWhatIfSettings() *WhatIfSettings {
 	return &WhatIfSettings{
-		PortfolioValue:        500000,
+		PortfolioValue:        0,
 		MonthlyLivingExpenses: 4000,
 		MonthlyHealthcare:     500,
 		HealthcareStartYears:  0,

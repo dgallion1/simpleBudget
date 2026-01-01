@@ -237,11 +237,13 @@ func toFloat(v interface{}) float64 {
 		return 0
 	}
 }
-func div(a, b int) int {
-	if b == 0 {
+func div(a, b interface{}) float64 {
+	af := toFloat(a)
+	bf := toFloat(b)
+	if bf == 0 {
 		return 0
 	}
-	return a / b
+	return af / bf
 }
 func mod(a, b int) int {
 	if b == 0 {

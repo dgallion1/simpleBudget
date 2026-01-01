@@ -211,9 +211,36 @@ func abs(v float64) float64 {
 	return v
 }
 
-func add(a, b int) int { return a + b }
-func sub(a, b int) int { return a - b }
-func mul(a, b int) int { return a * b }
+func add(a, b interface{}) float64 {
+	af := toFloat(a)
+	bf := toFloat(b)
+	return af + bf
+}
+func sub(a, b interface{}) float64 {
+	af := toFloat(a)
+	bf := toFloat(b)
+	return af - bf
+}
+func mul(a, b interface{}) float64 {
+	af := toFloat(a)
+	bf := toFloat(b)
+	return af * bf
+}
+
+func toFloat(v interface{}) float64 {
+	switch val := v.(type) {
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	default:
+		return 0
+	}
+}
 func div(a, b int) int {
 	if b == 0 {
 		return 0

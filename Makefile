@@ -39,7 +39,7 @@ deps:
 
 # Development with hot reload (requires air)
 watch:
-	air
+	~/go/bin/air
 
 # Download vendor JS libraries
 vendor-js:

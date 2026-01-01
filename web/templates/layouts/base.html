@@ -39,7 +39,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gray-100 {{if eq .ActiveTab "explorer"}}h-screen overflow-hidden{{else}}min-h-screen{{end}}">
     <!-- Navigation -->
     <nav class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg">
         <div class="container mx-auto px-4">
@@ -77,7 +77,7 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="container mx-auto py-6 px-4">
+    <main class="container mx-auto px-4 {{if eq .ActiveTab "explorer"}}h-[calc(100vh-4rem)]{{else}}py-6{{end}}">
         {{if eq .ActiveTab "dashboard"}}
             {{template "dashboard-content" .}}
         {{else if eq .ActiveTab "explorer"}}
@@ -94,12 +94,14 @@
         {{end}}
     </main>
 
-    <!-- Footer -->
+    <!-- Footer (hidden on explorer page) -->
+    {{if ne .ActiveTab "explorer"}}
     <footer class="bg-gray-800 text-gray-400 py-4 mt-8">
         <div class="container mx-auto px-4 text-center text-sm">
             Budget Dashboard &copy; {{now.Year}}
         </div>
     </footer>
+    {{end}}
 
     <!-- Chart initialization script -->
     <script src="/static/js/charts.js"></script>

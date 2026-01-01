@@ -1,5 +1,5 @@
 {{define "explorer-content"}}
-<div class="flex flex-col h-[calc(100vh-4rem)]">
+<div class="flex flex-col h-full py-4">
     <!-- Fixed Filter Controls -->
     <div class="flex-shrink-0 bg-white rounded-lg shadow p-4 mb-2">
         <form id="explorer-filter-form" hx-get="/explorer/transactions" hx-target="#transactions-container"
@@ -89,7 +89,7 @@
     </div>
 
     <!-- Fixed Footer with Status and File Manager Button -->
-    <div class="flex-shrink-0 bg-white rounded-lg shadow mt-2 px-4 py-4 mb-4 flex items-center justify-between">
+    <div class="flex-shrink-0 bg-white rounded-lg shadow mt-2 px-4 py-4 flex items-center justify-between">
         {{template "summary-stats" .}}
         <button type="button" hx-get="/explorer/files" hx-target="#file-manager-container" hx-swap="innerHTML"
             class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2">

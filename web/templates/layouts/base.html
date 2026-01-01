@@ -1,6 +1,6 @@
 {{define "base"}}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,6 +14,25 @@
 
     <!-- Tailwind CSS via CDN (for development) -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
+
+    <!-- Theme initialization (before page render to prevent flash) -->
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme');
+            if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.remove('light');
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
 
     <!-- Custom styles -->
     <link href="/static/css/styles.css" rel="stylesheet">
@@ -39,9 +58,9 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 {{if eq .ActiveTab "explorer"}}h-screen overflow-hidden{{else}}min-h-screen{{end}}">
+<body class="bg-gray-100 dark:bg-gray-900 {{if eq .ActiveTab "explorer"}}h-screen overflow-hidden{{else}}min-h-screen{{end}} transition-colors duration-200">
     <!-- Navigation -->
-    <nav class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg">
+    <nav class="bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-gray-800 dark:to-gray-900 text-white shadow-lg">
         <div class="container mx-auto px-4">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center space-x-4">
@@ -71,6 +90,18 @@
                               {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
                         Insights
                     </a>
+
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle" class="p-2 rounded-md hover:bg-white/10 transition-colors" title="Toggle dark mode">
+                        <!-- Sun icon (shown in dark mode) -->
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                        </svg>
+                        <!-- Moon icon (shown in light mode) -->
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </div>
@@ -87,16 +118,16 @@
         {{else if eq .ActiveTab "insights"}}
             {{template "insights-content" .}}
         {{else}}
-            <div class="bg-white rounded-lg shadow p-6">
-                <h1 class="text-2xl font-semibold text-gray-800">Page Not Found</h1>
-                <p class="text-gray-600 mt-2">The requested page does not exist.</p>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Page Not Found</h1>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">The requested page does not exist.</p>
             </div>
         {{end}}
     </main>
 
     <!-- Footer (hidden on explorer page) -->
     {{if ne .ActiveTab "explorer"}}
-    <footer class="bg-gray-800 text-gray-400 py-4 mt-8">
+    <footer class="bg-gray-800 dark:bg-gray-950 text-gray-400 py-4 mt-8">
         <div class="container mx-auto px-4 text-center text-sm">
             Budget Dashboard &copy; {{now.Year}}
         </div>
@@ -116,6 +147,26 @@
         // Handle HTMX errors
         document.body.addEventListener('htmx:responseError', function(evt) {
             console.error('HTMX error:', evt.detail);
+        });
+
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        themeToggle.addEventListener('click', function() {
+            const html = document.documentElement;
+            const isDark = html.classList.contains('dark');
+
+            if (isDark) {
+                html.classList.remove('dark');
+                html.classList.add('light');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.remove('light');
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+
+            // Dispatch custom event for charts to update
+            window.dispatchEvent(new CustomEvent('themechange', { detail: { dark: !isDark } }));
         });
     </script>
 </body>

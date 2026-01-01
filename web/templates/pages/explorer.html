@@ -1,21 +1,21 @@
 {{define "explorer-content"}}
 <div class="flex flex-col h-full py-4">
     <!-- Fixed Filter Controls -->
-    <div class="flex-shrink-0 bg-white rounded-lg shadow p-4 mb-2">
+    <div class="flex-shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-2">
         <form id="explorer-filter-form" hx-get="/explorer/transactions" hx-target="#transactions-container"
             hx-trigger="submit, change from:select, change from:input[type=date]" hx-indicator="#loading-indicator">
 
             <div class="flex flex-wrap items-center gap-4">
                 <!-- Search -->
                 <div class="flex-1 min-w-[200px]">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search</label>
                     <div class="relative">
                         <input type="text" name="search" id="search-input" value="{{.Search}}" placeholder="Search descriptions..."
                             hx-get="/explorer/transactions" hx-target="#transactions-container"
                             hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
-                            class="w-full border border-gray-300 rounded-md px-3 py-2 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <button type="button" onclick="clearSearch()"
-                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 {{if not .Search}}hidden{{end}}"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 {{if not .Search}}hidden{{end}}"
                             id="clear-search-btn" title="Clear search">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -26,9 +26,9 @@
 
                 <!-- Category Filter -->
                 <div class="min-w-[150px]">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                     <select name="category"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">All Categories</option>
                         {{range .Categories}}
                         <option value="{{.}}" {{if eq $.Category .}}selected{{end}}>{{.}}</option>
@@ -38,9 +38,9 @@
 
                 <!-- Type Filter -->
                 <div class="min-w-[120px]">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
                     <select name="type"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">All Types</option>
                         <option value="Income" {{if eq .Type "Income" }}selected{{end}}>Income</option>
                         <option value="Outflow" {{if eq .Type "Outflow" }}selected{{end}}>Expenses</option>
@@ -50,26 +50,26 @@
                 <!-- Date Range -->
                 <div class="flex items-center space-x-2">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">From</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
                         <input type="date" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                            class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">To</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
                         <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                            class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                     <!-- Quick Date Range Shortcuts -->
                     <div class="flex items-end">
                         <div class="flex gap-1">
                             <button type="button" onclick="setDateRange(3)"
-                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">3M</button>
+                                class="px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded transition-colors">3M</button>
                             <button type="button" onclick="setDateRange(6)"
-                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">6M</button>
+                                class="px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded transition-colors">6M</button>
                             <button type="button" onclick="setDateRange(12)"
-                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">12M</button>
+                                class="px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded transition-colors">12M</button>
                             <button type="button" onclick="setDateRange(0)"
-                                class="px-2 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">All</button>
+                                class="px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded transition-colors">All</button>
                         </div>
                     </div>
                 </div>
@@ -77,7 +77,7 @@
                 <!-- Loading Indicator -->
                 <div class="flex items-end pb-2">
                     <span id="loading-indicator" class="htmx-indicator">
-                        <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        <svg class="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none"
                             viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
                             </circle>
@@ -91,7 +91,7 @@
                 <!-- Clear Filters -->
                 <div class="flex items-end pb-2 ml-auto">
                     <a href="/explorer"
-                        class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+                        class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors">
                         Clear Filters
                     </a>
                 </div>
@@ -111,10 +111,10 @@
     </div>
 
     <!-- Fixed Footer with Status and File Manager Button -->
-    <div class="flex-shrink-0 bg-white rounded-lg shadow mt-2 px-4 py-4 flex items-center justify-between">
+    <div class="flex-shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow mt-2 px-4 py-4 flex items-center justify-between">
         {{template "summary-stats" .}}
         <button type="button" hx-get="/explorer/files" hx-target="#file-manager-container" hx-swap="innerHTML"
-            class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2">
+            class="px-4 py-2 bg-gray-600 dark:bg-gray-700 text-white text-sm rounded-md hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors flex items-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
@@ -301,13 +301,13 @@
 {{end}}
 
 {{define "transactions-table"}}
-<div class="bg-white rounded-lg shadow h-full flex flex-col overflow-hidden">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow h-full flex flex-col overflow-hidden">
     <!-- Fixed Table Header -->
-    <div class="flex-shrink-0 bg-gray-100 border-b">
+    <div class="flex-shrink-0 bg-gray-100 dark:bg-gray-900 border-b dark:border-gray-700">
         <table class="w-full table-fixed">
             <thead>
                 <tr>
-                    <th class="w-24 text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-24 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('date')">
                         <div class="flex items-center gap-1">
                             Date
@@ -320,7 +320,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('description')">
                         <div class="flex items-center gap-1">
                             Description
@@ -333,7 +333,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="w-32 text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('category')">
                         <div class="flex items-center gap-1">
                             Category
@@ -346,7 +346,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="w-28 text-right p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-28 text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('amount')">
                         <div class="flex items-center justify-end gap-1">
                             Amount
@@ -359,7 +359,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="w-20 text-center p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-20 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('type')">
                         <div class="flex items-center justify-center gap-1">
                             Type
@@ -372,7 +372,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="w-36 text-center p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-36 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('source')">
                         <div class="flex items-center justify-center gap-1">
                             Source
@@ -393,7 +393,7 @@
     <!-- Scrollable Table Body -->
     <div class="flex-1 overflow-y-auto">
         <table class="w-full table-fixed">
-            <tbody id="transaction-rows" class="divide-y divide-gray-100">
+            <tbody id="transaction-rows" class="divide-y divide-gray-100 dark:divide-gray-700">
                 {{template "transaction-rows" .}}
             </tbody>
         </table>
@@ -407,34 +407,34 @@
 {{$currentPage := .Page}}
 {{$totalPages := .TotalPages}}
 {{range $index, $txn := .Transactions}}
-<tr class="hover:bg-gray-50 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
     $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
-    <td class="w-24 p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
-    <td class="p-3 text-sm text-gray-800 truncate cursor-pointer hover:text-indigo-600 hover:underline"
+    <td class="w-24 p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
+    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
         title="Click to filter: {{.Description}}"
         onclick="filterByDescription('{{js .Description}}')">{{.Description}}</td>
     <td class="w-32 p-3 text-sm">
-        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs truncate block">{{if
+        <span class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs truncate block">{{if
             .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
     </td>
-    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600{{else}}text-red-600{{end}}">
+    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
         {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
     </td>
     <td class="w-20 p-3 text-center">
         {{if eq .TransactionType "Income"}}
-        <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Income</span>
+        <span class="px-2 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded text-xs">Income</span>
         {{else}}
-        <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Expense</span>
+        <span class="px-2 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded text-xs">Expense</span>
         {{end}}
     </td>
-    <td class="w-36 p-3 text-xs text-gray-400 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
+    <td class="w-36 p-3 text-xs text-gray-400 dark:text-gray-500 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
 </tr>
 {{end}}
 {{else if eq .Page 1}}
 <tr>
-    <td colspan="6" class="p-8 text-center text-gray-500">
-        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <td colspan="6" class="p-8 text-center text-gray-500 dark:text-gray-400">
+        <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
             </path>
@@ -447,13 +447,13 @@
 {{end}}
 
 {{define "file-manager"}}
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-hidden"
+<div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 overflow-hidden"
     onclick="closeFileManager(event)">
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden overscroll-contain"
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden overscroll-contain"
         onclick="event.stopPropagation()">
-        <div class="p-4 border-b flex justify-between items-center bg-gray-50">
-            <h3 class="text-lg font-semibold text-gray-800">Data File Manager</h3>
-            <button onclick="closeFileManager()" class="text-gray-500 hover:text-gray-700">
+        <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Data File Manager</h3>
+            <button onclick="closeFileManager()" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
                     </path>
@@ -462,11 +462,11 @@
         </div>
 
         <!-- Upload Section -->
-        <div class="p-4 border-b bg-gray-50">
+        <div class="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
             <form hx-post="/explorer/upload" hx-target="#file-list" hx-swap="innerHTML"
                 hx-encoding="multipart/form-data" class="flex items-center gap-4">
                 <input type="file" name="file" accept=".csv"
-                    class="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    class="flex-1 text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-900/50 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/70">
                 <button type="submit"
                     class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition-colors">
                     Upload CSV
@@ -479,9 +479,9 @@
             {{template "file-list" .}}
         </div>
 
-        <div class="p-4 bg-gray-50 border-t">
+        <div class="p-4 bg-gray-50 dark:bg-gray-900 border-t dark:border-gray-700">
             <button onclick="closeFileManager(); location.reload();"
-                class="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+                class="w-full px-4 py-2 bg-gray-600 dark:bg-gray-700 text-white rounded-md hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors">
                 Done
             </button>
         </div>
@@ -491,43 +491,43 @@
 
 {{define "file-list"}}
 <table class="w-full">
-    <thead class="bg-gray-100 sticky top-0">
+    <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
         <tr>
-            <th class="text-left p-3 text-sm font-medium text-gray-600">File</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600">Transactions</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600">Date Range</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600">Enabled</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600">Actions</th>
+            <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">File</th>
+            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Transactions</th>
+            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Date Range</th>
+            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Enabled</th>
+            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Actions</th>
         </tr>
     </thead>
-    <tbody class="divide-y divide-gray-100">
+    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
         {{range .Files}}
-        <tr class="hover:bg-gray-50">
+        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
             <td class="p-3">
-                <div class="text-sm font-medium text-gray-900">{{.Name}}</div>
-                <div class="text-xs text-gray-500">{{printf "%.1f" (div (toFloat .Size) 1024.0)}} KB</div>
+                <div class="text-sm font-medium text-gray-900 dark:text-gray-100">{{.Name}}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{printf "%.1f" (div (toFloat .Size) 1024.0)}} KB</div>
             </td>
-            <td class="p-3 text-center text-sm text-gray-600">{{.Transactions}}</td>
-            <td class="p-3 text-center text-xs text-gray-500">
+            <td class="p-3 text-center text-sm text-gray-600 dark:text-gray-400">{{.Transactions}}</td>
+            <td class="p-3 text-center text-xs text-gray-500 dark:text-gray-400">
                 {{if .MinDate}}{{.MinDate}} - {{.MaxDate}}{{else}}-{{end}}
             </td>
             <td class="p-3 text-center">
                 <input type="checkbox" {{if .Enabled}}checked{{end}} hx-post="/explorer/files/toggle"
                     hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
                     hx-target="#file-list" hx-swap="innerHTML"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
+                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
             </td>
             <td class="p-3 text-center">
                 <button hx-delete="/explorer/files/{{.Name}}" hx-target="#file-list" hx-swap="innerHTML"
                     hx-confirm="Delete {{.Name}}? This cannot be undone."
-                    class="text-red-600 hover:text-red-800 text-sm">
+                    class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm">
                     Delete
                 </button>
             </td>
         </tr>
         {{else}}
         <tr>
-            <td colspan="5" class="p-8 text-center text-gray-500">
+            <td colspan="5" class="p-8 text-center text-gray-500 dark:text-gray-400">
                 No CSV files found. Upload a file to get started.
             </td>
         </tr>
@@ -539,23 +539,23 @@
 
 {{define "summary-stats"}}
 <div id="summary-stats" class="flex items-center gap-6 text-sm" hx-swap-oob="true">
-    <span class="text-gray-600">
-        <span class="font-medium text-gray-900">{{.TotalCount}}</span> transactions
+    <span class="text-gray-600 dark:text-gray-400">
+        <span class="font-medium text-gray-900 dark:text-gray-100">{{.TotalCount}}</span> transactions
     </span>
     {{if isPositive .TotalIncome}}
-    <span class="text-green-600">
+    <span class="text-green-600 dark:text-green-400">
         Income: <span class="font-medium">{{formatMoney .TotalIncome}}</span>
     </span>
     {{end}}
     {{if isPositive .TotalExpenses}}
-    <span class="text-red-600">
+    <span class="text-red-600 dark:text-red-400">
         Expenses: <span class="font-medium">{{formatMoney .TotalExpenses}}</span>
     </span>
     {{end}}
     <span class="{{colorClass .NetAmount}}">
         Net: <span class="font-medium">{{formatMoney .NetAmount}}</span>
     </span>
-    <span class="text-gray-400 text-xs italic ml-2">
+    <span class="text-gray-400 dark:text-gray-500 text-xs italic ml-2">
         Scroll for more
     </span>
 </div>

@@ -487,11 +487,11 @@ func safeJS(s string) template.JS {
 
 func colorClass(v float64) string {
 	if v > 0 {
-		return "text-green-600"
+		return "text-green-600 dark:text-green-400"
 	} else if v < 0 {
-		return "text-red-600"
+		return "text-red-600 dark:text-red-400"
 	}
-	return "text-gray-600"
+	return "text-gray-600 dark:text-gray-400"
 }
 
 func percentOf(part, whole float64) float64 {

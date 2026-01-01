@@ -1,6 +1,27 @@
 // Chart rendering utilities for Budget Dashboard
 
 /**
+ * Check if dark mode is active
+ * @returns {boolean}
+ */
+function isDarkMode() {
+    return document.documentElement.classList.contains('dark');
+}
+
+/**
+ * Get theme-aware colors
+ * @returns {object}
+ */
+function getThemeColors() {
+    const dark = isDarkMode();
+    return {
+        text: dark ? '#e5e7eb' : '#374151',
+        gridColor: dark ? '#374151' : '#e5e7eb',
+        backgroundColor: 'transparent'
+    };
+}
+
+/**
  * Render a Plotly chart
  * @param {string} containerId - The ID of the container element
  * @param {object} chartData - The chart data from the API
@@ -23,6 +44,8 @@ function renderChart(containerId, chartData) {
         }
     }
 
+    const colors = getThemeColors();
+
     // Default layout options
     const defaultLayout = {
         margin: { t: 20, r: 20, b: 40, l: 60 },
@@ -30,12 +53,21 @@ function renderChart(containerId, chartData) {
         plot_bgcolor: 'transparent',
         font: {
             family: 'system-ui, -apple-system, sans-serif',
-            color: '#374151'
+            color: colors.text
         },
         showlegend: true,
         legend: {
             orientation: 'h',
-            y: -0.15
+            y: -0.15,
+            font: { color: colors.text }
+        },
+        xaxis: {
+            gridcolor: colors.gridColor,
+            tickfont: { color: colors.text }
+        },
+        yaxis: {
+            gridcolor: colors.gridColor,
+            tickfont: { color: colors.text }
         }
     };
 
@@ -179,4 +211,23 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
     if (evt.detail.target && evt.detail.target.id === 'kpis-container') {
         initSparklines();
     }
+});
+
+// Re-render all charts when theme changes
+window.addEventListener('themechange', function() {
+    // Re-render all chart containers
+    document.querySelectorAll('[id^="chart-"]').forEach(function(el) {
+        if (el._plotlyData) {
+            // Plotly stores data on the element, re-render with new colors
+            const colors = getThemeColors();
+            Plotly.relayout(el.id, {
+                'font.color': colors.text,
+                'legend.font.color': colors.text,
+                'xaxis.gridcolor': colors.gridColor,
+                'xaxis.tickfont.color': colors.text,
+                'yaxis.gridcolor': colors.gridColor,
+                'yaxis.tickfont.color': colors.text
+            });
+        }
+    });
 });

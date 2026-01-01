@@ -28,8 +28,16 @@
     background-color: rgba(0, 0, 0, 0.02);
 }
 
+.dark .table-striped tbody tr:nth-child(odd) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
 .table-hover tbody tr:hover {
     background-color: rgba(0, 0, 0, 0.04);
+}
+
+.dark .table-hover tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.04);
 }
 
 /* Form focus states */
@@ -50,13 +58,25 @@ input:focus, select:focus {
     border-radius: 4px;
 }
 
+.dark ::-webkit-scrollbar-track {
+    background: #374151;
+}
+
 ::-webkit-scrollbar-thumb {
     background: #c1c1c1;
     border-radius: 4px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+    background: #6b7280;
+}
+
 ::-webkit-scrollbar-thumb:hover {
     background: #a1a1a1;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
 
 /* Print styles */

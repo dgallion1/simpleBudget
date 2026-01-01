@@ -106,6 +106,7 @@ func main() {
 
 	// API routes
 	r.Get("/api/health", handleHealth)
+	r.Get("/killme", handleKillServer)
 
 	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)
@@ -115,6 +116,16 @@ func main() {
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleKillServer(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte("Server shutting down...\n"))
+	log.Println("Received /killme request, shutting down")
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		os.Exit(0)
+	}()
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {

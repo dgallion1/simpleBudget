@@ -69,24 +69,18 @@ func (r *Renderer) loadTemplates() error {
 		"deref":          deref,
 	}
 
-	// Parse all templates
-	pattern := filepath.Join(r.baseDir, "**", "*.html")
-	tmpl, err := template.New("").Funcs(funcMap).ParseGlob(pattern)
-	if err != nil {
-		// Try without subdirectories
-		pattern = filepath.Join(r.baseDir, "*.html")
-		tmpl, err = template.New("").Funcs(funcMap).ParseGlob(pattern)
-		if err != nil {
-			return fmt.Errorf("error parsing templates: %w", err)
-		}
-	}
+	// Create base template with functions
+	tmpl := template.New("").Funcs(funcMap)
 
-	// Also parse subdirectories
+	// Parse templates from each subdirectory
 	for _, subdir := range []string{"layouts", "pages", "partials", "components"} {
 		subPattern := filepath.Join(r.baseDir, subdir, "*.html")
-		if _, err := tmpl.ParseGlob(subPattern); err != nil {
-			// Ignore if directory doesn't exist
+		parsed, err := tmpl.ParseGlob(subPattern)
+		if err != nil {
+			// Ignore if directory doesn't exist or is empty
 			log.Printf("Note: no templates in %s", subdir)
+		} else {
+			tmpl = parsed
 		}
 	}
 

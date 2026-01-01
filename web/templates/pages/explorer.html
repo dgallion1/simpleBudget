@@ -1,10 +1,9 @@
 {{define "explorer-content"}}
-<div class="space-y-6">
-    <!-- Filter Controls -->
-    <div class="bg-white rounded-lg shadow p-4">
+<div class="flex flex-col h-[calc(100vh-4rem)]">
+    <!-- Fixed Filter Controls -->
+    <div class="flex-shrink-0 bg-white rounded-lg shadow p-4 mb-2">
         <form id="explorer-filter-form" hx-get="/explorer/transactions" hx-target="#transactions-container"
-            hx-trigger="submit, change from:select, change from:input[type=date]" hx-indicator="#loading-indicator"
-            class="space-y-4">
+            hx-trigger="submit, change from:select, change from:input[type=date]" hx-indicator="#loading-indicator">
 
             <div class="flex flex-wrap items-center gap-4">
                 <!-- Search -->
@@ -84,13 +83,14 @@
         </form>
     </div>
 
-    <!-- Transactions Table Container -->
-    <div id="transactions-container">
+    <!-- Transactions Table Container - Scrollable middle section -->
+    <div id="transactions-container" class="flex-1 min-h-0">
         {{template "transactions-table" .}}
     </div>
 
-    <!-- File Manager Button -->
-    <div class="flex justify-end">
+    <!-- Fixed Footer with Status and File Manager Button -->
+    <div class="flex-shrink-0 bg-white rounded-lg shadow mt-2 px-4 py-4 mb-4 flex items-center justify-between">
+        {{template "summary-stats" .}}
         <button type="button" hx-get="/explorer/files" hx-target="#file-manager-container" hx-swap="innerHTML"
             class="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,28 +153,13 @@
 {{end}}
 
 {{define "transactions-table"}}
-<div class="bg-white rounded-lg shadow overflow-hidden">
-    <!-- Summary Bar -->
-    <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between">
-        {{template "summary-stats" .}}
-        <div class="flex items-center gap-2 text-sm text-gray-600">
-            <label>Per page:</label>
-            <select
-                onchange="document.querySelector('input[name=perPage]').value = this.value; document.querySelector('input[name=page]').value = '1'; htmx.trigger(document.getElementById('explorer-filter-form'), 'submit');"
-                class="border border-gray-300 rounded px-2 py-1 text-sm">
-                <option value="25" {{if eq .PerPage 25}}selected{{end}}>25</option>
-                <option value="50" {{if eq .PerPage 50}}selected{{end}}>50</option>
-                <option value="100" {{if eq .PerPage 100}}selected{{end}}>100</option>
-            </select>
-        </div>
-    </div>
-
-    <!-- Table -->
-    <div class="overflow-x-auto">
-        <table class="w-full">
-            <thead class="bg-gray-100">
+<div class="bg-white rounded-lg shadow h-full flex flex-col overflow-hidden">
+    <!-- Fixed Table Header -->
+    <div class="flex-shrink-0 bg-gray-100 border-b">
+        <table class="w-full table-fixed">
+            <thead>
                 <tr>
-                    <th class="text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-24 text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
                         onclick="sortBy('date')">
                         <div class="flex items-center gap-1">
                             Date
@@ -200,7 +185,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-32 text-left p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
                         onclick="sortBy('category')">
                         <div class="flex items-center gap-1">
                             Category
@@ -213,7 +198,7 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="text-right p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
+                    <th class="w-28 text-right p-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors"
                         onclick="sortBy('amount')">
                         <div class="flex items-center justify-end gap-1">
                             Amount
@@ -226,19 +211,20 @@
                             {{end}}
                         </div>
                     </th>
-                    <th class="text-center p-3 text-sm font-medium text-gray-600">Type</th>
-                    <th class="text-center p-3 text-sm font-medium text-gray-600">Source</th>
+                    <th class="w-20 text-center p-3 text-sm font-medium text-gray-600">Type</th>
+                    <th class="w-24 text-center p-3 text-sm font-medium text-gray-600">Source</th>
                 </tr>
             </thead>
+        </table>
+    </div>
+
+    <!-- Scrollable Table Body -->
+    <div class="flex-1 overflow-y-auto">
+        <table class="w-full table-fixed">
             <tbody id="transaction-rows" class="divide-y divide-gray-100">
                 {{template "transaction-rows" .}}
             </tbody>
         </table>
-    </div>
-
-    <!-- Infinity Scroll Info -->
-    <div class="bg-gray-50 px-4 py-2 border-t text-center text-xs text-gray-400 italic">
-        Scroll for more transactions
     </div>
 </div>
 {{end}}
@@ -252,24 +238,23 @@
 <tr class="hover:bg-gray-50 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
     $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
-    <td class="p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
-    <td class="p-3 text-sm text-gray-800 max-w-xs truncate" title="{{.Description}}">{{.Description}}</td>
-    <td class="p-3 text-sm">
-        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{{if
+    <td class="w-24 p-3 text-sm text-gray-600 whitespace-nowrap">{{formatDate .Date}}</td>
+    <td class="p-3 text-sm text-gray-800 truncate" title="{{.Description}}">{{.Description}}</td>
+    <td class="w-32 p-3 text-sm">
+        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs truncate block">{{if
             .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
     </td>
-    <td class="p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600{{else}}text-red-600{{end}}">
+    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600{{else}}text-red-600{{end}}">
         {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
     </td>
-    <td class="p-3 text-center">
+    <td class="w-20 p-3 text-center">
         {{if eq .TransactionType "Income"}}
         <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Income</span>
         {{else}}
         <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Expense</span>
         {{end}}
     </td>
-    <td class="p-3 text-xs text-gray-400 text-center truncate max-w-[100px]" title="{{.SourceFile}}">{{.SourceFile}}
-    </td>
+    <td class="w-24 p-3 text-xs text-gray-400 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
 </tr>
 {{end}}
 {{else if eq .Page 1}}
@@ -395,6 +380,9 @@
     {{end}}
     <span class="{{colorClass .NetAmount}}">
         Net: <span class="font-medium">{{formatMoney .NetAmount}}</span>
+    </span>
+    <span class="text-gray-400 text-xs italic ml-2">
+        Scroll for more
     </span>
 </div>
 {{end}}

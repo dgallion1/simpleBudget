@@ -79,7 +79,6 @@ func main() {
 	// Explorer routes
 	r.Get("/explorer", handleExplorer)
 	r.Get("/explorer/transactions", handleTransactionsPartial)
-	r.Get("/explorer/transaction/{hash}", handleTransactionDetail)
 	r.Get("/explorer/files", handleFileManager)
 	r.Post("/explorer/files/toggle", handleFileToggle)
 	r.Post("/explorer/upload", handleFileUpload)
@@ -537,41 +536,6 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
  		json.NewEncoder(w).Encode(partialData)
  	}
  }
-
-func handleTransactionDetail(w http.ResponseWriter, r *http.Request) {
-	hash := chi.URLParam(r, "hash")
-
-	data, err := loader.LoadData()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Find transaction by hash
-	var found *models.Transaction
-	for _, t := range data.Transactions {
-		if t.Hash == hash {
-			found = &t
-			break
-		}
-	}
-
-	if found == nil {
-		http.Error(w, "Transaction not found", http.StatusNotFound)
-		return
-	}
-
-	partialData := map[string]interface{}{
-		"Transaction": found,
-	}
-
-	if renderer != nil {
-		renderer.RenderPartial(w, "transaction-detail", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
-	}
-}
 
 func handleFileManager(w http.ResponseWriter, r *http.Request) {
 	files, err := loader.GetFileInfo()

@@ -141,7 +141,15 @@
     function closeFileManager(event) {
         if (event && event.target !== event.currentTarget) return;
         document.getElementById('file-manager-container').innerHTML = '';
+        document.body.style.overflow = '';
     }
+
+    // Lock body scroll when file manager opens
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target.id === 'file-manager-container' && e.detail.target.innerHTML.trim()) {
+            document.body.style.overflow = 'hidden';
+        }
+    });
 
     // Close modal on escape key
     document.addEventListener('keydown', function (e) {
@@ -297,9 +305,9 @@
 {{end}}
 
 {{define "file-manager"}}
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-hidden"
     onclick="closeFileManager(event)">
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden overscroll-contain"
         onclick="event.stopPropagation()">
         <div class="p-4 border-b flex justify-between items-center bg-gray-50">
             <h3 class="text-lg font-semibold text-gray-800">Data File Manager</h3>
@@ -325,7 +333,7 @@
         </div>
 
         <!-- File List -->
-        <div id="file-list" class="overflow-y-auto max-h-[50vh]">
+        <div id="file-list" class="overflow-y-auto max-h-[50vh] overscroll-contain">
             {{template "file-list" .}}
         </div>
 

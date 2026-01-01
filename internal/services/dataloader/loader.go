@@ -1,0 +1,309 @@
+package dataloader
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"budget2/internal/models"
+	"budget2/internal/services/classifier"
+)
+
+// DataLoader handles loading and preprocessing of financial data from CSV files
+type DataLoader struct {
+	CSVDirectory          string
+	FilteredTransferCount int
+	enabledFiles          map[string]bool
+}
+
+// New creates a new DataLoader
+func New(csvDirectory string) *DataLoader {
+	return &DataLoader{
+		CSVDirectory: csvDirectory,
+		enabledFiles: make(map[string]bool),
+	}
+}
+
+// SetEnabledFiles sets which files should be loaded
+func (dl *DataLoader) SetEnabledFiles(files []string) {
+	dl.enabledFiles = make(map[string]bool)
+	for _, f := range files {
+		dl.enabledFiles[f] = true
+	}
+}
+
+// LoadData loads and combines data from all CSV files in the directory
+func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
+	pattern := filepath.Join(dl.CSVDirectory, "*.csv")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("error finding CSV files: %w", err)
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no CSV files found in %s", dl.CSVDirectory)
+	}
+
+	log.Printf("Found %d CSV files in %s", len(files), dl.CSVDirectory)
+
+	var allTransactions []models.Transaction
+
+	for _, file := range files {
+		filename := filepath.Base(file)
+
+		// Skip if file list is set and this file is not enabled
+		if len(dl.enabledFiles) > 0 && !dl.enabledFiles[filename] {
+			log.Printf("Skipping disabled file: %s", filename)
+			continue
+		}
+
+		transactions, err := dl.loadCSVFile(file)
+		if err != nil {
+			log.Printf("Warning: failed to load %s: %v", filename, err)
+			continue
+		}
+
+		log.Printf("Loaded %d transactions from %s", len(transactions), filename)
+		allTransactions = append(allTransactions, transactions...)
+	}
+
+	if len(allTransactions) == 0 {
+		return nil, fmt.Errorf("no transactions loaded from CSV files")
+	}
+
+	// Preprocess: filter transfers, classify, deduplicate
+	allTransactions = dl.filterInternalTransfers(allTransactions)
+	allTransactions = classifier.ClassifyTransactions(allTransactions)
+	allTransactions = dl.deduplicateTransactions(allTransactions)
+
+	// Compute derived fields
+	for i := range allTransactions {
+		allTransactions[i].ComputeDerivedFields()
+	}
+
+	log.Printf("Total transactions after processing: %d", len(allTransactions))
+
+	return models.NewTransactionSet(allTransactions), nil
+}
+
+// loadCSVFile loads transactions from a single CSV file
+func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1 // Allow variable number of fields
+	reader.TrimLeadingSpace = true
+
+	// Read header
+	header, err := reader.Read()
+	if err != nil {
+		return nil, fmt.Errorf("error reading header: %w", err)
+	}
+
+	// Build column index map
+	colIndex := make(map[string]int)
+	for i, col := range header {
+		colIndex[strings.TrimSpace(col)] = i
+	}
+
+	// Validate required columns
+	requiredCols := []string{"Date", "Amount", "Description"}
+	for _, col := range requiredCols {
+		if _, ok := colIndex[col]; !ok {
+			return nil, fmt.Errorf("missing required column: %s", col)
+		}
+	}
+
+	var transactions []models.Transaction
+	sourceFile := filepath.Base(filePath)
+	lineNum := 1
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("Warning: error reading line %d: %v", lineNum+1, err)
+			lineNum++
+			continue
+		}
+		lineNum++
+
+		t := models.Transaction{
+			SourceFile: sourceFile,
+		}
+
+		// Parse Date
+		if idx, ok := colIndex["Date"]; ok && idx < len(record) {
+			dateStr := strings.TrimSpace(record[idx])
+			t.Date = parseDate(dateStr)
+			if t.Date.IsZero() {
+				log.Printf("Warning: could not parse date '%s' on line %d", dateStr, lineNum)
+				continue
+			}
+		}
+
+		// Parse Amount
+		if idx, ok := colIndex["Amount"]; ok && idx < len(record) {
+			amountStr := strings.TrimSpace(record[idx])
+			t.Amount = parseAmount(amountStr)
+		}
+
+		// Parse Description
+		if idx, ok := colIndex["Description"]; ok && idx < len(record) {
+			t.Description = strings.TrimSpace(record[idx])
+		}
+
+		// Parse Category (optional)
+		if idx, ok := colIndex["Category"]; ok && idx < len(record) {
+			t.Category = strings.TrimSpace(record[idx])
+		}
+
+		t.Hash = t.ComputeHash()
+		transactions = append(transactions, t)
+	}
+
+	return transactions, nil
+}
+
+// parseDate tries multiple date formats
+func parseDate(s string) time.Time {
+	formats := []string{
+		"2006-01-02",
+		"01/02/2006",
+		"1/2/2006",
+		"01-02-2006",
+		"2006/01/02",
+		"Jan 2, 2006",
+		"January 2, 2006",
+		"2 Jan 2006",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, s); err == nil {
+			return t
+		}
+	}
+
+	return time.Time{}
+}
+
+// parseAmount parses an amount string, handling currency symbols and parentheses
+func parseAmount(s string) float64 {
+	// Remove currency symbols and spaces
+	s = strings.ReplaceAll(s, "$", "")
+	s = strings.ReplaceAll(s, ",", "")
+	s = strings.TrimSpace(s)
+
+	// Handle parentheses for negative numbers: (100.00) -> -100.00
+	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
+		s = "-" + s[1:len(s)-1]
+	}
+
+	amount, _ := strconv.ParseFloat(s, 64)
+	return amount
+}
+
+// filterInternalTransfers removes internal transfers to avoid double-counting
+func (dl *DataLoader) filterInternalTransfers(transactions []models.Transaction) []models.Transaction {
+	initialCount := len(transactions)
+	var filtered []models.Transaction
+
+	for _, t := range transactions {
+		if !classifier.IsInternalTransfer(&t) {
+			filtered = append(filtered, t)
+		}
+	}
+
+	dl.FilteredTransferCount = initialCount - len(filtered)
+	if dl.FilteredTransferCount > 0 {
+		log.Printf("Filtered %d internal transfers", dl.FilteredTransferCount)
+	}
+
+	return filtered
+}
+
+// deduplicateTransactions removes duplicate transactions based on hash
+func (dl *DataLoader) deduplicateTransactions(transactions []models.Transaction) []models.Transaction {
+	seen := make(map[string]bool)
+	var unique []models.Transaction
+
+	for _, t := range transactions {
+		if !seen[t.Hash] {
+			seen[t.Hash] = true
+			unique = append(unique, t)
+		}
+	}
+
+	duplicatesRemoved := len(transactions) - len(unique)
+	if duplicatesRemoved > 0 {
+		log.Printf("Removed %d duplicate transactions", duplicatesRemoved)
+	}
+
+	return unique
+}
+
+// GetFileInfo returns information about available CSV files
+func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error) {
+	pattern := filepath.Join(dl.CSVDirectory, "*.csv")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	var infos []models.FileInfo
+
+	for _, file := range files {
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+
+		filename := filepath.Base(file)
+
+		// Quick scan to get transaction count and date range
+		transactions, err := dl.loadCSVFile(file)
+		transCount := 0
+		minDate := ""
+		maxDate := ""
+
+		if err == nil && len(transactions) > 0 {
+			transCount = len(transactions)
+			ts := models.NewTransactionSet(transactions)
+			if min := ts.MinDate(); !min.IsZero() {
+				minDate = min.Format("2006-01-02")
+			}
+			if max := ts.MaxDate(); !max.IsZero() {
+				maxDate = max.Format("2006-01-02")
+			}
+		}
+
+		enabled := true
+		if len(dl.enabledFiles) > 0 {
+			enabled = dl.enabledFiles[filename]
+		}
+
+		infos = append(infos, models.FileInfo{
+			Name:         filename,
+			Path:         file,
+			Size:         info.Size(),
+			Enabled:      enabled,
+			Transactions: transCount,
+			MinDate:      minDate,
+			MaxDate:      maxDate,
+		})
+	}
+
+	return infos, nil
+}

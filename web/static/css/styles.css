@@ -1,0 +1,71 @@
+/* Custom styles for Budget Dashboard */
+
+/* Ensure charts are responsive */
+.chart-container {
+    width: 100%;
+    min-height: 300px;
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Smooth transitions */
+.transition-all {
+    transition: all 0.2s ease-in-out;
+}
+
+/* Card hover effects */
+.hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Table styles */
+.table-striped tbody tr:nth-child(odd) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* Form focus states */
+input:focus, select:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: #6366f1;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Print styles */
+@media print {
+    nav, footer, .no-print {
+        display: none !important;
+    }
+
+    .print-break {
+        page-break-before: always;
+    }
+}

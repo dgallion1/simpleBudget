@@ -1,0 +1,429 @@
+{{define "dashboard-content"}}
+<div class="space-y-6">
+    <!-- Date Range Selector -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form id="date-filter-form"
+              hx-get="/dashboard/kpis"
+              hx-target="#kpis-container"
+              hx-trigger="change"
+              hx-indicator="#loading-indicator"
+              class="flex flex-wrap items-center gap-4">
+
+            <div class="flex items-center space-x-2">
+                <label class="text-sm font-medium text-gray-700">From:</label>
+                <input type="date" name="start" value="{{.StartDate}}"
+                       min="{{.MinDate}}" max="{{.MaxDate}}"
+                       class="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <label class="text-sm font-medium text-gray-700">To:</label>
+                <input type="date" name="end" value="{{.EndDate}}"
+                       min="{{.MinDate}}" max="{{.MaxDate}}"
+                       class="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <label class="text-sm font-medium text-gray-700">Compare:</label>
+                <select name="comparison" class="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="">No comparison</option>
+                    <option value="previous" {{if eq .Comparison "previous"}}selected{{end}}>Previous period</option>
+                    <option value="year" {{if eq .Comparison "year"}}selected{{end}}>Same period last year</option>
+                </select>
+            </div>
+
+            <!-- Quick presets -->
+            <div class="flex items-center space-x-2 ml-auto">
+                <span class="text-sm text-gray-500">Quick:</span>
+                <button type="button" onclick="setPreset('ytd')"
+                        class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                    YTD
+                </button>
+                <button type="button" onclick="setPreset('3m')"
+                        class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                    3M
+                </button>
+                <button type="button" onclick="setPreset('6m')"
+                        class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                    6M
+                </button>
+                <button type="button" onclick="setPreset('12m')"
+                        class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                    12M
+                </button>
+                <button type="button" onclick="setPreset('all')"
+                        class="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+                    All
+                </button>
+            </div>
+
+            <span id="loading-indicator" class="htmx-indicator">
+                <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </span>
+        </form>
+    </div>
+
+    <!-- KPIs Container (HTMX swap target) -->
+    <div id="kpis-container">
+        {{template "kpis" .}}
+    </div>
+
+    <!-- Alerts Panel -->
+    <div id="alerts-container"
+         hx-get="/dashboard/alerts?start={{.StartDate}}&end={{.EndDate}}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-gray-400 text-sm">Loading alerts...</div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Monthly Income vs Expenses -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Monthly Income vs Expenses</h3>
+            <div id="chart-monthly" class="chart-container"
+                 hx-get="/dashboard/charts/data/monthly?start={{.StartDate}}&end={{.EndDate}}"
+                 hx-trigger="load"
+                 hx-swap="none">
+                <div class="flex items-center justify-center h-64 text-gray-400">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+
+        <!-- Spending by Category -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Spending by Category</h3>
+            <div id="chart-category" class="chart-container"
+                 hx-get="/dashboard/charts/data/category?start={{.StartDate}}&end={{.EndDate}}"
+                 hx-trigger="load"
+                 hx-swap="none">
+                <div class="flex items-center justify-center h-64 text-gray-400">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Cash Flow -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Daily Cash Flow</h3>
+            <div id="chart-cashflow" class="chart-container"
+                 hx-get="/dashboard/charts/data/cashflow?start={{.StartDate}}&end={{.EndDate}}"
+                 hx-trigger="load"
+                 hx-swap="none">
+                <div class="flex items-center justify-center h-64 text-gray-400">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Merchants -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Top Spending</h3>
+            <div id="chart-merchants" class="chart-container"
+                 hx-get="/dashboard/charts/data/merchants?start={{.StartDate}}&end={{.EndDate}}"
+                 hx-trigger="load"
+                 hx-swap="none">
+                <div class="flex items-center justify-center h-64 text-gray-400">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+
+        <!-- Weekly Pattern -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Weekly Spending Pattern</h3>
+            <div id="chart-weekly" class="chart-container"
+                 hx-get="/dashboard/charts/data/weekly?start={{.StartDate}}&end={{.EndDate}}"
+                 hx-trigger="load"
+                 hx-swap="none">
+                <div class="flex items-center justify-center h-64 text-gray-400">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+
+        <!-- Cumulative Balance -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Cumulative Balance</h3>
+            <div id="chart-cumulative" class="chart-container"
+                 hx-get="/dashboard/charts/data/cumulative?start={{.StartDate}}&end={{.EndDate}}"
+                 hx-trigger="load"
+                 hx-swap="none">
+                <div class="flex items-center justify-center h-64 text-gray-400">
+                    Loading chart...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Drilldown Modal Container -->
+    <div id="category-drilldown-container"></div>
+</div>
+
+<script>
+// Category drilldown functions
+function openCategoryDrilldown(category) {
+    const form = document.getElementById('date-filter-form');
+    const start = form.querySelector('input[name="start"]').value;
+    const end = form.querySelector('input[name="end"]').value;
+
+    htmx.ajax('GET', `/dashboard/category/${encodeURIComponent(category)}?start=${start}&end=${end}`, {
+        target: '#category-drilldown-container',
+        swap: 'innerHTML'
+    });
+}
+
+function closeCategoryModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('category-drilldown-container').innerHTML = '';
+}
+
+// Close modal on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeCategoryModal();
+    }
+});
+
+function setPreset(preset) {
+    const form = document.getElementById('date-filter-form');
+    const startInput = form.querySelector('input[name="start"]');
+    const endInput = form.querySelector('input[name="end"]');
+
+    const end = new Date();
+    let start = new Date();
+
+    switch(preset) {
+        case 'ytd':
+            start = new Date(end.getFullYear(), 0, 1);
+            break;
+        case '3m':
+            start.setMonth(start.getMonth() - 3);
+            break;
+        case '6m':
+            start.setMonth(start.getMonth() - 6);
+            break;
+        case '12m':
+            start.setMonth(start.getMonth() - 12);
+            break;
+        case 'all':
+            start = new Date(startInput.min);
+            break;
+    }
+
+    startInput.value = start.toISOString().split('T')[0];
+    endInput.value = end.toISOString().split('T')[0];
+
+    // Trigger HTMX update
+    htmx.trigger(form, 'change');
+}
+
+// Handle chart data responses
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    const target = evt.detail.target;
+    if (target && target.id && target.id.startsWith('chart-')) {
+        try {
+            const data = JSON.parse(evt.detail.xhr.responseText);
+            renderChart(target.id, data);
+        } catch (e) {
+            console.error('Error parsing chart data:', e);
+        }
+    }
+});
+</script>
+{{end}}
+
+{{define "kpis"}}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Total Income -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Total Income</p>
+                <p class="text-2xl font-bold text-green-600">{{formatMoney .Metrics.TotalIncome}}</p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p class="text-sm {{if ge .PeriodComparison.IncomeChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{formatPercent .PeriodComparison.IncomeChange}}%
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 bg-green-100 rounded-full">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#22c55e"></div>
+    </div>
+
+    <!-- Total Expenses -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Total Expenses</p>
+                <p class="text-2xl font-bold text-red-600">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p class="text-sm {{if le .PeriodComparison.ExpensesChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{formatPercent .PeriodComparison.ExpensesChange}}%
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 bg-red-100 rounded-full">
+                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#ef4444"></div>
+    </div>
+
+    <!-- Net Savings -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Net Savings</p>
+                <p class="text-2xl font-bold {{colorClass .Metrics.NetSavings}}">{{formatMoney .Metrics.NetSavings}}</p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p class="text-sm {{if ge .PeriodComparison.SavingsChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{formatPercent .PeriodComparison.SavingsChange}}%
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 {{if ge .Metrics.NetSavings 0}}bg-green-100{{else}}bg-red-100{{end}} rounded-full">
+                <svg class="w-6 h-6 {{if ge .Metrics.NetSavings 0}}text-green-600{{else}}text-red-600{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-savings" class="h-10 mt-2" data-values="{{toJSON .Metrics.SavingsTrend}}" data-color="#6366f1"></div>
+    </div>
+
+    <!-- Savings Rate -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Savings Rate</p>
+                <p class="text-2xl font-bold {{if ge .Metrics.SavingsRate 20}}text-green-600{{else if ge .Metrics.SavingsRate 10}}text-yellow-600{{else}}text-red-600{{end}}">
+                    {{printf "%.1f" .Metrics.SavingsRate}}%
+                </p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p class="text-sm {{if ge .PeriodComparison.SavingsRateChange 0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{printf "%+.1f" .PeriodComparison.SavingsRateChange}}pp
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 bg-indigo-100 rounded-full">
+                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                </svg>
+            </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2">{{.Metrics.TransactionCount}} transactions</p>
+    </div>
+</div>
+{{end}}
+
+{{define "alerts"}}
+{{if .Alerts}}
+<div class="bg-white rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+        <svg class="w-5 h-5 mr-2 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+        Spending Alerts
+    </h3>
+    <div class="space-y-2">
+        {{range .Alerts}}
+        <div class="flex items-start p-3 rounded-lg {{if eq .Severity "warning"}}bg-amber-50 border border-amber-200{{else if eq .Severity "error"}}bg-red-50 border border-red-200{{else}}bg-blue-50 border border-blue-200{{end}}">
+            <div class="flex-shrink-0 mr-3">
+                {{if eq .Severity "warning"}}
+                <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                {{else if eq .Severity "error"}}
+                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                {{else}}
+                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                {{end}}
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium {{if eq .Severity "warning"}}text-amber-800{{else if eq .Severity "error"}}text-red-800{{else}}text-blue-800{{end}}">
+                    {{.Title}}
+                </p>
+                <p class="text-sm {{if eq .Severity "warning"}}text-amber-600{{else if eq .Severity "error"}}text-red-600{{else}}text-blue-600{{end}}">
+                    {{.Message}}
+                </p>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "category-drilldown"}}
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" id="category-modal" onclick="closeCategoryModal(event)">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden" onclick="event.stopPropagation()">
+        <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+            <h3 class="text-lg font-semibold text-gray-800">{{.Category}}</h3>
+            <button onclick="closeCategoryModal()" class="text-gray-500 hover:text-gray-700">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="p-4 border-b bg-gray-50">
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <p class="text-sm text-gray-500">Total Spent</p>
+                    <p class="text-xl font-bold text-red-600">{{formatMoney .Total}}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Transactions</p>
+                    <p class="text-xl font-bold text-gray-800">{{.Count}}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Average</p>
+                    <p class="text-xl font-bold text-gray-800">{{formatMoney .AvgAmount}}</p>
+                </div>
+            </div>
+        </div>
+        <div class="overflow-y-auto max-h-[50vh]">
+            <table class="w-full">
+                <thead class="bg-gray-100 sticky top-0">
+                    <tr>
+                        <th class="text-left p-3 text-sm font-medium text-gray-600">Date</th>
+                        <th class="text-left p-3 text-sm font-medium text-gray-600">Description</th>
+                        <th class="text-right p-3 text-sm font-medium text-gray-600">Amount</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {{range .Transactions}}
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-3 text-sm text-gray-600">{{formatDate .Date}}</td>
+                        <td class="p-3 text-sm text-gray-800">{{.Description}}</td>
+                        <td class="p-3 text-sm text-right text-red-600">{{formatMoney (abs .Amount)}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}

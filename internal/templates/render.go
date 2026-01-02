@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -19,13 +20,28 @@ type Renderer struct {
 	templates *template.Template
 	debug     bool
 	baseDir   string
+	fsys      fs.FS // embedded filesystem (nil = use os filesystem)
 }
 
-// New creates a new template renderer
+// New creates a new template renderer using the filesystem
 func New(templateDir string, debug bool) (*Renderer, error) {
 	r := &Renderer{
 		debug:   debug,
 		baseDir: templateDir,
+	}
+
+	if err := r.loadTemplates(); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+// NewFromFS creates a new template renderer using an embedded filesystem
+func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error) {
+	r := &Renderer{
+		debug: debug,
+		fsys:  fsys,
 	}
 
 	if err := r.loadTemplates(); err != nil {
@@ -84,22 +100,45 @@ func (r *Renderer) loadTemplates() error {
 	// Collect all template files
 	var templateFiles []string
 	for _, subdir := range []string{"layouts", "pages", "partials", "components"} {
-		subPattern := filepath.Join(r.baseDir, subdir, "*.html")
-		matches, err := filepath.Glob(subPattern)
+		var matches []string
+		var err error
+
+		if r.fsys != nil {
+			// Use embedded filesystem
+			pattern := subdir + "/*.html"
+			matches, err = fs.Glob(r.fsys, pattern)
+		} else {
+			// Use OS filesystem
+			subPattern := filepath.Join(r.baseDir, subdir, "*.html")
+			matches, err = filepath.Glob(subPattern)
+		}
+
 		if err != nil {
-			return fmt.Errorf("error globbing %s: %w", subPattern, err)
+			return fmt.Errorf("error globbing %s: %w", subdir, err)
 		}
 		templateFiles = append(templateFiles, matches...)
 	}
 
+	source := r.baseDir
+	if r.fsys != nil {
+		source = "embedded"
+	}
 	if len(templateFiles) == 0 {
-		return fmt.Errorf("no template files found in %s", r.baseDir)
+		return fmt.Errorf("no template files found in %s", source)
 	}
 
 	// Parse each template file individually for better error reporting
 	var parseErrors []string
 	for _, file := range templateFiles {
-		content, err := os.ReadFile(file)
+		var content []byte
+		var err error
+
+		if r.fsys != nil {
+			content, err = fs.ReadFile(r.fsys, file)
+		} else {
+			content, err = os.ReadFile(file)
+		}
+
 		if err != nil {
 			parseErrors = append(parseErrors, fmt.Sprintf("  %s: failed to read: %v", file, err))
 			continue
@@ -203,7 +242,14 @@ func (r *Renderer) validateTemplateReferences(tmpl *template.Template, files []s
 	var refErrors []string
 
 	for _, file := range files {
-		content, err := os.ReadFile(file)
+		var content []byte
+		var err error
+
+		if r.fsys != nil {
+			content, err = fs.ReadFile(r.fsys, file)
+		} else {
+			content, err = os.ReadFile(file)
+		}
 		if err != nil {
 			continue
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"math"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
 	"budget2/internal/templates"
+	"budget2/web"
 )
 
 var (
@@ -45,7 +47,14 @@ func main() {
 
 	// Initialize template renderer
 	var err error
-	renderer, err = templates.New(cfg.TemplatesDirectory, true) // force debug for template hot reload
+	if cfg.Debug {
+		// Development: use filesystem for hot reload
+		renderer, err = templates.New(cfg.TemplatesDirectory, true)
+	} else {
+		// Production: use embedded filesystem
+		templatesFS, _ := fs.Sub(web.EmbeddedFS, "templates")
+		renderer, err = templates.NewFromFS(templatesFS, false)
+	}
 	if err != nil {
 		log.Fatalf("FATAL: Template validation failed: %v", err)
 	}
@@ -63,7 +72,19 @@ func main() {
 	r.Use(middleware.Compress(5))
 
 	// Static files
-	fileServer := http.FileServer(http.Dir(cfg.StaticDirectory))
+	var fileServer http.Handler
+	if cfg.Debug {
+		// Development: serve from filesystem
+		fileServer = http.FileServer(http.Dir(cfg.StaticDirectory))
+	} else {
+		// Production: serve from embedded filesystem
+		staticFS, _ := fs.Sub(web.EmbeddedFS, "static")
+		fileServer = http.FileServer(http.FS(staticFS))
+	}
+
+	// Plotly handler - fetches from CDN and caches locally (always, regardless of mode)
+	r.Get("/static/vendor/plotly.min.js", handlePlotly)
+
 	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 
 	// Routes
@@ -2867,4 +2888,51 @@ func handleIncomePartial(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+// handlePlotly serves plotly.min.js from cache or fetches from CDN
+func handlePlotly(w http.ResponseWriter, r *http.Request) {
+	cachePath := filepath.Join(cfg.DataDirectory, "cache", "plotly.min.js")
+
+	// Try serving from cache
+	if data, err := os.ReadFile(cachePath); err == nil {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "public, max-age=31536000") // 1 year
+		w.Write(data)
+		return
+	}
+
+	// Fetch from CDN
+	log.Println("Fetching plotly.min.js from CDN...")
+	resp, err := http.Get("https://cdn.plot.ly/plotly-2.35.2.min.js")
+	if err != nil {
+		http.Error(w, "Failed to fetch plotly: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "CDN returned status: "+resp.Status, http.StatusBadGateway)
+		return
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read plotly response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Cache for next time
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		log.Printf("Warning: could not create cache directory: %v", err)
+	}
+	if err := os.WriteFile(cachePath, data, 0644); err != nil {
+		log.Printf("Warning: could not cache plotly.min.js: %v", err)
+	} else {
+		log.Println("Cached plotly.min.js for future requests")
+	}
+
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	w.Write(data)
 }

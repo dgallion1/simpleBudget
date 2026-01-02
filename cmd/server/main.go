@@ -142,8 +142,9 @@ func SetupRouter() chi.Router {
 	r.Get("/api/health", handleHealth)
 	r.Get("/killme", handleKillServer)
 
-	// Backup route
+	// Backup and restore routes
 	r.Get("/backup", handleBackup)
+	r.Post("/restore", handleRestore)
 
 	return r
 }
@@ -235,6 +236,99 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 		// Note: Since we've already started writing headers and potentially content,
 		// we can't easily change to an error response, but we can log it.
 	}
+}
+
+func handleRestore(w http.ResponseWriter, r *http.Request) {
+	// Parse multipart form (max 50MB for backup files)
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		http.Error(w, "File too large", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Error reading file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Validate file extension
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+		http.Error(w, "Only ZIP backup files are allowed", http.StatusBadRequest)
+		return
+	}
+
+	// Read the entire file into memory to create a ReaderAt
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Error reading file", http.StatusInternalServerError)
+		return
+	}
+
+	// Open zip archive from memory
+	zipReader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		http.Error(w, "Invalid ZIP file", http.StatusBadRequest)
+		return
+	}
+
+	// Extract all CSV files from the zip
+	restoredCount := 0
+	for _, zipFile := range zipReader.File {
+		// Skip directories
+		if zipFile.FileInfo().IsDir() {
+			continue
+		}
+
+		// Only extract CSV files
+		if !strings.HasSuffix(strings.ToLower(zipFile.Name), ".csv") {
+			continue
+		}
+
+		// Sanitize filename - use only the base name to prevent path traversal
+		baseName := filepath.Base(zipFile.Name)
+		if strings.Contains(baseName, "..") {
+			continue
+		}
+
+		// Open the file in the zip
+		rc, err := zipFile.Open()
+		if err != nil {
+			log.Printf("Error opening zip entry %s: %v", zipFile.Name, err)
+			continue
+		}
+
+		// Create destination file
+		destPath := filepath.Join(cfg.DataDirectory, baseName)
+		dst, err := os.Create(destPath)
+		if err != nil {
+			rc.Close()
+			log.Printf("Error creating file %s: %v", destPath, err)
+			continue
+		}
+
+		// Copy content
+		_, err = io.Copy(dst, rc)
+		rc.Close()
+		dst.Close()
+
+		if err != nil {
+			log.Printf("Error writing file %s: %v", destPath, err)
+			continue
+		}
+
+		restoredCount++
+		log.Printf("Restored file: %s", baseName)
+	}
+
+	if restoredCount == 0 {
+		http.Error(w, "No CSV files found in backup", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Restore complete: %d files restored", restoredCount)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Restored %d files", restoredCount)
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {

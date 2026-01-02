@@ -196,12 +196,19 @@ function handleFileSelect(files) {
     if (files.length === 0) return;
 
     const file = files[0];
-    if (!file.name.endsWith('.csv')) {
-        showDropZoneState('error', 'Only CSV files are accepted');
+    const isCSV = file.name.toLowerCase().endsWith('.csv');
+    const isZIP = file.name.toLowerCase().endsWith('.zip');
+
+    if (!isCSV && !isZIP) {
+        showDropZoneState('error', 'Only CSV or ZIP backup files are accepted');
         return;
     }
 
-    uploadFile(file);
+    if (isZIP) {
+        restoreBackup(file);
+    } else {
+        uploadFile(file);
+    }
 }
 
 function showDropZoneState(state, errorMsg) {
@@ -252,6 +259,34 @@ function uploadFile(file) {
             // Reset file input
             document.getElementById('file-input').value = '';
             // Reload the page after a short delay to show new data
+            setTimeout(() => window.location.reload(), 1000);
+        })
+        .catch(err => {
+            showDropZoneState('error', err.message);
+        });
+}
+
+function restoreBackup(file) {
+    showDropZoneState('uploading');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/restore', {
+        method: 'POST',
+        body: formData
+    })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error(text || 'Restore failed'); });
+            }
+            return response.text();
+        })
+        .then(() => {
+            showDropZoneState('success');
+            // Reset file input
+            document.getElementById('file-input').value = '';
+            // Reload the page after a short delay to show restored data
             setTimeout(() => window.location.reload(), 1000);
         })
         .catch(err => {

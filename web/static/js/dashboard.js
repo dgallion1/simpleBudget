@@ -49,6 +49,9 @@ document.addEventListener('keydown', function (e) {
     }
 });
 
+// Flag to prevent double-triggering when preset buttons set date values
+let presetUpdateInProgress = false;
+
 // Date preset functions
 function setPreset(preset) {
     const form = document.getElementById('date-filter-form');
@@ -76,8 +79,12 @@ function setPreset(preset) {
             break;
     }
 
+    // Set flag to prevent form's hx-trigger from firing during preset update
+    presetUpdateInProgress = true;
     startInput.value = start.toISOString().split('T')[0];
     endInput.value = end.toISOString().split('T')[0];
+    // Reset flag after current event loop
+    setTimeout(function() { presetUpdateInProgress = false; }, 0);
 
     // Update button selection state with inline styles (more reliable than CSS classes)
     document.querySelectorAll('.preset-btn').forEach(function(btn) {
@@ -120,6 +127,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+});
+
+// Prevent form from auto-triggering when preset buttons programmatically change values
+document.body.addEventListener('htmx:configRequest', function(evt) {
+    if (presetUpdateInProgress && evt.detail.elt.id === 'date-filter-form') {
+        evt.preventDefault();
+    }
 });
 
 // Handle chart data responses

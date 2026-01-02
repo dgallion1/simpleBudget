@@ -100,13 +100,13 @@
         </form>
     </div>
 
-    <!-- KPIs Container (HTMX swap target) -->
-    <div id="kpis-container">
+    <!-- KPIs Container (HTMX swap target) - min-height prevents layout shift -->
+    <div id="kpis-container" class="min-h-[140px]">
         {{template "kpis" .}}
     </div>
 
-    <!-- Alerts Panel -->
-    <div id="alerts-container" hx-get="/dashboard/alerts?start={{.StartDate}}&end={{.EndDate}}" hx-trigger="load"
+    <!-- Alerts Panel - min-height prevents layout shift during load -->
+    <div id="alerts-container" class="min-h-[2rem]" hx-get="/dashboard/alerts?start={{.StartDate}}&end={{.EndDate}}" hx-trigger="load"
         hx-swap="innerHTML">
         <div class="text-gray-400 dark:text-gray-500 text-sm">Loading alerts...</div>
     </div>

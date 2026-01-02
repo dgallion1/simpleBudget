@@ -522,30 +522,52 @@
 <!-- Present Value Analysis -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Present Value Analysis</h3>
-    <div class="grid grid-cols-3 gap-4 text-center">
-        <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">PV Expenses</p>
+
+    <!-- Resources vs Needs breakdown -->
+    <div class="grid grid-cols-2 gap-6 mb-4">
+        <!-- Total Resources (left side) -->
+        <div class="text-center">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Total Resources</p>
+            <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney (add .Settings.PortfolioValue .Analysis.PresentValue.PVIncome)}}</p>
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                <div class="flex justify-between px-2">
+                    <span>Portfolio:</span>
+                    <span>{{formatMoney .Settings.PortfolioValue}}</span>
+                </div>
+                <div class="flex justify-between px-2">
+                    <span>+ PV Income:</span>
+                    <span>{{formatMoney .Analysis.PresentValue.PVIncome}}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Needs (right side) -->
+        <div class="text-center">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Total Needs</p>
             <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney .Analysis.PresentValue.PVExpenses}}</p>
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <div class="flex justify-between px-2">
+                    <span>PV Expenses:</span>
+                    <span>{{formatMoney .Analysis.PresentValue.PVExpenses}}</span>
+                </div>
+            </div>
         </div>
-        <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">PV Income</p>
-            <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney .Analysis.PresentValue.PVIncome}}</p>
-        </div>
+    </div>
+
+    <!-- Coverage and Surplus -->
+    <div class="pt-4 border-t dark:border-gray-700 grid grid-cols-2 gap-4 text-center">
         <div>
             <p class="text-sm text-gray-500 dark:text-gray-400">Coverage Ratio</p>
-            <p
-                class="text-2xl font-bold {{if ge .Analysis.PresentValue.CoverageRatio 1.0}}text-green-600 dark:text-green-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
+            <p class="text-2xl font-bold {{if ge .Analysis.PresentValue.CoverageRatio 1.0}}text-green-600 dark:text-green-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                 {{printf "%.1f" .Analysis.PresentValue.CoverageRatio}}x
             </p>
         </div>
-    </div>
-    <div class="mt-4 pt-4 border-t dark:border-gray-700 text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Surplus / Deficit</p>
-        <p
-            class="text-3xl font-bold {{if ge .Analysis.PresentValue.SurplusDeficit 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
-            {{if ge .Analysis.PresentValue.SurplusDeficit 0.0}}+{{end}}{{formatMoney
-            .Analysis.PresentValue.SurplusDeficit}}
-        </p>
+        <div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Surplus / Deficit</p>
+            <p class="text-2xl font-bold {{if ge .Analysis.PresentValue.SurplusDeficit 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                {{if ge .Analysis.PresentValue.SurplusDeficit 0.0}}+{{end}}{{formatMoney .Analysis.PresentValue.SurplusDeficit}}
+            </p>
+        </div>
     </div>
 </div>
 

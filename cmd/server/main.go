@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
@@ -140,6 +141,9 @@ func SetupRouter() chi.Router {
 	r.Get("/api/health", handleHealth)
 	r.Get("/killme", handleKillServer)
 
+	// Backup route
+	r.Get("/backup", handleBackup)
+
 	return r
 }
 
@@ -175,6 +179,61 @@ func handleKillServer(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+func handleBackup(w http.ResponseWriter, r *http.Request) {
+	// Generate filename with timestamp
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("budget_backup_%s.zip", timestamp)
+
+	// Set headers for file download
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+	// Create zip writer directly to the response writer
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	// Walk the data directory
+	dataDir := cfg.DataDirectory
+	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Create a file in the zip archive
+		relPath, err := filepath.Rel(dataDir, path)
+		if err != nil {
+			return err
+		}
+
+		f, err := zw.Create(relPath)
+		if err != nil {
+			return err
+		}
+
+		// Open the file on disk
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		// Copy file content to zip writer
+		_, err = io.Copy(f, file)
+		return err
+	})
+
+	if err != nil {
+		log.Printf("Error creating backup: %v", err)
+		// Note: Since we've already started writing headers and potentially content,
+		// we can't easily change to an error response, but we can log it.
+	}
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -553,39 +612,39 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	appendRows := r.URL.Query().Get("append") == "true"
- 
- 	partialData := map[string]interface{}{
- 		"Transactions":  paginated.Transactions,
- 		"Search":        search,
- 		"Category":      category,
- 		"Type":          txnType,
- 		"Sort":          sortField,
- 		"Order":         order,
- 		"Page":          page,
- 		"PerPage":       perPage,
- 		"TotalPages":    totalPages,
- 		"TotalCount":    totalCount,
- 		"TotalIncome":   totalIncome,
- 		"TotalExpenses": totalExpenses,
- 		"NetAmount":     netAmount,
- 		"PageRange":     pageRange,
- 		"PageStart":     pageStart,
- 		"PageEnd":       pageEnd,
- 	}
- 
- 	if renderer != nil {
- 		if appendRows {
- 			renderer.RenderPartial(w, "transaction-rows", partialData)
- 		} else {
- 			renderer.RenderPartial(w, "transactions-table", partialData)
- 		}
- 		// Always render summary stats for OOB update when filters change
- 		renderer.RenderPartial(w, "summary-stats", partialData)
- 	} else {
- 		w.Header().Set("Content-Type", "application/json")
- 		json.NewEncoder(w).Encode(partialData)
- 	}
- }
+
+	partialData := map[string]interface{}{
+		"Transactions":  paginated.Transactions,
+		"Search":        search,
+		"Category":      category,
+		"Type":          txnType,
+		"Sort":          sortField,
+		"Order":         order,
+		"Page":          page,
+		"PerPage":       perPage,
+		"TotalPages":    totalPages,
+		"TotalCount":    totalCount,
+		"TotalIncome":   totalIncome,
+		"TotalExpenses": totalExpenses,
+		"NetAmount":     netAmount,
+		"PageRange":     pageRange,
+		"PageStart":     pageStart,
+		"PageEnd":       pageEnd,
+	}
+
+	if renderer != nil {
+		if appendRows {
+			renderer.RenderPartial(w, "transaction-rows", partialData)
+		} else {
+			renderer.RenderPartial(w, "transactions-table", partialData)
+		}
+		// Always render summary stats for OOB update when filters change
+		renderer.RenderPartial(w, "summary-stats", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
 
 func handleFileManager(w http.ResponseWriter, r *http.Request) {
 	files, err := loader.GetFileInfo()
@@ -1301,7 +1360,7 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 				"title": "Years",
 			},
 			"yaxis": map[string]interface{}{
-				"title": "Balance ($)",
+				"title":      "Balance ($)",
 				"tickformat": "$,.0f",
 			},
 			"showlegend": false,
@@ -1677,18 +1736,18 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	partialData := map[string]interface{}{
-		"Type":           kpiType,
-		"Title":          titles[kpiType],
-		"Monthly":        monthlySummaries,
-		"Total":          sum,
-		"Average":        avg,
-		"Min":            min,
-		"Max":            max,
-		"MinMonth":       minMonth,
-		"MaxMonth":       maxMonth,
-		"NumMonths":      numMonths,
-		"IsRate":         kpiType == "savings-rate",
-		"IsSavings":      kpiType == "savings",
+		"Type":      kpiType,
+		"Title":     titles[kpiType],
+		"Monthly":   monthlySummaries,
+		"Total":     sum,
+		"Average":   avg,
+		"Min":       min,
+		"Max":       max,
+		"MinMonth":  minMonth,
+		"MaxMonth":  maxMonth,
+		"NumMonths": numMonths,
+		"IsRate":    kpiType == "savings-rate",
+		"IsSavings": kpiType == "savings",
 	}
 
 	if renderer != nil {

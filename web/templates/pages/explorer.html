@@ -110,21 +110,10 @@
         {{template "transactions-table" .}}
     </div>
 
-    <!-- Fixed Footer with Status and File Manager Button -->
-    <div class="flex-shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow mt-2 px-4 py-4 flex items-center justify-between">
+    <!-- Fixed Footer with Status -->
+    <div class="flex-shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow mt-2 px-4 py-4">
         {{template "summary-stats" .}}
-        <button type="button" hx-get="/explorer/files" hx-target="#file-manager-container" hx-swap="innerHTML"
-            class="px-4 py-2 bg-gray-600 dark:bg-gray-700 text-white text-sm rounded-md hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-            </svg>
-            Manage Data Files
-        </button>
     </div>
-
-    <!-- File Manager Modal Container -->
-    <div id="file-manager-container"></div>
 
 </div>
 
@@ -292,26 +281,6 @@
         htmx.trigger(form, 'submit');
     }
 
-    // Close modals
-    function closeFileManager(event) {
-        if (event && event.target !== event.currentTarget) return;
-        document.getElementById('file-manager-container').innerHTML = '';
-        document.body.style.overflow = '';
-    }
-
-    // Lock body scroll when file manager opens
-    document.body.addEventListener('htmx:afterSwap', function(e) {
-        if (e.detail.target.id === 'file-manager-container' && e.detail.target.innerHTML.trim()) {
-            document.body.style.overflow = 'hidden';
-        }
-    });
-
-    // Close modal on escape key
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') {
-            closeFileManager();
-        }
-    });
 
     // Infinite scroll handler for nested scrollable container
     // HTMX's revealed trigger doesn't work with nested scroll containers
@@ -499,67 +468,6 @@
     </td>
 </tr>
 {{end}}
-{{end}}
-
-{{define "file-manager"}}
-<div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 overflow-hidden"
-    onclick="closeFileManager(event)">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden overscroll-contain"
-        onclick="event.stopPropagation()">
-        <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Data File Manager</h3>
-            <button onclick="closeFileManager()" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
-                    </path>
-                </svg>
-            </button>
-        </div>
-
-        <!-- Upload Section -->
-        <div class="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
-            <form hx-post="/explorer/upload" hx-target="#file-list" hx-swap="innerHTML"
-                hx-encoding="multipart/form-data" class="flex items-center gap-4">
-                <input type="file" name="file" accept=".csv"
-                    class="flex-1 text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-900/50 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/70">
-                <button type="submit"
-                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition-colors">
-                    Upload CSV
-                </button>
-            </form>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="p-4 border-b dark:border-gray-700 flex items-center gap-3">
-            <span class="text-sm text-gray-600 dark:text-gray-400">Quick Actions:</span>
-            <button hx-post="/restore/test-data"
-                hx-swap="none"
-                hx-on::after-request="if(event.detail.successful) { closeFileManager(); window.location.reload(); }"
-                class="px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-sm rounded-md hover:bg-indigo-200 dark:hover:bg-indigo-900/70 transition-colors">
-                Load Test Data
-            </button>
-            <button hx-delete="/data/all"
-                hx-swap="none"
-                hx-confirm="Are you sure you want to delete all data? This cannot be undone."
-                hx-on::after-request="if(event.detail.successful) { closeFileManager(); window.location.reload(); }"
-                class="px-3 py-1.5 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-sm rounded-md hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors">
-                Clear All Data
-            </button>
-        </div>
-
-        <!-- File List -->
-        <div id="file-list" class="overflow-y-auto max-h-[50vh] overscroll-contain">
-            {{template "file-list" .}}
-        </div>
-
-        <div class="p-4 bg-gray-50 dark:bg-gray-900 border-t dark:border-gray-700">
-            <button onclick="closeFileManager(); location.reload();"
-                class="w-full px-4 py-2 bg-gray-600 dark:bg-gray-700 text-white rounded-md hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors">
-                Done
-            </button>
-        </div>
-    </div>
-</div>
 {{end}}
 
 {{define "file-list"}}

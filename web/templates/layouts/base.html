@@ -86,9 +86,8 @@
                     <a href="/insights" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
                         Insights
                     </a>
-                    <a href="/backup"
-                        class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors">
-                        Backup
+                    <a href="/filemanager" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">
+                        File Manager
                     </a>
 
                     <!-- Theme Toggle -->
@@ -122,6 +121,8 @@
         {{template "whatif-content" .}}
         {{else if eq .ActiveTab "insights"}}
         {{template "insights-content" .}}
+        {{else if eq .ActiveTab "filemanager"}}
+        {{template "filemanager-content" .}}
         {{else}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Page Not Found</h1>

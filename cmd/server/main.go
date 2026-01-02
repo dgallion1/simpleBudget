@@ -143,6 +143,9 @@ func SetupRouter() chi.Router {
 	r.Get("/api/health", handleHealth)
 	r.Get("/killme", handleKillServer)
 
+	// File manager page
+	r.Get("/filemanager", handleFileManagerPage)
+
 	// Backup and restore routes
 	r.Get("/backup", handleBackup)
 	r.Post("/restore", handleRestore)
@@ -867,6 +870,22 @@ func handleFileManager(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+func handleFileManagerPage(w http.ResponseWriter, r *http.Request) {
+	files, err := loader.GetFileInfo()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title":     "File Manager",
+		"ActiveTab": "filemanager",
+		"Files":     files,
+	}
+
+	renderer.Render(w, "base", data)
 }
 
 func handleFileToggle(w http.ResponseWriter, r *http.Request) {

@@ -97,6 +97,7 @@ func main() {
 	r.Delete("/whatif/income/{id}", handleWhatIfDeleteIncome)
 	r.Post("/whatif/income/{id}/restore", handleWhatIfRestoreIncome)
 	r.Post("/whatif/expense", handleWhatIfAddExpense)
+	r.Put("/whatif/expense/{id}", handleWhatIfUpdateExpense)
 	r.Delete("/whatif/expense/{id}", handleWhatIfDeleteExpense)
 	r.Post("/whatif/expense/{id}/restore", handleWhatIfRestoreExpense)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
@@ -1001,6 +1002,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
 	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
 	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
 
@@ -1009,7 +1011,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		colaRate = 0.02 // 2% COLA
 	}
 
-	settings, err := retirementMgr.UpdateIncomeSource(id, endYear, colaRate)
+	settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1103,6 +1105,40 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settings, err := retirementMgr.AddExpenseSource(source)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
+	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
+	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
+
+	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

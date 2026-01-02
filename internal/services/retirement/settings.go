@@ -159,7 +159,7 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 }
 
 // UpdateIncomeSource updates an existing income source by ID
-func (sm *SettingsManager) UpdateIncomeSource(id string, endYear int, colaRate float64) (*models.WhatIfSettings, error) {
+func (sm *SettingsManager) UpdateIncomeSource(id string, startYear, endYear int, colaRate float64) (*models.WhatIfSettings, error) {
 	settings, err := sm.Load()
 	if err != nil {
 		return nil, err
@@ -167,6 +167,7 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, endYear int, colaRate f
 
 	for i := range settings.IncomeSources {
 		if settings.IncomeSources[i].ID == id {
+			settings.IncomeSources[i].StartMonth = startYear * 12
 			settings.IncomeSources[i].COLARate = colaRate
 			if endYear > 0 {
 				endMonth := endYear * 12
@@ -193,6 +194,29 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 	}
 
 	settings.ExpenseSources = append(settings.ExpenseSources, source)
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// UpdateExpenseSource updates an existing expense source by ID
+func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int, inflation bool) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range settings.ExpenseSources {
+		if settings.ExpenseSources[i].ID == id {
+			settings.ExpenseSources[i].StartYear = startYear
+			settings.ExpenseSources[i].EndYear = endYear
+			settings.ExpenseSources[i].Inflation = inflation
+			break
+		}
+	}
 
 	if err := sm.Save(settings); err != nil {
 		return nil, err

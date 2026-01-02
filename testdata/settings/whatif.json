@@ -1,0 +1,29 @@
+{
+  "portfolio_value": 500000,
+  "monthly_living_expenses": 4000,
+  "monthly_healthcare": 1200,
+  "healthcare_start_years": 0,
+  "max_withdrawal_rate": 4,
+  "inflation_rate": 3,
+  "healthcare_inflation": 5,
+  "investment_return": 7,
+  "projection_years": 30,
+  "income_sources": [
+    {
+      "id": "test-ss",
+      "name": "Social Security",
+      "amount": 2000,
+      "start_age": 67,
+      "end_age": 0,
+      "inflation_adjusted": true
+    },
+    {
+      "id": "test-pension",
+      "name": "Pension",
+      "amount": 1500,
+      "start_age": 65,
+      "end_age": 0,
+      "inflation_adjusted": false
+    }
+  ]
+}

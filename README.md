@@ -38,7 +38,11 @@ make build
 
 ```
 budget2/
-├── cmd/server/main.go           # HTTP handlers and routing
+├── cmd/
+│   ├── server/                  # Main server application
+│   │   ├── main.go              # HTTP handlers and routing
+│   │   └── main_test.go         # Integration tests
+│   └── validate/                # CLI validation tool
 ├── internal/
 │   ├── config/                  # Environment configuration
 │   ├── models/                  # Data structures
@@ -46,15 +50,14 @@ budget2/
 │   │   ├── classifier/          # Income/expense classification
 │   │   ├── dataloader/          # CSV parsing and deduplication
 │   │   └── retirement/          # Retirement calculator and settings
-│   └── templates/               # Template rendering with helpers
+│   ├── templates/               # Template rendering with helpers
+│   └── testutil/                # Test utilities and assertions
 ├── web/
 │   ├── embed.go                 # Static file embedding
 │   ├── static/                  # CSS, JS, vendor libraries
 │   └── templates/               # HTML templates (layouts, pages, components)
+├── testdata/                    # Test fixtures
 ├── data/                        # User data (gitignored)
-│   ├── *.csv                    # Transaction files
-│   ├── settings/                # What-if settings (JSON)
-│   └── uploads/                 # Uploaded files
 ├── Makefile
 └── budget2                      # Compiled binary
 ```
@@ -89,3 +92,26 @@ make tidy
 # Download vendor JS libraries
 make vendor-js
 ```
+
+## Testing
+
+The project includes integration tests and a CLI validation tool.
+
+```bash
+# Run all tests
+make test
+
+# Run integration tests only
+make test-integration
+
+# Generate coverage report
+make test-coverage
+
+# Validate a running server
+make validate
+
+# Validate with verbose output
+make validate-v
+```
+
+Test data is in `testdata/` with realistic sample transactions.

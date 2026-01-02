@@ -2,7 +2,7 @@ GO := ~/go-sdk/go/bin/go
 BINARY := budget2
 PORT := 8080
 
-.PHONY: all build run dev clean test fmt lint tidy deps
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-start
 
 all: build
 
@@ -21,6 +21,17 @@ clean:
 
 test:
 	$(GO) test -v ./...
+
+test-unit:
+	$(GO) test -v ./internal/...
+
+test-integration:
+	$(GO) test -v ./cmd/server/...
+
+test-coverage:
+	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
 
 fmt:
 	$(GO) fmt ./...
@@ -47,3 +58,11 @@ vendor-js:
 	mkdir -p web/static/vendor
 	curl -L https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js -o web/static/vendor/htmx.min.js
 	curl -L https://cdn.plot.ly/plotly-2.35.2.min.js -o web/static/vendor/plotly.min.js
+
+# Validate a running server
+validate:
+	$(GO) run ./cmd/validate -url http://localhost:$(PORT)
+
+# Validate with verbose output
+validate-v:
+	$(GO) run ./cmd/validate -url http://localhost:$(PORT) -v

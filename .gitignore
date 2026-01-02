@@ -1,11 +1,12 @@
 # Binary
 budget2
+/server
 tmp/
+coverage.out
+coverage.html
 
 # Data files (user-specific)
-data/*.csv
-data/settings/
-data/uploads/
+data/
 
 # IDE
 .idea/

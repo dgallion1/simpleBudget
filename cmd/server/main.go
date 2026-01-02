@@ -30,17 +30,16 @@ import (
 )
 
 var (
-	cfg             *config.Config
-	loader          *dataloader.DataLoader
-	renderer        *templates.Renderer
-	retirementMgr   *retirement.SettingsManager
+	cfg           *config.Config
+	loader        *dataloader.DataLoader
+	renderer      *templates.Renderer
+	retirementMgr *retirement.SettingsManager
 )
 
-func main() {
-	// Load configuration
-	cfg = config.Load()
-	log.Printf("Starting Budget Dashboard on %s", cfg.ListenAddr)
-	log.Printf("Data directory: %s", cfg.DataDirectory)
+// SetupDependencies initializes all global dependencies with the given config.
+// This is exported for testing purposes.
+func SetupDependencies(c *config.Config) error {
+	cfg = c
 
 	// Initialize data loader
 	loader = dataloader.New(cfg.DataDirectory)
@@ -56,14 +55,19 @@ func main() {
 		renderer, err = templates.NewFromFS(templatesFS, false)
 	}
 	if err != nil {
-		log.Fatalf("FATAL: Template validation failed: %v", err)
+		return fmt.Errorf("template validation failed: %w", err)
 	}
 
 	// Initialize retirement settings manager
 	settingsDir := filepath.Join(cfg.DataDirectory, "settings")
 	retirementMgr = retirement.NewSettingsManager(settingsDir)
 
-	// Setup router
+	return nil
+}
+
+// SetupRouter creates and configures the HTTP router.
+// This is exported for testing purposes.
+func SetupRouter() chi.Router {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -135,6 +139,23 @@ func main() {
 	// API routes
 	r.Get("/api/health", handleHealth)
 	r.Get("/killme", handleKillServer)
+
+	return r
+}
+
+func main() {
+	// Load configuration
+	c := config.Load()
+	log.Printf("Starting Budget Dashboard on %s", c.ListenAddr)
+	log.Printf("Data directory: %s", c.DataDirectory)
+
+	// Setup dependencies
+	if err := SetupDependencies(c); err != nil {
+		log.Fatalf("FATAL: %v", err)
+	}
+
+	// Setup router
+	r := SetupRouter()
 
 	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)

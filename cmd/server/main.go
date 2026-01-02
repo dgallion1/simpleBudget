@@ -161,6 +161,9 @@ func main() {
 	log.Printf("Starting Budget Dashboard on %s", c.ListenAddr)
 	log.Printf("Data directory: %s", c.DataDirectory)
 
+	// Kill any previous instance running on this port
+	killPreviousInstance(c.ListenAddr)
+
 	// Setup dependencies
 	if err := SetupDependencies(c); err != nil {
 		log.Fatalf("FATAL: %v", err)
@@ -172,6 +175,40 @@ func main() {
 	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)
 	log.Fatal(http.ListenAndServe(cfg.ListenAddr, r))
+}
+
+// killPreviousInstance attempts to shut down any existing server on the same address
+func killPreviousInstance(addr string) {
+	// Build the killme URL
+	host := addr
+	if strings.HasPrefix(host, ":") {
+		host = "localhost" + host
+	}
+	killURL := fmt.Sprintf("http://%s/killme", host)
+
+	// Try to contact the existing server
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(killURL)
+	if err != nil {
+		// No server running or not reachable - that's fine
+		return
+	}
+	resp.Body.Close()
+
+	log.Printf("Sent shutdown signal to previous instance, waiting...")
+
+	// Wait for the old server to release the port (up to 3 seconds)
+	for i := 0; i < 30; i++ {
+		time.Sleep(100 * time.Millisecond)
+		// Try to connect - if it fails, the old server is gone
+		resp, err := client.Get(fmt.Sprintf("http://%s/health", host))
+		if err != nil {
+			log.Printf("Previous instance terminated")
+			return
+		}
+		resp.Body.Close()
+	}
+	log.Printf("Warning: previous instance may still be running")
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {

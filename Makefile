@@ -2,7 +2,7 @@ GO := ~/go-sdk/go/bin/go
 BINARY := budget2
 PORT := 8080
 
-.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-start
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-start build-all build-linux build-windows build-darwin
 
 all: build
 
@@ -66,3 +66,26 @@ validate:
 # Validate with verbose output
 validate-v:
 	$(GO) run ./cmd/validate -url http://localhost:$(PORT) -v
+
+# Size-optimized ldflags: -s strips symbol table, -w strips DWARF debug info
+LDFLAGS := -ldflags="-s -w"
+
+# Build for all platforms
+build-all: build-linux build-windows build-darwin
+	@echo "Built all platforms in dist/"
+
+# Build for Linux (size-optimized)
+build-linux:
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o dist/$(BINARY)-linux-amd64 ./cmd/server
+
+# Build for Windows
+build-windows:
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o dist/$(BINARY)-windows-amd64.exe ./cmd/server
+
+# Build for macOS (Intel and Apple Silicon)
+build-darwin:
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o dist/$(BINARY)-darwin-amd64 ./cmd/server
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o dist/$(BINARY)-darwin-arm64 ./cmd/server

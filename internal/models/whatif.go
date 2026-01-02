@@ -169,6 +169,63 @@ type SensitivityResult struct {
 	ScoreChange    int                 `json:"score_change"` // vs baseline
 }
 
+// FailurePoint represents the threshold where a parameter causes portfolio failure
+type FailurePoint struct {
+	ParamName    string  `json:"param_name"`    // e.g., "investment_return"
+	ParamLabel   string  `json:"param_label"`   // e.g., "Investment Return"
+	CurrentValue float64 `json:"current_value"` // Current setting value
+	Threshold    float64 `json:"threshold"`     // Value at which failure occurs
+	Direction    string  `json:"direction"`     // "below" or "above"
+	Margin       float64 `json:"margin"`        // How much buffer before failure (as %)
+	SafetyLevel  string  `json:"safety_level"`  // "safe", "marginal", "critical"
+}
+
+// FailurePointAnalysis contains all failure thresholds
+type FailurePointAnalysis struct {
+	FailurePoints []FailurePoint `json:"failure_points"`
+	BaselineSurvives bool        `json:"baseline_survives"` // Does current scenario survive?
+}
+
+// MonteCarloResult represents a single simulation run outcome
+type MonteCarloResult struct {
+	FinalBalance   float64 `json:"final_balance"`
+	DepletionYear  float64 `json:"depletion_year"` // 0 if survives
+	Survives       bool    `json:"survives"`
+}
+
+// MonteCarloStats contains aggregated simulation statistics
+type MonteCarloStats struct {
+	Runs            int     `json:"runs"`             // Number of simulations
+	SuccessRate     float64 `json:"success_rate"`     // % of scenarios that survive
+	MedianBalance   float64 `json:"median_balance"`   // Median final balance
+	MeanBalance     float64 `json:"mean_balance"`     // Average final balance
+	Percentile10    float64 `json:"percentile_10"`    // 10th percentile (worst 10%)
+	Percentile25    float64 `json:"percentile_25"`    // 25th percentile
+	Percentile75    float64 `json:"percentile_75"`    // 75th percentile
+	Percentile90    float64 `json:"percentile_90"`    // 90th percentile (best 10%)
+	WorstCase       float64 `json:"worst_case"`       // Minimum final balance
+	BestCase        float64 `json:"best_case"`        // Maximum final balance
+	AvgDepletionYr  float64 `json:"avg_depletion_yr"` // Avg years to depletion (failed runs only)
+}
+
+// MonteCarloDistribution contains bucketed results for visualization
+type MonteCarloDistribution struct {
+	Buckets []MonteCarloDistBucket `json:"buckets"`
+}
+
+// MonteCarloDistBucket represents a histogram bucket
+type MonteCarloDistBucket struct {
+	Label      string `json:"label"`      // e.g., "$0-100K"
+	Count      int    `json:"count"`      // Number of simulations in this bucket
+	Percentage float64 `json:"percentage"` // % of total
+}
+
+// MonteCarloAnalysis contains complete simulation analysis
+type MonteCarloAnalysis struct {
+	Stats        *MonteCarloStats        `json:"stats"`
+	Distribution *MonteCarloDistribution `json:"distribution"`
+}
+
 // WhatIfAnalysis is the complete analysis container returned to templates
 type WhatIfAnalysis struct {
 	Settings       *WhatIfSettings       `json:"settings"`
@@ -177,6 +234,8 @@ type WhatIfAnalysis struct {
 	PresentValue   *PresentValueAnalysis `json:"present_value"`
 	Sustainability *SustainabilityScore  `json:"sustainability"`
 	Sensitivity    []SensitivityResult   `json:"sensitivity"`
+	FailurePoints  *FailurePointAnalysis `json:"failure_points"`
+	MonteCarlo     *MonteCarloAnalysis   `json:"monte_carlo"`
 }
 
 // WhatIfPageData is the data passed to the whatif template

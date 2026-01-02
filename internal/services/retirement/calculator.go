@@ -1,6 +1,7 @@
 package retirement
 
 import (
+	"fmt"
 	"math"
 
 	"budget2/internal/models"
@@ -348,6 +349,471 @@ func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
 	return results
 }
 
+// CalculateFailurePoints finds exact thresholds where the portfolio fails
+func (c *Calculator) CalculateFailurePoints() *models.FailurePointAnalysis {
+	baseProjection := c.RunProjection()
+	failurePoints := make([]models.FailurePoint, 0)
+
+	// If baseline already fails, we can't find "failure thresholds"
+	if !baseProjection.Survives {
+		return &models.FailurePointAnalysis{
+			FailurePoints:    failurePoints,
+			BaselineSurvives: false,
+		}
+	}
+
+	// Find minimum investment return needed
+	if fp := c.findReturnThreshold(); fp != nil {
+		failurePoints = append(failurePoints, *fp)
+	}
+
+	// Find maximum inflation tolerable
+	if fp := c.findInflationThreshold(); fp != nil {
+		failurePoints = append(failurePoints, *fp)
+	}
+
+	// Find maximum expenses tolerable
+	if fp := c.findExpensesThreshold(); fp != nil {
+		failurePoints = append(failurePoints, *fp)
+	}
+
+	// Find minimum portfolio needed
+	if fp := c.findPortfolioThreshold(); fp != nil {
+		failurePoints = append(failurePoints, *fp)
+	}
+
+	return &models.FailurePointAnalysis{
+		FailurePoints:    failurePoints,
+		BaselineSurvives: true,
+	}
+}
+
+// findReturnThreshold finds minimum investment return to survive
+func (c *Calculator) findReturnThreshold() *models.FailurePoint {
+	current := c.Settings.InvestmentReturn
+
+	// Binary search between 0% and current value
+	low, high := -5.0, current
+	precision := 0.1
+
+	// First check if 0% return survives
+	modSettings := *c.Settings
+	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
+	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+	modSettings.InvestmentReturn = low
+	modCalc := NewCalculator(&modSettings)
+	if modCalc.RunProjection().Survives {
+		// Survives even at -5%, no meaningful threshold
+		return &models.FailurePoint{
+			ParamName:    "investment_return",
+			ParamLabel:   "Investment Return",
+			CurrentValue: current,
+			Threshold:    -5.0,
+			Direction:    "below",
+			Margin:       current + 5.0,
+			SafetyLevel:  "safe",
+		}
+	}
+
+	// Binary search for threshold
+	for high-low > precision {
+		mid := (low + high) / 2
+		modSettings.InvestmentReturn = mid
+		modCalc := NewCalculator(&modSettings)
+		if modCalc.RunProjection().Survives {
+			high = mid
+		} else {
+			low = mid
+		}
+	}
+
+	threshold := math.Round(high*10) / 10
+	margin := current - threshold
+	safetyLevel := "safe"
+	if margin < 1 {
+		safetyLevel = "critical"
+	} else if margin < 2 {
+		safetyLevel = "marginal"
+	}
+
+	return &models.FailurePoint{
+		ParamName:    "investment_return",
+		ParamLabel:   "Investment Return",
+		CurrentValue: current,
+		Threshold:    threshold,
+		Direction:    "below",
+		Margin:       margin,
+		SafetyLevel:  safetyLevel,
+	}
+}
+
+// findInflationThreshold finds maximum inflation before failure
+func (c *Calculator) findInflationThreshold() *models.FailurePoint {
+	current := c.Settings.InflationRate
+
+	// Binary search between current and 15%
+	low, high := current, 15.0
+	precision := 0.1
+
+	// First check if 15% inflation fails
+	modSettings := *c.Settings
+	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
+	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+	modSettings.InflationRate = high
+	modCalc := NewCalculator(&modSettings)
+	if modCalc.RunProjection().Survives {
+		// Survives even at 15%, very robust
+		return &models.FailurePoint{
+			ParamName:    "inflation_rate",
+			ParamLabel:   "Inflation Rate",
+			CurrentValue: current,
+			Threshold:    15.0,
+			Direction:    "above",
+			Margin:       15.0 - current,
+			SafetyLevel:  "safe",
+		}
+	}
+
+	// Binary search for threshold
+	for high-low > precision {
+		mid := (low + high) / 2
+		modSettings.InflationRate = mid
+		modCalc := NewCalculator(&modSettings)
+		if modCalc.RunProjection().Survives {
+			low = mid
+		} else {
+			high = mid
+		}
+	}
+
+	threshold := math.Round(low*10) / 10
+	margin := threshold - current
+	safetyLevel := "safe"
+	if margin < 1 {
+		safetyLevel = "critical"
+	} else if margin < 2 {
+		safetyLevel = "marginal"
+	}
+
+	return &models.FailurePoint{
+		ParamName:    "inflation_rate",
+		ParamLabel:   "Inflation Rate",
+		CurrentValue: current,
+		Threshold:    threshold,
+		Direction:    "above",
+		Margin:       margin,
+		SafetyLevel:  safetyLevel,
+	}
+}
+
+// findExpensesThreshold finds maximum monthly expenses before failure
+func (c *Calculator) findExpensesThreshold() *models.FailurePoint {
+	current := c.Settings.MonthlyLivingExpenses
+	if current <= 0 {
+		return nil
+	}
+
+	// Binary search between current and 3x current
+	low, high := current, current*3
+	precision := 50.0 // $50 precision
+
+	// First check if 3x expenses fails
+	modSettings := *c.Settings
+	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
+	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+	modSettings.MonthlyLivingExpenses = high
+	modCalc := NewCalculator(&modSettings)
+	if modCalc.RunProjection().Survives {
+		// Survives even at 3x expenses
+		margin := ((high / current) - 1) * 100
+		return &models.FailurePoint{
+			ParamName:    "monthly_expenses",
+			ParamLabel:   "Monthly Expenses",
+			CurrentValue: current,
+			Threshold:    high,
+			Direction:    "above",
+			Margin:       margin,
+			SafetyLevel:  "safe",
+		}
+	}
+
+	// Binary search for threshold
+	for high-low > precision {
+		mid := (low + high) / 2
+		modSettings.MonthlyLivingExpenses = mid
+		modCalc := NewCalculator(&modSettings)
+		if modCalc.RunProjection().Survives {
+			low = mid
+		} else {
+			high = mid
+		}
+	}
+
+	threshold := math.Round(low/50) * 50 // Round to nearest $50
+	margin := ((threshold / current) - 1) * 100
+	safetyLevel := "safe"
+	if margin < 10 {
+		safetyLevel = "critical"
+	} else if margin < 25 {
+		safetyLevel = "marginal"
+	}
+
+	return &models.FailurePoint{
+		ParamName:    "monthly_expenses",
+		ParamLabel:   "Monthly Expenses",
+		CurrentValue: current,
+		Threshold:    threshold,
+		Direction:    "above",
+		Margin:       margin,
+		SafetyLevel:  safetyLevel,
+	}
+}
+
+// findPortfolioThreshold finds minimum portfolio needed to survive
+func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
+	current := c.Settings.PortfolioValue
+	if current <= 0 {
+		return nil
+	}
+
+	// Binary search between 0 and current
+	low, high := 0.0, current
+	precision := 1000.0 // $1000 precision
+
+	// First check if $0 survives (e.g., income covers all expenses)
+	modSettings := *c.Settings
+	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
+	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+	modSettings.PortfolioValue = low
+	modCalc := NewCalculator(&modSettings)
+	if modCalc.RunProjection().Survives {
+		return &models.FailurePoint{
+			ParamName:    "portfolio_value",
+			ParamLabel:   "Portfolio Value",
+			CurrentValue: current,
+			Threshold:    0,
+			Direction:    "below",
+			Margin:       100, // 100% buffer
+			SafetyLevel:  "safe",
+		}
+	}
+
+	// Binary search for threshold
+	for high-low > precision {
+		mid := (low + high) / 2
+		modSettings.PortfolioValue = mid
+		modCalc := NewCalculator(&modSettings)
+		if modCalc.RunProjection().Survives {
+			high = mid
+		} else {
+			low = mid
+		}
+	}
+
+	threshold := math.Round(high/1000) * 1000 // Round to nearest $1000
+	margin := ((current - threshold) / current) * 100
+	safetyLevel := "safe"
+	if margin < 10 {
+		safetyLevel = "critical"
+	} else if margin < 25 {
+		safetyLevel = "marginal"
+	}
+
+	return &models.FailurePoint{
+		ParamName:    "portfolio_value",
+		ParamLabel:   "Portfolio Value",
+		CurrentValue: current,
+		Threshold:    threshold,
+		Direction:    "below",
+		Margin:       margin,
+		SafetyLevel:  safetyLevel,
+	}
+}
+
+// RunMonteCarloSimulation runs randomized scenario analysis
+func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysis {
+	if runs <= 0 {
+		runs = 1000
+	}
+
+	results := make([]models.MonteCarloResult, runs)
+	successCount := 0
+	totalDepletionYears := 0.0
+	depletionCount := 0
+
+	// Parameters for random variation (using simple uniform distribution)
+	// Return: base +/- 4% range
+	// Inflation: base +/- 2% range
+	returnBase := c.Settings.InvestmentReturn
+	inflationBase := c.Settings.InflationRate
+
+	for i := 0; i < runs; i++ {
+		// Create varied settings
+		modSettings := *c.Settings
+		modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
+		modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+
+		// Random variations using simple deterministic pseudo-random
+		// Use i as seed for reproducible results
+		returnVar := (float64((i*7919)%1000)/1000.0 - 0.5) * 8 // -4 to +4
+		inflationVar := (float64((i*6271)%1000)/1000.0 - 0.5) * 4 // -2 to +2
+
+		modSettings.InvestmentReturn = math.Max(0, returnBase+returnVar)
+		modSettings.InflationRate = math.Max(0, inflationBase+inflationVar)
+
+		modCalc := NewCalculator(&modSettings)
+		projection := modCalc.RunProjection()
+
+		result := models.MonteCarloResult{
+			FinalBalance: projection.FinalBalance,
+			Survives:     projection.Survives,
+		}
+
+		if projection.LongevityYears != nil {
+			result.DepletionYear = *projection.LongevityYears
+			totalDepletionYears += *projection.LongevityYears
+			depletionCount++
+		}
+
+		if projection.Survives {
+			successCount++
+		}
+
+		results[i] = result
+	}
+
+	// Calculate statistics
+	balances := make([]float64, runs)
+	for i, r := range results {
+		balances[i] = r.FinalBalance
+	}
+	sortFloat64s(balances)
+
+	stats := &models.MonteCarloStats{
+		Runs:         runs,
+		SuccessRate:  float64(successCount) / float64(runs) * 100,
+		MedianBalance: balances[runs/2],
+		MeanBalance:   mean(balances),
+		Percentile10:  balances[runs/10],
+		Percentile25:  balances[runs/4],
+		Percentile75:  balances[runs*3/4],
+		Percentile90:  balances[runs*9/10],
+		WorstCase:     balances[0],
+		BestCase:      balances[runs-1],
+	}
+
+	if depletionCount > 0 {
+		stats.AvgDepletionYr = totalDepletionYears / float64(depletionCount)
+	}
+
+	// Create distribution buckets
+	distribution := c.createDistributionBuckets(balances)
+
+	return &models.MonteCarloAnalysis{
+		Stats:        stats,
+		Distribution: distribution,
+	}
+}
+
+// createDistributionBuckets creates histogram buckets for visualization
+func (c *Calculator) createDistributionBuckets(sortedBalances []float64) *models.MonteCarloDistribution {
+	buckets := make([]models.MonteCarloDistBucket, 0)
+	total := len(sortedBalances)
+
+	// Define bucket boundaries based on data range
+	maxVal := sortedBalances[total-1]
+
+	// Create 8 buckets
+	var boundaries []float64
+	if maxVal <= 0 {
+		boundaries = []float64{0}
+	} else if maxVal < 100000 {
+		boundaries = []float64{0, 10000, 25000, 50000, 75000, 100000}
+	} else if maxVal < 1000000 {
+		boundaries = []float64{0, 50000, 100000, 250000, 500000, 750000, 1000000}
+	} else {
+		step := maxVal / 6
+		boundaries = make([]float64, 7)
+		for i := range boundaries {
+			boundaries[i] = float64(i) * step
+		}
+	}
+
+	// Count items in each bucket
+	for i := 0; i < len(boundaries)-1; i++ {
+		low := boundaries[i]
+		high := boundaries[i+1]
+		count := 0
+		for _, b := range sortedBalances {
+			if b >= low && b < high {
+				count++
+			}
+		}
+		if count > 0 || i == 0 { // Always show first bucket even if empty
+			buckets = append(buckets, models.MonteCarloDistBucket{
+				Label:      formatBucketLabel(low, high),
+				Count:      count,
+				Percentage: float64(count) / float64(total) * 100,
+			})
+		}
+	}
+
+	// Add final bucket for values at or above last boundary
+	lastBoundary := boundaries[len(boundaries)-1]
+	count := 0
+	for _, b := range sortedBalances {
+		if b >= lastBoundary {
+			count++
+		}
+	}
+	if count > 0 {
+		buckets = append(buckets, models.MonteCarloDistBucket{
+			Label:      formatBucketLabel(lastBoundary, -1),
+			Count:      count,
+			Percentage: float64(count) / float64(total) * 100,
+		})
+	}
+
+	return &models.MonteCarloDistribution{Buckets: buckets}
+}
+
+// formatBucketLabel formats a bucket range for display
+func formatBucketLabel(low, high float64) string {
+	formatVal := func(v float64) string {
+		if v >= 1000000 {
+			return fmt.Sprintf("$%.1fM", v/1000000)
+		}
+		return fmt.Sprintf("$%.0fK", v/1000)
+	}
+
+	if high < 0 {
+		return formatVal(low) + "+"
+	}
+	return formatVal(low) + "-" + formatVal(high)
+}
+
+// Helper functions
+func sortFloat64s(a []float64) {
+	for i := 0; i < len(a)-1; i++ {
+		for j := i + 1; j < len(a); j++ {
+			if a[j] < a[i] {
+				a[i], a[j] = a[j], a[i]
+			}
+		}
+	}
+}
+
+func mean(a []float64) float64 {
+	if len(a) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, v := range a {
+		sum += v
+	}
+	return sum / float64(len(a))
+}
+
 // RunFullAnalysis performs complete what-if analysis
 func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	projection := c.RunProjection()
@@ -355,6 +821,8 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	presentValue := c.CalculatePresentValueAnalysis()
 	sustainability := c.CalculateSustainabilityScore(projection)
 	sensitivity := c.CalculateSensitivity()
+	failurePoints := c.CalculateFailurePoints()
+	monteCarlo := c.RunMonteCarloSimulation(1000)
 
 	return &models.WhatIfAnalysis{
 		Settings:       c.Settings,
@@ -363,5 +831,7 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 		PresentValue:   presentValue,
 		Sustainability: sustainability,
 		Sensitivity:    sensitivity,
+		FailurePoints:  failurePoints,
+		MonteCarlo:     monteCarlo,
 	}
 }

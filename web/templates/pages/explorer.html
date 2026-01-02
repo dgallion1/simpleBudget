@@ -529,6 +529,24 @@
             </form>
         </div>
 
+        <!-- Quick Actions -->
+        <div class="p-4 border-b dark:border-gray-700 flex items-center gap-3">
+            <span class="text-sm text-gray-600 dark:text-gray-400">Quick Actions:</span>
+            <button hx-post="/restore/test-data"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.successful) { closeFileManager(); window.location.reload(); }"
+                class="px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-sm rounded-md hover:bg-indigo-200 dark:hover:bg-indigo-900/70 transition-colors">
+                Load Test Data
+            </button>
+            <button hx-delete="/data/all"
+                hx-swap="none"
+                hx-confirm="Are you sure you want to delete all data? This cannot be undone."
+                hx-on::after-request="if(event.detail.successful) { closeFileManager(); window.location.reload(); }"
+                class="px-3 py-1.5 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-sm rounded-md hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors">
+                Clear All Data
+            </button>
+        </div>
+
         <!-- File List -->
         <div id="file-list" class="overflow-y-auto max-h-[50vh] overscroll-contain">
             {{template "file-list" .}}

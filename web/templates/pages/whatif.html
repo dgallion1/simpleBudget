@@ -644,34 +644,6 @@
     </div>
 </div>
 
-<!-- Sustainability Score Gauge -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Sustainability Score</h3>
-    <div class="flex items-center justify-center">
-        <div class="relative w-48 h-24">
-            <!-- SVG Gauge -->
-            <svg viewBox="0 0 200 100" class="w-full h-full">
-                <!-- Background arc -->
-                <path d="M 20 90 A 80 80 0 0 1 180 90" fill="none" class="stroke-gray-200 dark:stroke-gray-700" stroke-width="12"
-                    stroke-linecap="round" />
-                <!-- Score arc -->
-                <path d="M 20 90 A 80 80 0 0 1 180 90" fill="none"
-                    stroke="{{if ge .Analysis.Sustainability.Score 75}}#22c55e{{else if ge .Analysis.Sustainability.Score 50}}#eab308{{else if ge .Analysis.Sustainability.Score 25}}#f97316{{else}}#ef4444{{end}}"
-                    stroke-width="12" stroke-linecap="round"
-                    stroke-dasharray="{{mul .Analysis.Sustainability.Score 2.51}} 251" transform="rotate(180 100 90)" />
-                <!-- Score text -->
-                <text x="100" y="75" text-anchor="middle" class="text-3xl font-bold fill-gray-800 dark:fill-gray-100">
-                    {{.Analysis.Sustainability.Score}}
-                </text>
-                <text x="100" y="95" text-anchor="middle" class="text-sm fill-gray-500 dark:fill-gray-400">
-                    {{.Analysis.Sustainability.Label}}
-                </text>
-            </svg>
-        </div>
-    </div>
-    <p class="text-center text-sm text-gray-500 dark:text-gray-400 mt-2">{{.Analysis.Sustainability.Description}}</p>
-</div>
-
 <!-- Sensitivity Analysis -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Sensitivity Analysis</h3>

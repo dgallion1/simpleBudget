@@ -723,19 +723,23 @@ func (c *Calculator) createDistributionBuckets(sortedBalances []float64) *models
 	// Define bucket boundaries based on data range
 	maxVal := sortedBalances[total-1]
 
-	// Create 8 buckets
+	// Use fixed boundaries with more detail in 0-3M range
 	var boundaries []float64
 	if maxVal <= 0 {
 		boundaries = []float64{0}
 	} else if maxVal < 100000 {
 		boundaries = []float64{0, 10000, 25000, 50000, 75000, 100000}
 	} else if maxVal < 1000000 {
-		boundaries = []float64{0, 50000, 100000, 250000, 500000, 750000, 1000000}
+		boundaries = []float64{0, 100000, 250000, 500000, 750000, 1000000}
+	} else if maxVal < 3000000 {
+		// Fine detail for 0-3M range
+		boundaries = []float64{0, 250000, 500000, 1000000, 1500000, 2000000, 2500000, 3000000}
 	} else {
-		step := maxVal / 6
-		boundaries = make([]float64, 7)
-		for i := range boundaries {
-			boundaries[i] = float64(i) * step
+		// Fixed boundaries with detail in 0-3M, then larger buckets for higher values
+		boundaries = []float64{0, 250000, 500000, 1000000, 2000000, 3000000, 5000000, 10000000}
+		// Add boundaries beyond 10M if needed
+		if maxVal > 10000000 {
+			boundaries = append(boundaries, 20000000)
 		}
 	}
 

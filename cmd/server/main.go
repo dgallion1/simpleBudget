@@ -1389,6 +1389,7 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 	// Parse date range from query params
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
+	preset := r.URL.Query().Get("preset")
 
 	minDate := data.MinDate()
 	maxDate := data.MaxDate()
@@ -1402,6 +1403,7 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		if startDate.Before(minDate) {
 			startDate = minDate
 		}
+		preset = "12m"
 	}
 	if endStr != "" {
 		endDate, _ = time.Parse("2006-01-02", endStr)
@@ -1422,6 +1424,7 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		"EndDate":   endDate.Format("2006-01-02"),
 		"MinDate":   minDate.Format("2006-01-02"),
 		"MaxDate":   maxDate.Format("2006-01-02"),
+		"Preset":    preset,
 	}
 
 	if renderer != nil {
@@ -2290,9 +2293,9 @@ func buildCumulativeChartData(ts *models.TransactionSet) map[string]interface{} 
 // Insights analysis functions
 
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
-	recurring := detectRecurringPayments(allData)
-	trends := analyzeCategoryTrends(allData, startDate, endDate)
-	income := analyzeIncomePatterns(allData)
+	recurring := detectRecurringPayments(filtered)
+	trends := analyzeCategoryTrends(allData, startDate, endDate) // needs allData to compare vs previous period
+	income := analyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)
 
 	// Calculate totals

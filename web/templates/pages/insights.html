@@ -25,22 +25,23 @@
             </div>
 
             <!-- Quick presets -->
+            <input type="hidden" name="preset" value="{{.Preset}}">
             <div class="flex items-center space-x-2 ml-auto">
                 <span class="text-sm text-gray-500 dark:text-gray-400">Quick:</span>
-                <button type="button" onclick="setInsightPreset('3m')"
-                        class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                <button type="button" onclick="setInsightPreset('3m')" data-preset="3m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "3m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     3M
                 </button>
-                <button type="button" onclick="setInsightPreset('6m')"
-                        class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                <button type="button" onclick="setInsightPreset('6m')" data-preset="6m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "6m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     6M
                 </button>
-                <button type="button" onclick="setInsightPreset('12m')"
-                        class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                <button type="button" onclick="setInsightPreset('12m')" data-preset="12m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "12m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     12M
                 </button>
-                <button type="button" onclick="setInsightPreset('all')"
-                        class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                <button type="button" onclick="setInsightPreset('all')" data-preset="all"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "all"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     All
                 </button>
             </div>
@@ -401,7 +402,6 @@
 function setInsightPreset(preset) {
     const form = document.getElementById('insights-date-filter');
     const startInput = form.querySelector('input[name="start"]');
-    const endInput = form.querySelector('input[name="end"]');
 
     const end = new Date();
     let start = new Date();
@@ -421,12 +421,19 @@ function setInsightPreset(preset) {
             break;
     }
 
-    startInput.value = start.toISOString().split('T')[0];
-    endInput.value = end.toISOString().split('T')[0];
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
 
-    // Trigger HTMX update
-    htmx.trigger(form, 'change');
+    // Navigate directly with all params
+    htmx.ajax('GET', '/insights?start=' + startStr + '&end=' + endStr + '&preset=' + preset, {target: 'body', pushUrl: true});
 }
+
+// Clear preset when dates are manually changed
+document.querySelectorAll('#insights-date-filter input[type="date"]').forEach(function(input) {
+    input.addEventListener('input', function() {
+        document.querySelector('input[name="preset"]').value = '';
+    });
+});
 
 // Handle chart data responses
 document.body.addEventListener('htmx:afterRequest', function(evt) {

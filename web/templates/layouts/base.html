@@ -144,35 +144,40 @@
 
     <!-- HTMX configuration -->
     <script>
-        // Configure HTMX
-        document.body.addEventListener('htmx:configRequest', function(evt) {
-            // Add any custom headers here if needed
-        });
+        (function() {
+            // Configure HTMX
+            document.body.addEventListener('htmx:configRequest', function(evt) {
+                // Add any custom headers here if needed
+            });
 
-        // Handle HTMX errors
-        document.body.addEventListener('htmx:responseError', function(evt) {
-            console.error('HTMX error:', evt.detail);
-        });
+            // Handle HTMX errors
+            document.body.addEventListener('htmx:responseError', function(evt) {
+                console.error('HTMX error:', evt.detail);
+            });
 
-        // Theme toggle functionality
-        const themeToggle = document.getElementById('theme-toggle');
-        themeToggle.addEventListener('click', function() {
-            const html = document.documentElement;
-            const isDark = html.classList.contains('dark');
+            // Theme toggle functionality
+            var themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle && !themeToggle._listenerAttached) {
+                themeToggle._listenerAttached = true;
+                themeToggle.addEventListener('click', function() {
+                    var html = document.documentElement;
+                    var isDark = html.classList.contains('dark');
 
-            if (isDark) {
-                html.classList.remove('dark');
-                html.classList.add('light');
-                localStorage.setItem('theme', 'light');
-            } else {
-                html.classList.remove('light');
-                html.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
+                    if (isDark) {
+                        html.classList.remove('dark');
+                        html.classList.add('light');
+                        localStorage.setItem('theme', 'light');
+                    } else {
+                        html.classList.remove('light');
+                        html.classList.add('dark');
+                        localStorage.setItem('theme', 'dark');
+                    }
+
+                    // Dispatch custom event for charts to update
+                    window.dispatchEvent(new CustomEvent('themechange', { detail: { dark: !isDark } }));
+                });
             }
-
-            // Dispatch custom event for charts to update
-            window.dispatchEvent(new CustomEvent('themechange', { detail: { dark: !isDark } }));
-        });
+        })();
     </script>
 </body>
 </html>

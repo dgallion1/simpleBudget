@@ -11,6 +11,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -765,6 +766,14 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 
 func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	filename := chi.URLParam(r, "filename")
+
+	// URL-decode the filename (handles %20 for spaces, etc.)
+	decodedFilename, err := url.PathUnescape(filename)
+	if err != nil {
+		http.Error(w, "Invalid filename encoding", http.StatusBadRequest)
+		return
+	}
+	filename = decodedFilename
 
 	// Validate filename (prevent path traversal)
 	if strings.Contains(filename, "/") || strings.Contains(filename, "\\") || strings.Contains(filename, "..") {

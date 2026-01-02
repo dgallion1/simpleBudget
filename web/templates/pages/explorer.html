@@ -573,8 +573,7 @@
                     class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
             </td>
             <td class="p-3 text-center">
-                <button hx-delete="/explorer/files/{{.Name}}" hx-target="#file-list" hx-swap="innerHTML"
-                    hx-confirm="Delete {{.Name}}? This cannot be undone."
+                <button hx-delete="/explorer/files/{{urlEncode .Name}}" hx-target="#file-list" hx-swap="innerHTML"
                     class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm">
                     Delete
                 </button>

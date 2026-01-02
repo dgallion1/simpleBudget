@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -90,6 +91,7 @@ func getFuncMap() template.FuncMap {
 		"percentOf":      percentOf,
 		"percentDiff":    percentDiff,
 		"deref":          deref,
+		"urlEncode":      url.PathEscape,
 	}
 }
 

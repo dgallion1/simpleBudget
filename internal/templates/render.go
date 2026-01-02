@@ -70,6 +70,7 @@ func getFuncMap() template.FuncMap {
 		"isNonNegative":  isNonNegative,
 		"colorClass":     colorClass,
 		"percentOf":      percentOf,
+		"percentDiff":    percentDiff,
 		"deref":          deref,
 	}
 }
@@ -499,6 +500,14 @@ func percentOf(part, whole float64) float64 {
 		return 0
 	}
 	return (part / whole) * 100
+}
+
+// percentDiff calculates percentage difference from a reference value
+func percentDiff(value, reference float64) float64 {
+	if reference == 0 {
+		return 0
+	}
+	return ((value - reference) / reference) * 100
 }
 
 // deref safely dereferences a pointer, returning 0 if nil

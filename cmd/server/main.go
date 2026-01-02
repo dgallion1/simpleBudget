@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,6 +77,8 @@ func main() {
 	r.Get("/dashboard/charts/data/{chartType}", handleChartData)
 	r.Get("/dashboard/alerts", handleAlertsPartial)
 	r.Get("/dashboard/category/{category}", handleCategoryDrilldown)
+	r.Get("/dashboard/kpi/{kpiType}", handleKPIDetail)
+	r.Get("/dashboard/kpi/{kpiType}/export", handleKPIExport)
 
 	// Explorer routes
 	r.Get("/explorer", handleExplorer)
@@ -90,8 +94,10 @@ func main() {
 	r.Post("/whatif/settings", handleWhatIfSettings)
 	r.Post("/whatif/income", handleWhatIfAddIncome)
 	r.Delete("/whatif/income/{id}", handleWhatIfDeleteIncome)
+	r.Post("/whatif/income/{id}/restore", handleWhatIfRestoreIncome)
 	r.Post("/whatif/expense", handleWhatIfAddExpense)
 	r.Delete("/whatif/expense/{id}", handleWhatIfDeleteExpense)
+	r.Post("/whatif/expense/{id}/restore", handleWhatIfRestoreExpense)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
 
@@ -1011,6 +1017,31 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.RestoreIncomeSource(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
 func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1058,6 +1089,31 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	settings, err := retirementMgr.RemoveExpenseSource(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.RestoreExpenseSource(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1354,6 +1410,260 @@ func handleCategoryDrilldown(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
+	kpiType := chi.URLParam(r, "kpiType")
+
+	data, err := loader.LoadData()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	startDate, _ := time.Parse("2006-01-02", startStr)
+	endDate, _ := time.Parse("2006-01-02", endStr)
+
+	if startDate.IsZero() {
+		startDate = data.MinDate()
+	}
+	if endDate.IsZero() {
+		endDate = data.MaxDate()
+	}
+
+	filtered := data.FilterByDateRange(startDate, endDate)
+	income := filtered.FilterByType(models.Income)
+	outflows := filtered.FilterByType(models.Outflow)
+
+	// Group by month
+	monthlyIncome := income.GroupByMonth()
+	monthlyOutflows := outflows.GroupByMonth()
+
+	// Collect all months
+	monthSet := make(map[string]bool)
+	for m := range monthlyIncome {
+		monthSet[m] = true
+	}
+	for m := range monthlyOutflows {
+		monthSet[m] = true
+	}
+
+	var months []string
+	for m := range monthSet {
+		months = append(months, m)
+	}
+	sort.Strings(months)
+
+	// Calculate monthly summaries
+	type MonthlyStat struct {
+		Month    string
+		Value    float64
+		Income   float64
+		Expenses float64
+		Savings  float64
+		Rate     float64
+	}
+	var monthlySummaries []MonthlyStat
+	var values []float64
+
+	for _, m := range months {
+		incAmt := 0.0
+		if inc, ok := monthlyIncome[m]; ok {
+			incAmt = inc.SumAmount()
+		}
+
+		expAmt := 0.0
+		if exp, ok := monthlyOutflows[m]; ok {
+			expAmt = exp.SumAbsAmount()
+		}
+
+		savings := incAmt - expAmt
+		rate := 0.0
+		if incAmt > 0 {
+			rate = (savings / incAmt) * 100
+		}
+
+		var value float64
+		switch kpiType {
+		case "income":
+			value = incAmt
+		case "expenses":
+			value = expAmt
+		case "savings":
+			value = savings
+		case "savings-rate":
+			value = rate
+		}
+
+		monthlySummaries = append(monthlySummaries, MonthlyStat{
+			Month:    m,
+			Value:    value,
+			Income:   incAmt,
+			Expenses: expAmt,
+			Savings:  savings,
+			Rate:     rate,
+		})
+		values = append(values, value)
+	}
+
+	// Calculate stats
+	var sum, min, max, avg float64
+	var minMonth, maxMonth string
+
+	if len(values) > 0 {
+		min = values[0]
+		max = values[0]
+		minMonth = monthlySummaries[0].Month
+		maxMonth = monthlySummaries[0].Month
+
+		for i, v := range values {
+			sum += v
+			if v < min {
+				min = v
+				minMonth = monthlySummaries[i].Month
+			}
+			if v > max {
+				max = v
+				maxMonth = monthlySummaries[i].Month
+			}
+		}
+		avg = sum / float64(len(values))
+	}
+
+	// Calculate number of months for period breakdown
+	numMonths := len(months)
+	if numMonths == 0 {
+		numMonths = 1
+	}
+
+	// Title based on type
+	titles := map[string]string{
+		"income":       "Total Income",
+		"expenses":     "Total Expenses",
+		"savings":      "Net Savings",
+		"savings-rate": "Savings Rate",
+	}
+
+	partialData := map[string]interface{}{
+		"Type":           kpiType,
+		"Title":          titles[kpiType],
+		"Monthly":        monthlySummaries,
+		"Total":          sum,
+		"Average":        avg,
+		"Min":            min,
+		"Max":            max,
+		"MinMonth":       minMonth,
+		"MaxMonth":       maxMonth,
+		"NumMonths":      numMonths,
+		"IsRate":         kpiType == "savings-rate",
+		"IsSavings":      kpiType == "savings",
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "kpi-detail", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleKPIExport(w http.ResponseWriter, r *http.Request) {
+	kpiType := chi.URLParam(r, "kpiType")
+
+	data, err := loader.LoadData()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	startDate, _ := time.Parse("2006-01-02", startStr)
+	endDate, _ := time.Parse("2006-01-02", endStr)
+
+	if startDate.IsZero() {
+		startDate = data.MinDate()
+	}
+	if endDate.IsZero() {
+		endDate = data.MaxDate()
+	}
+
+	filtered := data.FilterByDateRange(startDate, endDate)
+	income := filtered.FilterByType(models.Income)
+	outflows := filtered.FilterByType(models.Outflow)
+
+	monthlyIncome := income.GroupByMonth()
+	monthlyOutflows := outflows.GroupByMonth()
+
+	monthSet := make(map[string]bool)
+	for m := range monthlyIncome {
+		monthSet[m] = true
+	}
+	for m := range monthlyOutflows {
+		monthSet[m] = true
+	}
+
+	var months []string
+	for m := range monthSet {
+		months = append(months, m)
+	}
+	sort.Strings(months)
+
+	// Build CSV
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	// Write header based on type
+	switch kpiType {
+	case "income":
+		writer.Write([]string{"Month", "Income"})
+	case "expenses":
+		writer.Write([]string{"Month", "Expenses"})
+	case "savings":
+		writer.Write([]string{"Month", "Income", "Expenses", "Savings"})
+	case "savings-rate":
+		writer.Write([]string{"Month", "Income", "Expenses", "Savings", "Savings Rate %"})
+	}
+
+	for _, m := range months {
+		incAmt := 0.0
+		if inc, ok := monthlyIncome[m]; ok {
+			incAmt = inc.SumAmount()
+		}
+
+		expAmt := 0.0
+		if exp, ok := monthlyOutflows[m]; ok {
+			expAmt = exp.SumAbsAmount()
+		}
+
+		savings := incAmt - expAmt
+		rate := 0.0
+		if incAmt > 0 {
+			rate = (savings / incAmt) * 100
+		}
+
+		switch kpiType {
+		case "income":
+			writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt)})
+		case "expenses":
+			writer.Write([]string{m, fmt.Sprintf("%.2f", expAmt)})
+		case "savings":
+			writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings)})
+		case "savings-rate":
+			writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings), fmt.Sprintf("%.1f", rate)})
+		}
+	}
+
+	writer.Flush()
+
+	filename := fmt.Sprintf("%s_%s_to_%s.csv", kpiType, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	w.Write(buf.Bytes())
 }
 
 // detectAlerts finds unusual spending patterns

@@ -48,7 +48,8 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	}
 
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no CSV files found in %s", dl.CSVDirectory)
+		log.Printf("No CSV files found in %s - returning empty dataset", dl.CSVDirectory)
+		return models.NewTransactionSet(nil), nil
 	}
 
 	log.Printf("Found %d CSV files in %s", len(files), dl.CSVDirectory)
@@ -75,7 +76,8 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	}
 
 	if len(allTransactions) == 0 {
-		return nil, fmt.Errorf("no transactions loaded from CSV files")
+		log.Printf("No transactions loaded from CSV files - returning empty dataset")
+		return models.NewTransactionSet(nil), nil
 	}
 
 	// Preprocess: filter transfers, classify, deduplicate

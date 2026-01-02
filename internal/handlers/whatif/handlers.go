@@ -44,6 +44,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/expense/{id}/restore", handleWhatIfRestoreExpense)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
+	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
@@ -535,6 +536,30 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Re-run the full analysis which includes a fresh Monte Carlo simulation
 	calc := retirement.NewCalculator(settings)
 	analysis := calc.RunFullAnalysis()
 

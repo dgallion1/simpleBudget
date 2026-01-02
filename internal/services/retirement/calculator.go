@@ -3,6 +3,8 @@ package retirement
 import (
 	"fmt"
 	"math"
+	"math/rand"
+	"time"
 
 	"budget2/internal/models"
 )
@@ -641,11 +643,14 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 	totalDepletionYears := 0.0
 	depletionCount := 0
 
-	// Parameters for random variation (using simple uniform distribution)
+	// Parameters for random variation (using uniform distribution)
 	// Return: base +/- 4% range
 	// Inflation: base +/- 2% range
 	returnBase := c.Settings.InvestmentReturn
 	inflationBase := c.Settings.InflationRate
+
+	// Create a new random source seeded with current time for true randomness
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for i := 0; i < runs; i++ {
 		// Create varied settings
@@ -653,10 +658,9 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 		modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 		modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 
-		// Random variations using simple deterministic pseudo-random
-		// Use i as seed for reproducible results
-		returnVar := (float64((i*7919)%1000)/1000.0 - 0.5) * 8 // -4 to +4
-		inflationVar := (float64((i*6271)%1000)/1000.0 - 0.5) * 4 // -2 to +2
+		// Random variations: uniform distribution centered on base values
+		returnVar := (rng.Float64() - 0.5) * 8   // -4 to +4
+		inflationVar := (rng.Float64() - 0.5) * 4 // -2 to +2
 
 		modSettings.InvestmentReturn = math.Max(0, returnBase+returnVar)
 		modSettings.InflationRate = math.Max(0, inflationBase+inflationVar)

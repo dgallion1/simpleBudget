@@ -137,6 +137,11 @@
     <!-- Chart initialization script -->
     <script src="/static/js/charts.js"></script>
 
+    <!-- Page-specific scripts -->
+    {{if eq .ActiveTab "dashboard"}}
+    <script src="/static/js/dashboard.js"></script>
+    {{end}}
+
     <!-- HTMX configuration -->
     <script>
         // Configure HTMX

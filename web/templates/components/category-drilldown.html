@@ -1,0 +1,53 @@
+{{define "category-drilldown"}}
+<div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50" id="category-modal"
+    onclick="closeCategoryModal(event)">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
+        onclick="event.stopPropagation()">
+        <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Category}}</h3>
+            <button onclick="closeCategoryModal()" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+            </button>
+        </div>
+        <div class="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Total Spent</p>
+                    <p class="text-xl font-bold text-red-600 dark:text-red-400">{{formatMoney .Total}}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Transactions</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{.Count}}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Average</p>
+                    <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{formatMoney .AvgAmount}}</p>
+                </div>
+            </div>
+        </div>
+        <div class="overflow-y-auto max-h-[50vh]">
+            <table class="w-full">
+                <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
+                    <tr>
+                        <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Date</th>
+                        <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Description</th>
+                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Amount</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {{range .Transactions}}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="p-3 text-sm text-gray-600 dark:text-gray-400">{{formatDate .Date}}</td>
+                        <td class="p-3 text-sm text-gray-800 dark:text-gray-200">{{.Description}}</td>
+                        <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">{{formatMoney (abs .Amount)}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}

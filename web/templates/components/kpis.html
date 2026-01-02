@@ -1,0 +1,113 @@
+{{define "kpis"}}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Total Income -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('income')">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Income</p>
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney .Metrics.TotalIncome}}</p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p
+                    class="text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{formatPercent .PeriodComparison.IncomeChange}}%
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 bg-green-100 dark:bg-green-900/50 rounded-full">
+                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                    </path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#22c55e">
+        </div>
+    </div>
+
+    <!-- Total Expenses -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Expenses</p>
+                <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p
+                    class="text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{formatPercent .PeriodComparison.ExpensesChange}}%
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 bg-red-100 dark:bg-red-900/50 rounded-full">
+                <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z">
+                    </path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}"
+            data-color="#ef4444"></div>
+    </div>
+
+    <!-- Net Savings -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('savings')">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Net Savings</p>
+                <p class="text-2xl font-bold {{colorClass .Metrics.NetSavings}}">{{formatMoney .Metrics.NetSavings}}</p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p
+                    class="text-sm {{if ge .PeriodComparison.SavingsChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{formatPercent .PeriodComparison.SavingsChange}}%
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 {{if isNonNegative .Metrics.NetSavings}}bg-green-100 dark:bg-green-900/50{{else}}bg-red-100 dark:bg-red-900/50{{end}} rounded-full">
+                <svg class="w-6 h-6 {{if isNonNegative .Metrics.NetSavings}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}"
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                    </path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-savings" class="h-10 mt-2" data-values="{{toJSON .Metrics.SavingsTrend}}"
+            data-color="#6366f1"></div>
+    </div>
+
+    <!-- Savings Rate -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('savings-rate')">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Savings Rate</p>
+                <p
+                    class="text-2xl font-bold {{if ge .Metrics.SavingsRate 20.0}}text-green-600 dark:text-green-400{{else if ge .Metrics.SavingsRate 10.0}}text-yellow-600 dark:text-yellow-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{printf "%.1f" .Metrics.SavingsRate}}%
+                </p>
+                {{if .PeriodComparison}}
+                {{if .PeriodComparison.HasData}}
+                <p
+                    class="text-sm {{if ge .PeriodComparison.SavingsRateChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                    {{printf "%+.1f" .PeriodComparison.SavingsRateChange}}pp
+                </p>
+                {{end}}
+                {{end}}
+            </div>
+            <div class="p-3 bg-indigo-100 dark:bg-indigo-900/50 rounded-full">
+                <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                </svg>
+            </div>
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">{{.Metrics.TransactionCount}} transactions</p>
+    </div>
+</div>
+{{end}}

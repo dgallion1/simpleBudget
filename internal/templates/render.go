@@ -2,6 +2,7 @@ package templates
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -543,23 +544,11 @@ func dict(values ...interface{}) map[string]interface{} {
 }
 
 func jsonMarshal(v interface{}) template.JS {
-	// Simple JSON encoding for template use
-	switch val := v.(type) {
-	case []float64:
-		parts := make([]string, len(val))
-		for i, f := range val {
-			parts[i] = fmt.Sprintf("%.2f", f)
-		}
-		return template.JS("[" + strings.Join(parts, ",") + "]")
-	case []string:
-		parts := make([]string, len(val))
-		for i, s := range val {
-			parts[i] = fmt.Sprintf(`"%s"`, s)
-		}
-		return template.JS("[" + strings.Join(parts, ",") + "]")
-	default:
+	data, err := json.Marshal(v)
+	if err != nil {
 		return template.JS("null")
 	}
+	return template.JS(data)
 }
 
 func safeHTML(s string) template.HTML {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"budget2/internal/models"
 )
@@ -12,6 +13,7 @@ import (
 type SettingsManager struct {
 	settingsDir string
 	filename    string
+	mu          sync.RWMutex
 }
 
 // NewSettingsManager creates a new settings manager
@@ -29,6 +31,9 @@ func (sm *SettingsManager) filepath() string {
 
 // Load reads settings from disk, returning defaults if file doesn't exist
 func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
 	// Ensure settings directory exists
 	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return nil, err
@@ -77,6 +82,13 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 
 // Save writes settings to disk
 func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	return sm.saveInternal(settings)
+}
+
+func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	// Ensure settings directory exists
 	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return err
@@ -101,7 +113,7 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 
 	settings.IncomeSources = append(settings.IncomeSources, source)
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -126,7 +138,7 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 	}
 	settings.IncomeSources = filtered
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -151,7 +163,7 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 	}
 	settings.RemovedIncomeSources = filtered
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -179,7 +191,7 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear, endYear int,
 		}
 	}
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -195,7 +207,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 
 	settings.ExpenseSources = append(settings.ExpenseSources, source)
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -218,7 +230,7 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int
 		}
 	}
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -243,7 +255,7 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 	}
 	settings.ExpenseSources = filtered
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -268,7 +280,7 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 	}
 	settings.RemovedExpenseSources = filtered
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 
@@ -317,7 +329,7 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 		settings.ProjectionYears = v
 	}
 
-	if err := sm.Save(settings); err != nil {
+	if err := sm.saveInternal(settings); err != nil {
 		return nil, err
 	}
 

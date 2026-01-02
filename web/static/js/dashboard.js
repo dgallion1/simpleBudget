@@ -79,15 +79,23 @@ function setPreset(preset) {
     startInput.value = start.toISOString().split('T')[0];
     endInput.value = end.toISOString().split('T')[0];
 
-    // Explicitly refresh KPIs
+    // Build query params
     const params = new URLSearchParams(new FormData(form)).toString();
+
+    // Update KPIs
     htmx.ajax('GET', '/dashboard/kpis?' + params, {
         target: '#kpis-container',
         swap: 'innerHTML'
     });
 
-    // Explicitly refresh charts by triggering the change event they listen to
-    htmx.trigger(form, 'change');
+    // Update each chart
+    const charts = ['monthly', 'category', 'cashflow', 'merchants', 'weekly', 'cumulative'];
+    charts.forEach(function(chart) {
+        htmx.ajax('GET', '/dashboard/charts/data/' + chart + '?' + params, {
+            target: '#chart-' + chart,
+            swap: 'none'
+        });
+    });
 }
 
 // Handle chart data responses

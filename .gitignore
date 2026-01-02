@@ -1,5 +1,6 @@
 # Binary
 budget2
+tmp/
 
 # Data files (user-specific)
 data/*.csv

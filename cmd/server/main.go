@@ -532,11 +532,11 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
  	if renderer != nil {
  		if appendRows {
  			renderer.RenderPartial(w, "transaction-rows", partialData)
- 			// Also render summary stats for OOB update
- 			renderer.RenderPartial(w, "summary-stats", partialData)
  		} else {
  			renderer.RenderPartial(w, "transactions-table", partialData)
  		}
+ 		// Always render summary stats for OOB update when filters change
+ 		renderer.RenderPartial(w, "summary-stats", partialData)
  	} else {
  		w.Header().Set("Content-Type", "application/json")
  		json.NewEncoder(w).Encode(partialData)

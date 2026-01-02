@@ -1,4 +1,4 @@
-# Budget2
+# SimpleBudget
 
 A personal finance dashboard and retirement planning tool built with Go, HTMX, and Plotly.js.
 

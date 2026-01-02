@@ -61,15 +61,15 @@
                     </div>
                     <!-- Quick Date Range Shortcuts -->
                     <div class="flex items-end mt-6">
-                        <div class="flex gap-1">
-                            <button type="button" onclick="setDateRange(3)"
-                                class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
-                            <button type="button" onclick="setDateRange(6)"
-                                class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">6M</button>
-                            <button type="button" onclick="setDateRange(12)"
-                                class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
-                            <button type="button" onclick="setDateRange(0)"
-                                class="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
+                        <div class="flex gap-1" id="date-range-buttons">
+                            <button type="button" onclick="setDateRange(3)" data-months="3"
+                                class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
+                            <button type="button" onclick="setDateRange(6)" data-months="6"
+                                class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">6M</button>
+                            <button type="button" onclick="setDateRange(12)" data-months="12"
+                                class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
+                            <button type="button" onclick="setDateRange(0)" data-months="0"
+                                class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
                         </div>
                     </div>
                 </div>
@@ -157,6 +157,9 @@
                 }
             });
         }
+
+        // Highlight the correct date range button on page load
+        detectSelectedDateRange();
     });
 
     // Set date range (months back from max date, or 0 for all)
@@ -189,8 +192,60 @@
             endInput.value = maxDate;
         }
 
+        // Update button selection state
+        updateDateRangeButtons(months);
+
         pageInput.value = '1';
         htmx.trigger(form, 'submit');
+    }
+
+    // Update which date range button appears selected
+    function updateDateRangeButtons(selectedMonths) {
+        const buttons = document.querySelectorAll('.date-range-btn');
+        buttons.forEach(btn => {
+            const btnMonths = parseInt(btn.getAttribute('data-months'));
+            if (btnMonths === selectedMonths) {
+                // Selected state - indigo highlight
+                btn.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+                btn.classList.add('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
+            } else {
+                // Default state
+                btn.classList.remove('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
+                btn.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            }
+        });
+    }
+
+    // Detect which date range button should be selected based on current dates
+    function detectSelectedDateRange() {
+        const form = document.getElementById('explorer-filter-form');
+        const startInput = form.querySelector('input[name="start"]');
+        const endInput = form.querySelector('input[name="end"]');
+
+        const minDate = startInput.getAttribute('min');
+        const maxDate = endInput.getAttribute('max');
+        const startDate = startInput.value;
+        const endDate = endInput.value;
+
+        // If end date isn't max, no button matches
+        if (endDate !== maxDate) return;
+
+        // Check if "All" is selected
+        if (startDate === minDate) {
+            updateDateRangeButtons(0);
+            return;
+        }
+
+        // Check for 3, 6, 12 month ranges
+        const end = new Date(maxDate);
+        for (const months of [3, 6, 12]) {
+            const expectedStart = new Date(end);
+            expectedStart.setMonth(expectedStart.getMonth() - months);
+            if (startDate === expectedStart.toISOString().split('T')[0]) {
+                updateDateRangeButtons(months);
+                return;
+            }
+        }
     }
 
     // Filter by clicking on a description

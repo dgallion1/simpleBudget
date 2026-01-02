@@ -28,6 +28,7 @@ import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
 	"budget2/internal/templates"
+	"budget2/testdata"
 	"budget2/web"
 )
 
@@ -145,6 +146,8 @@ func SetupRouter() chi.Router {
 	// Backup and restore routes
 	r.Get("/backup", handleBackup)
 	r.Post("/restore", handleRestore)
+	r.Post("/restore/test-data", handleRestoreTestData)
+	r.Delete("/data/all", handleDeleteAllData)
 
 	return r
 }
@@ -329,6 +332,112 @@ func handleRestore(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Restore complete: %d files restored", restoredCount)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Restored %d files", restoredCount)
+}
+
+func handleRestoreTestData(w http.ResponseWriter, r *http.Request) {
+	// Read the embedded test backup
+	content, err := testdata.TestBackupFS.ReadFile("test_backup.zip")
+	if err != nil {
+		http.Error(w, "Test backup not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Open zip archive from memory
+	zipReader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		http.Error(w, "Invalid embedded ZIP file", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract all CSV files from the zip
+	restoredCount := 0
+	for _, zipFile := range zipReader.File {
+		// Skip directories
+		if zipFile.FileInfo().IsDir() {
+			continue
+		}
+
+		// Only extract CSV files
+		if !strings.HasSuffix(strings.ToLower(zipFile.Name), ".csv") {
+			continue
+		}
+
+		// Sanitize filename - use only the base name to prevent path traversal
+		baseName := filepath.Base(zipFile.Name)
+		if strings.Contains(baseName, "..") {
+			continue
+		}
+
+		// Open the file in the zip
+		rc, err := zipFile.Open()
+		if err != nil {
+			log.Printf("Error opening zip entry %s: %v", zipFile.Name, err)
+			continue
+		}
+
+		// Create destination file
+		destPath := filepath.Join(cfg.DataDirectory, baseName)
+		dst, err := os.Create(destPath)
+		if err != nil {
+			rc.Close()
+			log.Printf("Error creating file %s: %v", destPath, err)
+			continue
+		}
+
+		// Copy content
+		_, err = io.Copy(dst, rc)
+		rc.Close()
+		dst.Close()
+
+		if err != nil {
+			log.Printf("Error writing file %s: %v", destPath, err)
+			continue
+		}
+
+		restoredCount++
+		log.Printf("Restored file from test data: %s", baseName)
+	}
+
+	if restoredCount == 0 {
+		http.Error(w, "No CSV files found in test backup", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Test data restore complete: %d files restored", restoredCount)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Restored %d test files", restoredCount)
+}
+
+func handleDeleteAllData(w http.ResponseWriter, r *http.Request) {
+	// Read data directory
+	entries, err := os.ReadDir(cfg.DataDirectory)
+	if err != nil {
+		http.Error(w, "Error reading data directory", http.StatusInternalServerError)
+		return
+	}
+
+	deletedCount := 0
+	for _, entry := range entries {
+		// Only delete CSV files, skip directories and other files
+		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".csv") {
+			continue
+		}
+
+		filePath := filepath.Join(cfg.DataDirectory, entry.Name())
+		if err := os.Remove(filePath); err != nil {
+			log.Printf("Error deleting file %s: %v", filePath, err)
+			continue
+		}
+		deletedCount++
+		log.Printf("Deleted file: %s", entry.Name())
+	}
+
+	log.Printf("Deleted %d data files", deletedCount)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Deleted %d files", deletedCount)
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {

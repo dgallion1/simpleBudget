@@ -93,6 +93,7 @@ func main() {
 	r.Post("/whatif/calculate", handleWhatIfCalculate)
 	r.Post("/whatif/settings", handleWhatIfSettings)
 	r.Post("/whatif/income", handleWhatIfAddIncome)
+	r.Put("/whatif/income/{id}", handleWhatIfUpdateIncome)
 	r.Delete("/whatif/income/{id}", handleWhatIfDeleteIncome)
 	r.Post("/whatif/income/{id}/restore", handleWhatIfRestoreIncome)
 	r.Post("/whatif/expense", handleWhatIfAddExpense)
@@ -971,6 +972,44 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settings, err := retirementMgr.AddIncomeSource(source)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
+	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
+
+	colaRate := 0.0
+	if cola {
+		colaRate = 0.02 // 2% COLA
+	}
+
+	settings, err := retirementMgr.UpdateIncomeSource(id, endYear, colaRate)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

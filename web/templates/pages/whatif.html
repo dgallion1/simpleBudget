@@ -137,21 +137,37 @@
 
             <div id="income-sources-list" class="space-y-2 mb-4">
                 {{range .Settings.IncomeSources}}
-                <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
-                    <div>
-                        <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-                        <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
-                        {{if gt .StartMonth 0}}<span class="text-xs text-gray-400 dark:text-gray-500">(starts yr {{div .StartMonth
-                            12}})</span>{{end}}
+                <form hx-put="/whatif/income/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+                    class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+                            <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                            {{if gt .StartMonth 0}}<span class="text-xs text-gray-400 dark:text-gray-500">(starts yr {{div .StartMonth 12}})</span>{{end}}
+                        </div>
+                        <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
+                            class="text-red-500 hover:text-red-700">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
                     </div>
-                    <button hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
-                        class="text-red-500 hover:text-red-700">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
+                    <div class="flex items-center gap-4 text-xs">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                            Ends yr:
+                            <input type="number" name="end_year" min="0" max="50"
+                                value="{{if .EndMonth}}{{div .EndMonth 12}}{{else}}0{{end}}"
+                                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
+                                title="Year income ends (0 = never)">
+                        </label>
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                            <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
+                                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
+                            COLA (2%/yr)
+                        </label>
+                    </div>
+                </form>
                 {{else}}
                 <p class="text-sm text-gray-500 dark:text-gray-400 italic">No income sources added</p>
                 {{end}}
@@ -289,98 +305,118 @@
 {{end}}
 
 {{define "whatif-results"}}
-<!-- OOB updates for settings -->
-<input type="range" id="monthly_living_expenses_input" name="monthly_living_expenses"
-    value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
-    min="0" max="20000" step="100"
-    class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-    oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()"
-    hx-swap-oob="true">
-<span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-400" hx-swap-oob="true">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+<!-- OOB updates (hidden container - only used for HTMX swaps) -->
+<template>
+    <input type="range" id="monthly_living_expenses_input" name="monthly_living_expenses"
+        value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
+        min="0" max="20000" step="100"
+        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()"
+        hx-swap-oob="true">
+    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-400" hx-swap-oob="true">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+</template>
 
-<!-- OOB updates for lists -->
-<div id="income-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
-    {{range .Settings.IncomeSources}}
-    <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
-        <div>
-            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-            <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
-            {{if gt .StartMonth 0}}<span class="text-xs text-gray-400 dark:text-gray-500">(starts yr {{div .StartMonth 12}})</span>{{end}}
-        </div>
-        <button hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results" class="text-red-500 hover:text-red-700">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-        </button>
+<!-- OOB updates for lists (hidden on initial render, processed by HTMX) -->
+<template>
+    <div id="income-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
+        {{range .Settings.IncomeSources}}
+        <form hx-put="/whatif/income/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+            class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+                    <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                    {{if gt .StartMonth 0}}<span class="text-xs text-gray-400 dark:text-gray-500">(starts yr {{div .StartMonth 12}})</span>{{end}}
+                </div>
+                <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
+                    class="text-red-500 hover:text-red-700">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="flex items-center gap-4 text-xs">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                    Ends yr:
+                    <input type="number" name="end_year" min="0" max="50"
+                        value="{{if .EndMonth}}{{div .EndMonth 12}}{{else}}0{{end}}"
+                        class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
+                        title="Year income ends (0 = never)">
+                </label>
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                    <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
+                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
+                    COLA (2%/yr)
+                </label>
+            </div>
+        </form>
+        {{else}}
+        <p class="text-sm text-gray-500 dark:text-gray-400 italic">No income sources added</p>
+        {{end}}
     </div>
-    {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400 italic">No income sources added</p>
-    {{end}}
-</div>
 
-<!-- OOB update for removed income sources -->
-<div id="removed-income-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
-    {{if .Settings.RemovedIncomeSources}}
-    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
-    {{range .Settings.RemovedIncomeSources}}
-    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
-        <div>
-            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
-            <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+    <div id="removed-income-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
+        {{if .Settings.RemovedIncomeSources}}
+        <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+        {{range .Settings.RemovedIncomeSources}}
+        <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+            <div>
+                <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+                <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+            </div>
+            <button hx-post="/whatif/income/{{.ID}}/restore" hx-target="#whatif-results"
+                class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                </svg>
+            </button>
         </div>
-        <button hx-post="/whatif/income/{{.ID}}/restore" hx-target="#whatif-results"
-            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
-            </svg>
-        </button>
+        {{end}}
+        {{end}}
     </div>
-    {{end}}
-    {{end}}
-</div>
+    <div id="expense-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
+        {{range .Settings.ExpenseSources}}
+        <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+            <div>
+                <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+                <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                {{if gt .StartYear 0}}<span class="text-xs text-gray-400 dark:text-gray-500">(yr {{.StartYear}}-{{if gt .EndYear
+                    0}}{{.EndYear}}{{else}}end{{end}})</span>{{end}}
+            </div>
+            <button hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results" class="text-red-500 hover:text-red-700">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        {{else}}
+        <p class="text-sm text-gray-500 dark:text-gray-400 italic">No additional expenses added</p>
+        {{end}}
+    </div>
 
-<div id="expense-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
-    {{range .Settings.ExpenseSources}}
-    <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
-        <div>
-            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-            <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
-            {{if gt .StartYear 0}}<span class="text-xs text-gray-400 dark:text-gray-500">(yr {{.StartYear}}-{{if gt .EndYear
-                0}}{{.EndYear}}{{else}}end{{end}})</span>{{end}}
+    <div id="removed-expense-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
+        {{if .Settings.RemovedExpenseSources}}
+        <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+        {{range .Settings.RemovedExpenseSources}}
+        <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+            <div>
+                <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+                <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+            </div>
+            <button hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
+                class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                </svg>
+            </button>
         </div>
-        <button hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results" class="text-red-500 hover:text-red-700">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-        </button>
+        {{end}}
+        {{end}}
     </div>
-    {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400 italic">No additional expenses added</p>
-    {{end}}
-</div>
-
-<!-- OOB update for removed expense sources -->
-<div id="removed-expense-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
-    {{if .Settings.RemovedExpenseSources}}
-    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
-    {{range .Settings.RemovedExpenseSources}}
-    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
-        <div>
-            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
-            <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
-        </div>
-        <button hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
-            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
-            </svg>
-        </button>
-    </div>
-    {{end}}
-    {{end}}
-</div>
+</template>
 
 <!-- Budget Fit Analysis -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">

@@ -158,6 +158,33 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 	return settings, nil
 }
 
+// UpdateIncomeSource updates an existing income source by ID
+func (sm *SettingsManager) UpdateIncomeSource(id string, endYear int, colaRate float64) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range settings.IncomeSources {
+		if settings.IncomeSources[i].ID == id {
+			settings.IncomeSources[i].COLARate = colaRate
+			if endYear > 0 {
+				endMonth := endYear * 12
+				settings.IncomeSources[i].EndMonth = &endMonth
+			} else {
+				settings.IncomeSources[i].EndMonth = nil
+			}
+			break
+		}
+	}
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
 // AddExpenseSource adds a new expense source and saves
 func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*models.WhatIfSettings, error) {
 	settings, err := sm.Load()

@@ -434,6 +434,21 @@ func toFloat(v interface{}) float64 {
 		return val
 	case float32:
 		return float64(val)
+	case *int:
+		if val != nil {
+			return float64(*val)
+		}
+		return 0
+	case *int64:
+		if val != nil {
+			return float64(*val)
+		}
+		return 0
+	case *float64:
+		if val != nil {
+			return *val
+		}
+		return 0
 	default:
 		return 0
 	}

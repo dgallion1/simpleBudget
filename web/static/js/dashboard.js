@@ -79,6 +79,18 @@ function setPreset(preset) {
     startInput.value = start.toISOString().split('T')[0];
     endInput.value = end.toISOString().split('T')[0];
 
+    // Update button selection state with inline styles (more reliable than CSS classes)
+    document.querySelectorAll('.preset-btn').forEach(function(btn) {
+        const isSelected = btn.dataset.preset === preset;
+        if (isSelected) {
+            btn.style.backgroundColor = 'rgb(79, 70, 229)';
+            btn.style.color = 'white';
+        } else {
+            btn.style.backgroundColor = '';
+            btn.style.color = '';
+        }
+    });
+
     // Build query params
     const params = new URLSearchParams(new FormData(form)).toString();
 
@@ -97,6 +109,18 @@ function setPreset(preset) {
         });
     });
 }
+
+// Clear preset selection when date inputs are manually changed
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#date-filter-form input[type="date"]').forEach(function(input) {
+        input.addEventListener('input', function() {
+            document.querySelectorAll('.preset-btn').forEach(function(btn) {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            });
+        });
+    });
+});
 
 // Handle chart data responses
 document.body.addEventListener('htmx:afterRequest', function (evt) {

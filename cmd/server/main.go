@@ -1331,17 +1331,26 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	totalExpenses := outflows.SumAbsAmount()
 	settings.MonthlyLivingExpenses = totalExpenses / months
 
-	// Calculate and set average monthly income
+	// Calculate and set average monthly income - merge instead of replace
 	totalIncome := income.SumAmount()
 	avgMonthlyIncome := totalIncome / months
 	if avgMonthlyIncome > 0 {
-		settings.IncomeSources = []models.IncomeSource{
-			{
+		// Find and update existing dashboard-income, or add it
+		found := false
+		for i := range settings.IncomeSources {
+			if settings.IncomeSources[i].ID == "dashboard-income" {
+				settings.IncomeSources[i].Amount = avgMonthlyIncome
+				found = true
+				break
+			}
+		}
+		if !found {
+			settings.IncomeSources = append(settings.IncomeSources, models.IncomeSource{
 				ID:     "dashboard-income",
 				Name:   "Current Income",
 				Amount: avgMonthlyIncome,
 				Type:   models.IncomeFixed,
-			},
+			})
 		}
 	}
 

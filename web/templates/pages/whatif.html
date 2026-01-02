@@ -139,7 +139,7 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Inflation Rate (%)</label>
                     <input type="range" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
-                        min="0" max="10" step="0.5"
+                        min="0" max="10" step="0.1"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
                     <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.InflationRate}}%</span>

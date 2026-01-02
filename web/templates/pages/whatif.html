@@ -31,55 +31,48 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
-                    <div class="mt-1 relative rounded-md shadow-sm">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span class="text-gray-500 dark:text-gray-400 sm:text-sm">$</span>
-                        </div>
-                        <input type="number" name="portfolio_value" value="{{- printf " %.0f" .Settings.PortfolioValue
-                            -}}"
-                            class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md"
-                            step="1000" min="0">
-                    </div>
+                    <input type="range" name="portfolio_value" value="{{printf "%.0f" .Settings.PortfolioValue}}"
+                        min="0" max="5000000" step="10000"
+                        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">${{formatNumber .Settings.PortfolioValue}}</span>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
-                    <div class="mt-1 relative rounded-md shadow-sm">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span class="text-gray-500 dark:text-gray-400 sm:text-sm">$</span>
-                        </div>
-                        <input type="number" id="monthly_living_expenses_input" name="monthly_living_expenses"
-                            value="{{- printf " %.0f" .Settings.MonthlyLivingExpenses -}}"
-                            class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md"
-                            step="100" min="0">
-                    </div>
+                    <input type="range" id="monthly_living_expenses_input" name="monthly_living_expenses"
+                        value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
+                        min="0" max="20000" step="100"
+                        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-400">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Healthcare</label>
-                    <div class="mt-1 relative rounded-md shadow-sm">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span class="text-gray-500 dark:text-gray-400 sm:text-sm">$</span>
-                        </div>
-                        <input type="number" name="monthly_healthcare" value="{{- printf " %.0f"
-                            .Settings.MonthlyHealthcare -}}"
-                            class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md"
-                            step="50" min="0">
-                    </div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Future Healthcare Costs</label>
+                    <input type="range" name="monthly_healthcare" value="{{printf "%.0f" .Settings.MonthlyHealthcare}}"
+                        min="0" max="3000" step="50"
+                        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString() + '/mo'">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">${{formatNumber .Settings.MonthlyHealthcare}}/mo</span>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Healthcare Starts In (Years)</label>
-                    <input type="number" name="healthcare_start_years" value="{{- .Settings.HealthcareStartYears -}}"
-                        class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full py-2 px-3 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md"
-                        min="0" max="30">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Healthcare Starts In</label>
+                    <input type="range" name="healthcare_start_years" value="{{.Settings.HealthcareStartYears}}"
+                        min="0" max="30" step="1"
+                        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value + ' years'">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{.Settings.HealthcareStartYears}} years</span>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
-                    <input type="number" name="projection_years" value="{{- .Settings.ProjectionYears -}}"
-                        class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full py-2 px-3 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md"
-                        min="5" max="50">
+                    <input type="range" name="projection_years" value="{{.Settings.ProjectionYears}}"
+                        min="5" max="50" step="1"
+                        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value + ' years'">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{.Settings.ProjectionYears}} years</span>
                 </div>
             </form>
         </div>
@@ -93,8 +86,8 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Max Withdrawal Rate (%)</label>
-                    <input type="range" name="max_withdrawal_rate" value="{{- printf " %.1f" .Settings.MaxWithdrawalRate
-                        -}}" min="1" max="10" step="0.5"
+                    <input type="range" name="max_withdrawal_rate" value="{{printf "%.1f" .Settings.MaxWithdrawalRate}}"
+                        min="1" max="10" step="0.5"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
                     <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.MaxWithdrawalRate}}%</span>
@@ -102,7 +95,7 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Inflation Rate (%)</label>
-                    <input type="range" name="inflation_rate" value="{{- printf " %.1f" .Settings.InflationRate -}}"
+                    <input type="range" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
                         min="0" max="10" step="0.5"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
@@ -111,8 +104,8 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Healthcare Inflation (%)</label>
-                    <input type="range" name="healthcare_inflation" value="{{- printf " %.1f"
-                        .Settings.HealthcareInflation -}}" min="0" max="15" step="0.5"
+                    <input type="range" name="healthcare_inflation" value="{{printf "%.1f" .Settings.HealthcareInflation}}"
+                        min="0" max="15" step="0.5"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
                     <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.HealthcareInflation}}%</span>
@@ -120,8 +113,8 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Spending Decline Rate (%)</label>
-                    <input type="range" name="spending_decline_rate" value="{{- printf " %.1f"
-                        .Settings.SpendingDeclineRate -}}" min="0" max="5" step="0.25"
+                    <input type="range" name="spending_decline_rate" value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
+                        min="0" max="5" step="0.25"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
                     <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
@@ -129,8 +122,8 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Investment Return (%)</label>
-                    <input type="range" name="investment_return" value="{{- printf " %.1f" .Settings.InvestmentReturn
-                        -}}" min="0" max="15" step="0.5"
+                    <input type="range" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
+                        min="0" max="15" step="0.5"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
                     <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.InvestmentReturn}}%</span>
@@ -163,6 +156,27 @@
                 <p class="text-sm text-gray-500 dark:text-gray-400 italic">No income sources added</p>
                 {{end}}
             </div>
+
+            {{if .Settings.RemovedIncomeSources}}
+            <div id="removed-income-sources" class="space-y-1 mb-4">
+                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+                {{range .Settings.RemovedIncomeSources}}
+                <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+                    <div>
+                        <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+                        <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+                    </div>
+                    <button hx-post="/whatif/income/{{.ID}}/restore" hx-target="#whatif-results"
+                        class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                        </svg>
+                    </button>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
 
             <form hx-post="/whatif/income" hx-target="#whatif-results" hx-on::after-request="this.reset()"
                 class="space-y-2 border-t dark:border-gray-700 pt-3">
@@ -217,6 +231,27 @@
                 {{end}}
             </div>
 
+            {{if .Settings.RemovedExpenseSources}}
+            <div id="removed-expense-sources" class="space-y-1 mb-4">
+                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+                {{range .Settings.RemovedExpenseSources}}
+                <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+                    <div>
+                        <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+                        <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+                    </div>
+                    <button hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
+                        class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                        </svg>
+                    </button>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+
             <form hx-post="/whatif/expense" hx-target="#whatif-results" hx-on::after-request="this.reset()"
                 class="space-y-2 border-t dark:border-gray-700 pt-3">
                 <div class="grid grid-cols-2 gap-2">
@@ -255,10 +290,13 @@
 
 {{define "whatif-results"}}
 <!-- OOB updates for settings -->
-<input type="number" id="monthly_living_expenses_input" name="monthly_living_expenses" value="{{- printf " %.0f"
-    .Settings.MonthlyLivingExpenses -}}"
-    class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md"
-    step="100" min="0" hx-swap-oob="true">
+<input type="range" id="monthly_living_expenses_input" name="monthly_living_expenses"
+    value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
+    min="0" max="20000" step="100"
+    class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+    oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()"
+    hx-swap-oob="true">
+<span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-400" hx-swap-oob="true">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
 
 <!-- OOB updates for lists -->
 <div id="income-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
@@ -280,6 +318,28 @@
     {{end}}
 </div>
 
+<!-- OOB update for removed income sources -->
+<div id="removed-income-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
+    {{if .Settings.RemovedIncomeSources}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+    {{range .Settings.RemovedIncomeSources}}
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+        <div>
+            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button hx-post="/whatif/income/{{.ID}}/restore" hx-target="#whatif-results"
+            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+            </svg>
+        </button>
+    </div>
+    {{end}}
+    {{end}}
+</div>
+
 <div id="expense-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
     {{range .Settings.ExpenseSources}}
     <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
@@ -297,6 +357,28 @@
     </div>
     {{else}}
     <p class="text-sm text-gray-500 dark:text-gray-400 italic">No additional expenses added</p>
+    {{end}}
+</div>
+
+<!-- OOB update for removed expense sources -->
+<div id="removed-expense-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
+    {{if .Settings.RemovedExpenseSources}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+    {{range .Settings.RemovedExpenseSources}}
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+        <div>
+            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
+            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+            </svg>
+        </button>
+    </div>
+    {{end}}
     {{end}}
 </div>
 

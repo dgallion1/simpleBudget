@@ -24,6 +24,10 @@ type WhatIfSettings struct {
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
 	ExpenseSources []ExpenseSource `json:"expense_sources"`
+
+	// Recently Removed (for restore functionality)
+	RemovedIncomeSources  []IncomeSource  `json:"removed_income_sources,omitempty"`
+	RemovedExpenseSources []ExpenseSource `json:"removed_expense_sources,omitempty"`
 }
 
 // DefaultWhatIfSettings returns sensible defaults for retirement planning
@@ -42,6 +46,8 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		ProjectionYears:       30,
 		IncomeSources:         []IncomeSource{},
 		ExpenseSources:        []ExpenseSource{},
+		RemovedIncomeSources:  []IncomeSource{},
+		RemovedExpenseSources: []ExpenseSource{},
 	}
 }
 

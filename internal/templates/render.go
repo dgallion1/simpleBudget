@@ -39,6 +39,7 @@ func New(templateDir string, debug bool) (*Renderer, error) {
 func getFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"formatMoney":    formatMoney,
+		"formatNumber":   formatNumber,
 		"formatPercent":  formatPercent,
 		"formatDate":     formatDate,
 		"formatDateTime": formatDateTime,
@@ -349,6 +350,28 @@ func formatMoney(v float64) string {
 		return "-$" + result.String()
 	}
 	return "$" + result.String()
+}
+
+func formatNumber(v float64) string {
+	negative := v < 0
+	if negative {
+		v = -v
+	}
+	formatted := fmt.Sprintf("%.0f", v)
+
+	// Add thousands separators
+	var result strings.Builder
+	for i, c := range formatted {
+		if i > 0 && (len(formatted)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+
+	if negative {
+		return "-" + result.String()
+	}
+	return result.String()
 }
 
 func formatPercent(v float64) string {

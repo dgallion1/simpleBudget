@@ -65,6 +65,12 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 	if settings.ExpenseSources == nil {
 		settings.ExpenseSources = []models.ExpenseSource{}
 	}
+	if settings.RemovedIncomeSources == nil {
+		settings.RemovedIncomeSources = []models.IncomeSource{}
+	}
+	if settings.RemovedExpenseSources == nil {
+		settings.RemovedExpenseSources = []models.ExpenseSource{}
+	}
 
 	return &settings, nil
 }
@@ -102,7 +108,7 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 	return settings, nil
 }
 
-// RemoveIncomeSource removes an income source by ID and saves
+// RemoveIncomeSource moves an income source to the removed list by ID and saves
 func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings, error) {
 	settings, err := sm.Load()
 	if err != nil {
@@ -113,9 +119,37 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 	for _, source := range settings.IncomeSources {
 		if source.ID != id {
 			filtered = append(filtered, source)
+		} else {
+			// Move to removed list
+			settings.RemovedIncomeSources = append(settings.RemovedIncomeSources, source)
 		}
 	}
 	settings.IncomeSources = filtered
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RestoreIncomeSource moves an income source back from the removed list
+func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.IncomeSource, 0, len(settings.RemovedIncomeSources))
+	for _, source := range settings.RemovedIncomeSources {
+		if source.ID != id {
+			filtered = append(filtered, source)
+		} else {
+			// Restore to active list
+			settings.IncomeSources = append(settings.IncomeSources, source)
+		}
+	}
+	settings.RemovedIncomeSources = filtered
 
 	if err := sm.Save(settings); err != nil {
 		return nil, err
@@ -140,7 +174,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 	return settings, nil
 }
 
-// RemoveExpenseSource removes an expense source by ID and saves
+// RemoveExpenseSource moves an expense source to the removed list by ID and saves
 func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSettings, error) {
 	settings, err := sm.Load()
 	if err != nil {
@@ -151,9 +185,37 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 	for _, source := range settings.ExpenseSources {
 		if source.ID != id {
 			filtered = append(filtered, source)
+		} else {
+			// Move to removed list
+			settings.RemovedExpenseSources = append(settings.RemovedExpenseSources, source)
 		}
 	}
 	settings.ExpenseSources = filtered
+
+	if err := sm.Save(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RestoreExpenseSource moves an expense source back from the removed list
+func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.ExpenseSource, 0, len(settings.RemovedExpenseSources))
+	for _, source := range settings.RemovedExpenseSources {
+		if source.ID != id {
+			filtered = append(filtered, source)
+		} else {
+			// Restore to active list
+			settings.ExpenseSources = append(settings.ExpenseSources, source)
+		}
+	}
+	settings.RemovedExpenseSources = filtered
 
 	if err := sm.Save(settings); err != nil {
 		return nil, err

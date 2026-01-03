@@ -5,6 +5,14 @@ BINARY := budget2
 PORT := 8080
 GO_VERSION := 1.25.0
 
+# Version information
+VERSION := 1.0.0
+BUILD_TIME := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+# Ldflags: -s strips symbol table, -w strips DWARF debug info
+# Also inject version and build time
+LDFLAGS := -ldflags="-s -w -X budget2/internal/version.Version=$(VERSION) -X budget2/internal/version.BuildTime=$(BUILD_TIME)"
+
 # Detect OS and architecture for platform-specific commands
 ifeq ($(OS),Windows_NT)
     BINARY_EXT := .exe
@@ -114,7 +122,7 @@ ifdef NEED_GO_INSTALL
 endif
 
 build: check-go
-	$(GO) build -o $(BINARY)$(BINARY_EXT) ./cmd/server
+	$(GO) build $(LDFLAGS) -o $(BINARY)$(BINARY_EXT) ./cmd/server
 
 run: build
 	./$(BINARY)$(BINARY_EXT)
@@ -187,9 +195,6 @@ validate: check-go
 # Validate with verbose output
 validate-v: check-go
 	$(GO) run ./cmd/validate -url http://localhost:$(PORT) -v
-
-# Size-optimized ldflags: -s strips symbol table, -w strips DWARF debug info
-LDFLAGS := -ldflags="-s -w"
 
 # Build for all platforms
 build-all: build-linux build-windows build-darwin

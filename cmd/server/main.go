@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -21,6 +22,7 @@ import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
 	"budget2/internal/templates"
+	"budget2/internal/version"
 	"budget2/web"
 )
 
@@ -106,6 +108,7 @@ func SetupRouter() chi.Router {
 
 	// Health and control endpoints
 	r.Get("/api/health", backup.HandleHealth)
+	r.Get("/api/version", handleVersion)
 	r.Get("/killme", backup.HandleKillServer)
 
 	// File manager page
@@ -121,6 +124,13 @@ func SetupRouter() chi.Router {
 }
 
 func main() {
+	// Log version information
+	versionInfo := version.Get()
+	log.Printf("SimpleBudget %s", versionInfo.String())
+	if warning := versionInfo.Check(); warning != "" {
+		log.Printf("%s", warning)
+	}
+
 	// Load configuration
 	c := config.Load()
 	log.Printf("Starting Budget Dashboard on %s", c.ListenAddr)
@@ -140,6 +150,12 @@ func main() {
 	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)
 	log.Fatal(http.ListenAndServe(cfg.ListenAddr, r))
+}
+
+// handleVersion returns version information as JSON
+func handleVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(version.Get())
 }
 
 // killPreviousInstance attempts to shut down any existing server on the same address

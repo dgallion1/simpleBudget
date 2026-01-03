@@ -356,14 +356,16 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
 	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
 	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
+	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
 
 	source := models.ExpenseSource{
-		ID:        uuid.New().String(),
-		Name:      name,
-		Amount:    amount,
-		StartYear: startYear,
-		EndYear:   endYear,
-		Inflation: inflation,
+		ID:            uuid.New().String(),
+		Name:          name,
+		Amount:        amount,
+		StartYear:     startYear,
+		EndYear:       endYear,
+		Inflation:     inflation,
+		Discretionary: discretionary,
 	}
 
 	settings, err := retirementMgr.AddExpenseSource(source)
@@ -399,8 +401,9 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
 	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
 	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
+	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
 
-	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation)
+	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

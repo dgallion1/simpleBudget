@@ -55,12 +55,13 @@ func (is *IncomeSource) IsActive(month int) bool {
 
 // ExpenseSource represents a planned expense for retirement planning
 type ExpenseSource struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Amount    float64 `json:"amount"`    // Monthly amount
-	StartYear int     `json:"start_year"` // Year offset from now (0 = now)
-	EndYear   int     `json:"end_year"`   // 0 = perpetual
-	Inflation bool    `json:"inflation"`  // Whether to adjust for inflation
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Amount        float64 `json:"amount"`        // Monthly amount
+	StartYear     int     `json:"start_year"`    // Year offset from now (0 = now)
+	EndYear       int     `json:"end_year"`      // 0 = perpetual
+	Inflation     bool    `json:"inflation"`     // Whether to adjust for inflation
+	Discretionary bool    `json:"discretionary"` // Can be reduced during market downturns
 }
 
 // GetAdjustedAmount returns expense for a specific month with optional inflation

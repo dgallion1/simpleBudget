@@ -311,6 +311,15 @@ type SequenceRiskBreakdown struct {
 	BufferAmount      float64 `json:"buffer_amount"`       // Dollar amount of recommended buffer
 	AnnualExpenses    float64 `json:"annual_expenses"`     // Annual expenses used for buffer calculation
 	AdjustedSpending  float64 `json:"adjusted_spending"`   // Monthly spending if buffer is set aside from portfolio
+
+	// Adaptive spending analysis (discretionary expense flexibility)
+	HasDiscretionary          bool    `json:"has_discretionary"`            // Whether user has discretionary expenses
+	MonthlyDiscretionary      float64 `json:"monthly_discretionary"`        // Monthly discretionary expenses
+	MonthlyEssential          float64 `json:"monthly_essential"`            // Monthly essential (non-discretionary) expenses
+	DiscretionaryCutPercent   float64 `json:"discretionary_cut_percent"`    // % to cut during crashes (e.g., 40)
+	EarlyCrashSurvivalAdapted float64 `json:"early_crash_survival_adapted"` // Survival with spending adaptation
+	AdaptationBoost           float64 `json:"adaptation_boost"`             // Improvement from adaptation (percentage points)
+	AdaptationRationale       string  `json:"adaptation_rationale"`         // Explanation of adaptation benefit
 }
 
 // MonteCarloStats contains aggregated simulation statistics

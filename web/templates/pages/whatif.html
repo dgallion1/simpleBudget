@@ -635,7 +635,7 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="flex items-center gap-4 text-xs">
+                    <div class="flex items-center gap-4 text-xs flex-wrap">
                         <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
                             Starts yr:
                             <input type="number" name="start_year" min="0" max="50"
@@ -654,6 +654,11 @@
                             <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
                                 class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
                             Inflation
+                        </label>
+                        <label class="flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Can be reduced during market downturns">
+                            <input type="checkbox" name="discretionary" {{if .Discretionary}}checked{{end}}
+                                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500">
+                            Discretionary
                         </label>
                     </div>
                 </form>
@@ -703,12 +708,18 @@
                             class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
                     </div>
                 </div>
-                <div class="flex items-center justify-between">
-                    <label class="flex items-center text-sm dark:text-gray-300">
-                        <input type="checkbox" name="inflation" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 mr-2"
-                            checked>
-                        Adjust for Inflation
-                    </label>
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center text-sm dark:text-gray-300">
+                            <input type="checkbox" name="inflation" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 mr-2"
+                                checked>
+                            Inflation
+                        </label>
+                        <label class="flex items-center text-sm text-amber-600 dark:text-amber-400" title="Can be reduced during market downturns">
+                            <input type="checkbox" name="discretionary" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500 mr-2">
+                            Discretionary
+                        </label>
+                    </div>
                     <button type="submit"
                         class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
                         Add Expense
@@ -820,7 +831,7 @@
                     </svg>
                 </button>
             </div>
-            <div class="flex items-center gap-4 text-xs">
+            <div class="flex items-center gap-4 text-xs flex-wrap">
                 <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
                     Starts yr:
                     <input type="number" name="start_year" min="0" max="50"
@@ -839,6 +850,11 @@
                     <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
                         class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
                     Inflation
+                </label>
+                <label class="flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Can be reduced during market downturns">
+                    <input type="checkbox" name="discretionary" {{if .Discretionary}}checked{{end}}
+                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500">
+                    Discretionary
                 </label>
             </div>
         </form>
@@ -1609,6 +1625,61 @@
                 </div>
             </div>
         </div>
+
+        <!-- Adaptive Spending Analysis -->
+        {{if .HasDiscretionary}}
+        <div class="mt-4 p-3 bg-green-50 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
+            <div class="flex items-start gap-2">
+                <svg class="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                </svg>
+                <div class="flex-1">
+                    <div class="text-sm font-semibold text-green-800 dark:text-green-300">
+                        Spending Flexibility Analysis
+                    </div>
+                    <div class="text-xs text-green-600 dark:text-green-400 mt-1">
+                        You have {{formatMoney .MonthlyDiscretionary}}/mo in discretionary expenses that can be reduced during market downturns.
+                    </div>
+
+                    <div class="mt-3 pt-3 border-t border-green-200 dark:border-green-700 space-y-2">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-green-700 dark:text-green-300">Essential expenses:</span>
+                            <span class="font-bold text-green-800 dark:text-green-200">{{formatMoney .MonthlyEssential}}/mo</span>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-green-700 dark:text-green-300">Discretionary expenses:</span>
+                            <span class="font-bold text-amber-600 dark:text-amber-400">{{formatMoney .MonthlyDiscretionary}}/mo</span>
+                        </div>
+
+                        {{if gt .AdaptationBoost 0.0}}
+                        <div class="mt-2 p-2 bg-green-100 dark:bg-green-800/40 rounded text-xs">
+                            <div class="text-green-700 dark:text-green-300 font-medium mb-2">If you cut discretionary by {{printf "%.0f" .DiscretionaryCutPercent}}% during crashes:</div>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-green-600 dark:text-green-400">Early crash survival (without adaptation):</span>
+                                <span class="font-bold text-red-600 dark:text-red-400">{{printf "%.0f" .EarlyCrashSurvival}}%</span>
+                            </div>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-green-600 dark:text-green-400">Early crash survival (with adaptation):</span>
+                                <span class="font-bold text-green-600 dark:text-green-400">{{printf "%.0f" .EarlyCrashSurvivalAdapted}}%</span>
+                            </div>
+                            <div class="flex items-center justify-between pt-2 border-t border-green-200 dark:border-green-600">
+                                <span class="text-green-700 dark:text-green-300 font-medium">Survival improvement:</span>
+                                <span class="font-bold text-green-700 dark:text-green-200">+{{printf "%.0f" .AdaptationBoost}}%</span>
+                            </div>
+                        </div>
+                        <div class="text-xs text-green-600 dark:text-green-400 mt-2 italic">
+                            {{.AdaptationRationale}}
+                        </div>
+                        {{else if gt .EarlyCrashSurvivalAdapted 0.0}}
+                        <div class="text-xs text-green-600 dark:text-green-400 mt-2">
+                            {{.AdaptationRationale}}
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{end}}
         {{end}}
     </div>
     {{else if gt .Analysis.MonteCarlo.Stats.SequenceRiskImpact 5.0}}

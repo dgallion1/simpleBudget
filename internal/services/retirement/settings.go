@@ -240,7 +240,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 }
 
 // UpdateExpenseSource updates an existing expense source by ID
-func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int, inflation bool) (*models.WhatIfSettings, error) {
+func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
 	settings, err := sm.Load()
 	if err != nil {
 		return nil, err
@@ -251,6 +251,7 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int
 			settings.ExpenseSources[i].StartYear = startYear
 			settings.ExpenseSources[i].EndYear = endYear
 			settings.ExpenseSources[i].Inflation = inflation
+			settings.ExpenseSources[i].Discretionary = discretionary
 			break
 		}
 	}

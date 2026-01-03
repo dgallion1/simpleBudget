@@ -141,6 +141,48 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	return livingExpenses + healthcareExpenses
 }
 
+// ExpenseBreakdown holds categorized expenses for adaptive spending analysis
+type ExpenseBreakdown struct {
+	Essential     float64 // Non-discretionary expenses (cannot be reduced)
+	Discretionary float64 // Discretionary expenses (can be reduced during downturns)
+	Total         float64 // Total = Essential + Discretionary
+}
+
+// CalculateExpenseBreakdown separates expenses into discretionary and essential
+func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
+	s := c.Settings
+
+	// Base living expenses are treated as essential (conservative approach)
+	livingExpenses := s.MonthlyLivingExpenses
+	if month > 0 {
+		years := month / 12
+		netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
+		livingExpenses = s.MonthlyLivingExpenses * math.Pow(1+netInflation, float64(years))
+	}
+
+	// Healthcare is always essential
+	healthcareExpenses := s.GetTotalHealthcareCost(month)
+
+	essential := livingExpenses + healthcareExpenses
+	discretionary := 0.0
+
+	// Categorize expense sources
+	for _, source := range s.ExpenseSources {
+		amount := source.GetAdjustedAmount(month, s.InflationRate)
+		if source.Discretionary {
+			discretionary += amount
+		} else {
+			essential += amount
+		}
+	}
+
+	return ExpenseBreakdown{
+		Essential:     essential,
+		Discretionary: discretionary,
+		Total:         essential + discretionary,
+	}
+}
+
 // RunProjection runs a full retirement projection with RMD integration
 func (c *Calculator) RunProjection() *models.ProjectionResult {
 	s := c.Settings
@@ -855,6 +897,11 @@ type MonteCarloConfig struct {
 
 	// Longevity
 	LongevityVariation  int     // Years +/- to vary projection length
+
+	// Adaptive spending (reducing discretionary expenses during crashes)
+	AdaptiveSpending          bool    // Enable adaptive spending during crashes
+	DiscretionaryCutPercent   float64 // % to cut discretionary spending during crash (e.g., 40 for 40%)
+	AdaptationRecoveryYears   int     // Years to maintain reduced spending after crash
 }
 
 // DefaultMonteCarloConfig returns realistic simulation parameters
@@ -971,6 +1018,52 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 	annualExpenses := c.CalculateTotalExpenses(0) * 12
 	stats.SequenceRisk = c.calculateSequenceRiskBreakdown(results, annualExpenses, c.Settings.PortfolioValue)
 
+	// Run adaptive spending simulations if discretionary expenses exist
+	if stats.SequenceRisk != nil && stats.SequenceRisk.HasDiscretionary {
+		adaptiveConfig := *config
+		adaptiveConfig.AdaptiveSpending = true
+		adaptiveConfig.DiscretionaryCutPercent = 40 // Cut 40% of discretionary during crashes
+		adaptiveConfig.AdaptationRecoveryYears = 3  // Maintain reduced spending for 3 years after crash
+
+		// Run adaptive simulations (smaller sample for performance)
+		adaptiveRuns := runs / 2
+		adaptiveResults := make([]models.MonteCarloResult, adaptiveRuns)
+		adaptiveRng := rand.New(rand.NewSource(42)) // Fixed seed for reproducibility
+
+		for i := 0; i < adaptiveRuns; i++ {
+			adaptiveResults[i] = c.runSingleMonteCarloSimulation(adaptiveRng, &adaptiveConfig)
+		}
+
+		// Calculate adapted early crash survival rate
+		var adaptedEarlySurvived, adaptedEarlyTotal int
+		for _, r := range adaptiveResults {
+			if r.EarlyCrashes > 0 {
+				adaptedEarlyTotal++
+				if r.Survives {
+					adaptedEarlySurvived++
+				}
+			}
+		}
+
+		if adaptedEarlyTotal > 0 {
+			adaptedSurvival := float64(adaptedEarlySurvived) / float64(adaptedEarlyTotal) * 100
+			stats.SequenceRisk.EarlyCrashSurvivalAdapted = adaptedSurvival
+			stats.SequenceRisk.AdaptationBoost = adaptedSurvival - stats.SequenceRisk.EarlyCrashSurvival
+			stats.SequenceRisk.DiscretionaryCutPercent = adaptiveConfig.DiscretionaryCutPercent
+
+			// Generate rationale based on improvement
+			if stats.SequenceRisk.AdaptationBoost >= 15 {
+				stats.SequenceRisk.AdaptationRationale = "Significant protection: cutting discretionary spending during crashes substantially improves survival"
+			} else if stats.SequenceRisk.AdaptationBoost >= 5 {
+				stats.SequenceRisk.AdaptationRationale = "Moderate benefit: reducing discretionary expenses during downturns provides meaningful protection"
+			} else if stats.SequenceRisk.AdaptationBoost > 0 {
+				stats.SequenceRisk.AdaptationRationale = "Slight improvement: spending flexibility provides some buffer against early crashes"
+			} else {
+				stats.SequenceRisk.AdaptationRationale = "Limited impact: your plan is resilient even without spending cuts"
+			}
+		}
+	}
+
 	// Create distribution buckets
 	distribution := c.createDistributionBuckets(balances)
 
@@ -1013,6 +1106,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	// Healthcare cost variation multiplier (updated annually)
 	healthcareVariation := 1.0
 
+	// Adaptive spending: track when we're in reduced-spending mode
+	adaptationEndYear := -1 // Year when adaptation ends (-1 = not adapting)
+
 	// Generate year-by-year returns upfront for sequence of returns
 	yearlyReturns := c.generateYearlyReturns(rng, config, projectionYears, crashTiming, &lastCrashYear)
 
@@ -1049,9 +1145,21 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		activeHealthcare := s.GetTotalHealthcareCost(m) * healthcareVariation
 		totalExpenses := currentLivingExpenses + activeHealthcare
 
-		// Add expense sources
+		// Check if we should enter adaptation mode (crash detected this year)
+		if config.AdaptiveSpending && yearlyReturns[currentYear] < -15 {
+			// Crash year: start adapting spending
+			adaptationEndYear = currentYear + config.AdaptationRecoveryYears
+		}
+		inAdaptationMode := config.AdaptiveSpending && currentYear <= adaptationEndYear
+
+		// Add expense sources (with adaptive spending reduction if applicable)
 		for _, source := range s.ExpenseSources {
-			totalExpenses += source.GetAdjustedAmount(m, s.InflationRate)
+			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
+			// Reduce discretionary expenses during adaptation
+			if inAdaptationMode && source.Discretionary {
+				expenseAmount *= (1 - config.DiscretionaryCutPercent/100)
+			}
+			totalExpenses += expenseAmount
 		}
 
 		// Apply spending shock (checked monthly, but represents annual probability)
@@ -1356,6 +1464,10 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 		adjustedSpending = (remainingPortfolio * 0.04) / 12 // 4% annual withdrawal rate, monthly
 	}
 
+	// Calculate expense breakdown for adaptive spending analysis
+	expenseBreakdown := c.CalculateExpenseBreakdown(0)
+	hasDiscretionary := expenseBreakdown.Discretionary > 0
+
 	return &models.SequenceRiskBreakdown{
 		NoCrashSurvival:    noCrashSurvival,
 		EarlyCrashSurvival: earlyCrashSurvival,
@@ -1378,6 +1490,11 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 		BufferAmount:      bufferAmount,
 		AnnualExpenses:    annualExpenses,
 		AdjustedSpending:  adjustedSpending,
+
+		// Adaptive spending fields
+		HasDiscretionary:     hasDiscretionary,
+		MonthlyDiscretionary: expenseBreakdown.Discretionary,
+		MonthlyEssential:     expenseBreakdown.Essential,
 	}
 }
 

@@ -47,7 +47,7 @@
                         min="0" max="20000000" step="100000"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">${{formatNumber .Settings.PortfolioValue}}</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-300">${{formatNumber .Settings.PortfolioValue}}</span>
                 </div>
                 <script>
                 function updatePortfolioRange(rangeStr) {
@@ -88,7 +88,7 @@
                         min="0" max="20000" step="100"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString(); if(typeof updateSpendingPreview === 'function') updateSpendingPreview();">
-                    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-400">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+                    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-300">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
                 </div>
 
                 <div>
@@ -97,7 +97,7 @@
                         min="5" max="50" step="1"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + ' years'">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">{{.Settings.ProjectionYears}} years</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-300">{{.Settings.ProjectionYears}} years</span>
                 </div>
             </form>
         </div>
@@ -145,7 +145,7 @@
                     </div>
                     <div class="flex justify-end gap-2">
                         <button type="button" onclick="toggleAddHealthcare()"
-                            class="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+                            class="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-200">
                             Cancel
                         </button>
                         <button type="submit"
@@ -165,7 +165,7 @@
                     <div class="flex justify-between items-start mb-2">
                         <div>
                             <span class="font-medium text-gray-800 dark:text-gray-200">{{.Name}}</span>
-                            <span class="text-sm text-gray-500 dark:text-gray-400 ml-2">Age {{.CurrentAge}}</span>
+                            <span class="text-sm text-gray-500 dark:text-gray-300 ml-2">Age {{.CurrentAge}}</span>
                             {{if eq .CurrentCoverage "medicare"}}
                             <span class="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">Medicare</span>
                             {{else if eq .CurrentCoverage "aca"}}
@@ -180,7 +180,7 @@
                     <form hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms">
                         <div class="grid grid-cols-2 gap-2 text-sm">
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">Monthly Cost</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">Monthly Cost</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
                                         min="0" max="3000" step="50"
@@ -191,7 +191,7 @@
                             </div>
                             {{if eq .CurrentCoverage "employer"}}
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">Coverage Ends In</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">Coverage Ends In</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
                                         min="0" max="20" step="1"
@@ -202,7 +202,7 @@
                             </div>
                             {{else if ne .CurrentCoverage "medicare"}}
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">Pre-Medicare Inflation</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">Pre-Medicare Inflation</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
                                         min="0" max="15" step="0.5"
@@ -217,7 +217,7 @@
                         {{if gt .EmployerCoverageYears 0}}
                         <div class="grid grid-cols-2 gap-2 text-sm mt-2">
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">ACA Cost After Employer</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">ACA Cost After Employer</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
                                         min="0" max="3000" step="50"
@@ -227,7 +227,7 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">ACA Inflation</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">ACA Inflation</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
                                         min="0" max="15" step="0.5"
@@ -242,7 +242,7 @@
                         {{if ne .CurrentCoverage "medicare"}}
                         <div class="grid grid-cols-2 gap-2 text-sm mt-2">
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">Medicare Cost (at 65)</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">Medicare Cost (at 65)</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
                                         min="0" max="2000" step="50"
@@ -252,7 +252,7 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">Post-Medicare Inflation</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">Post-Medicare Inflation</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
                                         min="0" max="10" step="0.5"
@@ -265,7 +265,7 @@
                         {{else}}
                         <div class="text-sm mt-2">
                             <div>
-                                <label class="block text-xs text-gray-500 dark:text-gray-400">Medicare Inflation</label>
+                                <label class="block text-xs text-gray-500 dark:text-gray-300">Medicare Inflation</label>
                                 <div class="flex items-center gap-2">
                                     <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
                                         min="0" max="10" step="0.5"
@@ -279,7 +279,7 @@
                         {{if and (eq .CurrentCoverage "employer") (gt .EmployerCoverageYears 0)}}
                         <!-- Visual Timeline: Employer → (ACA?) → Medicare -->
                         <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-300 mb-1">Coverage Timeline</div>
                             {{if ge (add .CurrentAge .EmployerCoverageYears) .MedicareEligibleAge}}
                             <!-- Employer → Medicare (already Medicare eligible when employer ends) -->
                             <div class="flex items-center text-xs">
@@ -327,7 +327,7 @@
                         {{else if and (ne .CurrentCoverage "medicare") (gt (sub .MedicareEligibleAge .CurrentAge) 0)}}
                         <!-- Visual Timeline: ACA → Medicare -->
                         <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-300 mb-1">Coverage Timeline</div>
                             <div class="flex items-center text-xs">
                                 <div class="flex-1 relative">
                                     <div class="flex">
@@ -354,7 +354,7 @@
                 <!-- Total Healthcare Cost Summary -->
                 <div class="pt-2 border-t border-gray-200 dark:border-gray-600">
                     <div class="flex justify-between text-sm">
-                        <span class="text-gray-600 dark:text-gray-400">Total Monthly Healthcare:</span>
+                        <span class="text-gray-600 dark:text-gray-300">Total Monthly Healthcare:</span>
                         <span class="font-medium text-gray-800 dark:text-gray-200">
                             ${{formatNumber (.Settings.GetTotalHealthcareCost 0)}}/mo
                         </span>
@@ -362,7 +362,7 @@
                 </div>
             </div>
             {{else}}
-            <p class="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+            <p class="text-sm text-gray-500 dark:text-gray-300 text-center py-4">
                 No healthcare costs configured. Click "Add Person" to add healthcare costs.
             </p>
             {{end}}
@@ -385,32 +385,32 @@
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Current Age</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Current Age</label>
                         <input type="number" name="current_age" value="{{.Settings.CurrentAge}}"
                             min="18" max="100" step="1"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tax-Deferred (%)</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Tax-Deferred (%)</label>
                         <input type="number" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
                             min="0" max="100" step="5"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        <span class="text-xs text-gray-400 dark:text-gray-500">401k/IRA portion</span>
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <span class="text-xs text-gray-400 dark:text-gray-400">401k/IRA portion</span>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Inflation Rate (%)</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
                     <input type="range" id="inflation-rate-slider" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
                         min="0" max="10" step="0.1"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'; updateSpendingPreview();">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.InflationRate}}%</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-300">{{printf "%.1f" .Settings.InflationRate}}%</span>
                 </div>
 
                 <div>
                     <div class="flex items-center justify-between">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Spending Decline Rate (%)</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Decline Rate (%)</label>
                         <button type="button" onclick="toggleSpendingPreview()"
                             class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                             <span id="spending-preview-toggle-text">Show Impact</span>
@@ -420,26 +420,26 @@
                         min="0" max="5" step="0.25"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'; updateSpendingPreview();">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-300">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
 
                     <!-- Spending Decline Preview Panel -->
                     <div id="spending-preview-panel" class="hidden mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs">
-                        <p class="text-gray-600 dark:text-gray-300 mb-2">
+                        <p class="text-gray-600 dark:text-gray-200 mb-2">
                             <strong>Compound decline:</strong> Spending = Base × (1 + net%)^years
                         </p>
-                        <p class="text-gray-500 dark:text-gray-400 mb-2">
-                            Net rate: <span id="net-rate-display" class="font-medium text-gray-700 dark:text-gray-200">2.0%</span>/year
-                            <span class="text-gray-400 dark:text-gray-500">(inflation - decline)</span>
+                        <p class="text-gray-500 dark:text-gray-300 mb-2">
+                            Net rate: <span id="net-rate-display" class="font-medium text-gray-700 dark:text-gray-100">2.0%</span>/year
+                            <span class="text-gray-400 dark:text-gray-400">(inflation - decline)</span>
                         </p>
                         <table class="w-full text-xs">
                             <thead>
-                                <tr class="text-gray-500 dark:text-gray-400">
+                                <tr class="text-gray-500 dark:text-gray-300">
                                     <th class="text-left py-1">Year</th>
                                     <th class="text-right py-1">Spending</th>
                                     <th class="text-right py-1">vs Today</th>
                                 </tr>
                             </thead>
-                            <tbody id="spending-preview-body" class="text-gray-700 dark:text-gray-300">
+                            <tbody id="spending-preview-body" class="text-gray-700 dark:text-gray-200">
                             </tbody>
                         </table>
                     </div>
@@ -502,12 +502,12 @@
                 </script>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Investment Return (%)</label>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return (%)</label>
                     <input type="range" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
                         min="0" max="15" step="0.5"
                         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">{{printf "%.1f" .Settings.InvestmentReturn}}%</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-300">{{printf "%.1f" .Settings.InvestmentReturn}}%</span>
                 </div>
             </form>
         </div>
@@ -523,7 +523,7 @@
                     <div class="flex items-center justify-between mb-2">
                         <div>
                             <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-                            <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                            <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
                         </div>
                         <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
                             class="text-red-500 hover:text-red-700">
@@ -534,21 +534,21 @@
                         </button>
                     </div>
                     <div class="flex items-center gap-4 text-xs">
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                             Starts yr:
                             <input type="number" name="start_year" min="0" max="50"
                                 value="{{div .StartMonth 12}}"
                                 class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                                 title="Year income starts (0 = now)">
                         </label>
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                             Ends yr:
                             <input type="number" name="end_year" min="0" max="50"
                                 value="{{if .EndMonth}}{{div .EndMonth 12}}{{else}}0{{end}}"
                                 class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                                 title="Year income ends (0 = never)">
                         </label>
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                             <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
                                 class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
                             COLA (2%/yr)
@@ -556,7 +556,7 @@
                     </div>
                 </form>
                 {{else}}
-                <p class="text-sm text-gray-500 dark:text-gray-400 italic">No income sources added</p>
+                <p class="text-sm text-gray-500 dark:text-gray-300 italic">No income sources added</p>
                 {{end}}
             </div>
 
@@ -591,12 +591,12 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Starts yr (0=now)</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
                         <input type="number" name="start_year"
                             class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ends yr (0=never)</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Ends yr (0=never)</label>
                         <input type="number" name="end_year"
                             class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
                     </div>
@@ -625,7 +625,7 @@
                     <div class="flex items-center justify-between mb-2">
                         <div>
                             <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-                            <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                            <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
                         </div>
                         <button type="button" hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results"
                             class="text-red-500 hover:text-red-700">
@@ -636,21 +636,21 @@
                         </button>
                     </div>
                     <div class="flex items-center gap-4 text-xs flex-wrap">
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                             Starts yr:
                             <input type="number" name="start_year" min="0" max="50"
                                 value="{{.StartYear}}"
                                 class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                                 title="Year expense starts (0 = now)">
                         </label>
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                             Ends yr:
                             <input type="number" name="end_year" min="0" max="50"
                                 value="{{.EndYear}}"
                                 class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                                 title="Year expense ends (0 = never)">
                         </label>
-                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                             <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
                                 class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
                             Inflation
@@ -663,7 +663,7 @@
                     </div>
                 </form>
                 {{else}}
-                <p class="text-sm text-gray-500 dark:text-gray-400 italic">No additional expenses added</p>
+                <p class="text-sm text-gray-500 dark:text-gray-300 italic">No additional expenses added</p>
                 {{end}}
             </div>
 
@@ -698,12 +698,12 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Starts yr (0=now)</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
                         <input type="number" name="start_year"
                             class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ends yr (0=never)</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Ends yr (0=never)</label>
                         <input type="number" name="end_year"
                             class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
                     </div>
@@ -745,7 +745,7 @@
         class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()"
         hx-swap-oob="true">
-    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-400" hx-swap-oob="true">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-300" hx-swap-oob="true">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
 </template>
 
 <!-- OOB updates for lists (hidden on initial render, processed by HTMX) -->
@@ -757,7 +757,7 @@
             <div class="flex items-center justify-between mb-2">
                 <div>
                     <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-                    <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                    <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
                 </div>
                 <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
                     class="text-red-500 hover:text-red-700">
@@ -768,21 +768,21 @@
                 </button>
             </div>
             <div class="flex items-center gap-4 text-xs">
-                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                     Starts yr:
                     <input type="number" name="start_year" min="0" max="50"
                         value="{{div .StartMonth 12}}"
                         class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                         title="Year income starts (0 = now)">
                 </label>
-                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                     Ends yr:
                     <input type="number" name="end_year" min="0" max="50"
                         value="{{if .EndMonth}}{{div .EndMonth 12}}{{else}}0{{end}}"
                         class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                         title="Year income ends (0 = never)">
                 </label>
-                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                     <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
                         class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
                     COLA (2%/yr)
@@ -790,7 +790,7 @@
             </div>
         </form>
         {{else}}
-        <p class="text-sm text-gray-500 dark:text-gray-400 italic">No income sources added</p>
+        <p class="text-sm text-gray-500 dark:text-gray-300 italic">No income sources added</p>
         {{end}}
     </div>
 
@@ -821,7 +821,7 @@
             <div class="flex items-center justify-between mb-2">
                 <div>
                     <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-                    <span class="text-gray-500 dark:text-gray-400">- ${{printf "%.0f" .Amount}}/mo</span>
+                    <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
                 </div>
                 <button type="button" hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results"
                     class="text-red-500 hover:text-red-700">
@@ -832,21 +832,21 @@
                 </button>
             </div>
             <div class="flex items-center gap-4 text-xs flex-wrap">
-                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                     Starts yr:
                     <input type="number" name="start_year" min="0" max="50"
                         value="{{.StartYear}}"
                         class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                         title="Year expense starts (0 = now)">
                 </label>
-                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                     Ends yr:
                     <input type="number" name="end_year" min="0" max="50"
                         value="{{.EndYear}}"
                         class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                         title="Year expense ends (0 = never)">
                 </label>
-                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
                     <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
                         class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
                     Inflation
@@ -859,7 +859,7 @@
             </div>
         </form>
         {{else}}
-        <p class="text-sm text-gray-500 dark:text-gray-400 italic">No additional expenses added</p>
+        <p class="text-sm text-gray-500 dark:text-gray-300 italic">No additional expenses added</p>
         {{end}}
     </div>
 
@@ -892,7 +892,7 @@
             <div class="flex justify-between items-start mb-2">
                 <div>
                     <span class="font-medium text-gray-800 dark:text-gray-200">{{.Name}}</span>
-                    <span class="text-sm text-gray-500 dark:text-gray-400 ml-2">Age {{.CurrentAge}}</span>
+                    <span class="text-sm text-gray-500 dark:text-gray-300 ml-2">Age {{.CurrentAge}}</span>
                     {{if eq .CurrentCoverage "medicare"}}
                     <span class="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">Medicare</span>
                     {{else if eq .CurrentCoverage "aca"}}
@@ -907,7 +907,7 @@
             <form hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms">
                 <div class="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Monthly Cost</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">Monthly Cost</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
                                 min="0" max="3000" step="50"
@@ -918,7 +918,7 @@
                     </div>
                     {{if eq .CurrentCoverage "employer"}}
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Coverage Ends In</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">Coverage Ends In</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
                                 min="0" max="20" step="1"
@@ -929,7 +929,7 @@
                     </div>
                     {{else if ne .CurrentCoverage "medicare"}}
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Pre-Medicare Inflation</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">Pre-Medicare Inflation</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
                                 min="0" max="15" step="0.5"
@@ -944,7 +944,7 @@
                 {{if gt .EmployerCoverageYears 0}}
                 <div class="grid grid-cols-2 gap-2 text-sm mt-2">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">ACA Cost After Employer</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">ACA Cost After Employer</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
                                 min="0" max="3000" step="50"
@@ -954,7 +954,7 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">ACA Inflation</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">ACA Inflation</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
                                 min="0" max="15" step="0.5"
@@ -969,7 +969,7 @@
                 {{if ne .CurrentCoverage "medicare"}}
                 <div class="grid grid-cols-2 gap-2 text-sm mt-2">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Medicare Cost (at 65)</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">Medicare Cost (at 65)</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
                                 min="0" max="2000" step="50"
@@ -979,7 +979,7 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Post-Medicare Inflation</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">Post-Medicare Inflation</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
                                 min="0" max="10" step="0.5"
@@ -992,7 +992,7 @@
                 {{else}}
                 <div class="text-sm mt-2">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Medicare Inflation</label>
+                        <label class="block text-xs text-gray-500 dark:text-gray-300">Medicare Inflation</label>
                         <div class="flex items-center gap-2">
                             <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
                                 min="0" max="10" step="0.5"
@@ -1006,7 +1006,7 @@
                 {{if and (eq .CurrentCoverage "employer") (gt .EmployerCoverageYears 0)}}
                 <!-- Visual Timeline: Employer → (ACA?) → Medicare -->
                 <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-300 mb-1">Coverage Timeline</div>
                     {{if ge (add .CurrentAge .EmployerCoverageYears) .MedicareEligibleAge}}
                     <!-- Employer → Medicare (already Medicare eligible when employer ends) -->
                     <div class="flex items-center text-xs">
@@ -1054,7 +1054,7 @@
                 {{else if and (ne .CurrentCoverage "medicare") (gt (sub .MedicareEligibleAge .CurrentAge) 0)}}
                 <!-- Visual Timeline: ACA → Medicare -->
                 <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-300 mb-1">Coverage Timeline</div>
                     <div class="flex items-center text-xs">
                         <div class="flex-1 relative">
                             <div class="flex">
@@ -1081,7 +1081,7 @@
         <!-- Total Healthcare Cost Summary -->
         <div class="pt-2 border-t border-gray-200 dark:border-gray-600">
             <div class="flex justify-between text-sm">
-                <span class="text-gray-600 dark:text-gray-400">Total Monthly Healthcare:</span>
+                <span class="text-gray-600 dark:text-gray-300">Total Monthly Healthcare:</span>
                 <span class="font-medium text-gray-800 dark:text-gray-200">
                     ${{formatNumber (.Settings.GetTotalHealthcareCost 0)}}/mo
                 </span>
@@ -1089,7 +1089,7 @@
         </div>
     </div>
     {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+    <p class="text-sm text-gray-500 dark:text-gray-300 text-center py-4">
         No healthcare costs configured. Click "Add Person" to add healthcare costs.
     </p>
     {{end}}
@@ -1109,16 +1109,16 @@
         <!-- Breakdown table -->
         <div class="mb-4 text-sm">
             <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-400">Monthly Expenses</span>
+                <span class="text-gray-600 dark:text-gray-300">Monthly Expenses</span>
                 <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
             </div>
             <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-400">Monthly Income</span>
+                <span class="text-gray-600 dark:text-gray-300">Monthly Income</span>
                 <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.MonthlyIncome}}</span>
             </div>
             {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
             <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-400">Required RMD</span>
+                <span class="text-gray-600 dark:text-gray-300">Required RMD</span>
                 <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
             </div>
             {{end}}
@@ -1126,16 +1126,16 @@
 
         <div class="grid grid-cols-2 gap-4 text-center">
             <div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Monthly Gap</p>
+                <p class="text-sm text-gray-500 dark:text-gray-300">Monthly Gap</p>
                 <p
-                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.MonthlyGap 0.0}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.MonthlyGap 0.0}}text-gray-600 dark:text-gray-300{{else}}text-red-600 dark:text-red-400{{end}}">
                     {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}+{{formatMoney (abs
                     .Analysis.BudgetFit.MonthlyGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.MonthlyGap}}{{end}}
                 </p>
                 <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
             </div>
             <div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Required Rate</p>
+                <p class="text-sm text-gray-500 dark:text-gray-300">Required Rate</p>
                 <p
                     class="text-2xl font-bold {{if le .Analysis.BudgetFit.RequiredRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.RequiredRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
                     {{printf "%.1f" .Analysis.BudgetFit.RequiredRate}}%
@@ -1168,16 +1168,16 @@
         <!-- Breakdown table -->
         <div class="mb-4 text-sm">
             <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-400">Monthly Expenses</span>
+                <span class="text-gray-600 dark:text-gray-300">Monthly Expenses</span>
                 <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateExpenses}}</span>
             </div>
             <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-400">Monthly Income</span>
+                <span class="text-gray-600 dark:text-gray-300">Monthly Income</span>
                 <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateIncome}}</span>
             </div>
             {{if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
             <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-400">Estimated RMD</span>
+                <span class="text-gray-600 dark:text-gray-300">Estimated RMD</span>
                 <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}</span>
             </div>
             {{end}}
@@ -1185,16 +1185,16 @@
 
         <div class="grid grid-cols-2 gap-4 text-center">
             <div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Monthly Gap</p>
+                <p class="text-sm text-gray-500 dark:text-gray-300">Monthly Gap</p>
                 <p
-                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.SteadyStateGap 0.0}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.SteadyStateGap 0.0}}text-gray-600 dark:text-gray-300{{else}}text-red-600 dark:text-red-400{{end}}">
                     {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}+{{formatMoney (abs
                     .Analysis.BudgetFit.SteadyStateGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.SteadyStateGap}}{{end}}
                 </p>
                 <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
             </div>
             <div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Required Rate</p>
+                <p class="text-sm text-gray-500 dark:text-gray-300">Required Rate</p>
                 <p
                     class="text-2xl font-bold {{if le .Analysis.BudgetFit.SteadyStateRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.SteadyStateRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
                     {{printf "%.1f" .Analysis.BudgetFit.SteadyStateRate}}%
@@ -1202,7 +1202,7 @@
                 <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
             </div>
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+        <p class="text-xs text-gray-500 dark:text-gray-300 mt-2 text-center">
             Values shown in year-{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}} dollars (inflation-adjusted)
         </p>
     </div>
@@ -1214,25 +1214,25 @@
         <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">How RMD Affects Your Budget</h4>
         <div class="text-sm space-y-1">
             <div class="flex justify-between">
-                <span class="text-gray-500 dark:text-gray-400">Shortfall before RMD</span>
+                <span class="text-gray-500 dark:text-gray-300">Shortfall before RMD</span>
                 <span class="{{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
                     {{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}{{formatMoney .Analysis.BudgetFit.GapBeforeRMD}}{{else}}None (surplus of {{formatMoney (abs .Analysis.BudgetFit.GapBeforeRMD)}}){{end}}
                 </span>
             </div>
             {{if gt .Analysis.BudgetFit.RMDCoverage 0.0}}
             <div class="flex justify-between">
-                <span class="text-gray-500 dark:text-gray-400">RMD covers</span>
+                <span class="text-gray-500 dark:text-gray-300">RMD covers</span>
                 <span class="text-green-600 dark:text-green-400">{{formatMoney .Analysis.BudgetFit.RMDCoverage}}</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.ExcessRMD 0.0}}
             <div class="flex justify-between">
-                <span class="text-gray-500 dark:text-gray-400">Excess RMD</span>
+                <span class="text-gray-500 dark:text-gray-300">Excess RMD</span>
                 <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.ExcessRMD}}</span>
             </div>
             {{end}}
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+        <p class="text-xs text-gray-500 dark:text-gray-300 mt-2">
             {{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}
                 {{if gt .Analysis.BudgetFit.ExcessRMD 0.0}}
                     Your RMD fully covers the shortfall. The {{formatMoney .Analysis.BudgetFit.ExcessRMD}}/mo excess must still be withdrawn and taxed.
@@ -1247,7 +1247,7 @@
     {{else if and .Analysis.RMD (gt .Analysis.RMD.StartsInYears 0)}}
     <!-- RMD Preview for those not yet 73 -->
     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <p class="text-xs text-gray-500 dark:text-gray-400">
+        <p class="text-xs text-gray-500 dark:text-gray-300">
             RMDs will begin at age {{.Analysis.RMD.StartAge}} (in {{.Analysis.RMD.StartsInYears}} years) and may help cover this shortfall.
         </p>
     </div>
@@ -1262,9 +1262,9 @@
     <div class="grid grid-cols-2 gap-6 mb-4">
         <!-- Total Resources (left side) -->
         <div class="text-center">
-            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Total Resources</p>
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-300 mb-2">Total Resources</p>
             <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney (add .Settings.PortfolioValue .Analysis.PresentValue.PVIncome)}}</p>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-300 space-y-1">
                 <div class="flex justify-between px-2">
                     <span>Portfolio:</span>
                     <span>{{formatMoney .Settings.PortfolioValue}}</span>
@@ -1278,9 +1278,9 @@
 
         <!-- Total Needs (right side) -->
         <div class="text-center">
-            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Total Needs</p>
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-300 mb-2">Total Needs</p>
             <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney .Analysis.PresentValue.PVExpenses}}</p>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-300">
                 <div class="flex justify-between px-2">
                     <span>PV Expenses:</span>
                     <span>{{formatMoney .Analysis.PresentValue.PVExpenses}}</span>
@@ -1292,13 +1292,13 @@
     <!-- Coverage and Surplus -->
     <div class="pt-4 border-t dark:border-gray-700 grid grid-cols-2 gap-4 text-center">
         <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Coverage Ratio</p>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Coverage Ratio</p>
             <p class="text-2xl font-bold {{if ge .Analysis.PresentValue.CoverageRatio 1.0}}text-green-600 dark:text-green-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                 {{printf "%.1f" .Analysis.PresentValue.CoverageRatio}}x
             </p>
         </div>
         <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Surplus / Deficit</p>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Surplus / Deficit</p>
             <p class="text-2xl font-bold {{if ge .Analysis.PresentValue.SurplusDeficit 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
                 {{if ge .Analysis.PresentValue.SurplusDeficit 0.0}}+{{end}}{{formatMoney .Analysis.PresentValue.SurplusDeficit}}
             </p>
@@ -1317,7 +1317,7 @@
     </div>
     <div class="mt-4 grid grid-cols-2 gap-4 text-center">
         <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Portfolio Longevity</p>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Portfolio Longevity</p>
             <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
                 {{if .Analysis.Projection.Survives}}
                 {{.Settings.ProjectionYears}}+ years
@@ -1327,9 +1327,9 @@
             </p>
         </div>
         <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Final Balance</p>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Final Balance</p>
             <p
-                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-green-600 dark:text-green-400{{else}}text-gray-600 dark:text-gray-400{{end}}">
+                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-green-600 dark:text-green-400{{else}}text-gray-600 dark:text-gray-300{{end}}">
                 {{formatMoney .Analysis.Projection.FinalBalance}}
             </p>
         </div>
@@ -1343,18 +1343,18 @@
         <table class="w-full text-sm">
             <thead class="bg-gray-50 dark:bg-gray-900">
                 <tr>
-                    <th class="text-left p-3 font-medium text-gray-500 dark:text-gray-400">Scenario</th>
-                    <th class="text-center p-3 font-medium text-gray-500 dark:text-gray-400">Change</th>
-                    <th class="text-right p-3 font-medium text-gray-500 dark:text-gray-400">Longevity</th>
-                    <th class="text-right p-3 font-medium text-gray-500 dark:text-gray-400">Final Balance</th>
-                    <th class="text-center p-3 font-medium text-gray-500 dark:text-gray-400">Score Impact</th>
+                    <th class="text-left p-3 font-medium text-gray-500 dark:text-gray-300">Scenario</th>
+                    <th class="text-center p-3 font-medium text-gray-500 dark:text-gray-300">Change</th>
+                    <th class="text-right p-3 font-medium text-gray-500 dark:text-gray-300">Longevity</th>
+                    <th class="text-right p-3 font-medium text-gray-500 dark:text-gray-300">Final Balance</th>
+                    <th class="text-center p-3 font-medium text-gray-500 dark:text-gray-300">Score Impact</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                 {{range .Analysis.Sensitivity}}
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td class="p-3 text-gray-800 dark:text-gray-200">{{.Scenario.Name}}</td>
-                    <td class="p-3 text-center text-gray-500 dark:text-gray-400">{{.Scenario.Change}}</td>
+                    <td class="p-3 text-center text-gray-500 dark:text-gray-300">{{.Scenario.Change}}</td>
                     <td class="p-3 text-right {{if .Survives}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
                         {{if .Survives}}
                         Survives
@@ -1364,7 +1364,7 @@
                     </td>
                     <td class="p-3 text-right dark:text-gray-300">{{formatMoney .FinalBalance}}</td>
                     <td
-                        class="p-3 text-center {{if gt .ScoreChange 0}}text-green-600 dark:text-green-400{{else if lt .ScoreChange 0}}text-red-600 dark:text-red-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                        class="p-3 text-center {{if gt .ScoreChange 0}}text-green-600 dark:text-green-400{{else if lt .ScoreChange 0}}text-red-600 dark:text-red-400{{else}}text-gray-500 dark:text-gray-300{{end}}">
                         {{if gt .ScoreChange 0}}+{{end}}{{.ScoreChange}}
                     </td>
                 </tr>
@@ -1380,16 +1380,16 @@
     {{if not .Analysis.FailurePoints.BaselineSurvives}}
     <p class="text-red-600 dark:text-red-400">Portfolio already depletes under current settings. Adjust parameters to find survival thresholds.</p>
     {{else if eq (len .Analysis.FailurePoints.FailurePoints) 0}}
-    <p class="text-gray-500 dark:text-gray-400">No failure points found - your scenario is very robust.</p>
+    <p class="text-gray-500 dark:text-gray-300">No failure points found - your scenario is very robust.</p>
     {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Shows the exact thresholds where your portfolio would fail:</p>
+    <p class="text-sm text-gray-500 dark:text-gray-300 mb-4">Shows the exact thresholds where your portfolio would fail:</p>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {{range .Analysis.FailurePoints.FailurePoints}}
         <div class="border rounded-lg p-4 {{if eq .SafetyLevel "critical"}}border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-900/20{{else if eq .SafetyLevel "marginal"}}border-yellow-300 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-900/20{{else}}border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-900/20{{end}}">
             <div class="flex justify-between items-start">
                 <div>
                     <h4 class="font-medium text-gray-800 dark:text-gray-200">{{.ParamLabel}}</h4>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    <p class="text-sm text-gray-500 dark:text-gray-300 mt-1">
                         {{if eq .ParamName "monthly_expenses"}}
                             Current: {{formatMoney .CurrentValue}}/mo
                         {{else if eq .ParamName "portfolio_value"}}
@@ -1405,7 +1405,7 @@
             </div>
             <div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                 <p class="text-sm">
-                    <span class="text-gray-600 dark:text-gray-400">Fails if {{.Direction}}:</span>
+                    <span class="text-gray-600 dark:text-gray-300">Fails if {{.Direction}}:</span>
                     <span class="font-semibold text-gray-800 dark:text-gray-200">
                         {{if eq .ParamName "monthly_expenses"}}
                             {{formatMoney .Threshold}}/mo
@@ -1417,7 +1417,7 @@
                     </span>
                 </p>
                 <p class="text-sm mt-1">
-                    <span class="text-gray-600 dark:text-gray-400">Safety margin:</span>
+                    <span class="text-gray-600 dark:text-gray-300">Safety margin:</span>
                     <span class="font-semibold {{if eq .SafetyLevel "critical"}}text-red-600 dark:text-red-400{{else if eq .SafetyLevel "marginal"}}text-yellow-600 dark:text-yellow-400{{else}}text-green-600 dark:text-green-400{{end}}">
                         {{printf "%.1f" .Margin}}{{if or (eq .ParamName "monthly_expenses") (eq .ParamName "portfolio_value")}}%{{else}} pts{{end}}
                     </span>
@@ -1452,20 +1452,20 @@
             </span>
         </button>
     </div>
-    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{.Analysis.MonteCarlo.Stats.Runs}} scenarios with year-by-year market volatility, crashes, spending shocks & longevity variation:</p>
+    <p class="text-sm text-gray-500 dark:text-gray-300 mb-4">{{.Analysis.MonteCarlo.Stats.Runs}} scenarios with year-by-year market volatility, crashes, spending shocks & longevity variation:</p>
 
     <!-- Risk Events Summary -->
     <div class="grid grid-cols-3 gap-2 mb-4 text-center">
         <div class="p-2 bg-red-50 dark:bg-red-900/20 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Market Crashes</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">Market Crashes</p>
             <p class="text-sm font-medium text-red-600 dark:text-red-400">{{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgCrashesPerRun}}/run</p>
         </div>
         <div class="p-2 bg-orange-50 dark:bg-orange-900/20 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Spending Shocks</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">Spending Shocks</p>
             <p class="text-sm font-medium text-orange-600 dark:text-orange-400">{{.Analysis.MonteCarlo.Stats.SpendingShockCount}} runs</p>
         </div>
         <div class="p-2 bg-purple-50 dark:bg-purple-900/20 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Health Events</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">Health Events</p>
             <p class="text-sm font-medium text-purple-600 dark:text-purple-400">{{.Analysis.MonteCarlo.Stats.HealthShockCount}} runs</p>
         </div>
     </div>
@@ -1486,19 +1486,19 @@
     <!-- Stats Grid -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Worst Case</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">Worst Case</p>
             <p class="text-lg font-semibold text-red-600 dark:text-red-400">{{formatMoney .Analysis.MonteCarlo.Stats.WorstCase}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">10th %ile</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">10th %ile</p>
             <p class="text-lg font-semibold text-orange-600 dark:text-orange-400">{{formatMoney .Analysis.MonteCarlo.Stats.Percentile10}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Median</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">Median</p>
             <p class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.MonteCarlo.Stats.MedianBalance}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-            <p class="text-xs text-gray-500 dark:text-gray-400">90th %ile</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300">90th %ile</p>
             <p class="text-lg font-semibold text-green-600 dark:text-green-400">{{formatMoney .Analysis.MonteCarlo.Stats.Percentile90}}</p>
         </div>
     </div>
@@ -1509,18 +1509,18 @@
     <div class="space-y-2">
         {{range .Analysis.MonteCarlo.Distribution.Buckets}}
         <div class="flex items-center gap-2">
-            <span class="text-xs text-gray-500 dark:text-gray-400 w-24 text-right">{{.Label}}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-300 w-24 text-right">{{.Label}}</span>
             <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-4">
                 <div class="h-4 rounded-full bg-blue-500 dark:bg-blue-400" style="width: {{printf "%.1f" .Percentage}}%"></div>
             </div>
-            <span class="text-xs text-gray-500 dark:text-gray-400 w-12">{{printf "%.0f" .Percentage}}%</span>
+            <span class="text-xs text-gray-500 dark:text-gray-300 w-12">{{printf "%.0f" .Percentage}}%</span>
         </div>
         {{end}}
     </div>
     {{end}}
 
     {{if gt .Analysis.MonteCarlo.Stats.AvgDepletionYr 0.0}}
-    <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+    <p class="mt-4 text-sm text-gray-500 dark:text-gray-300">
         Average depletion year (failed scenarios): <span class="font-medium text-gray-700 dark:text-gray-300">{{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgDepletionYr}} years</span>
     </p>
     {{end}}
@@ -1545,22 +1545,22 @@
             {{with .Analysis.MonteCarlo.Stats.SequenceRisk}}
             <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
                 <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{printf "%.0f" .NoCrashSurvival}}%</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">No Crashes</div>
+                <div class="text-xs text-gray-500 dark:text-gray-300">No Crashes</div>
                 <div class="text-xs text-gray-400 dark:text-gray-500">({{.NoCrashCount}} runs)</div>
             </div>
             <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
                 <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{printf "%.0f" .EarlyCrashSurvival}}%</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Early Crash</div>
+                <div class="text-xs text-gray-500 dark:text-gray-300">Early Crash</div>
                 <div class="text-xs text-gray-400 dark:text-gray-500">Years 1-5 ({{.EarlyCrashCount}})</div>
             </div>
             <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
                 <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{printf "%.0f" .MidCrashSurvival}}%</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Mid Crash</div>
+                <div class="text-xs text-gray-500 dark:text-gray-300">Mid Crash</div>
                 <div class="text-xs text-gray-400 dark:text-gray-500">Years 6-15 ({{.MidCrashCount}})</div>
             </div>
             <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
                 <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{printf "%.0f" .LateCrashSurvival}}%</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">Late Crash</div>
+                <div class="text-xs text-gray-500 dark:text-gray-300">Late Crash</div>
                 <div class="text-xs text-gray-400 dark:text-gray-500">Years 16+ ({{.LateCrashCount}})</div>
             </div>
             {{end}}
@@ -1571,19 +1571,19 @@
         <div class="mt-4 space-y-2">
             {{if gt .EarlyVsNoneImpact 0.0}}
             <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600 dark:text-gray-400">Early crash impact vs no crash:</span>
+                <span class="text-gray-600 dark:text-gray-300">Early crash impact vs no crash:</span>
                 <span class="font-semibold text-red-600 dark:text-red-400">-{{printf "%.0f" .EarlyVsNoneImpact}}% survival</span>
             </div>
             {{end}}
             {{if gt .EarlyVsLateImpact 0.0}}
             <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600 dark:text-gray-400">Early vs late crash difference:</span>
+                <span class="text-gray-600 dark:text-gray-300">Early vs late crash difference:</span>
                 <span class="font-semibold text-amber-600 dark:text-amber-400">{{printf "%.0f" .EarlyVsLateImpact}}% worse</span>
             </div>
             {{end}}
             {{if gt .EarlyCrashCount 0}}
             <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600 dark:text-gray-400">Recovery rate after early crash:</span>
+                <span class="text-gray-600 dark:text-gray-300">Recovery rate after early crash:</span>
                 <span class="font-semibold {{if gt .RecoveryRate 50.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{printf "%.0f" .RecoveryRate}}% survived</span>
             </div>
             {{end}}
@@ -1743,11 +1743,11 @@
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">Current Age</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">Current Age</p>
             <p class="text-xl font-bold text-gray-800 dark:text-gray-200">{{.Analysis.RMD.CurrentAge}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">RMDs Begin</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">RMDs Begin</p>
             <p class="text-xl font-bold text-gray-800 dark:text-gray-200">
                 {{if gt .Analysis.RMD.StartsInYears 0}}
                     Age {{.Analysis.RMD.StartAge}} ({{.Analysis.RMD.StartsInYears}}yr)
@@ -1757,11 +1757,11 @@
             </p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">Tax-Deferred</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">Tax-Deferred</p>
             <p class="text-xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .Analysis.RMD.TaxDeferredValue}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">10-Yr RMD Total</p>
+            <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">10-Yr RMD Total</p>
             <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.RMD.TotalRMDsOver10Yr}}</p>
         </div>
     </div>
@@ -1770,7 +1770,7 @@
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead>
-                <tr class="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
+                <tr class="text-left text-gray-500 dark:text-gray-300 border-b dark:border-gray-600">
                     <th class="pb-2 font-medium">Age</th>
                     <th class="pb-2 font-medium text-right">Tax-Deferred Balance</th>
                     <th class="pb-2 font-medium text-right">Life Exp. Factor</th>
@@ -1797,7 +1797,7 @@
         Estimates based on IRS Uniform Lifetime Table. Actual RMDs depend on prior-year balance.
     </p>
     {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400">
+    <p class="text-sm text-gray-500 dark:text-gray-300">
         {{if le .Settings.TaxDeferredPercent 0.0}}
             No tax-deferred accounts configured.
         {{else if gt .Analysis.RMD.StartsInYears .Settings.ProjectionYears}}

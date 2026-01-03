@@ -612,7 +612,7 @@ func TestMonteCarloReproducibility(t *testing.T) {
 
 // TestSteadyStateBudgetFit tests the steady-state budget analysis
 func TestSteadyStateBudgetFit(t *testing.T) {
-	t.Run("no steady state when all income starts immediately", func(t *testing.T) {
+	t.Run("steady state always enabled for slider, min year 0 when all income immediate", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
 		settings.MonthlyLivingExpenses = 4000
@@ -622,8 +622,13 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 		calc := NewCalculator(settings)
 		result := calc.CalculateBudgetFit()
 
-		if result.HasSteadyState {
-			t.Error("expected HasSteadyState=false when all income starts at month 0")
+		// HasSteadyState is always true so slider can project into future
+		if !result.HasSteadyState {
+			t.Error("expected HasSteadyState=true (always enabled for slider)")
+		}
+		// But MinSteadyStateYear should be 0 when all income starts immediately
+		if result.MinSteadyStateYear != 0 {
+			t.Errorf("expected MinSteadyStateYear=0, got %f", result.MinSteadyStateYear)
 		}
 	})
 

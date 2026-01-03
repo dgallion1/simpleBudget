@@ -356,6 +356,9 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["projection_years"].(int); ok {
 		settings.ProjectionYears = v
 	}
+	if v, ok := updates["steady_state_override_year"].(float64); ok {
+		settings.SteadyStateOverrideYear = v
+	}
 
 	if err := sm.saveInternal(settings); err != nil {
 		return nil, err

@@ -176,6 +176,11 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 			updates["projection_years"] = i
 		}
 	}
+	if v := r.FormValue("steady_state_override_year"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			updates["steady_state_override_year"] = f
+		}
+	}
 
 	settings, err := retirementMgr.UpdateSettings(updates)
 	if err != nil {

@@ -1132,9 +1132,22 @@
     {{if .Analysis.BudgetFit.HasSteadyState}}
     <!-- Steady State Section (when all income is active) -->
     <div class="pt-4">
-        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            At Full Income (Year {{printf "%.1f" .Analysis.BudgetFit.SteadyStateYear}})
-        </h4>
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                At Year <span id="steady-state-year-display">{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}}</span>
+            </h4>
+            <form hx-post="/whatif/settings" hx-target="#whatif-results" hx-trigger="change delay:300ms" class="flex items-center gap-2">
+                <input type="range" name="steady_state_override_year"
+                    id="steady-state-slider"
+                    value="{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}}"
+                    min="{{if gt .Analysis.BudgetFit.MinSteadyStateYear 0.5}}{{printf "%.0f" .Analysis.BudgetFit.MinSteadyStateYear}}{{else}}1{{end}}"
+                    max="{{.Settings.ProjectionYears}}"
+                    step="1"
+                    class="w-24 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                    oninput="document.getElementById('steady-state-year-display').textContent = this.value">
+                <span class="text-xs text-gray-400 dark:text-gray-500 w-8">/ {{.Settings.ProjectionYears}}</span>
+            </form>
+        </div>
 
         <!-- Breakdown table -->
         <div class="mb-4 text-sm">

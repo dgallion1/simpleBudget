@@ -27,7 +27,8 @@ type WhatIfSettings struct {
 	DiscountRate          float64 `json:"discount_rate"`           // For PV calculations
 
 	// Projection
-	ProjectionYears int `json:"projection_years"` // Number of years to project
+	ProjectionYears         int     `json:"projection_years"`           // Number of years to project
+	SteadyStateOverrideYear float64 `json:"steady_state_override_year"` // User-adjustable projection year (0 = auto)
 
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
@@ -134,7 +135,8 @@ type BudgetFitAnalysis struct {
 
 	// Steady-state analysis (when all income sources are active)
 	SteadyStateMonth    int     `json:"steady_state_month"`    // Month when all income is active
-	SteadyStateYear     float64 `json:"steady_state_year"`     // Year when all income is active
+	SteadyStateYear     float64 `json:"steady_state_year"`     // Year when all income is active (or override)
+	MinSteadyStateYear  float64 `json:"min_steady_state_year"` // Auto-calculated minimum (when all income starts)
 	SteadyStateExpenses float64 `json:"steady_state_expenses"` // Expenses at steady state (inflated)
 	SteadyStateIncome   float64 `json:"steady_state_income"`   // Income at steady state (with COLA)
 	SteadyStateRMD      float64 `json:"steady_state_rmd"`      // RMD at steady state (if applicable)

@@ -352,12 +352,23 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	}
 
 	// Calculate steady-state analysis (when all income sources are active)
-	steadyStateMonth := c.findSteadyStateMonth()
-	if steadyStateMonth > 0 {
-		result.HasSteadyState = true
-		result.SteadyStateMonth = steadyStateMonth
-		result.SteadyStateYear = float64(steadyStateMonth) / 12
+	minSteadyStateMonth := c.findSteadyStateMonth()
+	minSteadyStateYear := float64(minSteadyStateMonth) / 12
 
+	// Use override year if set and >= minimum, otherwise use auto-calculated
+	steadyStateYear := minSteadyStateYear
+	if s.SteadyStateOverrideYear > 0 && s.SteadyStateOverrideYear >= minSteadyStateYear {
+		steadyStateYear = s.SteadyStateOverrideYear
+	}
+	steadyStateMonth := int(steadyStateYear * 12)
+
+	// Always show steady state section (allows sliding forward even if no delayed income)
+	result.HasSteadyState = true
+	result.MinSteadyStateYear = minSteadyStateYear
+	result.SteadyStateMonth = steadyStateMonth
+	result.SteadyStateYear = steadyStateYear
+
+	if steadyStateMonth > 0 {
 		// Calculate expenses and income at steady state
 		result.SteadyStateExpenses = c.CalculateTotalExpenses(steadyStateMonth)
 		result.SteadyStateIncome = c.CalculateTotalIncome(steadyStateMonth)

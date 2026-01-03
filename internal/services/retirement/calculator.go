@@ -116,13 +116,16 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	return livingExpenses + healthcareExpenses
 }
 
-// RunProjection runs a full retirement projection
+// RunProjection runs a full retirement projection with RMD integration
 func (c *Calculator) RunProjection() *models.ProjectionResult {
 	s := c.Settings
 	months := s.ProjectionYears * 12
 	projection := make([]models.ProjectionMonth, 0, months)
 
-	balance := s.PortfolioValue
+	// Split portfolio into tax-deferred and taxable portions
+	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
+	taxableBalance := s.PortfolioValue - taxDeferredBalance
+
 	healthcareStartMonth := s.HealthcareStartYears * 12
 	var depletionMonth *int
 	var longevityYears *float64
@@ -130,12 +133,29 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	currentLivingExpenses := s.MonthlyLivingExpenses
 	currentHealthcareExpenses := s.MonthlyHealthcare
 
+	// Track annual RMD (calculated once per year, distributed monthly)
+	var annualRMD float64
+	var monthlyRMD float64
+
 	for m := 0; m < months; m++ {
+		currentAge := s.CurrentAge + (m / 12)
+
 		// Annual adjustments at year boundaries
-		if m > 0 && m%12 == 0 {
-			netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
-			currentLivingExpenses *= (1 + netInflation)
-			currentHealthcareExpenses *= (1 + s.HealthcareInflation/100)
+		if m%12 == 0 {
+			if m > 0 {
+				netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
+				currentLivingExpenses *= (1 + netInflation)
+				currentHealthcareExpenses *= (1 + s.HealthcareInflation/100)
+			}
+
+			// Calculate annual RMD at start of each year (age 73+)
+			if currentAge >= RMDStartAge && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, currentAge)
+				monthlyRMD = annualRMD / 12
+			} else {
+				annualRMD = 0
+				monthlyRMD = 0
+			}
 		}
 
 		// Calculate expenses
@@ -153,16 +173,63 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		// Calculate income
 		totalIncome := c.CalculateTotalIncome(m)
 
-		// Monthly cash flow
+		// Monthly cash flow needed from portfolio
 		neededFromPortfolio := totalExpenses - totalIncome
 
-		// Portfolio growth and withdrawal
-		growth := balance * (s.InvestmentReturn / 100 / 12)
-		balance = balance + growth - neededFromPortfolio
+		// Apply investment growth to both portions
+		taxDeferredGrowth := taxDeferredBalance * (s.InvestmentReturn / 100 / 12)
+		taxableGrowth := taxableBalance * (s.InvestmentReturn / 100 / 12)
+		totalGrowth := taxDeferredGrowth + taxableGrowth
 
+		taxDeferredBalance += taxDeferredGrowth
+		taxableBalance += taxableGrowth
+
+		// Process withdrawals with RMD priority
+		rmdWithdrawal := 0.0
+		actualWithdrawal := 0.0
+
+		if neededFromPortfolio > 0 {
+			// First, take from RMD (which must be withdrawn anyway)
+			if monthlyRMD > 0 {
+				rmdUsed := math.Min(monthlyRMD, neededFromPortfolio)
+				rmdUsed = math.Min(rmdUsed, taxDeferredBalance) // Can't withdraw more than available
+				taxDeferredBalance -= rmdUsed
+				neededFromPortfolio -= rmdUsed
+				rmdWithdrawal = rmdUsed
+				actualWithdrawal += rmdUsed
+			}
+
+			// If still need more, withdraw from taxable first (tax-efficient)
+			if neededFromPortfolio > 0 && taxableBalance > 0 {
+				fromTaxable := math.Min(neededFromPortfolio, taxableBalance)
+				taxableBalance -= fromTaxable
+				neededFromPortfolio -= fromTaxable
+				actualWithdrawal += fromTaxable
+			}
+
+			// If still need more, withdraw additional from tax-deferred
+			if neededFromPortfolio > 0 && taxDeferredBalance > 0 {
+				fromTaxDeferred := math.Min(neededFromPortfolio, taxDeferredBalance)
+				taxDeferredBalance -= fromTaxDeferred
+				neededFromPortfolio -= fromTaxDeferred
+				actualWithdrawal += fromTaxDeferred
+			}
+		} else {
+			// Expenses covered by income, but RMD still must be withdrawn
+			// RMD goes to taxable account (reinvested after taxes in practice)
+			if monthlyRMD > 0 && taxDeferredBalance > 0 {
+				rmdWithdrawal = math.Min(monthlyRMD, taxDeferredBalance)
+				taxDeferredBalance -= rmdWithdrawal
+				taxableBalance += rmdWithdrawal // RMD moves to taxable
+			}
+		}
+
+		totalBalance := taxDeferredBalance + taxableBalance
 		depleted := false
-		if balance < 0 {
-			balance = 0
+		if totalBalance <= 0 {
+			taxDeferredBalance = 0
+			taxableBalance = 0
+			totalBalance = 0
 			depleted = true
 			if depletionMonth == nil {
 				dm := m
@@ -173,23 +240,31 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		}
 
 		projection = append(projection, models.ProjectionMonth{
-			Month:             m,
-			Year:              float64(m) / 12,
-			PortfolioBalance:  balance,
-			GeneralExpenses:   currentLivingExpenses,
-			HealthcareExpense: activeHealthcare,
-			TotalExpenses:     totalExpenses,
-			TotalIncome:       totalIncome,
-			NetWithdrawal:     math.Max(0, neededFromPortfolio),
-			PortfolioGrowth:   growth,
-			Depleted:          depleted,
+			Month:              m,
+			Year:               float64(m) / 12,
+			PortfolioBalance:   totalBalance,
+			TaxDeferredBalance: taxDeferredBalance,
+			TaxableBalance:     taxableBalance,
+			GeneralExpenses:    currentLivingExpenses,
+			HealthcareExpense:  activeHealthcare,
+			TotalExpenses:      totalExpenses,
+			TotalIncome:        totalIncome,
+			NetWithdrawal:      actualWithdrawal,
+			RMDWithdrawal:      rmdWithdrawal,
+			PortfolioGrowth:    totalGrowth,
+			Depleted:           depleted,
 		})
+	}
+
+	finalBalance := 0.0
+	if len(projection) > 0 {
+		finalBalance = projection[len(projection)-1].PortfolioBalance
 	}
 
 	return &models.ProjectionResult{
 		Months:         projection,
 		LongevityYears: longevityYears,
-		FinalBalance:   balance,
+		FinalBalance:   finalBalance,
 		DepletionMonth: depletionMonth,
 		Survives:       depletionMonth == nil,
 	}

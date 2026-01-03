@@ -57,16 +57,19 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 
 // ProjectionMonth represents a single month in the projection
 type ProjectionMonth struct {
-	Month             int     `json:"month"`
-	Year              float64 `json:"year"`
-	PortfolioBalance  float64 `json:"portfolio_balance"`
-	GeneralExpenses   float64 `json:"general_expenses"`
-	HealthcareExpense float64 `json:"healthcare_expense"`
-	TotalExpenses     float64 `json:"total_expenses"`
-	TotalIncome       float64 `json:"total_income"`
-	NetWithdrawal     float64 `json:"net_withdrawal"`
-	PortfolioGrowth   float64 `json:"portfolio_growth"`
-	Depleted          bool    `json:"depleted"`
+	Month              int     `json:"month"`
+	Year               float64 `json:"year"`
+	PortfolioBalance   float64 `json:"portfolio_balance"`
+	TaxDeferredBalance float64 `json:"tax_deferred_balance"` // Tax-deferred portion (401k, IRA)
+	TaxableBalance     float64 `json:"taxable_balance"`      // Taxable portion (brokerage)
+	GeneralExpenses    float64 `json:"general_expenses"`
+	HealthcareExpense  float64 `json:"healthcare_expense"`
+	TotalExpenses      float64 `json:"total_expenses"`
+	TotalIncome        float64 `json:"total_income"`
+	NetWithdrawal      float64 `json:"net_withdrawal"`
+	RMDWithdrawal      float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
+	PortfolioGrowth    float64 `json:"portfolio_growth"`
+	Depleted           bool    `json:"depleted"`
 }
 
 // ProjectionResult contains the complete projection with summary metrics

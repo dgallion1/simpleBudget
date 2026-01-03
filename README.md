@@ -14,74 +14,34 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 Before you begin, you'll need:
 
-1. **Go programming language** (version 1.21 or later)
-2. **Make** (build automation tool)
+1. **Make** (build automation tool)
+2. **curl** (for downloading files)
 3. **Git** (optional, for cloning the repository)
 
-### Installing Go
+**Note:** Go is automatically installed by the Makefile if not found on your system.
+
+### Installing Make and curl
 
 #### Linux (Ubuntu/Debian)
 ```bash
-# Download and install Go
 sudo apt update
-sudo apt install golang-go
-
-# Verify installation
-go version
-```
-
-#### Linux (manual installation for latest version)
-```bash
-# Download Go (replace version as needed)
-wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
-
-# Remove old installation and extract new one
-sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
-
-# Add to PATH (add this to ~/.bashrc or ~/.zshrc)
-export PATH=$PATH:/usr/local/go/bin
-
-# Verify
-go version
-```
-
-#### macOS
-```bash
-# Using Homebrew (recommended)
-brew install go
-
-# Or download from https://go.dev/dl/ and run the installer
-
-# Verify installation
-go version
-```
-
-#### Windows
-1. Download the installer from https://go.dev/dl/
-2. Run the .msi installer
-3. Follow the installation wizard
-4. Open Command Prompt and verify: `go version`
-
-### Installing Make
-
-#### Linux (Ubuntu/Debian)
-```bash
-sudo apt install make
+sudo apt install make curl
 ```
 
 #### macOS
 ```bash
 # Make is included with Xcode Command Line Tools
 xcode-select --install
+
+# curl is pre-installed on macOS
 ```
 
 #### Windows
 ```bash
 # Using Chocolatey
-choco install make
+choco install make curl
 
-# Or use Git Bash which includes make
+# Or use Git Bash which includes make and curl
 ```
 
 ## Installation
@@ -99,11 +59,13 @@ cd budget2
 ### Step 2: Build the application
 
 ```bash
-# Build the application
+# Build the application (Go is installed automatically if needed)
 make build
 
 # This creates a 'budget2' executable in the current directory
 ```
+
+If Go is not installed, the build will automatically download and install Go 1.23.4 to `~/.local/go`. This is a one-time setup that takes about a minute.
 
 ### Step 3: Create the data directory
 
@@ -230,17 +192,6 @@ The server runs at http://localhost:8080
 
 ## Troubleshooting
 
-### "command not found: go"
-
-Go is not installed or not in your PATH.
-
-**Fix:** Install Go following the prerequisites section, then add to PATH:
-```bash
-export PATH=$PATH:/usr/local/go/bin
-```
-
-Add this line to `~/.bashrc` or `~/.zshrc` to make it permanent.
-
 ### "command not found: make"
 
 Make is not installed.
@@ -286,6 +237,21 @@ JavaScript libraries may not have downloaded.
 **Fix:**
 ```bash
 make vendor-js
+```
+
+### Go auto-installation fails
+
+If the automatic Go installation fails (network issues, permissions, etc.):
+
+**Fix:** Install Go manually:
+```bash
+# Linux/macOS - download from https://go.dev/dl/
+wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+
+# Or force reinstall via Makefile
+make install-go
 ```
 
 ## Building

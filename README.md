@@ -116,33 +116,48 @@ Date,Description,Amount,Category
 2024-07-22,NETFLIX SUBSCRIPTION,-15.99,Entertainment
 ```
 
-### Converting bank exports
+### Uploading your bank export
 
-Bank exports often need adjustment. Common issues:
+1. Start SimpleBudget: `make run`
+2. Open http://localhost:8080
+3. Go to **File Manager** tab
+4. Click the file input and select your CSV file
+5. Click **Upload**
 
-**Issue: Amounts are reversed**
-Some banks show expenses as positive. Edit your CSV to add minus signs to expenses.
+You can upload multiple CSV files - they'll all be loaded and deduplicated automatically.
 
-**Issue: Different column names**
-SimpleBudget is flexible with column names. These all work:
-- `Date`, `date`, `Transaction Date`, `Posted Date`
-- `Description`, `description`, `Memo`, `Details`
-- `Amount`, `amount`, `Value`, `Transaction Amount`
+### What SimpleBudget handles automatically
 
-**Issue: Multiple amount columns (Debit/Credit)**
-If your bank has separate Debit and Credit columns, combine them into one Amount column:
-- Credits become positive amounts
-- Debits become negative amounts
+- **Flexible column names**: Works with common bank export formats (see below)
+- **Debit/Credit columns**: Automatically combined into a single amount
+- **Currency symbols**: `$87.34` → `87.34`
+- **Comma formatting**: `1,234.56` → `1234.56`
+- **Parentheses for negatives**: `(100.00)` → `-100.00`
+- **Multiple date formats**: `2024-07-05`, `07/05/2024`, `7/5/2024`, `Jan 2, 2006`, etc.
+- **Duplicate transactions**: Automatically removed when importing multiple files
 
-### Place files in data directory
+### Supported column names
 
-Copy your CSV files to the `data/` directory:
+SimpleBudget recognizes these common column name variations:
 
-```bash
-cp ~/Downloads/transactions.csv data/
-```
+| Required | Accepted names |
+|----------|---------------|
+| Date | `Date`, `Transaction Date`, `Posted Date`, `Posting Date` |
+| Description | `Description`, `Memo`, `Details`, `Payee`, `Merchant`, `Narrative` |
+| Amount | `Amount`, `Value`, `Transaction Amount`, `Sum` |
 
-You can have multiple CSV files - they'll all be loaded and deduplicated automatically.
+| Optional | Accepted names |
+|----------|---------------|
+| Category | `Category`, `Type`, `Category Name` |
+| Debit | `Debit`, `Withdrawal`, `Money Out`, `Expense` |
+| Credit | `Credit`, `Deposit`, `Money In`, `Income` |
+
+**Debit/Credit handling**: If your bank uses separate Debit and Credit columns instead of a single Amount column, SimpleBudget automatically combines them (credits become positive, debits become negative).
+
+### Manual adjustments you may need
+
+**Amounts are reversed (expenses shown as positive)**
+Some banks show expenses as positive numbers. If your spending appears as income, open the CSV in a spreadsheet and multiply the Amount column by -1.
 
 ## Running SimpleBudget
 

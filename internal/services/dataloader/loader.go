@@ -23,12 +23,85 @@ type DataLoader struct {
 	enabledFiles          map[string]bool
 }
 
+// columnMappings maps common bank export column names to our standard names
+var columnMappings = map[string][]string{
+	"Date": {
+		"date", "Date", "DATE",
+		"transaction date", "Transaction Date", "TRANSACTION DATE",
+		"posted date", "Posted Date", "POSTED DATE",
+		"post date", "Post Date", "POST DATE",
+		"trans date", "Trans Date", "TRANS DATE",
+		"posting date", "Posting Date", "POSTING DATE",
+	},
+	"Description": {
+		"description", "Description", "DESCRIPTION",
+		"memo", "Memo", "MEMO",
+		"details", "Details", "DETAILS",
+		"payee", "Payee", "PAYEE",
+		"name", "Name", "NAME",
+		"transaction description", "Transaction Description",
+		"merchant", "Merchant", "MERCHANT",
+		"narrative", "Narrative", "NARRATIVE",
+	},
+	"Amount": {
+		"amount", "Amount", "AMOUNT",
+		"value", "Value", "VALUE",
+		"transaction amount", "Transaction Amount", "TRANSACTION AMOUNT",
+		"sum", "Sum", "SUM",
+	},
+	"Category": {
+		"category", "Category", "CATEGORY",
+		"type", "Type", "TYPE",
+		"category name", "Category Name",
+	},
+	"Debit": {
+		"debit", "Debit", "DEBIT",
+		"withdrawal", "Withdrawal", "WITHDRAWAL",
+		"withdrawals", "Withdrawals", "WITHDRAWALS",
+		"money out", "Money Out", "MONEY OUT",
+		"expense", "Expense", "EXPENSE",
+	},
+	"Credit": {
+		"credit", "Credit", "CREDIT",
+		"deposit", "Deposit", "DEPOSIT",
+		"deposits", "Deposits", "DEPOSITS",
+		"money in", "Money In", "MONEY IN",
+		"income", "Income", "INCOME",
+	},
+}
+
 // New creates a new DataLoader
 func New(csvDirectory string) *DataLoader {
 	return &DataLoader{
 		CSVDirectory: csvDirectory,
 		enabledFiles: make(map[string]bool),
 	}
+}
+
+// normalizeColumnName maps a bank export column name to our standard name
+func normalizeColumnName(col string) string {
+	col = strings.TrimSpace(col)
+	for standard, variants := range columnMappings {
+		for _, variant := range variants {
+			if col == variant {
+				return standard
+			}
+		}
+	}
+	return col // Return original if no mapping found
+}
+
+// buildColumnIndex creates a normalized column index from CSV headers
+func buildColumnIndex(header []string) map[string]int {
+	colIndex := make(map[string]int)
+	for i, col := range header {
+		normalized := normalizeColumnName(col)
+		// Only set if not already set (first match wins)
+		if _, exists := colIndex[normalized]; !exists {
+			colIndex[normalized] = i
+		}
+	}
+	return colIndex
 }
 
 // SetEnabledFiles sets which files should be loaded
@@ -113,18 +186,28 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		return nil, fmt.Errorf("error reading header: %w", err)
 	}
 
-	// Build column index map
-	colIndex := make(map[string]int)
-	for i, col := range header {
-		colIndex[strings.TrimSpace(col)] = i
-	}
+	// Build normalized column index map
+	colIndex := buildColumnIndex(header)
+
+	// Check for Debit/Credit columns as alternative to Amount
+	_, hasAmount := colIndex["Amount"]
+	_, hasDebit := colIndex["Debit"]
+	_, hasCredit := colIndex["Credit"]
+	useDebitCredit := !hasAmount && (hasDebit || hasCredit)
 
 	// Validate required columns
-	requiredCols := []string{"Date", "Amount", "Description"}
-	for _, col := range requiredCols {
-		if _, ok := colIndex[col]; !ok {
-			return nil, fmt.Errorf("missing required column: %s", col)
-		}
+	if _, ok := colIndex["Date"]; !ok {
+		return nil, fmt.Errorf("missing required column: Date (tried: %v)", columnMappings["Date"])
+	}
+	if _, ok := colIndex["Description"]; !ok {
+		return nil, fmt.Errorf("missing required column: Description (tried: %v)", columnMappings["Description"])
+	}
+	if !hasAmount && !useDebitCredit {
+		return nil, fmt.Errorf("missing required column: Amount or Debit/Credit (tried: %v)", columnMappings["Amount"])
+	}
+
+	if useDebitCredit {
+		log.Printf("Using Debit/Credit columns instead of Amount for %s", filepath.Base(filePath))
 	}
 
 	var transactions []models.Transaction
@@ -157,8 +240,10 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 			}
 		}
 
-		// Parse Amount
-		if idx, ok := colIndex["Amount"]; ok && idx < len(record) {
+		// Parse Amount (either from Amount column or Debit/Credit columns)
+		if useDebitCredit {
+			t.Amount = parseDebitCredit(record, colIndex)
+		} else if idx, ok := colIndex["Amount"]; ok && idx < len(record) {
 			amountStr := strings.TrimSpace(record[idx])
 			t.Amount = parseAmount(amountStr)
 		}
@@ -178,6 +263,44 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 	}
 
 	return transactions, nil
+}
+
+// parseDebitCredit combines Debit and Credit columns into a single amount
+// Credits are positive (income), Debits are negative (expenses)
+func parseDebitCredit(record []string, colIndex map[string]int) float64 {
+	var amount float64
+
+	// Check for credit (positive/income)
+	if idx, ok := colIndex["Credit"]; ok && idx < len(record) {
+		creditStr := strings.TrimSpace(record[idx])
+		if creditStr != "" {
+			credit := parseAmount(creditStr)
+			if credit != 0 {
+				amount = abs(credit) // Credits are positive
+			}
+		}
+	}
+
+	// Check for debit (negative/expense)
+	if idx, ok := colIndex["Debit"]; ok && idx < len(record) {
+		debitStr := strings.TrimSpace(record[idx])
+		if debitStr != "" {
+			debit := parseAmount(debitStr)
+			if debit != 0 {
+				amount = -abs(debit) // Debits are negative
+			}
+		}
+	}
+
+	return amount
+}
+
+// abs returns the absolute value of a float64
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // parseDate tries multiple date formats

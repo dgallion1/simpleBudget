@@ -1,0 +1,32 @@
+{{/* Portfolio Projection Chart Card */}}
+{{/* Expects: .Analysis.Projection and .Settings */}}
+{{define "whatif-projection-chart"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Portfolio Longevity</h3>
+    <div id="projection-chart" class="chart-container" hx-get="/whatif/chart/projection" hx-trigger="load"
+        hx-swap="none">
+        <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+            Loading chart...
+        </div>
+    </div>
+    <div class="mt-4 grid grid-cols-2 gap-4 text-center">
+        <div>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Portfolio Longevity</p>
+            <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                {{if .Analysis.Projection.Survives}}
+                {{.Settings.ProjectionYears}}+ years
+                {{else}}
+                {{printf "%.1f" (deref .Analysis.Projection.LongevityYears)}} years
+                {{end}}
+            </p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Final Balance</p>
+            <p
+                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-green-600 dark:text-green-400{{else}}text-gray-600 dark:text-gray-300{{end}}">
+                {{formatMoney .Analysis.Projection.FinalBalance}}
+            </p>
+        </div>
+    </div>
+</div>
+{{end}}

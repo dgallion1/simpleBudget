@@ -1,0 +1,197 @@
+{{/* Healthcare Person Card - Individual person's healthcare settings */}}
+{{/* Expects: . = HealthcarePerson struct */}}
+{{define "whatif-healthcare-person"}}
+<div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+    <div class="flex justify-between items-start mb-2">
+        <div>
+            <span class="font-medium text-gray-800 dark:text-gray-200">{{.Name}}</span>
+            <span class="text-sm text-gray-500 dark:text-gray-300 ml-2">Age {{.CurrentAge}}</span>
+            {{if eq .CurrentCoverage "medicare"}}
+            <span class="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">Medicare</span>
+            {{else if eq .CurrentCoverage "aca"}}
+            <span class="ml-2 px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">ACA</span>
+            {{else}}
+            <span class="ml-2 px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded">Employer</span>
+            {{end}}
+        </div>
+        <button type="button" hx-delete="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results"
+            class="text-red-500 hover:text-red-700 text-sm">Remove</button>
+    </div>
+    <form hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms">
+        <div class="grid grid-cols-2 gap-2 text-sm">
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">Monthly Cost</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
+                        min="0" max="3000" step="50"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16">${{formatNumber .CurrentMonthlyCost}}</span>
+                </div>
+            </div>
+            {{if eq .CurrentCoverage "employer"}}
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">Coverage Ends In</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
+                        min="0" max="20" step="1"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value == 0 ? 'Medicare' : this.value + ' yrs'">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
+                </div>
+            </div>
+            {{else if ne .CurrentCoverage "medicare"}}
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">Pre-Medicare Inflation</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
+                        min="0" max="15" step="0.5"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{if eq .CurrentCoverage "employer"}}
+        {{if gt .EmployerCoverageYears 0}}
+        <div class="grid grid-cols-2 gap-2 text-sm mt-2">
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">ACA Cost After Employer</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
+                        min="0" max="3000" step="50"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16">${{formatNumber .ACACostAfterEmployer}}</span>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">ACA Inflation</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
+                        min="0" max="15" step="0.5"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                </div>
+            </div>
+        </div>
+        {{end}}
+        {{end}}
+        {{if ne .CurrentCoverage "medicare"}}
+        <div class="grid grid-cols-2 gap-2 text-sm mt-2">
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">Medicare Cost (at 65)</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
+                        min="0" max="2000" step="50"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16">${{formatNumber .MedicareMonthlyCost}}</span>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">Post-Medicare Inflation</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
+                        min="0" max="10" step="0.5"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                </div>
+            </div>
+        </div>
+        {{else}}
+        <div class="text-sm mt-2">
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-300">Medicare Inflation</label>
+                <div class="flex items-center gap-2">
+                    <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
+                        min="0" max="10" step="0.5"
+                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                        oninput="this.nextElementSibling.textContent = this.value + '%'">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                </div>
+            </div>
+        </div>
+        {{end}}
+        {{template "whatif-healthcare-timeline" .}}
+    </form>
+</div>
+{{end}}
+
+{{/* Healthcare Timeline Visualization */}}
+{{define "whatif-healthcare-timeline"}}
+{{if and (eq .CurrentCoverage "employer") (gt .EmployerCoverageYears 0)}}
+<!-- Visual Timeline: Employer -> (ACA?) -> Medicare -->
+<div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+    <div class="text-xs text-gray-500 dark:text-gray-300 mb-1">Coverage Timeline</div>
+    {{if ge (add .CurrentAge .EmployerCoverageYears) .MedicareEligibleAge}}
+    <!-- Employer -> Medicare (already Medicare eligible when employer ends) -->
+    <div class="flex items-center text-xs">
+        <div class="flex-1 relative">
+            <div class="flex">
+                <div class="flex-1 bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium">
+                    Employer ${{formatNumber .CurrentMonthlyCost}}
+                </div>
+                <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                    Medicare ${{formatNumber .MedicareMonthlyCost}}
+                </div>
+            </div>
+            <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                <span>Now</span>
+                <span>{{.EmployerCoverageYears}} yrs</span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+    {{else}}
+    <!-- Employer -> ACA -> Medicare -->
+    <div class="flex items-center text-xs">
+        <div class="flex-1 relative">
+            <div class="flex">
+                <div class="bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium px-2" style="flex: {{.EmployerCoverageYears}}">
+                    Employer ${{formatNumber .CurrentMonthlyCost}}
+                </div>
+                <div class="bg-green-200 dark:bg-green-800 h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium px-2" style="flex: {{sub (sub .MedicareEligibleAge .CurrentAge) .EmployerCoverageYears}}">
+                    ACA ${{formatNumber .ACACostAfterEmployer}}
+                </div>
+                <div class="bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium px-2" style="flex: 5">
+                    Medicare ${{formatNumber .MedicareMonthlyCost}}
+                </div>
+            </div>
+            <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                <span>Now</span>
+                <span class="text-center">{{.EmployerCoverageYears}} yrs</span>
+                <span class="text-center">{{sub .MedicareEligibleAge .CurrentAge}} yrs</span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{else if and (ne .CurrentCoverage "medicare") (gt (sub .MedicareEligibleAge .CurrentAge) 0)}}
+<!-- Visual Timeline: ACA -> Medicare -->
+<div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+    <div class="text-xs text-gray-500 dark:text-gray-300 mb-1">Coverage Timeline</div>
+    <div class="flex items-center text-xs">
+        <div class="flex-1 relative">
+            <div class="flex">
+                <div class="flex-1 bg-green-200 dark:bg-green-800 rounded-l h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium">
+                    {{if eq .CurrentCoverage "employer"}}Employer{{else}}ACA{{end}} ${{formatNumber .CurrentMonthlyCost}}
+                </div>
+                <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                    Medicare ${{formatNumber .MedicareMonthlyCost}}
+                </div>
+            </div>
+            <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                <span>Now</span>
+                <span>{{sub .MedicareEligibleAge .CurrentAge}} yrs (age 65)</span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+{{end}}

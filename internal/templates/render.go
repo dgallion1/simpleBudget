@@ -102,6 +102,8 @@ func (r *Renderer) loadTemplates() error {
 
 	// Collect all template files
 	var templateFiles []string
+
+	// Direct subdirectories
 	for _, subdir := range []string{"layouts", "pages", "partials", "components"} {
 		var matches []string
 		var err error
@@ -112,6 +114,25 @@ func (r *Renderer) loadTemplates() error {
 			matches, err = fs.Glob(r.fsys, pattern)
 		} else {
 			// Use OS filesystem
+			subPattern := filepath.Join(r.baseDir, subdir, "*.html")
+			matches, err = filepath.Glob(subPattern)
+		}
+
+		if err != nil {
+			return fmt.Errorf("error globbing %s: %w", subdir, err)
+		}
+		templateFiles = append(templateFiles, matches...)
+	}
+
+	// Nested component subdirectories (e.g., components/whatif/*.html)
+	for _, subdir := range []string{"components/whatif"} {
+		var matches []string
+		var err error
+
+		if r.fsys != nil {
+			pattern := subdir + "/*.html"
+			matches, err = fs.Glob(r.fsys, pattern)
+		} else {
 			subPattern := filepath.Join(r.baseDir, subdir, "*.html")
 			matches, err = filepath.Glob(subPattern)
 		}

@@ -1,0 +1,168 @@
+{{/* Monthly Budget Analysis Card */}}
+{{/* Expects: .Analysis.BudgetFit and .Settings */}}
+{{define "whatif-budget-analysis"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Monthly Budget Analysis</h3>
+
+    <!-- Current (Now) Section -->
+    <div class="{{if .Analysis.BudgetFit.HasSteadyState}}pb-4 border-b border-gray-200 dark:border-gray-700{{end}}">
+        {{if .Analysis.BudgetFit.HasSteadyState}}
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current (Today)</h4>
+        {{end}}
+
+        <!-- Breakdown table -->
+        <div class="mb-4 text-sm">
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-300">Monthly Expenses</span>
+                <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-300">Monthly Income</span>
+                <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.MonthlyIncome}}</span>
+            </div>
+            {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-300">Required RMD</span>
+                <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
+            </div>
+            {{end}}
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 text-center">
+            <div>
+                <p class="text-sm text-gray-500 dark:text-gray-300">Monthly Gap</p>
+                <p
+                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.MonthlyGap 0.0}}text-gray-600 dark:text-gray-300{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}+{{formatMoney (abs
+                    .Analysis.BudgetFit.MonthlyGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.MonthlyGap}}{{end}}
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500 dark:text-gray-300">Required Rate</p>
+                <p
+                    class="text-2xl font-bold {{if le .Analysis.BudgetFit.RequiredRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.RequiredRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{printf "%.1f" .Analysis.BudgetFit.RequiredRate}}%
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
+            </div>
+        </div>
+    </div>
+
+    {{if .Analysis.BudgetFit.HasSteadyState}}
+    {{template "whatif-budget-steady-state" .}}
+    {{end}}
+
+    {{template "whatif-budget-rmd-impact" .}}
+</div>
+{{end}}
+
+{{/* Steady State Section (when all income is active) */}}
+{{define "whatif-budget-steady-state"}}
+<div class="pt-4">
+    <div class="flex items-center justify-between mb-2">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            At Year <span id="steady-state-year-display">{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}}</span>
+        </h4>
+        <form hx-post="/whatif/settings" hx-target="#whatif-results" hx-trigger="change delay:300ms" class="flex items-center gap-2">
+            <input type="range" name="steady_state_override_year"
+                id="steady-state-slider"
+                value="{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}}"
+                min="{{if gt .Analysis.BudgetFit.MinSteadyStateYear 0.5}}{{printf "%.0f" .Analysis.BudgetFit.MinSteadyStateYear}}{{else}}1{{end}}"
+                max="{{.Settings.ProjectionYears}}"
+                step="1"
+                class="w-24 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                oninput="document.getElementById('steady-state-year-display').textContent = this.value">
+            <span class="text-xs text-gray-400 dark:text-gray-500 w-8">/ {{.Settings.ProjectionYears}}</span>
+        </form>
+    </div>
+
+    <!-- Breakdown table -->
+    <div class="mb-4 text-sm">
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-gray-600 dark:text-gray-300">Monthly Expenses</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateExpenses}}</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-gray-600 dark:text-gray-300">Monthly Income</span>
+            <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateIncome}}</span>
+        </div>
+        {{if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-gray-600 dark:text-gray-300">Estimated RMD</span>
+            <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}</span>
+        </div>
+        {{end}}
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 text-center">
+        <div>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Monthly Gap</p>
+            <p
+                class="text-2xl font-bold {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.SteadyStateGap 0.0}}text-gray-600 dark:text-gray-300{{else}}text-red-600 dark:text-red-400{{end}}">
+                {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}+{{formatMoney (abs
+                .Analysis.BudgetFit.SteadyStateGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.SteadyStateGap}}{{end}}
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+        </div>
+        <div>
+            <p class="text-sm text-gray-500 dark:text-gray-300">Required Rate</p>
+            <p
+                class="text-2xl font-bold {{if le .Analysis.BudgetFit.SteadyStateRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.SteadyStateRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                {{printf "%.1f" .Analysis.BudgetFit.SteadyStateRate}}%
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
+        </div>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-300 mt-2 text-center">
+        Values shown in year-{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}} dollars (inflation-adjusted)
+    </p>
+</div>
+{{end}}
+
+{{/* RMD Impact Details */}}
+{{define "whatif-budget-rmd-impact"}}
+{{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
+<div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+    <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">How RMD Affects Your Budget</h4>
+    <div class="text-sm space-y-1">
+        <div class="flex justify-between">
+            <span class="text-gray-500 dark:text-gray-300">Shortfall before RMD</span>
+            <span class="{{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                {{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}{{formatMoney .Analysis.BudgetFit.GapBeforeRMD}}{{else}}None (surplus of {{formatMoney (abs .Analysis.BudgetFit.GapBeforeRMD)}}){{end}}
+            </span>
+        </div>
+        {{if gt .Analysis.BudgetFit.RMDCoverage 0.0}}
+        <div class="flex justify-between">
+            <span class="text-gray-500 dark:text-gray-300">RMD covers</span>
+            <span class="text-green-600 dark:text-green-400">{{formatMoney .Analysis.BudgetFit.RMDCoverage}}</span>
+        </div>
+        {{end}}
+        {{if gt .Analysis.BudgetFit.ExcessRMD 0.0}}
+        <div class="flex justify-between">
+            <span class="text-gray-500 dark:text-gray-300">Excess RMD</span>
+            <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.ExcessRMD}}</span>
+        </div>
+        {{end}}
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-300 mt-2">
+        {{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}
+            {{if gt .Analysis.BudgetFit.ExcessRMD 0.0}}
+                Your RMD fully covers the shortfall. The {{formatMoney .Analysis.BudgetFit.ExcessRMD}}/mo excess must still be withdrawn and taxed.
+            {{else}}
+                Your RMD covers {{formatMoney .Analysis.BudgetFit.RMDCoverage}} of the shortfall. You need to withdraw an additional {{formatMoney .Analysis.BudgetFit.MonthlyGap}}/mo.
+            {{end}}
+        {{else}}
+            Your income already covers expenses. The full RMD of {{formatMoney .Analysis.BudgetFit.MonthlyRMD}}/mo is a forced taxable withdrawal.
+        {{end}}
+    </p>
+</div>
+{{else if and .Analysis.RMD (gt .Analysis.RMD.StartsInYears 0)}}
+<!-- RMD Preview for those not yet 73 -->
+<div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+    <p class="text-xs text-gray-500 dark:text-gray-300">
+        RMDs will begin at age {{.Analysis.RMD.StartAge}} (in {{.Analysis.RMD.StartsInYears}} years) and may help cover this shortfall.
+    </p>
+</div>
+{{end}}
+{{end}}

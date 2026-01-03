@@ -1,0 +1,123 @@
+{{/* Expense Sources List - Shared between main content and OOB updates */}}
+{{/* Expects: .Settings with ExpenseSources and RemovedExpenseSources */}}
+{{define "whatif-expense-sources-list"}}
+<div id="expense-sources-list" class="space-y-2 mb-4">
+    {{range .Settings.ExpenseSources}}
+    {{template "whatif-expense-source-item" .}}
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-300 italic">No additional expenses added</p>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Single Expense Source Item */}}
+{{define "whatif-expense-source-item"}}
+<form hx-put="/whatif/expense/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+    class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+    <div class="flex items-center justify-between mb-2">
+        <div>
+            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+            <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button type="button" hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results"
+            class="text-red-500 hover:text-red-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+    <div class="flex items-center gap-4 text-xs flex-wrap">
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+            Starts yr:
+            <input type="number" name="start_year" min="0" max="50"
+                value="{{.StartYear}}"
+                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
+                title="Year expense starts (0 = now)">
+        </label>
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+            Ends yr:
+            <input type="number" name="end_year" min="0" max="50"
+                value="{{.EndYear}}"
+                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
+                title="Year expense ends (0 = never)">
+        </label>
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+            <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
+            Inflation
+        </label>
+        <label class="flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Can be reduced during market downturns">
+            <input type="checkbox" name="discretionary" {{if .Discretionary}}checked{{end}}
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500">
+            Discretionary
+        </label>
+    </div>
+</form>
+{{end}}
+
+{{/* Removed Expense Sources List */}}
+{{define "whatif-removed-expense-sources"}}
+<div id="removed-expense-sources" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
+    {{if .Settings.RemovedExpenseSources}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+    {{range .Settings.RemovedExpenseSources}}
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+        <div>
+            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
+            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+            </svg>
+        </button>
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}
+
+{{/* Add Expense Form */}}
+{{define "whatif-add-expense-form"}}
+<form hx-post="/whatif/expense" hx-target="#whatif-results" hx-on::after-request="this.reset()"
+    class="space-y-2 border-t dark:border-gray-700 pt-3">
+    <div class="grid grid-cols-2 gap-2">
+        <input type="text" name="name" placeholder="Name (e.g., Travel)"
+            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" required>
+        <input type="number" name="amount" placeholder="Monthly $"
+            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" min="0" required>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
+            <input type="number" name="start_year"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Ends yr (0=never)</label>
+            <input type="number" name="end_year"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
+        </div>
+    </div>
+    <div class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-4">
+            <label class="flex items-center text-sm dark:text-gray-300">
+                <input type="checkbox" name="inflation" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 mr-2"
+                    checked>
+                Inflation
+            </label>
+            <label class="flex items-center text-sm text-amber-600 dark:text-amber-400" title="Can be reduced during market downturns">
+                <input type="checkbox" name="discretionary" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500 mr-2">
+                Discretionary
+            </label>
+        </div>
+        <button type="submit"
+            class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            Add Expense
+        </button>
+    </div>
+</form>
+{{end}}

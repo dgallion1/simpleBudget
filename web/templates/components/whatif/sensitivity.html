@@ -1,0 +1,40 @@
+{{/* Sensitivity Analysis Card */}}
+{{/* Expects: .Analysis.Sensitivity */}}
+{{define "whatif-sensitivity"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Sensitivity Analysis</h3>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 dark:bg-gray-900">
+                <tr>
+                    <th class="text-left p-3 font-medium text-gray-500 dark:text-gray-300">Scenario</th>
+                    <th class="text-center p-3 font-medium text-gray-500 dark:text-gray-300">Change</th>
+                    <th class="text-right p-3 font-medium text-gray-500 dark:text-gray-300">Longevity</th>
+                    <th class="text-right p-3 font-medium text-gray-500 dark:text-gray-300">Final Balance</th>
+                    <th class="text-center p-3 font-medium text-gray-500 dark:text-gray-300">Score Impact</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                {{range .Analysis.Sensitivity}}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td class="p-3 text-gray-800 dark:text-gray-200">{{.Scenario.Name}}</td>
+                    <td class="p-3 text-center text-gray-500 dark:text-gray-300">{{.Scenario.Change}}</td>
+                    <td class="p-3 text-right {{if .Survives}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                        {{if .Survives}}
+                        Survives
+                        {{else}}
+                        {{printf "%.1f" (deref .LongevityYears)}} yrs
+                        {{end}}
+                    </td>
+                    <td class="p-3 text-right dark:text-gray-300">{{formatMoney .FinalBalance}}</td>
+                    <td
+                        class="p-3 text-center {{if gt .ScoreChange 0}}text-green-600 dark:text-green-400{{else if lt .ScoreChange 0}}text-red-600 dark:text-red-400{{else}}text-gray-500 dark:text-gray-300{{end}}">
+                        {{if gt .ScoreChange 0}}+{{end}}{{.ScoreChange}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

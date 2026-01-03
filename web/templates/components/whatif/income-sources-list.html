@@ -1,0 +1,111 @@
+{{/* Income Sources List - Shared between main content and OOB updates */}}
+{{/* Expects: .Settings with IncomeSources and RemovedIncomeSources */}}
+{{define "whatif-income-sources-list"}}
+<div id="income-sources-list" class="space-y-2 mb-4">
+    {{range .Settings.IncomeSources}}
+    {{template "whatif-income-source-item" .}}
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-300 italic">No income sources added</p>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Single Income Source Item */}}
+{{define "whatif-income-source-item"}}
+<form hx-put="/whatif/income/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+    class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+    <div class="flex items-center justify-between mb-2">
+        <div>
+            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+            <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
+            class="text-red-500 hover:text-red-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+    <div class="flex items-center gap-4 text-xs">
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+            Starts yr:
+            <input type="number" name="start_year" min="0" max="50"
+                value="{{div .StartMonth 12}}"
+                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
+                title="Year income starts (0 = now)">
+        </label>
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+            Ends yr:
+            <input type="number" name="end_year" min="0" max="50"
+                value="{{if .EndMonth}}{{div .EndMonth 12}}{{else}}0{{end}}"
+                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
+                title="Year income ends (0 = never)">
+        </label>
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+            <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
+            COLA (2%/yr)
+        </label>
+    </div>
+</form>
+{{end}}
+
+{{/* Removed Income Sources List */}}
+{{define "whatif-removed-income-sources"}}
+<div id="removed-income-sources" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
+    {{if .Settings.RemovedIncomeSources}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+    {{range .Settings.RemovedIncomeSources}}
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+        <div>
+            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button hx-post="/whatif/income/{{.ID}}/restore" hx-target="#whatif-results"
+            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+            </svg>
+        </button>
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}
+
+{{/* Add Income Form */}}
+{{define "whatif-add-income-form"}}
+<form hx-post="/whatif/income" hx-target="#whatif-results" hx-on::after-request="this.reset()"
+    class="space-y-2 border-t dark:border-gray-700 pt-3">
+    <div class="grid grid-cols-2 gap-2">
+        <input type="text" name="name" placeholder="Name (e.g., Social Security)"
+            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" required>
+        <input type="number" name="amount" placeholder="Monthly $"
+            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" min="0" required>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
+            <input type="number" name="start_year"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Ends yr (0=never)</label>
+            <input type="number" name="end_year"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0">
+        </div>
+    </div>
+    <div class="flex items-center justify-between">
+        <label class="flex items-center text-sm dark:text-gray-300">
+            <input type="checkbox" name="cola" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 mr-2">
+            Apply COLA (2%/yr)
+        </label>
+        <button type="submit"
+            class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            Add Income
+        </button>
+    </div>
+</form>
+{{end}}

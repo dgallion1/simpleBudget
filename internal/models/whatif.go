@@ -221,6 +221,39 @@ type MonteCarloResult struct {
 	SpendingShocks  int     `json:"spending_shocks"`  // Number of spending shock events
 	HealthShocks    int     `json:"health_shocks"`    // Number of health emergency events
 	ProjectionYears int     `json:"projection_years"` // Actual years projected (varies with longevity)
+
+	// Crash timing breakdown
+	EarlyCrashes   int `json:"early_crashes"`    // Crashes in years 1-5
+	MidCrashes     int `json:"mid_crashes"`      // Crashes in years 6-15
+	LateCrashes    int `json:"late_crashes"`     // Crashes in years 16+
+	FirstCrashYear int `json:"first_crash_year"` // Year of first crash (0 if none)
+}
+
+// SequenceRiskBreakdown provides detailed crash timing analysis
+type SequenceRiskBreakdown struct {
+	// Survival rates by crash timing
+	NoCrashSurvival    float64 `json:"no_crash_survival"`    // Survival rate with no crashes
+	EarlyCrashSurvival float64 `json:"early_crash_survival"` // Survival rate when crashes in years 1-5
+	MidCrashSurvival   float64 `json:"mid_crash_survival"`   // Survival rate when crashes in years 6-15
+	LateCrashSurvival  float64 `json:"late_crash_survival"`  // Survival rate when crashes in years 16+
+
+	// Sample sizes for each category
+	NoCrashCount    int `json:"no_crash_count"`
+	EarlyCrashCount int `json:"early_crash_count"`
+	MidCrashCount   int `json:"mid_crash_count"`
+	LateCrashCount  int `json:"late_crash_count"`
+
+	// Impact metrics
+	EarlyVsLateImpact float64 `json:"early_vs_late_impact"` // Difference: late survival - early survival
+	EarlyVsNoneImpact float64 `json:"early_vs_none_impact"` // Difference: no crash survival - early survival
+
+	// Recovery analysis
+	RecoveryRate     float64 `json:"recovery_rate"`      // % of early crash runs that still survived
+	AvgRecoveryYears float64 `json:"avg_recovery_years"` // Avg years to recover after early crash
+
+	// Buffer recommendation (years of expenses to hold safe)
+	RecommendedBuffer int    `json:"recommended_buffer"`
+	BufferRationale   string `json:"buffer_rationale"`
 }
 
 // MonteCarloStats contains aggregated simulation statistics
@@ -244,6 +277,9 @@ type MonteCarloStats struct {
 	AvgCrashesPerRun   float64 `json:"avg_crashes_per_run"`  // Average market crashes per simulation
 	AvgShocksPerRun    float64 `json:"avg_shocks_per_run"`   // Average spending shocks per simulation
 	SequenceRiskImpact float64 `json:"sequence_risk_impact"` // How much sequence of returns affected outcomes
+
+	// Detailed sequence risk analysis
+	SequenceRisk *SequenceRiskBreakdown `json:"sequence_risk"`
 }
 
 // MonteCarloDistribution contains bucketed results for visualization

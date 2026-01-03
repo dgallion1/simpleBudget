@@ -844,6 +844,9 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 	// Calculate sequence risk impact by comparing early vs late crash outcomes
 	stats.SequenceRiskImpact = c.calculateSequenceRiskImpact(results)
 
+	// Calculate detailed sequence risk breakdown
+	stats.SequenceRisk = c.calculateSequenceRiskBreakdown(results)
+
 	// Create distribution buckets
 	distribution := c.createDistributionBuckets(balances)
 
@@ -877,7 +880,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	currentHealthcareExpenses := s.MonthlyHealthcare
 
 	// Track shocks for this run
-	marketCrashes := 0
+	crashTiming := &CrashTiming{}
 	spendingShocks := 0
 	healthShocks := 0
 	lastCrashYear := -999 // Track for recovery boost
@@ -886,7 +889,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	var monthlyRMD float64
 
 	// Generate year-by-year returns upfront for sequence of returns
-	yearlyReturns := c.generateYearlyReturns(rng, config, projectionYears, &marketCrashes, &lastCrashYear)
+	yearlyReturns := c.generateYearlyReturns(rng, config, projectionYears, crashTiming, &lastCrashYear)
 
 	for m := 0; m < months; m++ {
 		if depleted {
@@ -1020,15 +1023,28 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		FinalBalance:    finalBalance,
 		DepletionYear:   depletionYear,
 		Survives:        !depleted,
-		MarketCrashes:   marketCrashes,
+		MarketCrashes:   crashTiming.TotalCrashes,
 		SpendingShocks:  spendingShocks,
 		HealthShocks:    healthShocks,
 		ProjectionYears: projectionYears,
+		EarlyCrashes:    crashTiming.EarlyCrashes,
+		MidCrashes:      crashTiming.MidCrashes,
+		LateCrashes:     crashTiming.LateCrashes,
+		FirstCrashYear:  crashTiming.FirstCrashYear,
 	}
 }
 
+// CrashTiming tracks when crashes occurred during simulation
+type CrashTiming struct {
+	TotalCrashes   int
+	EarlyCrashes   int // Years 1-5 (index 0-4)
+	MidCrashes     int // Years 6-15 (index 5-14)
+	LateCrashes    int // Years 16+ (index 15+)
+	FirstCrashYear int // 0 means no crashes (1-indexed for display)
+}
+
 // generateYearlyReturns creates a sequence of annual returns with crashes and volatility
-func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloConfig, years int, crashes *int, lastCrashYear *int) []float64 {
+func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64 {
 	returns := make([]float64, years)
 	baseReturn := c.Settings.InvestmentReturn
 
@@ -1039,8 +1055,22 @@ func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloCon
 		if rng.Float64() < config.CrashProbability {
 			// Crash year: severe negative return
 			yearReturn = config.CrashSeverity + (rng.Float64()-0.5)*10 // -35% to -25%
-			*crashes++
+			timing.TotalCrashes++
 			*lastCrashYear = y
+
+			// Track first crash year (1-indexed for human readability)
+			if timing.FirstCrashYear == 0 {
+				timing.FirstCrashYear = y + 1
+			}
+
+			// Categorize by timing
+			if y < 5 {
+				timing.EarlyCrashes++
+			} else if y < 15 {
+				timing.MidCrashes++
+			} else {
+				timing.LateCrashes++
+			}
 		} else if y == *lastCrashYear+1 {
 			// Recovery year after crash: typically strong
 			yearReturn = baseReturn + config.RecoveryBoost + rng.NormFloat64()*8
@@ -1093,6 +1123,127 @@ func (c *Calculator) calculateSequenceRiskImpact(results []models.MonteCarloResu
 	survivalWithoutCrashes := float64(noCrashRunsSucceeded) / float64(noCrashRunsTotal) * 100
 
 	return survivalWithoutCrashes - survivalWithCrashes
+}
+
+// calculateSequenceRiskBreakdown provides detailed analysis of crash timing impact
+func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloResult) *models.SequenceRiskBreakdown {
+	if len(results) < 100 {
+		return nil
+	}
+
+	// Track survival by crash timing category
+	var noCrashSurvived, noCrashTotal int
+	var earlyCrashSurvived, earlyCrashTotal int
+	var midCrashSurvived, midCrashTotal int
+	var lateCrashSurvived, lateCrashTotal int
+
+	// For recovery analysis
+	var earlyRecoveries int
+	var totalFirstCrashYears float64
+	var firstCrashCount int
+
+	for _, r := range results {
+		// Categorize by where crashes occurred
+		hasEarlyCrash := r.EarlyCrashes > 0
+		hasMidCrash := r.MidCrashes > 0
+		hasLateCrash := r.LateCrashes > 0
+		hasAnyCrash := r.MarketCrashes > 0
+
+		if !hasAnyCrash {
+			noCrashTotal++
+			if r.Survives {
+				noCrashSurvived++
+			}
+		} else {
+			// Track first crash timing for recovery analysis
+			if r.FirstCrashYear > 0 {
+				totalFirstCrashYears += float64(r.FirstCrashYear)
+				firstCrashCount++
+			}
+
+			// Categorize by earliest crash (most impactful)
+			if hasEarlyCrash {
+				earlyCrashTotal++
+				if r.Survives {
+					earlyCrashSurvived++
+					earlyRecoveries++
+				}
+			} else if hasMidCrash {
+				midCrashTotal++
+				if r.Survives {
+					midCrashSurvived++
+				}
+			} else if hasLateCrash {
+				lateCrashTotal++
+				if r.Survives {
+					lateCrashSurvived++
+				}
+			}
+		}
+	}
+
+	// Calculate survival rates (as percentages)
+	safeDiv := func(num, denom int) float64 {
+		if denom == 0 {
+			return 0
+		}
+		return float64(num) / float64(denom) * 100
+	}
+
+	noCrashSurvival := safeDiv(noCrashSurvived, noCrashTotal)
+	earlyCrashSurvival := safeDiv(earlyCrashSurvived, earlyCrashTotal)
+	midCrashSurvival := safeDiv(midCrashSurvived, midCrashTotal)
+	lateCrashSurvival := safeDiv(lateCrashSurvived, lateCrashTotal)
+
+	// Calculate impact metrics
+	earlyVsLateImpact := lateCrashSurvival - earlyCrashSurvival
+	earlyVsNoneImpact := noCrashSurvival - earlyCrashSurvival
+
+	// Recovery analysis
+	recoveryRate := safeDiv(earlyRecoveries, earlyCrashTotal)
+	avgRecoveryYears := 0.0
+	if firstCrashCount > 0 {
+		avgRecoveryYears = totalFirstCrashYears / float64(firstCrashCount)
+	}
+
+	// Buffer recommendation based on impact
+	recommendedBuffer := 2 // Default minimum
+	rationale := "Standard 2-year buffer for moderate sequence risk"
+
+	if earlyVsNoneImpact > 30 {
+		recommendedBuffer = 5
+		rationale = "High sequence risk detected: 5-year buffer recommended to weather early crashes"
+	} else if earlyVsNoneImpact > 20 {
+		recommendedBuffer = 4
+		rationale = "Significant sequence risk: 4-year buffer recommended"
+	} else if earlyVsNoneImpact > 10 {
+		recommendedBuffer = 3
+		rationale = "Moderate sequence risk: 3-year buffer provides good protection"
+	} else if earlyVsNoneImpact <= 5 {
+		recommendedBuffer = 2
+		rationale = "Low sequence risk: 2-year buffer is sufficient"
+	}
+
+	return &models.SequenceRiskBreakdown{
+		NoCrashSurvival:    noCrashSurvival,
+		EarlyCrashSurvival: earlyCrashSurvival,
+		MidCrashSurvival:   midCrashSurvival,
+		LateCrashSurvival:  lateCrashSurvival,
+
+		NoCrashCount:    noCrashTotal,
+		EarlyCrashCount: earlyCrashTotal,
+		MidCrashCount:   midCrashTotal,
+		LateCrashCount:  lateCrashTotal,
+
+		EarlyVsLateImpact: earlyVsLateImpact,
+		EarlyVsNoneImpact: earlyVsNoneImpact,
+
+		RecoveryRate:     recoveryRate,
+		AvgRecoveryYears: avgRecoveryYears,
+
+		RecommendedBuffer: recommendedBuffer,
+		BufferRationale:   rationale,
+	}
 }
 
 // createDistributionBuckets creates histogram buckets for visualization

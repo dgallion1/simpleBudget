@@ -52,9 +52,9 @@ func TestGenerateYearlyReturns(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 
 	t.Run("generates correct number of years", func(t *testing.T) {
-		crashes := 0
+		timing := &CrashTiming{}
 		lastCrash := -999
-		returns := calc.generateYearlyReturns(rng, DefaultMonteCarloConfig(), 30, &crashes, &lastCrash)
+		returns := calc.generateYearlyReturns(rng, DefaultMonteCarloConfig(), 30, timing, &lastCrash)
 
 		if len(returns) != 30 {
 			t.Errorf("got %d years, want 30", len(returns))
@@ -63,9 +63,9 @@ func TestGenerateYearlyReturns(t *testing.T) {
 
 	t.Run("returns are bounded", func(t *testing.T) {
 		rng := rand.New(rand.NewSource(123))
-		crashes := 0
+		timing := &CrashTiming{}
 		lastCrash := -999
-		returns := calc.generateYearlyReturns(rng, DefaultMonteCarloConfig(), 100, &crashes, &lastCrash)
+		returns := calc.generateYearlyReturns(rng, DefaultMonteCarloConfig(), 100, timing, &lastCrash)
 
 		for i, r := range returns {
 			if r < -50 || r > 50 {
@@ -82,12 +82,12 @@ func TestGenerateYearlyReturns(t *testing.T) {
 			CrashSeverity:    -30.0,
 			RecoveryBoost:    5.0,
 		}
-		crashes := 0
+		timing := &CrashTiming{}
 		lastCrash := -999
-		calc.generateYearlyReturns(rng, config, 20, &crashes, &lastCrash)
+		calc.generateYearlyReturns(rng, config, 20, timing, &lastCrash)
 
 		// With 50% probability over 20 years, we should see crashes
-		if crashes == 0 {
+		if timing.TotalCrashes == 0 {
 			t.Error("expected at least one crash with 50% probability")
 		}
 	})
@@ -100,15 +100,48 @@ func TestGenerateYearlyReturns(t *testing.T) {
 			CrashSeverity:    -30.0,
 			RecoveryBoost:    5.0,
 		}
-		crashes := 0
+		timing := &CrashTiming{}
 		lastCrash := -999
-		returns := calc.generateYearlyReturns(rng, config, 5, &crashes, &lastCrash)
+		returns := calc.generateYearlyReturns(rng, config, 5, timing, &lastCrash)
 
 		// All years should be crash years with negative returns
 		for i, r := range returns {
 			if i == 0 && r > 0 { // First year should be a crash
 				t.Errorf("crash year %d has positive return %v", i, r)
 			}
+		}
+	})
+
+	t.Run("crash timing is categorized correctly", func(t *testing.T) {
+		rng := rand.New(rand.NewSource(999))
+		config := &MonteCarloConfig{
+			ReturnVolatility: 15.0,
+			CrashProbability: 1.0, // 100% crash for testing
+			CrashSeverity:    -30.0,
+			RecoveryBoost:    5.0,
+		}
+		timing := &CrashTiming{}
+		lastCrash := -999
+		calc.generateYearlyReturns(rng, config, 20, timing, &lastCrash)
+
+		// With 100% crash probability over 20 years:
+		// Years 0-4 (5 years) -> EarlyCrashes
+		// Years 5-14 (10 years) -> MidCrashes
+		// Years 15-19 (5 years) -> LateCrashes
+		if timing.EarlyCrashes != 5 {
+			t.Errorf("expected 5 early crashes, got %d", timing.EarlyCrashes)
+		}
+		if timing.MidCrashes != 10 {
+			t.Errorf("expected 10 mid crashes, got %d", timing.MidCrashes)
+		}
+		if timing.LateCrashes != 5 {
+			t.Errorf("expected 5 late crashes, got %d", timing.LateCrashes)
+		}
+		if timing.TotalCrashes != 20 {
+			t.Errorf("expected 20 total crashes, got %d", timing.TotalCrashes)
+		}
+		if timing.FirstCrashYear != 1 {
+			t.Errorf("expected first crash in year 1, got %d", timing.FirstCrashYear)
 		}
 	})
 }

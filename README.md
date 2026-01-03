@@ -65,7 +65,7 @@ make build
 # This creates a 'budget2' executable in the current directory
 ```
 
-If Go is not installed, the build will automatically download and install Go 1.23.4 to `~/.local/go`. This is a one-time setup that takes about a minute.
+If Go is not installed, the build will automatically download and install Go 1.25 to `~/.local/go`. This is a one-time setup that takes about a minute.
 
 ### Step 3: Create the data directory
 
@@ -246,8 +246,8 @@ If the automatic Go installation fails (network issues, permissions, etc.):
 **Fix:** Install Go manually:
 ```bash
 # Linux/macOS - download from https://go.dev/dl/
-wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.25.0.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # Or force reinstall via Makefile

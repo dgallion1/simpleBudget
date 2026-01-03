@@ -3,7 +3,7 @@
 
 BINARY := budget2
 PORT := 8080
-GO_VERSION := 1.23.4
+GO_VERSION := 1.25.0
 
 # Detect OS and architecture for platform-specific commands
 ifeq ($(OS),Windows_NT)

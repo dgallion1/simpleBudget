@@ -45,13 +45,14 @@ type SecondaryMetrics struct {
 
 // SpendingAlert represents a notification about spending patterns
 type SpendingAlert struct {
-	Type     string     `json:"type"`     // unusual_day, budget_exceeded, budget_warning, large_transaction
-	Severity string     `json:"severity"` // error, warning, info, success
-	Title    string     `json:"title"`
-	Message  string     `json:"message"`
-	Detail   string     `json:"detail,omitempty"`
-	Date     *time.Time `json:"date,omitempty"`
-	Amount   float64    `json:"amount,omitempty"`
+	Type         string        `json:"type"`     // unusual_day, budget_exceeded, budget_warning, large_transaction
+	Severity     string        `json:"severity"` // error, warning, info, success
+	Title        string        `json:"title"`
+	Message      string        `json:"message"`
+	Detail       string        `json:"detail,omitempty"`
+	Date         *time.Time    `json:"date,omitempty"`
+	Amount       float64       `json:"amount,omitempty"`
+	Transactions []Transaction `json:"transactions,omitempty"` // Transactions that triggered this alert
 }
 
 // ChartData represents data for a Plotly chart

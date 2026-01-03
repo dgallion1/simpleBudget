@@ -571,13 +571,20 @@ func detectAlerts(ts *models.TransactionSet) []models.SpendingAlert {
 		total := dayTxns.SumAbsAmount()
 		if total > threshold && total > mean*1.5 { // Must be 50% above mean too
 			date, _ := time.Parse("2006-01-02", dateStr)
+			// Sort transactions by amount (largest first) for display
+			txnsCopy := make([]models.Transaction, len(dayTxns.Transactions))
+			copy(txnsCopy, dayTxns.Transactions)
+			sort.Slice(txnsCopy, func(i, j int) bool {
+				return math.Abs(txnsCopy[i].Amount) > math.Abs(txnsCopy[j].Amount)
+			})
 			alerts = append(alerts, models.SpendingAlert{
-				Type:     "unusual_day",
-				Severity: "warning",
-				Title:    "High Spending Day",
-				Message:  fmt.Sprintf("$%.0f spent on %s (%.0f%% above average)", total, date.Format("Jan 2"), ((total-mean)/mean)*100),
-				Date:     &date,
-				Amount:   total,
+				Type:         "unusual_day",
+				Severity:     "warning",
+				Title:        "High Spending Day",
+				Message:      fmt.Sprintf("$%.0f spent on %s (%.0f%% above average)", total, date.Format("Jan 2"), ((total-mean)/mean)*100),
+				Date:         &date,
+				Amount:       total,
+				Transactions: txnsCopy,
 			})
 		}
 	}
@@ -600,6 +607,7 @@ func detectAlerts(ts *models.TransactionSet) []models.SpendingAlert {
 				Severity: "info",
 				Title:    "Large Transaction",
 				Message:  fmt.Sprintf("$%.0f at %s", amt, t.Description),
+				Detail:   t.Description,
 				Date:     &date,
 				Amount:   amt,
 			})

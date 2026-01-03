@@ -252,8 +252,11 @@ type SequenceRiskBreakdown struct {
 	AvgRecoveryYears float64 `json:"avg_recovery_years"` // Avg years to recover after early crash
 
 	// Buffer recommendation (years of expenses to hold safe)
-	RecommendedBuffer int    `json:"recommended_buffer"`
-	BufferRationale   string `json:"buffer_rationale"`
+	RecommendedBuffer int     `json:"recommended_buffer"`
+	BufferRationale   string  `json:"buffer_rationale"`
+	BufferAmount      float64 `json:"buffer_amount"`       // Dollar amount of recommended buffer
+	AnnualExpenses    float64 `json:"annual_expenses"`     // Annual expenses used for buffer calculation
+	AdjustedSpending  float64 `json:"adjusted_spending"`   // Monthly spending if buffer is set aside from portfolio
 }
 
 // MonteCarloStats contains aggregated simulation statistics

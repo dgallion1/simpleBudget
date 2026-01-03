@@ -844,8 +844,10 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 	// Calculate sequence risk impact by comparing early vs late crash outcomes
 	stats.SequenceRiskImpact = c.calculateSequenceRiskImpact(results)
 
-	// Calculate detailed sequence risk breakdown
-	stats.SequenceRisk = c.calculateSequenceRiskBreakdown(results)
+	// Calculate detailed sequence risk breakdown with expense context
+	// Use CalculateTotalExpenses to include all expense sources
+	annualExpenses := c.CalculateTotalExpenses(0) * 12
+	stats.SequenceRisk = c.calculateSequenceRiskBreakdown(results, annualExpenses, c.Settings.PortfolioValue)
 
 	// Create distribution buckets
 	distribution := c.createDistributionBuckets(balances)
@@ -1126,7 +1128,7 @@ func (c *Calculator) calculateSequenceRiskImpact(results []models.MonteCarloResu
 }
 
 // calculateSequenceRiskBreakdown provides detailed analysis of crash timing impact
-func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloResult) *models.SequenceRiskBreakdown {
+func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloResult, annualExpenses float64, portfolioValue float64) *models.SequenceRiskBreakdown {
 	if len(results) < 100 {
 		return nil
 	}
@@ -1224,6 +1226,17 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 		rationale = "Low sequence risk: 2-year buffer is sufficient"
 	}
 
+	// Calculate buffer amount in dollars
+	bufferAmount := float64(recommendedBuffer) * annualExpenses
+
+	// Calculate adjusted monthly spending if buffer is set aside from portfolio
+	// Uses a 4% safe withdrawal rate on the remaining portfolio after buffer
+	adjustedSpending := 0.0
+	remainingPortfolio := portfolioValue - bufferAmount
+	if remainingPortfolio > 0 {
+		adjustedSpending = (remainingPortfolio * 0.04) / 12 // 4% annual withdrawal rate, monthly
+	}
+
 	return &models.SequenceRiskBreakdown{
 		NoCrashSurvival:    noCrashSurvival,
 		EarlyCrashSurvival: earlyCrashSurvival,
@@ -1243,6 +1256,9 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 
 		RecommendedBuffer: recommendedBuffer,
 		BufferRationale:   rationale,
+		BufferAmount:      bufferAmount,
+		AnnualExpenses:    annualExpenses,
+		AdjustedSpending:  adjustedSpending,
 	}
 }
 

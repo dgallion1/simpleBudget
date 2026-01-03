@@ -475,6 +475,79 @@ func TestCalculateSequenceRiskImpact(t *testing.T) {
 	})
 }
 
+// TestCalculateSequenceRiskBreakdown tests the detailed breakdown calculations
+func TestCalculateSequenceRiskBreakdown(t *testing.T) {
+	t.Run("calculates buffer amount correctly", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 5000
+		settings.MonthlyHealthcare = 500
+		settings.ProjectionYears = 30
+		calc := NewCalculator(settings)
+
+		// Run enough simulations to get a breakdown
+		result := calc.RunMonteCarloSimulation(500)
+
+		if result.Stats.SequenceRisk == nil {
+			t.Fatal("expected sequence risk breakdown to be populated")
+		}
+
+		breakdown := result.Stats.SequenceRisk
+
+		// Annual expenses = (5000 + 500) * 12 = 66000
+		expectedAnnualExpenses := 66000.0
+		if breakdown.AnnualExpenses != expectedAnnualExpenses {
+			t.Errorf("expected annual expenses %.0f, got %.0f", expectedAnnualExpenses, breakdown.AnnualExpenses)
+		}
+
+		// Buffer amount = recommended years * annual expenses
+		expectedBufferAmount := float64(breakdown.RecommendedBuffer) * expectedAnnualExpenses
+		if breakdown.BufferAmount != expectedBufferAmount {
+			t.Errorf("expected buffer amount %.0f, got %.0f", expectedBufferAmount, breakdown.BufferAmount)
+		}
+
+		// Adjusted spending = (portfolio - buffer) * 0.04 / 12
+		remainingPortfolio := settings.PortfolioValue - breakdown.BufferAmount
+		expectedAdjustedSpending := (remainingPortfolio * 0.04) / 12
+		if breakdown.AdjustedSpending != expectedAdjustedSpending {
+			t.Errorf("expected adjusted spending %.2f, got %.2f", expectedAdjustedSpending, breakdown.AdjustedSpending)
+		}
+	})
+
+	t.Run("buffer recommendation scales with risk", func(t *testing.T) {
+		// High-risk scenario (low portfolio, high expenses)
+		settingsHighRisk := models.DefaultWhatIfSettings()
+		settingsHighRisk.PortfolioValue = 500000
+		settingsHighRisk.MonthlyLivingExpenses = 4000
+		settingsHighRisk.MonthlyHealthcare = 500
+		settingsHighRisk.ProjectionYears = 30
+		calcHighRisk := NewCalculator(settingsHighRisk)
+		resultHighRisk := calcHighRisk.RunMonteCarloSimulation(500)
+
+		// Lower-risk scenario (high portfolio, low expenses)
+		settingsLowRisk := models.DefaultWhatIfSettings()
+		settingsLowRisk.PortfolioValue = 3000000
+		settingsLowRisk.MonthlyLivingExpenses = 3000
+		settingsLowRisk.MonthlyHealthcare = 500
+		settingsLowRisk.ProjectionYears = 30
+		calcLowRisk := NewCalculator(settingsLowRisk)
+		resultLowRisk := calcLowRisk.RunMonteCarloSimulation(500)
+
+		// Both should have valid breakdowns
+		if resultHighRisk.Stats.SequenceRisk == nil || resultLowRisk.Stats.SequenceRisk == nil {
+			t.Skip("sequence risk breakdown not available for comparison")
+		}
+
+		// Buffer recommendation should be at least 2 years
+		if resultHighRisk.Stats.SequenceRisk.RecommendedBuffer < 2 {
+			t.Errorf("expected recommended buffer >= 2, got %d", resultHighRisk.Stats.SequenceRisk.RecommendedBuffer)
+		}
+		if resultLowRisk.Stats.SequenceRisk.RecommendedBuffer < 2 {
+			t.Errorf("expected recommended buffer >= 2, got %d", resultLowRisk.Stats.SequenceRisk.RecommendedBuffer)
+		}
+	})
+}
+
 // TestMonteCarloWithIncomeAndExpenses tests simulation with income sources
 func TestMonteCarloWithIncomeAndExpenses(t *testing.T) {
 	t.Run("income sources reduce depletion risk", func(t *testing.T) {

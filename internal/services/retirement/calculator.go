@@ -1441,7 +1441,7 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 
 	if earlyVsNoneImpact > 30 {
 		recommendedBuffer = 5
-		rationale = "High sequence risk detected: 5-year buffer recommended to weather early crashes"
+		rationale = "High sequence risk: 5-year buffer to weather early crashes"
 	} else if earlyVsNoneImpact > 20 {
 		recommendedBuffer = 4
 		rationale = "Significant sequence risk: 4-year buffer recommended"
@@ -1453,8 +1453,29 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 		rationale = "Low sequence risk: 2-year buffer is sufficient"
 	}
 
-	// Calculate buffer amount in dollars
-	bufferAmount := float64(recommendedBuffer) * annualExpenses
+	// Calculate buffer amount accounting for partial portfolio value during crash
+	// Key insight: Even during a 30% crash, portfolio still has 70% of its value
+	// You can still safely withdraw from the reduced portfolio (at a conservative rate)
+	// The buffer only needs to cover the SHORTFALL, not full expenses
+	crashDrawdownPercent := 30.0                                              // Expected crash severity (from DefaultMonteCarloConfig)
+	crashedPortfolio := portfolioValue * (1 - crashDrawdownPercent/100)       // Portfolio after crash
+	safeWithdrawalRate := 0.03                                                // Conservative 3% during crash years
+	safeWithdrawalDuringCrash := crashedPortfolio * safeWithdrawalRate        // Annual safe withdrawal from crashed portfolio
+	annualShortfall := annualExpenses - safeWithdrawalDuringCrash             // Gap that buffer must cover
+	if annualShortfall < 0 {
+		annualShortfall = 0 // No shortfall if safe withdrawal covers expenses
+	}
+
+	// Calculate both naive and improved buffer amounts
+	naiveBufferAmount := float64(recommendedBuffer) * annualExpenses
+	bufferAmount := float64(recommendedBuffer) * annualShortfall
+
+	// Update rationale to explain the improved calculation
+	if annualShortfall > 0 && annualShortfall < annualExpenses {
+		savingsPercent := (1 - annualShortfall/annualExpenses) * 100
+		rationale = fmt.Sprintf("%s (%.0f%% less than naive calculation because crashed portfolio still provides $%.0f/yr)",
+			rationale, savingsPercent, safeWithdrawalDuringCrash)
+	}
 
 	// Calculate adjusted monthly spending if buffer is set aside from portfolio
 	// Uses a 4% safe withdrawal rate on the remaining portfolio after buffer
@@ -1490,6 +1511,13 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 		BufferAmount:      bufferAmount,
 		AnnualExpenses:    annualExpenses,
 		AdjustedSpending:  adjustedSpending,
+
+		// Buffer calculation breakdown
+		CrashDrawdownPercent:      crashDrawdownPercent,
+		CrashedPortfolioValue:     crashedPortfolio,
+		SafeWithdrawalDuringCrash: safeWithdrawalDuringCrash,
+		AnnualShortfall:           annualShortfall,
+		NaiveBufferAmount:         naiveBufferAmount,
 
 		// Adaptive spending fields
 		HasDiscretionary:     hasDiscretionary,

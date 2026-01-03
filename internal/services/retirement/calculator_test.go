@@ -500,10 +500,36 @@ func TestCalculateSequenceRiskBreakdown(t *testing.T) {
 			t.Errorf("expected annual expenses %.0f, got %.0f", expectedAnnualExpenses, breakdown.AnnualExpenses)
 		}
 
-		// Buffer amount = recommended years * annual expenses
-		expectedBufferAmount := float64(breakdown.RecommendedBuffer) * expectedAnnualExpenses
+		// Buffer calculation accounts for partial portfolio value during crash:
+		// 1. crashedPortfolio = portfolioValue * (1 - 0.30) = 700,000
+		// 2. safeWithdrawalDuringCrash = crashedPortfolio * 0.03 = 21,000
+		// 3. annualShortfall = annualExpenses - safeWithdrawalDuringCrash
+		// 4. bufferAmount = recommendedBuffer * annualShortfall
+		crashedPortfolio := settings.PortfolioValue * 0.70 // 30% drawdown
+		safeWithdrawal := crashedPortfolio * 0.03          // 3% safe withdrawal during crash
+		annualShortfall := expectedAnnualExpenses - safeWithdrawal
+		expectedBufferAmount := float64(breakdown.RecommendedBuffer) * annualShortfall
 		if breakdown.BufferAmount != expectedBufferAmount {
 			t.Errorf("expected buffer amount %.0f, got %.0f", expectedBufferAmount, breakdown.BufferAmount)
+		}
+
+		// Verify the breakdown fields are populated
+		if breakdown.CrashDrawdownPercent != 30.0 {
+			t.Errorf("expected crash drawdown 30%%, got %.1f%%", breakdown.CrashDrawdownPercent)
+		}
+		if breakdown.CrashedPortfolioValue != crashedPortfolio {
+			t.Errorf("expected crashed portfolio %.0f, got %.0f", crashedPortfolio, breakdown.CrashedPortfolioValue)
+		}
+		if breakdown.SafeWithdrawalDuringCrash != safeWithdrawal {
+			t.Errorf("expected safe withdrawal %.0f, got %.0f", safeWithdrawal, breakdown.SafeWithdrawalDuringCrash)
+		}
+		if breakdown.AnnualShortfall != annualShortfall {
+			t.Errorf("expected annual shortfall %.0f, got %.0f", annualShortfall, breakdown.AnnualShortfall)
+		}
+		// NaiveBufferAmount should be what the old calculation would have produced
+		expectedNaiveBuffer := float64(breakdown.RecommendedBuffer) * expectedAnnualExpenses
+		if breakdown.NaiveBufferAmount != expectedNaiveBuffer {
+			t.Errorf("expected naive buffer %.0f, got %.0f", expectedNaiveBuffer, breakdown.NaiveBufferAmount)
 		}
 
 		// Adjusted spending = (portfolio - buffer) * 0.04 / 12

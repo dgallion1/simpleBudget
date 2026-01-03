@@ -312,6 +312,13 @@ type SequenceRiskBreakdown struct {
 	AnnualExpenses    float64 `json:"annual_expenses"`     // Annual expenses used for buffer calculation
 	AdjustedSpending  float64 `json:"adjusted_spending"`   // Monthly spending if buffer is set aside from portfolio
 
+	// Buffer calculation breakdown (accounts for partial portfolio value during crashes)
+	CrashDrawdownPercent     float64 `json:"crash_drawdown_percent"`      // Expected portfolio drop during crash (e.g., 30%)
+	CrashedPortfolioValue    float64 `json:"crashed_portfolio_value"`     // Portfolio value after crash
+	SafeWithdrawalDuringCrash float64 `json:"safe_withdrawal_during_crash"` // Annual safe withdrawal from crashed portfolio
+	AnnualShortfall          float64 `json:"annual_shortfall"`            // Gap between expenses and safe withdrawal
+	NaiveBufferAmount        float64 `json:"naive_buffer_amount"`         // What buffer would be without accounting for portfolio
+
 	// Adaptive spending analysis (discretionary expense flexibility)
 	HasDiscretionary          bool    `json:"has_discretionary"`            // Whether user has discretionary expenses
 	MonthlyDiscretionary      float64 `json:"monthly_discretionary"`        // Monthly discretionary expenses

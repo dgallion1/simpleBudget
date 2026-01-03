@@ -41,7 +41,7 @@ func RegisterRoutes(r chi.Router) {
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	recurring := detectRecurringPayments(filtered)
 	trends := analyzeCategoryTrends(allData, startDate, endDate)
-	income := analyzeIncomePatterns(filtered)
+	income := AnalyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)
 
 	var totalRecurring, monthlyRecurring, regularIncome float64
@@ -270,7 +270,9 @@ func analyzeCategoryTrends(ts *models.TransactionSet, currentStart, currentEnd t
 	return trends
 }
 
-func analyzeIncomePatterns(ts *models.TransactionSet) []models.IncomePattern {
+// AnalyzeIncomePatterns detects recurring income sources from transaction data.
+// Exported for use by other packages (e.g., whatif).
+func AnalyzeIncomePatterns(ts *models.TransactionSet) []models.IncomePattern {
 	var patterns []models.IncomePattern
 
 	income := ts.FilterByType(models.Income)
@@ -635,7 +637,7 @@ func handleIncomePartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	income := analyzeIncomePatterns(data)
+	income := AnalyzeIncomePatterns(data)
 
 	var regularTotal float64
 	for _, ip := range income {

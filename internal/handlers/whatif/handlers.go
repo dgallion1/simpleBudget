@@ -5,11 +5,13 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"budget2/internal/handlers/insights"
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
@@ -593,7 +595,6 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	yearAgo := now.AddDate(-1, 0, 0)
 	filtered := data.FilterByDateRange(yearAgo, now)
 	outflows := filtered.FilterByType(models.Outflow)
-	income := filtered.FilterByType(models.Income)
 
 	months := 12.0
 	if filtered.MinDate().After(yearAgo) {
@@ -607,42 +608,47 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	totalExpenses := outflows.SumAbsAmount()
 	settings.MonthlyLivingExpenses = totalExpenses / months
 
-	// Calculate and set average monthly income - merge instead of replace
-	totalIncome := income.SumAmount()
-	avgMonthlyIncome := totalIncome / months
-	if avgMonthlyIncome > 0 {
-		// Find and update existing dashboard-income, or add it
-		// Also clean up any duplicate dashboard-income entries
-		foundIdx := -1
-		for i := range settings.IncomeSources {
-			if settings.IncomeSources[i].ID == "dashboard-income" {
-				if foundIdx == -1 {
-					foundIdx = i
-					settings.IncomeSources[i].Amount = avgMonthlyIncome
-				} else {
-					// Remove duplicate by marking for deletion
-					settings.IncomeSources[i].ID = ""
-				}
-			}
-		}
-		// Remove any marked duplicates
-		filtered := settings.IncomeSources[:0]
-		for _, src := range settings.IncomeSources {
-			if src.ID != "" {
-				filtered = append(filtered, src)
-			}
-		}
-		settings.IncomeSources = filtered
+	// Use insights income pattern detection for individual income sources
+	incomePatterns := insights.AnalyzeIncomePatterns(filtered)
 
-		if foundIdx == -1 {
-			settings.IncomeSources = append(settings.IncomeSources, models.IncomeSource{
-				ID:     "dashboard-income",
-				Name:   "Current Income",
-				Amount: avgMonthlyIncome,
-				Type:   models.IncomeFixed,
-			})
+	// Remove old auto-detected sources (prefixed with "insights-" or old "dashboard-income")
+	// Keep user-added sources (no special prefix)
+	userSources := make([]models.IncomeSource, 0)
+	for _, src := range settings.IncomeSources {
+		if !strings.HasPrefix(src.ID, "insights-") && src.ID != "dashboard-income" {
+			userSources = append(userSources, src)
 		}
 	}
+
+	// Convert detected income patterns to income sources
+	for _, pattern := range incomePatterns {
+		// Only include regular income patterns (skip one-time or irregular)
+		if !pattern.IsRegular {
+			continue
+		}
+
+		// Convert to monthly amount based on frequency
+		monthlyAmount := pattern.AvgAmount
+		switch pattern.Frequency {
+		case "weekly":
+			monthlyAmount = pattern.AvgAmount * 52 / 12
+		case "biweekly":
+			monthlyAmount = pattern.AvgAmount * 26 / 12
+		// monthly is already correct
+		}
+
+		// Create a stable ID from the description
+		id := "insights-" + strings.ToLower(strings.ReplaceAll(pattern.Description, " ", "-"))
+
+		userSources = append(userSources, models.IncomeSource{
+			ID:     id,
+			Name:   strings.Title(pattern.Description),
+			Amount: monthlyAmount,
+			Type:   models.IncomeFixed,
+		})
+	}
+
+	settings.IncomeSources = userSources
 
 	return nil
 }

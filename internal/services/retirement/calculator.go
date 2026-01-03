@@ -76,6 +76,39 @@ func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, 
 	return pvAtStart
 }
 
+// calculateHealthcarePV calculates the present value of healthcare costs for a single person
+// This handles the Medicare transition where costs and inflation rates change at age 65
+func (c *Calculator) calculateHealthcarePV(person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
+	pvTotal := 0.0
+
+	if person.IsOnMedicare() {
+		// Already on Medicare - simple PV calculation with post-Medicare inflation
+		pvTotal = PresentValueAnnuity(person.CurrentMonthlyCost, discountRate, person.PostMedicareInflation, 0, totalMonths)
+	} else {
+		// Pre-Medicare: calculate in two phases
+		yearsUntilMedicare := person.YearsUntilMedicare()
+		preMedicareMonths := yearsUntilMedicare * 12
+
+		if preMedicareMonths >= totalMonths {
+			// Entire projection is pre-Medicare
+			pvTotal = PresentValueAnnuity(person.CurrentMonthlyCost, discountRate, person.PreMedicareInflation, 0, totalMonths)
+		} else {
+			// Phase 1: Pre-Medicare period
+			if preMedicareMonths > 0 {
+				pvTotal += PresentValueAnnuity(person.CurrentMonthlyCost, discountRate, person.PreMedicareInflation, 0, preMedicareMonths)
+			}
+
+			// Phase 2: Post-Medicare period
+			postMedicareMonths := totalMonths - preMedicareMonths
+			if postMedicareMonths > 0 {
+				pvTotal += PresentValueAnnuity(person.MedicareMonthlyCost, discountRate, person.PostMedicareInflation, preMedicareMonths, postMedicareMonths)
+			}
+		}
+	}
+
+	return pvTotal
+}
+
 // CalculateTotalIncome returns total income for a specific month
 func (c *Calculator) CalculateTotalIncome(month int) float64 {
 	total := 0.0
@@ -88,7 +121,6 @@ func (c *Calculator) CalculateTotalIncome(month int) float64 {
 // CalculateTotalExpenses returns total expenses for a specific month
 func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	s := c.Settings
-	healthcareStartMonth := s.HealthcareStartYears * 12
 
 	// Calculate living expenses with inflation and spending decline
 	livingExpenses := s.MonthlyLivingExpenses
@@ -98,15 +130,8 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 		livingExpenses = s.MonthlyLivingExpenses * math.Pow(1+netInflation, float64(years))
 	}
 
-	// Calculate healthcare expenses
-	healthcareExpenses := 0.0
-	if month >= healthcareStartMonth {
-		healthcareExpenses = s.MonthlyHealthcare
-		if month > healthcareStartMonth {
-			yearsActive := (month - healthcareStartMonth) / 12
-			healthcareExpenses = s.MonthlyHealthcare * math.Pow(1+s.HealthcareInflation/100, float64(yearsActive))
-		}
-	}
+	// Calculate healthcare expenses using the settings helper (handles both legacy and multi-person)
+	healthcareExpenses := s.GetTotalHealthcareCost(month)
 
 	// Add expense sources
 	for _, source := range s.ExpenseSources {
@@ -126,12 +151,10 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 	taxableBalance := s.PortfolioValue - taxDeferredBalance
 
-	healthcareStartMonth := s.HealthcareStartYears * 12
 	var depletionMonth *int
 	var longevityYears *float64
 
 	currentLivingExpenses := s.MonthlyLivingExpenses
-	currentHealthcareExpenses := s.MonthlyHealthcare
 
 	// Track annual RMD (calculated once per year, distributed monthly)
 	var annualRMD float64
@@ -145,7 +168,6 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			if m > 0 {
 				netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
 				currentLivingExpenses *= (1 + netInflation)
-				currentHealthcareExpenses *= (1 + s.HealthcareInflation/100)
 			}
 
 			// Calculate annual RMD at start of each year (age 73+)
@@ -158,11 +180,8 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			}
 		}
 
-		// Calculate expenses
-		activeHealthcare := 0.0
-		if m >= healthcareStartMonth {
-			activeHealthcare = currentHealthcareExpenses
-		}
+		// Calculate healthcare expenses using multi-person model
+		activeHealthcare := s.GetTotalHealthcareCost(m)
 		totalExpenses := currentLivingExpenses + activeHealthcare
 
 		// Add expense sources
@@ -405,8 +424,14 @@ func (c *Calculator) CalculatePresentValueAnalysis() *models.PresentValueAnalysi
 	netInflation := s.InflationRate - s.SpendingDeclineRate
 	pvExpenses += PresentValueAnnuity(s.MonthlyLivingExpenses, discountRate, netInflation, 0, months)
 
-	// Healthcare expenses (if applicable)
-	if s.MonthlyHealthcare > 0 {
+	// Healthcare expenses using multi-person model or legacy
+	if len(s.HealthcarePersons) > 0 {
+		// Multi-person model: calculate PV for each person
+		for _, person := range s.HealthcarePersons {
+			pvExpenses += c.calculateHealthcarePV(person, discountRate, months)
+		}
+	} else if s.MonthlyHealthcare > 0 {
+		// Legacy single-value model
 		healthcareStartMonth := s.HealthcareStartYears * 12
 		healthcareMonths := months - healthcareStartMonth
 		if healthcareMonths > 0 {
@@ -960,12 +985,10 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 	taxableBalance := s.PortfolioValue - taxDeferredBalance
 
-	healthcareStartMonth := s.HealthcareStartYears * 12
 	var depletionYear float64
 	depleted := false
 
 	currentLivingExpenses := s.MonthlyLivingExpenses
-	currentHealthcareExpenses := s.MonthlyHealthcare
 
 	// Track shocks for this run
 	crashTiming := &CrashTiming{}
@@ -975,6 +998,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 	// Annual RMD tracking
 	var monthlyRMD float64
+
+	// Healthcare cost variation multiplier (updated annually)
+	healthcareVariation := 1.0
 
 	// Generate year-by-year returns upfront for sequence of returns
 	yearlyReturns := c.generateYearlyReturns(rng, config, projectionYears, crashTiming, &lastCrashYear)
@@ -994,11 +1020,10 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 				inflationVar := 1 + (rng.Float64()-0.5)*0.02 // +/- 1%
 				netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100 * inflationVar
 				currentLivingExpenses *= (1 + netInflation)
-
-				// Healthcare inflation with variation (healthcare is more volatile)
-				healthVar := 1 + (rng.Float64()-0.5)*0.04 // +/- 2%
-				currentHealthcareExpenses *= (1 + s.HealthcareInflation/100*healthVar)
 			}
+
+			// Healthcare cost variation (healthcare is more volatile, +/- 2%)
+			healthcareVariation = 1 + (rng.Float64()-0.5)*0.04
 
 			// Calculate annual RMD
 			if currentAge >= RMDStartAge && taxDeferredBalance > 0 {
@@ -1009,11 +1034,8 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			}
 		}
 
-		// Calculate base expenses
-		activeHealthcare := 0.0
-		if m >= healthcareStartMonth {
-			activeHealthcare = currentHealthcareExpenses
-		}
+		// Calculate healthcare expenses using multi-person model with variation
+		activeHealthcare := s.GetTotalHealthcareCost(m) * healthcareVariation
 		totalExpenses := currentLivingExpenses + activeHealthcare
 
 		// Add expense sources

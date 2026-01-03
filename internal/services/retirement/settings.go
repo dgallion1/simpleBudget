@@ -76,6 +76,31 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 	if settings.RemovedExpenseSources == nil {
 		settings.RemovedExpenseSources = []models.ExpenseSource{}
 	}
+	if settings.HealthcarePersons == nil {
+		settings.HealthcarePersons = []models.HealthcarePerson{}
+	}
+
+	// Migration: if no healthcare persons but legacy healthcare value exists,
+	// create a single person from legacy values
+	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
+		coverage := models.CoverageMedicare
+		if settings.CurrentAge < 65 {
+			coverage = models.CoverageACA
+		}
+		settings.HealthcarePersons = []models.HealthcarePerson{
+			{
+				ID:                    "migrated-user",
+				Name:                  "User",
+				CurrentAge:            settings.CurrentAge,
+				CurrentCoverage:       coverage,
+				CurrentMonthlyCost:    settings.MonthlyHealthcare,
+				PreMedicareInflation:  settings.HealthcareInflation,
+				MedicareMonthlyCost:   settings.MonthlyHealthcare,
+				PostMedicareInflation: settings.HealthcareInflation,
+				MedicareEligibleAge:   65,
+			},
+		}
+	}
 
 	return &settings, nil
 }
@@ -331,6 +356,85 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["projection_years"].(int); ok {
 		settings.ProjectionYears = v
 	}
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// AddHealthcarePerson adds a new healthcare person and saves
+func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	settings.HealthcarePersons = append(settings.HealthcarePersons, person)
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// UpdateHealthcarePerson updates an existing healthcare person by ID
+func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]interface{}) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range settings.HealthcarePersons {
+		if settings.HealthcarePersons[i].ID == id {
+			if v, ok := updates["name"].(string); ok {
+				settings.HealthcarePersons[i].Name = v
+			}
+			if v, ok := updates["current_age"].(int); ok {
+				settings.HealthcarePersons[i].CurrentAge = v
+			}
+			if v, ok := updates["current_coverage"].(string); ok {
+				settings.HealthcarePersons[i].CurrentCoverage = models.CoverageType(v)
+			}
+			if v, ok := updates["current_monthly_cost"].(float64); ok {
+				settings.HealthcarePersons[i].CurrentMonthlyCost = v
+			}
+			if v, ok := updates["pre_medicare_inflation"].(float64); ok {
+				settings.HealthcarePersons[i].PreMedicareInflation = v
+			}
+			if v, ok := updates["medicare_monthly_cost"].(float64); ok {
+				settings.HealthcarePersons[i].MedicareMonthlyCost = v
+			}
+			if v, ok := updates["post_medicare_inflation"].(float64); ok {
+				settings.HealthcarePersons[i].PostMedicareInflation = v
+			}
+			break
+		}
+	}
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RemoveHealthcarePerson removes a healthcare person by ID
+func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSettings, error) {
+	settings, err := sm.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.HealthcarePerson, 0, len(settings.HealthcarePersons))
+	for _, person := range settings.HealthcarePersons {
+		if person.ID != id {
+			filtered = append(filtered, person)
+		}
+	}
+	settings.HealthcarePersons = filtered
 
 	if err := sm.saveInternal(settings); err != nil {
 		return nil, err

@@ -1,5 +1,7 @@
 package models
 
+import "math"
+
 // WhatIfSettings contains all user parameters for retirement planning
 type WhatIfSettings struct {
 	// Portfolio
@@ -7,8 +9,11 @@ type WhatIfSettings struct {
 
 	// Expenses
 	MonthlyLivingExpenses float64 `json:"monthly_living_expenses"` // Base monthly expenses
-	MonthlyHealthcare     float64 `json:"monthly_healthcare"`      // Monthly healthcare costs
-	HealthcareStartYears  int     `json:"healthcare_start_years"`  // Years until healthcare starts
+	MonthlyHealthcare     float64 `json:"monthly_healthcare"`      // Monthly healthcare costs (legacy)
+	HealthcareStartYears  int     `json:"healthcare_start_years"`  // Years until healthcare starts (legacy)
+
+	// Multi-person healthcare model
+	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
 
 	// RMD Settings
 	CurrentAge         int     `json:"current_age"`          // User's current age
@@ -16,7 +21,7 @@ type WhatIfSettings struct {
 
 	// Rates (as percentages, e.g., 4.0 for 4%)
 	InflationRate         float64 `json:"inflation_rate"`          // Annual inflation
-	HealthcareInflation   float64 `json:"healthcare_inflation"`    // Healthcare inflation
+	HealthcareInflation   float64 `json:"healthcare_inflation"`    // Healthcare inflation (legacy, for single-person model)
 	SpendingDeclineRate   float64 `json:"spending_decline_rate"`   // Annual spending reduction
 	InvestmentReturn      float64 `json:"investment_return"`       // Expected portfolio return
 	DiscountRate          float64 `json:"discount_rate"`           // For PV calculations
@@ -31,6 +36,38 @@ type WhatIfSettings struct {
 	// Recently Removed (for restore functionality)
 	RemovedIncomeSources  []IncomeSource  `json:"removed_income_sources,omitempty"`
 	RemovedExpenseSources []ExpenseSource `json:"removed_expense_sources,omitempty"`
+}
+
+// GetTotalHealthcareCost returns total healthcare cost for a given month
+// Uses multi-person model if HealthcarePersons is populated, otherwise falls back to legacy single value
+func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {
+	// Use multi-person model if available
+	if len(s.HealthcarePersons) > 0 {
+		total := 0.0
+		for _, person := range s.HealthcarePersons {
+			total += person.GetMonthlyCost(month)
+		}
+		return total
+	}
+
+	// Legacy single-value model
+	healthcareStartMonth := s.HealthcareStartYears * 12
+	if month < healthcareStartMonth {
+		return 0
+	}
+
+	yearsActive := (month - healthcareStartMonth) / 12
+	if yearsActive < 0 {
+		yearsActive = 0
+	}
+
+	// Apply healthcare inflation to legacy model
+	return s.MonthlyHealthcare * math.Pow(1+s.HealthcareInflation/100, float64(yearsActive))
+}
+
+// HasMultiPersonHealthcare returns true if multi-person healthcare model is being used
+func (s *WhatIfSettings) HasMultiPersonHealthcare() bool {
+	return len(s.HealthcarePersons) > 0
 }
 
 // DefaultWhatIfSettings returns sensible defaults for retirement planning

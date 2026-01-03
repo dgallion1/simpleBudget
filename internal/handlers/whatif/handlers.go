@@ -44,6 +44,9 @@ func RegisterRoutes(r chi.Router) {
 	r.Put("/whatif/expense/{id}", handleWhatIfUpdateExpense)
 	r.Delete("/whatif/expense/{id}", handleWhatIfDeleteExpense)
 	r.Post("/whatif/expense/{id}/restore", handleWhatIfRestoreExpense)
+	r.Post("/whatif/healthcare", handleWhatIfAddHealthcare)
+	r.Put("/whatif/healthcare/{id}", handleWhatIfUpdateHealthcare)
+	r.Delete("/whatif/healthcare/{id}", handleWhatIfDeleteHealthcare)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
@@ -567,6 +570,174 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-run the full analysis which includes a fresh Monte Carlo simulation
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	age, _ := strconv.Atoi(r.FormValue("current_age"))
+	coverageType := r.FormValue("current_coverage")
+	monthlyCost, _ := strconv.ParseFloat(r.FormValue("current_monthly_cost"), 64)
+	preMedicareInflation, _ := strconv.ParseFloat(r.FormValue("pre_medicare_inflation"), 64)
+	medicareCost, _ := strconv.ParseFloat(r.FormValue("medicare_monthly_cost"), 64)
+	postMedicareInflation, _ := strconv.ParseFloat(r.FormValue("post_medicare_inflation"), 64)
+
+	// Set defaults if not provided
+	if name == "" {
+		name = "Person"
+	}
+	if age == 0 {
+		age = 65
+	}
+	if coverageType == "" {
+		if age >= 65 {
+			coverageType = string(models.CoverageMedicare)
+		} else {
+			coverageType = string(models.CoverageACA)
+		}
+	}
+	if monthlyCost == 0 {
+		if coverageType == string(models.CoverageMedicare) {
+			monthlyCost = 459
+		} else {
+			monthlyCost = 1100
+		}
+	}
+	if preMedicareInflation == 0 {
+		preMedicareInflation = 7.0
+	}
+	if medicareCost == 0 {
+		medicareCost = 600
+	}
+	if postMedicareInflation == 0 {
+		postMedicareInflation = 4.0
+	}
+
+	person := models.HealthcarePerson{
+		ID:                    uuid.New().String(),
+		Name:                  name,
+		CurrentAge:            age,
+		CurrentCoverage:       models.CoverageType(coverageType),
+		CurrentMonthlyCost:    monthlyCost,
+		PreMedicareInflation:  preMedicareInflation,
+		MedicareMonthlyCost:   medicareCost,
+		PostMedicareInflation: postMedicareInflation,
+		MedicareEligibleAge:   65,
+	}
+
+	settings, err := retirementMgr.AddHealthcarePerson(person)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	updates := make(map[string]interface{})
+
+	if v := r.FormValue("name"); v != "" {
+		updates["name"] = v
+	}
+	if v := r.FormValue("current_age"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			updates["current_age"] = i
+		}
+	}
+	if v := r.FormValue("current_coverage"); v != "" {
+		updates["current_coverage"] = v
+	}
+	if v := r.FormValue("current_monthly_cost"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			updates["current_monthly_cost"] = f
+		}
+	}
+	if v := r.FormValue("pre_medicare_inflation"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			updates["pre_medicare_inflation"] = f
+		}
+	}
+	if v := r.FormValue("medicare_monthly_cost"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			updates["medicare_monthly_cost"] = f
+		}
+	}
+	if v := r.FormValue("post_medicare_inflation"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			updates["post_medicare_inflation"] = f
+		}
+	}
+
+	settings, err := retirementMgr.UpdateHealthcarePerson(id, updates)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.RemoveHealthcarePerson(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	calc := retirement.NewCalculator(settings)
 	analysis := calc.RunFullAnalysis()
 

@@ -626,43 +626,100 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Monthly Budget Analysis</h3>
 
-    <!-- Breakdown table -->
-    <div class="mb-4 text-sm">
-        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-            <span class="text-gray-600 dark:text-gray-400">Monthly Expenses</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
-        </div>
-        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-            <span class="text-gray-600 dark:text-gray-400">Monthly Income</span>
-            <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.MonthlyIncome}}</span>
-        </div>
-        {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
-        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-            <span class="text-gray-600 dark:text-gray-400">Required RMD</span>
-            <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
-        </div>
+    <!-- Current (Now) Section -->
+    <div class="{{if .Analysis.BudgetFit.HasSteadyState}}pb-4 border-b border-gray-200 dark:border-gray-700{{end}}">
+        {{if .Analysis.BudgetFit.HasSteadyState}}
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current (Today)</h4>
         {{end}}
+
+        <!-- Breakdown table -->
+        <div class="mb-4 text-sm">
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-400">Monthly Expenses</span>
+                <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-400">Monthly Income</span>
+                <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.MonthlyIncome}}</span>
+            </div>
+            {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-400">Required RMD</span>
+                <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
+            </div>
+            {{end}}
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 text-center">
+            <div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Monthly Gap</p>
+                <p
+                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.MonthlyGap 0.0}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}+{{formatMoney (abs
+                    .Analysis.BudgetFit.MonthlyGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.MonthlyGap}}{{end}}
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Required Rate</p>
+                <p
+                    class="text-2xl font-bold {{if le .Analysis.BudgetFit.RequiredRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.RequiredRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{printf "%.1f" .Analysis.BudgetFit.RequiredRate}}%
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
+            </div>
+        </div>
     </div>
 
-    <div class="grid grid-cols-2 gap-4 text-center">
-        <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Monthly Gap</p>
-            <p
-                class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.MonthlyGap 0.0}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">
-                {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}+{{formatMoney (abs
-                .Analysis.BudgetFit.MonthlyGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.MonthlyGap}}{{end}}
-            </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+    {{if .Analysis.BudgetFit.HasSteadyState}}
+    <!-- Steady State Section (when all income is active) -->
+    <div class="pt-4">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            At Full Income (Year {{printf "%.1f" .Analysis.BudgetFit.SteadyStateYear}})
+        </h4>
+
+        <!-- Breakdown table -->
+        <div class="mb-4 text-sm">
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-400">Monthly Expenses</span>
+                <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateExpenses}}</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-400">Monthly Income</span>
+                <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateIncome}}</span>
+            </div>
+            {{if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
+            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-gray-600 dark:text-gray-400">Estimated RMD</span>
+                <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}</span>
+            </div>
+            {{end}}
         </div>
-        <div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Required Rate</p>
-            <p
-                class="text-2xl font-bold {{if le .Analysis.BudgetFit.RequiredRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.RequiredRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
-                {{printf "%.1f" .Analysis.BudgetFit.RequiredRate}}%
-            </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
+
+        <div class="grid grid-cols-2 gap-4 text-center">
+            <div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Monthly Gap</p>
+                <p
+                    class="text-2xl font-bold {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}text-green-600 dark:text-green-400{{else if eq .Analysis.BudgetFit.SteadyStateGap 0.0}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}+{{formatMoney (abs
+                    .Analysis.BudgetFit.SteadyStateGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.SteadyStateGap}}{{end}}
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Required Rate</p>
+                <p
+                    class="text-2xl font-bold {{if le .Analysis.BudgetFit.SteadyStateRate 4.0}}text-green-600 dark:text-green-400{{else if le .Analysis.BudgetFit.SteadyStateRate 6.0}}text-amber-600 dark:text-amber-400{{else}}text-red-600 dark:text-red-400{{end}}">
+                    {{printf "%.1f" .Analysis.BudgetFit.SteadyStateRate}}%
+                </p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
+            </div>
         </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+            Values shown in year-{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}} dollars (inflation-adjusted)
+        </p>
     </div>
+    {{end}}
 
     {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
     <!-- RMD Impact Details -->

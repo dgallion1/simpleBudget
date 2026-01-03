@@ -320,7 +320,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		requiredRate = (annualGap / s.PortfolioValue) * 100
 	}
 
-	return &models.BudgetFitAnalysis{
+	result := &models.BudgetFitAnalysis{
 		MonthlyExpenses: monthlyExpenses,
 		MonthlyIncome:   monthlyIncome,
 		MonthlyRMD:      monthlyRMD,
@@ -331,6 +331,65 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		RMDCoverage:     rmdCoverage,
 		ExcessRMD:       excessRMD,
 	}
+
+	// Calculate steady-state analysis (when all income sources are active)
+	steadyStateMonth := c.findSteadyStateMonth()
+	if steadyStateMonth > 0 {
+		result.HasSteadyState = true
+		result.SteadyStateMonth = steadyStateMonth
+		result.SteadyStateYear = float64(steadyStateMonth) / 12
+
+		// Calculate expenses and income at steady state
+		result.SteadyStateExpenses = c.CalculateTotalExpenses(steadyStateMonth)
+		result.SteadyStateIncome = c.CalculateTotalIncome(steadyStateMonth)
+
+		// Calculate RMD at steady state age
+		steadyStateAge := s.CurrentAge + (steadyStateMonth / 12)
+		if steadyStateAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
+			yearsToSteadyState := float64(steadyStateMonth) / 12
+			estimatedTaxDeferred := s.PortfolioValue * (s.TaxDeferredPercent / 100) *
+				math.Pow(1+s.InvestmentReturn/100, yearsToSteadyState)
+			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, steadyStateAge)
+			result.SteadyStateRMD = annualRMD / 12
+		}
+
+		// Calculate steady state gap
+		result.SteadyStateGap = result.SteadyStateExpenses - result.SteadyStateIncome - result.SteadyStateRMD
+
+		// Calculate steady state withdrawal rate
+		if s.PortfolioValue > 0 && result.SteadyStateGap > 0 {
+			// Use estimated portfolio value at steady state
+			yearsToSteadyState := float64(steadyStateMonth) / 12
+			estimatedPortfolio := s.PortfolioValue * math.Pow(1+s.InvestmentReturn/100, yearsToSteadyState)
+			result.SteadyStateRate = (result.SteadyStateGap * 12 / estimatedPortfolio) * 100
+		}
+	}
+
+	return result
+}
+
+// findSteadyStateMonth finds the month when all income sources are active
+// Returns 0 if all sources start immediately (no delayed income)
+func (c *Calculator) findSteadyStateMonth() int {
+	maxStartMonth := 0
+
+	for _, source := range c.Settings.IncomeSources {
+		if source.StartMonth > maxStartMonth {
+			// Make sure this source will actually be active (hasn't ended)
+			if source.EndMonth == nil || *source.EndMonth > source.StartMonth {
+				maxStartMonth = source.StartMonth
+			}
+		}
+	}
+
+	// Cap at projection length
+	maxMonth := c.Settings.ProjectionYears * 12
+	if maxStartMonth > maxMonth {
+		maxStartMonth = maxMonth
+	}
+
+	return maxStartMonth
 }
 
 // CalculatePresentValueAnalysis computes PV of expenses and income

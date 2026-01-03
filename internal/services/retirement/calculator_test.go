@@ -610,6 +610,105 @@ func TestMonteCarloReproducibility(t *testing.T) {
 	}
 }
 
+// TestSteadyStateBudgetFit tests the steady-state budget analysis
+func TestSteadyStateBudgetFit(t *testing.T) {
+	t.Run("no steady state when all income starts immediately", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 4000
+		settings.IncomeSources = []models.IncomeSource{
+			{Name: "Pension", Amount: 2000, StartMonth: 0},
+		}
+		calc := NewCalculator(settings)
+		result := calc.CalculateBudgetFit()
+
+		if result.HasSteadyState {
+			t.Error("expected HasSteadyState=false when all income starts at month 0")
+		}
+	})
+
+	t.Run("detects steady state with delayed income", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 4000
+		settings.IncomeSources = []models.IncomeSource{
+			{Name: "Pension", Amount: 1000, StartMonth: 0},
+			{Name: "Social Security", Amount: 2000, StartMonth: 24}, // Starts in 2 years
+		}
+		calc := NewCalculator(settings)
+		result := calc.CalculateBudgetFit()
+
+		if !result.HasSteadyState {
+			t.Error("expected HasSteadyState=true with delayed income")
+		}
+		if result.SteadyStateMonth != 24 {
+			t.Errorf("expected SteadyStateMonth=24, got %d", result.SteadyStateMonth)
+		}
+		if result.SteadyStateYear != 2.0 {
+			t.Errorf("expected SteadyStateYear=2.0, got %f", result.SteadyStateYear)
+		}
+	})
+
+	t.Run("steady state income higher than current", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 4000
+		settings.IncomeSources = []models.IncomeSource{
+			{Name: "Pension", Amount: 1000, StartMonth: 0},
+			{Name: "Social Security", Amount: 2000, StartMonth: 24},
+		}
+		calc := NewCalculator(settings)
+		result := calc.CalculateBudgetFit()
+
+		// Current income should be 1000
+		if result.MonthlyIncome != 1000 {
+			t.Errorf("expected current income=1000, got %f", result.MonthlyIncome)
+		}
+		// Steady state income should include both sources (with COLA applied)
+		if result.SteadyStateIncome <= result.MonthlyIncome {
+			t.Errorf("expected steady state income > current income, got %f vs %f",
+				result.SteadyStateIncome, result.MonthlyIncome)
+		}
+	})
+
+	t.Run("steady state gap smaller than current gap", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 4000
+		settings.InflationRate = 0 // No inflation for simpler test
+		settings.IncomeSources = []models.IncomeSource{
+			{Name: "Pension", Amount: 1000, StartMonth: 0},
+			{Name: "Social Security", Amount: 2500, StartMonth: 24},
+		}
+		calc := NewCalculator(settings)
+		result := calc.CalculateBudgetFit()
+
+		// Current gap: 4000 - 1000 = 3000
+		// Steady state gap: 4000 - 3500 = 500
+		if result.SteadyStateGap >= result.MonthlyGap {
+			t.Errorf("expected steady state gap < current gap, got %f vs %f",
+				result.SteadyStateGap, result.MonthlyGap)
+		}
+	})
+
+	t.Run("finds latest starting income source", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 4000
+		settings.IncomeSources = []models.IncomeSource{
+			{Name: "Part-time work", Amount: 500, StartMonth: 0},
+			{Name: "Social Security", Amount: 2000, StartMonth: 24},
+			{Name: "Pension", Amount: 1500, StartMonth: 60}, // Latest at 5 years
+		}
+		calc := NewCalculator(settings)
+		result := calc.CalculateBudgetFit()
+
+		if result.SteadyStateMonth != 60 {
+			t.Errorf("expected SteadyStateMonth=60 (latest income start), got %d", result.SteadyStateMonth)
+		}
+	})
+}
+
 // BenchmarkMonteCarloSimulation benchmarks the simulation performance
 func BenchmarkMonteCarloSimulation(b *testing.B) {
 	settings := models.DefaultWhatIfSettings()

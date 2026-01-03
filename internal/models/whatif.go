@@ -94,6 +94,16 @@ type BudgetFitAnalysis struct {
 	GapBeforeRMD float64 `json:"gap_before_rmd"` // Expenses - Income (before RMD applied)
 	RMDCoverage  float64 `json:"rmd_coverage"`   // How much of the gap RMD covers
 	ExcessRMD    float64 `json:"excess_rmd"`     // RMD beyond what's needed (forced taxable withdrawal)
+
+	// Steady-state analysis (when all income sources are active)
+	SteadyStateMonth    int     `json:"steady_state_month"`    // Month when all income is active
+	SteadyStateYear     float64 `json:"steady_state_year"`     // Year when all income is active
+	SteadyStateExpenses float64 `json:"steady_state_expenses"` // Expenses at steady state (inflated)
+	SteadyStateIncome   float64 `json:"steady_state_income"`   // Income at steady state (with COLA)
+	SteadyStateRMD      float64 `json:"steady_state_rmd"`      // RMD at steady state (if applicable)
+	SteadyStateGap      float64 `json:"steady_state_gap"`      // Gap at steady state
+	SteadyStateRate     float64 `json:"steady_state_rate"`     // Required withdrawal rate at steady state
+	HasSteadyState      bool    `json:"has_steady_state"`      // True if steady state differs from current
 }
 
 // RMDProjection represents RMD estimates for a specific year

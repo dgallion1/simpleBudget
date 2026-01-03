@@ -713,58 +713,101 @@ func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
 	}
 }
 
-// RunMonteCarloSimulation runs randomized scenario analysis
+// MonteCarloConfig defines parameters for enhanced simulation
+type MonteCarloConfig struct {
+	// Market dynamics
+	ReturnVolatility    float64 // Annual return standard deviation (e.g., 15 for 15%)
+	CrashProbability    float64 // Annual probability of a crash (e.g., 0.05 for 5%)
+	CrashSeverity       float64 // How bad crashes are (e.g., -30 for -30% return)
+	RecoveryBoost       float64 // Extra return after crash years (mean reversion)
+
+	// Spending shocks
+	SpendingShockProb   float64 // Annual probability of spending shock
+	SpendingShockMin    float64 // Minimum shock amount ($)
+	SpendingShockMax    float64 // Maximum shock amount ($)
+
+	// Healthcare emergencies
+	HealthShockProb     float64 // Annual probability of health emergency
+	HealthShockMin      float64 // Minimum health shock ($)
+	HealthShockMax      float64 // Maximum health shock ($)
+
+	// Longevity
+	LongevityVariation  int     // Years +/- to vary projection length
+}
+
+// DefaultMonteCarloConfig returns realistic simulation parameters
+func DefaultMonteCarloConfig() *MonteCarloConfig {
+	return &MonteCarloConfig{
+		// Market: ~15% annual volatility, 5% crash chance, crashes are -30% on average
+		ReturnVolatility:   15.0,
+		CrashProbability:   0.05,
+		CrashSeverity:      -30.0,
+		RecoveryBoost:      5.0,
+
+		// Spending: 8% chance of $5K-$25K emergency per year
+		SpendingShockProb:  0.08,
+		SpendingShockMin:   5000,
+		SpendingShockMax:   25000,
+
+		// Health: 5% chance of $10K-$50K health event per year
+		HealthShockProb:    0.05,
+		HealthShockMin:     10000,
+		HealthShockMax:     50000,
+
+		// Longevity: +/- 5 years from base projection
+		LongevityVariation: 5,
+	}
+}
+
+// RunMonteCarloSimulation runs enhanced randomized scenario analysis
 func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysis {
 	if runs <= 0 {
 		runs = 1000
 	}
 
+	config := DefaultMonteCarloConfig()
 	results := make([]models.MonteCarloResult, runs)
 	successCount := 0
 	totalDepletionYears := 0.0
 	depletionCount := 0
 
-	// Parameters for random variation (using uniform distribution)
-	// Return: base +/- 4% range
-	// Inflation: base +/- 2% range
-	returnBase := c.Settings.InvestmentReturn
-	inflationBase := c.Settings.InflationRate
+	// Track aggregate shock statistics
+	totalCrashes := 0
+	totalSpendingShocks := 0
+	totalHealthShocks := 0
+	runsWithCrashes := 0
+	runsWithSpendingShocks := 0
+	runsWithHealthShocks := 0
 
-	// Create a new random source seeded with current time for true randomness
+	// Create a new random source seeded with current time
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for i := 0; i < runs; i++ {
-		// Create varied settings
-		modSettings := *c.Settings
-		modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
-		modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+		result := c.runSingleMonteCarloSimulation(rng, config)
+		results[i] = result
 
-		// Random variations: uniform distribution centered on base values
-		returnVar := (rng.Float64() - 0.5) * 8   // -4 to +4
-		inflationVar := (rng.Float64() - 0.5) * 4 // -2 to +2
-
-		modSettings.InvestmentReturn = math.Max(0, returnBase+returnVar)
-		modSettings.InflationRate = math.Max(0, inflationBase+inflationVar)
-
-		modCalc := NewCalculator(&modSettings)
-		projection := modCalc.RunProjection()
-
-		result := models.MonteCarloResult{
-			FinalBalance: projection.FinalBalance,
-			Survives:     projection.Survives,
+		// Aggregate statistics
+		if result.Survives {
+			successCount++
 		}
-
-		if projection.LongevityYears != nil {
-			result.DepletionYear = *projection.LongevityYears
-			totalDepletionYears += *projection.LongevityYears
+		if result.DepletionYear > 0 {
+			totalDepletionYears += result.DepletionYear
 			depletionCount++
 		}
 
-		if projection.Survives {
-			successCount++
-		}
+		totalCrashes += result.MarketCrashes
+		totalSpendingShocks += result.SpendingShocks
+		totalHealthShocks += result.HealthShocks
 
-		results[i] = result
+		if result.MarketCrashes > 0 {
+			runsWithCrashes++
+		}
+		if result.SpendingShocks > 0 {
+			runsWithSpendingShocks++
+		}
+		if result.HealthShocks > 0 {
+			runsWithHealthShocks++
+		}
 	}
 
 	// Calculate statistics
@@ -775,8 +818,8 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 	sortFloat64s(balances)
 
 	stats := &models.MonteCarloStats{
-		Runs:         runs,
-		SuccessRate:  float64(successCount) / float64(runs) * 100,
+		Runs:          runs,
+		SuccessRate:   float64(successCount) / float64(runs) * 100,
 		MedianBalance: balances[runs/2],
 		MeanBalance:   mean(balances),
 		Percentile10:  balances[runs/10],
@@ -785,11 +828,21 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 		Percentile90:  balances[runs*9/10],
 		WorstCase:     balances[0],
 		BestCase:      balances[runs-1],
+
+		// Enhanced stats
+		MarketCrashCount:   runsWithCrashes,
+		SpendingShockCount: runsWithSpendingShocks,
+		HealthShockCount:   runsWithHealthShocks,
+		AvgCrashesPerRun:   float64(totalCrashes) / float64(runs),
+		AvgShocksPerRun:    float64(totalSpendingShocks+totalHealthShocks) / float64(runs),
 	}
 
 	if depletionCount > 0 {
 		stats.AvgDepletionYr = totalDepletionYears / float64(depletionCount)
 	}
+
+	// Calculate sequence risk impact by comparing early vs late crash outcomes
+	stats.SequenceRiskImpact = c.calculateSequenceRiskImpact(results)
 
 	// Create distribution buckets
 	distribution := c.createDistributionBuckets(balances)
@@ -798,6 +851,248 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 		Stats:        stats,
 		Distribution: distribution,
 	}
+}
+
+// runSingleMonteCarloSimulation runs one complete simulation with all risk factors
+func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *MonteCarloConfig) models.MonteCarloResult {
+	s := c.Settings
+
+	// Vary projection length for longevity risk
+	projectionYears := s.ProjectionYears
+	if config.LongevityVariation > 0 {
+		variation := rng.Intn(config.LongevityVariation*2+1) - config.LongevityVariation
+		projectionYears = max(10, s.ProjectionYears+variation)
+	}
+	months := projectionYears * 12
+
+	// Initialize balances
+	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
+	taxableBalance := s.PortfolioValue - taxDeferredBalance
+
+	healthcareStartMonth := s.HealthcareStartYears * 12
+	var depletionYear float64
+	depleted := false
+
+	currentLivingExpenses := s.MonthlyLivingExpenses
+	currentHealthcareExpenses := s.MonthlyHealthcare
+
+	// Track shocks for this run
+	marketCrashes := 0
+	spendingShocks := 0
+	healthShocks := 0
+	lastCrashYear := -999 // Track for recovery boost
+
+	// Annual RMD tracking
+	var monthlyRMD float64
+
+	// Generate year-by-year returns upfront for sequence of returns
+	yearlyReturns := c.generateYearlyReturns(rng, config, projectionYears, &marketCrashes, &lastCrashYear)
+
+	for m := 0; m < months; m++ {
+		if depleted {
+			break
+		}
+
+		currentAge := s.CurrentAge + (m / 12)
+		currentYear := m / 12
+
+		// Annual adjustments at year boundaries
+		if m%12 == 0 {
+			if m > 0 {
+				// Apply inflation with some random variation
+				inflationVar := 1 + (rng.Float64()-0.5)*0.02 // +/- 1%
+				netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100 * inflationVar
+				currentLivingExpenses *= (1 + netInflation)
+
+				// Healthcare inflation with variation (healthcare is more volatile)
+				healthVar := 1 + (rng.Float64()-0.5)*0.04 // +/- 2%
+				currentHealthcareExpenses *= (1 + s.HealthcareInflation/100*healthVar)
+			}
+
+			// Calculate annual RMD
+			if currentAge >= RMDStartAge && taxDeferredBalance > 0 {
+				annualRMD, _ := CalculateRMD(taxDeferredBalance, currentAge)
+				monthlyRMD = annualRMD / 12
+			} else {
+				monthlyRMD = 0
+			}
+		}
+
+		// Calculate base expenses
+		activeHealthcare := 0.0
+		if m >= healthcareStartMonth {
+			activeHealthcare = currentHealthcareExpenses
+		}
+		totalExpenses := currentLivingExpenses + activeHealthcare
+
+		// Add expense sources
+		for _, source := range s.ExpenseSources {
+			totalExpenses += source.GetAdjustedAmount(m, s.InflationRate)
+		}
+
+		// Apply spending shock (checked monthly, but represents annual probability)
+		if m%12 == 0 && rng.Float64() < config.SpendingShockProb {
+			shockAmount := config.SpendingShockMin + rng.Float64()*(config.SpendingShockMax-config.SpendingShockMin)
+			totalExpenses += shockAmount / 12 // Spread over the year
+			spendingShocks++
+		}
+
+		// Apply health shock (separate from regular healthcare)
+		if m%12 == 0 && rng.Float64() < config.HealthShockProb {
+			healthShockAmount := config.HealthShockMin + rng.Float64()*(config.HealthShockMax-config.HealthShockMin)
+			totalExpenses += healthShockAmount / 12 // Spread over the year
+			healthShocks++
+		}
+
+		// Calculate income
+		totalIncome := 0.0
+		for _, source := range s.IncomeSources {
+			totalIncome += source.GetAdjustedAmount(m)
+		}
+
+		// Monthly cash flow needed from portfolio
+		neededFromPortfolio := totalExpenses - totalIncome
+
+		// Apply this year's investment return (from pre-generated sequence)
+		annualReturn := yearlyReturns[currentYear]
+		monthlyReturn := annualReturn / 100 / 12
+
+		taxDeferredGrowth := taxDeferredBalance * monthlyReturn
+		taxableGrowth := taxableBalance * monthlyReturn
+
+		taxDeferredBalance += taxDeferredGrowth
+		taxableBalance += taxableGrowth
+
+		// Handle negative balances from crashes
+		if taxDeferredBalance < 0 {
+			taxDeferredBalance = 0
+		}
+		if taxableBalance < 0 {
+			taxableBalance = 0
+		}
+
+		// Process withdrawals
+		if neededFromPortfolio > 0 {
+			// First use RMD
+			if monthlyRMD > 0 {
+				rmdUsed := math.Min(monthlyRMD, neededFromPortfolio)
+				rmdUsed = math.Min(rmdUsed, taxDeferredBalance)
+				taxDeferredBalance -= rmdUsed
+				neededFromPortfolio -= rmdUsed
+			}
+
+			// Then taxable
+			if neededFromPortfolio > 0 && taxableBalance > 0 {
+				fromTaxable := math.Min(neededFromPortfolio, taxableBalance)
+				taxableBalance -= fromTaxable
+				neededFromPortfolio -= fromTaxable
+			}
+
+			// Then tax-deferred
+			if neededFromPortfolio > 0 && taxDeferredBalance > 0 {
+				fromTaxDeferred := math.Min(neededFromPortfolio, taxDeferredBalance)
+				taxDeferredBalance -= fromTaxDeferred
+				neededFromPortfolio -= fromTaxDeferred
+			}
+		} else {
+			// RMD still must be withdrawn
+			if monthlyRMD > 0 && taxDeferredBalance > 0 {
+				rmdAmount := math.Min(monthlyRMD, taxDeferredBalance)
+				taxDeferredBalance -= rmdAmount
+				taxableBalance += rmdAmount
+			}
+		}
+
+		// Check for depletion
+		totalBalance := taxDeferredBalance + taxableBalance
+		if totalBalance <= 0 {
+			depleted = true
+			depletionYear = float64(m) / 12
+		}
+	}
+
+	finalBalance := taxDeferredBalance + taxableBalance
+	if finalBalance < 0 {
+		finalBalance = 0
+	}
+
+	return models.MonteCarloResult{
+		FinalBalance:    finalBalance,
+		DepletionYear:   depletionYear,
+		Survives:        !depleted,
+		MarketCrashes:   marketCrashes,
+		SpendingShocks:  spendingShocks,
+		HealthShocks:    healthShocks,
+		ProjectionYears: projectionYears,
+	}
+}
+
+// generateYearlyReturns creates a sequence of annual returns with crashes and volatility
+func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloConfig, years int, crashes *int, lastCrashYear *int) []float64 {
+	returns := make([]float64, years)
+	baseReturn := c.Settings.InvestmentReturn
+
+	for y := 0; y < years; y++ {
+		var yearReturn float64
+
+		// Check for market crash
+		if rng.Float64() < config.CrashProbability {
+			// Crash year: severe negative return
+			yearReturn = config.CrashSeverity + (rng.Float64()-0.5)*10 // -35% to -25%
+			*crashes++
+			*lastCrashYear = y
+		} else if y == *lastCrashYear+1 {
+			// Recovery year after crash: typically strong
+			yearReturn = baseReturn + config.RecoveryBoost + rng.NormFloat64()*8
+		} else {
+			// Normal year: base return with volatility (normal distribution)
+			yearReturn = baseReturn + rng.NormFloat64()*config.ReturnVolatility
+		}
+
+		// Clamp to reasonable bounds (-50% to +50%)
+		yearReturn = math.Max(-50, math.Min(50, yearReturn))
+		returns[y] = yearReturn
+	}
+
+	return returns
+}
+
+// calculateSequenceRiskImpact measures how sequence of returns affected outcomes
+func (c *Calculator) calculateSequenceRiskImpact(results []models.MonteCarloResult) float64 {
+	// Compare success rates of runs with crashes vs without
+	// A value > 0 means crashes hurt outcomes (expected)
+	if len(results) < 100 {
+		return 0
+	}
+
+	crashRunsSucceeded := 0
+	crashRunsTotal := 0
+	noCrashRunsSucceeded := 0
+	noCrashRunsTotal := 0
+
+	for _, r := range results {
+		if r.MarketCrashes > 0 {
+			crashRunsTotal++
+			if r.Survives {
+				crashRunsSucceeded++
+			}
+		} else {
+			noCrashRunsTotal++
+			if r.Survives {
+				noCrashRunsSucceeded++
+			}
+		}
+	}
+
+	if crashRunsTotal == 0 || noCrashRunsTotal == 0 {
+		return 0
+	}
+
+	// Return the difference in survival rates
+	survivalWithCrashes := float64(crashRunsSucceeded) / float64(crashRunsTotal) * 100
+	survivalWithoutCrashes := float64(noCrashRunsSucceeded) / float64(noCrashRunsTotal) * 100
+
+	return survivalWithoutCrashes - survivalWithCrashes
 }
 
 // createDistributionBuckets creates histogram buckets for visualization

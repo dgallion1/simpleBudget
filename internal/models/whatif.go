@@ -214,9 +214,13 @@ type FailurePointAnalysis struct {
 
 // MonteCarloResult represents a single simulation run outcome
 type MonteCarloResult struct {
-	FinalBalance   float64 `json:"final_balance"`
-	DepletionYear  float64 `json:"depletion_year"` // 0 if survives
-	Survives       bool    `json:"survives"`
+	FinalBalance    float64 `json:"final_balance"`
+	DepletionYear   float64 `json:"depletion_year"` // 0 if survives
+	Survives        bool    `json:"survives"`
+	MarketCrashes   int     `json:"market_crashes"`   // Number of crash years
+	SpendingShocks  int     `json:"spending_shocks"`  // Number of spending shock events
+	HealthShocks    int     `json:"health_shocks"`    // Number of health emergency events
+	ProjectionYears int     `json:"projection_years"` // Actual years projected (varies with longevity)
 }
 
 // MonteCarloStats contains aggregated simulation statistics
@@ -232,6 +236,14 @@ type MonteCarloStats struct {
 	WorstCase       float64 `json:"worst_case"`       // Minimum final balance
 	BestCase        float64 `json:"best_case"`        // Maximum final balance
 	AvgDepletionYr  float64 `json:"avg_depletion_yr"` // Avg years to depletion (failed runs only)
+
+	// Enhanced simulation stats
+	MarketCrashCount   int     `json:"market_crash_count"`   // Runs that experienced crashes
+	SpendingShockCount int     `json:"spending_shock_count"` // Runs with spending shocks
+	HealthShockCount   int     `json:"health_shock_count"`   // Runs with health emergencies
+	AvgCrashesPerRun   float64 `json:"avg_crashes_per_run"`  // Average market crashes per simulation
+	AvgShocksPerRun    float64 `json:"avg_shocks_per_run"`   // Average spending shocks per simulation
+	SequenceRiskImpact float64 `json:"sequence_risk_impact"` // How much sequence of returns affected outcomes
 }
 
 // MonteCarloDistribution contains bucketed results for visualization

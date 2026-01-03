@@ -937,7 +937,23 @@
             </span>
         </button>
     </div>
-    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{.Analysis.MonteCarlo.Stats.Runs}} randomized scenarios with varied returns (±4%) and inflation (±2%):</p>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{.Analysis.MonteCarlo.Stats.Runs}} scenarios with year-by-year market volatility, crashes, spending shocks & longevity variation:</p>
+
+    <!-- Risk Events Summary -->
+    <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+        <div class="p-2 bg-red-50 dark:bg-red-900/20 rounded">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Market Crashes</p>
+            <p class="text-sm font-medium text-red-600 dark:text-red-400">{{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgCrashesPerRun}}/run</p>
+        </div>
+        <div class="p-2 bg-orange-50 dark:bg-orange-900/20 rounded">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Spending Shocks</p>
+            <p class="text-sm font-medium text-orange-600 dark:text-orange-400">{{.Analysis.MonteCarlo.Stats.SpendingShockCount}} runs</p>
+        </div>
+        <div class="p-2 bg-purple-50 dark:bg-purple-900/20 rounded">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Health Events</p>
+            <p class="text-sm font-medium text-purple-600 dark:text-purple-400">{{.Analysis.MonteCarlo.Stats.HealthShockCount}} runs</p>
+        </div>
+    </div>
 
     <!-- Success Rate -->
     <div class="mb-6">
@@ -993,6 +1009,29 @@
         Average depletion year (failed scenarios): <span class="font-medium text-gray-700 dark:text-gray-300">{{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgDepletionYr}} years</span>
     </p>
     {{end}}
+
+    {{if gt .Analysis.MonteCarlo.Stats.SequenceRiskImpact 5.0}}
+    <p class="mt-2 text-sm text-amber-600 dark:text-amber-400">
+        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+        Sequence risk detected: Market crashes reduced survival by {{printf "%.0f" .Analysis.MonteCarlo.Stats.SequenceRiskImpact}}%
+    </p>
+    {{end}}
+
+    <!-- Simulation Details -->
+    <details class="mt-4">
+        <summary class="text-xs text-gray-400 dark:text-gray-500 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">Simulation parameters</summary>
+        <div class="mt-2 text-xs text-gray-400 dark:text-gray-500 grid grid-cols-2 gap-1">
+            <span>Return volatility: 15% std dev</span>
+            <span>Crash probability: 5%/year</span>
+            <span>Crash severity: -30% avg</span>
+            <span>Recovery boost: +5%</span>
+            <span>Spending shock: 8%/year, $5K-$25K</span>
+            <span>Health shock: 5%/year, $10K-$50K</span>
+            <span>Longevity: ±5 years</span>
+        </div>
+    </details>
 </div>
 
 <script>

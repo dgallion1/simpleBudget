@@ -87,27 +87,44 @@ func (hp *HealthcarePerson) GetMonthlyCost(month int) float64 {
 		yearsUntilMedicare = 0
 	}
 
-	// Already on Medicare
+	// Already on Medicare coverage type
 	if hp.CurrentCoverage == CoverageMedicare {
 		return hp.CurrentMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsElapsed))
 	}
 
-	// Check if person is on Medicare in this projection period
-	if ageAtMonth >= hp.MedicareEligibleAge {
-		yearsOnMedicare := yearsElapsed - yearsUntilMedicare
-		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsOnMedicare))
-	}
-
-	// Employer coverage with limited duration (employer → ACA → Medicare)
+	// Employer coverage with limited duration - check this BEFORE age-based Medicare transition
+	// This handles the case where someone is already past Medicare age but still has employer coverage
 	if hp.CurrentCoverage == CoverageEmployer && hp.EmployerCoverageYears > 0 {
 		// Still on employer coverage
 		if yearsElapsed < hp.EmployerCoverageYears {
 			return hp.CurrentMonthlyCost // Employer cost doesn't inflate (it's subsidized)
 		}
 
-		// Transitioned to ACA after employer coverage ended
-		yearsOnACA := yearsElapsed - hp.EmployerCoverageYears
-		return hp.ACACostAfterEmployer * math.Pow(1+hp.PreMedicareInflation/100, float64(yearsOnACA))
+		// Employer coverage ended - determine what's next
+		yearsAfterEmployer := yearsElapsed - hp.EmployerCoverageYears
+		ageWhenEmployerEnds := hp.CurrentAge + hp.EmployerCoverageYears
+
+		// If already Medicare-eligible when employer coverage ends, go straight to Medicare
+		if ageWhenEmployerEnds >= hp.MedicareEligibleAge {
+			return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsAfterEmployer))
+		}
+
+		// Not yet Medicare-eligible when employer ends - go to ACA first
+		yearsOnACABeforeMedicare := hp.MedicareEligibleAge - ageWhenEmployerEnds
+		if yearsAfterEmployer < yearsOnACABeforeMedicare {
+			// Still on ACA
+			return hp.ACACostAfterEmployer * math.Pow(1+hp.PreMedicareInflation/100, float64(yearsAfterEmployer))
+		}
+
+		// Transitioned from ACA to Medicare
+		yearsOnMedicare := yearsAfterEmployer - yearsOnACABeforeMedicare
+		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsOnMedicare))
+	}
+
+	// Check if person transitions to Medicare in this projection period (ACA or unlimited employer)
+	if ageAtMonth >= hp.MedicareEligibleAge {
+		yearsOnMedicare := yearsElapsed - yearsUntilMedicare
+		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsOnMedicare))
 	}
 
 	// Pre-Medicare (ACA or unlimited Employer)

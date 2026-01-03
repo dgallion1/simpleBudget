@@ -277,12 +277,74 @@
                         </div>
                         {{end}}
                         {{if and (eq .CurrentCoverage "employer") (gt .EmployerCoverageYears 0)}}
-                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            Employer → ACA in {{.EmployerCoverageYears}} yrs → Medicare in {{sub .MedicareEligibleAge .CurrentAge}} yrs
+                        <!-- Visual Timeline: Employer → (ACA?) → Medicare -->
+                        <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                            {{if ge (add .CurrentAge .EmployerCoverageYears) .MedicareEligibleAge}}
+                            <!-- Employer → Medicare (already Medicare eligible when employer ends) -->
+                            <div class="flex items-center text-xs">
+                                <div class="flex-1 relative">
+                                    <div class="flex">
+                                        <div class="flex-1 bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium">
+                                            Employer ${{formatNumber .CurrentMonthlyCost}}
+                                        </div>
+                                        <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                                            Medicare ${{formatNumber .MedicareMonthlyCost}}
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                                        <span>Now</span>
+                                        <span>{{.EmployerCoverageYears}} yrs</span>
+                                        <span></span>
+                                    </div>
+                                </div>
+                            </div>
+                            {{else}}
+                            <!-- Employer → ACA → Medicare -->
+                            <div class="flex items-center text-xs">
+                                <div class="flex-1 relative">
+                                    <div class="flex">
+                                        <div class="bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium px-2" style="flex: {{.EmployerCoverageYears}}">
+                                            Employer ${{formatNumber .CurrentMonthlyCost}}
+                                        </div>
+                                        <div class="bg-green-200 dark:bg-green-800 h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium px-2" style="flex: {{sub (sub .MedicareEligibleAge .CurrentAge) .EmployerCoverageYears}}">
+                                            ACA ${{formatNumber .ACACostAfterEmployer}}
+                                        </div>
+                                        <div class="bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium px-2" style="flex: 5">
+                                            Medicare ${{formatNumber .MedicareMonthlyCost}}
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                                        <span>Now</span>
+                                        <span class="text-center">{{.EmployerCoverageYears}} yrs</span>
+                                        <span class="text-center">{{sub .MedicareEligibleAge .CurrentAge}} yrs</span>
+                                        <span></span>
+                                    </div>
+                                </div>
+                            </div>
+                            {{end}}
                         </div>
                         {{else if and (ne .CurrentCoverage "medicare") (gt (sub .MedicareEligibleAge .CurrentAge) 0)}}
-                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            Medicare in {{sub .MedicareEligibleAge .CurrentAge}} years (age 65)
+                        <!-- Visual Timeline: ACA → Medicare -->
+                        <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                            <div class="flex items-center text-xs">
+                                <div class="flex-1 relative">
+                                    <div class="flex">
+                                        <div class="flex-1 bg-green-200 dark:bg-green-800 rounded-l h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium">
+                                            {{if eq .CurrentCoverage "employer"}}Employer{{else}}ACA{{end}} ${{formatNumber .CurrentMonthlyCost}}
+                                        </div>
+                                        <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                                            Medicare ${{formatNumber .MedicareMonthlyCost}}
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                                        <span>Now</span>
+                                        <span>{{sub .MedicareEligibleAge .CurrentAge}} yrs (age 65)</span>
+                                        <span></span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         {{end}}
                     </form>
@@ -926,12 +988,74 @@
                 </div>
                 {{end}}
                 {{if and (eq .CurrentCoverage "employer") (gt .EmployerCoverageYears 0)}}
-                <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Employer → ACA in {{.EmployerCoverageYears}} yrs → Medicare in {{sub .MedicareEligibleAge .CurrentAge}} yrs
+                <!-- Visual Timeline: Employer → (ACA?) → Medicare -->
+                <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                    {{if ge (add .CurrentAge .EmployerCoverageYears) .MedicareEligibleAge}}
+                    <!-- Employer → Medicare (already Medicare eligible when employer ends) -->
+                    <div class="flex items-center text-xs">
+                        <div class="flex-1 relative">
+                            <div class="flex">
+                                <div class="flex-1 bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium">
+                                    Employer ${{formatNumber .CurrentMonthlyCost}}
+                                </div>
+                                <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                                    Medicare ${{formatNumber .MedicareMonthlyCost}}
+                                </div>
+                            </div>
+                            <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                                <span>Now</span>
+                                <span>{{.EmployerCoverageYears}} yrs</span>
+                                <span></span>
+                            </div>
+                        </div>
+                    </div>
+                    {{else}}
+                    <!-- Employer → ACA → Medicare -->
+                    <div class="flex items-center text-xs">
+                        <div class="flex-1 relative">
+                            <div class="flex">
+                                <div class="bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium px-2" style="flex: {{.EmployerCoverageYears}}">
+                                    Employer ${{formatNumber .CurrentMonthlyCost}}
+                                </div>
+                                <div class="bg-green-200 dark:bg-green-800 h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium px-2" style="flex: {{sub (sub .MedicareEligibleAge .CurrentAge) .EmployerCoverageYears}}">
+                                    ACA ${{formatNumber .ACACostAfterEmployer}}
+                                </div>
+                                <div class="bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium px-2" style="flex: 5">
+                                    Medicare ${{formatNumber .MedicareMonthlyCost}}
+                                </div>
+                            </div>
+                            <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                                <span>Now</span>
+                                <span class="text-center">{{.EmployerCoverageYears}} yrs</span>
+                                <span class="text-center">{{sub .MedicareEligibleAge .CurrentAge}} yrs</span>
+                                <span></span>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
                 </div>
                 {{else if and (ne .CurrentCoverage "medicare") (gt (sub .MedicareEligibleAge .CurrentAge) 0)}}
-                <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Medicare in {{sub .MedicareEligibleAge .CurrentAge}} years (age 65)
+                <!-- Visual Timeline: ACA → Medicare -->
+                <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Coverage Timeline</div>
+                    <div class="flex items-center text-xs">
+                        <div class="flex-1 relative">
+                            <div class="flex">
+                                <div class="flex-1 bg-green-200 dark:bg-green-800 rounded-l h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium">
+                                    {{if eq .CurrentCoverage "employer"}}Employer{{else}}ACA{{end}} ${{formatNumber .CurrentMonthlyCost}}
+                                </div>
+                                <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                                    Medicare ${{formatNumber .MedicareMonthlyCost}}
+                                </div>
+                            </div>
+                            <div class="flex justify-between mt-0.5 text-gray-400 dark:text-gray-500">
+                                <span>Now</span>
+                                <span>{{sub .MedicareEligibleAge .CurrentAge}} yrs (age 65)</span>
+                                <span></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 {{end}}
             </form>

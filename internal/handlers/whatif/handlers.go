@@ -131,9 +131,14 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 			updates["healthcare_start_years"] = i
 		}
 	}
-	if v := r.FormValue("max_withdrawal_rate"); v != "" {
+	if v := r.FormValue("current_age"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			updates["current_age"] = i
+		}
+	}
+	if v := r.FormValue("tax_deferred_percent"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["max_withdrawal_rate"] = f
+			updates["tax_deferred_percent"] = f
 		}
 	}
 	if v := r.FormValue("inflation_rate"); v != "" {

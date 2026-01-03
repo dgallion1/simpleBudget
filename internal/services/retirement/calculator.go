@@ -211,17 +211,12 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		requiredRate = (annualGap / s.PortfolioValue) * 100
 	}
 
-	// Calculate max safe withdrawal based on settings
-	maxSafeWithdrawal := s.PortfolioValue * s.MaxWithdrawalRate / 100 / 12
-
 	return &models.BudgetFitAnalysis{
-		MonthlyExpenses:   monthlyExpenses,
-		MonthlyIncome:     monthlyIncome,
-		MonthlyGap:        monthlyGap,
-		AnnualGap:         annualGap,
-		RequiredRate:      requiredRate,
-		MaxSafeWithdrawal: maxSafeWithdrawal,
-		CanCoverGap:       monthlyGap <= maxSafeWithdrawal,
+		MonthlyExpenses: monthlyExpenses,
+		MonthlyIncome:   monthlyIncome,
+		MonthlyGap:      monthlyGap,
+		AnnualGap:       annualGap,
+		RequiredRate:    requiredRate,
 	}
 }
 
@@ -831,6 +826,7 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	sensitivity := c.CalculateSensitivity()
 	failurePoints := c.CalculateFailurePoints()
 	monteCarlo := c.RunMonteCarloSimulation(1000)
+	rmd := c.CalculateRMDAnalysis()
 
 	return &models.WhatIfAnalysis{
 		Settings:       c.Settings,
@@ -841,5 +837,6 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 		Sensitivity:    sensitivity,
 		FailurePoints:  failurePoints,
 		MonteCarlo:     monteCarlo,
+		RMD:            rmd,
 	}
 }

@@ -10,8 +10,11 @@ type WhatIfSettings struct {
 	MonthlyHealthcare     float64 `json:"monthly_healthcare"`      // Monthly healthcare costs
 	HealthcareStartYears  int     `json:"healthcare_start_years"`  // Years until healthcare starts
 
+	// RMD Settings
+	CurrentAge         int     `json:"current_age"`          // User's current age
+	TaxDeferredPercent float64 `json:"tax_deferred_percent"` // % of portfolio in tax-deferred accounts
+
 	// Rates (as percentages, e.g., 4.0 for 4%)
-	MaxWithdrawalRate     float64 `json:"max_withdrawal_rate"`     // Target max withdrawal rate
 	InflationRate         float64 `json:"inflation_rate"`          // Annual inflation
 	HealthcareInflation   float64 `json:"healthcare_inflation"`    // Healthcare inflation
 	SpendingDeclineRate   float64 `json:"spending_decline_rate"`   // Annual spending reduction
@@ -37,7 +40,8 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		MonthlyLivingExpenses: 4000,
 		MonthlyHealthcare:     500,
 		HealthcareStartYears:  0,
-		MaxWithdrawalRate:     4.0,
+		CurrentAge:            65,
+		TaxDeferredPercent:    70.0,
 		InflationRate:         3.0,
 		HealthcareInflation:   6.0,
 		SpendingDeclineRate:   1.0,
@@ -76,13 +80,31 @@ type ProjectionResult struct {
 
 // BudgetFitAnalysis shows monthly gap and required rates
 type BudgetFitAnalysis struct {
-	MonthlyExpenses    float64 `json:"monthly_expenses"`
-	MonthlyIncome      float64 `json:"monthly_income"`
-	MonthlyGap         float64 `json:"monthly_gap"`          // Expenses - Income
-	AnnualGap          float64 `json:"annual_gap"`
-	RequiredRate       float64 `json:"required_rate"`        // Rate needed to cover gap
-	MaxSafeWithdrawal  float64 `json:"max_safe_withdrawal"`  // Based on max withdrawal rate
-	CanCoverGap        bool    `json:"can_cover_gap"`
+	MonthlyExpenses   float64 `json:"monthly_expenses"`
+	MonthlyIncome     float64 `json:"monthly_income"`
+	MonthlyGap        float64 `json:"monthly_gap"`    // Expenses - Income
+	AnnualGap         float64 `json:"annual_gap"`
+	RequiredRate      float64 `json:"required_rate"`  // Rate needed to cover gap
+}
+
+// RMDProjection represents RMD estimates for a specific year
+type RMDProjection struct {
+	Age              int     `json:"age"`
+	Year             int     `json:"year"`              // Years from now
+	TaxDeferredBal   float64 `json:"tax_deferred_bal"`  // Estimated balance at start of year
+	LifeExpFactor    float64 `json:"life_exp_factor"`   // IRS Uniform Lifetime factor
+	RMDAmount        float64 `json:"rmd_amount"`        // Required distribution
+	RMDPercent       float64 `json:"rmd_percent"`       // RMD as % of tax-deferred balance
+}
+
+// RMDAnalysis contains RMD projections and summary
+type RMDAnalysis struct {
+	StartsInYears     int              `json:"starts_in_years"`     // Years until RMDs begin
+	StartAge          int              `json:"start_age"`           // Age when RMDs begin (73)
+	CurrentAge        int              `json:"current_age"`
+	TaxDeferredValue  float64          `json:"tax_deferred_value"`  // Current tax-deferred balance
+	Projections       []RMDProjection  `json:"projections"`         // Year-by-year projections
+	TotalRMDsOver10Yr float64          `json:"total_rmds_10yr"`     // Sum of first 10 years of RMDs
 }
 
 // PresentValueAnalysis shows PV of expenses vs income
@@ -236,6 +258,7 @@ type WhatIfAnalysis struct {
 	Sensitivity    []SensitivityResult   `json:"sensitivity"`
 	FailurePoints  *FailurePointAnalysis `json:"failure_points"`
 	MonteCarlo     *MonteCarloAnalysis   `json:"monte_carlo"`
+	RMD            *RMDAnalysis          `json:"rmd"`
 }
 
 // WhatIfPageData is the data passed to the whatif template

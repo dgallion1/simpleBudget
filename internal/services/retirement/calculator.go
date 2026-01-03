@@ -277,10 +277,20 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	// Calculate first month expenses and income
 	monthlyExpenses := c.CalculateTotalExpenses(0)
 	monthlyIncome := c.CalculateTotalIncome(0)
-	monthlyGap := monthlyExpenses - monthlyIncome
+
+	// Calculate RMD if age 73+ and have tax-deferred balance
+	monthlyRMD := 0.0
+	if s.CurrentAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
+		annualRMD, _ := CalculateRMD(taxDeferredBalance, s.CurrentAge)
+		monthlyRMD = annualRMD / 12
+	}
+
+	// Gap = Expenses - Income - RMD (RMD is forced withdrawal that can cover expenses)
+	monthlyGap := monthlyExpenses - monthlyIncome - monthlyRMD
 	annualGap := monthlyGap * 12
 
-	// Calculate required withdrawal rate
+	// Calculate required withdrawal rate (only for positive gap after RMD)
 	requiredRate := 0.0
 	if s.PortfolioValue > 0 && monthlyGap > 0 {
 		requiredRate = (annualGap / s.PortfolioValue) * 100
@@ -289,6 +299,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	return &models.BudgetFitAnalysis{
 		MonthlyExpenses: monthlyExpenses,
 		MonthlyIncome:   monthlyIncome,
+		MonthlyRMD:      monthlyRMD,
 		MonthlyGap:      monthlyGap,
 		AnnualGap:       annualGap,
 		RequiredRate:    requiredRate,

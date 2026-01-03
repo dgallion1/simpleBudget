@@ -85,9 +85,10 @@ type ProjectionResult struct {
 type BudgetFitAnalysis struct {
 	MonthlyExpenses   float64 `json:"monthly_expenses"`
 	MonthlyIncome     float64 `json:"monthly_income"`
-	MonthlyGap        float64 `json:"monthly_gap"`    // Expenses - Income
+	MonthlyRMD        float64 `json:"monthly_rmd"`        // Required Minimum Distribution (age 73+)
+	MonthlyGap        float64 `json:"monthly_gap"`        // Expenses - Income - RMD
 	AnnualGap         float64 `json:"annual_gap"`
-	RequiredRate      float64 `json:"required_rate"`  // Rate needed to cover gap
+	RequiredRate      float64 `json:"required_rate"`      // Rate needed to cover gap
 }
 
 // RMDProjection represents RMD estimates for a specific year

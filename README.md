@@ -2,6 +2,8 @@
 
 A personal finance dashboard and retirement planning tool built with Go, HTMX, and Plotly.js.
 
+**Your data stays on your computer.** SimpleBudget runs entirely locally with no external servers, cloud storage, or network connections. All your financial data is stored in local files that only you can access.
+
 ## Features
 
 - **Dashboard** - KPIs, spending charts, alerts, and category drilldowns

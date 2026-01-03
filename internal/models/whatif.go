@@ -89,6 +89,11 @@ type BudgetFitAnalysis struct {
 	MonthlyGap        float64 `json:"monthly_gap"`        // Expenses - Income - RMD
 	AnnualGap         float64 `json:"annual_gap"`
 	RequiredRate      float64 `json:"required_rate"`      // Rate needed to cover gap
+
+	// RMD/Gap relationship fields
+	GapBeforeRMD float64 `json:"gap_before_rmd"` // Expenses - Income (before RMD applied)
+	RMDCoverage  float64 `json:"rmd_coverage"`   // How much of the gap RMD covers
+	ExcessRMD    float64 `json:"excess_rmd"`     // RMD beyond what's needed (forced taxable withdrawal)
 }
 
 // RMDProjection represents RMD estimates for a specific year

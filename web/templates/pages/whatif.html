@@ -663,6 +663,51 @@
             <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
         </div>
     </div>
+
+    {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
+    <!-- RMD Impact Details -->
+    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">How RMD Affects Your Budget</h4>
+        <div class="text-sm space-y-1">
+            <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">Shortfall before RMD</span>
+                <span class="{{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                    {{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}{{formatMoney .Analysis.BudgetFit.GapBeforeRMD}}{{else}}None (surplus of {{formatMoney (abs .Analysis.BudgetFit.GapBeforeRMD)}}){{end}}
+                </span>
+            </div>
+            {{if gt .Analysis.BudgetFit.RMDCoverage 0.0}}
+            <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">RMD covers</span>
+                <span class="text-green-600 dark:text-green-400">{{formatMoney .Analysis.BudgetFit.RMDCoverage}}</span>
+            </div>
+            {{end}}
+            {{if gt .Analysis.BudgetFit.ExcessRMD 0.0}}
+            <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">Excess RMD</span>
+                <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.ExcessRMD}}</span>
+            </div>
+            {{end}}
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            {{if gt .Analysis.BudgetFit.GapBeforeRMD 0.0}}
+                {{if gt .Analysis.BudgetFit.ExcessRMD 0.0}}
+                    Your RMD fully covers the shortfall. The {{formatMoney .Analysis.BudgetFit.ExcessRMD}}/mo excess must still be withdrawn and taxed.
+                {{else}}
+                    Your RMD covers {{formatMoney .Analysis.BudgetFit.RMDCoverage}} of the shortfall. You need to withdraw an additional {{formatMoney .Analysis.BudgetFit.MonthlyGap}}/mo.
+                {{end}}
+            {{else}}
+                Your income already covers expenses. The full RMD of {{formatMoney .Analysis.BudgetFit.MonthlyRMD}}/mo is a forced taxable withdrawal.
+            {{end}}
+        </p>
+    </div>
+    {{else if and .Analysis.RMD (gt .Analysis.RMD.StartsInYears 0)}}
+    <!-- RMD Preview for those not yet 73 -->
+    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+            RMDs will begin at age {{.Analysis.RMD.StartAge}} (in {{.Analysis.RMD.StartsInYears}} years) and may help cover this shortfall.
+        </p>
+    </div>
+    {{end}}
 </div>
 
 <!-- Present Value Analysis -->
@@ -839,80 +884,6 @@
     </div>
     {{end}}
 </div>
-
-<!-- RMD Projections -->
-{{if .Analysis.RMD}}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Required Minimum Distributions (RMD)</h3>
-
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">Current Age</p>
-            <p class="text-xl font-bold text-gray-800 dark:text-gray-200">{{.Analysis.RMD.CurrentAge}}</p>
-        </div>
-        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">RMDs Begin</p>
-            <p class="text-xl font-bold text-gray-800 dark:text-gray-200">
-                {{if gt .Analysis.RMD.StartsInYears 0}}
-                    Age {{.Analysis.RMD.StartAge}} ({{.Analysis.RMD.StartsInYears}}yr)
-                {{else}}
-                    Now
-                {{end}}
-            </p>
-        </div>
-        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">Tax-Deferred</p>
-            <p class="text-xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .Analysis.RMD.TaxDeferredValue}}</p>
-        </div>
-        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">10-Yr RMD Total</p>
-            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.RMD.TotalRMDsOver10Yr}}</p>
-        </div>
-    </div>
-
-    {{if .Analysis.RMD.Projections}}
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
-                    <th class="pb-2 font-medium">Age</th>
-                    <th class="pb-2 font-medium text-right">Tax-Deferred Balance</th>
-                    <th class="pb-2 font-medium text-right">Life Exp. Factor</th>
-                    <th class="pb-2 font-medium text-right">RMD Amount</th>
-                    <th class="pb-2 font-medium text-right">RMD %</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                {{range $i, $p := .Analysis.RMD.Projections}}
-                {{if lt $i 10}}
-                <tr class="text-gray-700 dark:text-gray-300">
-                    <td class="py-2 font-medium">{{$p.Age}}</td>
-                    <td class="py-2 text-right">{{formatMoney $p.TaxDeferredBal}}</td>
-                    <td class="py-2 text-right">{{printf "%.1f" $p.LifeExpFactor}}</td>
-                    <td class="py-2 text-right font-semibold text-amber-600 dark:text-amber-400">{{formatMoney $p.RMDAmount}}</td>
-                    <td class="py-2 text-right">{{printf "%.1f" $p.RMDPercent}}%</td>
-                </tr>
-                {{end}}
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-        Estimates based on IRS Uniform Lifetime Table. Actual RMDs depend on prior-year balance.
-    </p>
-    {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400">
-        {{if le .Settings.TaxDeferredPercent 0.0}}
-            No tax-deferred accounts configured.
-        {{else if gt .Analysis.RMD.StartsInYears .Settings.ProjectionYears}}
-            RMDs begin after your projection period.
-        {{else}}
-            RMD projections will appear when applicable.
-        {{end}}
-    </p>
-    {{end}}
-</div>
-{{end}}
 
 <!-- Monte Carlo Simulation -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
@@ -1135,6 +1106,80 @@
         </div>
     </details>
 </div>
+
+<!-- RMD Projections -->
+{{if .Analysis.RMD}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Required Minimum Distributions (RMD)</h3>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">Current Age</p>
+            <p class="text-xl font-bold text-gray-800 dark:text-gray-200">{{.Analysis.RMD.CurrentAge}}</p>
+        </div>
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">RMDs Begin</p>
+            <p class="text-xl font-bold text-gray-800 dark:text-gray-200">
+                {{if gt .Analysis.RMD.StartsInYears 0}}
+                    Age {{.Analysis.RMD.StartAge}} ({{.Analysis.RMD.StartsInYears}}yr)
+                {{else}}
+                    Now
+                {{end}}
+            </p>
+        </div>
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">Tax-Deferred</p>
+            <p class="text-xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .Analysis.RMD.TaxDeferredValue}}</p>
+        </div>
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase">10-Yr RMD Total</p>
+            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.RMD.TotalRMDsOver10Yr}}</p>
+        </div>
+    </div>
+
+    {{if .Analysis.RMD.Projections}}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
+                    <th class="pb-2 font-medium">Age</th>
+                    <th class="pb-2 font-medium text-right">Tax-Deferred Balance</th>
+                    <th class="pb-2 font-medium text-right">Life Exp. Factor</th>
+                    <th class="pb-2 font-medium text-right">RMD Amount</th>
+                    <th class="pb-2 font-medium text-right">RMD %</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                {{range $i, $p := .Analysis.RMD.Projections}}
+                {{if lt $i 10}}
+                <tr class="text-gray-700 dark:text-gray-300">
+                    <td class="py-2 font-medium">{{$p.Age}}</td>
+                    <td class="py-2 text-right">{{formatMoney $p.TaxDeferredBal}}</td>
+                    <td class="py-2 text-right">{{printf "%.1f" $p.LifeExpFactor}}</td>
+                    <td class="py-2 text-right font-semibold text-amber-600 dark:text-amber-400">{{formatMoney $p.RMDAmount}}</td>
+                    <td class="py-2 text-right">{{printf "%.1f" $p.RMDPercent}}%</td>
+                </tr>
+                {{end}}
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+        Estimates based on IRS Uniform Lifetime Table. Actual RMDs depend on prior-year balance.
+    </p>
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-400">
+        {{if le .Settings.TaxDeferredPercent 0.0}}
+            No tax-deferred accounts configured.
+        {{else if gt .Analysis.RMD.StartsInYears .Settings.ProjectionYears}}
+            RMDs begin after your projection period.
+        {{else}}
+            RMD projections will appear when applicable.
+        {{end}}
+    </p>
+    {{end}}
+</div>
+{{end}}
 
 <script>
     // Handle chart data responses

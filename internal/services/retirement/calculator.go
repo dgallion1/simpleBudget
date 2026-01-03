@@ -286,6 +286,30 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		monthlyRMD = annualRMD / 12
 	}
 
+	// Calculate gap before RMD (what's the shortfall from income alone?)
+	gapBeforeRMD := monthlyExpenses - monthlyIncome
+
+	// Calculate how RMD affects the gap
+	var rmdCoverage, excessRMD float64
+	if monthlyRMD > 0 {
+		if gapBeforeRMD > 0 {
+			// There's a shortfall - RMD can help cover it
+			if monthlyRMD >= gapBeforeRMD {
+				// RMD fully covers the gap and then some
+				rmdCoverage = gapBeforeRMD
+				excessRMD = monthlyRMD - gapBeforeRMD
+			} else {
+				// RMD partially covers the gap
+				rmdCoverage = monthlyRMD
+				excessRMD = 0
+			}
+		} else {
+			// No shortfall (income covers expenses) - all RMD is excess
+			rmdCoverage = 0
+			excessRMD = monthlyRMD
+		}
+	}
+
 	// Gap = Expenses - Income - RMD (RMD is forced withdrawal that can cover expenses)
 	monthlyGap := monthlyExpenses - monthlyIncome - monthlyRMD
 	annualGap := monthlyGap * 12
@@ -303,6 +327,9 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		MonthlyGap:      monthlyGap,
 		AnnualGap:       annualGap,
 		RequiredRate:    requiredRate,
+		GapBeforeRMD:    gapBeforeRMD,
+		RMDCoverage:     rmdCoverage,
+		ExcessRMD:       excessRMD,
 	}
 }
 

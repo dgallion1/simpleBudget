@@ -31,9 +31,14 @@ func (sm *SettingsManager) filepath() string {
 
 // Load reads settings from disk, returning defaults if file doesn't exist
 func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 
+	return sm.loadInternal()
+}
+
+// loadInternal reads settings without acquiring lock (caller must hold lock)
+func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 	// Ensure settings directory exists
 	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return nil, err
@@ -43,12 +48,8 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 
 	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// Return defaults and save them
-		defaults := models.DefaultWhatIfSettings()
-		if err := sm.Save(defaults); err != nil {
-			return defaults, nil // Return defaults even if save fails
-		}
-		return defaults, nil
+		// Return defaults (caller should save if needed)
+		return models.DefaultWhatIfSettings(), nil
 	}
 
 	// Read file
@@ -113,6 +114,7 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 	return sm.saveInternal(settings)
 }
 
+// saveInternal writes settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	// Ensure settings directory exists
 	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
@@ -129,9 +131,12 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	return os.WriteFile(sm.filepath(), data, 0644)
 }
 
-// AddIncomeSource adds a new income source and saves
+// AddIncomeSource adds a new income source and saves atomically
 func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -145,9 +150,12 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 	return settings, nil
 }
 
-// RemoveIncomeSource moves an income source to the removed list by ID and saves
+// RemoveIncomeSource moves an income source to the removed list by ID and saves atomically
 func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -170,9 +178,12 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 	return settings, nil
 }
 
-// RestoreIncomeSource moves an income source back from the removed list
+// RestoreIncomeSource moves an income source back from the removed list atomically
 func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +206,12 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 	return settings, nil
 }
 
-// UpdateIncomeSource updates an existing income source by ID
+// UpdateIncomeSource updates an existing income source by ID atomically
 func (sm *SettingsManager) UpdateIncomeSource(id string, startYear, endYear int, colaRate float64) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -223,9 +237,12 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear, endYear int,
 	return settings, nil
 }
 
-// AddExpenseSource adds a new expense source and saves
+// AddExpenseSource adds a new expense source and saves atomically
 func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -239,9 +256,12 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 	return settings, nil
 }
 
-// UpdateExpenseSource updates an existing expense source by ID
+// UpdateExpenseSource updates an existing expense source by ID atomically
 func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -263,9 +283,12 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int
 	return settings, nil
 }
 
-// RemoveExpenseSource moves an expense source to the removed list by ID and saves
+// RemoveExpenseSource moves an expense source to the removed list by ID and saves atomically
 func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -288,9 +311,12 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 	return settings, nil
 }
 
-// RestoreExpenseSource moves an expense source back from the removed list
+// RestoreExpenseSource moves an expense source back from the removed list atomically
 func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -313,9 +339,12 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 	return settings, nil
 }
 
-// UpdateSettings updates all settings fields from form data and saves
+// UpdateSettings updates all settings fields from form data and saves atomically
 func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -368,9 +397,12 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	return settings, nil
 }
 
-// AddHealthcarePerson adds a new healthcare person and saves
+// AddHealthcarePerson adds a new healthcare person and saves atomically
 func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -384,9 +416,12 @@ func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (
 	return settings, nil
 }
 
-// UpdateHealthcarePerson updates an existing healthcare person by ID
+// UpdateHealthcarePerson updates an existing healthcare person by ID atomically
 func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]interface{}) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}
@@ -431,9 +466,12 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 	return settings, nil
 }
 
-// RemoveHealthcarePerson removes a healthcare person by ID
+// RemoveHealthcarePerson removes a healthcare person by ID atomically
 func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSettings, error) {
-	settings, err := sm.Load()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
 	if err != nil {
 		return nil, err
 	}

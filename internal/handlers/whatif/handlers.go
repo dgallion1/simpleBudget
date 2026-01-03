@@ -1,11 +1,14 @@
 package whatif
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +20,135 @@ import (
 	"budget2/internal/services/retirement"
 	"budget2/internal/templates"
 )
+
+// analysisCache caches expensive analysis results keyed by settings hash
+type analysisCache struct {
+	mu       sync.RWMutex
+	hash     string
+	analysis *models.WhatIfAnalysis
+	cachedAt time.Time
+}
+
+var cache = &analysisCache{}
+
+// getSettingsHash generates a hash of the settings for cache key
+func getSettingsHash(settings *models.WhatIfSettings) string {
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return ""
+	}
+	hash := sha256.Sum256(data)
+	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter key
+}
+
+// getCachedAnalysis returns cached analysis if settings match and cache is fresh
+func getCachedAnalysis(settings *models.WhatIfSettings) *models.WhatIfAnalysis {
+	hash := getSettingsHash(settings)
+	if hash == "" {
+		return nil
+	}
+
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+
+	// Return cached result if hash matches and cache is less than 5 minutes old
+	if cache.hash == hash && time.Since(cache.cachedAt) < 5*time.Minute {
+		return cache.analysis
+	}
+	return nil
+}
+
+// setCachedAnalysis stores analysis result in cache
+func setCachedAnalysis(settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+	hash := getSettingsHash(settings)
+	if hash == "" {
+		return
+	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	cache.hash = hash
+	cache.analysis = analysis
+	cache.cachedAt = time.Now()
+}
+
+// runAnalysisWithCache runs full analysis, using cache when available
+func runAnalysisWithCache(settings *models.WhatIfSettings) *models.WhatIfAnalysis {
+	// Check cache first
+	if cached := getCachedAnalysis(settings); cached != nil {
+		return cached
+	}
+
+	// Run full analysis
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	// Cache the result
+	setCachedAnalysis(settings, analysis)
+
+	return analysis
+}
+
+// renderError renders an HTML error fragment for HTMX requests
+func renderError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusCode)
+	html := fmt.Sprintf(`<div class="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+		<div class="flex items-center">
+			<svg class="w-5 h-5 text-red-500 dark:text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+			</svg>
+			<span class="text-red-700 dark:text-red-300 font-medium">Error</span>
+		</div>
+		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
+	</div>`, message)
+	w.Write([]byte(html))
+}
+
+// parseFormFloat parses a float64 from form data, returning an error if invalid
+func parseFormFloat(r *http.Request, key string) (float64, error) {
+	v := r.FormValue(key)
+	if v == "" {
+		return 0, nil
+	}
+	return strconv.ParseFloat(v, 64)
+}
+
+// parseFormInt parses an int from form data, returning an error if invalid
+func parseFormInt(r *http.Request, key string) (int, error) {
+	v := r.FormValue(key)
+	if v == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(v)
+}
+
+// parseRequiredFormFloat parses a required float64 from form data
+func parseRequiredFormFloat(r *http.Request, key string) (float64, error) {
+	v := r.FormValue(key)
+	if v == "" {
+		return 0, fmt.Errorf("missing required field: %s", key)
+	}
+	val, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: must be a number", key)
+	}
+	return val, nil
+}
+
+// parseRequiredFormInt parses a required int from form data
+func parseRequiredFormInt(r *http.Request, key string) (int, error) {
+	v := r.FormValue(key)
+	if v == "" {
+		return 0, fmt.Errorf("missing required field: %s", key)
+	}
+	val, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: must be an integer", key)
+	}
+	return val, nil
+}
 
 var (
 	loader       *dataloader.DataLoader
@@ -65,9 +197,8 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		retirementMgr.Save(settings)
 	}
 
-	// Run full analysis
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	// Run full analysis (with caching)
+	analysis := runAnalysisWithCache(settings)
 
 	pageData := map[string]interface{}{
 		"Title":     "What-If Analysis",
@@ -87,12 +218,11 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -109,87 +239,123 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Parse form values
+	// Parse form values with error handling
 	updates := make(map[string]interface{})
 
-	if v := r.FormValue("portfolio_value"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["portfolio_value"] = f
-		}
+	if v, err := parseFormFloat(r, "portfolio_value"); err != nil {
+		renderError(w, "Invalid portfolio value: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("portfolio_value") != "" {
+		updates["portfolio_value"] = v
 	}
-	if v := r.FormValue("monthly_living_expenses"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["monthly_living_expenses"] = f
-		}
+
+	if v, err := parseFormFloat(r, "monthly_living_expenses"); err != nil {
+		renderError(w, "Invalid monthly expenses: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("monthly_living_expenses") != "" {
+		updates["monthly_living_expenses"] = v
 	}
-	if v := r.FormValue("monthly_healthcare"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["monthly_healthcare"] = f
-		}
+
+	if v, err := parseFormFloat(r, "monthly_healthcare"); err != nil {
+		renderError(w, "Invalid healthcare cost: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("monthly_healthcare") != "" {
+		updates["monthly_healthcare"] = v
 	}
-	if v := r.FormValue("healthcare_start_years"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			updates["healthcare_start_years"] = i
-		}
+
+	if v, err := parseFormInt(r, "healthcare_start_years"); err != nil {
+		renderError(w, "Invalid healthcare start years: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("healthcare_start_years") != "" {
+		updates["healthcare_start_years"] = v
 	}
-	if v := r.FormValue("current_age"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			updates["current_age"] = i
+
+	if v, err := parseFormInt(r, "current_age"); err != nil {
+		renderError(w, "Invalid age: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("current_age") != "" {
+		if v < 18 || v > 120 {
+			renderError(w, "Age must be between 18 and 120", http.StatusBadRequest)
+			return
 		}
+		updates["current_age"] = v
 	}
-	if v := r.FormValue("tax_deferred_percent"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["tax_deferred_percent"] = f
+
+	if v, err := parseFormFloat(r, "tax_deferred_percent"); err != nil {
+		renderError(w, "Invalid tax-deferred percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("tax_deferred_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Tax-deferred percent must be between 0 and 100", http.StatusBadRequest)
+			return
 		}
+		updates["tax_deferred_percent"] = v
 	}
-	if v := r.FormValue("inflation_rate"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["inflation_rate"] = f
-		}
+
+	if v, err := parseFormFloat(r, "inflation_rate"); err != nil {
+		renderError(w, "Invalid inflation rate: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("inflation_rate") != "" {
+		updates["inflation_rate"] = v
 	}
-	if v := r.FormValue("healthcare_inflation"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["healthcare_inflation"] = f
-		}
+
+	if v, err := parseFormFloat(r, "healthcare_inflation"); err != nil {
+		renderError(w, "Invalid healthcare inflation: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("healthcare_inflation") != "" {
+		updates["healthcare_inflation"] = v
 	}
-	if v := r.FormValue("spending_decline_rate"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["spending_decline_rate"] = f
-		}
+
+	if v, err := parseFormFloat(r, "spending_decline_rate"); err != nil {
+		renderError(w, "Invalid spending decline rate: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("spending_decline_rate") != "" {
+		updates["spending_decline_rate"] = v
 	}
-	if v := r.FormValue("investment_return"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["investment_return"] = f
-		}
+
+	if v, err := parseFormFloat(r, "investment_return"); err != nil {
+		renderError(w, "Invalid investment return: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("investment_return") != "" {
+		updates["investment_return"] = v
 	}
-	if v := r.FormValue("discount_rate"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["discount_rate"] = f
-		}
+
+	if v, err := parseFormFloat(r, "discount_rate"); err != nil {
+		renderError(w, "Invalid discount rate: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("discount_rate") != "" {
+		updates["discount_rate"] = v
 	}
-	if v := r.FormValue("projection_years"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			updates["projection_years"] = i
+
+	if v, err := parseFormInt(r, "projection_years"); err != nil {
+		renderError(w, "Invalid projection years: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("projection_years") != "" {
+		if v < 1 || v > 100 {
+			renderError(w, "Projection years must be between 1 and 100", http.StatusBadRequest)
+			return
 		}
+		updates["projection_years"] = v
 	}
-	if v := r.FormValue("steady_state_override_year"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["steady_state_override_year"] = f
-		}
+
+	if v, err := parseFormFloat(r, "steady_state_override_year"); err != nil {
+		renderError(w, "Invalid steady state year: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("steady_state_override_year") != "" {
+		updates["steady_state_override_year"] = v
 	}
 
 	settings, err := retirementMgr.UpdateSettings(updates)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -206,14 +372,46 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	name := r.FormValue("name")
-	amount, _ := strconv.ParseFloat(r.FormValue("amount"), 64)
-	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
-	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
+	if name == "" {
+		renderError(w, "Income source name is required", http.StatusBadRequest)
+		return
+	}
+
+	amount, err := parseRequiredFormFloat(r, "amount")
+	if err != nil {
+		renderError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if amount < 0 {
+		renderError(w, "Amount cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	startYear, err := parseFormInt(r, "start_year")
+	if err != nil {
+		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if startYear < 0 {
+		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	endYear, err := parseFormInt(r, "end_year")
+	if err != nil {
+		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if endYear > 0 && endYear < startYear {
+		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+		return
+	}
+
 	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
 
 	source := models.IncomeSource{
@@ -236,12 +434,11 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.AddIncomeSource(source)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to add income source: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -260,12 +457,30 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
-	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
+	startYear, err := parseFormInt(r, "start_year")
+	if err != nil {
+		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if startYear < 0 {
+		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	endYear, err := parseFormInt(r, "end_year")
+	if err != nil {
+		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if endYear > 0 && endYear < startYear {
+		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+		return
+	}
+
 	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
 
 	colaRate := 0.0
@@ -275,12 +490,11 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to update income source: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -300,12 +514,11 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.RemoveIncomeSource(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to remove income source: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -325,12 +538,11 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.RestoreIncomeSource(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to restore income source: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -347,14 +559,46 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	name := r.FormValue("name")
-	amount, _ := strconv.ParseFloat(r.FormValue("amount"), 64)
-	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
-	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
+	if name == "" {
+		renderError(w, "Expense name is required", http.StatusBadRequest)
+		return
+	}
+
+	amount, err := parseRequiredFormFloat(r, "amount")
+	if err != nil {
+		renderError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if amount < 0 {
+		renderError(w, "Amount cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	startYear, err := parseFormInt(r, "start_year")
+	if err != nil {
+		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if startYear < 0 {
+		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	endYear, err := parseFormInt(r, "end_year")
+	if err != nil {
+		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if endYear > 0 && endYear < startYear {
+		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+		return
+	}
+
 	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
 	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
 
@@ -370,12 +614,11 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.AddExpenseSource(source)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to add expense: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -394,23 +637,40 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	startYear, _ := strconv.Atoi(r.FormValue("start_year"))
-	endYear, _ := strconv.Atoi(r.FormValue("end_year"))
+	startYear, err := parseFormInt(r, "start_year")
+	if err != nil {
+		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if startYear < 0 {
+		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	endYear, err := parseFormInt(r, "end_year")
+	if err != nil {
+		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if endYear > 0 && endYear < startYear {
+		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+		return
+	}
+
 	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
 	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
 
 	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to update expense: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -430,12 +690,11 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.RemoveExpenseSource(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to remove expense: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -455,12 +714,11 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.RestoreExpenseSource(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to restore expense: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -478,7 +736,9 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -538,24 +798,23 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Sync expenses and income from dashboard
 	if err := syncSettingsFromDashboard(settings); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to sync from dashboard: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Save the synced settings
 	if err := retirementMgr.Save(settings); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -573,7 +832,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -596,17 +855,41 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	name := r.FormValue("name")
-	age, _ := strconv.Atoi(r.FormValue("current_age"))
+	age, err := parseFormInt(r, "current_age")
+	if err != nil {
+		renderError(w, "Invalid age: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	coverageType := r.FormValue("current_coverage")
-	monthlyCost, _ := strconv.ParseFloat(r.FormValue("current_monthly_cost"), 64)
-	preMedicareInflation, _ := strconv.ParseFloat(r.FormValue("pre_medicare_inflation"), 64)
-	medicareCost, _ := strconv.ParseFloat(r.FormValue("medicare_monthly_cost"), 64)
-	postMedicareInflation, _ := strconv.ParseFloat(r.FormValue("post_medicare_inflation"), 64)
+	monthlyCost, err := parseFormFloat(r, "current_monthly_cost")
+	if err != nil {
+		renderError(w, "Invalid monthly cost: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if monthlyCost < 0 {
+		renderError(w, "Monthly cost cannot be negative", http.StatusBadRequest)
+		return
+	}
+	preMedicareInflation, err := parseFormFloat(r, "pre_medicare_inflation")
+	if err != nil {
+		renderError(w, "Invalid pre-Medicare inflation: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	medicareCost, err := parseFormFloat(r, "medicare_monthly_cost")
+	if err != nil {
+		renderError(w, "Invalid Medicare cost: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	postMedicareInflation, err := parseFormFloat(r, "post_medicare_inflation")
+	if err != nil {
+		renderError(w, "Invalid post-Medicare inflation: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	// Set defaults if not provided
 	if name == "" {
@@ -614,6 +897,10 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	}
 	if age == 0 {
 		age = 65
+	}
+	if age < 0 || age > 120 {
+		renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
+		return
 	}
 	if coverageType == "" {
 		if age >= 65 {
@@ -653,12 +940,11 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.AddHealthcarePerson(person)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to add healthcare person: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -677,7 +963,7 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -687,52 +973,92 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		updates["name"] = v
 	}
 	if v := r.FormValue("current_age"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			updates["current_age"] = i
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			renderError(w, "Invalid age: must be an integer", http.StatusBadRequest)
+			return
 		}
+		if i < 0 || i > 120 {
+			renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
+			return
+		}
+		updates["current_age"] = i
 	}
 	if v := r.FormValue("current_coverage"); v != "" {
 		updates["current_coverage"] = v
 	}
 	if v := r.FormValue("current_monthly_cost"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["current_monthly_cost"] = f
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			renderError(w, "Invalid monthly cost: must be a number", http.StatusBadRequest)
+			return
 		}
+		if f < 0 {
+			renderError(w, "Monthly cost cannot be negative", http.StatusBadRequest)
+			return
+		}
+		updates["current_monthly_cost"] = f
 	}
 	if v := r.FormValue("pre_medicare_inflation"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["pre_medicare_inflation"] = f
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			renderError(w, "Invalid pre-Medicare inflation: must be a number", http.StatusBadRequest)
+			return
 		}
+		updates["pre_medicare_inflation"] = f
 	}
 	if v := r.FormValue("medicare_monthly_cost"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["medicare_monthly_cost"] = f
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			renderError(w, "Invalid Medicare cost: must be a number", http.StatusBadRequest)
+			return
 		}
+		if f < 0 {
+			renderError(w, "Medicare cost cannot be negative", http.StatusBadRequest)
+			return
+		}
+		updates["medicare_monthly_cost"] = f
 	}
 	if v := r.FormValue("post_medicare_inflation"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["post_medicare_inflation"] = f
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			renderError(w, "Invalid post-Medicare inflation: must be a number", http.StatusBadRequest)
+			return
 		}
+		updates["post_medicare_inflation"] = f
 	}
 	if v := r.FormValue("employer_coverage_years"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			updates["employer_coverage_years"] = i
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			renderError(w, "Invalid employer coverage years: must be an integer", http.StatusBadRequest)
+			return
 		}
+		if i < 0 {
+			renderError(w, "Employer coverage years cannot be negative", http.StatusBadRequest)
+			return
+		}
+		updates["employer_coverage_years"] = i
 	}
 	if v := r.FormValue("aca_cost_after_employer"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			updates["aca_cost_after_employer"] = f
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			renderError(w, "Invalid ACA cost: must be a number", http.StatusBadRequest)
+			return
 		}
+		if f < 0 {
+			renderError(w, "ACA cost cannot be negative", http.StatusBadRequest)
+			return
+		}
+		updates["aca_cost_after_employer"] = f
 	}
 
 	settings, err := retirementMgr.UpdateHealthcarePerson(id, updates)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to update healthcare person: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -752,12 +1078,11 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.RemoveHealthcarePerson(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to remove healthcare person: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
-	analysis := calc.RunFullAnalysis()
+	analysis := runAnalysisWithCache(settings)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,

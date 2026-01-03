@@ -612,15 +612,29 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	avgMonthlyIncome := totalIncome / months
 	if avgMonthlyIncome > 0 {
 		// Find and update existing dashboard-income, or add it
-		found := false
+		// Also clean up any duplicate dashboard-income entries
+		foundIdx := -1
 		for i := range settings.IncomeSources {
 			if settings.IncomeSources[i].ID == "dashboard-income" {
-				settings.IncomeSources[i].Amount = avgMonthlyIncome
-				found = true
-				break
+				if foundIdx == -1 {
+					foundIdx = i
+					settings.IncomeSources[i].Amount = avgMonthlyIncome
+				} else {
+					// Remove duplicate by marking for deletion
+					settings.IncomeSources[i].ID = ""
+				}
 			}
 		}
-		if !found {
+		// Remove any marked duplicates
+		filtered := settings.IncomeSources[:0]
+		for _, src := range settings.IncomeSources {
+			if src.ID != "" {
+				filtered = append(filtered, src)
+			}
+		}
+		settings.IncomeSources = filtered
+
+		if foundIdx == -1 {
 			settings.IncomeSources = append(settings.IncomeSources, models.IncomeSource{
 				ID:     "dashboard-income",
 				Name:   "Current Income",

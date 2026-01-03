@@ -794,9 +794,15 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 
 	// Remove old auto-detected sources (prefixed with "insights-" or old "dashboard-income")
 	// Keep user-added sources (no special prefix)
+	// BUT preserve user modifications (EndMonth, StartMonth, COLARate, Type) from existing insights sources
 	userSources := make([]models.IncomeSource, 0)
+	existingMods := make(map[string]models.IncomeSource)
+
 	for _, src := range settings.IncomeSources {
-		if !strings.HasPrefix(src.ID, "insights-") && src.ID != "dashboard-income" {
+		if strings.HasPrefix(src.ID, "insights-") || src.ID == "dashboard-income" {
+			// Save user modifications for this auto-detected source
+			existingMods[src.ID] = src
+		} else {
 			userSources = append(userSources, src)
 		}
 	}
@@ -821,12 +827,26 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 		// Create a stable ID from the description
 		id := "insights-" + strings.ToLower(strings.ReplaceAll(pattern.Description, " ", "-"))
 
-		userSources = append(userSources, models.IncomeSource{
+		newSource := models.IncomeSource{
 			ID:     id,
 			Name:   strings.Title(pattern.Description),
 			Amount: monthlyAmount,
 			Type:   models.IncomeFixed,
-		})
+		}
+
+		// Preserve user modifications from existing source with same ID
+		if existing, ok := existingMods[id]; ok {
+			newSource.EndMonth = existing.EndMonth
+			newSource.StartMonth = existing.StartMonth
+			newSource.COLARate = existing.COLARate
+			newSource.InflationAdjusted = existing.InflationAdjusted
+			// Preserve Type only if user changed it from default
+			if existing.Type != "" && existing.Type != models.IncomeFixed {
+				newSource.Type = existing.Type
+			}
+		}
+
+		userSources = append(userSources, newSource)
 	}
 
 	settings.IncomeSources = userSources

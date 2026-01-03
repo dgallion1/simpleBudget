@@ -410,6 +410,12 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 			if v, ok := updates["post_medicare_inflation"].(float64); ok {
 				settings.HealthcarePersons[i].PostMedicareInflation = v
 			}
+			if v, ok := updates["employer_coverage_years"].(int); ok {
+				settings.HealthcarePersons[i].EmployerCoverageYears = v
+			}
+			if v, ok := updates["aca_cost_after_employer"].(float64); ok {
+				settings.HealthcarePersons[i].ACACostAfterEmployer = v
+			}
 			break
 		}
 	}

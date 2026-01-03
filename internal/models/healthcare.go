@@ -26,6 +26,10 @@ type HealthcarePerson struct {
 	MedicareMonthlyCost   float64      `json:"medicare_monthly_cost"`   // Cost when turning 65
 	PostMedicareInflation float64      `json:"post_medicare_inflation"` // Annual % (e.g., 4 for 4%)
 	MedicareEligibleAge   int          `json:"medicare_eligible_age"`   // Usually 65
+
+	// Employer coverage transition fields
+	EmployerCoverageYears int     `json:"employer_coverage_years"` // Years of remaining employer coverage (0 = indefinite until Medicare)
+	ACACostAfterEmployer  float64 `json:"aca_cost_after_employer"` // Monthly ACA cost when employer coverage ends
 }
 
 // NewHealthcarePerson creates a new healthcare person with default values
@@ -50,9 +54,11 @@ func NewHealthcarePerson(name string, age int, coverage CoverageType) *Healthcar
 		hp.PreMedicareInflation = 7.0  // 4% healthcare + 3% age-rating
 		hp.MedicareMonthlyCost = 600   // Projected Medicare cost at 65
 	case CoverageEmployer:
-		hp.CurrentMonthlyCost = 500    // Employer-subsidized
-		hp.PreMedicareInflation = 5.0  // Healthcare inflation + some increase
-		hp.MedicareMonthlyCost = 500   // Projected Medicare cost at 65
+		hp.CurrentMonthlyCost = 500     // Employer-subsidized
+		hp.PreMedicareInflation = 7.0   // ACA healthcare inflation (used after employer ends)
+		hp.MedicareMonthlyCost = 600    // Projected Medicare cost at 65
+		hp.EmployerCoverageYears = 0    // 0 = until Medicare
+		hp.ACACostAfterEmployer = 1100  // ACA cost when employer coverage ends
 	}
 
 	return hp
@@ -76,20 +82,9 @@ func (hp *HealthcarePerson) YearsUntilMedicare() int {
 func (hp *HealthcarePerson) GetMonthlyCost(month int) float64 {
 	yearsElapsed := month / 12
 	ageAtMonth := hp.CurrentAge + yearsElapsed
-
-	// Check if person transitions to Medicare during this projection
-	if hp.CurrentCoverage != CoverageMedicare && ageAtMonth >= hp.MedicareEligibleAge {
-		// Calculate when they hit Medicare eligibility
-		yearsUntilMedicare := hp.MedicareEligibleAge - hp.CurrentAge
-		if yearsUntilMedicare < 0 {
-			yearsUntilMedicare = 0
-		}
-
-		// Years on Medicare after transition
-		yearsOnMedicare := yearsElapsed - yearsUntilMedicare
-
-		// Medicare cost with post-Medicare inflation
-		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsOnMedicare))
+	yearsUntilMedicare := hp.MedicareEligibleAge - hp.CurrentAge
+	if yearsUntilMedicare < 0 {
+		yearsUntilMedicare = 0
 	}
 
 	// Already on Medicare
@@ -97,7 +92,25 @@ func (hp *HealthcarePerson) GetMonthlyCost(month int) float64 {
 		return hp.CurrentMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsElapsed))
 	}
 
-	// Pre-Medicare (ACA or Employer)
+	// Check if person is on Medicare in this projection period
+	if ageAtMonth >= hp.MedicareEligibleAge {
+		yearsOnMedicare := yearsElapsed - yearsUntilMedicare
+		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(yearsOnMedicare))
+	}
+
+	// Employer coverage with limited duration (employer → ACA → Medicare)
+	if hp.CurrentCoverage == CoverageEmployer && hp.EmployerCoverageYears > 0 {
+		// Still on employer coverage
+		if yearsElapsed < hp.EmployerCoverageYears {
+			return hp.CurrentMonthlyCost // Employer cost doesn't inflate (it's subsidized)
+		}
+
+		// Transitioned to ACA after employer coverage ended
+		yearsOnACA := yearsElapsed - hp.EmployerCoverageYears
+		return hp.ACACostAfterEmployer * math.Pow(1+hp.PreMedicareInflation/100, float64(yearsOnACA))
+	}
+
+	// Pre-Medicare (ACA or unlimited Employer)
 	return hp.CurrentMonthlyCost * math.Pow(1+hp.PreMedicareInflation/100, float64(yearsElapsed))
 }
 

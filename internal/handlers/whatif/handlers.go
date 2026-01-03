@@ -706,6 +706,16 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 			updates["post_medicare_inflation"] = f
 		}
 	}
+	if v := r.FormValue("employer_coverage_years"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			updates["employer_coverage_years"] = i
+		}
+	}
+	if v := r.FormValue("aca_cost_after_employer"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			updates["aca_cost_after_employer"] = f
+		}
+	}
 
 	settings, err := retirementMgr.UpdateHealthcarePerson(id, updates)
 	if err != nil {

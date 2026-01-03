@@ -33,6 +33,9 @@ function renderChart(containerId, chartData) {
         return;
     }
 
+    // Clear loading content before rendering
+    container.innerHTML = '';
+
     // Parse if string
     let data = chartData;
     if (typeof chartData === 'string') {
@@ -45,10 +48,11 @@ function renderChart(containerId, chartData) {
     }
 
     const colors = getThemeColors();
+    const serverLayout = data.layout || {};
 
     // Default layout options
     const defaultLayout = {
-        margin: { t: 20, r: 20, b: 40, l: 60 },
+        margin: { t: 30, r: 20, b: 50, l: 70 },
         paper_bgcolor: 'transparent',
         plot_bgcolor: 'transparent',
         font: {
@@ -60,19 +64,26 @@ function renderChart(containerId, chartData) {
             orientation: 'h',
             y: -0.15,
             font: { color: colors.text }
-        },
-        xaxis: {
-            gridcolor: colors.gridColor,
-            tickfont: { color: colors.text }
-        },
-        yaxis: {
-            gridcolor: colors.gridColor,
-            tickfont: { color: colors.text }
         }
     };
 
-    // Merge layouts
-    const layout = { ...defaultLayout, ...(data.layout || {}) };
+    // Deep merge axis properties
+    const layout = {
+        ...defaultLayout,
+        ...serverLayout,
+        xaxis: {
+            gridcolor: colors.gridColor,
+            tickfont: { color: colors.text },
+            automargin: true,
+            ...(serverLayout.xaxis || {})
+        },
+        yaxis: {
+            gridcolor: colors.gridColor,
+            tickfont: { color: colors.text },
+            automargin: true,
+            ...(serverLayout.yaxis || {})
+        }
+    };
 
     // Plotly config
     const config = {

@@ -156,13 +156,13 @@ func (r *Renderer) loadTemplates() error {
 	}
 
 	if len(parseErrors) > 0 {
-		log.Printf("\n" + strings.Repeat("=", 60))
-		log.Printf("TEMPLATE PARSING ERRORS")
-		log.Printf(strings.Repeat("=", 60))
+		log.Print("\n" + strings.Repeat("=", 60))
+		log.Print("TEMPLATE PARSING ERRORS")
+		log.Print(strings.Repeat("=", 60))
 		for _, e := range parseErrors {
-			log.Printf("%s", e)
+			log.Print(e)
 		}
-		log.Printf(strings.Repeat("=", 60) + "\n")
+		log.Print(strings.Repeat("=", 60) + "\n")
 		return fmt.Errorf("template parsing failed with %d error(s)", len(parseErrors))
 	}
 
@@ -291,20 +291,20 @@ func (r *Renderer) validateTemplateReferences(tmpl *template.Template, files []s
 	}
 
 	if len(refErrors) > 0 {
-		log.Printf("\n" + strings.Repeat("=", 60))
-		log.Printf("UNDEFINED TEMPLATE REFERENCES")
-		log.Printf(strings.Repeat("=", 60))
+		log.Print("\n" + strings.Repeat("=", 60))
+		log.Print("UNDEFINED TEMPLATE REFERENCES")
+		log.Print(strings.Repeat("=", 60))
 		for _, e := range refErrors {
-			log.Printf("%s", e)
+			log.Print(e)
 		}
-		log.Printf(strings.Repeat("=", 60))
-		log.Printf("Defined templates:")
+		log.Print(strings.Repeat("=", 60))
+		log.Print("Defined templates:")
 		for name := range definedTemplates {
 			if name != "" && !strings.HasSuffix(name, ".html") {
 				log.Printf("  - %s", name)
 			}
 		}
-		log.Printf(strings.Repeat("=", 60) + "\n")
+		log.Print(strings.Repeat("=", 60) + "\n")
 		return fmt.Errorf("found %d undefined template reference(s)", len(refErrors))
 	}
 

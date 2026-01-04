@@ -26,6 +26,12 @@ const (
 	verifyMagic = `{"magic":"budget2-encryption-verify","version":1}`
 )
 
+// cacheEntry holds cached decrypted file content
+type cacheEntry struct {
+	data    []byte
+	modTime int64
+}
+
 // Storage provides transparent encrypted/unencrypted file access
 type Storage struct {
 	baseDir   string
@@ -33,12 +39,15 @@ type Storage struct {
 	identity  *age.ScryptIdentity
 	recipient *age.ScryptRecipient
 	mu        sync.RWMutex
+	cache     map[string]*cacheEntry
+	cacheMu   sync.RWMutex
 }
 
 // New creates a new Storage instance for the given base directory
 func New(baseDir string) (*Storage, error) {
 	s := &Storage{
 		baseDir: baseDir,
+		cache:   make(map[string]*cacheEntry),
 	}
 
 	// Check if encryption is enabled
@@ -107,17 +116,41 @@ func (s *Storage) Unlock(password string) error {
 	return nil
 }
 
-// Lock clears the encryption key from memory
+// Lock clears the encryption key and cached data from memory
 func (s *Storage) Lock() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.identity = nil
 	s.recipient = nil
+
+	// Clear cache for security - don't keep decrypted data in memory
+	s.cacheMu.Lock()
+	s.cache = make(map[string]*cacheEntry)
+	s.cacheMu.Unlock()
 }
 
-// ReadFile reads and optionally decrypts a file
+// ReadFile reads and optionally decrypts a file, using cache when possible
 func (s *Storage) ReadFile(path string) ([]byte, error) {
+	// Get file modification time
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	modTime := info.ModTime().UnixNano()
+
+	// Check cache first
+	s.cacheMu.RLock()
+	if entry, ok := s.cache[path]; ok && entry.modTime == modTime {
+		// Cache hit - return copy to prevent mutation
+		data := make([]byte, len(entry.data))
+		copy(data, entry.data)
+		s.cacheMu.RUnlock()
+		return data, nil
+	}
+	s.cacheMu.RUnlock()
+
+	// Cache miss - read from disk
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -131,16 +164,32 @@ func (s *Storage) ReadFile(path string) ([]byte, error) {
 		if s.identity == nil {
 			return nil, fmt.Errorf("file is encrypted but storage is locked")
 		}
-		return decryptData(data, s.identity)
+		data, err = decryptData(data, s.identity)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return data, nil
+	// Store in cache
+	s.cacheMu.Lock()
+	s.cache[path] = &cacheEntry{data: data, modTime: modTime}
+	s.cacheMu.Unlock()
+
+	// Return a copy to prevent mutation
+	result := make([]byte, len(data))
+	copy(result, data)
+	return result, nil
 }
 
 // WriteFile writes and optionally encrypts a file
 func (s *Storage) WriteFile(path string, data []byte, perm os.FileMode) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// Invalidate cache for this path
+	s.cacheMu.Lock()
+	delete(s.cache, path)
+	s.cacheMu.Unlock()
 
 	// Skip encryption for certain files
 	if s.shouldSkipEncryption(path) {
@@ -222,7 +271,10 @@ func (s *Storage) MkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(path, perm)
 }
 
-// Remove removes a file
+// Remove removes a file and invalidates its cache entry
 func (s *Storage) Remove(path string) error {
+	s.cacheMu.Lock()
+	delete(s.cache, path)
+	s.cacheMu.Unlock()
 	return os.Remove(path)
 }

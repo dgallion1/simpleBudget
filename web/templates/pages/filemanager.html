@@ -69,6 +69,77 @@
         </div>
     </div>
 
+    <!-- Data Encryption Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow mt-4">
+        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+            <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                {{if .IsEncrypted}}
+                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+                {{else}}
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path>
+                </svg>
+                {{end}}
+                Data Encryption
+            </h2>
+            <span class="text-xs {{if .IsEncrypted}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                {{if .IsEncrypted}}Encrypted{{else}}Not encrypted{{end}}
+            </span>
+        </div>
+        <div class="p-4">
+            {{if .IsEncrypted}}
+            <!-- Disable encryption form -->
+            <form id="disable-encryption-form" class="space-y-3">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Your data is encrypted at rest. Enter your password to disable encryption.
+                </p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
+                    <input type="password" name="password" required minlength="8"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                </div>
+                <div id="disable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <button type="submit" id="disable-encryption-btn"
+                    class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
+                    Disable Encryption
+                </button>
+            </form>
+            {{else}}
+            <!-- Enable encryption form -->
+            <form id="enable-encryption-form" class="space-y-3">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Encrypt your data at rest to protect sensitive financial information.
+                </p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                    <input type="password" name="password" id="enc-password" required minlength="8"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
+                    <input type="password" name="confirmPassword" id="enc-confirm" required minlength="8"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                </div>
+                <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                    <p class="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        <span>Remember your password! Data cannot be recovered without it.</span>
+                    </p>
+                </div>
+                <div id="enable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <button type="submit" id="enable-encryption-btn"
+                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                    Enable Encryption
+                </button>
+            </form>
+            {{end}}
+        </div>
+    </div>
+
     <!-- Toast notification for restore status -->
     <div id="restore-toast" class="hidden fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all"></div>
 </div>
@@ -171,6 +242,118 @@ function restoreBackup(file) {
             showToast(err.message, 'error');
         });
 }
+
+// Encryption form handlers
+document.addEventListener('DOMContentLoaded', function() {
+    const enableForm = document.getElementById('enable-encryption-form');
+    const disableForm = document.getElementById('disable-encryption-form');
+
+    if (enableForm) {
+        enableForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('enable-encryption-btn');
+            const errorDiv = document.getElementById('enable-encryption-error');
+
+            // Get values directly from inputs
+            const passwordInput = enableForm.querySelector('input[name="password"]');
+            const confirmInput = enableForm.querySelector('input[name="confirmPassword"]');
+            const password = passwordInput.value;
+            const confirmPassword = confirmInput.value;
+
+            if (password.length < 8) {
+                errorDiv.textContent = 'Password must be at least 8 characters';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                errorDiv.textContent = 'Passwords do not match';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            errorDiv.classList.add('hidden');
+            btn.disabled = true;
+            btn.textContent = 'Encrypting...';
+
+            // Use URLSearchParams for form data
+            const params = new URLSearchParams();
+            params.append('password', password);
+            params.append('confirmPassword', confirmPassword);
+
+            fetch('/encryption/enable', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: params
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text); });
+                }
+                return response.text();
+            })
+            .then(() => {
+                showToast('Encryption enabled successfully!', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = 'Enable Encryption';
+                errorDiv.textContent = err.message;
+                errorDiv.classList.remove('hidden');
+            });
+        });
+    }
+
+    if (disableForm) {
+        disableForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('disable-encryption-btn');
+            const errorDiv = document.getElementById('disable-encryption-error');
+            const passwordInput = disableForm.querySelector('input[name="password"]');
+
+            if (!passwordInput.value) {
+                errorDiv.textContent = 'Password is required';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to disable encryption? Your data will be stored unencrypted.')) {
+                return;
+            }
+
+            errorDiv.classList.add('hidden');
+            btn.disabled = true;
+            btn.textContent = 'Decrypting...';
+
+            // Use URLSearchParams for form data
+            const params = new URLSearchParams();
+            params.append('password', passwordInput.value);
+
+            fetch('/encryption/disable', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: params
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text); });
+                }
+                return response.text();
+            })
+            .then(() => {
+                showToast('Encryption disabled successfully!', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = 'Disable Encryption';
+                errorDiv.textContent = err.message;
+                errorDiv.classList.remove('hidden');
+            });
+        });
+    }
+});
 </script>
 {{end}}
 

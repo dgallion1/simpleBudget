@@ -331,9 +331,10 @@ func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":     "File Manager",
-		"ActiveTab": "filemanager",
-		"Files":     files,
+		"Title":       "File Manager",
+		"ActiveTab":   "filemanager",
+		"Files":       files,
+		"IsEncrypted": store.IsEncrypted(),
 	}
 
 	renderer.Render(w, "base", data)

@@ -297,6 +297,72 @@ func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Deleted %d files", deletedCount)
 }
 
+func HandleEnableEncryption(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirmPassword")
+
+	// Validate password
+	if len(password) < 8 {
+		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	if password != confirmPassword {
+		http.Error(w, "Passwords do not match", http.StatusBadRequest)
+		return
+	}
+
+	// Enable encryption
+	if err := store.EnableEncryption(password); err != nil {
+		log.Printf("Failed to enable encryption: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Encryption enabled successfully")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Encryption enabled")
+}
+
+func HandleDisableEncryption(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	password := r.FormValue("password")
+
+	if password == "" {
+		http.Error(w, "Password is required", http.StatusBadRequest)
+		return
+	}
+
+	// Disable encryption (this verifies the password internally)
+	if err := store.DisableEncryption(password); err != nil {
+		log.Printf("Failed to disable encryption: %v", err)
+		if strings.Contains(err.Error(), "incorrect password") {
+			http.Error(w, "Incorrect password", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Encryption disabled successfully")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Encryption disabled")
+}
+
+func HandleEncryptionStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"encrypted": store.IsEncrypted()})
+}
+
 func HandlePlotly(w http.ResponseWriter, r *http.Request) {
 	cachePath := filepath.Join(cfg.DataDirectory, "cache", "plotly.min.js")
 

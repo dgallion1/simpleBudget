@@ -74,9 +74,15 @@
         <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
             <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 {{if .IsEncrypted}}
-                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {{if .IsLocked}}
+                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                 </svg>
+                {{else}}
+                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path>
+                </svg>
+                {{end}}
                 {{else}}
                 <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path>
@@ -84,27 +90,64 @@
                 {{end}}
                 Data Encryption
             </h2>
-            <span class="text-xs {{if .IsEncrypted}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
-                {{if .IsEncrypted}}Encrypted{{else}}Not encrypted{{end}}
+            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-amber-600 dark:text-amber-400{{else}}text-green-600 dark:text-green-400{{end}}{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                {{if .IsEncrypted}}{{if .IsLocked}}Locked{{else}}Unlocked{{end}}{{else}}Not encrypted{{end}}
             </span>
         </div>
         <div class="p-4">
-            {{if .IsEncrypted}}
+            {{if .IsLocked}}
+            <!-- Unlock form -->
+            <form id="unlock-form" class="space-y-3">
+                <p id="unlock-description" class="text-sm text-gray-600 dark:text-gray-400">
+                    {{if eq .AuthMethod "age"}}Your Age identity file will be used to unlock.
+                    {{else if eq .AuthMethod "ssh"}}Enter SSH key passphrase (if encrypted) to unlock.
+                    {{else}}Enter your password to unlock.{{end}}
+                </p>
+                <div id="password-field" {{if eq .AuthMethod "age"}}class="hidden"{{end}}>
+                    <input type="password" name="password" id="unlock-password" {{if ne .AuthMethod "age"}}{{if ne .AuthMethod "ssh"}}required{{end}}{{end}}
+                        placeholder="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                </div>
+                <div id="unlock-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <button type="submit" id="unlock-btn"
+                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                    {{if eq .AuthMethod "age"}}Unlock with Age Identity
+                    {{else if eq .AuthMethod "ssh"}}Unlock with SSH Key
+                    {{else}}Unlock{{end}}
+                </button>
+                <p class="text-xs text-gray-500 dark:text-gray-500">
+                    Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else}}{{.AuthMethod}}{{end}}</span>
+                </p>
+            </form>
+            {{else if .IsEncrypted}}
             <!-- Disable encryption form -->
             <form id="disable-encryption-form" class="space-y-3">
                 <p class="text-sm text-gray-600 dark:text-gray-400">
-                    Your data is encrypted at rest. Enter your password to disable encryption.
+                    {{if eq .AuthMethod "age"}}Your data is encrypted with an Age identity file.
+                    {{else if eq .AuthMethod "ssh"}}Your data is encrypted with an SSH key.
+                    {{else}}Your data is encrypted at rest. Enter your password to disable encryption.{{end}}
                 </p>
+                {{if eq .AuthMethod "password"}}
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
                     <input type="password" name="password" required minlength="8"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
+                {{else if eq .AuthMethod "ssh"}}
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Passphrase (if encrypted)</label>
+                    <input type="password" name="password" placeholder="Leave empty if key is not encrypted"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                </div>
+                {{end}}
                 <div id="disable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <button type="submit" id="disable-encryption-btn"
                     class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
                     Disable Encryption
                 </button>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                    Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else}}{{.AuthMethod}}{{end}}</span>
+                </p>
             </form>
             {{else}}
             <!-- Enable encryption form with method selection -->
@@ -481,11 +524,53 @@ function submitEncryptionForm(form, errorDivId) {
 
 // Encryption form handlers
 document.addEventListener('DOMContentLoaded', function() {
+    const unlockForm = document.getElementById('unlock-form');
     const enableForm = document.getElementById('enable-encryption-form');
     const disableForm = document.getElementById('disable-encryption-form');
     const ageForm = document.getElementById('age-encryption-form');
     const sshForm = document.getElementById('ssh-encryption-form');
     const yubikeyForm = document.getElementById('yubikey-encryption-form');
+
+    // Unlock form handler
+    if (unlockForm) {
+        unlockForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('unlock-btn');
+            const errorDiv = document.getElementById('unlock-error');
+            const passwordInput = document.getElementById('unlock-password');
+            const password = passwordInput ? passwordInput.value : '';
+
+            errorDiv.classList.add('hidden');
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Unlocking...';
+
+            const params = new URLSearchParams();
+            params.append('password', password);
+
+            fetch('/unlock', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: params
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text || 'Unlock failed'); });
+                }
+                // Reload page to show unlocked state
+                window.location.reload();
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                errorDiv.textContent = err.message;
+                errorDiv.classList.remove('hidden');
+                if (passwordInput) {
+                    passwordInput.select();
+                }
+            });
+        });
+    }
 
     if (enableForm) {
         enableForm.addEventListener('submit', function(e) {
@@ -549,11 +634,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const errorDiv = document.getElementById('disable-encryption-error');
             const passwordInput = disableForm.querySelector('input[name="password"]');
 
-            if (!passwordInput.value) {
-                errorDiv.textContent = 'Password is required';
-                errorDiv.classList.remove('hidden');
-                return;
-            }
+            // Password is optional for non-password methods
+            const password = passwordInput ? passwordInput.value : '';
 
             if (!confirm('Are you sure you want to disable encryption? Your data will be stored unencrypted.')) {
                 return;
@@ -565,7 +647,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Use URLSearchParams for form data
             const params = new URLSearchParams();
-            params.append('password', passwordInput.value);
+            params.append('password', password);
 
             fetch('/encryption/disable', {
                 method: 'POST',

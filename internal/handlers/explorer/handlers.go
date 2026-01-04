@@ -324,17 +324,30 @@ func handleFileManager(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
-	files, err := loader.GetFileInfo()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	isLocked := store.IsEncrypted() && !store.IsUnlocked()
 
 	data := map[string]interface{}{
 		"Title":       "File Manager",
 		"ActiveTab":   "filemanager",
-		"Files":       files,
 		"IsEncrypted": store.IsEncrypted(),
+		"IsLocked":    isLocked,
+	}
+
+	// Add auth method info if encrypted
+	if store.IsEncrypted() {
+		if config := store.GetConfig(); config != nil {
+			data["AuthMethod"] = string(config.Method)
+		}
+	}
+
+	// Only get file info if unlocked
+	if !isLocked {
+		files, err := loader.GetFileInfo()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		data["Files"] = files
 	}
 
 	renderer.Render(w, "base", data)

@@ -338,18 +338,25 @@ func HandleDisableEncryption(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	password := r.FormValue("password")
+	// Get credentials (may be empty for Age method)
+	credentials := r.FormValue("password")
 
-	if password == "" {
+	// For password method, require non-empty credentials
+	config := store.GetConfig()
+	if config != nil && config.Method == storage.AuthMethodPassword && credentials == "" {
 		http.Error(w, "Password is required", http.StatusBadRequest)
 		return
 	}
 
-	// Disable encryption (this verifies the password internally)
-	if err := store.DisableEncryption(password); err != nil {
+	// Disable encryption (this verifies the credentials internally)
+	if err := store.DisableEncryption(credentials); err != nil {
 		log.Printf("Failed to disable encryption: %v", err)
-		if strings.Contains(err.Error(), "incorrect password") {
-			http.Error(w, "Incorrect password", http.StatusUnauthorized)
+		if strings.Contains(err.Error(), "incorrect") {
+			if config != nil && config.Method == storage.AuthMethodPassword {
+				http.Error(w, "Incorrect password", http.StatusUnauthorized)
+			} else {
+				http.Error(w, fmt.Sprintf("Decryption failed: %v", err), http.StatusUnauthorized)
+			}
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -426,22 +433,30 @@ func HandleUnlockPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleUnlock unlocks the encrypted storage with the provided password
+// HandleUnlock unlocks the encrypted storage with the provided credentials
 func HandleUnlock(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
 		return
 	}
 
-	password := r.FormValue("password")
-	if password == "" {
+	// Get credentials (may be empty for Age/SSH methods)
+	credentials := r.FormValue("password")
+
+	// For password method, require non-empty credentials
+	config := store.GetConfig()
+	if config != nil && config.Method == storage.AuthMethodPassword && credentials == "" {
 		http.Error(w, "Password is required", http.StatusBadRequest)
 		return
 	}
 
-	if err := store.Unlock(password); err != nil {
+	if err := store.Unlock(credentials); err != nil {
 		log.Printf("Failed unlock attempt: %v", err)
-		http.Error(w, "Incorrect password", http.StatusUnauthorized)
+		if config != nil && config.Method == storage.AuthMethodPassword {
+			http.Error(w, "Incorrect password", http.StatusUnauthorized)
+		} else {
+			http.Error(w, fmt.Sprintf("Unlock failed: %v", err), http.StatusUnauthorized)
+		}
 		return
 	}
 

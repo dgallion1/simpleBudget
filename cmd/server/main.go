@@ -101,6 +101,10 @@ func SetupRouter() chi.Router {
 	r.Get("/unlock", backup.HandleUnlockPage)
 	r.Post("/unlock", backup.HandleUnlock)
 
+	// File manager accessible when locked (has its own unlock UI)
+	r.Get("/filemanager", explorer.HandleFileManagerPage)
+	r.Get("/encryption/config", backup.HandleGetEncryptionConfig)
+
 	// Health and control endpoints (always accessible)
 	r.Get("/api/health", backup.HandleHealth)
 	r.Get("/api/version", handleVersion)
@@ -121,8 +125,7 @@ func SetupRouter() chi.Router {
 		whatif.RegisterRoutes(r)
 		insights.RegisterRoutes(r)
 
-		// File manager page
-		r.Get("/filemanager", explorer.HandleFileManagerPage)
+		// File manager page (also registered outside middleware for unlock access)
 
 		// Backup and restore routes
 		r.Get("/backup", backup.HandleBackup)

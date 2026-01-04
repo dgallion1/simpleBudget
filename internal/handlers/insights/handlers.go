@@ -81,6 +81,10 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 		groups[key] = append(groups[key], t)
 	}
 
+	// Track which descriptions matched strict criteria
+	strictMatches := make(map[string]bool)
+
+	// First pass: strict recurring detection (consistent amounts and intervals)
 	for desc, txns := range groups {
 		if len(txns) < 3 {
 			continue
@@ -182,6 +186,78 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 			LastDate:     lastDate,
 			NextExpected: nextExpected,
 			AnnualCost:   avgAmount * annualMultiplier,
+			Occurrences:  len(txns),
+			Confidence:   confidence,
+			Transactions: txns,
+		})
+		strictMatches[desc] = true
+	}
+
+	// Second pass: ongoing payment detection (variable amounts but consistent relationship)
+	now := time.Now()
+	for desc, txns := range groups {
+		// Skip if already matched by strict criteria
+		if strictMatches[desc] {
+			continue
+		}
+
+		if len(txns) < 3 {
+			continue
+		}
+
+		sort.Slice(txns, func(i, j int) bool {
+			return txns[i].Date.Before(txns[j].Date)
+		})
+
+		firstDate := txns[0].Date
+		lastDate := txns[len(txns)-1].Date
+
+		// Must span at least 60 days (2+ months of relationship)
+		spanDays := lastDate.Sub(firstDate).Hours() / 24
+		if spanDays < 60 {
+			continue
+		}
+
+		// Must have activity within last 90 days (still active)
+		daysSinceLastPayment := now.Sub(lastDate).Hours() / 24
+		if daysSinceLastPayment > 90 {
+			continue
+		}
+
+		// Calculate total and average amount
+		var totalAmount float64
+		for _, t := range txns {
+			totalAmount += math.Abs(t.Amount)
+		}
+		avgAmount := totalAmount / float64(len(txns))
+
+		// Calculate annual cost based on actual spending rate
+		months := spanDays / 30.0
+		if months < 1 {
+			months = 1
+		}
+		monthlyRate := totalAmount / months
+		annualCost := monthlyRate * 12
+
+		// Confidence based on recency and number of transactions
+		confidence := 0.7
+		if daysSinceLastPayment < 30 {
+			confidence = 0.9
+		} else if daysSinceLastPayment < 60 {
+			confidence = 0.8
+		}
+
+		// Estimate next expected based on average interval
+		avgInterval := spanDays / float64(len(txns)-1)
+		nextExpected := lastDate.AddDate(0, 0, int(avgInterval))
+
+		recurring = append(recurring, models.RecurringPayment{
+			Description:  desc,
+			Amount:       avgAmount,
+			Frequency:    "ongoing",
+			LastDate:     lastDate,
+			NextExpected: nextExpected,
+			AnnualCost:   annualCost,
 			Occurrences:  len(txns),
 			Confidence:   confidence,
 			Transactions: txns,

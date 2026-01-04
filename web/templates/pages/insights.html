@@ -182,6 +182,7 @@
                                     {{else if eq .Frequency "weekly"}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300
                                     {{else if eq .Frequency "yearly"}}bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300
                                     {{else if eq .Frequency "biweekly"}}bg-cyan-100 dark:bg-cyan-900/50 text-cyan-800 dark:text-cyan-300
+                                    {{else if eq .Frequency "ongoing"}}bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300
                                     {{else}}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{{end}}">
                                     {{.Frequency}}
                                 </span>
@@ -477,6 +478,9 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                         {{if eq .Frequency "monthly"}}bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300
                         {{else if eq .Frequency "weekly"}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300
+                        {{else if eq .Frequency "yearly"}}bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300
+                        {{else if eq .Frequency "biweekly"}}bg-cyan-100 dark:bg-cyan-900/50 text-cyan-800 dark:text-cyan-300
+                        {{else if eq .Frequency "ongoing"}}bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300
                         {{else}}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{{end}}">
                         {{.Frequency}}
                     </span>

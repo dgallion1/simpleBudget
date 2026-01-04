@@ -346,29 +346,28 @@ SimpleBudget supports optional encryption for all your financial data using the 
 
 ### Enabling Encryption
 
-Encryption is enabled programmatically. Once enabled:
+1. Go to **File Manager** tab
+2. Scroll to the **Data Encryption** section
+3. Enter and confirm a password (minimum 8 characters)
+4. Click **Enable Encryption**
+
+Once enabled:
 - All existing data files are encrypted in place
 - New files are automatically encrypted when saved
-- A password is required on every startup
+- A password is required via web interface on startup
 
-### Password on Startup
+### Unlocking on Startup
 
-When encryption is enabled, you'll be prompted for your password:
+When encryption is enabled, the server starts normally but redirects all pages to a web-based unlock screen:
 
 ```bash
 $ ./budget2
 SimpleBudget v1.0.0
-Encrypted storage detected
-Enter encryption password: ********
-Encrypted storage unlocked successfully
+Encrypted storage detected - unlock via web interface at /unlock
 Server starting on :8080
 ```
 
-Or use an environment variable for headless/automated deployments:
-
-```bash
-BUDGET_ENCRYPTION_PASSWORD=yourpassword ./budget2
-```
+Open http://localhost:8080 and enter your password to unlock. This web-based approach works with development tools like AIR that lack an interactive terminal.
 
 ### What Gets Encrypted
 

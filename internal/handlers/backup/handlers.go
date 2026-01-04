@@ -15,18 +15,21 @@ import (
 
 	"budget2/internal/config"
 	"budget2/internal/services/storage"
+	"budget2/internal/templates"
 	"budget2/testdata"
 )
 
 var (
-	cfg   *config.Config
-	store *storage.Storage
+	cfg      *config.Config
+	store    *storage.Storage
+	renderer *templates.Renderer
 )
 
 // Initialize sets up the backup package with required dependencies
-func Initialize(c *config.Config, s *storage.Storage) {
+func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer) {
 	cfg = c
 	store = s
+	renderer = r
 }
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
@@ -407,4 +410,47 @@ func HandlePlotly(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
 	w.Write(data)
+}
+
+// HandleUnlockPage serves the unlock page for encrypted storage
+func HandleUnlockPage(w http.ResponseWriter, r *http.Request) {
+	// If storage is not locked, redirect to dashboard
+	if !IsStorageLocked() {
+		http.Redirect(w, r, "/dashboard", http.StatusTemporaryRedirect)
+		return
+	}
+
+	if err := renderer.Render(w, "unlock", nil); err != nil {
+		http.Error(w, "Failed to render unlock page", http.StatusInternalServerError)
+		log.Printf("Error rendering unlock page: %v", err)
+	}
+}
+
+// HandleUnlock unlocks the encrypted storage with the provided password
+func HandleUnlock(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	password := r.FormValue("password")
+	if password == "" {
+		http.Error(w, "Password is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := store.Unlock(password); err != nil {
+		log.Printf("Failed unlock attempt: %v", err)
+		http.Error(w, "Incorrect password", http.StatusUnauthorized)
+		return
+	}
+
+	log.Printf("Storage unlocked successfully via web interface")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Unlocked")
+}
+
+// IsStorageLocked returns true if the storage is encrypted and not yet unlocked
+func IsStorageLocked() bool {
+	return store != nil && store.IsEncrypted() && !store.IsUnlocked()
 }

@@ -6,14 +6,12 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"golang.org/x/term"
 
 	"budget2/internal/config"
 	"budget2/internal/handlers/backup"
@@ -68,7 +66,7 @@ func SetupDependencies(c *config.Config) error {
 	explorer.Initialize(loader, renderer, cfg, store)
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)
-	backup.Initialize(cfg, store)
+	backup.Initialize(cfg, store, renderer)
 
 	return nil
 }
@@ -99,37 +97,57 @@ func SetupRouter() chi.Router {
 
 	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 
-	// Root redirect
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/dashboard", http.StatusTemporaryRedirect)
-	})
+	// Unlock routes (always accessible)
+	r.Get("/unlock", backup.HandleUnlockPage)
+	r.Post("/unlock", backup.HandleUnlock)
 
-	// Register handler packages
-	dashboard.RegisterRoutes(r)
-	explorer.RegisterRoutes(r)
-	whatif.RegisterRoutes(r)
-	insights.RegisterRoutes(r)
-
-	// Health and control endpoints
+	// Health and control endpoints (always accessible)
 	r.Get("/api/health", backup.HandleHealth)
 	r.Get("/api/version", handleVersion)
 	r.Get("/killme", backup.HandleKillServer)
 
-	// File manager page
-	r.Get("/filemanager", explorer.HandleFileManagerPage)
+	// Apply lock check middleware to protected routes
+	r.Group(func(r chi.Router) {
+		r.Use(lockCheckMiddleware)
 
-	// Backup and restore routes
-	r.Get("/backup", backup.HandleBackup)
-	r.Post("/restore", backup.HandleRestore)
-	r.Post("/restore/test-data", backup.HandleRestoreTestData)
-	r.Delete("/data/all", backup.HandleDeleteAllData)
+		// Root redirect
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/dashboard", http.StatusTemporaryRedirect)
+		})
 
-	// Encryption management routes
-	r.Post("/encryption/enable", backup.HandleEnableEncryption)
-	r.Post("/encryption/disable", backup.HandleDisableEncryption)
-	r.Get("/encryption/status", backup.HandleEncryptionStatus)
+		// Register handler packages
+		dashboard.RegisterRoutes(r)
+		explorer.RegisterRoutes(r)
+		whatif.RegisterRoutes(r)
+		insights.RegisterRoutes(r)
+
+		// File manager page
+		r.Get("/filemanager", explorer.HandleFileManagerPage)
+
+		// Backup and restore routes
+		r.Get("/backup", backup.HandleBackup)
+		r.Post("/restore", backup.HandleRestore)
+		r.Post("/restore/test-data", backup.HandleRestoreTestData)
+		r.Delete("/data/all", backup.HandleDeleteAllData)
+
+		// Encryption management routes
+		r.Post("/encryption/enable", backup.HandleEnableEncryption)
+		r.Post("/encryption/disable", backup.HandleDisableEncryption)
+		r.Get("/encryption/status", backup.HandleEncryptionStatus)
+	})
 
 	return r
+}
+
+// lockCheckMiddleware redirects to unlock page if storage is encrypted but locked
+func lockCheckMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if backup.IsStorageLocked() {
+			http.Redirect(w, r, "/unlock", http.StatusTemporaryRedirect)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -152,14 +170,9 @@ func main() {
 		log.Fatalf("FATAL: Failed to initialize storage: %v", err)
 	}
 
-	// Handle encryption if enabled
+	// Log encryption status
 	if store.IsEncrypted() {
-		log.Printf("Encrypted storage detected")
-		password := getEncryptionPassword()
-		if err := store.Unlock(password); err != nil {
-			log.Fatalf("FATAL: Failed to unlock encrypted data: %v", err)
-		}
-		log.Printf("Encrypted storage unlocked successfully")
+		log.Printf("Encrypted storage detected - unlock via web interface at /unlock")
 	}
 
 	// Kill any previous instance running on this port
@@ -176,23 +189,6 @@ func main() {
 	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)
 	log.Fatal(http.ListenAndServe(cfg.ListenAddr, r))
-}
-
-// getEncryptionPassword prompts for or reads the encryption password
-func getEncryptionPassword() string {
-	// Try environment variable first
-	if pw := os.Getenv("BUDGET_ENCRYPTION_PASSWORD"); pw != "" {
-		return pw
-	}
-
-	// CLI prompt
-	fmt.Print("Enter encryption password: ")
-	password, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println()
-	if err != nil {
-		log.Fatalf("Failed to read password: %v", err)
-	}
-	return string(password)
 }
 
 // handleVersion returns version information as JSON

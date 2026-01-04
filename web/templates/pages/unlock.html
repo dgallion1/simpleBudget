@@ -125,12 +125,12 @@
                     break;
 
                 case 'yubikey':
-                    description.textContent = 'Touch your YubiKey to unlock';
+                    description.textContent = 'Click the button below, then touch your YubiKey to unlock';
                     passwordField.classList.add('hidden');
                     passwordInput.required = false;
                     unlockBtn.textContent = 'Unlock with YubiKey';
                     methodIndicator.classList.remove('hidden');
-                    methodName.textContent = 'YubiKey';
+                    methodName.textContent = 'YubiKey Hardware Key';
                     break;
 
                 default:

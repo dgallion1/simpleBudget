@@ -28,9 +28,10 @@ type EncryptionConfig struct {
 	RecipientID string     `json:"recipient_id"` // Public key / recipient identifier
 
 	// Method-specific configuration
-	SSHKeyPath      string `json:"ssh_key_path,omitempty"`
-	AgeIdentityPath string `json:"age_identity_path,omitempty"`
-	YubiKeyIdentity string `json:"yubikey_identity,omitempty"`
+	SSHKeyPath       string `json:"ssh_key_path,omitempty"`
+	AgeIdentityPath  string `json:"age_identity_path,omitempty"`
+	YubiKeyIdentity  string `json:"yubikey_identity,omitempty"`
+	YubiKeyRecipient string `json:"yubikey_recipient,omitempty"` // age1yubikey1... recipient
 }
 
 // AuthProvider abstracts different authentication methods

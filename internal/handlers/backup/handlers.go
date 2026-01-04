@@ -697,6 +697,7 @@ func handleEnableSSHEncryption(w http.ResponseWriter, r *http.Request) {
 
 func handleEnableYubiKeyEncryption(w http.ResponseWriter, r *http.Request) {
 	identityStr := r.FormValue("yubikey_identity")
+	recipientStr := r.FormValue("yubikey_recipient")
 
 	if identityStr == "" {
 		http.Error(w, "YubiKey identity is required", http.StatusBadRequest)
@@ -708,15 +709,24 @@ func handleEnableYubiKeyEncryption(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := storage.NewYubiKeyProvider(identityStr)
+	var provider *storage.YubiKeyProvider
+	var err error
+
+	if recipientStr != "" {
+		provider, err = storage.NewYubiKeyProviderWithRecipient(identityStr, recipientStr)
+	} else {
+		provider, err = storage.NewYubiKeyProvider(identityStr)
+	}
+
 	if err != nil {
 		http.Error(w, "Failed to load YubiKey: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	config := &storage.EncryptionConfig{
-		Method:          storage.AuthMethodYubiKey,
-		YubiKeyIdentity: identityStr,
+		Method:           storage.AuthMethodYubiKey,
+		YubiKeyIdentity:  identityStr,
+		YubiKeyRecipient: recipientStr,
 	}
 
 	if err := store.EnableEncryptionWithProvider(provider, config); err != nil {
@@ -754,4 +764,54 @@ func HandleGetEncryptionConfig(w http.ResponseWriter, r *http.Request) {
 		"encrypted": true,
 		"method":    config.Method,
 	})
+}
+
+// HandleYubiKeyIdentity returns the identity for a given YubiKey recipient
+func HandleYubiKeyIdentity(w http.ResponseWriter, r *http.Request) {
+	recipient := r.URL.Query().Get("recipient")
+	if recipient == "" {
+		http.Error(w, "recipient parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	if !storage.IsYubiKeyPluginInstalled() {
+		http.Error(w, "age-plugin-yubikey is not installed", http.StatusBadRequest)
+		return
+	}
+
+	identity, err := storage.GetYubiKeyIdentityForRecipient(recipient)
+	if err != nil {
+		log.Printf("Failed to get YubiKey identity: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"identity":  identity,
+		"recipient": recipient,
+	})
+}
+
+// HandleYubiKeySetup creates a new YubiKey identity
+func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !storage.IsYubiKeyPluginInstalled() {
+		http.Error(w, "age-plugin-yubikey is not installed", http.StatusBadRequest)
+		return
+	}
+
+	result, err := storage.SetupYubiKey()
+	if err != nil {
+		log.Printf("Failed to setup YubiKey: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

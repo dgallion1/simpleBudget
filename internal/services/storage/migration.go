@@ -214,6 +214,9 @@ func (s *Storage) createProviderUnlocked() (AuthProvider, error) {
 	case AuthMethodSSH:
 		return NewSSHProvider(s.config.SSHKeyPath)
 	case AuthMethodYubiKey:
+		if s.config.YubiKeyRecipient != "" {
+			return NewYubiKeyProviderWithRecipient(s.config.YubiKeyIdentity, s.config.YubiKeyRecipient)
+		}
 		return NewYubiKeyProvider(s.config.YubiKeyIdentity)
 	default:
 		return nil, fmt.Errorf("unknown auth method: %s", s.config.Method)

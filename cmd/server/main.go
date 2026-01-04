@@ -105,6 +105,10 @@ func SetupRouter() chi.Router {
 	r.Get("/filemanager", explorer.HandleFileManagerPage)
 	r.Get("/encryption/config", backup.HandleGetEncryptionConfig)
 
+	// YubiKey routes (accessible when locked for initial setup)
+	r.Get("/encryption/yubikey-identity", backup.HandleYubiKeyIdentity)
+	r.Post("/encryption/yubikey-setup", backup.HandleYubiKeySetup)
+
 	// Health and control endpoints (always accessible)
 	r.Get("/api/health", backup.HandleHealth)
 	r.Get("/api/version", handleVersion)

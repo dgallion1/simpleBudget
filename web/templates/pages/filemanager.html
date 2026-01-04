@@ -101,10 +101,11 @@
                 <p id="unlock-description" class="text-sm text-gray-600 dark:text-gray-400">
                     {{if eq .AuthMethod "age"}}Your Age identity file will be used to unlock.
                     {{else if eq .AuthMethod "ssh"}}Enter SSH key passphrase (if encrypted) to unlock.
+                    {{else if eq .AuthMethod "yubikey"}}Click unlock, then touch your YubiKey.
                     {{else}}Enter your password to unlock.{{end}}
                 </p>
-                <div id="password-field" {{if eq .AuthMethod "age"}}class="hidden"{{end}}>
-                    <input type="password" name="password" id="unlock-password" {{if ne .AuthMethod "age"}}{{if ne .AuthMethod "ssh"}}required{{end}}{{end}}
+                <div id="password-field" {{if or (eq .AuthMethod "age") (eq .AuthMethod "yubikey")}}class="hidden"{{end}}>
+                    <input type="password" name="password" id="unlock-password" {{if and (ne .AuthMethod "age") (ne .AuthMethod "ssh") (ne .AuthMethod "yubikey")}}required{{end}}
                         placeholder="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
@@ -113,10 +114,11 @@
                     class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                     {{if eq .AuthMethod "age"}}Unlock with Age Identity
                     {{else if eq .AuthMethod "ssh"}}Unlock with SSH Key
+                    {{else if eq .AuthMethod "yubikey"}}Unlock with YubiKey
                     {{else}}Unlock{{end}}
                 </button>
                 <p class="text-xs text-gray-500 dark:text-gray-500">
-                    Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else}}{{.AuthMethod}}{{end}}</span>
+                    Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else if eq .AuthMethod "yubikey"}}YubiKey{{else}}{{.AuthMethod}}{{end}}</span>
                 </p>
             </form>
             {{else if .IsEncrypted}}
@@ -125,6 +127,7 @@
                 <p class="text-sm text-gray-600 dark:text-gray-400">
                     {{if eq .AuthMethod "age"}}Your data is encrypted with an Age identity file.
                     {{else if eq .AuthMethod "ssh"}}Your data is encrypted with an SSH key.
+                    {{else if eq .AuthMethod "yubikey"}}Your data is encrypted with a YubiKey. Touch your key to disable.
                     {{else}}Your data is encrypted at rest. Enter your password to disable encryption.{{end}}
                 </p>
                 {{if eq .AuthMethod "password"}}
@@ -139,6 +142,8 @@
                     <input type="password" name="password" placeholder="Leave empty if key is not encrypted"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
+                {{else if eq .AuthMethod "yubikey"}}
+                <!-- YubiKey doesn't need a password field - just touch to authenticate -->
                 {{end}}
                 <div id="disable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <button type="submit" id="disable-encryption-btn"
@@ -171,7 +176,7 @@
                         SSH Key
                     </button>
                     <button onclick="selectMethod('yubikey')" id="tab-yubikey"
-                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hidden">
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                         YubiKey
                     </button>
                 </div>
@@ -268,14 +273,48 @@
                 <!-- YubiKey method form (hidden until detected) -->
                 <form id="yubikey-encryption-form" class="method-form space-y-3 hidden" data-method="yubikey">
                     <input type="hidden" name="method" value="yubikey">
+                    <input type="hidden" name="yubikey_identity" id="yubikey-identity-input" value="">
+                    <input type="hidden" name="yubikey_recipient" id="yubikey-recipient-input" value="">
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        Use your YubiKey for hardware-backed encryption.
+                        Use your YubiKey for hardware-backed encryption. Requires <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">age-plugin-yubikey</code>.
                     </p>
-                    <div id="yubikey-identities">
+                    <div id="yubikey-status" class="mb-3">
                         <p class="text-sm text-gray-500 dark:text-gray-400">Detecting YubiKey...</p>
                     </div>
+                    <div id="yubikey-identities" class="hidden space-y-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Available YubiKey Identities</label>
+                        <select id="yubikey-select" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            <option value="">Select an identity...</option>
+                        </select>
+                    </div>
+                    <div id="yubikey-setup" class="hidden">
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                            No existing YubiKey identity found. You can set up a new one.
+                        </p>
+                        <button type="button" id="yubikey-setup-btn" onclick="setupNewYubiKey()"
+                            class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                            Setup New YubiKey Identity
+                        </button>
+                    </div>
+                    <div id="yubikey-ready" class="hidden">
+                        <div class="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            <span id="yubikey-ready-text">YubiKey ready</span>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                        <p class="text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                            <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>YubiKey encryption requires touching your key when unlocking. Keep your YubiKey accessible.</span>
+                        </p>
+                    </div>
                     <div id="yubikey-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                    <button type="submit" id="yubikey-submit-btn" disabled
+                        class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         Enable Encryption
                     </button>
                 </form>
@@ -463,9 +502,42 @@ document.addEventListener('DOMContentLoaded', function() {
                 sshSelect.innerHTML = '<option value="">No SSH keys found</option>';
             }
 
-            // Show YubiKey tab if plugin installed
+            // Update YubiKey UI based on plugin status
             if (data.yubikey_installed) {
-                document.getElementById('tab-yubikey').classList.remove('hidden');
+                updateYubiKeyUI(data);
+            } else {
+                document.getElementById('yubikey-status').innerHTML = `
+                    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                        <p class="text-sm text-amber-800 dark:text-amber-200 mb-2">
+                            <strong>age-plugin-yubikey</strong> is required but not installed.
+                        </p>
+                        <div class="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                            <div class="flex items-center gap-1">
+                                <strong>macOS:</strong>
+                                <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">brew install age-plugin-yubikey</code>
+                                <button onclick="copyCmd('brew install age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <strong>Ubuntu/Debian:</strong>
+                                <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">sudo apt install pcscd</code>
+                                <button onclick="copyCmd('sudo apt install pcscd')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                </button>
+                                <span class="ml-1">then download from <a href="https://github.com/str4d/age-plugin-yubikey/releases" target="_blank" class="underline hover:no-underline">Releases</a></span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <strong>Arch Linux:</strong>
+                                <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">pacman -S age-plugin-yubikey</code>
+                                <button onclick="copyCmd('pacman -S age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                </button>
+                            </div>
+                            <div><strong>Windows:</strong> Download from <a href="https://github.com/str4d/age-plugin-yubikey/releases" target="_blank" class="underline hover:no-underline">GitHub Releases</a></div>
+                        </div>
+                    </div>`;
+                document.getElementById('yubikey-submit-btn').disabled = true;
             }
         })
         .catch(() => {
@@ -475,6 +547,122 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 });
+
+function updateYubiKeyUI(data) {
+    const statusDiv = document.getElementById('yubikey-status');
+    const identitiesDiv = document.getElementById('yubikey-identities');
+    const setupDiv = document.getElementById('yubikey-setup');
+    const readyDiv = document.getElementById('yubikey-ready');
+    const select = document.getElementById('yubikey-select');
+    const submitBtn = document.getElementById('yubikey-submit-btn');
+
+    if (data.yubikey_identities && data.yubikey_identities.length > 0) {
+        // Show the select dropdown with available identities
+        statusDiv.classList.add('hidden');
+        identitiesDiv.classList.remove('hidden');
+        setupDiv.classList.add('hidden');
+
+        select.innerHTML = '<option value="">Select an identity...</option>';
+        data.yubikey_identities.forEach((recipient, index) => {
+            const option = document.createElement('option');
+            option.value = recipient;
+            option.textContent = recipient.substring(0, 40) + '...';
+            option.title = recipient;
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', function() {
+            if (select.value) {
+                // Fetch the identity for this recipient
+                fetchYubiKeyIdentity(select.value);
+            } else {
+                readyDiv.classList.add('hidden');
+                submitBtn.disabled = true;
+            }
+        });
+    } else {
+        // No existing identities, show setup option
+        statusDiv.classList.add('hidden');
+        identitiesDiv.classList.add('hidden');
+        setupDiv.classList.remove('hidden');
+    }
+}
+
+function fetchYubiKeyIdentity(recipient) {
+    const readyDiv = document.getElementById('yubikey-ready');
+    const readyText = document.getElementById('yubikey-ready-text');
+    const submitBtn = document.getElementById('yubikey-submit-btn');
+    const identityInput = document.getElementById('yubikey-identity-input');
+    const recipientInput = document.getElementById('yubikey-recipient-input');
+
+    // For now, we'll need to get the identity via the API
+    // This requires the user to touch the YubiKey
+    fetch('/encryption/yubikey-identity?recipient=' + encodeURIComponent(recipient))
+        .then(response => response.json())
+        .then(data => {
+            if (data.identity) {
+                identityInput.value = data.identity;
+                recipientInput.value = recipient;
+                readyText.textContent = 'YubiKey ready: ' + recipient.substring(0, 30) + '...';
+                readyDiv.classList.remove('hidden');
+                submitBtn.disabled = false;
+            } else {
+                throw new Error('Failed to get identity');
+            }
+        })
+        .catch(err => {
+            document.getElementById('yubikey-encryption-error').textContent = 'Failed to get YubiKey identity. Make sure your YubiKey is connected.';
+            document.getElementById('yubikey-encryption-error').classList.remove('hidden');
+        });
+}
+
+function copyCmd(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Copied to clipboard', 'success');
+    }).catch(() => {
+        showToast('Failed to copy', 'error');
+    });
+}
+
+function setupNewYubiKey() {
+    const setupBtn = document.getElementById('yubikey-setup-btn');
+    const errorDiv = document.getElementById('yubikey-encryption-error');
+    const readyDiv = document.getElementById('yubikey-ready');
+    const readyText = document.getElementById('yubikey-ready-text');
+    const submitBtn = document.getElementById('yubikey-submit-btn');
+    const identityInput = document.getElementById('yubikey-identity-input');
+    const recipientInput = document.getElementById('yubikey-recipient-input');
+
+    setupBtn.disabled = true;
+    setupBtn.textContent = 'Touch your YubiKey...';
+    errorDiv.classList.add('hidden');
+
+    fetch('/encryption/yubikey-setup', { method: 'POST' })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error(text); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.identity && data.recipient) {
+                identityInput.value = data.full_text || data.identity;
+                recipientInput.value = data.recipient;
+                readyText.textContent = 'New YubiKey identity created';
+                readyDiv.classList.remove('hidden');
+                submitBtn.disabled = false;
+                document.getElementById('yubikey-setup').classList.add('hidden');
+            } else {
+                throw new Error('Failed to setup YubiKey');
+            }
+        })
+        .catch(err => {
+            setupBtn.disabled = false;
+            setupBtn.textContent = 'Setup New YubiKey Identity';
+            errorDiv.textContent = err.message;
+            errorDiv.classList.remove('hidden');
+        });
+}
 
 // Form submission handlers
 function submitEncryptionForm(form, errorDivId) {

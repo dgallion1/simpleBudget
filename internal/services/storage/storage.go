@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"filippo.io/age"
 )
 
 const (
@@ -36,8 +34,8 @@ type cacheEntry struct {
 type Storage struct {
 	baseDir   string
 	encrypted bool
-	identity  *age.ScryptIdentity
-	recipient *age.ScryptRecipient
+	provider  AuthProvider       // Current auth provider (nil if locked or not encrypted)
+	config    *EncryptionConfig  // Configuration for the auth method
 	mu        sync.RWMutex
 	cache     map[string]*cacheEntry
 	cacheMu   sync.RWMutex
@@ -54,6 +52,18 @@ func New(baseDir string) (*Storage, error) {
 	markerPath := filepath.Join(baseDir, markerFile)
 	if _, err := os.Stat(markerPath); err == nil {
 		s.encrypted = true
+
+		// Load encryption configuration
+		config, err := loadConfig(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load encryption config: %w", err)
+		}
+
+		// Default to password if no config exists (backward compatibility)
+		if config == nil {
+			config = &EncryptionConfig{Method: AuthMethodPassword}
+		}
+		s.config = config
 	}
 
 	return s, nil
@@ -71,15 +81,18 @@ func (s *Storage) IsEncrypted() bool {
 	return s.encrypted
 }
 
-// IsUnlocked returns true if encryption is enabled and unlocked
+// IsUnlocked returns true if encryption is not enabled or provider is unlocked
 func (s *Storage) IsUnlocked() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return !s.encrypted || s.identity != nil
+	return !s.encrypted || (s.provider != nil && s.provider.IsUnlocked())
 }
 
-// Unlock decrypts the storage with the given password
-func (s *Storage) Unlock(password string) error {
+// Unlock decrypts the storage with the given credentials
+// For password method, credentials is the password
+// For SSH with passphrase, credentials is the passphrase
+// For age identity and YubiKey, credentials may be empty
+func (s *Storage) Unlock(credentials string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,13 +100,26 @@ func (s *Storage) Unlock(password string) error {
 		return nil // Nothing to unlock
 	}
 
-	// Create identity from password
-	identity, err := age.NewScryptIdentity(password)
+	// Create or get provider based on config
+	provider, err := s.createProvider()
 	if err != nil {
-		return fmt.Errorf("failed to create identity: %w", err)
+		return err
 	}
 
-	// Verify password by decrypting the verification file
+	// Unlock the provider with credentials
+	if provider.NeedsUnlock() {
+		if err := provider.Unlock(credentials); err != nil {
+			return err
+		}
+	}
+
+	// Get identity for verification
+	identity, err := provider.Identity()
+	if err != nil {
+		return fmt.Errorf("failed to get identity: %w", err)
+	}
+
+	// Verify credentials by decrypting the verification file
 	verifyPath := filepath.Join(s.baseDir, verifyFile)
 	encrypted, err := os.ReadFile(verifyPath)
 	if err != nil {
@@ -102,18 +128,39 @@ func (s *Storage) Unlock(password string) error {
 
 	decrypted, err := decryptData(encrypted, identity)
 	if err != nil {
-		return fmt.Errorf("incorrect password")
+		provider.Lock()
+		return fmt.Errorf("incorrect credentials")
 	}
 
 	if string(decrypted) != verifyMagic {
-		return fmt.Errorf("incorrect password (verification failed)")
+		provider.Lock()
+		return fmt.Errorf("incorrect credentials (verification failed)")
 	}
 
-	// Password verified, store identity
-	s.identity = identity
-	s.recipient, _ = age.NewScryptRecipient(password)
-
+	// Credentials verified, store provider
+	s.provider = provider
 	return nil
+}
+
+// createProvider creates an AuthProvider based on the current configuration
+func (s *Storage) createProvider() (AuthProvider, error) {
+	if s.config == nil {
+		// Default to password for backward compatibility
+		return NewPasswordProvider(), nil
+	}
+
+	switch s.config.Method {
+	case AuthMethodPassword:
+		return NewPasswordProvider(), nil
+	case AuthMethodAge:
+		return NewAgeProvider(s.config.AgeIdentityPath)
+	case AuthMethodSSH:
+		return NewSSHProvider(s.config.SSHKeyPath)
+	case AuthMethodYubiKey:
+		return NewYubiKeyProvider(s.config.YubiKeyIdentity)
+	default:
+		return nil, fmt.Errorf("unknown auth method: %s", s.config.Method)
+	}
 }
 
 // Lock clears the encryption key and cached data from memory
@@ -121,8 +168,10 @@ func (s *Storage) Lock() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.identity = nil
-	s.recipient = nil
+	if s.provider != nil {
+		s.provider.Lock()
+		s.provider = nil
+	}
 
 	// Clear cache for security - don't keep decrypted data in memory
 	s.cacheMu.Lock()
@@ -161,10 +210,14 @@ func (s *Storage) ReadFile(path string) ([]byte, error) {
 
 	// Check if file is encrypted
 	if isAgeEncrypted(data) {
-		if s.identity == nil {
+		if s.provider == nil || !s.provider.IsUnlocked() {
 			return nil, fmt.Errorf("file is encrypted but storage is locked")
 		}
-		data, err = decryptData(data, s.identity)
+		identity, err := s.provider.Identity()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get identity: %w", err)
+		}
+		data, err = decryptData(data, identity)
 		if err != nil {
 			return nil, err
 		}
@@ -197,8 +250,12 @@ func (s *Storage) WriteFile(path string, data []byte, perm os.FileMode) error {
 	}
 
 	// Encrypt if enabled and unlocked
-	if s.encrypted && s.recipient != nil {
-		encrypted, err := encryptData(data, s.recipient)
+	if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
+		recipient, err := s.provider.Recipient()
+		if err != nil {
+			return fmt.Errorf("failed to get recipient: %w", err)
+		}
+		encrypted, err := encryptData(data, recipient)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt: %w", err)
 		}

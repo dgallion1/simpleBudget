@@ -338,23 +338,39 @@ budget2/
 - **Frontend**: HTMX for dynamic updates, Plotly.js for charts
 - **Styling**: Tailwind CSS via CDN
 - **Storage**: File-based (CSV for transactions, JSON for settings)
-- **Encryption**: Age (filippo.io/age) with scrypt password-based key derivation
+- **Encryption**: Age (filippo.io/age) with multiple auth methods (password, SSH, Age identity, YubiKey)
 
 ## Data Encryption
 
 SimpleBudget supports optional encryption for all your financial data using the Age encryption library. When enabled, all CSV transaction files and JSON settings are encrypted at rest.
 
+### Authentication Methods
+
+SimpleBudget supports multiple authentication methods for encryption:
+
+| Method | Description | Best For |
+|--------|-------------|----------|
+| **Password** | Traditional password-based encryption (scrypt) | Simple setup, easy to remember |
+| **Age Identity** | Age X25519 key pair stored in a file | Key file backup, advanced users |
+| **SSH Key** | Use existing SSH keys (ed25519, RSA) | Reuse existing SSH infrastructure |
+| **YubiKey** | Hardware security key via age-plugin-yubikey | Maximum security, hardware-backed |
+
 ### Enabling Encryption
 
 1. Go to **File Manager** tab
 2. Scroll to the **Data Encryption** section
-3. Enter and confirm a password (minimum 8 characters)
-4. Click **Enable Encryption**
+3. Select your preferred authentication method (tabs)
+4. Configure the method:
+   - **Password**: Enter and confirm a password (minimum 8 characters)
+   - **Age Key**: Generate a new identity or select an existing one
+   - **SSH Key**: Select from detected keys in `~/.ssh/`
+   - **YubiKey**: Detected automatically if `age-plugin-yubikey` is installed
+5. Click **Enable Encryption**
 
 Once enabled:
 - All existing data files are encrypted in place
 - New files are automatically encrypted when saved
-- A password is required via web interface on startup
+- Authentication is required via web interface on startup
 
 ### Unlocking on Startup
 
@@ -367,7 +383,11 @@ Encrypted storage detected - unlock via web interface at /unlock
 Server starting on :8080
 ```
 
-Open http://localhost:8080 and enter your password to unlock. This web-based approach works with development tools like AIR that lack an interactive terminal.
+Open http://localhost:8080 and authenticate using your configured method:
+- **Password**: Enter your password
+- **Age Identity**: Automatic (reads from configured file)
+- **SSH Key**: Enter passphrase if key is encrypted, otherwise automatic
+- **YubiKey**: Touch your key when prompted
 
 ### What Gets Encrypted
 
@@ -379,14 +399,35 @@ Open http://localhost:8080 and enter your password to unlock. This web-based app
 
 ### Security Notes
 
-- **Password requirements**: Minimum 8 characters
-- **No recovery**: If you forget your password, your data cannot be recovered
+- **Password requirements**: Minimum 8 characters (for password method)
+- **No recovery**: If you lose your credentials, your data cannot be recovered
 - **Backups are unencrypted**: Downloaded backup ZIPs are plain files for portability
 - **Cross-platform**: Works on Linux, macOS, and Windows
+- **No fallback**: Each encryption setup uses a single auth method - keep backups of your keys
+
+### YubiKey Setup
+
+To use YubiKey authentication:
+
+1. Install the age-plugin-yubikey:
+   ```bash
+   # Using Go
+   go install github.com/str4d/age-plugin-yubikey@latest
+
+   # Or download from releases
+   ```
+
+2. The YubiKey tab will appear in File Manager when the plugin is detected
+
+3. Physical touch is required each time you decrypt data
 
 ### Disabling Encryption
 
-To remove encryption, call the disable function with your current password. All files will be decrypted in place.
+1. Go to **File Manager** tab
+2. Enter your current credentials (password, SSH passphrase, or touch YubiKey)
+3. Click **Disable Encryption**
+
+All files will be decrypted in place.
 
 ## Testing
 

@@ -131,9 +131,13 @@ func SetupRouter() chi.Router {
 		r.Delete("/data/all", backup.HandleDeleteAllData)
 
 		// Encryption management routes
-		r.Post("/encryption/enable", backup.HandleEnableEncryption)
+		r.Post("/encryption/enable", backup.HandleEnableEncryptionWithMethod)
 		r.Post("/encryption/disable", backup.HandleDisableEncryption)
 		r.Get("/encryption/status", backup.HandleEncryptionStatus)
+		r.Get("/encryption/methods", backup.HandleGetAuthMethods)
+		r.Get("/encryption/detect-keys", backup.HandleDetectKeys)
+		r.Get("/encryption/config", backup.HandleGetEncryptionConfig)
+		r.Post("/encryption/change-method", backup.HandleChangeAuthMethod)
 	})
 
 	return r

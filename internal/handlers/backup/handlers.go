@@ -454,3 +454,289 @@ func HandleUnlock(w http.ResponseWriter, r *http.Request) {
 func IsStorageLocked() bool {
 	return store != nil && store.IsEncrypted() && !store.IsUnlocked()
 }
+
+// MethodInfo describes an available authentication method
+type MethodInfo struct {
+	Method      string `json:"method"`
+	Enabled     bool   `json:"enabled"`
+	Description string `json:"description"`
+	Current     bool   `json:"current"`
+}
+
+// HandleGetAuthMethods returns available authentication methods
+func HandleGetAuthMethods(w http.ResponseWriter, r *http.Request) {
+	methods := []MethodInfo{
+		{
+			Method:      string(storage.AuthMethodPassword),
+			Enabled:     true,
+			Description: "Password-based encryption (scrypt)",
+		},
+		{
+			Method:      string(storage.AuthMethodAge),
+			Enabled:     true,
+			Description: "Age identity file (X25519 key)",
+		},
+		{
+			Method:      string(storage.AuthMethodSSH),
+			Enabled:     true,
+			Description: "SSH key encryption",
+		},
+		{
+			Method:      string(storage.AuthMethodYubiKey),
+			Enabled:     storage.IsYubiKeyPluginInstalled(),
+			Description: "YubiKey hardware key",
+		},
+	}
+
+	// Mark current method if encrypted
+	currentMethod := store.GetAuthMethod()
+	for i := range methods {
+		if storage.AuthMethod(methods[i].Method) == currentMethod {
+			methods[i].Current = true
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"current_method":    currentMethod,
+		"available_methods": methods,
+	})
+}
+
+// DetectedKeys contains detected SSH keys and age identities
+type DetectedKeys struct {
+	SSHKeys           []storage.SSHKeyInfo `json:"ssh_keys"`
+	AgeIdentities     []string             `json:"age_identities"`
+	YubiKeyInstalled  bool                 `json:"yubikey_installed"`
+	YubiKeyIdentities []string             `json:"yubikey_identities"`
+}
+
+// HandleDetectKeys returns detected SSH keys and age identities
+func HandleDetectKeys(w http.ResponseWriter, r *http.Request) {
+	keys := DetectedKeys{}
+
+	// Detect SSH keys
+	sshKeys, err := storage.DetectSSHKeys()
+	if err == nil {
+		keys.SSHKeys = sshKeys
+	}
+
+	// Detect age identities
+	ageIdentities, err := storage.DetectAgeIdentities()
+	if err == nil {
+		keys.AgeIdentities = ageIdentities
+	}
+
+	// Detect YubiKey
+	keys.YubiKeyInstalled = storage.IsYubiKeyPluginInstalled()
+	if keys.YubiKeyInstalled {
+		yubikeyIdentities, err := storage.DetectYubiKeyIdentities()
+		if err == nil {
+			keys.YubiKeyIdentities = yubikeyIdentities
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(keys)
+}
+
+// HandleEnableEncryptionWithMethod enables encryption with a specific auth method
+func HandleEnableEncryptionWithMethod(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	method := storage.AuthMethod(r.FormValue("method"))
+
+	switch method {
+	case storage.AuthMethodPassword, "":
+		// Default to password method
+		handleEnablePasswordEncryption(w, r)
+
+	case storage.AuthMethodAge:
+		handleEnableAgeEncryption(w, r)
+
+	case storage.AuthMethodSSH:
+		handleEnableSSHEncryption(w, r)
+
+	case storage.AuthMethodYubiKey:
+		handleEnableYubiKeyEncryption(w, r)
+
+	default:
+		http.Error(w, "Unknown encryption method", http.StatusBadRequest)
+	}
+}
+
+func handleEnablePasswordEncryption(w http.ResponseWriter, r *http.Request) {
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirmPassword")
+
+	if len(password) < 8 {
+		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	if password != confirmPassword {
+		http.Error(w, "Passwords do not match", http.StatusBadRequest)
+		return
+	}
+
+	if err := store.EnableEncryption(password); err != nil {
+		log.Printf("Failed to enable encryption: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Password encryption enabled successfully")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Encryption enabled with password")
+}
+
+func handleEnableAgeEncryption(w http.ResponseWriter, r *http.Request) {
+	identityPath := r.FormValue("identity_path")
+	generateNew := r.FormValue("generate_new") == "true"
+
+	var provider *storage.AgeProvider
+	var err error
+
+	if generateNew {
+		// Generate a new identity
+		if identityPath == "" {
+			identityPath = "~/.config/budget2/age-identity.txt"
+		}
+		provider, err = storage.GenerateAgeIdentity(identityPath)
+		if err != nil {
+			http.Error(w, "Failed to generate age identity: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		if identityPath == "" {
+			http.Error(w, "Identity path is required", http.StatusBadRequest)
+			return
+		}
+		provider, err = storage.NewAgeProvider(identityPath)
+		if err != nil {
+			http.Error(w, "Failed to load age identity: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	config := &storage.EncryptionConfig{
+		Method:          storage.AuthMethodAge,
+		AgeIdentityPath: identityPath,
+		RecipientID:     provider.GetPublicKey(),
+	}
+
+	if err := store.EnableEncryptionWithProvider(provider, config); err != nil {
+		log.Printf("Failed to enable age encryption: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Age encryption enabled successfully")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"message":    "Encryption enabled with age identity",
+		"public_key": provider.GetPublicKey(),
+	})
+}
+
+func handleEnableSSHEncryption(w http.ResponseWriter, r *http.Request) {
+	keyPath := r.FormValue("ssh_key_path")
+	passphrase := r.FormValue("passphrase")
+
+	if keyPath == "" {
+		http.Error(w, "SSH key path is required", http.StatusBadRequest)
+		return
+	}
+
+	provider, err := storage.NewSSHProvider(keyPath)
+	if err != nil {
+		http.Error(w, "Failed to load SSH key: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Unlock with passphrase if provided
+	if err := provider.Unlock(passphrase); err != nil {
+		http.Error(w, "Failed to unlock SSH key: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	config := &storage.EncryptionConfig{
+		Method:     storage.AuthMethodSSH,
+		SSHKeyPath: keyPath,
+	}
+
+	if err := store.EnableEncryptionWithProvider(provider, config); err != nil {
+		log.Printf("Failed to enable SSH encryption: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("SSH encryption enabled successfully")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Encryption enabled with SSH key")
+}
+
+func handleEnableYubiKeyEncryption(w http.ResponseWriter, r *http.Request) {
+	identityStr := r.FormValue("yubikey_identity")
+
+	if identityStr == "" {
+		http.Error(w, "YubiKey identity is required", http.StatusBadRequest)
+		return
+	}
+
+	if !storage.IsYubiKeyPluginInstalled() {
+		http.Error(w, "age-plugin-yubikey is not installed", http.StatusBadRequest)
+		return
+	}
+
+	provider, err := storage.NewYubiKeyProvider(identityStr)
+	if err != nil {
+		http.Error(w, "Failed to load YubiKey: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	config := &storage.EncryptionConfig{
+		Method:          storage.AuthMethodYubiKey,
+		YubiKeyIdentity: identityStr,
+	}
+
+	if err := store.EnableEncryptionWithProvider(provider, config); err != nil {
+		log.Printf("Failed to enable YubiKey encryption: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("YubiKey encryption enabled successfully")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Encryption enabled with YubiKey")
+}
+
+// HandleChangeAuthMethod changes the encryption method (re-encrypts data)
+func HandleChangeAuthMethod(w http.ResponseWriter, r *http.Request) {
+	// For now, to change methods, user must disable encryption and re-enable
+	// A more sophisticated approach would migrate in place
+	http.Error(w, "To change authentication method, please disable encryption first and then re-enable with the new method", http.StatusBadRequest)
+}
+
+// HandleGetEncryptionConfig returns the current encryption configuration
+func HandleGetEncryptionConfig(w http.ResponseWriter, r *http.Request) {
+	config := store.GetConfig()
+	if config == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"encrypted": false,
+		})
+		return
+	}
+
+	// Don't expose sensitive paths fully, just method info
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"encrypted": true,
+		"method":    config.Method,
+	})
+}

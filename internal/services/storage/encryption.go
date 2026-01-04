@@ -8,7 +8,8 @@ import (
 )
 
 // encryptData encrypts data using Age with the given recipient
-func encryptData(data []byte, recipient *age.ScryptRecipient) ([]byte, error) {
+// Accepts any age.Recipient implementation (ScryptRecipient, X25519Recipient, SSH, etc.)
+func encryptData(data []byte, recipient age.Recipient) ([]byte, error) {
 	var buf bytes.Buffer
 
 	w, err := age.Encrypt(&buf, recipient)
@@ -28,7 +29,8 @@ func encryptData(data []byte, recipient *age.ScryptRecipient) ([]byte, error) {
 }
 
 // decryptData decrypts Age-encrypted data using the given identity
-func decryptData(data []byte, identity *age.ScryptIdentity) ([]byte, error) {
+// Accepts any age.Identity implementation (ScryptIdentity, X25519Identity, SSH, etc.)
+func decryptData(data []byte, identity age.Identity) ([]byte, error) {
 	r, err := age.Decrypt(bytes.NewReader(data), identity)
 	if err != nil {
 		return nil, err

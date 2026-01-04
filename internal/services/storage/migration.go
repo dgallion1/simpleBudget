@@ -9,8 +9,18 @@ import (
 	"filippo.io/age"
 )
 
-// EnableEncryption encrypts all data files with the given password
+// EnableEncryption encrypts all data files with the given password (default method)
 func (s *Storage) EnableEncryption(password string) error {
+	provider, err := NewPasswordProviderWithCredentials(password)
+	if err != nil {
+		return err
+	}
+	config := &EncryptionConfig{Method: AuthMethodPassword}
+	return s.EnableEncryptionWithProvider(provider, config)
+}
+
+// EnableEncryptionWithProvider encrypts all data files using the given provider
+func (s *Storage) EnableEncryptionWithProvider(provider AuthProvider, config *EncryptionConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -18,19 +28,15 @@ func (s *Storage) EnableEncryption(password string) error {
 		return fmt.Errorf("encryption is already enabled")
 	}
 
-	if len(password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters")
+	// Get recipient and identity from provider
+	recipient, err := provider.Recipient()
+	if err != nil {
+		return fmt.Errorf("failed to get recipient: %w", err)
 	}
 
-	// Create recipient and identity from password
-	recipient, err := age.NewScryptRecipient(password)
+	identity, err := provider.Identity()
 	if err != nil {
-		return fmt.Errorf("failed to create recipient: %w", err)
-	}
-
-	identity, err := age.NewScryptIdentity(password)
-	if err != nil {
-		return fmt.Errorf("failed to create identity: %w", err)
+		return fmt.Errorf("failed to get identity: %w", err)
 	}
 
 	// Create verification file first
@@ -74,12 +80,20 @@ func (s *Storage) EnableEncryption(password string) error {
 
 	// Encrypt each file
 	for _, path := range filesToEncrypt {
-		if err := s.encryptFile(path, recipient); err != nil {
+		if err := s.encryptFileWithRecipient(path, recipient); err != nil {
 			// Attempt to rollback encrypted files (best effort)
-			s.rollbackEncryption(filesToEncrypt, identity)
+			s.rollbackEncryptionWithIdentity(filesToEncrypt, identity)
 			os.Remove(verifyPath)
 			return fmt.Errorf("failed to encrypt %s: %w", filepath.Base(path), err)
 		}
+	}
+
+	// Save configuration
+	if err := saveConfig(s.baseDir, config); err != nil {
+		// Rollback on config save failure
+		s.rollbackEncryptionWithIdentity(filesToEncrypt, identity)
+		os.Remove(verifyPath)
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
 	// Create marker file
@@ -90,14 +104,14 @@ func (s *Storage) EnableEncryption(password string) error {
 
 	// Update storage state
 	s.encrypted = true
-	s.identity = identity
-	s.recipient = recipient
+	s.provider = provider
+	s.config = config
 
 	return nil
 }
 
-// DisableEncryption decrypts all data files (requires current password)
-func (s *Storage) DisableEncryption(password string) error {
+// DisableEncryption decrypts all data files using the current provider's credentials
+func (s *Storage) DisableEncryption(credentials string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -105,12 +119,26 @@ func (s *Storage) DisableEncryption(password string) error {
 		return fmt.Errorf("encryption is not enabled")
 	}
 
-	// Verify password
-	identity, err := age.NewScryptIdentity(password)
+	// Create provider based on config
+	provider, err := s.createProviderUnlocked()
 	if err != nil {
-		return fmt.Errorf("failed to create identity: %w", err)
+		return err
 	}
 
+	// Unlock if needed
+	if provider.NeedsUnlock() {
+		if err := provider.Unlock(credentials); err != nil {
+			return err
+		}
+	}
+
+	// Get identity for decryption
+	identity, err := provider.Identity()
+	if err != nil {
+		return fmt.Errorf("failed to get identity: %w", err)
+	}
+
+	// Verify credentials
 	verifyPath := filepath.Join(s.baseDir, verifyFile)
 	encrypted, err := os.ReadFile(verifyPath)
 	if err != nil {
@@ -119,11 +147,11 @@ func (s *Storage) DisableEncryption(password string) error {
 
 	decrypted, err := decryptData(encrypted, identity)
 	if err != nil {
-		return fmt.Errorf("incorrect password")
+		return fmt.Errorf("incorrect credentials")
 	}
 
 	if string(decrypted) != verifyMagic {
-		return fmt.Errorf("incorrect password")
+		return fmt.Errorf("incorrect credentials")
 	}
 
 	// Collect files to decrypt
@@ -154,25 +182,46 @@ func (s *Storage) DisableEncryption(password string) error {
 
 	// Decrypt each file
 	for _, path := range filesToDecrypt {
-		if err := s.decryptFile(path, identity); err != nil {
+		if err := s.decryptFileWithIdentity(path, identity); err != nil {
 			return fmt.Errorf("failed to decrypt %s: %w", filepath.Base(path), err)
 		}
 	}
 
-	// Remove marker and verification files
+	// Remove marker, verification, and config files
 	os.Remove(filepath.Join(s.baseDir, markerFile))
 	os.Remove(verifyPath)
+	removeConfig(s.baseDir)
 
 	// Update storage state
 	s.encrypted = false
-	s.identity = nil
-	s.recipient = nil
+	s.provider = nil
+	s.config = nil
 
 	return nil
 }
 
-// encryptFile encrypts a single file in place
-func (s *Storage) encryptFile(path string, recipient *age.ScryptRecipient) error {
+// createProviderUnlocked creates a provider without holding the mutex (caller must hold it)
+func (s *Storage) createProviderUnlocked() (AuthProvider, error) {
+	if s.config == nil {
+		return NewPasswordProvider(), nil
+	}
+
+	switch s.config.Method {
+	case AuthMethodPassword:
+		return NewPasswordProvider(), nil
+	case AuthMethodAge:
+		return NewAgeProvider(s.config.AgeIdentityPath)
+	case AuthMethodSSH:
+		return NewSSHProvider(s.config.SSHKeyPath)
+	case AuthMethodYubiKey:
+		return NewYubiKeyProvider(s.config.YubiKeyIdentity)
+	default:
+		return nil, fmt.Errorf("unknown auth method: %s", s.config.Method)
+	}
+}
+
+// encryptFileWithRecipient encrypts a single file in place using any age.Recipient
+func (s *Storage) encryptFileWithRecipient(path string, recipient age.Recipient) error {
 	// Read original file
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -199,8 +248,8 @@ func (s *Storage) encryptFile(path string, recipient *age.ScryptRecipient) error
 	return os.Rename(tmpPath, path)
 }
 
-// decryptFile decrypts a single file in place
-func (s *Storage) decryptFile(path string, identity *age.ScryptIdentity) error {
+// decryptFileWithIdentity decrypts a single file in place using any age.Identity
+func (s *Storage) decryptFileWithIdentity(path string, identity age.Identity) error {
 	// Read encrypted file
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -227,8 +276,8 @@ func (s *Storage) decryptFile(path string, identity *age.ScryptIdentity) error {
 	return os.Rename(tmpPath, path)
 }
 
-// rollbackEncryption attempts to decrypt files that were encrypted during a failed migration
-func (s *Storage) rollbackEncryption(files []string, identity *age.ScryptIdentity) {
+// rollbackEncryptionWithIdentity attempts to decrypt files that were encrypted during a failed migration
+func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Identity) {
 	for _, path := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {

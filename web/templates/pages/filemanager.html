@@ -107,35 +107,136 @@
                 </button>
             </form>
             {{else}}
-            <!-- Enable encryption form -->
-            <form id="enable-encryption-form" class="space-y-3">
-                <p class="text-sm text-gray-600 dark:text-gray-400">
+            <!-- Enable encryption form with method selection -->
+            <div id="encryption-setup">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                     Encrypt your data at rest to protect sensitive financial information.
                 </p>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                    <input type="password" name="password" id="enc-password" required minlength="8"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+
+                <!-- Method selector tabs -->
+                <div class="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+                    <button onclick="selectMethod('password')" id="tab-password"
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600 dark:text-indigo-400">
+                        Password
+                    </button>
+                    <button onclick="selectMethod('age')" id="tab-age"
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                        Age Key
+                    </button>
+                    <button onclick="selectMethod('ssh')" id="tab-ssh"
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                        SSH Key
+                    </button>
+                    <button onclick="selectMethod('yubikey')" id="tab-yubikey"
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hidden">
+                        YubiKey
+                    </button>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
-                    <input type="password" name="confirmPassword" id="enc-confirm" required minlength="8"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                </div>
-                <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
-                    <p class="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
-                        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                        </svg>
-                        <span>Remember your password! Data cannot be recovered without it.</span>
+
+                <!-- Password method form -->
+                <form id="enable-encryption-form" class="method-form space-y-3" data-method="password">
+                    <input type="hidden" name="method" value="password">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                        <input type="password" name="password" id="enc-password" required minlength="8"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
+                        <input type="password" name="confirmPassword" id="enc-confirm" required minlength="8"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                        <p class="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                            <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                            <span>Remember your password! Data cannot be recovered without it.</span>
+                        </p>
+                    </div>
+                    <div id="enable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <button type="submit" id="enable-encryption-btn"
+                        class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                        Enable Encryption
+                    </button>
+                </form>
+
+                <!-- Age method form -->
+                <form id="age-encryption-form" class="method-form space-y-3 hidden" data-method="age">
+                    <input type="hidden" name="method" value="age">
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        Use an Age identity file for encryption. The identity file contains your private key.
                     </p>
-                </div>
-                <div id="enable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
-                <button type="submit" id="enable-encryption-btn"
-                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
-                    Enable Encryption
-                </button>
-            </form>
+                    <div>
+                        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-2">
+                            <input type="radio" name="age_option" value="generate" checked
+                                class="text-indigo-600 focus:ring-indigo-500" onchange="toggleAgeOption()">
+                            Generate new identity
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input type="radio" name="age_option" value="existing"
+                                class="text-indigo-600 focus:ring-indigo-500" onchange="toggleAgeOption()">
+                            Use existing identity
+                        </label>
+                    </div>
+                    <div id="age-path-input" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Identity File Path</label>
+                        <input type="text" name="identity_path" placeholder="~/.config/age/keys.txt"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                    <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                        <p class="text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                            <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>Keep your identity file safe! Store it separately from your data.</span>
+                        </p>
+                    </div>
+                    <div id="age-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                        Enable Encryption
+                    </button>
+                </form>
+
+                <!-- SSH method form -->
+                <form id="ssh-encryption-form" class="method-form space-y-3 hidden" data-method="ssh">
+                    <input type="hidden" name="method" value="ssh">
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Use your SSH key for encryption. Works with ed25519 and RSA keys.
+                    </p>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Path</label>
+                        <select name="ssh_key_path" id="ssh-key-select"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            <option value="">Loading keys...</option>
+                        </select>
+                    </div>
+                    <div id="ssh-passphrase-field" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Key Passphrase</label>
+                        <input type="password" name="passphrase" placeholder="Enter passphrase if key is encrypted"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                    <div id="ssh-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                        Enable Encryption
+                    </button>
+                </form>
+
+                <!-- YubiKey method form (hidden until detected) -->
+                <form id="yubikey-encryption-form" class="method-form space-y-3 hidden" data-method="yubikey">
+                    <input type="hidden" name="method" value="yubikey">
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Use your YubiKey for hardware-backed encryption.
+                    </p>
+                    <div id="yubikey-identities">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Detecting YubiKey...</p>
+                    </div>
+                    <div id="yubikey-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                        Enable Encryption
+                    </button>
+                </form>
+            </div>
             {{end}}
         </div>
     </div>
@@ -243,10 +344,148 @@ function restoreBackup(file) {
         });
 }
 
+// Method selection
+let currentEncryptionMethod = 'password';
+let detectedKeys = null;
+
+function selectMethod(method) {
+    currentEncryptionMethod = method;
+
+    // Update tab styles
+    document.querySelectorAll('.method-tab').forEach(tab => {
+        tab.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+        tab.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+    });
+
+    const activeTab = document.getElementById('tab-' + method);
+    if (activeTab) {
+        activeTab.classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        activeTab.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+    }
+
+    // Show/hide forms
+    document.querySelectorAll('.method-form').forEach(form => {
+        if (form.dataset.method === method) {
+            form.classList.remove('hidden');
+        } else {
+            form.classList.add('hidden');
+        }
+    });
+}
+
+function toggleAgeOption() {
+    const generateSelected = document.querySelector('input[name="age_option"][value="generate"]').checked;
+    const pathInput = document.getElementById('age-path-input');
+    if (generateSelected) {
+        pathInput.classList.add('hidden');
+    } else {
+        pathInput.classList.remove('hidden');
+    }
+}
+
+// Load detected keys on page load
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/encryption/detect-keys')
+        .then(response => response.json())
+        .then(data => {
+            detectedKeys = data;
+
+            // Populate SSH key select
+            const sshSelect = document.getElementById('ssh-key-select');
+            if (sshSelect && data.ssh_keys && data.ssh_keys.length > 0) {
+                sshSelect.innerHTML = '';
+                data.ssh_keys.forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key.path;
+                    option.textContent = `${key.path} (${key.type}${key.encrypted ? ', encrypted' : ''})`;
+                    option.dataset.encrypted = key.encrypted;
+                    sshSelect.appendChild(option);
+                });
+
+                // Show passphrase field if first key is encrypted
+                if (data.ssh_keys[0].encrypted) {
+                    document.getElementById('ssh-passphrase-field').classList.remove('hidden');
+                }
+
+                sshSelect.addEventListener('change', function() {
+                    const selectedOption = sshSelect.options[sshSelect.selectedIndex];
+                    const passphraseField = document.getElementById('ssh-passphrase-field');
+                    if (selectedOption.dataset.encrypted === 'true') {
+                        passphraseField.classList.remove('hidden');
+                    } else {
+                        passphraseField.classList.add('hidden');
+                    }
+                });
+            } else if (sshSelect) {
+                sshSelect.innerHTML = '<option value="">No SSH keys found</option>';
+            }
+
+            // Show YubiKey tab if plugin installed
+            if (data.yubikey_installed) {
+                document.getElementById('tab-yubikey').classList.remove('hidden');
+            }
+        })
+        .catch(() => {
+            const sshSelect = document.getElementById('ssh-key-select');
+            if (sshSelect) {
+                sshSelect.innerHTML = '<option value="">Failed to detect keys</option>';
+            }
+        });
+});
+
+// Form submission handlers
+function submitEncryptionForm(form, errorDivId) {
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        params.append(key, value);
+    }
+
+    // Add generate_new flag for age method
+    if (currentEncryptionMethod === 'age') {
+        const generateSelected = document.querySelector('input[name="age_option"][value="generate"]').checked;
+        params.append('generate_new', generateSelected ? 'true' : 'false');
+    }
+
+    const btn = form.querySelector('button[type="submit"]');
+    const errorDiv = document.getElementById(errorDivId);
+
+    errorDiv.classList.add('hidden');
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Encrypting...';
+
+    fetch('/encryption/enable', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: params
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => { throw new Error(text); });
+        }
+        return response.text();
+    })
+    .then(() => {
+        showToast('Encryption enabled successfully!', 'success');
+        setTimeout(() => window.location.reload(), 1000);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+    });
+}
+
 // Encryption form handlers
 document.addEventListener('DOMContentLoaded', function() {
     const enableForm = document.getElementById('enable-encryption-form');
     const disableForm = document.getElementById('disable-encryption-form');
+    const ageForm = document.getElementById('age-encryption-form');
+    const sshForm = document.getElementById('ssh-encryption-form');
+    const yubikeyForm = document.getElementById('yubikey-encryption-form');
 
     if (enableForm) {
         enableForm.addEventListener('submit', function(e) {
@@ -272,36 +511,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            errorDiv.classList.add('hidden');
-            btn.disabled = true;
-            btn.textContent = 'Encrypting...';
+            submitEncryptionForm(enableForm, 'enable-encryption-error');
+        });
+    }
 
-            // Use URLSearchParams for form data
-            const params = new URLSearchParams();
-            params.append('password', password);
-            params.append('confirmPassword', confirmPassword);
+    if (ageForm) {
+        ageForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitEncryptionForm(ageForm, 'age-encryption-error');
+        });
+    }
 
-            fetch('/encryption/enable', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: params
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => { throw new Error(text); });
-                }
-                return response.text();
-            })
-            .then(() => {
-                showToast('Encryption enabled successfully!', 'success');
-                setTimeout(() => window.location.reload(), 1000);
-            })
-            .catch(err => {
-                btn.disabled = false;
-                btn.textContent = 'Enable Encryption';
-                errorDiv.textContent = err.message;
-                errorDiv.classList.remove('hidden');
-            });
+    if (sshForm) {
+        sshForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const sshSelect = document.getElementById('ssh-key-select');
+            if (!sshSelect.value) {
+                document.getElementById('ssh-encryption-error').textContent = 'Please select an SSH key';
+                document.getElementById('ssh-encryption-error').classList.remove('hidden');
+                return;
+            }
+            submitEncryptionForm(sshForm, 'ssh-encryption-error');
+        });
+    }
+
+    if (yubikeyForm) {
+        yubikeyForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitEncryptionForm(yubikeyForm, 'yubikey-encryption-error');
         });
     }
 

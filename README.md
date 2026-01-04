@@ -2,7 +2,7 @@
 
 A personal finance dashboard and retirement planning tool built with Go, HTMX, and Plotly.js.
 
-**Your data stays on your computer.** SimpleBudget runs entirely locally with no external servers, cloud storage, or network connections. All your financial data is stored in local files that only you can access.
+**Your data stays on your computer.** SimpleBudget runs entirely locally with no external servers, cloud storage, or network connections. All your financial data is stored in local files that only you can access. Optional encryption keeps your data secure at rest.
 
 ## Features
 
@@ -11,6 +11,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 - **What-If Planner** - Retirement projections with Monte Carlo simulation and sensitivity analysis
 - **Insights** - Recurring payment detection, spending trends, and income pattern analysis
 - **File Manager** - Data backup, restore, and file management
+- **Encryption** - Optional password-based encryption for all data files
 
 ## Prerequisites
 
@@ -317,7 +318,8 @@ budget2/
 │   ├── services/
 │   │   ├── classifier/          # Income/expense classification
 │   │   ├── dataloader/          # CSV parsing and deduplication
-│   │   └── retirement/          # Retirement calculator and settings
+│   │   ├── retirement/          # Retirement calculator and settings
+│   │   └── storage/             # Encrypted file storage layer
 │   ├── templates/               # Template rendering with helpers
 │   └── testutil/                # Test utilities and assertions
 ├── web/
@@ -336,6 +338,56 @@ budget2/
 - **Frontend**: HTMX for dynamic updates, Plotly.js for charts
 - **Styling**: Tailwind CSS via CDN
 - **Storage**: File-based (CSV for transactions, JSON for settings)
+- **Encryption**: Age (filippo.io/age) with scrypt password-based key derivation
+
+## Data Encryption
+
+SimpleBudget supports optional encryption for all your financial data using the Age encryption library. When enabled, all CSV transaction files and JSON settings are encrypted at rest.
+
+### Enabling Encryption
+
+Encryption is enabled programmatically. Once enabled:
+- All existing data files are encrypted in place
+- New files are automatically encrypted when saved
+- A password is required on every startup
+
+### Password on Startup
+
+When encryption is enabled, you'll be prompted for your password:
+
+```bash
+$ ./budget2
+SimpleBudget v1.0.0
+Encrypted storage detected
+Enter encryption password: ********
+Encrypted storage unlocked successfully
+Server starting on :8080
+```
+
+Or use an environment variable for headless/automated deployments:
+
+```bash
+BUDGET_ENCRYPTION_PASSWORD=yourpassword ./budget2
+```
+
+### What Gets Encrypted
+
+| Encrypted | Not Encrypted |
+|-----------|---------------|
+| CSV transaction files | Cache files (plotly.js) |
+| JSON settings (whatif.json) | Encryption marker files |
+| User settings | Backup downloads (for portability) |
+
+### Security Notes
+
+- **Password requirements**: Minimum 8 characters
+- **No recovery**: If you forget your password, your data cannot be recovered
+- **Backups are unencrypted**: Downloaded backup ZIPs are plain files for portability
+- **Cross-platform**: Works on Linux, macOS, and Windows
+
+### Disabling Encryption
+
+To remove encryption, call the disable function with your current password. All files will be decrypted in place.
 
 ## Testing
 

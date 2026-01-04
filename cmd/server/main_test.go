@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"budget2/internal/config"
+	"budget2/internal/services/storage"
 	"budget2/internal/testutil"
 )
 
@@ -23,6 +24,13 @@ func setupTestServer(t *testing.T) *testutil.TestServer {
 		SettingsDirectory:  testutil.TestDataDir() + "/settings",
 		TemplatesDirectory: root + "/web/templates",
 		StaticDirectory:    root + "/web/static",
+	}
+
+	// Initialize storage (unencrypted for tests)
+	var err error
+	store, err = storage.New(cfg.DataDirectory)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
 	}
 
 	// Setup dependencies with test config

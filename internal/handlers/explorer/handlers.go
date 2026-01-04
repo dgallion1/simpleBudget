@@ -18,6 +18,7 @@ import (
 	"budget2/internal/config"
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 )
 
@@ -25,13 +26,15 @@ var (
 	loader   *dataloader.DataLoader
 	renderer *templates.Renderer
 	cfg      *config.Config
+	store    *storage.Storage
 )
 
 // Initialize sets up the explorer package with required dependencies
-func Initialize(l *dataloader.DataLoader, r *templates.Renderer, c *config.Config) {
+func Initialize(l *dataloader.DataLoader, r *templates.Renderer, c *config.Config, s *storage.Storage) {
 	loader = l
 	renderer = r
 	cfg = c
+	store = s
 }
 
 // RegisterRoutes registers all explorer routes
@@ -401,19 +404,16 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create destination path
-	destPath := filepath.Join(cfg.DataDirectory, header.Filename)
-
-	// Create destination file
-	dst, err := os.Create(destPath)
+	// Read file content
+	data, err := io.ReadAll(file)
 	if err != nil {
-		http.Error(w, "Error saving file", http.StatusInternalServerError)
+		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
-	defer dst.Close()
 
-	// Copy file
-	if _, err := io.Copy(dst, file); err != nil {
+	// Write via storage (handles encryption if enabled)
+	destPath := filepath.Join(cfg.DataDirectory, header.Filename)
+	if err := store.WriteFile(destPath, data, 0644); err != nil {
 		http.Error(w, "Error saving file", http.StatusInternalServerError)
 		return
 	}
@@ -454,13 +454,13 @@ func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	filePath := filepath.Join(cfg.DataDirectory, filename)
 
 	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if _, err := store.Stat(filePath); os.IsNotExist(err) {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
 	// Delete file
-	if err := os.Remove(filePath); err != nil {
+	if err := store.Remove(filePath); err != nil {
 		http.Error(w, "Error deleting file", http.StatusInternalServerError)
 		return
 	}

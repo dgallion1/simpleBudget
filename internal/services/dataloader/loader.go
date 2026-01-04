@@ -1,7 +1,6 @@
 package dataloader
 
 import (
-	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/classifier"
+	"budget2/internal/services/storage"
 )
 
 // DataLoader handles loading and preprocessing of financial data from CSV files
@@ -21,6 +21,7 @@ type DataLoader struct {
 	CSVDirectory          string
 	FilteredTransferCount int
 	enabledFiles          map[string]bool
+	store                 *storage.Storage
 }
 
 // columnMappings maps common bank export column names to our standard names
@@ -71,10 +72,11 @@ var columnMappings = map[string][]string{
 }
 
 // New creates a new DataLoader
-func New(csvDirectory string) *DataLoader {
+func New(csvDirectory string, store *storage.Storage) *DataLoader {
 	return &DataLoader{
 		CSVDirectory: csvDirectory,
 		enabledFiles: make(map[string]bool),
+		store:        store,
 	}
 }
 
@@ -170,7 +172,7 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 
 // loadCSVFile loads transactions from a single CSV file
 func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error) {
-	file, err := os.Open(filePath)
+	file, err := dl.store.OpenFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -433,17 +435,22 @@ func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error) {
 
 // scanCSVMetadata performs a fast scan of a CSV file to estimate metadata
 func (dl *DataLoader) scanCSVMetadata(filePath string) (int, time.Time, time.Time, error) {
-	file, err := os.Open(filePath)
+	// Read decrypted content via storage
+	data, err := dl.store.ReadFile(filePath)
 	if err != nil {
 		return 0, time.Time{}, time.Time{}, err
 	}
-	defer file.Close()
 
-	info, _ := file.Stat()
-	fileSize := info.Size()
+	content := string(data)
+	lines := strings.Split(content, "\n")
 
-	reader := csv.NewReader(file)
-	header, err := reader.Read()
+	if len(lines) == 0 {
+		return 0, time.Time{}, time.Time{}, nil
+	}
+
+	// Parse header
+	headerReader := csv.NewReader(strings.NewReader(lines[0]))
+	header, err := headerReader.Read()
 	if err != nil {
 		return 0, time.Time{}, time.Time{}, err
 	}
@@ -456,49 +463,39 @@ func (dl *DataLoader) scanCSVMetadata(filePath string) (int, time.Time, time.Tim
 		}
 	}
 
-	// Count lines approximately (simple newline count)
-	// Reset to after header
-	_, _ = file.Seek(0, 0)
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-	}
-	transCount := lineCount - 1
-	if transCount < 0 {
-		transCount = 0
+	// Count transactions (lines - 1 for header)
+	transCount := 0
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) != "" {
+			transCount++
+		}
 	}
 
-	// Get first transaction date
+	// Get first and last transaction dates
 	var minDate, maxDate time.Time
-	if dateIdx >= 0 {
-		_, _ = file.Seek(0, 0)
-		r2 := csv.NewReader(file)
-		_, _ = r2.Read() // skip header
-		if first, err := r2.Read(); err == nil && dateIdx < len(first) {
-			minDate = parseDate(strings.TrimSpace(first[dateIdx]))
+	if dateIdx >= 0 && len(lines) > 1 {
+		// First transaction date
+		for _, line := range lines[1:] {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			r := csv.NewReader(strings.NewReader(line))
+			if record, err := r.Read(); err == nil && dateIdx < len(record) {
+				minDate = parseDate(strings.TrimSpace(record[dateIdx]))
+				if !minDate.IsZero() {
+					break
+				}
+			}
 		}
 
-		// Get last transaction date by reading the end of the file
-		if fileSize > 4096 {
-			_, _ = file.Seek(-4096, 2)
-		} else {
-			_, _ = file.Seek(0, 0)
-		}
-
-		// Read the last chunk and find the last complete CSV line
-		lastChunk := make([]byte, 4096)
-		n, _ := file.Read(lastChunk)
-		lastLines := strings.Split(string(lastChunk[:n]), "\n")
-
-		// Work backwards from the second to last element (last might be empty or partial)
-		for i := len(lastLines) - 1; i >= 0; i-- {
-			line := strings.TrimSpace(lastLines[i])
+		// Last transaction date (work backwards)
+		for i := len(lines) - 1; i > 0; i-- {
+			line := strings.TrimSpace(lines[i])
 			if line == "" {
 				continue
 			}
-			r3 := csv.NewReader(strings.NewReader(line))
-			if record, err := r3.Read(); err == nil && dateIdx < len(record) {
+			r := csv.NewReader(strings.NewReader(line))
+			if record, err := r.Read(); err == nil && dateIdx < len(record) {
 				maxDate = parseDate(strings.TrimSpace(record[dateIdx]))
 				if !maxDate.IsZero() {
 					break
@@ -507,8 +504,7 @@ func (dl *DataLoader) scanCSVMetadata(filePath string) (int, time.Time, time.Tim
 		}
 	}
 
-	// Fallback if min/max date logic failed or file is sorted differently
-	// If minDate is actually after maxDate, swap them
+	// Swap if dates are reversed
 	if !minDate.IsZero() && !maxDate.IsZero() && minDate.After(maxDate) {
 		minDate, maxDate = maxDate, minDate
 	}

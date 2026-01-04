@@ -14,14 +14,19 @@ import (
 	"time"
 
 	"budget2/internal/config"
+	"budget2/internal/services/storage"
 	"budget2/testdata"
 )
 
-var cfg *config.Config
+var (
+	cfg   *config.Config
+	store *storage.Storage
+)
 
 // Initialize sets up the backup package with required dependencies
-func Initialize(c *config.Config) {
+func Initialize(c *config.Config, s *storage.Storage) {
 	cfg = c
+	store = s
 }
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +69,12 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 
+		// Skip encryption marker and verify files
+		base := filepath.Base(path)
+		if base == ".encrypted" || base == ".encryption-verify" {
+			return nil
+		}
+
 		// Create a file in the zip archive
 		relPath, err := filepath.Rel(dataDir, path)
 		if err != nil {
@@ -75,8 +86,9 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		// Open the file on disk
-		file, err := os.Open(path)
+		// Read file via storage (handles decryption)
+		// Backup files are always unencrypted for portability
+		file, err := store.OpenFile(path)
 		if err != nil {
 			return err
 		}
@@ -154,21 +166,17 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Create destination file
-		destPath := filepath.Join(cfg.DataDirectory, baseName)
-		dst, err := os.Create(destPath)
+		// Read content from zip
+		data, err := io.ReadAll(rc)
+		rc.Close()
 		if err != nil {
-			rc.Close()
-			log.Printf("Error creating file %s: %v", destPath, err)
+			log.Printf("Error reading zip entry %s: %v", zipFile.Name, err)
 			continue
 		}
 
-		// Copy content
-		_, err = io.Copy(dst, rc)
-		rc.Close()
-		dst.Close()
-
-		if err != nil {
+		// Write via storage (handles encryption if enabled)
+		destPath := filepath.Join(cfg.DataDirectory, baseName)
+		if err := store.WriteFile(destPath, data, 0644); err != nil {
 			log.Printf("Error writing file %s: %v", destPath, err)
 			continue
 		}
@@ -228,21 +236,17 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Create destination file
-		destPath := filepath.Join(cfg.DataDirectory, baseName)
-		dst, err := os.Create(destPath)
+		// Read content from zip
+		data, err := io.ReadAll(rc)
+		rc.Close()
 		if err != nil {
-			rc.Close()
-			log.Printf("Error creating file %s: %v", destPath, err)
+			log.Printf("Error reading zip entry %s: %v", zipFile.Name, err)
 			continue
 		}
 
-		// Copy content
-		_, err = io.Copy(dst, rc)
-		rc.Close()
-		dst.Close()
-
-		if err != nil {
+		// Write via storage (handles encryption if enabled)
+		destPath := filepath.Join(cfg.DataDirectory, baseName)
+		if err := store.WriteFile(destPath, data, 0644); err != nil {
 			log.Printf("Error writing file %s: %v", destPath, err)
 			continue
 		}
@@ -280,7 +284,7 @@ func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
 		}
 
 		filePath := filepath.Join(cfg.DataDirectory, entry.Name())
-		if err := os.Remove(filePath); err != nil {
+		if err := store.Remove(filePath); err != nil {
 			log.Printf("Error deleting file %s: %v", filePath, err)
 			continue
 		}

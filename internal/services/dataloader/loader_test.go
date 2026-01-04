@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"budget2/internal/services/storage"
 )
 
 func TestNormalizeColumnName(t *testing.T) {
@@ -271,7 +273,8 @@ Grocery Store,-50.00`,
 				t.Fatalf("failed to write test file: %v", err)
 			}
 
-			loader := New(tmpDir)
+			store, _ := storage.New(tmpDir)
+			loader := New(tmpDir, store)
 			transactions, err := loader.loadCSVFile(csvPath)
 
 			if tt.expectError {

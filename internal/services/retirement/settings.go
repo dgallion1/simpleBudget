@@ -7,20 +7,23 @@ import (
 	"sync"
 
 	"budget2/internal/models"
+	"budget2/internal/services/storage"
 )
 
 // SettingsManager handles persistence of what-if settings
 type SettingsManager struct {
 	settingsDir string
 	filename    string
+	store       *storage.Storage
 	mu          sync.RWMutex
 }
 
 // NewSettingsManager creates a new settings manager
-func NewSettingsManager(settingsDir string) *SettingsManager {
+func NewSettingsManager(settingsDir string, store *storage.Storage) *SettingsManager {
 	return &SettingsManager{
 		settingsDir: settingsDir,
 		filename:    "whatif.json",
+		store:       store,
 	}
 }
 
@@ -40,20 +43,20 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 // loadInternal reads settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 	// Ensure settings directory exists
-	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
+	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return nil, err
 	}
 
 	path := sm.filepath()
 
 	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if _, err := sm.store.Stat(path); os.IsNotExist(err) {
 		// Return defaults (caller should save if needed)
 		return models.DefaultWhatIfSettings(), nil
 	}
 
-	// Read file
-	data, err := os.ReadFile(path)
+	// Read file (storage handles decryption)
+	data, err := sm.store.ReadFile(path)
 	if err != nil {
 		return models.DefaultWhatIfSettings(), err
 	}
@@ -117,7 +120,7 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 // saveInternal writes settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	// Ensure settings directory exists
-	if err := os.MkdirAll(sm.settingsDir, 0755); err != nil {
+	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return err
 	}
 
@@ -127,8 +130,8 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 		return err
 	}
 
-	// Write file
-	return os.WriteFile(sm.filepath(), data, 0644)
+	// Write file (storage handles encryption)
+	return sm.store.WriteFile(sm.filepath(), data, 0644)
 }
 
 // AddIncomeSource adds a new income source and saves atomically

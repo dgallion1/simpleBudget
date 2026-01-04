@@ -6,12 +6,14 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/term"
 
 	"budget2/internal/config"
 	"budget2/internal/handlers/backup"
@@ -21,6 +23,7 @@ import (
 	"budget2/internal/handlers/whatif"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/version"
 	"budget2/web"
@@ -28,6 +31,7 @@ import (
 
 var (
 	cfg           *config.Config
+	store         *storage.Storage
 	loader        *dataloader.DataLoader
 	renderer      *templates.Renderer
 	retirementMgr *retirement.SettingsManager
@@ -38,8 +42,8 @@ var (
 func SetupDependencies(c *config.Config) error {
 	cfg = c
 
-	// Initialize data loader
-	loader = dataloader.New(cfg.DataDirectory)
+	// Initialize data loader with storage
+	loader = dataloader.New(cfg.DataDirectory, store)
 
 	// Initialize template renderer
 	var err error
@@ -55,16 +59,16 @@ func SetupDependencies(c *config.Config) error {
 		return fmt.Errorf("template validation failed: %w", err)
 	}
 
-	// Initialize retirement settings manager
+	// Initialize retirement settings manager with storage
 	settingsDir := filepath.Join(cfg.DataDirectory, "settings")
-	retirementMgr = retirement.NewSettingsManager(settingsDir)
+	retirementMgr = retirement.NewSettingsManager(settingsDir, store)
 
 	// Initialize handler packages
 	dashboard.Initialize(loader, renderer)
-	explorer.Initialize(loader, renderer, cfg)
+	explorer.Initialize(loader, renderer, cfg, store)
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)
-	backup.Initialize(cfg)
+	backup.Initialize(cfg, store)
 
 	return nil
 }
@@ -136,6 +140,23 @@ func main() {
 	log.Printf("Starting Budget Dashboard on %s", c.ListenAddr)
 	log.Printf("Data directory: %s", c.DataDirectory)
 
+	// Initialize storage
+	var err error
+	store, err = storage.New(c.DataDirectory)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to initialize storage: %v", err)
+	}
+
+	// Handle encryption if enabled
+	if store.IsEncrypted() {
+		log.Printf("Encrypted storage detected")
+		password := getEncryptionPassword()
+		if err := store.Unlock(password); err != nil {
+			log.Fatalf("FATAL: Failed to unlock encrypted data: %v", err)
+		}
+		log.Printf("Encrypted storage unlocked successfully")
+	}
+
 	// Kill any previous instance running on this port
 	killPreviousInstance(c.ListenAddr)
 
@@ -150,6 +171,23 @@ func main() {
 	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)
 	log.Fatal(http.ListenAndServe(cfg.ListenAddr, r))
+}
+
+// getEncryptionPassword prompts for or reads the encryption password
+func getEncryptionPassword() string {
+	// Try environment variable first
+	if pw := os.Getenv("BUDGET_ENCRYPTION_PASSWORD"); pw != "" {
+		return pw
+	}
+
+	// CLI prompt
+	fmt.Print("Enter encryption password: ")
+	password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+	if err != nil {
+		log.Fatalf("Failed to read password: %v", err)
+	}
+	return string(password)
 }
 
 // handleVersion returns version information as JSON

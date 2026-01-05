@@ -8,7 +8,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 - **Dashboard** - KPIs, spending charts, alerts, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, and CSV file management
-- **What-If Planner** - Retirement projections with Monte Carlo simulation and sensitivity analysis
+- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, and tax optimization
 - **Insights** - Recurring payment detection, spending trends, and income pattern analysis
 - **File Manager** - Data backup, restore, and file management
 - **Encryption** - Optional password-based encryption for all data files

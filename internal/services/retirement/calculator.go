@@ -226,9 +226,10 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	months := s.ProjectionYears * 12
 	projection := make([]models.ProjectionMonth, 0, months)
 
-	// Split portfolio into tax-deferred and taxable portions
+	// Split portfolio into tax-deferred, Roth, and taxable portions
 	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-	taxableBalance := s.PortfolioValue - taxDeferredBalance
+	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
+	taxableBalance := s.PortfolioValue - taxDeferredBalance - rothBalance
 
 	var depletionMonth *int
 	var longevityYears *float64
@@ -270,6 +271,56 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 				annualRMD = 0
 				monthlyRMD = 0
 			}
+
+			// Process Roth conversions (annual, at year boundary)
+			if s.RothConversion != nil && s.RothConversion.Enabled && taxDeferredBalance > 0 {
+				if currentYear >= s.RothConversion.StartYear &&
+					(s.RothConversion.EndYear == 0 || currentYear <= s.RothConversion.EndYear) {
+					// Convert up to the specified amount (or available balance)
+					conversionAmount := math.Min(s.RothConversion.AnnualAmount, taxDeferredBalance)
+					if conversionAmount > 0 {
+						taxDeferredBalance -= conversionAmount
+						rothBalance += conversionAmount
+						// Note: Tax impact tracked separately via TaxAnalysis
+					}
+				}
+			}
+
+			// Process big ticket items for this year
+			for _, item := range s.BigTicketItems {
+				if item.Year == currentYear {
+					if item.Type == models.BigTicketIncome {
+						// Income adds to taxable balance (e.g., inheritance, home sale)
+						taxableBalance += item.Amount
+					} else {
+						// Expense: withdraw from accounts following priority order
+						// (handled below in the monthly withdrawal logic as a lump sum)
+						// For simplicity, we'll deduct from taxable first, then others
+						remaining := item.Amount
+						if remaining > 0 && taxableBalance >= remaining {
+							taxableBalance -= remaining
+							remaining = 0
+						} else if remaining > 0 && taxableBalance > 0 {
+							remaining -= taxableBalance
+							taxableBalance = 0
+						}
+						if remaining > 0 && rothBalance >= remaining {
+							rothBalance -= remaining
+							remaining = 0
+						} else if remaining > 0 && rothBalance > 0 {
+							remaining -= rothBalance
+							rothBalance = 0
+						}
+						if remaining > 0 && taxDeferredBalance >= remaining {
+							taxDeferredBalance -= remaining
+							remaining = 0
+						} else if remaining > 0 && taxDeferredBalance > 0 {
+							remaining -= taxDeferredBalance
+							taxDeferredBalance = 0
+						}
+					}
+				}
+			}
 		}
 
 		// Calculate healthcare expenses using multi-person model
@@ -291,17 +342,24 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		// Monthly cash flow needed from portfolio
 		neededFromPortfolio := totalExpenses - totalIncome
 
-		// Apply investment growth to both portions
-		taxDeferredGrowth := taxDeferredBalance * (s.InvestmentReturn / 100 / 12)
-		taxableGrowth := taxableBalance * (s.InvestmentReturn / 100 / 12)
-		totalGrowth := taxDeferredGrowth + taxableGrowth
+		// Apply investment growth to all three portions
+		monthlyReturn := s.InvestmentReturn / 100 / 12
+		taxDeferredGrowth := taxDeferredBalance * monthlyReturn
+		rothGrowth := rothBalance * monthlyReturn
+		taxableGrowth := taxableBalance * monthlyReturn
+		totalGrowth := taxDeferredGrowth + rothGrowth + taxableGrowth
 
 		taxDeferredBalance += taxDeferredGrowth
+		rothBalance += rothGrowth
 		taxableBalance += taxableGrowth
 
 		// Process withdrawals with RMD priority
+		// Withdrawal priority: RMD → Taxable → Roth → Tax-Deferred
 		rmdWithdrawal := 0.0
 		actualWithdrawal := 0.0
+		withdrawalFromTaxDeferred := 0.0
+		withdrawalFromTaxable := 0.0
+		withdrawalFromRoth := 0.0
 
 		if neededFromPortfolio > 0 {
 			// First, take from RMD (which must be withdrawn anyway)
@@ -311,22 +369,34 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 				taxDeferredBalance -= rmdUsed
 				neededFromPortfolio -= rmdUsed
 				rmdWithdrawal = rmdUsed
+				withdrawalFromTaxDeferred += rmdUsed
 				actualWithdrawal += rmdUsed
 			}
 
-			// If still need more, withdraw from taxable first (tax-efficient)
+			// Second, withdraw from taxable (most tax-efficient - cost basis recovery)
 			if neededFromPortfolio > 0 && taxableBalance > 0 {
 				fromTaxable := math.Min(neededFromPortfolio, taxableBalance)
 				taxableBalance -= fromTaxable
 				neededFromPortfolio -= fromTaxable
+				withdrawalFromTaxable += fromTaxable
 				actualWithdrawal += fromTaxable
 			}
 
-			// If still need more, withdraw additional from tax-deferred
+			// Third, withdraw from Roth (tax-free but loses future growth)
+			if neededFromPortfolio > 0 && rothBalance > 0 {
+				fromRoth := math.Min(neededFromPortfolio, rothBalance)
+				rothBalance -= fromRoth
+				neededFromPortfolio -= fromRoth
+				withdrawalFromRoth += fromRoth
+				actualWithdrawal += fromRoth
+			}
+
+			// Fourth, withdraw additional from tax-deferred (taxed as ordinary income)
 			if neededFromPortfolio > 0 && taxDeferredBalance > 0 {
 				fromTaxDeferred := math.Min(neededFromPortfolio, taxDeferredBalance)
 				taxDeferredBalance -= fromTaxDeferred
 				neededFromPortfolio -= fromTaxDeferred
+				withdrawalFromTaxDeferred += fromTaxDeferred
 				actualWithdrawal += fromTaxDeferred
 			}
 		} else {
@@ -336,13 +406,15 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 				rmdWithdrawal = math.Min(monthlyRMD, taxDeferredBalance)
 				taxDeferredBalance -= rmdWithdrawal
 				taxableBalance += rmdWithdrawal // RMD moves to taxable
+				withdrawalFromTaxDeferred += rmdWithdrawal
 			}
 		}
 
-		totalBalance := taxDeferredBalance + taxableBalance
+		totalBalance := taxDeferredBalance + rothBalance + taxableBalance
 		depleted := false
 		if totalBalance <= 0 {
 			taxDeferredBalance = 0
+			rothBalance = 0
 			taxableBalance = 0
 			totalBalance = 0
 			depleted = true
@@ -355,19 +427,23 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		}
 
 		projection = append(projection, models.ProjectionMonth{
-			Month:              m,
-			Year:               float64(m) / 12,
-			PortfolioBalance:   totalBalance,
-			TaxDeferredBalance: taxDeferredBalance,
-			TaxableBalance:     taxableBalance,
-			GeneralExpenses:    currentLivingExpenses,
-			HealthcareExpense:  activeHealthcare,
-			TotalExpenses:      totalExpenses,
-			TotalIncome:        totalIncome,
-			NetWithdrawal:      actualWithdrawal,
-			RMDWithdrawal:      rmdWithdrawal,
-			PortfolioGrowth:    totalGrowth,
-			Depleted:           depleted,
+			Month:                     m,
+			Year:                      float64(m) / 12,
+			PortfolioBalance:          totalBalance,
+			TaxDeferredBalance:        taxDeferredBalance,
+			TaxableBalance:            taxableBalance,
+			RothBalance:               rothBalance,
+			GeneralExpenses:           currentLivingExpenses,
+			HealthcareExpense:         activeHealthcare,
+			TotalExpenses:             totalExpenses,
+			TotalIncome:               totalIncome,
+			NetWithdrawal:             actualWithdrawal,
+			RMDWithdrawal:             rmdWithdrawal,
+			PortfolioGrowth:           totalGrowth,
+			Depleted:                  depleted,
+			WithdrawalFromTaxDeferred: withdrawalFromTaxDeferred,
+			WithdrawalFromTaxable:     withdrawalFromTaxable,
+			WithdrawalFromRoth:        withdrawalFromRoth,
 		})
 	}
 
@@ -1139,9 +1215,10 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	}
 	months := projectionYears * 12
 
-	// Initialize balances
+	// Initialize balances (3-bucket model)
 	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-	taxableBalance := s.PortfolioValue - taxDeferredBalance
+	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
+	taxableBalance := s.PortfolioValue - taxDeferredBalance - rothBalance
 
 	var depletionYear float64
 	depleted := false
@@ -1206,6 +1283,48 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			} else {
 				monthlyRMD = 0
 			}
+
+			// Process Roth conversions (annual, at year boundary)
+			if s.RothConversion != nil && s.RothConversion.Enabled && taxDeferredBalance > 0 {
+				if currentYear >= s.RothConversion.StartYear &&
+					(s.RothConversion.EndYear == 0 || currentYear <= s.RothConversion.EndYear) {
+					conversionAmount := math.Min(s.RothConversion.AnnualAmount, taxDeferredBalance)
+					if conversionAmount > 0 {
+						taxDeferredBalance -= conversionAmount
+						rothBalance += conversionAmount
+					}
+				}
+			}
+
+			// Process big ticket items for this year
+			for _, item := range s.BigTicketItems {
+				if item.Year == currentYear {
+					if item.Type == models.BigTicketIncome {
+						taxableBalance += item.Amount
+					} else {
+						remaining := item.Amount
+						if remaining > 0 && taxableBalance >= remaining {
+							taxableBalance -= remaining
+							remaining = 0
+						} else if remaining > 0 && taxableBalance > 0 {
+							remaining -= taxableBalance
+							taxableBalance = 0
+						}
+						if remaining > 0 && rothBalance >= remaining {
+							rothBalance -= remaining
+							remaining = 0
+						} else if remaining > 0 && rothBalance > 0 {
+							remaining -= rothBalance
+							rothBalance = 0
+						}
+						if remaining > 0 && taxDeferredBalance >= remaining {
+							taxDeferredBalance -= remaining
+						} else if remaining > 0 && taxDeferredBalance > 0 {
+							taxDeferredBalance = 0
+						}
+					}
+				}
+			}
 		}
 
 		// Calculate healthcare expenses using multi-person model with variation
@@ -1261,20 +1380,25 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		monthlyReturn := annualReturn / 100 / 12
 
 		taxDeferredGrowth := taxDeferredBalance * monthlyReturn
+		rothGrowth := rothBalance * monthlyReturn
 		taxableGrowth := taxableBalance * monthlyReturn
 
 		taxDeferredBalance += taxDeferredGrowth
+		rothBalance += rothGrowth
 		taxableBalance += taxableGrowth
 
 		// Handle negative balances from crashes
 		if taxDeferredBalance < 0 {
 			taxDeferredBalance = 0
 		}
+		if rothBalance < 0 {
+			rothBalance = 0
+		}
 		if taxableBalance < 0 {
 			taxableBalance = 0
 		}
 
-		// Process withdrawals
+		// Process withdrawals (priority: RMD → Taxable → Roth → Tax-Deferred)
 		if neededFromPortfolio > 0 {
 			// First use RMD
 			if monthlyRMD > 0 {
@@ -1289,6 +1413,13 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 				fromTaxable := math.Min(neededFromPortfolio, taxableBalance)
 				taxableBalance -= fromTaxable
 				neededFromPortfolio -= fromTaxable
+			}
+
+			// Then Roth (tax-free but loses future growth)
+			if neededFromPortfolio > 0 && rothBalance > 0 {
+				fromRoth := math.Min(neededFromPortfolio, rothBalance)
+				rothBalance -= fromRoth
+				neededFromPortfolio -= fromRoth
 			}
 
 			// Then tax-deferred
@@ -1307,14 +1438,14 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		}
 
 		// Check for depletion
-		totalBalance := taxDeferredBalance + taxableBalance
+		totalBalance := taxDeferredBalance + rothBalance + taxableBalance
 		if totalBalance <= 0 {
 			depleted = true
 			depletionYear = float64(m) / 12
 		}
 	}
 
-	finalBalance := taxDeferredBalance + taxableBalance
+	finalBalance := taxDeferredBalance + rothBalance + taxableBalance
 	if finalBalance < 0 {
 		finalBalance = 0
 	}
@@ -1710,16 +1841,24 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	failurePoints := c.CalculateFailurePoints()
 	monteCarlo := c.RunMonteCarloSimulation(1000)
 	rmd := c.CalculateRMDAnalysis()
+	historicalBacktest := c.RunHistoricalBacktest()
+
+	// Add Monte Carlo success rate for comparison
+	if historicalBacktest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
+		historicalBacktest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate
+		historicalBacktest.HistoricalVsMC = historicalBacktest.SuccessRate - monteCarlo.Stats.SuccessRate
+	}
 
 	return &models.WhatIfAnalysis{
-		Settings:       c.Settings,
-		Projection:     projection,
-		BudgetFit:      budgetFit,
-		PresentValue:   presentValue,
-		Sustainability: sustainability,
-		Sensitivity:    sensitivity,
-		FailurePoints:  failurePoints,
-		MonteCarlo:     monteCarlo,
-		RMD:            rmd,
+		Settings:           c.Settings,
+		Projection:         projection,
+		BudgetFit:          budgetFit,
+		PresentValue:       presentValue,
+		Sustainability:     sustainability,
+		Sensitivity:        sensitivity,
+		FailurePoints:      failurePoints,
+		MonteCarlo:         monteCarlo,
+		RMD:                rmd,
+		HistoricalBacktest: historicalBacktest,
 	}
 }

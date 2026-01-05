@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.1.0 - Multi-Account Tax Support
+
+### New Features
+
+#### 3-Bucket Portfolio Model
+- **Roth Account Support**: Portfolio now tracks Tax-Deferred, Roth, and Taxable accounts separately
+- Configurable allocation percentages for each account type
+- Tax-efficient withdrawal ordering: RMD → Taxable → Roth → Tax-Deferred
+
+#### Tax Bracket Modeling
+- Full 2024 federal tax brackets for all filing statuses (Single, Married Filing Jointly, etc.)
+- Inflation-adjusted brackets for multi-year projections
+- State income tax rate configuration
+- Marginal and effective tax rate calculations
+
+#### Roth Conversion Strategy
+- Model annual Roth conversions with configurable amounts
+- Set start/end years for conversion window
+- Conversions automatically move funds from Tax-Deferred to Roth bucket
+- Track tax impact of conversions
+
+#### Big Ticket Items
+- Add one-time financial events (inheritance, home sale, large purchase)
+- Configure as income or expense with year of occurrence
+- Tax treatment options: None, Ordinary Income, Capital Gains
+- Integrated into both standard projection and Monte Carlo simulation
+
+#### Historical Backtesting
+- Test your retirement plan against 97 years of actual market history (1928-2024)
+- Uses real S&P 500 returns, bond yields, and inflation rates
+- Identifies worst starting years (1929, 1966, 1973, 2000, 2008)
+- Compare historical success rate vs Monte Carlo simulation
+- Expandable table showing all historical sequences
+
+### Technical Details
+- New `tax.go` with TaxCalculator for federal/state tax calculations
+- New `historical_data.go` with embedded market data
+- New `backtest.go` for historical sequence testing
+- Added comprehensive test coverage for tax and backtesting
+
+---
+
 ## v1.0.0 - Initial Release
 
 SimpleBudget is a local-first personal finance dashboard and retirement planning tool. All data stays on your computer - no cloud, no accounts, complete privacy.

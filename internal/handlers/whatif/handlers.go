@@ -186,6 +186,10 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
+	r.Post("/whatif/roth-conversion", handleWhatIfRothConversion)
+	r.Post("/whatif/bigticket", handleWhatIfAddBigTicket)
+	r.Delete("/whatif/bigticket/{id}", handleWhatIfDeleteBigTicket)
+	r.Post("/whatif/bigticket/{id}/restore", handleWhatIfRestoreBigTicket)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +302,28 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		updates["tax_deferred_percent"] = v
+	}
+
+	if v, err := parseFormFloat(r, "roth_percent"); err != nil {
+		renderError(w, "Invalid Roth percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("roth_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Roth percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		// Validate that tax_deferred + roth <= 100
+		taxDeferred := 0.0
+		if td, ok := updates["tax_deferred_percent"]; ok {
+			taxDeferred = td.(float64)
+		} else if tdStr := r.FormValue("tax_deferred_percent"); tdStr != "" {
+			taxDeferred, _ = strconv.ParseFloat(tdStr, 64)
+		}
+		if taxDeferred+v > 100 {
+			renderError(w, "Tax-deferred + Roth cannot exceed 100%", http.StatusBadRequest)
+			return
+		}
+		updates["roth_percent"] = v
 	}
 
 	if v, err := parseFormFloat(r, "inflation_rate"); err != nil {
@@ -1435,4 +1461,183 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	settings.IncomeSources = userSources
 
 	return nil
+}
+
+// handleWhatIfRothConversion handles Roth conversion configuration updates
+func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize RothConversion if nil
+	if settings.RothConversion == nil {
+		settings.RothConversion = &models.RothConversionConfig{}
+	}
+
+	// Parse enabled checkbox (unchecked means not present in form)
+	settings.RothConversion.Enabled = r.FormValue("enabled") == "on"
+
+	// Parse numeric fields
+	if amount, err := parseFormFloat(r, "annual_amount"); err == nil {
+		settings.RothConversion.AnnualAmount = amount
+	}
+
+	if startYear, err := parseFormInt(r, "start_year"); err == nil {
+		settings.RothConversion.StartYear = startYear
+	}
+
+	if endYear, err := parseFormInt(r, "end_year"); err == nil {
+		settings.RothConversion.EndYear = endYear
+	}
+
+	// Save settings
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Run analysis and return results (cache auto-invalidates on settings hash change)
+	calc := retirement.NewCalculator(settings)
+	analysis := calc.RunFullAnalysis()
+
+	partialData := &models.WhatIfPageData{
+		Title:    "What-If Analysis",
+		Settings: settings,
+		Analysis: analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		renderError(w, "Big ticket item name is required", http.StatusBadRequest)
+		return
+	}
+
+	amount, err := parseRequiredFormFloat(r, "amount")
+	if err != nil {
+		renderError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if amount < 0 {
+		renderError(w, "Amount cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	year, err := parseFormInt(r, "year")
+	if err != nil {
+		year = 0
+	}
+	if year < 0 {
+		year = 0
+	}
+
+	itemType := models.BigTicketType(r.FormValue("type"))
+	if itemType != models.BigTicketIncome && itemType != models.BigTicketExpense {
+		itemType = models.BigTicketExpense
+	}
+
+	taxTreatment := models.TaxTreatment(r.FormValue("tax_treatment"))
+	if taxTreatment != models.TaxNone && taxTreatment != models.TaxOrdinary && taxTreatment != models.TaxCapGains {
+		taxTreatment = models.TaxNone
+	}
+
+	notes := r.FormValue("notes")
+
+	item := models.BigTicketItem{
+		ID:           uuid.New().String(),
+		Name:         name,
+		Amount:       amount,
+		Year:         year,
+		Type:         itemType,
+		TaxTreatment: taxTreatment,
+		Notes:        notes,
+	}
+
+	settings, err := retirementMgr.AddBigTicketItem(item)
+	if err != nil {
+		renderError(w, "Failed to add big ticket item: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.RemoveBigTicketItem(id)
+	if err != nil {
+		renderError(w, "Failed to remove big ticket item: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.RestoreBigTicketItem(id)
+	if err != nil {
+		renderError(w, "Failed to restore big ticket item: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
 }

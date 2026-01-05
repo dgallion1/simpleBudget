@@ -1,0 +1,83 @@
+{{/* Roth Conversion Strategy Card */}}
+{{/* Expects: .Settings with RothConversion configuration */}}
+{{define "whatif-roth-conversion"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Roth Conversion Strategy</h3>
+        <span class="text-xs text-gray-400 dark:text-gray-500">Optional tax optimization</span>
+    </div>
+
+    <form hx-post="/whatif/roth-conversion" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+        class="space-y-4">
+
+        <!-- Enable/Disable Toggle -->
+        <div class="flex items-center">
+            <input type="checkbox" name="enabled" id="roth-conversion-enabled"
+                {{if and .Settings.RothConversion .Settings.RothConversion.Enabled}}checked{{end}}
+                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                onchange="toggleRothConversionFields()">
+            <label for="roth-conversion-enabled" class="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
+                Enable Roth Conversions
+            </label>
+        </div>
+
+        <!-- Conversion Settings (shown when enabled) -->
+        <div id="roth-conversion-fields" class="{{if not (and .Settings.RothConversion .Settings.RothConversion.Enabled)}}hidden{{end}} space-y-4 pl-6 border-l-2 border-indigo-200 dark:border-indigo-700">
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Annual Conversion Amount</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span class="text-gray-500 sm:text-sm">$</span>
+                    </div>
+                    <input type="number" name="annual_amount"
+                        value="{{if .Settings.RothConversion}}{{printf "%.0f" .Settings.RothConversion.AnnualAmount}}{{else}}50000{{end}}"
+                        min="0" max="1000000" step="1000"
+                        class="pl-7 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Amount to convert from tax-deferred to Roth each year
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Start Year</label>
+                    <input type="number" name="start_year"
+                        value="{{if .Settings.RothConversion}}{{.Settings.RothConversion.StartYear}}{{else}}0{{end}}"
+                        min="0" max="50" step="1"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Years from now (0 = immediately)</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">End Year</label>
+                    <input type="number" name="end_year"
+                        value="{{if .Settings.RothConversion}}{{.Settings.RothConversion.EndYear}}{{else}}0{{end}}"
+                        min="0" max="50" step="1"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">0 = continue indefinitely</p>
+                </div>
+            </div>
+
+            <!-- Info box about tax impact -->
+            <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                <p class="text-xs text-amber-800 dark:text-amber-200">
+                    <strong>Tax Note:</strong> Roth conversions are taxable events. The converted amount is added to your taxable income in the year of conversion. Consider converting in lower-income years to minimize tax impact.
+                </p>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function toggleRothConversionFields() {
+    const enabled = document.getElementById('roth-conversion-enabled').checked;
+    const fields = document.getElementById('roth-conversion-fields');
+    if (enabled) {
+        fields.classList.remove('hidden');
+    } else {
+        fields.classList.add('hidden');
+    }
+}
+</script>
+{{end}}

@@ -390,6 +390,9 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["tax_deferred_percent"].(float64); ok {
 		settings.TaxDeferredPercent = v
 	}
+	if v, ok := updates["roth_percent"].(float64); ok {
+		settings.RothPercent = v
+	}
 	if v, ok := updates["inflation_rate"].(float64); ok {
 		settings.InflationRate = v
 	}
@@ -536,6 +539,81 @@ func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSett
 		}
 	}
 	settings.HealthcarePersons = filtered
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// AddBigTicketItem adds a new big ticket item and saves atomically
+func (sm *SettingsManager) AddBigTicketItem(item models.BigTicketItem) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	settings.BigTicketItems = append(settings.BigTicketItems, item)
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RemoveBigTicketItem moves a big ticket item to the removed list by ID and saves atomically
+func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.BigTicketItem, 0, len(settings.BigTicketItems))
+	for _, item := range settings.BigTicketItems {
+		if item.ID != id {
+			filtered = append(filtered, item)
+		} else {
+			// Move to removed list
+			settings.RemovedBigTicketItems = append(settings.RemovedBigTicketItems, item)
+		}
+	}
+	settings.BigTicketItems = filtered
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RestoreBigTicketItem moves a big ticket item back from the removed list atomically
+func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.BigTicketItem, 0, len(settings.RemovedBigTicketItems))
+	for _, item := range settings.RemovedBigTicketItems {
+		if item.ID != id {
+			filtered = append(filtered, item)
+		} else {
+			// Restore to active list
+			settings.BigTicketItems = append(settings.BigTicketItems, item)
+		}
+	}
+	settings.RemovedBigTicketItems = filtered
 
 	if err := sm.saveInternal(settings); err != nil {
 		return nil, err

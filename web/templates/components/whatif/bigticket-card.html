@@ -1,0 +1,142 @@
+{{/* Big Ticket Items Card */}}
+{{/* Expects: .Settings with BigTicketItems and RemovedBigTicketItems */}}
+{{define "whatif-bigticket-card"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Big Ticket Items</h3>
+        <span class="text-xs text-gray-400 dark:text-gray-500">One-time events</span>
+    </div>
+
+    {{template "whatif-bigticket-list" .}}
+    {{template "whatif-removed-bigticket" .}}
+    {{template "whatif-add-bigticket-form" .}}
+</div>
+{{end}}
+
+{{/* Big Ticket Items List */}}
+{{define "whatif-bigticket-list"}}
+<div id="bigticket-list" class="space-y-2 mb-4">
+    {{range .Settings.BigTicketItems}}
+    {{template "whatif-bigticket-item" .}}
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-300 italic">No big ticket items added</p>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Single Big Ticket Item */}}
+{{define "whatif-bigticket-item"}}
+<div class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+    <div class="flex items-center justify-between mb-1">
+        <div>
+            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+            {{if eq .Type "income"}}
+            <span class="text-green-600 dark:text-green-400">+${{formatNumber .Amount}}</span>
+            {{else}}
+            <span class="text-red-600 dark:text-red-400">-${{formatNumber .Amount}}</span>
+            {{end}}
+        </div>
+        <button type="button" hx-delete="/whatif/bigticket/{{.ID}}" hx-target="#whatif-results"
+            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+    <div class="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300">
+        <span>Year {{.Year}}</span>
+        <span class="px-1.5 py-0.5 rounded
+            {{if eq .Type "income"}}bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300
+            {{else}}bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300{{end}}">
+            {{if eq .Type "income"}}Income{{else}}Expense{{end}}
+        </span>
+        {{if .TaxTreatment}}
+        <span class="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
+            {{if eq .TaxTreatment "ordinary"}}Ordinary Tax
+            {{else if eq .TaxTreatment "cap_gains"}}Cap Gains
+            {{else}}Tax-Free{{end}}
+        </span>
+        {{end}}
+    </div>
+    {{if .Notes}}
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">{{.Notes}}</p>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Removed Big Ticket Items */}}
+{{define "whatif-removed-bigticket"}}
+<div id="removed-bigticket" class="space-y-1 mb-4 {{if not .Settings.RemovedBigTicketItems}}hidden{{end}}">
+    {{if .Settings.RemovedBigTicketItems}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
+    {{range .Settings.RemovedBigTicketItems}}
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+        <div>
+            <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500">
+                {{if eq .Type "income"}}+{{else}}-{{end}}${{formatNumber .Amount}} (yr {{.Year}})
+            </span>
+        </div>
+        <button hx-post="/whatif/bigticket/{{.ID}}/restore" hx-target="#whatif-results"
+            class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+            </svg>
+        </button>
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}
+
+{{/* Add Big Ticket Item Form */}}
+{{define "whatif-add-bigticket-form"}}
+<form hx-post="/whatif/bigticket" hx-target="#whatif-results" hx-on::after-request="this.reset()"
+    class="space-y-3 border-t dark:border-gray-700 pt-3">
+    <div class="grid grid-cols-2 gap-2">
+        <input type="text" name="name" placeholder="Name (e.g., Home Sale)"
+            class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" required>
+        <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                <span class="text-gray-500 dark:text-gray-400 text-sm">$</span>
+            </div>
+            <input type="number" name="amount" placeholder="Amount"
+                class="pl-6 w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" min="0" required>
+        </div>
+    </div>
+    <div class="grid grid-cols-3 gap-2">
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Year (0=now)</label>
+            <input type="number" name="year"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0" max="50">
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Type</label>
+            <select name="type"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2">
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Tax</label>
+            <select name="tax_treatment"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2">
+                <option value="none">None</option>
+                <option value="ordinary">Ordinary</option>
+                <option value="cap_gains">Cap Gains</option>
+            </select>
+        </div>
+    </div>
+    <div class="flex items-center justify-between">
+        <input type="text" name="notes" placeholder="Notes (optional)"
+            class="flex-1 mr-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2">
+        <button type="submit"
+            class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            Add Item
+        </button>
+    </div>
+</form>
+{{end}}

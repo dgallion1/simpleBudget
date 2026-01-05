@@ -1,0 +1,128 @@
+{{/* Historical Backtesting Card */}}
+{{/* Expects: .Analysis.HistoricalBacktest */}}
+{{define "whatif-historical-backtest"}}
+{{if .Analysis.HistoricalBacktest}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Historical Backtesting</h3>
+        <span class="text-xs text-gray-500 dark:text-gray-400">
+            {{.Analysis.HistoricalBacktest.DataStartYear}}-{{.Analysis.HistoricalBacktest.DataEndYear}} ({{.Analysis.HistoricalBacktest.TotalSequences}} sequences)
+        </span>
+    </div>
+
+    <!-- Success Rate Comparison -->
+    <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div class="text-2xl font-bold {{if ge .Analysis.HistoricalBacktest.SuccessRate 90.0}}text-green-600 dark:text-green-400
+                {{else if ge .Analysis.HistoricalBacktest.SuccessRate 75.0}}text-yellow-600 dark:text-yellow-400
+                {{else}}text-red-600 dark:text-red-400{{end}}">
+                {{printf "%.1f" .Analysis.HistoricalBacktest.SuccessRate}}%
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Historical Success</div>
+        </div>
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div class="text-2xl font-bold {{if ge .Analysis.HistoricalBacktest.MonteCarloSuccessRate 90.0}}text-green-600 dark:text-green-400
+                {{else if ge .Analysis.HistoricalBacktest.MonteCarloSuccessRate 75.0}}text-yellow-600 dark:text-yellow-400
+                {{else}}text-red-600 dark:text-red-400{{end}}">
+                {{printf "%.1f" .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}%
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Monte Carlo Success</div>
+        </div>
+    </div>
+
+    <!-- Difference indicator -->
+    {{if .Analysis.HistoricalBacktest.HistoricalVsMC}}
+    <div class="mb-4 p-2 rounded-lg {{if gt .Analysis.HistoricalBacktest.HistoricalVsMC 0}}bg-green-50 dark:bg-green-900/20{{else if lt .Analysis.HistoricalBacktest.HistoricalVsMC 0}}bg-amber-50 dark:bg-amber-900/20{{else}}bg-gray-50 dark:bg-gray-700{{end}}">
+        <p class="text-sm text-center {{if gt .Analysis.HistoricalBacktest.HistoricalVsMC 0}}text-green-700 dark:text-green-300{{else if lt .Analysis.HistoricalBacktest.HistoricalVsMC 0}}text-amber-700 dark:text-amber-300{{else}}text-gray-600 dark:text-gray-400{{end}}">
+            {{if gt .Analysis.HistoricalBacktest.HistoricalVsMC 0}}
+            Historical data shows {{printf "%.1f" .Analysis.HistoricalBacktest.HistoricalVsMC}}% higher success rate
+            {{else if lt .Analysis.HistoricalBacktest.HistoricalVsMC 0}}
+            Historical data shows {{printf "%.1f" (mul .Analysis.HistoricalBacktest.HistoricalVsMC -1)}}% lower success rate
+            {{else}}
+            Historical and Monte Carlo results match
+            {{end}}
+        </p>
+    </div>
+    {{end}}
+
+    <!-- Worst Starting Years -->
+    {{if .Analysis.HistoricalBacktest.WorstStartYears}}
+    <div class="mb-3">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Worst Starting Years</h4>
+        <div class="flex flex-wrap gap-2">
+            {{range .Analysis.HistoricalBacktest.WorstStartYears}}
+            <span class="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                {{.}}
+            </span>
+            {{end}}
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Includes market crashes of 1929, 1966, 1973, 2000, 2008
+        </p>
+    </div>
+    {{end}}
+
+    <!-- Best Starting Years -->
+    {{if .Analysis.HistoricalBacktest.BestStartYears}}
+    <div class="mb-3">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Best Starting Years</h4>
+        <div class="flex flex-wrap gap-2">
+            {{range .Analysis.HistoricalBacktest.BestStartYears}}
+            <span class="px-2 py-1 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                {{.}}
+            </span>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+
+    <!-- Expandable Results -->
+    {{if .Analysis.HistoricalBacktest.Results}}
+    <details class="mt-4">
+        <summary class="cursor-pointer text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+            View All {{len .Analysis.HistoricalBacktest.Results}} Sequences
+        </summary>
+        <div class="mt-2 max-h-64 overflow-y-auto">
+            <table class="min-w-full text-xs">
+                <thead class="sticky top-0 bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Start</th>
+                        <th class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Result</th>
+                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final Balance</th>
+                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Max Drawdown</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-600">
+                    {{range .Analysis.HistoricalBacktest.Results}}
+                    <tr class="{{if .Survives}}{{else}}bg-red-50 dark:bg-red-900/20{{end}}">
+                        <td class="px-2 py-1 text-gray-800 dark:text-gray-200">{{.StartYear}}</td>
+                        <td class="px-2 py-1">
+                            {{if .Survives}}
+                            <span class="text-green-600 dark:text-green-400">Survived</span>
+                            {{else}}
+                            <span class="text-red-600 dark:text-red-400">Failed ({{.DepletionYear}})</span>
+                            {{end}}
+                        </td>
+                        <td class="px-2 py-1 text-right text-gray-800 dark:text-gray-200">
+                            ${{formatNumber .FinalBalance}}
+                        </td>
+                        <td class="px-2 py-1 text-right text-gray-800 dark:text-gray-200">
+                            {{printf "%.1f" .WorstDrawdown}}%
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </details>
+    {{end}}
+
+    <!-- Info Box -->
+    <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+        <p class="text-xs text-blue-800 dark:text-blue-200">
+            <strong>What this means:</strong> Historical backtesting simulates your retirement plan starting from each year in the dataset, using actual S&P 500 returns, bond yields, and inflation. This shows how your plan would have performed through real market conditions including the Great Depression, stagflation, dot-com crash, and 2008 financial crisis.
+        </p>
+    </div>
+</div>
+{{end}}
+{{end}}

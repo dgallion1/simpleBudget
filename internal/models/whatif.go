@@ -17,7 +17,9 @@ type WhatIfSettings struct {
 
 	// RMD Settings
 	CurrentAge         int     `json:"current_age"`          // User's current age
-	TaxDeferredPercent float64 `json:"tax_deferred_percent"` // % of portfolio in tax-deferred accounts
+	TaxDeferredPercent float64 `json:"tax_deferred_percent"` // % of portfolio in tax-deferred accounts (401k, IRA)
+	RothPercent        float64 `json:"roth_percent"`         // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
+	// Taxable is computed as: 100 - TaxDeferredPercent - RothPercent
 
 	// Rates (as percentages, e.g., 4.0 for 4%)
 	InflationRate         float64 `json:"inflation_rate"`          // Annual inflation
@@ -40,6 +42,16 @@ type WhatIfSettings struct {
 	// Recently Removed (for restore functionality)
 	RemovedIncomeSources  []IncomeSource  `json:"removed_income_sources,omitempty"`
 	RemovedExpenseSources []ExpenseSource `json:"removed_expense_sources,omitempty"`
+
+	// Tax Configuration
+	TaxConfig *TaxConfig `json:"tax_config,omitempty"`
+
+	// Roth Conversion Strategy
+	RothConversion *RothConversionConfig `json:"roth_conversion,omitempty"`
+
+	// Big Ticket Items (one-time financial events)
+	BigTicketItems        []BigTicketItem `json:"big_ticket_items,omitempty"`
+	RemovedBigTicketItems []BigTicketItem `json:"removed_big_ticket_items,omitempty"`
 }
 
 // SpendingPhase represents a retirement spending phase with age-based multiplier
@@ -151,7 +163,9 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		MonthlyHealthcare:     500,
 		HealthcareStartYears:  0,
 		CurrentAge:            65,
-		TaxDeferredPercent:    70.0,
+		TaxDeferredPercent:    60.0, // Reduced from 70 to make room for Roth
+		RothPercent:           10.0, // Default 10% Roth
+		// Taxable is computed as: 100 - 60 - 10 = 30%
 		InflationRate:         3.0,
 		HealthcareInflation:   6.0,
 		SpendingDeclineRate:   1.0,
@@ -167,6 +181,15 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 			Enabled: false,
 			Phases:  DefaultSpendingPhases(),
 		},
+		// Tax configuration
+		TaxConfig: DefaultTaxConfig(),
+		// Roth conversions (disabled by default)
+		RothConversion: &RothConversionConfig{
+			Enabled: false,
+		},
+		// Big ticket items (empty by default)
+		BigTicketItems:        []BigTicketItem{},
+		RemovedBigTicketItems: []BigTicketItem{},
 	}
 }
 
@@ -177,6 +200,7 @@ type ProjectionMonth struct {
 	PortfolioBalance   float64 `json:"portfolio_balance"`
 	TaxDeferredBalance float64 `json:"tax_deferred_balance"` // Tax-deferred portion (401k, IRA)
 	TaxableBalance     float64 `json:"taxable_balance"`      // Taxable portion (brokerage)
+	RothBalance        float64 `json:"roth_balance"`         // Roth portion (Roth IRA, Roth 401k)
 	GeneralExpenses    float64 `json:"general_expenses"`
 	HealthcareExpense  float64 `json:"healthcare_expense"`
 	TotalExpenses      float64 `json:"total_expenses"`
@@ -185,6 +209,11 @@ type ProjectionMonth struct {
 	RMDWithdrawal      float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
 	PortfolioGrowth    float64 `json:"portfolio_growth"`
 	Depleted           bool    `json:"depleted"`
+
+	// Withdrawal source tracking
+	WithdrawalFromTaxDeferred float64 `json:"withdrawal_tax_deferred,omitempty"`
+	WithdrawalFromTaxable     float64 `json:"withdrawal_taxable,omitempty"`
+	WithdrawalFromRoth        float64 `json:"withdrawal_roth,omitempty"`
 }
 
 // ProjectionResult contains the complete projection with summary metrics
@@ -450,17 +479,143 @@ type MonteCarloAnalysis struct {
 	Distribution *MonteCarloDistribution `json:"distribution"`
 }
 
+// FilingStatus represents IRS tax filing status
+type FilingStatus string
+
+const (
+	FilingSingle          FilingStatus = "single"
+	FilingMarriedJoint    FilingStatus = "married_joint"
+	FilingMarriedSeparate FilingStatus = "married_separate"
+	FilingHeadOfHousehold FilingStatus = "head_of_household"
+)
+
+// TaxConfig holds tax modeling settings
+type TaxConfig struct {
+	FilingStatus       FilingStatus `json:"filing_status"`
+	StateIncomeTaxRate float64      `json:"state_income_tax_rate"` // As percentage (e.g., 5.0 for 5%)
+}
+
+// DefaultTaxConfig returns sensible tax defaults
+func DefaultTaxConfig() *TaxConfig {
+	return &TaxConfig{
+		FilingStatus:       FilingMarriedJoint,
+		StateIncomeTaxRate: 0.0, // No state tax by default
+	}
+}
+
+// RothConversionConfig models annual Roth conversions
+type RothConversionConfig struct {
+	Enabled      bool    `json:"enabled"`
+	AnnualAmount float64 `json:"annual_amount"` // Fixed amount to convert per year
+	StartYear    int     `json:"start_year"`    // Year to begin conversions (0 = now)
+	EndYear      int     `json:"end_year"`      // Year to stop conversions (0 = indefinite)
+}
+
+// BigTicketType represents whether an item is income or expense
+type BigTicketType string
+
+const (
+	BigTicketIncome  BigTicketType = "income"
+	BigTicketExpense BigTicketType = "expense"
+)
+
+// TaxTreatment represents how a big ticket item is taxed
+type TaxTreatment string
+
+const (
+	TaxNone     TaxTreatment = "none"      // Not taxable (gifts, certain home sale gains)
+	TaxOrdinary TaxTreatment = "ordinary"  // Ordinary income tax
+	TaxCapGains TaxTreatment = "cap_gains" // Capital gains rate
+)
+
+// BigTicketItem represents a one-time financial event
+type BigTicketItem struct {
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	Amount       float64       `json:"amount"`        // Always positive; Type determines direction
+	Year         int           `json:"year"`          // Years from now (0 = this year)
+	Type         BigTicketType `json:"type"`          // income or expense
+	TaxTreatment TaxTreatment  `json:"tax_treatment"` // How it's taxed
+	Notes        string        `json:"notes"`         // Optional description
+}
+
+// GetNetAmount returns the signed amount (positive for income, negative for expense)
+func (b *BigTicketItem) GetNetAmount() float64 {
+	if b.Type == BigTicketExpense {
+		return -b.Amount
+	}
+	return b.Amount
+}
+
+// YearlyTaxSummary provides annual tax breakdown
+type YearlyTaxSummary struct {
+	Year            int     `json:"year"`
+	Age             int     `json:"age"`
+	TaxableIncome   float64 `json:"taxable_income"`
+	FederalTax      float64 `json:"federal_tax"`
+	StateTax        float64 `json:"state_tax"`
+	TotalTax        float64 `json:"total_tax"`
+	EffectiveRate   float64 `json:"effective_rate"`
+	MarginalBracket float64 `json:"marginal_bracket"`
+	RothConversion  float64 `json:"roth_conversion"`
+	RMDAmount       float64 `json:"rmd_amount"`
+}
+
+// TaxAnalysis contains tax projections summary
+type TaxAnalysis struct {
+	TotalFederalTaxPaid  float64            `json:"total_federal_tax_paid"`
+	TotalStateTaxPaid    float64            `json:"total_state_tax_paid"`
+	TotalTaxPaid         float64            `json:"total_tax_paid"`
+	AverageEffectiveRate float64            `json:"average_effective_rate"`
+	ConversionTaxPaid    float64            `json:"conversion_tax_paid"` // Tax paid on Roth conversions
+	YearlyTaxSummary     []YearlyTaxSummary `json:"yearly_tax_summary"`
+}
+
+// HistoricalYear represents one year of market data
+type HistoricalYear struct {
+	Year          int     `json:"year"`
+	SP500Return   float64 `json:"sp500_return"`   // S&P 500 total return %
+	BondReturn    float64 `json:"bond_return"`    // 10-year Treasury return %
+	InflationRate float64 `json:"inflation_rate"` // CPI inflation %
+}
+
+// HistoricalBacktestResult represents testing retirement from one starting year
+type HistoricalBacktestResult struct {
+	StartYear       int     `json:"start_year"`
+	EndYear         int     `json:"end_year"`
+	Survives        bool    `json:"survives"`
+	FinalBalance    float64 `json:"final_balance"`
+	DepletionYear   int     `json:"depletion_year"`   // Year of depletion (0 if survives)
+	WorstDrawdown   float64 `json:"worst_drawdown"`   // Worst portfolio decline %
+	SequenceQuality string  `json:"sequence_quality"` // "favorable", "neutral", "adverse"
+}
+
+// HistoricalBacktestAnalysis contains complete backtesting results
+type HistoricalBacktestAnalysis struct {
+	DataStartYear         int                        `json:"data_start_year"`
+	DataEndYear           int                        `json:"data_end_year"`
+	TotalSequences        int                        `json:"total_sequences"`
+	SuccessRate           float64                    `json:"success_rate"` // % of sequences that survive
+	Results               []HistoricalBacktestResult `json:"results"`
+	WorstStartYears       []int                      `json:"worst_start_years"` // Top 5 worst starting years
+	BestStartYears        []int                      `json:"best_start_years"`  // Top 5 best starting years
+	MonteCarloSuccessRate float64                    `json:"monte_carlo_success_rate"`
+	HistoricalVsMC        float64                    `json:"historical_vs_mc"` // Difference in success rates
+}
+
 // WhatIfAnalysis is the complete analysis container returned to templates
 type WhatIfAnalysis struct {
-	Settings       *WhatIfSettings       `json:"settings"`
-	Projection     *ProjectionResult     `json:"projection"`
-	BudgetFit      *BudgetFitAnalysis    `json:"budget_fit"`
-	PresentValue   *PresentValueAnalysis `json:"present_value"`
-	Sustainability *SustainabilityScore  `json:"sustainability"`
-	Sensitivity    []SensitivityResult   `json:"sensitivity"`
-	FailurePoints  *FailurePointAnalysis `json:"failure_points"`
-	MonteCarlo     *MonteCarloAnalysis   `json:"monte_carlo"`
-	RMD            *RMDAnalysis          `json:"rmd"`
+	Settings           *WhatIfSettings             `json:"settings"`
+	Projection         *ProjectionResult           `json:"projection"`
+	BudgetFit          *BudgetFitAnalysis          `json:"budget_fit"`
+	PresentValue       *PresentValueAnalysis       `json:"present_value"`
+	Sustainability     *SustainabilityScore        `json:"sustainability"`
+	Sensitivity        []SensitivityResult         `json:"sensitivity"`
+	FailurePoints      *FailurePointAnalysis       `json:"failure_points"`
+	MonteCarlo         *MonteCarloAnalysis         `json:"monte_carlo"`
+	RMD                *RMDAnalysis                `json:"rmd"`
+	Tax                *TaxAnalysis                `json:"tax"`
+	HistoricalBacktest *HistoricalBacktestAnalysis `json:"historical_backtest"`
 }
 
 // WhatIfPageData is the data passed to the whatif template

@@ -179,29 +179,30 @@ function updateChart(containerId, newData) {
     Plotly.react(containerId, data.data, data.layout || {});
 }
 
-// Handle chart data responses from HTMX
-document.addEventListener('htmx:afterRequest', function(evt) {
-    const target = evt.detail.target;
-    if (target && target.id && target.id.startsWith('chart-')) {
-        try {
-            const data = JSON.parse(evt.detail.xhr.responseText);
-            renderChart(target.id, data);
-        } catch (e) {
-            console.error('Error rendering chart:', e);
-        }
+// Load a chart by fetching its data from the URL in data-chart-url attribute
+function loadChart(chartElement) {
+    const url = chartElement.getAttribute('data-chart-url');
+    if (url) {
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                renderChart(chartElement.id, data);
+            })
+            .catch(e => console.error('Error loading chart:', e));
     }
-});
+}
+
+// Load all charts on the page
+function loadAllCharts() {
+    document.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(loadChart);
+}
 
 // Reload charts after whatif-results is swapped
 document.addEventListener('htmx:afterSettle', function(evt) {
     const target = evt.detail.target;
     if (target && target.id === 'whatif-results') {
         // Find any chart elements that need to be loaded
-        const charts = target.querySelectorAll('[id^="chart-"][hx-get]');
-        charts.forEach(function(chart) {
-            // Trigger HTMX to load the chart
-            htmx.trigger(chart, 'load');
-        });
+        target.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(loadChart);
     }
 });
 
@@ -228,6 +229,7 @@ function initSparklines() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Charts.js initialized');
     initSparklines();
+    loadAllCharts();
 });
 
 // Reinitialize sparklines after HTMX swaps (for KPI updates)

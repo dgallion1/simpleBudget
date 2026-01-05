@@ -205,12 +205,23 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return (%)</label>
+            <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return Override</label>
+                <span class="text-xs text-gray-500 dark:text-gray-400">0% = use allocation</span>
+            </div>
             <input type="range" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
                 min="0" max="15" step="0.5"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="this.nextElementSibling.textContent = this.value + '%'">
-            <span class="text-sm text-gray-500 dark:text-gray-300">{{printf "%.1f" .Settings.InvestmentReturn}}%</span>
+                oninput="updateInvestmentReturnDisplay(this.value)">
+            <div id="investment-return-display" class="text-sm mt-1">
+                {{if eq .Settings.InvestmentReturn 0.0}}
+                <span class="text-green-600 dark:text-green-400">Using asset allocation</span>
+                <span class="text-gray-500 dark:text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>
+                {{else}}
+                <span class="text-gray-500 dark:text-gray-300">Fixed {{printf "%.1f" .Settings.InvestmentReturn}}%</span>
+                <span class="text-amber-600 dark:text-amber-400 text-xs">(overrides allocation)</span>
+                {{end}}
+            </div>
         </div>
     </form>
 </div>
@@ -257,11 +268,74 @@ function updateAccountBonds(account) {
             display.classList.remove('text-red-600', 'dark:text-red-400');
         }
     }
+    // Update expected return if using allocation-based returns
+    const returnSlider = document.querySelector('input[name="investment_return"]');
+    if (returnSlider && parseFloat(returnSlider.value) === 0) {
+        updateInvestmentReturnDisplay(0);
+    }
 }
 
 // Legacy function for backwards compatibility
 function updateBondPercent() {
     // No longer used - per-account allocation now
+}
+
+function updateInvestmentReturnDisplay(value) {
+    const display = document.getElementById('investment-return-display');
+    if (!display) return;
+
+    const val = parseFloat(value);
+    if (val === 0) {
+        // Calculate expected return from allocation
+        const expectedReturn = calculateExpectedReturnFromAllocation();
+        display.innerHTML = `
+            <span class="text-green-600 dark:text-green-400">Using asset allocation</span>
+            <span class="text-gray-500 dark:text-gray-400">(~${expectedReturn.toFixed(1)}% expected)</span>
+        `;
+    } else {
+        display.innerHTML = `
+            <span class="text-gray-500 dark:text-gray-300">Fixed ${val.toFixed(1)}%</span>
+            <span class="text-amber-600 dark:text-amber-400 text-xs">(overrides allocation)</span>
+        `;
+    }
+}
+
+function calculateExpectedReturnFromAllocation() {
+    // Conservative forward-looking estimates (more prudent for retirement planning)
+    const stockMean = 7.0;
+    const bondMean = 4.0;
+    const cashMean = 3.0;
+
+    // Get account weights
+    const tdPercent = parseFloat(document.querySelector('input[name="tax_deferred_percent"]')?.value) || 60;
+    const rothPercent = parseFloat(document.querySelector('input[name="roth_percent"]')?.value) || 10;
+    const taxPercent = Math.max(0, 100 - tdPercent - rothPercent);
+
+    // Get per-account allocations (default 60/40/0 if not set)
+    const getVal = (name, def) => parseFloat(document.querySelector(`input[name="${name}"]`)?.value) || def;
+
+    const tdStock = getVal('tax_deferred_stock_percent', 60);
+    const tdCash = getVal('tax_deferred_cash_percent', 0);
+    const tdBond = 100 - tdStock - tdCash;
+
+    const rothStock = getVal('roth_stock_percent', 60);
+    const rothCash = getVal('roth_cash_percent', 0);
+    const rothBond = 100 - rothStock - rothCash;
+
+    const taxStock = getVal('taxable_stock_percent', 60);
+    const taxCash = getVal('taxable_cash_percent', 0);
+    const taxBond = 100 - taxStock - taxCash;
+
+    // Calculate blended returns per account
+    const blendReturn = (stock, bond, cash) =>
+        (stock/100)*stockMean + (bond/100)*bondMean + (cash/100)*cashMean;
+
+    const tdReturn = blendReturn(tdStock, tdBond, tdCash);
+    const rothReturn = blendReturn(rothStock, rothBond, rothCash);
+    const taxReturn = blendReturn(taxStock, taxBond, taxCash);
+
+    // Weighted average
+    return (tdPercent/100)*tdReturn + (rothPercent/100)*rothReturn + (taxPercent/100)*taxReturn;
 }
 
 function toggleSpendingPreview() {

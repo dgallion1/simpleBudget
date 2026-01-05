@@ -258,6 +258,38 @@ func GetBlendedReturn(stockPct, bondPct, cashPct float64, stockMean, bondMean, c
 	return (stockPct/100)*stockMean + (bondPct/100)*bondMean + (cashPct/100)*cashMean
 }
 
+// GetExpectedReturnFromAllocation calculates the overall expected return based on
+// portfolio weights and per-account asset allocations using conservative estimates.
+// This is displayed in the UI when InvestmentReturn is 0 (allocation-based mode).
+// Uses conservative forward-looking estimates rather than historical averages.
+func (s *WhatIfSettings) GetExpectedReturnFromAllocation() float64 {
+	// Conservative forward-looking estimates (more prudent for retirement planning)
+	// Historical averages (~10.5% stocks, ~5.2% bonds) are arguably too optimistic
+	stockMean := 7.0
+	bondMean := 4.0
+	cashMean := 3.0
+
+	// Get per-account allocations
+	tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
+	rothStock, rothBond, rothCash := s.GetRothAllocation()
+	taxStock, taxBond, taxCash := s.GetTaxableAllocation()
+
+	// Get account weights
+	tdWeight := s.TaxDeferredPercent / 100
+	rothWeight := s.RothPercent / 100
+	taxWeight := 1.0 - tdWeight - rothWeight
+	if taxWeight < 0 {
+		taxWeight = 0
+	}
+
+	// Calculate weighted-average return
+	tdReturn := GetBlendedReturn(tdStock, tdBond, tdCash, stockMean, bondMean, cashMean)
+	rothReturn := GetBlendedReturn(rothStock, rothBond, rothCash, stockMean, bondMean, cashMean)
+	taxReturn := GetBlendedReturn(taxStock, taxBond, taxCash, stockMean, bondMean, cashMean)
+
+	return tdWeight*tdReturn + rothWeight*rothReturn + taxWeight*taxReturn
+}
+
 // Template helper methods for per-account allocation display
 func (s *WhatIfSettings) TaxDeferredStockPct() float64 {
 	stock, _, _ := s.GetTaxDeferredAllocation()
@@ -312,7 +344,7 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		InflationRate:         3.0,
 		HealthcareInflation:   6.0,
 		SpendingDeclineRate:   1.0,
-		InvestmentReturn:      6.0,
+		InvestmentReturn:      0.0, // 0 = use asset allocation to calculate returns
 		DiscountRate:          5.0,
 		ProjectionYears:       30,
 		IncomeSources:         []IncomeSource{},

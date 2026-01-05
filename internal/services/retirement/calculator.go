@@ -351,8 +351,10 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			rothReturn = s.InvestmentReturn
 			taxableReturn = s.InvestmentReturn
 		} else {
-			// Per-account allocation mode: calculate blended returns from historical means
-			stockMean, bondMean, cashMean, _, _, _ := GetHistoricalStats()
+			// Per-account allocation mode: calculate blended returns from conservative estimates
+			// Using forward-looking estimates (7% stocks, 4% bonds, 3% cash) rather than
+			// historical averages (~10.5% stocks) for more prudent retirement planning
+			stockMean, bondMean, cashMean := 7.0, 4.0, 3.0
 			tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
 			rothStock, rothBond, rothCash := s.GetRothAllocation()
 			taxStock, taxBond, taxCash := s.GetTaxableAllocation()

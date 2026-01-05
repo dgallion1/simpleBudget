@@ -62,7 +62,10 @@
             <!-- Tax-Deferred Account -->
             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Tax-Deferred (401k/IRA)</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Tax-Deferred (401k/IRA)</span>
+                        <span id="td-amount-display" class="text-xs text-green-600 dark:text-green-400 font-medium"></span>
+                    </div>
                     <span id="td-bond-display" class="text-xs text-gray-500 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxDeferredBondPct}}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -90,7 +93,10 @@
             <!-- Roth Account -->
             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Roth (Roth IRA/401k)</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Roth (Roth IRA/401k)</span>
+                        <span id="roth-amount-display" class="text-xs text-green-600 dark:text-green-400 font-medium"></span>
+                    </div>
                     <span id="roth-bond-display" class="text-xs text-gray-500 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.RothBondPct}}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -118,7 +124,10 @@
             <!-- Taxable Account -->
             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Taxable (Brokerage)</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Taxable (Brokerage)</span>
+                        <span id="taxable-amount-display" class="text-xs text-green-600 dark:text-green-400 font-medium"></span>
+                    </div>
                     <span id="taxable-bond-display" class="text-xs text-gray-500 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxableBondPct}}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -245,7 +254,44 @@ function updateTaxablePercent() {
             display.classList.remove('text-red-600', 'dark:text-red-400');
         }
     }
+    // Update dollar amounts display
+    updateAccountAmounts();
 }
+
+function updateAccountAmounts() {
+    // Get portfolio value from the slider
+    const portfolioSlider = document.querySelector('input[name="portfolio_value"]');
+    if (!portfolioSlider) return;
+    const portfolioValue = parseFloat(portfolioSlider.value) || 0;
+
+    // Get account percentages
+    const tdPercent = parseFloat(document.querySelector('input[name="tax_deferred_percent"]')?.value) || 0;
+    const rothPercent = parseFloat(document.querySelector('input[name="roth_percent"]')?.value) || 0;
+    const taxablePercent = Math.max(0, 100 - tdPercent - rothPercent);
+
+    // Calculate and display amounts
+    const formatAmount = (amount) => {
+        if (amount === 0) return '$0';
+        if (amount >= 1000000) return '$' + (amount / 1000000).toFixed(1) + 'M';
+        if (amount >= 1000) return '$' + Math.round(amount / 1000) + 'K';
+        return '$' + Math.round(amount);
+    };
+
+    const tdAmount = portfolioValue * (tdPercent / 100);
+    const rothAmount = portfolioValue * (rothPercent / 100);
+    const taxableAmount = portfolioValue * (taxablePercent / 100);
+
+    const tdDisplay = document.getElementById('td-amount-display');
+    const rothDisplay = document.getElementById('roth-amount-display');
+    const taxableDisplay = document.getElementById('taxable-amount-display');
+
+    if (tdDisplay) tdDisplay.textContent = formatAmount(tdAmount);
+    if (rothDisplay) rothDisplay.textContent = formatAmount(rothAmount);
+    if (taxableDisplay) taxableDisplay.textContent = formatAmount(taxableAmount);
+}
+
+// Initialize account amounts on page load
+document.addEventListener('DOMContentLoaded', updateAccountAmounts);
 
 function updateAccountBonds(account) {
     const prefixMap = {

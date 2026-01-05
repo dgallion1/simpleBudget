@@ -44,7 +44,7 @@
             <input type="range" id="portfolio-slider" name="portfolio_value" value="{{printf "%.0f" .Settings.PortfolioValue}}"
                 min="0" max="20000000" step="100000"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString(); if(typeof updateAccountAmounts === 'function') updateAccountAmounts();">
             <span class="text-sm text-gray-500 dark:text-gray-300">${{formatNumber .Settings.PortfolioValue}}</span>
         </div>
 

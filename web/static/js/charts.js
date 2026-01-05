@@ -192,6 +192,19 @@ document.addEventListener('htmx:afterRequest', function(evt) {
     }
 });
 
+// Reload charts after whatif-results is swapped
+document.addEventListener('htmx:afterSettle', function(evt) {
+    const target = evt.detail.target;
+    if (target && target.id === 'whatif-results') {
+        // Find any chart elements that need to be loaded
+        const charts = target.querySelectorAll('[id^="chart-"][hx-get]');
+        charts.forEach(function(chart) {
+            // Trigger HTMX to load the chart
+            htmx.trigger(chart, 'load');
+        });
+    }
+});
+
 // Initialize sparklines from data attributes
 function initSparklines() {
     document.querySelectorAll('[id^="sparkline-"]').forEach(function(el) {

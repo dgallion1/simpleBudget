@@ -131,6 +131,7 @@
                         <th class="text-left py-1">Age</th>
                         <th class="text-left py-1">Phase</th>
                         <th class="text-right py-1">Spending</th>
+                        <th class="text-right py-1">Income</th>
                         <th class="text-right py-1" id="vs-header">vs Start</th>
                         <th class="text-right py-1">WR%</th>
                     </tr>
@@ -158,6 +159,15 @@ window.expenseSources = [
 {{- end}}
 {{- end}}
 ];
+// Income sources from settings (updated via OOB)
+window.incomeSources = [
+{{- if .Settings.IncomeSources}}
+{{- range $i, $src := .Settings.IncomeSources}}
+{{- if $i}},{{end}}
+    {name: "{{$src.Name}}", amount: {{$src.Amount}}, startYear: {{div $src.StartMonth 12}}, endYear: {{if $src.EndMonth}}{{div $src.EndMonth 12}}{{else}}0{{end}}, cola: {{if gt $src.COLARate 0.0}}true{{else}}false{{end}}}
+{{- end}}
+{{- end}}
+];
 // Trigger preview update if visible
 if (typeof updatePhasePreview === 'function') {
     updatePhasePreview();
@@ -177,6 +187,30 @@ let dollarViewMode = 'nominal';
 // Getter for expense sources (uses window.expenseSources set by OOB-updatable script)
 function getExpenseSources() {
     return window.expenseSources || [];
+}
+
+// Getter for income sources (uses window.incomeSources set by OOB-updatable script)
+function getIncomeSources() {
+    return window.incomeSources || [];
+}
+
+// Calculate total monthly income for a given year (0-indexed from now)
+function getTotalIncome(year, inflation) {
+    let total = 0;
+    for (const src of getIncomeSources()) {
+        // Check if income is active this year
+        if (year < src.startYear) continue;
+        if (src.endYear > 0 && year >= src.endYear) continue;
+
+        let amount = src.amount;
+        // Apply COLA if enabled (2%/yr from start year)
+        if (src.cola && year > src.startYear) {
+            const yearsSinceStart = year - src.startYear;
+            amount *= Math.pow(1.02, yearsSinceStart);
+        }
+        total += amount;
+    }
+    return total;
 }
 
 function togglePhaseInputs(enabled) {
@@ -365,10 +399,13 @@ function updatePhasePreview() {
                         vsLabel > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300';
         }
 
-        // Calculate withdrawal rate (annual spending / portfolio value)
-        // For nominal view, use the nominal spending; for today's view, use today's spending
+        // Calculate withdrawal rate: (spending - income) / portfolio value
+        // Only positive gap (spending > income) requires portfolio withdrawal
         const annualSpending = spending * 12;
-        const withdrawalRate = (annualSpending / portfolioValue) * 100;
+        const monthlyIncome = getTotalIncome(years, inflation);
+        const annualIncome = monthlyIncome * 12;
+        const incomeGap = Math.max(0, annualSpending - annualIncome);
+        const withdrawalRate = portfolioValue > 0 ? (incomeGap / portfolioValue) * 100 : 0;
         const wrColorClass = withdrawalRate > 5 ? 'text-red-600 dark:text-red-400' :
                             withdrawalRate > 4 ? 'text-amber-600 dark:text-amber-400' :
                             'text-green-600 dark:text-green-400';
@@ -377,6 +414,7 @@ function updatePhasePreview() {
             <td class="py-1">${age}</td>
             <td class="py-1 text-gray-500 dark:text-gray-400">${phaseName}</td>
             <td class="text-right py-1">$${Math.round(spending).toLocaleString()}</td>
+            <td class="text-right py-1">$${Math.round(monthlyIncome).toLocaleString()}</td>
             <td class="text-right py-1 ${colorClass}">${sign}${vsLabel.toFixed(0)}%</td>
             <td class="text-right py-1 ${wrColorClass}">${withdrawalRate.toFixed(1)}%</td>
         `;

@@ -211,9 +211,12 @@ func (s *WhatIfSettings) PerAccountAllocationIsSet() bool {
 }
 
 // GetTaxDeferredAllocation returns the asset allocation for tax-deferred accounts.
-// If not set, falls back to global allocation or defaults (60/40/0).
+// If per-account allocation is enabled, uses the explicit values (even if 0).
+// Otherwise falls back to global allocation or defaults (60/40/0).
 func (s *WhatIfSettings) GetTaxDeferredAllocation() (stock, bond, cash float64) {
-	if s.TaxDeferredStockPercent != 0 || s.TaxDeferredCashPercent != 0 {
+	// Check if user is in per-account allocation mode (any account has values set)
+	// This allows explicit 0% stocks (100% bonds) to be honored
+	if s.PerAccountAllocationIsSet() {
 		stock = s.TaxDeferredStockPercent
 		cash = s.TaxDeferredCashPercent
 	} else {
@@ -225,9 +228,12 @@ func (s *WhatIfSettings) GetTaxDeferredAllocation() (stock, bond, cash float64) 
 }
 
 // GetRothAllocation returns the asset allocation for Roth accounts.
-// If not set, falls back to global allocation or defaults (60/40/0).
+// If per-account allocation is enabled, uses the explicit values (even if 0).
+// Otherwise falls back to global allocation or defaults (60/40/0).
 func (s *WhatIfSettings) GetRothAllocation() (stock, bond, cash float64) {
-	if s.RothStockPercent != 0 || s.RothCashPercent != 0 {
+	// Check if user is in per-account allocation mode (any account has values set)
+	// This allows explicit 0% stocks (100% bonds) to be honored
+	if s.PerAccountAllocationIsSet() {
 		stock = s.RothStockPercent
 		cash = s.RothCashPercent
 	} else {
@@ -239,9 +245,12 @@ func (s *WhatIfSettings) GetRothAllocation() (stock, bond, cash float64) {
 }
 
 // GetTaxableAllocation returns the asset allocation for taxable accounts.
-// If not set, falls back to global allocation or defaults (60/40/0).
+// If per-account allocation is enabled, uses the explicit values (even if 0).
+// Otherwise falls back to global allocation or defaults (60/40/0).
 func (s *WhatIfSettings) GetTaxableAllocation() (stock, bond, cash float64) {
-	if s.TaxableStockPercent != 0 || s.TaxableCashPercent != 0 {
+	// Check if user is in per-account allocation mode (any account has values set)
+	// This allows explicit 0% stocks (100% bonds) to be honored
+	if s.PerAccountAllocationIsSet() {
 		stock = s.TaxableStockPercent
 		cash = s.TaxableCashPercent
 	} else {

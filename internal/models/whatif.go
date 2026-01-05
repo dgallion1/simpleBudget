@@ -57,6 +57,7 @@ type SpendingPhaseConfig struct {
 }
 
 // DefaultSpendingPhases returns research-based spending phase defaults
+// Uses 5 phases for smoother transitions through retirement
 func DefaultSpendingPhases() []SpendingPhase {
 	return []SpendingPhase{
 		{
@@ -66,15 +67,27 @@ func DefaultSpendingPhases() []SpendingPhase {
 			Description: "Active retirement: travel, hobbies, dining out",
 		},
 		{
+			Name:        "Active",
+			StartAge:    65,
+			Multiplier:  0.95,
+			Description: "Still active but pacing slows slightly",
+		},
+		{
 			Name:        "Slow-Go",
 			StartAge:    75,
 			Multiplier:  0.85,
 			Description: "Reduced activity: less travel, more home-based",
 		},
 		{
+			Name:        "Late Slow-Go",
+			StartAge:    80,
+			Multiplier:  0.75,
+			Description: "Further reduced activity and travel",
+		},
+		{
 			Name:        "No-Go",
 			StartAge:    85,
-			Multiplier:  0.70,
+			Multiplier:  0.65,
 			Description: "Limited mobility: basic needs focus",
 		},
 	}

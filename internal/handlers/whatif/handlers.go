@@ -180,6 +180,9 @@ func RegisterRoutes(r chi.Router) {
 	r.Put("/whatif/healthcare/{id}", handleWhatIfUpdateHealthcare)
 	r.Delete("/whatif/healthcare/{id}", handleWhatIfDeleteHealthcare)
 	r.Post("/whatif/spending-phases", handleWhatIfSpendingPhases)
+	r.Post("/whatif/spending-phases/add", handleWhatIfAddPhase)
+	r.Delete("/whatif/spending-phases/{index}", handleWhatIfDeletePhase)
+	r.Post("/whatif/spending-phases/reset", handleWhatIfResetPhases)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
@@ -1108,25 +1111,66 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 	// Parse enabled toggle
 	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
 
-	// Build phases from form data
+	// Load current settings to get existing phases as base
+	currentSettings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Use current phases or defaults
+	basePhases := models.DefaultSpendingPhases()
+	if currentSettings.SpendingPhaseConfig != nil && len(currentSettings.SpendingPhaseConfig.Phases) > 0 {
+		basePhases = currentSettings.SpendingPhaseConfig.Phases
+	}
+
+	// Build phases from form data - support any number of phases
 	phases := []models.SpendingPhase{}
-	defaultPhases := models.DefaultSpendingPhases()
+	for i := 0; i < 20; i++ { // Support up to 20 phases (more than enough)
+		// Check if this phase exists in form data
+		nameKey := fmt.Sprintf("phase_%d_name", i)
+		multKey := fmt.Sprintf("phase_%d_multiplier", i)
 
-	for i := 0; i < 3; i++ {
-		phase := defaultPhases[i] // Start with defaults
+		// If no multiplier field, phase doesn't exist
+		if r.FormValue(multKey) == "" {
+			// Use base phase if available
+			if i < len(basePhases) {
+				phase := basePhases[i]
+				// Parse start age if provided
+				if startAge, err := parseFormInt(r, fmt.Sprintf("phase_%d_start_age", i)); err == nil && startAge > 0 {
+					phase.StartAge = startAge
+				}
+				phases = append(phases, phase)
+			}
+			continue
+		}
 
-		// Parse start age if provided
-		if startAgeStr := r.FormValue(fmt.Sprintf("phase_%d_start_age", i)); startAgeStr != "" {
+		// Create phase from form data
+		phase := models.SpendingPhase{}
+		if i < len(basePhases) {
+			phase = basePhases[i] // Start with base values
+		}
+
+		// Parse name if provided
+		if name := r.FormValue(nameKey); name != "" {
+			phase.Name = name
+		}
+
+		// Parse start age if provided (skip for phase 0 which always starts at 0)
+		if i > 0 {
 			if startAge, err := parseFormInt(r, fmt.Sprintf("phase_%d_start_age", i)); err == nil {
 				phase.StartAge = startAge
 			}
 		}
 
-		// Parse multiplier if provided
-		if multStr := r.FormValue(fmt.Sprintf("phase_%d_multiplier", i)); multStr != "" {
-			if mult, err := parseFormFloat(r, fmt.Sprintf("phase_%d_multiplier", i)); err == nil {
-				phase.Multiplier = mult
-			}
+		// Parse multiplier
+		if mult, err := parseFormFloat(r, multKey); err == nil {
+			phase.Multiplier = mult
+		}
+
+		// Parse description if provided
+		if desc := r.FormValue(fmt.Sprintf("phase_%d_description", i)); desc != "" {
+			phase.Description = desc
 		}
 
 		phases = append(phases, phase)
@@ -1135,6 +1179,156 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.UpdateSpendingPhases(enabled, phases)
 	if err != nil {
 		renderError(w, "Failed to save spending phases: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// handleWhatIfAddPhase adds a new spending phase
+func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize phases if needed
+	if settings.SpendingPhaseConfig == nil {
+		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+			Enabled: true,
+			Phases:  models.DefaultSpendingPhases(),
+		}
+	}
+
+	// Find the last phase to determine new phase values
+	phases := settings.SpendingPhaseConfig.Phases
+	lastPhase := phases[len(phases)-1]
+
+	// Create new phase 5 years after the last one, with 5% lower multiplier
+	newMultiplier := lastPhase.Multiplier - 0.05
+	if newMultiplier < 0.30 {
+		newMultiplier = 0.30 // Floor at 30%
+	}
+
+	newPhase := models.SpendingPhase{
+		Name:        fmt.Sprintf("Phase %d", len(phases)+1),
+		StartAge:    lastPhase.StartAge + 5,
+		Multiplier:  newMultiplier,
+		Description: "Custom spending phase",
+	}
+
+	settings.SpendingPhaseConfig.Phases = append(settings.SpendingPhaseConfig.Phases, newPhase)
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// handleWhatIfDeletePhase removes a spending phase by index
+func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
+	indexStr := chi.URLParam(r, "index")
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		renderError(w, "Invalid phase index", http.StatusBadRequest)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if settings.SpendingPhaseConfig == nil || len(settings.SpendingPhaseConfig.Phases) == 0 {
+		renderError(w, "No phases to delete", http.StatusBadRequest)
+		return
+	}
+
+	// Don't allow deleting the first phase or below minimum
+	if index == 0 {
+		renderError(w, "Cannot delete the first phase", http.StatusBadRequest)
+		return
+	}
+
+	phases := settings.SpendingPhaseConfig.Phases
+	if index < 0 || index >= len(phases) {
+		renderError(w, "Phase index out of range", http.StatusBadRequest)
+		return
+	}
+
+	// Minimum 2 phases
+	if len(phases) <= 2 {
+		renderError(w, "Must have at least 2 phases", http.StatusBadRequest)
+		return
+	}
+
+	// Remove the phase at index
+	settings.SpendingPhaseConfig.Phases = append(phases[:index], phases[index+1:]...)
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// handleWhatIfResetPhases resets phases to defaults
+func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Reset to default phases
+	settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: settings.SpendingPhaseConfig != nil && settings.SpendingPhaseConfig.Enabled,
+		Phases:  models.DefaultSpendingPhases(),
+	}
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

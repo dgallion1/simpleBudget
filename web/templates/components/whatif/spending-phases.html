@@ -19,7 +19,7 @@
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Research shows spending naturally decreases through retirement.
         {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}
-            Phase-based model is active.
+            Phase-based model is active ({{len .Settings.SpendingPhaseConfig.Phases}} phases).
         {{else}}
             Currently using {{printf "%.1f" .Settings.SpendingDeclineRate}}% annual decline rate.
         {{end}}
@@ -27,7 +27,7 @@
 
     <div id="spending-phases-config" class="{{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}opacity-50 pointer-events-none{{end}}">
         <form hx-post="/whatif/spending-phases" hx-target="#whatif-results" hx-trigger="change delay:500ms"
-            class="space-y-3">
+            class="space-y-3" id="phases-form">
             <input type="hidden" name="enabled" value="{{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}true{{else}}false{{end}}">
 
             {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Phases}}
@@ -35,11 +35,27 @@
             <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <div class="flex items-center justify-between mb-1">
                     <span class="font-medium text-gray-700 dark:text-gray-200">{{$phase.Name}}</span>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">
-                        {{if eq $i 0}}Retirement start{{else}}Age {{$phase.StartAge}}+{{end}}
-                    </span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            {{if eq $i 0}}Retirement start{{else}}Age {{$phase.StartAge}}+{{end}}
+                        </span>
+                        {{if gt $i 0}}
+                        <button type="button"
+                            hx-delete="/whatif/spending-phases/{{$i}}"
+                            hx-target="#whatif-results"
+                            hx-confirm="Remove this spending phase?"
+                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-xs"
+                            title="Remove phase">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                        {{end}}
+                    </div>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{$phase.Description}}</p>
+                <input type="hidden" name="phase_{{$i}}_name" value="{{$phase.Name}}">
+                <input type="hidden" name="phase_{{$i}}_description" value="{{$phase.Description}}">
                 <div class="flex items-center gap-3">
                     {{if ne $i 0}}
                     <div class="flex items-center gap-1">
@@ -53,7 +69,7 @@
                         <label class="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">Spending</label>
                         <input type="range" name="phase_{{$i}}_multiplier"
                             value="{{printf "%.2f" $phase.Multiplier}}"
-                            min="0.50" max="1.20" step="0.05"
+                            min="0.30" max="1.20" step="0.05"
                             class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
                             oninput="this.nextElementSibling.textContent = Math.round(this.value * 100) + '%'">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
@@ -63,6 +79,26 @@
             {{end}}
             {{end}}
         </form>
+
+        <!-- Phase management buttons -->
+        <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+            <button type="button"
+                hx-post="/whatif/spending-phases/add"
+                hx-target="#whatif-results"
+                class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Add Phase
+            </button>
+            <button type="button"
+                hx-post="/whatif/spending-phases/reset"
+                hx-target="#whatif-results"
+                hx-confirm="Reset all phases to defaults?"
+                class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                Reset to Defaults
+            </button>
+        </div>
     </div>
 
     <!-- Spending Trajectory Preview -->
@@ -221,12 +257,16 @@ function updatePhasePreview() {
     // Check if phases are enabled
     const phasesEnabled = document.querySelector('[name="enabled"]')?.checked || false;
 
-    // Get phase settings
+    // Get phase settings - dynamically detect all phases
     const phases = [];
-    for (let i = 0; i < 3; i++) {
-        const startAgeInput = document.querySelector(`[name="phase_${i}_start_age"]`);
+    for (let i = 0; i < 20; i++) { // Support up to 20 phases
         const multiplierInput = document.querySelector(`[name="phase_${i}_multiplier"]`);
+        if (!multiplierInput) break; // No more phases
+
+        const startAgeInput = document.querySelector(`[name="phase_${i}_start_age"]`);
+        const nameInput = document.querySelector(`[name="phase_${i}_name"]`);
         phases.push({
+            name: nameInput?.value || `Phase ${i + 1}`,
             startAge: i === 0 ? 0 : parseInt(startAgeInput?.value || (65 + i * 10)),
             multiplier: parseFloat(multiplierInput?.value || 1)
         });
@@ -259,13 +299,13 @@ function updatePhasePreview() {
         const years = age - currentAge;
 
         // Find applicable phase
-        let phaseName = 'Go-Go';
+        let phaseName = phases.length > 0 ? phases[0].name : 'Go-Go';
         let multiplier = 1.0;
-        if (phasesEnabled) {
+        if (phasesEnabled && phases.length > 0) {
             for (let i = phases.length - 1; i >= 0; i--) {
                 if (age >= phases[i].startAge) {
                     multiplier = phases[i].multiplier;
-                    phaseName = ['Go-Go', 'Slow-Go', 'No-Go'][i];
+                    phaseName = phases[i].name;
                     break;
                 }
             }

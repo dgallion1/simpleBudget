@@ -701,10 +701,17 @@ func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
 	baseProjection := c.RunProjection()
 	baseScore := c.CalculateSustainabilityScore(baseProjection)
 
+	// Get effective baseline return (either explicit or calculated from per-account allocation)
+	// When InvestmentReturn=0, the projection uses per-account asset allocation blended returns
+	effectiveReturn := c.Settings.InvestmentReturn
+	if effectiveReturn == 0 {
+		effectiveReturn = c.Settings.GetExpectedReturnFromAllocation()
+	}
+
 	// Define scenarios
 	scenarios := []models.SensitivityScenario{
-		{Name: "Higher Returns", ParamName: "investment_return", ParamValue: c.Settings.InvestmentReturn + 2, Change: "+2%"},
-		{Name: "Lower Returns", ParamName: "investment_return", ParamValue: c.Settings.InvestmentReturn - 2, Change: "-2%"},
+		{Name: "Higher Returns", ParamName: "investment_return", ParamValue: effectiveReturn + 2, Change: "+2%"},
+		{Name: "Lower Returns", ParamName: "investment_return", ParamValue: effectiveReturn - 2, Change: "-2%"},
 		{Name: "Higher Inflation", ParamName: "inflation_rate", ParamValue: c.Settings.InflationRate + 1, Change: "+1%"},
 		{Name: "Lower Inflation", ParamName: "inflation_rate", ParamValue: c.Settings.InflationRate - 1, Change: "-1%"},
 		{Name: "Higher Spending", ParamName: "monthly_living_expenses", ParamValue: c.Settings.MonthlyLivingExpenses * 1.1, Change: "+10%"},

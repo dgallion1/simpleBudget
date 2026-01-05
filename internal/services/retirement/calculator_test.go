@@ -740,6 +740,96 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 	})
 }
 
+// TestSensitivityWithPerAccountAllocation verifies sensitivity analysis
+// uses the effective return rate when InvestmentReturn=0 (allocation mode)
+func TestSensitivityWithPerAccountAllocation(t *testing.T) {
+	t.Run("higher returns should improve outcomes", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 2000000
+		settings.MonthlyLivingExpenses = 8000
+		settings.ProjectionYears = 40
+		settings.InvestmentReturn = 0 // Use per-account allocation mode
+
+		// Set up a 60/40 allocation (default)
+		settings.TaxDeferredStockPercent = 60
+		settings.TaxDeferredCashPercent = 0
+		settings.RothStockPercent = 60
+		settings.RothCashPercent = 0
+		settings.TaxableStockPercent = 60
+		settings.TaxableCashPercent = 0
+
+		calc := NewCalculator(settings)
+		results := calc.CalculateSensitivity()
+
+		// Find the Higher Returns and Lower Returns scenarios
+		var higherReturns, lowerReturns *models.SensitivityResult
+		for i := range results {
+			if results[i].Scenario.Name == "Higher Returns" {
+				higherReturns = &results[i]
+			}
+			if results[i].Scenario.Name == "Lower Returns" {
+				lowerReturns = &results[i]
+			}
+		}
+
+		if higherReturns == nil || lowerReturns == nil {
+			t.Fatal("expected to find Higher Returns and Lower Returns scenarios")
+		}
+
+		// Higher returns should result in better or equal outcomes than lower returns
+		// This was broken when InvestmentReturn=0 caused sensitivity to use 2% instead of ~7.8%
+		higherLongevity := float64(100) // assume survives if nil
+		if higherReturns.LongevityYears != nil {
+			higherLongevity = *higherReturns.LongevityYears
+		}
+		lowerLongevity := float64(100)
+		if lowerReturns.LongevityYears != nil {
+			lowerLongevity = *lowerReturns.LongevityYears
+		}
+
+		if higherLongevity < lowerLongevity {
+			t.Errorf("higher returns (%.1f yrs) should have >= longevity than lower returns (%.1f yrs)",
+				higherLongevity, lowerLongevity)
+		}
+
+		if higherReturns.FinalBalance < lowerReturns.FinalBalance {
+			t.Errorf("higher returns ($%.2f) should have >= final balance than lower returns ($%.2f)",
+				higherReturns.FinalBalance, lowerReturns.FinalBalance)
+		}
+	})
+
+	t.Run("sensitivity uses effective return not raw setting", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.InvestmentReturn = 0 // allocation mode
+
+		calc := NewCalculator(settings)
+		results := calc.CalculateSensitivity()
+
+		// Find Higher Returns scenario
+		var higherReturns *models.SensitivityResult
+		for i := range results {
+			if results[i].Scenario.Name == "Higher Returns" {
+				higherReturns = &results[i]
+			}
+		}
+
+		if higherReturns == nil {
+			t.Fatal("expected to find Higher Returns scenario")
+		}
+
+		// The effective return from default allocation is ~5.8%
+		// Higher returns should be ~7.8%, not 2%
+		expectedEffective := settings.GetExpectedReturnFromAllocation()
+		expectedHigher := expectedEffective + 2
+
+		if math.Abs(higherReturns.Scenario.ParamValue-expectedHigher) > 0.1 {
+			t.Errorf("higher returns scenario used %.1f%%, expected %.1f%% (effective %.1f%% + 2%%)",
+				higherReturns.Scenario.ParamValue, expectedHigher, expectedEffective)
+		}
+	})
+}
+
 // BenchmarkMonteCarloSimulation benchmarks the simulation performance
 func BenchmarkMonteCarloSimulation(b *testing.B) {
 	settings := models.DefaultWhatIfSettings()

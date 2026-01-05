@@ -1479,23 +1479,11 @@ func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloCon
 	returns := make([]float64, years)
 	s := c.Settings
 
-	// Get user's asset allocation (default to 60/40 stocks/bonds if not set)
-	stockPercent := s.StockPercent
-	cashPercent := s.CashPercent
-	if stockPercent == 0 && cashPercent == 0 {
-		stockPercent = 60.0 // Default 60% stocks
-	}
-	bondPercent := 100.0 - stockPercent - cashPercent
+	// Get user's asset allocation with defaults applied
+	stockPercent, bondPercent, cashPercent := s.GetEffectiveAssetAllocation()
 
-	// Historical statistics for asset classes (from GetHistoricalStats)
-	// Stocks: ~11.7% mean, ~19% stddev
-	// Bonds: ~5% mean, ~8% stddev
-	// Cash: ~3.3% mean, minimal volatility
-	stockMean := 11.7
-	stockStdDev := 19.0
-	bondMean := 5.0
-	bondStdDev := 8.0
-	cashMean := 3.3
+	// Get historical statistics for asset classes
+	stockMean, bondMean, cashMean, _, stockStdDev, bondStdDev := GetHistoricalStats()
 
 	for y := 0; y < years; y++ {
 		var stockReturn, bondReturn, cashReturn float64

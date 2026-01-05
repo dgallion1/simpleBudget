@@ -232,3 +232,81 @@ func TestBacktestWithRothConversion(t *testing.T) {
 		t.Errorf("Expected start year 1990, got %d", result.StartYear)
 	}
 }
+
+func TestFinalBalanceRealCalculation(t *testing.T) {
+	// Test that FinalBalanceReal = FinalBalance / CumulativeInflation
+	settings := &models.WhatIfSettings{
+		PortfolioValue:        1000000,
+		MonthlyLivingExpenses: 2500, // Low withdrawal to ensure survival
+		CurrentAge:            65,
+		ProjectionYears:       30,
+		InvestmentReturn:      6.0,
+		InflationRate:         2.5,
+		TaxDeferredPercent:    50.0,
+		RothPercent:           20.0,
+		StockPercent:          60.0,
+		CashPercent:           10.0,
+	}
+
+	calc := NewCalculator(settings)
+	result := calc.runSingleHistoricalSequence(1982) // 1982 was a good starting year
+
+	// If portfolio survives, verify the real balance calculation
+	if result.Survives && result.FinalBalance > 0 && result.CumulativeInflation > 0 {
+		expectedReal := result.FinalBalance / result.CumulativeInflation
+		tolerance := 0.01 // Allow 1% tolerance for floating point
+
+		diff := (result.FinalBalanceReal - expectedReal) / expectedReal
+		if diff < -tolerance || diff > tolerance {
+			t.Errorf("FinalBalanceReal calculation incorrect: got %.2f, expected %.2f (FinalBalance=%.2f, CumulativeInflation=%.4f)",
+				result.FinalBalanceReal, expectedReal, result.FinalBalance, result.CumulativeInflation)
+		}
+	}
+
+	// Also verify cumulative inflation is reasonable for 30 years
+	// Historical inflation averaged ~3%, so 30 years should give roughly 1.03^30 ≈ 2.43
+	// But it varies widely, so just ensure it's > 1.0
+	if result.CumulativeInflation <= 1.0 {
+		t.Errorf("CumulativeInflation should be > 1.0 for 30 years, got %.4f", result.CumulativeInflation)
+	}
+}
+
+func TestAssetAllocationDefaults(t *testing.T) {
+	// Test that the GetEffectiveAssetAllocation method works correctly
+
+	// Case 1: No allocation set (both zero) - should default to 60/40/0
+	settings := &models.WhatIfSettings{
+		StockPercent: 0,
+		CashPercent:  0,
+	}
+	stock, bond, cash := settings.GetEffectiveAssetAllocation()
+	if stock != 60.0 || bond != 40.0 || cash != 0.0 {
+		t.Errorf("Default allocation should be 60/40/0, got %.0f/%.0f/%.0f", stock, bond, cash)
+	}
+
+	// Case 2: Custom allocation set - should be used as-is
+	settings2 := &models.WhatIfSettings{
+		StockPercent: 80.0,
+		CashPercent:  5.0,
+	}
+	stock2, bond2, cash2 := settings2.GetEffectiveAssetAllocation()
+	if stock2 != 80.0 || bond2 != 15.0 || cash2 != 5.0 {
+		t.Errorf("Custom allocation should be 80/15/5, got %.0f/%.0f/%.0f", stock2, bond2, cash2)
+	}
+
+	// Case 3: 100% bonds (0 stocks, 0 cash but intentionally set)
+	// This is the edge case - user would need to set cash to a tiny value to indicate intent
+	// With current design, if stock=0 and cash=0, we default to 60/40/0
+	// This is documented behavior - users wanting 100% bonds should set cash to 0.01
+	settings3 := &models.WhatIfSettings{
+		StockPercent: 0,
+		CashPercent:  0.01, // Tiny cash value indicates intentional allocation
+	}
+	stock3, bond3, _ := settings3.GetEffectiveAssetAllocation()
+	if stock3 != 0.0 {
+		t.Errorf("With intentional 0%% stocks and 0.01%% cash, stocks should be 0, got %.2f", stock3)
+	}
+	if bond3 < 99.9 {
+		t.Errorf("With 0%% stocks and 0.01%% cash, bonds should be ~99.99%%, got %.2f", bond3)
+	}
+}

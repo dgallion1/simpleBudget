@@ -160,6 +160,41 @@ func (s *WhatIfSettings) HasMultiPersonHealthcare() bool {
 	return len(s.HealthcarePersons) > 0
 }
 
+// AssetAllocationIsSet returns true if the user has explicitly configured asset allocation.
+// This is detected by checking if any allocation field is non-zero.
+func (s *WhatIfSettings) AssetAllocationIsSet() bool {
+	return s.StockPercent != 0 || s.CashPercent != 0
+}
+
+// GetEffectiveAssetAllocation returns normalized asset allocation percentages
+// with defaults applied. Returns (stocks, bonds, cash) percentages.
+// If no allocation is set, defaults to 60% stocks, 40% bonds, 0% cash.
+func (s *WhatIfSettings) GetEffectiveAssetAllocation() (stockPercent, bondPercent, cashPercent float64) {
+	stockPercent = s.StockPercent
+	cashPercent = s.CashPercent
+
+	if !s.AssetAllocationIsSet() {
+		stockPercent = 60.0 // Default 60% stocks
+		cashPercent = 0.0
+	}
+
+	bondPercent = 100.0 - stockPercent - cashPercent
+	return stockPercent, bondPercent, cashPercent
+}
+
+// EffectiveStockPercent returns the stock percentage with default applied.
+// This is useful for templates where a single value is needed.
+func (s *WhatIfSettings) EffectiveStockPercent() float64 {
+	stock, _, _ := s.GetEffectiveAssetAllocation()
+	return stock
+}
+
+// EffectiveBondPercent returns the bond percentage calculated from stocks and cash.
+func (s *WhatIfSettings) EffectiveBondPercent() float64 {
+	_, bond, _ := s.GetEffectiveAssetAllocation()
+	return bond
+}
+
 // DefaultWhatIfSettings returns sensible defaults for retirement planning
 func DefaultWhatIfSettings() *WhatIfSettings {
 	return &WhatIfSettings{

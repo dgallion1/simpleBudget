@@ -150,13 +150,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	totalBalance := s.PortfolioValue
 	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
 
-	// Get user's asset allocation (default to 60/40 stocks/bonds if not set)
-	stockPercent := s.StockPercent
-	cashPercent := s.CashPercent
-	if stockPercent == 0 && cashPercent == 0 {
-		stockPercent = 60.0 // Default 60% stocks
-	}
-	bondPercent := 100.0 - stockPercent - cashPercent
+	// Get user's asset allocation with defaults applied
+	stockPercent, bondPercent, cashPercent := s.GetEffectiveAssetAllocation()
 
 	result := HistoricalSequenceResult{
 		StartYear:       startYear,

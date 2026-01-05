@@ -1,0 +1,65 @@
+version: 2
+
+project_name: budget2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: budget2
+    main: ./cmd/server
+    binary: budget2
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X budget2/internal/version.Version={{.Version}}
+      - -X budget2/internal/version.BuildTime={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  disable: true
+
+release:
+  header: |
+    ## SimpleBudget v{{ .Version }}
+
+    A local-first personal finance dashboard and retirement planning tool.
+    All data stays on your computer - no cloud, no accounts, complete privacy.
+  footer: |
+    ---
+
+    **Full Changelog:** See [CHANGELOG.md](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/blob/{{ .Tag }}/CHANGELOG.md)
+  draft: false
+  prerelease: auto
+  name_template: "{{.ProjectName}} v{{.Version}}"

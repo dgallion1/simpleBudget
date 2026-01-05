@@ -69,7 +69,7 @@ ifdef GO_OVERRIDE
     NEED_GO_INSTALL :=
 endif
 
-.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot
 
 all: build
 
@@ -91,6 +91,8 @@ help:
 	@echo "  validate       - Validate running server"
 	@echo "  vendor-js      - Download JS dependencies"
 	@echo "  install-go     - Install Go $(GO_VERSION) locally"
+	@echo "  release        - Create and push a release tag (usage: make release v=1.0.0)"
+	@echo "  release-snapshot - Test release locally without pushing"
 	@echo ""
 	@echo "Go: $(GO)"
 
@@ -231,3 +233,25 @@ else
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o dist/$(BINARY)-darwin-amd64 ./cmd/server
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o dist/$(BINARY)-darwin-arm64 ./cmd/server
 endif
+
+# Release targets (requires goreleaser: go install github.com/goreleaser/goreleaser/v2@latest)
+
+# Test release locally without pushing
+release-snapshot:
+	goreleaser release --snapshot --clean
+
+# Create and push a release tag
+# Usage: make release v=1.0.0
+release:
+ifndef v
+	@echo "Error: version not specified. Usage: make release v=1.0.0"
+	@exit 1
+endif
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: working directory not clean. Commit or stash changes first."; \
+		exit 1; \
+	fi
+	@echo "Creating release v$(v)..."
+	git tag -a v$(v) -m "Release v$(v)"
+	git push origin v$(v)
+	@echo "Release v$(v) pushed. GitHub Actions will build and publish."

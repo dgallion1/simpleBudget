@@ -2,6 +2,7 @@
 budget2
 /server
 tmp/
+dist/
 coverage.out
 coverage.html
 

@@ -793,7 +793,8 @@ func HandleYubiKeyIdentity(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleYubiKeySetup creates a new YubiKey identity
+// HandleYubiKeySetup returns instructions for YubiKey setup
+// YubiKey setup requires terminal interaction and cannot be done via web
 func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -805,13 +806,18 @@ func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := storage.SetupYubiKey()
-	if err != nil {
-		log.Printf("Failed to setup YubiKey: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Get YubiKey info to provide the right setup command
+	keys, _ := storage.DetectYubiKeys()
+	setupCmd := "age-plugin-yubikey --generate"
+	if len(keys) > 0 && keys[0].SetupCommand != "" {
+		setupCmd = keys[0].SetupCommand
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.WriteHeader(http.StatusBadRequest)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":         "YubiKey setup requires terminal interaction",
+		"setup_command": setupCmd,
+		"instructions":  "Run the setup command in your terminal, then click 'Refresh' to detect your new identity.",
+	})
 }

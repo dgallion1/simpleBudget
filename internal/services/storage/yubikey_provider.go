@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -237,48 +236,77 @@ type YubiKeySetupResult struct {
 	FullText  string `json:"full_text"` // Complete output including comments
 }
 
-// SetupYubiKey initializes a new slot on a YubiKey for age encryption
-// This is an interactive operation that requires user touch
-// Returns the full identity output that should be stored
-func SetupYubiKey() (*YubiKeySetupResult, error) {
+// YubiKeyInfo contains information about connected YubiKeys
+type YubiKeyInfo struct {
+	Serial       string `json:"serial"`
+	HasIdentity  bool   `json:"has_identity"`
+	SetupCommand string `json:"setup_command"`
+}
+
+// DetectYubiKeys returns information about connected YubiKeys
+func DetectYubiKeys() ([]YubiKeyInfo, error) {
 	if !IsYubiKeyPluginInstalled() {
 		return nil, fmt.Errorf("age-plugin-yubikey is not installed")
 	}
 
-	// Run age-plugin-yubikey to generate a new identity
-	// This requires user interaction (touch)
-	cmd := exec.Command("age-plugin-yubikey")
-	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
+	// Use ykman to detect YubiKeys if available, otherwise parse from age-plugin-yubikey output
+	cmd := exec.Command("age-plugin-yubikey", "--list-all")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
 
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to setup YubiKey: %w", err)
-	}
+	// Even if this fails, we might have a YubiKey - just no keys configured
+	cmd.Run()
 
-	fullText := strings.TrimSpace(string(output))
-	result := &YubiKeySetupResult{
-		FullText: fullText,
-	}
+	// Try to get serial from ykman if available
+	ykmanCmd := exec.Command("ykman", "list", "--serials")
+	var ykmanOut bytes.Buffer
+	ykmanCmd.Stdout = &ykmanOut
 
-	// Parse the output to extract identity and recipient
-	scanner := bufio.NewScanner(strings.NewReader(fullText))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "# recipient:") {
-			result.Recipient = strings.TrimSpace(strings.TrimPrefix(line, "# recipient:"))
-		} else if strings.HasPrefix(line, "#recipient:") {
-			result.Recipient = strings.TrimSpace(strings.TrimPrefix(line, "#recipient:"))
-		} else if strings.HasPrefix(line, "AGE-PLUGIN-YUBIKEY-") {
-			result.Identity = line
+	var keys []YubiKeyInfo
+	if err := ykmanCmd.Run(); err == nil {
+		scanner := bufio.NewScanner(&ykmanOut)
+		for scanner.Scan() {
+			serial := strings.TrimSpace(scanner.Text())
+			if serial != "" {
+				keys = append(keys, YubiKeyInfo{
+					Serial:       serial,
+					HasIdentity:  false,
+					SetupCommand: fmt.Sprintf("age-plugin-yubikey --generate --serial %s", serial),
+				})
+			}
 		}
 	}
 
-	if result.Identity == "" {
-		return nil, fmt.Errorf("failed to parse YubiKey identity from output")
+	// Check which ones have identities
+	existingRecipients, _ := DetectYubiKeyIdentities()
+	for i := range keys {
+		for _, r := range existingRecipients {
+			// If we have any recipients, mark the first key as having identity
+			// (In practice, users typically have one YubiKey)
+			if len(r) > 0 {
+				keys[i].HasIdentity = true
+				break
+			}
+		}
 	}
 
-	return result, nil
+	// If ykman isn't available but we detected a YubiKey via the interactive prompt,
+	// return a generic entry
+	if len(keys) == 0 {
+		keys = append(keys, YubiKeyInfo{
+			Serial:       "",
+			HasIdentity:  len(existingRecipients) > 0,
+			SetupCommand: "age-plugin-yubikey --generate",
+		})
+	}
+
+	return keys, nil
+}
+
+// SetupYubiKey is deprecated - YubiKey setup requires terminal interaction
+// This now returns an error with instructions for the user
+func SetupYubiKey() (*YubiKeySetupResult, error) {
+	return nil, fmt.Errorf("YubiKey setup requires terminal interaction. Please run 'age-plugin-yubikey --generate' in your terminal, then refresh this page")
 }
 
 // GetYubiKeyIdentityForRecipient retrieves the identity for a known recipient

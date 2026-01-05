@@ -87,7 +87,8 @@
                     <tr>
                         <th class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Start</th>
                         <th class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Result</th>
-                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final Balance</th>
+                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final (Nominal)</th>
+                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final (Real)</th>
                         <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Max Drawdown</th>
                     </tr>
                 </thead>
@@ -105,6 +106,9 @@
                         <td class="px-2 py-1 text-right text-gray-800 dark:text-gray-200">
                             ${{formatNumber .FinalBalance}}
                         </td>
+                        <td class="px-2 py-1 text-right text-gray-600 dark:text-gray-400">
+                            ${{formatNumber .FinalBalanceReal}}
+                        </td>
                         <td class="px-2 py-1 text-right text-gray-800 dark:text-gray-200">
                             {{printf "%.1f" .WorstDrawdown}}%
                         </td>
@@ -112,6 +116,9 @@
                     {{end}}
                 </tbody>
             </table>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Real:</strong> Inflation-adjusted to start-year purchasing power
+            </p>
         </div>
     </details>
     {{end}}
@@ -119,7 +126,7 @@
     <!-- Info Box -->
     <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
         <p class="text-xs text-blue-800 dark:text-blue-200">
-            <strong>What this means:</strong> Historical backtesting simulates your retirement plan starting from each year in the dataset, using actual S&P 500 returns, bond yields, and inflation. This shows how your plan would have performed through real market conditions including the Great Depression, stagflation, dot-com crash, and 2008 financial crisis.
+            <strong>What this means:</strong> Historical backtesting simulates your retirement plan starting from each year using actual S&P 500 returns, 10-year Treasury bonds, T-bill rates, and inflation from {{.Analysis.HistoricalBacktest.DataStartYear}}-{{.Analysis.HistoricalBacktest.DataEndYear}}. Uses your asset allocation settings. Real balances show purchasing power in start-year dollars.
         </p>
     </div>
 </div>

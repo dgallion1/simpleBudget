@@ -326,6 +326,39 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["roth_percent"] = v
 	}
 
+	if v, err := parseFormFloat(r, "stock_percent"); err != nil {
+		renderError(w, "Invalid stock percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("stock_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Stock percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["stock_percent"] = v
+	}
+
+	if v, err := parseFormFloat(r, "cash_percent"); err != nil {
+		renderError(w, "Invalid cash percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("cash_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Cash percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		// Validate that stock + cash <= 100
+		stockPct := 60.0 // Default
+		if sp, ok := updates["stock_percent"]; ok {
+			stockPct = sp.(float64)
+		} else if spStr := r.FormValue("stock_percent"); spStr != "" {
+			stockPct, _ = strconv.ParseFloat(spStr, 64)
+		}
+		if stockPct+v > 100 {
+			renderError(w, "Stocks + Cash cannot exceed 100%", http.StatusBadRequest)
+			return
+		}
+		updates["cash_percent"] = v
+	}
+
 	if v, err := parseFormFloat(r, "inflation_rate"); err != nil {
 		renderError(w, "Invalid inflation rate: "+err.Error(), http.StatusBadRequest)
 		return

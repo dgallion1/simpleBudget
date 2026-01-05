@@ -9,14 +9,16 @@ import (
 
 // HistoricalSequenceResult represents the outcome of one historical sequence
 type HistoricalSequenceResult struct {
-	StartYear       int     // Year this sequence started
-	Survives        bool    // Did the portfolio survive the full period?
-	FinalBalance    float64 // Balance at end of projection
-	DepletionYear   int     // Year of depletion (0 if survives)
-	LowestBalance   float64 // Minimum balance reached
-	LowestBalanceYr int     // Year of lowest balance
-	WorstDrawdown   float64 // Worst percentage drawdown from peak
-	AvgWithdrawRate float64 // Average withdrawal rate across the period
+	StartYear           int     // Year this sequence started
+	Survives            bool    // Did the portfolio survive the full period?
+	FinalBalance        float64 // Nominal balance at end of projection
+	FinalBalanceReal    float64 // Inflation-adjusted balance (start-year dollars)
+	CumulativeInflation float64 // Total inflation factor over period
+	DepletionYear       int     // Year of depletion (0 if survives)
+	LowestBalance       float64 // Minimum balance reached
+	LowestBalanceYr     int     // Year of lowest balance
+	WorstDrawdown       float64 // Worst percentage drawdown from peak
+	AvgWithdrawRate     float64 // Average withdrawal rate across the period
 }
 
 // RunHistoricalBacktest runs the projection against all available historical sequences
@@ -92,11 +94,13 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 	sequenceDetails := make([]models.HistoricalBacktestResult, len(results))
 	for i, r := range sortedByOutcome {
 		sequenceDetails[i] = models.HistoricalBacktestResult{
-			StartYear:     r.StartYear,
-			Survives:      r.Survives,
-			FinalBalance:  r.FinalBalance,
-			DepletionYear: r.DepletionYear,
-			WorstDrawdown: r.WorstDrawdown,
+			StartYear:           r.StartYear,
+			Survives:            r.Survives,
+			FinalBalance:        r.FinalBalance,
+			FinalBalanceReal:    r.FinalBalanceReal,
+			CumulativeInflation: r.CumulativeInflation,
+			DepletionYear:       r.DepletionYear,
+			WorstDrawdown:       r.WorstDrawdown,
 		}
 	}
 
@@ -144,6 +148,15 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	worstDrawdown := 0.0
 	totalWithdrawals := 0.0
 	totalBalance := s.PortfolioValue
+	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
+
+	// Get user's asset allocation (default to 60/40 stocks/bonds if not set)
+	stockPercent := s.StockPercent
+	cashPercent := s.CashPercent
+	if stockPercent == 0 && cashPercent == 0 {
+		stockPercent = 60.0 // Default 60% stocks
+	}
+	bondPercent := 100.0 - stockPercent - cashPercent
 
 	result := HistoricalSequenceResult{
 		StartYear:       startYear,
@@ -161,6 +174,11 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			// Get this year's historical data
 			yearData := sequence[currentYear]
 			inflationRate := yearData.InflationRate / 100
+
+			// Track cumulative inflation for real balance calculation
+			if m > 0 {
+				cumulativeInflation *= (1 + inflationRate)
+			}
 
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				phaseMultiplier := s.GetSpendingMultiplier(currentAge)
@@ -247,17 +265,17 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		totalIncome := c.CalculateTotalIncome(m)
 		neededFromPortfolio := totalExpenses - totalIncome
 
-		// Get this month's returns (annual return divided by 12)
-		// Use a default 60/40 stock/bond allocation for historical backtesting
+		// Get this month's returns using user's asset allocation
 		yearData := sequence[currentYear]
-		stockAllocation := 60.0 // Default to 60% stocks, 40% bonds
-		stockReturn := (stockAllocation/100)*yearData.SP500Return/100/12 +
-			((100-stockAllocation)/100)*yearData.BondReturn/100/12
+		// Blend returns based on user's stock/bond/cash allocation
+		monthlyReturn := (stockPercent/100)*yearData.SP500Return/100/12 +
+			(bondPercent/100)*yearData.BondReturn/100/12 +
+			(cashPercent/100)*yearData.CashReturn/100/12
 
 		// Apply returns to all accounts
-		taxDeferredBalance *= (1 + stockReturn)
-		rothBalance *= (1 + stockReturn)
-		taxableBalance *= (1 + stockReturn)
+		taxDeferredBalance *= (1 + monthlyReturn)
+		rothBalance *= (1 + monthlyReturn)
+		taxableBalance *= (1 + monthlyReturn)
 
 		// Process withdrawals
 		if neededFromPortfolio > 0 {
@@ -328,6 +346,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	}
 
 	result.FinalBalance = totalBalance
+	result.FinalBalanceReal = totalBalance / cumulativeInflation // Convert to start-year dollars
+	result.CumulativeInflation = cumulativeInflation
 	result.LowestBalance = lowestBalance
 	result.LowestBalanceYr = lowestBalanceYear
 	result.WorstDrawdown = worstDrawdown

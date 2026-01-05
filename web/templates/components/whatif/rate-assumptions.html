@@ -53,6 +53,44 @@
         </div>
 
         <div>
+            <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Asset Allocation</label>
+                <span class="text-xs text-gray-500 dark:text-gray-400">Must equal 100%</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Stocks</label>
+                    <div class="flex items-center">
+                        <input type="number" name="stock_percent" value="{{if .Settings.StockPercent}}{{printf "%.0f" .Settings.StockPercent}}{{else}}60{{end}}"
+                            min="0" max="100" step="5"
+                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            oninput="updateBondPercent()">
+                        <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">S&P 500</span>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Bonds</label>
+                    <div id="bond-percent-display" class="py-2 px-3 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-600 rounded-md text-center">
+                        {{$stockPct := .Settings.StockPercent}}{{if eq $stockPct 0.0}}{{$stockPct = 60.0}}{{end}}{{$cashPct := .Settings.CashPercent}}{{printf "%.0f" (sub 100 (add $stockPct $cashPct))}}%
+                    </div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">10Y Treasury</span>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cash</label>
+                    <div class="flex items-center">
+                        <input type="number" name="cash_percent" value="{{printf "%.0f" .Settings.CashPercent}}"
+                            min="0" max="100" step="5"
+                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            oninput="updateBondPercent()">
+                        <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">T-Bills</span>
+                </div>
+            </div>
+        </div>
+
+        <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
             <input type="range" id="inflation-rate-slider" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
                 min="0" max="10" step="0.1"
@@ -136,6 +174,23 @@ function updateTaxablePercent() {
         display.textContent = Math.round(taxable) + '%';
         // Warn if over 100%
         if (taxDeferred + roth > 100) {
+            display.classList.add('text-red-600', 'dark:text-red-400');
+            display.textContent = 'Over 100%!';
+        } else {
+            display.classList.remove('text-red-600', 'dark:text-red-400');
+        }
+    }
+}
+
+function updateBondPercent() {
+    const stocks = parseFloat(document.querySelector('input[name="stock_percent"]').value) || 0;
+    const cash = parseFloat(document.querySelector('input[name="cash_percent"]').value) || 0;
+    const bonds = Math.max(0, 100 - stocks - cash);
+    const display = document.getElementById('bond-percent-display');
+    if (display) {
+        display.textContent = Math.round(bonds) + '%';
+        // Warn if over 100%
+        if (stocks + cash > 100) {
             display.classList.add('text-red-600', 'dark:text-red-400');
             display.textContent = 'Over 100%!';
         } else {

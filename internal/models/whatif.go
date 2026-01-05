@@ -21,6 +21,11 @@ type WhatIfSettings struct {
 	RothPercent        float64 `json:"roth_percent"`         // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
 	// Taxable is computed as: 100 - TaxDeferredPercent - RothPercent
 
+	// Asset Allocation (stocks/bonds/cash)
+	StockPercent float64 `json:"stock_percent"` // % in stocks (default: 60)
+	CashPercent  float64 `json:"cash_percent"`  // % in cash/money market (default: 0)
+	// Bond % computed as: 100 - StockPercent - CashPercent
+
 	// Rates (as percentages, e.g., 4.0 for 4%)
 	InflationRate         float64 `json:"inflation_rate"`          // Annual inflation
 	HealthcareInflation   float64 `json:"healthcare_inflation"`    // Healthcare inflation (legacy, for single-person model)
@@ -166,6 +171,8 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		TaxDeferredPercent:    60.0, // Reduced from 70 to make room for Roth
 		RothPercent:           10.0, // Default 10% Roth
 		// Taxable is computed as: 100 - 60 - 10 = 30%
+		StockPercent:          60.0, // Default 60% stocks
+		CashPercent:           0.0,  // Default 0% cash (bonds = 40%)
 		InflationRate:         3.0,
 		HealthcareInflation:   6.0,
 		SpendingDeclineRate:   1.0,
@@ -576,18 +583,21 @@ type HistoricalYear struct {
 	Year          int     `json:"year"`
 	SP500Return   float64 `json:"sp500_return"`   // S&P 500 total return %
 	BondReturn    float64 `json:"bond_return"`    // 10-year Treasury return %
+	CashReturn    float64 `json:"cash_return"`    // 3-month T-bill return %
 	InflationRate float64 `json:"inflation_rate"` // CPI inflation %
 }
 
 // HistoricalBacktestResult represents testing retirement from one starting year
 type HistoricalBacktestResult struct {
-	StartYear       int     `json:"start_year"`
-	EndYear         int     `json:"end_year"`
-	Survives        bool    `json:"survives"`
-	FinalBalance    float64 `json:"final_balance"`
-	DepletionYear   int     `json:"depletion_year"`   // Year of depletion (0 if survives)
-	WorstDrawdown   float64 `json:"worst_drawdown"`   // Worst portfolio decline %
-	SequenceQuality string  `json:"sequence_quality"` // "favorable", "neutral", "adverse"
+	StartYear           int     `json:"start_year"`
+	EndYear             int     `json:"end_year"`
+	Survives            bool    `json:"survives"`
+	FinalBalance        float64 `json:"final_balance"`         // Nominal final balance
+	FinalBalanceReal    float64 `json:"final_balance_real"`    // Inflation-adjusted (start-year dollars)
+	CumulativeInflation float64 `json:"cumulative_inflation"`  // Total inflation factor over period
+	DepletionYear       int     `json:"depletion_year"`        // Year of depletion (0 if survives)
+	WorstDrawdown       float64 `json:"worst_drawdown"`        // Worst portfolio decline %
+	SequenceQuality     string  `json:"sequence_quality"`      // "favorable", "neutral", "adverse"
 }
 
 // HistoricalBacktestAnalysis contains complete backtesting results

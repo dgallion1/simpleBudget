@@ -72,7 +72,7 @@ func TestGetAvailableStartYears(t *testing.T) {
 }
 
 func TestGetHistoricalStats(t *testing.T) {
-	avgStock, avgBond, avgInflation, stockStdDev := GetHistoricalStats()
+	avgStock, avgBond, avgCash, avgInflation, stockStdDev, bondStdDev := GetHistoricalStats()
 
 	// Stock average should be positive (historically ~10%)
 	if avgStock < 5 || avgStock > 15 {
@@ -84,6 +84,11 @@ func TestGetHistoricalStats(t *testing.T) {
 		t.Errorf("Bond average %f outside reasonable range [1, 10]", avgBond)
 	}
 
+	// Cash average should be positive (historically ~3%)
+	if avgCash < 1 || avgCash > 6 {
+		t.Errorf("Cash average %f outside reasonable range [1, 6]", avgCash)
+	}
+
 	// Inflation average should be positive (historically ~3%)
 	if avgInflation < 1 || avgInflation > 6 {
 		t.Errorf("Inflation average %f outside reasonable range [1, 6]", avgInflation)
@@ -92,6 +97,11 @@ func TestGetHistoricalStats(t *testing.T) {
 	// Stock standard deviation should be meaningful
 	if stockStdDev < 10 || stockStdDev > 25 {
 		t.Errorf("Stock std dev %f outside reasonable range [10, 25]", stockStdDev)
+	}
+
+	// Bond standard deviation should be meaningful
+	if bondStdDev < 5 || bondStdDev > 15 {
+		t.Errorf("Bond std dev %f outside reasonable range [5, 15]", bondStdDev)
 	}
 }
 

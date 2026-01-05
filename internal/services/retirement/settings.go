@@ -393,6 +393,12 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["roth_percent"].(float64); ok {
 		settings.RothPercent = v
 	}
+	if v, ok := updates["stock_percent"].(float64); ok {
+		settings.StockPercent = v
+	}
+	if v, ok := updates["cash_percent"].(float64); ok {
+		settings.CashPercent = v
+	}
 	if v, ok := updates["inflation_rate"].(float64); ok {
 		settings.InflationRate = v
 	}

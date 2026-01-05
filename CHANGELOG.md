@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.2.0 - Enhanced Backtesting & Asset Allocation
+
+### New Features
+
+#### Configurable Asset Allocation
+- **Stock/Bond/Cash allocation**: Set your own portfolio mix instead of fixed 60/40
+- Stocks use S&P 500 historical returns
+- Bonds use 10-year Treasury yields
+- Cash uses 3-month T-bill rates
+- Bond percentage computed automatically (100% - stocks - cash)
+
+#### Historical T-Bill Returns
+- Added 97 years of cash/money market returns (1928-2024)
+- Source: NYU Stern/Damodaran historical returns database
+- Enables accurate modeling of conservative portfolios
+
+#### Inflation-Adjusted Results
+- Backtesting now shows both nominal and real (inflation-adjusted) balances
+- Real balance represents purchasing power in start-year dollars
+- Cumulative inflation tracked throughout each simulation
+
+#### Monte Carlo Asset Allocation
+- Monte Carlo simulation now uses your stock/bond/cash allocation
+- Separate return generation for each asset class with realistic volatility
+- Stocks: ~11.7% mean, 19% standard deviation
+- Bonds: ~5% mean, 8% standard deviation
+- Cash: ~3.3% mean (low volatility)
+- Flight-to-safety behavior: bonds rally during stock crashes
+
+### UI Improvements
+- New Asset Allocation section in Rate Assumptions card
+- "Final (Real)" column in historical backtest results table
+- Explanatory notes about inflation-adjusted values
+
+---
+
 ## v1.1.0 - Multi-Account Tax Support
 
 ### New Features

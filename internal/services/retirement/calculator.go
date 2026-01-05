@@ -1477,15 +1477,36 @@ type CrashTiming struct {
 // generateYearlyReturns creates a sequence of annual returns with crashes and volatility
 func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64 {
 	returns := make([]float64, years)
-	baseReturn := c.Settings.InvestmentReturn
+	s := c.Settings
+
+	// Get user's asset allocation (default to 60/40 stocks/bonds if not set)
+	stockPercent := s.StockPercent
+	cashPercent := s.CashPercent
+	if stockPercent == 0 && cashPercent == 0 {
+		stockPercent = 60.0 // Default 60% stocks
+	}
+	bondPercent := 100.0 - stockPercent - cashPercent
+
+	// Historical statistics for asset classes (from GetHistoricalStats)
+	// Stocks: ~11.7% mean, ~19% stddev
+	// Bonds: ~5% mean, ~8% stddev
+	// Cash: ~3.3% mean, minimal volatility
+	stockMean := 11.7
+	stockStdDev := 19.0
+	bondMean := 5.0
+	bondStdDev := 8.0
+	cashMean := 3.3
 
 	for y := 0; y < years; y++ {
-		var yearReturn float64
+		var stockReturn, bondReturn, cashReturn float64
 
-		// Check for market crash
+		// Check for market crash (affects stocks primarily)
 		if rng.Float64() < config.CrashProbability {
-			// Crash year: severe negative return
-			yearReturn = config.CrashSeverity + (rng.Float64()-0.5)*10 // -35% to -25%
+			// Crash year: severe negative stock return, bonds often rally (flight to safety)
+			stockReturn = config.CrashSeverity + (rng.Float64()-0.5)*10 // -35% to -25%
+			bondReturn = 10 + rng.NormFloat64()*5                       // Bonds typically rally during crashes
+			cashReturn = cashMean + rng.Float64()*1                     // Cash stable
+
 			timing.TotalCrashes++
 			*lastCrashYear = y
 
@@ -1503,15 +1524,27 @@ func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloCon
 				timing.LateCrashes++
 			}
 		} else if y == *lastCrashYear+1 {
-			// Recovery year after crash: typically strong
-			yearReturn = baseReturn + config.RecoveryBoost + rng.NormFloat64()*8
+			// Recovery year after crash: strong stock recovery, bonds normalize
+			stockReturn = stockMean + config.RecoveryBoost + rng.NormFloat64()*stockStdDev*0.8
+			bondReturn = bondMean + rng.NormFloat64()*bondStdDev
+			cashReturn = cashMean + rng.Float64()*0.5
 		} else {
-			// Normal year: base return with volatility (normal distribution)
-			yearReturn = baseReturn + rng.NormFloat64()*config.ReturnVolatility
+			// Normal year: returns with volatility (normal distribution)
+			stockReturn = stockMean + rng.NormFloat64()*stockStdDev
+			bondReturn = bondMean + rng.NormFloat64()*bondStdDev
+			cashReturn = cashMean + rng.Float64()*1 - 0.5 // Small variation
 		}
 
-		// Clamp to reasonable bounds (-50% to +50%)
-		yearReturn = math.Max(-50, math.Min(50, yearReturn))
+		// Clamp individual returns to reasonable bounds
+		stockReturn = math.Max(-50, math.Min(60, stockReturn))
+		bondReturn = math.Max(-20, math.Min(40, bondReturn))
+		cashReturn = math.Max(0, math.Min(15, cashReturn))
+
+		// Blend returns based on user's allocation
+		yearReturn := (stockPercent/100)*stockReturn +
+			(bondPercent/100)*bondReturn +
+			(cashPercent/100)*cashReturn
+
 		returns[y] = yearReturn
 	}
 

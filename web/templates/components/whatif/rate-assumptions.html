@@ -52,40 +52,94 @@
             </div>
         </div>
 
-        <div>
-            <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Asset Allocation</label>
-                <span class="text-xs text-gray-500 dark:text-gray-400">Must equal 100%</span>
+        <!-- Per-Account Asset Allocation -->
+        <div class="space-y-3">
+            <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Asset Allocation by Account</label>
+                <span class="text-xs text-gray-500 dark:text-gray-400">Each must equal 100%</span>
             </div>
-            <div class="grid grid-cols-3 gap-2">
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Stocks</label>
-                    <div class="flex items-center">
-                        <input type="number" name="stock_percent" value="{{printf "%.0f" .Settings.EffectiveStockPercent}}"
-                            min="0" max="100" step="5"
-                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                            oninput="updateBondPercent()">
-                        <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
-                    </div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">S&P 500</span>
+
+            <!-- Tax-Deferred Account -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Tax-Deferred (401k/IRA)</span>
+                    <span id="td-bond-display" class="text-xs text-gray-500 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxDeferredBondPct}}%</span>
                 </div>
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Bonds</label>
-                    <div id="bond-percent-display" class="py-2 px-3 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-600 rounded-md text-center">
-                        {{printf "%.0f" .Settings.EffectiveBondPercent}}%
-                    </div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">10Y Treasury</span>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cash</label>
+                <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
-                        <input type="number" name="cash_percent" value="{{printf "%.0f" .Settings.CashPercent}}"
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</span>
+                        <input type="number" name="tax_deferred_stock_percent"
+                            value="{{printf "%.0f" .Settings.TaxDeferredStockPct}}"
                             min="0" max="100" step="5"
-                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                            oninput="updateBondPercent()">
-                        <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
+                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            oninput="updateAccountBonds('td')">
+                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">T-Bills</span>
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</span>
+                        <input type="number" name="tax_deferred_cash_percent"
+                            value="{{printf "%.0f" .Settings.TaxDeferredCashPct}}"
+                            min="0" max="100" step="5"
+                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            oninput="updateAccountBonds('td')">
+                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Roth Account -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Roth (Roth IRA/401k)</span>
+                    <span id="roth-bond-display" class="text-xs text-gray-500 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.RothBondPct}}%</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</span>
+                        <input type="number" name="roth_stock_percent"
+                            value="{{printf "%.0f" .Settings.RothStockPct}}"
+                            min="0" max="100" step="5"
+                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            oninput="updateAccountBonds('roth')">
+                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</span>
+                        <input type="number" name="roth_cash_percent"
+                            value="{{printf "%.0f" .Settings.RothCashPct}}"
+                            min="0" max="100" step="5"
+                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            oninput="updateAccountBonds('roth')">
+                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taxable Account -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Taxable (Brokerage)</span>
+                    <span id="taxable-bond-display" class="text-xs text-gray-500 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxableBondPct}}%</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</span>
+                        <input type="number" name="taxable_stock_percent"
+                            value="{{printf "%.0f" .Settings.TaxableStockPct}}"
+                            min="0" max="100" step="5"
+                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            oninput="updateAccountBonds('taxable')">
+                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</span>
+                        <input type="number" name="taxable_cash_percent"
+                            value="{{printf "%.0f" .Settings.TaxableCashPct}}"
+                            min="0" max="100" step="5"
+                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            oninput="updateAccountBonds('taxable')">
+                        <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -182,13 +236,19 @@ function updateTaxablePercent() {
     }
 }
 
-function updateBondPercent() {
-    const stocks = parseFloat(document.querySelector('input[name="stock_percent"]').value) || 0;
-    const cash = parseFloat(document.querySelector('input[name="cash_percent"]').value) || 0;
+function updateAccountBonds(account) {
+    const prefixMap = {
+        'td': 'tax_deferred',
+        'roth': 'roth',
+        'taxable': 'taxable'
+    };
+    const prefix = prefixMap[account];
+    const stocks = parseFloat(document.querySelector(`input[name="${prefix}_stock_percent"]`).value) || 0;
+    const cash = parseFloat(document.querySelector(`input[name="${prefix}_cash_percent"]`).value) || 0;
     const bonds = Math.max(0, 100 - stocks - cash);
-    const display = document.getElementById('bond-percent-display');
+    const display = document.getElementById(`${account}-bond-display`);
     if (display) {
-        display.textContent = Math.round(bonds) + '%';
+        display.textContent = 'Bonds: ' + Math.round(bonds) + '%';
         // Warn if over 100%
         if (stocks + cash > 100) {
             display.classList.add('text-red-600', 'dark:text-red-400');
@@ -197,6 +257,11 @@ function updateBondPercent() {
             display.classList.remove('text-red-600', 'dark:text-red-400');
         }
     }
+}
+
+// Legacy function for backwards compatibility
+function updateBondPercent() {
+    // No longer used - per-account allocation now
 }
 
 function toggleSpendingPreview() {

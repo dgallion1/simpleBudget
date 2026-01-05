@@ -21,7 +21,15 @@ type WhatIfSettings struct {
 	RothPercent        float64 `json:"roth_percent"`         // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
 	// Taxable is computed as: 100 - TaxDeferredPercent - RothPercent
 
-	// Asset Allocation (stocks/bonds/cash)
+	// Per-Account Asset Allocation (stocks %, cash %; bonds = 100 - stocks - cash)
+	TaxDeferredStockPercent float64 `json:"tax_deferred_stock_percent"` // % of tax-deferred in stocks
+	TaxDeferredCashPercent  float64 `json:"tax_deferred_cash_percent"`  // % of tax-deferred in cash
+	RothStockPercent        float64 `json:"roth_stock_percent"`         // % of Roth in stocks
+	RothCashPercent         float64 `json:"roth_cash_percent"`          // % of Roth in cash
+	TaxableStockPercent     float64 `json:"taxable_stock_percent"`      // % of taxable in stocks
+	TaxableCashPercent      float64 `json:"taxable_cash_percent"`       // % of taxable in cash
+
+	// Legacy global Asset Allocation (deprecated, use per-account allocation above)
 	StockPercent float64 `json:"stock_percent"` // % in stocks (default: 60)
 	CashPercent  float64 `json:"cash_percent"`  // % in cash/money market (default: 0)
 	// Bond % computed as: 100 - StockPercent - CashPercent
@@ -193,6 +201,99 @@ func (s *WhatIfSettings) EffectiveStockPercent() float64 {
 func (s *WhatIfSettings) EffectiveBondPercent() float64 {
 	_, bond, _ := s.GetEffectiveAssetAllocation()
 	return bond
+}
+
+// PerAccountAllocationIsSet returns true if per-account allocation has been configured.
+func (s *WhatIfSettings) PerAccountAllocationIsSet() bool {
+	return s.TaxDeferredStockPercent != 0 || s.TaxDeferredCashPercent != 0 ||
+		s.RothStockPercent != 0 || s.RothCashPercent != 0 ||
+		s.TaxableStockPercent != 0 || s.TaxableCashPercent != 0
+}
+
+// GetTaxDeferredAllocation returns the asset allocation for tax-deferred accounts.
+// If not set, falls back to global allocation or defaults (60/40/0).
+func (s *WhatIfSettings) GetTaxDeferredAllocation() (stock, bond, cash float64) {
+	if s.TaxDeferredStockPercent != 0 || s.TaxDeferredCashPercent != 0 {
+		stock = s.TaxDeferredStockPercent
+		cash = s.TaxDeferredCashPercent
+	} else {
+		// Fall back to global allocation
+		stock, _, cash = s.GetEffectiveAssetAllocation()
+	}
+	bond = 100.0 - stock - cash
+	return stock, bond, cash
+}
+
+// GetRothAllocation returns the asset allocation for Roth accounts.
+// If not set, falls back to global allocation or defaults (60/40/0).
+func (s *WhatIfSettings) GetRothAllocation() (stock, bond, cash float64) {
+	if s.RothStockPercent != 0 || s.RothCashPercent != 0 {
+		stock = s.RothStockPercent
+		cash = s.RothCashPercent
+	} else {
+		// Fall back to global allocation
+		stock, _, cash = s.GetEffectiveAssetAllocation()
+	}
+	bond = 100.0 - stock - cash
+	return stock, bond, cash
+}
+
+// GetTaxableAllocation returns the asset allocation for taxable accounts.
+// If not set, falls back to global allocation or defaults (60/40/0).
+func (s *WhatIfSettings) GetTaxableAllocation() (stock, bond, cash float64) {
+	if s.TaxableStockPercent != 0 || s.TaxableCashPercent != 0 {
+		stock = s.TaxableStockPercent
+		cash = s.TaxableCashPercent
+	} else {
+		// Fall back to global allocation
+		stock, _, cash = s.GetEffectiveAssetAllocation()
+	}
+	bond = 100.0 - stock - cash
+	return stock, bond, cash
+}
+
+// GetBlendedReturn calculates the expected annual return for an account based on its allocation.
+// Uses historical means for each asset class.
+func GetBlendedReturn(stockPct, bondPct, cashPct float64, stockMean, bondMean, cashMean float64) float64 {
+	return (stockPct/100)*stockMean + (bondPct/100)*bondMean + (cashPct/100)*cashMean
+}
+
+// Template helper methods for per-account allocation display
+func (s *WhatIfSettings) TaxDeferredStockPct() float64 {
+	stock, _, _ := s.GetTaxDeferredAllocation()
+	return stock
+}
+func (s *WhatIfSettings) TaxDeferredBondPct() float64 {
+	_, bond, _ := s.GetTaxDeferredAllocation()
+	return bond
+}
+func (s *WhatIfSettings) TaxDeferredCashPct() float64 {
+	_, _, cash := s.GetTaxDeferredAllocation()
+	return cash
+}
+func (s *WhatIfSettings) RothStockPct() float64 {
+	stock, _, _ := s.GetRothAllocation()
+	return stock
+}
+func (s *WhatIfSettings) RothBondPct() float64 {
+	_, bond, _ := s.GetRothAllocation()
+	return bond
+}
+func (s *WhatIfSettings) RothCashPct() float64 {
+	_, _, cash := s.GetRothAllocation()
+	return cash
+}
+func (s *WhatIfSettings) TaxableStockPct() float64 {
+	stock, _, _ := s.GetTaxableAllocation()
+	return stock
+}
+func (s *WhatIfSettings) TaxableBondPct() float64 {
+	_, bond, _ := s.GetTaxableAllocation()
+	return bond
+}
+func (s *WhatIfSettings) TaxableCashPct() float64 {
+	_, _, cash := s.GetTaxableAllocation()
+	return cash
 }
 
 // DefaultWhatIfSettings returns sensible defaults for retirement planning

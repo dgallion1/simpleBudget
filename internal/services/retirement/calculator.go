@@ -342,11 +342,28 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		// Monthly cash flow needed from portfolio
 		neededFromPortfolio := totalExpenses - totalIncome
 
-		// Apply investment growth to all three portions
-		monthlyReturn := s.InvestmentReturn / 100 / 12
-		taxDeferredGrowth := taxDeferredBalance * monthlyReturn
-		rothGrowth := rothBalance * monthlyReturn
-		taxableGrowth := taxableBalance * monthlyReturn
+		// Apply investment growth to each account based on its asset allocation
+		// If InvestmentReturn is explicitly set (non-zero), use it as override for all accounts
+		var taxDeferredReturn, rothReturn, taxableReturn float64
+		if s.InvestmentReturn != 0 {
+			// Override mode: use single rate for all accounts
+			taxDeferredReturn = s.InvestmentReturn
+			rothReturn = s.InvestmentReturn
+			taxableReturn = s.InvestmentReturn
+		} else {
+			// Per-account allocation mode: calculate blended returns from historical means
+			stockMean, bondMean, cashMean, _, _, _ := GetHistoricalStats()
+			tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
+			rothStock, rothBond, rothCash := s.GetRothAllocation()
+			taxStock, taxBond, taxCash := s.GetTaxableAllocation()
+			taxDeferredReturn = models.GetBlendedReturn(tdStock, tdBond, tdCash, stockMean, bondMean, cashMean)
+			rothReturn = models.GetBlendedReturn(rothStock, rothBond, rothCash, stockMean, bondMean, cashMean)
+			taxableReturn = models.GetBlendedReturn(taxStock, taxBond, taxCash, stockMean, bondMean, cashMean)
+		}
+
+		taxDeferredGrowth := taxDeferredBalance * (taxDeferredReturn / 100 / 12)
+		rothGrowth := rothBalance * (rothReturn / 100 / 12)
+		taxableGrowth := taxableBalance * (taxableReturn / 100 / 12)
 		totalGrowth := taxDeferredGrowth + rothGrowth + taxableGrowth
 
 		taxDeferredBalance += taxDeferredGrowth
@@ -1240,8 +1257,13 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	// Adaptive spending: track when we're in reduced-spending mode
 	adaptationEndYear := -1 // Year when adaptation ends (-1 = not adapting)
 
-	// Generate year-by-year returns upfront for sequence of returns
-	yearlyReturns := c.generateYearlyReturns(rng, config, projectionYears, crashTiming, &lastCrashYear)
+	// Generate year-by-year returns upfront for sequence of returns (per asset class)
+	assetReturns := c.generateAssetReturns(rng, config, projectionYears, crashTiming, &lastCrashYear)
+
+	// Get per-account allocations for blending returns
+	tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
+	rothStock, rothBond, rothCash := s.GetRothAllocation()
+	taxStock, taxBond, taxCash := s.GetTaxableAllocation()
 
 	for m := 0; m < months; m++ {
 		if depleted {
@@ -1331,8 +1353,8 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		activeHealthcare := s.GetTotalHealthcareCost(m) * healthcareVariation
 		totalExpenses := currentLivingExpenses + activeHealthcare
 
-		// Check if we should enter adaptation mode (crash detected this year)
-		if config.AdaptiveSpending && yearlyReturns[currentYear] < -15 {
+		// Check if we should enter adaptation mode (crash detected this year via stock returns)
+		if config.AdaptiveSpending && assetReturns.Stock[currentYear] < -15 {
 			// Crash year: start adapting spending
 			adaptationEndYear = currentYear + config.AdaptationRecoveryYears
 		}
@@ -1375,13 +1397,19 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		// Monthly cash flow needed from portfolio
 		neededFromPortfolio := totalExpenses - totalIncome
 
-		// Apply this year's investment return (from pre-generated sequence)
-		annualReturn := yearlyReturns[currentYear]
-		monthlyReturn := annualReturn / 100 / 12
+		// Apply this year's investment returns (per-account based on allocation)
+		stockReturn := assetReturns.Stock[currentYear]
+		bondReturn := assetReturns.Bond[currentYear]
+		cashReturn := assetReturns.Cash[currentYear]
 
-		taxDeferredGrowth := taxDeferredBalance * monthlyReturn
-		rothGrowth := rothBalance * monthlyReturn
-		taxableGrowth := taxableBalance * monthlyReturn
+		// Calculate per-account blended returns
+		tdReturn := models.GetBlendedReturn(tdStock, tdBond, tdCash, stockReturn, bondReturn, cashReturn)
+		rothReturn := models.GetBlendedReturn(rothStock, rothBond, rothCash, stockReturn, bondReturn, cashReturn)
+		taxReturn := models.GetBlendedReturn(taxStock, taxBond, taxCash, stockReturn, bondReturn, cashReturn)
+
+		taxDeferredGrowth := taxDeferredBalance * (tdReturn / 100 / 12)
+		rothGrowth := rothBalance * (rothReturn / 100 / 12)
+		taxableGrowth := taxableBalance * (taxReturn / 100 / 12)
 
 		taxDeferredBalance += taxDeferredGrowth
 		rothBalance += rothGrowth
@@ -1474,13 +1502,18 @@ type CrashTiming struct {
 	FirstCrashYear int // 0 means no crashes (1-indexed for display)
 }
 
-// generateYearlyReturns creates a sequence of annual returns with crashes and volatility
-func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64 {
-	returns := make([]float64, years)
-	s := c.Settings
+// AssetReturns holds per-asset-class returns for Monte Carlo simulation
+type AssetReturns struct {
+	Stock []float64
+	Bond  []float64
+	Cash  []float64
+}
 
-	// Get user's asset allocation with defaults applied
-	stockPercent, bondPercent, cashPercent := s.GetEffectiveAssetAllocation()
+// generateAssetReturns creates sequences of annual returns per asset class with crashes and volatility
+func (c *Calculator) generateAssetReturns(rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) *AssetReturns {
+	stockReturns := make([]float64, years)
+	bondReturns := make([]float64, years)
+	cashReturns := make([]float64, years)
 
 	// Get historical statistics for asset classes
 	stockMean, bondMean, cashMean, _, stockStdDev, bondStdDev := GetHistoricalStats()
@@ -1524,16 +1557,33 @@ func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloCon
 		}
 
 		// Clamp individual returns to reasonable bounds
-		stockReturn = math.Max(-50, math.Min(60, stockReturn))
-		bondReturn = math.Max(-20, math.Min(40, bondReturn))
-		cashReturn = math.Max(0, math.Min(15, cashReturn))
+		stockReturns[y] = math.Max(-50, math.Min(60, stockReturn))
+		bondReturns[y] = math.Max(-20, math.Min(40, bondReturn))
+		cashReturns[y] = math.Max(0, math.Min(15, cashReturn))
+	}
 
-		// Blend returns based on user's allocation
-		yearReturn := (stockPercent/100)*stockReturn +
-			(bondPercent/100)*bondReturn +
-			(cashPercent/100)*cashReturn
+	return &AssetReturns{
+		Stock: stockReturns,
+		Bond:  bondReturns,
+		Cash:  cashReturns,
+	}
+}
 
-		returns[y] = yearReturn
+// generateYearlyReturns creates a sequence of annual returns with crashes and volatility
+// Deprecated: Use generateAssetReturns for per-account allocation support
+func (c *Calculator) generateYearlyReturns(rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64 {
+	assetReturns := c.generateAssetReturns(rng, config, years, timing, lastCrashYear)
+	s := c.Settings
+
+	// Get user's asset allocation with defaults applied
+	stockPercent, bondPercent, cashPercent := s.GetEffectiveAssetAllocation()
+
+	// Blend returns based on user's allocation
+	returns := make([]float64, years)
+	for y := 0; y < years; y++ {
+		returns[y] = (stockPercent/100)*assetReturns.Stock[y] +
+			(bondPercent/100)*assetReturns.Bond[y] +
+			(cashPercent/100)*assetReturns.Cash[y]
 	}
 
 	return returns

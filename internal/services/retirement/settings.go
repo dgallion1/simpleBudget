@@ -399,6 +399,25 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["cash_percent"].(float64); ok {
 		settings.CashPercent = v
 	}
+	// Per-account asset allocation
+	if v, ok := updates["tax_deferred_stock_percent"].(float64); ok {
+		settings.TaxDeferredStockPercent = v
+	}
+	if v, ok := updates["tax_deferred_cash_percent"].(float64); ok {
+		settings.TaxDeferredCashPercent = v
+	}
+	if v, ok := updates["roth_stock_percent"].(float64); ok {
+		settings.RothStockPercent = v
+	}
+	if v, ok := updates["roth_cash_percent"].(float64); ok {
+		settings.RothCashPercent = v
+	}
+	if v, ok := updates["taxable_stock_percent"].(float64); ok {
+		settings.TaxableStockPercent = v
+	}
+	if v, ok := updates["taxable_cash_percent"].(float64); ok {
+		settings.TaxableCashPercent = v
+	}
 	if v, ok := updates["inflation_rate"].(float64); ok {
 		settings.InflationRate = v
 	}

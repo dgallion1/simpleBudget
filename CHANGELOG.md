@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.3.0 - Per-Account Asset Allocation
+
+### New Features
+
+#### Per-Account Asset Allocation
+- **Independent allocation per account type**: Tax-Deferred, Roth, and Taxable accounts can each have different stock/bond/cash allocations
+- Example: Conservative 60/40 for Tax-Deferred, aggressive 90/10 for Taxable brokerage account
+- Returns derived from historical means (~10.5% stocks, ~5.2% bonds, ~3.5% cash)
+- Auto-rebalancing maintains target allocation each year
+- Investment Return slider now acts as override (if set, applies flat rate to all accounts)
+
+#### Enhanced Monte Carlo
+- Monte Carlo simulation now uses per-account allocation
+- Generates separate stock/bond/cash return sequences, then blends per account
+- More realistic modeling of diversified portfolios with different risk profiles
+
+### UI Improvements
+- New "Asset Allocation by Account" section replaces single global allocation
+- Each account shows Stocks/Cash inputs with calculated Bonds display
+- Bond percentage updates dynamically as you adjust
+
+---
+
 ## v1.2.0 - Enhanced Backtesting & Asset Allocation
 
 ### New Features

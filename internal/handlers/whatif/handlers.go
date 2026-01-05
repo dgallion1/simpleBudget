@@ -359,6 +359,76 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["cash_percent"] = v
 	}
 
+	// Per-account asset allocation fields
+	// Tax-Deferred allocation
+	if v, err := parseFormFloat(r, "tax_deferred_stock_percent"); err != nil {
+		renderError(w, "Invalid tax-deferred stock percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("tax_deferred_stock_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Tax-deferred stock percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["tax_deferred_stock_percent"] = v
+	}
+
+	if v, err := parseFormFloat(r, "tax_deferred_cash_percent"); err != nil {
+		renderError(w, "Invalid tax-deferred cash percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("tax_deferred_cash_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Tax-deferred cash percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["tax_deferred_cash_percent"] = v
+	}
+
+	// Roth allocation
+	if v, err := parseFormFloat(r, "roth_stock_percent"); err != nil {
+		renderError(w, "Invalid Roth stock percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("roth_stock_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Roth stock percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["roth_stock_percent"] = v
+	}
+
+	if v, err := parseFormFloat(r, "roth_cash_percent"); err != nil {
+		renderError(w, "Invalid Roth cash percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("roth_cash_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Roth cash percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["roth_cash_percent"] = v
+	}
+
+	// Taxable allocation
+	if v, err := parseFormFloat(r, "taxable_stock_percent"); err != nil {
+		renderError(w, "Invalid taxable stock percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("taxable_stock_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Taxable stock percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["taxable_stock_percent"] = v
+	}
+
+	if v, err := parseFormFloat(r, "taxable_cash_percent"); err != nil {
+		renderError(w, "Invalid taxable cash percent: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("taxable_cash_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Taxable cash percent must be between 0 and 100", http.StatusBadRequest)
+			return
+		}
+		updates["taxable_cash_percent"] = v
+	}
+
 	if v, err := parseFormFloat(r, "inflation_rate"); err != nil {
 		renderError(w, "Invalid inflation rate: "+err.Error(), http.StatusBadRequest)
 		return

@@ -96,6 +96,7 @@
                         <th class="text-left py-1">Phase</th>
                         <th class="text-right py-1">Spending</th>
                         <th class="text-right py-1" id="vs-header">vs Start</th>
+                        <th class="text-right py-1">WR%</th>
                     </tr>
                 </thead>
                 <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">
@@ -231,11 +232,14 @@ function updatePhasePreview() {
         });
     }
 
+    // Get portfolio value for withdrawal rate calculation
+    const portfolioValue = parseFloat(document.getElementById('portfolio-slider')?.value || '1000000');
+
     // Generate preview ages from current age to end of projection
     const endAge = currentAge + projectionYears;
     const ages = [currentAge];
-    // Add 5-year increments
-    for (let age = currentAge + 5; age < endAge; age += 5) {
+    // Add 2-year increments
+    for (let age = currentAge + 2; age < endAge; age += 2) {
         ages.push(age);
     }
     // Always include the final age
@@ -321,11 +325,20 @@ function updatePhasePreview() {
                         vsLabel > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300';
         }
 
+        // Calculate withdrawal rate (annual spending / portfolio value)
+        // For nominal view, use the nominal spending; for today's view, use today's spending
+        const annualSpending = spending * 12;
+        const withdrawalRate = (annualSpending / portfolioValue) * 100;
+        const wrColorClass = withdrawalRate > 5 ? 'text-red-600 dark:text-red-400' :
+                            withdrawalRate > 4 ? 'text-amber-600 dark:text-amber-400' :
+                            'text-green-600 dark:text-green-400';
+
         row.innerHTML = `
             <td class="py-1">${age}</td>
             <td class="py-1 text-gray-500 dark:text-gray-400">${phaseName}</td>
             <td class="text-right py-1">$${Math.round(spending).toLocaleString()}</td>
             <td class="text-right py-1 ${colorClass}">${sign}${vsLabel.toFixed(0)}%</td>
+            <td class="text-right py-1 ${wrColorClass}">${withdrawalRate.toFixed(1)}%</td>
         `;
         tbody.appendChild(row);
     });

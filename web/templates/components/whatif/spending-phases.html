@@ -69,24 +69,41 @@
     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div class="flex items-center justify-between mb-2">
             <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Spending Trajectory</h4>
-            <button type="button" onclick="togglePhasePreview()"
-                class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                <span id="phase-preview-toggle-text">Show</span>
-            </button>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="togglePhasePreview()"
+                    class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    <span id="phase-preview-toggle-text">Show</span>
+                </button>
+            </div>
         </div>
         <div id="phase-preview-panel" class="hidden text-xs">
+            <!-- Dollar view toggle -->
+            <div class="flex items-center justify-end gap-1 mb-2">
+                <span class="text-gray-500 dark:text-gray-400 text-xs">View:</span>
+                <button type="button" id="btn-nominal" onclick="setDollarView('nominal')"
+                    class="px-2 py-0.5 rounded text-xs bg-indigo-600 text-white">
+                    Nominal $
+                </button>
+                <button type="button" id="btn-today" onclick="setDollarView('today')"
+                    class="px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                    Today's $
+                </button>
+            </div>
             <table class="w-full">
                 <thead>
                     <tr class="text-gray-500 dark:text-gray-400">
                         <th class="text-left py-1">Age</th>
                         <th class="text-left py-1">Phase</th>
                         <th class="text-right py-1">Spending</th>
-                        <th class="text-right py-1">vs Start</th>
+                        <th class="text-right py-1" id="vs-header">vs Start</th>
                     </tr>
                 </thead>
                 <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">
                 </tbody>
             </table>
+            <p id="dollar-view-note" class="mt-2 text-xs text-gray-500 dark:text-gray-400 italic hidden">
+                Today's $ shows purchasing power in current dollars (inflation-adjusted)
+            </p>
         </div>
     </div>
 </div>
@@ -95,6 +112,9 @@
 {{/* Spending Phases Scripts */}}
 {{define "whatif-spending-phases-scripts"}}
 <script>
+// Track current dollar view mode
+let dollarViewMode = 'nominal';
+
 function togglePhaseInputs(enabled) {
     const config = document.getElementById('spending-phases-config');
     if (enabled) {
@@ -117,6 +137,27 @@ function togglePhasePreview() {
     }
 }
 
+function setDollarView(mode) {
+    dollarViewMode = mode;
+    const btnNominal = document.getElementById('btn-nominal');
+    const btnToday = document.getElementById('btn-today');
+    const note = document.getElementById('dollar-view-note');
+    const vsHeader = document.getElementById('vs-header');
+
+    if (mode === 'nominal') {
+        btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
+        btnToday.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
+        note.classList.add('hidden');
+        vsHeader.textContent = 'vs Start';
+    } else {
+        btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
+        btnToday.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
+        note.classList.remove('hidden');
+        vsHeader.textContent = 'Buying Power';
+    }
+    updatePhasePreview();
+}
+
 function updatePhasePreview() {
     const panel = document.getElementById('phase-preview-panel');
     if (panel.classList.contains('hidden')) return;
@@ -124,6 +165,7 @@ function updatePhasePreview() {
     const currentAge = parseInt(document.querySelector('[name="current_age"]')?.value || '65');
     const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '4000');
     const inflation = parseFloat(document.getElementById('inflation-rate-slider')?.value || '3');
+    const projectionYears = parseInt(document.querySelector('[name="projection_years"]')?.value || '30');
 
     // Get phase settings
     const phases = [];
@@ -136,8 +178,18 @@ function updatePhasePreview() {
         });
     }
 
-    // Generate preview
-    const ages = [currentAge, currentAge + 5, currentAge + 10, currentAge + 15, currentAge + 20, currentAge + 25];
+    // Generate preview ages from current age to end of projection
+    const endAge = currentAge + projectionYears;
+    const ages = [currentAge];
+    // Add 5-year increments
+    for (let age = currentAge + 5; age < endAge; age += 5) {
+        ages.push(age);
+    }
+    // Always include the final age
+    if (ages[ages.length - 1] !== endAge) {
+        ages.push(endAge);
+    }
+
     const tbody = document.getElementById('phase-preview-body');
     tbody.innerHTML = '';
 
@@ -156,21 +208,39 @@ function updatePhasePreview() {
         }
 
         const inflationFactor = Math.pow(1 + inflation/100, years);
-        const spending = baseExpenses * multiplier * inflationFactor;
-        const vsStart = ((multiplier * inflationFactor) - 1) * 100;
+
+        let spending, vsStart, vsLabel;
+        if (dollarViewMode === 'nominal') {
+            // Nominal dollars: show actual future dollar amounts
+            spending = baseExpenses * multiplier * inflationFactor;
+            vsStart = ((multiplier * inflationFactor) - 1) * 100;
+            vsLabel = vsStart;
+        } else {
+            // Today's dollars: divide by inflation to show real purchasing power
+            spending = baseExpenses * multiplier;
+            vsStart = (multiplier - 1) * 100;
+            vsLabel = vsStart;
+        }
 
         const row = document.createElement('tr');
         row.className = 'border-t border-gray-200 dark:border-gray-600';
 
-        const sign = vsStart >= 0 ? '+' : '';
-        const colorClass = vsStart < 0 ? 'text-green-600 dark:text-green-400' :
-                          vsStart > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300';
+        const sign = vsLabel >= 0 ? '+' : '';
+        let colorClass;
+        if (dollarViewMode === 'today') {
+            // In real dollars, negative means reduced spending power (phase decline)
+            colorClass = vsLabel < 0 ? 'text-amber-600 dark:text-amber-400' :
+                        vsLabel === 0 ? 'text-gray-600 dark:text-gray-300' : 'text-green-600 dark:text-green-400';
+        } else {
+            colorClass = vsLabel < 0 ? 'text-green-600 dark:text-green-400' :
+                        vsLabel > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300';
+        }
 
         row.innerHTML = `
             <td class="py-1">${age}</td>
             <td class="py-1 text-gray-500 dark:text-gray-400">${phaseName}</td>
             <td class="text-right py-1">$${Math.round(spending).toLocaleString()}</td>
-            <td class="text-right py-1 ${colorClass}">${sign}${vsStart.toFixed(0)}%</td>
+            <td class="text-right py-1 ${colorClass}">${sign}${vsLabel.toFixed(0)}%</td>
         `;
         tbody.appendChild(row);
     });

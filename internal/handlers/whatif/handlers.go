@@ -179,6 +179,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/healthcare", handleWhatIfAddHealthcare)
 	r.Put("/whatif/healthcare/{id}", handleWhatIfUpdateHealthcare)
 	r.Delete("/whatif/healthcare/{id}", handleWhatIfDeleteHealthcare)
+	r.Post("/whatif/spending-phases", handleWhatIfSpendingPhases)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
@@ -1079,6 +1080,61 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.RemoveHealthcarePerson(id)
 	if err != nil {
 		renderError(w, "Failed to remove healthcare person: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis := runAnalysisWithCache(settings)
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// handleWhatIfSpendingPhases handles updates to spending phase configuration
+func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Parse enabled toggle
+	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+
+	// Build phases from form data
+	phases := []models.SpendingPhase{}
+	defaultPhases := models.DefaultSpendingPhases()
+
+	for i := 0; i < 3; i++ {
+		phase := defaultPhases[i] // Start with defaults
+
+		// Parse start age if provided
+		if startAgeStr := r.FormValue(fmt.Sprintf("phase_%d_start_age", i)); startAgeStr != "" {
+			if startAge, err := parseFormInt(r, fmt.Sprintf("phase_%d_start_age", i)); err == nil {
+				phase.StartAge = startAge
+			}
+		}
+
+		// Parse multiplier if provided
+		if multStr := r.FormValue(fmt.Sprintf("phase_%d_multiplier", i)); multStr != "" {
+			if mult, err := parseFormFloat(r, fmt.Sprintf("phase_%d_multiplier", i)); err == nil {
+				phase.Multiplier = mult
+			}
+		}
+
+		phases = append(phases, phase)
+	}
+
+	settings, err := retirementMgr.UpdateSpendingPhases(enabled, phases)
+	if err != nil {
+		renderError(w, "Failed to save spending phases: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

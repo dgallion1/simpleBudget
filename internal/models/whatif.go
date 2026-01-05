@@ -22,9 +22,12 @@ type WhatIfSettings struct {
 	// Rates (as percentages, e.g., 4.0 for 4%)
 	InflationRate         float64 `json:"inflation_rate"`          // Annual inflation
 	HealthcareInflation   float64 `json:"healthcare_inflation"`    // Healthcare inflation (legacy, for single-person model)
-	SpendingDeclineRate   float64 `json:"spending_decline_rate"`   // Annual spending reduction
+	SpendingDeclineRate   float64 `json:"spending_decline_rate"`   // Annual spending reduction (used when phases disabled)
 	InvestmentReturn      float64 `json:"investment_return"`       // Expected portfolio return
 	DiscountRate          float64 `json:"discount_rate"`           // For PV calculations
+
+	// Phase-based spending (go-go/slow-go/no-go retirement phases)
+	SpendingPhaseConfig *SpendingPhaseConfig `json:"spending_phase_config,omitempty"`
 
 	// Projection
 	ProjectionYears         int     `json:"projection_years"`           // Number of years to project
@@ -37,6 +40,62 @@ type WhatIfSettings struct {
 	// Recently Removed (for restore functionality)
 	RemovedIncomeSources  []IncomeSource  `json:"removed_income_sources,omitempty"`
 	RemovedExpenseSources []ExpenseSource `json:"removed_expense_sources,omitempty"`
+}
+
+// SpendingPhase represents a retirement spending phase with age-based multiplier
+type SpendingPhase struct {
+	Name        string  `json:"name"`        // "Go-Go", "Slow-Go", "No-Go"
+	StartAge    int     `json:"start_age"`   // Age when phase begins
+	Multiplier  float64 `json:"multiplier"`  // Spending multiplier (e.g., 1.0, 0.85, 0.70)
+	Description string  `json:"description"` // User-friendly description
+}
+
+// SpendingPhaseConfig holds phase-based spending configuration
+type SpendingPhaseConfig struct {
+	Enabled bool           `json:"enabled"` // Toggle between simple decline and phase-based
+	Phases  []SpendingPhase `json:"phases"`
+}
+
+// DefaultSpendingPhases returns research-based spending phase defaults
+func DefaultSpendingPhases() []SpendingPhase {
+	return []SpendingPhase{
+		{
+			Name:        "Go-Go",
+			StartAge:    0, // Starts at retirement (relative to CurrentAge)
+			Multiplier:  1.00,
+			Description: "Active retirement: travel, hobbies, dining out",
+		},
+		{
+			Name:        "Slow-Go",
+			StartAge:    75,
+			Multiplier:  0.85,
+			Description: "Reduced activity: less travel, more home-based",
+		},
+		{
+			Name:        "No-Go",
+			StartAge:    85,
+			Multiplier:  0.70,
+			Description: "Limited mobility: basic needs focus",
+		},
+	}
+}
+
+// GetSpendingMultiplier returns the spending multiplier for a given age
+// based on the phase configuration. Returns 1.0 if phases are disabled.
+func (s *WhatIfSettings) GetSpendingMultiplier(age int) float64 {
+	config := s.SpendingPhaseConfig
+	if config == nil || !config.Enabled || len(config.Phases) == 0 {
+		return 1.0 // No phase-based adjustment
+	}
+
+	// Find the applicable phase (phases sorted by StartAge ascending)
+	multiplier := 1.0
+	for _, phase := range config.Phases {
+		if age >= phase.StartAge {
+			multiplier = phase.Multiplier
+		}
+	}
+	return multiplier
 }
 
 // GetTotalHealthcareCost returns total healthcare cost for a given month
@@ -90,6 +149,11 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		ExpenseSources:        []ExpenseSource{},
 		RemovedIncomeSources:  []IncomeSource{},
 		RemovedExpenseSources: []ExpenseSource{},
+		// Phase-based spending (disabled by default to preserve existing behavior)
+		SpendingPhaseConfig: &SpendingPhaseConfig{
+			Enabled: false,
+			Phases:  DefaultSpendingPhases(),
+		},
 	}
 }
 

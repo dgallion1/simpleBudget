@@ -33,6 +33,19 @@
         </div>
 
         <div>
+            {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}
+            <!-- Phases enabled - show status message -->
+            <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Model</label>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-2">
+                Using <span class="font-medium text-indigo-600 dark:text-indigo-400">phase-based spending</span> model.
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">
+                Configure phases in the Spending Phases card below.
+            </p>
+            {{else}}
+            <!-- Phases disabled - show decline rate slider -->
             <div class="flex items-center justify-between">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Decline Rate (%)</label>
                 <button type="button" onclick="toggleSpendingPreview()"
@@ -67,6 +80,7 @@
                     </tbody>
                 </table>
             </div>
+            {{end}}
         </div>
 
         <div>

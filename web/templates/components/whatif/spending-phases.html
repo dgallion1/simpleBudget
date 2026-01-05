@@ -1,0 +1,186 @@
+{{/* Spending Phases Card */}}
+{{/* Expects: .Settings with SpendingPhaseConfig, SpendingDeclineRate, InflationRate */}}
+{{define "whatif-spending-phases"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Retirement Spending Phases</h3>
+        <form hx-post="/whatif/spending-phases" hx-target="#whatif-results" hx-include="[name^='phase_']">
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="enabled"
+                    {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}checked{{end}}
+                    onchange="this.form.requestSubmit(); togglePhaseInputs(this.checked)"
+                    class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                <span class="ml-2 text-sm text-gray-500 dark:text-gray-300">Enable phases</span>
+            </label>
+        </form>
+    </div>
+
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        Research shows spending naturally decreases through retirement.
+        {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}
+            Phase-based model is active.
+        {{else}}
+            Currently using {{printf "%.1f" .Settings.SpendingDeclineRate}}% annual decline rate.
+        {{end}}
+    </p>
+
+    <div id="spending-phases-config" class="{{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}opacity-50 pointer-events-none{{end}}">
+        <form hx-post="/whatif/spending-phases" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+            class="space-y-3">
+            <input type="hidden" name="enabled" value="{{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}true{{else}}false{{end}}">
+
+            {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Phases}}
+            {{range $i, $phase := .Settings.SpendingPhaseConfig.Phases}}
+            <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-medium text-gray-700 dark:text-gray-200">{{$phase.Name}}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                        {{if eq $i 0}}Retirement start{{else}}Age {{$phase.StartAge}}+{{end}}
+                    </span>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{$phase.Description}}</p>
+                <div class="flex items-center gap-3">
+                    {{if ne $i 0}}
+                    <div class="flex items-center gap-1">
+                        <label class="text-xs text-gray-600 dark:text-gray-300">Age</label>
+                        <input type="number" name="phase_{{$i}}_start_age" value="{{$phase.StartAge}}"
+                            min="50" max="100" step="1"
+                            class="w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-600 dark:text-gray-100 text-sm py-1">
+                    </div>
+                    {{end}}
+                    <div class="flex-1 flex items-center gap-2">
+                        <label class="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">Spending</label>
+                        <input type="range" name="phase_{{$i}}_multiplier"
+                            value="{{printf "%.2f" $phase.Multiplier}}"
+                            min="0.50" max="1.20" step="0.05"
+                            class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
+                            oninput="this.nextElementSibling.textContent = Math.round(this.value * 100) + '%'">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+            {{end}}
+        </form>
+    </div>
+
+    <!-- Spending Trajectory Preview -->
+    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Spending Trajectory</h4>
+            <button type="button" onclick="togglePhasePreview()"
+                class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                <span id="phase-preview-toggle-text">Show</span>
+            </button>
+        </div>
+        <div id="phase-preview-panel" class="hidden text-xs">
+            <table class="w-full">
+                <thead>
+                    <tr class="text-gray-500 dark:text-gray-400">
+                        <th class="text-left py-1">Age</th>
+                        <th class="text-left py-1">Phase</th>
+                        <th class="text-right py-1">Spending</th>
+                        <th class="text-right py-1">vs Start</th>
+                    </tr>
+                </thead>
+                <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{/* Spending Phases Scripts */}}
+{{define "whatif-spending-phases-scripts"}}
+<script>
+function togglePhaseInputs(enabled) {
+    const config = document.getElementById('spending-phases-config');
+    if (enabled) {
+        config.classList.remove('opacity-50', 'pointer-events-none');
+    } else {
+        config.classList.add('opacity-50', 'pointer-events-none');
+    }
+}
+
+function togglePhasePreview() {
+    const panel = document.getElementById('phase-preview-panel');
+    const toggleText = document.getElementById('phase-preview-toggle-text');
+    if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        toggleText.textContent = 'Hide';
+        updatePhasePreview();
+    } else {
+        panel.classList.add('hidden');
+        toggleText.textContent = 'Show';
+    }
+}
+
+function updatePhasePreview() {
+    const panel = document.getElementById('phase-preview-panel');
+    if (panel.classList.contains('hidden')) return;
+
+    const currentAge = parseInt(document.querySelector('[name="current_age"]')?.value || '65');
+    const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '4000');
+    const inflation = parseFloat(document.getElementById('inflation-rate-slider')?.value || '3');
+
+    // Get phase settings
+    const phases = [];
+    for (let i = 0; i < 3; i++) {
+        const startAgeInput = document.querySelector(`[name="phase_${i}_start_age"]`);
+        const multiplierInput = document.querySelector(`[name="phase_${i}_multiplier"]`);
+        phases.push({
+            startAge: i === 0 ? 0 : parseInt(startAgeInput?.value || (65 + i * 10)),
+            multiplier: parseFloat(multiplierInput?.value || 1)
+        });
+    }
+
+    // Generate preview
+    const ages = [currentAge, currentAge + 5, currentAge + 10, currentAge + 15, currentAge + 20, currentAge + 25];
+    const tbody = document.getElementById('phase-preview-body');
+    tbody.innerHTML = '';
+
+    ages.forEach((age, idx) => {
+        const years = age - currentAge;
+
+        // Find applicable phase
+        let phaseName = 'Go-Go';
+        let multiplier = 1.0;
+        for (let i = phases.length - 1; i >= 0; i--) {
+            if (age >= phases[i].startAge) {
+                multiplier = phases[i].multiplier;
+                phaseName = ['Go-Go', 'Slow-Go', 'No-Go'][i];
+                break;
+            }
+        }
+
+        const inflationFactor = Math.pow(1 + inflation/100, years);
+        const spending = baseExpenses * multiplier * inflationFactor;
+        const vsStart = ((multiplier * inflationFactor) - 1) * 100;
+
+        const row = document.createElement('tr');
+        row.className = 'border-t border-gray-200 dark:border-gray-600';
+
+        const sign = vsStart >= 0 ? '+' : '';
+        const colorClass = vsStart < 0 ? 'text-green-600 dark:text-green-400' :
+                          vsStart > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300';
+
+        row.innerHTML = `
+            <td class="py-1">${age}</td>
+            <td class="py-1 text-gray-500 dark:text-gray-400">${phaseName}</td>
+            <td class="text-right py-1">$${Math.round(spending).toLocaleString()}</td>
+            <td class="text-right py-1 ${colorClass}">${sign}${vsStart.toFixed(0)}%</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// Update preview when phase sliders change
+document.addEventListener('input', function(e) {
+    if (e.target.name && e.target.name.startsWith('phase_')) {
+        updatePhasePreview();
+    }
+});
+</script>
+{{end}}

@@ -84,6 +84,25 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 		settings.HealthcarePersons = []models.HealthcarePerson{}
 	}
 
+	// Migration: Initialize spending phase config if missing
+	if settings.SpendingPhaseConfig == nil {
+		// Default to disabled (preserves existing SpendingDeclineRate behavior)
+		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+			Enabled: false,
+			Phases:  models.DefaultSpendingPhases(),
+		}
+	} else if len(settings.SpendingPhaseConfig.Phases) == 0 {
+		// Ensure phases are populated even if config exists but empty
+		settings.SpendingPhaseConfig.Phases = models.DefaultSpendingPhases()
+	}
+
+	// Ensure all phases have valid multipliers
+	for i := range settings.SpendingPhaseConfig.Phases {
+		if settings.SpendingPhaseConfig.Phases[i].Multiplier == 0 {
+			settings.SpendingPhaseConfig.Phases[i].Multiplier = 1.0
+		}
+	}
+
 	// Migration: if no healthcare persons but legacy healthcare value exists,
 	// create a single person from legacy values
 	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
@@ -391,6 +410,37 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	}
 	if v, ok := updates["steady_state_override_year"].(float64); ok {
 		settings.SteadyStateOverrideYear = v
+	}
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// UpdateSpendingPhases updates spending phase configuration atomically
+func (sm *SettingsManager) UpdateSpendingPhases(enabled bool, phases []models.SpendingPhase) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize config if needed
+	if settings.SpendingPhaseConfig == nil {
+		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+			Phases: models.DefaultSpendingPhases(),
+		}
+	}
+
+	settings.SpendingPhaseConfig.Enabled = enabled
+
+	// Update phases if provided
+	if len(phases) > 0 {
+		settings.SpendingPhaseConfig.Phases = phases
 	}
 
 	if err := sm.saveInternal(settings); err != nil {

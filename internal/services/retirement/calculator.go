@@ -121,21 +121,40 @@ func (c *Calculator) CalculateTotalIncome(month int) float64 {
 // CalculateTotalExpenses returns total expenses for a specific month
 func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	s := c.Settings
+	years := month / 12
+	currentAge := s.CurrentAge + years
 
-	// Calculate living expenses with inflation and spending decline
+	// Calculate living expenses based on spending model
 	livingExpenses := s.MonthlyLivingExpenses
-	if month > 0 {
-		years := month / 12
-		netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
-		livingExpenses = s.MonthlyLivingExpenses * math.Pow(1+netInflation, float64(years))
+
+	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+		// Phase-based spending: apply phase multiplier + general inflation only
+		phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+		if month > 0 {
+			inflationFactor := math.Pow(1+s.InflationRate/100, float64(years))
+			livingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
+		} else {
+			livingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
+		}
+	} else {
+		// Simple decline mode (existing behavior)
+		if month > 0 {
+			netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
+			livingExpenses = s.MonthlyLivingExpenses * math.Pow(1+netInflation, float64(years))
+		}
 	}
 
 	// Calculate healthcare expenses using the settings helper (handles both legacy and multi-person)
 	healthcareExpenses := s.GetTotalHealthcareCost(month)
 
-	// Add expense sources
+	// Add expense sources (discretionary sources also get phase multiplier when enabled)
 	for _, source := range s.ExpenseSources {
-		livingExpenses += source.GetAdjustedAmount(month, s.InflationRate)
+		expenseAmount := source.GetAdjustedAmount(month, s.InflationRate)
+		// Apply phase multiplier to discretionary expenses
+		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
+			expenseAmount *= s.GetSpendingMultiplier(currentAge)
+		}
+		livingExpenses += expenseAmount
 	}
 
 	return livingExpenses + healthcareExpenses
@@ -151,13 +170,27 @@ type ExpenseBreakdown struct {
 // CalculateExpenseBreakdown separates expenses into discretionary and essential
 func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
 	s := c.Settings
+	years := month / 12
+	currentAge := s.CurrentAge + years
 
 	// Base living expenses are treated as essential (conservative approach)
 	livingExpenses := s.MonthlyLivingExpenses
-	if month > 0 {
-		years := month / 12
-		netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
-		livingExpenses = s.MonthlyLivingExpenses * math.Pow(1+netInflation, float64(years))
+
+	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+		// Phase-based spending: apply phase multiplier + general inflation only
+		phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+		if month > 0 {
+			inflationFactor := math.Pow(1+s.InflationRate/100, float64(years))
+			livingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
+		} else {
+			livingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
+		}
+	} else {
+		// Simple decline mode (existing behavior)
+		if month > 0 {
+			netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
+			livingExpenses = s.MonthlyLivingExpenses * math.Pow(1+netInflation, float64(years))
+		}
 	}
 
 	// Healthcare is always essential
@@ -169,6 +202,10 @@ func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
 	// Categorize expense sources
 	for _, source := range s.ExpenseSources {
 		amount := source.GetAdjustedAmount(month, s.InflationRate)
+		// Apply phase multiplier to discretionary expenses
+		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
+			amount *= s.GetSpendingMultiplier(currentAge)
+		}
 		if source.Discretionary {
 			discretionary += amount
 		} else {
@@ -204,12 +241,25 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 	for m := 0; m < months; m++ {
 		currentAge := s.CurrentAge + (m / 12)
+		currentYear := m / 12
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
-			if m > 0 {
-				netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
-				currentLivingExpenses *= (1 + netInflation)
+			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+				// Phase-based: recalculate from base each year with phase multiplier + inflation
+				phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+				if m > 0 {
+					inflationFactor := math.Pow(1+s.InflationRate/100, float64(currentYear))
+					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
+				} else {
+					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
+				}
+			} else {
+				// Simple decline mode (existing behavior)
+				if m > 0 {
+					netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100
+					currentLivingExpenses *= (1 + netInflation)
+				}
 			}
 
 			// Calculate annual RMD at start of each year (age 73+)
@@ -226,9 +276,13 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		activeHealthcare := s.GetTotalHealthcareCost(m)
 		totalExpenses := currentLivingExpenses + activeHealthcare
 
-		// Add expense sources
+		// Add expense sources (discretionary sources get phase multiplier when enabled)
 		for _, source := range s.ExpenseSources {
-			totalExpenses += source.GetAdjustedAmount(m, s.InflationRate)
+			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
+			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
+				expenseAmount *= s.GetSpendingMultiplier(currentAge)
+			}
+			totalExpenses += expenseAmount
 		}
 
 		// Calculate income
@@ -1122,11 +1176,24 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
-			if m > 0 {
-				// Apply inflation with some random variation
-				inflationVar := 1 + (rng.Float64()-0.5)*0.02 // +/- 1%
-				netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100 * inflationVar
-				currentLivingExpenses *= (1 + netInflation)
+			// Apply inflation with some random variation
+			inflationVar := 1 + (rng.Float64()-0.5)*0.02 // +/- 1%
+
+			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+				// Phase-based: recalculate from base each year with phase multiplier + inflation
+				phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+				if m > 0 {
+					inflationFactor := math.Pow(1+s.InflationRate/100*inflationVar, float64(currentYear))
+					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
+				} else {
+					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
+				}
+			} else {
+				// Simple decline mode (existing behavior)
+				if m > 0 {
+					netInflation := (s.InflationRate - s.SpendingDeclineRate) / 100 * inflationVar
+					currentLivingExpenses *= (1 + netInflation)
+				}
 			}
 
 			// Healthcare cost variation (healthcare is more volatile, +/- 2%)
@@ -1152,9 +1219,13 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		}
 		inAdaptationMode := config.AdaptiveSpending && currentYear <= adaptationEndYear
 
-		// Add expense sources (with adaptive spending reduction if applicable)
+		// Add expense sources (with phase multiplier and adaptive spending reduction if applicable)
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
+			// Apply phase multiplier to discretionary expenses
+			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
+				expenseAmount *= s.GetSpendingMultiplier(currentAge)
+			}
 			// Reduce discretionary expenses during adaptation
 			if inAdaptationMode && source.Discretionary {
 				expenseAmount *= (1 - config.DiscretionaryCutPercent/100)

@@ -169,9 +169,9 @@ func (s *WhatIfSettings) HasMultiPersonHealthcare() bool {
 }
 
 // AssetAllocationIsSet returns true if the user has explicitly configured asset allocation.
-// This is detected by checking if any allocation field is non-zero.
+// This checks both legacy global fields and per-account allocation fields.
 func (s *WhatIfSettings) AssetAllocationIsSet() bool {
-	return s.StockPercent != 0 || s.CashPercent != 0
+	return s.StockPercent != 0 || s.CashPercent != 0 || s.PerAccountAllocationIsSet()
 }
 
 // GetEffectiveAssetAllocation returns normalized asset allocation percentages

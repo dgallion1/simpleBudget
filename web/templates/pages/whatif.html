@@ -78,6 +78,11 @@
         {{end}}
     </div>
 
+    {{/* Update expense sources data for spending trajectory preview */}}
+    <div id="expense-sources-data-wrapper" hx-swap-oob="true">
+        {{template "whatif-expense-sources-data" .}}
+    </div>
+
     <div id="removed-expense-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
         {{if .Settings.RemovedExpenseSources}}
         <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>

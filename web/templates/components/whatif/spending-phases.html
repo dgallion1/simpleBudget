@@ -109,11 +109,38 @@
 </div>
 {{end}}
 
+{{/* Expense Sources Data - separate template for OOB updates */}}
+{{define "whatif-expense-sources-data"}}
+<script id="expense-sources-data">
+// Additional expense sources from settings (updated via OOB)
+window.expenseSources = [
+{{- if .Settings.ExpenseSources}}
+{{- range $i, $src := .Settings.ExpenseSources}}
+{{- if $i}},{{end}}
+    {name: "{{$src.Name}}", amount: {{$src.Amount}}, startYear: {{$src.StartYear}}, endYear: {{$src.EndYear}}, inflation: {{$src.Inflation}}, discretionary: {{$src.Discretionary}}}
+{{- end}}
+{{- end}}
+];
+// Trigger preview update if visible
+if (typeof updatePhasePreview === 'function') {
+    updatePhasePreview();
+}
+</script>
+{{end}}
+
 {{/* Spending Phases Scripts */}}
 {{define "whatif-spending-phases-scripts"}}
+<div id="expense-sources-data-wrapper">
+{{template "whatif-expense-sources-data" .}}
+</div>
 <script>
 // Track current dollar view mode
 let dollarViewMode = 'nominal';
+
+// Getter for expense sources (uses window.expenseSources set by OOB-updatable script)
+function getExpenseSources() {
+    return window.expenseSources || [];
+}
 
 function togglePhaseInputs(enabled) {
     const config = document.getElementById('spending-phases-config');
@@ -158,6 +185,29 @@ function setDollarView(mode) {
     updatePhasePreview();
 }
 
+// Calculate additional expenses for a given year (0-indexed from now)
+function getAdditionalExpenses(year, inflation, phaseEnabled, multiplier) {
+    let total = 0;
+    for (const src of getExpenseSources()) {
+        // Check if expense is active this year
+        if (year < src.startYear) continue;
+        if (src.endYear > 0 && year >= src.endYear) continue;
+
+        let amount = src.amount;
+        // Apply inflation if enabled for this expense
+        if (src.inflation && inflation > 0) {
+            const yearsSinceStart = year - src.startYear;
+            amount *= Math.pow(1 + inflation/100, yearsSinceStart);
+        }
+        // Apply phase multiplier to discretionary expenses
+        if (phaseEnabled && src.discretionary) {
+            amount *= multiplier;
+        }
+        total += amount;
+    }
+    return total;
+}
+
 function updatePhasePreview() {
     const panel = document.getElementById('phase-preview-panel');
     if (panel.classList.contains('hidden')) return;
@@ -166,6 +216,9 @@ function updatePhasePreview() {
     const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '4000');
     const inflation = parseFloat(document.getElementById('inflation-rate-slider')?.value || '3');
     const projectionYears = parseInt(document.querySelector('[name="projection_years"]')?.value || '30');
+
+    // Check if phases are enabled
+    const phasesEnabled = document.querySelector('[name="enabled"]')?.checked || false;
 
     // Get phase settings
     const phases = [];
@@ -190,6 +243,11 @@ function updatePhasePreview() {
         ages.push(endAge);
     }
 
+    // Calculate initial spending (year 0) for comparison
+    let initialMultiplier = phasesEnabled ? phases[0].multiplier : 1.0;
+    const initialAdditional = getAdditionalExpenses(0, inflation, phasesEnabled, initialMultiplier);
+    const initialSpending = baseExpenses * initialMultiplier + initialAdditional;
+
     const tbody = document.getElementById('phase-preview-body');
     tbody.innerHTML = '';
 
@@ -199,26 +257,53 @@ function updatePhasePreview() {
         // Find applicable phase
         let phaseName = 'Go-Go';
         let multiplier = 1.0;
-        for (let i = phases.length - 1; i >= 0; i--) {
-            if (age >= phases[i].startAge) {
-                multiplier = phases[i].multiplier;
-                phaseName = ['Go-Go', 'Slow-Go', 'No-Go'][i];
-                break;
+        if (phasesEnabled) {
+            for (let i = phases.length - 1; i >= 0; i--) {
+                if (age >= phases[i].startAge) {
+                    multiplier = phases[i].multiplier;
+                    phaseName = ['Go-Go', 'Slow-Go', 'No-Go'][i];
+                    break;
+                }
             }
+        } else {
+            phaseName = '-';
         }
 
         const inflationFactor = Math.pow(1 + inflation/100, years);
 
+        // Get additional expenses for this year
+        const additionalExpenses = getAdditionalExpenses(years, inflation, phasesEnabled, multiplier);
+
         let spending, vsStart, vsLabel;
         if (dollarViewMode === 'nominal') {
             // Nominal dollars: show actual future dollar amounts
-            spending = baseExpenses * multiplier * inflationFactor;
-            vsStart = ((multiplier * inflationFactor) - 1) * 100;
+            // Base expenses get inflation and phase multiplier
+            const baseWithPhase = baseExpenses * multiplier * inflationFactor;
+            // Additional expenses already have inflation applied in getAdditionalExpenses
+            // but need current year's inflation factor for nominal view
+            let additionalNominal = 0;
+            for (const src of getExpenseSources()) {
+                if (years < src.startYear) continue;
+                if (src.endYear > 0 && years >= src.endYear) continue;
+                let amount = src.amount;
+                // For nominal view, apply full inflation from year 0
+                if (src.inflation) {
+                    amount *= Math.pow(1 + inflation/100, years);
+                }
+                if (phasesEnabled && src.discretionary) {
+                    amount *= multiplier;
+                }
+                additionalNominal += amount;
+            }
+            spending = baseWithPhase + additionalNominal;
+            // Calculate initial nominal for comparison
+            const initialNominal = baseExpenses * initialMultiplier + initialAdditional;
+            vsStart = ((spending / initialNominal) - 1) * 100;
             vsLabel = vsStart;
         } else {
-            // Today's dollars: divide by inflation to show real purchasing power
-            spending = baseExpenses * multiplier;
-            vsStart = (multiplier - 1) * 100;
+            // Today's dollars: show real purchasing power (no inflation applied)
+            spending = baseExpenses * multiplier + additionalExpenses;
+            vsStart = ((spending / initialSpending) - 1) * 100;
             vsLabel = vsStart;
         }
 

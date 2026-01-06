@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.4.0 - Bug Fixes & Spouse Age Tracking
+
+### Bug Fixes
+
+#### Fixed Monthly Return Calculation
+- **Critical fix**: Corrected compound interest calculation for monthly portfolio returns
+- Old calculation used simple division (annual/12) instead of geometric conversion
+- This was inflating projected returns by ~1.4%/year, compounding to 60% higher final balances
+- Now uses correct formula: `monthly = (1 + annual)^(1/12) - 1`
+
+#### RMD Calculations for Couples
+- RMD calculations now correctly use the older spouse's age for joint accounts
+- Fixed template type mismatch in healthcare timeline comparison
+
+#### Per-Account Allocation Improvements
+- Fixed issue where explicit 0% stock allocations were ignored
+- Sensitivity analysis now uses effective return rate when in allocation mode
+- Asset allocation changes now properly update projection charts
+
+### New Features
+
+#### Spouse Age Tracking
+- Added spouse age tracking for retirement spending phases
+- Enables more accurate RMD and healthcare cost projections for couples
+
+### UI Improvements
+- Show dollar amounts next to account types in asset allocation section
+- Moved Income Sources card higher in what-if sidebar for better visibility
+- Improved chart loading when settings change
+
+---
+
 ## v1.3.0 - Per-Account Asset Allocation
 
 ### New Features

@@ -210,6 +210,43 @@ function calculateRMD(taxDeferredBalance, age) {
     return taxDeferredBalance / factor;
 }
 
+// Calculate expected return from per-account asset allocation
+// Mirrors Go's GetExpectedReturnFromAllocation() method
+function getExpectedReturnFromAllocation() {
+    // Conservative forward-looking estimates
+    const stockMean = 7.0;
+    const bondMean = 4.0;
+    const cashMean = 3.0;
+
+    // Get account weights
+    const tdPercent = parseFloat(document.querySelector('input[name="tax_deferred_percent"]')?.value) || 60;
+    const rothPercent = parseFloat(document.querySelector('input[name="roth_percent"]')?.value) || 10;
+    const taxPercent = Math.max(0, 100 - tdPercent - rothPercent);
+
+    // Get per-account allocations (default 60/40/0 if not set)
+    const getVal = (name, def) => parseFloat(document.querySelector(`input[name="${name}"]`)?.value) || def;
+
+    const tdStock = getVal('tax_deferred_stock_percent', 60);
+    const tdCash = getVal('tax_deferred_cash_percent', 0);
+    const tdBond = 100 - tdStock - tdCash;
+
+    const rothStock = getVal('roth_stock_percent', 60);
+    const rothCash = getVal('roth_cash_percent', 0);
+    const rothBond = 100 - rothStock - rothCash;
+
+    const taxStock = getVal('taxable_stock_percent', 60);
+    const taxCash = getVal('taxable_cash_percent', 0);
+    const taxBond = 100 - taxStock - taxCash;
+
+    // Calculate blended return for each account
+    const tdReturn = (tdStock * stockMean + tdBond * bondMean + tdCash * cashMean) / 100;
+    const rothReturn = (rothStock * stockMean + rothBond * bondMean + rothCash * cashMean) / 100;
+    const taxReturn = (taxStock * stockMean + taxBond * bondMean + taxCash * cashMean) / 100;
+
+    // Weight by account percentage
+    return (tdPercent * tdReturn + rothPercent * rothReturn + taxPercent * taxReturn) / 100;
+}
+
 // Getter for expense sources (uses window.expenseSources set by OOB-updatable script)
 function getExpenseSources() {
     return window.expenseSources || [];
@@ -350,7 +387,11 @@ function updatePhasePreview() {
     const taxDeferredPct = parseFloat(document.querySelector('[name="tax_deferred_percent"]')?.value || '60');
     const rothPct = parseFloat(document.querySelector('[name="roth_percent"]')?.value || '10');
     const taxablePct = Math.max(0, 100 - taxDeferredPct - rothPct);
-    const investmentReturn = parseFloat(document.getElementById('investment-return-slider')?.value || '6');
+    let investmentReturn = parseFloat(document.getElementById('investment-return-slider')?.value || '6');
+    // When slider is 0, use expected return from per-account asset allocation
+    if (investmentReturn === 0) {
+        investmentReturn = getExpectedReturnFromAllocation();
+    }
     const annualReturn = investmentReturn / 100;
 
     // Generate preview years - every year for accurate RMD tracking

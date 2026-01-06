@@ -103,9 +103,13 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	projections := make([]models.RMDProjection, 0)
 	totalRMDs10Yr := 0.0
 
-	// Estimate future tax-deferred balance using investment return
-	// This is a simplified projection - actual will depend on withdrawals
-	monthlyReturn := s.InvestmentReturn / 100 / 12
+	// Get effective return (either explicit or calculated from per-account allocation)
+	// When InvestmentReturn=0, the projection uses per-account asset allocation blended returns
+	investmentReturn := s.InvestmentReturn
+	if investmentReturn == 0 {
+		investmentReturn = s.GetExpectedReturnFromAllocation()
+	}
+	monthlyReturn := investmentReturn / 100 / 12
 	currentBalance := taxDeferredValue
 
 	rmdCount := 0

@@ -122,14 +122,14 @@ func (c *Calculator) CalculateTotalIncome(month int) float64 {
 func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	s := c.Settings
 	years := month / 12
-	currentAge := s.CurrentAge + years
+	phaseAge := s.GetPhaseReferenceAge(years) // Age used for spending phase calculations (may differ for couples)
 
 	// Calculate living expenses based on spending model
 	livingExpenses := s.MonthlyLivingExpenses
 
 	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 		// Phase-based spending: apply phase multiplier + general inflation only
-		phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+		phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
 		if month > 0 {
 			inflationFactor := math.Pow(1+s.InflationRate/100, float64(years))
 			livingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
@@ -152,7 +152,7 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 		expenseAmount := source.GetAdjustedAmount(month, s.InflationRate)
 		// Apply phase multiplier to discretionary expenses
 		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-			expenseAmount *= s.GetSpendingMultiplier(currentAge)
+			expenseAmount *= s.GetSpendingMultiplier(phaseAge)
 		}
 		livingExpenses += expenseAmount
 	}
@@ -171,14 +171,14 @@ type ExpenseBreakdown struct {
 func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
 	s := c.Settings
 	years := month / 12
-	currentAge := s.CurrentAge + years
+	phaseAge := s.GetPhaseReferenceAge(years) // Age used for spending phase calculations (may differ for couples)
 
 	// Base living expenses are treated as essential (conservative approach)
 	livingExpenses := s.MonthlyLivingExpenses
 
 	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 		// Phase-based spending: apply phase multiplier + general inflation only
-		phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+		phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
 		if month > 0 {
 			inflationFactor := math.Pow(1+s.InflationRate/100, float64(years))
 			livingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
@@ -204,7 +204,7 @@ func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
 		amount := source.GetAdjustedAmount(month, s.InflationRate)
 		// Apply phase multiplier to discretionary expenses
 		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-			amount *= s.GetSpendingMultiplier(currentAge)
+			amount *= s.GetSpendingMultiplier(phaseAge)
 		}
 		if source.Discretionary {
 			discretionary += amount
@@ -241,14 +241,16 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	var monthlyRMD float64
 
 	for m := 0; m < months; m++ {
-		currentAge := s.CurrentAge + (m / 12)
 		currentYear := m / 12
+		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
+		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
+		olderAge := s.GetOlderAge() + currentYear
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				// Phase-based: recalculate from base each year with phase multiplier + inflation
-				phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
 				if m > 0 {
 					inflationFactor := math.Pow(1+s.InflationRate/100, float64(currentYear))
 					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
@@ -264,8 +266,8 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			}
 
 			// Calculate annual RMD at start of each year (age 73+)
-			if currentAge >= RMDStartAge && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, currentAge)
+			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 				monthlyRMD = annualRMD / 12
 			} else {
 				annualRMD = 0
@@ -331,7 +333,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-				expenseAmount *= s.GetSpendingMultiplier(currentAge)
+				expenseAmount *= s.GetSpendingMultiplier(phaseAge)
 			}
 			totalExpenses += expenseAmount
 		}
@@ -489,10 +491,12 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	monthlyIncome := c.CalculateTotalIncome(0)
 
 	// Calculate RMD if age 73+ and have tax-deferred balance
+	// Uses older person's age - whoever hits 73 first triggers RMD
 	monthlyRMD := 0.0
-	if s.CurrentAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+	olderAge := s.GetOlderAge()
+	if olderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
 		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-		annualRMD, _ := CalculateRMD(taxDeferredBalance, s.CurrentAge)
+		annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
 		monthlyRMD = annualRMD / 12
 	}
 
@@ -564,14 +568,14 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		result.SteadyStateExpenses = c.CalculateTotalExpenses(steadyStateMonth)
 		result.SteadyStateIncome = c.CalculateTotalIncome(steadyStateMonth)
 
-		// Calculate RMD at steady state age
-		steadyStateAge := s.CurrentAge + (steadyStateMonth / 12)
-		if steadyStateAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+		// Calculate RMD at steady state age (uses older person's age)
+		steadyStateOlderAge := s.GetOlderAge() + (steadyStateMonth / 12)
+		if steadyStateOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
 			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
 			yearsToSteadyState := float64(steadyStateMonth) / 12
 			estimatedTaxDeferred := s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 				math.Pow(1+s.InvestmentReturn/100, yearsToSteadyState)
-			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, steadyStateAge)
+			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, steadyStateOlderAge)
 			result.SteadyStateRMD = annualRMD / 12
 		}
 
@@ -1279,8 +1283,10 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			break
 		}
 
-		currentAge := s.CurrentAge + (m / 12)
 		currentYear := m / 12
+		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
+		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
+		olderAge := s.GetOlderAge() + currentYear
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
@@ -1289,7 +1295,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				// Phase-based: recalculate from base each year with phase multiplier + inflation
-				phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
 				if m > 0 {
 					inflationFactor := math.Pow(1+s.InflationRate/100*inflationVar, float64(currentYear))
 					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
@@ -1308,8 +1314,8 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			healthcareVariation = 1 + (rng.Float64()-0.5)*0.04
 
 			// Calculate annual RMD
-			if currentAge >= RMDStartAge && taxDeferredBalance > 0 {
-				annualRMD, _ := CalculateRMD(taxDeferredBalance, currentAge)
+			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+				annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
 				monthlyRMD = annualRMD / 12
 			} else {
 				monthlyRMD = 0
@@ -1374,7 +1380,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
 			// Apply phase multiplier to discretionary expenses
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-				expenseAmount *= s.GetSpendingMultiplier(currentAge)
+				expenseAmount *= s.GetSpendingMultiplier(phaseAge)
 			}
 			// Reduce discretionary expenses during adaptation
 			if inAdaptationMode && source.Discretionary {

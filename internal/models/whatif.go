@@ -16,8 +16,10 @@ type WhatIfSettings struct {
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
 
 	// RMD Settings
-	CurrentAge         int     `json:"current_age"`          // User's current age
-	TaxDeferredPercent float64 `json:"tax_deferred_percent"` // % of portfolio in tax-deferred accounts (401k, IRA)
+	CurrentAge         int     `json:"current_age"`                      // User's current age
+	SpouseAge          int     `json:"spouse_age,omitempty"`             // Spouse's current age (0 = no spouse)
+	PhaseAgeReference  string  `json:"phase_age_reference,omitempty"`    // "younger", "older", "primary", "spouse" - which age triggers phases
+	TaxDeferredPercent float64 `json:"tax_deferred_percent"`             // % of portfolio in tax-deferred accounts (401k, IRA)
 	RothPercent        float64 `json:"roth_percent"`         // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
 	// Taxable is computed as: 100 - TaxDeferredPercent - RothPercent
 
@@ -116,6 +118,61 @@ func DefaultSpendingPhases() []SpendingPhase {
 			Description: "Limited mobility: basic needs focus",
 		},
 	}
+}
+
+// HasSpouse returns true if spouse age is configured
+func (s *WhatIfSettings) HasSpouse() bool {
+	return s.SpouseAge > 0
+}
+
+// GetYoungerAge returns the younger of primary and spouse ages
+func (s *WhatIfSettings) GetYoungerAge() int {
+	if !s.HasSpouse() || s.SpouseAge >= s.CurrentAge {
+		return s.CurrentAge
+	}
+	return s.SpouseAge
+}
+
+// GetOlderAge returns the older of primary and spouse ages
+func (s *WhatIfSettings) GetOlderAge() int {
+	if !s.HasSpouse() || s.SpouseAge <= s.CurrentAge {
+		return s.CurrentAge
+	}
+	return s.SpouseAge
+}
+
+// GetPhaseReferenceAge returns the age to use for spending phase calculations
+// based on PhaseAgeReference setting ("younger", "older", "primary", "spouse")
+func (s *WhatIfSettings) GetPhaseReferenceAge(yearsElapsed int) int {
+	var baseAge int
+	switch s.PhaseAgeReference {
+	case "spouse":
+		if s.HasSpouse() {
+			baseAge = s.SpouseAge
+		} else {
+			baseAge = s.CurrentAge
+		}
+	case "older":
+		baseAge = s.GetOlderAge()
+	case "younger":
+		baseAge = s.GetYoungerAge()
+	default: // "primary" or empty
+		baseAge = s.CurrentAge
+	}
+	return baseAge + yearsElapsed
+}
+
+// PrimaryAgeAt returns primary person's age at a given year in the projection
+func (s *WhatIfSettings) PrimaryAgeAt(year int) int {
+	return s.CurrentAge + year
+}
+
+// SpouseAgeAt returns spouse's age at a given year in the projection (0 if no spouse)
+func (s *WhatIfSettings) SpouseAgeAt(year int) int {
+	if !s.HasSpouse() {
+		return 0
+	}
+	return s.SpouseAge + year
 }
 
 // GetSpendingMultiplier returns the spending multiplier for a given age
@@ -345,7 +402,9 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		MonthlyHealthcare:     500,
 		HealthcareStartYears:  0,
 		CurrentAge:            65,
-		TaxDeferredPercent:    60.0, // Reduced from 70 to make room for Roth
+		SpouseAge:             0,         // 0 = no spouse
+		PhaseAgeReference:     "younger", // Default to younger person for conservative longevity planning
+		TaxDeferredPercent:    60.0,      // Reduced from 70 to make room for Roth
 		RothPercent:           10.0, // Default 10% Roth
 		// Taxable is computed as: 100 - 60 - 10 = 30%
 		StockPercent:          60.0, // Default 60% stocks

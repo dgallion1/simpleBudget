@@ -293,6 +293,27 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["current_age"] = v
 	}
 
+	// Spouse age (0 = no spouse)
+	if v, err := parseFormInt(r, "spouse_age"); err != nil {
+		renderError(w, "Invalid spouse age: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if r.FormValue("spouse_age") != "" {
+		if v < 0 || v > 120 {
+			renderError(w, "Spouse age must be between 0 and 120", http.StatusBadRequest)
+			return
+		}
+		updates["spouse_age"] = v
+	}
+
+	// Phase age reference (which person's age triggers phase transitions)
+	if v := r.FormValue("phase_age_reference"); v != "" {
+		if v != "younger" && v != "older" && v != "primary" && v != "spouse" {
+			renderError(w, "Invalid phase age reference", http.StatusBadRequest)
+			return
+		}
+		updates["phase_age_reference"] = v
+	}
+
 	if v, err := parseFormFloat(r, "tax_deferred_percent"); err != nil {
 		renderError(w, "Invalid tax-deferred percent: "+err.Error(), http.StatusBadRequest)
 		return

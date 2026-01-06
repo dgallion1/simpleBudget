@@ -161,8 +161,10 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	}
 
 	for m := 0; m < months; m++ {
-		currentAge := s.CurrentAge + (m / 12)
 		currentYear := m / 12
+		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
+		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
+		olderAge := s.GetOlderAge() + currentYear
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
@@ -176,7 +178,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			}
 
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-				phaseMultiplier := s.GetSpendingMultiplier(currentAge)
+				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
 				if m > 0 {
 					inflationFactor := math.Pow(1+inflationRate, float64(currentYear))
 					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
@@ -190,8 +192,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			}
 
 			// Calculate RMD
-			if currentAge >= RMDStartAge && taxDeferredBalance > 0 {
-				annualRMD, _ := CalculateRMD(taxDeferredBalance, currentAge)
+			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+				annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
 				monthlyRMD = annualRMD / 12
 			} else {
 				monthlyRMD = 0
@@ -251,7 +253,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-				expenseAmount *= s.GetSpendingMultiplier(currentAge)
+				expenseAmount *= s.GetSpendingMultiplier(phaseAge)
 			}
 			totalExpenses += expenseAmount
 		}

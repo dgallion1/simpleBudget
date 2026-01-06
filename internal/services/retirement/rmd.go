@@ -90,8 +90,11 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	// Calculate tax-deferred portion of portfolio
 	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 
+	// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
+	olderAge := s.GetOlderAge()
+
 	// Calculate years until RMDs begin
-	startsInYears := RMDStartAge - s.CurrentAge
+	startsInYears := RMDStartAge - olderAge
 	if startsInYears < 0 {
 		startsInYears = 0
 	}
@@ -107,7 +110,7 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 
 	rmdCount := 0
 	for year := 0; year <= s.ProjectionYears && rmdCount < 20; year++ {
-		age := s.CurrentAge + year
+		age := olderAge + year
 
 		// Only project RMDs for ages 73+
 		if age >= RMDStartAge {
@@ -144,7 +147,7 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	return &models.RMDAnalysis{
 		StartsInYears:     startsInYears,
 		StartAge:          RMDStartAge,
-		CurrentAge:        s.CurrentAge,
+		CurrentAge:        olderAge, // Uses older person's age for RMD calculations
 		TaxDeferredValue:  taxDeferredValue,
 		Projections:       projections,
 		TotalRMDsOver10Yr: totalRMDs10Yr,

@@ -37,7 +37,7 @@
                     <span class="font-medium text-gray-700 dark:text-gray-200">{{$phase.Name}}</span>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-500 dark:text-gray-400">
-                            {{if eq $i 0}}Retirement start{{else}}Age {{$phase.StartAge}}+{{end}}
+                            {{if eq $i 0}}Retirement start{{else}}{{if gt $.Settings.SpouseAge 0}}{{if eq $.Settings.PhaseAgeReference "younger"}}Younger{{else if eq $.Settings.PhaseAgeReference "older"}}Older{{else if eq $.Settings.PhaseAgeReference "spouse"}}Spouse{{else}}Your{{end}} age {{$phase.StartAge}}+{{else}}Age {{$phase.StartAge}}+{{end}}{{end}}
                         </span>
                         {{if gt $i 0}}
                         <button type="button"
@@ -128,11 +128,17 @@
             <table class="w-full">
                 <thead>
                     <tr class="text-gray-500 dark:text-gray-400">
+                        {{if gt .Settings.SpouseAge 0}}
+                        <th class="text-left py-1">You</th>
+                        <th class="text-left py-1">Spouse</th>
+                        {{else}}
                         <th class="text-left py-1">Age</th>
+                        {{end}}
                         <th class="text-left py-1">Phase</th>
-                        <th class="text-right py-1">Spending</th>
+                        <th class="text-right py-1">Spend</th>
                         <th class="text-right py-1">Income</th>
-                        <th class="text-right py-1" id="vs-header">vs Start</th>
+                        <th class="text-right py-1">Need</th>
+                        <th class="text-right py-1">RMD</th>
                         <th class="text-right py-1">WR%</th>
                     </tr>
                 </thead>
@@ -183,6 +189,26 @@ if (typeof updatePhasePreview === 'function') {
 <script>
 // Track current dollar view mode
 let dollarViewMode = 'nominal';
+
+// IRS Uniform Lifetime Table (ages 72-120)
+const uniformLifetimeTable = {
+    72: 27.4, 73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1,
+    80: 20.2, 81: 19.4, 82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4,
+    88: 13.7, 89: 12.9, 90: 12.2, 91: 11.5, 92: 10.8, 93: 10.1, 94: 9.5, 95: 8.9,
+    96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4, 101: 6.0, 102: 5.6, 103: 5.2,
+    104: 4.9, 105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9, 109: 3.7, 110: 3.5,
+    111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7,
+    118: 2.5, 119: 2.3, 120: 2.0
+};
+
+const RMD_START_AGE = 73;
+
+// Calculate RMD for a given tax-deferred balance and age
+function calculateRMD(taxDeferredBalance, age) {
+    if (age < RMD_START_AGE || taxDeferredBalance <= 0) return 0;
+    const factor = uniformLifetimeTable[age] || 2.0; // Use minimum for ages > 120
+    return taxDeferredBalance / factor;
+}
 
 // Getter for expense sources (uses window.expenseSources set by OOB-updatable script)
 function getExpenseSources() {
@@ -240,18 +266,15 @@ function setDollarView(mode) {
     const btnNominal = document.getElementById('btn-nominal');
     const btnToday = document.getElementById('btn-today');
     const note = document.getElementById('dollar-view-note');
-    const vsHeader = document.getElementById('vs-header');
 
     if (mode === 'nominal') {
         btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
         btnToday.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
         note.classList.add('hidden');
-        vsHeader.textContent = 'vs Start';
     } else {
         btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
         btnToday.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
         note.classList.remove('hidden');
-        vsHeader.textContent = 'Buying Power';
     }
     updatePhasePreview();
 }
@@ -283,10 +306,26 @@ function updatePhasePreview() {
     const panel = document.getElementById('phase-preview-panel');
     if (panel.classList.contains('hidden')) return;
 
-    const currentAge = parseInt(document.querySelector('[name="current_age"]')?.value || '65');
+    // Use specific IDs to avoid picking up healthcare person age inputs
+    const currentAge = parseInt(document.getElementById('main-current-age')?.value || '65');
+    const spouseAge = parseInt(document.getElementById('spouse-age-input')?.value || '0');
+    const hasSpouse = spouseAge > 0;
+    const phaseRef = document.querySelector('[name="phase_age_reference"]')?.value || 'younger';
     const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '4000');
     const inflation = parseFloat(document.getElementById('inflation-rate-slider')?.value || '3');
     const projectionYears = parseInt(document.querySelector('[name="projection_years"]')?.value || '30');
+
+    // Helper: Calculate phase reference age based on setting
+    function getPhaseReferenceAge(years) {
+        const primaryAge = currentAge + years;
+        const sAge = hasSpouse ? spouseAge + years : primaryAge;
+        switch (phaseRef) {
+            case 'spouse': return hasSpouse ? sAge : primaryAge;
+            case 'older': return hasSpouse ? Math.max(primaryAge, sAge) : primaryAge;
+            case 'younger': return hasSpouse ? Math.min(primaryAge, sAge) : primaryAge;
+            default: return primaryAge; // "primary"
+        }
+    }
 
     // Check if phases are enabled
     const phasesEnabled = document.querySelector('[name="enabled"]')?.checked || false;
@@ -306,38 +345,61 @@ function updatePhasePreview() {
         });
     }
 
-    // Get portfolio value for withdrawal rate calculation
+    // Get portfolio settings
     const portfolioValue = parseFloat(document.getElementById('portfolio-slider')?.value || '1000000');
+    const taxDeferredPct = parseFloat(document.querySelector('[name="tax_deferred_percent"]')?.value || '60');
+    const rothPct = parseFloat(document.querySelector('[name="roth_percent"]')?.value || '10');
+    const taxablePct = Math.max(0, 100 - taxDeferredPct - rothPct);
+    const investmentReturn = parseFloat(document.getElementById('investment-return-slider')?.value || '6');
+    const annualReturn = investmentReturn / 100;
 
-    // Generate preview ages from current age to end of projection
-    const endAge = currentAge + projectionYears;
-    const ages = [currentAge];
-    // Add 2-year increments
-    for (let age = currentAge + 2; age < endAge; age += 2) {
-        ages.push(age);
+    // Generate preview years - every year for accurate RMD tracking
+    const allYears = [];
+    for (let y = 0; y <= projectionYears; y++) {
+        allYears.push(y);
     }
-    // Always include the final age
-    if (ages[ages.length - 1] !== endAge) {
-        ages.push(endAge);
+
+    // Display years (show every 2 years for readability)
+    const displayYears = [0];
+    for (let y = 2; y < projectionYears; y += 2) {
+        displayYears.push(y);
     }
+    if (displayYears[displayYears.length - 1] !== projectionYears) {
+        displayYears.push(projectionYears);
+    }
+    const displayYearSet = new Set(displayYears);
 
     // Calculate initial spending (year 0) for comparison
     let initialMultiplier = phasesEnabled ? phases[0].multiplier : 1.0;
     const initialAdditional = getAdditionalExpenses(0, inflation, phasesEnabled, initialMultiplier);
     const initialSpending = baseExpenses * initialMultiplier + initialAdditional;
 
+    // Track portfolio balances year-over-year
+    let taxDeferredBalance = portfolioValue * (taxDeferredPct / 100);
+    let rothBalance = portfolioValue * (rothPct / 100);
+    let taxableBalance = portfolioValue * (taxablePct / 100);
+    let totalBalance = portfolioValue;
+
     const tbody = document.getElementById('phase-preview-body');
     tbody.innerHTML = '';
 
-    ages.forEach((age, idx) => {
-        const years = age - currentAge;
+    // Pre-calculate all years to track balances, only display subset
+    const yearData = [];
+
+    allYears.forEach((year) => {
+        const primaryAgeAtYear = currentAge + year;
+        const spouseAgeAtYear = hasSpouse ? spouseAge + year : 0;
+        const phaseAge = getPhaseReferenceAge(year);
+
+        // RMD uses OLDER person's age (whoever hits 73 first)
+        const olderAgeAtYear = hasSpouse ? Math.max(primaryAgeAtYear, spouseAgeAtYear) : primaryAgeAtYear;
 
         // Find applicable phase
         let phaseName = phases.length > 0 ? phases[0].name : 'Go-Go';
         let multiplier = 1.0;
         if (phasesEnabled && phases.length > 0) {
             for (let i = phases.length - 1; i >= 0; i--) {
-                if (age >= phases[i].startAge) {
+                if (phaseAge >= phases[i].startAge) {
                     multiplier = phases[i].multiplier;
                     phaseName = phases[i].name;
                     break;
@@ -347,76 +409,151 @@ function updatePhasePreview() {
             phaseName = '-';
         }
 
-        const inflationFactor = Math.pow(1 + inflation/100, years);
+        const inflationFactor = Math.pow(1 + inflation/100, year);
+        const additionalExpenses = getAdditionalExpenses(year, inflation, phasesEnabled, multiplier);
 
-        // Get additional expenses for this year
-        const additionalExpenses = getAdditionalExpenses(years, inflation, phasesEnabled, multiplier);
-
-        let spending, vsStart, vsLabel;
-        if (dollarViewMode === 'nominal') {
-            // Nominal dollars: show actual future dollar amounts
-            // Base expenses get inflation and phase multiplier
-            const baseWithPhase = baseExpenses * multiplier * inflationFactor;
-            // Additional expenses already have inflation applied in getAdditionalExpenses
-            // but need current year's inflation factor for nominal view
-            let additionalNominal = 0;
-            for (const src of getExpenseSources()) {
-                if (years < src.startYear) continue;
-                if (src.endYear > 0 && years >= src.endYear) continue;
-                let amount = src.amount;
-                // For nominal view, apply full inflation from year 0
-                if (src.inflation) {
-                    amount *= Math.pow(1 + inflation/100, years);
-                }
-                if (phasesEnabled && src.discretionary) {
-                    amount *= multiplier;
-                }
-                additionalNominal += amount;
+        // Calculate spending in nominal dollars (needed for RMD comparison)
+        const baseWithPhase = baseExpenses * multiplier * inflationFactor;
+        let additionalNominal = 0;
+        for (const src of getExpenseSources()) {
+            if (year < src.startYear) continue;
+            if (src.endYear > 0 && year >= src.endYear) continue;
+            let amount = src.amount;
+            if (src.inflation) {
+                amount *= Math.pow(1 + inflation/100, year);
             }
-            spending = baseWithPhase + additionalNominal;
-            // Calculate initial nominal for comparison
-            const initialNominal = baseExpenses * initialMultiplier + initialAdditional;
-            vsStart = ((spending / initialNominal) - 1) * 100;
-            vsLabel = vsStart;
-        } else {
-            // Today's dollars: show real purchasing power (no inflation applied)
-            spending = baseExpenses * multiplier + additionalExpenses;
-            vsStart = ((spending / initialSpending) - 1) * 100;
-            vsLabel = vsStart;
+            if (phasesEnabled && src.discretionary) {
+                amount *= multiplier;
+            }
+            additionalNominal += amount;
+        }
+        const monthlySpendingNominal = baseWithPhase + additionalNominal;
+        const annualSpending = monthlySpendingNominal * 12;
+
+        // Calculate income
+        const monthlyIncome = getTotalIncome(year, inflation);
+        const annualIncome = monthlyIncome * 12;
+
+        // Calculate spending gap (what you NEED to withdraw)
+        const annualNeed = Math.max(0, annualSpending - annualIncome);
+        const monthlyNeed = annualNeed / 12;
+
+        // Calculate RMD (what you're FORCED to withdraw)
+        // Uses older person's age - they hit RMD requirement first
+        const annualRMD = calculateRMD(taxDeferredBalance, olderAgeAtYear);
+        const monthlyRMD = annualRMD / 12;
+
+        // Actual withdrawal: max of need and RMD (RMD must be taken even if not needed)
+        // If RMD exceeds need, the excess goes to taxable account (or spending)
+        const actualWithdrawal = Math.max(annualNeed, annualRMD);
+
+        // Calculate withdrawal rate
+        const withdrawalRate = totalBalance > 0 ? (actualWithdrawal / totalBalance) * 100 : 0;
+
+        // Store data for display
+        if (displayYearSet.has(year)) {
+            // Display values based on view mode
+            let displaySpending;
+            if (dollarViewMode === 'nominal') {
+                displaySpending = monthlySpendingNominal;
+            } else {
+                displaySpending = baseExpenses * multiplier + additionalExpenses;
+            }
+
+            yearData.push({
+                year,
+                primaryAge: primaryAgeAtYear,
+                spouseAge: spouseAgeAtYear,
+                phaseName,
+                spending: displaySpending,
+                monthlyIncome,
+                monthlyNeed: dollarViewMode === 'nominal' ? monthlyNeed : monthlyNeed / inflationFactor,
+                monthlyRMD: dollarViewMode === 'nominal' ? monthlyRMD : monthlyRMD / inflationFactor,
+                withdrawalRate,
+                taxDeferredBalance,
+                totalBalance
+            });
         }
 
+        // Update balances for next year
+        // 1. Subtract withdrawals from appropriate accounts
+        // Withdrawal priority: RMD (forced) → Taxable → Roth → Tax-Deferred
+        let remainingWithdrawal = actualWithdrawal;
+
+        // RMD comes from tax-deferred first (forced withdrawal)
+        if (annualRMD > 0 && taxDeferredBalance > 0) {
+            const rmdTaken = Math.min(annualRMD, taxDeferredBalance);
+            taxDeferredBalance -= rmdTaken;
+            remainingWithdrawal -= rmdTaken;
+            // If RMD exceeds need, excess goes to taxable (simplified: assume it's spent or reinvested)
+        }
+
+        // Remaining need: Taxable first (most tax-efficient order)
+        if (remainingWithdrawal > 0 && taxableBalance > 0) {
+            const fromTaxable = Math.min(remainingWithdrawal, taxableBalance);
+            taxableBalance -= fromTaxable;
+            remainingWithdrawal -= fromTaxable;
+        }
+
+        // Then Roth (tax-free but preserve if possible)
+        if (remainingWithdrawal > 0 && rothBalance > 0) {
+            const fromRoth = Math.min(remainingWithdrawal, rothBalance);
+            rothBalance -= fromRoth;
+            remainingWithdrawal -= fromRoth;
+        }
+
+        // Finally additional tax-deferred beyond RMD
+        if (remainingWithdrawal > 0 && taxDeferredBalance > 0) {
+            const fromTaxDeferred = Math.min(remainingWithdrawal, taxDeferredBalance);
+            taxDeferredBalance -= fromTaxDeferred;
+            remainingWithdrawal -= fromTaxDeferred;
+        }
+
+        // 2. Apply investment returns to all accounts
+        taxDeferredBalance *= (1 + annualReturn);
+        rothBalance *= (1 + annualReturn);
+        taxableBalance *= (1 + annualReturn);
+        totalBalance = taxDeferredBalance + rothBalance + taxableBalance;
+    });
+
+    // Render the display rows
+    yearData.forEach((data) => {
         const row = document.createElement('tr');
         row.className = 'border-t border-gray-200 dark:border-gray-600';
 
-        const sign = vsLabel >= 0 ? '+' : '';
-        let colorClass;
-        if (dollarViewMode === 'today') {
-            // In real dollars, negative means reduced spending power (phase decline)
-            colorClass = vsLabel < 0 ? 'text-amber-600 dark:text-amber-400' :
-                        vsLabel === 0 ? 'text-gray-600 dark:text-gray-300' : 'text-green-600 dark:text-green-400';
-        } else {
-            colorClass = vsLabel < 0 ? 'text-green-600 dark:text-green-400' :
-                        vsLabel > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300';
-        }
-
-        // Calculate withdrawal rate: (spending - income) / portfolio value
-        // Only positive gap (spending > income) requires portfolio withdrawal
-        const annualSpending = spending * 12;
-        const monthlyIncome = getTotalIncome(years, inflation);
-        const annualIncome = monthlyIncome * 12;
-        const incomeGap = Math.max(0, annualSpending - annualIncome);
-        const withdrawalRate = portfolioValue > 0 ? (incomeGap / portfolioValue) * 100 : 0;
-        const wrColorClass = withdrawalRate > 5 ? 'text-red-600 dark:text-red-400' :
-                            withdrawalRate > 4 ? 'text-amber-600 dark:text-amber-400' :
+        // Color coding for withdrawal rate
+        const wrColorClass = data.withdrawalRate > 5 ? 'text-red-600 dark:text-red-400' :
+                            data.withdrawalRate > 4 ? 'text-amber-600 dark:text-amber-400' :
                             'text-green-600 dark:text-green-400';
 
+        // Color for RMD (highlight when RMD exceeds need)
+        const rmdExceedsNeed = data.monthlyRMD > data.monthlyNeed && data.monthlyRMD > 0;
+        const rmdColorClass = rmdExceedsNeed ? 'text-amber-600 dark:text-amber-400' :
+                             data.monthlyRMD > 0 ? 'text-blue-600 dark:text-blue-400' : '';
+
+        // Build age column(s)
+        const ageColumns = hasSpouse
+            ? `<td class="py-1">${data.primaryAge}</td><td class="py-1">${data.spouseAge}</td>`
+            : `<td class="py-1">${data.primaryAge}</td>`;
+
+        // Format need - show $0 or negative as "-"
+        const needDisplay = data.monthlyNeed > 0
+            ? `$${Math.round(data.monthlyNeed).toLocaleString()}`
+            : '-';
+
+        // Format RMD - show "-" when no RMD required
+        const rmdDisplay = data.monthlyRMD > 0
+            ? `$${Math.round(data.monthlyRMD).toLocaleString()}`
+            : '-';
+
         row.innerHTML = `
-            <td class="py-1">${age}</td>
-            <td class="py-1 text-gray-500 dark:text-gray-400">${phaseName}</td>
-            <td class="text-right py-1">$${Math.round(spending).toLocaleString()}</td>
-            <td class="text-right py-1">$${Math.round(monthlyIncome).toLocaleString()}</td>
-            <td class="text-right py-1 ${colorClass}">${sign}${vsLabel.toFixed(0)}%</td>
-            <td class="text-right py-1 ${wrColorClass}">${withdrawalRate.toFixed(1)}%</td>
+            ${ageColumns}
+            <td class="py-1 text-gray-500 dark:text-gray-400">${data.phaseName}</td>
+            <td class="text-right py-1">$${Math.round(data.spending).toLocaleString()}</td>
+            <td class="text-right py-1">$${Math.round(data.monthlyIncome).toLocaleString()}</td>
+            <td class="text-right py-1">${needDisplay}</td>
+            <td class="text-right py-1 ${rmdColorClass}">${rmdDisplay}</td>
+            <td class="text-right py-1 ${wrColorClass}">${data.withdrawalRate.toFixed(1)}%</td>
         `;
         tbody.appendChild(row);
     });

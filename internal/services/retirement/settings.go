@@ -387,6 +387,12 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["current_age"].(int); ok {
 		settings.CurrentAge = v
 	}
+	if v, ok := updates["spouse_age"].(int); ok {
+		settings.SpouseAge = v
+	}
+	if v, ok := updates["phase_age_reference"].(string); ok {
+		settings.PhaseAgeReference = v
+	}
 	if v, ok := updates["tax_deferred_percent"].(float64); ok {
 		settings.TaxDeferredPercent = v
 	}

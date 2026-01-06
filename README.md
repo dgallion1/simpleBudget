@@ -8,10 +8,12 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 - **Dashboard** - KPIs, spending charts, alerts, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, and CSV file management
-- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, and tax optimization
+- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, and tax optimization
 - **Insights** - Recurring payment detection, spending trends, and income pattern analysis
 - **File Manager** - Data backup, restore, and file management
 - **Encryption** - Optional password-based encryption for all data files
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and recent updates.
 
 ## Prerequisites
 
@@ -189,7 +191,7 @@ You should see the dashboard with:
 1. **Dashboard** - Your main overview with income, expenses, and savings rate
 2. **Explorer** - Search and filter individual transactions
 3. **Insights** - View recurring payments and spending patterns
-4. **What-If** - Run retirement projections and simulations
+4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting
 5. **File Manager** - Manage data files, create backups
 
 ## Quick Start Commands
@@ -334,11 +336,46 @@ budget2/
 
 ## Technology Stack
 
-- **Backend**: Go 1.21+ with Chi router
+- **Backend**: Go 1.25+ with Chi router
 - **Frontend**: HTMX for dynamic updates, Plotly.js for charts
 - **Styling**: Tailwind CSS via CDN
 - **Storage**: File-based (CSV for transactions, JSON for settings)
 - **Encryption**: Age (filippo.io/age) with multiple auth methods (password, SSH, Age identity, YubiKey)
+
+## What-If Retirement Planner
+
+The What-If Planner helps you model retirement scenarios with sophisticated projections.
+
+### Portfolio Model
+
+- **3-Bucket System**: Track Tax-Deferred (401k/IRA), Roth, and Taxable accounts separately
+- **Per-Account Allocation**: Set different stock/bond/cash mixes for each account type
+- **Tax-Efficient Withdrawals**: Automatic ordering (RMD → Taxable → Roth → Tax-Deferred)
+
+### Simulation Methods
+
+| Method | Description |
+|--------|-------------|
+| **Monte Carlo** | 1000 randomized return sequences with crash modeling |
+| **Historical Backtest** | Test against 97 years of actual market data (1928-2024) |
+
+### Key Features
+
+- **RMD Calculations**: IRS-compliant Required Minimum Distributions starting at age 73
+- **Roth Conversions**: Model annual conversion strategies with tax impact
+- **Spending Phases**: Go-Go/Slow-Go/No-Go retirement spending patterns
+- **Healthcare Costs**: Model costs for multiple household members with Medicare transitions
+- **Big Ticket Items**: One-time events (inheritance, home sale, large purchases)
+- **Spouse Age Tracking**: Accurate RMD and healthcare projections for couples
+
+### Asset Allocation
+
+Returns are derived from historical data:
+- **Stocks**: ~10.5% mean return (S&P 500 historical)
+- **Bonds**: ~5.2% mean return (10-year Treasury)
+- **Cash**: ~3.5% mean return (3-month T-bill)
+
+The Investment Return slider overrides these calculations with a flat rate if set.
 
 ## Data Encryption
 

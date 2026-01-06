@@ -236,6 +236,9 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 	currentLivingExpenses := s.MonthlyLivingExpenses
 
+	// Track cumulative inflation for spending phase calculations
+	cumulativeInflation := 1.0
+
 	// Track annual RMD (calculated once per year, distributed monthly)
 	var annualRMD float64
 	var monthlyRMD float64
@@ -248,15 +251,15 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			// Track cumulative inflation
+			if m > 0 {
+				cumulativeInflation *= (1 + s.InflationRate/100)
+			}
+
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-				// Phase-based: recalculate from base each year with phase multiplier + inflation
+				// Phase-based: recalculate from base each year with phase multiplier + cumulative inflation
 				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
-				if m > 0 {
-					inflationFactor := math.Pow(1+s.InflationRate/100, float64(currentYear))
-					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
-				} else {
-					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
-				}
+				currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
 			} else {
 				// Simple decline mode (existing behavior)
 				if m > 0 {
@@ -365,9 +368,15 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			taxableReturn = models.GetBlendedReturn(taxStock, taxBond, taxCash, stockMean, bondMean, cashMean)
 		}
 
-		taxDeferredGrowth := taxDeferredBalance * (taxDeferredReturn / 100 / 12)
-		rothGrowth := rothBalance * (rothReturn / 100 / 12)
-		taxableGrowth := taxableBalance * (taxableReturn / 100 / 12)
+		// Convert annual returns to monthly using geometric formula (not simple division)
+		// Simple division inflates effective returns when compounded monthly
+		taxDeferredMonthly := math.Pow(1+taxDeferredReturn/100, 1.0/12) - 1
+		rothMonthly := math.Pow(1+rothReturn/100, 1.0/12) - 1
+		taxableMonthly := math.Pow(1+taxableReturn/100, 1.0/12) - 1
+
+		taxDeferredGrowth := taxDeferredBalance * taxDeferredMonthly
+		rothGrowth := rothBalance * rothMonthly
+		taxableGrowth := taxableBalance * taxableMonthly
 		totalGrowth := taxDeferredGrowth + rothGrowth + taxableGrowth
 
 		taxDeferredBalance += taxDeferredGrowth
@@ -1267,6 +1276,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	// Healthcare cost variation multiplier (updated annually)
 	healthcareVariation := 1.0
 
+	// Track cumulative inflation for spending phase calculations
+	cumulativeInflation := 1.0
+
 	// Adaptive spending: track when we're in reduced-spending mode
 	adaptationEndYear := -1 // Year when adaptation ends (-1 = not adapting)
 
@@ -1293,15 +1305,15 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			// Apply inflation with some random variation
 			inflationVar := 1 + (rng.Float64()-0.5)*0.02 // +/- 1%
 
+			// Track cumulative inflation for spending phase calculations
+			if m > 0 {
+				cumulativeInflation *= (1 + s.InflationRate/100*inflationVar)
+			}
+
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-				// Phase-based: recalculate from base each year with phase multiplier + inflation
+				// Phase-based: recalculate from base each year with phase multiplier + cumulative inflation
 				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
-				if m > 0 {
-					inflationFactor := math.Pow(1+s.InflationRate/100*inflationVar, float64(currentYear))
-					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
-				} else {
-					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
-				}
+				currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
 			} else {
 				// Simple decline mode (existing behavior)
 				if m > 0 {
@@ -1419,12 +1431,17 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		// Calculate per-account blended returns
 		tdReturn := models.GetBlendedReturn(tdStock, tdBond, tdCash, stockReturn, bondReturn, cashReturn)
-		rothReturn := models.GetBlendedReturn(rothStock, rothBond, rothCash, stockReturn, bondReturn, cashReturn)
+		rothReturnRate := models.GetBlendedReturn(rothStock, rothBond, rothCash, stockReturn, bondReturn, cashReturn)
 		taxReturn := models.GetBlendedReturn(taxStock, taxBond, taxCash, stockReturn, bondReturn, cashReturn)
 
-		taxDeferredGrowth := taxDeferredBalance * (tdReturn / 100 / 12)
-		rothGrowth := rothBalance * (rothReturn / 100 / 12)
-		taxableGrowth := taxableBalance * (taxReturn / 100 / 12)
+		// Convert annual returns to monthly using geometric formula (not simple division)
+		tdMonthly := math.Pow(1+tdReturn/100, 1.0/12) - 1
+		rothMonthlyRate := math.Pow(1+rothReturnRate/100, 1.0/12) - 1
+		taxMonthly := math.Pow(1+taxReturn/100, 1.0/12) - 1
+
+		taxDeferredGrowth := taxDeferredBalance * tdMonthly
+		rothGrowth := rothBalance * rothMonthlyRate
+		taxableGrowth := taxableBalance * taxMonthly
 
 		taxDeferredBalance += taxDeferredGrowth
 		rothBalance += rothGrowth

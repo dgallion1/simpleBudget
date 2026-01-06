@@ -124,9 +124,12 @@
     {{end}}
 
     <!-- Info Box -->
-    <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+    <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg space-y-2">
         <p class="text-xs text-blue-800 dark:text-blue-200">
-            <strong>What this means:</strong> Historical backtesting simulates your retirement plan starting from each year using actual S&P 500 returns, 10-year Treasury bonds, T-bill rates, and inflation from {{.Analysis.HistoricalBacktest.DataStartYear}}-{{.Analysis.HistoricalBacktest.DataEndYear}}. Uses your asset allocation settings. Real balances show purchasing power in start-year dollars.
+            <strong>What this means:</strong> Historical backtesting simulates your retirement plan starting from each year using actual S&P 500 returns, 10-year Treasury bonds, T-bill rates, and inflation from {{.Analysis.HistoricalBacktest.DataStartYear}}-{{.Analysis.HistoricalBacktest.DataEndYear}}. Uses your per-account asset allocation settings. Real balances show purchasing power in start-year dollars.
+        </p>
+        <p class="text-xs text-blue-700 dark:text-blue-300">
+            <strong>Why values differ from main projection:</strong> The main projection chart uses conservative forward-looking estimates (7% stocks, 4% bonds, 3% cash). Historical backtest uses actual returns, which averaged ~10% for stocks over the past century. This difference compounds significantly over long projections.
         </p>
     </div>
 </div>

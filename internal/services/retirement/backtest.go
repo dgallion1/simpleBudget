@@ -150,8 +150,10 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	totalBalance := s.PortfolioValue
 	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
 
-	// Get user's asset allocation with defaults applied
-	stockPercent, bondPercent, cashPercent := s.GetEffectiveAssetAllocation()
+	// Get per-account asset allocations (consistent with main projection and Monte Carlo)
+	tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
+	rothStock, rothBond, rothCash := s.GetRothAllocation()
+	taxStock, taxBond, taxCash := s.GetTaxableAllocation()
 
 	result := HistoricalSequenceResult{
 		StartYear:       startYear,
@@ -179,12 +181,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
-				if m > 0 {
-					inflationFactor := math.Pow(1+inflationRate, float64(currentYear))
-					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * inflationFactor
-				} else {
-					currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier
-				}
+				// Use cumulative inflation (properly tracked above) for spending phase calculations
+				currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
 			} else {
 				if m > 0 {
 					currentLivingExpenses *= (1 + inflationRate)
@@ -262,17 +260,26 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		totalIncome := c.CalculateTotalIncome(m)
 		neededFromPortfolio := totalExpenses - totalIncome
 
-		// Get this month's returns using user's asset allocation
+		// Get this year's returns and calculate per-account blended returns
 		yearData := sequence[currentYear]
-		// Blend returns based on user's stock/bond/cash allocation
-		monthlyReturn := (stockPercent/100)*yearData.SP500Return/100/12 +
-			(bondPercent/100)*yearData.BondReturn/100/12 +
-			(cashPercent/100)*yearData.CashReturn/100/12
+		stockReturn := yearData.SP500Return / 100
+		bondReturn := yearData.BondReturn / 100
+		cashReturn := yearData.CashReturn / 100
 
-		// Apply returns to all accounts
-		taxDeferredBalance *= (1 + monthlyReturn)
-		rothBalance *= (1 + monthlyReturn)
-		taxableBalance *= (1 + monthlyReturn)
+		// Calculate per-account annual returns based on each account's allocation
+		tdAnnualReturn := (tdStock/100)*stockReturn + (tdBond/100)*bondReturn + (tdCash/100)*cashReturn
+		rothAnnualReturn := (rothStock/100)*stockReturn + (rothBond/100)*bondReturn + (rothCash/100)*cashReturn
+		taxAnnualReturn := (taxStock/100)*stockReturn + (taxBond/100)*bondReturn + (taxCash/100)*cashReturn
+
+		// Convert to monthly using geometric formula (not simple division)
+		tdMonthlyReturn := math.Pow(1+tdAnnualReturn, 1.0/12) - 1
+		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
+		taxMonthlyReturn := math.Pow(1+taxAnnualReturn, 1.0/12) - 1
+
+		// Apply returns to each account based on its allocation
+		taxDeferredBalance *= (1 + tdMonthlyReturn)
+		rothBalance *= (1 + rothMonthlyReturn)
+		taxableBalance *= (1 + taxMonthlyReturn)
 
 		// Process withdrawals
 		if neededFromPortfolio > 0 {

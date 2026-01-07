@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"time"
 
 	"budget2/internal/models"
@@ -1914,13 +1915,7 @@ func formatBucketLabel(low, high float64) string {
 
 // Helper functions
 func sortFloat64s(a []float64) {
-	for i := 0; i < len(a)-1; i++ {
-		for j := i + 1; j < len(a); j++ {
-			if a[j] < a[i] {
-				a[i], a[j] = a[j], a[i]
-			}
-		}
-	}
+	sort.Float64s(a)
 }
 
 func mean(a []float64) float64 {

@@ -1,6 +1,10 @@
 package retirement
 
-import "budget2/internal/models"
+import (
+	"math"
+
+	"budget2/internal/models"
+)
 
 // RMD start age per IRS rules (SECURE 2.0 Act)
 const RMDStartAge = 73
@@ -109,7 +113,8 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	if investmentReturn == 0 {
 		investmentReturn = s.GetExpectedReturnFromAllocation()
 	}
-	monthlyReturn := investmentReturn / 100 / 12
+	// Convert annual return to monthly using geometric formula (matches main projection)
+	monthlyReturn := math.Pow(1+investmentReturn/100, 1.0/12) - 1
 	currentBalance := taxDeferredValue
 
 	rmdCount := 0
@@ -135,16 +140,22 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 			}
 			rmdCount++
 
-			// Reduce balance by RMD, then grow for next year
-			currentBalance -= rmdAmount
-			if currentBalance < 0 {
-				currentBalance = 0
+			// Apply monthly growth and RMD withdrawals (matches main projection model)
+			monthlyRMD := rmdAmount / 12
+			for m := 0; m < 12; m++ {
+				// Apply monthly growth first
+				currentBalance *= (1 + monthlyReturn)
+				// Then withdraw monthly RMD portion
+				currentBalance -= monthlyRMD
+				if currentBalance < 0 {
+					currentBalance = 0
+				}
 			}
-		}
-
-		// Apply annual growth (simplified - in reality this happens monthly)
-		for m := 0; m < 12; m++ {
-			currentBalance *= (1 + monthlyReturn)
+		} else {
+			// Pre-RMD years: apply monthly growth only
+			for m := 0; m < 12; m++ {
+				currentBalance *= (1 + monthlyReturn)
+			}
 		}
 	}
 

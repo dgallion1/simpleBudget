@@ -377,6 +377,9 @@ Returns are derived from historical data:
 
 The Investment Return slider overrides these calculations with a flat rate if set.
 
+For a detailed explanation of the math behind these projections, see the [Calculation Methodology](internal/services/retirement/METHODOLOGY.md).
+
+
 ## Data Encryption
 
 SimpleBudget supports optional encryption for all your financial data using the Age encryption library. When enabled, all CSV transaction files and JSON settings are encrypted at rest.

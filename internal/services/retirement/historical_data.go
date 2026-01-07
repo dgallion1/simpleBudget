@@ -1,5 +1,7 @@
 package retirement
 
+import "math"
+
 // HistoricalYear contains annual market data for backtesting
 type HistoricalYear struct {
 	Year          int     // Calendar year
@@ -183,23 +185,8 @@ func GetHistoricalStats() (avgStock, avgBond, avgCash, avgInflation, stockStdDev
 		diffBond := year.BondReturn - avgBond
 		sumSqDiffBond += diffBond * diffBond
 	}
-	stockStdDev = sqrt(sumSqDiffStock / n)
-	bondStdDev = sqrt(sumSqDiffBond / n)
+	stockStdDev = math.Sqrt(sumSqDiffStock / n)
+	bondStdDev = math.Sqrt(sumSqDiffBond / n)
 
 	return
-}
-
-// sqrt is a simple square root implementation to avoid math import
-func sqrt(x float64) float64 {
-	if x < 0 {
-		return 0
-	}
-	if x == 0 {
-		return 0
-	}
-	z := x / 2
-	for i := 0; i < 10; i++ {
-		z = (z + x/z) / 2
-	}
-	return z
 }

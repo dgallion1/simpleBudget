@@ -1,6 +1,7 @@
 package dataloader
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -441,72 +442,49 @@ func (dl *DataLoader) scanCSVMetadata(filePath string) (int, time.Time, time.Tim
 		return 0, time.Time{}, time.Time{}, err
 	}
 
-	content := string(data)
-	lines := strings.Split(content, "\n")
-
-	if len(lines) == 0 {
-		return 0, time.Time{}, time.Time{}, nil
-	}
+	reader := csv.NewReader(bytes.NewReader(data))
+	reader.FieldsPerRecord = -1
+	reader.TrimLeadingSpace = true
 
 	// Parse header
-	headerReader := csv.NewReader(strings.NewReader(lines[0]))
-	header, err := headerReader.Read()
+	header, err := reader.Read()
 	if err != nil {
 		return 0, time.Time{}, time.Time{}, err
 	}
 
 	dateIdx := -1
 	for i, col := range header {
-		if strings.TrimSpace(col) == "Date" {
+		if normalizeColumnName(col) == "Date" {
 			dateIdx = i
 			break
 		}
 	}
 
-	// Count transactions (lines - 1 for header)
-	transCount := 0
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) != "" {
-			transCount++
-		}
-	}
-
-	// Get first and last transaction dates
 	var minDate, maxDate time.Time
-	if dateIdx >= 0 && len(lines) > 1 {
-		// First transaction date
-		for _, line := range lines[1:] {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			r := csv.NewReader(strings.NewReader(line))
-			if record, err := r.Read(); err == nil && dateIdx < len(record) {
-				minDate = parseDate(strings.TrimSpace(record[dateIdx]))
-				if !minDate.IsZero() {
-					break
+	transCount := 0
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			continue
+		}
+
+		transCount++
+
+		if dateIdx >= 0 && dateIdx < len(record) {
+			date := parseDate(record[dateIdx])
+			if !date.IsZero() {
+				if minDate.IsZero() || date.Before(minDate) {
+					minDate = date
+				}
+				if maxDate.IsZero() || date.After(maxDate) {
+					maxDate = date
 				}
 			}
 		}
-
-		// Last transaction date (work backwards)
-		for i := len(lines) - 1; i > 0; i-- {
-			line := strings.TrimSpace(lines[i])
-			if line == "" {
-				continue
-			}
-			r := csv.NewReader(strings.NewReader(line))
-			if record, err := r.Read(); err == nil && dateIdx < len(record) {
-				maxDate = parseDate(strings.TrimSpace(record[dateIdx]))
-				if !maxDate.IsZero() {
-					break
-				}
-			}
-		}
-	}
-
-	// Swap if dates are reversed
-	if !minDate.IsZero() && !maxDate.IsZero() && minDate.After(maxDate) {
-		minDate, maxDate = maxDate, minDate
 	}
 
 	return transCount, minDate, maxDate, nil

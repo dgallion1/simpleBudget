@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,8 +35,8 @@ type cacheEntry struct {
 type Storage struct {
 	baseDir   string
 	encrypted bool
-	provider  AuthProvider       // Current auth provider (nil if locked or not encrypted)
-	config    *EncryptionConfig  // Configuration for the auth method
+	provider  AuthProvider      // Current auth provider (nil if locked or not encrypted)
+	config    *EncryptionConfig // Configuration for the auth method
 	mu        sync.RWMutex
 	cache     map[string]*cacheEntry
 	cacheMu   sync.RWMutex
@@ -116,6 +117,7 @@ func (s *Storage) Unlock(credentials string) error {
 	// Get identity for verification
 	identity, err := provider.Identity()
 	if err != nil {
+		log.Printf("Storage unlock failed: could not get identity from provider: %v", err)
 		return fmt.Errorf("failed to get identity: %w", err)
 	}
 
@@ -123,21 +125,25 @@ func (s *Storage) Unlock(credentials string) error {
 	verifyPath := filepath.Join(s.baseDir, verifyFile)
 	encrypted, err := os.ReadFile(verifyPath)
 	if err != nil {
+		log.Printf("Storage unlock failed: could not read verification file: %v", err)
 		return fmt.Errorf("failed to read verification file: %w", err)
 	}
 
 	decrypted, err := decryptData(encrypted, identity)
 	if err != nil {
+		log.Printf("Storage unlock failed: incorrect credentials")
 		provider.Lock()
 		return fmt.Errorf("incorrect credentials")
 	}
 
 	if string(decrypted) != verifyMagic {
+		log.Printf("Storage unlock failed: verification magic mismatch")
 		provider.Lock()
 		return fmt.Errorf("incorrect credentials (verification failed)")
 	}
 
 	// Credentials verified, store provider
+	log.Printf("Storage unlocked successfully")
 	s.provider = provider
 	return nil
 }
@@ -222,7 +228,8 @@ func (s *Storage) ReadFile(path string) ([]byte, error) {
 		}
 		data, err = decryptData(data, identity)
 		if err != nil {
-			return nil, err
+			log.Printf("Warning: failed to decrypt %s: %v", path, err)
+			return nil, fmt.Errorf("decryption failed for %s: %w", path, err)
 		}
 	}
 

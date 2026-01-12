@@ -16,6 +16,7 @@ type SettingsManager struct {
 	filename    string
 	store       *storage.Storage
 	mu          sync.RWMutex
+	cache       *models.WhatIfSettings
 }
 
 // NewSettingsManager creates a new settings manager
@@ -35,9 +36,28 @@ func (sm *SettingsManager) filepath() string {
 // Load reads settings from disk, returning defaults if file doesn't exist
 func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 	sm.mu.RLock()
-	defer sm.mu.RUnlock()
+	// Return cache if available
+	if sm.cache != nil {
+		defer sm.mu.RUnlock()
+		return sm.cache, nil
+	}
+	sm.mu.RUnlock()
 
-	return sm.loadInternal()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Double-check cache after acquiring write lock
+	if sm.cache != nil {
+		return sm.cache, nil
+	}
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	sm.cache = settings
+	return settings, nil
 }
 
 // loadInternal reads settings without acquiring lock (caller must hold lock)
@@ -150,7 +170,13 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	}
 
 	// Write file (storage handles encryption)
-	return sm.store.WriteFile(sm.filepath(), data, 0644)
+	if err := sm.store.WriteFile(sm.filepath(), data, 0644); err != nil {
+		return err
+	}
+
+	// Update cache
+	sm.cache = settings
+	return nil
 }
 
 // AddIncomeSource adds a new income source and saves atomically

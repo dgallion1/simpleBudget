@@ -429,6 +429,9 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 				withdrawalFromTaxDeferred += fromTaxDeferred
 				actualWithdrawal += fromTaxDeferred
 			}
+		} else if neededFromPortfolio < 0 {
+			// Surplus income: reinvest into taxable account
+			taxableBalance += math.Abs(neededFromPortfolio)
 		} else {
 			// Expenses covered by income, but RMD still must be withdrawn
 			// RMD goes to taxable account (reinvested after taxes in practice)
@@ -1049,48 +1052,48 @@ func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
 // MonteCarloConfig defines parameters for enhanced simulation
 type MonteCarloConfig struct {
 	// Market dynamics
-	ReturnVolatility    float64 // Annual return standard deviation (e.g., 15 for 15%)
-	CrashProbability    float64 // Annual probability of a crash (e.g., 0.05 for 5%)
-	CrashSeverity       float64 // How bad crashes are (e.g., -30 for -30% return)
-	RecoveryBoost       float64 // Extra return after crash years (mean reversion)
+	ReturnVolatility float64 // Annual return standard deviation (e.g., 15 for 15%)
+	CrashProbability float64 // Annual probability of a crash (e.g., 0.05 for 5%)
+	CrashSeverity    float64 // How bad crashes are (e.g., -30 for -30% return)
+	RecoveryBoost    float64 // Extra return after crash years (mean reversion)
 
 	// Spending shocks
-	SpendingShockProb   float64 // Annual probability of spending shock
-	SpendingShockMin    float64 // Minimum shock amount ($)
-	SpendingShockMax    float64 // Maximum shock amount ($)
+	SpendingShockProb float64 // Annual probability of spending shock
+	SpendingShockMin  float64 // Minimum shock amount ($)
+	SpendingShockMax  float64 // Maximum shock amount ($)
 
 	// Healthcare emergencies
-	HealthShockProb     float64 // Annual probability of health emergency
-	HealthShockMin      float64 // Minimum health shock ($)
-	HealthShockMax      float64 // Maximum health shock ($)
+	HealthShockProb float64 // Annual probability of health emergency
+	HealthShockMin  float64 // Minimum health shock ($)
+	HealthShockMax  float64 // Maximum health shock ($)
 
 	// Longevity
-	LongevityVariation  int     // Years +/- to vary projection length
+	LongevityVariation int // Years +/- to vary projection length
 
 	// Adaptive spending (reducing discretionary expenses during crashes)
-	AdaptiveSpending          bool    // Enable adaptive spending during crashes
-	DiscretionaryCutPercent   float64 // % to cut discretionary spending during crash (e.g., 40 for 40%)
-	AdaptationRecoveryYears   int     // Years to maintain reduced spending after crash
+	AdaptiveSpending        bool    // Enable adaptive spending during crashes
+	DiscretionaryCutPercent float64 // % to cut discretionary spending during crash (e.g., 40 for 40%)
+	AdaptationRecoveryYears int     // Years to maintain reduced spending after crash
 }
 
 // DefaultMonteCarloConfig returns realistic simulation parameters
 func DefaultMonteCarloConfig() *MonteCarloConfig {
 	return &MonteCarloConfig{
 		// Market: ~15% annual volatility, 5% crash chance, crashes are -30% on average
-		ReturnVolatility:   15.0,
-		CrashProbability:   0.05,
-		CrashSeverity:      -30.0,
-		RecoveryBoost:      5.0,
+		ReturnVolatility: 15.0,
+		CrashProbability: 0.05,
+		CrashSeverity:    -30.0,
+		RecoveryBoost:    5.0,
 
 		// Spending: 8% chance of $5K-$25K emergency per year
-		SpendingShockProb:  0.08,
-		SpendingShockMin:   5000,
-		SpendingShockMax:   25000,
+		SpendingShockProb: 0.08,
+		SpendingShockMin:  5000,
+		SpendingShockMax:  25000,
 
 		// Health: 5% chance of $10K-$50K health event per year
-		HealthShockProb:    0.05,
-		HealthShockMin:     10000,
-		HealthShockMax:     50000,
+		HealthShockProb: 0.05,
+		HealthShockMin:  10000,
+		HealthShockMax:  50000,
 
 		// Longevity: +/- 5 years from base projection
 		LongevityVariation: 5,
@@ -1488,6 +1491,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 				taxDeferredBalance -= fromTaxDeferred
 				neededFromPortfolio -= fromTaxDeferred
 			}
+		} else if neededFromPortfolio < 0 {
+			// Surplus income: reinvest into taxable account
+			taxableBalance += math.Abs(neededFromPortfolio)
 		} else {
 			// RMD still must be withdrawn
 			if monthlyRMD > 0 && taxDeferredBalance > 0 {
@@ -1762,11 +1768,11 @@ func (c *Calculator) calculateSequenceRiskBreakdown(results []models.MonteCarloR
 	// Key insight: Even during a 30% crash, portfolio still has 70% of its value
 	// You can still safely withdraw from the reduced portfolio (at a conservative rate)
 	// The buffer only needs to cover the SHORTFALL, not full expenses
-	crashDrawdownPercent := 30.0                                              // Expected crash severity (from DefaultMonteCarloConfig)
-	crashedPortfolio := portfolioValue * (1 - crashDrawdownPercent/100)       // Portfolio after crash
-	safeWithdrawalRate := 0.03                                                // Conservative 3% during crash years
-	safeWithdrawalDuringCrash := crashedPortfolio * safeWithdrawalRate        // Annual safe withdrawal from crashed portfolio
-	annualShortfall := annualExpenses - safeWithdrawalDuringCrash             // Gap that buffer must cover
+	crashDrawdownPercent := 30.0                                        // Expected crash severity (from DefaultMonteCarloConfig)
+	crashedPortfolio := portfolioValue * (1 - crashDrawdownPercent/100) // Portfolio after crash
+	safeWithdrawalRate := 0.03                                          // Conservative 3% during crash years
+	safeWithdrawalDuringCrash := crashedPortfolio * safeWithdrawalRate  // Annual safe withdrawal from crashed portfolio
+	annualShortfall := annualExpenses - safeWithdrawalDuringCrash       // Gap that buffer must cover
 	if annualShortfall < 0 {
 		annualShortfall = 0 // No shortfall if safe withdrawal covers expenses
 	}

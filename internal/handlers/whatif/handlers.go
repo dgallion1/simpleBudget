@@ -151,8 +151,8 @@ func parseRequiredFormInt(r *http.Request, key string) (int, error) {
 }
 
 var (
-	loader       *dataloader.DataLoader
-	renderer     *templates.Renderer
+	loader        *dataloader.DataLoader
+	renderer      *templates.Renderer
 	retirementMgr *retirement.SettingsManager
 )
 
@@ -556,14 +556,22 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endYear, err := parseFormInt(r, "end_year")
-	if err != nil {
-		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if endYear > 0 && endYear < startYear {
-		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
-		return
+	var endYearPtr *int
+	if r.FormValue("end_year") != "" {
+		ey, err := parseFormInt(r, "end_year")
+		if err != nil {
+			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ey < 0 {
+			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			return
+		}
+		if ey < startYear {
+			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+			return
+		}
+		endYearPtr = &ey
 	}
 
 	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
@@ -581,8 +589,8 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		source.COLARate = 0.02 // 2% COLA
 	}
 
-	if endYear > 0 {
-		endMonth := endYear * 12
+	if endYearPtr != nil {
+		endMonth := *endYearPtr * 12
 		source.EndMonth = &endMonth
 	}
 
@@ -625,14 +633,22 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endYear, err := parseFormInt(r, "end_year")
-	if err != nil {
-		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if endYear > 0 && endYear < startYear {
-		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
-		return
+	var endYearPtr *int
+	if r.FormValue("end_year") != "" {
+		ey, err := parseFormInt(r, "end_year")
+		if err != nil {
+			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ey < 0 {
+			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			return
+		}
+		if ey < startYear {
+			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+			return
+		}
+		endYearPtr = &ey
 	}
 
 	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
@@ -642,7 +658,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		colaRate = 0.02 // 2% COLA
 	}
 
-	settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
+	settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYearPtr, colaRate)
 	if err != nil {
 		renderError(w, "Failed to update income source: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -743,14 +759,22 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endYear, err := parseFormInt(r, "end_year")
-	if err != nil {
-		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if endYear > 0 && endYear < startYear {
-		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
-		return
+	var endYearPtr *int
+	if r.FormValue("end_year") != "" {
+		ey, err := parseFormInt(r, "end_year")
+		if err != nil {
+			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ey < 0 {
+			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			return
+		}
+		if ey < startYear {
+			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+			return
+		}
+		endYearPtr = &ey
 	}
 
 	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
@@ -761,9 +785,12 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		Name:          name,
 		Amount:        amount,
 		StartYear:     startYear,
-		EndYear:       endYear,
+		EndYear:       0, // Default to perpetual
 		Inflation:     inflation,
 		Discretionary: discretionary,
+	}
+	if endYearPtr != nil {
+		source.EndYear = *endYearPtr
 	}
 
 	settings, err := retirementMgr.AddExpenseSource(source)
@@ -805,20 +832,28 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endYear, err := parseFormInt(r, "end_year")
-	if err != nil {
-		renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if endYear > 0 && endYear < startYear {
-		renderError(w, "End year cannot be before start year", http.StatusBadRequest)
-		return
+	var endYearPtr *int
+	if r.FormValue("end_year") != "" {
+		ey, err := parseFormInt(r, "end_year")
+		if err != nil {
+			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ey < 0 {
+			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			return
+		}
+		if ey < startYear {
+			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+			return
+		}
+		endYearPtr = &ey
 	}
 
 	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
 	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
 
-	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
+	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYearPtr, inflation, discretionary)
 	if err != nil {
 		renderError(w, "Failed to update expense: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1554,7 +1589,7 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 			monthlyAmount = pattern.AvgAmount * 52 / 12
 		case "biweekly":
 			monthlyAmount = pattern.AvgAmount * 26 / 12
-		// monthly is already correct
+			// monthly is already correct
 		}
 
 		// Create a stable ID from the description

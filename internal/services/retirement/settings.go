@@ -229,7 +229,7 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 }
 
 // UpdateIncomeSource updates an existing income source by ID atomically
-func (sm *SettingsManager) UpdateIncomeSource(id string, startYear, endYear int, colaRate float64) (*models.WhatIfSettings, error) {
+func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear *int, colaRate float64) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -242,8 +242,8 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear, endYear int,
 		if settings.IncomeSources[i].ID == id {
 			settings.IncomeSources[i].StartMonth = startYear * 12
 			settings.IncomeSources[i].COLARate = colaRate
-			if endYear > 0 {
-				endMonth := endYear * 12
+			if endYear != nil {
+				endMonth := *endYear * 12
 				settings.IncomeSources[i].EndMonth = &endMonth
 			} else {
 				settings.IncomeSources[i].EndMonth = nil
@@ -279,7 +279,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 }
 
 // UpdateExpenseSource updates an existing expense source by ID atomically
-func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
+func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear *int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -291,7 +291,11 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear, endYear int
 	for i := range settings.ExpenseSources {
 		if settings.ExpenseSources[i].ID == id {
 			settings.ExpenseSources[i].StartYear = startYear
-			settings.ExpenseSources[i].EndYear = endYear
+			if endYear != nil {
+				settings.ExpenseSources[i].EndYear = *endYear
+			} else {
+				settings.ExpenseSources[i].EndYear = 0 // In ExpenseSource, 0 is perpetual
+			}
 			settings.ExpenseSources[i].Inflation = inflation
 			settings.ExpenseSources[i].Discretionary = discretionary
 			break

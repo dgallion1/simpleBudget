@@ -16,11 +16,11 @@ const (
 type IncomeSource struct {
 	ID                string     `json:"id"`
 	Name              string     `json:"name"`
-	Amount            float64    `json:"amount"`       // Monthly amount
+	Amount            float64    `json:"amount"` // Monthly amount
 	Type              IncomeType `json:"income_type"`
-	StartMonth        int        `json:"start_month"`  // 0 = immediate
-	EndMonth          *int       `json:"end_month"`    // nil = perpetual
-	COLARate          float64    `json:"cola_rate"`    // Cost of living adjustment, e.g., 0.02 for 2%
+	StartMonth        int        `json:"start_month"` // 0 = immediate
+	EndMonth          *int       `json:"end_month"`   // nil = perpetual
+	COLARate          float64    `json:"cola_rate"`   // Cost of living adjustment, e.g., 0.02 for 2% (decimal rate)
 	InflationAdjusted bool       `json:"inflation_adjusted"`
 }
 

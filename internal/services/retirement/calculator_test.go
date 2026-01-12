@@ -830,6 +830,48 @@ func TestSensitivityWithPerAccountAllocation(t *testing.T) {
 	})
 }
 
+// TestRunProjectionWithSurplusIncome verifies that surplus income is reinvested into the taxable balance.
+func TestRunProjectionWithSurplusIncome(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 100000 // $100k
+	settings.MonthlyLivingExpenses = 2000
+	settings.MonthlyHealthcare = 0
+	settings.InvestmentReturn = 0.0000001
+	settings.InflationRate = 0.0
+	settings.SpendingDeclineRate = 0.0
+	settings.ProjectionYears = 1
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+	// Income: $5000/mo. Expenses: $2000/mo. Surplus: $3000/mo.
+	settings.IncomeSources = []models.IncomeSource{
+		{
+			ID:         "surplus-income",
+			Name:       "Big Income",
+			Amount:     5000,
+			Type:       models.IncomeFixed,
+			StartMonth: 0,
+		},
+	}
+
+	calc := NewCalculator(settings)
+	projection := calc.RunProjection()
+
+	// 1 year = 12 months. Total surplus = 12 * $3000 = $36,000.
+	// Initial: $100,000. Expected final: $136,000.
+	finalBalance := projection.Months[len(projection.Months)-1].PortfolioBalance
+	expectedBalance := 100000.0 + (3000.0 * 12)
+
+	if math.Abs(finalBalance-expectedBalance) > 1.0 { // Allow for tiny growth
+		t.Errorf("expected final balance near %.2f, got %.2f (surplus not reinvested?)", expectedBalance, finalBalance)
+	}
+
+	// Also verify that it's in the taxable account
+	finalTaxable := projection.Months[len(projection.Months)-1].TaxableBalance
+	if math.Abs(finalTaxable-expectedBalance) > 1.0 {
+		t.Errorf("expected final taxable balance near %.2f, got %.2f", expectedBalance, finalTaxable)
+	}
+}
+
 // BenchmarkMonteCarloSimulation benchmarks the simulation performance
 func BenchmarkMonteCarloSimulation(b *testing.B) {
 	settings := models.DefaultWhatIfSettings()

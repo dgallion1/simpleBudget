@@ -29,6 +29,7 @@
 ### Improvements
 
 - Recurring payment detection now uses fuzzy vendor matching — transactions with similar names (e.g., "Lucid" and "Lucidmotors.com") are merged into a single vendor group, so payments aren't missed due to inconsistent bank descriptions
+- Amount-based recurring payment detection — payments with identical amounts at regular intervals are detected even when descriptions differ (e.g., check payments and direct bill pay to the same vendor)
 - Go version updated to 1.26
 - Income source number inputs now update results as you type (not just on blur)
 - CSV upload merges new rows into existing files instead of overwriting (prevents data loss)

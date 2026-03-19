@@ -404,7 +404,13 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 			Confidence:   confidence,
 			Transactions: txns,
 		})
+		strictMatches[desc] = true
 	}
+
+	// Third pass: amount-based grouping for payments with different descriptions
+	// but identical amounts at regular intervals (e.g., check payments and bill pay
+	// to the same vendor like "Check #996578" and "Lucid" both at $1,580.43).
+	recurring = append(recurring, detectByAmount(strictMatches, groups, now)...)
 
 	sort.Slice(recurring, func(i, j int) bool {
 		return recurring[i].AnnualCost > recurring[j].AnnualCost
@@ -415,6 +421,121 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 	}
 
 	return recurring
+}
+
+// detectByAmount finds recurring payments across different descriptions that share
+// the same exact amount and regular intervals. This catches cases like a car payment
+// that switches from checks to direct bill pay mid-stream.
+func detectByAmount(alreadyMatched map[string]bool, groups map[string][]models.Transaction, now time.Time) []models.RecurringPayment {
+	var results []models.RecurringPayment
+
+	// Collect all unmatched transactions
+	var unmatched []models.Transaction
+	for desc, txns := range groups {
+		if alreadyMatched[desc] {
+			continue
+		}
+		unmatched = append(unmatched, txns...)
+	}
+
+	// Group unmatched transactions by exact amount (rounded to cents)
+	amountGroups := make(map[int64][]models.Transaction)
+	for _, t := range unmatched {
+		// Key on cents to avoid floating point comparison issues
+		cents := int64(math.Round(math.Abs(t.Amount) * 100))
+		// Skip tiny amounts — not meaningful recurring payments
+		if cents < 500 { // $5.00 minimum
+			continue
+		}
+		amountGroups[cents] = append(amountGroups[cents], t)
+	}
+
+	for _, txns := range amountGroups {
+		if len(txns) < 3 {
+			continue
+		}
+
+		sort.Slice(txns, func(i, j int) bool {
+			return txns[i].Date.Before(txns[j].Date)
+		})
+
+		var intervals []float64
+		for i := 1; i < len(txns); i++ {
+			days := txns[i].Date.Sub(txns[i-1].Date).Hours() / 24
+			intervals = append(intervals, days)
+		}
+
+		if len(intervals) == 0 {
+			continue
+		}
+
+		sortedIntervals := make([]float64, len(intervals))
+		copy(sortedIntervals, intervals)
+		sort.Float64s(sortedIntervals)
+		medianInterval := sortedIntervals[len(sortedIntervals)/2]
+
+		var sumSq float64
+		for _, interval := range intervals {
+			diff := interval - medianInterval
+			sumSq += diff * diff
+		}
+		stdDev := math.Sqrt(sumSq / float64(len(intervals)))
+
+		// Allow slightly more variance than pass 1 since descriptions differ
+		if stdDev > 10 {
+			continue
+		}
+
+		var frequency string
+		var annualMultiplier float64
+
+		switch {
+		case medianInterval >= 25 && medianInterval <= 35:
+			frequency = "monthly"
+			annualMultiplier = 12
+		case medianInterval >= 85 && medianInterval <= 95:
+			frequency = "quarterly"
+			annualMultiplier = 4
+		case medianInterval >= 350 && medianInterval <= 380:
+			frequency = "yearly"
+			annualMultiplier = 1
+		default:
+			continue
+		}
+
+		confidence := 1.0 - (stdDev / medianInterval)
+		if confidence < 0.4 {
+			continue
+		}
+		// Reduce confidence slightly since we're matching on amount alone
+		confidence *= 0.9
+
+		// Must have activity within last 90 days
+		lastDate := txns[len(txns)-1].Date
+		if now.Sub(lastDate).Hours()/24 > 90 {
+			continue
+		}
+
+		avgAmount := math.Abs(txns[0].Amount)
+		nextExpected := lastDate.AddDate(0, 0, int(medianInterval))
+
+		// Use the most recent transaction's description as the label
+		desc := strings.ToLower(strings.TrimSpace(txns[len(txns)-1].Description))
+
+		results = append(results, models.RecurringPayment{
+			Description:  desc,
+			Amount:       avgAmount,
+			Frequency:    frequency,
+			LastDate:     lastDate,
+			NextExpected: nextExpected,
+			AnnualCost:   avgAmount * annualMultiplier,
+			Occurrences:  len(txns),
+			Confidence:   confidence,
+			Transactions: txns,
+		})
+	}
+
+	return results
 }
 
 func analyzeCategoryTrends(ts *models.TransactionSet, currentStart, currentEnd time.Time) []models.CategoryTrend {

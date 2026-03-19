@@ -145,6 +145,65 @@ func calculateInsights(allData, filtered *models.TransactionSet, startDate, endD
 	}
 }
 
+// mergeSimlarGroups consolidates transaction groups where descriptions refer to
+// the same vendor. It strips common suffixes like ".com", ".net", etc. and then
+// checks if the shorter stripped name is a prefix of the longer one. When a match
+// is found, transactions are merged under the shorter (more canonical) description.
+func mergeSimlarGroups(groups map[string][]models.Transaction) map[string][]models.Transaction {
+	// Strip common domain/URL suffixes for comparison
+	strip := func(s string) string {
+		s = strings.TrimSuffix(s, ".com")
+		s = strings.TrimSuffix(s, ".net")
+		s = strings.TrimSuffix(s, ".org")
+		s = strings.TrimSuffix(s, ".io")
+		s = strings.TrimSuffix(s, ".co")
+		return s
+	}
+
+	keys := make([]string, 0, len(groups))
+	for k := range groups {
+		keys = append(keys, k)
+	}
+	// Sort by length so shorter (canonical) names come first
+	sort.Slice(keys, func(i, j int) bool {
+		return len(keys[i]) < len(keys[j])
+	})
+
+	merged := make(map[string][]models.Transaction)
+	// Maps a stripped key to the canonical group key
+	canonical := make(map[string]string)
+
+	for _, key := range keys {
+		stripped := strip(key)
+		// Check if this stripped name matches or is a prefix of an existing canonical,
+		// or if an existing canonical is a prefix of this one
+		found := false
+		for canon, canonKey := range canonical {
+			if strings.HasPrefix(stripped, canon) || strings.HasPrefix(canon, stripped) {
+				// Merge into the existing canonical group
+				merged[canonKey] = append(merged[canonKey], groups[key]...)
+				// If the new stripped name is shorter, update the canonical mapping
+				if len(stripped) < len(canon) {
+					// Re-map: the shorter name becomes canonical
+					txns := merged[canonKey]
+					delete(merged, canonKey)
+					merged[key] = txns
+					delete(canonical, canon)
+					canonical[stripped] = key
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			merged[key] = groups[key]
+			canonical[stripped] = key
+		}
+	}
+
+	return merged
+}
+
 func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPayment {
 	var recurring []models.RecurringPayment
 
@@ -158,6 +217,11 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 		key := strings.ToLower(strings.TrimSpace(t.Description))
 		groups[key] = append(groups[key], t)
 	}
+
+	// Merge groups with fuzzy matching: if one description contains another,
+	// combine them under the shorter (canonical) name. This handles cases like
+	// "lucid" and "lucidmotors.com" referring to the same vendor.
+	groups = mergeSimlarGroups(groups)
 
 	// Track which descriptions matched strict criteria
 	strictMatches := make(map[string]bool)

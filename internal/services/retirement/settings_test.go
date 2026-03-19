@@ -1,10 +1,13 @@
 package retirement
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
+	"budget2/internal/models"
 	"budget2/internal/services/storage"
 )
 
@@ -78,5 +81,91 @@ func TestSettingsManager_ConcurrentUpdates(t *testing.T) {
 	_, err = sm.Load()
 	if err != nil {
 		t.Errorf("Load() failed after concurrent updates: %v", err)
+	}
+}
+
+func TestSettingsManager_ListScenariosIncludesDefaultWhenMissing(t *testing.T) {
+	root := t.TempDir()
+	settingsDir := filepath.Join(root, "settings")
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+
+	sm := NewSettingsManager(settingsDir, store)
+
+	scenarios, err := sm.ListScenarios()
+	if err != nil {
+		t.Fatalf("ListScenarios() error: %v", err)
+	}
+
+	if len(scenarios) != 1 {
+		t.Fatalf("expected 1 scenario, got %d", len(scenarios))
+	}
+	if scenarios[0].Filename != "whatif.json" {
+		t.Fatalf("expected default scenario filename, got %q", scenarios[0].Filename)
+	}
+	if scenarios[0].Name != "Current Plan" {
+		t.Fatalf("expected default scenario name, got %q", scenarios[0].Name)
+	}
+	if !scenarios[0].Active {
+		t.Fatal("expected default scenario to be active")
+	}
+}
+
+func TestSettingsManager_RejectsScenarioPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	settingsDir := filepath.Join(root, "settings")
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+
+	sm := NewSettingsManager(settingsDir, store)
+
+	externalPath := filepath.Join(root, "config.json")
+	if err := os.WriteFile(externalPath, []byte(`{"scenario_name":"outside"}`), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	if err := sm.SwitchScenario("../config.json"); err == nil {
+		t.Fatal("expected SwitchScenario to reject path traversal")
+	}
+
+	if sm.ActiveFilename() != "whatif.json" {
+		t.Fatalf("expected active filename to remain default, got %q", sm.ActiveFilename())
+	}
+}
+
+func TestSettingsManager_RenameAndDeleteUseValidatedScenarioPath(t *testing.T) {
+	root := t.TempDir()
+	settingsDir := filepath.Join(root, "settings")
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+
+	sm := NewSettingsManager(settingsDir, store)
+	if err := store.MkdirAll(settingsDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+
+	path := filepath.Join(settingsDir, "whatif_sample.json")
+	data, err := json.Marshal(models.DefaultWhatIfSettings())
+	if err != nil {
+		t.Fatalf("json.Marshal() error: %v", err)
+	}
+	if err := store.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	if err := sm.RenameScenario("../whatif_sample.json", "Renamed"); err == nil {
+		t.Fatal("expected RenameScenario to reject path traversal")
+	}
+	if err := sm.DeleteScenario("../whatif_sample.json"); err == nil {
+		t.Fatal("expected DeleteScenario to reject path traversal")
 	}
 }

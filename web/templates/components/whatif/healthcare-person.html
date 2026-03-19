@@ -3,16 +3,19 @@
 {{define "whatif-healthcare-person"}}
 <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
     <div class="flex justify-between items-start mb-2">
-        <div>
+        <div class="flex items-center gap-2">
             <span class="font-medium text-gray-800 dark:text-gray-200">{{.Name}}</span>
-            <span class="text-sm text-gray-500 dark:text-gray-300 ml-2">Age {{.CurrentAge}}</span>
-            {{if eq .CurrentCoverage "medicare"}}
-            <span class="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">Medicare</span>
-            {{else if eq .CurrentCoverage "aca"}}
-            <span class="ml-2 px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">ACA</span>
-            {{else}}
-            <span class="ml-2 px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded">Employer</span>
-            {{end}}
+            <span class="text-sm text-gray-500 dark:text-gray-300">Age {{.CurrentAge}}</span>
+            <select name="current_coverage"
+                hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change"
+                class="text-xs px-2 py-0.5 rounded border-0 cursor-pointer
+                    {{if eq .CurrentCoverage "medicare"}}bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200
+                    {{else if eq .CurrentCoverage "aca"}}bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200
+                    {{else}}bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-200{{end}}">
+                <option value="employer" {{if eq .CurrentCoverage "employer"}}selected{{end}}>Employer</option>
+                <option value="aca" {{if eq .CurrentCoverage "aca"}}selected{{end}}>ACA</option>
+                <option value="medicare" {{if eq .CurrentCoverage "medicare"}}selected{{end}}>Medicare</option>
+            </select>
         </div>
         <button type="button" hx-delete="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results"
             class="text-red-500 hover:text-red-700 text-sm">Remove</button>

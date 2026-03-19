@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.5.0 - Scenarios, Subscriptions & Budget Transparency
+
+### New Features
+
+#### What-If Scenarios
+- Named scenarios let you explore different retirement plans without losing your current setup
+- Create "Job Loss", "Early Retirement", etc. - each starts as a copy of the active plan
+- Switch between scenarios instantly via dropdown at the top of the What-If page
+- Rename or delete non-default scenarios; "Current Plan" is always preserved
+
+#### Subscription Tracking (Insights)
+- New dedicated Subscriptions section on the Insights page
+- Automatically classifies recurring payments as subscriptions vs bills/retail
+- Shows monthly subscription total with per-service breakdown
+- KPI card added showing subscription cost at a glance
+
+#### Monthly Budget Snapshot (What-If)
+- Budget analysis now shows itemized expense and income breakdowns
+- Each expense source listed with amount and notes (e.g., "ends year 3", "employer covered")
+- Each income source listed with amount and start year
+- Net cash flow summary at bottom
+
+#### Healthcare Coverage Type Editing
+- Coverage type (Employer/ACA/Medicare) is now a dropdown you can change directly
+- Previously was a static label requiring removal and re-adding the person
+
+### Improvements
+
+- Go version updated to 1.26
+- Income source number inputs now update results as you type (not just on blur)
+- CSV upload merges new rows into existing files instead of overwriting (prevents data loss)
+
+---
+
 ## v1.4.0 - Bug Fixes & Spouse Age Tracking
 
 ### Bug Fixes

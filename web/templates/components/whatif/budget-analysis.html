@@ -10,22 +10,55 @@
         <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current (Today)</h4>
         {{end}}
 
-        <!-- Breakdown table -->
+        <!-- Monthly Snapshot -->
         <div class="mb-4 text-sm">
-            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-300">Monthly Expenses</span>
-                <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
+            <!-- Expenses Section -->
+            <div class="flex justify-between py-1.5 border-b-2 border-gray-300 dark:border-gray-600">
+                <span class="font-semibold text-gray-700 dark:text-gray-200 uppercase text-xs tracking-wide">Expenses</span>
+                <span class="font-semibold text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
             </div>
-            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-300">Monthly Income</span>
-                <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.MonthlyIncome}}</span>
-            </div>
-            {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
-            <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-                <span class="text-gray-600 dark:text-gray-300">Required RMD</span>
-                <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
+            {{if .Analysis.BudgetFit.ExpenseBreakdown}}
+            {{range .Analysis.BudgetFit.ExpenseBreakdown}}
+            <div class="flex justify-between py-0.5 pl-4 {{if eq .Amount 0.0}}opacity-40{{end}}">
+                <span class="text-gray-500 dark:text-gray-400">
+                    {{.Name}}{{if .Note}} <span class="text-xs italic">({{.Note}})</span>{{end}}
+                </span>
+                <span class="text-gray-600 dark:text-gray-300">{{formatMoney .Amount}}</span>
             </div>
             {{end}}
+            {{end}}
+
+            <!-- Income Section -->
+            <div class="flex justify-between py-1.5 mt-2 border-b-2 border-gray-300 dark:border-gray-600">
+                <span class="font-semibold text-gray-700 dark:text-gray-200 uppercase text-xs tracking-wide">Income</span>
+                <span class="font-semibold text-green-600 dark:text-green-400">{{formatMoney .Analysis.BudgetFit.MonthlyIncome}}</span>
+            </div>
+            {{if .Analysis.BudgetFit.IncomeBreakdown}}
+            {{range .Analysis.BudgetFit.IncomeBreakdown}}
+            <div class="flex justify-between py-0.5 pl-4 {{if eq .Amount 0.0}}opacity-40{{end}}">
+                <span class="text-gray-500 dark:text-gray-400">
+                    {{.Name}}{{if .Note}} <span class="text-xs italic">({{.Note}})</span>{{end}}
+                </span>
+                <span class="text-green-600 dark:text-green-400">{{formatMoney .Amount}}</span>
+            </div>
+            {{end}}
+            {{end}}
+
+            {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
+            <div class="flex justify-between py-0.5 pl-4">
+                <span class="text-gray-500 dark:text-gray-400">Required RMD</span>
+                <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
+            </div>
+            {{end}}
+
+            <!-- Net Cash Flow -->
+            <div class="flex justify-between py-1.5 mt-2 border-t-2 border-gray-300 dark:border-gray-600">
+                <span class="font-semibold text-gray-700 dark:text-gray-200 uppercase text-xs tracking-wide">Net Cash Flow</span>
+                {{$net := .Analysis.BudgetFit.MonthlyGap}}
+                <span class="font-semibold {{if lt $net 0.0}}text-green-600 dark:text-green-400{{else if gt $net 0.0}}text-red-600 dark:text-red-400{{else}}text-gray-600 dark:text-gray-300{{end}}">
+                    {{if lt $net 0.0}}+{{formatMoney (abs $net)}}{{else}}-{{formatMoney $net}}{{end}}
+                </span>
+            </div>
         </div>
 
         <div class="grid grid-cols-2 gap-4 text-center">

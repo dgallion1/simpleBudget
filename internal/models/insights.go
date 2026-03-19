@@ -46,11 +46,13 @@ type SpendingVelocity struct {
 
 // InsightsData contains all insight metrics for the page
 type InsightsData struct {
-	RecurringPayments  []RecurringPayment `json:"recurring_payments"`
-	CategoryTrends     []CategoryTrend    `json:"category_trends"`
-	IncomePatterns     []IncomePattern    `json:"income_patterns"`
-	Velocity           *SpendingVelocity  `json:"velocity"`
-	TotalRecurring     float64            `json:"total_recurring"`      // Annual recurring cost
-	MonthlyRecurring   float64            `json:"monthly_recurring"`    // Monthly recurring cost
-	RegularIncomeTotal float64            `json:"regular_income_total"` // Total from regular income
+	RecurringPayments    []RecurringPayment `json:"recurring_payments"`
+	Subscriptions        []RecurringPayment `json:"subscriptions"`
+	CategoryTrends       []CategoryTrend    `json:"category_trends"`
+	IncomePatterns       []IncomePattern    `json:"income_patterns"`
+	Velocity             *SpendingVelocity  `json:"velocity"`
+	TotalRecurring       float64            `json:"total_recurring"`       // Annual recurring cost
+	MonthlyRecurring     float64            `json:"monthly_recurring"`     // Monthly recurring cost
+	MonthlySubscriptions float64            `json:"monthly_subscriptions"` // Monthly subscription cost
+	RegularIncomeTotal   float64            `json:"regular_income_total"`  // Total from regular income
 }

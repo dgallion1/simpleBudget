@@ -4,6 +4,9 @@ import "math"
 
 // WhatIfSettings contains all user parameters for retirement planning
 type WhatIfSettings struct {
+	// Scenario metadata
+	ScenarioName string `json:"scenario_name,omitempty"` // Display name for this scenario
+
 	// Portfolio
 	PortfolioValue float64 `json:"portfolio_value"` // Current portfolio value
 
@@ -468,6 +471,13 @@ type ProjectionResult struct {
 	Survives        bool              `json:"survives"`
 }
 
+// ExpenseBreakdownItem shows a named expense component
+type ExpenseBreakdownItem struct {
+	Name   string  `json:"name"`
+	Amount float64 `json:"amount"`
+	Note   string  `json:"note,omitempty"` // e.g., "employer covered", "ends year 3"
+}
+
 // BudgetFitAnalysis shows monthly gap and required rates
 type BudgetFitAnalysis struct {
 	MonthlyExpenses   float64 `json:"monthly_expenses"`
@@ -476,6 +486,10 @@ type BudgetFitAnalysis struct {
 	MonthlyGap        float64 `json:"monthly_gap"`        // Expenses - Income - RMD
 	AnnualGap         float64 `json:"annual_gap"`
 	RequiredRate      float64 `json:"required_rate"`      // Rate needed to cover gap
+
+	// Breakdowns for transparency
+	ExpenseBreakdown []ExpenseBreakdownItem `json:"expense_breakdown,omitempty"`
+	IncomeBreakdown  []ExpenseBreakdownItem `json:"income_breakdown,omitempty"` // reuses same struct
 
 	// RMD/Gap relationship fields
 	GapBeforeRMD float64 `json:"gap_before_rmd"` // Expenses - Income (before RMD applied)

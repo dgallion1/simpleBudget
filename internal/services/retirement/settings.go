@@ -2,13 +2,24 @@ package retirement
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
 	"budget2/internal/models"
 	"budget2/internal/services/storage"
 )
+
+// Scenario represents a named what-if scenario
+type Scenario struct {
+	Name     string `json:"name"`
+	Filename string `json:"filename"`
+	Active   bool   `json:"active"`
+}
 
 // SettingsManager handles persistence of what-if settings
 type SettingsManager struct {
@@ -681,4 +692,264 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 	}
 
 	return settings, nil
+}
+
+// slugify converts a scenario name to a URL-safe filename slug
+func slugify(name string) string {
+	slug := strings.ToLower(name)
+	slug = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		if r == ' ' || r == '-' || r == '_' {
+			return '-'
+		}
+		return -1
+	}, slug)
+	// Collapse multiple hyphens
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		slug = "scenario"
+	}
+	return slug
+}
+
+// readScenarioName reads the scenario_name field from a whatif JSON file
+func (sm *SettingsManager) readScenarioName(filename string) string {
+	path, err := sm.scenarioPath(filename)
+	if err != nil {
+		return filename
+	}
+	data, err := sm.store.ReadFile(path)
+	if err != nil {
+		return filename
+	}
+	var partial struct {
+		ScenarioName string `json:"scenario_name"`
+	}
+	if err := json.Unmarshal(data, &partial); err != nil {
+		return filename
+	}
+	if partial.ScenarioName == "" {
+		return filename
+	}
+	return partial.ScenarioName
+}
+
+func (sm *SettingsManager) scenarioPath(filename string) (string, error) {
+	if filename == "" {
+		return "", fmt.Errorf("scenario filename is required")
+	}
+	if filepath.Base(filename) != filename || strings.Contains(filename, "..") {
+		return "", fmt.Errorf("invalid scenario filename: %s", filename)
+	}
+	if strings.ContainsAny(filename, `/\`) {
+		return "", fmt.Errorf("invalid scenario filename: %s", filename)
+	}
+	if !strings.HasPrefix(filename, "whatif") || !strings.HasSuffix(filename, ".json") {
+		return "", fmt.Errorf("invalid scenario filename: %s", filename)
+	}
+	return filepath.Join(sm.settingsDir, filename), nil
+}
+
+// ListScenarios returns all available what-if scenarios
+func (sm *SettingsManager) ListScenarios() ([]Scenario, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	pattern := filepath.Join(sm.settingsDir, "whatif*.json")
+	matches, err := sm.store.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("listing scenarios: %w", err)
+	}
+
+	var scenarios []Scenario
+	hasDefault := false
+	for _, match := range matches {
+		fname := filepath.Base(match)
+		var name string
+		if fname == "whatif.json" {
+			hasDefault = true
+			name = "Current Plan"
+		} else {
+			name = sm.readScenarioName(fname)
+		}
+		scenarios = append(scenarios, Scenario{
+			Name:     name,
+			Filename: fname,
+			Active:   fname == sm.filename,
+		})
+	}
+
+	if !hasDefault {
+		scenarios = append(scenarios, Scenario{
+			Name:     "Current Plan",
+			Filename: "whatif.json",
+			Active:   sm.filename == "whatif.json",
+		})
+	}
+
+	// Sort with "Current Plan" (whatif.json) always first, rest alphabetical by name
+	sort.Slice(scenarios, func(i, j int) bool {
+		if scenarios[i].Filename == "whatif.json" {
+			return true
+		}
+		if scenarios[j].Filename == "whatif.json" {
+			return false
+		}
+		return scenarios[i].Name < scenarios[j].Name
+	})
+
+	return scenarios, nil
+}
+
+// ActiveScenario returns the display name of the current scenario
+func (sm *SettingsManager) ActiveScenario() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	if sm.filename == "whatif.json" {
+		return "Current Plan"
+	}
+	return sm.readScenarioName(sm.filename)
+}
+
+// ActiveFilename returns the filename of the current active scenario
+func (sm *SettingsManager) ActiveFilename() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.filename
+}
+
+// SwitchScenario changes the active scenario to the specified file
+func (sm *SettingsManager) SwitchScenario(filename string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Validate the file exists
+	path, err := sm.scenarioPath(filename)
+	if err != nil {
+		return err
+	}
+	if _, err := sm.store.Stat(path); err != nil {
+		return fmt.Errorf("scenario file not found: %s", filename)
+	}
+
+	sm.filename = filename
+	sm.cache = nil
+	return nil
+}
+
+// CreateScenario copies the current settings to a new scenario file and switches to it
+func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Load current settings
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, fmt.Errorf("loading current settings: %w", err)
+	}
+
+	// Generate filename
+	slug := slugify(name)
+	filename := fmt.Sprintf("whatif_%s.json", slug)
+
+	// Ensure unique filename
+	path := filepath.Join(sm.settingsDir, filename)
+	counter := 1
+	for {
+		if _, err := sm.store.Stat(path); os.IsNotExist(err) {
+			break
+		}
+		counter++
+		filename = fmt.Sprintf("whatif_%s-%d.json", slug, counter)
+		path = filepath.Join(sm.settingsDir, filename)
+	}
+
+	// Set scenario name on the settings
+	settings.ScenarioName = name
+
+	// Switch to the new file and save
+	sm.filename = filename
+	sm.cache = nil
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, fmt.Errorf("saving new scenario: %w", err)
+	}
+
+	log.Printf("Created scenario %q as %s", name, filename)
+	return settings, nil
+}
+
+// DeleteScenario removes a scenario file
+func (sm *SettingsManager) DeleteScenario(filename string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if filename == "whatif.json" {
+		return fmt.Errorf("cannot delete the default scenario")
+	}
+
+	path, err := sm.scenarioPath(filename)
+	if err != nil {
+		return err
+	}
+	if err := sm.store.Remove(path); err != nil {
+		return fmt.Errorf("deleting scenario: %w", err)
+	}
+
+	// If we just deleted the active scenario, switch back to default
+	if sm.filename == filename {
+		sm.filename = "whatif.json"
+		sm.cache = nil
+	}
+
+	log.Printf("Deleted scenario %s", filename)
+	return nil
+}
+
+// RenameScenario updates the display name of a scenario
+func (sm *SettingsManager) RenameScenario(filename, newName string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if filename == "whatif.json" {
+		return fmt.Errorf("cannot rename the default scenario")
+	}
+
+	path, err := sm.scenarioPath(filename)
+	if err != nil {
+		return err
+	}
+	data, err := sm.store.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading scenario: %w", err)
+	}
+
+	var settings models.WhatIfSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return fmt.Errorf("parsing scenario: %w", err)
+	}
+
+	settings.ScenarioName = newName
+
+	updated, err := json.MarshalIndent(&settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling scenario: %w", err)
+	}
+
+	if err := sm.store.WriteFile(path, updated, 0644); err != nil {
+		return fmt.Errorf("writing scenario: %w", err)
+	}
+
+	// Invalidate cache if this is the active scenario
+	if sm.filename == filename {
+		sm.cache = nil
+	}
+
+	log.Printf("Renamed scenario %s to %q", filename, newName)
+	return nil
 }

@@ -190,6 +190,11 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/bigticket", handleWhatIfAddBigTicket)
 	r.Delete("/whatif/bigticket/{id}", handleWhatIfDeleteBigTicket)
 	r.Post("/whatif/bigticket/{id}/restore", handleWhatIfRestoreBigTicket)
+	r.Get("/whatif/scenarios", handleListScenarios)
+	r.Post("/whatif/scenarios", handleCreateScenario)
+	r.Post("/whatif/scenarios/switch", handleSwitchScenario)
+	r.Delete("/whatif/scenarios/{filename}", handleDeleteScenario)
+	r.Put("/whatif/scenarios/{filename}", handleRenameScenario)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
@@ -208,11 +213,18 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	// Run full analysis (with caching)
 	analysis := runAnalysisWithCache(settings)
 
+	scenarios, _ := retirementMgr.ListScenarios()
+	activeScenario := retirementMgr.ActiveScenario()
+	activeFilename := retirementMgr.ActiveFilename()
+
 	pageData := map[string]interface{}{
-		"Title":     "What-If Analysis",
-		"ActiveTab": "whatif",
-		"Settings":  settings,
-		"Analysis":  analysis,
+		"Title":          "What-If Analysis",
+		"ActiveTab":      "whatif",
+		"Settings":       settings,
+		"Analysis":       analysis,
+		"Scenarios":      scenarios,
+		"ActiveScenario": activeScenario,
+		"ActiveFilename": activeFilename,
 	}
 
 	if renderer != nil {
@@ -1799,4 +1811,91 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+func handleListScenarios(w http.ResponseWriter, r *http.Request) {
+	scenarios, err := retirementMgr.ListScenarios()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(scenarios)
+}
+
+func handleCreateScenario(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	if name == "" {
+		renderError(w, "Scenario name is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := retirementMgr.CreateScenario(name); err != nil {
+		renderError(w, "Failed to create scenario: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// HTMX redirect for full page reload
+	w.Header().Set("HX-Redirect", "/whatif")
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleSwitchScenario(w http.ResponseWriter, r *http.Request) {
+	filename := r.FormValue("filename")
+	if filename == "" {
+		renderError(w, "Scenario filename is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := retirementMgr.SwitchScenario(filename); err != nil {
+		renderError(w, "Failed to switch scenario: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// HTMX redirect for full page reload
+	w.Header().Set("HX-Redirect", "/whatif")
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleDeleteScenario(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	if filename == "" {
+		renderError(w, "Scenario filename is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := retirementMgr.DeleteScenario(filename); err != nil {
+		renderError(w, "Failed to delete scenario: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// HTMX redirect for full page reload
+	w.Header().Set("HX-Redirect", "/whatif")
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleRenameScenario(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	if filename == "" {
+		renderError(w, "Scenario filename is required", http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		renderError(w, "New scenario name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := retirementMgr.RenameScenario(filename, name); err != nil {
+		renderError(w, "Failed to rename scenario: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// HTMX redirect for full page reload
+	w.Header().Set("HX-Redirect", "/whatif")
+	w.WriteHeader(http.StatusOK)
 }

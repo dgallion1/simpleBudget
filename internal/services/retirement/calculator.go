@@ -502,6 +502,65 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	monthlyExpenses := c.CalculateTotalExpenses(0)
 	monthlyIncome := c.CalculateTotalIncome(0)
 
+	// Build expense breakdown for transparency
+	var breakdown []models.ExpenseBreakdownItem
+	if s.MonthlyLivingExpenses > 0 {
+		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+			Name:   "Living Expenses",
+			Amount: s.MonthlyLivingExpenses,
+		})
+	}
+	healthcareCost := s.GetTotalHealthcareCost(0)
+	if healthcareCost > 0 {
+		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+			Name:   "Healthcare",
+			Amount: healthcareCost,
+		})
+	} else if len(s.HealthcarePersons) > 0 {
+		// Show healthcare even when $0 so user knows it's tracked
+		note := "employer covered"
+		for _, p := range s.HealthcarePersons {
+			if p.EmployerCoverageYears > 0 {
+				note = fmt.Sprintf("employer covered (%d yr)", p.EmployerCoverageYears)
+				break
+			}
+		}
+		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+			Name:   "Healthcare",
+			Amount: 0,
+			Note:   note,
+		})
+	}
+	for _, source := range s.ExpenseSources {
+		amt := source.GetAdjustedAmount(0, s.InflationRate)
+		note := ""
+		if source.EndYear > 0 {
+			note = fmt.Sprintf("ends year %d", source.EndYear)
+		}
+		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+			Name:   source.Name,
+			Amount: amt,
+			Note:   note,
+		})
+	}
+
+	// Build income breakdown
+	var incomeBreakdown []models.ExpenseBreakdownItem
+	for _, source := range s.IncomeSources {
+		amt := source.GetAdjustedAmount(0)
+		if amt > 0 {
+			note := ""
+			if source.StartMonth > 0 {
+				note = fmt.Sprintf("starts year %d", source.StartMonth/12)
+			}
+			incomeBreakdown = append(incomeBreakdown, models.ExpenseBreakdownItem{
+				Name:   source.Name,
+				Amount: amt,
+				Note:   note,
+			})
+		}
+	}
+
 	// Calculate RMD if age 73+ and have tax-deferred balance
 	// Uses older person's age - whoever hits 73 first triggers RMD
 	monthlyRMD := 0.0
@@ -547,13 +606,15 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	}
 
 	result := &models.BudgetFitAnalysis{
-		MonthlyExpenses: monthlyExpenses,
-		MonthlyIncome:   monthlyIncome,
-		MonthlyRMD:      monthlyRMD,
-		MonthlyGap:      monthlyGap,
-		AnnualGap:       annualGap,
-		RequiredRate:    requiredRate,
-		GapBeforeRMD:    gapBeforeRMD,
+		MonthlyExpenses:  monthlyExpenses,
+		MonthlyIncome:    monthlyIncome,
+		MonthlyRMD:       monthlyRMD,
+		MonthlyGap:       monthlyGap,
+		AnnualGap:        annualGap,
+		RequiredRate:     requiredRate,
+		ExpenseBreakdown: breakdown,
+		IncomeBreakdown:  incomeBreakdown,
+		GapBeforeRMD:     gapBeforeRMD,
 		RMDCoverage:     rmdCoverage,
 		ExcessRMD:       excessRMD,
 	}

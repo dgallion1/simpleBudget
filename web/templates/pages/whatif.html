@@ -2,6 +2,66 @@
 {{/* Main page template that composes all whatif components */}}
 
 {{define "whatif-content"}}
+<!-- Scenario Switcher Bar -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 mb-6">
+    <div class="flex items-center gap-3 flex-wrap">
+        <!-- Scenario Selector -->
+        <div class="flex items-center gap-2">
+            <label for="scenario-select" class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Scenario:</label>
+            <select id="scenario-select"
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-sm rounded-md px-3 py-1.5 focus:ring-indigo-500 focus:border-indigo-500"
+                hx-post="/whatif/scenarios/switch"
+                hx-vals="js:{filename: event.target.value}"
+                hx-trigger="change">
+                {{range .Scenarios}}
+                <option value="{{.Filename}}" {{if .Active}}selected{{end}}>
+                    {{- if eq .Filename "whatif.json"}}Current Plan{{else}}{{.Name}}{{end -}}
+                </option>
+                {{end}}
+            </select>
+        </div>
+
+        <!-- New Scenario Button -->
+        <button type="button" onclick="document.getElementById('new-scenario-form').classList.toggle('hidden')"
+            class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            New
+        </button>
+
+        <!-- Delete Scenario Button (hidden for default scenario) -->
+        {{if and .ActiveFilename (ne .ActiveFilename "whatif.json")}}
+        <button type="button"
+            class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
+            hx-delete="/whatif/scenarios/{{.ActiveFilename}}"
+            hx-confirm="Are you sure you want to delete this scenario? This cannot be undone.">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            </svg>
+            Delete
+        </button>
+        {{end}}
+    </div>
+
+    <!-- New Scenario Form (hidden by default) -->
+    <div id="new-scenario-form" class="hidden mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+        <form class="flex items-center gap-3" hx-post="/whatif/scenarios" hx-target="body">
+            <label for="new-scenario-name" class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Name:</label>
+            <input type="text" id="new-scenario-name" name="name" required placeholder="e.g. Early Retirement"
+                class="flex-1 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-sm rounded-md px-3 py-1.5 focus:ring-indigo-500 focus:border-indigo-500">
+            <button type="submit"
+                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors">
+                Create
+            </button>
+            <button type="button" onclick="document.getElementById('new-scenario-form').classList.add('hidden')"
+                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-gray-500 hover:bg-gray-600 text-white transition-colors">
+                Cancel
+            </button>
+        </form>
+    </div>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Left Column: Settings -->
     <div class="space-y-4">

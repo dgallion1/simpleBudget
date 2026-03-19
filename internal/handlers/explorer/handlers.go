@@ -134,7 +134,7 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 	pageRange := calculatePageRange(page, totalPages)
 
 	// Calculate page start/end for display
-	pageStart := (page - 1) * perPage + 1
+	pageStart := (page-1)*perPage + 1
 	pageEnd := pageStart + paginated.Len() - 1
 	if totalCount == 0 {
 		pageStart = 0
@@ -262,7 +262,7 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 	pageRange := calculatePageRange(page, totalPages)
 
 	// Calculate page start/end for display
-	pageStart := (page - 1) * perPage + 1
+	pageStart := (page-1)*perPage + 1
 	pageEnd := pageStart + paginated.Len() - 1
 	if totalCount == 0 {
 		pageStart = 0
@@ -412,27 +412,34 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	filename, err := sanitizeUploadFilename(header.Filename)
+	if err != nil {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+
 	// Validate file extension
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".csv") {
+	if !strings.HasSuffix(strings.ToLower(filename), ".csv") {
 		http.Error(w, "Only CSV files are allowed", http.StatusBadRequest)
 		return
 	}
 
-	// Read file content
+	// Read uploaded file content
 	data, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
 
+	destPath := filepath.Join(cfg.DataDirectory, filename)
+
 	// Write via storage (handles encryption if enabled)
-	destPath := filepath.Join(cfg.DataDirectory, header.Filename)
 	if err := store.WriteFile(destPath, data, 0644); err != nil {
 		http.Error(w, "Error saving file", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Uploaded file: %s", header.Filename)
+	log.Printf("Uploaded file: %s", filename)
 
 	// Return updated file list
 	files, _ := loader.GetFileInfo()
@@ -446,6 +453,14 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+func sanitizeUploadFilename(filename string) (string, error) {
+	filename = filepath.Base(strings.ReplaceAll(filename, `\`, "/"))
+	if filename == "." || filename == "" || strings.Contains(filename, "..") {
+		return "", os.ErrInvalid
+	}
+	return filename, nil
 }
 
 func handleFileDelete(w http.ResponseWriter, r *http.Request) {

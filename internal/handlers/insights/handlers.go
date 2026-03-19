@@ -38,17 +38,93 @@ func RegisterRoutes(r chi.Router) {
 
 // Utility Functions
 
+// retailKeywords identifies transactions that are store/retail purchases, not subscriptions.
+// These have recurring patterns due to frequent shopping but are not subscription services.
+var retailKeywords = []string{
+	"walmart", "target", "costco", "kroger", "publix", "aldi",
+	"wegmans", "trader joe", "whole foods", "safeway", "albertsons",
+	"home depot", "lowes", "lowe's", "menards",
+	"walgreens", "cvs", "rite aid",
+	"amazon", "ebay", "etsy",
+	"bj's", "sam's club",
+	"pet supplies", "petsmart", "petco",
+	"dollar general", "dollar tree", "five below",
+	"restaurant", "grubhub", "doordash", "uber eats",
+	"gas station", "shell", "exxon", "bp ", "chevron", "speedway",
+	"starbucks", "dunkin", "mcdonald", "wendy", "chipotle",
+	"grocery", "groceries", "market",
+	"wine", "spirits", "liquor", "cafe", "diner", "grill",
+	"food co op", "abundance",
+}
+
+// billKeywords identifies transactions that are utility bills, not subscription services.
+var billKeywords = []string{
+	"electric", "g&e", "power", "energy",
+	"water", "sewer",
+	"rent ", "mortgage", "hoa",
+	"insurance", "casualty", "geico", "allstate", "state farm",
+	"credit card payment", "loan payment", "payment - thank",
+	"transfer", "funds transfer",
+	"tax", "dmv", "government",
+}
+
+// isSubscription classifies a recurring payment as a subscription service.
+// Subscriptions are regular payments that are not retail stores or utility bills.
+// This includes both fixed-amount (Netflix) and variable-amount (API billing) services.
+func isSubscription(rp models.RecurringPayment) bool {
+	desc := strings.ToLower(rp.Description)
+
+	// Check against retail keywords - stores you shop at are not subscriptions
+	for _, kw := range retailKeywords {
+		if strings.Contains(desc, kw) {
+			return false
+		}
+	}
+
+	// Check against bill keywords - utilities/bills are not subscriptions
+	for _, kw := range billKeywords {
+		if strings.Contains(desc, kw) {
+			return false
+		}
+	}
+
+	// Fixed-interval payments (monthly/yearly/quarterly) are subscriptions
+	if rp.Frequency == "monthly" || rp.Frequency == "yearly" || rp.Frequency == "quarterly" {
+		return true
+	}
+
+	// "ongoing" payments that aren't retail or bills are likely subscription services
+	// with variable billing (e.g., API usage, metered services)
+	if rp.Frequency == "ongoing" {
+		return true
+	}
+
+	return false
+}
+
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	recurring := detectRecurringPayments(filtered)
 	trends := analyzeCategoryTrends(allData, startDate, endDate)
 	income := AnalyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)
 
-	var totalRecurring, monthlyRecurring, regularIncome float64
+	// Split recurring payments into subscriptions and bills
+	var subscriptions, bills []models.RecurringPayment
+	for _, r := range recurring {
+		if isSubscription(r) {
+			subscriptions = append(subscriptions, r)
+		} else {
+			bills = append(bills, r)
+		}
+	}
+
+	var totalRecurring, monthlySubscriptions, regularIncome float64
 	for _, r := range recurring {
 		totalRecurring += r.AnnualCost
 	}
-	monthlyRecurring = totalRecurring / 12
+	for _, s := range subscriptions {
+		monthlySubscriptions += s.AnnualCost / 12
+	}
 
 	for _, ip := range income {
 		if ip.IsRegular {
@@ -57,13 +133,15 @@ func calculateInsights(allData, filtered *models.TransactionSet, startDate, endD
 	}
 
 	return &models.InsightsData{
-		RecurringPayments:  recurring,
-		CategoryTrends:     trends,
-		IncomePatterns:     income,
-		Velocity:           velocity,
-		TotalRecurring:     totalRecurring,
-		MonthlyRecurring:   monthlyRecurring,
-		RegularIncomeTotal: regularIncome,
+		RecurringPayments:    bills,
+		Subscriptions:        subscriptions,
+		CategoryTrends:       trends,
+		IncomePatterns:       income,
+		Velocity:             velocity,
+		TotalRecurring:       totalRecurring,
+		MonthlyRecurring:     totalRecurring / 12,
+		MonthlySubscriptions: monthlySubscriptions,
+		RegularIncomeTotal:   regularIncome,
 	}
 }
 

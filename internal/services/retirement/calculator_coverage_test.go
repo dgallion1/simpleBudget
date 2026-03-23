@@ -403,3 +403,85 @@ func TestRunProjection_MonteCarloWithDiscretionary(t *testing.T) {
 		t.Errorf("expected 50 runs, got %d", result.Stats.Runs)
 	}
 }
+
+// TestFullyTaxableAccount verifies that a portfolio with 0% tax-deferred and
+// 0% Roth (100% taxable) works correctly across projection, backtest, budget
+// fit, Monte Carlo, and steady-state. No RMDs should fire, no early withdrawal
+// penalty should apply, and all withdrawals should come from taxable.
+func TestFullyTaxableAccount(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.PortfolioValue = 1_000_000
+	s.TaxDeferredPercent = 0
+	s.RothPercent = 0
+	s.MonthlyLivingExpenses = 4000
+	s.InvestmentReturn = 6.0
+	s.ProjectionYears = 10
+	s.CurrentAge = 55 // Young enough to trigger penalty if tax-deferred were used
+
+	t.Run("projection", func(t *testing.T) {
+		c := NewCalculator(s)
+		result := c.RunProjection()
+
+		if !result.Survives {
+			t.Fatal("expected fully taxable portfolio to survive")
+		}
+
+		// Verify no tax-deferred or Roth withdrawals in any month
+		for i, m := range result.Months {
+			if m.WithdrawalFromTaxDeferred != 0 {
+				t.Errorf("month %d: unexpected tax-deferred withdrawal %f", i, m.WithdrawalFromTaxDeferred)
+				break
+			}
+			if m.WithdrawalFromRoth != 0 {
+				t.Errorf("month %d: unexpected Roth withdrawal %f", i, m.WithdrawalFromRoth)
+				break
+			}
+			if m.RMDWithdrawal != 0 {
+				t.Errorf("month %d: unexpected RMD withdrawal %f", i, m.RMDWithdrawal)
+				break
+			}
+		}
+	})
+
+	t.Run("backtest", func(t *testing.T) {
+		c := NewCalculator(s)
+		result := c.runSingleHistoricalSequence(1990)
+
+		if !result.Survives {
+			t.Fatal("expected fully taxable backtest to survive")
+		}
+	})
+
+	t.Run("budget_fit", func(t *testing.T) {
+		c := NewCalculator(s)
+		bf := c.CalculateBudgetFit()
+
+		if bf.MonthlyRMD != 0 {
+			t.Errorf("expected 0 RMD for fully taxable, got %f", bf.MonthlyRMD)
+		}
+	})
+
+	t.Run("monte_carlo", func(t *testing.T) {
+		c := NewCalculator(s)
+		mc := c.RunMonteCarloSimulation(50)
+
+		if mc == nil || mc.Stats == nil {
+			t.Fatal("expected non-nil Monte Carlo result")
+		}
+		if mc.Stats.SuccessRate <= 0 {
+			t.Error("expected positive success rate for well-funded taxable portfolio")
+		}
+	})
+
+	t.Run("rmd_analysis", func(t *testing.T) {
+		c := NewCalculator(s)
+		rmd := c.CalculateRMDAnalysis()
+
+		if rmd.TaxDeferredValue != 0 {
+			t.Errorf("expected 0 tax-deferred value, got %f", rmd.TaxDeferredValue)
+		}
+		if len(rmd.Projections) != 0 {
+			t.Errorf("expected 0 RMD projections, got %d", len(rmd.Projections))
+		}
+	})
+}

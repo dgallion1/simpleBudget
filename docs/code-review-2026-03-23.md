@@ -36,6 +36,14 @@ All four findings were addressed on 2026-03-23:
 
 4. **Steady-state rate (Fixed):** The steady-state panel now falls back to `s.GetExpectedReturnFromAllocation()` when `InvestmentReturn` is 0 (allocation mode), ensuring the estimated tax-deferred balance and portfolio value compound at the same blended rate used by the main projection.
 
+## UI Fixes
+
+5. **RMD card hidden when no tax-deferred accounts:** The RMD card now only renders when `TaxDeferredPercent > 0`, avoiding confusing $0 displays for fully taxable portfolios.
+
+6. **Per-account allocation sections hidden when unused:** Tax-Deferred and Roth asset allocation sections hide dynamically when their portfolio allocation is 0%.
+
+7. **Asset allocation clamped to 100%:** Stocks + cash per account are now clamped client-side (auto-corrects on input) and validated server-side (rejects if > 100%). Previously, invalid values like 95% stocks + 95% cash = -90% bonds could be saved.
+
 ## Verification
 
 - `go test ./...` passed after all fixes were applied.

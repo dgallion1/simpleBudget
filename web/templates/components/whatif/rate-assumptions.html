@@ -95,8 +95,8 @@
                 <span class="text-xs text-gray-500 dark:text-gray-400">Each must equal 100%</span>
             </div>
 
-            <!-- Tax-Deferred Account -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
+            <!-- Tax-Deferred Account (hidden when 0% allocation) -->
+            <div id="td-alloc-section" class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2{{if le .Settings.TaxDeferredPercent 0.0}} hidden{{end}}">
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Tax-Deferred (401k/IRA)</span>
@@ -126,8 +126,8 @@
                 </div>
             </div>
 
-            <!-- Roth Account -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
+            <!-- Roth Account (hidden when 0% allocation) -->
+            <div id="roth-alloc-section" class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2{{if le .Settings.RothPercent 0.0}} hidden{{end}}">
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Roth (Roth IRA/401k)</span>
@@ -303,6 +303,11 @@ function updateTaxablePercent() {
             display.classList.remove('text-red-600', 'dark:text-red-400');
         }
     }
+    // Show/hide per-account allocation sections based on portfolio split
+    const tdSection = document.getElementById('td-alloc-section');
+    const rothSection = document.getElementById('roth-alloc-section');
+    if (tdSection) tdSection.classList.toggle('hidden', taxDeferred <= 0);
+    if (rothSection) rothSection.classList.toggle('hidden', roth <= 0);
     // Update dollar amounts display
     updateAccountAmounts();
 }
@@ -349,19 +354,29 @@ function updateAccountBonds(account) {
         'taxable': 'taxable'
     };
     const prefix = prefixMap[account];
-    const stocks = parseFloat(document.querySelector(`input[name="${prefix}_stock_percent"]`).value) || 0;
-    const cash = parseFloat(document.querySelector(`input[name="${prefix}_cash_percent"]`).value) || 0;
+    const stockInput = document.querySelector(`input[name="${prefix}_stock_percent"]`);
+    const cashInput = document.querySelector(`input[name="${prefix}_cash_percent"]`);
+    let stocks = parseFloat(stockInput.value) || 0;
+    let cash = parseFloat(cashInput.value) || 0;
+
+    // Clamp: stocks + cash cannot exceed 100%
+    if (stocks + cash > 100) {
+        // Reduce whichever field was just changed (the event target)
+        const target = document.activeElement;
+        if (target === cashInput) {
+            cash = 100 - stocks;
+            cashInput.value = Math.max(0, cash);
+        } else {
+            stocks = 100 - cash;
+            stockInput.value = Math.max(0, stocks);
+        }
+    }
+
     const bonds = Math.max(0, 100 - stocks - cash);
     const display = document.getElementById(`${account}-bond-display`);
     if (display) {
         display.textContent = 'Bonds: ' + Math.round(bonds) + '%';
-        // Warn if over 100%
-        if (stocks + cash > 100) {
-            display.classList.add('text-red-600', 'dark:text-red-400');
-            display.textContent = 'Over 100%!';
-        } else {
-            display.classList.remove('text-red-600', 'dark:text-red-400');
-        }
+        display.classList.remove('text-red-600', 'dark:text-red-400');
     }
     // Update expected return if using allocation-based returns
     const returnSlider = document.querySelector('input[name="investment_return"]');

@@ -160,6 +160,117 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	return livingExpenses + healthcareExpenses
 }
 
+type withdrawalBreakdown struct {
+	RemainingNeed             float64
+	ActualWithdrawal          float64
+	RMDWithdrawal             float64
+	WithdrawalFromTaxDeferred float64
+	WithdrawalFromTaxable     float64
+	WithdrawalFromRoth        float64
+	EarlyPenaltyPaid          float64
+}
+
+func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
+	return s.TaxDeferredDelayYears > 0 && currentYear < s.TaxDeferredDelayYears
+}
+
+// earlyWithdrawalPenaltyRate returns the IRS 10% early distribution penalty rate
+// for tax-deferred withdrawals before age 59½. Uses age 60 as the cutoff since
+// the model operates in whole years.
+func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
+	if currentAge+currentYear < 60 {
+		return 0.10
+	}
+	return 0
+}
+
+func withdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance *float64) withdrawalBreakdown {
+	breakdown := withdrawalBreakdown{RemainingNeed: neededFromPortfolio}
+	if neededFromPortfolio <= 0 {
+		return breakdown
+	}
+
+	if monthlyRMD > 0 && *taxDeferredBalance > 0 {
+		rmdUsed := math.Min(monthlyRMD, breakdown.RemainingNeed)
+		rmdUsed = math.Min(rmdUsed, *taxDeferredBalance)
+		*taxDeferredBalance -= rmdUsed
+		breakdown.RemainingNeed -= rmdUsed
+		breakdown.RMDWithdrawal = rmdUsed
+		breakdown.WithdrawalFromTaxDeferred += rmdUsed
+		breakdown.ActualWithdrawal += rmdUsed
+	}
+
+	if breakdown.RemainingNeed > 0 && *taxableBalance > 0 {
+		fromTaxable := math.Min(breakdown.RemainingNeed, *taxableBalance)
+		*taxableBalance -= fromTaxable
+		breakdown.RemainingNeed -= fromTaxable
+		breakdown.WithdrawalFromTaxable += fromTaxable
+		breakdown.ActualWithdrawal += fromTaxable
+	}
+
+	if breakdown.RemainingNeed > 0 && *rothBalance > 0 {
+		fromRoth := math.Min(breakdown.RemainingNeed, *rothBalance)
+		*rothBalance -= fromRoth
+		breakdown.RemainingNeed -= fromRoth
+		breakdown.WithdrawalFromRoth += fromRoth
+		breakdown.ActualWithdrawal += fromRoth
+	}
+
+	if allowTaxDeferred && breakdown.RemainingNeed > 0 && *taxDeferredBalance > 0 {
+		// Early withdrawal penalty: before age 59½, only (1-penalty) of each dollar
+		// withdrawn from tax-deferred is available for spending
+		effectiveFactor := 1.0 - earlyPenaltyRate
+		grossNeeded := breakdown.RemainingNeed / effectiveFactor
+		fromTaxDeferred := math.Min(grossNeeded, *taxDeferredBalance)
+		*taxDeferredBalance -= fromTaxDeferred
+		netSpending := fromTaxDeferred * effectiveFactor
+		penalty := fromTaxDeferred - netSpending
+		breakdown.RemainingNeed -= netSpending
+		breakdown.WithdrawalFromTaxDeferred += fromTaxDeferred
+		breakdown.ActualWithdrawal += fromTaxDeferred
+		breakdown.EarlyPenaltyPaid += penalty
+	}
+
+	return breakdown
+}
+
+func reinvestRequiredRMD(monthlyRMD float64, taxDeferredBalance, taxableBalance *float64) float64 {
+	if monthlyRMD <= 0 || *taxDeferredBalance <= 0 {
+		return 0
+	}
+
+	rmdWithdrawal := math.Min(monthlyRMD, *taxDeferredBalance)
+	*taxDeferredBalance -= rmdWithdrawal
+	*taxableBalance += rmdWithdrawal
+	return rmdWithdrawal
+}
+
+func applyBigTicketExpense(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance *float64) float64 {
+	remaining := amount
+
+	if remaining > 0 && *taxableBalance > 0 {
+		fromTaxable := math.Min(remaining, *taxableBalance)
+		*taxableBalance -= fromTaxable
+		remaining -= fromTaxable
+	}
+
+	if remaining > 0 && *rothBalance > 0 {
+		fromRoth := math.Min(remaining, *rothBalance)
+		*rothBalance -= fromRoth
+		remaining -= fromRoth
+	}
+
+	if allowTaxDeferred && remaining > 0 && *taxDeferredBalance > 0 {
+		effectiveFactor := 1.0 - earlyPenaltyRate
+		grossNeeded := remaining / effectiveFactor
+		fromTaxDeferred := math.Min(grossNeeded, *taxDeferredBalance)
+		*taxDeferredBalance -= fromTaxDeferred
+		remaining -= fromTaxDeferred * effectiveFactor
+	}
+
+	return remaining
+}
+
 // ExpenseBreakdown holds categorized expenses for adaptive spending analysis
 type ExpenseBreakdown struct {
 	Essential     float64 // Non-discretionary expenses (cannot be reduced)
@@ -248,6 +359,9 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
 		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
 		olderAge := s.GetOlderAge() + currentYear
+		bigTicketExpenseThisMonth := 0.0
+		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
+		penaltyRate := earlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
@@ -298,31 +412,8 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 						// Income adds to taxable balance (e.g., inheritance, home sale)
 						taxableBalance += item.Amount
 					} else {
-						// Expense: withdraw from accounts following priority order
-						// (handled below in the monthly withdrawal logic as a lump sum)
-						// For simplicity, we'll deduct from taxable first, then others
-						remaining := item.Amount
-						if remaining > 0 && taxableBalance >= remaining {
-							taxableBalance -= remaining
-							remaining = 0
-						} else if remaining > 0 && taxableBalance > 0 {
-							remaining -= taxableBalance
-							taxableBalance = 0
-						}
-						if remaining > 0 && rothBalance >= remaining {
-							rothBalance -= remaining
-							remaining = 0
-						} else if remaining > 0 && rothBalance > 0 {
-							remaining -= rothBalance
-							rothBalance = 0
-						}
-						if remaining > 0 && taxDeferredBalance >= remaining {
-							taxDeferredBalance -= remaining
-							remaining = 0
-						} else if remaining > 0 && taxDeferredBalance > 0 {
-							remaining -= taxDeferredBalance
-							taxDeferredBalance = 0
-						}
+						remaining := applyBigTicketExpense(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableBalance, &rothBalance)
+						bigTicketExpenseThisMonth += remaining
 					}
 				}
 			}
@@ -330,7 +421,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		// Calculate healthcare expenses using multi-person model
 		activeHealthcare := s.GetTotalHealthcareCost(m)
-		totalExpenses := currentLivingExpenses + activeHealthcare
+		totalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Add expense sources (discretionary sources get phase multiplier when enabled)
 		for _, source := range s.ExpenseSources {
@@ -390,61 +481,44 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		withdrawalFromTaxDeferred := 0.0
 		withdrawalFromTaxable := 0.0
 		withdrawalFromRoth := 0.0
+		shortfall := 0.0
 
 		if neededFromPortfolio > 0 {
-			// First, take from RMD (which must be withdrawn anyway)
-			if monthlyRMD > 0 {
-				rmdUsed := math.Min(monthlyRMD, neededFromPortfolio)
-				rmdUsed = math.Min(rmdUsed, taxDeferredBalance) // Can't withdraw more than available
-				taxDeferredBalance -= rmdUsed
-				neededFromPortfolio -= rmdUsed
-				rmdWithdrawal = rmdUsed
-				withdrawalFromTaxDeferred += rmdUsed
-				actualWithdrawal += rmdUsed
-			}
-
-			// Second, withdraw from taxable (most tax-efficient - cost basis recovery)
-			if neededFromPortfolio > 0 && taxableBalance > 0 {
-				fromTaxable := math.Min(neededFromPortfolio, taxableBalance)
-				taxableBalance -= fromTaxable
-				neededFromPortfolio -= fromTaxable
-				withdrawalFromTaxable += fromTaxable
-				actualWithdrawal += fromTaxable
-			}
-
-			// Third, withdraw from Roth (tax-free but loses future growth)
-			if neededFromPortfolio > 0 && rothBalance > 0 {
-				fromRoth := math.Min(neededFromPortfolio, rothBalance)
-				rothBalance -= fromRoth
-				neededFromPortfolio -= fromRoth
-				withdrawalFromRoth += fromRoth
-				actualWithdrawal += fromRoth
-			}
-
-			// Fourth, withdraw additional from tax-deferred (taxed as ordinary income)
-			if neededFromPortfolio > 0 && taxDeferredBalance > 0 {
-				fromTaxDeferred := math.Min(neededFromPortfolio, taxDeferredBalance)
-				taxDeferredBalance -= fromTaxDeferred
-				neededFromPortfolio -= fromTaxDeferred
-				withdrawalFromTaxDeferred += fromTaxDeferred
-				actualWithdrawal += fromTaxDeferred
+			withdrawal := withdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableBalance, &rothBalance)
+			rmdWithdrawal = withdrawal.RMDWithdrawal
+			actualWithdrawal = withdrawal.ActualWithdrawal
+			withdrawalFromTaxDeferred = withdrawal.WithdrawalFromTaxDeferred
+			withdrawalFromTaxable = withdrawal.WithdrawalFromTaxable
+			withdrawalFromRoth = withdrawal.WithdrawalFromRoth
+			shortfall = withdrawal.RemainingNeed
+			// Enforce remaining RMD obligation: if expenses didn't consume the full
+			// RMD, withdraw the rest and reinvest into taxable
+			unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
+			if unmetRMD > 0 {
+				reinvested := reinvestRequiredRMD(unmetRMD, &taxDeferredBalance, &taxableBalance)
+				rmdWithdrawal += reinvested
+				withdrawalFromTaxDeferred += reinvested
 			}
 		} else if neededFromPortfolio < 0 {
 			// Surplus income: reinvest into taxable account
 			taxableBalance += math.Abs(neededFromPortfolio)
-		} else {
-			// Expenses covered by income, but RMD still must be withdrawn
-			// RMD goes to taxable account (reinvested after taxes in practice)
-			if monthlyRMD > 0 && taxDeferredBalance > 0 {
-				rmdWithdrawal = math.Min(monthlyRMD, taxDeferredBalance)
-				taxDeferredBalance -= rmdWithdrawal
-				taxableBalance += rmdWithdrawal // RMD moves to taxable
-				withdrawalFromTaxDeferred += rmdWithdrawal
-			}
+		}
+		if neededFromPortfolio <= 0 {
+			rmdWithdrawal = reinvestRequiredRMD(monthlyRMD, &taxDeferredBalance, &taxableBalance)
+			withdrawalFromTaxDeferred += rmdWithdrawal
 		}
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableBalance
 		depleted := false
+		if shortfall > 0 {
+			depleted = true
+			if depletionMonth == nil {
+				dm := m
+				depletionMonth = &dm
+				ly := float64(m) / 12
+				longevityYears = &ly
+			}
+		}
 		if totalBalance <= 0 {
 			taxDeferredBalance = 0
 			rothBalance = 0
@@ -478,6 +552,10 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			WithdrawalFromTaxable:     withdrawalFromTaxable,
 			WithdrawalFromRoth:        withdrawalFromRoth,
 		})
+
+		if depleted {
+			break
+		}
 	}
 
 	finalBalance := 0.0
@@ -615,8 +693,8 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		ExpenseBreakdown: breakdown,
 		IncomeBreakdown:  incomeBreakdown,
 		GapBeforeRMD:     gapBeforeRMD,
-		RMDCoverage:     rmdCoverage,
-		ExcessRMD:       excessRMD,
+		RMDCoverage:      rmdCoverage,
+		ExcessRMD:        excessRMD,
 	}
 
 	// Calculate steady-state analysis (when all income sources are active)
@@ -641,13 +719,19 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		result.SteadyStateExpenses = c.CalculateTotalExpenses(steadyStateMonth)
 		result.SteadyStateIncome = c.CalculateTotalIncome(steadyStateMonth)
 
+		// Determine effective annual return (allocation-derived when InvestmentReturn is 0)
+		effectiveReturn := s.InvestmentReturn
+		if effectiveReturn == 0 {
+			effectiveReturn = s.GetExpectedReturnFromAllocation()
+		}
+
 		// Calculate RMD at steady state age (uses older person's age)
 		steadyStateOlderAge := s.GetOlderAge() + (steadyStateMonth / 12)
 		if steadyStateOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
 			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
 			yearsToSteadyState := float64(steadyStateMonth) / 12
 			estimatedTaxDeferred := s.PortfolioValue * (s.TaxDeferredPercent / 100) *
-				math.Pow(1+s.InvestmentReturn/100, yearsToSteadyState)
+				math.Pow(1+effectiveReturn/100, yearsToSteadyState)
 			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, steadyStateOlderAge)
 			result.SteadyStateRMD = annualRMD / 12
 		}
@@ -659,7 +743,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		if s.PortfolioValue > 0 && result.SteadyStateGap > 0 {
 			// Use estimated portfolio value at steady state
 			yearsToSteadyState := float64(steadyStateMonth) / 12
-			estimatedPortfolio := s.PortfolioValue * math.Pow(1+s.InvestmentReturn/100, yearsToSteadyState)
+			estimatedPortfolio := s.PortfolioValue * math.Pow(1+effectiveReturn/100, yearsToSteadyState)
 			result.SteadyStateRate = (result.SteadyStateGap * 12 / estimatedPortfolio) * 100
 		}
 	}
@@ -1363,6 +1447,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
 		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
 		olderAge := s.GetOlderAge() + currentYear
+		bigTicketExpenseThisMonth := 0.0
+		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
+		penaltyRate := earlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
@@ -1415,26 +1502,8 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 					if item.Type == models.BigTicketIncome {
 						taxableBalance += item.Amount
 					} else {
-						remaining := item.Amount
-						if remaining > 0 && taxableBalance >= remaining {
-							taxableBalance -= remaining
-							remaining = 0
-						} else if remaining > 0 && taxableBalance > 0 {
-							remaining -= taxableBalance
-							taxableBalance = 0
-						}
-						if remaining > 0 && rothBalance >= remaining {
-							rothBalance -= remaining
-							remaining = 0
-						} else if remaining > 0 && rothBalance > 0 {
-							remaining -= rothBalance
-							rothBalance = 0
-						}
-						if remaining > 0 && taxDeferredBalance >= remaining {
-							taxDeferredBalance -= remaining
-						} else if remaining > 0 && taxDeferredBalance > 0 {
-							taxDeferredBalance = 0
-						}
+						remaining := applyBigTicketExpense(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableBalance, &rothBalance)
+						bigTicketExpenseThisMonth += remaining
 					}
 				}
 			}
@@ -1442,7 +1511,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		// Calculate healthcare expenses using multi-person model with variation
 		activeHealthcare := s.GetTotalHealthcareCost(m) * healthcareVariation
-		totalExpenses := currentLivingExpenses + activeHealthcare
+		totalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Check if we should enter adaptation mode (crash detected this year via stock returns)
 		if config.AdaptiveSpending && assetReturns.Stock[currentYear] < -15 {
@@ -1523,49 +1592,29 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		}
 
 		// Process withdrawals (priority: RMD → Taxable → Roth → Tax-Deferred)
+		shortfall := 0.0
 		if neededFromPortfolio > 0 {
-			// First use RMD
-			if monthlyRMD > 0 {
-				rmdUsed := math.Min(monthlyRMD, neededFromPortfolio)
-				rmdUsed = math.Min(rmdUsed, taxDeferredBalance)
-				taxDeferredBalance -= rmdUsed
-				neededFromPortfolio -= rmdUsed
-			}
-
-			// Then taxable
-			if neededFromPortfolio > 0 && taxableBalance > 0 {
-				fromTaxable := math.Min(neededFromPortfolio, taxableBalance)
-				taxableBalance -= fromTaxable
-				neededFromPortfolio -= fromTaxable
-			}
-
-			// Then Roth (tax-free but loses future growth)
-			if neededFromPortfolio > 0 && rothBalance > 0 {
-				fromRoth := math.Min(neededFromPortfolio, rothBalance)
-				rothBalance -= fromRoth
-				neededFromPortfolio -= fromRoth
-			}
-
-			// Then tax-deferred
-			if neededFromPortfolio > 0 && taxDeferredBalance > 0 {
-				fromTaxDeferred := math.Min(neededFromPortfolio, taxDeferredBalance)
-				taxDeferredBalance -= fromTaxDeferred
-				neededFromPortfolio -= fromTaxDeferred
+			withdrawal := withdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableBalance, &rothBalance)
+			shortfall = withdrawal.RemainingNeed
+			// Enforce remaining RMD obligation
+			unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
+			if unmetRMD > 0 {
+				reinvestRequiredRMD(unmetRMD, &taxDeferredBalance, &taxableBalance)
 			}
 		} else if neededFromPortfolio < 0 {
 			// Surplus income: reinvest into taxable account
 			taxableBalance += math.Abs(neededFromPortfolio)
-		} else {
-			// RMD still must be withdrawn
-			if monthlyRMD > 0 && taxDeferredBalance > 0 {
-				rmdAmount := math.Min(monthlyRMD, taxDeferredBalance)
-				taxDeferredBalance -= rmdAmount
-				taxableBalance += rmdAmount
-			}
+		}
+		if neededFromPortfolio <= 0 {
+			reinvestRequiredRMD(monthlyRMD, &taxDeferredBalance, &taxableBalance)
 		}
 
 		// Check for depletion
 		totalBalance := taxDeferredBalance + rothBalance + taxableBalance
+		if shortfall > 0 {
+			depleted = true
+			depletionYear = float64(m) / 12
+		}
 		if totalBalance <= 0 {
 			depleted = true
 			depletionYear = float64(m) / 12

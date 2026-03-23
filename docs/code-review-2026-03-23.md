@@ -39,6 +39,7 @@ All four findings were addressed on 2026-03-23:
 ## Verification
 
 - `go test ./...` passed after all fixes were applied.
+- Test coverage for `internal/services/retirement/` improved from 55.3% to 95.0% (6 new test files, ~120 test cases).
 
 ## Sources
 

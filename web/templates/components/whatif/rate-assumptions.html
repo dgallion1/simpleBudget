@@ -78,6 +78,16 @@
             </p>
         </div>
 
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Delay Tax-Deferred Withdrawals</label>
+            <input type="range" name="tax_deferred_delay_years" value="{{.Settings.TaxDeferredDelayYears}}"
+                min="0" max="30" step="1"
+                class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                oninput="this.nextElementSibling.textContent = this.value == 0 ? 'No delay' : this.value + ' years'">
+            <span class="text-sm text-gray-500 dark:text-gray-300">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Cover expenses from income, taxable, and Roth first. RMDs at 73 still apply.</p>
+        </div>
+
         <!-- Per-Account Asset Allocation -->
         <div class="space-y-3">
             <div class="flex items-center justify-between">

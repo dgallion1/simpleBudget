@@ -19,11 +19,11 @@ type WhatIfSettings struct {
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
 
 	// RMD Settings
-	CurrentAge         int     `json:"current_age"`                      // User's current age
-	SpouseAge          int     `json:"spouse_age,omitempty"`             // Spouse's current age (0 = no spouse)
-	PhaseAgeReference  string  `json:"phase_age_reference,omitempty"`    // "younger", "older", "primary", "spouse" - which age triggers phases
-	TaxDeferredPercent float64 `json:"tax_deferred_percent"`             // % of portfolio in tax-deferred accounts (401k, IRA)
-	RothPercent        float64 `json:"roth_percent"`         // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
+	CurrentAge         int     `json:"current_age"`                   // User's current age
+	SpouseAge          int     `json:"spouse_age,omitempty"`          // Spouse's current age (0 = no spouse)
+	PhaseAgeReference  string  `json:"phase_age_reference,omitempty"` // "younger", "older", "primary", "spouse" - which age triggers phases
+	TaxDeferredPercent float64 `json:"tax_deferred_percent"`          // % of portfolio in tax-deferred accounts (401k, IRA)
+	RothPercent        float64 `json:"roth_percent"`                  // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
 	// Taxable is computed as: 100 - TaxDeferredPercent - RothPercent
 
 	// Per-Account Asset Allocation (stocks %, cash %; bonds = 100 - stocks - cash)
@@ -40,11 +40,11 @@ type WhatIfSettings struct {
 	// Bond % computed as: 100 - StockPercent - CashPercent
 
 	// Rates (as percentages, e.g., 4.0 for 4%)
-	InflationRate         float64 `json:"inflation_rate"`          // Annual inflation
-	HealthcareInflation   float64 `json:"healthcare_inflation"`    // Healthcare inflation (legacy, for single-person model)
-	SpendingDeclineRate   float64 `json:"spending_decline_rate"`   // Annual spending reduction (used when phases disabled)
-	InvestmentReturn      float64 `json:"investment_return"`       // Expected portfolio return
-	DiscountRate          float64 `json:"discount_rate"`           // For PV calculations
+	InflationRate       float64 `json:"inflation_rate"`        // Annual inflation
+	HealthcareInflation float64 `json:"healthcare_inflation"`  // Healthcare inflation (legacy, for single-person model)
+	SpendingDeclineRate float64 `json:"spending_decline_rate"` // Annual spending reduction (used when phases disabled)
+	InvestmentReturn    float64 `json:"investment_return"`     // Expected portfolio return
+	DiscountRate        float64 `json:"discount_rate"`         // For PV calculations
 
 	// Phase-based spending (go-go/slow-go/no-go retirement phases)
 	SpendingPhaseConfig *SpendingPhaseConfig `json:"spending_phase_config,omitempty"`
@@ -52,6 +52,7 @@ type WhatIfSettings struct {
 	// Projection
 	ProjectionYears         int     `json:"projection_years"`           // Number of years to project
 	SteadyStateOverrideYear float64 `json:"steady_state_override_year"` // User-adjustable projection year (0 = auto)
+	TaxDeferredDelayYears   int     `json:"tax_deferred_delay_years"`   // Years before tax-deferred withdrawals begin (0 = immediate)
 
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
@@ -82,7 +83,7 @@ type SpendingPhase struct {
 
 // SpendingPhaseConfig holds phase-based spending configuration
 type SpendingPhaseConfig struct {
-	Enabled bool           `json:"enabled"` // Toggle between simple decline and phase-based
+	Enabled bool            `json:"enabled"` // Toggle between simple decline and phase-based
 	Phases  []SpendingPhase `json:"phases"`
 }
 
@@ -408,7 +409,7 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		SpouseAge:             0,         // 0 = no spouse
 		PhaseAgeReference:     "younger", // Default to younger person for conservative longevity planning
 		TaxDeferredPercent:    60.0,      // Reduced from 70 to make room for Roth
-		RothPercent:           10.0, // Default 10% Roth
+		RothPercent:           10.0,      // Default 10% Roth
 		// Taxable is computed as: 100 - 60 - 10 = 30%
 		StockPercent:          60.0, // Default 60% stocks
 		CashPercent:           0.0,  // Default 0% cash (bonds = 40%)
@@ -418,6 +419,7 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		InvestmentReturn:      0.0, // 0 = use asset allocation to calculate returns
 		DiscountRate:          5.0,
 		ProjectionYears:       30,
+		TaxDeferredDelayYears: 0,
 		IncomeSources:         []IncomeSource{},
 		ExpenseSources:        []ExpenseSource{},
 		RemovedIncomeSources:  []IncomeSource{},
@@ -464,11 +466,11 @@ type ProjectionMonth struct {
 
 // ProjectionResult contains the complete projection with summary metrics
 type ProjectionResult struct {
-	Months          []ProjectionMonth `json:"months"`
-	LongevityYears  *float64          `json:"longevity_years"`  // nil if portfolio survives
-	FinalBalance    float64           `json:"final_balance"`
-	DepletionMonth  *int              `json:"depletion_month"`  // nil if no depletion
-	Survives        bool              `json:"survives"`
+	Months         []ProjectionMonth `json:"months"`
+	LongevityYears *float64          `json:"longevity_years"` // nil if portfolio survives
+	FinalBalance   float64           `json:"final_balance"`
+	DepletionMonth *int              `json:"depletion_month"` // nil if no depletion
+	Survives       bool              `json:"survives"`
 }
 
 // ExpenseBreakdownItem shows a named expense component
@@ -480,12 +482,12 @@ type ExpenseBreakdownItem struct {
 
 // BudgetFitAnalysis shows monthly gap and required rates
 type BudgetFitAnalysis struct {
-	MonthlyExpenses   float64 `json:"monthly_expenses"`
-	MonthlyIncome     float64 `json:"monthly_income"`
-	MonthlyRMD        float64 `json:"monthly_rmd"`        // Required Minimum Distribution (age 73+)
-	MonthlyGap        float64 `json:"monthly_gap"`        // Expenses - Income - RMD
-	AnnualGap         float64 `json:"annual_gap"`
-	RequiredRate      float64 `json:"required_rate"`      // Rate needed to cover gap
+	MonthlyExpenses float64 `json:"monthly_expenses"`
+	MonthlyIncome   float64 `json:"monthly_income"`
+	MonthlyRMD      float64 `json:"monthly_rmd"` // Required Minimum Distribution (age 73+)
+	MonthlyGap      float64 `json:"monthly_gap"` // Expenses - Income - RMD
+	AnnualGap       float64 `json:"annual_gap"`
+	RequiredRate    float64 `json:"required_rate"` // Rate needed to cover gap
 
 	// Breakdowns for transparency
 	ExpenseBreakdown []ExpenseBreakdownItem `json:"expense_breakdown,omitempty"`
@@ -510,39 +512,39 @@ type BudgetFitAnalysis struct {
 
 // RMDProjection represents RMD estimates for a specific year
 type RMDProjection struct {
-	Age              int     `json:"age"`
-	Year             int     `json:"year"`              // Years from now
-	TaxDeferredBal   float64 `json:"tax_deferred_bal"`  // Estimated balance at start of year
-	LifeExpFactor    float64 `json:"life_exp_factor"`   // IRS Uniform Lifetime factor
-	RMDAmount        float64 `json:"rmd_amount"`        // Required distribution
-	RMDPercent       float64 `json:"rmd_percent"`       // RMD as % of tax-deferred balance
+	Age            int     `json:"age"`
+	Year           int     `json:"year"`             // Years from now
+	TaxDeferredBal float64 `json:"tax_deferred_bal"` // Estimated balance at start of year
+	LifeExpFactor  float64 `json:"life_exp_factor"`  // IRS Uniform Lifetime factor
+	RMDAmount      float64 `json:"rmd_amount"`       // Required distribution
+	RMDPercent     float64 `json:"rmd_percent"`      // RMD as % of tax-deferred balance
 }
 
 // RMDAnalysis contains RMD projections and summary
 type RMDAnalysis struct {
-	StartsInYears     int              `json:"starts_in_years"`     // Years until RMDs begin
-	StartAge          int              `json:"start_age"`           // Age when RMDs begin (73)
-	CurrentAge        int              `json:"current_age"`
-	TaxDeferredValue  float64          `json:"tax_deferred_value"`  // Current tax-deferred balance
-	Projections       []RMDProjection  `json:"projections"`         // Year-by-year projections
-	TotalRMDsOver10Yr float64          `json:"total_rmds_10yr"`     // Sum of first 10 years of RMDs
+	StartsInYears     int             `json:"starts_in_years"` // Years until RMDs begin
+	StartAge          int             `json:"start_age"`       // Age when RMDs begin (73)
+	CurrentAge        int             `json:"current_age"`
+	TaxDeferredValue  float64         `json:"tax_deferred_value"` // Current tax-deferred balance
+	Projections       []RMDProjection `json:"projections"`        // Year-by-year projections
+	TotalRMDsOver10Yr float64         `json:"total_rmds_10yr"`    // Sum of first 10 years of RMDs
 }
 
 // PresentValueAnalysis shows PV of expenses vs income
 type PresentValueAnalysis struct {
-	PVExpenses      float64 `json:"pv_expenses"`
-	PVIncome        float64 `json:"pv_income"`
-	PVGap           float64 `json:"pv_gap"`
-	CoverageRatio   float64 `json:"coverage_ratio"`   // (Portfolio + PV Income) / PV Expenses
-	SurplusDeficit  float64 `json:"surplus_deficit"`  // Portfolio + PV Income - PV Expenses
+	PVExpenses     float64 `json:"pv_expenses"`
+	PVIncome       float64 `json:"pv_income"`
+	PVGap          float64 `json:"pv_gap"`
+	CoverageRatio  float64 `json:"coverage_ratio"`  // (Portfolio + PV Income) / PV Expenses
+	SurplusDeficit float64 `json:"surplus_deficit"` // Portfolio + PV Income - PV Expenses
 }
 
 // SustainabilityScore represents a 0-100 score with visual attributes
 type SustainabilityScore struct {
-	Score       int     `json:"score"`        // 0-100
-	Label       string  `json:"label"`        // "Excellent", "Good", "Fair", "Poor", "Critical"
-	Color       string  `json:"color"`        // CSS color class
-	Description string  `json:"description"`
+	Score       int    `json:"score"` // 0-100
+	Label       string `json:"label"` // "Excellent", "Good", "Fair", "Poor", "Critical"
+	Color       string `json:"color"` // CSS color class
+	Description string `json:"description"`
 }
 
 // CalculateSustainabilityScore computes score from withdrawal rate
@@ -625,8 +627,8 @@ type FailurePoint struct {
 
 // FailurePointAnalysis contains all failure thresholds
 type FailurePointAnalysis struct {
-	FailurePoints []FailurePoint `json:"failure_points"`
-	BaselineSurvives bool        `json:"baseline_survives"` // Does current scenario survive?
+	FailurePoints    []FailurePoint `json:"failure_points"`
+	BaselineSurvives bool           `json:"baseline_survives"` // Does current scenario survive?
 }
 
 // MonteCarloResult represents a single simulation run outcome
@@ -671,16 +673,16 @@ type SequenceRiskBreakdown struct {
 	// Buffer recommendation (years of expenses to hold safe)
 	RecommendedBuffer int     `json:"recommended_buffer"`
 	BufferRationale   string  `json:"buffer_rationale"`
-	BufferAmount      float64 `json:"buffer_amount"`       // Dollar amount of recommended buffer
-	AnnualExpenses    float64 `json:"annual_expenses"`     // Annual expenses used for buffer calculation
-	AdjustedSpending  float64 `json:"adjusted_spending"`   // Monthly spending if buffer is set aside from portfolio
+	BufferAmount      float64 `json:"buffer_amount"`     // Dollar amount of recommended buffer
+	AnnualExpenses    float64 `json:"annual_expenses"`   // Annual expenses used for buffer calculation
+	AdjustedSpending  float64 `json:"adjusted_spending"` // Monthly spending if buffer is set aside from portfolio
 
 	// Buffer calculation breakdown (accounts for partial portfolio value during crashes)
-	CrashDrawdownPercent     float64 `json:"crash_drawdown_percent"`      // Expected portfolio drop during crash (e.g., 30%)
-	CrashedPortfolioValue    float64 `json:"crashed_portfolio_value"`     // Portfolio value after crash
+	CrashDrawdownPercent      float64 `json:"crash_drawdown_percent"`       // Expected portfolio drop during crash (e.g., 30%)
+	CrashedPortfolioValue     float64 `json:"crashed_portfolio_value"`      // Portfolio value after crash
 	SafeWithdrawalDuringCrash float64 `json:"safe_withdrawal_during_crash"` // Annual safe withdrawal from crashed portfolio
-	AnnualShortfall          float64 `json:"annual_shortfall"`            // Gap between expenses and safe withdrawal
-	NaiveBufferAmount        float64 `json:"naive_buffer_amount"`         // What buffer would be without accounting for portfolio
+	AnnualShortfall           float64 `json:"annual_shortfall"`             // Gap between expenses and safe withdrawal
+	NaiveBufferAmount         float64 `json:"naive_buffer_amount"`          // What buffer would be without accounting for portfolio
 
 	// Adaptive spending analysis (discretionary expense flexibility)
 	HasDiscretionary          bool    `json:"has_discretionary"`            // Whether user has discretionary expenses
@@ -694,17 +696,17 @@ type SequenceRiskBreakdown struct {
 
 // MonteCarloStats contains aggregated simulation statistics
 type MonteCarloStats struct {
-	Runs            int     `json:"runs"`             // Number of simulations
-	SuccessRate     float64 `json:"success_rate"`     // % of scenarios that survive
-	MedianBalance   float64 `json:"median_balance"`   // Median final balance
-	MeanBalance     float64 `json:"mean_balance"`     // Average final balance
-	Percentile10    float64 `json:"percentile_10"`    // 10th percentile (worst 10%)
-	Percentile25    float64 `json:"percentile_25"`    // 25th percentile
-	Percentile75    float64 `json:"percentile_75"`    // 75th percentile
-	Percentile90    float64 `json:"percentile_90"`    // 90th percentile (best 10%)
-	WorstCase       float64 `json:"worst_case"`       // Minimum final balance
-	BestCase        float64 `json:"best_case"`        // Maximum final balance
-	AvgDepletionYr  float64 `json:"avg_depletion_yr"` // Avg years to depletion (failed runs only)
+	Runs           int     `json:"runs"`             // Number of simulations
+	SuccessRate    float64 `json:"success_rate"`     // % of scenarios that survive
+	MedianBalance  float64 `json:"median_balance"`   // Median final balance
+	MeanBalance    float64 `json:"mean_balance"`     // Average final balance
+	Percentile10   float64 `json:"percentile_10"`    // 10th percentile (worst 10%)
+	Percentile25   float64 `json:"percentile_25"`    // 25th percentile
+	Percentile75   float64 `json:"percentile_75"`    // 75th percentile
+	Percentile90   float64 `json:"percentile_90"`    // 90th percentile (best 10%)
+	WorstCase      float64 `json:"worst_case"`       // Minimum final balance
+	BestCase       float64 `json:"best_case"`        // Maximum final balance
+	AvgDepletionYr float64 `json:"avg_depletion_yr"` // Avg years to depletion (failed runs only)
 
 	// Enhanced simulation stats
 	MarketCrashCount   int     `json:"market_crash_count"`   // Runs that experienced crashes
@@ -725,8 +727,8 @@ type MonteCarloDistribution struct {
 
 // MonteCarloDistBucket represents a histogram bucket
 type MonteCarloDistBucket struct {
-	Label      string `json:"label"`      // e.g., "$0-100K"
-	Count      int    `json:"count"`      // Number of simulations in this bucket
+	Label      string  `json:"label"`      // e.g., "$0-100K"
+	Count      int     `json:"count"`      // Number of simulations in this bucket
 	Percentage float64 `json:"percentage"` // % of total
 }
 
@@ -842,12 +844,12 @@ type HistoricalBacktestResult struct {
 	StartYear           int     `json:"start_year"`
 	EndYear             int     `json:"end_year"`
 	Survives            bool    `json:"survives"`
-	FinalBalance        float64 `json:"final_balance"`         // Nominal final balance
-	FinalBalanceReal    float64 `json:"final_balance_real"`    // Inflation-adjusted (start-year dollars)
-	CumulativeInflation float64 `json:"cumulative_inflation"`  // Total inflation factor over period
-	DepletionYear       int     `json:"depletion_year"`        // Year of depletion (0 if survives)
-	WorstDrawdown       float64 `json:"worst_drawdown"`        // Worst portfolio decline %
-	SequenceQuality     string  `json:"sequence_quality"`      // "favorable", "neutral", "adverse"
+	FinalBalance        float64 `json:"final_balance"`        // Nominal final balance
+	FinalBalanceReal    float64 `json:"final_balance_real"`   // Inflation-adjusted (start-year dollars)
+	CumulativeInflation float64 `json:"cumulative_inflation"` // Total inflation factor over period
+	DepletionYear       int     `json:"depletion_year"`       // Year of depletion (0 if survives)
+	WorstDrawdown       float64 `json:"worst_drawdown"`       // Worst portfolio decline %
+	SequenceQuality     string  `json:"sequence_quality"`     // "favorable", "neutral", "adverse"
 }
 
 // HistoricalBacktestAnalysis contains complete backtesting results

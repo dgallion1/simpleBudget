@@ -508,6 +508,17 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["projection_years"] = v
 	}
 
+	if v, err := parseFormInt(r, "tax_deferred_delay_years"); err != nil {
+		renderError(w, "Invalid tax-deferred delay: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if r.FormValue("tax_deferred_delay_years") != "" {
+		if v < 0 || v > 30 {
+			renderError(w, "Tax-deferred delay must be between 0 and 30 years", http.StatusBadRequest)
+			return
+		}
+		updates["tax_deferred_delay_years"] = v
+	}
+
 	if v, err := parseFormFloat(r, "steady_state_override_year"); err != nil {
 		renderError(w, "Invalid steady state year: "+err.Error(), http.StatusBadRequest)
 		return

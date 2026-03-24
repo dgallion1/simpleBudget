@@ -24,6 +24,7 @@ type Transaction struct {
 	Date            time.Time       `json:"date"`
 	Amount          float64         `json:"amount"`
 	Description     string          `json:"description"`
+	DisplayName     string          `json:"display_name,omitempty"` // User-assigned alias
 	Category        string          `json:"category"`
 	TransactionType TransactionType `json:"transaction_type"`
 	SourceFile      string          `json:"source_file"`
@@ -117,12 +118,13 @@ func (ts *TransactionSet) FilterByCategory(category string) *TransactionSet {
 	return result
 }
 
-// FilterBySearch returns transactions matching the search term in description
+// FilterBySearch returns transactions matching the search term in description or display name
 func (ts *TransactionSet) FilterBySearch(search string) *TransactionSet {
 	result := &TransactionSet{}
 	searchLower := strings.ToLower(search)
 	for _, t := range ts.Transactions {
-		if strings.Contains(strings.ToLower(t.Description), searchLower) {
+		if strings.Contains(strings.ToLower(t.Description), searchLower) ||
+			(t.DisplayName != "" && strings.Contains(strings.ToLower(t.DisplayName), searchLower)) {
 			result.Transactions = append(result.Transactions, t)
 		}
 	}

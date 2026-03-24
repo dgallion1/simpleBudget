@@ -44,6 +44,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/explorer/files", handleFileManager)
 	r.Post("/explorer/files/toggle", handleFileToggle)
 	r.Post("/explorer/upload", handleFileUpload)
+	r.Post("/explorer/alias", handleAlias)
 	r.Delete("/explorer/files/{filename}", handleFileDelete)
 }
 
@@ -508,6 +509,31 @@ func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+func handleAlias(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	hash := r.FormValue("hash")
+	displayName := strings.TrimSpace(r.FormValue("display_name"))
+
+	if hash == "" {
+		http.Error(w, "missing hash", http.StatusBadRequest)
+		return
+	}
+
+	if err := loader.SaveAlias(hash, displayName); err != nil {
+		log.Printf("Error saving alias: %v", err)
+		http.Error(w, "Error saving alias", http.StatusInternalServerError)
+		return
+	}
+
+	// Return just the updated description cell content
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
 }
 
 // sortTransactions sorts the transaction set by the specified field

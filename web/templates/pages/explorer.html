@@ -59,9 +59,15 @@
                         <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
                             class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
-                    <!-- Quick Date Range Shortcuts -->
+                    <!-- Step Back/Forward & Quick Date Range Shortcuts -->
                     <div class="flex items-end mt-6">
-                        <div class="flex gap-1" id="date-range-buttons">
+                        <div class="flex gap-1 items-center" id="date-range-buttons">
+                            <button type="button" onclick="stepDateRange(-1)" title="Step back"
+                                class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                                </svg>
+                            </button>
                             <button type="button" onclick="setDateRange(3)" data-months="3"
                                 class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
                             <button type="button" onclick="setDateRange(6)" data-months="6"
@@ -70,6 +76,12 @@
                                 class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
                             <button type="button" onclick="setDateRange(0)" data-months="0"
                                 class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
+                            <button type="button" onclick="stepDateRange(1)" title="Step forward"
+                                class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -90,7 +102,7 @@
 
                 <!-- Clear Filters -->
                 <div class="flex items-end pb-2 ml-auto">
-                    <a href="/explorer"
+                    <a href="/explorer" onclick="sessionStorage.removeItem('explorerFilters')"
                         class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors">
                         Clear Filters
                     </a>
@@ -118,6 +130,34 @@
 </div>
 
 <script>
+    // Persist explorer filter state across tab changes
+    (function() {
+        const STORAGE_KEY = 'explorerFilters';
+
+        // On bare /explorer load (no query params), restore saved filters
+        if (window.location.search === '' || window.location.search === '?') {
+            const saved = sessionStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                window.location.replace('/explorer?' + saved);
+                return; // stop further script execution during redirect
+            }
+        } else {
+            // We have query params - save them (strip leading ?)
+            sessionStorage.setItem(STORAGE_KEY, window.location.search.substring(1));
+        }
+
+        // Save filter state before every HTMX request from the form
+        document.body.addEventListener('htmx:configRequest', function(evt) {
+            const form = document.getElementById('explorer-filter-form');
+            if (form && (evt.detail.elt === form || form.contains(evt.detail.elt))) {
+                const params = new URLSearchParams(evt.detail.parameters);
+                // Don't persist page number - always start at page 1
+                params.set('page', '1');
+                sessionStorage.setItem(STORAGE_KEY, params.toString());
+            }
+        });
+    })();
+
     // Clear search input
     function clearSearch() {
         const form = document.getElementById('explorer-filter-form');
@@ -150,6 +190,47 @@
         // Highlight the correct date range button on page load
         detectSelectedDateRange();
     });
+
+    // Step the date range forward or backward by its current delta
+    function stepDateRange(direction) {
+        const form = document.getElementById('explorer-filter-form');
+        const startInput = form.querySelector('input[name="start"]');
+        const endInput = form.querySelector('input[name="end"]');
+        const pageInput = form.querySelector('input[name="page"]');
+
+        const minDate = startInput.getAttribute('min');
+        const maxDate = endInput.getAttribute('max');
+
+        const start = new Date(startInput.value);
+        const end = new Date(endInput.value);
+        const deltaMs = end - start;
+
+        let newStart, newEnd;
+        if (direction > 0) {
+            newStart = new Date(end.getTime() + 86400000); // day after current end
+            newEnd = new Date(newStart.getTime() + deltaMs);
+        } else {
+            newEnd = new Date(start.getTime() - 86400000); // day before current start
+            newStart = new Date(newEnd.getTime() - deltaMs);
+        }
+
+        // Clamp to min/max
+        const minD = new Date(minDate);
+        const maxD = new Date(maxDate);
+        if (newStart < minD) newStart = minD;
+        if (newEnd > maxD) newEnd = maxD;
+        if (newStart > maxD) return;
+        if (newEnd < minD) return;
+
+        startInput.value = newStart.toISOString().split('T')[0];
+        endInput.value = newEnd.toISOString().split('T')[0];
+
+        // Clear any active quick-range button highlight
+        updateDateRangeButtons(-1);
+
+        pageInput.value = '1';
+        htmx.trigger(form, 'submit');
+    }
 
     // Set date range (months back from max date, or 0 for all)
     function setDateRange(months) {
@@ -321,6 +402,85 @@
             setupInfiniteScroll();
         }
     });
+
+    // Build the description cell content using safe DOM methods
+    function buildDescriptionContent(displayName, description) {
+        const wrapper = document.createElement('span');
+        wrapper.className = 'alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400';
+        wrapper.title = 'Click to filter, double-click to rename';
+
+        if (displayName) {
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'font-medium';
+            nameSpan.textContent = displayName;
+            wrapper.appendChild(nameSpan);
+
+            wrapper.appendChild(document.createTextNode(' '));
+
+            const origSpan = document.createElement('span');
+            origSpan.className = 'text-xs text-gray-400 dark:text-gray-500';
+            origSpan.textContent = '(' + description + ')';
+            wrapper.appendChild(origSpan);
+        } else {
+            wrapper.textContent = description;
+        }
+
+        wrapper.addEventListener('click', function() {
+            filterByDescription(displayName || description);
+        });
+
+        return wrapper;
+    }
+
+    // Double-click on description to rename
+    document.addEventListener('dblclick', function(e) {
+        const td = e.target.closest('td[data-hash]');
+        if (!td || td.querySelector('input')) return;
+
+        const hash = td.dataset.hash;
+        const description = td.dataset.description;
+        const displayName = td.dataset.displayName;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = displayName || '';
+        input.placeholder = description;
+        input.className = 'w-full border border-indigo-400 dark:border-indigo-500 dark:bg-gray-700 dark:text-gray-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500';
+
+        td.textContent = '';
+        td.appendChild(input);
+        input.focus();
+        input.select();
+
+        function save() {
+            const newName = input.value.trim();
+            const form = new FormData();
+            form.append('hash', hash);
+            form.append('display_name', newName);
+
+            fetch('/explorer/alias', { method: 'POST', body: form })
+                .then(resp => {
+                    if (!resp.ok) throw new Error('Save failed');
+                    td.dataset.displayName = newName;
+                    td.textContent = '';
+                    td.appendChild(buildDescriptionContent(newName, description));
+                })
+                .catch(() => {
+                    td.textContent = '';
+                    td.appendChild(buildDescriptionContent(displayName, description));
+                });
+        }
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') {
+                input.removeEventListener('blur', save);
+                td.textContent = '';
+                td.appendChild(buildDescriptionContent(displayName, description));
+            }
+        });
+    });
 </script>
 {{end}}
 
@@ -435,9 +595,9 @@
     $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
     <td class="w-24 p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
-    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
-        title="Click to filter: {{.Description}}"
-        onclick="filterByDescription('{{js .Description}}')">{{.Description}}</td>
+    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate" data-hash="{{.Hash}}" data-description="{{.Description}}" data-display-name="{{.DisplayName}}">
+        <span class="alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400" onclick="filterByDescription('{{js (or .DisplayName .Description)}}')" title="Click to filter, double-click to rename">{{if .DisplayName}}<span class="font-medium">{{.DisplayName}}</span> <span class="text-xs text-gray-400 dark:text-gray-500">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
+    </td>
     <td class="w-32 p-3 text-sm">
         <span class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs truncate block">{{if
             .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>

@@ -7,7 +7,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 ## Features
 
 - **Dashboard** - KPIs, spending charts, alerts, and category drilldowns
-- **Data Explorer** - Transaction search, filtering, pagination, and CSV file management
+- **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
 - **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax optimization, and named scenarios for side-by-side comparison
 - **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, and income pattern analysis
 - **File Manager** - Data backup, restore, and file management
@@ -189,7 +189,7 @@ You should see the dashboard with:
 ### First-run walkthrough
 
 1. **Dashboard** - Your main overview with income, expenses, and savings rate
-2. **Explorer** - Search and filter individual transactions
+2. **Explorer** - Search and filter individual transactions, double-click any description to assign a custom name (e.g., rename "Check #996574" to "Plumber repair"), step through date ranges with arrow buttons, and filter state persists across tab changes
 3. **Insights** - View recurring payments and spending patterns
 4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting
 5. **File Manager** - Manage data files, create backups

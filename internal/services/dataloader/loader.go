@@ -3,6 +3,7 @@ package dataloader
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,8 @@ import (
 	"budget2/internal/services/classifier"
 	"budget2/internal/services/storage"
 )
+
+const aliasFile = "aliases.json"
 
 // DataLoader handles loading and preprocessing of financial data from CSV files
 type DataLoader struct {
@@ -160,6 +163,9 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	allTransactions = dl.filterInternalTransfers(allTransactions)
 	allTransactions = classifier.ClassifyTransactions(allTransactions)
 	allTransactions = dl.deduplicateTransactions(allTransactions)
+
+	// Apply user-assigned aliases
+	allTransactions = dl.applyAliases(allTransactions)
 
 	// Compute derived fields
 	for i := range allTransactions {
@@ -488,4 +494,62 @@ func (dl *DataLoader) scanCSVMetadata(filePath string) (int, time.Time, time.Tim
 	}
 
 	return transCount, minDate, maxDate, nil
+}
+
+// aliasPath returns the path to the aliases file
+func (dl *DataLoader) aliasPath() string {
+	return filepath.Join(dl.CSVDirectory, aliasFile)
+}
+
+// LoadAliases reads the hash->displayName mapping from disk
+func (dl *DataLoader) LoadAliases() (map[string]string, error) {
+	path := dl.aliasPath()
+	data, err := dl.store.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(map[string]string), nil
+		}
+		return nil, err
+	}
+	aliases := make(map[string]string)
+	if err := json.Unmarshal(data, &aliases); err != nil {
+		return nil, fmt.Errorf("invalid aliases file: %w", err)
+	}
+	return aliases, nil
+}
+
+// SaveAlias sets or removes an alias for a transaction hash
+func (dl *DataLoader) SaveAlias(hash, displayName string) error {
+	aliases, err := dl.LoadAliases()
+	if err != nil {
+		return err
+	}
+	if displayName == "" {
+		delete(aliases, hash)
+	} else {
+		aliases[hash] = displayName
+	}
+	data, err := json.MarshalIndent(aliases, "", "  ")
+	if err != nil {
+		return err
+	}
+	return dl.store.WriteFile(dl.aliasPath(), data, 0644)
+}
+
+// applyAliases sets DisplayName on transactions that have aliases
+func (dl *DataLoader) applyAliases(transactions []models.Transaction) []models.Transaction {
+	aliases, err := dl.LoadAliases()
+	if err != nil {
+		log.Printf("Warning: could not load aliases: %v", err)
+		return transactions
+	}
+	if len(aliases) == 0 {
+		return transactions
+	}
+	for i := range transactions {
+		if name, ok := aliases[transactions[i].Hash]; ok {
+			transactions[i].DisplayName = name
+		}
+	}
+	return transactions
 }

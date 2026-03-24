@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.6.0 - Explorer Enhancements
+
+### New Features
+
+#### Transaction Renaming
+- Double-click any transaction description to assign a custom display name
+- Useful for cryptic entries like "Check #996574" - rename to "Plumber repair"
+- Aliases stored in `aliases.json`, encrypted when encryption is enabled
+- Original description shown in parentheses next to the alias
+- Search matches both original description and custom name
+- Clear the name to revert to the original description
+
+#### Date Range Stepping
+- Back/forward arrow buttons next to the 3M/6M/12M/All quick-range buttons
+- Steps the entire date window forward or backward by its current duration
+- Clamped to the min/max bounds of your data
+
+#### Filter Persistence
+- Explorer filter state (dates, search, category, sort) persists across tab changes
+- Uses sessionStorage so settings survive navigation to other pages and back
+- "Clear Filters" resets both the filters and the saved state
+
 ## v1.5.0 - Scenarios, Subscriptions & Budget Transparency
 
 ### New Features

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -1370,6 +1371,48 @@ func TestSave_StripsInvalidChainOnAgeChange(t *testing.T) {
 	}
 	if loaded2.CurrentAge != 75 {
 		t.Errorf("expected CurrentAge 75, got %d", loaded2.CurrentAge)
+	}
+}
+
+// --- DeleteScenario referential integrity ---
+
+func TestDeleteScenario_RejectsReferencedScenario(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+
+	// Create the "referenced" scenario file
+	writeScenarioFile(t, sm, store, dir, "whatif_referenced.json")
+
+	// Write the default scenario with a chain that references whatif_referenced.json
+	settings := models.DefaultWhatIfSettings()
+	settings.ScenarioChain = []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_referenced.json", TransitionAge: 70},
+	}
+	// Write directly (bypass saveInternal validation by writing raw JSON)
+	data, _ := json.MarshalIndent(settings, "", "  ")
+	_ = store.MkdirAll(dir, 0755)
+	if err := store.WriteFile(filepath.Join(dir, "whatif.json"), data, 0644); err != nil {
+		t.Fatalf("write default scenario: %v", err)
+	}
+	// Clear cache
+	sm.mu.Lock()
+	sm.cache = nil
+	sm.mu.Unlock()
+
+	// Attempt to delete the referenced scenario — should fail
+	err := sm.DeleteScenario("whatif_referenced.json")
+	if err == nil {
+		t.Fatal("expected error when deleting a referenced scenario, got nil")
+	}
+	if !strings.Contains(err.Error(), "whatif_referenced.json") {
+		t.Errorf("error should mention the referenced file, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "whatif.json") {
+		t.Errorf("error should mention the referencing file, got: %v", err)
+	}
+
+	// File should still exist
+	if _, statErr := store.Stat(filepath.Join(dir, "whatif_referenced.json")); statErr != nil {
+		t.Errorf("referenced scenario file should still exist after rejected delete: %v", statErr)
 	}
 }
 

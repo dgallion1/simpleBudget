@@ -346,7 +346,10 @@ func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
 
 // RunProjection runs a full retirement projection with RMD integration
 func (c *Calculator) RunProjection() *models.ProjectionResult {
-	s := c.Settings
+	primarySettings := c.Settings
+	activeSettings := c.Settings
+	nextChainIdx := 0
+	s := activeSettings
 	months := s.ProjectionYears * 12
 	projection := make([]models.ProjectionMonth, 0, months)
 
@@ -378,6 +381,24 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			// Check for chain transition
+			if len(c.ResolvedChain) > 0 {
+				newIdx, prepared := c.nextChainTransition(currentYear, nextChainIdx, primarySettings)
+				if prepared != nil {
+					activeSettings = prepared
+					s = activeSettings
+					nextChainIdx = newIdx
+
+					// Recalculate living expenses from new settings
+					if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+						phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
+						currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
+					} else {
+						currentLivingExpenses = s.MonthlyLivingExpenses * cumulativeInflation
+					}
+				}
+			}
+
 			// Track cumulative inflation
 			if m > 0 {
 				cumulativeInflation *= (1 + s.InflationRate/100)

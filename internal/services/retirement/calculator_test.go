@@ -909,3 +909,67 @@ func TestNewCalculatorWithChain(t *testing.T) {
 		t.Errorf("expected 1 chain link, got %d", len(calc.ResolvedChain))
 	}
 }
+
+func TestRunProjection_ChainTransition_BalancesCarryOver(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 60
+	primary.ProjectionYears = 20
+	primary.PortfolioValue = 1000000
+	primary.TaxDeferredPercent = 50
+	primary.RothPercent = 25
+	primary.MonthlyLivingExpenses = 3000
+	primary.InvestmentReturn = 6.0
+	primary.InflationRate = 3.0
+
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 5000
+	linked.InvestmentReturn = 4.0
+
+	chain := []ResolvedScenarioChainLink{
+		{TransitionAge: 70, Settings: linked},
+	}
+
+	calcNoChain := NewCalculator(primary)
+	projNoChain := calcNoChain.RunProjection()
+
+	calcChain := NewCalculatorWithChain(primary, chain)
+	projChain := calcChain.RunProjection()
+
+	if len(projChain.Months) < 121 {
+		t.Fatalf("expected at least 121 months, got %d", len(projChain.Months))
+	}
+
+	// Before transition (month 119), both should match
+	if projChain.Months[119].PortfolioBalance != projNoChain.Months[119].PortfolioBalance {
+		t.Errorf("month 119 balance should match: chain=%f, nochain=%f",
+			projChain.Months[119].PortfolioBalance, projNoChain.Months[119].PortfolioBalance)
+	}
+
+	// After transition, chained has higher expenses so lower balance
+	if projChain.Months[132].PortfolioBalance >= projNoChain.Months[132].PortfolioBalance {
+		t.Errorf("after transition, chained balance should be lower: chain=%f, nochain=%f",
+			projChain.Months[132].PortfolioBalance, projNoChain.Months[132].PortfolioBalance)
+	}
+}
+
+func TestRunProjection_ChainTransition_AtCurrentAge(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 60
+	primary.ProjectionYears = 20
+	primary.PortfolioValue = 1000000
+	primary.MonthlyLivingExpenses = 3000
+
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 5000
+
+	chain := []ResolvedScenarioChainLink{
+		{TransitionAge: 60, Settings: linked},
+	}
+
+	calc := NewCalculatorWithChain(primary, chain)
+	proj := calc.RunProjection()
+
+	if proj.Months[0].TotalExpenses < 4500 {
+		t.Errorf("expected expenses near 5000, got %f", proj.Months[0].TotalExpenses)
+	}
+}

@@ -4,6 +4,10 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Monthly Budget Analysis</h3>
 
+    {{if .Settings.ScenarioChain}}
+    <p class="text-xs text-amber-600 dark:text-amber-400 mb-2 italic">Scenario chain is not yet applied to this panel.</p>
+    {{end}}
+
     <!-- Current (Now) Section -->
     <div class="{{if .Analysis.BudgetFit.HasSteadyState}}pb-4 border-b border-gray-200 dark:border-gray-700{{end}}">
         {{if .Analysis.BudgetFit.HasSteadyState}}

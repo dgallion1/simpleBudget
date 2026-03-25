@@ -4,6 +4,10 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Present Value Analysis</h3>
 
+    {{if .Settings.ScenarioChain}}
+    <p class="text-xs text-amber-600 dark:text-amber-400 mb-2 italic">Scenario chain is not yet applied to this panel.</p>
+    {{end}}
+
     <!-- Resources vs Needs breakdown -->
     <div class="grid grid-cols-2 gap-6 mb-4">
         <!-- Total Resources (left side) -->

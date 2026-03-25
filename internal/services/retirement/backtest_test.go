@@ -310,3 +310,33 @@ func TestAssetAllocationDefaults(t *testing.T) {
 		t.Errorf("With 0%% stocks and 0.01%% cash, bonds should be ~99.99%%, got %.2f", bond3)
 	}
 }
+
+func TestHistoricalBacktest_ChainTransition(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 60
+	primary.ProjectionYears = 30
+	primary.PortfolioValue = 500000
+	primary.MonthlyLivingExpenses = 2000
+	primary.TaxDeferredPercent = 50
+	primary.RothPercent = 25
+
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 8000
+
+	chainCalc := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
+		{TransitionAge: 70, Settings: linked},
+	})
+	noChainCalc := NewCalculator(primary)
+
+	chainBT := chainCalc.RunHistoricalBacktest()
+	noChainBT := noChainCalc.RunHistoricalBacktest()
+
+	if chainBT == nil || noChainBT == nil {
+		t.Fatal("expected non-nil backtest results")
+	}
+
+	if chainBT.SuccessRate >= noChainBT.SuccessRate {
+		t.Errorf("chained backtest success (%f) should be lower than no-chain (%f)",
+			chainBT.SuccessRate, noChainBT.SuccessRate)
+	}
+}

@@ -125,7 +125,10 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 
 // runSingleHistoricalSequence runs projection using historical data starting from a specific year
 func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequenceResult {
-	s := c.Settings
+	primarySettings := c.Settings
+	activeSettings := c.Settings
+	nextChainIdx := 0
+	s := activeSettings
 	months := s.ProjectionYears * 12
 
 	// Get historical sequence
@@ -173,6 +176,29 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			// Check for chain transition
+			if len(c.ResolvedChain) > 0 {
+				newIdx, prepared := c.nextChainTransition(currentYear, nextChainIdx, primarySettings)
+				if prepared != nil {
+					activeSettings = prepared
+					s = activeSettings
+					nextChainIdx = newIdx
+
+					// Recalculate living expenses from new settings
+					if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+						phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
+						currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
+					} else {
+						currentLivingExpenses = s.MonthlyLivingExpenses * cumulativeInflation
+					}
+
+					// Refresh cached allocation variables
+					tdStock, tdBond, tdCash = s.GetTaxDeferredAllocation()
+					rothStock, rothBond, rothCash = s.GetRothAllocation()
+					taxStock, taxBond, taxCash = s.GetTaxableAllocation()
+				}
+			}
+
 			// Get this year's historical data
 			yearData := sequence[currentYear]
 			inflationRate := yearData.InflationRate / 100

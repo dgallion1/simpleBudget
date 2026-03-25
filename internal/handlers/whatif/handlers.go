@@ -73,21 +73,61 @@ func setCachedAnalysis(settings *models.WhatIfSettings, analysis *models.WhatIfA
 	cache.cachedAt = time.Now()
 }
 
-// runAnalysisWithCache runs full analysis, using cache when available
-func runAnalysisWithCache(settings *models.WhatIfSettings) *models.WhatIfAnalysis {
-	// Check cache first
-	if cached := getCachedAnalysis(settings); cached != nil {
-		return cached
+// buildCalculator creates a chain-aware calculator from settings.
+func buildCalculator(settings *models.WhatIfSettings) (*retirement.Calculator, string, error) {
+	hashData := getSettingsHash(settings)
+
+	if len(settings.ScenarioChain) == 0 {
+		return retirement.NewCalculator(settings), hashData, nil
 	}
 
-	// Run full analysis
-	calc := retirement.NewCalculator(settings)
+	chain := make([]retirement.ResolvedScenarioChainLink, 0, len(settings.ScenarioChain))
+	for _, link := range settings.ScenarioChain {
+		linked, err := retirementMgr.LoadScenarioSettings(link.ScenarioFilename)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to load chained scenario %s: %w", link.ScenarioFilename, err)
+		}
+
+		linkedHash := getSettingsHash(linked)
+		hashData += linkedHash
+
+		chain = append(chain, retirement.ResolvedScenarioChainLink{
+			ScenarioFilename: link.ScenarioFilename,
+			TransitionAge:    link.TransitionAge,
+			Settings:         linked,
+		})
+	}
+
+	combined := sha256.Sum256([]byte(hashData))
+	combinedHash := fmt.Sprintf("%x", combined[:8])
+
+	return retirement.NewCalculatorWithChain(settings, chain), combinedHash, nil
+}
+
+// runAnalysisWithCache runs full analysis, using cache when available
+func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalysis, error) {
+	calc, depHash, err := buildCalculator(settings)
+	if err != nil {
+		return nil, err
+	}
+
+	cache.mu.RLock()
+	if cache.hash == depHash && time.Since(cache.cachedAt) < 5*time.Minute {
+		cached := cache.analysis
+		cache.mu.RUnlock()
+		return cached, nil
+	}
+	cache.mu.RUnlock()
+
 	analysis := calc.RunFullAnalysis()
 
-	// Cache the result
-	setCachedAnalysis(settings, analysis)
+	cache.mu.Lock()
+	cache.hash = depHash
+	cache.analysis = analysis
+	cache.cachedAt = time.Now()
+	cache.mu.Unlock()
 
-	return analysis
+	return analysis, nil
 }
 
 // renderError renders an HTML error fragment for HTMX requests
@@ -211,7 +251,11 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run full analysis (with caching)
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	scenarios, _ := retirementMgr.ListScenarios()
 	activeScenario := retirementMgr.ActiveScenario()
@@ -242,7 +286,11 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -552,7 +600,11 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -643,7 +695,11 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -707,7 +763,11 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -731,7 +791,11 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -755,7 +819,11 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -842,7 +910,11 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -902,7 +974,11 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -926,7 +1002,11 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -950,7 +1030,11 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -974,7 +1058,13 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	calc := retirement.NewCalculator(settings)
+	calc, _, err := buildCalculator(settings)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
 	projection := calc.RunProjection()
 
 	// Build chart data
@@ -1046,7 +1136,11 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1069,7 +1163,11 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-run the full analysis which includes a fresh Monte Carlo simulation
-	calc := retirement.NewCalculator(settings)
+	calc, _, err := buildCalculator(settings)
+	if err != nil {
+		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	analysis := calc.RunFullAnalysis()
 
 	partialData := map[string]interface{}{
@@ -1176,7 +1274,11 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1290,7 +1392,11 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1314,7 +1420,11 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1410,7 +1520,11 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1465,7 +1579,11 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1526,7 +1644,11 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1560,7 +1682,11 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1706,7 +1832,11 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run analysis and return results (cache auto-invalidates on settings hash change)
-	calc := retirement.NewCalculator(settings)
+	calc, _, err := buildCalculator(settings)
+	if err != nil {
+		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	analysis := calc.RunFullAnalysis()
 
 	partialData := &models.WhatIfPageData{
@@ -1781,7 +1911,11 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1805,7 +1939,11 @@ func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,
@@ -1829,7 +1967,11 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	partialData := map[string]interface{}{
 		"Settings": settings,

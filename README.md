@@ -8,7 +8,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 - **Dashboard** - KPIs, spending charts, alerts, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
-- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax optimization, and named scenarios for side-by-side comparison
+- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax optimization, named scenarios, and scenario chaining for multi-phase retirement plans
 - **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, and income pattern analysis
 - **File Manager** - Data backup, restore, and file management
 - **Encryption** - Optional password-based encryption for all data files
@@ -367,6 +367,7 @@ The What-If Planner helps you model retirement scenarios with sophisticated proj
 - **Healthcare Costs**: Model costs for multiple household members with Medicare transitions
 - **Big Ticket Items**: One-time events (inheritance, home sale, large purchases)
 - **Spouse Age Tracking**: Accurate RMD and healthcare projections for couples
+- **Scenario Chaining**: Link multiple scenarios to run sequentially — e.g., live off a pension until 70, then start Social Security and change withdrawal strategy. Balances carry over between phases while all other assumptions (expenses, income, allocation) switch to the chained scenario's settings.
 
 ### Asset Allocation
 

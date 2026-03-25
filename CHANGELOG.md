@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.7.0 - Scenario Chaining
+
+### New Features
+
+#### Scenario Chaining
+- Chain multiple retirement scenarios to run sequentially with different assumptions at each life phase
+- Example: run "Early Retirement" plan from age 60-70, then switch to "Post Social Security" plan from 70 onward
+- Portfolio balances carry over between phases — only assumptions change (expenses, income, allocation, healthcare)
+- Configure chains in the new "Scenario Chain" card on the What-If page: pick a scenario and a transition age
+- Unlimited chain links with ascending transition ages
+- Chain-aware across all analysis outputs: projection chart, Monte Carlo, historical backtest, sensitivity, and failure-point analysis
+- Budget-fit, present-value, and RMD panels show a note when chain is active (chain support coming in a future release)
+- Referential integrity: scenarios referenced in a chain cannot be deleted
+- Chain validation on every save: if changing your current age invalidates a chain, it is automatically removed
+
 ## v1.6.0 - Explorer Enhancements
 
 ### New Features

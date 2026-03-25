@@ -1465,3 +1465,64 @@ func TestUpdateSettings_MoreFields(t *testing.T) {
 		t.Errorf("expected DiscountRate 4, got %f", result.DiscountRate)
 	}
 }
+
+func TestLoadScenarioSettings_ReadsWithoutSwitching(t *testing.T) {
+	sm := newTestSM(t)
+
+	defaults := models.DefaultWhatIfSettings()
+	defaults.PortfolioValue = 1000000
+	if err := sm.Save(defaults); err != nil {
+		t.Fatalf("save default: %v", err)
+	}
+
+	if _, err := sm.CreateScenario("Post-SS"); err != nil {
+		t.Fatalf("create scenario: %v", err)
+	}
+
+	scenarios, _ := sm.ListScenarios()
+	var postSSFilename string
+	for _, s := range scenarios {
+		if s.Name == "Post-SS" {
+			postSSFilename = s.Filename
+			break
+		}
+	}
+	if postSSFilename == "" {
+		t.Fatal("Post-SS scenario not found")
+	}
+
+	if err := sm.SwitchScenario("whatif.json"); err != nil {
+		t.Fatalf("switch: %v", err)
+	}
+
+	loaded, err := sm.LoadScenarioSettings(postSSFilename)
+	if err != nil {
+		t.Fatalf("load scenario settings: %v", err)
+	}
+
+	if loaded.PortfolioValue != 1000000 {
+		t.Errorf("expected portfolio 1000000, got %f", loaded.PortfolioValue)
+	}
+
+	if sm.ActiveFilename() != "whatif.json" {
+		t.Errorf("active scenario changed to %s, expected whatif.json", sm.ActiveFilename())
+	}
+}
+
+func TestLoadScenarioSettings_InvalidFilename(t *testing.T) {
+	sm := newTestSM(t)
+
+	_, err := sm.LoadScenarioSettings("../etc/passwd")
+	if err == nil {
+		t.Error("expected error for path traversal")
+	}
+}
+
+func TestLoadScenarioSettings_MissingFile(t *testing.T) {
+	sm := newTestSM(t)
+
+	_, err := sm.LoadScenarioSettings("whatif_nonexistent.json")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}

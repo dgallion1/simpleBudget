@@ -159,6 +159,83 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 	return &settings, nil
 }
 
+// LoadScenarioSettings loads a scenario's settings without switching the active scenario.
+// This is a read-only operation used for pre-resolving chained scenarios.
+func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIfSettings, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	path, err := sm.scenarioPath(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := sm.store.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("scenario file not found: %s", filename)
+	}
+
+	data, err := sm.store.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading scenario %s: %w", filename, err)
+	}
+
+	var settings models.WhatIfSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parsing scenario %s: %w", filename, err)
+	}
+
+	// Apply same initialization and migrations as loadInternal
+	if settings.IncomeSources == nil {
+		settings.IncomeSources = []models.IncomeSource{}
+	}
+	if settings.ExpenseSources == nil {
+		settings.ExpenseSources = []models.ExpenseSource{}
+	}
+	if settings.RemovedIncomeSources == nil {
+		settings.RemovedIncomeSources = []models.IncomeSource{}
+	}
+	if settings.RemovedExpenseSources == nil {
+		settings.RemovedExpenseSources = []models.ExpenseSource{}
+	}
+	if settings.HealthcarePersons == nil {
+		settings.HealthcarePersons = []models.HealthcarePerson{}
+	}
+	if settings.SpendingPhaseConfig == nil {
+		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+			Enabled: false,
+			Phases:  models.DefaultSpendingPhases(),
+		}
+	} else if len(settings.SpendingPhaseConfig.Phases) == 0 {
+		settings.SpendingPhaseConfig.Phases = models.DefaultSpendingPhases()
+	}
+	for i := range settings.SpendingPhaseConfig.Phases {
+		if settings.SpendingPhaseConfig.Phases[i].Multiplier == 0 {
+			settings.SpendingPhaseConfig.Phases[i].Multiplier = 1.0
+		}
+	}
+	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
+		coverage := models.CoverageMedicare
+		if settings.CurrentAge < 65 {
+			coverage = models.CoverageACA
+		}
+		settings.HealthcarePersons = []models.HealthcarePerson{
+			{
+				ID:                    "migrated-user",
+				Name:                  "User",
+				CurrentAge:            settings.CurrentAge,
+				CurrentCoverage:       coverage,
+				CurrentMonthlyCost:    settings.MonthlyHealthcare,
+				PreMedicareInflation:  settings.HealthcareInflation,
+				MedicareMonthlyCost:   settings.MonthlyHealthcare,
+				PostMedicareInflation: settings.HealthcareInflation,
+				MedicareEligibleAge:   65,
+			},
+		}
+	}
+
+	return &settings, nil
+}
+
 // Save writes settings to disk
 func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 	sm.mu.Lock()

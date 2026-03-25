@@ -931,7 +931,7 @@ func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
 		}
 
 		// Run projection with modified settings
-		modCalc := NewCalculator(&modifiedSettings)
+		modCalc := NewCalculatorWithChain(&modifiedSettings, c.ResolvedChain)
 		modProjection := modCalc.RunProjection()
 		modScore := modCalc.CalculateSustainabilityScore(modProjection)
 
@@ -999,7 +999,7 @@ func (c *Calculator) findReturnThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.InvestmentReturn = low
-	modCalc := NewCalculator(&modSettings)
+	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		// Survives even at -5%, no meaningful threshold
 		return &models.FailurePoint{
@@ -1017,7 +1017,7 @@ func (c *Calculator) findReturnThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.InvestmentReturn = mid
-		modCalc := NewCalculator(&modSettings)
+		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			high = mid
 		} else {
@@ -1058,7 +1058,7 @@ func (c *Calculator) findInflationThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.InflationRate = high
-	modCalc := NewCalculator(&modSettings)
+	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		// Survives even at 15%, very robust
 		return &models.FailurePoint{
@@ -1076,7 +1076,7 @@ func (c *Calculator) findInflationThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.InflationRate = mid
-		modCalc := NewCalculator(&modSettings)
+		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			low = mid
 		} else {
@@ -1120,7 +1120,7 @@ func (c *Calculator) findExpensesThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.MonthlyLivingExpenses = high
-	modCalc := NewCalculator(&modSettings)
+	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		// Survives even at 3x expenses
 		margin := ((high / current) - 1) * 100
@@ -1139,7 +1139,7 @@ func (c *Calculator) findExpensesThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.MonthlyLivingExpenses = mid
-		modCalc := NewCalculator(&modSettings)
+		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			low = mid
 		} else {
@@ -1183,7 +1183,7 @@ func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.PortfolioValue = low
-	modCalc := NewCalculator(&modSettings)
+	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		return &models.FailurePoint{
 			ParamName:    "portfolio_value",
@@ -1200,7 +1200,7 @@ func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.PortfolioValue = mid
-		modCalc := NewCalculator(&modSettings)
+		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			high = mid
 		} else {

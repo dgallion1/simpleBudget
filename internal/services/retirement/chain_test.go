@@ -78,6 +78,44 @@ func TestRebaseRothConversion_ExpiredDisabled(t *testing.T) {
 	}
 }
 
+func TestSensitivity_ChainPropagated(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 60
+	primary.ProjectionYears = 20
+	primary.PortfolioValue = 1000000
+	primary.MonthlyLivingExpenses = 3000
+	primary.InvestmentReturn = 6.0
+	primary.InflationRate = 3.0
+
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 5000
+
+	calcChain := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
+		{TransitionAge: 70, Settings: linked},
+	})
+	calcNoChain := NewCalculator(primary)
+
+	sensChain := calcChain.CalculateSensitivity()
+	sensNoChain := calcNoChain.CalculateSensitivity()
+
+	if len(sensChain) == 0 || len(sensNoChain) == 0 {
+		t.Fatal("expected sensitivity results")
+	}
+
+	// Chain raises expenses at age 70, so final balances should differ even when both survive.
+	// LongevityYears is only non-zero when the portfolio fails, so compare FinalBalance instead.
+	anyDifferent := false
+	for i := range sensChain {
+		if sensChain[i].FinalBalance != sensNoChain[i].FinalBalance {
+			anyDifferent = true
+			break
+		}
+	}
+	if !anyDifferent {
+		t.Error("expected at least one sensitivity scenario to differ with chain")
+	}
+}
+
 func TestPrepareChainedSettings(t *testing.T) {
 	primary := models.DefaultWhatIfSettings()
 	primary.CurrentAge = 60

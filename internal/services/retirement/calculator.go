@@ -1426,7 +1426,10 @@ func (c *Calculator) RunMonteCarloSimulation(runs int) *models.MonteCarloAnalysi
 
 // runSingleMonteCarloSimulation runs one complete simulation with all risk factors
 func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *MonteCarloConfig) models.MonteCarloResult {
-	s := c.Settings
+	primarySettings := c.Settings
+	activeSettings := c.Settings
+	nextChainIdx := 0
+	s := activeSettings
 
 	// Vary projection length for longevity risk
 	projectionYears := s.ProjectionYears
@@ -1487,6 +1490,29 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			// Check for chain transition
+			if len(c.ResolvedChain) > 0 {
+				newIdx, prepared := c.nextChainTransition(currentYear, nextChainIdx, primarySettings)
+				if prepared != nil {
+					activeSettings = prepared
+					s = activeSettings
+					nextChainIdx = newIdx
+
+					// Recalculate living expenses from new settings
+					if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+						phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
+						currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
+					} else {
+						currentLivingExpenses = s.MonthlyLivingExpenses * cumulativeInflation
+					}
+
+					// Refresh cached allocation variables
+					tdStock, tdBond, tdCash = s.GetTaxDeferredAllocation()
+					rothStock, rothBond, rothCash = s.GetRothAllocation()
+					taxStock, taxBond, taxCash = s.GetTaxableAllocation()
+				}
+			}
+
 			// Apply inflation with some random variation
 			inflationVar := 1 + (rng.Float64()-0.5)*0.02 // +/- 1%
 

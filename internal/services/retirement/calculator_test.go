@@ -973,3 +973,32 @@ func TestRunProjection_ChainTransition_AtCurrentAge(t *testing.T) {
 		t.Errorf("expected expenses near 5000, got %f", proj.Months[0].TotalExpenses)
 	}
 }
+
+func TestMonteCarloSimulation_ChainTransition(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 60
+	primary.ProjectionYears = 20
+	primary.PortfolioValue = 2000000
+	primary.MonthlyLivingExpenses = 3000
+	primary.InvestmentReturn = 6.0
+	primary.InflationRate = 3.0
+	primary.TaxDeferredPercent = 50
+	primary.RothPercent = 25
+
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 8000
+	linked.InvestmentReturn = 4.0
+
+	chainCalc := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
+		{TransitionAge: 70, Settings: linked},
+	})
+	noChainCalc := NewCalculator(primary)
+
+	chainMC := chainCalc.RunMonteCarloSimulation(100)
+	noChainMC := noChainCalc.RunMonteCarloSimulation(100)
+
+	if chainMC.Stats.SuccessRate >= noChainMC.Stats.SuccessRate {
+		t.Errorf("chained MC success rate (%f) should be lower than no-chain (%f)",
+			chainMC.Stats.SuccessRate, noChainMC.Stats.SuccessRate)
+	}
+}

@@ -9,14 +9,27 @@ import (
 	"budget2/internal/models"
 )
 
+// ResolvedScenarioChainLink holds a pre-loaded chain link for runtime use
+type ResolvedScenarioChainLink struct {
+	ScenarioFilename string
+	TransitionAge    int
+	Settings         *models.WhatIfSettings
+}
+
 // Calculator performs retirement projections and analysis
 type Calculator struct {
-	Settings *models.WhatIfSettings
+	Settings      *models.WhatIfSettings
+	ResolvedChain []ResolvedScenarioChainLink
 }
 
 // NewCalculator creates a new retirement calculator with the given settings
 func NewCalculator(settings *models.WhatIfSettings) *Calculator {
 	return &Calculator{Settings: settings}
+}
+
+// NewCalculatorWithChain creates a new retirement calculator with the given settings and scenario chain
+func NewCalculatorWithChain(settings *models.WhatIfSettings, chain []ResolvedScenarioChainLink) *Calculator {
+	return &Calculator{Settings: settings, ResolvedChain: chain}
 }
 
 // PresentValue calculates the present value of a future cash flow

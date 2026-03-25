@@ -891,3 +891,21 @@ func BenchmarkMonteCarloSimulation(b *testing.B) {
 		}
 	})
 }
+
+func TestNewCalculatorWithChain(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 3000
+
+	chain := []ResolvedScenarioChainLink{
+		{TransitionAge: 70, Settings: linked},
+	}
+
+	calc := NewCalculatorWithChain(primary, chain)
+	if calc == nil {
+		t.Fatal("expected non-nil calculator")
+	}
+	if len(calc.ResolvedChain) != 1 {
+		t.Errorf("expected 1 chain link, got %d", len(calc.ResolvedChain))
+	}
+}

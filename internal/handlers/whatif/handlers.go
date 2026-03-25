@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -235,6 +236,8 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/scenarios/switch", handleSwitchScenario)
 	r.Delete("/whatif/scenarios/{filename}", handleDeleteScenario)
 	r.Put("/whatif/scenarios/{filename}", handleRenameScenario)
+	r.Post("/whatif/chain", handleWhatIfUpdateChain)
+	r.Delete("/whatif/chain/{index}", handleWhatIfDeleteChainLink)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
@@ -2071,4 +2074,127 @@ func handleRenameScenario(w http.ResponseWriter, r *http.Request) {
 	// HTMX redirect for full page reload
 	w.Header().Set("HX-Redirect", "/whatif")
 	w.WriteHeader(http.StatusOK)
+}
+
+func handleWhatIfUpdateChain(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	scenarioFiles := r.Form["chain_scenario[]"]
+	ageStrings := r.Form["chain_age[]"]
+
+	if len(scenarioFiles) != len(ageStrings) {
+		renderError(w, "Mismatched chain scenario and age counts", http.StatusBadRequest)
+		return
+	}
+
+	chain := make([]models.ScenarioChainLink, 0, len(scenarioFiles))
+	for i := range scenarioFiles {
+		if scenarioFiles[i] == "" {
+			continue
+		}
+		age, err := strconv.Atoi(ageStrings[i])
+		if err != nil {
+			renderError(w, fmt.Sprintf("Invalid age at position %d: %s", i+1, ageStrings[i]), http.StatusBadRequest)
+			return
+		}
+		chain = append(chain, models.ScenarioChainLink{
+			ScenarioFilename: scenarioFiles[i],
+			TransitionAge:    age,
+		})
+	}
+
+	sort.Slice(chain, func(i, j int) bool {
+		return chain[i].TransitionAge < chain[j].TransitionAge
+	})
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	activeFilename := retirementMgr.ActiveFilename()
+	if err := retirementMgr.ValidateScenarioChain(chain, settings, activeFilename); err != nil {
+		renderError(w, "Invalid chain: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	settings.ScenarioChain = chain
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	scenarios, _ := retirementMgr.ListScenarios()
+	partialData := map[string]interface{}{
+		"Settings":       settings,
+		"Analysis":       analysis,
+		"Scenarios":      scenarios,
+		"ActiveFilename": activeFilename,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfDeleteChainLink(w http.ResponseWriter, r *http.Request) {
+	indexStr := chi.URLParam(r, "index")
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		renderError(w, "Invalid index", http.StatusBadRequest)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if index < 0 || index >= len(settings.ScenarioChain) {
+		renderError(w, "Index out of range", http.StatusBadRequest)
+		return
+	}
+
+	settings.ScenarioChain = append(settings.ScenarioChain[:index], settings.ScenarioChain[index+1:]...)
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	activeFilename := retirementMgr.ActiveFilename()
+	scenarios, _ := retirementMgr.ListScenarios()
+	partialData := map[string]interface{}{
+		"Settings":       settings,
+		"Analysis":       analysis,
+		"Scenarios":      scenarios,
+		"ActiveFilename": activeFilename,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
 }

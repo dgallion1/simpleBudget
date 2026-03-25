@@ -236,6 +236,59 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 	return &settings, nil
 }
 
+// ValidateScenarioChain validates that a scenario chain is well-formed.
+// It acquires a read lock and delegates to validateChainInternal.
+func (sm *SettingsManager) ValidateScenarioChain(chain []models.ScenarioChainLink, settings *models.WhatIfSettings, currentFilename string) error {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.validateChainInternal(chain, settings, currentFilename)
+}
+
+// validateChainInternal validates a scenario chain without acquiring any lock.
+// Caller must hold at least a read lock (or a write lock).
+func (sm *SettingsManager) validateChainInternal(chain []models.ScenarioChainLink, settings *models.WhatIfSettings, currentFilename string) error {
+	seen := make(map[string]bool)
+	prevAge := -1
+	maxAge := settings.CurrentAge + settings.ProjectionYears
+
+	for i, link := range chain {
+		// Rule 1: Transition ages strictly ascending
+		if link.TransitionAge <= prevAge {
+			return fmt.Errorf("chain link %d: transition ages must be strictly ascending (got %d after %d)", i, link.TransitionAge, prevAge)
+		}
+		prevAge = link.TransitionAge
+
+		// Rule 4: Ages >= CurrentAge and < CurrentAge + ProjectionYears
+		if link.TransitionAge < settings.CurrentAge {
+			return fmt.Errorf("chain link %d: transition age %d is below current age %d", i, link.TransitionAge, settings.CurrentAge)
+		}
+		if link.TransitionAge >= maxAge {
+			return fmt.Errorf("chain link %d: transition age %d is beyond projection end age %d", i, link.TransitionAge, maxAge-1)
+		}
+
+		// Rule 3: No self-reference
+		if link.ScenarioFilename == currentFilename {
+			return fmt.Errorf("chain link %d: scenario cannot reference itself (%s)", i, link.ScenarioFilename)
+		}
+
+		// Rule 5: No duplicate filenames
+		if seen[link.ScenarioFilename] {
+			return fmt.Errorf("chain link %d: duplicate scenario filename %s", i, link.ScenarioFilename)
+		}
+		seen[link.ScenarioFilename] = true
+
+		// Rule 2: Referenced scenario files must exist
+		path, err := sm.scenarioPath(link.ScenarioFilename)
+		if err != nil {
+			return fmt.Errorf("chain link %d: invalid scenario filename %s: %w", i, link.ScenarioFilename, err)
+		}
+		if _, err := sm.store.Stat(path); os.IsNotExist(err) {
+			return fmt.Errorf("chain link %d: scenario file not found: %s", i, link.ScenarioFilename)
+		}
+	}
+	return nil
+}
+
 // Save writes settings to disk
 func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 	sm.mu.Lock()
@@ -246,6 +299,14 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 
 // saveInternal writes settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
+	// Validate scenario chain if one is present; strip it (with a warning) if invalid.
+	if len(settings.ScenarioChain) > 0 {
+		if err := sm.validateChainInternal(settings.ScenarioChain, settings, sm.filename); err != nil {
+			log.Printf("WARNING: stripping invalid scenario chain on save: %v", err)
+			settings.ScenarioChain = nil
+		}
+	}
+
 	// Ensure settings directory exists
 	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return err
@@ -964,6 +1025,42 @@ func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, 
 	return settings, nil
 }
 
+// scenariosReferencingFile returns the filenames of all whatif*.json scenarios
+// that include the given filename in their ScenarioChain.
+// Caller must hold the write lock (no locking performed here).
+func (sm *SettingsManager) scenariosReferencingFile(filename string) []string {
+	pattern := filepath.Join(sm.settingsDir, "whatif*.json")
+	matches, err := sm.store.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+
+	var referencing []string
+	for _, match := range matches {
+		fname := filepath.Base(match)
+		if fname == filename {
+			continue
+		}
+		data, err := sm.store.ReadFile(match)
+		if err != nil {
+			continue
+		}
+		var partial struct {
+			ScenarioChain []models.ScenarioChainLink `json:"scenario_chain"`
+		}
+		if err := json.Unmarshal(data, &partial); err != nil {
+			continue
+		}
+		for _, link := range partial.ScenarioChain {
+			if link.ScenarioFilename == filename {
+				referencing = append(referencing, fname)
+				break
+			}
+		}
+	}
+	return referencing
+}
+
 // DeleteScenario removes a scenario file
 func (sm *SettingsManager) DeleteScenario(filename string) error {
 	sm.mu.Lock()
@@ -971,6 +1068,11 @@ func (sm *SettingsManager) DeleteScenario(filename string) error {
 
 	if filename == "whatif.json" {
 		return fmt.Errorf("cannot delete the default scenario")
+	}
+
+	// Referential integrity: reject deletion if other scenarios reference this file
+	if refs := sm.scenariosReferencingFile(filename); len(refs) > 0 {
+		return fmt.Errorf("cannot delete scenario %s: referenced by %s", filename, strings.Join(refs, ", "))
 	}
 
 	path, err := sm.scenarioPath(filename)

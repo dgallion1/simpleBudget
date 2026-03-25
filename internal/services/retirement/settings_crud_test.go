@@ -1203,6 +1203,176 @@ func TestLoad_Concurrent(t *testing.T) {
 	}
 }
 
+// --- ValidateScenarioChain ---
+
+// writeScenarioFile is a test helper that writes a minimal scenario JSON file.
+func writeScenarioFile(t *testing.T, sm *SettingsManager, store *storage.Storage, dir, filename string) {
+	t.Helper()
+	_ = store.MkdirAll(dir, 0755)
+	settings := models.DefaultWhatIfSettings()
+	settings.ScenarioName = filename
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal scenario: %v", err)
+	}
+	if err := store.WriteFile(filepath.Join(dir, filename), data, 0644); err != nil {
+		t.Fatalf("write scenario %s: %v", filename, err)
+	}
+}
+
+func TestValidateScenarioChain_AscendingAges(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+
+	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30
+
+	// Non-ascending: second age same as first
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 70},
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 70}, // duplicate age
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif.json"); err == nil {
+		t.Error("expected error for non-ascending transition ages")
+	}
+
+	// Descending ages
+	writeScenarioFile(t, sm, store, dir, "whatif_b.json")
+	chain2 := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_b.json", TransitionAge: 80},
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 70},
+	}
+	if err := sm.ValidateScenarioChain(chain2, settings, "whatif.json"); err == nil {
+		t.Error("expected error for descending transition ages")
+	}
+}
+
+func TestValidateScenarioChain_SelfReference(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+	writeScenarioFile(t, sm, store, dir, "whatif_self.json")
+
+	settings := models.DefaultWhatIfSettings()
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_self.json", TransitionAge: 70},
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif_self.json"); err == nil {
+		t.Error("expected error for self-reference in chain")
+	}
+}
+
+func TestValidateScenarioChain_AgeBelowCurrent(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+
+	settings := models.DefaultWhatIfSettings() // CurrentAge=65
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 64}, // below CurrentAge
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif.json"); err == nil {
+		t.Error("expected error for transition age below current age")
+	}
+}
+
+func TestValidateScenarioChain_AgeBeyondProjection(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+
+	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30 → max valid age = 94
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 95}, // >= 65+30=95
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif.json"); err == nil {
+		t.Error("expected error for transition age beyond projection end")
+	}
+}
+
+func TestValidateScenarioChain_MissingFile(t *testing.T) {
+	sm, _, _ := newTestSMWithDir(t)
+
+	settings := models.DefaultWhatIfSettings()
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_missing.json", TransitionAge: 70},
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif.json"); err == nil {
+		t.Error("expected error for missing scenario file")
+	}
+}
+
+func TestValidateScenarioChain_DuplicateFilenames(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+
+	settings := models.DefaultWhatIfSettings()
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 70},
+		{ScenarioFilename: "whatif_a.json", TransitionAge: 75}, // same file again
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif.json"); err == nil {
+		t.Error("expected error for duplicate filenames in chain")
+	}
+}
+
+func TestValidateScenarioChain_ValidChain(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+	writeScenarioFile(t, sm, store, dir, "whatif_mid.json")
+	writeScenarioFile(t, sm, store, dir, "whatif_late.json")
+
+	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30
+	chain := []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_mid.json", TransitionAge: 70},
+		{ScenarioFilename: "whatif_late.json", TransitionAge: 80},
+	}
+	if err := sm.ValidateScenarioChain(chain, settings, "whatif.json"); err != nil {
+		t.Errorf("expected valid chain to pass validation, got: %v", err)
+	}
+}
+
+func TestSave_StripsInvalidChainOnAgeChange(t *testing.T) {
+	sm, dir, store := newTestSMWithDir(t)
+
+	// Create a scenario file that the chain will reference
+	writeScenarioFile(t, sm, store, dir, "whatif_future.json")
+
+	// Save settings with a valid chain: CurrentAge=65, TransitionAge=70
+	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30
+	settings.ScenarioChain = []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_future.json", TransitionAge: 70},
+	}
+	if err := sm.Save(settings); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+
+	// Verify chain was saved (age 70 is valid for age 65 with 30-year projection)
+	loaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load after save: %v", err)
+	}
+	if len(loaded.ScenarioChain) != 1 {
+		t.Fatalf("expected chain to be saved, got %d links", len(loaded.ScenarioChain))
+	}
+
+	// Now bump CurrentAge to 75 — transition age 70 is now below CurrentAge
+	settings2 := models.DefaultWhatIfSettings()
+	settings2.CurrentAge = 75
+	settings2.ScenarioChain = []models.ScenarioChainLink{
+		{ScenarioFilename: "whatif_future.json", TransitionAge: 70}, // now invalid
+	}
+	if err := sm.Save(settings2); err != nil {
+		t.Fatalf("Save with raised age: %v", err)
+	}
+
+	// Chain should have been stripped
+	loaded2, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load after age change: %v", err)
+	}
+	if len(loaded2.ScenarioChain) != 0 {
+		t.Errorf("expected chain to be stripped after age change, got %d links", len(loaded2.ScenarioChain))
+	}
+	if loaded2.CurrentAge != 75 {
+		t.Errorf("expected CurrentAge 75, got %d", loaded2.CurrentAge)
+	}
+}
+
 // newTestSMWithDir returns a SettingsManager and its settings directory path.
 func newTestSMWithDir(t *testing.T) (*SettingsManager, string, *storage.Storage) {
 	t.Helper()

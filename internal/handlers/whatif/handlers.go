@@ -2128,26 +2128,9 @@ func handleWhatIfUpdateChain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	scenarios, _ := retirementMgr.ListScenarios()
-	partialData := map[string]interface{}{
-		"Settings":       settings,
-		"Analysis":       analysis,
-		"Scenarios":      scenarios,
-		"ActiveFilename": activeFilename,
-	}
-
-	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
-	}
+	// Full page reload so both the chain card and results update
+	w.Header().Set("HX-Redirect", "/whatif")
+	w.WriteHeader(http.StatusOK)
 }
 
 func handleWhatIfDeleteChainLink(w http.ResponseWriter, r *http.Request) {
@@ -2176,25 +2159,7 @@ func handleWhatIfDeleteChainLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	activeFilename := retirementMgr.ActiveFilename()
-	scenarios, _ := retirementMgr.ListScenarios()
-	partialData := map[string]interface{}{
-		"Settings":       settings,
-		"Analysis":       analysis,
-		"Scenarios":      scenarios,
-		"ActiveFilename": activeFilename,
-	}
-
-	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
-	}
+	// Full page reload so both the chain card and results update
+	w.Header().Set("HX-Redirect", "/whatif")
+	w.WriteHeader(http.StatusOK)
 }

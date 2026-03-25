@@ -513,25 +513,17 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["taxable_cash_percent"] = v
 	}
 
-	// Validate per-account allocations: stocks + cash must not exceed 100%
-	validateAlloc := func(stockKey, cashKey, label string) bool {
+	// Clamp per-account allocations: if stocks + cash exceeds 100%, reduce cash to fit
+	clampAlloc := func(stockKey, cashKey string) {
 		stockVal, hasStock := updates[stockKey].(float64)
 		cashVal, hasCash := updates[cashKey].(float64)
 		if hasStock && hasCash && stockVal+cashVal > 100 {
-			renderError(w, label+" stocks + cash cannot exceed 100%", http.StatusBadRequest)
-			return false
+			updates[cashKey] = max(0, 100-stockVal)
 		}
-		return true
 	}
-	if !validateAlloc("tax_deferred_stock_percent", "tax_deferred_cash_percent", "Tax-deferred") {
-		return
-	}
-	if !validateAlloc("roth_stock_percent", "roth_cash_percent", "Roth") {
-		return
-	}
-	if !validateAlloc("taxable_stock_percent", "taxable_cash_percent", "Taxable") {
-		return
-	}
+	clampAlloc("tax_deferred_stock_percent", "tax_deferred_cash_percent")
+	clampAlloc("roth_stock_percent", "roth_cash_percent")
+	clampAlloc("taxable_stock_percent", "taxable_cash_percent")
 
 	if v, err := parseFormFloat(r, "inflation_rate"); err != nil {
 		renderError(w, "Invalid inflation rate: "+err.Error(), http.StatusBadRequest)

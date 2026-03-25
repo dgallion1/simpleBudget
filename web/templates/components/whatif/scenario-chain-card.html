@@ -1,0 +1,148 @@
+{{/* Scenario Chain Card */}}
+{{define "whatif-scenario-chain"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Scenario Chain</h3>
+        <span class="text-xs text-gray-400 dark:text-gray-500">Sequential plans</span>
+    </div>
+
+    {{if not .Settings.ScenarioChain}}
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Run other scenarios later in life without resetting balances</p>
+    {{end}}
+
+    <form id="chain-form"
+        hx-post="/whatif/chain"
+        hx-target="#whatif-results"
+        hx-swap="innerHTML">
+
+        <div id="chain-links" class="space-y-2 mb-3">
+            {{range $i, $link := .Settings.ScenarioChain}}
+            <div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                <select name="chain_scenario[]"
+                    class="flex-1 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-100 text-sm rounded px-2 py-1">
+                    {{range $.Scenarios}}
+                    {{if ne .Filename $.ActiveFilename}}
+                    <option value="{{.Filename}}" {{if eq .Filename $link.ScenarioFilename}}selected{{end}}>
+                        {{- if eq .Filename "whatif.json"}}Current Plan{{else}}{{.Name}}{{end -}}
+                    </option>
+                    {{end}}
+                    {{end}}
+                </select>
+                <span class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">at age</span>
+                <input type="number" name="chain_age[]" value="{{$link.TransitionAge}}"
+                    min="{{$.Settings.CurrentAge}}"
+                    class="w-16 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-100 text-sm rounded px-2 py-1 text-center">
+                <button type="button"
+                    hx-delete="/whatif/chain/{{$i}}"
+                    hx-target="#whatif-results"
+                    hx-swap="innerHTML"
+                    class="text-red-500 hover:text-red-700 p-1"
+                    title="Remove">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            {{end}}
+        </div>
+
+        <div class="flex gap-2">
+            <button type="button" id="add-chain-step-btn"
+                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Add Step
+            </button>
+            {{if .Settings.ScenarioChain}}
+            <button type="submit"
+                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors">
+                Apply
+            </button>
+            {{end}}
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    var btn = document.getElementById('add-chain-step-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        var container = document.getElementById('chain-links');
+        var form = document.getElementById('chain-form');
+
+        // Build scenario data from server-rendered template
+        var scenarios = [
+            {{range .Scenarios}}
+            {{if ne .Filename $.ActiveFilename}}
+            {filename: "{{.Filename}}", name: "{{if eq .Filename "whatif.json"}}Current Plan{{else}}{{.Name}}{{end}}"},
+            {{end}}
+            {{end}}
+        ];
+
+        var row = document.createElement('div');
+        row.className = 'flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded';
+
+        // Scenario select
+        var select = document.createElement('select');
+        select.name = 'chain_scenario[]';
+        select.className = 'flex-1 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-100 text-sm rounded px-2 py-1';
+        scenarios.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.filename;
+            opt.textContent = s.name;
+            select.appendChild(opt);
+        });
+
+        // "at age" label
+        var label = document.createElement('span');
+        label.className = 'text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap';
+        label.textContent = 'at age';
+
+        // Age input
+        var input = document.createElement('input');
+        input.type = 'number';
+        input.name = 'chain_age[]';
+        input.value = '{{.Settings.CurrentAge}}';
+        input.min = '{{.Settings.CurrentAge}}';
+        input.className = 'w-16 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-100 text-sm rounded px-2 py-1 text-center';
+
+        // Remove button
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'text-red-500 hover:text-red-700 p-1';
+        removeBtn.title = 'Remove';
+        removeBtn.addEventListener('click', function() { row.remove(); });
+
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'w-4 h-4');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('d', 'M6 18L18 6M6 6l12 12');
+        svg.appendChild(path);
+        removeBtn.appendChild(svg);
+
+        row.appendChild(select);
+        row.appendChild(label);
+        row.appendChild(input);
+        row.appendChild(removeBtn);
+        container.appendChild(row);
+
+        // Ensure Apply button exists
+        if (!form.querySelector('[type="submit"]')) {
+            var applyBtn = document.createElement('button');
+            applyBtn.type = 'submit';
+            applyBtn.className = 'inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors';
+            applyBtn.textContent = 'Apply';
+            form.querySelector('.flex.gap-2').appendChild(applyBtn);
+        }
+    });
+})();
+</script>
+{{end}}

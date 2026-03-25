@@ -2,10 +2,18 @@ package models
 
 import "math"
 
+// ScenarioChainLink references a scenario to transition to at a given age
+type ScenarioChainLink struct {
+	ScenarioFilename string `json:"scenario_filename"`
+	TransitionAge    int    `json:"transition_age"`
+}
+
 // WhatIfSettings contains all user parameters for retirement planning
 type WhatIfSettings struct {
 	// Scenario metadata
 	ScenarioName string `json:"scenario_name,omitempty"` // Display name for this scenario
+	// Scenario chaining: ordered list of scenarios to run after this one
+	ScenarioChain []ScenarioChainLink `json:"scenario_chain,omitempty"`
 
 	// Portfolio
 	PortfolioValue float64 `json:"portfolio_value"` // Current portfolio value

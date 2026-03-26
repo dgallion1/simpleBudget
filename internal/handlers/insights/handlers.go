@@ -103,7 +103,8 @@ func isSubscription(rp models.RecurringPayment) bool {
 }
 
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
-	recurring := detectRecurringPayments(filtered)
+	// Detect recurring patterns against all data so short date ranges still find them
+	recurring := detectRecurringPayments(allData)
 	trends := analyzeCategoryTrends(allData, startDate, endDate)
 	income := AnalyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)

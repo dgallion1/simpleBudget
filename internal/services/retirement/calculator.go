@@ -544,7 +544,11 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableBalance
 		depleted := false
-		if shortfall > 0 {
+		if totalBalance <= 0 {
+			taxDeferredBalance = 0
+			rothBalance = 0
+			taxableBalance = 0
+			totalBalance = 0
 			depleted = true
 			if depletionMonth == nil {
 				dm := m
@@ -552,12 +556,11 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 				ly := float64(m) / 12
 				longevityYears = &ly
 			}
-		}
-		if totalBalance <= 0 {
-			taxDeferredBalance = 0
-			rothBalance = 0
-			taxableBalance = 0
-			totalBalance = 0
+		} else if shortfall > 0 && totalBalance > 0 {
+			// Temporary shortfall (e.g., accessible accounts empty but locked accounts
+			// still have funds during a tax-deferred delay). Not true depletion — the
+			// portfolio has money, it's just not accessible this month. Don't stop.
+		} else if shortfall > 0 {
 			depleted = true
 			if depletionMonth == nil {
 				dm := m

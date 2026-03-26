@@ -26,6 +26,176 @@ func floatEqual(a, b float64) bool {
 	return math.Abs(a-b) < 0.01
 }
 
+// --- resolveDateRange ---
+
+func TestResolveDateRange_ExplicitDates(t *testing.T) {
+	minDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	maxDate := time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	start, end := resolveDateRange("2025-03-01", "2025-06-30", minDate, maxDate)
+
+	if start != time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("start = %v, want 2025-03-01", start)
+	}
+	if end != time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("end = %v, want 2025-06-30", end)
+	}
+}
+
+func TestResolveDateRange_DefaultsToYTD(t *testing.T) {
+	minDate := time.Date(2020, 1, 1, 0, 0, 0, 0, time.Local)
+	maxDate := time.Date(2030, 12, 31, 0, 0, 0, 0, time.Local)
+
+	start, end := resolveDateRange("", "", minDate, maxDate)
+
+	expectedStart := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Local)
+	if start != expectedStart {
+		t.Errorf("start = %v, want %v (Jan 1 of current year)", start, expectedStart)
+	}
+	if end != maxDate {
+		t.Errorf("end = %v, want %v (maxDate)", end, maxDate)
+	}
+}
+
+func TestResolveDateRange_FallbackWhenYTDAfterMaxDate(t *testing.T) {
+	// Data ends in the past, so YTD start would be after maxDate
+	minDate := time.Date(2020, 3, 1, 0, 0, 0, 0, time.Local)
+	maxDate := time.Date(2020, 12, 31, 0, 0, 0, 0, time.Local)
+
+	start, end := resolveDateRange("", "", minDate, maxDate)
+
+	// Should fall back to minDate since YTD (Jan 1 of current year) > maxDate
+	if start != minDate {
+		t.Errorf("start = %v, want %v (minDate fallback)", start, minDate)
+	}
+	if end != maxDate {
+		t.Errorf("end = %v, want %v (maxDate)", end, maxDate)
+	}
+}
+
+func TestResolveDateRange_EmptyEndDefaultsToMaxDate(t *testing.T) {
+	minDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	maxDate := time.Date(2025, 9, 15, 0, 0, 0, 0, time.UTC)
+
+	_, end := resolveDateRange("2025-03-01", "", minDate, maxDate)
+
+	if end != maxDate {
+		t.Errorf("end = %v, want %v (maxDate)", end, maxDate)
+	}
+}
+
+// --- calculateComparison ---
+
+func TestCalculateComparison_PreviousPeriod(t *testing.T) {
+	// Current period: Feb 2025, Previous period: Jan 2025
+	ts := makeTransactionSet(
+		// Jan 2025 (previous period)
+		makeTransaction("Salary", 4000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1000, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		// Feb 2025 (current period)
+		makeTransaction("Salary", 5000, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1500, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	result := calculateComparison(ts, start, end, "previous")
+
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if !result.HasData {
+		t.Fatal("expected HasData to be true")
+	}
+
+	// Income: 4000 -> 5000 = +25%
+	if !floatEqual(result.IncomeChange, 25.0) {
+		t.Errorf("IncomeChange = %v, want 25", result.IncomeChange)
+	}
+	// Expenses: 1000 -> 1500 = +50%
+	if !floatEqual(result.ExpensesChange, 50.0) {
+		t.Errorf("ExpensesChange = %v, want 50", result.ExpensesChange)
+	}
+	// Current metrics
+	if !floatEqual(result.Current.TotalIncome, 5000) {
+		t.Errorf("Current.TotalIncome = %v, want 5000", result.Current.TotalIncome)
+	}
+	if !floatEqual(result.Previous.TotalIncome, 4000) {
+		t.Errorf("Previous.TotalIncome = %v, want 4000", result.Previous.TotalIncome)
+	}
+}
+
+func TestCalculateComparison_YearOverYear(t *testing.T) {
+	ts := makeTransactionSet(
+		// Feb 2024 (previous year)
+		makeTransaction("Salary", 4000, time.Date(2024, 2, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1200, time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		// Feb 2025 (current year)
+		makeTransaction("Salary", 5000, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1500, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	result := calculateComparison(ts, start, end, "year")
+
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if !result.HasData {
+		t.Fatal("expected HasData to be true")
+	}
+
+	// Income: 4000 -> 5000 = +25%
+	if !floatEqual(result.IncomeChange, 25.0) {
+		t.Errorf("IncomeChange = %v, want 25", result.IncomeChange)
+	}
+	// Expenses: 1200 -> 1500 = +25%
+	if !floatEqual(result.ExpensesChange, 25.0) {
+		t.Errorf("ExpensesChange = %v, want 25", result.ExpensesChange)
+	}
+	// Verify the comparison looked at the right year
+	if !floatEqual(result.Previous.TotalIncome, 4000) {
+		t.Errorf("Previous.TotalIncome = %v, want 4000 (from 2024)", result.Previous.TotalIncome)
+	}
+}
+
+func TestCalculateComparison_NoComparisonData(t *testing.T) {
+	// Only current period data, no data in the comparison period
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+	)
+
+	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	result := calculateComparison(ts, start, end, "previous")
+
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.HasData {
+		t.Error("expected HasData to be false when comparison period has no data")
+	}
+}
+
+func TestCalculateComparison_InvalidType(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+	)
+
+	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	result := calculateComparison(ts, start, end, "bogus")
+
+	if result != nil {
+		t.Errorf("expected nil for unknown comparison type, got %+v", result)
+	}
+}
+
 // --- percentChange ---
 
 func TestPercentChange_Normal(t *testing.T) {

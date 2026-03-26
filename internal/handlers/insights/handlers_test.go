@@ -1,6 +1,8 @@
 package insights
 
 import (
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -358,6 +360,370 @@ func TestDetectRecurringPayments_LongHistoryPattern(t *testing.T) {
 		for _, r := range recurring {
 			t.Logf("  found: %q $%.2f (%d occurrences, %s)", r.Description, r.Amount, r.Occurrences, r.Frequency)
 		}
+	}
+}
+
+// income creates an income transaction at a fixed date (not relative to now)
+func income(desc string, amount float64, date time.Time) models.Transaction {
+	return models.Transaction{
+		Description:     desc,
+		Amount:          amount,
+		Date:            date,
+		TransactionType: models.Income,
+	}
+}
+
+// catTxn creates an outflow transaction with a category at a specific date
+func catTxn(desc, category string, amount float64, date time.Time) models.Transaction {
+	return models.Transaction{
+		Description:     desc,
+		Amount:          -amount,
+		Category:        category,
+		Date:            date,
+		TransactionType: models.Outflow,
+	}
+}
+
+// --- analyzeCategoryTrends tests ---
+
+func TestAnalyzeCategoryTrends_BasicUpDown(t *testing.T) {
+	// Current period: Feb 2025, Previous period: Jan 2025
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			// Previous period (Jan): food=$100, transport=$200
+			catTxn("grocery store", "food", 100, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+			catTxn("bus pass", "transport", 200, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+			// Current period (Feb): food=$200 (up), transport=$50 (down)
+			catTxn("grocery store", "food", 200, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+			catTxn("bus pass", "transport", 50, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	trends := analyzeCategoryTrends(ts, currentStart, currentEnd)
+
+	foodFound, transportFound := false, false
+	for _, tr := range trends {
+		switch tr.Category {
+		case "food":
+			foodFound = true
+			if tr.Direction != "up" {
+				t.Errorf("food direction = %q, want \"up\"", tr.Direction)
+			}
+			if tr.CurrentAmount != 200 {
+				t.Errorf("food CurrentAmount = %.2f, want 200", tr.CurrentAmount)
+			}
+			if tr.PreviousAmount != 100 {
+				t.Errorf("food PreviousAmount = %.2f, want 100", tr.PreviousAmount)
+			}
+		case "transport":
+			transportFound = true
+			if tr.Direction != "down" {
+				t.Errorf("transport direction = %q, want \"down\"", tr.Direction)
+			}
+			if tr.CurrentAmount != 50 {
+				t.Errorf("transport CurrentAmount = %.2f, want 50", tr.CurrentAmount)
+			}
+			if tr.PreviousAmount != 200 {
+				t.Errorf("transport PreviousAmount = %.2f, want 200", tr.PreviousAmount)
+			}
+		}
+	}
+	if !foodFound {
+		t.Error("expected 'food' category in trends")
+	}
+	if !transportFound {
+		t.Error("expected 'transport' category in trends")
+	}
+}
+
+func TestAnalyzeCategoryTrends_StableCategory(t *testing.T) {
+	// Spending changes < 5% should be "stable"
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			// Previous: $100
+			catTxn("rent", "housing", 100, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+			// Current: $103 (3% change, under 5% threshold)
+			catTxn("rent", "housing", 103, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	trends := analyzeCategoryTrends(ts, currentStart, currentEnd)
+
+	found := false
+	for _, tr := range trends {
+		if tr.Category == "housing" {
+			found = true
+			if tr.Direction != "stable" {
+				t.Errorf("housing direction = %q, want \"stable\"", tr.Direction)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'housing' category in trends")
+	}
+}
+
+func TestAnalyzeCategoryTrends_MaxTenCategories(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	var txns []models.Transaction
+	for i := 0; i < 12; i++ {
+		cat := fmt.Sprintf("category-%d", i)
+		// Add both previous and current period so we get a trend entry
+		txns = append(txns,
+			catTxn("vendor", cat, float64(10+i), time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+			catTxn("vendor", cat, float64(20+i), time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+		)
+	}
+
+	ts := &models.TransactionSet{Transactions: txns}
+	trends := analyzeCategoryTrends(ts, currentStart, currentEnd)
+
+	if len(trends) > 10 {
+		t.Errorf("expected at most 10 category trends, got %d", len(trends))
+	}
+}
+
+// --- calculateInsights tests ---
+
+func TestCalculateInsights_SplitsSubscriptionsAndBills(t *testing.T) {
+	// Netflix should be classified as subscription; electric company as bill
+	now := time.Now()
+	var txns []models.Transaction
+	for i := 0; i < 4; i++ {
+		txns = append(txns,
+			models.Transaction{
+				Description:     "netflix",
+				Amount:          -15.99,
+				Date:            now.AddDate(0, 0, -30*i),
+				TransactionType: models.Outflow,
+			},
+			models.Transaction{
+				Description:     "electric company",
+				Amount:          -120,
+				Date:            now.AddDate(0, 0, -30*i),
+				TransactionType: models.Outflow,
+			},
+		)
+	}
+
+	allData := &models.TransactionSet{Transactions: txns}
+	startDate := now.AddDate(0, -6, 0)
+	endDate := now
+
+	insights := calculateInsights(allData, allData, startDate, endDate)
+
+	subFound := false
+	for _, s := range insights.Subscriptions {
+		if s.Description == "netflix" {
+			subFound = true
+		}
+	}
+	if !subFound {
+		t.Error("expected 'netflix' in Subscriptions list")
+		for _, s := range insights.Subscriptions {
+			t.Logf("  subscription: %q", s.Description)
+		}
+	}
+
+	billFound := false
+	for _, b := range insights.RecurringPayments {
+		if b.Description == "electric company" {
+			billFound = true
+		}
+	}
+	if !billFound {
+		t.Error("expected 'electric company' in RecurringPayments (bills) list")
+		for _, b := range insights.RecurringPayments {
+			t.Logf("  bill: %q", b.Description)
+		}
+	}
+}
+
+func TestCalculateInsights_TotalCalculations(t *testing.T) {
+	now := time.Now()
+	var txns []models.Transaction
+	// 4 monthly netflix payments (subscription)
+	for i := 0; i < 4; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "netflix",
+			Amount:          -15.99,
+			Date:            now.AddDate(0, 0, -30*i),
+			TransactionType: models.Outflow,
+		})
+	}
+	// 4 monthly insurance payments (bill, not subscription)
+	for i := 0; i < 4; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "insurance",
+			Amount:          -200,
+			Date:            now.AddDate(0, 0, -30*i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	allData := &models.TransactionSet{Transactions: txns}
+	startDate := now.AddDate(0, -6, 0)
+	endDate := now
+
+	insights := calculateInsights(allData, allData, startDate, endDate)
+
+	// TotalRecurring should be sum of all recurring AnnualCost values
+	if insights.TotalRecurring == 0 {
+		t.Error("TotalRecurring should be > 0")
+	}
+
+	// MonthlyRecurring = TotalRecurring / 12
+	expectedMonthly := insights.TotalRecurring / 12
+	if math.Abs(insights.MonthlyRecurring-expectedMonthly) > 0.01 {
+		t.Errorf("MonthlyRecurring = %.2f, want %.2f", insights.MonthlyRecurring, expectedMonthly)
+	}
+
+	// MonthlySubscriptions should only include subscription annual costs / 12
+	var subAnnual float64
+	for _, s := range insights.Subscriptions {
+		subAnnual += s.AnnualCost
+	}
+	expectedMonthlySub := subAnnual / 12
+	if math.Abs(insights.MonthlySubscriptions-expectedMonthlySub) > 0.01 {
+		t.Errorf("MonthlySubscriptions = %.2f, want %.2f", insights.MonthlySubscriptions, expectedMonthlySub)
+	}
+}
+
+// --- calculateSpendingVelocity tests ---
+
+func TestCalculateSpendingVelocity_BasicCalculation(t *testing.T) {
+	now := time.Now()
+	// 10 days of spending, $100/day
+	var txns []models.Transaction
+	for i := 0; i < 10; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "spending",
+			Amount:          -100,
+			Date:            now.AddDate(0, 0, -i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	currentPeriod := &models.TransactionSet{Transactions: txns}
+	allData := currentPeriod
+
+	velocity := calculateSpendingVelocity(currentPeriod, allData)
+
+	if velocity.DailyAverage == 0 {
+		t.Fatal("DailyAverage should be > 0")
+	}
+	// 10 transactions of $100 over 10 days = $100/day
+	expectedDaily := 1000.0 / 10.0
+	if math.Abs(velocity.DailyAverage-expectedDaily) > 1.0 {
+		t.Errorf("DailyAverage = %.2f, want ~%.2f", velocity.DailyAverage, expectedDaily)
+	}
+}
+
+func TestCalculateSpendingVelocity_EmptyData(t *testing.T) {
+	empty := &models.TransactionSet{}
+	velocity := calculateSpendingVelocity(empty, empty)
+
+	if velocity.DailyAverage != 0 {
+		t.Errorf("DailyAverage = %.2f, want 0", velocity.DailyAverage)
+	}
+	if velocity.HistoricalDaily != 0 {
+		t.Errorf("HistoricalDaily = %.2f, want 0", velocity.HistoricalDaily)
+	}
+	if velocity.MonthProjection != 0 {
+		t.Errorf("MonthProjection = %.2f, want 0", velocity.MonthProjection)
+	}
+}
+
+// --- AnalyzeIncomePatterns tests ---
+
+func TestAnalyzeIncomePatterns_MonthlyIncome(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("employer", 5000, base),
+			income("employer", 5000, base.AddDate(0, 1, 0)),
+			income("employer", 5000, base.AddDate(0, 2, 0)),
+			income("employer", 5000, base.AddDate(0, 3, 0)),
+		},
+	}
+
+	patterns := AnalyzeIncomePatterns(ts)
+
+	found := false
+	for _, p := range patterns {
+		if p.Description == "employer" {
+			found = true
+			if p.Frequency != "monthly" {
+				t.Errorf("frequency = %q, want \"monthly\"", p.Frequency)
+			}
+			if !p.IsRegular {
+				t.Error("IsRegular = false, want true")
+			}
+			if p.Occurrences != 4 {
+				t.Errorf("Occurrences = %d, want 4", p.Occurrences)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'employer' in income patterns")
+	}
+}
+
+func TestAnalyzeIncomePatterns_IrregularIncome(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("freelance", 500, base),
+			income("freelance", 800, base.AddDate(0, 0, 10)),   // 10 days later
+			income("freelance", 300, base.AddDate(0, 0, 55)),   // 45 days later
+			income("freelance", 1200, base.AddDate(0, 0, 120)), // 65 days later
+		},
+	}
+
+	patterns := AnalyzeIncomePatterns(ts)
+
+	found := false
+	for _, p := range patterns {
+		if p.Description == "freelance" {
+			found = true
+			if p.IsRegular {
+				t.Error("IsRegular = true, want false for irregular income")
+			}
+			if p.Frequency != "irregular" {
+				t.Errorf("frequency = %q, want \"irregular\"", p.Frequency)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'freelance' in income patterns")
+	}
+}
+
+func TestAnalyzeIncomePatterns_MaxTenPatterns(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	var txns []models.Transaction
+	for i := 0; i < 12; i++ {
+		src := fmt.Sprintf("source-%d", i)
+		// Each source needs at least 2 occurrences to appear in patterns
+		txns = append(txns,
+			income(src, float64(100+i*10), base),
+			income(src, float64(100+i*10), base.AddDate(0, 1, 0)),
+		)
+	}
+
+	ts := &models.TransactionSet{Transactions: txns}
+	patterns := AnalyzeIncomePatterns(ts)
+
+	if len(patterns) > 10 {
+		t.Errorf("expected at most 10 income patterns, got %d", len(patterns))
 	}
 }
 

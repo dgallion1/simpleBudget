@@ -55,24 +55,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	minDate := data.MinDate()
 	maxDate := data.MaxDate()
 
-	var startDate, endDate time.Time
-	if startStr != "" {
-		startDate, _ = time.Parse("2006-01-02", startStr)
-	} else {
-		// Default to YTD
-		startDate = time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Local)
-		// If YTD range starts after our data ends, default to all-time
-		if !maxDate.IsZero() && startDate.After(maxDate) {
-			startDate = minDate
-		} else if startDate.Before(minDate) {
-			startDate = minDate
-		}
-	}
-	if endStr != "" {
-		endDate, _ = time.Parse("2006-01-02", endStr)
-	} else {
-		endDate = maxDate
-	}
+	startDate, endDate := resolveDateRange(startStr, endStr, minDate, maxDate)
 
 	filtered := data.FilterByDateRange(startDate, endDate)
 	metrics := calculateMetrics(filtered)
@@ -495,6 +478,30 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 }
 
 // Utility Functions
+
+// resolveDateRange converts start/end query strings into time.Time values,
+// defaulting to YTD start (clamped to data bounds) and maxDate end.
+func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time.Time, time.Time) {
+	var startDate, endDate time.Time
+	if startStr != "" {
+		startDate, _ = time.Parse("2006-01-02", startStr)
+	} else {
+		// Default to YTD
+		startDate = time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Local)
+		// If YTD range starts after our data ends, default to all-time
+		if !maxDate.IsZero() && startDate.After(maxDate) {
+			startDate = minDate
+		} else if startDate.Before(minDate) {
+			startDate = minDate
+		}
+	}
+	if endStr != "" {
+		endDate, _ = time.Parse("2006-01-02", endStr)
+	} else {
+		endDate = maxDate
+	}
+	return startDate, endDate
+}
 
 func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
 	income := ts.FilterByType(models.Income)

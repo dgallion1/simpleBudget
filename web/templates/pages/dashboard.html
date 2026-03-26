@@ -38,8 +38,7 @@
 
     <!-- Date Range Selector -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-        <form id="date-filter-form" hx-get="/dashboard/kpis" hx-target="#kpis-container" hx-trigger="change"
-            hx-indicator="#loading-indicator" class="flex flex-wrap items-center gap-4">
+        <form id="date-filter-form" class="flex flex-wrap items-center gap-4">
 
             <div class="flex items-center space-x-2">
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
@@ -100,13 +99,17 @@
         </form>
     </div>
 
-    <!-- KPIs Container (HTMX swap target) - min-height prevents layout shift -->
-    <div id="kpis-container" class="min-h-[140px]">
+    <!-- KPIs Container - updates when date filter changes -->
+    <div id="kpis-container" class="min-h-[140px]"
+        hx-get="/dashboard/kpis" hx-trigger="change from:#date-filter-form"
+        hx-include="#date-filter-form" hx-swap="innerHTML"
+        hx-indicator="#loading-indicator">
         {{template "kpis" .}}
     </div>
 
     <!-- Alerts Panel - min-height prevents layout shift during load -->
-    <div id="alerts-container" class="min-h-[2rem]" hx-get="/dashboard/alerts?start={{.StartDate}}&end={{.EndDate}}" hx-trigger="load"
+    <div id="alerts-container" class="min-h-[2rem]" hx-get="/dashboard/alerts"
+        hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form"
         hx-swap="innerHTML">
         <div class="text-gray-400 dark:text-gray-500 text-sm">Loading alerts...</div>
     </div>

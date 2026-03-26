@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.7.0 - Scenario Chaining
+## v1.7.0 - Scenario Chaining & Bug Fixes
 
 ### New Features
 
@@ -14,6 +14,17 @@
 - Budget-fit, present-value, and RMD panels show a note when chain is active (chain support coming in a future release)
 - Referential integrity: scenarios referenced in a chain cannot be deleted
 - Chain validation on every save: if changing your current age invalidates a chain, it is automatically removed
+
+#### Spending Phase Dollar Amounts
+- Spending phase sliders now show both percentage and equivalent monthly dollar amount (e.g., "70% $6,440/mo")
+- Updates live as the slider moves
+
+### Bug Fixes
+- **Projection depletion during tax-deferred delay**: A temporary shortfall where accessible accounts couldn't cover expenses but locked accounts still had funds was incorrectly treated as permanent depletion, stopping the projection early. Now only true depletion (total balance <= 0) stops the projection.
+- **Invalid allocation blocking settings**: If per-account stocks + cash exceeded 100%, all settings changes were rejected with a 400 error. Now values are clamped automatically instead of blocking.
+- **Dashboard date filter**: KPIs and alerts now update when the date range is changed
+- **Insights date filter**: Date inputs now trigger page refresh on change
+- **Recurring payment detection**: Recurring payments are now detected from full transaction history, so short date ranges no longer show $0
 
 ## v1.6.0 - Explorer Enhancements
 

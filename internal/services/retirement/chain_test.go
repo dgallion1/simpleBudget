@@ -116,6 +116,57 @@ func TestSensitivity_ChainPropagated(t *testing.T) {
 	}
 }
 
+func TestFailurePoints_ChainPropagated(t *testing.T) {
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 60
+	primary.ProjectionYears = 20
+	primary.PortfolioValue = 1000000
+	primary.MonthlyLivingExpenses = 3000
+	primary.InvestmentReturn = 6.0
+	primary.InflationRate = 3.0
+
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 5000
+
+	calcChain := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
+		{TransitionAge: 70, Settings: linked},
+	})
+	calcNoChain := NewCalculator(primary)
+
+	fpChain := calcChain.CalculateFailurePoints()
+	fpNoChain := calcNoChain.CalculateFailurePoints()
+
+	if fpChain == nil || fpNoChain == nil {
+		t.Fatal("expected non-nil failure point results")
+	}
+	if !fpChain.BaselineSurvives {
+		t.Fatal("expected chained baseline to survive")
+	}
+	if !fpNoChain.BaselineSurvives {
+		t.Fatal("expected non-chained baseline to survive")
+	}
+	if len(fpChain.FailurePoints) == 0 || len(fpNoChain.FailurePoints) == 0 {
+		t.Fatal("expected failure points from both analyses")
+	}
+
+	// Chain raises expenses at age 70, so thresholds should differ.
+	anyDifferent := false
+	for _, fpC := range fpChain.FailurePoints {
+		for _, fpN := range fpNoChain.FailurePoints {
+			if fpC.ParamName == fpN.ParamName && fpC.Threshold != fpN.Threshold {
+				anyDifferent = true
+				break
+			}
+		}
+		if anyDifferent {
+			break
+		}
+	}
+	if !anyDifferent {
+		t.Error("expected at least one failure point threshold to differ with chain")
+	}
+}
+
 func TestPrepareChainedSettings(t *testing.T) {
 	primary := models.DefaultWhatIfSettings()
 	primary.CurrentAge = 60

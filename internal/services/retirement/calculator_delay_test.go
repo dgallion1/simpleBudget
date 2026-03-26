@@ -148,6 +148,45 @@ func TestRunSingleHistoricalSequence_RespectsDelay(t *testing.T) {
 	}
 }
 
+func TestRunProjection_TemporaryShortfallDoesNotStopProjection(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 820000
+	settings.TaxDeferredPercent = 97  // ~$800k in tax-deferred
+	settings.RothPercent = 0          // zero Roth
+	// remaining ~$20k goes to taxable
+	settings.MonthlyLivingExpenses = 5000
+	settings.MonthlyHealthcare = 0
+	settings.ProjectionYears = 15
+	settings.CurrentAge = 55
+	settings.TaxDeferredDelayYears = 10
+	settings.InvestmentReturn = 0.0000001
+	settings.InflationRate = 0
+	settings.SpendingDeclineRate = 0
+
+	calc := NewCalculator(settings)
+	result := calc.RunProjection()
+
+	// Taxable (~$20k) will be exhausted within a few months at $5k/mo.
+	// During the remaining delay period, accessible accounts are empty but
+	// tax-deferred still has ~$800k. The projection should NOT treat this
+	// temporary shortfall as portfolio depletion.
+	if !result.Survives {
+		t.Fatalf("expected projection to survive (tax-deferred has funds), got depletion month %v", result.DepletionMonth)
+	}
+
+	// After the delay expires (month 120), tax-deferred withdrawals should resume.
+	postDelayWithdrawal := false
+	for _, pm := range result.Months {
+		if pm.Month >= 120 && pm.WithdrawalFromTaxDeferred > 0 {
+			postDelayWithdrawal = true
+			break
+		}
+	}
+	if !postDelayWithdrawal {
+		t.Fatal("expected tax-deferred withdrawals to resume after delay expired")
+	}
+}
+
 func TestWithdrawForExpenses_TracksSourcesAndShortfall(t *testing.T) {
 	taxDeferred := 300000.0
 	taxable := 100000.0

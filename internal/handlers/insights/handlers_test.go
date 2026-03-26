@@ -316,6 +316,51 @@ func TestDetectRecurringPayments_AmountBasedIrregularIntervals(t *testing.T) {
 	}
 }
 
+func TestDetectRecurringPayments_LongHistoryPattern(t *testing.T) {
+	// 12 months of insurance payments spread across a full year.
+	// Even though a short date filter would only see a couple of these,
+	// detectRecurringPayments should find the pattern when given the full history.
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			txn("insurance", 200, 30),
+			txn("insurance", 200, 60),
+			txn("insurance", 200, 90),
+			txn("insurance", 200, 120),
+			txn("insurance", 200, 150),
+			txn("insurance", 200, 180),
+			txn("insurance", 200, 210),
+			txn("insurance", 200, 240),
+			txn("insurance", 200, 270),
+			txn("insurance", 200, 300),
+			txn("insurance", 200, 330),
+			txn("insurance", 200, 360),
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+
+	found := false
+	for _, r := range recurring {
+		if r.Description == "insurance" {
+			found = true
+			if r.Occurrences != 12 {
+				t.Errorf("expected 12 occurrences, got %d", r.Occurrences)
+			}
+			if r.Frequency != "monthly" {
+				t.Errorf("expected monthly frequency, got %q", r.Frequency)
+			}
+			if r.Amount != 200 {
+				t.Errorf("expected amount $200, got $%.2f", r.Amount)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'insurance' in recurring payments but not found")
+		for _, r := range recurring {
+			t.Logf("  found: %q $%.2f (%d occurrences, %s)", r.Description, r.Amount, r.Occurrences, r.Frequency)
+		}
+	}
+}
+
 func keys(m map[string][]models.Transaction) []string {
 	ks := make([]string, 0, len(m))
 	for k := range m {

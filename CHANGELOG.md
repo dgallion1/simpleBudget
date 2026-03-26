@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.8.0 - Dashboard Redesign
+
+### Changes
+
+#### Dashboard
+- Removed spending alerts panel (noisy, not actionable)
+- Removed daily cash flow chart (too noisy) and weekly spending pattern chart (low value)
+- Added **Spending Trend** chart: month-over-month spending change as percentage bars (green = decreased, red = increased) with hover showing actual dollar amounts for current and prior month
+- Cumulative Balance chart now spans full width for better readability
+- Charts now use direct fetch() for reliable updates on date range and preset changes (replaced fragile HTMX hx-swap="none" pattern)
+- Removed `SpendingAlert` model type and `/dashboard/alerts` endpoint
+
 ## v1.7.0 - Scenario Chaining & Bug Fixes
 
 ### New Features
@@ -224,10 +236,10 @@ SimpleBudget is a local-first personal finance dashboard and retirement planning
 ### Features
 
 #### Dashboard
-- Real-time KPI tracking: income, expenses, net savings, savings rate
-- Interactive spending charts with Plotly.js
+- Real-time KPI tracking: income, expenses, net savings, savings rate with sparklines
+- Interactive charts: monthly income vs expenses, spending by category, spending trend, top spending, cumulative balance
 - Category breakdown with drill-down analysis
-- Spending alerts for unusual activity
+- Month-over-month spending trend with hover details (current/prior amounts, percentage change)
 - CSV export of financial metrics
 
 #### Data Explorer

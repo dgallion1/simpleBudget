@@ -6,7 +6,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 ## Features
 
-- **Dashboard** - KPIs, spending charts, alerts, and category drilldowns
+- **Dashboard** - KPIs with sparklines, spending trend, category breakdown, top spending, cumulative balance, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
 - **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax optimization, named scenarios, and scenario chaining for multi-phase retirement plans
 - **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, and income pattern analysis
@@ -181,10 +181,12 @@ make run
 Open your web browser and go to: **http://localhost:8080**
 
 You should see the dashboard with:
-- Key financial metrics at the top
-- Spending charts and trends
-- Category breakdowns
-- Spending alerts for unusual activity
+- Key financial metrics at the top (income, expenses, net savings, savings rate)
+- Monthly income vs expenses chart
+- Spending by category breakdown
+- Month-over-month spending trend
+- Top spending merchants
+- Cumulative balance over time
 
 ### First-run walkthrough
 

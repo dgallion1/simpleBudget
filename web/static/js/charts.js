@@ -181,15 +181,22 @@ function updateChart(containerId, newData) {
 
 // Load a chart by fetching its data from the URL in data-chart-url attribute
 function loadChart(chartElement) {
-    const url = chartElement.getAttribute('data-chart-url');
-    if (url) {
-        fetch(url)
-            .then(response => response.json())
-            .then(data => {
-                renderChart(chartElement.id, data);
-            })
-            .catch(e => console.error('Error loading chart:', e));
+    var url = chartElement.getAttribute('data-chart-url');
+    if (!url) return;
+
+    // Include date filter form params if available (dashboard page)
+    var form = document.getElementById('date-filter-form');
+    if (form) {
+        var params = new URLSearchParams(new FormData(form)).toString();
+        if (params) {
+            url += '?' + params;
+        }
     }
+
+    fetch(url)
+        .then(function(response) { return response.json(); })
+        .then(function(data) { renderChart(chartElement.id, data); })
+        .catch(function(e) { console.error('Error loading chart:', e); });
 }
 
 // Load all charts on the page

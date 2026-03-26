@@ -107,20 +107,12 @@
         {{template "kpis" .}}
     </div>
 
-    <!-- Alerts Panel - min-height prevents layout shift during load -->
-    <div id="alerts-container" class="min-h-[2rem]" hx-get="/dashboard/alerts"
-        hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form"
-        hx-swap="innerHTML">
-        <div class="text-gray-400 dark:text-gray-500 text-sm">Loading alerts...</div>
-    </div>
-
     <!-- Charts Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Monthly Income vs Expenses -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Monthly Income vs Expenses</h3>
-            <div id="chart-monthly" class="chart-container" hx-get="/dashboard/charts/data/monthly"
-                hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form" hx-swap="none">
+            <div id="chart-monthly" class="chart-container" data-chart-url="/dashboard/charts/data/monthly">
                 <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
                     Loading chart...
                 </div>
@@ -130,19 +122,17 @@
         <!-- Spending by Category -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Spending by Category</h3>
-            <div id="chart-category" class="chart-container" hx-get="/dashboard/charts/data/category"
-                hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form" hx-swap="none">
+            <div id="chart-category" class="chart-container" data-chart-url="/dashboard/charts/data/category">
                 <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
                     Loading chart...
                 </div>
             </div>
         </div>
 
-        <!-- Daily Cash Flow -->
+        <!-- Spending Trend -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Daily Cash Flow</h3>
-            <div id="chart-cashflow" class="chart-container" hx-get="/dashboard/charts/data/cashflow"
-                hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form" hx-swap="none">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Spending Trend</h3>
+            <div id="chart-spending-trend" class="chart-container" data-chart-url="/dashboard/charts/data/spending-trend">
                 <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
                     Loading chart...
                 </div>
@@ -152,19 +142,7 @@
         <!-- Top Merchants -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Top Spending</h3>
-            <div id="chart-merchants" class="chart-container" hx-get="/dashboard/charts/data/merchants"
-                hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form" hx-swap="none">
-                <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
-                    Loading chart...
-                </div>
-            </div>
-        </div>
-
-        <!-- Weekly Pattern -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Weekly Spending Pattern</h3>
-            <div id="chart-weekly" class="chart-container" hx-get="/dashboard/charts/data/weekly"
-                hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form" hx-swap="none">
+            <div id="chart-merchants" class="chart-container" data-chart-url="/dashboard/charts/data/merchants">
                 <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
                     Loading chart...
                 </div>
@@ -172,10 +150,9 @@
         </div>
 
         <!-- Cumulative Balance -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 lg:col-span-2">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Cumulative Balance</h3>
-            <div id="chart-cumulative" class="chart-container" hx-get="/dashboard/charts/data/cumulative"
-                hx-trigger="load, change from:#date-filter-form" hx-include="#date-filter-form" hx-swap="none">
+            <div id="chart-cumulative" class="chart-container" data-chart-url="/dashboard/charts/data/cumulative">
                 <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
                     Loading chart...
                 </div>

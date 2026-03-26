@@ -34,7 +34,6 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/dashboard", handleDashboard)
 	r.Get("/dashboard/kpis", handleKPIsPartial)
 	r.Get("/dashboard/charts/data/{chartType}", handleChartData)
-	r.Get("/dashboard/alerts", handleAlertsPartial)
 	r.Get("/dashboard/category/{category}", handleCategoryDrilldown)
 	r.Get("/dashboard/kpi/{kpiType}", handleKPIDetail)
 	r.Get("/dashboard/kpi/{kpiType}/export", handleKPIExport)
@@ -176,12 +175,10 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 		chartData = buildMonthlyChartData(filtered)
 	case "category":
 		chartData = buildCategoryChartData(filtered)
-	case "cashflow":
-		chartData = buildCashflowChartData(filtered)
+	case "spending-trend":
+		chartData = buildSpendingTrendChartData(filtered)
 	case "merchants":
 		chartData = buildMerchantsChartData(filtered)
-	case "weekly":
-		chartData = buildWeeklyPatternChartData(filtered)
 	case "cumulative":
 		chartData = buildCumulativeChartData(filtered)
 	default:
@@ -191,41 +188,6 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chartData)
-}
-
-func handleAlertsPartial(w http.ResponseWriter, r *http.Request) {
-	data, err := loader.LoadData()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
-
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.FilterByDateRange(startDate, endDate)
-	alerts := detectAlerts(filtered)
-
-	partialData := map[string]interface{}{
-		"Alerts": alerts,
-	}
-
-	if renderer != nil {
-		renderer.RenderPartial(w, "alerts", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
-	}
 }
 
 func handleCategoryDrilldown(w http.ResponseWriter, r *http.Request) {
@@ -534,102 +496,6 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 
 // Utility Functions
 
-func detectAlerts(ts *models.TransactionSet) []models.SpendingAlert {
-	var alerts []models.SpendingAlert
-
-	outflows := ts.FilterByType(models.Outflow)
-	if outflows.Len() == 0 {
-		return alerts
-	}
-
-	// Group by date to find unusual days
-	daily := outflows.GroupByDate()
-
-	// Calculate mean and std dev of daily spending
-	var dailyTotals []float64
-	var sum, sumSq float64
-
-	for _, dayTxns := range daily {
-		total := dayTxns.SumAbsAmount()
-		dailyTotals = append(dailyTotals, total)
-		sum += total
-		sumSq += total * total
-	}
-
-	n := float64(len(dailyTotals))
-	if n < 7 { // Need at least a week of data
-		return alerts
-	}
-
-	mean := sum / n
-	variance := (sumSq / n) - (mean * mean)
-	stdDev := math.Sqrt(variance)
-	threshold := mean + 2*stdDev
-
-	// Find unusual days (more than 2 standard deviations above mean)
-	for dateStr, dayTxns := range daily {
-		total := dayTxns.SumAbsAmount()
-		if total > threshold && total > mean*1.5 { // Must be 50% above mean too
-			date, _ := time.Parse("2006-01-02", dateStr)
-			// Sort transactions by amount (largest first) for display
-			txnsCopy := make([]models.Transaction, len(dayTxns.Transactions))
-			copy(txnsCopy, dayTxns.Transactions)
-			sort.Slice(txnsCopy, func(i, j int) bool {
-				return math.Abs(txnsCopy[i].Amount) > math.Abs(txnsCopy[j].Amount)
-			})
-			alerts = append(alerts, models.SpendingAlert{
-				Type:         "unusual_day",
-				Severity:     "warning",
-				Title:        "High Spending Day",
-				Message:      fmt.Sprintf("$%.0f spent on %s (%.0f%% above average)", total, date.Format("Jan 2"), ((total-mean)/mean)*100),
-				Date:         &date,
-				Amount:       total,
-				Transactions: txnsCopy,
-			})
-		}
-	}
-
-	// Find large individual transactions (top 5% by amount)
-	sortedTxns := make([]models.Transaction, len(outflows.Transactions))
-	copy(sortedTxns, outflows.Transactions)
-	sort.Slice(sortedTxns, func(i, j int) bool {
-		return math.Abs(sortedTxns[i].Amount) > math.Abs(sortedTxns[j].Amount)
-	})
-
-	// Take top 3 largest transactions if they're significant
-	for i := 0; i < 3 && i < len(sortedTxns); i++ {
-		t := sortedTxns[i]
-		amt := math.Abs(t.Amount)
-		if amt > mean*3 { // Must be 3x average daily spending
-			date := t.Date
-			alerts = append(alerts, models.SpendingAlert{
-				Type:     "large_transaction",
-				Severity: "info",
-				Title:    "Large Transaction",
-				Message:  fmt.Sprintf("$%.0f at %s", amt, t.Description),
-				Detail:   t.Description,
-				Date:     &date,
-				Amount:   amt,
-			})
-		}
-	}
-
-	// Sort alerts by date (most recent first)
-	sort.Slice(alerts, func(i, j int) bool {
-		if alerts[i].Date == nil || alerts[j].Date == nil {
-			return false
-		}
-		return alerts[i].Date.After(*alerts[j].Date)
-	})
-
-	// Limit to 5 alerts
-	if len(alerts) > 5 {
-		alerts = alerts[:5]
-	}
-
-	return alerts
-}
-
 func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
 	income := ts.FilterByType(models.Income)
 	outflows := ts.FilterByType(models.Outflow)
@@ -857,40 +723,75 @@ func buildCategoryChartData(ts *models.TransactionSet) map[string]interface{} {
 	}
 }
 
-func buildCashflowChartData(ts *models.TransactionSet) map[string]interface{} {
-	sorted := ts.SortByDate()
-	daily := sorted.GroupByDate()
+func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface{} {
+	outflows := ts.FilterByType(models.Outflow)
+	monthlyOutflows := outflows.MonthlyTotals()
 
-	// Sort dates
-	var dates []string
-	for d := range daily {
-		dates = append(dates, d)
+	var months []string
+	for m := range monthlyOutflows {
+		months = append(months, m)
 	}
-	sort.Strings(dates)
+	sort.Strings(months)
 
-	var dateLabels []string
-	var amounts []float64
+	// Need at least 2 months to show change
+	if len(months) < 2 {
+		return map[string]interface{}{
+			"data":   []map[string]interface{}{},
+			"layout": map[string]interface{}{},
+		}
+	}
 
-	for _, d := range dates {
-		dayTotal := daily[d].SumAmount()
-		dateLabels = append(dateLabels, d)
-		amounts = append(amounts, dayTotal)
+	// Calculate month-over-month percentage change
+	var changeMonths []string
+	var changeValues []float64
+	var colors []string
+	var currAmounts []float64
+	var prevAmounts []float64
+
+	for i := 1; i < len(months); i++ {
+		prev := math.Abs(monthlyOutflows[months[i-1]])
+		curr := math.Abs(monthlyOutflows[months[i]])
+
+		var pctChange float64
+		if prev > 0 {
+			pctChange = ((curr - prev) / prev) * 100
+		}
+
+		changeMonths = append(changeMonths, months[i])
+		changeValues = append(changeValues, pctChange)
+		currAmounts = append(currAmounts, curr)
+		prevAmounts = append(prevAmounts, prev)
+		if pctChange <= 0 {
+			colors = append(colors, "#22c55e") // green = spending decreased
+		} else {
+			colors = append(colors, "#ef4444") // red = spending increased
+		}
 	}
 
 	return map[string]interface{}{
 		"data": []map[string]interface{}{
 			{
-				"type": "scatter",
-				"mode": "lines",
-				"name": "Cash Flow",
-				"x":    dateLabels,
-				"y":    amounts,
-				"line": map[string]interface{}{
-					"color": "#6366f1",
-					"width": 2,
+				"type": "bar",
+				"name": "Spending Change",
+				"x":    changeMonths,
+				"y":    changeValues,
+				"customdata": func() [][]float64 {
+					var cd [][]float64
+					for i := range currAmounts {
+						cd = append(cd, []float64{currAmounts[i], prevAmounts[i]})
+					}
+					return cd
+				}(),
+				"marker": map[string]interface{}{
+					"color": colors,
 				},
-				"fill":      "tozeroy",
-				"fillcolor": "rgba(99, 102, 241, 0.1)",
+				"hovertemplate": "<b>%{x}</b><br>Spent: $%{customdata[0]:,.0f}<br>Prior: $%{customdata[1]:,.0f}<br>Change: %{y:+.1f}%<extra></extra>",
+			},
+		},
+		"layout": map[string]interface{}{
+			"yaxis": map[string]interface{}{
+				"title":      "Change (%)",
+				"ticksuffix": "%",
 			},
 		},
 	}
@@ -941,59 +842,6 @@ func buildMerchantsChartData(ts *models.TransactionSet) map[string]interface{} {
 				"marker": map[string]string{
 					"color": "#8b5cf6",
 				},
-			},
-		},
-	}
-}
-
-func buildWeeklyPatternChartData(ts *models.TransactionSet) map[string]interface{} {
-	outflows := ts.FilterByType(models.Outflow)
-
-	// Group by day of week
-	dayTotals := make(map[int]float64)
-	dayCounts := make(map[int]int)
-	dayNames := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-
-	for _, t := range outflows.Transactions {
-		dow := int(t.Date.Weekday())
-		dayTotals[dow] += math.Abs(t.Amount)
-		dayCounts[dow]++
-	}
-
-	// Calculate averages per day
-	var values []float64
-	for i := 0; i < 7; i++ {
-		if dayCounts[i] > 0 {
-			// Get number of weeks in the data
-			minDate := ts.MinDate()
-			maxDate := ts.MaxDate()
-			weeks := maxDate.Sub(minDate).Hours() / 24 / 7
-			if weeks < 1 {
-				weeks = 1
-			}
-			values = append(values, dayTotals[i]/weeks)
-		} else {
-			values = append(values, 0)
-		}
-	}
-
-	return map[string]interface{}{
-		"data": []map[string]interface{}{
-			{
-				"type": "bar",
-				"x":    dayNames,
-				"y":    values,
-				"marker": map[string]interface{}{
-					"color": []string{
-						"#94a3b8", "#3b82f6", "#3b82f6", "#3b82f6",
-						"#3b82f6", "#3b82f6", "#94a3b8",
-					},
-				},
-			},
-		},
-		"layout": map[string]interface{}{
-			"yaxis": map[string]interface{}{
-				"title": "Avg Spending ($)",
 			},
 		},
 	}

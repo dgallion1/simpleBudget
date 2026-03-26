@@ -49,8 +49,19 @@ document.addEventListener('keydown', function (e) {
     }
 });
 
-// Flag to prevent double-triggering when preset buttons set date values
-let presetUpdateInProgress = false;
+// Refresh all charts using current form values
+function refreshCharts() {
+    const form = document.getElementById('date-filter-form');
+    if (!form) return;
+    const params = new URLSearchParams(new FormData(form)).toString();
+
+    document.querySelectorAll('.chart-container[data-chart-url]').forEach(function(el) {
+        fetch(el.getAttribute('data-chart-url') + '?' + params)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) { renderChart(el.id, data); })
+            .catch(function(e) { console.error('Error loading chart ' + el.id + ':', e); });
+    });
+}
 
 // Date preset functions
 function setPreset(preset) {
@@ -79,14 +90,10 @@ function setPreset(preset) {
             break;
     }
 
-    // Set flag to prevent form's hx-trigger from firing during preset update
-    presetUpdateInProgress = true;
     startInput.value = start.toISOString().split('T')[0];
     endInput.value = end.toISOString().split('T')[0];
-    // Reset flag after current event loop
-    setTimeout(function() { presetUpdateInProgress = false; }, 0);
 
-    // Update button selection state with inline styles (more reliable than CSS classes)
+    // Update button selection state
     document.querySelectorAll('.preset-btn').forEach(function(btn) {
         const isSelected = btn.dataset.preset === preset;
         if (isSelected) {
@@ -98,54 +105,34 @@ function setPreset(preset) {
         }
     });
 
-    // Build query params
+    // Update KPIs via HTMX (uses innerHTML swap, works reliably)
     const params = new URLSearchParams(new FormData(form)).toString();
-
-    // Update KPIs
     htmx.ajax('GET', '/dashboard/kpis?' + params, {
         target: '#kpis-container',
         swap: 'innerHTML'
     });
 
-    // Update each chart
-    const charts = ['monthly', 'category', 'cashflow', 'merchants', 'weekly', 'cumulative'];
-    charts.forEach(function(chart) {
-        htmx.ajax('GET', '/dashboard/charts/data/' + chart + '?' + params, {
-            target: '#chart-' + chart,
-            swap: 'none'
-        });
-    });
+    // Update all charts via fetch
+    refreshCharts();
 }
 
-// Clear preset selection when date inputs are manually changed
+// Refresh charts when date inputs change manually
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('#date-filter-form input[type="date"]').forEach(function(input) {
-        input.addEventListener('input', function() {
+        input.addEventListener('change', function() {
+            // Clear preset selection
             document.querySelectorAll('.preset-btn').forEach(function(btn) {
                 btn.style.backgroundColor = '';
                 btn.style.color = '';
             });
+            refreshCharts();
         });
     });
-});
 
-// Prevent form from auto-triggering when preset buttons programmatically change values
-document.body.addEventListener('htmx:configRequest', function(evt) {
-    if (presetUpdateInProgress && evt.detail.elt.id === 'date-filter-form') {
-        evt.preventDefault();
-    }
-});
-
-// Handle chart data responses
-document.body.addEventListener('htmx:afterRequest', function (evt) {
-    const target = evt.detail.target;
-    if (target && target.id && target.id.startsWith('chart-')) {
-        try {
-            const data = JSON.parse(evt.detail.xhr.responseText);
-            renderChart(target.id, data);
-        } catch (e) {
-            console.error('Error parsing chart data:', e);
-        }
+    // Also refresh when comparison dropdown changes
+    var comparison = document.querySelector('#date-filter-form select[name="comparison"]');
+    if (comparison) {
+        comparison.addEventListener('change', refreshCharts);
     }
 });
 

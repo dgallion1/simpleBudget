@@ -439,6 +439,57 @@ func TestDetectRecurringPayments_UsesDatasetMaxDateForFreshness(t *testing.T) {
 	t.Fatal("expected recurring detection to use dataset max date instead of wall-clock time")
 }
 
+func TestDetectRecurringPaymentsAt_IgnoresTransactionsAfterReferenceDate(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.January, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.February, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.March, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "future club",
+				Amount:          -25,
+				Date:            time.Date(2024, time.May, 1, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "future club",
+				Amount:          -25,
+				Date:            time.Date(2024, time.June, 1, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "future club",
+				Amount:          -25,
+				Date:            time.Date(2024, time.July, 1, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+		},
+	}
+
+	recurring := detectRecurringPaymentsAt(ts, time.Date(2024, time.April, 1, 0, 0, 0, 0, time.UTC))
+
+	for _, r := range recurring {
+		if r.Description == "future club" {
+			t.Fatalf("expected recurring detection to ignore transactions after reference date, got %+v", r)
+		}
+	}
+}
+
 // income creates an income transaction at a fixed date (not relative to now)
 func income(desc string, amount float64, date time.Time) models.Transaction {
 	return models.Transaction{

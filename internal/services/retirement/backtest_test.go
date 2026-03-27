@@ -159,6 +159,17 @@ func TestYearsUntilDepletion_UsesRelativeFailureTiming(t *testing.T) {
 	}
 }
 
+func TestYearsUntilDepletion_SameYearFailureReturnsZero(t *testing.T) {
+	result := HistoricalSequenceResult{
+		StartYear:     1980,
+		DepletionYear: 1980,
+	}
+
+	if got := yearsUntilDepletion(result); got != 0 {
+		t.Fatalf("yearsUntilDepletion() = %d, want 0", got)
+	}
+}
+
 func TestHistoricalFailureOrderingUsesRelativeTiming(t *testing.T) {
 	results := []HistoricalSequenceResult{
 		{

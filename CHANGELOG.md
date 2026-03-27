@@ -14,6 +14,7 @@
 
 #### Bug Fixes
 - **Insights recurring freshness**: Active recurring payments now stay visible relative to the selected dataset end date instead of disappearing when imported data is old relative to wall-clock time
+- **Insights historical windows**: Recurring detection now ignores transactions after the selected end date, so past views do not leak in subscriptions that started later
 - **Historical backtest worst-year ranking**: Failed historical sequences are now ranked by years until depletion relative to their own start year instead of by absolute calendar year
 - **Make fuzz target**: `make fuzz` now runs valid per-package fuzz commands and exits cleanly with guidance when the repo has no `Fuzz*` tests yet
 

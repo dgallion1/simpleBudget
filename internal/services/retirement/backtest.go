@@ -25,7 +25,7 @@ func yearsUntilDepletion(result HistoricalSequenceResult) int {
 	if result.DepletionYear <= 0 {
 		return 0
 	}
-	if result.DepletionYear <= result.StartYear {
+	if result.DepletionYear < result.StartYear {
 		return result.DepletionYear
 	}
 	return result.DepletionYear - result.StartYear

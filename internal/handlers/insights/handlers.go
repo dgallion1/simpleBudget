@@ -136,6 +136,13 @@ func recurringReferenceDate(ts *models.TransactionSet, referenceDate time.Time) 
 	return time.Now()
 }
 
+func recurringTransactionSet(ts *models.TransactionSet, referenceDate time.Time) *models.TransactionSet {
+	if ts == nil || referenceDate.IsZero() {
+		return ts
+	}
+	return ts.FilterByDateRange(ts.MinDate(), referenceDate)
+}
+
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	// Detect recurring patterns against all data so short date ranges still find them
 	recurring := detectRecurringPaymentsAt(allData, endDate)
@@ -246,7 +253,8 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 func detectRecurringPaymentsAt(ts *models.TransactionSet, referenceDate time.Time) []models.RecurringPayment {
 	var recurring []models.RecurringPayment
 
-	outflows := ts.FilterByType(models.Outflow)
+	relevantTransactions := recurringTransactionSet(ts, referenceDate)
+	outflows := relevantTransactions.FilterByType(models.Outflow)
 	if outflows.Len() < 2 {
 		return recurring
 	}

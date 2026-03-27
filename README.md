@@ -9,7 +9,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 - **Dashboard** - KPIs with sparklines, spending trend, category breakdown, top spending, cumulative balance, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
 - **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax optimization, named scenarios, scenario chaining for multi-phase retirement plans, and tax-deferred withdrawal delays that treat locked balances as temporary shortfalls instead of immediate depletion
-- **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, income pattern analysis, and recency filtering anchored to the selected data window instead of wall-clock time
+- **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, income pattern analysis, and recency filtering anchored to the selected data window without leaking in transactions after that window
 - **File Manager** - Data backup, restore, and file management
 - **Encryption** - Optional password-based encryption for all data files
 
@@ -192,8 +192,8 @@ You should see the dashboard with:
 
 1. **Dashboard** - Your main overview with income, expenses, and savings rate
 2. **Explorer** - Search and filter individual transactions, double-click any description to assign a custom name (e.g., rename "Check #996574" to "Plumber repair"), step through date ranges with arrow buttons, and filter state persists across tab changes
-3. **Insights** - View current recurring payments, subscriptions, and spending patterns using full-history detection with recency-aware filtering tied to the selected end date
-4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting, including tax-deferred withdrawal delays that treat locked balances as temporary shortfalls rather than immediate depletion and backtest worst-year ranking based on how quickly each sequence fails
+3. **Insights** - View current recurring payments, subscriptions, and spending patterns using full-history detection with recency-aware filtering tied to the selected end date and excluding future transactions outside that window
+4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting, including tax-deferred withdrawal delays that treat locked balances as temporary shortfalls rather than immediate depletion and worst-year ranking based on how quickly each sequence fails, including same-year failures
 5. **File Manager** - Manage data files, create backups
 
 ## Quick Start Commands

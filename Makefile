@@ -69,7 +69,7 @@ ifdef GO_OVERRIDE
     NEED_GO_INSTALL :=
 endif
 
-.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz
 
 all: build
 
@@ -82,6 +82,11 @@ help:
 	@echo "  test           - Run all tests"
 	@echo "  test-unit      - Run unit tests only"
 	@echo "  test-coverage  - Generate coverage report"
+	@echo "  vet            - Run go vet"
+	@echo "  static         - Run staticcheck"
+	@echo "  vuln           - Run govulncheck"
+	@echo "  race           - Run tests with race detector"
+	@echo "  fuzz           - Run fuzz tests"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  build-all      - Build for all platforms"
 	@echo "  build-linux    - Build for Linux"
@@ -143,7 +148,22 @@ endif
 	$(GO) clean
 
 test: check-go
-	$(GO) test -v ./...
+	$(GO) test ./...
+
+vet: check-go
+	$(GO) vet ./...
+
+static:
+	staticcheck ./...
+
+vuln:
+	govulncheck ./...
+
+race: check-go
+	$(GO) test -race ./...
+
+fuzz: check-go
+	$(GO) test -fuzz=Fuzz -run=^$$ ./...
 
 test-unit: check-go
 	$(GO) test -v ./internal/...

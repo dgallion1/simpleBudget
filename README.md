@@ -484,12 +484,21 @@ make test-integration
 # Generate coverage report
 make test-coverage
 
-# Run fuzz tests for a specific package
-make fuzz PKG=./internal/somepackage
+# Static analysis
+make vet            # go vet — suspicious constructs
+make static         # staticcheck — correctness, performance, simplification
+make vuln           # govulncheck — reachable dependency vulnerabilities
+
+# Concurrency and fuzzing
+make race           # go test -race — data race detection
+make fuzz           # auto-discover and run fuzz tests (default 30s per target)
+make fuzz FUZZTIME=1m PKG=./internal/somepackage  # override duration and package
 
 # Validate a running server
 make validate
 ```
+
+The pre-commit hook runs `vet`, `staticcheck`, and `test` automatically on every commit.
 
 Test data is in `testdata/` with realistic sample transactions.
 `make validate` checks the current dashboard contract, including the `monthly`, `category`, `spending-trend`, `merchants`, and `cumulative` chart endpoints.

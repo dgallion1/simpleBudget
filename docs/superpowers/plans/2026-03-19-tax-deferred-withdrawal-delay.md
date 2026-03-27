@@ -4,7 +4,7 @@
 
 **Goal:** Allow users to delay tax-deferred account withdrawals by N years, letting that account grow while expenses are covered by the existing withdrawal order: income sources, taxable account, then Roth. Tax-deferred remains the last resort until the delay expires.
 
-**Architecture:** Add a `TaxDeferredDelayYears` field to `WhatIfSettings`. Every projection engine that models withdrawals must respect it: `RunProjection`, Monte Carlo simulation, and historical backtest. During the delay period, the final "withdraw from tax-deferred" step is skipped, while RMDs at age 73+ still execute normally. Big-ticket expenses must also avoid tax-deferred withdrawals during the delay window unless the withdrawal is an RMD.
+**Architecture:** Add a `TaxDeferredDelayYears` field to `WhatIfSettings`. Every projection engine that models withdrawals must respect it: `RunProjection`, Monte Carlo simulation, and historical backtest. During the delay period, the final "withdraw from tax-deferred" step is skipped, while RMDs at age 73+ still execute normally. Big-ticket expenses must also avoid tax-deferred withdrawals during the delay window unless the withdrawal is an RMD. If taxable and Roth funds run out while tax-deferred assets are still locked by the delay, treat that month as a temporary accessibility shortfall rather than true portfolio depletion.
 
 **Tech Stack:** Go, HTML templates, HTMX
 
@@ -276,7 +276,7 @@ git commit -m "feat: implement tax-deferred withdrawal delay in calculator"
 
 - [ ] **Step 1: Add delay guard to historical backtest monthly withdrawals**
 
-In `internal/services/retirement/backtest.go`, apply the same `taxDeferredDelayActive` guard used in `RunProjection` so the backtest uses the same withdrawal policy.
+In `internal/services/retirement/backtest.go`, apply the same `taxDeferredDelayActive` guard used in `RunProjection` so the backtest uses the same withdrawal policy. Match the deterministic and Monte Carlo paths by treating delay-window shortfalls as temporary whenever tax-deferred funds still exist but are intentionally inaccessible.
 
 - [ ] **Step 2: Prevent big-ticket expenses from bypassing the delay**
 
@@ -287,6 +287,7 @@ In both deterministic and backtest year-boundary big-ticket handling, preserve t
 Add tests for:
 
 - historical backtest honors the delay
+- historical backtest does not fail solely because tax-deferred funds are temporarily locked
 - a big-ticket expense during the delay uses taxable/Roth only and does not deduct from tax-deferred before the delay expires
 
 - [ ] **Step 4: Run retirement service tests**

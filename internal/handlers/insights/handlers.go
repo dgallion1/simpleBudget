@@ -102,6 +102,28 @@ func isSubscription(rp models.RecurringPayment) bool {
 	return false
 }
 
+func recurringFreshnessWindow(intervalDays float64) float64 {
+	switch {
+	case intervalDays <= 0:
+		return 90
+	case intervalDays <= 9:
+		return 21
+	case intervalDays <= 16:
+		return 45
+	case intervalDays <= 35:
+		return 90
+	case intervalDays <= 95:
+		return 180
+	default:
+		return 455
+	}
+}
+
+func recurringPaymentIsActive(lastDate time.Time, intervalDays float64, now time.Time) bool {
+	daysSinceLastPayment := now.Sub(lastDate).Hours() / 24
+	return daysSinceLastPayment <= recurringFreshnessWindow(intervalDays)
+}
+
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	// Detect recurring patterns against all data so short date ranges still find them
 	recurring := detectRecurringPayments(allData)
@@ -226,6 +248,7 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 
 	// Track which descriptions matched strict criteria
 	strictMatches := make(map[string]bool)
+	now := time.Now()
 
 	// First pass: strict recurring detection (consistent amounts and intervals)
 	for desc, txns := range groups {
@@ -320,6 +343,9 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 		}
 
 		lastDate := txns[len(txns)-1].Date
+		if !recurringPaymentIsActive(lastDate, medianInterval, now) {
+			continue
+		}
 		nextExpected := lastDate.AddDate(0, 0, int(medianInterval))
 
 		recurring = append(recurring, models.RecurringPayment{
@@ -337,7 +363,6 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 	}
 
 	// Second pass: ongoing payment detection (variable amounts but consistent relationship)
-	now := time.Now()
 	for desc, txns := range groups {
 		// Skip if already matched by strict criteria
 		if strictMatches[desc] {
@@ -362,10 +387,10 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 		}
 
 		// Must have activity within last 90 days (still active)
-		daysSinceLastPayment := now.Sub(lastDate).Hours() / 24
-		if daysSinceLastPayment > 90 {
+		if !recurringPaymentIsActive(lastDate, 0, now) {
 			continue
 		}
+		daysSinceLastPayment := now.Sub(lastDate).Hours() / 24
 
 		// Calculate total and average amount
 		var totalAmount float64
@@ -513,7 +538,7 @@ func detectByAmount(alreadyMatched map[string]bool, groups map[string][]models.T
 
 		// Must have activity within last 90 days
 		lastDate := txns[len(txns)-1].Date
-		if now.Sub(lastDate).Hours()/24 > 90 {
+		if !recurringPaymentIsActive(lastDate, medianInterval, now) {
 			continue
 		}
 

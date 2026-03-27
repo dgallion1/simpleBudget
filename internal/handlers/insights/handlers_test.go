@@ -20,7 +20,7 @@ func txn(desc string, amount float64, daysAgo int) models.Transaction {
 
 func TestMergeSimlarGroups_SubstringMatch(t *testing.T) {
 	groups := map[string][]models.Transaction{
-		"lucid":          {txn("lucid", 1580, 30), txn("lucid", 1580, 60)},
+		"lucid":           {txn("lucid", 1580, 30), txn("lucid", 1580, 60)},
 		"lucidmotors.com": {txn("lucidmotors.com", 1580, 90)},
 	}
 	merged := mergeSimlarGroups(groups)
@@ -305,8 +305,8 @@ func TestDetectRecurringPayments_AmountBasedIrregularIntervals(t *testing.T) {
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("payment a", 500.00, 5),
-			txn("payment b", 500.00, 10),  // 5 days later
-			txn("payment c", 500.00, 60),  // 50 days later
+			txn("payment b", 500.00, 10), // 5 days later
+			txn("payment c", 500.00, 60), // 50 days later
 		},
 	}
 	recurring := detectRecurringPayments(ts)
@@ -361,6 +361,47 @@ func TestDetectRecurringPayments_LongHistoryPattern(t *testing.T) {
 			t.Logf("  found: %q $%.2f (%d occurrences, %s)", r.Description, r.Amount, r.Occurrences, r.Frequency)
 		}
 	}
+}
+
+func TestDetectRecurringPayments_StrictMatchSkipsExpiredMonthly(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			txn("old gym", 49, 120),
+			txn("old gym", 49, 150),
+			txn("old gym", 49, 180),
+		},
+	}
+
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "old gym" {
+			t.Fatalf("expected expired monthly payment to be excluded, got %+v", r)
+		}
+	}
+}
+
+func TestDetectRecurringPayments_StrictMatchKeepsYearlyPaymentsCurrent(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			txn("annual insurance", 1200, 360),
+			txn("annual insurance", 1200, 725),
+			txn("annual insurance", 1200, 1090),
+		},
+	}
+
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "annual insurance" {
+			if r.Frequency != "yearly" {
+				t.Fatalf("expected yearly frequency, got %q", r.Frequency)
+			}
+			return
+		}
+	}
+
+	t.Fatal("expected yearly payment within the annual freshness window to remain active")
 }
 
 // income creates an income transaction at a fixed date (not relative to now)

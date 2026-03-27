@@ -308,9 +308,9 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		}
 
 		totalBalance = taxDeferredBalance + rothBalance + taxableBalance
-		if shortfall > 0 {
+		if shortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
 			result.Survives = false
-			result.DepletionYear = currentYear
+			result.DepletionYear = startYear + currentYear
 			break
 		}
 

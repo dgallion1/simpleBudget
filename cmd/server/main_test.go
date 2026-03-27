@@ -112,17 +112,6 @@ func TestDashboardKPIsPartial(t *testing.T) {
 		ContainsAll("Total Income", "Total Expenses")
 }
 
-// TestDashboardAlertsPartial tests the alerts partial endpoint
-func TestDashboardAlertsPartial(t *testing.T) {
-	ts := setupTestServer(t)
-	defer ts.Close()
-
-	resp := ts.GET("/dashboard/alerts")
-	testutil.AssertResponse(t, resp).
-		StatusOK().
-		ContentTypeHTML()
-}
-
 // TestDashboardChartData tests chart data endpoints
 func TestDashboardChartData(t *testing.T) {
 	ts := setupTestServer(t)
@@ -131,9 +120,8 @@ func TestDashboardChartData(t *testing.T) {
 	chartTypes := []string{
 		"monthly",
 		"category",
-		"cashflow",
+		"spending-trend",
 		"merchants",
-		"weekly",
 		"cumulative",
 	}
 

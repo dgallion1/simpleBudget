@@ -140,8 +140,8 @@ func TestRunSingleHistoricalSequence_RespectsDelay(t *testing.T) {
 	settings.TaxDeferredDelayYears = 0
 	withoutDelay := NewCalculator(settings).runSingleHistoricalSequence(1990)
 
-	if withDelay.Survives {
-		t.Fatal("expected historical backtest to fail when tax-deferred withdrawals are blocked for the full projection")
+	if !withDelay.Survives {
+		t.Fatal("expected historical backtest to treat delay-period shortfalls as temporary while tax-deferred assets remain")
 	}
 	if !withoutDelay.Survives {
 		t.Fatal("expected the same historical sequence to survive once the delay is removed")
@@ -151,8 +151,8 @@ func TestRunSingleHistoricalSequence_RespectsDelay(t *testing.T) {
 func TestRunProjection_TemporaryShortfallDoesNotStopProjection(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 820000
-	settings.TaxDeferredPercent = 97  // ~$800k in tax-deferred
-	settings.RothPercent = 0          // zero Roth
+	settings.TaxDeferredPercent = 97 // ~$800k in tax-deferred
+	settings.RothPercent = 0         // zero Roth
 	// remaining ~$20k goes to taxable
 	settings.MonthlyLivingExpenses = 5000
 	settings.MonthlyHealthcare = 0

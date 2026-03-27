@@ -28,12 +28,10 @@ var endpoints = []endpoint{
 
 	// Dashboard partials
 	{path: "/dashboard/kpis", method: "GET", contentType: "text/html", contains: []string{"Total Income"}},
-	{path: "/dashboard/alerts", method: "GET", contentType: "text/html", contains: nil},
 	{path: "/dashboard/charts/data/monthly", method: "GET", contentType: "application/json", contains: nil},
 	{path: "/dashboard/charts/data/category", method: "GET", contentType: "application/json", contains: nil},
-	{path: "/dashboard/charts/data/cashflow", method: "GET", contentType: "application/json", contains: nil},
+	{path: "/dashboard/charts/data/spending-trend", method: "GET", contentType: "application/json", contains: nil},
 	{path: "/dashboard/charts/data/merchants", method: "GET", contentType: "application/json", contains: nil},
-	{path: "/dashboard/charts/data/weekly", method: "GET", contentType: "application/json", contains: nil},
 	{path: "/dashboard/charts/data/cumulative", method: "GET", contentType: "application/json", contains: nil},
 
 	// Explorer

@@ -187,6 +187,14 @@ func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
 	return s.TaxDeferredDelayYears > 0 && currentYear < s.TaxDeferredDelayYears
 }
 
+func shortfallIsTemporaryDueToDelay(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool {
+	return shortfall > 0 && !allowTaxDeferredWithdrawal && taxDeferredBalance > 0
+}
+
+func shortfallCausesDepletion(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool {
+	return shortfall > 0 && !shortfallIsTemporaryDueToDelay(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance)
+}
+
 // earlyWithdrawalPenaltyRate returns the IRS 10% early distribution penalty rate
 // for tax-deferred withdrawals before age 59½. Uses age 60 as the cutoff since
 // the model operates in whole years.
@@ -556,11 +564,11 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 				ly := float64(m) / 12
 				longevityYears = &ly
 			}
-		} else if shortfall > 0 && totalBalance > 0 {
+		} else if shortfallIsTemporaryDueToDelay(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
 			// Temporary shortfall (e.g., accessible accounts empty but locked accounts
 			// still have funds during a tax-deferred delay). Not true depletion — the
 			// portfolio has money, it's just not accessible this month. Don't stop.
-		} else if shortfall > 0 {
+		} else if shortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
 			depleted = true
 			if depletionMonth == nil {
 				dm := m
@@ -1674,7 +1682,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		// Check for depletion
 		totalBalance := taxDeferredBalance + rothBalance + taxableBalance
-		if shortfall > 0 {
+		if shortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
 			depleted = true
 			depletionYear = float64(m) / 12
 		}

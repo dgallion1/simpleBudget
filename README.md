@@ -192,8 +192,8 @@ You should see the dashboard with:
 
 1. **Dashboard** - Your main overview with income, expenses, and savings rate
 2. **Explorer** - Search and filter individual transactions, double-click any description to assign a custom name (e.g., rename "Check #996574" to "Plumber repair"), step through date ranges with arrow buttons, and filter state persists across tab changes
-3. **Insights** - View recurring payments and spending patterns
-4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting
+3. **Insights** - View current recurring payments, subscriptions, and spending patterns using full-history detection with recency-aware filtering
+4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting, including tax-deferred withdrawal delays that treat locked balances as temporary shortfalls rather than immediate depletion
 5. **File Manager** - Manage data files, create backups
 
 ## Quick Start Commands
@@ -489,3 +489,4 @@ make validate
 ```
 
 Test data is in `testdata/` with realistic sample transactions.
+`make validate` checks the current dashboard contract, including the `monthly`, `category`, `spending-trend`, `merchants`, and `cumulative` chart endpoints.

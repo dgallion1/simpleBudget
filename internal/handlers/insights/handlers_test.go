@@ -372,7 +372,7 @@ func TestDetectRecurringPayments_StrictMatchSkipsExpiredMonthly(t *testing.T) {
 		},
 	}
 
-	recurring := detectRecurringPayments(ts)
+	recurring := detectRecurringPaymentsAt(ts, time.Now())
 
 	for _, r := range recurring {
 		if r.Description == "old gym" {
@@ -390,7 +390,7 @@ func TestDetectRecurringPayments_StrictMatchKeepsYearlyPaymentsCurrent(t *testin
 		},
 	}
 
-	recurring := detectRecurringPayments(ts)
+	recurring := detectRecurringPaymentsAt(ts, time.Now())
 
 	for _, r := range recurring {
 		if r.Description == "annual insurance" {
@@ -402,6 +402,41 @@ func TestDetectRecurringPayments_StrictMatchKeepsYearlyPaymentsCurrent(t *testin
 	}
 
 	t.Fatal("expected yearly payment within the annual freshness window to remain active")
+}
+
+func TestDetectRecurringPayments_UsesDatasetMaxDateForFreshness(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.January, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.February, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.March, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+		},
+	}
+
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "legacy gym" {
+			return
+		}
+	}
+
+	t.Fatal("expected recurring detection to use dataset max date instead of wall-clock time")
 }
 
 // income creates an income transaction at a fixed date (not relative to now)
@@ -636,6 +671,50 @@ func TestCalculateInsights_TotalCalculations(t *testing.T) {
 	if math.Abs(insights.MonthlySubscriptions-expectedMonthlySub) > 0.01 {
 		t.Errorf("MonthlySubscriptions = %.2f, want %.2f", insights.MonthlySubscriptions, expectedMonthlySub)
 	}
+}
+
+func TestCalculateInsights_UsesSelectedEndDateForRecurringFreshness(t *testing.T) {
+	allData := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.January, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.February, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "legacy gym",
+				Amount:          -49,
+				Date:            time.Date(2024, time.March, 15, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+			{
+				Description:     "one-off purchase",
+				Amount:          -200,
+				Date:            time.Date(2026, time.January, 5, 0, 0, 0, 0, time.UTC),
+				TransactionType: models.Outflow,
+			},
+		},
+	}
+	startDate := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, time.April, 1, 0, 0, 0, 0, time.UTC)
+	filtered := allData.FilterByDateRange(startDate, endDate)
+
+	insights := calculateInsights(allData, filtered, startDate, endDate)
+
+	for _, r := range insights.Subscriptions {
+		if r.Description == "legacy gym" {
+			return
+		}
+	}
+
+	t.Fatal("expected recurring freshness to respect the selected end date even when newer unrelated data exists")
 }
 
 // --- calculateSpendingVelocity tests ---

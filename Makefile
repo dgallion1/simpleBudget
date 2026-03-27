@@ -86,7 +86,7 @@ help:
 	@echo "  static         - Run staticcheck"
 	@echo "  vuln           - Run govulncheck"
 	@echo "  race           - Run tests with race detector"
-	@echo "  fuzz           - Run fuzz tests"
+	@echo "  fuzz           - Run fuzz tests (use PKG=./path/to/package, auto-discovers if omitted)"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  build-all      - Build for all platforms"
 	@echo "  build-linux    - Build for Linux"
@@ -163,7 +163,19 @@ race: check-go
 	$(GO) test -race ./...
 
 fuzz: check-go
-	$(GO) test -fuzz=Fuzz -run=^$$ ./...
+ifeq ($(strip $(PKG)),)
+	@packages="$$(for pkg in $$($(GO) list ./...); do dir=$$($(GO) list -f '{{.Dir}}' $$pkg); if grep -l -E '^func Fuzz[A-Za-z0-9_]*\(' "$$dir"/*_test.go >/dev/null 2>&1; then echo $$pkg; fi; done)"; \
+	if [ -z "$$packages" ]; then \
+		echo "No fuzz tests found. Run 'make fuzz PKG=./path/to/package' after adding a Fuzz test."; \
+	else \
+		for pkg in $$packages; do \
+			echo "Running fuzz tests in $$pkg"; \
+			$(GO) test -fuzz=Fuzz -run=^$$ $$pkg || exit $$?; \
+		done; \
+	fi
+else
+	$(GO) test -fuzz=Fuzz -run=^$$ $(PKG)
+endif
 
 test-unit: check-go
 	$(GO) test -v ./internal/...

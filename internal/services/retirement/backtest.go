@@ -21,6 +21,16 @@ type HistoricalSequenceResult struct {
 	AvgWithdrawRate     float64 // Average withdrawal rate across the period
 }
 
+func yearsUntilDepletion(result HistoricalSequenceResult) int {
+	if result.DepletionYear <= 0 {
+		return 0
+	}
+	if result.DepletionYear <= result.StartYear {
+		return result.DepletionYear
+	}
+	return result.DepletionYear - result.StartYear
+}
+
 // RunHistoricalBacktest runs the projection against all available historical sequences
 func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis {
 	s := c.Settings
@@ -63,9 +73,9 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 		if sortedByOutcome[i].Survives != sortedByOutcome[j].Survives {
 			return !sortedByOutcome[i].Survives // Failures first
 		}
-		// Among same survival status, sort by final balance (or depletion year for failures)
+		// Among failures, rank by how quickly they fail relative to their own start year.
 		if !sortedByOutcome[i].Survives {
-			return sortedByOutcome[i].DepletionYear < sortedByOutcome[j].DepletionYear
+			return yearsUntilDepletion(sortedByOutcome[i]) < yearsUntilDepletion(sortedByOutcome[j])
 		}
 		return sortedByOutcome[i].FinalBalance < sortedByOutcome[j].FinalBalance
 	})

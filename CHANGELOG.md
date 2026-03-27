@@ -12,6 +12,11 @@
 - Charts now use direct fetch() for reliable updates on date range and preset changes (replaced fragile HTMX hx-swap="none" pattern)
 - Removed `SpendingAlert` model type and `/dashboard/alerts` endpoint
 
+#### Bug Fixes
+- **Insights recurring freshness**: Active recurring payments now stay visible relative to the selected dataset end date instead of disappearing when imported data is old relative to wall-clock time
+- **Historical backtest worst-year ranking**: Failed historical sequences are now ranked by years until depletion relative to their own start year instead of by absolute calendar year
+- **Make fuzz target**: `make fuzz` now runs valid per-package fuzz commands and exits cleanly with guidance when the repo has no `Fuzz*` tests yet
+
 ## v1.7.0 - Scenario Chaining & Bug Fixes
 
 ### New Features

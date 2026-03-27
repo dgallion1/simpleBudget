@@ -1,6 +1,7 @@
 package retirement
 
 import (
+	"sort"
 	"testing"
 
 	"budget2/internal/models"
@@ -144,6 +145,46 @@ func TestRunHistoricalBacktest(t *testing.T) {
 	// Data years should match our data
 	if result.DataStartYear != 1928 {
 		t.Errorf("Expected data start year 1928, got %d", result.DataStartYear)
+	}
+}
+
+func TestYearsUntilDepletion_UsesRelativeFailureTiming(t *testing.T) {
+	result := HistoricalSequenceResult{
+		StartYear:     1982,
+		DepletionYear: 1990,
+	}
+
+	if got := yearsUntilDepletion(result); got != 8 {
+		t.Fatalf("yearsUntilDepletion() = %d, want 8", got)
+	}
+}
+
+func TestHistoricalFailureOrderingUsesRelativeTiming(t *testing.T) {
+	results := []HistoricalSequenceResult{
+		{
+			StartYear:     1928,
+			Survives:      false,
+			DepletionYear: 1938, // fails after 10 years
+		},
+		{
+			StartYear:     1980,
+			Survives:      false,
+			DepletionYear: 1985, // fails after 5 years
+		},
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Survives != results[j].Survives {
+			return !results[i].Survives
+		}
+		if !results[i].Survives {
+			return yearsUntilDepletion(results[i]) < yearsUntilDepletion(results[j])
+		}
+		return results[i].FinalBalance < results[j].FinalBalance
+	})
+
+	if results[0].StartYear != 1980 {
+		t.Fatalf("expected earlier relative failure to rank worse, got start year %d first", results[0].StartYear)
 	}
 }
 

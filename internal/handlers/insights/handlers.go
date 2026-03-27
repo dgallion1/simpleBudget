@@ -124,9 +124,21 @@ func recurringPaymentIsActive(lastDate time.Time, intervalDays float64, now time
 	return daysSinceLastPayment <= recurringFreshnessWindow(intervalDays)
 }
 
+func recurringReferenceDate(ts *models.TransactionSet, referenceDate time.Time) time.Time {
+	if !referenceDate.IsZero() {
+		return referenceDate
+	}
+	if ts != nil {
+		if maxDate := ts.MaxDate(); !maxDate.IsZero() {
+			return maxDate
+		}
+	}
+	return time.Now()
+}
+
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	// Detect recurring patterns against all data so short date ranges still find them
-	recurring := detectRecurringPayments(allData)
+	recurring := detectRecurringPaymentsAt(allData, endDate)
 	trends := analyzeCategoryTrends(allData, startDate, endDate)
 	income := AnalyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)
@@ -228,6 +240,10 @@ func mergeSimlarGroups(groups map[string][]models.Transaction) map[string][]mode
 }
 
 func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPayment {
+	return detectRecurringPaymentsAt(ts, time.Time{})
+}
+
+func detectRecurringPaymentsAt(ts *models.TransactionSet, referenceDate time.Time) []models.RecurringPayment {
 	var recurring []models.RecurringPayment
 
 	outflows := ts.FilterByType(models.Outflow)
@@ -248,7 +264,7 @@ func detectRecurringPayments(ts *models.TransactionSet) []models.RecurringPaymen
 
 	// Track which descriptions matched strict criteria
 	strictMatches := make(map[string]bool)
-	now := time.Now()
+	now := recurringReferenceDate(ts, referenceDate)
 
 	// First pass: strict recurring detection (consistent amounts and intervals)
 	for desc, txns := range groups {
@@ -839,7 +855,7 @@ func handleRecurringPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recurring := detectRecurringPayments(data)
+	recurring := detectRecurringPaymentsAt(data, data.MaxDate())
 
 	var totalRecurring float64
 	for _, r := range recurring {

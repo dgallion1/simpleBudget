@@ -3,7 +3,8 @@
 
 BINARY := budget2
 PORT := 8080
-GO_VERSION := 1.25.0
+GO_VERSION := 1.26.1
+FUZZTIME ?= 30s
 
 # Version information
 VERSION := 1.0.0
@@ -86,7 +87,7 @@ help:
 	@echo "  static         - Run staticcheck"
 	@echo "  vuln           - Run govulncheck"
 	@echo "  race           - Run tests with race detector"
-	@echo "  fuzz           - Run fuzz tests (use PKG=./path/to/package, auto-discovers if omitted)"
+	@echo "  fuzz           - Run fuzz tests (FUZZTIME=30s, PKG=./path/to/package)"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  build-all      - Build for all platforms"
 	@echo "  build-linux    - Build for Linux"
@@ -170,11 +171,11 @@ ifeq ($(strip $(PKG)),)
 	else \
 		for pkg in $$packages; do \
 			echo "Running fuzz tests in $$pkg"; \
-			$(GO) test -fuzz=Fuzz -run=^$$ $$pkg || exit $$?; \
+			$(GO) test -fuzz=Fuzz -fuzztime=$(FUZZTIME) -run=^$$ $$pkg || exit $$?; \
 		done; \
 	fi
 else
-	$(GO) test -fuzz=Fuzz -run=^$$ $(PKG)
+	$(GO) test -fuzz=Fuzz -fuzztime=$(FUZZTIME) -run=^$$ $(PKG)
 endif
 
 test-unit: check-go

@@ -977,25 +977,25 @@ func TestRunProjection_ChainTransition_AtCurrentAge(t *testing.T) {
 func TestMonteCarloSimulation_ChainTransition(t *testing.T) {
 	primary := models.DefaultWhatIfSettings()
 	primary.CurrentAge = 60
-	primary.ProjectionYears = 20
-	primary.PortfolioValue = 2000000
+	primary.ProjectionYears = 30
+	primary.PortfolioValue = 500000
 	primary.MonthlyLivingExpenses = 3000
-	primary.InvestmentReturn = 6.0
+	primary.InvestmentReturn = 5.0
 	primary.InflationRate = 3.0
 	primary.TaxDeferredPercent = 50
 	primary.RothPercent = 25
 
 	linked := models.DefaultWhatIfSettings()
-	linked.MonthlyLivingExpenses = 8000
-	linked.InvestmentReturn = 4.0
+	linked.MonthlyLivingExpenses = 12000
+	linked.InvestmentReturn = 3.0
 
 	chainCalc := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
 		{TransitionAge: 70, Settings: linked},
 	})
 	noChainCalc := NewCalculator(primary)
 
-	chainMC := chainCalc.RunMonteCarloSimulation(100)
-	noChainMC := noChainCalc.RunMonteCarloSimulation(100)
+	chainMC := chainCalc.RunMonteCarloSimulation(500)
+	noChainMC := noChainCalc.RunMonteCarloSimulation(500)
 
 	if chainMC.Stats.SuccessRate >= noChainMC.Stats.SuccessRate {
 		t.Errorf("chained MC success rate (%f) should be lower than no-chain (%f)",

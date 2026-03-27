@@ -74,11 +74,9 @@ func main() {
 	fmt.Printf("Testing %d endpoints...\n\n", len(endpoints))
 
 	var passed, failed int
-	var results []result
 
 	for _, ep := range endpoints {
 		r := validateEndpoint(client, *url, ep, *verbose)
-		results = append(results, r)
 
 		if r.err != nil {
 			failed++

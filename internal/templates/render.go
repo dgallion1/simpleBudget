@@ -14,6 +14,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"time"
 )
 
@@ -74,7 +77,7 @@ func getFuncMap() template.FuncMap {
 		"toJSON":         jsonMarshal,
 		"lower":          strings.ToLower,
 		"upper":          strings.ToUpper,
-		"title":          strings.Title,
+		"title":          cases.Title(language.English).String,
 		"contains":       strings.Contains,
 		"hasPrefix":      strings.HasPrefix,
 		"hasSuffix":      strings.HasSuffix,

@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
@@ -42,37 +45,6 @@ func getSettingsHash(settings *models.WhatIfSettings) string {
 	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter key
 }
 
-// getCachedAnalysis returns cached analysis if settings match and cache is fresh
-func getCachedAnalysis(settings *models.WhatIfSettings) *models.WhatIfAnalysis {
-	hash := getSettingsHash(settings)
-	if hash == "" {
-		return nil
-	}
-
-	cache.mu.RLock()
-	defer cache.mu.RUnlock()
-
-	// Return cached result if hash matches and cache is less than 5 minutes old
-	if cache.hash == hash && time.Since(cache.cachedAt) < 5*time.Minute {
-		return cache.analysis
-	}
-	return nil
-}
-
-// setCachedAnalysis stores analysis result in cache
-func setCachedAnalysis(settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
-	hash := getSettingsHash(settings)
-	if hash == "" {
-		return
-	}
-
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	cache.hash = hash
-	cache.analysis = analysis
-	cache.cachedAt = time.Now()
-}
 
 // buildCalculator creates a chain-aware calculator from settings.
 func buildCalculator(settings *models.WhatIfSettings) (*retirement.Calculator, string, error) {
@@ -178,18 +150,6 @@ func parseRequiredFormFloat(r *http.Request, key string) (float64, error) {
 	return val, nil
 }
 
-// parseRequiredFormInt parses a required int from form data
-func parseRequiredFormInt(r *http.Request, key string) (int, error) {
-	v := r.FormValue(key)
-	if v == "" {
-		return 0, fmt.Errorf("missing required field: %s", key)
-	}
-	val, err := strconv.Atoi(v)
-	if err != nil {
-		return 0, fmt.Errorf("invalid %s: must be an integer", key)
-	}
-	return val, nil
-}
 
 var (
 	loader        *dataloader.DataLoader
@@ -1761,7 +1721,7 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 
 		newSource := models.IncomeSource{
 			ID:     id,
-			Name:   strings.Title(pattern.Description),
+			Name:   cases.Title(language.English).String(pattern.Description),
 			Amount: monthlyAmount,
 			Type:   models.IncomeFixed,
 		}

@@ -7,6 +7,7 @@ require github.com/go-chi/chi/v5 v5.2.3
 require (
 	filippo.io/age v1.3.1
 	github.com/google/uuid v1.6.0
+	golang.org/x/text v0.35.0
 )
 
 require (

@@ -278,3 +278,44 @@ func TestCalculateTotalTax(t *testing.T) {
 		}
 	})
 }
+
+func TestRunProjectionDeductsTaxesFromRMDCashFlow(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.PortfolioValue = 2_000_000
+	s.ProjectionYears = 1
+	s.InvestmentReturn = 0
+	s.InflationRate = 0
+	s.MonthlyLivingExpenses = 0
+	s.MonthlyHealthcare = 0
+	s.HealthcarePersons = nil
+	s.ExpenseSources = nil
+	s.IncomeSources = nil
+	s.CurrentAge = 75
+	s.TaxDeferredPercent = 100
+	s.RothPercent = 0
+	s.StockPercent = 0
+	s.CashPercent = 100
+
+	calc := NewCalculator(s)
+	result := calc.RunProjection()
+	if len(result.Months) == 0 {
+		t.Fatal("expected projection months")
+	}
+
+	month0 := result.Months[0]
+	if month0.RMDWithdrawal <= 0 {
+		t.Fatalf("expected positive RMD withdrawal, got %.2f", month0.RMDWithdrawal)
+	}
+	if month0.TaxableWithdrawals != month0.RMDWithdrawal {
+		t.Fatalf("expected taxable withdrawals to equal the forced RMD, got taxable=%.2f rmd=%.2f", month0.TaxableWithdrawals, month0.RMDWithdrawal)
+	}
+	if month0.TaxesPaid <= 0 {
+		t.Fatalf("expected positive taxes from RMD cash flow, got %.2f", month0.TaxesPaid)
+	}
+	if month0.NetIncome >= month0.GrossIncome {
+		t.Fatalf("expected taxes to reduce net income, got gross=%.2f net=%.2f", month0.GrossIncome, month0.NetIncome)
+	}
+	if month0.TaxableBalance >= month0.RMDWithdrawal {
+		t.Fatalf("expected some RMD cash to be consumed by taxes, got taxable balance %.2f from RMD %.2f", month0.TaxableBalance, month0.RMDWithdrawal)
+	}
+}

@@ -636,6 +636,70 @@ func TestMonteCarloReproducibility(t *testing.T) {
 	}
 }
 
+func TestRunProjectionAfterTaxDepletesSoonerThanPretaxBenchmark(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 100_000
+	settings.ProjectionYears = 5
+	settings.InvestmentReturn = 0
+	settings.InflationRate = 0
+	settings.MonthlyLivingExpenses = 4_000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.IncomeSources = nil
+	settings.CurrentAge = 65
+	settings.TaxDeferredPercent = 100
+	settings.RothPercent = 0
+	settings.StockPercent = 0
+	settings.CashPercent = 100
+
+	calc := NewCalculator(settings)
+	result := calc.RunProjection()
+
+	if result.DepletionMonth == nil {
+		t.Fatal("expected portfolio depletion")
+	}
+
+	pretaxMonths := int(settings.PortfolioValue / settings.MonthlyLivingExpenses)
+	if *result.DepletionMonth >= pretaxMonths {
+		t.Fatalf("expected after-tax depletion before pretax benchmark of %d months, got %d", pretaxMonths, *result.DepletionMonth)
+	}
+
+	lastMonth := result.Months[len(result.Months)-1]
+	if lastMonth.TaxesPaid <= 0 {
+		t.Fatalf("expected taxes to be paid before depletion, got %.2f", lastMonth.TaxesPaid)
+	}
+}
+
+func TestCalculateBudgetFitUsesAfterTaxCashFlow(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 1_000_000
+	settings.MonthlyLivingExpenses = 4_000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.IncomeSources = []models.IncomeSource{
+		{Name: "Pension", Amount: 4_000, StartMonth: 0},
+	}
+	settings.InflationRate = 0
+	settings.CurrentAge = 65
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+
+	calc := NewCalculator(settings)
+	fit := calc.CalculateBudgetFit()
+
+	if fit.MonthlyTaxes <= 0 {
+		t.Fatalf("expected positive monthly taxes, got %.2f", fit.MonthlyTaxes)
+	}
+	if fit.NetIncome >= fit.GrossIncome {
+		t.Fatalf("expected net income below gross income, got gross=%.2f net=%.2f", fit.GrossIncome, fit.NetIncome)
+	}
+	if fit.MonthlyGap <= 0 {
+		t.Fatalf("expected an after-tax shortfall, got %.2f", fit.MonthlyGap)
+	}
+}
+
 // TestSteadyStateBudgetFit tests the steady-state budget analysis
 func TestSteadyStateBudgetFit(t *testing.T) {
 	t.Run("steady state always enabled for slider, min year 0 when all income immediate", func(t *testing.T) {
@@ -855,14 +919,19 @@ func TestRunProjectionWithSurplusIncome(t *testing.T) {
 
 	calc := NewCalculator(settings)
 	projection := calc.RunProjection()
+	budgetFit := calc.CalculateBudgetFit()
 
-	// 1 year = 12 months. Total surplus = 12 * $3000 = $36,000.
-	// Initial: $100,000. Expected final: $136,000.
+	// The after-tax surplus should still be reinvested into taxable, just smaller than
+	// the old pre-tax benchmark.
 	finalBalance := projection.Months[len(projection.Months)-1].PortfolioBalance
-	expectedBalance := 100000.0 + (3000.0 * 12)
+	expectedBalance := 100000.0 + (math.Abs(budgetFit.MonthlyGap) * 12)
+	pretaxBenchmark := 100000.0 + (3000.0 * 12)
 
 	if math.Abs(finalBalance-expectedBalance) > 1.0 { // Allow for tiny growth
 		t.Errorf("expected final balance near %.2f, got %.2f (surplus not reinvested?)", expectedBalance, finalBalance)
+	}
+	if finalBalance >= pretaxBenchmark {
+		t.Errorf("expected after-tax balance below pretax benchmark %.2f, got %.2f", pretaxBenchmark, finalBalance)
 	}
 
 	// Also verify that it's in the taxable account
@@ -870,6 +939,150 @@ func TestRunProjectionWithSurplusIncome(t *testing.T) {
 	if math.Abs(finalTaxable-expectedBalance) > 1.0 {
 		t.Errorf("expected final taxable balance near %.2f, got %.2f", expectedBalance, finalTaxable)
 	}
+}
+
+func TestTaxableAccountWithdrawUsesAverageCostBasis(t *testing.T) {
+	account := taxableAccountState{
+		MarketValue: 120000,
+		CostBasis:   100000,
+	}
+
+	cash, basisReduction, realizedGain := account.withdraw(12000)
+
+	if math.Abs(cash-12000) > 0.01 {
+		t.Fatalf("cash = %.2f, want 12000", cash)
+	}
+	if math.Abs(basisReduction-10000) > 0.01 {
+		t.Fatalf("basis reduction = %.2f, want 10000", basisReduction)
+	}
+	if math.Abs(realizedGain-2000) > 0.01 {
+		t.Fatalf("realized gain = %.2f, want 2000", realizedGain)
+	}
+}
+
+func TestRunProjectionTaxableSalesOfBasisRemainUntaxed(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 100_000
+	settings.MonthlyLivingExpenses = 2_000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.IncomeSources = nil
+	settings.InvestmentReturn = 0
+	settings.InflationRate = 0
+	settings.SpendingDeclineRate = 0
+	settings.ProjectionYears = 1
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+	settings.TaxableDividendYield = 0
+	settings.TaxableCapitalGainsDistributionRate = 0
+
+	result := NewCalculator(settings).RunProjection()
+	if len(result.Months) == 0 {
+		t.Fatal("expected projection months")
+	}
+
+	if result.Months[0].WithdrawalFromTaxable <= 0 {
+		t.Fatalf("expected taxable withdrawal, got %.2f", result.Months[0].WithdrawalFromTaxable)
+	}
+	if result.Months[0].TaxesPaid != 0 {
+		t.Fatalf("expected zero tax on basis-only sale, got %.2f", result.Months[0].TaxesPaid)
+	}
+}
+
+func TestHighTaxableDividendYieldReducesFinalBalance(t *testing.T) {
+	base := models.DefaultWhatIfSettings()
+	base.PortfolioValue = 1_000_000
+	base.MonthlyLivingExpenses = 0
+	base.MonthlyHealthcare = 0
+	base.HealthcarePersons = nil
+	base.ExpenseSources = nil
+	base.IncomeSources = nil
+	base.InvestmentReturn = 10.0
+	base.InflationRate = 0
+	base.SpendingDeclineRate = 0
+	base.ProjectionYears = 10
+	base.TaxDeferredPercent = 0
+	base.RothPercent = 0
+	base.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+
+	highDividend := *base
+	highDividend.TaxableDividendYield = 4.0
+	highDividend.TaxableQualifiedDividendPercent = 0
+
+	baseProjection := NewCalculator(base).RunProjection()
+	highDividendProjection := NewCalculator(&highDividend).RunProjection()
+
+	if highDividendProjection.FinalBalance >= baseProjection.FinalBalance {
+		t.Fatalf("expected high taxable dividend yield to reduce final balance, got base=%.2f high-div=%.2f",
+			baseProjection.FinalBalance, highDividendProjection.FinalBalance)
+	}
+	if highDividendProjection.Months[0].TaxesPaid <= 0 {
+		t.Fatalf("expected taxable dividends to generate tax drag, got %.2f", highDividendProjection.Months[0].TaxesPaid)
+	}
+}
+
+func TestProjectionTimingAffectsDeterministicAndMonteCarloResults(t *testing.T) {
+	base := models.DefaultWhatIfSettings()
+	base.PortfolioValue = 1_000_000
+	base.MonthlyLivingExpenses = 5_000
+	base.MonthlyHealthcare = 0
+	base.HealthcarePersons = nil
+	base.ExpenseSources = nil
+	base.IncomeSources = nil
+	base.InflationRate = 0
+	base.SpendingDeclineRate = 0
+	base.ProjectionYears = 30
+	base.InvestmentReturn = 6.0
+	base.TaxDeferredPercent = 0
+	base.RothPercent = 0
+	base.StockPercent = 100
+	base.CashPercent = 0
+	base.TaxableStockPercent = 100
+	base.TaxableCashPercent = 0
+
+	t.Run("deterministic ordering", func(t *testing.T) {
+		startSettings := *base
+		startSettings.ProjectionTiming = models.ProjectionTimingStartOfMonth
+		midSettings := *base
+		midSettings.ProjectionTiming = models.ProjectionTimingMidMonth
+		endSettings := *base
+		endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
+
+		startProjection := NewCalculator(&startSettings).RunProjection()
+		midProjection := NewCalculator(&midSettings).RunProjection()
+		endProjection := NewCalculator(&endSettings).RunProjection()
+
+		if !(startProjection.FinalBalance < midProjection.FinalBalance && midProjection.FinalBalance < endProjection.FinalBalance) {
+			t.Fatalf("expected start < mid < end final balances, got start=%.2f mid=%.2f end=%.2f",
+				startProjection.FinalBalance, midProjection.FinalBalance, endProjection.FinalBalance)
+		}
+	})
+
+	t.Run("monte carlo ordering", func(t *testing.T) {
+		config := &MonteCarloConfig{
+			ReturnVolatility:   0,
+			CrashProbability:   0,
+			CrashSeverity:      -30,
+			RecoveryBoost:      0,
+			SpendingShockProb:  0,
+			HealthShockProb:    0,
+			LongevityVariation: 0,
+		}
+
+		startSettings := *base
+		startSettings.ProjectionTiming = models.ProjectionTimingStartOfMonth
+		endSettings := *base
+		endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
+
+		startResult := NewCalculator(&startSettings).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+		endResult := NewCalculator(&endSettings).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+
+		if startResult.FinalBalance >= endResult.FinalBalance {
+			t.Fatalf("expected start-of-month Monte Carlo balance below end-of-month, got start=%.2f end=%.2f",
+				startResult.FinalBalance, endResult.FinalBalance)
+		}
+	})
 }
 
 // BenchmarkMonteCarloSimulation benchmarks the simulation performance
@@ -971,6 +1184,45 @@ func TestRunProjection_ChainTransition_AtCurrentAge(t *testing.T) {
 
 	if proj.Months[0].TotalExpenses < 4500 {
 		t.Errorf("expected expenses near 5000, got %f", proj.Months[0].TotalExpenses)
+	}
+}
+
+func TestRunProjection_RealDollarFields(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 100000
+	settings.MonthlyLivingExpenses = 1000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.IncomeSources = nil
+	settings.InvestmentReturn = 0
+	settings.InflationRate = 12
+	settings.SpendingDeclineRate = 0
+	settings.ProjectionYears = 1
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+
+	calc := NewCalculator(settings)
+	proj := calc.RunProjection()
+
+	if len(proj.Months) == 0 {
+		t.Fatal("expected projection months")
+	}
+
+	first := proj.Months[0]
+	if math.Abs(first.CumulativeInflation-1.0) > 1e-9 {
+		t.Fatalf("month 0 cumulative inflation = %.8f, want 1.0", first.CumulativeInflation)
+	}
+	if math.Abs(first.PortfolioBalanceReal-first.PortfolioBalance) > 0.01 {
+		t.Fatalf("month 0 real balance %.2f should match nominal %.2f", first.PortfolioBalanceReal, first.PortfolioBalance)
+	}
+
+	last := proj.Months[len(proj.Months)-1]
+	expectedReal := last.PortfolioBalance / last.CumulativeInflation
+	if math.Abs(last.PortfolioBalanceReal-expectedReal) > 0.01 {
+		t.Fatalf("real balance %.2f, want %.2f", last.PortfolioBalanceReal, expectedReal)
+	}
+	if last.CumulativeInflation <= 1.0 {
+		t.Fatalf("expected cumulative inflation > 1.0, got %.4f", last.CumulativeInflation)
 	}
 }
 

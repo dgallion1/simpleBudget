@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -44,7 +45,6 @@ func getSettingsHash(settings *models.WhatIfSettings) string {
 	hash := sha256.Sum256(data)
 	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter key
 }
-
 
 // buildCalculator creates a chain-aware calculator from settings.
 func buildCalculator(settings *models.WhatIfSettings) (*retirement.Calculator, string, error) {
@@ -103,6 +103,220 @@ func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalys
 	return analysis, nil
 }
 
+func normalizeDisplayDollars(raw string) string {
+	if raw == "real" {
+		return "real"
+	}
+	return "nominal"
+}
+
+type projectionChartEvent struct {
+	Year  float64
+	Label string
+}
+
+func projectionValueAtYear(projection *models.ProjectionResult, year float64, displayDollars string) float64 {
+	if projection == nil || len(projection.Months) == 0 {
+		return 0
+	}
+
+	index := int(math.Round(year * 12))
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(projection.Months) {
+		index = len(projection.Months) - 1
+	}
+
+	month := projection.Months[index]
+	if displayDollars == "real" {
+		return month.PortfolioBalanceReal
+	}
+	return month.PortfolioBalance
+}
+
+func humanizeScenarioFilename(filename string) string {
+	name := strings.TrimSuffix(filename, ".json")
+	name = strings.NewReplacer("-", " ", "_", " ").Replace(name)
+	return cases.Title(language.English).String(name)
+}
+
+func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *models.ProjectionResult) []projectionChartEvent {
+	if settings == nil || projection == nil {
+		return nil
+	}
+
+	maxYear := 0.0
+	if len(projection.Months) > 0 {
+		maxYear = projection.Months[len(projection.Months)-1].Year
+	}
+
+	events := make([]projectionChartEvent, 0, 8)
+	seen := map[string]struct{}{}
+	appendEvent := func(year float64, label string) {
+		if year <= 0 || year > maxYear {
+			return
+		}
+		key := fmt.Sprintf("%.2f:%s", year, label)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		events = append(events, projectionChartEvent{Year: year, Label: label})
+	}
+
+	for _, link := range settings.ScenarioChain {
+		appendEvent(float64(link.TransitionAge-settings.CurrentAge), "Scenario: "+humanizeScenarioFilename(link.ScenarioFilename))
+	}
+
+	for _, source := range settings.IncomeSources {
+		year := float64(source.StartMonth) / 12.0
+		lowerName := strings.ToLower(source.Name)
+		switch {
+		case strings.Contains(lowerName, "social security"):
+			appendEvent(year, "Social Security starts")
+		case strings.Contains(lowerName, "pension"):
+			appendEvent(year, "Pension starts")
+		}
+	}
+
+	for _, person := range settings.HealthcarePersons {
+		if hasTransition, yearsUntil, _, _ := person.GetTransitionInfo(); hasTransition {
+			appendEvent(float64(yearsUntil), fmt.Sprintf("Medicare: %s", person.Name))
+		}
+	}
+
+	olderAge := settings.GetOlderAge()
+	if olderAge < retirement.RMDStartAge {
+		appendEvent(float64(retirement.RMDStartAge-olderAge), "RMD starts")
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].Year == events[j].Year {
+			return events[i].Label < events[j].Label
+		}
+		return events[i].Year < events[j].Year
+	})
+
+	return events
+}
+
+func buildProjectionChartData(settings *models.WhatIfSettings, projection *models.ProjectionResult, displayDollars string) map[string]interface{} {
+	displayDollars = normalizeDisplayDollars(displayDollars)
+	if projection == nil {
+		projection = &models.ProjectionResult{}
+	}
+
+	years := make([]float64, 0)
+	balances := make([]float64, 0)
+	maxBalance := 0.0
+	for _, m := range projection.Months {
+		years = append(years, m.Year)
+		balance := m.PortfolioBalance
+		if displayDollars == "real" {
+			balance = m.PortfolioBalanceReal
+		}
+		balances = append(balances, balance)
+		if balance > maxBalance {
+			maxBalance = balance
+		}
+	}
+
+	fillColor := "rgba(34, 197, 94, 0.3)"
+	lineColor := "#22c55e"
+	if !projection.Survives {
+		fillColor = "rgba(239, 68, 68, 0.3)"
+		lineColor = "#ef4444"
+	}
+
+	traces := []map[string]interface{}{
+		{
+			"type":      "scatter",
+			"mode":      "lines",
+			"name":      "Portfolio Balance",
+			"x":         years,
+			"y":         balances,
+			"fill":      "tozeroy",
+			"fillcolor": fillColor,
+			"line": map[string]interface{}{
+				"color": lineColor,
+				"width": 2,
+			},
+		},
+	}
+
+	events := buildProjectionChartEvents(settings, projection)
+	if len(events) > 0 {
+		eventX := make([]float64, 0, len(events))
+		eventY := make([]float64, 0, len(events))
+		eventText := make([]string, 0, len(events))
+		yearOffsets := map[float64]int{}
+		for _, event := range events {
+			offsetCount := yearOffsets[event.Year]
+			yearOffsets[event.Year] = offsetCount + 1
+			y := projectionValueAtYear(projection, event.Year, displayDollars)
+			if y <= 0 {
+				y = maxBalance * 0.05
+			} else {
+				y *= 1.02 + 0.05*float64(offsetCount)
+			}
+			eventX = append(eventX, event.Year)
+			eventY = append(eventY, y)
+			eventText = append(eventText, event.Label)
+		}
+
+		traces = append(traces, map[string]interface{}{
+			"type":         "scatter",
+			"mode":         "markers+text",
+			"name":         "Key events",
+			"x":            eventX,
+			"y":            eventY,
+			"text":         eventText,
+			"textposition": "top center",
+			"marker": map[string]interface{}{
+				"color":  "#f59e0b",
+				"size":   9,
+				"symbol": "diamond",
+			},
+			"hoverinfo": "skip",
+		})
+	}
+
+	dtick := 5
+	if settings != nil && settings.ProjectionYears <= 12 {
+		dtick = 1
+	} else if settings != nil && settings.ProjectionYears <= 24 {
+		dtick = 2
+	}
+
+	yAxisTitle := "Balance ($)"
+	title := "Portfolio Projection"
+	if displayDollars == "real" {
+		yAxisTitle = "Balance (Today's Dollars)"
+		title = "Portfolio Projection In Today's Dollars"
+	}
+
+	return map[string]interface{}{
+		"data": traces,
+		"layout": map[string]interface{}{
+			"title": title,
+			"xaxis": map[string]interface{}{
+				"title":    "Years",
+				"tickmode": "linear",
+				"tick0":    0,
+				"dtick":    dtick,
+			},
+			"yaxis": map[string]interface{}{
+				"title":      yAxisTitle,
+				"tickformat": "$,.0f",
+			},
+			"legend": map[string]interface{}{
+				"orientation": "h",
+			},
+		},
+	}
+}
+
 // renderError renders an HTML error fragment for HTMX requests
 func renderError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -149,7 +363,6 @@ func parseRequiredFormFloat(r *http.Request, key string) (float64, error) {
 	}
 	return val, nil
 }
-
 
 var (
 	loader        *dataloader.DataLoader
@@ -520,6 +733,39 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["discount_rate"] = v
 	}
 
+	if v, err := parseFormFloat(r, "taxable_dividend_yield"); err != nil {
+		renderError(w, "Invalid taxable dividend yield: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("taxable_dividend_yield") != "" {
+		if v < 0 || v > 20 {
+			renderError(w, "Taxable dividend yield must be between 0 and 20%", http.StatusBadRequest)
+			return
+		}
+		updates["taxable_dividend_yield"] = v
+	}
+
+	if v, err := parseFormFloat(r, "taxable_qualified_dividend_percent"); err != nil {
+		renderError(w, "Invalid qualified dividend share: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("taxable_qualified_dividend_percent") != "" {
+		if v < 0 || v > 100 {
+			renderError(w, "Qualified dividend share must be between 0 and 100%", http.StatusBadRequest)
+			return
+		}
+		updates["taxable_qualified_dividend_percent"] = v
+	}
+
+	if v, err := parseFormFloat(r, "taxable_cap_gains_distribution_rate"); err != nil {
+		renderError(w, "Invalid capital gains distribution rate: "+err.Error(), http.StatusBadRequest)
+		return
+	} else if v != 0 || r.FormValue("taxable_cap_gains_distribution_rate") != "" {
+		if v < 0 || v > 20 {
+			renderError(w, "Capital gains distribution rate must be between 0 and 20%", http.StatusBadRequest)
+			return
+		}
+		updates["taxable_cap_gains_distribution_rate"] = v
+	}
+
 	if v, err := parseFormInt(r, "projection_years"); err != nil {
 		renderError(w, "Invalid projection years: "+err.Error(), http.StatusBadRequest)
 		return
@@ -529,6 +775,15 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		updates["projection_years"] = v
+	}
+
+	if v := r.FormValue("projection_timing"); v != "" {
+		timing := models.ProjectionTiming(v)
+		if models.NormalizeProjectionTiming(timing) != timing {
+			renderError(w, "Invalid projection timing", http.StatusBadRequest)
+			return
+		}
+		updates["projection_timing"] = timing
 	}
 
 	if v, err := parseFormInt(r, "tax_deferred_delay_years"); err != nil {
@@ -1013,60 +1268,15 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	calc, _, err := buildCalculator(settings)
+	analysis, err := runAnalysisWithCache(settings)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	projection := calc.RunProjection()
-
-	// Build chart data
-	var years []float64
-	var balances []float64
-
-	for _, m := range projection.Months {
-		years = append(years, m.Year)
-		balances = append(balances, m.PortfolioBalance)
-	}
-
-	// Determine color based on survival
-	fillColor := "rgba(34, 197, 94, 0.3)" // Green
-	lineColor := "#22c55e"
-	if !projection.Survives {
-		fillColor = "rgba(239, 68, 68, 0.3)" // Red
-		lineColor = "#ef4444"
-	}
-
-	chartData := map[string]interface{}{
-		"data": []map[string]interface{}{
-			{
-				"type":      "scatter",
-				"mode":      "lines",
-				"name":      "Portfolio Balance",
-				"x":         years,
-				"y":         balances,
-				"fill":      "tozeroy",
-				"fillcolor": fillColor,
-				"line": map[string]interface{}{
-					"color": lineColor,
-					"width": 2,
-				},
-			},
-		},
-		"layout": map[string]interface{}{
-			"title": "Portfolio Projection",
-			"xaxis": map[string]interface{}{
-				"title": "Years",
-			},
-			"yaxis": map[string]interface{}{
-				"title":      "Balance ($)",
-				"tickformat": "$,.0f",
-			},
-			"showlegend": false,
-		},
-	}
+	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
+	chartData := buildProjectionChartData(settings, analysis.Projection, displayDollars)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chartData)

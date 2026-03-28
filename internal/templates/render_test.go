@@ -47,3 +47,46 @@ func TestRenderInsightsContentAllowsBlankSubscriptionDescriptions(t *testing.T) 
 		t.Fatalf("expected fallback subscription initial, got %q", html)
 	}
 }
+
+func TestRenderProjectionBreakdownCard(t *testing.T) {
+	templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
+	if err != nil {
+		t.Fatalf("fs.Sub() error: %v", err)
+	}
+
+	renderer, err := NewFromFS(templatesFS, false)
+	if err != nil {
+		t.Fatalf("NewFromFS() error: %v", err)
+	}
+
+	html, err := renderer.RenderToString("whatif-projection-breakdown", map[string]any{
+		"Settings": models.DefaultWhatIfSettings(),
+		"Analysis": &models.WhatIfAnalysis{
+			ProjectionExplainability: &models.ProjectionExplainability{
+				YearlySummaries: []models.ProjectionYearSummary{
+					{
+						Year:              0,
+						StartingBalance:   1_000_000,
+						Growth:            40_000,
+						GrossIncome:       60_000,
+						Taxes:             9_000,
+						Expenses:          55_000,
+						Withdrawals:       4_000,
+						EndingBalance:     1_041_000,
+						EndingBalanceReal: 1_010_000,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderToString() error: %v", err)
+	}
+
+	if !strings.Contains(html, "Year-by-Year Projection") {
+		t.Fatalf("expected projection breakdown title, got %q", html)
+	}
+	if !strings.Contains(html, "$1,041,000") {
+		t.Fatalf("expected ending balance in rendered html, got %q", html)
+	}
+}

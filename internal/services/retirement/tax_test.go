@@ -169,12 +169,12 @@ func TestGetMarginalRate(t *testing.T) {
 		expectedRate float64
 	}{
 		{0, 10},
-		{20000, 10},     // Under standard deduction
-		{50000, 12},     // In 12% bracket
-		{100000, 22},    // In 22% bracket
-		{200000, 24},    // In 24% bracket
-		{500000, 35},    // In 35% bracket
-		{1000000, 37},   // In 37% bracket
+		{20000, 10},   // Under standard deduction
+		{50000, 12},   // In 12% bracket
+		{100000, 22},  // In 22% bracket
+		{200000, 24},  // In 24% bracket
+		{500000, 35},  // In 35% bracket
+		{1000000, 37}, // In 37% bracket
 	}
 
 	for _, tt := range tests {
@@ -183,4 +183,69 @@ func TestGetMarginalRate(t *testing.T) {
 			t.Errorf("Income %f: expected marginal rate %f, got %f", tt.income, tt.expectedRate, rate)
 		}
 	}
+}
+
+func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus:       models.FilingSingle,
+		StateIncomeTaxRate: 0,
+	}, 0)
+
+	t.Run("allocates recurring annual tax evenly across months", func(t *testing.T) {
+		monthlyOrdinaryIncome := 6000.0
+		accumulator := projectionTaxAccumulator{}
+
+		wantFederal, wantState, wantTotal, _ := tc.CalculateTotalTax(monthlyOrdinaryIncome*12, 0)
+		if wantFederal <= 0 || wantState != 0 {
+			t.Fatalf("expected positive federal tax and zero state tax, got federal=%.2f state=%.2f", wantFederal, wantState)
+		}
+
+		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, monthlyOrdinaryIncome, 0, 0, 0, 0, 0)
+		if math.Abs(month0Taxes-wantTotal/12) > 0.01 {
+			t.Fatalf("month 0 taxes = %.2f, want %.2f", month0Taxes, wantTotal/12)
+		}
+
+		accumulator.applyMonth(monthlyOrdinaryIncome, 0, 0, 0, 0, 0, month0Taxes)
+		month1Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 1, monthlyOrdinaryIncome, 0, 0, 0, 0, 0)
+		if math.Abs(month1Taxes-wantTotal/12) > 0.01 {
+			t.Fatalf("month 1 taxes = %.2f, want %.2f", month1Taxes, wantTotal/12)
+		}
+	})
+
+	t.Run("treats roth conversions as one-time annual events", func(t *testing.T) {
+		conversionAmount := 12000.0
+		accumulator := projectionTaxAccumulator{}
+
+		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, 0, 0, 0, 0, 0, conversionAmount)
+		_, _, wantTotal, _ := tc.CalculateTotalTax(conversionAmount, 0)
+
+		if math.Abs(month0Taxes-wantTotal/12) > 0.01 {
+			t.Fatalf("month 0 taxes = %.2f, want %.2f", month0Taxes, wantTotal/12)
+		}
+	})
+}
+
+func TestCalculateTaxWithInvestmentIncome(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus:       models.FilingSingle,
+		StateIncomeTaxRate: 0,
+	}, 0)
+
+	t.Run("qualified dividends taxed below ordinary income", func(t *testing.T) {
+		ordinaryFederal, _, _, _ := tc.CalculateTaxWithInvestmentIncome(80000, 0, 0, 0)
+		qualifiedFederal, _, _, _ := tc.CalculateTaxWithInvestmentIncome(0, 80000, 0, 0)
+		if qualifiedFederal >= ordinaryFederal {
+			t.Fatalf("expected qualified dividends to have lower federal tax than ordinary gains, got qualified=%.2f ordinary=%.2f", qualifiedFederal, ordinaryFederal)
+		}
+	})
+
+	t.Run("ordinary income still taxes non-qualified dividends", func(t *testing.T) {
+		federal, state, total, _ := tc.CalculateTaxWithInvestmentIncome(30000, 5000, 10000, 0)
+		if federal <= 0 || total <= 0 {
+			t.Fatalf("expected positive tax, got federal=%.2f total=%.2f", federal, total)
+		}
+		if state != 0 {
+			t.Fatalf("expected zero state tax, got %.2f", state)
+		}
+	})
 }

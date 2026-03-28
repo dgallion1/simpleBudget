@@ -1164,6 +1164,68 @@ func TestLoadInternal_MigrationOldFormat(t *testing.T) {
 	}
 }
 
+func TestLoadInternal_QualifiedDividendMigration(t *testing.T) {
+	root := t.TempDir()
+	settingsDir := filepath.Join(root, "settings")
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	if err := store.MkdirAll(settingsDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	t.Run("legacy file without taxable fields defaults qualified to 100", func(t *testing.T) {
+		legacySettings := map[string]interface{}{
+			"portfolio_value":         500000,
+			"monthly_living_expenses": 4000,
+			"current_age":             65,
+			"projection_years":        30,
+			"income_sources":          []interface{}{},
+			"expense_sources":         []interface{}{},
+		}
+		data, _ := json.MarshalIndent(legacySettings, "", "  ")
+		if err := store.WriteFile(filepath.Join(settingsDir, "whatif.json"), data, 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		sm := NewSettingsManager(settingsDir, store)
+		s, err := sm.Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if s.TaxableQualifiedDividendPercent != 100 {
+			t.Fatalf("expected migration to set qualified to 100, got %.1f", s.TaxableQualifiedDividendPercent)
+		}
+	})
+
+	t.Run("explicit zero qualified percent is preserved when taxable fields present", func(t *testing.T) {
+		explicitSettings := map[string]interface{}{
+			"portfolio_value":                    500000,
+			"monthly_living_expenses":            4000,
+			"current_age":                        65,
+			"projection_years":                   30,
+			"taxable_dividend_yield":             2.0,
+			"taxable_qualified_dividend_percent": 0,
+			"income_sources":                     []interface{}{},
+			"expense_sources":                    []interface{}{},
+		}
+		data, _ := json.MarshalIndent(explicitSettings, "", "  ")
+		if err := store.WriteFile(filepath.Join(settingsDir, "whatif.json"), data, 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		sm := NewSettingsManager(settingsDir, store)
+		s, err := sm.Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if s.TaxableQualifiedDividendPercent != 0 {
+			t.Fatalf("expected explicit 0%% qualified to be preserved, got %.1f", s.TaxableQualifiedDividendPercent)
+		}
+	})
+}
+
 // --- Load concurrent ---
 
 func TestLoad_Concurrent(t *testing.T) {

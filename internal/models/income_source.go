@@ -34,10 +34,9 @@ func (is *IncomeSource) GetAdjustedAmount(month int) float64 {
 	}
 
 	monthsActive := month - is.StartMonth
-	yearsActive := monthsActive / 12
 
-	if is.COLARate > 0 && yearsActive > 0 {
-		return is.Amount * math.Pow(1+is.COLARate, float64(yearsActive))
+	if is.COLARate != 0 && monthsActive > 0 {
+		return is.Amount * math.Pow(1+is.COLARate, float64(monthsActive)/12.0)
 	}
 	return is.Amount
 }
@@ -82,8 +81,8 @@ func (es *ExpenseSource) GetAdjustedAmount(month int, annualInflationRate float6
 
 	amount := es.Amount
 	if es.Inflation && annualInflationRate > 0 {
-		yearsSinceStart := (month - startMonth) / 12
-		amount *= math.Pow(1+annualInflationRate/100, float64(yearsSinceStart))
+		monthsSinceStart := month - startMonth
+		amount *= math.Pow(1+annualInflationRate/100, float64(monthsSinceStart)/12.0)
 	}
 	return amount
 }

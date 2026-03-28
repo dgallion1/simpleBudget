@@ -227,6 +227,39 @@ func TestRunSingleHistoricalSequence(t *testing.T) {
 	}
 }
 
+func TestHistoricalBacktestHonorsProjectionTiming(t *testing.T) {
+	base := models.DefaultWhatIfSettings()
+	base.PortfolioValue = 1_000_000
+	base.MonthlyLivingExpenses = 3_000
+	base.MonthlyHealthcare = 0
+	base.HealthcarePersons = nil
+	base.ExpenseSources = nil
+	base.IncomeSources = nil
+	base.InflationRate = 0
+	base.SpendingDeclineRate = 0
+	base.ProjectionYears = 20
+	base.InvestmentReturn = 0
+	base.TaxDeferredPercent = 0
+	base.RothPercent = 0
+	base.StockPercent = 100
+	base.CashPercent = 0
+	base.TaxableStockPercent = 100
+	base.TaxableCashPercent = 0
+
+	startSettings := *base
+	startSettings.ProjectionTiming = models.ProjectionTimingStartOfMonth
+	endSettings := *base
+	endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
+
+	startResult := NewCalculator(&startSettings).runSingleHistoricalSequence(1990)
+	endResult := NewCalculator(&endSettings).runSingleHistoricalSequence(1990)
+
+	if startResult.FinalBalance >= endResult.FinalBalance {
+		t.Fatalf("expected start-of-month backtest balance below end-of-month, got start=%.2f end=%.2f",
+			startResult.FinalBalance, endResult.FinalBalance)
+	}
+}
+
 func TestBacktestWithBigTicketItems(t *testing.T) {
 	settings := &models.WhatIfSettings{
 		PortfolioValue:        1000000,

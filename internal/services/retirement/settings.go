@@ -98,6 +98,14 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 		return models.DefaultWhatIfSettings(), err
 	}
 
+	// Detect whether taxable account fields are present in the raw JSON so we
+	// can distinguish "never set" from "explicitly set to 0".
+	var rawFields map[string]json.RawMessage
+	_ = json.Unmarshal(data, &rawFields)
+	hasTaxableFields := rawFields["taxable_dividend_yield"] != nil ||
+		rawFields["taxable_qualified_dividend_percent"] != nil ||
+		rawFields["taxable_cap_gains_distribution_rate"] != nil
+
 	// Ensure slices are initialized
 	if settings.IncomeSources == nil {
 		settings.IncomeSources = []models.IncomeSource{}
@@ -134,6 +142,14 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 		}
 	}
 
+	// Migration: default qualified dividend percent to 100% only for legacy
+	// settings files that predate the taxable account fields entirely.
+	// If any of the three fields are present in the JSON (even as 0), the user
+	// has already interacted with these controls — respect their values.
+	if !hasTaxableFields && settings.TaxableQualifiedDividendPercent == 0 {
+		settings.TaxableQualifiedDividendPercent = 100
+	}
+
 	// Migration: if no healthcare persons but legacy healthcare value exists,
 	// create a single person from legacy values
 	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
@@ -155,6 +171,8 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 			},
 		}
 	}
+
+	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
 
 	return &settings, nil
 }
@@ -183,6 +201,12 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("parsing scenario %s: %w", filename, err)
 	}
+
+	var rawFields map[string]json.RawMessage
+	_ = json.Unmarshal(data, &rawFields)
+	hasTaxableFields := rawFields["taxable_dividend_yield"] != nil ||
+		rawFields["taxable_qualified_dividend_percent"] != nil ||
+		rawFields["taxable_cap_gains_distribution_rate"] != nil
 
 	// Apply same initialization and migrations as loadInternal
 	if settings.IncomeSources == nil {
@@ -213,6 +237,9 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 			settings.SpendingPhaseConfig.Phases[i].Multiplier = 1.0
 		}
 	}
+	if !hasTaxableFields && settings.TaxableQualifiedDividendPercent == 0 {
+		settings.TaxableQualifiedDividendPercent = 100
+	}
 	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
 		coverage := models.CoverageMedicare
 		if settings.CurrentAge < 65 {
@@ -232,6 +259,7 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 			},
 		}
 	}
+	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
 
 	return &settings, nil
 }
@@ -306,6 +334,8 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 			settings.ScenarioChain = nil
 		}
 	}
+
+	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
 
 	// Ensure settings directory exists
 	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
@@ -618,8 +648,20 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	if v, ok := updates["discount_rate"].(float64); ok {
 		settings.DiscountRate = v
 	}
+	if v, ok := updates["taxable_dividend_yield"].(float64); ok {
+		settings.TaxableDividendYield = v
+	}
+	if v, ok := updates["taxable_qualified_dividend_percent"].(float64); ok {
+		settings.TaxableQualifiedDividendPercent = v
+	}
+	if v, ok := updates["taxable_cap_gains_distribution_rate"].(float64); ok {
+		settings.TaxableCapitalGainsDistributionRate = v
+	}
 	if v, ok := updates["projection_years"].(int); ok {
 		settings.ProjectionYears = v
+	}
+	if v, ok := updates["projection_timing"].(models.ProjectionTiming); ok {
+		settings.ProjectionTiming = models.NormalizeProjectionTiming(v)
 	}
 	if v, ok := updates["tax_deferred_delay_years"].(int); ok {
 		settings.TaxDeferredDelayYears = v

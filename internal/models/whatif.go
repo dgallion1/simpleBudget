@@ -2,6 +2,23 @@ package models
 
 import "math"
 
+type ProjectionTiming string
+
+const (
+	ProjectionTimingStartOfMonth ProjectionTiming = "start_of_month"
+	ProjectionTimingMidMonth     ProjectionTiming = "mid_month"
+	ProjectionTimingEndOfMonth   ProjectionTiming = "end_of_month"
+)
+
+func NormalizeProjectionTiming(timing ProjectionTiming) ProjectionTiming {
+	switch timing {
+	case ProjectionTimingStartOfMonth, ProjectionTimingMidMonth, ProjectionTimingEndOfMonth:
+		return timing
+	default:
+		return ProjectionTimingEndOfMonth
+	}
+}
+
 // ScenarioChainLink references a scenario to transition to at a given age
 type ScenarioChainLink struct {
 	ScenarioFilename string `json:"scenario_filename"`
@@ -48,19 +65,23 @@ type WhatIfSettings struct {
 	// Bond % computed as: 100 - StockPercent - CashPercent
 
 	// Rates (as percentages, e.g., 4.0 for 4%)
-	InflationRate       float64 `json:"inflation_rate"`        // Annual inflation
-	HealthcareInflation float64 `json:"healthcare_inflation"`  // Healthcare inflation (legacy, for single-person model)
-	SpendingDeclineRate float64 `json:"spending_decline_rate"` // Annual spending reduction (used when phases disabled)
-	InvestmentReturn    float64 `json:"investment_return"`     // Expected portfolio return
-	DiscountRate        float64 `json:"discount_rate"`         // For PV calculations
+	InflationRate                       float64 `json:"inflation_rate"`                                // Annual inflation
+	HealthcareInflation                 float64 `json:"healthcare_inflation"`                          // Healthcare inflation (legacy, for single-person model)
+	SpendingDeclineRate                 float64 `json:"spending_decline_rate"`                         // Annual spending reduction (used when phases disabled)
+	InvestmentReturn                    float64 `json:"investment_return"`                             // Expected portfolio return
+	DiscountRate                        float64 `json:"discount_rate"`                                 // For PV calculations
+	TaxableDividendYield                float64 `json:"taxable_dividend_yield,omitempty"`              // Annual dividend yield on taxable account
+	TaxableQualifiedDividendPercent     float64 `json:"taxable_qualified_dividend_percent,omitempty"`  // Share of taxable dividends that are qualified
+	TaxableCapitalGainsDistributionRate float64 `json:"taxable_cap_gains_distribution_rate,omitempty"` // Annual realized cap-gains distribution rate
 
 	// Phase-based spending (go-go/slow-go/no-go retirement phases)
 	SpendingPhaseConfig *SpendingPhaseConfig `json:"spending_phase_config,omitempty"`
 
 	// Projection
-	ProjectionYears         int     `json:"projection_years"`           // Number of years to project
-	SteadyStateOverrideYear float64 `json:"steady_state_override_year"` // User-adjustable projection year (0 = auto)
-	TaxDeferredDelayYears   int     `json:"tax_deferred_delay_years"`   // Years before tax-deferred withdrawals begin (0 = immediate)
+	ProjectionYears         int              `json:"projection_years"`            // Number of years to project
+	ProjectionTiming        ProjectionTiming `json:"projection_timing,omitempty"` // When monthly cash flow occurs relative to growth
+	SteadyStateOverrideYear float64          `json:"steady_state_override_year"`  // User-adjustable projection year (0 = auto)
+	TaxDeferredDelayYears   int              `json:"tax_deferred_delay_years"`    // Years before tax-deferred withdrawals begin (0 = immediate)
 
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
@@ -223,13 +244,13 @@ func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {
 		return 0
 	}
 
-	yearsActive := (month - healthcareStartMonth) / 12
-	if yearsActive < 0 {
-		yearsActive = 0
+	monthsActive := month - healthcareStartMonth
+	if monthsActive < 0 {
+		monthsActive = 0
 	}
 
 	// Apply healthcare inflation to legacy model
-	return s.MonthlyHealthcare * math.Pow(1+s.HealthcareInflation/100, float64(yearsActive))
+	return s.MonthlyHealthcare * math.Pow(1+s.HealthcareInflation/100, float64(monthsActive)/12.0)
 }
 
 // HasMultiPersonHealthcare returns true if multi-person healthcare model is being used
@@ -419,19 +440,21 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		TaxDeferredPercent:    60.0,      // Reduced from 70 to make room for Roth
 		RothPercent:           10.0,      // Default 10% Roth
 		// Taxable is computed as: 100 - 60 - 10 = 30%
-		StockPercent:          60.0, // Default 60% stocks
-		CashPercent:           0.0,  // Default 0% cash (bonds = 40%)
-		InflationRate:         3.0,
-		HealthcareInflation:   6.0,
-		SpendingDeclineRate:   1.0,
-		InvestmentReturn:      0.0, // 0 = use asset allocation to calculate returns
-		DiscountRate:          5.0,
-		ProjectionYears:       30,
-		TaxDeferredDelayYears: 0,
-		IncomeSources:         []IncomeSource{},
-		ExpenseSources:        []ExpenseSource{},
-		RemovedIncomeSources:  []IncomeSource{},
-		RemovedExpenseSources: []ExpenseSource{},
+		StockPercent:                    60.0, // Default 60% stocks
+		CashPercent:                     0.0,  // Default 0% cash (bonds = 40%)
+		InflationRate:                   3.0,
+		HealthcareInflation:             6.0,
+		SpendingDeclineRate:             1.0,
+		InvestmentReturn:                0.0, // 0 = use asset allocation to calculate returns
+		DiscountRate:                    5.0,
+		TaxableQualifiedDividendPercent: 100.0,
+		ProjectionYears:                 30,
+		ProjectionTiming:                ProjectionTimingEndOfMonth,
+		TaxDeferredDelayYears:           0,
+		IncomeSources:                   []IncomeSource{},
+		ExpenseSources:                  []ExpenseSource{},
+		RemovedIncomeSources:            []IncomeSource{},
+		RemovedExpenseSources:           []ExpenseSource{},
 		// Phase-based spending (disabled by default to preserve existing behavior)
 		SpendingPhaseConfig: &SpendingPhaseConfig{
 			Enabled: false,
@@ -449,22 +472,46 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 	}
 }
 
+func (s *WhatIfSettings) GetProjectionTiming() ProjectionTiming {
+	return NormalizeProjectionTiming(s.ProjectionTiming)
+}
+
+func (s *WhatIfSettings) GetTaxableQualifiedDividendPercent() float64 {
+	switch {
+	case s.TaxableQualifiedDividendPercent < 0:
+		return 0
+	case s.TaxableQualifiedDividendPercent > 100:
+		return 100
+	default:
+		return s.TaxableQualifiedDividendPercent
+	}
+}
+
 // ProjectionMonth represents a single month in the projection
 type ProjectionMonth struct {
-	Month              int     `json:"month"`
-	Year               float64 `json:"year"`
-	PortfolioBalance   float64 `json:"portfolio_balance"`
-	TaxDeferredBalance float64 `json:"tax_deferred_balance"` // Tax-deferred portion (401k, IRA)
-	TaxableBalance     float64 `json:"taxable_balance"`      // Taxable portion (brokerage)
-	RothBalance        float64 `json:"roth_balance"`         // Roth portion (Roth IRA, Roth 401k)
-	GeneralExpenses    float64 `json:"general_expenses"`
-	HealthcareExpense  float64 `json:"healthcare_expense"`
-	TotalExpenses      float64 `json:"total_expenses"`
-	TotalIncome        float64 `json:"total_income"`
-	NetWithdrawal      float64 `json:"net_withdrawal"`
-	RMDWithdrawal      float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
-	PortfolioGrowth    float64 `json:"portfolio_growth"`
-	Depleted           bool    `json:"depleted"`
+	Month                int     `json:"month"`
+	Year                 float64 `json:"year"`
+	CumulativeInflation  float64 `json:"cumulative_inflation,omitempty"`
+	PortfolioBalance     float64 `json:"portfolio_balance"`
+	PortfolioBalanceReal float64 `json:"portfolio_balance_real,omitempty"`
+	TaxDeferredBalance   float64 `json:"tax_deferred_balance"` // Tax-deferred portion (401k, IRA)
+	TaxableBalance       float64 `json:"taxable_balance"`      // Taxable portion (brokerage)
+	RothBalance          float64 `json:"roth_balance"`         // Roth portion (Roth IRA, Roth 401k)
+	GeneralExpenses      float64 `json:"general_expenses"`
+	HealthcareExpense    float64 `json:"healthcare_expense"`
+	TotalExpenses        float64 `json:"total_expenses"`
+	TotalExpensesReal    float64 `json:"total_expenses_real,omitempty"`
+	TotalIncome          float64 `json:"total_income"`
+	TotalIncomeReal      float64 `json:"total_income_real,omitempty"`
+	GrossIncome          float64 `json:"gross_income,omitempty"`
+	NetIncome            float64 `json:"net_income,omitempty"`
+	TaxesPaid            float64 `json:"taxes_paid,omitempty"`
+	NetWithdrawal        float64 `json:"net_withdrawal"`
+	RMDWithdrawal        float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
+	TaxableWithdrawals   float64 `json:"taxable_withdrawals,omitempty"`
+	RothConversions      float64 `json:"roth_conversions,omitempty"`
+	PortfolioGrowth      float64 `json:"portfolio_growth"`
+	Depleted             bool    `json:"depleted"`
 
 	// Withdrawal source tracking
 	WithdrawalFromTaxDeferred float64 `json:"withdrawal_tax_deferred,omitempty"`
@@ -481,6 +528,31 @@ type ProjectionResult struct {
 	Survives       bool              `json:"survives"`
 }
 
+// ProjectionYearSummary reconciles one projection year for explainability.
+type ProjectionYearSummary struct {
+	Year                int     `json:"year"`
+	StartingBalance     float64 `json:"starting_balance"`
+	Growth              float64 `json:"growth"`
+	GrossIncome         float64 `json:"gross_income"`
+	Taxes               float64 `json:"taxes"`
+	Expenses            float64 `json:"expenses"`
+	Withdrawals         float64 `json:"withdrawals"`
+	EndingBalance       float64 `json:"ending_balance"`
+	EndingBalanceReal   float64 `json:"ending_balance_real"`
+	CumulativeInflation float64 `json:"cumulative_inflation"`
+}
+
+// ProjectionExplainability contains reconciliation data for the projection UI.
+type ProjectionExplainability struct {
+	YearlySummaries         []ProjectionYearSummary `json:"yearly_summaries"`
+	TotalTaxes              float64                 `json:"total_taxes"`
+	TotalGrossIncome        float64                 `json:"total_gross_income"`
+	TaxShareOfGrossCashFlow float64                 `json:"tax_share_of_gross_cash_flow"`
+	FinalBalanceReal        float64                 `json:"final_balance_real"`
+	CumulativeInflation     float64                 `json:"cumulative_inflation"`
+	InflationLossPercent    float64                 `json:"inflation_loss_percent"`
+}
+
 // ExpenseBreakdownItem shows a named expense component
 type ExpenseBreakdownItem struct {
 	Name   string  `json:"name"`
@@ -492,6 +564,9 @@ type ExpenseBreakdownItem struct {
 type BudgetFitAnalysis struct {
 	MonthlyExpenses float64 `json:"monthly_expenses"`
 	MonthlyIncome   float64 `json:"monthly_income"`
+	GrossIncome     float64 `json:"gross_income,omitempty"`
+	NetIncome       float64 `json:"net_income,omitempty"`
+	MonthlyTaxes    float64 `json:"monthly_taxes,omitempty"`
 	MonthlyRMD      float64 `json:"monthly_rmd"` // Required Minimum Distribution (age 73+)
 	MonthlyGap      float64 `json:"monthly_gap"` // Expenses - Income - RMD
 	AnnualGap       float64 `json:"annual_gap"`
@@ -507,15 +582,18 @@ type BudgetFitAnalysis struct {
 	ExcessRMD    float64 `json:"excess_rmd"`     // RMD beyond what's needed (forced taxable withdrawal)
 
 	// Steady-state analysis (when all income sources are active)
-	SteadyStateMonth    int     `json:"steady_state_month"`    // Month when all income is active
-	SteadyStateYear     float64 `json:"steady_state_year"`     // Year when all income is active (or override)
-	MinSteadyStateYear  float64 `json:"min_steady_state_year"` // Auto-calculated minimum (when all income starts)
-	SteadyStateExpenses float64 `json:"steady_state_expenses"` // Expenses at steady state (inflated)
-	SteadyStateIncome   float64 `json:"steady_state_income"`   // Income at steady state (with COLA)
-	SteadyStateRMD      float64 `json:"steady_state_rmd"`      // RMD at steady state (if applicable)
-	SteadyStateGap      float64 `json:"steady_state_gap"`      // Gap at steady state
-	SteadyStateRate     float64 `json:"steady_state_rate"`     // Required withdrawal rate at steady state
-	HasSteadyState      bool    `json:"has_steady_state"`      // True if steady state differs from current
+	SteadyStateMonth       int     `json:"steady_state_month"`    // Month when all income is active
+	SteadyStateYear        float64 `json:"steady_state_year"`     // Year when all income is active (or override)
+	MinSteadyStateYear     float64 `json:"min_steady_state_year"` // Auto-calculated minimum (when all income starts)
+	SteadyStateExpenses    float64 `json:"steady_state_expenses"` // Expenses at steady state (inflated)
+	SteadyStateIncome      float64 `json:"steady_state_income"`   // Income at steady state (with COLA)
+	SteadyStateGrossIncome float64 `json:"steady_state_gross_income,omitempty"`
+	SteadyStateNetIncome   float64 `json:"steady_state_net_income,omitempty"`
+	SteadyStateTaxes       float64 `json:"steady_state_taxes,omitempty"`
+	SteadyStateRMD         float64 `json:"steady_state_rmd"`  // RMD at steady state (if applicable)
+	SteadyStateGap         float64 `json:"steady_state_gap"`  // Gap at steady state
+	SteadyStateRate        float64 `json:"steady_state_rate"` // Required withdrawal rate at steady state
+	HasSteadyState         bool    `json:"has_steady_state"`  // True if steady state differs from current
 }
 
 // RMDProjection represents RMD estimates for a specific year
@@ -875,17 +953,18 @@ type HistoricalBacktestAnalysis struct {
 
 // WhatIfAnalysis is the complete analysis container returned to templates
 type WhatIfAnalysis struct {
-	Settings           *WhatIfSettings             `json:"settings"`
-	Projection         *ProjectionResult           `json:"projection"`
-	BudgetFit          *BudgetFitAnalysis          `json:"budget_fit"`
-	PresentValue       *PresentValueAnalysis       `json:"present_value"`
-	Sustainability     *SustainabilityScore        `json:"sustainability"`
-	Sensitivity        []SensitivityResult         `json:"sensitivity"`
-	FailurePoints      *FailurePointAnalysis       `json:"failure_points"`
-	MonteCarlo         *MonteCarloAnalysis         `json:"monte_carlo"`
-	RMD                *RMDAnalysis                `json:"rmd"`
-	Tax                *TaxAnalysis                `json:"tax"`
-	HistoricalBacktest *HistoricalBacktestAnalysis `json:"historical_backtest"`
+	Settings                 *WhatIfSettings             `json:"settings"`
+	Projection               *ProjectionResult           `json:"projection"`
+	ProjectionExplainability *ProjectionExplainability   `json:"projection_explainability,omitempty"`
+	BudgetFit                *BudgetFitAnalysis          `json:"budget_fit"`
+	PresentValue             *PresentValueAnalysis       `json:"present_value"`
+	Sustainability           *SustainabilityScore        `json:"sustainability"`
+	Sensitivity              []SensitivityResult         `json:"sensitivity"`
+	FailurePoints            *FailurePointAnalysis       `json:"failure_points"`
+	MonteCarlo               *MonteCarloAnalysis         `json:"monte_carlo"`
+	RMD                      *RMDAnalysis                `json:"rmd"`
+	Tax                      *TaxAnalysis                `json:"tax"`
+	HistoricalBacktest       *HistoricalBacktestAnalysis `json:"historical_backtest"`
 }
 
 // WhatIfPageData is the data passed to the whatif template

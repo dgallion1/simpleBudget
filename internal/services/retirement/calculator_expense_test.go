@@ -33,6 +33,13 @@ func TestCalculateTotalExpenses(t *testing.T) {
 		if math.Abs(got-want) > 0.01 {
 			t.Errorf("month 12: want %.2f, got %.2f", want, got)
 		}
+
+		// Month 6: net inflation compounds monthly instead of stair-stepping annually
+		got = calc.CalculateTotalExpenses(6)
+		want = 4000 * math.Pow(1.02, 0.5)
+		if math.Abs(got-want) > 0.01 {
+			t.Errorf("month 6: want %.2f, got %.2f", want, got)
+		}
 	})
 
 	t.Run("with healthcare persons pre and post Medicare", func(t *testing.T) {
@@ -48,15 +55,15 @@ func TestCalculateTotalExpenses(t *testing.T) {
 		// Person aged 60, ACA coverage, transitions to Medicare at 65
 		s.HealthcarePersons = []models.HealthcarePerson{
 			{
-				ID:                   "p1",
-				Name:                 "Primary",
-				CurrentAge:           60,
-				CurrentCoverage:      models.CoverageACA,
-				CurrentMonthlyCost:   1000,
-				MedicareMonthlyCost:  400,
-				PreMedicareInflation: 0,
+				ID:                    "p1",
+				Name:                  "Primary",
+				CurrentAge:            60,
+				CurrentCoverage:       models.CoverageACA,
+				CurrentMonthlyCost:    1000,
+				MedicareMonthlyCost:   400,
+				PreMedicareInflation:  0,
 				PostMedicareInflation: 0,
-				MedicareEligibleAge:  65,
+				MedicareEligibleAge:   65,
 			},
 		}
 
@@ -105,6 +112,13 @@ func TestCalculateTotalExpenses(t *testing.T) {
 		want := 2000 + wantInflating + 300
 		if math.Abs(got-want) > 0.01 {
 			t.Errorf("month 24: want %.2f, got %.2f", want, got)
+		}
+
+		got = calc.CalculateTotalExpenses(6)
+		wantInflating = 500 * math.Pow(1.05, 0.5)
+		want = 2000 + wantInflating + 300
+		if math.Abs(got-want) > 0.01 {
+			t.Errorf("month 6: want %.2f, got %.2f", want, got)
 		}
 	})
 
@@ -211,13 +225,13 @@ func TestCalculateExpenseBreakdown(t *testing.T) {
 		s.ExpenseSources = nil
 		s.HealthcarePersons = []models.HealthcarePerson{
 			{
-				ID:                   "p1",
-				Name:                 "Test",
-				CurrentAge:           70,
-				CurrentCoverage:      models.CoverageMedicare,
-				CurrentMonthlyCost:   450,
+				ID:                    "p1",
+				Name:                  "Test",
+				CurrentAge:            70,
+				CurrentCoverage:       models.CoverageMedicare,
+				CurrentMonthlyCost:    450,
 				PostMedicareInflation: 0,
-				MedicareEligibleAge:  65,
+				MedicareEligibleAge:   65,
 			},
 		}
 
@@ -771,8 +785,9 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		if fit.ExcessRMD <= 0 {
 			t.Errorf("expected positive ExcessRMD, got %.2f", fit.ExcessRMD)
 		}
-		// ExcessRMD = MonthlyRMD - GapBeforeRMD
-		wantExcess := fit.MonthlyRMD - fit.GapBeforeRMD
+		monthlyTaxesBeforeRMD := fit.GapBeforeRMD - fit.MonthlyExpenses + fit.MonthlyIncome
+		netRMD := fit.MonthlyRMD - (fit.MonthlyTaxes - monthlyTaxesBeforeRMD)
+		wantExcess := netRMD - fit.GapBeforeRMD
 		if math.Abs(fit.ExcessRMD-wantExcess) > 0.01 {
 			t.Errorf("ExcessRMD: want %.2f, got %.2f", wantExcess, fit.ExcessRMD)
 		}
@@ -813,8 +828,10 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		if fit.ExcessRMD <= 0 {
 			t.Errorf("expected positive ExcessRMD, got %.2f", fit.ExcessRMD)
 		}
-		if math.Abs(fit.ExcessRMD-fit.MonthlyRMD) > 0.01 {
-			t.Errorf("ExcessRMD should equal MonthlyRMD when no gap: ExcessRMD=%.2f, MonthlyRMD=%.2f", fit.ExcessRMD, fit.MonthlyRMD)
+		monthlyTaxesBeforeRMD := fit.GapBeforeRMD - fit.MonthlyExpenses + fit.MonthlyIncome
+		netRMD := fit.MonthlyRMD - (fit.MonthlyTaxes - monthlyTaxesBeforeRMD)
+		if math.Abs(fit.ExcessRMD-netRMD) > 0.01 {
+			t.Errorf("ExcessRMD should equal net RMD when no gap: ExcessRMD=%.2f, netRMD=%.2f", fit.ExcessRMD, netRMD)
 		}
 	})
 }

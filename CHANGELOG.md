@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.9.0 - Projection Realism & Explainability
+
+### Breaking Changes
+- **Monthly compounding**: Inflation, COLA, and healthcare cost escalation now compound monthly instead of stair-stepping annually. Existing projections will shift slightly — expenses accrue more smoothly within each year rather than jumping at year boundaries.
+
+### New Features
+- **Tax-aware projections**: Projection loop now estimates federal + state taxes monthly using a YTD accumulator with iterative convergence. Withdrawals from tax-deferred accounts, RMDs, dividends, and capital gains distributions all generate realistic tax drag.
+- **Long-term capital gains tax rates**: Qualified dividends and long-term capital gains are taxed at preferential LTCG rates (0%/15%/20%) instead of ordinary income rates.
+- **Taxable account modeling**: New settings for dividend yield, qualified dividend share, and capital gains distribution rate. Taxable account withdrawals use average cost basis to determine realized gains.
+- **Projection timing**: New setting controls whether portfolio growth is applied before (start of month), around (mid-month), or after (end of month) monthly cash flows.
+- **Real-dollar tracking**: Projection months now include cumulative inflation and real (inflation-adjusted) portfolio balance, expenses, and income.
+- **Projection explainability**: New year-by-year breakdown table showing starting balance, growth, income, taxes, expenses, withdrawals, and ending balance for each projection year.
+- **Chart event annotations**: Projection chart now marks key life events (Social Security start, Medicare transitions, RMD start, scenario chain transitions) as diamond markers.
+- **Real/nominal chart toggle**: Projection chart supports switching between nominal and inflation-adjusted (today's dollars) views.
+
+### Bug Fixes
+- **Budget analysis subtitle**: Corrected subtitle to clarify that steady-state values are in future nominal dollars, not today's dollars.
+- **Qualified dividend migration**: Settings migration now checks for JSON field presence instead of zero-value sentinel, preventing silent override when user intentionally sets qualified share to 0%.
+
 ## v1.8.1 - Code Review Fixes
 
 ### Bug Fixes

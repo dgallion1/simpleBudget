@@ -1,8 +1,10 @@
 package retirement
 
 import (
-	"budget2/internal/models"
+	"math"
 	"testing"
+
+	"budget2/internal/models"
 )
 
 func TestIncomeSourceDuration(t *testing.T) {
@@ -106,4 +108,32 @@ func TestExpenseSourceDuration(t *testing.T) {
 			t.Errorf("expected 0 expense at month 12, got %.0f", val)
 		}
 	})
+}
+
+func TestIncomeSourceMonthlyCOLA(t *testing.T) {
+	is := &models.IncomeSource{
+		Amount:     1000,
+		StartMonth: 0,
+		COLARate:   0.12,
+	}
+
+	got := is.GetAdjustedAmount(6)
+	want := 1000.0 * math.Pow(1.12, 0.5)
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("month 6: want %.2f, got %.2f", want, got)
+	}
+}
+
+func TestExpenseSourceMonthlyInflation(t *testing.T) {
+	es := &models.ExpenseSource{
+		Amount:    1000,
+		StartYear: 0,
+		Inflation: true,
+	}
+
+	got := es.GetAdjustedAmount(6, 12)
+	want := 1000.0 * math.Pow(1.12, 0.5)
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("month 6: want %.2f, got %.2f", want, got)
+	}
 }

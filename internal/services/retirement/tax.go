@@ -54,6 +54,30 @@ var TaxBrackets2024 = map[models.FilingStatus][]FederalTaxBracket{
 	},
 }
 
+// LongTermCapitalGainsBrackets2024 contains 2024 federal long-term capital gains brackets.
+var LongTermCapitalGainsBrackets2024 = map[models.FilingStatus][]FederalTaxBracket{
+	models.FilingSingle: {
+		{0, 47025, 0.00},
+		{47025, 518900, 0.15},
+		{518900, math.MaxFloat64, 0.20},
+	},
+	models.FilingMarriedJoint: {
+		{0, 94050, 0.00},
+		{94050, 583750, 0.15},
+		{583750, math.MaxFloat64, 0.20},
+	},
+	models.FilingMarriedSeparate: {
+		{0, 47025, 0.00},
+		{47025, 291850, 0.15},
+		{291850, math.MaxFloat64, 0.20},
+	},
+	models.FilingHeadOfHousehold: {
+		{0, 63000, 0.00},
+		{63000, 551350, 0.15},
+		{551350, math.MaxFloat64, 0.20},
+	},
+}
+
 // StandardDeduction2024 contains 2024 standard deductions by filing status
 var StandardDeduction2024 = map[models.FilingStatus]float64{
 	models.FilingSingle:          14600,
@@ -113,6 +137,33 @@ func (tc *TaxCalculator) GetAdjustedBrackets(yearsFromBase int) []FederalTaxBrac
 	return adjusted
 }
 
+func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase int) []FederalTaxBracket {
+	baseBrackets := LongTermCapitalGainsBrackets2024[tc.FilingStatus]
+	if baseBrackets == nil {
+		baseBrackets = LongTermCapitalGainsBrackets2024[models.FilingMarriedJoint]
+	}
+
+	if yearsFromBase <= 0 {
+		return baseBrackets
+	}
+
+	inflationFactor := math.Pow(1+tc.InflationRate/100, float64(yearsFromBase))
+	adjusted := make([]FederalTaxBracket, len(baseBrackets))
+
+	for i, bracket := range baseBrackets {
+		adjusted[i] = FederalTaxBracket{
+			MinIncome: bracket.MinIncome * inflationFactor,
+			MaxIncome: bracket.MaxIncome,
+			Rate:      bracket.Rate,
+		}
+		if bracket.MaxIncome < math.MaxFloat64 {
+			adjusted[i].MaxIncome = bracket.MaxIncome * inflationFactor
+		}
+	}
+
+	return adjusted
+}
+
 // GetAdjustedStandardDeduction returns standard deduction adjusted for inflation
 func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64 {
 	baseDeduction := StandardDeduction2024[tc.FilingStatus]
@@ -145,29 +196,35 @@ func (tc *TaxCalculator) CalculateFederalTax(grossIncome float64, yearsFromBase 
 
 	brackets := tc.GetAdjustedBrackets(yearsFromBase)
 
-	var totalTax float64
-	var currentBracketRate float64
+	totalTax, currentBracketRate := calculateFederalTaxOnTaxableIncome(taxableIncome, brackets)
+
+	effectiveRate = (totalTax / grossIncome) * 100
+	marginalBracket = currentBracketRate * 100
+
+	return totalTax, effectiveRate, marginalBracket
+}
+
+func calculateFederalTaxOnTaxableIncome(taxableIncome float64, brackets []FederalTaxBracket) (tax float64, marginalRate float64) {
+	if taxableIncome <= 0 {
+		return 0, 0
+	}
 
 	for _, bracket := range brackets {
 		if taxableIncome <= bracket.MinIncome {
 			break
 		}
 
-		// Calculate taxable amount in this bracket
 		bracketMin := bracket.MinIncome
 		bracketMax := math.Min(bracket.MaxIncome, taxableIncome)
 		taxableInBracket := bracketMax - bracketMin
 
 		if taxableInBracket > 0 {
-			totalTax += taxableInBracket * bracket.Rate
-			currentBracketRate = bracket.Rate
+			tax += taxableInBracket * bracket.Rate
+			marginalRate = bracket.Rate
 		}
 	}
 
-	effectiveRate = (totalTax / grossIncome) * 100
-	marginalBracket = currentBracketRate * 100
-
-	return totalTax, effectiveRate, marginalBracket
+	return tax, marginalRate
 }
 
 // CalculateStateTax computes state income tax
@@ -193,6 +250,41 @@ func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase in
 		effectiveRate = (totalTax / grossIncome) * 100
 	}
 
+	return federalTax, stateTax, totalTax, effectiveRate
+}
+
+func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int) (federalTax, stateTax, totalTax, effectiveRate float64) {
+	totalGrossIncome := ordinaryIncome + qualifiedDividends + longTermCapitalGains
+	if totalGrossIncome <= 0 {
+		return 0, 0, 0, 0
+	}
+
+	standardDeduction := tc.GetAdjustedStandardDeduction(yearsFromBase)
+	taxableOrdinaryIncome := math.Max(0, ordinaryIncome-standardDeduction)
+	remainingDeduction := math.Max(0, standardDeduction-ordinaryIncome)
+	taxableInvestmentIncome := math.Max(0, qualifiedDividends+longTermCapitalGains-remainingDeduction)
+
+	brackets := tc.GetAdjustedBrackets(yearsFromBase)
+	ordinaryFederalTax, _ := calculateFederalTaxOnTaxableIncome(taxableOrdinaryIncome, brackets)
+
+	investmentFederalTax := 0.0
+	if taxableInvestmentIncome > 0 {
+		totalTaxableIncome := taxableOrdinaryIncome + taxableInvestmentIncome
+		ltcgBrackets := tc.GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase)
+		for _, bracket := range ltcgBrackets {
+			start := math.Max(taxableOrdinaryIncome, bracket.MinIncome)
+			end := math.Min(totalTaxableIncome, bracket.MaxIncome)
+			if end > start {
+				investmentFederalTax += (end - start) * bracket.Rate
+			}
+		}
+	}
+
+	stateTaxableIncome := taxableOrdinaryIncome + taxableInvestmentIncome
+	stateTax = tc.CalculateStateTax(stateTaxableIncome)
+	federalTax = ordinaryFederalTax + investmentFederalTax
+	totalTax = federalTax + stateTax
+	effectiveRate = (totalTax / totalGrossIncome) * 100
 	return federalTax, stateTax, totalTax, effectiveRate
 }
 

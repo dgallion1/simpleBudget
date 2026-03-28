@@ -3,6 +3,7 @@
 ## v1.8.1 - Code Review Fixes
 
 ### Bug Fixes
+- **Cumulative balance chart wrong**: Chart used raw `Amount` sign to determine income vs expense, but some bank CSVs export outflows as positive numbers. Now uses `TransactionType` field to determine direction, so outflows are always subtracted regardless of amount sign
 - **Backtest depletion sort**: `yearsUntilDepletion` returned raw calendar year instead of 0 when `DepletionYear < StartYear`, causing wildly wrong sort ordering in edge cases
 - **URL parameter double-append**: Chart loading in `charts.js` and `dashboard.js` used string concatenation (`url + '?' + params`) which produced malformed URLs when the base URL already contained a query string; now uses `URL`/`URLSearchParams` for safe merging
 - **Chart fetch error handling**: `loadChart` and `refreshCharts` now check `response.ok` before parsing JSON, preventing silent failures that left "Loading chart..." displayed forever

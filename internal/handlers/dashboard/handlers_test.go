@@ -590,6 +590,32 @@ func TestBuildCumulativeChartData_PositiveBalance(t *testing.T) {
 	}
 }
 
+func TestBuildCumulativeChartData_PositiveAmountOutflows(t *testing.T) {
+	// Some bank CSVs export outflows as positive amounts; the chart must
+	// use TransactionType (not sign) to determine direction.
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", 1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Food", 500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+	)
+
+	result := buildCumulativeChartData(ts)
+	data := result["data"].([]map[string]interface{})
+	trace := data[0]
+	cumulative := trace["y"].([]float64)
+
+	// Day 1: +5000, Day 5: 5000-1500=3500, Day 10: 3500-500=3000
+	if !floatEqual(cumulative[0], 5000) {
+		t.Errorf("cumulative[0] = %v, want 5000", cumulative[0])
+	}
+	if !floatEqual(cumulative[1], 3500) {
+		t.Errorf("cumulative[1] = %v, want 3500", cumulative[1])
+	}
+	if !floatEqual(cumulative[2], 3000) {
+		t.Errorf("cumulative[2] = %v, want 3000", cumulative[2])
+	}
+}
+
 func TestBuildCumulativeChartData_NegativeBalance(t *testing.T) {
 	ts := makeTransactionSet(
 		makeTransaction("Salary", 1000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),

@@ -870,7 +870,14 @@ func buildCumulativeChartData(ts *models.TransactionSet) map[string]interface{} 
 	var runningTotal float64
 
 	for _, d := range dates {
-		dayTotal := daily[d].SumAmount()
+		var dayTotal float64
+		for _, t := range daily[d].Transactions {
+			if t.TransactionType == models.Income {
+				dayTotal += math.Abs(t.Amount)
+			} else {
+				dayTotal -= math.Abs(t.Amount)
+			}
+		}
 		runningTotal += dayTotal
 		dateLabels = append(dateLabels, d)
 		cumulative = append(cumulative, runningTotal)

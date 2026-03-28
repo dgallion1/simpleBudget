@@ -15,9 +15,10 @@ import (
 	"regexp"
 	"strings"
 
+	"time"
+
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-	"time"
 )
 
 // Renderer handles template rendering

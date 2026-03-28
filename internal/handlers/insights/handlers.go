@@ -187,11 +187,11 @@ func calculateInsights(allData, filtered *models.TransactionSet, startDate, endD
 	}
 }
 
-// mergeSimlarGroups consolidates transaction groups where descriptions refer to
+// mergeSimilarGroups consolidates transaction groups where descriptions refer to
 // the same vendor. It strips common suffixes like ".com", ".net", etc. and then
 // checks if the shorter stripped name is a prefix of the longer one. When a match
 // is found, transactions are merged under the shorter (more canonical) description.
-func mergeSimlarGroups(groups map[string][]models.Transaction) map[string][]models.Transaction {
+func mergeSimilarGroups(groups map[string][]models.Transaction) map[string][]models.Transaction {
 	// Strip common domain/URL suffixes for comparison
 	strip := func(s string) string {
 		s = strings.TrimSuffix(s, ".com")
@@ -268,7 +268,7 @@ func detectRecurringPaymentsAt(ts *models.TransactionSet, referenceDate time.Tim
 	// Merge groups with fuzzy matching: if one description contains another,
 	// combine them under the shorter (canonical) name. This handles cases like
 	// "lucid" and "lucidmotors.com" referring to the same vendor.
-	groups = mergeSimlarGroups(groups)
+	groups = mergeSimilarGroups(groups)
 
 	// Track which descriptions matched strict criteria
 	strictMatches := make(map[string]bool)

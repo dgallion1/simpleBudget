@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.8.1 - Code Review Fixes
+
+### Bug Fixes
+- **Backtest depletion sort**: `yearsUntilDepletion` returned raw calendar year instead of 0 when `DepletionYear < StartYear`, causing wildly wrong sort ordering in edge cases
+- **URL parameter double-append**: Chart loading in `charts.js` and `dashboard.js` used string concatenation (`url + '?' + params`) which produced malformed URLs when the base URL already contained a query string; now uses `URL`/`URLSearchParams` for safe merging
+- **Chart fetch error handling**: `loadChart` and `refreshCharts` now check `response.ok` before parsing JSON, preventing silent failures that left "Loading chart..." displayed forever
+- **Explorer redirect loop**: Filter persistence restore could loop infinitely if saved params were invalid; added a one-shot guard via sessionStorage
+- **Dead `min()` function**: Removed user-defined `min(a, b int)` in `backtest.go` that shadowed the Go builtin
+
+### Security Hardening
+- **Alias input validation**: `handleAlias` now validates hash length (max 128) and display name length (max 200) to prevent storage bloat from malicious input
+- **File delete path traversal**: `handleFileDelete` now reuses `sanitizeUploadFilename` instead of duplicated inline path-traversal checks
+
+### Accessibility
+- Projection chart toggle group now has `aria-label` and buttons track `aria-pressed` state
+- Explorer step-back/forward buttons now have `aria-label` for screen reader users
+
+### Code Quality
+- Removed dead code: `portfolioBalances`, `monthlyAccountReturns`, `applyPortfolioGrowth`, `executePortfolioCashFlow`, `reinvestRequiredRMD`, `unrealizedGains` — superseded by tax-aware equivalents
+- Renamed `mergeSimlarGroups` → `mergeSimilarGroups` (typo fix)
+- Fixed import grouping in `render.go` (stdlib before third-party)
+- Added trailing newlines to `expense-sources-list.html` and `income-sources-list.html`
+- Alias endpoint returns `204 No Content` instead of empty `200 OK`
+
 ## v1.8.0 - Dashboard Redesign
 
 ### Changes

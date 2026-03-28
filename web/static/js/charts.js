@@ -187,14 +187,16 @@ function loadChart(chartElement) {
     // Include date filter form params if available (dashboard page)
     var form = document.getElementById('date-filter-form');
     if (form) {
-        var params = new URLSearchParams(new FormData(form)).toString();
-        if (params) {
-            url += '?' + params;
-        }
+        var urlObj = new URL(url, window.location.origin);
+        new FormData(form).forEach(function(v, k) { urlObj.searchParams.set(k, v); });
+        url = urlObj.toString();
     }
 
     fetch(url)
-        .then(function(response) { return response.json(); })
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
         .then(function(data) { renderChart(chartElement.id, data); })
         .catch(function(e) { console.error('Error loading chart:', e); });
 }
@@ -204,10 +206,84 @@ function loadAllCharts() {
     document.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(loadChart);
 }
 
+function formatCurrency(value) {
+    const amount = Number(value || 0);
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0
+    }).format(amount);
+}
+
+function updateProjectionDisplayMode(card, mode) {
+    if (!card) return;
+    const normalized = mode === 'real' ? 'real' : 'nominal';
+    const chart = card.querySelector('#chart-projection');
+    if (!chart) return;
+
+    const baseUrl = card.getAttribute('data-chart-base-url') || '/whatif/chart/projection';
+    chart.setAttribute('data-chart-url', `${baseUrl}?display_dollars=${normalized}`);
+
+    card.querySelectorAll('.projection-display-toggle').forEach(function(btn) {
+        const active = btn.getAttribute('data-display-dollars') === normalized;
+        btn.classList.toggle('bg-indigo-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('dark:bg-gray-700', !active);
+        btn.classList.toggle('text-gray-600', !active);
+        btn.classList.toggle('dark:text-gray-200', !active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    const balanceLabel = card.querySelector('#projection-final-balance-label');
+    if (balanceLabel) {
+        balanceLabel.textContent = normalized === 'real' ? 'Final Balance (Today\'s Dollars)' : 'Final Balance (Nominal)';
+    }
+
+    const balanceValue = card.querySelector('#projection-final-balance-value');
+    if (balanceValue) {
+        const rawValue = normalized === 'real'
+            ? card.getAttribute('data-final-balance-real')
+            : card.getAttribute('data-final-balance-nominal');
+        balanceValue.textContent = formatCurrency(rawValue);
+    }
+
+    const caption = card.querySelector('#projection-display-caption');
+    if (caption) {
+        caption.textContent = normalized === 'real'
+            ? (caption.getAttribute('data-caption-real') || '')
+            : (caption.getAttribute('data-caption-nominal') || '');
+    }
+
+    if (window.localStorage) {
+        window.localStorage.setItem('whatifProjectionDisplayDollars', normalized);
+    }
+
+    loadChart(chart);
+}
+
+function initWhatIfProjectionCards(root) {
+    const scope = root || document;
+    scope.querySelectorAll('[data-whatif-projection-card]').forEach(function(card) {
+        card.querySelectorAll('.projection-display-toggle').forEach(function(btn) {
+            btn.onclick = function() {
+                updateProjectionDisplayMode(card, btn.getAttribute('data-display-dollars'));
+            };
+        });
+
+        let savedMode = 'nominal';
+        if (window.localStorage) {
+            savedMode = window.localStorage.getItem('whatifProjectionDisplayDollars') || 'nominal';
+        }
+        updateProjectionDisplayMode(card, savedMode);
+    });
+}
+
 // Reload charts after whatif-results is swapped
 document.addEventListener('htmx:afterSettle', function(evt) {
     const target = evt.detail.target;
     if (target && target.id === 'whatif-results') {
+        initWhatIfProjectionCards(target);
         // Find any chart elements that need to be loaded
         target.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(loadChart);
     }
@@ -236,6 +312,7 @@ function initSparklines() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Charts.js initialized');
     initSparklines();
+    initWhatIfProjectionCards(document);
     loadAllCharts();
 });
 

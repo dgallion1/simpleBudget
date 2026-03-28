@@ -475,8 +475,9 @@ func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	filename = decodedFilename
 
-	// Validate filename (prevent path traversal)
-	if strings.Contains(filename, "/") || strings.Contains(filename, "\\") || strings.Contains(filename, "..") {
+	// Validate filename (reuse sanitizer to prevent path traversal)
+	filename, err = sanitizeUploadFilename(filename)
+	if err != nil {
 		http.Error(w, "Invalid filename", http.StatusBadRequest)
 		return
 	}
@@ -520,8 +521,13 @@ func handleAlias(w http.ResponseWriter, r *http.Request) {
 	hash := r.FormValue("hash")
 	displayName := strings.TrimSpace(r.FormValue("display_name"))
 
-	if hash == "" {
-		http.Error(w, "missing hash", http.StatusBadRequest)
+	if hash == "" || len(hash) > 128 {
+		http.Error(w, "invalid hash", http.StatusBadRequest)
+		return
+	}
+
+	if len(displayName) > 200 {
+		http.Error(w, "display name too long", http.StatusBadRequest)
 		return
 	}
 
@@ -532,8 +538,7 @@ func handleAlias(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return just the updated description cell content
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // sortTransactions sorts the transaction set by the specified field

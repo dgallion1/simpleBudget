@@ -62,7 +62,7 @@
                     <!-- Step Back/Forward & Quick Date Range Shortcuts -->
                     <div class="flex items-end mt-6">
                         <div class="flex gap-1 items-center" id="date-range-buttons">
-                            <button type="button" onclick="stepDateRange(-1)" title="Step back"
+                            <button type="button" onclick="stepDateRange(-1)" title="Step back" aria-label="Step back"
                                 class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
@@ -76,7 +76,7 @@
                                 class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
                             <button type="button" onclick="setDateRange(0)" data-months="0"
                                 class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
-                            <button type="button" onclick="stepDateRange(1)" title="Step forward"
+                            <button type="button" onclick="stepDateRange(1)" title="Step forward" aria-label="Step forward"
                                 class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -137,12 +137,15 @@
         // On bare /explorer load (no query params), restore saved filters
         if (window.location.search === '' || window.location.search === '?') {
             const saved = sessionStorage.getItem(STORAGE_KEY);
-            if (saved) {
+            if (saved && !sessionStorage.getItem(STORAGE_KEY + '_restoring')) {
+                sessionStorage.setItem(STORAGE_KEY + '_restoring', '1');
                 window.location.replace('/explorer?' + saved);
                 return; // stop further script execution during redirect
             }
+            sessionStorage.removeItem(STORAGE_KEY + '_restoring');
         } else {
             // We have query params - save them (strip leading ?)
+            sessionStorage.removeItem(STORAGE_KEY + '_restoring');
             sessionStorage.setItem(STORAGE_KEY, window.location.search.substring(1));
         }
 

@@ -23,7 +23,7 @@ func TestMergeSimlarGroups_SubstringMatch(t *testing.T) {
 		"lucid":           {txn("lucid", 1580, 30), txn("lucid", 1580, 60)},
 		"lucidmotors.com": {txn("lucidmotors.com", 1580, 90)},
 	}
-	merged := mergeSimlarGroups(groups)
+	merged := mergeSimilarGroups(groups)
 
 	if len(merged) != 1 {
 		t.Fatalf("expected 1 group, got %d: %v", len(merged), keys(merged))
@@ -40,7 +40,7 @@ func TestMergeSimlarGroups_DotComStripping(t *testing.T) {
 		"netflix":     {txn("netflix", 15, 30)},
 		"netflix.com": {txn("netflix.com", 15, 60)},
 	}
-	merged := mergeSimlarGroups(groups)
+	merged := mergeSimilarGroups(groups)
 
 	if len(merged) != 1 {
 		t.Fatalf("expected 1 group, got %d: %v", len(merged), keys(merged))
@@ -58,7 +58,7 @@ func TestMergeSimlarGroups_NoFalsePositives(t *testing.T) {
 		"at&t":    {txn("at&t", 166, 30)},
 		"openai":  {txn("openai", 20, 30)},
 	}
-	merged := mergeSimlarGroups(groups)
+	merged := mergeSimilarGroups(groups)
 
 	if len(merged) != 3 {
 		t.Fatalf("expected 3 separate groups, got %d: %v", len(merged), keys(merged))
@@ -70,7 +70,7 @@ func TestMergeSimlarGroups_PreservesCanonicalName(t *testing.T) {
 		"lucidmotors.com": {txn("lucidmotors.com", 1580, 90)},
 		"lucid":           {txn("lucid", 1580, 30)},
 	}
-	merged := mergeSimlarGroups(groups)
+	merged := mergeSimilarGroups(groups)
 
 	if _, ok := merged["lucid"]; !ok {
 		t.Errorf("expected canonical key 'lucid', got keys: %v", keys(merged))
@@ -93,7 +93,7 @@ func TestMergeSimlarGroups_MultipleSuffixes(t *testing.T) {
 				tt.a: {txn(tt.a, 10, 30)},
 				tt.b: {txn(tt.b, 10, 60)},
 			}
-			merged := mergeSimlarGroups(groups)
+			merged := mergeSimilarGroups(groups)
 			if len(merged) != 1 {
 				t.Errorf("expected 1 group for %q and %q, got %d", tt.a, tt.b, len(merged))
 			}
@@ -102,7 +102,7 @@ func TestMergeSimlarGroups_MultipleSuffixes(t *testing.T) {
 }
 
 func TestMergeSimlarGroups_EmptyInput(t *testing.T) {
-	merged := mergeSimlarGroups(map[string][]models.Transaction{})
+	merged := mergeSimilarGroups(map[string][]models.Transaction{})
 	if len(merged) != 0 {
 		t.Errorf("expected 0 groups, got %d", len(merged))
 	}
@@ -112,7 +112,7 @@ func TestMergeSimlarGroups_SingleGroup(t *testing.T) {
 	groups := map[string][]models.Transaction{
 		"netflix": {txn("netflix", 15, 30), txn("netflix", 15, 60)},
 	}
-	merged := mergeSimlarGroups(groups)
+	merged := mergeSimilarGroups(groups)
 	if len(merged) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(merged))
 	}

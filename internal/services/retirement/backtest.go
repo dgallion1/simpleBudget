@@ -26,7 +26,7 @@ func yearsUntilDepletion(result HistoricalSequenceResult) int {
 		return 0
 	}
 	if result.DepletionYear < result.StartYear {
-		return result.DepletionYear
+		return 0
 	}
 	return result.DepletionYear - result.StartYear
 }
@@ -150,10 +150,12 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	// Initialize 3-bucket model
 	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
-	taxableBalance := s.PortfolioValue - taxDeferredBalance - rothBalance
+	taxableAccount := newTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
 
-	currentLivingExpenses := s.MonthlyLivingExpenses
+	currentLivingExpenses := calculateLivingExpensesAtMonth(s, 0)
 	var monthlyRMD float64
+	var taxState projectionTaxAccumulator
+	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
 	peakBalance := s.PortfolioValue
 	lowestBalance := s.PortfolioValue
@@ -162,6 +164,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	totalWithdrawals := 0.0
 	totalBalance := s.PortfolioValue
 	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
+	inflationRate := 0.0
 
 	// Get per-account asset allocations (consistent with main projection and Monte Carlo)
 	tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
@@ -181,11 +184,13 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
 		olderAge := s.GetOlderAge() + currentYear
 		bigTicketExpenseThisMonth := 0.0
+		rothConversionThisMonth := 0.0
 		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
 		penaltyRate := earlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			taxState = projectionTaxAccumulator{}
 			// Check for chain transition
 			if len(c.ResolvedChain) > 0 {
 				newIdx, prepared := c.nextChainTransition(currentYear, nextChainIdx, primarySettings)
@@ -194,13 +199,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 					s = activeSettings
 					nextChainIdx = newIdx
 
-					// Recalculate living expenses from new settings
-					if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-						phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
-						currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
-					} else {
-						currentLivingExpenses = s.MonthlyLivingExpenses * cumulativeInflation
-					}
+					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
+					taxableAccount.syncAssumptions(s)
 
 					// Refresh cached allocation variables
 					tdStock, tdBond, tdCash = s.GetTaxDeferredAllocation()
@@ -208,25 +208,12 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 					taxStock, taxBond, taxCash = s.GetTaxableAllocation()
 				}
 			}
+			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
+			taxableAccount.RealizedGainsYTD = 0
 
 			// Get this year's historical data
 			yearData := sequence[currentYear]
-			inflationRate := yearData.InflationRate / 100
-
-			// Track cumulative inflation for real balance calculation
-			if m > 0 {
-				cumulativeInflation *= (1 + inflationRate)
-			}
-
-			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-				phaseMultiplier := s.GetSpendingMultiplier(phaseAge)
-				// Use cumulative inflation (properly tracked above) for spending phase calculations
-				currentLivingExpenses = s.MonthlyLivingExpenses * phaseMultiplier * cumulativeInflation
-			} else {
-				if m > 0 {
-					currentLivingExpenses *= (1 + inflationRate)
-				}
-			}
+			inflationRate = yearData.InflationRate / 100
 
 			// Calculate RMD
 			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
@@ -237,27 +224,31 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			}
 
 			// Process Roth conversions
-			if s.RothConversion != nil && s.RothConversion.Enabled && taxDeferredBalance > 0 {
-				if currentYear >= s.RothConversion.StartYear &&
-					(s.RothConversion.EndYear == 0 || currentYear <= s.RothConversion.EndYear) {
-					conversionAmount := math.Min(s.RothConversion.AnnualAmount, taxDeferredBalance)
-					if conversionAmount > 0 {
-						taxDeferredBalance -= conversionAmount
-						rothBalance += conversionAmount
-					}
-				}
+			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
+				taxDeferredBalance -= conversionAmount
+				rothBalance += conversionAmount
+				rothConversionThisMonth = conversionAmount
 			}
 
 			// Process big ticket items
 			for _, item := range s.BigTicketItems {
 				if item.Year == currentYear {
 					if item.Type == models.BigTicketIncome {
-						taxableBalance += item.Amount
+						taxableAccount.addCash(item.Amount)
 					} else {
-						remaining := applyBigTicketExpense(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableBalance, &rothBalance)
+						remaining := applyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 						bigTicketExpenseThisMonth += remaining
 					}
 				}
+			}
+		}
+
+		if m > 0 {
+			cumulativeInflation *= monthlyCompoundFactorFromDecimal(inflationRate)
+			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+				currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
+			} else {
+				currentLivingExpenses *= monthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
 			}
 		}
 
@@ -273,9 +264,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			totalExpenses += expenseAmount
 		}
 
-		// Calculate income
-		totalIncome := c.CalculateTotalIncome(m)
-		neededFromPortfolio := totalExpenses - totalIncome
+		incomeBreakdown := calculateMonthlyIncomeBreakdown(s, m)
 
 		// Get this year's returns and calculate per-account blended returns
 		yearData := sequence[currentYear]
@@ -291,33 +280,39 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		// Convert to monthly using geometric formula (not simple division)
 		tdMonthlyReturn := math.Pow(1+tdAnnualReturn, 1.0/12) - 1
 		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
-		taxMonthlyReturn := math.Pow(1+taxAnnualReturn, 1.0/12) - 1
+		taxableComponents := buildTaxableReturnComponents(taxAnnualReturn, s)
+		monthResult := executeTaxAwarePortfolioMonth(
+			totalExpenses,
+			incomeBreakdown,
+			monthlyRMD,
+			allowTaxDeferredWithdrawal,
+			penaltyRate,
+			&taxDeferredBalance,
+			&taxableAccount,
+			&rothBalance,
+			tdMonthlyReturn,
+			rothMonthlyReturn,
+			taxableComponents,
+			s.GetProjectionTiming(),
+			taxState,
+			taxCalculator,
+			currentYear,
+			m%12,
+			rothConversionThisMonth,
+		)
+		taxState.applyMonth(
+			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
+			incomeBreakdown.SocialSecurityIncome,
+			monthResult.CashFlow.WithdrawalFromTaxDeferred,
+			monthResult.TaxableQualifiedDividends,
+			monthResult.TaxableCapitalGains,
+			rothConversionThisMonth,
+			monthResult.TaxesPaid,
+		)
+		totalWithdrawals += monthResult.CashFlow.GrossWithdrawal()
+		shortfall := monthResult.Shortfall
 
-		// Apply returns to each account based on its allocation
-		taxDeferredBalance *= (1 + tdMonthlyReturn)
-		rothBalance *= (1 + rothMonthlyReturn)
-		taxableBalance *= (1 + taxMonthlyReturn)
-
-		// Process withdrawals
-		shortfall := 0.0
-		if neededFromPortfolio > 0 {
-			withdrawal := withdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableBalance, &rothBalance)
-			totalWithdrawals += withdrawal.ActualWithdrawal
-			shortfall = withdrawal.RemainingNeed
-			// Enforce remaining RMD obligation
-			unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
-			if unmetRMD > 0 {
-				totalWithdrawals += reinvestRequiredRMD(unmetRMD, &taxDeferredBalance, &taxableBalance)
-			}
-		} else {
-			// Surplus income: reinvest into taxable account
-			if neededFromPortfolio < 0 {
-				taxableBalance += math.Abs(neededFromPortfolio)
-			}
-			totalWithdrawals += reinvestRequiredRMD(monthlyRMD, &taxDeferredBalance, &taxableBalance)
-		}
-
-		totalBalance = taxDeferredBalance + rothBalance + taxableBalance
+		totalBalance = taxDeferredBalance + rothBalance + taxableAccount.MarketValue
 		if shortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
 			result.Survives = false
 			result.DepletionYear = startYear + currentYear
@@ -364,9 +359,3 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	return result
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

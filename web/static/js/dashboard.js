@@ -56,8 +56,13 @@ function refreshCharts() {
     const params = new URLSearchParams(new FormData(form)).toString();
 
     document.querySelectorAll('.chart-container[data-chart-url]').forEach(function(el) {
-        fetch(el.getAttribute('data-chart-url') + '?' + params)
-            .then(function(resp) { return resp.json(); })
+        var urlObj = new URL(el.getAttribute('data-chart-url'), window.location.origin);
+        new URLSearchParams(params).forEach(function(v, k) { urlObj.searchParams.set(k, v); });
+        fetch(urlObj.toString())
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                return resp.json();
+            })
             .then(function(data) { renderChart(el.id, data); })
             .catch(function(e) { console.error('Error loading chart ' + el.id + ':', e); });
     });

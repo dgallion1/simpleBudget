@@ -23,6 +23,7 @@
         {{else}}
             Currently using {{printf "%.1f" .Settings.SpendingDeclineRate}}% annual decline rate.
         {{end}}
+        Dollar amounts are in today's dollars; inflation is applied during projection.
     </p>
 
     <div id="spending-phases-config" class="{{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}opacity-50 pointer-events-none{{end}}">

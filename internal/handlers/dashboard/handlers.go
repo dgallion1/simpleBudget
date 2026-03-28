@@ -631,8 +631,8 @@ func buildMonthlyChartData(ts *models.TransactionSet) map[string]interface{} {
 	income := ts.FilterByType(models.Income)
 	outflows := ts.FilterByType(models.Outflow)
 
-	monthlyIncome := income.MonthlyTotals()
-	monthlyOutflows := outflows.MonthlyTotals()
+	monthlyIncome := income.GroupByMonth()
+	monthlyOutflows := outflows.GroupByMonth()
 
 	// Combine and sort months
 	monthSet := make(map[string]bool)
@@ -651,8 +651,16 @@ func buildMonthlyChartData(ts *models.TransactionSet) map[string]interface{} {
 
 	var incomeValues, expenseValues []float64
 	for _, m := range months {
-		incomeValues = append(incomeValues, monthlyIncome[m])
-		expenseValues = append(expenseValues, math.Abs(monthlyOutflows[m]))
+		if inc, ok := monthlyIncome[m]; ok {
+			incomeValues = append(incomeValues, inc.SumAmount())
+		} else {
+			incomeValues = append(incomeValues, 0)
+		}
+		if exp, ok := monthlyOutflows[m]; ok {
+			expenseValues = append(expenseValues, exp.SumAbsAmount())
+		} else {
+			expenseValues = append(expenseValues, 0)
+		}
 	}
 
 	return map[string]interface{}{
@@ -732,13 +740,19 @@ func buildCategoryChartData(ts *models.TransactionSet) map[string]interface{} {
 
 func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface{} {
 	outflows := ts.FilterByType(models.Outflow)
-	monthlyOutflows := outflows.MonthlyTotals()
+	monthlyOutflowSets := outflows.GroupByMonth()
 
+	// Build sorted month list and per-month absolute totals
 	var months []string
-	for m := range monthlyOutflows {
+	for m := range monthlyOutflowSets {
 		months = append(months, m)
 	}
 	sort.Strings(months)
+
+	monthlyTotals := make(map[string]float64, len(months))
+	for _, m := range months {
+		monthlyTotals[m] = monthlyOutflowSets[m].SumAbsAmount()
+	}
 
 	// Need at least 2 months to show change
 	if len(months) < 2 {
@@ -756,8 +770,8 @@ func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface
 	var prevAmounts []float64
 
 	for i := 1; i < len(months); i++ {
-		prev := math.Abs(monthlyOutflows[months[i-1]])
-		curr := math.Abs(monthlyOutflows[months[i]])
+		prev := monthlyTotals[months[i-1]]
+		curr := monthlyTotals[months[i]]
 
 		var pctChange float64
 		if prev > 0 {

@@ -196,6 +196,7 @@
 **Acceptance criteria:**
 - Taxable-account tax drag is reflected in the projection.
 - Realized gains and dividends are visible in tests and month-level projection data.
+- Monte Carlo and historical backtest use the same taxable-account state model as the deterministic projection.
 
 ---
 
@@ -256,6 +257,7 @@ This order gets the biggest trust improvements into the app earlier, while postp
 ## Verification Checklist
 
 - [x] `go test ./internal/services/retirement ./internal/models ./internal/handlers/whatif ./internal/templates`
+- [x] `go test ./...`
 - [ ] Manually verify the current live scenario in `data/settings/whatif.json` still renders and that the chart matches the backend data series.
 - [ ] Verify that nominal and real chart series reconcile using `PortfolioBalanceReal = PortfolioBalance / CumulativeInflation`.
 - [ ] Verify that enabling taxes lowers or leaves unchanged the final balance for scenarios with taxable income.

@@ -18,6 +18,8 @@
 ### Bug Fixes
 - **Budget analysis subtitle**: Corrected subtitle to clarify that steady-state values are in future nominal dollars, not today's dollars.
 - **Qualified dividend migration**: Settings migration now checks for JSON field presence instead of zero-value sentinel, preventing silent override when user intentionally sets qualified share to 0%.
+- **Dashboard monthly chart wrong totals**: Monthly Income vs Expenses chart used `MonthlyTotals()` which summed raw transaction amounts then applied `math.Abs` to the monthly total. Mixed-sign outflow transactions within a month cancelled out, showing ~$5,500 instead of ~$27,800. Switched to `GroupByMonth()` + `SumAbsAmount()` to match KPI calculations. Same fix applied to Spending Trend chart.
+- **Inflation disclaimer**: Added helper text to Monthly Living Expenses slider and Retirement Spending Phases card clarifying values are in today's dollars and inflation is applied during projection.
 
 ## v1.8.1 - Code Review Fixes
 

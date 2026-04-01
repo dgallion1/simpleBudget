@@ -9,7 +9,11 @@
 - **templates**: Added tests — 100% coverage (all 21 helper functions + render infrastructure)
 - **models**: Added tests for transactions, healthcare, whatif, income sources, user profile — 99.5% coverage (2 unreachable dead-code guards)
 - **version**: Added 12 tests — 89.7% coverage (remaining is VCS metadata only available at build time)
-- Overall project coverage: 44.5% → 54.3%
+- **dataloader**: Added 40+ tests — 99.6% coverage (remaining is unreachable json.MarshalIndent on map[string]string)
+- **dashboard**: Added 60+ HTTP handler tests — 100% coverage (all chart types, KPIs, drilldowns, exports)
+- **insights**: Added 62+ tests — 98.2% coverage (all 6 handlers + recurring detection, trends, velocity)
+- **retirement**: Added coverage gap tests — 98.3% coverage (income calc, tax estimation, Roth conversion, withdrawals, big-ticket expenses, chain settings, budget fit, threshold analysis)
+- Overall project coverage: 44.5% → 63.5%
 
 ## v1.9.0 - Projection Realism & Explainability
 

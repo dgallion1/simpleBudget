@@ -1,12 +1,22 @@
 package insights
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"budget2/internal/models"
+	"budget2/internal/services/dataloader"
+	"budget2/internal/services/storage"
+	"budget2/internal/templates"
+	"budget2/internal/testutil"
 )
 
 func txn(desc string, amount float64, daysAgo int) models.Transaction {
@@ -904,4 +914,1365 @@ func keys(m map[string][]models.Transaction) []string {
 		ks = append(ks, k)
 	}
 	return ks
+}
+
+// --- Additional coverage tests ---
+
+// TestIsSubscription_UnknownFrequency covers the return false at end of isSubscription
+func TestIsSubscription_UnknownFrequency(t *testing.T) {
+	rp := models.RecurringPayment{Description: "some vendor", Frequency: "weekly"}
+	if isSubscription(rp) {
+		t.Error("weekly frequency should not be classified as subscription")
+	}
+}
+
+// TestIsSubscription_YearlyAndQuarterly covers the yearly and quarterly branches
+func TestIsSubscription_YearlyAndQuarterly(t *testing.T) {
+	tests := []struct {
+		desc string
+		freq string
+		want bool
+	}{
+		{"annual domain", "yearly", true},
+		{"quarterly report", "quarterly", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.freq, func(t *testing.T) {
+			rp := models.RecurringPayment{Description: tt.desc, Frequency: tt.freq}
+			if got := isSubscription(rp); got != tt.want {
+				t.Errorf("isSubscription(%q, %q) = %v, want %v", tt.desc, tt.freq, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRecurringFreshnessWindow covers all switch branches
+func TestRecurringFreshnessWindow(t *testing.T) {
+	tests := []struct {
+		intervalDays float64
+		expected     float64
+	}{
+		{-1, 90},   // <= 0
+		{0, 90},    // <= 0
+		{7, 21},    // <= 9
+		{9, 21},    // <= 9
+		{14, 45},   // <= 16
+		{16, 45},   // <= 16
+		{30, 90},   // <= 35
+		{35, 90},   // <= 35
+		{90, 180},  // <= 95
+		{95, 180},  // <= 95
+		{365, 455}, // default
+		{500, 455}, // default
+	}
+	for _, tt := range tests {
+		got := recurringFreshnessWindow(tt.intervalDays)
+		if got != tt.expected {
+			t.Errorf("recurringFreshnessWindow(%.0f) = %.0f, want %.0f", tt.intervalDays, got, tt.expected)
+		}
+	}
+}
+
+// TestRecurringReferenceDate covers the time.Now() fallback
+func TestRecurringReferenceDate_NilTSZeroRef(t *testing.T) {
+	result := recurringReferenceDate(nil, time.Time{})
+	// Should return something close to now
+	if time.Since(result) > time.Second {
+		t.Errorf("expected time close to now, got %v", result)
+	}
+}
+
+func TestRecurringReferenceDate_ZeroRefUsesMaxDate(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Date: time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+	result := recurringReferenceDate(ts, time.Time{})
+	if !result.Equal(time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("expected max date, got %v", result)
+	}
+}
+
+func TestRecurringReferenceDate_ZeroRefEmptyTS(t *testing.T) {
+	ts := &models.TransactionSet{}
+	result := recurringReferenceDate(ts, time.Time{})
+	// MaxDate returns zero, so should fall through to time.Now()
+	if time.Since(result) > time.Second {
+		t.Errorf("expected time close to now, got %v", result)
+	}
+}
+
+// TestRecurringTransactionSet_NilTS covers the nil ts path
+func TestRecurringTransactionSet_NilTS(t *testing.T) {
+	result := recurringTransactionSet(nil, time.Now())
+	if result != nil {
+		t.Error("expected nil result for nil ts")
+	}
+}
+
+func TestRecurringTransactionSet_ZeroDate(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Date: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+	result := recurringTransactionSet(ts, time.Time{})
+	if result != ts {
+		t.Error("expected original ts returned for zero reference date")
+	}
+}
+
+// TestAnalyzeCategoryTrends_NewCategory covers the previous==0 && current>0 branch
+func TestAnalyzeCategoryTrends_NewCategory(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			// Only current period, no previous
+			catTxn("new store", "new-cat", 150, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	trends := analyzeCategoryTrends(ts, currentStart, currentEnd)
+
+	for _, tr := range trends {
+		if tr.Category == "new-cat" {
+			if tr.Direction != "up" {
+				t.Errorf("direction = %q, want \"up\"", tr.Direction)
+			}
+			if tr.ChangePercent != 100 {
+				t.Errorf("changePercent = %.2f, want 100", tr.ChangePercent)
+			}
+			return
+		}
+	}
+	t.Error("expected 'new-cat' in trends")
+}
+
+// TestAnalyzeCategoryTrends_OnlyInPreviousPeriod covers a category that was in
+// previous period but not current (current==0, previous>0 => down)
+func TestAnalyzeCategoryTrends_OnlyInPreviousPeriod(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			// Only in previous period
+			catTxn("gym", "fitness", 50, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	trends := analyzeCategoryTrends(ts, currentStart, currentEnd)
+
+	for _, tr := range trends {
+		if tr.Category == "fitness" {
+			if tr.Direction != "down" {
+				t.Errorf("direction = %q, want \"down\"", tr.Direction)
+			}
+			return
+		}
+	}
+	t.Error("expected 'fitness' in trends")
+}
+
+// TestAnalyzeIncomePatterns_TooFew covers the < 2 income transactions path
+func TestAnalyzeIncomePatterns_TooFew(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("employer", 5000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+	patterns := AnalyzeIncomePatterns(ts)
+	if len(patterns) != 0 {
+		t.Errorf("expected 0 patterns for < 2 income transactions, got %d", len(patterns))
+	}
+}
+
+// TestAnalyzeIncomePatterns_SingleOccurrenceGroup covers the len(txns) < 2 continue
+func TestAnalyzeIncomePatterns_SingleOccurrenceGroup(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("employer", 5000, base),
+			income("employer", 5000, base.AddDate(0, 1, 0)),
+			income("one-time bonus", 1000, base), // only 1 occurrence
+		},
+	}
+	patterns := AnalyzeIncomePatterns(ts)
+	for _, p := range patterns {
+		if p.Description == "one-time bonus" {
+			t.Error("single occurrence should not appear in patterns")
+		}
+	}
+}
+
+// TestAnalyzeIncomePatterns_WeeklyIncome covers the weekly branch
+func TestAnalyzeIncomePatterns_WeeklyIncome(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("gig work", 200, base),
+			income("gig work", 200, base.AddDate(0, 0, 7)),
+			income("gig work", 200, base.AddDate(0, 0, 14)),
+			income("gig work", 200, base.AddDate(0, 0, 21)),
+		},
+	}
+	patterns := AnalyzeIncomePatterns(ts)
+	for _, p := range patterns {
+		if p.Description == "gig work" {
+			if p.Frequency != "weekly" {
+				t.Errorf("frequency = %q, want \"weekly\"", p.Frequency)
+			}
+			if !p.IsRegular {
+				t.Error("expected IsRegular = true")
+			}
+			return
+		}
+	}
+	t.Error("expected 'gig work' in patterns")
+}
+
+// TestAnalyzeIncomePatterns_BiweeklyIncome covers the biweekly branch
+func TestAnalyzeIncomePatterns_BiweeklyIncome(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("salary", 2500, base),
+			income("salary", 2500, base.AddDate(0, 0, 14)),
+			income("salary", 2500, base.AddDate(0, 0, 28)),
+			income("salary", 2500, base.AddDate(0, 0, 42)),
+		},
+	}
+	patterns := AnalyzeIncomePatterns(ts)
+	for _, p := range patterns {
+		if p.Description == "salary" {
+			if p.Frequency != "biweekly" {
+				t.Errorf("frequency = %q, want \"biweekly\"", p.Frequency)
+			}
+			if !p.IsRegular {
+				t.Error("expected IsRegular = true")
+			}
+			return
+		}
+	}
+	t.Error("expected 'salary' in patterns")
+}
+
+// TestCalculateInsights_RegularIncomeTotal covers the regular income total aggregation
+func TestCalculateInsights_RegularIncomeTotal(t *testing.T) {
+	now := time.Now()
+	base := now.AddDate(0, -4, 0)
+	var txns []models.Transaction
+	// Monthly income
+	for i := 0; i < 4; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "employer pay",
+			Amount:          5000,
+			Date:            base.AddDate(0, i, 0),
+			TransactionType: models.Income,
+		})
+	}
+	// Some outflow so the velocity doesn't panic
+	txns = append(txns, models.Transaction{
+		Description:     "grocery",
+		Amount:          -100,
+		Date:            now,
+		TransactionType: models.Outflow,
+	})
+
+	allData := &models.TransactionSet{Transactions: txns}
+	startDate := base
+	endDate := now
+
+	insights := calculateInsights(allData, allData, startDate, endDate)
+
+	if insights.RegularIncomeTotal == 0 {
+		t.Error("expected RegularIncomeTotal > 0")
+	}
+}
+
+// TestDetectRecurringPaymentsAt_TooFewOutflows covers the Len() < 2 early return
+func TestDetectRecurringPaymentsAt_TooFewOutflows(t *testing.T) {
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "solo", Amount: -50, Date: time.Now(), TransactionType: models.Outflow},
+		},
+	}
+	result := detectRecurringPaymentsAt(ts, time.Time{})
+	if len(result) != 0 {
+		t.Errorf("expected 0 recurring for < 2 outflows, got %d", len(result))
+	}
+}
+
+// TestDetectRecurringPaymentsAt_WeeklyFrequency covers the weekly frequency branch
+func TestDetectRecurringPaymentsAt_WeeklyFrequency(t *testing.T) {
+	now := time.Now()
+	var txns []models.Transaction
+	for i := 0; i < 5; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "weekly service",
+			Amount:          -25,
+			Date:            now.AddDate(0, 0, -7*i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	ts := &models.TransactionSet{Transactions: txns}
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "weekly service" {
+			if r.Frequency != "weekly" {
+				t.Errorf("frequency = %q, want \"weekly\"", r.Frequency)
+			}
+			return
+		}
+	}
+	t.Error("expected 'weekly service' in recurring")
+}
+
+// TestDetectRecurringPaymentsAt_BiweeklyFrequency covers the biweekly frequency branch
+func TestDetectRecurringPaymentsAt_BiweeklyFrequency(t *testing.T) {
+	now := time.Now()
+	var txns []models.Transaction
+	for i := 0; i < 5; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "biweekly bill",
+			Amount:          -50,
+			Date:            now.AddDate(0, 0, -14*i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	ts := &models.TransactionSet{Transactions: txns}
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "biweekly bill" {
+			if r.Frequency != "biweekly" {
+				t.Errorf("frequency = %q, want \"biweekly\"", r.Frequency)
+			}
+			return
+		}
+	}
+	t.Error("expected 'biweekly bill' in recurring")
+}
+
+// TestDetectRecurringPaymentsAt_QuarterlyFrequency covers the quarterly frequency branch
+func TestDetectRecurringPaymentsAt_QuarterlyFrequency(t *testing.T) {
+	now := time.Now()
+	var txns []models.Transaction
+	for i := 0; i < 4; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "quarterly tax",
+			Amount:          -500,
+			Date:            now.AddDate(0, 0, -90*i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	ts := &models.TransactionSet{Transactions: txns}
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "quarterly tax" {
+			if r.Frequency != "quarterly" {
+				t.Errorf("frequency = %q, want \"quarterly\"", r.Frequency)
+			}
+			return
+		}
+	}
+	t.Error("expected 'quarterly tax' in recurring")
+}
+
+// TestDetectRecurringPaymentsAt_YearlyFrequency covers the yearly frequency branch
+func TestDetectRecurringPaymentsAt_YearlyFrequency(t *testing.T) {
+	now := time.Now()
+	var txns []models.Transaction
+	for i := 0; i < 3; i++ {
+		txns = append(txns, models.Transaction{
+			Description:     "annual license",
+			Amount:          -1200,
+			Date:            now.AddDate(-i, 0, 0),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	ts := &models.TransactionSet{Transactions: txns}
+	recurring := detectRecurringPayments(ts)
+
+	for _, r := range recurring {
+		if r.Description == "annual license" {
+			if r.Frequency != "yearly" {
+				t.Errorf("frequency = %q, want \"yearly\"", r.Frequency)
+			}
+			return
+		}
+	}
+	t.Error("expected 'annual license' in recurring")
+}
+
+// TestDetectRecurringPaymentsAt_HighStdDevSkipped covers the stdDev > 7 skip
+func TestDetectRecurringPaymentsAt_HighStdDevSkipped(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "erratic", Amount: -50, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "erratic", Amount: -50, Date: now.AddDate(0, 0, -35), TransactionType: models.Outflow},
+			{Description: "erratic", Amount: -50, Date: now.AddDate(0, 0, -90), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "erratic" && r.Frequency != "ongoing" {
+			t.Error("erratic intervals should not match strict criteria")
+		}
+	}
+}
+
+// TestDetectRecurringPaymentsAt_InconsistentAmountsSkipped covers amountConsistent == false
+func TestDetectRecurringPaymentsAt_InconsistentAmountsSkipped(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "variable vendor", Amount: -50, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "variable vendor", Amount: -200, Date: now.AddDate(0, 0, -35), TransactionType: models.Outflow},
+			{Description: "variable vendor", Amount: -50, Date: now.AddDate(0, 0, -65), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "variable vendor" && r.Frequency != "ongoing" {
+			t.Error("inconsistent amounts should not match strict criteria")
+		}
+	}
+}
+
+// TestDetectRecurringPaymentsAt_UnmatchedIntervalSkipped covers the default continue in frequency switch
+func TestDetectRecurringPaymentsAt_UnmatchedIntervalSkipped(t *testing.T) {
+	now := time.Now()
+	// Interval of ~45 days doesn't match any frequency bucket
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "odd interval", Amount: -100, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "odd interval", Amount: -100, Date: now.AddDate(0, 0, -50), TransactionType: models.Outflow},
+			{Description: "odd interval", Amount: -100, Date: now.AddDate(0, 0, -95), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "odd interval" && r.Frequency != "ongoing" {
+			t.Errorf("45-day interval should not match any strict frequency, got %q", r.Frequency)
+		}
+	}
+}
+
+// TestDetectRecurringPaymentsAt_LowConfidenceSkipped covers confidence < 0.5
+func TestDetectRecurringPaymentsAt_LowConfidence(t *testing.T) {
+	// Create transactions with high stdDev relative to median to get low confidence
+	// but not high enough to be filtered by the stdDev > 7 check
+	// This is hard to construct, so just verify the function doesn't crash
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "noisy", Amount: -100, Date: now.AddDate(0, 0, -1), TransactionType: models.Outflow},
+			{Description: "noisy", Amount: -100, Date: now.AddDate(0, 0, -31), TransactionType: models.Outflow},
+			{Description: "noisy", Amount: -100, Date: now.AddDate(0, 0, -55), TransactionType: models.Outflow},
+			{Description: "noisy", Amount: -100, Date: now.AddDate(0, 0, -90), TransactionType: models.Outflow},
+		},
+	}
+	_ = detectRecurringPayments(ts) // Should not panic
+}
+
+// TestDetectRecurringPaymentsAt_WeeklyNeedsFourOccurrences covers the len(txns) < 4 check for weekly
+func TestDetectRecurringPaymentsAt_WeeklyNeedsFourOccurrences(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "short weekly", Amount: -20, Date: now.AddDate(0, 0, -1), TransactionType: models.Outflow},
+			{Description: "short weekly", Amount: -20, Date: now.AddDate(0, 0, -8), TransactionType: models.Outflow},
+			{Description: "short weekly", Amount: -20, Date: now.AddDate(0, 0, -15), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "short weekly" && r.Frequency == "weekly" {
+			t.Error("weekly should require >= 4 occurrences")
+		}
+	}
+}
+
+// TestDetectRecurringPaymentsAt_BiweeklyNeedsFourOccurrences covers the len(txns) < 4 check for biweekly
+func TestDetectRecurringPaymentsAt_BiweeklyNeedsFourOccurrences(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "short biweekly", Amount: -40, Date: now.AddDate(0, 0, -1), TransactionType: models.Outflow},
+			{Description: "short biweekly", Amount: -40, Date: now.AddDate(0, 0, -15), TransactionType: models.Outflow},
+			{Description: "short biweekly", Amount: -40, Date: now.AddDate(0, 0, -29), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "short biweekly" && r.Frequency == "biweekly" {
+			t.Error("biweekly should require >= 4 occurrences")
+		}
+	}
+}
+
+// TestDetectRecurringPaymentsAt_OngoingPayment covers the second pass (ongoing detection)
+func TestDetectRecurringPaymentsAt_OngoingPaymentRecentActivity(t *testing.T) {
+	now := time.Now()
+	// Variable amounts, spans > 60 days, recent activity
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "cloud service", Amount: -15, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "cloud service", Amount: -22, Date: now.AddDate(0, 0, -35), TransactionType: models.Outflow},
+			{Description: "cloud service", Amount: -18, Date: now.AddDate(0, 0, -70), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	found := false
+	for _, r := range recurring {
+		if r.Description == "cloud service" {
+			found = true
+			if r.Frequency != "ongoing" {
+				t.Errorf("frequency = %q, want \"ongoing\"", r.Frequency)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected 'cloud service' as ongoing recurring payment")
+	}
+}
+
+// TestDetectRecurringPaymentsAt_OngoingOlderActivity covers confidence 0.8 tier
+func TestDetectRecurringPaymentsAt_OngoingOlderActivity(t *testing.T) {
+	// Use a fixed reference date so we control the "now" used for confidence
+	refDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	// Last payment 45 days before refDate (confidence 0.8 tier: 30-60 days)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "api billing", Amount: -30, Date: refDate.AddDate(0, 0, -45), TransactionType: models.Outflow},
+			{Description: "api billing", Amount: -25, Date: refDate.AddDate(0, 0, -75), TransactionType: models.Outflow},
+			{Description: "api billing", Amount: -35, Date: refDate.AddDate(0, 0, -110), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPaymentsAt(ts, refDate)
+	for _, r := range recurring {
+		if r.Description == "api billing" {
+			if r.Confidence != 0.8 {
+				t.Errorf("confidence = %.2f, want 0.80 (45 days since last)", r.Confidence)
+			}
+			return
+		}
+	}
+	t.Error("expected 'api billing' in recurring")
+}
+
+// TestDetectRecurringPaymentsAt_OngoingDefaultConfidence covers confidence 0.7 tier (>60 days)
+func TestDetectRecurringPaymentsAt_OngoingDefaultConfidence(t *testing.T) {
+	refDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	// Last payment 65 days before refDate (confidence 0.7 tier: >60 days)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "old service", Amount: -50, Date: refDate.AddDate(0, 0, -65), TransactionType: models.Outflow},
+			{Description: "old service", Amount: -45, Date: refDate.AddDate(0, 0, -80), TransactionType: models.Outflow},
+			{Description: "old service", Amount: -55, Date: refDate.AddDate(0, 0, -130), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPaymentsAt(ts, refDate)
+	for _, r := range recurring {
+		if r.Description == "old service" {
+			if r.Confidence != 0.7 {
+				t.Errorf("confidence = %.2f, want 0.70 (>60 days since last)", r.Confidence)
+			}
+			return
+		}
+	}
+	t.Error("expected 'old service' in recurring")
+}
+
+// TestDetectRecurringPaymentsAt_OngoingShortSpanSkipped covers spanDays < 60 skip
+func TestDetectRecurringPaymentsAt_OngoingShortSpanSkipped(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "short span svc", Amount: -15, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "short span svc", Amount: -22, Date: now.AddDate(0, 0, -25), TransactionType: models.Outflow},
+			{Description: "short span svc", Amount: -18, Date: now.AddDate(0, 0, -45), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "short span svc" && r.Frequency == "ongoing" {
+			t.Error("span < 60 days should not trigger ongoing detection")
+		}
+	}
+}
+
+// TestDetectRecurringPaymentsAt_Max20Results covers the truncation to 20 results
+func TestDetectRecurringPaymentsAt_Max20Results(t *testing.T) {
+	now := time.Now()
+	var txns []models.Transaction
+	// Create 25 distinct monthly recurring vendors
+	for v := 0; v < 25; v++ {
+		desc := fmt.Sprintf("vendor-%02d", v)
+		for i := 0; i < 4; i++ {
+			txns = append(txns, models.Transaction{
+				Description:     desc,
+				Amount:          -float64(10 + v),
+				Date:            now.AddDate(0, 0, -30*i),
+				TransactionType: models.Outflow,
+			})
+		}
+	}
+	ts := &models.TransactionSet{Transactions: txns}
+	recurring := detectRecurringPayments(ts)
+	if len(recurring) > 20 {
+		t.Errorf("expected max 20 results, got %d", len(recurring))
+	}
+}
+
+// TestDetectByAmount_QuarterlyFrequency covers the quarterly branch in detectByAmount
+func TestDetectByAmount_QuarterlyFrequency(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "q-payment-a", Amount: -750, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "q-payment-b", Amount: -750, Date: now.AddDate(0, 0, -95), TransactionType: models.Outflow},
+			{Description: "q-payment-c", Amount: -750, Date: now.AddDate(0, 0, -185), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	found := false
+	for _, r := range recurring {
+		if r.Amount == 750 && r.Frequency == "quarterly" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected quarterly amount-based match")
+		for _, r := range recurring {
+			t.Logf("  found: %q $%.2f %s", r.Description, r.Amount, r.Frequency)
+		}
+	}
+}
+
+// TestDetectByAmount_YearlyFrequency covers the yearly branch in detectByAmount
+func TestDetectByAmount_YearlyFrequency(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "y-payment-a", Amount: -2000, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "y-payment-b", Amount: -2000, Date: now.AddDate(0, 0, -370), TransactionType: models.Outflow},
+			{Description: "y-payment-c", Amount: -2000, Date: now.AddDate(0, 0, -735), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	found := false
+	for _, r := range recurring {
+		if r.Amount == 2000 && r.Frequency == "yearly" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected yearly amount-based match")
+		for _, r := range recurring {
+			t.Logf("  found: %q $%.2f %s", r.Description, r.Amount, r.Frequency)
+		}
+	}
+}
+
+// TestDetectByAmount_LowConfidenceSkipped covers confidence < 0.4 in detectByAmount
+func TestDetectByAmount_DefaultCaseSkipped(t *testing.T) {
+	now := time.Now()
+	// Interval ~60 days doesn't match monthly/quarterly/yearly
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "odd-a", Amount: -800, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
+			{Description: "odd-b", Amount: -800, Date: now.AddDate(0, 0, -65), TransactionType: models.Outflow},
+			{Description: "odd-c", Amount: -800, Date: now.AddDate(0, 0, -125), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Amount == 800 && (r.Frequency == "monthly" || r.Frequency == "quarterly" || r.Frequency == "yearly") {
+			t.Error("60-day interval should not match any amount-based frequency bucket")
+		}
+	}
+}
+
+// TestCalculateSpendingVelocity_BurnRateChange covers the burn rate change calculation
+func TestCalculateSpendingVelocity_BurnRateChange(t *testing.T) {
+	now := time.Now()
+	// Current period: last 30 days, $200/day
+	var currentTxns []models.Transaction
+	for i := 0; i < 30; i++ {
+		currentTxns = append(currentTxns, models.Transaction{
+			Description:     "spending",
+			Amount:          -200,
+			Date:            now.AddDate(0, 0, -i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	// All data: 60 days, first 30 days at $100/day
+	allTxns := make([]models.Transaction, len(currentTxns))
+	copy(allTxns, currentTxns)
+	for i := 30; i < 60; i++ {
+		allTxns = append(allTxns, models.Transaction{
+			Description:     "spending",
+			Amount:          -100,
+			Date:            now.AddDate(0, 0, -i),
+			TransactionType: models.Outflow,
+		})
+	}
+
+	currentPeriod := &models.TransactionSet{Transactions: currentTxns}
+	allData := &models.TransactionSet{Transactions: allTxns}
+
+	velocity := calculateSpendingVelocity(currentPeriod, allData)
+
+	if velocity.BurnRateChange == 0 {
+		t.Error("BurnRateChange should be non-zero when current > historical")
+	}
+}
+
+// --- HTTP Handler Tests ---
+
+// testCSV generates CSV content with monthly outflows and income for handler testing.
+func testCSV() string {
+	return `Date,Description,Amount,Category
+2025-01-15,ACME PAYROLL,3500.00,Paycheck
+2025-02-15,ACME PAYROLL,3500.00,Paycheck
+2025-03-15,ACME PAYROLL,3500.00,Paycheck
+2025-04-15,ACME PAYROLL,3500.00,Paycheck
+2025-01-10,Netflix,-15.99,Entertainment
+2025-02-10,Netflix,-15.99,Entertainment
+2025-03-10,Netflix,-15.99,Entertainment
+2025-04-10,Netflix,-15.99,Entertainment
+2025-01-05,Electric Company,-120.00,Utilities
+2025-02-05,Electric Company,-120.00,Utilities
+2025-03-05,Electric Company,-120.00,Utilities
+2025-04-05,Electric Company,-120.00,Utilities
+2025-01-20,Grocery Store,-87.00,Groceries
+2025-02-20,Grocery Store,-95.00,Groceries
+2025-03-20,Grocery Store,-82.00,Groceries
+2025-04-20,Grocery Store,-90.00,Groceries
+`
+}
+
+func setupTestLoader(t *testing.T, csvContent string) func() {
+	t.Helper()
+	tmpDir := t.TempDir()
+	csvPath := tmpDir + "/test.csv"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to write test CSV: %v", err)
+	}
+
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	oldLoader := loader
+	oldRenderer := renderer
+
+	loader = dataloader.New(tmpDir, store)
+	renderer = nil // Use fallback JSON/HTML responses
+
+	return func() {
+		loader = oldLoader
+		renderer = oldRenderer
+	}
+}
+
+func setupErrorLoader(t *testing.T) func() {
+	t.Helper()
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	oldLoader := loader
+	oldRenderer := renderer
+
+	// Use a directory path containing '[' to trigger filepath.ErrBadPattern in Glob
+	loader = dataloader.New(tmpDir+"/[invalid", store)
+	renderer = nil
+
+	return func() {
+		loader = oldLoader
+		renderer = oldRenderer
+	}
+}
+
+func TestInitialize(t *testing.T) {
+	oldLoader := loader
+	oldRenderer := renderer
+	defer func() {
+		loader = oldLoader
+		renderer = oldRenderer
+	}()
+
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+	dl := dataloader.New(tmpDir, store)
+	Initialize(dl, nil)
+
+	if loader != dl {
+		t.Error("Initialize did not set loader")
+	}
+	if renderer != nil {
+		t.Error("Initialize should have set renderer to nil")
+	}
+}
+
+func TestRegisterRoutes(t *testing.T) {
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	// Verify routes were registered by walking them
+	routes := []string{
+		"/insights",
+		"/insights/recurring",
+		"/insights/trends",
+		"/insights/trends/chart",
+		"/insights/velocity",
+		"/insights/income",
+	}
+
+	for _, route := range routes {
+		found := false
+		_ = chi.Walk(r, func(method, path string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+			if path == route {
+				found = true
+			}
+			return nil
+		})
+		if !found {
+			t.Errorf("expected route %q to be registered", route)
+		}
+	}
+}
+
+func TestHandleInsights_Success(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights", nil)
+	w := httptest.NewRecorder()
+
+	handleInsights(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	// With nil renderer, should return fallback HTML
+	if ct := resp.Header.Get("Content-Type"); ct != "text/html" {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+}
+
+func TestHandleInsights_WithDateParams(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights?start=2025-01-01&end=2025-04-30&preset=custom", nil)
+	w := httptest.NewRecorder()
+
+	handleInsights(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleInsights_LoadError(t *testing.T) {
+	cleanup := setupErrorLoader(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights", nil)
+	w := httptest.NewRecorder()
+
+	handleInsights(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+}
+
+func TestHandleRecurringPartial_Success(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/recurring", nil)
+	w := httptest.NewRecorder()
+
+	handleRecurringPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	// With nil renderer, should fall back to JSON
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+	if _, ok := result["TotalRecurring"]; !ok {
+		t.Error("expected TotalRecurring in response")
+	}
+	if _, ok := result["MonthlyRecurring"]; !ok {
+		t.Error("expected MonthlyRecurring in response")
+	}
+}
+
+func TestHandleTrendsPartial_Success(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends?start=2025-03-01&end=2025-04-30", nil)
+	w := httptest.NewRecorder()
+
+	handleTrendsPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+}
+
+func TestHandleTrendsPartial_DefaultDates(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends", nil)
+	w := httptest.NewRecorder()
+
+	handleTrendsPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleTrendsChartData_Success(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends/chart?start=2025-03-01&end=2025-04-30", nil)
+	w := httptest.NewRecorder()
+
+	handleTrendsChartData(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+	if _, ok := result["data"]; !ok {
+		t.Error("expected 'data' in chart response")
+	}
+	if _, ok := result["layout"]; !ok {
+		t.Error("expected 'layout' in chart response")
+	}
+}
+
+func TestHandleTrendsChartData_DefaultDates(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends/chart", nil)
+	w := httptest.NewRecorder()
+
+	handleTrendsChartData(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleVelocityPartial_Success(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/velocity?start=2025-01-01&end=2025-04-30", nil)
+	w := httptest.NewRecorder()
+
+	handleVelocityPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+}
+
+func TestHandleVelocityPartial_DefaultDates(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/velocity", nil)
+	w := httptest.NewRecorder()
+
+	handleVelocityPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleIncomePartial_Success(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/income", nil)
+	w := httptest.NewRecorder()
+
+	handleIncomePartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+	if _, ok := result["IncomePatterns"]; !ok {
+		t.Error("expected IncomePatterns in response")
+	}
+	if _, ok := result["RegularIncomeTotal"]; !ok {
+		t.Error("expected RegularIncomeTotal in response")
+	}
+}
+
+// Error path tests for all handlers
+func TestHandleRecurringPartial_LoadError(t *testing.T) {
+	cleanup := setupErrorLoader(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/recurring", nil)
+	w := httptest.NewRecorder()
+	handleRecurringPartial(w, req)
+	if w.Result().StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Result().StatusCode)
+	}
+}
+
+func TestHandleTrendsPartial_LoadError(t *testing.T) {
+	cleanup := setupErrorLoader(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends", nil)
+	w := httptest.NewRecorder()
+	handleTrendsPartial(w, req)
+	if w.Result().StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Result().StatusCode)
+	}
+}
+
+func TestHandleTrendsChartData_LoadError(t *testing.T) {
+	cleanup := setupErrorLoader(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends/chart", nil)
+	w := httptest.NewRecorder()
+	handleTrendsChartData(w, req)
+	if w.Result().StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Result().StatusCode)
+	}
+}
+
+func TestHandleVelocityPartial_LoadError(t *testing.T) {
+	cleanup := setupErrorLoader(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/velocity", nil)
+	w := httptest.NewRecorder()
+	handleVelocityPartial(w, req)
+	if w.Result().StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Result().StatusCode)
+	}
+}
+
+func TestHandleIncomePartial_LoadError(t *testing.T) {
+	cleanup := setupErrorLoader(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/income", nil)
+	w := httptest.NewRecorder()
+	handleIncomePartial(w, req)
+	if w.Result().StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Result().StatusCode)
+	}
+}
+
+// --- Tests with real renderer (covers renderer != nil branches) ---
+
+func setupTestLoaderWithRenderer(t *testing.T, csvContent string) func() {
+	t.Helper()
+	tmpDir := t.TempDir()
+	csvPath := tmpDir + "/test.csv"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("failed to write test CSV: %v", err)
+	}
+
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	templateDir := testutil.ProjectRoot() + "/web/templates"
+	r, err := templates.New(templateDir, true)
+	if err != nil {
+		t.Fatalf("failed to create renderer: %v", err)
+	}
+
+	oldLoader := loader
+	oldRenderer := renderer
+
+	loader = dataloader.New(tmpDir, store)
+	renderer = r
+
+	return func() {
+		loader = oldLoader
+		renderer = oldRenderer
+	}
+}
+
+func TestHandleInsights_WithRenderer(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights?start=2025-01-01&end=2025-04-30", nil)
+	w := httptest.NewRecorder()
+
+	handleInsights(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleRecurringPartial_WithRenderer(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/recurring", nil)
+	w := httptest.NewRecorder()
+
+	handleRecurringPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleTrendsPartial_WithRenderer(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/trends", nil)
+	w := httptest.NewRecorder()
+
+	handleTrendsPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleVelocityPartial_WithRenderer(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/velocity", nil)
+	w := httptest.NewRecorder()
+
+	handleVelocityPartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestHandleIncomePartial_WithRenderer(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights/income", nil)
+	w := httptest.NewRecorder()
+
+	handleIncomePartial(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// --- Remaining edge case coverage ---
+
+// TestMergeSimilarGroups_ShorterCanonicalReplacement covers the re-mapping branch
+// where a new key's stripped name is shorter than an existing canonical.
+func TestMergeSimilarGroups_ShorterCanonicalReplacement(t *testing.T) {
+	// Keys are sorted by length, so "abcdef" comes before "abc".
+	// Wait, shorter comes first. So we need to construct a case where:
+	// - A longer key is processed first and becomes canonical
+	// - Then a shorter key whose stripped form is a prefix triggers re-mapping
+	// Since keys are sorted by length (shorter first), we need the stripped version
+	// to differ. E.g., "abc.com" (len=7) strips to "abc" (len=3),
+	// then "abcxyz" (len=6) strips to "abcxyz" (len=6).
+	// But "abc" is a prefix of "abcxyz" so they'd merge.
+	// Actually we need len(stripped) < len(canon). The first key processed is shorter.
+	// So "ab.com" (len=6, stripped="ab") is first. Then "abc" (len=3, stripped="abc").
+	// Wait no, "abc" has len 3 which is < 6, so it comes first.
+	// "abc" -> stripped="abc", canonical["abc"]="abc"
+	// "ab.com" -> stripped="ab", check: is "ab" prefix of "abc"? Yes!
+	// So it merges into "abc". Then len("ab") < len("abc"), so re-mapping happens.
+	groups := map[string][]models.Transaction{
+		"abc":    {txn("abc", 10, 30)},
+		"ab.com": {txn("ab.com", 10, 60)},
+	}
+	merged := mergeSimilarGroups(groups)
+
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 group, got %d: %v", len(merged), keys(merged))
+	}
+	// The shorter stripped name "ab" should cause re-mapping to "ab.com"
+	if txns, ok := merged["ab.com"]; ok {
+		if len(txns) != 2 {
+			t.Errorf("expected 2 transactions, got %d", len(txns))
+		}
+	} else if txns, ok := merged["abc"]; ok {
+		// Either key is fine — the point is they merged
+		if len(txns) != 2 {
+			t.Errorf("expected 2 transactions, got %d", len(txns))
+		}
+	} else {
+		t.Errorf("unexpected keys: %v", keys(merged))
+	}
+}
+
+// TestCalculateSpendingVelocity_SingleDayData covers currentDays < 1 and allDays < 1
+func TestCalculateSpendingVelocity_SingleDayData(t *testing.T) {
+	now := time.Now()
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "purchase", Amount: -50, Date: now, TransactionType: models.Outflow},
+		},
+	}
+	velocity := calculateSpendingVelocity(ts, ts)
+	// With single day, currentDays = 1 (0 + 1 = 1 after rounding, but
+	// maxDate - minDate = 0 days, so 0 + 1 = 1; the < 1 branch may not trigger)
+	// The important thing is it doesn't panic
+	if velocity.DailyAverage == 0 {
+		t.Error("DailyAverage should be > 0 for single transaction")
+	}
+}
+
+// TestDetectRecurringPaymentsAt_LowConfidenceFiltered covers confidence < 0.5 in strict pass.
+// For weekly (medianInterval ~7), confidence = 1 - (stdDev/7). With stdDev=5, confidence=0.29 < 0.5.
+func TestDetectRecurringPaymentsAt_LowConfidenceFiltered(t *testing.T) {
+	now := time.Now()
+	// Create weekly-ish payments with high variance (stdDev around 5, median ~7)
+	// intervals: 3, 7, 12, 3 => sorted: 3, 3, 7, 12 => median=3 (or 7 depending on count)
+	// Actually need precise control. Let me use 5 txns with intervals: 7, 7, 7, 12 for 4 intervals
+	// sorted: 7, 7, 7, 12 => median = 7
+	// stdDev = sqrt(((0+0+0+25)/4)) = sqrt(6.25) = 2.5 => confidence = 1-2.5/7 = 0.64 (too high)
+	// Need intervals like 2, 12, 2, 12 => sorted: 2, 2, 12, 12 => median = 2 (index 2 of 4 = 12 no, index 2 is 2)
+	// Actually median for len=4 is sortedIntervals[4/2] = sortedIntervals[2] = 12
+	// Hmm, let me recalculate. sorted: [2, 2, 12, 12], median = sorted[2] = 12. Not in weekly range.
+	//
+	// Try: 5 txns, intervals: [7, 7, 2, 13] => sorted: [2, 7, 7, 13], median = sorted[2] = 7
+	// diff from 7: [-5, 0, 0, 6], sumSq = 25+0+0+36 = 61, stdDev = sqrt(61/4) = 3.9
+	// confidence = 1 - 3.9/7 = 0.44 < 0.5 -- AND stdDev=3.9 < 7. This works!
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "lowconf svc", Amount: -20, Date: now.AddDate(0, 0, 0), TransactionType: models.Outflow},
+			{Description: "lowconf svc", Amount: -20, Date: now.AddDate(0, 0, -7), TransactionType: models.Outflow},
+			{Description: "lowconf svc", Amount: -20, Date: now.AddDate(0, 0, -14), TransactionType: models.Outflow},
+			{Description: "lowconf svc", Amount: -20, Date: now.AddDate(0, 0, -16), TransactionType: models.Outflow},
+			{Description: "lowconf svc", Amount: -20, Date: now.AddDate(0, 0, -29), TransactionType: models.Outflow},
+		},
+	}
+	recurring := detectRecurringPayments(ts)
+	for _, r := range recurring {
+		if r.Description == "lowconf svc" && r.Frequency == "weekly" {
+			t.Errorf("low confidence weekly should be filtered out, got confidence %.2f", r.Confidence)
+		}
+	}
+}
+
+// TestDetectByAmount_LowConfidenceFiltered covers confidence < 0.4 in amount-based detection.
+// For monthly (medianInterval ~30), stdDev must be > 18 to get confidence < 0.4.
+// But stdDev must be <= 10. So confidence = 1-(10/30) = 0.67 min. Can't reach < 0.4 for monthly.
+// For quarterly (median ~90), stdDev=10: confidence = 1-(10/90)*0.9 = 0.81. Can't reach < 0.4.
+// This branch is essentially unreachable for the allowed frequency buckets.
+
+// TestAnalyzeCategoryTrends_CategoryOnlyInPrevious covers current==0 with previous>0
+// The changePercent formula: ((0 - prev) / prev) * 100 = -100%
+func TestAnalyzeCategoryTrends_DisappearedCategory(t *testing.T) {
+	currentStart := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
+
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			// Only in previous period (Feb)
+			catTxn("gym membership", "fitness", 60, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	trends := analyzeCategoryTrends(ts, currentStart, currentEnd)
+	for _, tr := range trends {
+		if tr.Category == "fitness" {
+			if tr.CurrentAmount != 0 {
+				t.Errorf("CurrentAmount = %.2f, want 0", tr.CurrentAmount)
+			}
+			if tr.Direction != "down" {
+				t.Errorf("direction = %q, want \"down\"", tr.Direction)
+			}
+			return
+		}
+	}
+	t.Error("expected 'fitness' category in trends")
 }

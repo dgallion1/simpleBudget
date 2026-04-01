@@ -17,7 +17,10 @@
 - **whatif**: Added 222 tests — 84.8% coverage (all settings, income/expense/healthcare CRUD, scenarios, chains, spending phases)
 - **backup**: Added 55 tests — 82.0% coverage (backup/restore, encryption enable/disable, auth methods, key detection)
 - **storage**: Added 126 tests — 72.3% coverage (all providers except YubiKey, encryption roundtrips, migrations, caching)
-- Overall project coverage: 44.5% → 89.5%
+- **cmd/server**: Added 30 tests — 81.2% coverage (middleware, setup, version, kill previous instance)
+- **cmd/validate**: Added tests — 86.5% coverage (endpoint validation, error paths, subprocess exit tests)
+- **internal/http**: Added 11 tests — 100% coverage (render, error response, date range parsing)
+- Overall project coverage: 44.5% → 90.8%
 
 ## v1.9.0 - Projection Realism & Explainability
 

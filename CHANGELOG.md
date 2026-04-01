@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.9.1 - Test Coverage Expansion
+
+### Testing
+- **config**: Added 18 tests — 100% coverage (DefaultConfig, Load, ensureDirectories, LoadUserSettings, SaveUserSettings)
+- **classifier**: Added tests — 100% coverage (ClassifyTransactions, IsInternalTransfer, IsPotentialIncome, containsAny)
+- **metrics**: Added tests — 100% coverage (CalculateMetrics, CalculateComparison, PercentChange)
+- **templates**: Added tests — 100% coverage (all 21 helper functions + render infrastructure)
+- **models**: Added tests for transactions, healthcare, whatif, income sources, user profile — 99.5% coverage (2 unreachable dead-code guards)
+- **version**: Added 12 tests — 89.7% coverage (remaining is VCS metadata only available at build time)
+- Overall project coverage: 44.5% → 54.3%
+
 ## v1.9.0 - Projection Realism & Explainability
 
 ### Breaking Changes

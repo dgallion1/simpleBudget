@@ -13,7 +13,11 @@
 - **dashboard**: Added 60+ HTTP handler tests — 100% coverage (all chart types, KPIs, drilldowns, exports)
 - **insights**: Added 62+ tests — 98.2% coverage (all 6 handlers + recurring detection, trends, velocity)
 - **retirement**: Added coverage gap tests — 98.3% coverage (income calc, tax estimation, Roth conversion, withdrawals, big-ticket expenses, chain settings, budget fit, threshold analysis)
-- Overall project coverage: 44.5% → 63.5%
+- **explorer**: Added 63 tests — 99.0% coverage (all handlers, sort, pagination, file ops, alias CRUD)
+- **whatif**: Added 222 tests — 84.8% coverage (all settings, income/expense/healthcare CRUD, scenarios, chains, spending phases)
+- **backup**: Added 55 tests — 82.0% coverage (backup/restore, encryption enable/disable, auth methods, key detection)
+- **storage**: Added 126 tests — 72.3% coverage (all providers except YubiKey, encryption roundtrips, migrations, caching)
+- Overall project coverage: 44.5% → 89.5%
 
 ## v1.9.0 - Projection Realism & Explainability
 

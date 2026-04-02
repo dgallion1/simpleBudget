@@ -6,6 +6,11 @@ import (
 	"budget2/internal/models"
 )
 
+const (
+	taxBaseYear   = 2024
+	irmaaBaseYear = 2026
+)
+
 // FederalTaxBracket represents a single tax bracket
 type FederalTaxBracket struct {
 	MinIncome float64 // Minimum income for this bracket
@@ -114,8 +119,8 @@ var niitThresholds = map[models.FilingStatus]float64{
 	models.FilingHeadOfHousehold: 200000,
 }
 
-// 2026 CMS IRMAA amounts are used as the planner's base table.
-// Future years inflation-scale both thresholds and surcharges as a simple approximation.
+// 2026 CMS IRMAA amounts are used as the source table.
+// The planner rescales them onto the tax model's 2024 base year, then inflates forward.
 var monthlyIRMAASurcharge2026 = map[models.FilingStatus][]struct {
 	UpperMAGI float64
 	Surcharge float64
@@ -156,7 +161,7 @@ type TaxCalculator struct {
 	FilingStatus  models.FilingStatus
 	StateRate     float64 // State income tax rate as percentage (e.g., 5.0 for 5%)
 	InflationRate float64 // Annual inflation rate for bracket adjustment
-	BaseYear      int     // Year the brackets are based on (2024)
+	BaseYear      int     // Year the brackets are based on
 }
 
 // NewTaxCalculator creates a tax calculator with the given configuration
@@ -168,7 +173,7 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 		FilingStatus:  config.FilingStatus,
 		StateRate:     config.StateIncomeTaxRate,
 		InflationRate: inflationRate,
-		BaseYear:      2024,
+		BaseYear:      taxBaseYear,
 	}
 }
 

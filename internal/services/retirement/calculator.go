@@ -336,6 +336,14 @@ func plannerInflationFactorForYear(annualInflationRate float64, years float64) f
 	return math.Pow(1+annualInflationRate/100, years)
 }
 
+func plannerIRMAAInflationFactorForYear(annualInflationRate float64, yearsFromTaxBase float64) float64 {
+	yearsFromIRMAABase := yearsFromTaxBase - float64(irmaaBaseYear-taxBaseYear)
+	if yearsFromIRMAABase == 0 {
+		return 1
+	}
+	return math.Pow(1+annualInflationRate/100, yearsFromIRMAABase)
+}
+
 func (a *projectionTaxAccumulator) applyMonth(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions, taxesPaid float64) {
 	a.OrdinaryIncomeYTD += ordinaryIncome
 	a.SocialSecurityIncomeYTD += socialSecurityIncome
@@ -1096,7 +1104,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		taxableComponents := buildTaxableReturnComponents(taxableReturn, s)
 		totalGrowth := 0.0
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
-		irmaaInflationFactor := plannerInflationFactorForYear(s.InflationRate, float64(currentYear))
+		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
 
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
@@ -1486,7 +1494,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 			nil,
 			nil,
 			medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
-			plannerInflationFactorForYear(s.InflationRate, steadyStateYear),
+			plannerIRMAAInflationFactorForYear(s.InflationRate, steadyStateYear),
 		)
 		if steadyStateYear >= 2 {
 			lookbackMAGI := steadyStateSnapshot.AnnualMAGI
@@ -1505,7 +1513,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 				nil,
 				steadyStateIRMALookbackMAGI,
 				medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
-				plannerInflationFactorForYear(s.InflationRate, steadyStateYear),
+				plannerIRMAAInflationFactorForYear(s.InflationRate, steadyStateYear),
 			)
 		}
 		steadyStateTaxes := steadyStateSnapshot.MonthlyTax
@@ -2366,6 +2374,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		rothMonthlyRate := math.Pow(1+rothReturnRate/100, 1.0/12) - 1
 		taxableComponents := buildTaxableReturnComponents(taxReturn, s)
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
+		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,
@@ -2386,7 +2395,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			rothConversionThisMonth,
 			completedMAGIHistory,
 			irmaaEligibleAdults,
-			cumulativeInflation,
+			irmaaInflationFactor,
 		)
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		taxState.applyMonth(

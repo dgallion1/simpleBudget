@@ -364,6 +364,27 @@ func TestCalculateBudgetFitIncludesNIITAndDelayedIRMAA(t *testing.T) {
 	}
 }
 
+func TestPlannerIRMAAInflationFactorForYear_Rebases2026TableOntoTaxBaseYear(t *testing.T) {
+	inflationRate := 3.0
+
+	year0Factor := plannerIRMAAInflationFactorForYear(inflationRate, 0)
+	year2Factor := plannerIRMAAInflationFactorForYear(inflationRate, 2)
+	year5Factor := plannerIRMAAInflationFactorForYear(inflationRate, 5)
+
+	wantYear0 := math.Pow(1+inflationRate/100, -2)
+	wantYear5 := math.Pow(1+inflationRate/100, 3)
+
+	if math.Abs(year0Factor-wantYear0) > 1e-9 {
+		t.Fatalf("year 0 IRMAA factor = %.12f, want %.12f", year0Factor, wantYear0)
+	}
+	if math.Abs(year2Factor-1) > 1e-9 {
+		t.Fatalf("year 2 IRMAA factor = %.12f, want 1.000000000000", year2Factor)
+	}
+	if math.Abs(year5Factor-wantYear5) > 1e-9 {
+		t.Fatalf("year 5 IRMAA factor = %.12f, want %.12f", year5Factor, wantYear5)
+	}
+}
+
 func TestRunProjectionDelaysIRMAAUntilLookbackYear(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 4_000_000

@@ -4,6 +4,7 @@
 
 ### What-If Planner
 - **IRMAA lookback correction**: Current and near-term what-if projections now respect IRMAA's 2-year MAGI lookback instead of charging Medicare surcharges immediately from the current modeled income year. Budget-fit no longer shows same-year IRMAA when no lookback history exists, while farther-out steady-state analysis still estimates lagged premiums.
+- **IRMAA baseline consistency**: Rebased the Medicare surcharge table onto the planner's 2024 tax baseline and applied the same year-based IRMAA inflation logic across deterministic projections, Monte Carlo runs, and historical backtests so equivalent scenarios no longer disagree by engine.
 - **Projection assumptions summary**: Added a compact assumptions panel to the portfolio longevity card covering after-tax cash flow, average-cost taxable sales, annual Roth conversion timing, and the active monthly cash-flow timing mode.
 - **Reconciliation table readability**: Improved the year-by-year projection table with sticky headers, alternating row emphasis, tabular numeric alignment, clearer `Gross Cash In` / `Portfolio Out` terminology, and a more visually distinct real-balance sublabel.
 - **Tax breakdown labeling**: Renamed the yearly projection tax columns to `Taxes Incl. NIIT` and `NIIT Portion` so the explainability table makes clear that NIIT is already included in the total tax number.

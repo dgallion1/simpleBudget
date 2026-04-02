@@ -287,6 +287,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
 		taxableComponents := buildTaxableReturnComponents(taxAnnualReturn, s)
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
+		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,
@@ -307,7 +308,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			rothConversionThisMonth,
 			completedMAGIHistory,
 			irmaaEligibleAdults,
-			cumulativeInflation,
+			irmaaInflationFactor,
 		)
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		taxState.applyMonth(

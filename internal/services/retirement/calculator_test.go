@@ -321,9 +321,9 @@ func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T
 	}
 }
 
-func TestCalculateBudgetFitIncludesNIITAndDelayedIRMAA(t *testing.T) {
+func TestCalculateBudgetFitIncludesNIITAndEstimatedIRMAA(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
-	settings.PortfolioValue = 4_000_000
+	settings.PortfolioValue = 3_000_000
 	settings.MonthlyLivingExpenses = 1000
 	settings.MonthlyHealthcare = 0
 	settings.HealthcarePersons = nil
@@ -347,8 +347,8 @@ func TestCalculateBudgetFitIncludesNIITAndDelayedIRMAA(t *testing.T) {
 	if fit.MonthlyNIIT <= 0 {
 		t.Fatalf("expected NIIT in current budget fit, got %.2f", fit.MonthlyNIIT)
 	}
-	if fit.MonthlyIRMAA != 0 {
-		t.Fatalf("expected current budget fit IRMAA to respect the two-year lag, got %.2f", fit.MonthlyIRMAA)
+	if fit.MonthlyIRMAA <= 0 {
+		t.Fatalf("expected current budget fit to estimate IRMAA from current modeled MAGI, got %.2f", fit.MonthlyIRMAA)
 	}
 	if fit.TaxableSocialSecurityPct <= 0 || fit.TaxableSocialSecurityPct > 85 {
 		t.Fatalf("expected taxable Social Security percentage between 0 and 85, got %.2f", fit.TaxableSocialSecurityPct)
@@ -419,6 +419,91 @@ func TestRunProjectionDelaysIRMAAUntilLookbackYear(t *testing.T) {
 	}
 	if projection.YearlySummaries[2].IRMAA <= 0 {
 		t.Fatalf("expected IRMAA once two years of lookback history exist, got %.2f", projection.YearlySummaries[2].IRMAA)
+	}
+}
+
+func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 4_000_000
+	settings.MonthlyLivingExpenses = 1000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.InflationRate = 0
+	settings.SpendingDeclineRate = 0
+	settings.InvestmentReturn = 4
+	settings.CurrentAge = 67
+	settings.SpouseAge = 66
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+	settings.TaxableDividendYield = 4.0
+	settings.TaxableQualifiedDividendPercent = 100
+	settings.TaxableCapitalGainsDistributionRate = 0
+	settings.SteadyStateOverrideYear = 5
+	settings.IncomeSources = []models.IncomeSource{
+		{ID: "ss", Name: "Social Security", Amount: 4000, StartMonth: 0},
+		{ID: "late-pension", Name: "Late Pension", Amount: 15000, StartMonth: 48},
+	}
+	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
+
+	calc := NewCalculator(settings)
+	fit := calc.CalculateBudgetFit()
+
+	steadyStateMonth := int(settings.SteadyStateOverrideYear * 12)
+	lookbackMonth := steadyStateMonth - 24
+	if lookbackMonth < 0 {
+		t.Fatalf("expected positive IRMAA lookback month, got %d", lookbackMonth)
+	}
+
+	taxableMarketValue := settings.PortfolioValue
+	steadyStateTaxableBalance := taxableMarketValue * math.Pow(1+settings.InvestmentReturn/100, float64(steadyStateMonth)/12)
+	lookbackTaxableBalance := taxableMarketValue * math.Pow(1+settings.InvestmentReturn/100, float64(lookbackMonth)/12)
+
+	steadyStateTaxableCashFlow := expectedTaxableMonthlyCashFlow(settings, steadyStateTaxableBalance, settings.InvestmentReturn)
+	lookbackTaxableCashFlow := expectedTaxableMonthlyCashFlow(settings, lookbackTaxableBalance, settings.InvestmentReturn)
+
+	estimateSnapshot := func(month int, taxableCashFlow taxableGrowthResult, assumedIRMALookbackMAGI *float64) projectedTaxSnapshot {
+		taxState := projectionTaxAccumulator{}
+		return taxState.estimateMonthlySnapshot(
+			NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
+			month/12,
+			month%12,
+			calculateMonthlyIncomeBreakdown(settings, month).OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
+			calculateMonthlyIncomeBreakdown(settings, month).SocialSecurityIncome,
+			0,
+			taxableCashFlow.QualifiedDividends,
+			taxableCashFlow.CapitalGainsDistributions,
+			taxableCashFlow.NonQualifiedDividends,
+			0,
+			nil,
+			assumedIRMALookbackMAGI,
+			medicareEligibleAdultCountAtYear(settings, month/12),
+			plannerIRMAAInflationFactorForYear(settings.InflationRate, float64(month)/12),
+		)
+	}
+
+	lookbackSnapshot := estimateSnapshot(lookbackMonth, lookbackTaxableCashFlow, nil)
+	lookbackMAGI := lookbackSnapshot.AnnualMAGI
+	steadyStateSnapshot := estimateSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, &lookbackMAGI)
+	sameYearProxy := estimateSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, nil)
+	sameYearMAGI := sameYearProxy.AnnualMAGI
+	sameYearSnapshot := estimateSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, &sameYearMAGI)
+
+	if sameYearMAGI <= lookbackMAGI {
+		t.Fatalf("expected same-year MAGI %.2f to exceed two-year lookback MAGI %.2f for this scenario", sameYearMAGI, lookbackMAGI)
+	}
+	if math.Abs(fit.SteadyStateIRMAA-steadyStateSnapshot.MonthlyIRMAA) > 0.01 {
+		t.Fatalf("steady-state IRMAA = %.2f, want %.2f from two-year lookback estimate", fit.SteadyStateIRMAA, steadyStateSnapshot.MonthlyIRMAA)
+	}
+	if math.Abs(fit.SteadyStateIRMAA-sameYearSnapshot.MonthlyIRMAA) < 0.01 {
+		t.Fatalf(
+			"steady-state IRMAA should not use same-year MAGI proxy %.2f (fit=%.2f lookback=%.2f lookbackMAGI=%.2f sameYearMAGI=%.2f)",
+			sameYearSnapshot.MonthlyIRMAA,
+			fit.SteadyStateIRMAA,
+			steadyStateSnapshot.MonthlyIRMAA,
+			lookbackMAGI,
+			sameYearMAGI,
+		)
 	}
 }
 

@@ -1236,6 +1236,30 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	s := c.Settings
 
+	estimateTaxSnapshot := func(targetMonth int, taxableCashFlow taxableGrowthResult, monthlyRMD float64, rothConversion float64, assumedIRMALookbackMAGI *float64) projectedTaxSnapshot {
+		targetYear := targetMonth / 12
+		incomeBreakdown := calculateMonthlyIncomeBreakdown(s, targetMonth)
+		taxState := projectionTaxAccumulator{}
+		taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
+
+		return taxState.estimateMonthlySnapshot(
+			taxCalculator,
+			targetYear,
+			targetMonth%12,
+			incomeBreakdown.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
+			incomeBreakdown.SocialSecurityIncome,
+			monthlyRMD,
+			taxableCashFlow.QualifiedDividends,
+			taxableCashFlow.CapitalGainsDistributions,
+			taxableCashFlow.NonQualifiedDividends,
+			rothConversion,
+			nil,
+			assumedIRMALookbackMAGI,
+			medicareEligibleAdultCountAtYear(s, targetYear),
+			plannerIRMAAInflationFactorForYear(s.InflationRate, float64(targetMonth)/12),
+		)
+	}
+
 	// Calculate first month expenses and income
 	baseMonthlyExpenses := c.CalculateTotalExpenses(0)
 	incomeSummary := calculateMonthlyIncomeBreakdown(s, 0)
@@ -1329,41 +1353,10 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	}
 
 	rothConversionThisMonth := rothConversionAmountForYear(s, 0, s.PortfolioValue*(s.TaxDeferredPercent/100))
-	taxState := projectionTaxAccumulator{}
-	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
-	irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, 0)
-	currentSnapshotBeforeRMD := taxState.estimateMonthlySnapshot(
-		taxCalculator,
-		0,
-		0,
-		incomeSummary.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
-		incomeSummary.SocialSecurityIncome,
-		0,
-		taxableCashFlow.QualifiedDividends,
-		taxableCashFlow.CapitalGainsDistributions,
-		taxableCashFlow.NonQualifiedDividends,
-		rothConversionThisMonth,
-		nil,
-		nil,
-		irmaaEligibleAdults,
-		1,
-	)
-	currentSnapshot := taxState.estimateMonthlySnapshot(
-		taxCalculator,
-		0,
-		0,
-		incomeSummary.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
-		incomeSummary.SocialSecurityIncome,
-		monthlyRMD,
-		taxableCashFlow.QualifiedDividends,
-		taxableCashFlow.CapitalGainsDistributions,
-		taxableCashFlow.NonQualifiedDividends,
-		rothConversionThisMonth,
-		nil,
-		nil,
-		irmaaEligibleAdults,
-		1,
-	)
+	currentSnapshotBeforeRMD := estimateTaxSnapshot(0, taxableCashFlow, 0, rothConversionThisMonth, nil)
+	currentIRMALookbackMAGI := currentSnapshotBeforeRMD.AnnualMAGI
+	currentSnapshotBeforeRMD = estimateTaxSnapshot(0, taxableCashFlow, 0, rothConversionThisMonth, &currentIRMALookbackMAGI)
+	currentSnapshot := estimateTaxSnapshot(0, taxableCashFlow, monthlyRMD, rothConversionThisMonth, &currentIRMALookbackMAGI)
 	monthlyTaxesBeforeRMD := currentSnapshotBeforeRMD.MonthlyTax
 	monthlyTaxes := currentSnapshot.MonthlyTax
 	monthlyExpenses := baseMonthlyExpenses + currentSnapshot.MonthlyIRMAA
@@ -1478,44 +1471,30 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		}
 
 		steadyStateRothConversion := rothConversionAmountForYear(s, steadyStateMonth/12, estimatedTaxDeferred)
-		steadyStateTaxState := projectionTaxAccumulator{}
 		steadyStateIRMALookbackMAGI := (*float64)(nil)
-		steadyStateSnapshot := steadyStateTaxState.estimateMonthlySnapshot(
-			taxCalculator,
-			steadyStateMonth/12,
-			steadyStateMonth%12,
-			steadyStateIncomeBreakdown.OrdinaryIncome+steadyStateTaxableCashFlow.NonQualifiedDividends,
-			steadyStateIncomeBreakdown.SocialSecurityIncome,
-			result.SteadyStateRMD,
-			steadyStateTaxableCashFlow.QualifiedDividends,
-			steadyStateTaxableCashFlow.CapitalGainsDistributions,
-			steadyStateTaxableCashFlow.NonQualifiedDividends,
-			steadyStateRothConversion,
-			nil,
-			nil,
-			medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
-			plannerIRMAAInflationFactorForYear(s.InflationRate, steadyStateYear),
-		)
-		if steadyStateYear >= 2 {
-			lookbackMAGI := steadyStateSnapshot.AnnualMAGI
+		if steadyStateMonth >= 24 {
+			lookbackMonth := steadyStateMonth - 24
+			yearsToLookback := float64(lookbackMonth) / 12
+			lookbackTaxableBalance := taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToLookback)
+			lookbackTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, lookbackTaxableBalance, taxableAnnualReturn)
+
+			lookbackOlderAge := s.GetOlderAge() + (lookbackMonth / 12)
+			lookbackTaxDeferred := 0.0
+			lookbackRMD := 0.0
+			if lookbackOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+				lookbackTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
+					math.Pow(1+effectiveReturn/100, yearsToLookback)
+				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, lookbackOlderAge)
+				lookbackRMD = annualRMD / 12
+			}
+
+			lookbackRothConversion := rothConversionAmountForYear(s, lookbackMonth/12, lookbackTaxDeferred)
+			lookbackSnapshot := estimateTaxSnapshot(lookbackMonth, lookbackTaxableCashFlow, lookbackRMD, lookbackRothConversion, nil)
+			lookbackMAGI := lookbackSnapshot.AnnualMAGI
 			steadyStateIRMALookbackMAGI = &lookbackMAGI
-			steadyStateSnapshot = steadyStateTaxState.estimateMonthlySnapshot(
-				taxCalculator,
-				steadyStateMonth/12,
-				steadyStateMonth%12,
-				steadyStateIncomeBreakdown.OrdinaryIncome+steadyStateTaxableCashFlow.NonQualifiedDividends,
-				steadyStateIncomeBreakdown.SocialSecurityIncome,
-				result.SteadyStateRMD,
-				steadyStateTaxableCashFlow.QualifiedDividends,
-				steadyStateTaxableCashFlow.CapitalGainsDistributions,
-				steadyStateTaxableCashFlow.NonQualifiedDividends,
-				steadyStateRothConversion,
-				nil,
-				steadyStateIRMALookbackMAGI,
-				medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
-				plannerIRMAAInflationFactorForYear(s.InflationRate, steadyStateYear),
-			)
 		}
+
+		steadyStateSnapshot := estimateTaxSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, result.SteadyStateRMD, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
 		steadyStateTaxes := steadyStateSnapshot.MonthlyTax
 		result.SteadyStateExpenses += steadyStateSnapshot.MonthlyIRMAA
 		result.SteadyStateGrossIncome = result.SteadyStateIncome + result.SteadyStateRMD

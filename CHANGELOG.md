@@ -21,7 +21,8 @@
 - **cmd/validate**: Added tests — 86.5% coverage (endpoint validation, error paths, subprocess exit tests)
 - **internal/http**: Added 11 tests — 100% coverage (render, error response, date range parsing)
 - **Refactoring for testability**: extracted `run()` from `cmd/server/main()`, injected `exitFunc` in backup, injected `readBuildInfo` in version, removed 2 unreachable dead-code guards in models
-- Overall project coverage: 44.5% → 93.0%
+- **retirement (SS/NIIT/IRMAA)**: Added 43 tests for new tax features — SS provisional income thresholds, NIIT with non-qualified dividends, IRMAA MFS tiers, buildProjectionExplainability 42%→100%
+- Overall project coverage: 44.5% → 93.6%
 
 ## v1.9.0 - Projection Realism & Explainability
 

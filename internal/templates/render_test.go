@@ -86,7 +86,57 @@ func TestRenderProjectionBreakdownCard(t *testing.T) {
 	if !strings.Contains(html, "Year-by-Year Projection") {
 		t.Fatalf("expected projection breakdown title, got %q", html)
 	}
+	if !strings.Contains(html, "Gross cash in includes income, dividends, and portfolio distributions before taxes.") {
+		t.Fatalf("expected projection breakdown cash-flow note, got %q", html)
+	}
+	if !strings.Contains(html, "Portfolio Out") {
+		t.Fatalf("expected projection breakdown withdrawal label, got %q", html)
+	}
 	if !strings.Contains(html, "$1,041,000") {
 		t.Fatalf("expected ending balance in rendered html, got %q", html)
+	}
+}
+
+func TestRenderProjectionChartCardIncludesModelAssumptions(t *testing.T) {
+	templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
+	if err != nil {
+		t.Fatalf("fs.Sub() error: %v", err)
+	}
+
+	renderer, err := NewFromFS(templatesFS, false)
+	if err != nil {
+		t.Fatalf("NewFromFS() error: %v", err)
+	}
+
+	settings := models.DefaultWhatIfSettings()
+	settings.ProjectionTiming = models.ProjectionTimingMidMonth
+
+	html, err := renderer.RenderToString("whatif-projection-chart", map[string]any{
+		"Settings": settings,
+		"Analysis": &models.WhatIfAnalysis{
+			Projection: &models.ProjectionResult{
+				FinalBalance: 1_250_000,
+				Survives:     true,
+			},
+			ProjectionExplainability: &models.ProjectionExplainability{
+				FinalBalanceReal:        900_000,
+				InflationLossPercent:    28.0,
+				TaxShareOfGrossCashFlow: 12.5,
+				CumulativeInflation:     1.72,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderToString() error: %v", err)
+	}
+
+	if !strings.Contains(html, "Model assumptions") {
+		t.Fatalf("expected model assumptions summary, got %q", html)
+	}
+	if !strings.Contains(html, "Average-cost basis for taxable sales") {
+		t.Fatalf("expected taxable basis assumption, got %q", html)
+	}
+	if !strings.Contains(html, "mid-month") {
+		t.Fatalf("expected timing assumption in rendered html, got %q", html)
 	}
 }

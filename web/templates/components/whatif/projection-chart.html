@@ -1,6 +1,7 @@
 {{/* Portfolio Projection Chart Card */}}
 {{/* Expects: .Analysis.Projection and .Settings */}}
 {{define "whatif-projection-chart"}}
+{{$settings := .Settings}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-whatif-projection-card
     data-chart-base-url="/whatif/chart/projection"
     data-final-balance-nominal="{{printf "%.2f" .Analysis.Projection.FinalBalance}}"
@@ -27,14 +28,29 @@
         </div>
     </div>
     {{with .Analysis.ProjectionExplainability}}
-    <div class="mt-4 space-y-1 text-xs text-gray-500 dark:text-gray-300">
-        <p id="projection-display-caption"
-            data-caption-nominal="Viewing future dollars. Real mode removes {{printf "%.1f" .InflationLossPercent}}% of inflation distortion from the final balance."
-            data-caption-real="Viewing today's dollars. Inflation has been removed from the displayed path.">
-            Viewing future dollars. Real mode removes {{printf "%.1f" .InflationLossPercent}}% of inflation distortion from the final balance.
-        </p>
-        <p>Taxes consumed {{printf "%.1f" .TaxShareOfGrossCashFlow}}% of modeled retirement cash flow.</p>
-        <p>Cumulative inflation over the projection: {{printf "%.1f" (mul (sub .CumulativeInflation 1) 100)}}%.</p>
+    <div class="mt-4 space-y-3">
+        <div class="space-y-1 text-xs text-gray-500 dark:text-gray-300">
+            <p id="projection-display-caption"
+                data-caption-nominal="Viewing future dollars. Real mode removes {{printf "%.1f" .InflationLossPercent}}% of inflation distortion from the final balance."
+                data-caption-real="Viewing today's dollars. Inflation has been removed from the displayed path.">
+                Viewing future dollars. Real mode removes {{printf "%.1f" .InflationLossPercent}}% of inflation distortion from the final balance.
+            </p>
+            <p>Taxes consumed {{printf "%.1f" .TaxShareOfGrossCashFlow}}% of modeled retirement cash flow.</p>
+            <p>Cumulative inflation over the projection: {{printf "%.1f" (mul (sub .CumulativeInflation 1) 100)}}%.</p>
+        </div>
+        <div class="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Model assumptions</p>
+            <div class="mt-2 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                <p>After-tax cash flow and spending</p>
+                <p>Average-cost basis for taxable sales</p>
+                <p>Annual Roth conversions post at the year boundary when enabled</p>
+                <p>
+                    Monthly compounding with
+                    {{if eq $settings.ProjectionTiming "start_of_month"}}start-of-month{{else if eq $settings.ProjectionTiming "mid_month"}}mid-month{{else}}end-of-month{{end}}
+                    cash flow timing
+                </p>
+            </div>
+        </div>
     </div>
     {{end}}
     <div class="mt-4 grid grid-cols-2 gap-4 text-center">

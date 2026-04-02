@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### What-If Planner
+- **Projection assumptions summary**: Added a compact assumptions panel to the portfolio longevity card covering after-tax cash flow, average-cost taxable sales, annual Roth conversion timing, and the active monthly cash-flow timing mode.
+- **Reconciliation table readability**: Improved the year-by-year projection table with sticky headers, alternating row emphasis, tabular numeric alignment, clearer `Gross Cash In` / `Portfolio Out` terminology, and a more visually distinct real-balance sublabel.
+- **Template coverage**: Added render tests covering the new projection assumptions summary and the updated reconciliation table copy.
+
 ## v1.9.1 - Test Coverage Expansion
 
 ### Testing

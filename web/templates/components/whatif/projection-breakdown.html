@@ -6,47 +6,50 @@
     <div class="mb-4">
         <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Year-by-Year Projection</h3>
         <p class="text-xs text-gray-500 dark:text-gray-300">Annual reconciliation of the after-tax projection. Values below are nominal; the chart toggle lets you compare against today's dollars.</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-300">Gross cash in includes income, dividends, and portfolio distributions before taxes. Portfolio out isolates the net amount pulled from the portfolio.</p>
     </div>
-    <div class="overflow-x-auto">
+    <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="max-h-96 overflow-auto">
         <table class="min-w-full text-sm">
-            <thead>
-                <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-300">
-                    <th class="py-2 pr-4">Year</th>
-                    <th class="py-2 pr-4">Start</th>
-                    <th class="py-2 pr-4">Growth</th>
-                    <th class="py-2 pr-4">Gross Income</th>
-                    <th class="py-2 pr-4">MAGI</th>
-                    <th class="py-2 pr-4">Taxes</th>
-                    <th class="py-2 pr-4">NIIT</th>
-                    <th class="py-2 pr-4">IRMAA</th>
-                    <th class="py-2 pr-4">Taxable SS</th>
-                    <th class="py-2 pr-4">Expenses</th>
-                    <th class="py-2 pr-4">Withdrawals</th>
-                    <th class="py-2 pr-0">End</th>
+            <thead class="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/95">
+                <tr class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-300">
+                    <th class="py-2.5 pr-4 pl-3">Year</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Start</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Growth</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Gross Cash In</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">MAGI</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Taxes</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">NIIT</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">IRMAA</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Taxable SS</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Spending</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap">Portfolio Out</th>
+                    <th class="py-2.5 pr-3 whitespace-nowrap">End Balance</th>
                 </tr>
             </thead>
             <tbody>
                 {{range .YearlySummaries}}
-                <tr class="border-b border-gray-100 dark:border-gray-700/60">
-                    <td class="py-2 pr-4 font-medium text-gray-700 dark:text-gray-200">{{.Year}}</td>
-                    <td class="py-2 pr-4 text-gray-600 dark:text-gray-300">{{formatMoney .StartingBalance}}</td>
-                    <td class="py-2 pr-4 {{if ge .Growth 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney .Growth}}</td>
-                    <td class="py-2 pr-4 text-gray-600 dark:text-gray-300">{{formatMoney .GrossIncome}}</td>
-                    <td class="py-2 pr-4 text-gray-600 dark:text-gray-300">{{formatMoney .MAGI}}</td>
-                    <td class="py-2 pr-4 text-red-600 dark:text-red-400">{{formatMoney .Taxes}}</td>
-                    <td class="py-2 pr-4 text-red-500 dark:text-red-300">{{formatMoney .NIIT}}</td>
-                    <td class="py-2 pr-4 text-gray-600 dark:text-gray-300">{{formatMoney .IRMAA}}</td>
-                    <td class="py-2 pr-4 text-gray-600 dark:text-gray-300">{{printf "%.0f%%" .TaxableSocialSecurityPct}}</td>
-                    <td class="py-2 pr-4 text-gray-600 dark:text-gray-300">{{formatMoney .Expenses}}</td>
-                    <td class="py-2 pr-4 text-amber-600 dark:text-amber-400">{{formatMoney .Withdrawals}}</td>
-                    <td class="py-2 pr-0">
-                        <div class="text-gray-800 dark:text-gray-100 font-medium">{{formatMoney .EndingBalance}}</div>
-                        <div class="text-xs text-gray-500 dark:text-gray-400">Real: {{formatMoney .EndingBalanceReal}}</div>
+                <tr class="border-b border-gray-100 align-top odd:bg-white even:bg-gray-50/70 dark:border-gray-700/60 dark:odd:bg-gray-800 dark:even:bg-gray-900/30">
+                    <td class="py-2.5 pr-4 pl-3 font-medium text-gray-700 dark:text-gray-200">{{.Year}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .StartingBalance}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums {{if ge .Growth 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney .Growth}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .GrossIncome}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .MAGI}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-600 dark:text-red-400">{{formatMoney .Taxes}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-500 dark:text-red-300">{{formatMoney .NIIT}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .IRMAA}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{printf "%.0f%%" .TaxableSocialSecurityPct}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .Expenses}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-amber-600 dark:text-amber-400">{{formatMoney .Withdrawals}}</td>
+                    <td class="py-2.5 pr-3">
+                        <div class="whitespace-nowrap tabular-nums font-medium text-gray-800 dark:text-gray-100">{{formatMoney .EndingBalance}}</div>
+                        <div class="whitespace-nowrap text-xs tabular-nums text-sky-700 dark:text-sky-300">Real {{formatMoney .EndingBalanceReal}}</div>
                     </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {{end}}

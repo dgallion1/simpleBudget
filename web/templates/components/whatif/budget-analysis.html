@@ -55,6 +55,24 @@
                 <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
             </div>
             {{end}}
+            {{if gt .Analysis.BudgetFit.MonthlyTaxes 0.0}}
+            <div class="flex justify-between py-0.5 pl-4">
+                <span class="text-gray-500 dark:text-gray-400">Estimated Taxes</span>
+                <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyTaxes}}</span>
+            </div>
+            {{end}}
+            {{if gt .Analysis.BudgetFit.MonthlyNIIT 0.0}}
+            <div class="flex justify-between py-0.5 pl-8">
+                <span class="text-gray-400 dark:text-gray-500">Includes NIIT</span>
+                <span class="text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.MonthlyNIIT}}</span>
+            </div>
+            {{end}}
+            {{if gt .Analysis.BudgetFit.TaxableSocialSecurityPct 0.0}}
+            <div class="flex justify-between py-0.5 pl-8">
+                <span class="text-gray-400 dark:text-gray-500">Taxable Social Security</span>
+                <span class="text-gray-600 dark:text-gray-300">{{printf "%.0f%%" .Analysis.BudgetFit.TaxableSocialSecurityPct}}</span>
+            </div>
+            {{end}}
 
             <!-- Net Cash Flow -->
             <div class="flex justify-between py-1.5 mt-2 border-t-2 border-gray-300 dark:border-gray-600">
@@ -129,6 +147,30 @@
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Estimated RMD</span>
             <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}</span>
+        </div>
+        {{end}}
+        {{if gt .Analysis.BudgetFit.SteadyStateTaxes 0.0}}
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-gray-600 dark:text-gray-300">Estimated Taxes</span>
+            <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateTaxes}}</span>
+        </div>
+        {{end}}
+        {{if gt .Analysis.BudgetFit.SteadyStateNIIT 0.0}}
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700 pl-4">
+            <span class="text-gray-500 dark:text-gray-400">Includes NIIT</span>
+            <span class="font-medium text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.SteadyStateNIIT}}</span>
+        </div>
+        {{end}}
+        {{if gt .Analysis.BudgetFit.SteadyStateIRMAA 0.0}}
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-gray-600 dark:text-gray-300">Estimated IRMAA</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateIRMAA}}</span>
+        </div>
+        {{end}}
+        {{if gt .Analysis.BudgetFit.SteadyStateTaxableSocialSecurityPct 0.0}}
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-gray-600 dark:text-gray-300">Taxable Social Security</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200">{{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateTaxableSocialSecurityPct}}</span>
         </div>
         {{end}}
     </div>

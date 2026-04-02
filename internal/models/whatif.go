@@ -519,25 +519,30 @@ type ProjectionMonth struct {
 
 // ProjectionResult contains the complete projection with summary metrics
 type ProjectionResult struct {
-	Months         []ProjectionMonth `json:"months"`
-	LongevityYears *float64          `json:"longevity_years"` // nil if portfolio survives
-	FinalBalance   float64           `json:"final_balance"`
-	DepletionMonth *int              `json:"depletion_month"` // nil if no depletion
-	Survives       bool              `json:"survives"`
+	Months          []ProjectionMonth       `json:"months"`
+	YearlySummaries []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
+	LongevityYears  *float64                `json:"longevity_years"` // nil if portfolio survives
+	FinalBalance    float64                 `json:"final_balance"`
+	DepletionMonth  *int                    `json:"depletion_month"` // nil if no depletion
+	Survives        bool                    `json:"survives"`
 }
 
 // ProjectionYearSummary reconciles one projection year for explainability.
 type ProjectionYearSummary struct {
-	Year                int     `json:"year"`
-	StartingBalance     float64 `json:"starting_balance"`
-	Growth              float64 `json:"growth"`
-	GrossIncome         float64 `json:"gross_income"`
-	Taxes               float64 `json:"taxes"`
-	Expenses            float64 `json:"expenses"`
-	Withdrawals         float64 `json:"withdrawals"`
-	EndingBalance       float64 `json:"ending_balance"`
-	EndingBalanceReal   float64 `json:"ending_balance_real"`
-	CumulativeInflation float64 `json:"cumulative_inflation"`
+	Year                     int     `json:"year"`
+	StartingBalance          float64 `json:"starting_balance"`
+	Growth                   float64 `json:"growth"`
+	GrossIncome              float64 `json:"gross_income"`
+	MAGI                     float64 `json:"magi,omitempty"`
+	Taxes                    float64 `json:"taxes"`
+	NIIT                     float64 `json:"niit,omitempty"`
+	IRMAA                    float64 `json:"irmaa,omitempty"`
+	TaxableSocialSecurityPct float64 `json:"taxable_social_security_pct,omitempty"`
+	Expenses                 float64 `json:"expenses"`
+	Withdrawals              float64 `json:"withdrawals"`
+	EndingBalance            float64 `json:"ending_balance"`
+	EndingBalanceReal        float64 `json:"ending_balance_real"`
+	CumulativeInflation      float64 `json:"cumulative_inflation"`
 }
 
 // ProjectionExplainability contains reconciliation data for the projection UI.
@@ -560,15 +565,18 @@ type ExpenseBreakdownItem struct {
 
 // BudgetFitAnalysis shows monthly gap and required rates
 type BudgetFitAnalysis struct {
-	MonthlyExpenses float64 `json:"monthly_expenses"`
-	MonthlyIncome   float64 `json:"monthly_income"`
-	GrossIncome     float64 `json:"gross_income,omitempty"`
-	NetIncome       float64 `json:"net_income,omitempty"`
-	MonthlyTaxes    float64 `json:"monthly_taxes,omitempty"`
-	MonthlyRMD      float64 `json:"monthly_rmd"` // Required Minimum Distribution (age 73+)
-	MonthlyGap      float64 `json:"monthly_gap"` // Expenses - Income - RMD
-	AnnualGap       float64 `json:"annual_gap"`
-	RequiredRate    float64 `json:"required_rate"` // Rate needed to cover gap
+	MonthlyExpenses          float64 `json:"monthly_expenses"`
+	MonthlyIncome            float64 `json:"monthly_income"`
+	GrossIncome              float64 `json:"gross_income,omitempty"`
+	NetIncome                float64 `json:"net_income,omitempty"`
+	MonthlyTaxes             float64 `json:"monthly_taxes,omitempty"`
+	MonthlyNIIT              float64 `json:"monthly_niit,omitempty"`
+	MonthlyIRMAA             float64 `json:"monthly_irmaa,omitempty"`
+	TaxableSocialSecurityPct float64 `json:"taxable_social_security_pct,omitempty"`
+	MonthlyRMD               float64 `json:"monthly_rmd"` // Required Minimum Distribution (age 73+)
+	MonthlyGap               float64 `json:"monthly_gap"` // Expenses - Income - RMD
+	AnnualGap                float64 `json:"annual_gap"`
+	RequiredRate             float64 `json:"required_rate"` // Rate needed to cover gap
 
 	// Breakdowns for transparency
 	ExpenseBreakdown []ExpenseBreakdownItem `json:"expense_breakdown,omitempty"`
@@ -580,18 +588,21 @@ type BudgetFitAnalysis struct {
 	ExcessRMD    float64 `json:"excess_rmd"`     // RMD beyond what's needed (forced taxable withdrawal)
 
 	// Steady-state analysis (when all income sources are active)
-	SteadyStateMonth       int     `json:"steady_state_month"`    // Month when all income is active
-	SteadyStateYear        float64 `json:"steady_state_year"`     // Year when all income is active (or override)
-	MinSteadyStateYear     float64 `json:"min_steady_state_year"` // Auto-calculated minimum (when all income starts)
-	SteadyStateExpenses    float64 `json:"steady_state_expenses"` // Expenses at steady state (inflated)
-	SteadyStateIncome      float64 `json:"steady_state_income"`   // Income at steady state (with COLA)
-	SteadyStateGrossIncome float64 `json:"steady_state_gross_income,omitempty"`
-	SteadyStateNetIncome   float64 `json:"steady_state_net_income,omitempty"`
-	SteadyStateTaxes       float64 `json:"steady_state_taxes,omitempty"`
-	SteadyStateRMD         float64 `json:"steady_state_rmd"`  // RMD at steady state (if applicable)
-	SteadyStateGap         float64 `json:"steady_state_gap"`  // Gap at steady state
-	SteadyStateRate        float64 `json:"steady_state_rate"` // Required withdrawal rate at steady state
-	HasSteadyState         bool    `json:"has_steady_state"`  // True if steady state differs from current
+	SteadyStateMonth                    int     `json:"steady_state_month"`    // Month when all income is active
+	SteadyStateYear                     float64 `json:"steady_state_year"`     // Year when all income is active (or override)
+	MinSteadyStateYear                  float64 `json:"min_steady_state_year"` // Auto-calculated minimum (when all income starts)
+	SteadyStateExpenses                 float64 `json:"steady_state_expenses"` // Expenses at steady state (inflated)
+	SteadyStateIncome                   float64 `json:"steady_state_income"`   // Income at steady state (with COLA)
+	SteadyStateGrossIncome              float64 `json:"steady_state_gross_income,omitempty"`
+	SteadyStateNetIncome                float64 `json:"steady_state_net_income,omitempty"`
+	SteadyStateTaxes                    float64 `json:"steady_state_taxes,omitempty"`
+	SteadyStateNIIT                     float64 `json:"steady_state_niit,omitempty"`
+	SteadyStateIRMAA                    float64 `json:"steady_state_irmaa,omitempty"`
+	SteadyStateTaxableSocialSecurityPct float64 `json:"steady_state_taxable_social_security_pct,omitempty"`
+	SteadyStateRMD                      float64 `json:"steady_state_rmd"`  // RMD at steady state (if applicable)
+	SteadyStateGap                      float64 `json:"steady_state_gap"`  // Gap at steady state
+	SteadyStateRate                     float64 `json:"steady_state_rate"` // Required withdrawal rate at steady state
+	HasSteadyState                      bool    `json:"has_steady_state"`  // True if steady state differs from current
 }
 
 // RMDProjection represents RMD estimates for a specific year

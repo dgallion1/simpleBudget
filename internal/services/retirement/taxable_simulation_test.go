@@ -31,6 +31,18 @@ func taxableOnlySimulationSettings() *models.WhatIfSettings {
 	return s
 }
 
+func highIncomeMedicareSimulationSettings(age int) *models.WhatIfSettings {
+	s := taxableOnlySimulationSettings()
+	s.PortfolioValue = 1_000_000
+	s.CurrentAge = age
+	s.MonthlyLivingExpenses = 0
+	s.IncomeSources = []models.IncomeSource{
+		{ID: "pension", Name: "Pension", Amount: 25000, StartMonth: 0},
+	}
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+	return s
+}
+
 func TestHistoricalSequence_HighTaxableDividendYieldReducesFinalBalance(t *testing.T) {
 	base := taxableOnlySimulationSettings()
 	highDividend := *base
@@ -73,5 +85,48 @@ func TestMonteCarlo_HighTaxableDividendYieldReducesFinalBalance(t *testing.T) {
 	if highDividendResult.FinalBalance >= baseResult.FinalBalance {
 		t.Fatalf("expected taxable dividends to reduce Monte Carlo final balance, got base=%.2f high-div=%.2f",
 			baseResult.FinalBalance, highDividendResult.FinalBalance)
+	}
+}
+
+func TestHistoricalSequence_MedicareAgeIRMAALowersFinalBalance(t *testing.T) {
+	preMedicare := highIncomeMedicareSimulationSettings(64)
+	medicare := highIncomeMedicareSimulationSettings(65)
+
+	preResult := NewCalculator(preMedicare).runSingleHistoricalSequence(1982)
+	medicareResult := NewCalculator(medicare).runSingleHistoricalSequence(1982)
+
+	if medicareResult.FinalBalance >= preResult.FinalBalance {
+		t.Fatalf("expected Medicare-age IRMAA drag to reduce historical final balance, got pre=%.2f medicare=%.2f",
+			preResult.FinalBalance, medicareResult.FinalBalance)
+	}
+}
+
+func TestMonteCarlo_MedicareAgeIRMAALowersFinalBalance(t *testing.T) {
+	preMedicare := highIncomeMedicareSimulationSettings(64)
+	medicare := highIncomeMedicareSimulationSettings(65)
+
+	config := &MonteCarloConfig{
+		ReturnVolatility:        0,
+		CrashProbability:        0,
+		CrashSeverity:           -30,
+		RecoveryBoost:           0,
+		SpendingShockProb:       0,
+		SpendingShockMin:        0,
+		SpendingShockMax:        0,
+		HealthShockProb:         0,
+		HealthShockMin:          0,
+		HealthShockMax:          0,
+		LongevityVariation:      0,
+		AdaptiveSpending:        false,
+		DiscretionaryCutPercent: 0,
+		AdaptationRecoveryYears: 0,
+	}
+
+	preResult := NewCalculator(preMedicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+	medicareResult := NewCalculator(medicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+
+	if medicareResult.FinalBalance >= preResult.FinalBalance {
+		t.Fatalf("expected Medicare-age IRMAA drag to reduce Monte Carlo final balance, got pre=%.2f medicare=%.2f",
+			preResult.FinalBalance, medicareResult.FinalBalance)
 	}
 }

@@ -13,6 +13,21 @@ type FederalTaxBracket struct {
 	Rate      float64 // Tax rate as decimal (e.g., 0.22 for 22%)
 }
 
+type socialSecurityTaxThreshold struct {
+	BaseThreshold     float64
+	UpperThreshold    float64
+	BaseTaxableAmount float64
+}
+
+type investmentIncomeTaxBreakdown struct {
+	FederalTax    float64
+	StateTax      float64
+	NIIT          float64
+	TotalTax      float64
+	EffectiveRate float64
+	MAGI          float64
+}
+
 // TaxBrackets2024 contains 2024 federal tax brackets by filing status
 // Source: IRS Revenue Procedure 2023-34
 var TaxBrackets2024 = map[models.FilingStatus][]FederalTaxBracket{
@@ -86,6 +101,56 @@ var StandardDeduction2024 = map[models.FilingStatus]float64{
 	models.FilingHeadOfHousehold: 21900,
 }
 
+var socialSecurityTaxThresholds = map[models.FilingStatus]socialSecurityTaxThreshold{
+	models.FilingSingle:          {BaseThreshold: 25000, UpperThreshold: 34000, BaseTaxableAmount: 4500},
+	models.FilingMarriedJoint:    {BaseThreshold: 32000, UpperThreshold: 44000, BaseTaxableAmount: 6000},
+	models.FilingHeadOfHousehold: {BaseThreshold: 25000, UpperThreshold: 34000, BaseTaxableAmount: 4500},
+}
+
+var niitThresholds = map[models.FilingStatus]float64{
+	models.FilingSingle:          200000,
+	models.FilingMarriedJoint:    250000,
+	models.FilingMarriedSeparate: 125000,
+	models.FilingHeadOfHousehold: 200000,
+}
+
+// 2026 CMS IRMAA amounts are used as the planner's base table.
+// Future years inflation-scale both thresholds and surcharges as a simple approximation.
+var monthlyIRMAASurcharge2026 = map[models.FilingStatus][]struct {
+	UpperMAGI float64
+	Surcharge float64
+}{
+	models.FilingSingle: {
+		{109000, 0},
+		{137000, 81.20 + 14.50},
+		{171000, 202.90 + 37.50},
+		{205000, 324.60 + 60.40},
+		{500000, 446.30 + 83.30},
+		{math.MaxFloat64, 487.00 + 91.00},
+	},
+	models.FilingMarriedJoint: {
+		{218000, 0},
+		{274000, 81.20 + 14.50},
+		{342000, 202.90 + 37.50},
+		{410000, 324.60 + 60.40},
+		{750000, 446.30 + 83.30},
+		{math.MaxFloat64, 487.00 + 91.00},
+	},
+	models.FilingMarriedSeparate: {
+		{109000, 0},
+		{391000, 446.30 + 83.30},
+		{math.MaxFloat64, 487.00 + 91.00},
+	},
+	models.FilingHeadOfHousehold: {
+		{109000, 0},
+		{137000, 81.20 + 14.50},
+		{171000, 202.90 + 37.50},
+		{205000, 324.60 + 60.40},
+		{500000, 446.30 + 83.30},
+		{math.MaxFloat64, 487.00 + 91.00},
+	},
+}
+
 // TaxCalculator computes federal and state income taxes
 type TaxCalculator struct {
 	FilingStatus  models.FilingStatus
@@ -119,7 +184,7 @@ func (tc *TaxCalculator) GetAdjustedBrackets(yearsFromBase int) []FederalTaxBrac
 	}
 
 	// Adjust bracket thresholds for inflation
-	inflationFactor := math.Pow(1+tc.InflationRate/100, float64(yearsFromBase))
+	inflationFactor := tc.inflationFactor(yearsFromBase)
 	adjusted := make([]FederalTaxBracket, len(baseBrackets))
 
 	for i, bracket := range baseBrackets {
@@ -147,7 +212,7 @@ func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase i
 		return baseBrackets
 	}
 
-	inflationFactor := math.Pow(1+tc.InflationRate/100, float64(yearsFromBase))
+	inflationFactor := tc.inflationFactor(yearsFromBase)
 	adjusted := make([]FederalTaxBracket, len(baseBrackets))
 
 	for i, bracket := range baseBrackets {
@@ -175,8 +240,107 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
 		return baseDeduction
 	}
 
-	inflationFactor := math.Pow(1+tc.InflationRate/100, float64(yearsFromBase))
-	return baseDeduction * inflationFactor
+	return baseDeduction * tc.inflationFactor(yearsFromBase)
+}
+
+func (tc *TaxCalculator) inflationFactor(yearsFromBase int) float64 {
+	if yearsFromBase <= 0 {
+		return 1
+	}
+	return math.Pow(1+tc.InflationRate/100, float64(yearsFromBase))
+}
+
+func normalizeFilingStatus(filingStatus models.FilingStatus) models.FilingStatus {
+	switch filingStatus {
+	case models.FilingSingle, models.FilingMarriedJoint, models.FilingMarriedSeparate, models.FilingHeadOfHousehold:
+		return filingStatus
+	default:
+		return models.FilingMarriedJoint
+	}
+}
+
+func CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64, filingStatus models.FilingStatus) float64 {
+	if ssBenefits <= 0 {
+		return 0
+	}
+
+	filingStatus = normalizeFilingStatus(filingStatus)
+	if filingStatus == models.FilingMarriedSeparate {
+		return ssBenefits * 0.85
+	}
+
+	thresholds, ok := socialSecurityTaxThresholds[filingStatus]
+	if !ok {
+		thresholds = socialSecurityTaxThresholds[models.FilingMarriedJoint]
+	}
+
+	provisionalIncome := math.Max(0, otherIncome) + math.Max(0, qualifiedDividends) + math.Max(0, longTermCapitalGains) + (0.5 * ssBenefits)
+	if provisionalIncome <= thresholds.BaseThreshold {
+		return 0
+	}
+	if provisionalIncome <= thresholds.UpperThreshold {
+		return math.Min(ssBenefits*0.5, (provisionalIncome-thresholds.BaseThreshold)*0.5)
+	}
+
+	taxable := math.Min(ssBenefits*0.5, thresholds.BaseTaxableAmount) + (provisionalIncome-thresholds.UpperThreshold)*0.85
+	return math.Min(ssBenefits*0.85, taxable)
+}
+
+func CalculateNIIT(magi, netInvestmentIncome float64, filingStatus models.FilingStatus) float64 {
+	if magi <= 0 || netInvestmentIncome <= 0 {
+		return 0
+	}
+
+	threshold, ok := niitThresholds[normalizeFilingStatus(filingStatus)]
+	if !ok {
+		threshold = niitThresholds[models.FilingMarriedJoint]
+	}
+
+	excessMAGI := magi - threshold
+	if excessMAGI <= 0 {
+		return 0
+	}
+
+	return math.Min(netInvestmentIncome, excessMAGI) * 0.038
+}
+
+func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, inflationFactor float64) float64 {
+	if magi <= 0 {
+		return 0
+	}
+	if inflationFactor <= 0 {
+		inflationFactor = 1
+	}
+
+	filingStatus = normalizeFilingStatus(filingStatus)
+	brackets, ok := monthlyIRMAASurcharge2026[filingStatus]
+	if !ok {
+		brackets = monthlyIRMAASurcharge2026[models.FilingMarriedJoint]
+	}
+
+	for _, bracket := range brackets {
+		upperMAGI := bracket.UpperMAGI
+		if upperMAGI < math.MaxFloat64 {
+			upperMAGI *= inflationFactor
+		}
+		if magi <= upperMAGI {
+			return bracket.Surcharge * inflationFactor
+		}
+	}
+
+	return 0
+}
+
+func (tc *TaxCalculator) CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64) float64 {
+	return CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains, tc.FilingStatus)
+}
+
+func (tc *TaxCalculator) CalculateNIIT(magi, netInvestmentIncome float64) float64 {
+	return CalculateNIIT(magi, netInvestmentIncome, tc.FilingStatus)
+}
+
+func (tc *TaxCalculator) CalculateMonthlyIRMAA(magi, inflationFactor float64) float64 {
+	return CalculateMonthlyIRMAA(magi, tc.FilingStatus, inflationFactor)
 }
 
 // CalculateFederalTax computes federal tax on taxable income
@@ -254,9 +418,21 @@ func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase in
 }
 
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int) (federalTax, stateTax, totalTax, effectiveRate float64) {
+	breakdown := tc.calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, 0, yearsFromBase)
+	return breakdown.FederalTax, breakdown.StateTax, breakdown.TotalTax, breakdown.EffectiveRate
+}
+
+// CalculateTaxWithInvestmentIncomeBreakdown returns a detailed tax breakdown including NIIT.
+// nonQualifiedDividends should be the portion of ordinaryIncome that represents non-qualified
+// dividends — these are taxed as ordinary income but also count as net investment income for NIIT.
+func (tc *TaxCalculator) CalculateTaxWithInvestmentIncomeBreakdown(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown {
+	return tc.calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, yearsFromBase)
+}
+
+func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown {
 	totalGrossIncome := ordinaryIncome + qualifiedDividends + longTermCapitalGains
 	if totalGrossIncome <= 0 {
-		return 0, 0, 0, 0
+		return investmentIncomeTaxBreakdown{}
 	}
 
 	standardDeduction := tc.GetAdjustedStandardDeduction(yearsFromBase)
@@ -280,12 +456,26 @@ func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualif
 		}
 	}
 
+	magi := ordinaryIncome + qualifiedDividends + longTermCapitalGains
+	// Net investment income for NIIT includes qualified dividends, LTCG, and
+	// non-qualified dividends (which are already taxed as ordinary income but
+	// still count as investment income per IRS rules).
+	netInvestmentIncome := qualifiedDividends + longTermCapitalGains + nonQualifiedDividends
+	niit := tc.CalculateNIIT(magi, netInvestmentIncome)
 	stateTaxableIncome := taxableOrdinaryIncome + taxableInvestmentIncome
-	stateTax = tc.CalculateStateTax(stateTaxableIncome)
-	federalTax = ordinaryFederalTax + investmentFederalTax
-	totalTax = federalTax + stateTax
-	effectiveRate = (totalTax / totalGrossIncome) * 100
-	return federalTax, stateTax, totalTax, effectiveRate
+	stateTax := tc.CalculateStateTax(stateTaxableIncome)
+	federalTax := ordinaryFederalTax + investmentFederalTax + niit
+	totalTax := federalTax + stateTax
+	effectiveRate := (totalTax / totalGrossIncome) * 100
+
+	return investmentIncomeTaxBreakdown{
+		FederalTax:    federalTax,
+		StateTax:      stateTax,
+		NIIT:          niit,
+		TotalTax:      totalTax,
+		EffectiveRate: effectiveRate,
+		MAGI:          magi,
+	}
 }
 
 // EstimateRothConversionTax estimates the tax impact of a Roth conversion

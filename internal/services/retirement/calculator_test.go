@@ -290,6 +290,80 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 	})
 }
 
+func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 0
+	settings.MonthlyLivingExpenses = 0
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.IncomeSources = []models.IncomeSource{
+		{ID: "ss", Name: "Social Security", Amount: 4000, StartMonth: 0},
+	}
+	settings.InflationRate = 0
+	settings.SpendingDeclineRate = 0
+	settings.ProjectionYears = 1
+	settings.CurrentAge = 62
+	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+
+	projection := NewCalculator(settings).RunProjection()
+	if len(projection.Months) != 12 {
+		t.Fatalf("expected a full projection year, got %d months", len(projection.Months))
+	}
+
+	actualMonthlyTaxes := projection.Months[0].TaxesPaid
+	tc := NewTaxCalculator(settings.TaxConfig, 0)
+	_, _, fullyTaxedAnnualTotal, _ := tc.CalculateTaxWithInvestmentIncome(4000*12, 0, 0, 0)
+	fullyTaxedMonthly := fullyTaxedAnnualTotal / 12
+
+	if actualMonthlyTaxes >= fullyTaxedMonthly {
+		t.Fatalf("expected modeled Social Security taxes %.2f to stay below fully-taxed baseline %.2f", actualMonthlyTaxes, fullyTaxedMonthly)
+	}
+}
+
+func TestCalculateBudgetFitIncludesNIITAndIRMAA(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 4_000_000
+	settings.MonthlyLivingExpenses = 1000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.InflationRate = 0
+	settings.SpendingDeclineRate = 0
+	settings.CurrentAge = 67
+	settings.SpouseAge = 66
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+	settings.TaxableDividendYield = 8.0
+	settings.TaxableQualifiedDividendPercent = 100
+	settings.IncomeSources = []models.IncomeSource{
+		{ID: "ss", Name: "Social Security", Amount: 4000, StartMonth: 0},
+	}
+	settings.SteadyStateOverrideYear = 5
+	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
+
+	fit := NewCalculator(settings).CalculateBudgetFit()
+
+	if fit.MonthlyNIIT <= 0 {
+		t.Fatalf("expected NIIT in current budget fit, got %.2f", fit.MonthlyNIIT)
+	}
+	if fit.MonthlyIRMAA <= 0 {
+		t.Fatalf("expected IRMAA in current budget fit, got %.2f", fit.MonthlyIRMAA)
+	}
+	if fit.TaxableSocialSecurityPct <= 0 || fit.TaxableSocialSecurityPct > 85 {
+		t.Fatalf("expected taxable Social Security percentage between 0 and 85, got %.2f", fit.TaxableSocialSecurityPct)
+	}
+	if fit.SteadyStateNIIT <= 0 {
+		t.Fatalf("expected NIIT in steady-state budget fit, got %.2f", fit.SteadyStateNIIT)
+	}
+	if fit.SteadyStateIRMAA <= 0 {
+		t.Fatalf("expected IRMAA in steady-state budget fit, got %.2f", fit.SteadyStateIRMAA)
+	}
+	if fit.SteadyStateTaxableSocialSecurityPct <= 0 || fit.SteadyStateTaxableSocialSecurityPct > 85 {
+		t.Fatalf("expected steady-state taxable Social Security percentage between 0 and 85, got %.2f", fit.SteadyStateTaxableSocialSecurityPct)
+	}
+}
+
 // TestRunMonteCarloSimulation tests the full simulation with aggregation
 func TestRunMonteCarloSimulation(t *testing.T) {
 	t.Run("uses default 1000 runs when zero specified", func(t *testing.T) {

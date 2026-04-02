@@ -156,6 +156,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	var monthlyRMD float64
 	var taxState projectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
+	currentYearTaxSnapshot := projectedTaxSnapshot{}
 
 	peakBalance := s.PortfolioValue
 	lowestBalance := s.PortfolioValue
@@ -190,6 +192,9 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			if m > 0 {
+				completedMAGIHistory = append(completedMAGIHistory, currentYearTaxSnapshot.AnnualMAGI)
+			}
 			taxState = projectionTaxAccumulator{}
 			// Check for chain transition
 			if len(c.ResolvedChain) > 0 {
@@ -281,6 +286,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		tdMonthlyReturn := math.Pow(1+tdAnnualReturn, 1.0/12) - 1
 		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
 		taxableComponents := buildTaxableReturnComponents(taxAnnualReturn, s)
+		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,
@@ -299,13 +305,18 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			currentYear,
 			m%12,
 			rothConversionThisMonth,
+			completedMAGIHistory,
+			irmaaEligibleAdults,
+			cumulativeInflation,
 		)
+		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		taxState.applyMonth(
 			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
 			incomeBreakdown.SocialSecurityIncome,
 			monthResult.CashFlow.WithdrawalFromTaxDeferred,
 			monthResult.TaxableQualifiedDividends,
 			monthResult.TaxableCapitalGains,
+			monthResult.TaxableNonQualifiedDividends,
 			rothConversionThisMonth,
 			monthResult.TaxesPaid,
 		)
@@ -358,4 +369,3 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 	return result
 }
-

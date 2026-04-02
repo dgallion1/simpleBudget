@@ -179,46 +179,161 @@ func rebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cu
 //     long-term capital-gains brackets in tax.go.
 //   - Roth withdrawals are not taxed.
 type projectionTaxAccumulator struct {
-	OrdinaryIncomeYTD       float64
-	SocialSecurityIncomeYTD float64
-	TaxableWithdrawalsYTD   float64
-	QualifiedDividendsYTD   float64
-	LongTermCapitalGainsYTD float64
-	RothConversionsYTD      float64
-	TaxesPaidYTD            float64
+	OrdinaryIncomeYTD          float64
+	SocialSecurityIncomeYTD    float64
+	TaxableWithdrawalsYTD      float64
+	QualifiedDividendsYTD      float64
+	LongTermCapitalGainsYTD    float64
+	NonQualifiedDividendsYTD   float64
+	RothConversionsYTD         float64
+	TaxesPaidYTD               float64
 }
 
-func (a projectionTaxAccumulator) estimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, rothConversions float64) float64 {
+type projectedAnnualTaxInputs struct {
+	OrdinaryIncome         float64
+	SocialSecurityIncome   float64
+	TaxableWithdrawals     float64
+	QualifiedDividends     float64
+	LongTermCapitalGains   float64
+	NonQualifiedDividends  float64
+	RothConversions        float64
+}
+
+type projectedTaxSnapshot struct {
+	MonthlyTax                  float64
+	MonthlyIRMAA                float64
+	AnnualMAGI                  float64
+	AnnualTaxableSocialSecurity float64
+	TaxableSocialSecurityPct    float64
+	AnnualNIIT                  float64
+	AnnualIRMAA                 float64
+}
+
+func (a projectionTaxAccumulator) annualizedInputs(monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) projectedAnnualTaxInputs {
+	monthsElapsed := float64(monthInYear + 1)
+	if monthsElapsed <= 0 {
+		monthsElapsed = 1
+	}
+	annualizationFactor := 12.0 / monthsElapsed
+
+	return projectedAnnualTaxInputs{
+		OrdinaryIncome:        (a.OrdinaryIncomeYTD + ordinaryIncome) * annualizationFactor,
+		SocialSecurityIncome:  (a.SocialSecurityIncomeYTD + socialSecurityIncome) * annualizationFactor,
+		TaxableWithdrawals:    (a.TaxableWithdrawalsYTD + taxableWithdrawals) * annualizationFactor,
+		QualifiedDividends:    (a.QualifiedDividendsYTD + qualifiedDividends) * annualizationFactor,
+		LongTermCapitalGains:  (a.LongTermCapitalGainsYTD + longTermCapitalGains) * annualizationFactor,
+		NonQualifiedDividends: (a.NonQualifiedDividendsYTD + nonQualifiedDividends) * annualizationFactor,
+		RothConversions:       a.RothConversionsYTD + rothConversions,
+	}
+}
+
+func (a projectionTaxAccumulator) estimateMonthlySnapshot(
+	tc *TaxCalculator,
+	yearsFromBase int,
+	monthInYear int,
+	ordinaryIncome float64,
+	socialSecurityIncome float64,
+	taxableWithdrawals float64,
+	qualifiedDividends float64,
+	longTermCapitalGains float64,
+	nonQualifiedDividends float64,
+	rothConversions float64,
+	completedMAGIHistory []float64,
+	irmaaEligibleAdults int,
+	irmaaInflationFactor float64,
+) projectedTaxSnapshot {
 	if tc == nil {
-		return 0
+		return projectedTaxSnapshot{}
 	}
 
-	monthsElapsed := float64(monthInYear + 1)
-	annualizedOrdinaryIncome := (a.OrdinaryIncomeYTD + a.SocialSecurityIncomeYTD + a.TaxableWithdrawalsYTD +
-		ordinaryIncome + socialSecurityIncome + taxableWithdrawals) * (12.0 / monthsElapsed)
-	annualizedQualifiedDividends := (a.QualifiedDividendsYTD + qualifiedDividends) * (12.0 / monthsElapsed)
-	annualizedCapitalGains := (a.LongTermCapitalGainsYTD + longTermCapitalGains) * (12.0 / monthsElapsed)
-	estimatedOrdinaryIncome := annualizedOrdinaryIncome + a.RothConversionsYTD + rothConversions
+	inputs := a.annualizedInputs(monthInYear, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions)
+	otherIncome := inputs.OrdinaryIncome + inputs.TaxableWithdrawals + inputs.RothConversions
+	taxableSocialSecurity := tc.CalculateTaxableSocialSecurity(inputs.SocialSecurityIncome, otherIncome, inputs.QualifiedDividends, inputs.LongTermCapitalGains)
+	estimatedOrdinaryIncome := otherIncome + taxableSocialSecurity
 
-	_, _, totalTax, _ := tc.CalculateTaxWithInvestmentIncome(estimatedOrdinaryIncome, annualizedQualifiedDividends, annualizedCapitalGains, yearsFromBase)
+	taxBreakdown := tc.CalculateTaxWithInvestmentIncomeBreakdown(estimatedOrdinaryIncome, inputs.QualifiedDividends, inputs.LongTermCapitalGains, inputs.NonQualifiedDividends, yearsFromBase)
+	lookbackMAGI := taxBreakdown.MAGI
+	if len(completedMAGIHistory) >= 2 {
+		lookbackMAGI = completedMAGIHistory[len(completedMAGIHistory)-2]
+	}
+
+	annualIRMAA := 0.0
+	if irmaaEligibleAdults > 0 {
+		annualIRMAA = tc.CalculateMonthlyIRMAA(lookbackMAGI, irmaaInflationFactor) * float64(irmaaEligibleAdults) * 12
+	}
 	remainingMonths := 12 - monthInYear
 	if remainingMonths <= 0 {
 		remainingMonths = 1
 	}
 
-	taxDue := (totalTax - a.TaxesPaidYTD) / float64(remainingMonths)
+	taxDue := (taxBreakdown.TotalTax - a.TaxesPaidYTD) / float64(remainingMonths)
 	if taxDue < 0 {
-		return 0
+		taxDue = 0
 	}
-	return taxDue
+
+	taxableSocialSecurityPct := 0.0
+	if inputs.SocialSecurityIncome > 0 {
+		taxableSocialSecurityPct = taxableSocialSecurity / inputs.SocialSecurityIncome * 100
+	}
+
+	return projectedTaxSnapshot{
+		MonthlyTax:                  taxDue,
+		MonthlyIRMAA:                annualIRMAA / 12,
+		AnnualMAGI:                  taxBreakdown.MAGI,
+		AnnualTaxableSocialSecurity: taxableSocialSecurity,
+		TaxableSocialSecurityPct:    taxableSocialSecurityPct,
+		AnnualNIIT:                  taxBreakdown.NIIT,
+		AnnualIRMAA:                 annualIRMAA,
+	}
 }
 
-func (a *projectionTaxAccumulator) applyMonth(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, rothConversions, taxesPaid float64) {
+func (a projectionTaxAccumulator) estimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64 {
+	return a.estimateMonthlySnapshot(
+		tc,
+		yearsFromBase,
+		monthInYear,
+		ordinaryIncome,
+		socialSecurityIncome,
+		taxableWithdrawals,
+		qualifiedDividends,
+		longTermCapitalGains,
+		nonQualifiedDividends,
+		rothConversions,
+		nil,
+		0,
+		1,
+	).MonthlyTax
+}
+
+func medicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
+	if s == nil {
+		return 0
+	}
+
+	count := 0
+	if s.PrimaryAgeAt(year) >= 65 {
+		count++
+	}
+	if s.HasSpouse() && s.SpouseAgeAt(year) >= 65 {
+		count++
+	}
+	return count
+}
+
+func plannerInflationFactorForYear(annualInflationRate float64, years float64) float64 {
+	if years <= 0 {
+		return 1
+	}
+	return math.Pow(1+annualInflationRate/100, years)
+}
+
+func (a *projectionTaxAccumulator) applyMonth(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions, taxesPaid float64) {
 	a.OrdinaryIncomeYTD += ordinaryIncome
 	a.SocialSecurityIncomeYTD += socialSecurityIncome
 	a.TaxableWithdrawalsYTD += taxableWithdrawals
 	a.QualifiedDividendsYTD += qualifiedDividends
 	a.LongTermCapitalGainsYTD += longTermCapitalGains
+	a.NonQualifiedDividendsYTD += nonQualifiedDividends
 	a.RothConversionsYTD += rothConversions
 	a.TaxesPaidYTD += taxesPaid
 }
@@ -339,7 +454,6 @@ func (a *taxableAccountState) withdraw(amount float64) (cash, basisReduction, re
 	a.RealizedGainsYTD += math.Max(0, realizedGain)
 	return cash, basisReduction, realizedGain
 }
-
 
 func buildTaxableReturnComponents(totalAnnualReturnPercent float64, s *models.WhatIfSettings) taxableReturnComponents {
 	totalMonthlyReturn := monthlyCompoundFactorFromDecimal(totalAnnualReturnPercent/100) - 1
@@ -462,12 +576,14 @@ func fractionalMonthlyReturn(monthlyReturn, fraction float64) float64 {
 type taxAwarePortfolioMonthResult struct {
 	Shortfall                        float64
 	TaxesPaid                        float64
+	IRMAAExpense                     float64
 	TotalGrowth                      float64
 	TaxableIncomeBeforeCashFlow      float64
 	TaxableQualifiedDividends        float64
 	TaxableNonQualifiedDividends     float64
 	TaxableCapitalGains              float64
 	TaxableCapitalGainsDistributions float64
+	TaxSnapshot                      projectedTaxSnapshot
 	CashFlow                         portfolioCashFlowResult
 }
 
@@ -489,11 +605,31 @@ func executeTaxAwarePortfolioMonth(
 	currentYear int,
 	monthInYear int,
 	rothConversionThisMonth float64,
+	completedMAGIHistory []float64,
+	irmaaEligibleAdults int,
+	irmaaInflationFactor float64,
 ) taxAwarePortfolioMonthResult {
 	startingTaxDeferred := *taxDeferredBalance
 	startingRoth := *rothBalance
 	startingTaxable := *taxableAccount
-	taxesPaid := taxState.estimateMonthlyTaxes(taxCalculator, currentYear, monthInYear, incomeBreakdown.OrdinaryIncome, incomeBreakdown.SocialSecurityIncome, 0, 0, 0, rothConversionThisMonth)
+	snapshot := taxState.estimateMonthlySnapshot(
+		taxCalculator,
+		currentYear,
+		monthInYear,
+		incomeBreakdown.OrdinaryIncome,
+		incomeBreakdown.SocialSecurityIncome,
+		0,
+		0,
+		0,
+		0,
+		rothConversionThisMonth,
+		completedMAGIHistory,
+		irmaaEligibleAdults,
+		irmaaInflationFactor,
+	)
+	taxesPaid := snapshot.MonthlyTax
+	irmaaExpense := snapshot.MonthlyIRMAA
+	finalSnapshot := snapshot
 	result := taxAwarePortfolioMonthResult{}
 	growthBeforeFraction, growthAfterFraction := projectionTimingGrowthFractions(timing)
 
@@ -508,7 +644,7 @@ func executeTaxAwarePortfolioMonth(
 		trialRoth += rothBeforeGrowth
 		beforeTaxableGrowth := trialTaxable.applyGrowth(taxableComponents, growthBeforeFraction)
 
-		trialNeededFromPortfolio := totalExpenses + taxesPaid - incomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
+		trialNeededFromPortfolio := totalExpenses + irmaaExpense + taxesPaid - incomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
 		trialCashFlow := executePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
 
 		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(taxDeferredMonthlyReturn, growthAfterFraction)
@@ -522,7 +658,7 @@ func executeTaxAwarePortfolioMonth(
 		trialNonQualifiedDividends := beforeTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.NonQualifiedDividends
 		trialCapitalGains := beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions + trialCashFlow.TaxableRealizedGain
 
-		recalculatedTaxes := taxState.estimateMonthlyTaxes(
+		recalculatedSnapshot := taxState.estimateMonthlySnapshot(
 			taxCalculator,
 			currentYear,
 			monthInYear,
@@ -531,7 +667,11 @@ func executeTaxAwarePortfolioMonth(
 			trialCashFlow.WithdrawalFromTaxDeferred,
 			trialQualifiedDividends,
 			trialCapitalGains,
+			trialNonQualifiedDividends,
 			rothConversionThisMonth,
+			completedMAGIHistory,
+			irmaaEligibleAdults,
+			irmaaInflationFactor,
 		)
 
 		*taxDeferredBalance = trialTaxDeferred
@@ -545,16 +685,21 @@ func executeTaxAwarePortfolioMonth(
 		result.TaxableNonQualifiedDividends = trialNonQualifiedDividends
 		result.TaxableCapitalGains = trialCapitalGains
 		result.TaxableCapitalGainsDistributions = beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions
+		finalSnapshot = recalculatedSnapshot
 
-		if math.Abs(recalculatedTaxes-taxesPaid) < 0.01 {
-			taxesPaid = recalculatedTaxes
+		if math.Abs(recalculatedSnapshot.MonthlyTax-taxesPaid) < 0.01 && math.Abs(recalculatedSnapshot.MonthlyIRMAA-irmaaExpense) < 0.01 {
+			taxesPaid = recalculatedSnapshot.MonthlyTax
+			irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
 			break
 		}
 
-		taxesPaid = recalculatedTaxes
+		taxesPaid = recalculatedSnapshot.MonthlyTax
+		irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
 	}
 
 	result.TaxesPaid = taxesPaid
+	result.IRMAAExpense = irmaaExpense
+	result.TaxSnapshot = finalSnapshot
 	return result
 }
 
@@ -799,6 +944,24 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	var monthlyRMD float64
 	var taxState projectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
+	currentYearTaxSnapshot := projectedTaxSnapshot{}
+	yearlySummaries := make([]models.ProjectionYearSummary, 0, s.ProjectionYears)
+	currentYearSummary := models.ProjectionYearSummary{
+		Year:            0,
+		StartingBalance: s.PortfolioValue,
+	}
+
+	finalizeCurrentYear := func(month models.ProjectionMonth) {
+		currentYearSummary.MAGI = currentYearTaxSnapshot.AnnualMAGI
+		currentYearSummary.NIIT = currentYearTaxSnapshot.AnnualNIIT
+		currentYearSummary.IRMAA = currentYearTaxSnapshot.AnnualIRMAA
+		currentYearSummary.TaxableSocialSecurityPct = currentYearTaxSnapshot.TaxableSocialSecurityPct
+		currentYearSummary.EndingBalance = month.PortfolioBalance
+		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
+		currentYearSummary.CumulativeInflation = month.CumulativeInflation
+		yearlySummaries = append(yearlySummaries, currentYearSummary)
+	}
 
 	for m := 0; m < months; m++ {
 		currentYear := m / 12
@@ -813,6 +976,15 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			if m > 0 && len(projection) > 0 {
+				completedMAGIHistory = append(completedMAGIHistory, currentYearTaxSnapshot.AnnualMAGI)
+				finalizeCurrentYear(projection[len(projection)-1])
+				currentYearSummary = models.ProjectionYearSummary{
+					Year:            currentYear,
+					StartingBalance: projection[len(projection)-1].PortfolioBalance,
+				}
+			}
+
 			taxState = projectionTaxAccumulator{}
 			// Check for chain transition
 			if len(c.ResolvedChain) > 0 {
@@ -912,6 +1084,8 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		rothMonthly := math.Pow(1+rothReturn/100, 1.0/12) - 1
 		taxableComponents := buildTaxableReturnComponents(taxableReturn, s)
 		totalGrowth := 0.0
+		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
+		irmaaInflationFactor := plannerInflationFactorForYear(s.InflationRate, float64(currentYear))
 
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
@@ -931,11 +1105,16 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			currentYear,
 			monthInYear,
 			rothConversionThisMonth,
+			completedMAGIHistory,
+			irmaaEligibleAdults,
+			irmaaInflationFactor,
 		)
 		totalGrowth = monthResult.TotalGrowth
 		shortfall := monthResult.Shortfall
 		cashFlow := monthResult.CashFlow
 		taxesPaid := monthResult.TaxesPaid
+		totalExpenses += monthResult.IRMAAExpense
+		currentYearTaxSnapshot = monthResult.TaxSnapshot
 
 		taxState.applyMonth(
 			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
@@ -943,12 +1122,18 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			cashFlow.WithdrawalFromTaxDeferred,
 			monthResult.TaxableQualifiedDividends,
 			monthResult.TaxableCapitalGains,
+			monthResult.TaxableNonQualifiedDividends,
 			rothConversionThisMonth,
 			taxesPaid,
 		)
 
 		grossIncome := totalIncome + monthResult.TaxableQualifiedDividends + monthResult.TaxableNonQualifiedDividends + monthResult.TaxableCapitalGainsDistributions + cashFlow.WithdrawalFromTaxDeferred + cashFlow.WithdrawalFromTaxable + cashFlow.WithdrawalFromRoth
 		netIncome := grossIncome - taxesPaid
+		currentYearSummary.Growth += totalGrowth
+		currentYearSummary.GrossIncome += grossIncome
+		currentYearSummary.Taxes += taxesPaid
+		currentYearSummary.Expenses += totalExpenses
+		currentYearSummary.Withdrawals += cashFlow.ActualWithdrawal
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableAccount.MarketValue
 		depleted := false
@@ -1015,14 +1200,16 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	finalBalance := 0.0
 	if len(projection) > 0 {
 		finalBalance = projection[len(projection)-1].PortfolioBalance
+		finalizeCurrentYear(projection[len(projection)-1])
 	}
 
 	return &models.ProjectionResult{
-		Months:         projection,
-		LongevityYears: longevityYears,
-		FinalBalance:   finalBalance,
-		DepletionMonth: depletionMonth,
-		Survives:       depletionMonth == nil,
+		Months:          projection,
+		YearlySummaries: yearlySummaries,
+		LongevityYears:  longevityYears,
+		FinalBalance:    finalBalance,
+		DepletionMonth:  depletionMonth,
+		Survives:        depletionMonth == nil,
 	}
 }
 
@@ -1031,7 +1218,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	s := c.Settings
 
 	// Calculate first month expenses and income
-	monthlyExpenses := c.CalculateTotalExpenses(0)
+	baseMonthlyExpenses := c.CalculateTotalExpenses(0)
 	incomeSummary := calculateMonthlyIncomeBreakdown(s, 0)
 	monthlyIncome := incomeSummary.TotalIncome
 
@@ -1122,17 +1309,49 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		monthlyRMD = annualRMD / 12
 	}
 
-	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	rothConversionThisMonth := rothConversionAmountForYear(s, 0, s.PortfolioValue*(s.TaxDeferredPercent/100))
 	taxState := projectionTaxAccumulator{}
-	monthlyTaxesBeforeRMD := taxState.estimateMonthlyTaxes(taxCalculator, 0, 0, incomeSummary.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends, incomeSummary.SocialSecurityIncome, 0, taxableCashFlow.QualifiedDividends, taxableCashFlow.CapitalGainsDistributions, rothConversionThisMonth)
-	monthlyTaxes := taxState.estimateMonthlyTaxes(taxCalculator, 0, 0, incomeSummary.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends, incomeSummary.SocialSecurityIncome, monthlyRMD, taxableCashFlow.QualifiedDividends, taxableCashFlow.CapitalGainsDistributions, rothConversionThisMonth)
+	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, 0)
+	currentSnapshotBeforeRMD := taxState.estimateMonthlySnapshot(
+		taxCalculator,
+		0,
+		0,
+		incomeSummary.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
+		incomeSummary.SocialSecurityIncome,
+		0,
+		taxableCashFlow.QualifiedDividends,
+		taxableCashFlow.CapitalGainsDistributions,
+		taxableCashFlow.NonQualifiedDividends,
+		rothConversionThisMonth,
+		nil,
+		irmaaEligibleAdults,
+		1,
+	)
+	currentSnapshot := taxState.estimateMonthlySnapshot(
+		taxCalculator,
+		0,
+		0,
+		incomeSummary.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
+		incomeSummary.SocialSecurityIncome,
+		monthlyRMD,
+		taxableCashFlow.QualifiedDividends,
+		taxableCashFlow.CapitalGainsDistributions,
+		taxableCashFlow.NonQualifiedDividends,
+		rothConversionThisMonth,
+		nil,
+		irmaaEligibleAdults,
+		1,
+	)
+	monthlyTaxesBeforeRMD := currentSnapshotBeforeRMD.MonthlyTax
+	monthlyTaxes := currentSnapshot.MonthlyTax
+	monthlyExpenses := baseMonthlyExpenses + currentSnapshot.MonthlyIRMAA
 	grossIncome := monthlyIncome + monthlyRMD
 	netIncome := grossIncome - monthlyTaxes
 	netRMD := math.Max(0, monthlyRMD-(monthlyTaxes-monthlyTaxesBeforeRMD))
 
 	// Calculate gap before RMD (what's the shortfall from income alone?)
-	gapBeforeRMD := monthlyExpenses - monthlyIncome + monthlyTaxesBeforeRMD
+	gapBeforeRMD := baseMonthlyExpenses + currentSnapshotBeforeRMD.MonthlyIRMAA - monthlyIncome + monthlyTaxesBeforeRMD
 
 	// Calculate how RMD affects the gap
 	var rmdCoverage, excessRMD float64
@@ -1166,20 +1385,30 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	}
 
 	result := &models.BudgetFitAnalysis{
-		MonthlyExpenses:  monthlyExpenses,
-		MonthlyIncome:    monthlyIncome,
-		GrossIncome:      grossIncome,
-		NetIncome:        netIncome,
-		MonthlyTaxes:     monthlyTaxes,
-		MonthlyRMD:       monthlyRMD,
-		MonthlyGap:       monthlyGap,
-		AnnualGap:        annualGap,
-		RequiredRate:     requiredRate,
-		ExpenseBreakdown: breakdown,
-		IncomeBreakdown:  incomeItems,
-		GapBeforeRMD:     gapBeforeRMD,
-		RMDCoverage:      rmdCoverage,
-		ExcessRMD:        excessRMD,
+		MonthlyExpenses:          monthlyExpenses,
+		MonthlyIncome:            monthlyIncome,
+		GrossIncome:              grossIncome,
+		NetIncome:                netIncome,
+		MonthlyTaxes:             monthlyTaxes,
+		MonthlyNIIT:              currentSnapshot.AnnualNIIT / 12,
+		MonthlyIRMAA:             currentSnapshot.MonthlyIRMAA,
+		TaxableSocialSecurityPct: currentSnapshot.TaxableSocialSecurityPct,
+		MonthlyRMD:               monthlyRMD,
+		MonthlyGap:               monthlyGap,
+		AnnualGap:                annualGap,
+		RequiredRate:             requiredRate,
+		ExpenseBreakdown:         breakdown,
+		IncomeBreakdown:          incomeItems,
+		GapBeforeRMD:             gapBeforeRMD,
+		RMDCoverage:              rmdCoverage,
+		ExcessRMD:                excessRMD,
+	}
+	if currentSnapshot.MonthlyIRMAA > 0 {
+		result.ExpenseBreakdown = append(result.ExpenseBreakdown, models.ExpenseBreakdownItem{
+			Name:   "IRMAA Surcharge",
+			Amount: currentSnapshot.MonthlyIRMAA,
+			Note:   "estimated per Medicare-eligible adult",
+		})
 	}
 
 	// Calculate steady-state analysis (when all income sources are active)
@@ -1201,7 +1430,8 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 
 	if steadyStateMonth > 0 {
 		// Calculate expenses and income at steady state
-		result.SteadyStateExpenses = c.CalculateTotalExpenses(steadyStateMonth)
+		baseSteadyStateExpenses := c.CalculateTotalExpenses(steadyStateMonth)
+		result.SteadyStateExpenses = baseSteadyStateExpenses
 		steadyStateIncomeBreakdown := calculateMonthlyIncomeBreakdown(s, steadyStateMonth)
 		result.SteadyStateIncome = steadyStateIncomeBreakdown.TotalIncome
 
@@ -1228,10 +1458,29 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 
 		steadyStateRothConversion := rothConversionAmountForYear(s, steadyStateMonth/12, estimatedTaxDeferred)
 		steadyStateTaxState := projectionTaxAccumulator{}
-		steadyStateTaxes := steadyStateTaxState.estimateMonthlyTaxes(taxCalculator, steadyStateMonth/12, steadyStateMonth%12, steadyStateIncomeBreakdown.OrdinaryIncome+steadyStateTaxableCashFlow.NonQualifiedDividends, steadyStateIncomeBreakdown.SocialSecurityIncome, result.SteadyStateRMD, steadyStateTaxableCashFlow.QualifiedDividends, steadyStateTaxableCashFlow.CapitalGainsDistributions, steadyStateRothConversion)
+		steadyStateSnapshot := steadyStateTaxState.estimateMonthlySnapshot(
+			taxCalculator,
+			steadyStateMonth/12,
+			steadyStateMonth%12,
+			steadyStateIncomeBreakdown.OrdinaryIncome+steadyStateTaxableCashFlow.NonQualifiedDividends,
+			steadyStateIncomeBreakdown.SocialSecurityIncome,
+			result.SteadyStateRMD,
+			steadyStateTaxableCashFlow.QualifiedDividends,
+			steadyStateTaxableCashFlow.CapitalGainsDistributions,
+			steadyStateTaxableCashFlow.NonQualifiedDividends,
+			steadyStateRothConversion,
+			nil,
+			medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
+			plannerInflationFactorForYear(s.InflationRate, steadyStateYear),
+		)
+		steadyStateTaxes := steadyStateSnapshot.MonthlyTax
+		result.SteadyStateExpenses += steadyStateSnapshot.MonthlyIRMAA
 		result.SteadyStateGrossIncome = result.SteadyStateIncome + result.SteadyStateRMD
 		result.SteadyStateNetIncome = result.SteadyStateGrossIncome - steadyStateTaxes
 		result.SteadyStateTaxes = steadyStateTaxes
+		result.SteadyStateNIIT = steadyStateSnapshot.AnnualNIIT / 12
+		result.SteadyStateIRMAA = steadyStateSnapshot.MonthlyIRMAA
+		result.SteadyStateTaxableSocialSecurityPct = steadyStateSnapshot.TaxableSocialSecurityPct
 
 		// Calculate steady state gap
 		result.SteadyStateGap = result.SteadyStateExpenses - result.SteadyStateNetIncome
@@ -1922,6 +2171,8 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	var monthlyRMD float64
 	var taxState projectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	completedMAGIHistory := make([]float64, 0, projectionYears)
+	currentYearTaxSnapshot := projectedTaxSnapshot{}
 
 	// Healthcare cost variation multiplier (updated annually)
 	healthcareVariation := 1.0
@@ -1957,6 +2208,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
+			if m > 0 {
+				completedMAGIHistory = append(completedMAGIHistory, currentYearTaxSnapshot.AnnualMAGI)
+			}
 			taxState = projectionTaxAccumulator{}
 			// Check for chain transition
 			if len(c.ResolvedChain) > 0 {
@@ -2076,6 +2330,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		tdMonthly := math.Pow(1+tdReturn/100, 1.0/12) - 1
 		rothMonthlyRate := math.Pow(1+rothReturnRate/100, 1.0/12) - 1
 		taxableComponents := buildTaxableReturnComponents(taxReturn, s)
+		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,
@@ -2094,13 +2349,18 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			currentYear,
 			m%12,
 			rothConversionThisMonth,
+			completedMAGIHistory,
+			irmaaEligibleAdults,
+			cumulativeInflation,
 		)
+		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		taxState.applyMonth(
 			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
 			incomeBreakdown.SocialSecurityIncome,
 			monthResult.CashFlow.WithdrawalFromTaxDeferred,
 			monthResult.TaxableQualifiedDividends,
 			monthResult.TaxableCapitalGains,
+			monthResult.TaxableNonQualifiedDividends,
 			rothConversionThisMonth,
 			monthResult.TaxesPaid,
 		)
@@ -2552,46 +2812,52 @@ func (c *Calculator) buildProjectionExplainability(projection *models.Projection
 		return nil
 	}
 
-	summaries := make([]models.ProjectionYearSummary, 0, len(projection.Months)/12+1)
-	startingBalance := c.Settings.PortfolioValue
-	currentYear := projection.Months[0].Month / 12
-	summary := models.ProjectionYearSummary{
-		Year:            currentYear,
-		StartingBalance: startingBalance,
-	}
-	totalTaxes := 0.0
-	totalGrossIncome := 0.0
-
-	finalizeYear := func(month models.ProjectionMonth) {
-		summary.EndingBalance = month.PortfolioBalance
-		summary.EndingBalanceReal = month.PortfolioBalanceReal
-		summary.CumulativeInflation = month.CumulativeInflation
-		summaries = append(summaries, summary)
-	}
-
-	for idx, month := range projection.Months {
-		year := month.Month / 12
-		if year != currentYear {
-			prev := projection.Months[idx-1]
-			finalizeYear(prev)
-			startingBalance = prev.PortfolioBalance
-			currentYear = year
-			summary = models.ProjectionYearSummary{
-				Year:            currentYear,
-				StartingBalance: startingBalance,
-			}
+	summaries := projection.YearlySummaries
+	if len(summaries) == 0 {
+		summaries = make([]models.ProjectionYearSummary, 0, len(projection.Months)/12+1)
+		startingBalance := c.Settings.PortfolioValue
+		currentYear := projection.Months[0].Month / 12
+		summary := models.ProjectionYearSummary{
+			Year:            currentYear,
+			StartingBalance: startingBalance,
 		}
 
-		summary.Growth += month.PortfolioGrowth
-		summary.GrossIncome += month.GrossIncome
-		summary.Taxes += month.TaxesPaid
-		summary.Expenses += month.TotalExpenses
-		summary.Withdrawals += month.NetWithdrawal
-		totalTaxes += month.TaxesPaid
-		totalGrossIncome += month.GrossIncome
+		finalizeYear := func(month models.ProjectionMonth) {
+			summary.EndingBalance = month.PortfolioBalance
+			summary.EndingBalanceReal = month.PortfolioBalanceReal
+			summary.CumulativeInflation = month.CumulativeInflation
+			summaries = append(summaries, summary)
+		}
+
+		for idx, month := range projection.Months {
+			year := month.Month / 12
+			if year != currentYear {
+				prev := projection.Months[idx-1]
+				finalizeYear(prev)
+				startingBalance = prev.PortfolioBalance
+				currentYear = year
+				summary = models.ProjectionYearSummary{
+					Year:            currentYear,
+					StartingBalance: startingBalance,
+				}
+			}
+
+			summary.Growth += month.PortfolioGrowth
+			summary.GrossIncome += month.GrossIncome
+			summary.Taxes += month.TaxesPaid
+			summary.Expenses += month.TotalExpenses
+			summary.Withdrawals += month.NetWithdrawal
+		}
+
+		finalizeYear(projection.Months[len(projection.Months)-1])
 	}
 
-	finalizeYear(projection.Months[len(projection.Months)-1])
+	totalTaxes := 0.0
+	totalGrossIncome := 0.0
+	for _, summary := range summaries {
+		totalTaxes += summary.Taxes
+		totalGrossIncome += summary.GrossIncome
+	}
 
 	lastMonth := projection.Months[len(projection.Months)-1]
 	taxShare := 0.0

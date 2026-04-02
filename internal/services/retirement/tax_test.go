@@ -200,13 +200,13 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 			t.Fatalf("expected positive federal tax and zero state tax, got federal=%.2f state=%.2f", wantFederal, wantState)
 		}
 
-		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, monthlyOrdinaryIncome, 0, 0, 0, 0, 0)
+		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
 		if math.Abs(month0Taxes-wantTotal/12) > 0.01 {
 			t.Fatalf("month 0 taxes = %.2f, want %.2f", month0Taxes, wantTotal/12)
 		}
 
-		accumulator.applyMonth(monthlyOrdinaryIncome, 0, 0, 0, 0, 0, month0Taxes)
-		month1Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 1, monthlyOrdinaryIncome, 0, 0, 0, 0, 0)
+		accumulator.applyMonth(monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0, month0Taxes)
+		month1Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 1, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
 		if math.Abs(month1Taxes-wantTotal/12) > 0.01 {
 			t.Fatalf("month 1 taxes = %.2f, want %.2f", month1Taxes, wantTotal/12)
 		}
@@ -216,7 +216,7 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 		conversionAmount := 12000.0
 		accumulator := projectionTaxAccumulator{}
 
-		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, 0, 0, 0, 0, 0, conversionAmount)
+		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, 0, 0, 0, 0, 0, 0, conversionAmount)
 		_, _, wantTotal, _ := tc.CalculateTotalTax(conversionAmount, 0)
 
 		if math.Abs(month0Taxes-wantTotal/12) > 0.01 {
@@ -248,4 +248,148 @@ func TestCalculateTaxWithInvestmentIncome(t *testing.T) {
 			t.Fatalf("expected zero state tax, got %.2f", state)
 		}
 	})
+}
+
+func TestCalculateTaxableSocialSecurity(t *testing.T) {
+	tests := []struct {
+		name        string
+		ssBenefits  float64
+		otherIncome float64
+		qd          float64
+		ltcg        float64
+		status      models.FilingStatus
+		want        float64
+	}{
+		{
+			name:       "below first threshold",
+			ssBenefits: 24000,
+			status:     models.FilingSingle,
+			want:       0,
+		},
+		{
+			name:        "between thresholds",
+			ssBenefits:  24000,
+			otherIncome: 20000,
+			status:      models.FilingSingle,
+			want:        3500,
+		},
+		{
+			name:        "above second threshold capped at 85 percent",
+			ssBenefits:  36000,
+			otherIncome: 80000,
+			status:      models.FilingMarriedJoint,
+			want:        30600,
+		},
+		{
+			name:       "married separate treated as 85 percent taxable",
+			ssBenefits: 30000,
+			status:     models.FilingMarriedSeparate,
+			want:       25500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Fatalf("CalculateTaxableSocialSecurity() = %.2f, want %.2f", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateNIIT(t *testing.T) {
+	tests := []struct {
+		name                string
+		magi                float64
+		netInvestmentIncome float64
+		status              models.FilingStatus
+		want                float64
+	}{
+		{
+			name:                "below threshold",
+			magi:                190000,
+			netInvestmentIncome: 50000,
+			status:              models.FilingSingle,
+			want:                0,
+		},
+		{
+			name:                "excess magi larger than investment income",
+			magi:                260000,
+			netInvestmentIncome: 5000,
+			status:              models.FilingMarriedJoint,
+			want:                190,
+		},
+		{
+			name:                "investment income larger than excess magi",
+			magi:                215000,
+			netInvestmentIncome: 50000,
+			status:              models.FilingSingle,
+			want:                570,
+		},
+		{
+			name:                "married separate threshold",
+			magi:                140000,
+			netInvestmentIncome: 10000,
+			status:              models.FilingMarriedSeparate,
+			want:                380,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateNIIT(tt.magi, tt.netInvestmentIncome, tt.status)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Fatalf("CalculateNIIT() = %.2f, want %.2f", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateMonthlyIRMAA(t *testing.T) {
+	tests := []struct {
+		name            string
+		magi            float64
+		status          models.FilingStatus
+		inflationFactor float64
+		want            float64
+	}{
+		{
+			name:            "below first tier",
+			magi:            100000,
+			status:          models.FilingSingle,
+			inflationFactor: 1,
+			want:            0,
+		},
+		{
+			name:            "middle tier",
+			magi:            160000,
+			status:          models.FilingSingle,
+			inflationFactor: 1,
+			want:            240.40,
+		},
+		{
+			name:            "top tier",
+			magi:            800000,
+			status:          models.FilingMarriedJoint,
+			inflationFactor: 1,
+			want:            578.00,
+		},
+		{
+			name:            "inflation adjusts thresholds",
+			magi:            110000,
+			status:          models.FilingSingle,
+			inflationFactor: 1.05,
+			want:            0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateMonthlyIRMAA(tt.magi, tt.status, tt.inflationFactor)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Fatalf("CalculateMonthlyIRMAA() = %.2f, want %.2f", got, tt.want)
+			}
+		})
+	}
 }

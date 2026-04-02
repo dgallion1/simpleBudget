@@ -95,7 +95,7 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesDisabled(t *testing.T) {
 
 func TestEstimateMonthlyTaxes_NilTaxCalculator(t *testing.T) {
 	acc := projectionTaxAccumulator{}
-	result := acc.estimateMonthlyTaxes(nil, 0, 0, 1000, 0, 0, 0, 0, 0)
+	result := acc.estimateMonthlyTaxes(nil, 0, 0, 1000, 0, 0, 0, 0, 0, 0)
 	if result != 0 {
 		t.Errorf("expected 0 for nil tax calculator, got %f", result)
 	}
@@ -111,7 +111,7 @@ func TestEstimateMonthlyTaxes_NegativeTaxDue(t *testing.T) {
 	acc := projectionTaxAccumulator{
 		TaxesPaidYTD: 1_000_000, // Massively overpaid
 	}
-	result := acc.estimateMonthlyTaxes(tc, 0, 6, 1000, 0, 0, 0, 0, 0)
+	result := acc.estimateMonthlyTaxes(tc, 0, 6, 1000, 0, 0, 0, 0, 0, 0)
 	if result != 0 {
 		t.Errorf("expected 0 when taxes overpaid, got %f", result)
 	}
@@ -125,7 +125,7 @@ func TestEstimateMonthlyTaxes_LastMonthOfYear(t *testing.T) {
 
 	acc := projectionTaxAccumulator{}
 	// monthInYear=11 means last month; remainingMonths=1
-	result := acc.estimateMonthlyTaxes(tc, 0, 11, 5000, 0, 0, 0, 0, 0)
+	result := acc.estimateMonthlyTaxes(tc, 0, 11, 5000, 0, 0, 0, 0, 0, 0)
 	if result < 0 {
 		t.Errorf("expected non-negative result, got %f", result)
 	}

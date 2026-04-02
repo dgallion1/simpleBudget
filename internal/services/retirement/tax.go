@@ -269,10 +269,8 @@ func CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends,
 		return ssBenefits * 0.85
 	}
 
-	thresholds, ok := socialSecurityTaxThresholds[filingStatus]
-	if !ok {
-		thresholds = socialSecurityTaxThresholds[models.FilingMarriedJoint]
-	}
+	// normalizeFilingStatus guarantees a valid key; MFS is handled above
+	thresholds := socialSecurityTaxThresholds[filingStatus]
 
 	provisionalIncome := math.Max(0, otherIncome) + math.Max(0, qualifiedDividends) + math.Max(0, longTermCapitalGains) + (0.5 * ssBenefits)
 	if provisionalIncome <= thresholds.BaseThreshold {
@@ -291,10 +289,8 @@ func CalculateNIIT(magi, netInvestmentIncome float64, filingStatus models.Filing
 		return 0
 	}
 
-	threshold, ok := niitThresholds[normalizeFilingStatus(filingStatus)]
-	if !ok {
-		threshold = niitThresholds[models.FilingMarriedJoint]
-	}
+	// normalizeFilingStatus guarantees a valid key
+	threshold := niitThresholds[normalizeFilingStatus(filingStatus)]
 
 	excessMAGI := magi - threshold
 	if excessMAGI <= 0 {
@@ -312,23 +308,23 @@ func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, infla
 		inflationFactor = 1
 	}
 
+	// normalizeFilingStatus guarantees a valid key
 	filingStatus = normalizeFilingStatus(filingStatus)
-	brackets, ok := monthlyIRMAASurcharge2026[filingStatus]
-	if !ok {
-		brackets = monthlyIRMAASurcharge2026[models.FilingMarriedJoint]
-	}
+	brackets := monthlyIRMAASurcharge2026[filingStatus]
 
+	var surcharge float64
 	for _, bracket := range brackets {
+		surcharge = bracket.Surcharge * inflationFactor
 		upperMAGI := bracket.UpperMAGI
 		if upperMAGI < math.MaxFloat64 {
 			upperMAGI *= inflationFactor
 		}
 		if magi <= upperMAGI {
-			return bracket.Surcharge * inflationFactor
+			break
 		}
 	}
 
-	return 0
+	return surcharge
 }
 
 func (tc *TaxCalculator) CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64) float64 {
@@ -505,12 +501,13 @@ func (tc *TaxCalculator) GetMarginalRate(grossIncome float64, yearsFromBase int)
 
 	brackets := tc.GetAdjustedBrackets(yearsFromBase)
 
+	var rate float64
 	for _, bracket := range brackets {
+		rate = bracket.Rate * 100
 		if taxableIncome <= bracket.MaxIncome {
-			return bracket.Rate * 100
+			break
 		}
 	}
 
-	// Top bracket
-	return 37
+	return rate
 }

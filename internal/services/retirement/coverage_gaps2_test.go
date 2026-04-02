@@ -773,14 +773,15 @@ func TestEstimateMonthlySnapshot_IRMAALookback(t *testing.T) {
 
 	snapshot := acc.estimateMonthlySnapshot(
 		tc, 0, 0,
-		5000,  // ordinaryIncome
-		2000,  // socialSecurityIncome
-		0,     // taxableWithdrawals
-		500,   // qualifiedDividends
-		300,   // longTermCapitalGains
-		0,     // nonQualifiedDividends
-		0,     // rothConversions
+		5000, // ordinaryIncome
+		2000, // socialSecurityIncome
+		0,    // taxableWithdrawals
+		500,  // qualifiedDividends
+		300,  // longTermCapitalGains
+		0,    // nonQualifiedDividends
+		0,    // rothConversions
 		completedMAGI,
+		nil,
 		1,   // irmaaEligibleAdults
 		1.0, // irmaaInflationFactor
 	)
@@ -806,7 +807,8 @@ func TestEstimateMonthlySnapshot_NoIRMAAEligibleAdults(t *testing.T) {
 		tc, 0, 0,
 		5000, 0, 0, 0, 0, 0, 0,
 		nil,
-		0,   // no eligible adults
+		nil,
+		0, // no eligible adults
 		1.0,
 	)
 
@@ -822,13 +824,14 @@ func TestEstimateMonthlySnapshot_TwoIRMAAEligibleAdults(t *testing.T) {
 	}, 0)
 
 	acc := projectionTaxAccumulator{}
+	assumedLookbackMAGI := 300000.0
 
-	// High MAGI to trigger IRMAA; no lookback history, uses current year MAGI
 	snapshot1 := acc.estimateMonthlySnapshot(
 		tc, 0, 0,
 		20000, 0, 0, 0, 0, 0, 0,
 		nil,
-		1,   // 1 eligible adult
+		&assumedLookbackMAGI,
+		1, // 1 eligible adult
 		1.0,
 	)
 
@@ -836,7 +839,8 @@ func TestEstimateMonthlySnapshot_TwoIRMAAEligibleAdults(t *testing.T) {
 		tc, 0, 0,
 		20000, 0, 0, 0, 0, 0, 0,
 		nil,
-		2,   // 2 eligible adults
+		&assumedLookbackMAGI,
+		2, // 2 eligible adults
 		1.0,
 	)
 
@@ -856,10 +860,10 @@ func TestEstimateMonthlySnapshot_SocialSecurityTaxablePct(t *testing.T) {
 
 	snapshot := acc.estimateMonthlySnapshot(
 		tc, 0, 0,
-		5000,  // ordinaryIncome
-		2000,  // socialSecurityIncome
+		5000, // ordinaryIncome
+		2000, // socialSecurityIncome
 		0, 0, 0, 0, 0,
-		nil, 0, 1.0,
+		nil, nil, 0, 1.0,
 	)
 
 	// With enough income, SS should be partially taxable
@@ -884,7 +888,7 @@ func TestEstimateMonthlySnapshot_MonthInYearTwelve(t *testing.T) {
 	snapshot := acc.estimateMonthlySnapshot(
 		tc, 0, 12,
 		5000, 0, 0, 0, 0, 0, 0,
-		nil, 0, 1.0,
+		nil, nil, 0, 1.0,
 	)
 
 	if snapshot.MonthlyTax < 0 {
@@ -920,8 +924,8 @@ func TestPlannerInflationFactorForYear(t *testing.T) {
 
 func TestRunProjection_Depletion(t *testing.T) {
 	s := defaultSettingsForTest()
-	s.PortfolioValue = 50000         // Very small portfolio
-	s.MonthlyLivingExpenses = 10000  // Very high expenses
+	s.PortfolioValue = 50000        // Very small portfolio
+	s.MonthlyLivingExpenses = 10000 // Very high expenses
 	s.ProjectionYears = 10
 	s.InvestmentReturn = 2.0
 	s.TaxDeferredPercent = 0

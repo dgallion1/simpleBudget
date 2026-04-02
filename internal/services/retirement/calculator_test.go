@@ -321,7 +321,7 @@ func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T
 	}
 }
 
-func TestCalculateBudgetFitIncludesNIITAndIRMAA(t *testing.T) {
+func TestCalculateBudgetFitIncludesNIITAndDelayedIRMAA(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 4_000_000
 	settings.MonthlyLivingExpenses = 1000
@@ -347,8 +347,8 @@ func TestCalculateBudgetFitIncludesNIITAndIRMAA(t *testing.T) {
 	if fit.MonthlyNIIT <= 0 {
 		t.Fatalf("expected NIIT in current budget fit, got %.2f", fit.MonthlyNIIT)
 	}
-	if fit.MonthlyIRMAA <= 0 {
-		t.Fatalf("expected IRMAA in current budget fit, got %.2f", fit.MonthlyIRMAA)
+	if fit.MonthlyIRMAA != 0 {
+		t.Fatalf("expected current budget fit IRMAA to respect the two-year lag, got %.2f", fit.MonthlyIRMAA)
 	}
 	if fit.TaxableSocialSecurityPct <= 0 || fit.TaxableSocialSecurityPct > 85 {
 		t.Fatalf("expected taxable Social Security percentage between 0 and 85, got %.2f", fit.TaxableSocialSecurityPct)
@@ -361,6 +361,43 @@ func TestCalculateBudgetFitIncludesNIITAndIRMAA(t *testing.T) {
 	}
 	if fit.SteadyStateTaxableSocialSecurityPct <= 0 || fit.SteadyStateTaxableSocialSecurityPct > 85 {
 		t.Fatalf("expected steady-state taxable Social Security percentage between 0 and 85, got %.2f", fit.SteadyStateTaxableSocialSecurityPct)
+	}
+}
+
+func TestRunProjectionDelaysIRMAAUntilLookbackYear(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 4_000_000
+	settings.MonthlyLivingExpenses = 1000
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.ExpenseSources = nil
+	settings.InflationRate = 0
+	settings.SpendingDeclineRate = 0
+	settings.CurrentAge = 67
+	settings.SpouseAge = 66
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+	settings.TaxableDividendYield = 8.0
+	settings.TaxableQualifiedDividendPercent = 100
+	settings.ProjectionYears = 4
+	settings.IncomeSources = []models.IncomeSource{
+		{ID: "ss", Name: "Social Security", Amount: 4000, StartMonth: 0},
+	}
+	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
+
+	projection := NewCalculator(settings).RunProjection()
+	if len(projection.YearlySummaries) < 4 {
+		t.Fatalf("expected 4 yearly summaries, got %d", len(projection.YearlySummaries))
+	}
+
+	if projection.YearlySummaries[0].IRMAA != 0 {
+		t.Fatalf("expected no IRMAA in year 0 without lookback history, got %.2f", projection.YearlySummaries[0].IRMAA)
+	}
+	if projection.YearlySummaries[1].IRMAA != 0 {
+		t.Fatalf("expected no IRMAA in year 1 without lookback history, got %.2f", projection.YearlySummaries[1].IRMAA)
+	}
+	if projection.YearlySummaries[2].IRMAA <= 0 {
+		t.Fatalf("expected IRMAA once two years of lookback history exist, got %.2f", projection.YearlySummaries[2].IRMAA)
 	}
 }
 

@@ -179,24 +179,24 @@ func rebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cu
 //     long-term capital-gains brackets in tax.go.
 //   - Roth withdrawals are not taxed.
 type projectionTaxAccumulator struct {
-	OrdinaryIncomeYTD          float64
-	SocialSecurityIncomeYTD    float64
-	TaxableWithdrawalsYTD      float64
-	QualifiedDividendsYTD      float64
-	LongTermCapitalGainsYTD    float64
-	NonQualifiedDividendsYTD   float64
-	RothConversionsYTD         float64
-	TaxesPaidYTD               float64
+	OrdinaryIncomeYTD        float64
+	SocialSecurityIncomeYTD  float64
+	TaxableWithdrawalsYTD    float64
+	QualifiedDividendsYTD    float64
+	LongTermCapitalGainsYTD  float64
+	NonQualifiedDividendsYTD float64
+	RothConversionsYTD       float64
+	TaxesPaidYTD             float64
 }
 
 type projectedAnnualTaxInputs struct {
-	OrdinaryIncome         float64
-	SocialSecurityIncome   float64
-	TaxableWithdrawals     float64
-	QualifiedDividends     float64
-	LongTermCapitalGains   float64
-	NonQualifiedDividends  float64
-	RothConversions        float64
+	OrdinaryIncome        float64
+	SocialSecurityIncome  float64
+	TaxableWithdrawals    float64
+	QualifiedDividends    float64
+	LongTermCapitalGains  float64
+	NonQualifiedDividends float64
+	RothConversions       float64
 }
 
 type projectedTaxSnapshot struct {
@@ -239,6 +239,7 @@ func (a projectionTaxAccumulator) estimateMonthlySnapshot(
 	nonQualifiedDividends float64,
 	rothConversions float64,
 	completedMAGIHistory []float64,
+	assumedIRMALookbackMAGI *float64,
 	irmaaEligibleAdults int,
 	irmaaInflationFactor float64,
 ) projectedTaxSnapshot {
@@ -252,13 +253,10 @@ func (a projectionTaxAccumulator) estimateMonthlySnapshot(
 	estimatedOrdinaryIncome := otherIncome + taxableSocialSecurity
 
 	taxBreakdown := tc.CalculateTaxWithInvestmentIncomeBreakdown(estimatedOrdinaryIncome, inputs.QualifiedDividends, inputs.LongTermCapitalGains, inputs.NonQualifiedDividends, yearsFromBase)
-	lookbackMAGI := taxBreakdown.MAGI
-	if len(completedMAGIHistory) >= 2 {
-		lookbackMAGI = completedMAGIHistory[len(completedMAGIHistory)-2]
-	}
+	lookbackMAGI, hasIRMALookback := resolveIRMALookbackMAGI(completedMAGIHistory, assumedIRMALookbackMAGI)
 
 	annualIRMAA := 0.0
-	if irmaaEligibleAdults > 0 {
+	if irmaaEligibleAdults > 0 && hasIRMALookback {
 		annualIRMAA = tc.CalculateMonthlyIRMAA(lookbackMAGI, irmaaInflationFactor) * float64(irmaaEligibleAdults) * 12
 	}
 	remainingMonths := 12 - monthInYear
@@ -287,6 +285,16 @@ func (a projectionTaxAccumulator) estimateMonthlySnapshot(
 	}
 }
 
+func resolveIRMALookbackMAGI(completedMAGIHistory []float64, assumedIRMALookbackMAGI *float64) (float64, bool) {
+	if len(completedMAGIHistory) >= 2 {
+		return completedMAGIHistory[len(completedMAGIHistory)-2], true
+	}
+	if assumedIRMALookbackMAGI != nil {
+		return math.Max(0, *assumedIRMALookbackMAGI), true
+	}
+	return 0, false
+}
+
 func (a projectionTaxAccumulator) estimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64 {
 	return a.estimateMonthlySnapshot(
 		tc,
@@ -299,6 +307,7 @@ func (a projectionTaxAccumulator) estimateMonthlyTaxes(tc *TaxCalculator, yearsF
 		longTermCapitalGains,
 		nonQualifiedDividends,
 		rothConversions,
+		nil,
 		nil,
 		0,
 		1,
@@ -624,6 +633,7 @@ func executeTaxAwarePortfolioMonth(
 		0,
 		rothConversionThisMonth,
 		completedMAGIHistory,
+		nil,
 		irmaaEligibleAdults,
 		irmaaInflationFactor,
 	)
@@ -670,6 +680,7 @@ func executeTaxAwarePortfolioMonth(
 			trialNonQualifiedDividends,
 			rothConversionThisMonth,
 			completedMAGIHistory,
+			nil,
 			irmaaEligibleAdults,
 			irmaaInflationFactor,
 		)
@@ -1325,6 +1336,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		taxableCashFlow.NonQualifiedDividends,
 		rothConversionThisMonth,
 		nil,
+		nil,
 		irmaaEligibleAdults,
 		1,
 	)
@@ -1339,6 +1351,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		taxableCashFlow.CapitalGainsDistributions,
 		taxableCashFlow.NonQualifiedDividends,
 		rothConversionThisMonth,
+		nil,
 		nil,
 		irmaaEligibleAdults,
 		1,
@@ -1458,6 +1471,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 
 		steadyStateRothConversion := rothConversionAmountForYear(s, steadyStateMonth/12, estimatedTaxDeferred)
 		steadyStateTaxState := projectionTaxAccumulator{}
+		steadyStateIRMALookbackMAGI := (*float64)(nil)
 		steadyStateSnapshot := steadyStateTaxState.estimateMonthlySnapshot(
 			taxCalculator,
 			steadyStateMonth/12,
@@ -1470,9 +1484,30 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 			steadyStateTaxableCashFlow.NonQualifiedDividends,
 			steadyStateRothConversion,
 			nil,
+			nil,
 			medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
 			plannerInflationFactorForYear(s.InflationRate, steadyStateYear),
 		)
+		if steadyStateYear >= 2 {
+			lookbackMAGI := steadyStateSnapshot.AnnualMAGI
+			steadyStateIRMALookbackMAGI = &lookbackMAGI
+			steadyStateSnapshot = steadyStateTaxState.estimateMonthlySnapshot(
+				taxCalculator,
+				steadyStateMonth/12,
+				steadyStateMonth%12,
+				steadyStateIncomeBreakdown.OrdinaryIncome+steadyStateTaxableCashFlow.NonQualifiedDividends,
+				steadyStateIncomeBreakdown.SocialSecurityIncome,
+				result.SteadyStateRMD,
+				steadyStateTaxableCashFlow.QualifiedDividends,
+				steadyStateTaxableCashFlow.CapitalGainsDistributions,
+				steadyStateTaxableCashFlow.NonQualifiedDividends,
+				steadyStateRothConversion,
+				nil,
+				steadyStateIRMALookbackMAGI,
+				medicareEligibleAdultCountAtYear(s, steadyStateMonth/12),
+				plannerInflationFactorForYear(s.InflationRate, steadyStateYear),
+			)
+		}
 		steadyStateTaxes := steadyStateSnapshot.MonthlyTax
 		result.SteadyStateExpenses += steadyStateSnapshot.MonthlyIRMAA
 		result.SteadyStateGrossIncome = result.SteadyStateIncome + result.SteadyStateRMD

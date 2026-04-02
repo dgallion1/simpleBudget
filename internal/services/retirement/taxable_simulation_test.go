@@ -1,6 +1,7 @@
 package retirement
 
 import (
+	"math"
 	"math/rand"
 	"testing"
 
@@ -88,20 +89,20 @@ func TestMonteCarlo_HighTaxableDividendYieldReducesFinalBalance(t *testing.T) {
 	}
 }
 
-func TestHistoricalSequence_MedicareAgeIRMAALowersFinalBalance(t *testing.T) {
+func TestHistoricalSequence_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums(t *testing.T) {
 	preMedicare := highIncomeMedicareSimulationSettings(64)
 	medicare := highIncomeMedicareSimulationSettings(65)
 
 	preResult := NewCalculator(preMedicare).runSingleHistoricalSequence(1982)
 	medicareResult := NewCalculator(medicare).runSingleHistoricalSequence(1982)
 
-	if medicareResult.FinalBalance >= preResult.FinalBalance {
-		t.Fatalf("expected Medicare-age IRMAA drag to reduce historical final balance, got pre=%.2f medicare=%.2f",
+	if math.Abs(medicareResult.FinalBalance-preResult.FinalBalance) > 0.01 {
+		t.Fatalf("expected no immediate IRMAA drag without lookback history, got pre=%.2f medicare=%.2f",
 			preResult.FinalBalance, medicareResult.FinalBalance)
 	}
 }
 
-func TestMonteCarlo_MedicareAgeIRMAALowersFinalBalance(t *testing.T) {
+func TestMonteCarlo_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums(t *testing.T) {
 	preMedicare := highIncomeMedicareSimulationSettings(64)
 	medicare := highIncomeMedicareSimulationSettings(65)
 
@@ -125,8 +126,8 @@ func TestMonteCarlo_MedicareAgeIRMAALowersFinalBalance(t *testing.T) {
 	preResult := NewCalculator(preMedicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
 	medicareResult := NewCalculator(medicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
 
-	if medicareResult.FinalBalance >= preResult.FinalBalance {
-		t.Fatalf("expected Medicare-age IRMAA drag to reduce Monte Carlo final balance, got pre=%.2f medicare=%.2f",
+	if math.Abs(medicareResult.FinalBalance-preResult.FinalBalance) > 0.01 {
+		t.Fatalf("expected no immediate IRMAA drag without lookback history, got pre=%.2f medicare=%.2f",
 			preResult.FinalBalance, medicareResult.FinalBalance)
 	}
 }

@@ -4451,3 +4451,110 @@ func TestHandleWhatIfRestoreBigTicket_WithRenderer(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
 	}
 }
+
+// ── Error path tests (retirementMgr.Load/Save failures) ────────────────────
+
+// setupBrokenEnv creates an environment where retirementMgr operations fail
+// because the settings file contains invalid JSON.
+func setupBrokenEnv(t *testing.T) {
+	t.Helper()
+
+	settingsDir := t.TempDir()
+	csvDir := t.TempDir()
+
+	csvPath := filepath.Join(csvDir, "test.csv")
+	os.WriteFile(csvPath, []byte("Date,Description,Amount,Type,Category\n2025-01-15,Salary,5000,Income,Employment\n"), 0644)
+
+	store, err := storage.New(settingsDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+
+	rm := retirement.NewSettingsManager(settingsDir, store)
+	dl := dataloader.New(csvDir, store)
+	Initialize(dl, nil, rm)
+
+	// Write corrupt settings file so loadInternal fails
+	os.WriteFile(filepath.Join(settingsDir, "whatif.json"), []byte("{invalid json!!!"), 0644)
+
+	// Clear cache so Load() will try to read the corrupt file
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.analysis = nil
+	cache.cachedAt = time.Time{}
+	cache.mu.Unlock()
+}
+
+func expectError(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
+	if w.Code == http.StatusOK {
+		t.Fatalf("expected error status, got 200")
+	}
+}
+
+func TestHandleWhatIf_LoadErrorFallsBackToDefaults(t *testing.T) {
+	setupBrokenEnv(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif", nil)
+	handleWhatIf(w, req)
+
+	// handleWhatIf gracefully falls back to default settings on load error
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (fallback to defaults), got %d", w.Code)
+	}
+}
+
+func TestErrorPaths_LoadFailures(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		method  string
+		path    string
+		form    url.Values
+		params  map[string]string
+	}{
+		{"Calculate", handleWhatIfCalculate, "POST", "/whatif/calculate", nil, nil},
+		{"Settings", handleWhatIfSettings, "POST", "/whatif/settings", url.Values{"retirement_age": {"65"}}, nil},
+		{"DeleteIncome", handleWhatIfDeleteIncome, "DELETE", "/whatif/income/x", nil, map[string]string{"id": "x"}},
+		{"RestoreIncome", handleWhatIfRestoreIncome, "POST", "/whatif/income/x/restore", nil, map[string]string{"id": "x"}},
+		{"DeleteExpense", handleWhatIfDeleteExpense, "DELETE", "/whatif/expense/x", nil, map[string]string{"id": "x"}},
+		{"RestoreExpense", handleWhatIfRestoreExpense, "POST", "/whatif/expense/x/restore", nil, map[string]string{"id": "x"}},
+		{"ProjectionChart", handleWhatIfProjectionChart, "GET", "/whatif/chart", nil, nil},
+		{"Sync", handleWhatIfSync, "POST", "/whatif/sync", nil, nil},
+		{"MonteCarlo", handleWhatIfMonteCarlo, "POST", "/whatif/montecarlo", nil, nil},
+		{"DeleteHealthcare", handleWhatIfDeleteHealthcare, "DELETE", "/whatif/healthcare/x", nil, map[string]string{"id": "x"}},
+		{"SpendingPhases", handleWhatIfSpendingPhases, "POST", "/whatif/spending-phases", url.Values{"enabled": {"true"}}, nil},
+		{"AddPhase", handleWhatIfAddPhase, "POST", "/whatif/spending-phases/add", url.Values{"name": {"T"}, "multiplier": {"0.8"}, "start_year": {"5"}}, nil},
+		{"DeletePhase", handleWhatIfDeletePhase, "DELETE", "/whatif/spending-phases/1", nil, map[string]string{"index": "1"}},
+		{"ResetPhases", handleWhatIfResetPhases, "POST", "/whatif/spending-phases/reset", nil, nil},
+		{"RothConversion", handleWhatIfRothConversion, "POST", "/whatif/roth-conversion", url.Values{"enabled": {"true"}}, nil},
+		{"DeleteBigTicket", handleWhatIfDeleteBigTicket, "DELETE", "/whatif/bigticket/x", nil, map[string]string{"id": "x"}},
+		{"RestoreBigTicket", handleWhatIfRestoreBigTicket, "POST", "/whatif/bigticket/x/restore", nil, map[string]string{"id": "x"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupBrokenEnv(t)
+
+			var body io.Reader
+			if tt.form != nil {
+				body = formBody(tt.form)
+			}
+
+			var req *http.Request
+			if tt.params != nil {
+				req = chiRequest(tt.method, tt.path, body, tt.params)
+			} else {
+				req = httptest.NewRequest(tt.method, tt.path, body)
+				if tt.form != nil {
+					req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				}
+			}
+
+			w := httptest.NewRecorder()
+			tt.handler(w, req)
+			expectError(t, w)
+		})
+	}
+}

@@ -667,6 +667,87 @@ func newTestRenderer(root string) (*templates.Renderer, error) {
 	return templates.New(root+"/web/templates", true)
 }
 
+// TestRun_Success tests the run() function with valid configuration
+func TestRun(t *testing.T) {
+	cleanup := testutil.SetTestEnv(t)
+	defer cleanup()
+
+	handler, addr, err := run()
+	if err != nil {
+		t.Fatalf("run() returned error: %v", err)
+	}
+	if handler == nil {
+		t.Fatal("run() returned nil handler")
+	}
+	if addr == "" {
+		t.Fatal("run() returned empty address")
+	}
+}
+
+// TestRun_SetupDependenciesError tests run() when SetupDependencies fails
+func TestRun_SetupDependenciesError(t *testing.T) {
+	cleanup := testutil.SetTestEnv(t)
+	defer cleanup()
+
+	// Use debug mode with a non-existent templates dir to trigger template error
+	os.Setenv("BUDGET_DEBUG", "true")
+	os.Setenv("BUDGET_TEMPLATES_DIR", "/nonexistent/templates/dir")
+
+	_, _, err := run()
+	if err == nil {
+		t.Fatal("expected run() to return error with invalid templates directory")
+	}
+}
+
+// TestRun_StorageInitError tests run() when storage initialization fails
+func TestRun_StorageInitError(t *testing.T) {
+	cleanup := testutil.SetTestEnv(t)
+	defer cleanup()
+
+	// Create a temp dir with .encrypted marker and a corrupt encryption config
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, ".encrypted"), []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create .encrypted marker: %v", err)
+	}
+	// Write invalid JSON to the encryption config file to trigger a parse error
+	if err := os.WriteFile(filepath.Join(tmpDir, ".encryption-config.json"), []byte("{invalid json"), 0644); err != nil {
+		t.Fatalf("Failed to create corrupt config: %v", err)
+	}
+
+	os.Setenv("BUDGET_DATA_DIR", tmpDir)
+
+	_, _, err := run()
+	if err == nil {
+		t.Fatal("expected run() to return error with corrupt encryption config")
+	}
+}
+
+// TestRun_EncryptedStorage tests run() with encrypted storage detected
+func TestRun_EncryptedStorage(t *testing.T) {
+	cleanup := testutil.SetTestEnv(t)
+	defer cleanup()
+
+	// Create a temp dir with an .encrypted marker to simulate encrypted storage
+	tmpDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(tmpDir, ".encrypted"), []byte(""), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create .encrypted marker: %v", err)
+	}
+
+	os.Setenv("BUDGET_DATA_DIR", tmpDir)
+
+	handler, addr, runErr := run()
+	if runErr != nil {
+		t.Fatalf("run() returned error: %v", runErr)
+	}
+	if handler == nil {
+		t.Fatal("run() returned nil handler")
+	}
+	if addr == "" {
+		t.Fatal("run() returned empty address")
+	}
+}
+
 // TestSetupDependencies_Error tests the error path in SetupDependencies
 func TestSetupDependencies_Error(t *testing.T) {
 	// Use a non-existent templates directory in debug mode to trigger error

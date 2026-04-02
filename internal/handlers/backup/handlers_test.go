@@ -16,9 +16,12 @@ import (
 	"strings"
 	"testing"
 
+	"testing/fstest"
+
 	"budget2/internal/config"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
+	"budget2/internal/testutil"
 )
 
 // setupTestEnv creates a temp data directory, storage, and initializes the package globals.
@@ -87,15 +90,22 @@ func TestHandleHealth(t *testing.T) {
 	}
 }
 
-// TestHandleKillServer: we can't actually test os.Exit, but we can verify the response.
-// We skip the goroutine by just checking the response content.
 func TestHandleKillServer(t *testing.T) {
-	// We can't really call HandleKillServer because it calls os.Exit.
-	// Instead, test that the function exists and has the right signature.
-	// The handler writes response before calling os.Exit in a goroutine.
-	// We'll test the response writing part only if we can safely do so.
-	// Skip for safety - os.Exit would kill the test process.
-	t.Skip("HandleKillServer calls os.Exit, cannot test safely")
+	orig := exitFunc
+	called := make(chan struct{})
+	exitFunc = func(code int) { close(called) }
+	t.Cleanup(func() {
+		<-called        // wait for the goroutine to fire before restoring
+		exitFunc = orig // restore original
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/killme", nil)
+	HandleKillServer(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
 }
 
 func TestHandleBackup(t *testing.T) {
@@ -1939,6 +1949,232 @@ func TestHandleBackupOpenFileError(t *testing.T) {
 	// The handler logs the error but can't change status
 	if w.Code != http.StatusOK {
 		t.Logf("Got status %d", w.Code)
+	}
+}
+
+// ---------- HandleKillServer ----------
+
+func TestHandleKillServer_OverrideExitFunc(t *testing.T) {
+	orig := exitFunc
+	var exitCode int
+	called := make(chan struct{})
+	exitFunc = func(code int) {
+		exitCode = code
+		close(called)
+	}
+	t.Cleanup(func() {
+		<-called        // wait for the goroutine to fire before restoring
+		exitFunc = orig // restore original
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/killme", nil)
+	HandleKillServer(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "Server shutting down") {
+		t.Errorf("unexpected body: %s", body)
+	}
+
+	if ct := resp.Header.Get("Content-Type"); ct != "text/plain" {
+		t.Errorf("expected text/plain, got %s", ct)
+	}
+
+	// Wait for the goroutine to call exitFunc
+	<-called
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+}
+
+// ---------- HandleUnlockPage with real renderer ----------
+
+func setupTestEnvWithRenderer(t *testing.T) (string, func()) {
+	t.Helper()
+	tmpDir, err := os.MkdirTemp("", "backup-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	s, err := storage.New(tmpDir)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	c := &config.Config{
+		DataDirectory: tmpDir,
+	}
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	Initialize(c, s, rend)
+
+	return tmpDir, func() {
+		os.RemoveAll(tmpDir)
+	}
+}
+
+func TestHandleUnlockPage_WithRenderer_Locked(t *testing.T) {
+	tmpDir, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "test.csv", "data")
+	if err := store.EnableEncryption("mypassword123"); err != nil {
+		t.Fatalf("Failed to enable encryption: %v", err)
+	}
+
+	store.Lock()
+
+	if !IsStorageLocked() {
+		t.Fatal("expected storage to be locked")
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/unlock", nil)
+	HandleUnlockPage(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected text/html content type, got %s", ct)
+	}
+}
+
+func TestHandleUnlockPage_WithRenderer_RenderError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "backup-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	s, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	c := &config.Config{DataDirectory: tmpDir}
+
+	// Create a renderer with a minimal FS that has no "unlock" template.
+	// This makes renderer.Render(w, "unlock", nil) return an error.
+	stubFS := fstest.MapFS{
+		"pages/dummy.html": &fstest.MapFile{Data: []byte(`{{define "dummy"}}ok{{end}}`)},
+	}
+	rend, err := templates.NewFromFS(stubFS, false)
+	if err != nil {
+		t.Fatalf("templates.NewFromFS: %v", err)
+	}
+
+	Initialize(c, s, rend)
+
+	// Enable encryption and lock
+	writeCSVFile(t, tmpDir, "test.csv", "data")
+	if err := store.EnableEncryption("mypassword123"); err != nil {
+		t.Fatalf("Failed to enable encryption: %v", err)
+	}
+	store.Lock()
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/unlock", nil)
+	HandleUnlockPage(w, r)
+
+	// Render should fail -> 500
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleUnlockPage_WithRenderer_NotLocked(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	// Not encrypted, so not locked — should redirect
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/unlock", nil)
+	HandleUnlockPage(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("expected 307, got %d", resp.StatusCode)
+	}
+}
+
+// ---------- YubiKey handler tests when plugin is installed ----------
+
+func TestHandleYubiKeySetup_Installed(t *testing.T) {
+	if !storage.IsYubiKeyPluginInstalled() {
+		t.Skip("YubiKey plugin is not installed")
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/yubikey-setup", nil)
+	HandleYubiKeySetup(w, r)
+
+	// Should return 400 with JSON body containing setup instructions
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(w.Result().Body).Decode(&body); err != nil {
+		t.Fatalf("Failed to decode JSON: %v", err)
+	}
+
+	if body["error"] == nil {
+		t.Error("expected error field in response")
+	}
+	if body["setup_command"] == nil {
+		t.Error("expected setup_command field in response")
+	}
+	if body["instructions"] == nil {
+		t.Error("expected instructions field in response")
+	}
+}
+
+func TestHandleYubiKeyIdentity_Installed_NoRecipient(t *testing.T) {
+	if !storage.IsYubiKeyPluginInstalled() {
+		t.Skip("YubiKey plugin is not installed")
+	}
+
+	// Missing recipient parameter
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/yubikey-identity", nil)
+	HandleYubiKeyIdentity(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleYubiKeyIdentity_Installed_WithRecipient(t *testing.T) {
+	if !storage.IsYubiKeyPluginInstalled() {
+		t.Skip("YubiKey plugin is not installed")
+	}
+
+	// Plugin is installed, provide a recipient parameter to exercise the code path
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/yubikey-identity?recipient=age1yubikey1test", nil)
+	HandleYubiKeyIdentity(w, r)
+
+	// The result depends on whether the recipient matches a real YubiKey.
+	// We just verify we get a valid HTTP response (200 or 500) and it doesn't panic.
+	if w.Code != http.StatusOK && w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 200 or 500, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

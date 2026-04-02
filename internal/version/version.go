@@ -13,6 +13,9 @@ var (
 	BuildTime = "unknown"
 )
 
+// readBuildInfo is a package-level function variable for testing.
+var readBuildInfo = debug.ReadBuildInfo
+
 // Info contains version and build information
 type Info struct {
 	Version    string `json:"version"`
@@ -30,7 +33,7 @@ func Get() Info {
 		BuildTime: BuildTime,
 	}
 
-	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+	if buildInfo, ok := readBuildInfo(); ok {
 		info.GoVersion = buildInfo.GoVersion
 
 		for _, setting := range buildInfo.Settings {

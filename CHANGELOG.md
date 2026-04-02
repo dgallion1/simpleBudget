@@ -20,7 +20,8 @@
 - **cmd/server**: Added 30 tests — 81.2% coverage (middleware, setup, version, kill previous instance)
 - **cmd/validate**: Added tests — 86.5% coverage (endpoint validation, error paths, subprocess exit tests)
 - **internal/http**: Added 11 tests — 100% coverage (render, error response, date range parsing)
-- Overall project coverage: 44.5% → 90.8%
+- **Refactoring for testability**: extracted `run()` from `cmd/server/main()`, injected `exitFunc` in backup, injected `readBuildInfo` in version, removed 2 unreachable dead-code guards in models
+- Overall project coverage: 44.5% → 93.0%
 
 ## v1.9.0 - Projection Realism & Explainability
 

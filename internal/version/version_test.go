@@ -1,6 +1,7 @@
 package version
 
 import (
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -181,5 +182,104 @@ func TestCheck_NonDevNoRevision(t *testing.T) {
 	result := info.Check()
 	if result != "" {
 		t.Errorf("expected empty string for non-dev without revision, got %q", result)
+	}
+}
+
+func TestGet_WithVCSSettings(t *testing.T) {
+	origVersion := Version
+	origBuildTime := BuildTime
+	orig := readBuildInfo
+	t.Cleanup(func() {
+		Version = origVersion
+		BuildTime = origBuildTime
+		readBuildInfo = orig
+	})
+
+	Version = "v2.0.0"
+	BuildTime = "2026-03-01T00:00:00Z"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			GoVersion: "go1.23.0",
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "abc123def456"},
+				{Key: "vcs.time", Value: "2026-02-28T12:00:00Z"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+		}, true
+	}
+
+	info := Get()
+
+	if info.Version != "v2.0.0" {
+		t.Errorf("expected Version v2.0.0, got %s", info.Version)
+	}
+	if info.GoVersion != "go1.23.0" {
+		t.Errorf("expected GoVersion go1.23.0, got %s", info.GoVersion)
+	}
+	if info.VCSRevision != "abc123def456" {
+		t.Errorf("expected VCSRevision abc123def456, got %s", info.VCSRevision)
+	}
+	if info.VCSTime != "2026-02-28T12:00:00Z" {
+		t.Errorf("expected VCSTime 2026-02-28T12:00:00Z, got %s", info.VCSTime)
+	}
+	if !info.VCSModified {
+		t.Error("expected VCSModified to be true")
+	}
+}
+
+func TestGet_VCSModifiedFalse(t *testing.T) {
+	orig := readBuildInfo
+	t.Cleanup(func() { readBuildInfo = orig })
+
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			GoVersion: "go1.23.0",
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.modified", Value: "false"},
+			},
+		}, true
+	}
+
+	info := Get()
+	if info.VCSModified {
+		t.Error("expected VCSModified to be false")
+	}
+}
+
+func TestGet_ReadBuildInfoFails(t *testing.T) {
+	origVersion := Version
+	origBuildTime := BuildTime
+	orig := readBuildInfo
+	t.Cleanup(func() {
+		Version = origVersion
+		BuildTime = origBuildTime
+		readBuildInfo = orig
+	})
+
+	Version = "v3.0.0"
+	BuildTime = "2026-04-01"
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return nil, false
+	}
+
+	info := Get()
+
+	if info.Version != "v3.0.0" {
+		t.Errorf("expected Version v3.0.0, got %s", info.Version)
+	}
+	if info.BuildTime != "2026-04-01" {
+		t.Errorf("expected BuildTime 2026-04-01, got %s", info.BuildTime)
+	}
+	if info.GoVersion != "" {
+		t.Errorf("expected empty GoVersion when ReadBuildInfo fails, got %s", info.GoVersion)
+	}
+	if info.VCSRevision != "" {
+		t.Errorf("expected empty VCSRevision, got %s", info.VCSRevision)
+	}
+	if info.VCSTime != "" {
+		t.Errorf("expected empty VCSTime, got %s", info.VCSTime)
+	}
+	if info.VCSModified {
+		t.Error("expected VCSModified to be false")
 	}
 }

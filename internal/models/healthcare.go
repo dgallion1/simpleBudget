@@ -147,10 +147,7 @@ func (hp *HealthcarePerson) GetTransitionInfo() (hasTransition bool, yearsUntil 
 	yearsUntil = hp.YearsUntilMedicare()
 
 	// Calculate cost just before Medicare transition
-	monthBeforeMedicare := (yearsUntil * 12) - 1
-	if monthBeforeMedicare < 0 {
-		monthBeforeMedicare = 0
-	}
+	// yearsUntil is always >= 1 here (IsOnMedicare returned false), so this is always >= 11
 	currentCostAtTransition = hp.CurrentMonthlyCost * math.Pow(1+hp.PreMedicareInflation/100, float64(yearsUntil))
 
 	// Medicare cost at transition (no inflation applied yet)

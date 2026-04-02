@@ -37,13 +37,16 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// exitFunc is a package-level variable for testing.
+var exitFunc = os.Exit
+
 func HandleKillServer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte("Server shutting down...\n"))
 	log.Println("Received /killme request, shutting down")
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		os.Exit(0)
+		exitFunc(0)
 	}()
 }
 

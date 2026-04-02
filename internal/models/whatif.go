@@ -244,10 +244,8 @@ func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {
 		return 0
 	}
 
+	// month >= healthcareStartMonth guaranteed by check above
 	monthsActive := month - healthcareStartMonth
-	if monthsActive < 0 {
-		monthsActive = 0
-	}
 
 	// Apply healthcare inflation to legacy model
 	return s.MonthlyHealthcare * math.Pow(1+s.HealthcareInflation/100, float64(monthsActive)/12.0)

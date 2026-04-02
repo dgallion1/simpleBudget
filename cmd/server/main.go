@@ -161,7 +161,9 @@ func lockCheckMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func main() {
+// run initializes the application and returns the configured handler and listen address.
+// Extracted from main() for testability.
+func run() (http.Handler, string, error) {
 	// Log version information
 	versionInfo := version.Get()
 	log.Printf("SimpleBudget %s", versionInfo.String())
@@ -178,7 +180,7 @@ func main() {
 	var err error
 	store, err = storage.New(c.DataDirectory)
 	if err != nil {
-		log.Fatalf("FATAL: Failed to initialize storage: %v", err)
+		return nil, "", fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
 	// Log encryption status
@@ -191,15 +193,22 @@ func main() {
 
 	// Setup dependencies
 	if err := SetupDependencies(c); err != nil {
-		log.Fatalf("FATAL: %v", err)
+		return nil, "", err
 	}
 
 	// Setup router
 	r := SetupRouter()
 
-	// Start server
 	log.Printf("Server starting on %s", cfg.ListenAddr)
-	log.Fatal(http.ListenAndServe(cfg.ListenAddr, r))
+	return r, cfg.ListenAddr, nil
+}
+
+func main() {
+	handler, addr, err := run()
+	if err != nil {
+		log.Fatalf("FATAL: %v", err)
+	}
+	log.Fatal(http.ListenAndServe(addr, handler))
 }
 
 // handleVersion returns version information as JSON

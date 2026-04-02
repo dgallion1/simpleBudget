@@ -20,6 +20,8 @@ import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
+	"budget2/internal/templates"
+	"budget2/internal/testutil"
 )
 
 // setupTestEnv creates temp directories, initializes package-level vars,
@@ -3963,5 +3965,489 @@ func TestSyncSettingsFromDashboard_ShortDateRange(t *testing.T) {
 	err := syncSettingsFromDashboard(s)
 	if err != nil {
 		t.Fatalf("sync failed: %v", err)
+	}
+}
+
+// ── Tests with real renderer (renderer != nil branches) ─────────────────────
+
+// setupTestEnvWithRenderer creates the same test environment as setupTestEnv
+// but initializes the package with a real template renderer so that the
+// renderer != nil branches are exercised.
+func setupTestEnvWithRenderer(t *testing.T) (*retirement.SettingsManager, func()) {
+	t.Helper()
+
+	settingsDir := t.TempDir()
+	csvDir := t.TempDir()
+
+	csvPath := filepath.Join(csvDir, "test.csv")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Salary,5000,Income,Employment\n" +
+		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Rent,-2000,Outflow,Housing\n" +
+		time.Now().AddDate(0, -2, 0).Format("2006-01-02") + ",Salary,5000,Income,Employment\n" +
+		time.Now().AddDate(0, -2, 0).Format("2006-01-02") + ",Groceries,-500,Outflow,Food\n"
+	os.WriteFile(csvPath, []byte(csvContent), 0644)
+
+	store, err := storage.New(settingsDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+
+	rm := retirement.NewSettingsManager(settingsDir, store)
+	dl := dataloader.New(csvDir, store)
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	Initialize(dl, rend, rm)
+
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.analysis = nil
+	cache.cachedAt = time.Time{}
+	cache.mu.Unlock()
+
+	cleanup := func() {}
+	return rm, cleanup
+}
+
+func TestHandleWhatIf_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif", nil)
+	handleWhatIf(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html, got %s", ct)
+	}
+}
+
+func TestHandleWhatIfCalculate_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/calculate", nil)
+	handleWhatIfCalculate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html, got %s", ct)
+	}
+}
+
+func TestHandleWhatIfSettings_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"portfolio_value":         {"1500000"},
+		"monthly_living_expenses": {"5000"},
+		"current_age":             {"60"},
+		"projection_years":        {"30"},
+		"investment_return":       {"7.0"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/settings", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSettings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html, got %s", ct)
+	}
+}
+
+func TestHandleWhatIfAddIncome_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"name":       {"Social Security"},
+		"amount":     {"2000"},
+		"start_year": {"5"},
+		"end_year":   {"30"},
+		"cola":       {"on"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfAddIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html, got %s", ct)
+	}
+}
+
+func TestHandleWhatIfUpdateIncome_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	src := models.IncomeSource{ID: "rend-inc-1", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
+	rm.AddIncomeSource(src)
+
+	form := url.Values{"start_year": {"2"}, "end_year": {"10"}, "cola": {"true"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/income/rend-inc-1", formBody(form), map[string]string{"id": "rend-inc-1"})
+	handleWhatIfUpdateIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfDeleteIncome_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	src := models.IncomeSource{ID: "rend-del-inc", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
+	rm.AddIncomeSource(src)
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/income/rend-del-inc", nil, map[string]string{"id": "rend-del-inc"})
+	handleWhatIfDeleteIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfRestoreIncome_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	src := models.IncomeSource{ID: "rend-rest-inc", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
+	rm.AddIncomeSource(src)
+	rm.RemoveIncomeSource("rend-rest-inc")
+
+	w := httptest.NewRecorder()
+	req := chiRequest("POST", "/whatif/income/rend-rest-inc/restore", nil, map[string]string{"id": "rend-rest-inc"})
+	handleWhatIfRestoreIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfAddExpense_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"name":       {"Car Payment"},
+		"amount":     {"500"},
+		"start_year": {"0"},
+		"end_year":   {"5"},
+		"inflation":  {"on"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfAddExpense(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfUpdateExpense_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	exp := models.ExpenseSource{ID: "rend-exp-1", Name: "Test", Amount: 500}
+	rm.AddExpenseSource(exp)
+
+	form := url.Values{"start_year": {"1"}, "end_year": {"5"}, "inflation": {"on"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/expense/rend-exp-1", formBody(form), map[string]string{"id": "rend-exp-1"})
+	handleWhatIfUpdateExpense(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfDeleteExpense_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	exp := models.ExpenseSource{ID: "rend-del-exp", Name: "Test", Amount: 500}
+	rm.AddExpenseSource(exp)
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/expense/rend-del-exp", nil, map[string]string{"id": "rend-del-exp"})
+	handleWhatIfDeleteExpense(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfRestoreExpense_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	exp := models.ExpenseSource{ID: "rend-rest-exp", Name: "Test", Amount: 500}
+	rm.AddExpenseSource(exp)
+	rm.RemoveExpenseSource("rend-rest-exp")
+
+	w := httptest.NewRecorder()
+	req := chiRequest("POST", "/whatif/expense/rend-rest-exp/restore", nil, map[string]string{"id": "rend-rest-exp"})
+	handleWhatIfRestoreExpense(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfSync_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/sync", nil)
+	handleWhatIfSync(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfMonteCarlo_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/montecarlo", nil)
+	handleWhatIfMonteCarlo(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfAddHealthcare_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"name":                 {"Alice"},
+		"current_age":          {"55"},
+		"current_coverage":     {"aca"},
+		"current_monthly_cost": {"1200"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/healthcare", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfAddHealthcare(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfUpdateHealthcare_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	person := models.HealthcarePerson{
+		ID:                  "rend-hc-1",
+		Name:                "Bob",
+		CurrentAge:          60,
+		CurrentCoverage:     models.CoverageACA,
+		CurrentMonthlyCost:  1000,
+		MedicareMonthlyCost: 500,
+		MedicareEligibleAge: 65,
+	}
+	rm.AddHealthcarePerson(person)
+
+	form := url.Values{
+		"name":                 {"Robert"},
+		"current_age":          {"61"},
+		"current_coverage":     {"aca"},
+		"current_monthly_cost": {"1100"},
+		"medicare_monthly_cost": {"550"},
+	}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/healthcare/rend-hc-1", formBody(form), map[string]string{"id": "rend-hc-1"})
+	handleWhatIfUpdateHealthcare(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfDeleteHealthcare_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	person := models.HealthcarePerson{ID: "rend-hc-del", Name: "Test", CurrentAge: 60, CurrentCoverage: models.CoverageACA, CurrentMonthlyCost: 1000, MedicareMonthlyCost: 500, MedicareEligibleAge: 65}
+	rm.AddHealthcarePerson(person)
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/healthcare/rend-hc-del", nil, map[string]string{"id": "rend-hc-del"})
+	handleWhatIfDeleteHealthcare(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfSpendingPhases_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"enabled":            {"on"},
+		"phase_0_name":       {"Go-Go"},
+		"phase_0_multiplier": {"1.0"},
+		"phase_1_name":       {"Slow-Go"},
+		"phase_1_start_age":  {"75"},
+		"phase_1_multiplier": {"0.8"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/spending-phases", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSpendingPhases(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfAddPhase_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/spending-phases/add", nil)
+	handleWhatIfAddPhase(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfDeletePhase_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	s, _ := rm.Load()
+	s.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Phase 1", StartAge: 0, Multiplier: 1.0},
+			{Name: "Phase 2", StartAge: 70, Multiplier: 0.9},
+			{Name: "Phase 3", StartAge: 80, Multiplier: 0.7},
+		},
+	}
+	rm.Save(s)
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/spending-phases/2", nil, map[string]string{"index": "2"})
+	handleWhatIfDeletePhase(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfResetPhases_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/spending-phases/reset", nil)
+	handleWhatIfResetPhases(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfRothConversion_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"enabled":       {"on"},
+		"annual_amount": {"50000"},
+		"start_year":    {"0"},
+		"end_year":      {"10"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/roth-conversion", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfRothConversion(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfAddBigTicket_WithRenderer(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"name":   {"New Roof"},
+		"amount": {"25000"},
+		"year":   {"5"},
+		"type":   {"expense"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfAddBigTicket(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfDeleteBigTicket_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	item := models.BigTicketItem{ID: "rend-bt-del", Name: "Test", Amount: 1000, Type: models.BigTicketExpense}
+	rm.AddBigTicketItem(item)
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/bigticket/rend-bt-del", nil, map[string]string{"id": "rend-bt-del"})
+	handleWhatIfDeleteBigTicket(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+func TestHandleWhatIfRestoreBigTicket_WithRenderer(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	item := models.BigTicketItem{ID: "rend-bt-rest", Name: "Test", Amount: 1000, Type: models.BigTicketExpense}
+	rm.AddBigTicketItem(item)
+	rm.RemoveBigTicketItem("rend-bt-rest")
+
+	w := httptest.NewRecorder()
+	req := chiRequest("POST", "/whatif/bigticket/rend-bt-rest/restore", nil, map[string]string{"id": "rend-bt-rest"})
+	handleWhatIfRestoreBigTicket(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
 	}
 }

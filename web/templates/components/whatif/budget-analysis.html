@@ -70,7 +70,7 @@
             {{if gt .Analysis.BudgetFit.MonthlyIRMAA 0.0}}
             <div class="flex justify-between py-0.5 pl-4">
                 <span class="text-gray-500 dark:text-gray-400">Estimated IRMAA</span>
-                <span class="text-gray-700 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyIRMAA}}</span>
+                <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyIRMAA}}</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.TaxableSocialSecurityPct 0.0}}
@@ -170,7 +170,7 @@
         {{if gt .Analysis.BudgetFit.SteadyStateIRMAA 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Estimated IRMAA</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateIRMAA}}</span>
+            <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateIRMAA}}</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateTaxableSocialSecurityPct 0.0}}

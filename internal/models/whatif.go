@@ -128,7 +128,8 @@ type WhatIfSettings struct {
 	RemovedBigTicketItems []BigTicketItem `json:"removed_big_ticket_items,omitempty"`
 }
 
-func currentLocalMonth() string {
+// CurrentLocalMonth returns the current local month as "YYYY-MM".
+func CurrentLocalMonth() string {
 	return time.Now().In(time.Local).Format(yearMonthLayout)
 }
 
@@ -646,7 +647,7 @@ func (s *WhatIfSettings) TaxableCashPct() float64 {
 
 // DefaultWhatIfSettings returns sensible defaults for retirement planning
 func DefaultWhatIfSettings() *WhatIfSettings {
-	startDate := currentLocalMonth()
+	startDate := CurrentLocalMonth()
 	settings := &WhatIfSettings{
 		PortfolioValue:        0,
 		MonthlyLivingExpenses: 4000,

@@ -52,17 +52,13 @@ type legacyAgeFields struct {
 	SpouseAge  int `json:"spouse_age"`
 }
 
-func currentMonthString() string {
-	return time.Now().In(time.Local).Format("2006-01")
-}
-
 func normalizeStartDate(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return currentMonthString(), true
+		return models.CurrentLocalMonth(), true
 	}
 	if _, err := time.Parse("2006-01", raw); err != nil {
-		return currentMonthString(), true
+		return models.CurrentLocalMonth(), true
 	}
 	return raw, false
 }
@@ -342,6 +338,9 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 		return nil, fmt.Errorf("reading scenario %s: %w", filename, err)
 	}
 
+	// decodeSettings returns a changed flag, but LoadScenarioSettings is
+	// intentionally read-only — chained-scenario loading during analysis must
+	// not rewrite unrelated scenario files as a side effect.
 	settingsPtr, _, err := sm.decodeSettings(data)
 	if err != nil {
 		return nil, fmt.Errorf("parsing scenario %s: %w", filename, err)

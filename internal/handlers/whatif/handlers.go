@@ -1442,6 +1442,11 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load is outside the AddHealthcarePerson write lock, so there is a
+	// small TOCTOU window.  saveInternal's ComputeAges re-derives linked
+	// name/age, and ValidatePersons catches orphaned links, so correctness
+	// is preserved even if the settings change between this read and the
+	// subsequent write.
 	settingsState, err := retirementMgr.Load()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
@@ -1575,6 +1580,11 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load is outside the UpdateHealthcarePerson write lock, so there is a
+	// small TOCTOU window.  saveInternal's ComputeAges re-derives linked
+	// name/age, and ValidatePersons catches orphaned links, so correctness
+	// is preserved even if the settings change between this read and the
+	// subsequent write.
 	settingsState, err := retirementMgr.Load()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)

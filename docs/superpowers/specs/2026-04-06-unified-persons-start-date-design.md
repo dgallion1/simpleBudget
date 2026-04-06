@@ -408,9 +408,9 @@ That order keeps the data model and normalization solid before the UI starts rel
 
 Code review against this spec identified and resolved:
 
-1. **`reconcilePreparedPersons` birth month degradation** — The function back-calculated `BirthMonth` from integer ages, which could shift canonical birth months copied from the primary scenario. Fixed to only remove the spouse person when `spouseAge == 0`; canonical birth months from the deep-copied `Persons` are preserved.
+1. **`reconcilePreparedPersons` birth month degradation** — The function back-calculated `BirthMonth` from integer ages, which could shift canonical birth months copied from the primary scenario. Fixed to only remove the spouse person when the primary scenario has no spouse; canonical birth months from the deep-copied `Persons` are preserved. Further refined to check `primary.GetSpousePerson() != nil` instead of `spouseAge > 0`, removing a coupling to pre-computed age state.
 
-2. **Duplicate `birthMonthForAge` helper** — Two implementations existed in `models/whatif.go` and `services/retirement/settings.go` with different error handling. Consolidated to a single exported `BirthMonthForAge()` in the models package.
+2. **Duplicate month helpers** — Two implementations existed in `models/whatif.go` and `services/retirement/settings.go` with different error handling. Consolidated `BirthMonthForAge()` to a single export in the models package. Similarly consolidated duplicate `currentLocalMonth()`/`currentMonthString()` into a single exported `models.CurrentLocalMonth()`.
 
 3. **Double `ComputeAges()` call clarity** — Added comments in `normalizeLoadedWhatIfSettings` explaining why `NormalizePhaseAgeReference` and `ComputeAges` are called twice: first to derive ages for the healthcare migration block, then again after healthcare link inference may change `PersonID` assignments.
 
@@ -420,3 +420,9 @@ Code review against this spec identified and resolved:
    - Person helpers: `GetPrimaryPerson`, `GetSpousePerson`, `FindPerson`, `PersonAge`
    - `BirthMonthForAge`: age-to-birth-month round-trip
    - `NormalizePhaseAgeReference`: all reference values with and without spouse
+
+5. **Orphaned healthcare links in chain preparation** — When `findPreparedScenarioPerson` could not match a linked healthcare person to the primary scenario, the `PersonID` was left pointing at a nonexistent person. Fixed to clear `PersonID` to `""` so the entry becomes manual rather than silently orphaned.
+
+6. **Healthcare handler TOCTOU documentation** — `handleWhatIfAddHealthcare` and `handleWhatIfUpdateHealthcare` read settings outside the write lock for person validation. Added comments explaining that `saveInternal`'s `ComputeAges()` re-derives linked name/age and `ValidatePersons()` catches orphaned links, so correctness is preserved.
+
+7. **`LoadScenarioSettings` read-only intent** — Added comment documenting that the `changed` flag from `decodeSettings` is intentionally discarded, since chained-scenario loading must not rewrite unrelated scenario files.

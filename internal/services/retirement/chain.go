@@ -11,7 +11,7 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 
 	prepared.StartDate = primary.StartDate
 	prepared.Persons = append([]models.Person(nil), primary.Persons...)
-	reconcilePreparedPersons(&prepared, primary.SpouseAge)
+	reconcilePreparedPersons(&prepared, primary)
 	prepared.CurrentAge = primary.CurrentAge
 	prepared.SpouseAge = primary.SpouseAge
 	prepared.PhaseAgeReference = primary.PhaseAgeReference
@@ -31,10 +31,18 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 		for i := range persons {
 			if persons[i].PersonID != "" {
 				if prepared.FindPerson(persons[i].PersonID) == nil {
+					// Linked person ID doesn't exist in the primary scenario's
+					// persons — try to map by role or name.
 					if linkedPerson := linked.FindPerson(persons[i].PersonID); linkedPerson != nil {
 						if mapped := findPreparedScenarioPerson(primary, linkedPerson); mapped != nil {
 							persons[i].PersonID = mapped.ID
+						} else {
+							// No match found; clear the link so the entry
+							// becomes manual rather than silently orphaned.
+							persons[i].PersonID = ""
 						}
+					} else {
+						persons[i].PersonID = ""
 					}
 				}
 				continue
@@ -73,11 +81,11 @@ func findPreparedScenarioPerson(primary *models.WhatIfSettings, linkedPerson *mo
 }
 
 // reconcilePreparedPersons removes the spouse person from the prepared
-// settings when the primary scenario has no spouse (spouseAge == 0).
+// settings when the primary scenario has no canonical spouse person.
 // Birth months are NOT recalculated here — the deep-copied Persons
 // from the primary scenario already carry the canonical birth months.
-func reconcilePreparedPersons(settings *models.WhatIfSettings, spouseAge int) {
-	if spouseAge > 0 {
+func reconcilePreparedPersons(settings *models.WhatIfSettings, primary *models.WhatIfSettings) {
+	if primary.GetSpousePerson() != nil {
 		return
 	}
 	filtered := make([]models.Person, 0, len(settings.Persons))

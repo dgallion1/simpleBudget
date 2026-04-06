@@ -165,12 +165,14 @@ function toggleQuickAdjustPanel(forceOpen) {
         : panel.classList.contains('hidden');
 
     panel.classList.toggle('hidden', !shouldOpen);
+    button.classList.toggle('hidden', shouldOpen);
     button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
 
     if (shouldOpen) {
         showQuickAdjustTab(window.quickAdjustState.activeTab || 'portfolio');
         syncAllQuickAdjustControls();
     } else {
+        button.classList.remove('hidden');
         button.focus();
     }
 }

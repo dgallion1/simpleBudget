@@ -182,7 +182,7 @@
 
     <div class="space-y-2 rounded-xl bg-white/5 p-3">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Delay Tax-Deferred Withdrawals</label>
+            <label class="text-xs font-medium text-gray-300" title="Wait N years before touching 401k/IRA. Expenses are covered from income, taxable, and Roth accounts first. RMDs at 73 still apply.">Delay Tax-Deferred Withdrawals</label>
             <span class="text-xs font-semibold text-white" data-quick-adjust-display="tax_deferred_delay_years" data-quick-adjust-display-format="delay-years">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
         </div>
         <input type="range"

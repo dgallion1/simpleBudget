@@ -71,10 +71,11 @@
                         <input type="range" name="phase_{{$i}}_multiplier"
                             value="{{printf "%.2f" $phase.Multiplier}}"
                             min="0.30" max="1.20" step="0.05"
+                            data-quick-adjust-key="phase:{{$i}}:multiplier"
                             class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
                             oninput="updatePhaseSliderLabel(this)">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-20 text-right phase-dollar-label">${{printf "%.0f" (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">${{printf "%.0f" (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
                     </div>
                 </div>
             </div>
@@ -279,11 +280,29 @@ function getTotalIncome(year, inflation) {
 }
 
 function updatePhaseSliderLabel(slider) {
-    // Update percentage label (next sibling)
+    var key = slider.dataset.quickAdjustKey;
+    if (key) {
+        var pctLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-percent"]');
+        pctLabels.forEach(function(label) {
+            label.textContent = Math.round(slider.value * 100) + '%';
+        });
+
+        var dollarLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-dollar"]');
+        if (dollarLabels.length > 0) {
+            var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '0');
+            var formatted = '$' + Math.round(slider.value * baseExpenses).toLocaleString() + '/mo';
+            dollarLabels.forEach(function(label) {
+                label.textContent = formatted;
+            });
+        }
+        return;
+    }
+
+    // Fallback for any legacy slider markup without quick-adjust hooks.
     var pctLabel = slider.nextElementSibling;
+    if (!pctLabel) return;
     pctLabel.textContent = Math.round(slider.value * 100) + '%';
 
-    // Update dollar label (sibling after percentage)
     var dollarLabel = pctLabel.nextElementSibling;
     if (dollarLabel && dollarLabel.classList.contains('phase-dollar-label')) {
         var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '0');

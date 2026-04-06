@@ -65,11 +65,17 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Left Column: Settings -->
     <div class="space-y-4">
-        {{template "whatif-portfolio-settings" .}}
+        <div id="whatif-portfolio-settings-card">
+            {{template "whatif-portfolio-settings" .}}
+        </div>
         {{template "whatif-income-card" .}}
         {{template "whatif-healthcare-card" .}}
-        {{template "whatif-rate-assumptions" .}}
-        {{template "whatif-spending-phases" .}}
+        <div id="whatif-rate-assumptions-card">
+            {{template "whatif-rate-assumptions" .}}
+        </div>
+        <div id="whatif-spending-phases-card">
+            {{template "whatif-spending-phases" .}}
+        </div>
         {{template "whatif-roth-conversion" .}}
         {{template "whatif-bigticket-card" .}}
         {{template "whatif-expense-card" .}}
@@ -82,28 +88,48 @@
     </div>
 </div>
 
+{{template "whatif-quick-adjust" .}}
+
 {{/* Include all JavaScript for the page */}}
 {{template "whatif-portfolio-scripts" .}}
 {{template "whatif-healthcare-scripts" .}}
 {{template "whatif-spending-preview-scripts" .}}
 {{template "whatif-spending-phases-scripts" .}}
+{{template "whatif-quick-adjust-scripts" .}}
 {{end}}
 
 {{define "whatif-results"}}
 {{/* OOB updates for HTMX - these update the left column when results change */}}
 <template>
-    {{/* Monthly expenses slider OOB update */}}
-    <input type="range" id="monthly_living_expenses_input" name="monthly_living_expenses"
-        value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
-        min="0" max="20000" step="100"
-        class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()"
-        hx-swap-oob="true">
-    <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-300" hx-swap-oob="true">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+    <div id="whatif-portfolio-settings-card" hx-swap-oob="true">
+        {{template "whatif-portfolio-settings" .}}
+    </div>
+    <div id="whatif-rate-assumptions-card" hx-swap-oob="true">
+        {{template "whatif-rate-assumptions" .}}
+    </div>
+    <div id="whatif-spending-phases-card" hx-swap-oob="true">
+        {{template "whatif-spending-phases" .}}
+    </div>
 </template>
 
 {{/* OOB updates for lists - synced from shared templates */}}
 <template>
+    <div hx-swap-oob="innerHTML:#quick-adjust-portfolio-content">
+        {{template "whatif-quick-adjust-portfolio-content" .}}
+    </div>
+
+    <div hx-swap-oob="innerHTML:#quick-adjust-rates-content">
+        {{template "whatif-quick-adjust-rates-content" .}}
+    </div>
+
+    <div hx-swap-oob="innerHTML:#quick-adjust-phases-content">
+        {{template "whatif-quick-adjust-phases-content" .}}
+    </div>
+
+    <div hx-swap-oob="innerHTML:#quick-adjust-healthcare-content">
+        {{template "whatif-quick-adjust-healthcare-content" .}}
+    </div>
+
     <div id="income-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
         {{range .Settings.IncomeSources}}
         {{template "whatif-income-source-item" .}}

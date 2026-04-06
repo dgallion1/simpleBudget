@@ -119,11 +119,12 @@
 
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Delay Tax-Deferred Withdrawals</label>
-            <input type="range" name="tax_deferred_delay_years" value="{{.Settings.TaxDeferredDelayYears}}"
+            <input type="range" id="tax-deferred-delay-slider" name="tax_deferred_delay_years" value="{{.Settings.TaxDeferredDelayYears}}"
                 min="0" max="30" step="1"
+                data-quick-adjust-key="tax_deferred_delay_years"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="this.nextElementSibling.textContent = this.value == 0 ? 'No delay' : this.value + ' years'">
-            <span class="text-sm text-gray-500 dark:text-gray-300">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
+            <span class="text-sm text-gray-500 dark:text-gray-300" data-quick-adjust-display="tax_deferred_delay_years" data-quick-adjust-display-format="delay-years">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Cover expenses from income, taxable, and Roth first. RMDs at 73 still apply.</p>
         </div>
 
@@ -232,9 +233,10 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
             <input type="range" id="inflation-rate-slider" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
                 min="0" max="10" step="0.1"
+                data-quick-adjust-key="inflation_rate"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="this.nextElementSibling.textContent = this.value + '%'; updateSpendingPreview();">
-            <span class="text-sm text-gray-500 dark:text-gray-300">{{printf "%.1f" .Settings.InflationRate}}%</span>
+            <span class="text-sm text-gray-500 dark:text-gray-300" data-quick-adjust-display="inflation_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.InflationRate}}%</span>
         </div>
 
         <div>
@@ -260,9 +262,10 @@
             </div>
             <input type="range" id="spending-decline-slider" name="spending_decline_rate" value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
                 min="0" max="5" step="0.25"
+                data-quick-adjust-key="spending_decline_rate"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="this.nextElementSibling.textContent = this.value + '%'; updateSpendingPreview();">
-            <span class="text-sm text-gray-500 dark:text-gray-300">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
+            <span class="text-sm text-gray-500 dark:text-gray-300" data-quick-adjust-display="spending_decline_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
 
             <!-- Spending Decline Preview Panel -->
             <div id="spending-preview-panel" class="hidden mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs">
@@ -293,11 +296,12 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return Override</label>
                 <span class="text-xs text-gray-500 dark:text-gray-400">0% = use allocation</span>
             </div>
-            <input type="range" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
+            <input type="range" id="investment-return-slider" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
                 min="0" max="15" step="0.5"
+                data-quick-adjust-key="investment_return"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="updateInvestmentReturnDisplay(this.value)">
-            <div id="investment-return-display" class="text-sm mt-1">
+            <div id="investment-return-display" class="text-sm mt-1" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return">
                 {{if eq .Settings.InvestmentReturn 0.0}}
                 <span class="text-green-600 dark:text-green-400">Using asset allocation</span>
                 <span class="text-gray-500 dark:text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>
@@ -430,23 +434,35 @@ function updateBondPercent() {
 }
 
 function updateInvestmentReturnDisplay(value) {
-    const display = document.getElementById('investment-return-display');
-    if (!display) return;
-
     const val = parseFloat(value);
-    if (val === 0) {
-        // Calculate expected return from allocation
-        const expectedReturn = calculateExpectedReturnFromAllocation();
-        display.innerHTML = `
-            <span class="text-green-600 dark:text-green-400">Using asset allocation</span>
-            <span class="text-gray-500 dark:text-gray-400">(~${expectedReturn.toFixed(1)}% expected)</span>
-        `;
-    } else {
-        display.innerHTML = `
-            <span class="text-gray-500 dark:text-gray-300">Fixed ${val.toFixed(1)}%</span>
-            <span class="text-amber-600 dark:text-amber-400 text-xs">(overrides allocation)</span>
-        `;
-    }
+    const displays = document.querySelectorAll('[data-quick-adjust-display="investment_return"]');
+    displays.forEach((display) => {
+        const inPanel = display.closest('#quick-adjust-panel') !== null;
+        // Clear existing content
+        display.textContent = '';
+        if (val === 0) {
+            const expectedReturn = calculateExpectedReturnFromAllocation();
+            const label = document.createElement('span');
+            label.className = inPanel ? 'text-green-400' : 'text-green-600 dark:text-green-400';
+            label.textContent = 'Using asset allocation';
+            const detail = document.createElement('span');
+            detail.className = inPanel ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400';
+            detail.textContent = '(~' + expectedReturn.toFixed(1) + '% expected)';
+            display.appendChild(label);
+            display.appendChild(document.createTextNode(' '));
+            display.appendChild(detail);
+        } else {
+            const label = document.createElement('span');
+            label.className = inPanel ? 'text-gray-200' : 'text-gray-500 dark:text-gray-300';
+            label.textContent = 'Fixed ' + val.toFixed(1) + '%';
+            const detail = document.createElement('span');
+            detail.className = inPanel ? 'text-amber-400 text-xs' : 'text-amber-600 dark:text-amber-400 text-xs';
+            detail.textContent = '(overrides allocation)';
+            display.appendChild(label);
+            display.appendChild(document.createTextNode(' '));
+            display.appendChild(detail);
+        }
+    });
 }
 
 function calculateExpectedReturnFromAllocation() {

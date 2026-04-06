@@ -431,16 +431,291 @@ func TestComputeAgesUsesStartDateAndLinkedHealthcare(t *testing.T) {
 	}
 }
 
-func TestValidatePersonsRejectsBirthMonthAfterStartDate(t *testing.T) {
+func TestValidatePersons(t *testing.T) {
+	validBase := func() *WhatIfSettings {
+		return &WhatIfSettings{
+			StartDate: "2026-04",
+			Persons: []Person{
+				{ID: "p1", Name: "Alex", BirthMonth: "1960-04", Role: PersonRolePrimary},
+			},
+		}
+	}
+
+	t.Run("valid single primary", func(t *testing.T) {
+		if err := validBase().ValidatePersons(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("valid primary and spouse", func(t *testing.T) {
+		s := validBase()
+		s.Persons = append(s.Persons, Person{ID: "s1", Name: "Casey", BirthMonth: "1962-04", Role: PersonRoleSpouse})
+		if err := s.ValidatePersons(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid start_date", func(t *testing.T) {
+		s := validBase()
+		s.StartDate = "bad"
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for invalid start_date")
+		}
+	})
+
+	t.Run("empty persons", func(t *testing.T) {
+		s := validBase()
+		s.Persons = nil
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for empty persons")
+		}
+	})
+
+	t.Run("missing primary", func(t *testing.T) {
+		s := validBase()
+		s.Persons[0].Role = PersonRoleSpouse
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for missing primary")
+		}
+	})
+
+	t.Run("duplicate primary", func(t *testing.T) {
+		s := validBase()
+		s.Persons = append(s.Persons, Person{ID: "p2", Name: "Other", BirthMonth: "1965-01", Role: PersonRolePrimary})
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for duplicate primary")
+		}
+	})
+
+	t.Run("multiple spouses", func(t *testing.T) {
+		s := validBase()
+		s.Persons = append(s.Persons,
+			Person{ID: "s1", Name: "Spouse1", BirthMonth: "1962-01", Role: PersonRoleSpouse},
+			Person{ID: "s2", Name: "Spouse2", BirthMonth: "1963-01", Role: PersonRoleSpouse},
+		)
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for multiple spouses")
+		}
+	})
+
+	t.Run("duplicate IDs", func(t *testing.T) {
+		s := validBase()
+		s.Persons = append(s.Persons, Person{ID: "p1", Name: "Dup", BirthMonth: "1970-01", Role: PersonRoleSpouse})
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for duplicate IDs")
+		}
+	})
+
+	t.Run("empty ID", func(t *testing.T) {
+		s := validBase()
+		s.Persons[0].ID = ""
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for empty ID")
+		}
+	})
+
+	t.Run("empty name", func(t *testing.T) {
+		s := validBase()
+		s.Persons[0].Name = ""
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for empty name")
+		}
+	})
+
+	t.Run("invalid birth_month", func(t *testing.T) {
+		s := validBase()
+		s.Persons[0].BirthMonth = "not-a-date"
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for invalid birth_month")
+		}
+	})
+
+	t.Run("birth_month after start_date", func(t *testing.T) {
+		s := validBase()
+		s.Persons[0].BirthMonth = "2026-05"
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for future birth_month")
+		}
+	})
+
+	t.Run("invalid role", func(t *testing.T) {
+		s := validBase()
+		s.Persons = append(s.Persons, Person{ID: "x1", Name: "X", BirthMonth: "1970-01", Role: "invalid"})
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for invalid role")
+		}
+	})
+
+	t.Run("healthcare link to missing person", func(t *testing.T) {
+		s := validBase()
+		s.HealthcarePersons = []HealthcarePerson{{ID: "hp1", PersonID: "nonexistent"}}
+		if err := s.ValidatePersons(); err == nil {
+			t.Fatal("expected error for healthcare link to missing person")
+		}
+	})
+
+	t.Run("healthcare link to valid person", func(t *testing.T) {
+		s := validBase()
+		s.HealthcarePersons = []HealthcarePerson{{ID: "hp1", PersonID: "p1"}}
+		if err := s.ValidatePersons(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("unlinked healthcare passes", func(t *testing.T) {
+		s := validBase()
+		s.HealthcarePersons = []HealthcarePerson{{ID: "hp1", PersonID: "", Name: "Manual", CurrentAge: 60}}
+		if err := s.ValidatePersons(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestPersonHelpers(t *testing.T) {
 	s := &WhatIfSettings{
 		StartDate: "2026-04",
 		Persons: []Person{
-			{ID: "primary", Name: "You", BirthMonth: "2026-05", Role: PersonRolePrimary},
+			{ID: "p1", Name: "Alex", BirthMonth: "1960-04", Role: PersonRolePrimary},
+			{ID: "s1", Name: "Casey", BirthMonth: "1962-06", Role: PersonRoleSpouse},
+			{ID: "o1", Name: "Other", BirthMonth: "1990-01", Role: PersonRoleOther},
 		},
 	}
 
-	if err := s.ValidatePersons(); err == nil {
-		t.Fatal("expected validation error for future birth month")
+	t.Run("GetPrimaryPerson", func(t *testing.T) {
+		p := s.GetPrimaryPerson()
+		if p == nil || p.ID != "p1" {
+			t.Fatalf("expected primary p1, got %v", p)
+		}
+	})
+
+	t.Run("GetSpousePerson", func(t *testing.T) {
+		p := s.GetSpousePerson()
+		if p == nil || p.ID != "s1" {
+			t.Fatalf("expected spouse s1, got %v", p)
+		}
+	})
+
+	t.Run("GetSpousePerson nil when no spouse", func(t *testing.T) {
+		s2 := &WhatIfSettings{Persons: []Person{{ID: "p1", Role: PersonRolePrimary}}}
+		if s2.GetSpousePerson() != nil {
+			t.Fatal("expected nil for no spouse")
+		}
+	})
+
+	t.Run("FindPerson", func(t *testing.T) {
+		if s.FindPerson("o1") == nil {
+			t.Fatal("expected to find o1")
+		}
+		if s.FindPerson("missing") != nil {
+			t.Fatal("expected nil for missing ID")
+		}
+	})
+
+	t.Run("PersonAge", func(t *testing.T) {
+		if age := s.PersonAge("p1"); age != 66 {
+			t.Fatalf("primary age = %d, want 66", age)
+		}
+		if age := s.PersonAge("s1"); age != 63 {
+			t.Fatalf("spouse age = %d, want 63", age)
+		}
+		if age := s.PersonAge("missing"); age != 0 {
+			t.Fatalf("missing person age = %d, want 0", age)
+		}
+	})
+}
+
+func TestDeriveAgeAtStartDate(t *testing.T) {
+	tests := []struct {
+		name       string
+		startDate  string
+		birthMonth string
+		wantAge    int
+		wantErr    bool
+	}{
+		{"exact years", "2026-04", "1960-04", 66, false},
+		{"birth month equals start month", "2026-06", "1960-06", 66, false},
+		{"born later in year, not aged up", "2026-04", "1960-07", 65, false},
+		{"born earlier in year, aged up", "2026-07", "1960-04", 66, false},
+		{"born one month before start", "2026-02", "1960-01", 66, false},
+		{"born same month as start", "2026-01", "2026-01", 0, false},
+		{"born one month after start", "2026-04", "2026-05", 0, true},
+		{"age zero boundary", "2026-04", "2026-04", 0, false},
+		{"11 months not a full year", "2026-03", "1960-04", 65, false},
+		{"12 months is exactly one year", "1961-04", "1960-04", 1, false},
+		{"invalid start date", "bad", "1960-04", 0, true},
+		{"invalid birth month", "2026-04", "bad", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			age, err := deriveAgeAtStartDate(tt.startDate, tt.birthMonth)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if err == nil && age != tt.wantAge {
+				t.Fatalf("age = %d, want %d", age, tt.wantAge)
+			}
+		})
+	}
+}
+
+func TestBirthMonthForAge(t *testing.T) {
+	tests := []struct {
+		name      string
+		startDate string
+		age       int
+		want      string
+	}{
+		{"age 65 from 2026-04", "2026-04", 65, "1961-04"},
+		{"age 0", "2026-04", 0, "2026-04"},
+		{"negative age", "2026-04", -1, ""},
+		{"invalid start date", "bad", 65, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BirthMonthForAge(tt.startDate, tt.age)
+			if got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizePhaseAgeReference(t *testing.T) {
+	tests := []struct {
+		name      string
+		ref       string
+		hasSpouse bool
+		want      string
+	}{
+		{"younger stays", "younger", true, "younger"},
+		{"older stays", "older", false, "older"},
+		{"primary stays", "primary", false, "primary"},
+		{"spouse with spouse stays", "spouse", true, "spouse"},
+		{"spouse without spouse normalized", "spouse", false, "older"},
+		{"empty defaults to older", "", false, "older"},
+		{"unknown defaults to older", "bogus", false, "older"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &WhatIfSettings{
+				PhaseAgeReference: tt.ref,
+				StartDate:         "2026-04",
+				Persons: []Person{
+					{ID: "p1", Name: "Alex", BirthMonth: "1960-04", Role: PersonRolePrimary},
+				},
+			}
+			if tt.hasSpouse {
+				s.Persons = append(s.Persons, Person{ID: "s1", Name: "Casey", BirthMonth: "1962-04", Role: PersonRoleSpouse})
+				s.ComputeAges()
+			}
+			s.NormalizePhaseAgeReference()
+			if s.PhaseAgeReference != tt.want {
+				t.Fatalf("got %q, want %q", s.PhaseAgeReference, tt.want)
+			}
+		})
 	}
 }
 

@@ -67,13 +67,6 @@ func normalizeStartDate(raw string) (string, bool) {
 	return raw, false
 }
 
-func birthMonthForAge(startDate string, age int) string {
-	start, err := time.Parse("2006-01", startDate)
-	if err != nil {
-		start, _ = time.Parse("2006-01", currentMonthString())
-	}
-	return start.AddDate(-age, 0, 0).Format("2006-01")
-}
 
 func hasTaxableFields(rawFields map[string]json.RawMessage) bool {
 	return rawFields["taxable_dividend_yield"] != nil ||
@@ -181,7 +174,7 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 		settings.Persons = append(settings.Persons, models.Person{
 			ID:         uuid.New().String(),
 			Name:       "You",
-			BirthMonth: birthMonthForAge(settings.StartDate, primaryAge),
+			BirthMonth: models.BirthMonthForAge(settings.StartDate, primaryAge),
 			Role:       models.PersonRolePrimary,
 		})
 
@@ -189,13 +182,15 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 			settings.Persons = append(settings.Persons, models.Person{
 				ID:         uuid.New().String(),
 				Name:       "Spouse",
-				BirthMonth: birthMonthForAge(settings.StartDate, legacy.SpouseAge),
+				BirthMonth: models.BirthMonthForAge(settings.StartDate, legacy.SpouseAge),
 				Role:       models.PersonRoleSpouse,
 			})
 		}
 		changed = true
 	}
 
+	// First pass: derive ages so the healthcare migration below can read
+	// settings.CurrentAge to pick ACA vs Medicare coverage.
 	settings.NormalizePhaseAgeReference()
 	settings.ComputeAges()
 
@@ -235,6 +230,8 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 		changed = true
 	}
 
+	// Second pass: healthcare link inference above may have changed PersonIDs,
+	// so re-derive ages and re-normalize phase reference for the final state.
 	beforePhase := settings.PhaseAgeReference
 	settings.NormalizePhaseAgeReference()
 	if settings.PhaseAgeReference != beforePhase {
@@ -795,12 +792,12 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 
 	if v, ok := updates["current_age"].(int); ok {
 		person := ensurePrimaryPerson(settings)
-		person.BirthMonth = birthMonthForAge(settings.StartDate, v)
+		person.BirthMonth = models.BirthMonthForAge(settings.StartDate, v)
 	}
 	if v, ok := updates["spouse_age"].(int); ok {
 		if v > 0 {
 			person := ensureSpousePerson(settings)
-			person.BirthMonth = birthMonthForAge(settings.StartDate, v)
+			person.BirthMonth = models.BirthMonthForAge(settings.StartDate, v)
 		} else {
 			removeSpousePersons(settings)
 		}
@@ -818,7 +815,7 @@ func ensurePrimaryPerson(settings *models.WhatIfSettings) *models.Person {
 	person := models.Person{
 		ID:         uuid.New().String(),
 		Name:       "You",
-		BirthMonth: birthMonthForAge(settings.StartDate, 65),
+		BirthMonth: models.BirthMonthForAge(settings.StartDate, 65),
 		Role:       models.PersonRolePrimary,
 	}
 	settings.Persons = append([]models.Person{person}, settings.Persons...)
@@ -836,7 +833,7 @@ func ensureSpousePerson(settings *models.WhatIfSettings) *models.Person {
 	person := models.Person{
 		ID:         uuid.New().String(),
 		Name:       "Spouse",
-		BirthMonth: birthMonthForAge(settings.StartDate, 65),
+		BirthMonth: models.BirthMonthForAge(settings.StartDate, 65),
 		Role:       models.PersonRoleSpouse,
 	}
 	settings.Persons = append(settings.Persons, person)

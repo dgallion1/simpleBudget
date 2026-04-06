@@ -4,7 +4,6 @@ import (
 	"budget2/internal/models"
 	"sort"
 	"strings"
-	"time"
 )
 
 func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatIfSettings, transitionYear int) *models.WhatIfSettings {
@@ -12,7 +11,7 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 
 	prepared.StartDate = primary.StartDate
 	prepared.Persons = append([]models.Person(nil), primary.Persons...)
-	reconcilePreparedPersons(&prepared, primary.CurrentAge, primary.SpouseAge)
+	reconcilePreparedPersons(&prepared, primary.SpouseAge)
 	prepared.CurrentAge = primary.CurrentAge
 	prepared.SpouseAge = primary.SpouseAge
 	prepared.PhaseAgeReference = primary.PhaseAgeReference
@@ -73,29 +72,22 @@ func findPreparedScenarioPerson(primary *models.WhatIfSettings, linkedPerson *mo
 	return match
 }
 
-func reconcilePreparedPersons(settings *models.WhatIfSettings, currentAge, spouseAge int) {
-	start, err := time.Parse("2006-01", settings.StartDate)
-	if err != nil {
+// reconcilePreparedPersons removes the spouse person from the prepared
+// settings when the primary scenario has no spouse (spouseAge == 0).
+// Birth months are NOT recalculated here — the deep-copied Persons
+// from the primary scenario already carry the canonical birth months.
+func reconcilePreparedPersons(settings *models.WhatIfSettings, spouseAge int) {
+	if spouseAge > 0 {
 		return
 	}
-
-	if primary := settings.GetPrimaryPerson(); primary != nil && currentAge > 0 {
-		primary.BirthMonth = start.AddDate(-currentAge, 0, 0).Format("2006-01")
-	}
-	if spouse := settings.GetSpousePerson(); spouse != nil {
-		if spouseAge > 0 {
-			spouse.BirthMonth = start.AddDate(-spouseAge, 0, 0).Format("2006-01")
-		} else {
-			filtered := make([]models.Person, 0, len(settings.Persons))
-			for _, person := range settings.Persons {
-				if person.Role == models.PersonRoleSpouse {
-					continue
-				}
-				filtered = append(filtered, person)
-			}
-			settings.Persons = filtered
+	filtered := make([]models.Person, 0, len(settings.Persons))
+	for _, person := range settings.Persons {
+		if person.Role == models.PersonRoleSpouse {
+			continue
 		}
+		filtered = append(filtered, person)
 	}
+	settings.Persons = filtered
 }
 
 func rebaseIncomeSources(sources []models.IncomeSource, transitionMonth int) []models.IncomeSource {

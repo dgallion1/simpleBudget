@@ -143,7 +143,10 @@ func parseYearMonth(value string) (time.Time, error) {
 	return t, nil
 }
 
-func birthMonthForAge(startDate string, age int) string {
+// BirthMonthForAge returns the "YYYY-MM" birth month that would produce
+// the given integer age at the specified start date. Returns "" for
+// negative ages or unparseable start dates.
+func BirthMonthForAge(startDate string, age int) string {
 	if age < 0 {
 		return ""
 	}
@@ -654,7 +657,7 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 			{
 				ID:         uuid.New().String(),
 				Name:       "You",
-				BirthMonth: birthMonthForAge(startDate, 65),
+				BirthMonth: BirthMonthForAge(startDate, 65),
 				Role:       PersonRolePrimary,
 			},
 		},

@@ -290,6 +290,43 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 	})
 }
 
+func TestIsSocialSecurityIncomeSourceRecognizesSSI(t *testing.T) {
+	tests := []struct {
+		name   string
+		source models.IncomeSource
+		want   bool
+	}{
+		{
+			name:   "social security phrase",
+			source: models.IncomeSource{Name: "Social Security"},
+			want:   true,
+		},
+		{
+			name:   "ssi token",
+			source: models.IncomeSource{Name: "Christine SSI"},
+			want:   true,
+		},
+		{
+			name:   "ssi with suffix",
+			source: models.IncomeSource{Name: "Darrell Gallion SSI 67"},
+			want:   true,
+		},
+		{
+			name:   "non social security income",
+			source: models.IncomeSource{Name: "Christine Pension"},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSocialSecurityIncomeSource(tt.source); got != tt.want {
+				t.Fatalf("isSocialSecurityIncomeSource(%q) = %v, want %v", tt.source.Name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 0

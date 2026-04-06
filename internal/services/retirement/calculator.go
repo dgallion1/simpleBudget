@@ -380,7 +380,17 @@ func calculateMonthlyIncomeBreakdown(s *models.WhatIfSettings, month int) monthl
 
 func isSocialSecurityIncomeSource(source models.IncomeSource) bool {
 	normalizedName := strings.ToLower(strings.ReplaceAll(source.Name, "-", " "))
-	return strings.Contains(normalizedName, "social security")
+	if strings.Contains(normalizedName, "social security") {
+		return true
+	}
+
+	for _, token := range strings.Fields(normalizedName) {
+		if token == "ssi" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func rothConversionAmountForYear(s *models.WhatIfSettings, currentYear int, availableTaxDeferred float64) float64 {

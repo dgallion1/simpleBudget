@@ -3,28 +3,108 @@
   "monthly_living_expenses": 4000,
   "monthly_healthcare": 1200,
   "healthcare_start_years": 0,
-  "current_age": 65,
+  "healthcare_persons": [
+    {
+      "id": "migrated-user",
+      "name": "You",
+      "person_id": "86bb7d8f-8546-4024-8259-4fcb27840a1d",
+      "current_age": 65,
+      "current_coverage": "medicare",
+      "current_monthly_cost": 1200,
+      "pre_medicare_inflation": 5,
+      "medicare_monthly_cost": 1200,
+      "post_medicare_inflation": 5,
+      "medicare_eligible_age": 65,
+      "employer_coverage_years": 0,
+      "aca_cost_after_employer": 0
+    }
+  ],
+  "start_date": "2026-04",
+  "persons": [
+    {
+      "id": "86bb7d8f-8546-4024-8259-4fcb27840a1d",
+      "name": "You",
+      "birth_month": "1961-04",
+      "role": "primary"
+    }
+  ],
+  "phase_age_reference": "older",
   "tax_deferred_percent": 70,
+  "roth_percent": 0,
+  "tax_deferred_stock_percent": 0,
+  "tax_deferred_cash_percent": 0,
+  "roth_stock_percent": 0,
+  "roth_cash_percent": 0,
+  "taxable_stock_percent": 0,
+  "taxable_cash_percent": 0,
+  "stock_percent": 0,
+  "cash_percent": 0,
   "inflation_rate": 3,
   "healthcare_inflation": 5,
+  "spending_decline_rate": 0,
   "investment_return": 7,
+  "discount_rate": 0,
+  "taxable_qualified_dividend_percent": 100,
+  "spending_phase_config": {
+    "enabled": false,
+    "phases": [
+      {
+        "name": "Go-Go",
+        "start_age": 0,
+        "multiplier": 1,
+        "description": "Active retirement: travel, hobbies, dining out"
+      },
+      {
+        "name": "Active",
+        "start_age": 65,
+        "multiplier": 0.95,
+        "description": "Still active but pacing slows slightly"
+      },
+      {
+        "name": "Slow-Go",
+        "start_age": 75,
+        "multiplier": 0.85,
+        "description": "Reduced activity: less travel, more home-based"
+      },
+      {
+        "name": "Late Slow-Go",
+        "start_age": 80,
+        "multiplier": 0.75,
+        "description": "Further reduced activity and travel"
+      },
+      {
+        "name": "No-Go",
+        "start_age": 85,
+        "multiplier": 0.65,
+        "description": "Limited mobility: basic needs focus"
+      }
+    ]
+  },
   "projection_years": 30,
+  "projection_timing": "end_of_month",
+  "steady_state_override_year": 0,
+  "tax_deferred_delay_years": 0,
   "income_sources": [
     {
       "id": "test-ss",
       "name": "Social Security",
       "amount": 2000,
-      "start_age": 67,
-      "end_age": 0,
+      "income_type": "",
+      "start_month": 0,
+      "end_month": null,
+      "cola_rate": 0,
       "inflation_adjusted": true
     },
     {
       "id": "test-pension",
       "name": "Pension",
       "amount": 1500,
-      "start_age": 65,
-      "end_age": 0,
+      "income_type": "",
+      "start_month": 0,
+      "end_month": null,
+      "cola_rate": 0,
       "inflation_adjusted": false
     }
-  ]
+  ],
+  "expense_sources": []
 }

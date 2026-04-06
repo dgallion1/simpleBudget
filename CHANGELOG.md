@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### What-If Planner
+- **Canonical people and start month**: What-If settings now persist `start_date` plus a canonical `persons` list instead of saving scenario-level age fields. Working ages are derived in memory from each person's `birth_month`, keeping chained scenarios and healthcare projections aligned to one age baseline.
+- **Linked healthcare people**: Healthcare rows can now link to a canonical person with automatic name and age derivation, while manual healthcare entries remain supported for one-off cases.
+- **What-If settings UI**: Replaced the old primary/spouse age inputs with a projection start month, editable person rows, derived age previews, and spouse-aware phase-reference normalization in the What-If settings card.
 - **IRMAA lookback correction**: Current and near-term what-if projections now respect IRMAA's 2-year MAGI lookback instead of charging Medicare surcharges immediately from the current modeled income year. Budget-fit now surfaces an explicit current IRMAA estimate from modeled MAGI, while steady-state IRMAA is derived from a two-year-earlier MAGI estimate so the budget card stays aligned with the projection engine.
 - **IRMAA baseline consistency**: Rebased the Medicare surcharge table onto the planner's 2024 tax baseline and applied the same year-based IRMAA inflation logic across deterministic projections, Monte Carlo runs, and historical backtests so equivalent scenarios no longer disagree by engine.
 - **Projection assumptions summary**: Added a compact assumptions panel to the portfolio longevity card covering after-tax cash flow, average-cost taxable sales, annual Roth conversion timing, and the active monthly cash-flow timing mode.

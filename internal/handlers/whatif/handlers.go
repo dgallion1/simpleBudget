@@ -351,6 +351,79 @@ func parseFormInt(r *http.Request, key string) (int, error) {
 	return strconv.Atoi(v)
 }
 
+func formValues(r *http.Request, key string) []string {
+	if values, ok := r.Form[key+"[]"]; ok {
+		return values
+	}
+	if values, ok := r.Form[key]; ok {
+		return values
+	}
+	return nil
+}
+
+func formHasKey(r *http.Request, key string) bool {
+	if _, ok := r.Form[key]; ok {
+		return true
+	}
+	if _, ok := r.Form[key+"[]"]; ok {
+		return true
+	}
+	return false
+}
+
+func parsePersonsForm(r *http.Request) (string, []models.Person, bool, error) {
+	startDate := strings.TrimSpace(r.FormValue("start_date"))
+	personIDs := formValues(r, "person_id")
+	names := formValues(r, "person_name")
+	birthMonths := formValues(r, "person_birth_month")
+	roles := formValues(r, "person_role")
+
+	hasPersons := startDate != "" || len(personIDs) > 0 || len(names) > 0 || len(birthMonths) > 0 || len(roles) > 0
+	if !hasPersons {
+		return "", nil, false, nil
+	}
+
+	rowCount := len(names)
+	switch {
+	case rowCount == 0:
+		return "", nil, true, fmt.Errorf("at least one person is required")
+	case len(personIDs) != rowCount, len(birthMonths) != rowCount, len(roles) != rowCount:
+		return "", nil, true, fmt.Errorf("person rows are misaligned")
+	}
+
+	persons := make([]models.Person, 0, rowCount)
+	for i := 0; i < rowCount; i++ {
+		id := strings.TrimSpace(personIDs[i])
+		if id == "" {
+			id = uuid.New().String()
+		}
+		role := models.PersonRole(strings.TrimSpace(roles[i]))
+		switch role {
+		case models.PersonRolePrimary, models.PersonRoleSpouse, models.PersonRoleOther:
+		default:
+			return "", nil, true, fmt.Errorf("invalid role for person row %d", i+1)
+		}
+
+		persons = append(persons, models.Person{
+			ID:         id,
+			Name:       strings.TrimSpace(names[i]),
+			BirthMonth: strings.TrimSpace(birthMonths[i]),
+			Role:       role,
+		})
+	}
+
+	return startDate, persons, true, nil
+}
+
+func findHealthcarePerson(settings *models.WhatIfSettings, id string) *models.HealthcarePerson {
+	for i := range settings.HealthcarePersons {
+		if settings.HealthcarePersons[i].ID == id {
+			return &settings.HealthcarePersons[i]
+		}
+	}
+	return nil
+}
+
 // parseRequiredFormFloat parses a required float64 from form data
 func parseRequiredFormFloat(r *http.Request, key string) (float64, error) {
 	v := r.FormValue(key)
@@ -484,6 +557,16 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	startDate, persons, hasPersons, err := parsePersonsForm(r)
+	if err != nil {
+		renderError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if hasPersons && startDate == "" {
+		renderError(w, "Projection start date is required", http.StatusBadRequest)
 		return
 	}
 
@@ -804,7 +887,12 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		updates["steady_state_override_year"] = v
 	}
 
-	settings, err := retirementMgr.UpdateSettings(updates)
+	var settings *models.WhatIfSettings
+	if hasPersons {
+		settings, err = retirementMgr.UpdateSettingsWithPersons(updates, startDate, persons)
+	} else {
+		settings, err = retirementMgr.UpdateSettings(updates)
+	}
 	if err != nil {
 		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1354,12 +1442,39 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.FormValue("name")
-	age, err := parseFormInt(r, "current_age")
+	settingsState, err := retirementMgr.Load()
 	if err != nil {
-		renderError(w, "Invalid age: "+err.Error(), http.StatusBadRequest)
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	personID := strings.TrimSpace(r.FormValue("person_id"))
+	name := strings.TrimSpace(r.FormValue("name"))
+	age := 0
+	if personID != "" {
+		person := settingsState.FindPerson(personID)
+		if person == nil {
+			renderError(w, "Selected person was not found", http.StatusBadRequest)
+			return
+		}
+		name = person.Name
+		age = settingsState.PersonAge(personID)
+	} else {
+		if name == "" {
+			name = "Person"
+		}
+		if strings.TrimSpace(r.FormValue("current_age")) != "" {
+			age, err = parseFormInt(r, "current_age")
+			if err != nil {
+				renderError(w, "Invalid age: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if age == 0 {
+			age = 65
+		}
+	}
+
 	coverageType := r.FormValue("current_coverage")
 	monthlyCost, err := parseFormFloat(r, "current_monthly_cost")
 	if err != nil {
@@ -1386,13 +1501,6 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set defaults if not provided
-	if name == "" {
-		name = "Person"
-	}
-	if age == 0 {
-		age = 65
-	}
 	if age < 0 || age > 120 {
 		renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
 		return
@@ -1424,6 +1532,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	person := models.HealthcarePerson{
 		ID:                    uuid.New().String(),
 		Name:                  name,
+		PersonID:              personID,
 		CurrentAge:            age,
 		CurrentCoverage:       models.CoverageType(coverageType),
 		CurrentMonthlyCost:    monthlyCost,
@@ -1466,22 +1575,67 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	settingsState, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	existing := findHealthcarePerson(settingsState, id)
+
 	updates := make(map[string]interface{})
 
-	if v := r.FormValue("name"); v != "" {
-		updates["name"] = v
-	}
-	if v := r.FormValue("current_age"); v != "" {
-		i, err := strconv.Atoi(v)
-		if err != nil {
-			renderError(w, "Invalid age: must be an integer", http.StatusBadRequest)
-			return
+	personIDSpecified := formHasKey(r, "person_id")
+	if personIDSpecified {
+		personID := strings.TrimSpace(r.FormValue("person_id"))
+		updates["person_id"] = personID
+		if personID != "" {
+			person := settingsState.FindPerson(personID)
+			if person == nil {
+				renderError(w, "Selected person was not found", http.StatusBadRequest)
+				return
+			}
+			updates["name"] = person.Name
+			updates["current_age"] = settingsState.PersonAge(personID)
+		} else {
+			name := strings.TrimSpace(r.FormValue("name"))
+			if name == "" {
+				renderError(w, "Name is required when unlinking a healthcare entry", http.StatusBadRequest)
+				return
+			}
+			updates["name"] = name
+
+			ageValue := strings.TrimSpace(r.FormValue("current_age"))
+			if ageValue == "" {
+				renderError(w, "Age is required when unlinking a healthcare entry", http.StatusBadRequest)
+				return
+			}
+			i, err := strconv.Atoi(ageValue)
+			if err != nil {
+				renderError(w, "Invalid age: must be an integer", http.StatusBadRequest)
+				return
+			}
+			if i < 0 || i > 120 {
+				renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
+				return
+			}
+			updates["current_age"] = i
 		}
-		if i < 0 || i > 120 {
-			renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
-			return
+	} else if existing == nil || !existing.IsLinked() {
+		if v := r.FormValue("name"); v != "" {
+			updates["name"] = v
 		}
-		updates["current_age"] = i
+		if v := r.FormValue("current_age"); v != "" {
+			i, err := strconv.Atoi(v)
+			if err != nil {
+				renderError(w, "Invalid age: must be an integer", http.StatusBadRequest)
+				return
+			}
+			if i < 0 || i > 120 {
+				renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
+				return
+			}
+			updates["current_age"] = i
+		}
 	}
 	if v := r.FormValue("current_coverage"); v != "" {
 		updates["current_coverage"] = v

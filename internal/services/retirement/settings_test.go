@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -167,5 +168,43 @@ func TestSettingsManager_RenameAndDeleteUseValidatedScenarioPath(t *testing.T) {
 	}
 	if err := sm.DeleteScenario("../whatif_sample.json"); err == nil {
 		t.Fatal("expected DeleteScenario to reject path traversal")
+	}
+}
+
+func TestSettingsManager_SaveOmitsDerivedAgeFields(t *testing.T) {
+	root := t.TempDir()
+	settingsDir := filepath.Join(root, "settings")
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+
+	sm := NewSettingsManager(settingsDir, store)
+	settings := models.DefaultWhatIfSettings()
+	settings.StartDate = "2026-04"
+	settings.Persons = []models.Person{
+		{ID: "primary", Name: "You", BirthMonth: "1961-04", Role: models.PersonRolePrimary},
+		{ID: "spouse", Name: "Spouse", BirthMonth: "1963-04", Role: models.PersonRoleSpouse},
+	}
+
+	if err := sm.Save(settings); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	raw, err := store.ReadFile(filepath.Join(settingsDir, "whatif.json"))
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+
+	text := string(raw)
+	if strings.Contains(text, `"current_age"`) {
+		t.Fatal("saved settings should not persist current_age")
+	}
+	if strings.Contains(text, `"spouse_age"`) {
+		t.Fatal("saved settings should not persist spouse_age")
+	}
+	if !strings.Contains(text, `"start_date"`) || !strings.Contains(text, `"persons"`) {
+		t.Fatal("saved settings should persist start_date and persons")
 	}
 }

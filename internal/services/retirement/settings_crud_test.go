@@ -1113,20 +1113,20 @@ func TestLoadInternal_MigrationOldFormat(t *testing.T) {
 
 	// Write old-format settings: has monthly_healthcare and current_age but no healthcare_persons
 	oldSettings := map[string]interface{}{
-		"portfolio_value":        500000,
+		"portfolio_value":         500000,
 		"monthly_living_expenses": 4000,
-		"monthly_healthcare":     800,
-		"healthcare_inflation":   6.0,
-		"current_age":            60,
-		"tax_deferred_percent":   60,
-		"roth_percent":           10,
-		"stock_percent":          60,
-		"inflation_rate":         3.0,
-		"spending_decline_rate":  1.0,
-		"discount_rate":          5.0,
-		"projection_years":       30,
-		"income_sources":         []interface{}{},
-		"expense_sources":        []interface{}{},
+		"monthly_healthcare":      800,
+		"healthcare_inflation":    6.0,
+		"current_age":             60,
+		"tax_deferred_percent":    60,
+		"roth_percent":            10,
+		"stock_percent":           60,
+		"inflation_rate":          3.0,
+		"spending_decline_rate":   1.0,
+		"discount_rate":           5.0,
+		"projection_years":        30,
+		"income_sources":          []interface{}{},
+		"expense_sources":         []interface{}{},
 	}
 	data, _ := json.MarshalIndent(oldSettings, "", "  ")
 	if err := store.WriteFile(filepath.Join(settingsDir, "whatif.json"), data, 0644); err != nil {
@@ -1415,7 +1415,11 @@ func TestSave_StripsInvalidChainOnAgeChange(t *testing.T) {
 
 	// Now bump CurrentAge to 75 — transition age 70 is now below CurrentAge
 	settings2 := models.DefaultWhatIfSettings()
-	settings2.CurrentAge = 75
+	settings2.StartDate = "2026-04"
+	settings2.Persons = []models.Person{
+		{ID: "primary", Name: "You", BirthMonth: "1951-04", Role: models.PersonRolePrimary},
+	}
+	settings2.ComputeAges()
 	settings2.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: "whatif_future.json", TransitionAge: 70}, // now invalid
 	}
@@ -1494,13 +1498,18 @@ func TestLoadInternal_LegacyHealthcareMigration(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
 
 	// Write a settings file with legacy healthcare but no healthcare persons
-	settings := models.DefaultWhatIfSettings()
-	settings.HealthcarePersons = nil
-	settings.MonthlyHealthcare = 500
-	settings.HealthcareInflation = 6.0
-	settings.CurrentAge = 60 // Under 65 for ACA path
+	legacy := map[string]interface{}{
+		"monthly_healthcare":      500,
+		"healthcare_inflation":    6.0,
+		"current_age":             60,
+		"healthcare_persons":      []interface{}{},
+		"income_sources":          []interface{}{},
+		"expense_sources":         []interface{}{},
+		"removed_income_sources":  []interface{}{},
+		"removed_expense_sources": []interface{}{},
+	}
 
-	data, _ := json.MarshalIndent(settings, "", "  ")
+	data, _ := json.MarshalIndent(legacy, "", "  ")
 	_ = store.MkdirAll(dir, 0755)
 	_ = store.WriteFile(filepath.Join(dir, "whatif.json"), data, 0644)
 
@@ -1601,21 +1610,21 @@ func TestUpdateSettings_AllFieldTypes(t *testing.T) {
 	sm := newTestSM(t)
 
 	updates := map[string]interface{}{
-		"current_age":                  70,
-		"spouse_age":                   68,
-		"projection_years":             25,
-		"healthcare_start_years":       2,
-		"tax_deferred_delay_years":     5,
-		"phase_age_reference":          "older",
-		"tax_deferred_stock_percent":   80.0,
-		"tax_deferred_cash_percent":    5.0,
-		"roth_stock_percent":           90.0,
-		"roth_cash_percent":            0.0,
-		"taxable_stock_percent":        60.0,
-		"taxable_cash_percent":         10.0,
-		"healthcare_inflation":         7.5,
-		"spending_decline_rate":        1.5,
-		"steady_state_override_year":   3.0,
+		"current_age":                70,
+		"spouse_age":                 68,
+		"projection_years":           25,
+		"healthcare_start_years":     2,
+		"tax_deferred_delay_years":   5,
+		"phase_age_reference":        "older",
+		"tax_deferred_stock_percent": 80.0,
+		"tax_deferred_cash_percent":  5.0,
+		"roth_stock_percent":         90.0,
+		"roth_cash_percent":          0.0,
+		"taxable_stock_percent":      60.0,
+		"taxable_cash_percent":       10.0,
+		"healthcare_inflation":       7.5,
+		"spending_decline_rate":      1.5,
+		"steady_state_override_year": 3.0,
 	}
 
 	result, err := sm.UpdateSettings(updates)
@@ -1705,15 +1714,15 @@ func TestUpdateSettings_MoreFields(t *testing.T) {
 	sm := newTestSM(t)
 
 	updates := map[string]interface{}{
-		"portfolio_value":          500000.0,
-		"monthly_living_expenses":  3500.0,
-		"monthly_healthcare":       200.0,
-		"stock_percent":            70.0,
-		"cash_percent":             10.0,
-		"investment_return":        6.5,
-		"discount_rate":            4.0,
-		"roth_percent":             15.0,
-		"tax_deferred_percent":     55.0,
+		"portfolio_value":         500000.0,
+		"monthly_living_expenses": 3500.0,
+		"monthly_healthcare":      200.0,
+		"stock_percent":           70.0,
+		"cash_percent":            10.0,
+		"investment_return":       6.5,
+		"discount_rate":           4.0,
+		"roth_percent":            15.0,
+		"tax_deferred_percent":    55.0,
 	}
 
 	result, err := sm.UpdateSettings(updates)

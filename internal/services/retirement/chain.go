@@ -3,11 +3,16 @@ package retirement
 import (
 	"budget2/internal/models"
 	"sort"
+	"strings"
+	"time"
 )
 
 func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatIfSettings, transitionYear int) *models.WhatIfSettings {
 	prepared := *linked
 
+	prepared.StartDate = primary.StartDate
+	prepared.Persons = append([]models.Person(nil), primary.Persons...)
+	reconcilePreparedPersons(&prepared, primary.CurrentAge, primary.SpouseAge)
 	prepared.CurrentAge = primary.CurrentAge
 	prepared.SpouseAge = primary.SpouseAge
 	prepared.PhaseAgeReference = primary.PhaseAgeReference
@@ -25,12 +30,72 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 		persons := make([]models.HealthcarePerson, len(linked.HealthcarePersons))
 		copy(persons, linked.HealthcarePersons)
 		for i := range persons {
+			if persons[i].PersonID != "" {
+				if prepared.FindPerson(persons[i].PersonID) == nil {
+					if linkedPerson := linked.FindPerson(persons[i].PersonID); linkedPerson != nil {
+						if mapped := findPreparedScenarioPerson(primary, linkedPerson); mapped != nil {
+							persons[i].PersonID = mapped.ID
+						}
+					}
+				}
+				continue
+			}
 			persons[i].CurrentAge = persons[i].CurrentAge - transitionYear
 		}
 		prepared.HealthcarePersons = persons
 	}
 
+	prepared.NormalizePhaseAgeReference()
+	prepared.ComputeAges()
+
 	return &prepared
+}
+
+func findPreparedScenarioPerson(primary *models.WhatIfSettings, linkedPerson *models.Person) *models.Person {
+	switch linkedPerson.Role {
+	case models.PersonRolePrimary:
+		return primary.GetPrimaryPerson()
+	case models.PersonRoleSpouse:
+		return primary.GetSpousePerson()
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(linkedPerson.Name))
+	var match *models.Person
+	for i := range primary.Persons {
+		if strings.ToLower(strings.TrimSpace(primary.Persons[i].Name)) != normalized {
+			continue
+		}
+		if match != nil {
+			return nil
+		}
+		match = &primary.Persons[i]
+	}
+	return match
+}
+
+func reconcilePreparedPersons(settings *models.WhatIfSettings, currentAge, spouseAge int) {
+	start, err := time.Parse("2006-01", settings.StartDate)
+	if err != nil {
+		return
+	}
+
+	if primary := settings.GetPrimaryPerson(); primary != nil && currentAge > 0 {
+		primary.BirthMonth = start.AddDate(-currentAge, 0, 0).Format("2006-01")
+	}
+	if spouse := settings.GetSpousePerson(); spouse != nil {
+		if spouseAge > 0 {
+			spouse.BirthMonth = start.AddDate(-spouseAge, 0, 0).Format("2006-01")
+		} else {
+			filtered := make([]models.Person, 0, len(settings.Persons))
+			for _, person := range settings.Persons {
+				if person.Role == models.PersonRoleSpouse {
+					continue
+				}
+				filtered = append(filtered, person)
+			}
+			settings.Persons = filtered
+		}
+	}
 }
 
 func rebaseIncomeSources(sources []models.IncomeSource, transitionMonth int) []models.IncomeSource {

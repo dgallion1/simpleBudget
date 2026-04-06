@@ -22,7 +22,21 @@
 {{define "whatif-add-healthcare-form"}}
 <div id="add-healthcare-form" class="hidden mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
     <form hx-post="/whatif/healthcare" hx-target="#whatif-results" hx-on::after-request="toggleAddHealthcare()">
-        <div class="grid grid-cols-2 gap-3 mb-3">
+        <div class="mb-3">
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Person</label>
+            <select name="person_id" onchange="toggleHealthcareFormMode(this.form)"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                <option value="">Manual Entry</option>
+                {{range .Settings.Persons}}
+                <option value="{{.ID}}">{{.Name}} (Age {{$.Settings.PersonAge .ID}})</option>
+                {{end}}
+            </select>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Linked entries follow the selected canonical person’s name and age at the projection start date.</p>
+        </div>
+        <div class="hidden mb-3 rounded-md bg-indigo-50 p-2 text-sm text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200" data-linked-healthcare-preview>
+            Linked person preview
+        </div>
+        <div class="grid grid-cols-2 gap-3 mb-3" data-manual-healthcare-fields>
             <div>
                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Name</label>
                 <input type="text" name="name" placeholder="Spouse"
@@ -70,7 +84,7 @@
 {{if .Settings.HealthcarePersons}}
 <div class="space-y-3">
     {{range .Settings.HealthcarePersons}}
-    {{template "whatif-healthcare-person" .}}
+    {{template "whatif-healthcare-person" (dict "Settings" $.Settings "Person" .)}}
     {{end}}
 
     <!-- Total Healthcare Cost Summary -->
@@ -97,6 +111,27 @@
 function toggleAddHealthcare() {
     const form = document.getElementById('add-healthcare-form');
     form.classList.toggle('hidden');
+}
+
+function toggleHealthcareFormMode(form) {
+    if (!form) {
+        return;
+    }
+    const select = form.querySelector('select[name="person_id"]');
+    const manualFields = form.querySelector('[data-manual-healthcare-fields]');
+    const preview = form.querySelector('[data-linked-healthcare-preview]');
+    const option = select?.selectedOptions?.[0];
+    const linked = !!select?.value;
+
+    if (manualFields) {
+        manualFields.classList.toggle('hidden', linked);
+    }
+    if (preview) {
+        preview.classList.toggle('hidden', !linked);
+        if (linked && option) {
+            preview.textContent = option.textContent;
+        }
+    }
 }
 </script>
 {{end}}

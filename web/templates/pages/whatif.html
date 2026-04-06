@@ -198,7 +198,7 @@
     {{if .Settings.HealthcarePersons}}
     <div class="space-y-3">
         {{range .Settings.HealthcarePersons}}
-        {{template "whatif-healthcare-person" .}}
+        {{template "whatif-healthcare-person" (dict "Settings" $.Settings "Person" .)}}
         {{end}}
 
         <!-- Total Healthcare Cost Summary -->

@@ -212,6 +212,85 @@ func TestBuildProjectionChartEvents_NilInputs(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfSettings_WithPersons(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	vals := url.Values{
+		"start_date":           {"2026-04"},
+		"person_id[]":          {"primary", "spouse"},
+		"person_name[]":        {"Alex", "Casey"},
+		"person_birth_month[]": {"1960-05", "1962-04"},
+		"person_role[]":        {"primary", "spouse"},
+		"phase_age_reference":  {"spouse"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/whatif/settings", formBody(vals))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handleWhatIfSettings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if settings.CurrentAge != 65 || settings.SpouseAge != 64 {
+		t.Fatalf("derived ages = (%d,%d), want (65,64)", settings.CurrentAge, settings.SpouseAge)
+	}
+	if settings.PhaseAgeReference != "spouse" {
+		t.Fatalf("PhaseAgeReference = %q, want spouse", settings.PhaseAgeReference)
+	}
+}
+
+func TestHandleWhatIfAddHealthcare_LinkedPerson(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	settings.StartDate = "2026-04"
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = []models.HealthcarePerson{}
+	settings.Persons = []models.Person{
+		{ID: "primary", Name: "Alex", BirthMonth: "1960-05", Role: models.PersonRolePrimary},
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	vals := url.Values{
+		"person_id":            {"primary"},
+		"current_coverage":     {"aca"},
+		"current_monthly_cost": {"900"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/whatif/healthcare", formBody(vals))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handleWhatIfAddHealthcare(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	loaded, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(loaded.HealthcarePersons) != 1 {
+		t.Fatalf("expected 1 healthcare person, got %d", len(loaded.HealthcarePersons))
+	}
+	person := loaded.HealthcarePersons[0]
+	if person.PersonID != "primary" || person.Name != "Alex" || person.CurrentAge != 65 {
+		t.Fatalf("linked healthcare person = %+v", person)
+	}
+}
+
 // ── buildProjectionChartData ────────────────────────────────────────────────
 
 func TestBuildProjectionChartData_NilProjection(t *testing.T) {
@@ -424,11 +503,11 @@ func TestHandleWhatIfSettings_BasicUpdate(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"portfolio_value":        {"1500000"},
+		"portfolio_value":         {"1500000"},
 		"monthly_living_expenses": {"5000"},
-		"current_age":            {"60"},
-		"projection_years":       {"30"},
-		"investment_return":      {"7.0"},
+		"current_age":             {"60"},
+		"projection_years":        {"30"},
+		"investment_return":       {"7.0"},
 	}
 
 	w := httptest.NewRecorder()
@@ -654,11 +733,11 @@ func TestHandleWhatIfSettings_InflationAndReturnFields(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"inflation_rate":       {"3.0"},
-		"healthcare_inflation": {"5.0"},
+		"inflation_rate":        {"3.0"},
+		"healthcare_inflation":  {"5.0"},
 		"spending_decline_rate": {"1.0"},
-		"investment_return":    {"7.0"},
-		"discount_rate":        {"3.0"},
+		"investment_return":     {"7.0"},
+		"discount_rate":         {"3.0"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/settings", formBody(form))
@@ -1724,13 +1803,13 @@ func TestHandleWhatIfSpendingPhases(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"enabled":              {"on"},
-		"phase_0_name":         {"Go-Go"},
-		"phase_0_multiplier":   {"1.0"},
-		"phase_1_name":         {"Slow-Go"},
-		"phase_1_start_age":    {"75"},
-		"phase_1_multiplier":   {"0.8"},
-		"phase_1_description":  {"Slower spending"},
+		"enabled":             {"on"},
+		"phase_0_name":        {"Go-Go"},
+		"phase_0_multiplier":  {"1.0"},
+		"phase_1_name":        {"Slow-Go"},
+		"phase_1_start_age":   {"75"},
+		"phase_1_multiplier":  {"0.8"},
+		"phase_1_description": {"Slower spending"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/spending-phases", formBody(form))
@@ -2809,11 +2888,11 @@ func TestHandleWhatIfSpendingPhases_StartAgeOverride(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"enabled":              {"on"},
-		"phase_0_multiplier":   {"1.0"},
-		"phase_0_start_age":    {"60"}, // Phase 0 start age
-		"phase_1_multiplier":   {"0.8"},
-		"phase_1_start_age":    {"80"},
+		"enabled":            {"on"},
+		"phase_0_multiplier": {"1.0"},
+		"phase_0_start_age":  {"60"}, // Phase 0 start age
+		"phase_1_multiplier": {"0.8"},
+		"phase_1_start_age":  {"80"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/spending-phases", formBody(form))
@@ -3000,13 +3079,13 @@ func TestHandleWhatIfSpendingPhases_WithExistingPhases(t *testing.T) {
 	rm.Save(s)
 
 	form := url.Values{
-		"enabled":              {"true"},
-		"phase_0_multiplier":   {"0.95"},
-		"phase_0_name":         {"Updated Active"},
-		"phase_1_multiplier":   {"0.75"},
-		"phase_1_start_age":    {"76"},
-		"phase_1_name":         {"Updated Slower"},
-		"phase_1_description":  {"Updated description"},
+		"enabled":             {"true"},
+		"phase_0_multiplier":  {"0.95"},
+		"phase_0_name":        {"Updated Active"},
+		"phase_1_multiplier":  {"0.75"},
+		"phase_1_start_age":   {"76"},
+		"phase_1_name":        {"Updated Slower"},
+		"phase_1_description": {"Updated description"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/spending-phases", formBody(form))
@@ -3158,7 +3237,7 @@ func TestHandleWhatIfSettings_HealthcareStartYears(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"monthly_healthcare":    {"500"},
+		"monthly_healthcare":     {"500"},
 		"healthcare_start_years": {"3"},
 	}
 	w := httptest.NewRecorder()
@@ -3643,14 +3722,14 @@ func TestHandleWhatIfSpendingPhases_WithDescription(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"enabled":              {"on"},
-		"phase_0_name":         {"Active"},
-		"phase_0_multiplier":   {"1.0"},
-		"phase_0_description":  {"Full spending"},
-		"phase_1_name":         {"Slow"},
-		"phase_1_multiplier":   {"0.8"},
-		"phase_1_start_age":    {"75"},
-		"phase_1_description":  {"Reduced spending"},
+		"enabled":             {"on"},
+		"phase_0_name":        {"Active"},
+		"phase_0_multiplier":  {"1.0"},
+		"phase_0_description": {"Full spending"},
+		"phase_1_name":        {"Slow"},
+		"phase_1_multiplier":  {"0.8"},
+		"phase_1_start_age":   {"75"},
+		"phase_1_description": {"Reduced spending"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/spending-phases", formBody(form))
@@ -4276,10 +4355,10 @@ func TestHandleWhatIfUpdateHealthcare_WithRenderer(t *testing.T) {
 	rm.AddHealthcarePerson(person)
 
 	form := url.Values{
-		"name":                 {"Robert"},
-		"current_age":          {"61"},
-		"current_coverage":     {"aca"},
-		"current_monthly_cost": {"1100"},
+		"name":                  {"Robert"},
+		"current_age":           {"61"},
+		"current_coverage":      {"aca"},
+		"current_monthly_cost":  {"1100"},
 		"medicare_monthly_cost": {"550"},
 	}
 	w := httptest.NewRecorder()

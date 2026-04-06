@@ -19,6 +19,7 @@ const (
 type HealthcarePerson struct {
 	ID                    string       `json:"id"`
 	Name                  string       `json:"name"`
+	PersonID              string       `json:"person_id,omitempty"`
 	CurrentAge            int          `json:"current_age"`
 	CurrentCoverage       CoverageType `json:"current_coverage"`
 	CurrentMonthlyCost    float64      `json:"current_monthly_cost"`
@@ -30,6 +31,10 @@ type HealthcarePerson struct {
 	// Employer coverage transition fields
 	EmployerCoverageYears int     `json:"employer_coverage_years"` // Years of remaining employer coverage (0 = indefinite until Medicare)
 	ACACostAfterEmployer  float64 `json:"aca_cost_after_employer"` // Monthly ACA cost when employer coverage ends
+}
+
+func (hp HealthcarePerson) IsLinked() bool {
+	return hp.PersonID != ""
 }
 
 // NewHealthcarePerson creates a new healthcare person with default values
@@ -46,19 +51,19 @@ func NewHealthcarePerson(name string, age int, coverage CoverageType) *Healthcar
 	// Set defaults based on coverage type
 	switch coverage {
 	case CoverageMedicare:
-		hp.CurrentMonthlyCost = 459    // Part B + Medigap G + Part D
+		hp.CurrentMonthlyCost = 459 // Part B + Medigap G + Part D
 		hp.MedicareMonthlyCost = 459
-		hp.PreMedicareInflation = 4.0  // Not applicable, but set reasonable default
+		hp.PreMedicareInflation = 4.0 // Not applicable, but set reasonable default
 	case CoverageACA:
-		hp.CurrentMonthlyCost = 1100   // ACA marketplace
-		hp.PreMedicareInflation = 7.0  // 4% healthcare + 3% age-rating
-		hp.MedicareMonthlyCost = 600   // Projected Medicare cost at 65
+		hp.CurrentMonthlyCost = 1100  // ACA marketplace
+		hp.PreMedicareInflation = 7.0 // 4% healthcare + 3% age-rating
+		hp.MedicareMonthlyCost = 600  // Projected Medicare cost at 65
 	case CoverageEmployer:
-		hp.CurrentMonthlyCost = 500     // Employer-subsidized
-		hp.PreMedicareInflation = 7.0   // ACA healthcare inflation (used after employer ends)
-		hp.MedicareMonthlyCost = 600    // Projected Medicare cost at 65
-		hp.EmployerCoverageYears = 0    // 0 = until Medicare
-		hp.ACACostAfterEmployer = 1100  // ACA cost when employer coverage ends
+		hp.CurrentMonthlyCost = 500    // Employer-subsidized
+		hp.PreMedicareInflation = 7.0  // ACA healthcare inflation (used after employer ends)
+		hp.MedicareMonthlyCost = 600   // Projected Medicare cost at 65
+		hp.EmployerCoverageYears = 0   // 0 = until Medicare
+		hp.ACACostAfterEmployer = 1100 // ACA cost when employer coverage ends
 	}
 
 	return hp
@@ -165,8 +170,8 @@ func DefaultHealthcarePersons() []HealthcarePerson {
 			Name:                  "User",
 			CurrentAge:            67,
 			CurrentCoverage:       CoverageMedicare,
-			CurrentMonthlyCost:    459,  // Part B + Medigap G + Part D
-			PreMedicareInflation:  4.0,  // N/A but set reasonable
+			CurrentMonthlyCost:    459, // Part B + Medigap G + Part D
+			PreMedicareInflation:  4.0, // N/A but set reasonable
 			MedicareMonthlyCost:   459,
 			PostMedicareInflation: 4.0,
 			MedicareEligibleAge:   65,

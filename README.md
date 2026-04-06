@@ -8,7 +8,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 - **Dashboard** - KPIs with sparklines, spending trend, category breakdown, top spending, cumulative balance, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
-- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax-aware cash flow with LTCG preferential rates, Social Security taxation, NIIT, delayed IRMAA lookback modeling, budget-fit tax/IRMAA breakdowns, taxable account modeling with cost-basis tracking and dividend/cap-gains distribution tax drag, configurable projection timing, real vs nominal dollar views, year-by-year projection explainability, named scenarios, scenario chaining for multi-phase retirement plans, and tax-deferred withdrawal delays that treat locked balances as temporary shortfalls instead of immediate depletion
+- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax-aware cash flow with LTCG preferential rates, Social Security taxation, NIIT, delayed IRMAA lookback modeling, budget-fit tax/IRMAA breakdowns, taxable account modeling with cost-basis tracking and dividend/cap-gains distribution tax drag, configurable projection timing, canonical household people anchored to a projection start month, linked healthcare person modeling, real vs nominal dollar views, year-by-year projection explainability, named scenarios, scenario chaining for multi-phase retirement plans, and tax-deferred withdrawal delays that treat locked balances as temporary shortfalls instead of immediate depletion
 - **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, income pattern analysis, and recency filtering anchored to the selected data window without leaking in transactions after that window
 - **File Manager** - Data backup, restore, and file management
 - **Encryption** - Optional password-based encryption for all data files
@@ -193,7 +193,7 @@ You should see the dashboard with:
 1. **Dashboard** - Your main overview with income, expenses, and savings rate
 2. **Explorer** - Search and filter individual transactions, double-click any description to assign a custom name (e.g., rename "Check #996574" to "Plumber repair"), step through date ranges with arrow buttons, and filter state persists across tab changes
 3. **Insights** - View current recurring payments, subscriptions, and spending patterns using full-history detection with recency-aware filtering tied to the selected end date and excluding future transactions outside that window
-4. **What-If** - Run retirement projections with per-account allocations, Monte Carlo, and historical backtesting, including tax-deferred withdrawal delays that treat locked balances as temporary shortfalls rather than immediate depletion and worst-year ranking based on how quickly each sequence fails, including same-year failures
+4. **What-If** - Run retirement projections with per-account allocations, a projection start month, canonical people with birth months, linked healthcare rows, Monte Carlo, and historical backtesting, including tax-deferred withdrawal delays that treat locked balances as temporary shortfalls rather than immediate depletion and worst-year ranking based on how quickly each sequence fails, including same-year failures
 5. **File Manager** - Manage data files, create backups
 
 ## Quick Start Commands
@@ -368,7 +368,9 @@ The What-If Planner helps you model retirement scenarios with sophisticated proj
 - **Spending Phases**: Go-Go/Slow-Go/No-Go retirement spending patterns
 - **Healthcare Costs**: Model costs for multiple household members with Medicare transitions
 - **Big Ticket Items**: One-time events (inheritance, home sale, large purchases)
-- **Spouse Age Tracking**: Accurate RMD and healthcare projections for couples
+- **Projection Start Month**: Anchor ages and chained scenarios to a specific `YYYY-MM` start month instead of duplicated saved ages
+- **Canonical Household People**: Define primary, spouse, and additional people with birth months; displayed ages are derived from the active start month
+- **Linked Healthcare Entries**: Healthcare rows can either stay manual or follow a canonical person’s name and age automatically
 - **Scenario Chaining**: Link multiple scenarios to run sequentially — e.g., live off a pension until 70, then start Social Security and change withdrawal strategy. Balances carry over between phases while all other assumptions (expenses, income, allocation) switch to the chained scenario's settings.
 
 ### Asset Allocation

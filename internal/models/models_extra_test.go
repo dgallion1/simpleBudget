@@ -84,11 +84,11 @@ func TestYearsUntilMedicare(t *testing.T) {
 
 func TestGetMonthlyCostWithVariation(t *testing.T) {
 	hp := HealthcarePerson{
-		CurrentAge:           67,
-		CurrentCoverage:      CoverageMedicare,
-		CurrentMonthlyCost:   500,
+		CurrentAge:            67,
+		CurrentCoverage:       CoverageMedicare,
+		CurrentMonthlyCost:    500,
 		PostMedicareInflation: 4.0,
-		MedicareEligibleAge:  65,
+		MedicareEligibleAge:   65,
 	}
 	base := hp.GetMonthlyCost(0)
 	varied := hp.GetMonthlyCostWithVariation(0, 1.1)
@@ -108,12 +108,12 @@ func TestGetTransitionInfo(t *testing.T) {
 
 	t.Run("ACA to medicare", func(t *testing.T) {
 		hp := HealthcarePerson{
-			CurrentAge:          55,
-			CurrentCoverage:     CoverageACA,
-			CurrentMonthlyCost:  1000,
+			CurrentAge:           55,
+			CurrentCoverage:      CoverageACA,
+			CurrentMonthlyCost:   1000,
 			PreMedicareInflation: 7.0,
-			MedicareMonthlyCost: 500,
-			MedicareEligibleAge: 65,
+			MedicareMonthlyCost:  500,
+			MedicareEligibleAge:  65,
 		}
 		has, years, _, medicareCost := hp.GetTransitionInfo()
 		if !has {
@@ -382,7 +382,7 @@ func TestGetPhaseReferenceAge(t *testing.T) {
 		want         int
 	}{
 		{"primary", 5, 70},
-		{"", 5, 70},    // default = primary
+		{"", 5, 70}, // default = primary
 		{"spouse", 5, 65},
 		{"younger", 5, 65},
 		{"older", 5, 70},
@@ -400,6 +400,47 @@ func TestGetPhaseReferenceAge(t *testing.T) {
 	s2 := &WhatIfSettings{CurrentAge: 65, SpouseAge: 0, PhaseAgeReference: "spouse"}
 	if got := s2.GetPhaseReferenceAge(5); got != 70 {
 		t.Errorf("spouse ref no spouse: got %d, want 70", got)
+	}
+}
+
+func TestComputeAgesUsesStartDateAndLinkedHealthcare(t *testing.T) {
+	s := &WhatIfSettings{
+		StartDate: "2026-04",
+		Persons: []Person{
+			{ID: "primary", Name: "Alex", BirthMonth: "1960-05", Role: PersonRolePrimary},
+			{ID: "spouse", Name: "Casey", BirthMonth: "1962-04", Role: PersonRoleSpouse},
+		},
+		HealthcarePersons: []HealthcarePerson{
+			{ID: "hp1", PersonID: "primary"},
+		},
+	}
+
+	s.ComputeAges()
+
+	if s.CurrentAge != 65 {
+		t.Fatalf("CurrentAge = %d, want 65", s.CurrentAge)
+	}
+	if s.SpouseAge != 64 {
+		t.Fatalf("SpouseAge = %d, want 64", s.SpouseAge)
+	}
+	if s.HealthcarePersons[0].Name != "Alex" {
+		t.Fatalf("linked healthcare name = %q, want Alex", s.HealthcarePersons[0].Name)
+	}
+	if s.HealthcarePersons[0].CurrentAge != 65 {
+		t.Fatalf("linked healthcare age = %d, want 65", s.HealthcarePersons[0].CurrentAge)
+	}
+}
+
+func TestValidatePersonsRejectsBirthMonthAfterStartDate(t *testing.T) {
+	s := &WhatIfSettings{
+		StartDate: "2026-04",
+		Persons: []Person{
+			{ID: "primary", Name: "You", BirthMonth: "2026-05", Role: PersonRolePrimary},
+		},
+	}
+
+	if err := s.ValidatePersons(); err == nil {
+		t.Fatal("expected validation error for future birth month")
 	}
 }
 
@@ -637,6 +678,12 @@ func TestDefaultWhatIfSettings(t *testing.T) {
 	}
 	if s.CurrentAge != 65 {
 		t.Errorf("CurrentAge = %d, want 65", s.CurrentAge)
+	}
+	if s.StartDate == "" {
+		t.Error("StartDate should not be empty")
+	}
+	if len(s.Persons) != 1 || s.Persons[0].Role != PersonRolePrimary {
+		t.Fatalf("expected default primary person, got %+v", s.Persons)
 	}
 	if s.ProjectionYears != 30 {
 		t.Errorf("ProjectionYears = %d, want 30", s.ProjectionYears)

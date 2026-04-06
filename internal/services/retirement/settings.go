@@ -9,9 +9,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/storage"
+
+	"github.com/google/uuid"
 )
 
 // Scenario represents a named what-if scenario
@@ -42,6 +45,224 @@ func NewSettingsManager(settingsDir string, store *storage.Storage) *SettingsMan
 // filepath returns the full path to the settings file
 func (sm *SettingsManager) filepath() string {
 	return filepath.Join(sm.settingsDir, sm.filename)
+}
+
+type legacyAgeFields struct {
+	CurrentAge int `json:"current_age"`
+	SpouseAge  int `json:"spouse_age"`
+}
+
+func currentMonthString() string {
+	return time.Now().In(time.Local).Format("2006-01")
+}
+
+func normalizeStartDate(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return currentMonthString(), true
+	}
+	if _, err := time.Parse("2006-01", raw); err != nil {
+		return currentMonthString(), true
+	}
+	return raw, false
+}
+
+func birthMonthForAge(startDate string, age int) string {
+	start, err := time.Parse("2006-01", startDate)
+	if err != nil {
+		start, _ = time.Parse("2006-01", currentMonthString())
+	}
+	return start.AddDate(-age, 0, 0).Format("2006-01")
+}
+
+func hasTaxableFields(rawFields map[string]json.RawMessage) bool {
+	return rawFields["taxable_dividend_yield"] != nil ||
+		rawFields["taxable_qualified_dividend_percent"] != nil ||
+		rawFields["taxable_cap_gains_distribution_rate"] != nil
+}
+
+func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[string]json.RawMessage) {
+	if settings.IncomeSources == nil {
+		settings.IncomeSources = []models.IncomeSource{}
+	}
+	if settings.ExpenseSources == nil {
+		settings.ExpenseSources = []models.ExpenseSource{}
+	}
+	if settings.RemovedIncomeSources == nil {
+		settings.RemovedIncomeSources = []models.IncomeSource{}
+	}
+	if settings.RemovedExpenseSources == nil {
+		settings.RemovedExpenseSources = []models.ExpenseSource{}
+	}
+	if settings.HealthcarePersons == nil {
+		settings.HealthcarePersons = []models.HealthcarePerson{}
+	}
+	if settings.Persons == nil {
+		settings.Persons = []models.Person{}
+	}
+
+	if settings.SpendingPhaseConfig == nil {
+		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+			Enabled: false,
+			Phases:  models.DefaultSpendingPhases(),
+		}
+	} else if len(settings.SpendingPhaseConfig.Phases) == 0 {
+		settings.SpendingPhaseConfig.Phases = models.DefaultSpendingPhases()
+	}
+
+	for i := range settings.SpendingPhaseConfig.Phases {
+		if settings.SpendingPhaseConfig.Phases[i].Multiplier == 0 {
+			settings.SpendingPhaseConfig.Phases[i].Multiplier = 1.0
+		}
+	}
+
+	if !hasTaxableFields(rawFields) && settings.TaxableQualifiedDividendPercent == 0 {
+		settings.TaxableQualifiedDividendPercent = 100
+	}
+
+	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
+}
+
+func parseLegacyAges(rawFields map[string]json.RawMessage) legacyAgeFields {
+	var legacy legacyAgeFields
+	_ = json.Unmarshal(rawFields["current_age"], &legacy.CurrentAge)
+	_ = json.Unmarshal(rawFields["spouse_age"], &legacy.SpouseAge)
+	return legacy
+}
+
+func normalizePersonName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func inferHealthcarePersonLink(settings *models.WhatIfSettings, name string) string {
+	normalized := normalizePersonName(name)
+	if normalized == "" {
+		return ""
+	}
+
+	if primary := settings.GetPrimaryPerson(); primary != nil {
+		switch normalized {
+		case "you", "user", "primary":
+			return primary.ID
+		}
+	}
+	if spouse := settings.GetSpousePerson(); spouse != nil && normalized == "spouse" {
+		return spouse.ID
+	}
+
+	var matchID string
+	for _, person := range settings.Persons {
+		if normalizePersonName(person.Name) != normalized {
+			continue
+		}
+		if matchID != "" {
+			return ""
+		}
+		matchID = person.ID
+	}
+	return matchID
+}
+
+func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields map[string]json.RawMessage) (bool, error) {
+	initializeLoadedSettings(settings, rawFields)
+
+	legacy := parseLegacyAges(rawFields)
+	changed := false
+
+	var startChanged bool
+	settings.StartDate, startChanged = normalizeStartDate(settings.StartDate)
+	changed = changed || startChanged
+
+	if len(settings.Persons) == 0 {
+		primaryAge := legacy.CurrentAge
+		if primaryAge <= 0 {
+			primaryAge = 65
+		}
+		settings.Persons = append(settings.Persons, models.Person{
+			ID:         uuid.New().String(),
+			Name:       "You",
+			BirthMonth: birthMonthForAge(settings.StartDate, primaryAge),
+			Role:       models.PersonRolePrimary,
+		})
+
+		if legacy.SpouseAge > 0 {
+			settings.Persons = append(settings.Persons, models.Person{
+				ID:         uuid.New().String(),
+				Name:       "Spouse",
+				BirthMonth: birthMonthForAge(settings.StartDate, legacy.SpouseAge),
+				Role:       models.PersonRoleSpouse,
+			})
+		}
+		changed = true
+	}
+
+	settings.NormalizePhaseAgeReference()
+	settings.ComputeAges()
+
+	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
+		coverage := models.CoverageMedicare
+		if settings.CurrentAge < 65 {
+			coverage = models.CoverageACA
+		}
+		person := models.HealthcarePerson{
+			ID:                    "migrated-user",
+			Name:                  "User",
+			CurrentAge:            settings.CurrentAge,
+			CurrentCoverage:       coverage,
+			CurrentMonthlyCost:    settings.MonthlyHealthcare,
+			PreMedicareInflation:  settings.HealthcareInflation,
+			MedicareMonthlyCost:   settings.MonthlyHealthcare,
+			PostMedicareInflation: settings.HealthcareInflation,
+			MedicareEligibleAge:   65,
+		}
+		if primary := settings.GetPrimaryPerson(); primary != nil {
+			person.PersonID = primary.ID
+			person.Name = primary.Name
+		}
+		settings.HealthcarePersons = []models.HealthcarePerson{person}
+		changed = true
+	}
+
+	for i := range settings.HealthcarePersons {
+		if settings.HealthcarePersons[i].PersonID != "" {
+			continue
+		}
+		personID := inferHealthcarePersonLink(settings, settings.HealthcarePersons[i].Name)
+		if personID == "" {
+			continue
+		}
+		settings.HealthcarePersons[i].PersonID = personID
+		changed = true
+	}
+
+	beforePhase := settings.PhaseAgeReference
+	settings.NormalizePhaseAgeReference()
+	if settings.PhaseAgeReference != beforePhase {
+		changed = true
+	}
+	settings.ComputeAges()
+
+	if err := settings.ValidatePersons(); err != nil {
+		return changed, err
+	}
+
+	return changed, nil
+}
+
+func (sm *SettingsManager) decodeSettings(data []byte) (*models.WhatIfSettings, bool, error) {
+	var settings models.WhatIfSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return models.DefaultWhatIfSettings(), false, err
+	}
+
+	var rawFields map[string]json.RawMessage
+	_ = json.Unmarshal(data, &rawFields)
+
+	changed, err := normalizeLoadedWhatIfSettings(&settings, rawFields)
+	if err != nil {
+		return nil, changed, err
+	}
+	return &settings, changed, nil
 }
 
 // Load reads settings from disk, returning defaults if file doesn't exist
@@ -92,89 +313,16 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 		return models.DefaultWhatIfSettings(), err
 	}
 
-	// Parse JSON
-	var settings models.WhatIfSettings
-	if err := json.Unmarshal(data, &settings); err != nil {
+	settings, changed, err := sm.decodeSettings(data)
+	if err != nil {
 		return models.DefaultWhatIfSettings(), err
 	}
-
-	// Detect whether taxable account fields are present in the raw JSON so we
-	// can distinguish "never set" from "explicitly set to 0".
-	var rawFields map[string]json.RawMessage
-	_ = json.Unmarshal(data, &rawFields)
-	hasTaxableFields := rawFields["taxable_dividend_yield"] != nil ||
-		rawFields["taxable_qualified_dividend_percent"] != nil ||
-		rawFields["taxable_cap_gains_distribution_rate"] != nil
-
-	// Ensure slices are initialized
-	if settings.IncomeSources == nil {
-		settings.IncomeSources = []models.IncomeSource{}
-	}
-	if settings.ExpenseSources == nil {
-		settings.ExpenseSources = []models.ExpenseSource{}
-	}
-	if settings.RemovedIncomeSources == nil {
-		settings.RemovedIncomeSources = []models.IncomeSource{}
-	}
-	if settings.RemovedExpenseSources == nil {
-		settings.RemovedExpenseSources = []models.ExpenseSource{}
-	}
-	if settings.HealthcarePersons == nil {
-		settings.HealthcarePersons = []models.HealthcarePerson{}
-	}
-
-	// Migration: Initialize spending phase config if missing
-	if settings.SpendingPhaseConfig == nil {
-		// Default to disabled (preserves existing SpendingDeclineRate behavior)
-		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
-			Enabled: false,
-			Phases:  models.DefaultSpendingPhases(),
-		}
-	} else if len(settings.SpendingPhaseConfig.Phases) == 0 {
-		// Ensure phases are populated even if config exists but empty
-		settings.SpendingPhaseConfig.Phases = models.DefaultSpendingPhases()
-	}
-
-	// Ensure all phases have valid multipliers
-	for i := range settings.SpendingPhaseConfig.Phases {
-		if settings.SpendingPhaseConfig.Phases[i].Multiplier == 0 {
-			settings.SpendingPhaseConfig.Phases[i].Multiplier = 1.0
+	if changed {
+		if err := sm.saveInternal(settings); err != nil {
+			return nil, err
 		}
 	}
-
-	// Migration: default qualified dividend percent to 100% only for legacy
-	// settings files that predate the taxable account fields entirely.
-	// If any of the three fields are present in the JSON (even as 0), the user
-	// has already interacted with these controls — respect their values.
-	if !hasTaxableFields && settings.TaxableQualifiedDividendPercent == 0 {
-		settings.TaxableQualifiedDividendPercent = 100
-	}
-
-	// Migration: if no healthcare persons but legacy healthcare value exists,
-	// create a single person from legacy values
-	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
-		coverage := models.CoverageMedicare
-		if settings.CurrentAge < 65 {
-			coverage = models.CoverageACA
-		}
-		settings.HealthcarePersons = []models.HealthcarePerson{
-			{
-				ID:                    "migrated-user",
-				Name:                  "User",
-				CurrentAge:            settings.CurrentAge,
-				CurrentCoverage:       coverage,
-				CurrentMonthlyCost:    settings.MonthlyHealthcare,
-				PreMedicareInflation:  settings.HealthcareInflation,
-				MedicareMonthlyCost:   settings.MonthlyHealthcare,
-				PostMedicareInflation: settings.HealthcareInflation,
-				MedicareEligibleAge:   65,
-			},
-		}
-	}
-
-	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
-
-	return &settings, nil
+	return settings, nil
 }
 
 // LoadScenarioSettings loads a scenario's settings without switching the active scenario.
@@ -197,71 +345,11 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 		return nil, fmt.Errorf("reading scenario %s: %w", filename, err)
 	}
 
-	var settings models.WhatIfSettings
-	if err := json.Unmarshal(data, &settings); err != nil {
+	settingsPtr, _, err := sm.decodeSettings(data)
+	if err != nil {
 		return nil, fmt.Errorf("parsing scenario %s: %w", filename, err)
 	}
-
-	var rawFields map[string]json.RawMessage
-	_ = json.Unmarshal(data, &rawFields)
-	hasTaxableFields := rawFields["taxable_dividend_yield"] != nil ||
-		rawFields["taxable_qualified_dividend_percent"] != nil ||
-		rawFields["taxable_cap_gains_distribution_rate"] != nil
-
-	// Apply same initialization and migrations as loadInternal
-	if settings.IncomeSources == nil {
-		settings.IncomeSources = []models.IncomeSource{}
-	}
-	if settings.ExpenseSources == nil {
-		settings.ExpenseSources = []models.ExpenseSource{}
-	}
-	if settings.RemovedIncomeSources == nil {
-		settings.RemovedIncomeSources = []models.IncomeSource{}
-	}
-	if settings.RemovedExpenseSources == nil {
-		settings.RemovedExpenseSources = []models.ExpenseSource{}
-	}
-	if settings.HealthcarePersons == nil {
-		settings.HealthcarePersons = []models.HealthcarePerson{}
-	}
-	if settings.SpendingPhaseConfig == nil {
-		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
-			Enabled: false,
-			Phases:  models.DefaultSpendingPhases(),
-		}
-	} else if len(settings.SpendingPhaseConfig.Phases) == 0 {
-		settings.SpendingPhaseConfig.Phases = models.DefaultSpendingPhases()
-	}
-	for i := range settings.SpendingPhaseConfig.Phases {
-		if settings.SpendingPhaseConfig.Phases[i].Multiplier == 0 {
-			settings.SpendingPhaseConfig.Phases[i].Multiplier = 1.0
-		}
-	}
-	if !hasTaxableFields && settings.TaxableQualifiedDividendPercent == 0 {
-		settings.TaxableQualifiedDividendPercent = 100
-	}
-	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
-		coverage := models.CoverageMedicare
-		if settings.CurrentAge < 65 {
-			coverage = models.CoverageACA
-		}
-		settings.HealthcarePersons = []models.HealthcarePerson{
-			{
-				ID:                    "migrated-user",
-				Name:                  "User",
-				CurrentAge:            settings.CurrentAge,
-				CurrentCoverage:       coverage,
-				CurrentMonthlyCost:    settings.MonthlyHealthcare,
-				PreMedicareInflation:  settings.HealthcareInflation,
-				MedicareMonthlyCost:   settings.MonthlyHealthcare,
-				PostMedicareInflation: settings.HealthcareInflation,
-				MedicareEligibleAge:   65,
-			},
-		}
-	}
-	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
-
-	return &settings, nil
+	return settingsPtr, nil
 }
 
 // ValidateScenarioChain validates that a scenario chain is well-formed.
@@ -327,6 +415,12 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 
 // saveInternal writes settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
+	settings.NormalizePhaseAgeReference()
+	if err := settings.ValidatePersons(); err != nil {
+		return err
+	}
+	settings.ComputeAges()
+
 	// Validate scenario chain if one is present; strip it (with a warning) if invalid.
 	if len(settings.ScenarioChain) > 0 {
 		if err := sm.validateChainInternal(settings.ScenarioChain, settings, sm.filename); err != nil {
@@ -580,7 +674,36 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 		return nil, err
 	}
 
-	// Apply updates
+	sm.applySettingsUpdates(settings, updates)
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	sm.applySettingsUpdates(settings, updates)
+	settings.StartDate = startDate
+	settings.Persons = persons
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings, updates map[string]interface{}) {
 	if v, ok := updates["portfolio_value"].(float64); ok {
 		settings.PortfolioValue = v
 	}
@@ -670,11 +793,65 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 		settings.SteadyStateOverrideYear = v
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
-		return nil, err
+	if v, ok := updates["current_age"].(int); ok {
+		person := ensurePrimaryPerson(settings)
+		person.BirthMonth = birthMonthForAge(settings.StartDate, v)
+	}
+	if v, ok := updates["spouse_age"].(int); ok {
+		if v > 0 {
+			person := ensureSpousePerson(settings)
+			person.BirthMonth = birthMonthForAge(settings.StartDate, v)
+		} else {
+			removeSpousePersons(settings)
+		}
+	}
+}
+
+func ensurePrimaryPerson(settings *models.WhatIfSettings) *models.Person {
+	if person := settings.GetPrimaryPerson(); person != nil {
+		if strings.TrimSpace(person.Name) == "" {
+			person.Name = "You"
+		}
+		return person
 	}
 
-	return settings, nil
+	person := models.Person{
+		ID:         uuid.New().String(),
+		Name:       "You",
+		BirthMonth: birthMonthForAge(settings.StartDate, 65),
+		Role:       models.PersonRolePrimary,
+	}
+	settings.Persons = append([]models.Person{person}, settings.Persons...)
+	return &settings.Persons[0]
+}
+
+func ensureSpousePerson(settings *models.WhatIfSettings) *models.Person {
+	if person := settings.GetSpousePerson(); person != nil {
+		if strings.TrimSpace(person.Name) == "" {
+			person.Name = "Spouse"
+		}
+		return person
+	}
+
+	person := models.Person{
+		ID:         uuid.New().String(),
+		Name:       "Spouse",
+		BirthMonth: birthMonthForAge(settings.StartDate, 65),
+		Role:       models.PersonRoleSpouse,
+	}
+	settings.Persons = append(settings.Persons, person)
+	return &settings.Persons[len(settings.Persons)-1]
+}
+
+func removeSpousePersons(settings *models.WhatIfSettings) {
+	filtered := make([]models.Person, 0, len(settings.Persons))
+	for _, person := range settings.Persons {
+		if person.Role == models.PersonRoleSpouse {
+			continue
+		}
+		filtered = append(filtered, person)
+	}
+	settings.Persons = filtered
 }
 
 // UpdateSpendingPhases updates spending phase configuration atomically
@@ -739,33 +916,7 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 
 	for i := range settings.HealthcarePersons {
 		if settings.HealthcarePersons[i].ID == id {
-			if v, ok := updates["name"].(string); ok {
-				settings.HealthcarePersons[i].Name = v
-			}
-			if v, ok := updates["current_age"].(int); ok {
-				settings.HealthcarePersons[i].CurrentAge = v
-			}
-			if v, ok := updates["current_coverage"].(string); ok {
-				settings.HealthcarePersons[i].CurrentCoverage = models.CoverageType(v)
-			}
-			if v, ok := updates["current_monthly_cost"].(float64); ok {
-				settings.HealthcarePersons[i].CurrentMonthlyCost = v
-			}
-			if v, ok := updates["pre_medicare_inflation"].(float64); ok {
-				settings.HealthcarePersons[i].PreMedicareInflation = v
-			}
-			if v, ok := updates["medicare_monthly_cost"].(float64); ok {
-				settings.HealthcarePersons[i].MedicareMonthlyCost = v
-			}
-			if v, ok := updates["post_medicare_inflation"].(float64); ok {
-				settings.HealthcarePersons[i].PostMedicareInflation = v
-			}
-			if v, ok := updates["employer_coverage_years"].(int); ok {
-				settings.HealthcarePersons[i].EmployerCoverageYears = v
-			}
-			if v, ok := updates["aca_cost_after_employer"].(float64); ok {
-				settings.HealthcarePersons[i].ACACostAfterEmployer = v
-			}
+			applyHealthcareUpdates(&settings.HealthcarePersons[i], updates)
 			break
 		}
 	}
@@ -775,6 +926,39 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 	}
 
 	return settings, nil
+}
+
+func applyHealthcareUpdates(person *models.HealthcarePerson, updates map[string]interface{}) {
+	if v, ok := updates["person_id"].(string); ok {
+		person.PersonID = v
+	}
+	if v, ok := updates["name"].(string); ok {
+		person.Name = v
+	}
+	if v, ok := updates["current_age"].(int); ok {
+		person.CurrentAge = v
+	}
+	if v, ok := updates["current_coverage"].(string); ok {
+		person.CurrentCoverage = models.CoverageType(v)
+	}
+	if v, ok := updates["current_monthly_cost"].(float64); ok {
+		person.CurrentMonthlyCost = v
+	}
+	if v, ok := updates["pre_medicare_inflation"].(float64); ok {
+		person.PreMedicareInflation = v
+	}
+	if v, ok := updates["medicare_monthly_cost"].(float64); ok {
+		person.MedicareMonthlyCost = v
+	}
+	if v, ok := updates["post_medicare_inflation"].(float64); ok {
+		person.PostMedicareInflation = v
+	}
+	if v, ok := updates["employer_coverage_years"].(int); ok {
+		person.EmployerCoverageYears = v
+	}
+	if v, ok := updates["aca_cost_after_employer"].(float64); ok {
+		person.ACACostAfterEmployer = v
+	}
 }
 
 // RemoveHealthcarePerson removes a healthcare person by ID atomically

@@ -1,6 +1,13 @@
 package models
 
-import "math"
+import (
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type ProjectionTiming string
 
@@ -9,6 +16,23 @@ const (
 	ProjectionTimingMidMonth     ProjectionTiming = "mid_month"
 	ProjectionTimingEndOfMonth   ProjectionTiming = "end_of_month"
 )
+
+type PersonRole string
+
+const (
+	PersonRolePrimary PersonRole = "primary"
+	PersonRoleSpouse  PersonRole = "spouse"
+	PersonRoleOther   PersonRole = "other"
+)
+
+type Person struct {
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	BirthMonth string     `json:"birth_month"`
+	Role       PersonRole `json:"role"`
+}
+
+const yearMonthLayout = "2006-01"
 
 func NormalizeProjectionTiming(timing ProjectionTiming) ProjectionTiming {
 	switch timing {
@@ -42,10 +66,12 @@ type WhatIfSettings struct {
 
 	// Multi-person healthcare model
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
+	StartDate         string             `json:"start_date"`
+	Persons           []Person           `json:"persons"`
 
 	// RMD Settings
-	CurrentAge         int     `json:"current_age"`                   // User's current age
-	SpouseAge          int     `json:"spouse_age,omitempty"`          // Spouse's current age (0 = no spouse)
+	CurrentAge         int     `json:"-"`                             // User's current age (derived working state)
+	SpouseAge          int     `json:"-"`                             // Spouse's current age (derived working state)
 	PhaseAgeReference  string  `json:"phase_age_reference,omitempty"` // "younger", "older", "primary", "spouse" - which age triggers phases
 	TaxDeferredPercent float64 `json:"tax_deferred_percent"`          // % of portfolio in tax-deferred accounts (401k, IRA)
 	RothPercent        float64 `json:"roth_percent"`                  // % of portfolio in Roth accounts (Roth IRA, Roth 401k)
@@ -102,6 +128,49 @@ type WhatIfSettings struct {
 	RemovedBigTicketItems []BigTicketItem `json:"removed_big_ticket_items,omitempty"`
 }
 
+func currentLocalMonth() string {
+	return time.Now().In(time.Local).Format(yearMonthLayout)
+}
+
+func parseYearMonth(value string) (time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, fmt.Errorf("month is required")
+	}
+	t, err := time.Parse(yearMonthLayout, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid month %q", value)
+	}
+	return t, nil
+}
+
+func birthMonthForAge(startDate string, age int) string {
+	if age < 0 {
+		return ""
+	}
+	start, err := parseYearMonth(startDate)
+	if err != nil {
+		return ""
+	}
+	return start.AddDate(-age, 0, 0).Format(yearMonthLayout)
+}
+
+func deriveAgeAtStartDate(startDate, birthMonth string) (int, error) {
+	start, err := parseYearMonth(startDate)
+	if err != nil {
+		return 0, err
+	}
+	birth, err := parseYearMonth(birthMonth)
+	if err != nil {
+		return 0, err
+	}
+
+	months := (start.Year()-birth.Year())*12 + int(start.Month()) - int(birth.Month())
+	if months < 0 {
+		return 0, fmt.Errorf("birth month %q is after start date %q", birthMonth, startDate)
+	}
+	return months / 12, nil
+}
+
 // SpendingPhase represents a retirement spending phase with age-based multiplier
 type SpendingPhase struct {
 	Name        string  `json:"name"`        // "Go-Go", "Slow-Go", "No-Go"
@@ -155,7 +224,152 @@ func DefaultSpendingPhases() []SpendingPhase {
 
 // HasSpouse returns true if spouse age is configured
 func (s *WhatIfSettings) HasSpouse() bool {
+	if s.GetSpousePerson() != nil {
+		return true
+	}
 	return s.SpouseAge > 0
+}
+
+func (s *WhatIfSettings) GetPrimaryPerson() *Person {
+	for i := range s.Persons {
+		if s.Persons[i].Role == PersonRolePrimary {
+			return &s.Persons[i]
+		}
+	}
+	return nil
+}
+
+func (s *WhatIfSettings) GetSpousePerson() *Person {
+	for i := range s.Persons {
+		if s.Persons[i].Role == PersonRoleSpouse {
+			return &s.Persons[i]
+		}
+	}
+	return nil
+}
+
+func (s *WhatIfSettings) FindPerson(id string) *Person {
+	for i := range s.Persons {
+		if s.Persons[i].ID == id {
+			return &s.Persons[i]
+		}
+	}
+	return nil
+}
+
+func (s *WhatIfSettings) PersonAge(personID string) int {
+	person := s.FindPerson(personID)
+	if person == nil {
+		return 0
+	}
+	age, err := deriveAgeAtStartDate(s.StartDate, person.BirthMonth)
+	if err != nil {
+		return 0
+	}
+	return age
+}
+
+func (s *WhatIfSettings) ComputeAges() {
+	if primary := s.GetPrimaryPerson(); primary != nil {
+		if age, err := deriveAgeAtStartDate(s.StartDate, primary.BirthMonth); err == nil {
+			s.CurrentAge = age
+		}
+	}
+
+	s.SpouseAge = 0
+	if spouse := s.GetSpousePerson(); spouse != nil {
+		if age, err := deriveAgeAtStartDate(s.StartDate, spouse.BirthMonth); err == nil {
+			s.SpouseAge = age
+		}
+	}
+
+	for i := range s.HealthcarePersons {
+		if s.HealthcarePersons[i].PersonID == "" {
+			continue
+		}
+		person := s.FindPerson(s.HealthcarePersons[i].PersonID)
+		if person == nil {
+			continue
+		}
+		s.HealthcarePersons[i].Name = person.Name
+		if age, err := deriveAgeAtStartDate(s.StartDate, person.BirthMonth); err == nil {
+			s.HealthcarePersons[i].CurrentAge = age
+		}
+	}
+}
+
+func (s *WhatIfSettings) NormalizePhaseAgeReference() {
+	switch s.PhaseAgeReference {
+	case "younger", "older", "primary":
+		return
+	case "spouse":
+		if s.HasSpouse() {
+			return
+		}
+	}
+	s.PhaseAgeReference = "older"
+}
+
+func (s *WhatIfSettings) ValidatePersons() error {
+	start, err := parseYearMonth(s.StartDate)
+	if err != nil {
+		return fmt.Errorf("start_date: %w", err)
+	}
+	if len(s.Persons) == 0 {
+		return fmt.Errorf("persons: at least one person is required")
+	}
+
+	primaryCount := 0
+	spouseCount := 0
+	ids := make(map[string]struct{}, len(s.Persons))
+	for _, person := range s.Persons {
+		if strings.TrimSpace(person.ID) == "" {
+			return fmt.Errorf("persons: id is required")
+		}
+		if _, exists := ids[person.ID]; exists {
+			return fmt.Errorf("persons: duplicate id %q", person.ID)
+		}
+		ids[person.ID] = struct{}{}
+
+		if strings.TrimSpace(person.Name) == "" {
+			return fmt.Errorf("persons: name is required")
+		}
+		birth, err := parseYearMonth(person.BirthMonth)
+		if err != nil {
+			return fmt.Errorf("persons: invalid birth_month for %q: %w", person.Name, err)
+		}
+		if birth.After(start) {
+			return fmt.Errorf("persons: birth_month %q is after start_date %q", person.BirthMonth, s.StartDate)
+		}
+
+		switch person.Role {
+		case PersonRolePrimary:
+			primaryCount++
+		case PersonRoleSpouse:
+			spouseCount++
+		case PersonRoleOther:
+		default:
+			return fmt.Errorf("persons: invalid role %q", person.Role)
+		}
+	}
+
+	if primaryCount != 1 {
+		return fmt.Errorf("persons: expected exactly one primary person, got %d", primaryCount)
+	}
+	if spouseCount > 1 {
+		return fmt.Errorf("persons: expected at most one spouse person, got %d", spouseCount)
+	}
+
+	for _, hp := range s.HealthcarePersons {
+		if hp.PersonID == "" {
+			continue
+		}
+		if _, ok := ids[hp.PersonID]; !ok {
+			return fmt.Errorf("healthcare_persons: person_id %q not found", hp.PersonID)
+		}
+	}
+
+	return nil
 }
 
 // GetYoungerAge returns the younger of primary and spouse ages
@@ -189,8 +403,10 @@ func (s *WhatIfSettings) GetPhaseReferenceAge(yearsElapsed int) int {
 		baseAge = s.GetOlderAge()
 	case "younger":
 		baseAge = s.GetYoungerAge()
-	default: // "primary" or empty
+	case "primary":
 		baseAge = s.CurrentAge
+	default:
+		baseAge = s.GetOlderAge()
 	}
 	return baseAge + yearsElapsed
 }
@@ -427,16 +643,26 @@ func (s *WhatIfSettings) TaxableCashPct() float64 {
 
 // DefaultWhatIfSettings returns sensible defaults for retirement planning
 func DefaultWhatIfSettings() *WhatIfSettings {
-	return &WhatIfSettings{
+	startDate := currentLocalMonth()
+	settings := &WhatIfSettings{
 		PortfolioValue:        0,
 		MonthlyLivingExpenses: 4000,
 		MonthlyHealthcare:     500,
 		HealthcareStartYears:  0,
-		CurrentAge:            65,
-		SpouseAge:             0,         // 0 = no spouse
-		PhaseAgeReference:     "younger", // Default to younger person for conservative longevity planning
-		TaxDeferredPercent:    60.0,      // Reduced from 70 to make room for Roth
-		RothPercent:           10.0,      // Default 10% Roth
+		StartDate:             startDate,
+		Persons: []Person{
+			{
+				ID:         uuid.New().String(),
+				Name:       "You",
+				BirthMonth: birthMonthForAge(startDate, 65),
+				Role:       PersonRolePrimary,
+			},
+		},
+		CurrentAge:         65,
+		SpouseAge:          0,
+		PhaseAgeReference:  "older",
+		TaxDeferredPercent: 60.0, // Reduced from 70 to make room for Roth
+		RothPercent:        10.0, // Default 10% Roth
 		// Taxable is computed as: 100 - 60 - 10 = 30%
 		StockPercent:                    60.0, // Default 60% stocks
 		CashPercent:                     0.0,  // Default 0% cash (bonds = 40%)
@@ -468,6 +694,8 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		BigTicketItems:        []BigTicketItem{},
 		RemovedBigTicketItems: []BigTicketItem{},
 	}
+	settings.ComputeAges()
+	return settings
 }
 
 func (s *WhatIfSettings) GetProjectionTiming() ProjectionTiming {

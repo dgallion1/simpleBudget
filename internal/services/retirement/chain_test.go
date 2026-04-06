@@ -169,12 +169,14 @@ func TestFailurePoints_ChainPropagated(t *testing.T) {
 
 func TestPrepareChainedSettings(t *testing.T) {
 	primary := models.DefaultWhatIfSettings()
-	primary.CurrentAge = 60
-	primary.SpouseAge = 58
+	primary.StartDate = "2026-04"
+	primary.Persons = []models.Person{
+		{ID: "primary", Name: "You", BirthMonth: "1966-04", Role: models.PersonRolePrimary},
+		{ID: "spouse", Name: "Spouse", BirthMonth: "1968-04", Role: models.PersonRoleSpouse},
+	}
+	primary.ComputeAges()
 
 	linked := models.DefaultWhatIfSettings()
-	linked.CurrentAge = 70
-	linked.SpouseAge = 68
 	linked.MonthlyLivingExpenses = 3000
 
 	result := prepareChainedSettings(linked, primary, 10)

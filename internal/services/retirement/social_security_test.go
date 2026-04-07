@@ -185,6 +185,45 @@ func TestSSComparisonTable(t *testing.T) {
 	})
 }
 
+func TestProjectedSSBenefitForMonth(t *testing.T) {
+	got := projectedSSBenefitForMonth(2000, 0.02, 6)
+	want := 2000 * math.Pow(1.02, 0.5)
+	if !withinTolerance(got, want, 0.01) {
+		t.Fatalf("projectedSSBenefitForMonth = %.2f, want %.2f", got, want)
+	}
+}
+
+func TestSpousalTopUp(t *testing.T) {
+	t.Run("own benefit already exceeds half higher PIA", func(t *testing.T) {
+		got := SpousalTopUp(2100, 4000, 67, 67)
+		if got != 2100 {
+			t.Fatalf("SpousalTopUp = %.2f, want own benefit 2100", got)
+		}
+	})
+
+	t.Run("claim at FRA tops up to half higher PIA", func(t *testing.T) {
+		got := SpousalTopUp(1000, 4000, 67, 67)
+		if got != 2000 {
+			t.Fatalf("SpousalTopUp = %.2f, want 2000", got)
+		}
+	})
+
+	t.Run("early claim reduces spousal amount", func(t *testing.T) {
+		got := SpousalTopUp(500, 4000, 67, 62)
+		want := AdjustedSSBenefit(2000, 67, 62)
+		if !withinTolerance(got, want, 0.01) {
+			t.Fatalf("SpousalTopUp = %.2f, want %.2f", got, want)
+		}
+	})
+
+	t.Run("delayed claim does not add delayed credits to spousal component", func(t *testing.T) {
+		got := SpousalTopUp(1000, 4000, 67, 70)
+		if got != 2000 {
+			t.Fatalf("SpousalTopUp delayed claim = %.2f, want capped 2000", got)
+		}
+	})
+}
+
 func TestSSBreakevenAges(t *testing.T) {
 	t.Run("Standard PIA $2000, FRA 67, COLA 2%", func(t *testing.T) {
 		results := SSBreakevenAges(2000, 67, 0.02)

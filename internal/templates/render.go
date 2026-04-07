@@ -14,8 +14,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
 	"time"
+
+	"budget2/internal/services/retirement"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -60,42 +61,44 @@ func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error) {
 // getFuncMap returns the template function map
 func getFuncMap() template.FuncMap {
 	return template.FuncMap{
-		"formatMoney":    formatMoney,
-		"formatNumber":   formatNumber,
-		"formatPercent":  formatPercent,
-		"formatDate":     formatDate,
-		"formatDateTime": formatDateTime,
-		"abs":            abs,
-		"add":            add,
-		"sub":            sub,
-		"mul":            mul,
-		"div":            div,
-		"mod":            mod,
-		"toFloat":        toFloat,
-		"seq":            seq,
-		"dict":           dict,
-		"json":           jsonMarshal,
-		"toJSON":         jsonMarshal,
-		"lower":          strings.ToLower,
-		"upper":          strings.ToUpper,
-		"title":          cases.Title(language.English).String,
-		"contains":       strings.Contains,
-		"hasPrefix":      strings.HasPrefix,
-		"hasSuffix":      strings.HasSuffix,
-		"trimSpace":      strings.TrimSpace,
-		"split":          strings.Split,
-		"join":           strings.Join,
-		"safeHTML":       safeHTML,
-		"safeJS":         safeJS,
-		"now":            time.Now,
-		"isNegative":     func(v interface{}) bool { return toFloat(v) < 0 },
-		"isPositive":     func(v interface{}) bool { return toFloat(v) > 0 },
-		"isNonNegative":  isNonNegative,
-		"colorClass":     colorClass,
-		"percentOf":      percentOf,
-		"percentDiff":    percentDiff,
-		"deref":          deref,
-		"urlEncode":      url.PathEscape,
+		"formatMoney":                         formatMoney,
+		"formatNumber":                        formatNumber,
+		"formatPercent":                       formatPercent,
+		"formatDate":                          formatDate,
+		"formatDateTime":                      formatDateTime,
+		"abs":                                 abs,
+		"add":                                 add,
+		"sub":                                 sub,
+		"mul":                                 mul,
+		"div":                                 div,
+		"mod":                                 mod,
+		"toFloat":                             toFloat,
+		"seq":                                 seq,
+		"dict":                                dict,
+		"json":                                jsonMarshal,
+		"toJSON":                              jsonMarshal,
+		"lower":                               strings.ToLower,
+		"upper":                               strings.ToUpper,
+		"title":                               cases.Title(language.English).String,
+		"contains":                            strings.Contains,
+		"hasPrefix":                           strings.HasPrefix,
+		"hasSuffix":                           strings.HasSuffix,
+		"trimSpace":                           strings.TrimSpace,
+		"split":                               strings.Split,
+		"join":                                strings.Join,
+		"safeHTML":                            safeHTML,
+		"safeJS":                              safeJS,
+		"now":                                 time.Now,
+		"isNegative":                          func(v interface{}) bool { return toFloat(v) < 0 },
+		"isPositive":                          func(v interface{}) bool { return toFloat(v) > 0 },
+		"isNonNegative":                       isNonNegative,
+		"colorClass":                          colorClass,
+		"percentOf":                           percentOf,
+		"percentDiff":                         percentDiff,
+		"deref":                               deref,
+		"urlEncode":                           url.PathEscape,
+		"socialSecurityProjectionActive":      retirement.SocialSecurityProjectionActive,
+		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
 	}
 }
 

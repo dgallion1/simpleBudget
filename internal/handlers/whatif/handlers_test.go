@@ -4645,13 +4645,13 @@ func TestHandleWhatIfGuardrails(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"enabled":          {"on"},
-		"floor_drop_pct":   {"20"},
-		"floor_cut_pct":    {"10"},
-		"ceiling_rise_pct": {"25"},
+		"enabled":           {"on"},
+		"floor_drop_pct":    {"20"},
+		"floor_cut_pct":     {"10"},
+		"ceiling_rise_pct":  {"25"},
 		"ceiling_raise_pct": {"10"},
-		"min_spending_pct": {"75"},
-		"max_spending_pct": {"125"},
+		"min_spending_pct":  {"75"},
+		"max_spending_pct":  {"125"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/guardrails", formBody(form))
@@ -4703,9 +4703,9 @@ func TestHandleWhatIfGlidePath(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"enabled":         {"on"},
-		"start_stock_pct": {"80"},
-		"end_stock_pct":   {"30"},
+		"enabled":          {"on"},
+		"start_stock_pct":  {"80"},
+		"end_stock_pct":    {"30"},
 		"transition_years": {"20"},
 	}
 	w := httptest.NewRecorder()
@@ -4772,6 +4772,7 @@ func TestHandleWhatIfSocialSecurity(t *testing.T) {
 		"fra_benefit": {"2500"},
 		"fra":         {"67"},
 		"cola_rate":   {"2.0"},
+		"claim_age":   {"68"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
@@ -4797,6 +4798,9 @@ func TestHandleWhatIfSocialSecurity(t *testing.T) {
 	}
 	if settings.SocialSecurity.COLARate != 0.02 {
 		t.Errorf("COLARate = %f, want 0.02", settings.SocialSecurity.COLARate)
+	}
+	if settings.SocialSecurity.ClaimAge != 68 {
+		t.Errorf("ClaimAge = %d, want 68", settings.SocialSecurity.ClaimAge)
 	}
 }
 
@@ -4824,6 +4828,49 @@ func TestHandleWhatIfSocialSecurity_ClearsOnZero(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfSocialSecurity_InvalidClaimAgesClearSelection(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	settings.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit:       2500,
+		FRA:              67,
+		ClaimAge:         67,
+		SpouseFRABenefit: 1500,
+		SpouseFRA:        67,
+		SpouseClaimAge:   67,
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("failed to seed settings: %v", err)
+	}
+
+	form := url.Values{
+		"fra_benefit":      {"2500"},
+		"fra":              {"67"},
+		"claim_age":        {"71"},
+		"spouse_claim_age": {"bad"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	loaded, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if loaded.SocialSecurity.ClaimAge != 0 {
+		t.Errorf("ClaimAge = %d, want cleared 0", loaded.SocialSecurity.ClaimAge)
+	}
+	if loaded.SocialSecurity.SpouseClaimAge != 0 {
+		t.Errorf("SpouseClaimAge = %d, want cleared 0", loaded.SocialSecurity.SpouseClaimAge)
+	}
+}
+
 func TestHandleWhatIfSocialSecurity_WithSpouse(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -4834,6 +4881,7 @@ func TestHandleWhatIfSocialSecurity_WithSpouse(t *testing.T) {
 		"cola_rate":          {"2.0"},
 		"spouse_fra_benefit": {"1800"},
 		"spouse_fra":         {"66"},
+		"spouse_claim_age":   {"66"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
@@ -4852,5 +4900,8 @@ func TestHandleWhatIfSocialSecurity_WithSpouse(t *testing.T) {
 	}
 	if settings.SocialSecurity.SpouseFRA != 66 {
 		t.Errorf("SpouseFRA = %d, want 66", settings.SocialSecurity.SpouseFRA)
+	}
+	if settings.SocialSecurity.SpouseClaimAge != 66 {
+		t.Errorf("SpouseClaimAge = %d, want 66", settings.SocialSecurity.SpouseClaimAge)
 	}
 }

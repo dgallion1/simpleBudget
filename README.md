@@ -8,7 +8,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 
 - **Dashboard** - KPIs with sparklines, spending trend, category breakdown, top spending, cumulative balance, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
-- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax-aware cash flow with LTCG preferential rates, Social Security taxation, NIIT, delayed IRMAA lookback modeling, budget-fit tax/IRMAA breakdowns, taxable account modeling with cost-basis tracking and dividend/cap-gains distribution tax drag, configurable projection timing, canonical household people anchored to a projection start month, linked healthcare person modeling, real vs nominal dollar views, year-by-year projection explainability, named scenarios, scenario chaining for multi-phase retirement plans, and tax-deferred withdrawal delays that treat locked balances as temporary shortfalls instead of immediate depletion
+- **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax-aware cash flow with LTCG preferential rates, Social Security taxation and optimizer-driven claiming-age projection, NIIT, delayed IRMAA lookback modeling, budget-fit tax/IRMAA breakdowns, taxable account modeling with cost-basis tracking and dividend/cap-gains distribution tax drag, configurable projection timing, canonical household people anchored to a projection start month, linked healthcare person modeling, real vs nominal dollar views, year-by-year projection explainability, named scenarios, scenario chaining for multi-phase retirement plans, and tax-deferred withdrawal delays that treat locked balances as temporary shortfalls instead of immediate depletion
 - **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, income pattern analysis, and recency filtering anchored to the selected data window without leaking in transactions after that window
 - **File Manager** - Data backup, restore, and file management
 - **Encryption** - Optional password-based encryption for all data files
@@ -366,6 +366,7 @@ The What-If Planner helps you model retirement scenarios with sophisticated proj
 - **RMD Calculations**: IRS-compliant Required Minimum Distributions starting at age 73
 - **Roth Conversions**: Model annual conversion strategies with tax impact
 - **Spending Phases**: Go-Go/Slow-Go/No-Go retirement spending patterns
+- **Social Security Optimizer**: Compare claiming ages 62-70 and optionally select claim ages that feed directly into projection income; manual Social Security income sources are ignored while optimizer projection is active to avoid double counting.
 - **Healthcare Costs**: Model costs for multiple household members with Medicare transitions
 - **Big Ticket Items**: One-time events (inheritance, home sale, large purchases)
 - **Projection Start Month**: Anchor ages and chained scenarios to a specific `YYYY-MM` start month instead of duplicated saved ages

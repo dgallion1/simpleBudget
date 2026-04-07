@@ -351,6 +351,14 @@ func parseFormInt(r *http.Request, key string) (int, error) {
 	return strconv.Atoi(v)
 }
 
+func parseSSClaimAge(r *http.Request, key string) int {
+	age, err := parseFormInt(r, key)
+	if err != nil || age < 62 || age > 70 {
+		return 0
+	}
+	return age
+}
+
 func formValues(r *http.Request, key string) []string {
 	if values, ok := r.Form[key+"[]"]; ok {
 		return values
@@ -2518,6 +2526,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 	} else if settings.SocialSecurity.FRA == 0 {
 		settings.SocialSecurity.FRA = 67
 	}
+	settings.SocialSecurity.ClaimAge = parseSSClaimAge(r, "claim_age")
 
 	if colaRate, err := parseFormFloat(r, "cola_rate"); err == nil {
 		settings.SocialSecurity.COLARate = colaRate / 100.0
@@ -2532,6 +2541,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 	if spouseFRA, err := parseFormInt(r, "spouse_fra"); err == nil && spouseFRA >= 62 && spouseFRA <= 70 {
 		settings.SocialSecurity.SpouseFRA = spouseFRA
 	}
+	settings.SocialSecurity.SpouseClaimAge = parseSSClaimAge(r, "spouse_claim_age")
 
 	// Clear config if no benefit entered
 	if settings.SocialSecurity.FRABenefit <= 0 {

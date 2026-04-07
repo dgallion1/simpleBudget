@@ -358,6 +358,133 @@ func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T
 	}
 }
 
+func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) {
+	t.Run("includes synthesized primary Social Security at claim month", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.CurrentAge = 60
+		settings.IncomeSources = nil
+		settings.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			COLARate:   0.02,
+			ClaimAge:   62,
+		}
+
+		beforeClaim := calculateMonthlyIncomeBreakdown(settings, 23)
+		if beforeClaim.SocialSecurityIncome != 0 {
+			t.Fatalf("month before claim SocialSecurityIncome = %.2f, want 0", beforeClaim.SocialSecurityIncome)
+		}
+
+		atClaim := calculateMonthlyIncomeBreakdown(settings, 24)
+		want := AdjustedSSBenefit(2000, 67, 62)
+		if math.Abs(atClaim.SocialSecurityIncome-want) > 0.01 {
+			t.Fatalf("claim month SocialSecurityIncome = %.2f, want %.2f", atClaim.SocialSecurityIncome, want)
+		}
+	})
+
+	t.Run("excludes manual Social Security when optimizer projection is active", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.CurrentAge = 67
+		settings.IncomeSources = []models.IncomeSource{
+			{ID: "ss", Name: "Social Security", Amount: 9999, StartMonth: 0},
+			{ID: "pension", Name: "Pension", Amount: 500, StartMonth: 0},
+		}
+		settings.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			ClaimAge:   67,
+		}
+
+		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		if breakdown.SocialSecurityIncome != 2000 {
+			t.Fatalf("SocialSecurityIncome = %.2f, want synthesized 2000", breakdown.SocialSecurityIncome)
+		}
+		if breakdown.OrdinaryIncome != 500 {
+			t.Fatalf("OrdinaryIncome = %.2f, want pension 500", breakdown.OrdinaryIncome)
+		}
+	})
+
+	t.Run("includes manual Social Security when claim age is unset", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.CurrentAge = 67
+		settings.IncomeSources = []models.IncomeSource{
+			{ID: "ss", Name: "Darrell SSI", Amount: 1500, StartMonth: 0},
+		}
+		settings.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+		}
+
+		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		if breakdown.SocialSecurityIncome != 1500 {
+			t.Fatalf("SocialSecurityIncome = %.2f, want manual 1500", breakdown.SocialSecurityIncome)
+		}
+	})
+
+	t.Run("non Social Security manual income remains ordinary when optimizer projection is active", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.CurrentAge = 67
+		settings.IncomeSources = []models.IncomeSource{
+			{ID: "consulting", Name: "Consulting", Amount: 700, StartMonth: 0},
+		}
+		settings.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			ClaimAge:   67,
+		}
+
+		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		if breakdown.OrdinaryIncome != 700 {
+			t.Fatalf("OrdinaryIncome = %.2f, want 700", breakdown.OrdinaryIncome)
+		}
+		if breakdown.TotalIncome != 2700 {
+			t.Fatalf("TotalIncome = %.2f, want 2700", breakdown.TotalIncome)
+		}
+	})
+
+	t.Run("current age greater than claim age starts Social Security at month zero", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.CurrentAge = 68
+		settings.IncomeSources = nil
+		settings.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			ClaimAge:   62,
+		}
+
+		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		want := AdjustedSSBenefit(2000, 67, 62)
+		if math.Abs(breakdown.SocialSecurityIncome-want) > 0.01 {
+			t.Fatalf("SocialSecurityIncome = %.2f, want %.2f", breakdown.SocialSecurityIncome, want)
+		}
+	})
+
+	t.Run("spouse Social Security is included only with spouse config and claim age", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.CurrentAge = 67
+		settings.SpouseAge = 67
+		settings.IncomeSources = nil
+		settings.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       3000,
+			FRA:              67,
+			ClaimAge:         67,
+			SpouseFRABenefit: 1000,
+			SpouseFRA:        67,
+		}
+
+		withoutSpouseClaim := calculateMonthlyIncomeBreakdown(settings, 0)
+		if withoutSpouseClaim.SocialSecurityIncome != 3000 {
+			t.Fatalf("SocialSecurityIncome without spouse claim = %.2f, want primary-only 3000", withoutSpouseClaim.SocialSecurityIncome)
+		}
+
+		settings.SocialSecurity.SpouseClaimAge = 67
+		withSpouseClaim := calculateMonthlyIncomeBreakdown(settings, 0)
+		if withSpouseClaim.SocialSecurityIncome != 4500 {
+			t.Fatalf("SocialSecurityIncome with spouse claim = %.2f, want 4500", withSpouseClaim.SocialSecurityIncome)
+		}
+	})
+}
+
 func TestCalculateBudgetFitIncludesNIITAndEstimatedIRMAA(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 3_000_000

@@ -363,17 +363,26 @@ type monthlyIncomeBreakdown struct {
 
 func calculateMonthlyIncomeBreakdown(s *models.WhatIfSettings, month int) monthlyIncomeBreakdown {
 	breakdown := monthlyIncomeBreakdown{}
+	useOptimizerSS := socialSecurityProjectionActive(s)
+
 	for _, source := range s.IncomeSources {
 		amount := source.GetAdjustedAmount(month)
 		if amount <= 0 {
 			continue
 		}
 		if isSocialSecurityIncomeSource(source) {
-			breakdown.SocialSecurityIncome += amount
-		} else {
-			breakdown.OrdinaryIncome += amount
+			if !useOptimizerSS {
+				breakdown.SocialSecurityIncome += amount
+			}
+			continue
 		}
+		breakdown.OrdinaryIncome += amount
 	}
+
+	if useOptimizerSS {
+		breakdown.SocialSecurityIncome += projectedSocialSecurityIncome(s, month)
+	}
+
 	breakdown.TotalIncome = breakdown.OrdinaryIncome + breakdown.SocialSecurityIncome
 	return breakdown
 }

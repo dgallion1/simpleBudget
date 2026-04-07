@@ -139,11 +139,13 @@ type WhatIfSettings struct {
 
 // SocialSecurityConfig holds user's SS benefit info for claiming age analysis
 type SocialSecurityConfig struct {
-	FRABenefit      float64 `json:"fra_benefit"`                 // Monthly PIA (benefit at FRA)
-	FRA             int     `json:"fra"`                         // Full retirement age (default 67)
-	COLARate        float64 `json:"cola_rate"`                   // Annual COLA as decimal (default 0.02)
+	FRABenefit       float64 `json:"fra_benefit"`                  // Monthly PIA (benefit at FRA)
+	FRA              int     `json:"fra"`                          // Full retirement age (default 67)
+	COLARate         float64 `json:"cola_rate"`                    // Annual COLA as decimal (default 0.02)
 	SpouseFRABenefit float64 `json:"spouse_fra_benefit,omitempty"` // Spouse PIA if applicable
-	SpouseFRA       int     `json:"spouse_fra,omitempty"`         // Spouse FRA
+	SpouseFRA        int     `json:"spouse_fra,omitempty"`         // Spouse FRA
+	ClaimAge         int     `json:"claim_age,omitempty"`          // Primary claiming age, 62-70; 0 means unset
+	SpouseClaimAge   int     `json:"spouse_claim_age,omitempty"`   // Spouse claiming age, 62-70; 0 means unset
 }
 
 // CurrentLocalMonth returns the current local month as "YYYY-MM".
@@ -609,9 +611,9 @@ type GuardrailEvent struct {
 // GlidePathConfig defines a linear shift in stock allocation over time
 type GlidePathConfig struct {
 	Enabled         bool    `json:"enabled"`
-	StartStockPct   float64 `json:"start_stock_pct"`   // Stock % at year 0
-	EndStockPct     float64 `json:"end_stock_pct"`     // Stock % at end of transition
-	TransitionYears int     `json:"transition_years"`  // Years over which to shift
+	StartStockPct   float64 `json:"start_stock_pct"`  // Stock % at year 0
+	EndStockPct     float64 `json:"end_stock_pct"`    // Stock % at end of transition
+	TransitionYears int     `json:"transition_years"` // Years over which to shift
 }
 
 // GlidePathStockPct returns the target stock % at a given projection year.
@@ -839,13 +841,13 @@ type ProjectionMonth struct {
 
 // ProjectionResult contains the complete projection with summary metrics
 type ProjectionResult struct {
-	Months           []ProjectionMonth       `json:"months"`
-	YearlySummaries  []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
-	LongevityYears   *float64                `json:"longevity_years"` // nil if portfolio survives
-	FinalBalance     float64                 `json:"final_balance"`
-	DepletionMonth   *int                    `json:"depletion_month"` // nil if no depletion
-	Survives         bool                    `json:"survives"`
-	GuardrailEvents  []GuardrailEvent        `json:"guardrail_events,omitempty"`
+	Months          []ProjectionMonth       `json:"months"`
+	YearlySummaries []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
+	LongevityYears  *float64                `json:"longevity_years"` // nil if portfolio survives
+	FinalBalance    float64                 `json:"final_balance"`
+	DepletionMonth  *int                    `json:"depletion_month"` // nil if no depletion
+	Survives        bool                    `json:"survives"`
+	GuardrailEvents []GuardrailEvent        `json:"guardrail_events,omitempty"`
 }
 
 // ProjectionYearSummary reconciles one projection year for explainability.
@@ -1318,14 +1320,14 @@ type SSBreakevenResult struct {
 
 // SSComparisonAnalysis contains the full claiming age analysis
 type SSComparisonAnalysis struct {
-	Options          []SSClaimingOption  `json:"options"`
-	Breakevens       []SSBreakevenResult `json:"breakevens"`
-	BestAge          int                 `json:"best_age"`
-	SpouseOptions    []SSClaimingOption  `json:"spouse_options,omitempty"`
-	SpouseBreakevens []SSBreakevenResult `json:"spouse_breakevens,omitempty"`
-	SpouseBestAge             int     `json:"spouse_best_age,omitempty"`
-	SpouseUsingSpousalBenefit bool    `json:"spouse_using_spousal_benefit,omitempty"`
-	SpouseEarlyClaimGapPct    float64 `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
+	Options                   []SSClaimingOption  `json:"options"`
+	Breakevens                []SSBreakevenResult `json:"breakevens"`
+	BestAge                   int                 `json:"best_age"`
+	SpouseOptions             []SSClaimingOption  `json:"spouse_options,omitempty"`
+	SpouseBreakevens          []SSBreakevenResult `json:"spouse_breakevens,omitempty"`
+	SpouseBestAge             int                 `json:"spouse_best_age,omitempty"`
+	SpouseUsingSpousalBenefit bool                `json:"spouse_using_spousal_benefit,omitempty"`
+	SpouseEarlyClaimGapPct    float64             `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
 }
 
 // WhatIfPageData is the data passed to the whatif template

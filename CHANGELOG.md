@@ -6,7 +6,7 @@
 - **What-If retirement verification**: Added a verification note documenting the Current Plan inputs, live page values, calculator cross-check, and test command used to confirm the retirement numbers shown on the What-If page.
 
 ### What-If Planner — New Features
-- **Social Security claiming age optimizer**: New analysis panel lets users enter their PIA (monthly benefit at FRA) and compare claiming ages 62–70 with adjusted monthly benefits, cumulative totals at ages 80/85/90 with COLA, and breakeven ages between adjacent options. Supports spouse comparison.
+- **Social Security claiming age optimizer**: New analysis panel lets users enter their PIA (monthly benefit at FRA) and compare claiming ages 62–70 with adjusted monthly benefits, cumulative totals at ages 80/85/90 with COLA, and breakeven ages between adjacent options. Supports spouse comparison. Selected primary and spouse claim ages now feed directly into retirement projections, and manual Social Security-like income sources are excluded while optimizer-driven projection is active to prevent double counting.
 - **Glide path (time-based allocation shift)**: Asset allocation can now shift linearly from a start stock% to an end stock% over a configurable number of years. Applied uniformly to all account types across deterministic, Monte Carlo, and historical backtest projections.
 - **Spending guardrails**: Portfolio-performance-based spending rules that automatically cut spending when the portfolio drops from its peak (floor) and raise spending when it rises above baseline (ceiling), with configurable min/max caps. Works in deterministic projection, Monte Carlo, and backtesting. Replaces adaptive spending when enabled.
 

@@ -1323,7 +1323,9 @@ type SSComparisonAnalysis struct {
 	BestAge          int                 `json:"best_age"`
 	SpouseOptions    []SSClaimingOption  `json:"spouse_options,omitempty"`
 	SpouseBreakevens []SSBreakevenResult `json:"spouse_breakevens,omitempty"`
-	SpouseBestAge    int                 `json:"spouse_best_age,omitempty"`
+	SpouseBestAge             int     `json:"spouse_best_age,omitempty"`
+	SpouseUsingSpousalBenefit bool    `json:"spouse_using_spousal_benefit,omitempty"`
+	SpouseEarlyClaimGapPct    float64 `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
 }
 
 // WhatIfPageData is the data passed to the whatif template

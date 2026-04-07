@@ -144,7 +144,8 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 		}
 	}
 
-	// Spouse analysis
+	// Spouse analysis — use the higher of own benefit or spousal benefit (50% of worker PIA).
+	// Spousal benefits max out at FRA (no delayed retirement credits).
 	var spouseOptions []models.SSClaimingOption
 	var spouseBreakevens []models.SSBreakevenResult
 	spouseBestAge := 0
@@ -157,8 +158,18 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 		if spouseAge == 0 {
 			spouseAge = c.Settings.CurrentAge
 		}
-		spouseOptions = SSComparisonTable(ss.SpouseFRABenefit, spouseFRA, spouseAge, colaRate)
-		spouseBreakevens = SSBreakevenAges(ss.SpouseFRABenefit, spouseFRA, colaRate)
+
+		// Effective PIA: higher of own benefit or 50% of worker's PIA
+		spousalBenefit := ss.FRABenefit * 0.5
+		effectivePIA := ss.SpouseFRABenefit
+		if spousalBenefit > effectivePIA {
+			effectivePIA = spousalBenefit
+		}
+
+		// Spousal benefits don't get delayed retirement credits past FRA,
+		// so cap the effective claiming age at FRA for the comparison table.
+		spouseOptions = SSComparisonTableCapped(effectivePIA, spouseFRA, spouseAge, colaRate)
+		spouseBreakevens = SSBreakevenAgesCapped(effectivePIA, spouseFRA, colaRate)
 		bestCum = 0
 		for _, opt := range spouseOptions {
 			if opt.CumulativeAt85 > bestCum {
@@ -178,9 +189,112 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 		result.SpouseOptions = spouseOptions
 		result.SpouseBreakevens = spouseBreakevens
 		result.SpouseBestAge = spouseBestAge
+		result.SpouseUsingSpousalBenefit = ss.FRABenefit*0.5 > ss.SpouseFRABenefit
+
+		// Calculate gap between earliest and best cumulative at 85
+		if len(spouseOptions) > 1 && bestCum > 0 {
+			earliestCum := spouseOptions[0].CumulativeAt85
+			result.SpouseEarlyClaimGapPct = (bestCum - earliestCum) / bestCum * 100
+		}
 	}
 
 	return result
+}
+
+// SSComparisonTableCapped is like SSComparisonTable but caps the effective
+// claiming age at FRA (no delayed retirement credits). This reflects SSA rules
+// for spousal benefits, which max out at the spouse's FRA.
+func SSComparisonTableCapped(pia float64, fra int, currentAge int, colaRate float64) []models.SSClaimingOption {
+	var options []models.SSClaimingOption
+
+	for age := 62; age <= 70; age++ {
+		if age < currentAge {
+			continue
+		}
+
+		// For spousal benefits, no increase past FRA
+		effectiveAge := age
+		if effectiveAge > fra {
+			effectiveAge = fra
+		}
+
+		monthly := AdjustedSSBenefit(pia, fra, effectiveAge)
+		annual := monthly * 12.0
+		pctOfPIA := monthly / pia * 100.0
+
+		opt := models.SSClaimingOption{
+			ClaimAge:       age,
+			MonthlyBenefit: math.Round(monthly*100) / 100,
+			AnnualBenefit:  math.Round(annual*100) / 100,
+			PctOfPIA:       math.Round(pctOfPIA*10) / 10,
+			CumulativeAt80: cumulativeBenefit(monthly, age, 80, colaRate),
+			CumulativeAt85: cumulativeBenefit(monthly, age, 85, colaRate),
+			CumulativeAt90: cumulativeBenefit(monthly, age, 90, colaRate),
+		}
+		options = append(options, opt)
+	}
+
+	return options
+}
+
+// SSBreakevenAgesCapped is like SSBreakevenAges but caps benefits at FRA
+// (no delayed retirement credits), matching spousal benefit rules.
+func SSBreakevenAgesCapped(pia float64, fra int, colaRate float64) []models.SSBreakevenResult {
+	var results []models.SSBreakevenResult
+
+	for early := 62; early <= 69; early++ {
+		late := early + 1
+
+		earlyEffective := early
+		if earlyEffective > fra {
+			earlyEffective = fra
+		}
+		lateEffective := late
+		if lateEffective > fra {
+			lateEffective = fra
+		}
+
+		earlyMonthly := AdjustedSSBenefit(pia, fra, earlyEffective)
+		lateMonthly := AdjustedSSBenefit(pia, fra, lateEffective)
+
+		// If both ages are past FRA, benefits are identical — no breakeven
+		if earlyEffective == lateEffective {
+			continue
+		}
+
+		breakevenAge := 0
+		earlyCum := 0.0
+		lateCum := 0.0
+		earlyBenefit := earlyMonthly
+		lateBenefit := lateMonthly
+
+		for age := early; age <= 100; age++ {
+			if age > early {
+				earlyBenefit = earlyMonthly * math.Pow(1.0+colaRate, float64(age-early))
+			}
+			if age > late {
+				lateBenefit = lateMonthly * math.Pow(1.0+colaRate, float64(age-late))
+			}
+
+			earlyCum += earlyBenefit * 12.0
+			if age >= late {
+				lateCum += lateBenefit * 12.0
+			}
+
+			if lateCum > earlyCum && breakevenAge == 0 {
+				breakevenAge = age
+				break
+			}
+		}
+
+		results = append(results, models.SSBreakevenResult{
+			EarlyAge:     early,
+			LateAge:      late,
+			BreakevenAge: breakevenAge,
+		})
+	}
+
+	return results
 }
 
 func cumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64 {

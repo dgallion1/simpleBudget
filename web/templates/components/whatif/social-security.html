@@ -1,0 +1,154 @@
+{{/* Social Security Claiming Age Comparison */}}
+{{/* Left column: config form */}}
+{{define "whatif-social-security-config"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">SS Claiming Age Optimizer</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Enter your estimated monthly benefit at full retirement age (PIA) to compare claiming ages 62-70.</p>
+
+    <form hx-post="/whatif/social-security" hx-target="#whatif-results" class="space-y-3">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Monthly Benefit at FRA</label>
+            <div class="flex items-center gap-2">
+                <span class="text-gray-500 dark:text-gray-400">$</span>
+                <input type="number" name="fra_benefit" step="1" min="0" max="10000"
+                    value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.FRABenefit}}{{end}}"
+                    placeholder="e.g. 2500"
+                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Find this on your SSA statement at ssa.gov</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">FRA</label>
+                <select name="fra"
+                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    {{$fra := 67}}{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.FRA 0)}}{{$fra = .Settings.SocialSecurity.FRA}}{{end}}
+                    <option value="66" {{if eq $fra 66}}selected{{end}}>66</option>
+                    <option value="67" {{if eq $fra 67}}selected{{end}}>67</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">COLA %/yr</label>
+                <input type="number" name="cola_rate" step="0.1" min="0" max="10"
+                    value="{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.COLARate 0)}}{{printf "%.1f" (mul .Settings.SocialSecurity.COLARate 100)}}{{else}}2.0{{end}}"
+                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+        </div>
+
+        {{if .Settings.HasSpouse}}
+        <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Spouse Monthly Benefit at FRA</label>
+            <div class="flex items-center gap-2">
+                <span class="text-gray-500 dark:text-gray-400">$</span>
+                <input type="number" name="spouse_fra_benefit" step="1" min="0" max="10000"
+                    value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.SpouseFRABenefit}}{{end}}"
+                    placeholder="optional"
+                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+        </div>
+        {{end}}
+
+        <button type="submit"
+            class="w-full inline-flex justify-center items-center px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">
+            Compare Claiming Ages
+        </button>
+    </form>
+</div>
+{{end}}
+
+{{/* Right column: results table */}}
+{{define "whatif-social-security-results"}}
+{{if .Analysis.SocialSecurity}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Social Security Claiming Comparison</h3>
+
+    {{if .Analysis.SocialSecurity.Options}}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b dark:border-gray-600">
+                    <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Age</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Monthly</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">% PIA</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 80</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 85</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 90</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Analysis.SocialSecurity.Options}}
+                <tr class="border-b dark:border-gray-700 {{if eq .ClaimAge $.Analysis.SocialSecurity.BestAge}}bg-green-50 dark:bg-green-900/20{{end}}">
+                    <td class="py-2 px-2 font-medium text-gray-800 dark:text-gray-200">
+                        {{.ClaimAge}}
+                        {{if eq .ClaimAge $.Analysis.SocialSecurity.BestAge}}
+                        <span class="text-xs text-green-600 dark:text-green-400">&#9733;</span>
+                        {{end}}
+                    </td>
+                    <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">${{formatNumber .MonthlyBenefit}}</td>
+                    <td class="py-2 px-2 text-right {{if lt .PctOfPIA 100.0}}text-amber-600 dark:text-amber-400{{else if gt .PctOfPIA 100.0}}text-green-600 dark:text-green-400{{else}}text-gray-800 dark:text-gray-200{{end}}">{{printf "%.0f" .PctOfPIA}}%</td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt80}}</td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt85}}</td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt90}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">&#9733; Best cumulative by age 85. Cumulative includes {{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.COLARate 0)}}{{printf "%.1f" (mul .Settings.SocialSecurity.COLARate 100)}}%{{else}}2%{{end}} annual COLA.</p>
+
+    {{if .Analysis.SocialSecurity.Breakevens}}
+    <div class="mt-4 pt-3 border-t dark:border-gray-700">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Breakeven Ages</h4>
+        <div class="flex flex-wrap gap-2">
+            {{range .Analysis.SocialSecurity.Breakevens}}
+            <span class="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">
+                {{.EarlyAge}} vs {{.LateAge}}: age {{.BreakevenAge}}
+            </span>
+            {{end}}
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Delaying from early to late age breaks even at the shown age.</p>
+    </div>
+    {{end}}
+    {{end}}
+
+    {{/* Spouse section */}}
+    {{if .Analysis.SocialSecurity.SpouseOptions}}
+    <div class="mt-4 pt-3 border-t dark:border-gray-700">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Spouse Claiming Comparison</h4>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b dark:border-gray-600">
+                        <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Age</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Monthly</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">% PIA</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 80</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 85</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 90</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Analysis.SocialSecurity.SpouseOptions}}
+                    <tr class="border-b dark:border-gray-700 {{if eq .ClaimAge $.Analysis.SocialSecurity.SpouseBestAge}}bg-green-50 dark:bg-green-900/20{{end}}">
+                        <td class="py-2 px-2 font-medium text-gray-800 dark:text-gray-200">
+                            {{.ClaimAge}}
+                            {{if eq .ClaimAge $.Analysis.SocialSecurity.SpouseBestAge}}
+                            <span class="text-xs text-green-600 dark:text-green-400">&#9733;</span>
+                            {{end}}
+                        </td>
+                        <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">${{formatNumber .MonthlyBenefit}}</td>
+                        <td class="py-2 px-2 text-right {{if lt .PctOfPIA 100.0}}text-amber-600 dark:text-amber-400{{else if gt .PctOfPIA 100.0}}text-green-600 dark:text-green-400{{else}}text-gray-800 dark:text-gray-200{{end}}">{{printf "%.0f" .PctOfPIA}}%</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt80}}</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt85}}</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt90}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}
+{{end}}

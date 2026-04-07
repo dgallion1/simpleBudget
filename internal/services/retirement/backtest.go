@@ -168,10 +168,14 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
 	inflationRate := 0.0
 
+	// Spending guardrails for this backtest run
+	var btGrState *guardrailState
+	if s.Guardrails != nil && s.Guardrails.Enabled {
+		btGrState = newGuardrailState(s.PortfolioValue)
+	}
+
 	// Get per-account asset allocations (consistent with main projection and Monte Carlo)
-	tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
-	rothStock, rothBond, rothCash := s.GetRothAllocation()
-	taxStock, taxBond, taxCash := s.GetTaxableAllocation()
+	tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash := s.GetAllocationAtYear(0)
 
 	result := HistoricalSequenceResult{
 		StartYear:       startYear,
@@ -206,13 +210,10 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
 					taxableAccount.syncAssumptions(s)
-
-					// Refresh cached allocation variables
-					tdStock, tdBond, tdCash = s.GetTaxDeferredAllocation()
-					rothStock, rothBond, rothCash = s.GetRothAllocation()
-					taxStock, taxBond, taxCash = s.GetTaxableAllocation()
 				}
 			}
+			// Refresh allocation for glide path and chain transitions
+			tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash = s.GetAllocationAtYear(currentYear)
 			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
 			taxableAccount.RealizedGainsYTD = 0
 
@@ -257,9 +258,21 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			}
 		}
 
+		// Evaluate guardrails at year boundaries
+		if btGrState != nil && m%12 == 0 {
+			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
+			btGrState.evaluate(s.Guardrails, totalPortfolio)
+		}
+
+		// Apply guardrail spending multiplier
+		btAdjustedLiving := currentLivingExpenses
+		if btGrState != nil {
+			btAdjustedLiving *= btGrState.multiplier()
+		}
+
 		// Calculate expenses
 		activeHealthcare := s.GetTotalHealthcareCost(m)
-		totalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
+		totalExpenses := btAdjustedLiving + activeHealthcare + bigTicketExpenseThisMonth
 
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)

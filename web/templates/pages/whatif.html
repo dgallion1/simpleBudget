@@ -69,6 +69,7 @@
             {{template "whatif-portfolio-settings" .}}
         </div>
         {{template "whatif-income-card" .}}
+        {{template "whatif-social-security-config" .}}
         {{template "whatif-healthcare-card" .}}
         <div id="whatif-rate-assumptions-card">
             {{template "whatif-rate-assumptions" .}}
@@ -76,6 +77,7 @@
         <div id="whatif-spending-phases-card">
             {{template "whatif-spending-phases" .}}
         </div>
+        {{template "whatif-guardrails" .}}
         {{template "whatif-roth-conversion" .}}
         {{template "whatif-bigticket-card" .}}
         {{template "whatif-expense-card" .}}
@@ -261,4 +263,6 @@
 {{template "whatif-monte-carlo" .}}
 {{template "whatif-historical-backtest" .}}
 {{template "whatif-rmd" .}}
+{{template "whatif-social-security-results" .}}
+{{template "whatif-guardrail-events" .}}
 {{end}}

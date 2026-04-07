@@ -279,6 +279,48 @@
             </div>
         </div>
 
+        <!-- Glide Path -->
+        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-3">
+            <div class="flex items-center justify-between mb-2">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-200">Glide Path</label>
+            </div>
+            <form hx-post="/whatif/glide-path" hx-target="#whatif-results" class="space-y-2">
+                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <input type="checkbox" name="enabled" {{if and .Settings.GlidePath .Settings.GlidePath.Enabled}}checked{{end}}
+                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500"
+                        onchange="this.form.requestSubmit()">
+                    Shift stock allocation over time
+                </label>
+                {{if and .Settings.GlidePath .Settings.GlidePath.Enabled}}
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-500 dark:text-gray-400">Start %</label>
+                        <input type="number" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
+                            min="0" max="100" step="5"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 dark:text-gray-400">End %</label>
+                        <input type="number" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
+                            min="0" max="100" step="5"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 dark:text-gray-400">Years</label>
+                        <input type="number" name="transition_years" value="{{.Settings.GlidePath.TransitionYears}}"
+                            min="1" max="50" step="1"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                    </div>
+                </div>
+                <button type="submit"
+                    class="w-full text-xs px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                    Apply Glide Path
+                </button>
+                <p class="text-xs text-gray-400 dark:text-gray-500">Stocks shift linearly from {{printf "%.0f" .Settings.GlidePath.StartStockPct}}% to {{printf "%.0f" .Settings.GlidePath.EndStockPct}}% over {{.Settings.GlidePath.TransitionYears}} years. Bonds adjust inversely.</p>
+                {{end}}
+            </form>
+        </div>
+
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
             <input type="range" id="inflation-rate-slider" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### What-If Planner — New Features
+- **Social Security claiming age optimizer**: New analysis panel lets users enter their PIA (monthly benefit at FRA) and compare claiming ages 62–70 with adjusted monthly benefits, cumulative totals at ages 80/85/90 with COLA, and breakeven ages between adjacent options. Supports spouse comparison.
+- **Glide path (time-based allocation shift)**: Asset allocation can now shift linearly from a start stock% to an end stock% over a configurable number of years. Applied uniformly to all account types across deterministic, Monte Carlo, and historical backtest projections.
+- **Spending guardrails**: Portfolio-performance-based spending rules that automatically cut spending when the portfolio drops from its peak (floor) and raise spending when it rises above baseline (ceiling), with configurable min/max caps. Works in deterministic projection, Monte Carlo, and backtesting. Replaces adaptive spending when enabled.
+
 ### What-If Planner
 - **Canonical people and start month**: What-If settings now persist `start_date` plus a canonical `persons` list instead of saving scenario-level age fields. Working ages are derived in memory from each person's `birth_month`, keeping chained scenarios and healthcare projections aligned to one age baseline.
 - **Linked healthcare people**: Healthcare rows can now link to a canonical person with automatic name and age derivation, while manual healthcare entries remain supported for one-off cases.

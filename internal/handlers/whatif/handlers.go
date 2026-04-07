@@ -484,6 +484,9 @@ func RegisterRoutes(r chi.Router) {
 	r.Put("/whatif/scenarios/{filename}", handleRenameScenario)
 	r.Post("/whatif/chain", handleWhatIfUpdateChain)
 	r.Delete("/whatif/chain/{index}", handleWhatIfDeleteChainLink)
+	r.Post("/whatif/social-security", handleWhatIfSocialSecurity)
+	r.Post("/whatif/glide-path", handleWhatIfGlidePath)
+	r.Post("/whatif/guardrails", handleWhatIfGuardrails)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
@@ -2488,4 +2491,213 @@ func handleWhatIfDeleteChainLink(w http.ResponseWriter, r *http.Request) {
 	// Full page reload so both the chain card and results update
 	w.Header().Set("HX-Redirect", "/whatif")
 	w.WriteHeader(http.StatusOK)
+}
+
+func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if settings.SocialSecurity == nil {
+		settings.SocialSecurity = &models.SocialSecurityConfig{}
+	}
+
+	if fraBenefit, err := parseFormFloat(r, "fra_benefit"); err == nil {
+		settings.SocialSecurity.FRABenefit = fraBenefit
+	}
+
+	if fra, err := parseFormInt(r, "fra"); err == nil && fra >= 62 && fra <= 70 {
+		settings.SocialSecurity.FRA = fra
+	} else if settings.SocialSecurity.FRA == 0 {
+		settings.SocialSecurity.FRA = 67
+	}
+
+	if colaRate, err := parseFormFloat(r, "cola_rate"); err == nil {
+		settings.SocialSecurity.COLARate = colaRate / 100.0
+	} else if settings.SocialSecurity.COLARate == 0 {
+		settings.SocialSecurity.COLARate = 0.02
+	}
+
+	if spouseBenefit, err := parseFormFloat(r, "spouse_fra_benefit"); err == nil {
+		settings.SocialSecurity.SpouseFRABenefit = spouseBenefit
+	}
+
+	if spouseFRA, err := parseFormInt(r, "spouse_fra"); err == nil && spouseFRA >= 62 && spouseFRA <= 70 {
+		settings.SocialSecurity.SpouseFRA = spouseFRA
+	}
+
+	// Clear config if no benefit entered
+	if settings.SocialSecurity.FRABenefit <= 0 {
+		settings.SocialSecurity = nil
+	}
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc, _, err := buildCalculator(settings)
+	if err != nil {
+		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	analysis := calc.RunFullAnalysis()
+
+	partialData := &models.WhatIfPageData{
+		Title:    "What-If Analysis",
+		Settings: settings,
+		Analysis: analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+
+	if enabled {
+		if settings.GlidePath == nil {
+			settings.GlidePath = &models.GlidePathConfig{}
+		}
+		settings.GlidePath.Enabled = true
+
+		if v, err := parseFormFloat(r, "start_stock_pct"); err == nil {
+			settings.GlidePath.StartStockPct = math.Max(0, math.Min(100, v))
+		}
+		if v, err := parseFormFloat(r, "end_stock_pct"); err == nil {
+			settings.GlidePath.EndStockPct = math.Max(0, math.Min(100, v))
+		}
+		if v, err := parseFormInt(r, "transition_years"); err == nil {
+			settings.GlidePath.TransitionYears = max(1, min(50, v))
+		}
+	} else {
+		if settings.GlidePath != nil {
+			settings.GlidePath.Enabled = false
+		}
+	}
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc, _, err := buildCalculator(settings)
+	if err != nil {
+		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	analysis := calc.RunFullAnalysis()
+
+	partialData := &models.WhatIfPageData{
+		Title:    "What-If Analysis",
+		Settings: settings,
+		Analysis: analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+
+	if enabled {
+		if settings.Guardrails == nil {
+			settings.Guardrails = &models.GuardrailConfig{
+				FloorDropPct:    20,
+				FloorCutPct:     10,
+				CeilingRisePct:  20,
+				CeilingRaisePct: 10,
+				MinSpendingPct:  75,
+				MaxSpendingPct:  120,
+			}
+		}
+		settings.Guardrails.Enabled = true
+
+		if v, err := parseFormFloat(r, "floor_drop_pct"); err == nil {
+			settings.Guardrails.FloorDropPct = math.Max(1, math.Min(50, v))
+		}
+		if v, err := parseFormFloat(r, "floor_cut_pct"); err == nil {
+			settings.Guardrails.FloorCutPct = math.Max(1, math.Min(50, v))
+		}
+		if v, err := parseFormFloat(r, "ceiling_rise_pct"); err == nil {
+			settings.Guardrails.CeilingRisePct = math.Max(1, math.Min(100, v))
+		}
+		if v, err := parseFormFloat(r, "ceiling_raise_pct"); err == nil {
+			settings.Guardrails.CeilingRaisePct = math.Max(1, math.Min(50, v))
+		}
+		if v, err := parseFormFloat(r, "min_spending_pct"); err == nil {
+			settings.Guardrails.MinSpendingPct = math.Max(50, math.Min(100, v))
+		}
+		if v, err := parseFormFloat(r, "max_spending_pct"); err == nil {
+			settings.Guardrails.MaxSpendingPct = math.Max(100, math.Min(200, v))
+		}
+	} else {
+		if settings.Guardrails != nil {
+			settings.Guardrails.Enabled = false
+		}
+	}
+
+	if err := retirementMgr.Save(settings); err != nil {
+		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	calc, _, err := buildCalculator(settings)
+	if err != nil {
+		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	analysis := calc.RunFullAnalysis()
+
+	partialData := &models.WhatIfPageData{
+		Title:    "What-If Analysis",
+		Settings: settings,
+		Analysis: analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
 }

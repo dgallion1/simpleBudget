@@ -4637,3 +4637,220 @@ func TestErrorPaths_LoadFailures(t *testing.T) {
 		})
 	}
 }
+
+// ── Social Security ────────────────────────────────────────────────────────
+
+func TestHandleWhatIfGuardrails(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"enabled":          {"on"},
+		"floor_drop_pct":   {"20"},
+		"floor_cut_pct":    {"10"},
+		"ceiling_rise_pct": {"25"},
+		"ceiling_raise_pct": {"10"},
+		"min_spending_pct": {"75"},
+		"max_spending_pct": {"125"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/guardrails", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.Guardrails == nil || !settings.Guardrails.Enabled {
+		t.Fatal("Guardrails should be enabled")
+	}
+	if settings.Guardrails.FloorDropPct != 20 {
+		t.Errorf("FloorDropPct = %.0f, want 20", settings.Guardrails.FloorDropPct)
+	}
+	if settings.Guardrails.MinSpendingPct != 75 {
+		t.Errorf("MinSpendingPct = %.0f, want 75", settings.Guardrails.MinSpendingPct)
+	}
+}
+
+func TestHandleWhatIfGuardrails_Disabled(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/guardrails", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.Guardrails != nil && settings.Guardrails.Enabled {
+		t.Error("Guardrails should be disabled")
+	}
+}
+
+func TestHandleWhatIfGlidePath(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"enabled":         {"on"},
+		"start_stock_pct": {"80"},
+		"end_stock_pct":   {"30"},
+		"transition_years": {"20"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/glide-path", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGlidePath(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.GlidePath == nil || !settings.GlidePath.Enabled {
+		t.Fatal("GlidePath should be enabled")
+	}
+	if settings.GlidePath.StartStockPct != 80 {
+		t.Errorf("StartStockPct = %.0f, want 80", settings.GlidePath.StartStockPct)
+	}
+	if settings.GlidePath.EndStockPct != 30 {
+		t.Errorf("EndStockPct = %.0f, want 30", settings.GlidePath.EndStockPct)
+	}
+	if settings.GlidePath.TransitionYears != 20 {
+		t.Errorf("TransitionYears = %d, want 20", settings.GlidePath.TransitionYears)
+	}
+}
+
+func TestHandleWhatIfGlidePath_Disabled(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// First enable it
+	form := url.Values{"enabled": {"on"}, "start_stock_pct": {"80"}, "end_stock_pct": {"30"}, "transition_years": {"20"}}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/glide-path", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGlidePath(w, req)
+
+	// Now disable it
+	form = url.Values{}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/whatif/glide-path", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGlidePath(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.GlidePath != nil && settings.GlidePath.Enabled {
+		t.Error("GlidePath should be disabled")
+	}
+}
+
+func TestHandleWhatIfSocialSecurity(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"fra_benefit": {"2500"},
+		"fra":         {"67"},
+		"cola_rate":   {"2.0"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify settings were saved
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.SocialSecurity == nil {
+		t.Fatal("SocialSecurity config should not be nil")
+	}
+	if settings.SocialSecurity.FRABenefit != 2500 {
+		t.Errorf("FRABenefit = %.0f, want 2500", settings.SocialSecurity.FRABenefit)
+	}
+	if settings.SocialSecurity.FRA != 67 {
+		t.Errorf("FRA = %d, want 67", settings.SocialSecurity.FRA)
+	}
+	if settings.SocialSecurity.COLARate != 0.02 {
+		t.Errorf("COLARate = %f, want 0.02", settings.SocialSecurity.COLARate)
+	}
+}
+
+func TestHandleWhatIfSocialSecurity_ClearsOnZero(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"fra_benefit": {"0"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.SocialSecurity != nil {
+		t.Error("SocialSecurity should be nil when benefit is 0")
+	}
+}
+
+func TestHandleWhatIfSocialSecurity_WithSpouse(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"fra_benefit":        {"2500"},
+		"fra":                {"67"},
+		"cola_rate":          {"2.0"},
+		"spouse_fra_benefit": {"1800"},
+		"spouse_fra":         {"66"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	if settings.SocialSecurity.SpouseFRABenefit != 1800 {
+		t.Errorf("SpouseFRABenefit = %.0f, want 1800", settings.SocialSecurity.SpouseFRABenefit)
+	}
+	if settings.SocialSecurity.SpouseFRA != 66 {
+		t.Errorf("SpouseFRA = %d, want 66", settings.SocialSecurity.SpouseFRA)
+	}
+}

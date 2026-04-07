@@ -968,6 +968,13 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 	// Track cumulative inflation for spending phase calculations
 	cumulativeInflation := 1.0
 
+	// Spending guardrails
+	var grState *guardrailState
+	var guardrailEvents []models.GuardrailEvent
+	if s.Guardrails != nil && s.Guardrails.Enabled {
+		grState = newGuardrailState(s.PortfolioValue)
+	}
+
 	// Track annual RMD (calculated once per year, distributed monthly)
 	var annualRMD float64
 	var monthlyRMD float64
@@ -1069,9 +1076,35 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			}
 		}
 
+		// Evaluate spending guardrails at year boundaries
+		if grState != nil && m%12 == 0 {
+			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
+			prevMult := grState.multiplier()
+			grState.evaluate(s.Guardrails, totalPortfolio)
+			newMult := grState.multiplier()
+			if newMult != prevMult {
+				eventType := "cut"
+				if newMult > prevMult {
+					eventType = "raise"
+				}
+				guardrailEvents = append(guardrailEvents, models.GuardrailEvent{
+					Year:       currentYear,
+					Type:       eventType,
+					Multiplier: newMult,
+					Portfolio:  totalPortfolio,
+				})
+			}
+		}
+
+		// Apply guardrail spending multiplier
+		adjustedLivingExpenses := currentLivingExpenses
+		if grState != nil {
+			adjustedLivingExpenses *= grState.multiplier()
+		}
+
 		// Calculate healthcare expenses using multi-person model
 		activeHealthcare := s.GetTotalHealthcareCost(m)
-		totalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
+		totalExpenses := adjustedLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Add expense sources (discretionary sources get phase multiplier when enabled)
 		for _, source := range s.ExpenseSources {
@@ -1099,9 +1132,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			// Using forward-looking estimates (7% stocks, 4% bonds, 3% cash) rather than
 			// historical averages (~10.5% stocks) for more prudent retirement planning
 			stockMean, bondMean, cashMean := 7.0, 4.0, 3.0
-			tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
-			rothStock, rothBond, rothCash := s.GetRothAllocation()
-			taxStock, taxBond, taxCash := s.GetTaxableAllocation()
+			tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash := s.GetAllocationAtYear(currentYear)
 			taxDeferredReturn = models.GetBlendedReturn(tdStock, tdBond, tdCash, stockMean, bondMean, cashMean)
 			rothReturn = models.GetBlendedReturn(rothStock, rothBond, rothCash, stockMean, bondMean, cashMean)
 			taxableReturn = models.GetBlendedReturn(taxStock, taxBond, taxCash, stockMean, bondMean, cashMean)
@@ -1239,6 +1270,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		FinalBalance:    finalBalance,
 		DepletionMonth:  depletionMonth,
 		Survives:        depletionMonth == nil,
+		GuardrailEvents: guardrailEvents,
 	}
 }
 
@@ -1337,7 +1369,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 	taxableAnnualReturn := s.InvestmentReturn
 	if taxableAnnualReturn == 0 {
 		stockMean, bondMean, cashMean := 7.0, 4.0, 3.0
-		taxStock, taxBond, taxCash := s.GetTaxableAllocation()
+		_, _, _, _, _, _, taxStock, taxBond, taxCash := s.GetAllocationAtYear(0)
 		taxableAnnualReturn = models.GetBlendedReturn(taxStock, taxBond, taxCash, stockMean, bondMean, cashMean)
 	}
 	taxableMarketValue := s.PortfolioValue * math.Max(0, (100-s.TaxDeferredPercent-s.RothPercent)/100)
@@ -2193,6 +2225,12 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 	currentLivingExpenses := calculateLivingExpensesAtMonth(s, 0)
 
+	// Spending guardrails for this MC run
+	var mcGrState *guardrailState
+	if s.Guardrails != nil && s.Guardrails.Enabled {
+		mcGrState = newGuardrailState(s.PortfolioValue)
+	}
+
 	// Track shocks for this run
 	crashTiming := &CrashTiming{}
 	spendingShocks := 0
@@ -2220,9 +2258,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	assetReturns := c.generateAssetReturns(rng, config, projectionYears, crashTiming, &lastCrashYear)
 
 	// Get per-account allocations for blending returns
-	tdStock, tdBond, tdCash := s.GetTaxDeferredAllocation()
-	rothStock, rothBond, rothCash := s.GetRothAllocation()
-	taxStock, taxBond, taxCash := s.GetTaxableAllocation()
+	tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash := s.GetAllocationAtYear(0)
 
 	for m := 0; m < months; m++ {
 		if depleted {
@@ -2254,13 +2290,10 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
 					taxableAccount.syncAssumptions(s)
-
-					// Refresh cached allocation variables
-					tdStock, tdBond, tdCash = s.GetTaxDeferredAllocation()
-					rothStock, rothBond, rothCash = s.GetRothAllocation()
-					taxStock, taxBond, taxCash = s.GetTaxableAllocation()
 				}
 			}
+			// Refresh allocation for glide path and chain transitions
+			tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash = s.GetAllocationAtYear(currentYear)
 			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
 			taxableAccount.RealizedGainsYTD = 0
 
@@ -2307,16 +2340,28 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			}
 		}
 
+		// Evaluate guardrails at year boundaries in MC
+		if mcGrState != nil && m%12 == 0 {
+			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
+			mcGrState.evaluate(s.Guardrails, totalPortfolio)
+		}
+
+		// Apply guardrail spending multiplier in MC
+		mcAdjustedLiving := currentLivingExpenses
+		if mcGrState != nil {
+			mcAdjustedLiving *= mcGrState.multiplier()
+		}
+
 		// Calculate healthcare expenses using multi-person model with variation
 		activeHealthcare := s.GetTotalHealthcareCost(m) * healthcareVariation
-		totalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
+		totalExpenses := mcAdjustedLiving + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Check if we should enter adaptation mode (crash detected this year via stock returns)
-		if config.AdaptiveSpending && assetReturns.Stock[currentYear] < -15 {
-			// Crash year: start adapting spending
+		// Skip adaptive spending when guardrails are active (guardrails subsume this)
+		if mcGrState == nil && config.AdaptiveSpending && assetReturns.Stock[currentYear] < -15 {
 			adaptationEndYear = currentYear + config.AdaptationRecoveryYears
 		}
-		inAdaptationMode := config.AdaptiveSpending && currentYear <= adaptationEndYear
+		inAdaptationMode := mcGrState == nil && config.AdaptiveSpending && currentYear <= adaptationEndYear
 
 		// Add expense sources (with phase multiplier and adaptive spending reduction if applicable)
 		for _, source := range s.ExpenseSources {
@@ -2932,6 +2977,11 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 		historicalBacktest.HistoricalVsMC = historicalBacktest.SuccessRate - monteCarlo.Stats.SuccessRate
 	}
 
+	var ssAnalysis *models.SSComparisonAnalysis
+	if c.Settings.SocialSecurity != nil && c.Settings.SocialSecurity.FRABenefit > 0 {
+		ssAnalysis = c.RunSSAnalysis()
+	}
+
 	return &models.WhatIfAnalysis{
 		Settings:                 c.Settings,
 		Projection:               projection,
@@ -2944,5 +2994,6 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 		MonteCarlo:               monteCarlo,
 		RMD:                      rmd,
 		HistoricalBacktest:       historicalBacktest,
+		SocialSecurity:           ssAnalysis,
 	}
 }

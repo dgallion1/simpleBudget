@@ -123,9 +123,27 @@ type WhatIfSettings struct {
 	// Roth Conversion Strategy
 	RothConversion *RothConversionConfig `json:"roth_conversion,omitempty"`
 
+	// Glide Path (time-based allocation shift)
+	GlidePath *GlidePathConfig `json:"glide_path,omitempty"`
+
+	// Spending Guardrails (portfolio-performance-based spending rules)
+	Guardrails *GuardrailConfig `json:"guardrails,omitempty"`
+
+	// Social Security Optimization
+	SocialSecurity *SocialSecurityConfig `json:"social_security,omitempty"`
+
 	// Big Ticket Items (one-time financial events)
 	BigTicketItems        []BigTicketItem `json:"big_ticket_items,omitempty"`
 	RemovedBigTicketItems []BigTicketItem `json:"removed_big_ticket_items,omitempty"`
+}
+
+// SocialSecurityConfig holds user's SS benefit info for claiming age analysis
+type SocialSecurityConfig struct {
+	FRABenefit      float64 `json:"fra_benefit"`                 // Monthly PIA (benefit at FRA)
+	FRA             int     `json:"fra"`                         // Full retirement age (default 67)
+	COLARate        float64 `json:"cola_rate"`                   // Annual COLA as decimal (default 0.02)
+	SpouseFRABenefit float64 `json:"spouse_fra_benefit,omitempty"` // Spouse PIA if applicable
+	SpouseFRA       int     `json:"spouse_fra,omitempty"`         // Spouse FRA
 }
 
 // CurrentLocalMonth returns the current local month as "YYYY-MM".
@@ -569,6 +587,76 @@ func (s *WhatIfSettings) GetTaxableAllocation() (stock, bond, cash float64) {
 	return stock, bond, cash
 }
 
+// GuardrailConfig defines portfolio-performance-based spending adjustment rules
+type GuardrailConfig struct {
+	Enabled         bool    `json:"enabled"`
+	FloorDropPct    float64 `json:"floor_drop_pct"`    // Portfolio drop from peak to trigger cut (e.g., 20)
+	FloorCutPct     float64 `json:"floor_cut_pct"`     // Spending reduction when floor hit (e.g., 10)
+	CeilingRisePct  float64 `json:"ceiling_rise_pct"`  // Portfolio rise above initial to trigger raise (e.g., 20)
+	CeilingRaisePct float64 `json:"ceiling_raise_pct"` // Spending increase when ceiling hit (e.g., 10)
+	MinSpendingPct  float64 `json:"min_spending_pct"`  // Floor: never below X% of original (e.g., 75)
+	MaxSpendingPct  float64 `json:"max_spending_pct"`  // Cap: never above X% of original (e.g., 120)
+}
+
+// GuardrailEvent records when a guardrail triggered during projection
+type GuardrailEvent struct {
+	Year       int     `json:"year"`
+	Type       string  `json:"type"`       // "cut" or "raise"
+	Multiplier float64 `json:"multiplier"` // New spending multiplier
+	Portfolio  float64 `json:"portfolio"`  // Portfolio value at time
+}
+
+// GlidePathConfig defines a linear shift in stock allocation over time
+type GlidePathConfig struct {
+	Enabled         bool    `json:"enabled"`
+	StartStockPct   float64 `json:"start_stock_pct"`   // Stock % at year 0
+	EndStockPct     float64 `json:"end_stock_pct"`     // Stock % at end of transition
+	TransitionYears int     `json:"transition_years"`  // Years over which to shift
+}
+
+// GlidePathStockPct returns the target stock % at a given projection year.
+// Returns -1 if glide path is not enabled.
+func (s *WhatIfSettings) GlidePathStockPct(year int) float64 {
+	if s.GlidePath == nil || !s.GlidePath.Enabled || s.GlidePath.TransitionYears <= 0 {
+		return -1
+	}
+	if year >= s.GlidePath.TransitionYears {
+		return s.GlidePath.EndStockPct
+	}
+	if year <= 0 {
+		return s.GlidePath.StartStockPct
+	}
+	progress := float64(year) / float64(s.GlidePath.TransitionYears)
+	return s.GlidePath.StartStockPct + progress*(s.GlidePath.EndStockPct-s.GlidePath.StartStockPct)
+}
+
+// GetAllocationAtYear returns per-account allocation adjusted for glide path.
+// When glide path is disabled, returns the same as the static getters.
+func (s *WhatIfSettings) GetAllocationAtYear(year int) (tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash float64) {
+	tdStock, tdBond, tdCash = s.GetTaxDeferredAllocation()
+	rothStock, rothBond, rothCash = s.GetRothAllocation()
+	taxStock, taxBond, taxCash = s.GetTaxableAllocation()
+
+	targetStock := s.GlidePathStockPct(year)
+	if targetStock < 0 {
+		return
+	}
+
+	applyGlide := func(cash float64) (float64, float64, float64) {
+		b := 100.0 - targetStock - cash
+		if b < 0 {
+			b = 0
+			cash = 100.0 - targetStock
+		}
+		return targetStock, b, cash
+	}
+
+	tdStock, tdBond, tdCash = applyGlide(tdCash)
+	rothStock, rothBond, rothCash = applyGlide(rothCash)
+	taxStock, taxBond, taxCash = applyGlide(taxCash)
+	return
+}
+
 // GetBlendedReturn calculates the expected annual return for an account based on its allocation.
 // Uses historical means for each asset class.
 func GetBlendedReturn(stockPct, bondPct, cashPct float64, stockMean, bondMean, cashMean float64) float64 {
@@ -751,12 +839,13 @@ type ProjectionMonth struct {
 
 // ProjectionResult contains the complete projection with summary metrics
 type ProjectionResult struct {
-	Months          []ProjectionMonth       `json:"months"`
-	YearlySummaries []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
-	LongevityYears  *float64                `json:"longevity_years"` // nil if portfolio survives
-	FinalBalance    float64                 `json:"final_balance"`
-	DepletionMonth  *int                    `json:"depletion_month"` // nil if no depletion
-	Survives        bool                    `json:"survives"`
+	Months           []ProjectionMonth       `json:"months"`
+	YearlySummaries  []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
+	LongevityYears   *float64                `json:"longevity_years"` // nil if portfolio survives
+	FinalBalance     float64                 `json:"final_balance"`
+	DepletionMonth   *int                    `json:"depletion_month"` // nil if no depletion
+	Survives         bool                    `json:"survives"`
+	GuardrailEvents  []GuardrailEvent        `json:"guardrail_events,omitempty"`
 }
 
 // ProjectionYearSummary reconciles one projection year for explainability.
@@ -1206,6 +1295,35 @@ type WhatIfAnalysis struct {
 	RMD                      *RMDAnalysis                `json:"rmd"`
 	Tax                      *TaxAnalysis                `json:"tax"`
 	HistoricalBacktest       *HistoricalBacktestAnalysis `json:"historical_backtest"`
+	SocialSecurity           *SSComparisonAnalysis       `json:"social_security,omitempty"`
+}
+
+// SSClaimingOption represents the benefit analysis for a specific claiming age
+type SSClaimingOption struct {
+	ClaimAge       int     `json:"claim_age"`
+	MonthlyBenefit float64 `json:"monthly_benefit"`
+	AnnualBenefit  float64 `json:"annual_benefit"`
+	PctOfPIA       float64 `json:"pct_of_pia"`
+	CumulativeAt80 float64 `json:"cumulative_at_80"`
+	CumulativeAt85 float64 `json:"cumulative_at_85"`
+	CumulativeAt90 float64 `json:"cumulative_at_90"`
+}
+
+// SSBreakevenResult represents the age at which delaying benefits surpasses claiming earlier
+type SSBreakevenResult struct {
+	EarlyAge     int `json:"early_age"`
+	LateAge      int `json:"late_age"`
+	BreakevenAge int `json:"breakeven_age"`
+}
+
+// SSComparisonAnalysis contains the full claiming age analysis
+type SSComparisonAnalysis struct {
+	Options          []SSClaimingOption  `json:"options"`
+	Breakevens       []SSBreakevenResult `json:"breakevens"`
+	BestAge          int                 `json:"best_age"`
+	SpouseOptions    []SSClaimingOption  `json:"spouse_options,omitempty"`
+	SpouseBreakevens []SSBreakevenResult `json:"spouse_breakevens,omitempty"`
+	SpouseBestAge    int                 `json:"spouse_best_age,omitempty"`
 }
 
 // WhatIfPageData is the data passed to the whatif template

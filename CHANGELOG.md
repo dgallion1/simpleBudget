@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Documentation
+- **What-If retirement verification**: Added a verification note documenting the Current Plan inputs, live page values, calculator cross-check, and test command used to confirm the retirement numbers shown on the What-If page.
+
 ### What-If Planner — New Features
 - **Social Security claiming age optimizer**: New analysis panel lets users enter their PIA (monthly benefit at FRA) and compare claiming ages 62–70 with adjusted monthly benefits, cumulative totals at ages 80/85/90 with COLA, and breakeven ages between adjacent options. Supports spouse comparison.
 - **Glide path (time-based allocation shift)**: Asset allocation can now shift linearly from a start stock% to an end stock% over a configurable number of years. Applied uniformly to all account types across deterministic, Monte Carlo, and historical backtest projections.

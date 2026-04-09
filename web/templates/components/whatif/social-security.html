@@ -207,6 +207,100 @@
         {{end}}
     </div>
     {{end}}
+
+    {{if .Analysis.SocialSecurity.Portfolio}}
+    {{$portfolio := .Analysis.SocialSecurity.Portfolio}}
+    <div class="mt-4 pt-3 border-t dark:border-gray-700">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Portfolio Impact Analysis</h4>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">This section shows portfolio survival sensitivity, not just lifetime Social Security payouts. Highlighted rows mark the best age on each active axis while holding the other selected age fixed.</p>
+
+        <div class="text-xs bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-md p-2 mb-3 text-gray-700 dark:text-gray-200">
+            Baseline selection: {{printf "%.1f" $portfolio.BaselineSurvivalRate}}% survival.
+            {{if gt $portfolio.OptimalPrimaryAge 0}}
+            Best primary age: {{$portfolio.OptimalPrimaryAge}} (&#9733; in table).
+            {{end}}
+            {{if gt $portfolio.OptimalSpouseAge 0}}
+            Best spouse age: {{$portfolio.OptimalSpouseAge}} (&#9733; in table).
+            {{end}}
+        </div>
+
+        {{if $portfolio.PrimaryOptions}}
+        <div class="overflow-x-auto {{if $portfolio.SpouseOptions}}mb-3{{end}}">
+            {{if $portfolio.SpouseOptions}}<h5 class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Primary Portfolio Impact</h5>{{end}}
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b dark:border-gray-600">
+                        <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Age</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Monthly</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Survival</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Median End</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">P10 / P90</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Delta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $portfolio.PrimaryOptions}}
+                    <tr class="border-b dark:border-gray-700 {{if eq .ClaimAge $portfolio.OptimalPrimaryAge}}bg-green-50 dark:bg-green-900/20{{end}}">
+                        <td class="py-2 px-2 font-medium text-gray-800 dark:text-gray-200">
+                            {{.ClaimAge}}
+                            {{if eq .ClaimAge $portfolio.OptimalPrimaryAge}}
+                            <span class="text-xs text-green-600 dark:text-green-400">&#9733;</span>
+                            {{end}}
+                        </td>
+                        <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">${{formatNumber .MonthlyBenefit}}</td>
+                        <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">{{printf "%.1f" .SurvivalRate}}%</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .MedianEndingBalance}}</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300 text-xs">{{formatMoney .P10EndingBalance}} / {{formatMoney .P90EndingBalance}}</td>
+                        <td class="py-2 px-2 text-right {{if gt .DeltaSurvivalRate 0.0}}text-green-600 dark:text-green-400{{else if lt .DeltaSurvivalRate 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                            {{if gt .DeltaSurvivalRate 0.0}}+{{end}}{{printf "%.1f" .DeltaSurvivalRate}}%
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
+        {{if $portfolio.SpouseOptions}}
+        <div class="overflow-x-auto">
+            {{if $portfolio.PrimaryOptions}}<h5 class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Spouse Portfolio Impact</h5>{{end}}
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b dark:border-gray-600">
+                        <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Age</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Monthly</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Survival</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Median End</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">P10 / P90</th>
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Delta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $portfolio.SpouseOptions}}
+                    <tr class="border-b dark:border-gray-700 {{if eq .ClaimAge $portfolio.OptimalSpouseAge}}bg-green-50 dark:bg-green-900/20{{end}}">
+                        <td class="py-2 px-2 font-medium text-gray-800 dark:text-gray-200">
+                            {{.ClaimAge}}
+                            {{if eq .ClaimAge $portfolio.OptimalSpouseAge}}
+                            <span class="text-xs text-green-600 dark:text-green-400">&#9733;</span>
+                            {{end}}
+                        </td>
+                        <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">${{formatNumber .MonthlyBenefit}}</td>
+                        <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">{{printf "%.1f" .SurvivalRate}}%</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .MedianEndingBalance}}</td>
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300 text-xs">{{formatMoney .P10EndingBalance}} / {{formatMoney .P90EndingBalance}}</td>
+                        <td class="py-2 px-2 text-right {{if gt .DeltaSurvivalRate 0.0}}text-green-600 dark:text-green-400{{else if lt .DeltaSurvivalRate 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                            {{if gt .DeltaSurvivalRate 0.0}}+{{end}}{{printf "%.1f" .DeltaSurvivalRate}}%
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">&#9733; Best age on that axis. Based on {{$portfolio.MonteCarloRuns}} Monte Carlo simulations per claiming-age row.</p>
+    </div>
+    {{end}}
 </div>
 {{end}}
 {{end}}

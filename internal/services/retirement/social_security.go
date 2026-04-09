@@ -7,6 +7,7 @@ import (
 
 const defaultSocialSecurityFRA = 67
 const defaultSocialSecurityCOLARate = 0.02
+const ssPortfolioMonteCarloRuns = 250
 
 func validSSClaimAge(age int) bool {
 	return age >= 62 && age <= 70
@@ -36,6 +37,35 @@ func SocialSecurityProjectionActive(s *models.WhatIfSettings) bool {
 
 func socialSecurityProjectionActive(s *models.WhatIfSettings) bool {
 	return SocialSecurityProjectionActive(s)
+}
+
+func SSPortfolioEligible(s *models.WhatIfSettings) bool {
+	if s == nil || s.SocialSecurity == nil {
+		return false
+	}
+	return ssPortfolioPrimaryEligible(s) || ssPortfolioSpouseEligible(s)
+}
+
+func ssPortfolioPrimaryEligible(s *models.WhatIfSettings) bool {
+	if s == nil || s.SocialSecurity == nil {
+		return false
+	}
+	ss := s.SocialSecurity
+	if s.CurrentAge <= 0 || ss.FRABenefit <= 0 || !validSSClaimAge(ss.ClaimAge) {
+		return false
+	}
+	return ss.ClaimAge >= max(62, s.CurrentAge)
+}
+
+func ssPortfolioSpouseEligible(s *models.WhatIfSettings) bool {
+	if s == nil || s.SocialSecurity == nil || !s.HasSpouse() {
+		return false
+	}
+	ss := s.SocialSecurity
+	if s.SpouseAge <= 0 || ss.SpouseFRABenefit <= 0 || !validSSClaimAge(ss.SpouseClaimAge) {
+		return false
+	}
+	return ss.SpouseClaimAge >= max(62, s.SpouseAge)
 }
 
 func HasManualSocialSecurityIncomeSource(s *models.WhatIfSettings) bool {
@@ -341,6 +371,188 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 	return result
 }
 
+// RunSSPortfolioAnalysis evaluates how eligible claiming ages affect portfolio
+// survival while holding the other person's selected claim age fixed.
+// The caller must pass the already-computed SS comparison analysis to avoid
+// redundant work (RunFullAnalysis already computes it).
+func (c *Calculator) RunSSPortfolioAnalysis(ssAnalysis *models.SSComparisonAnalysis) *models.SSPortfolioAnalysis {
+	if c == nil || c.Settings == nil || !SSPortfolioEligible(c.Settings) {
+		return nil
+	}
+	if ssAnalysis == nil {
+		return nil
+	}
+
+	ss := c.Settings.SocialSecurity
+	baseline := c.runSSPortfolioCellMC(ss.ClaimAge, ss.SpouseClaimAge)
+	if baseline == nil || baseline.Stats == nil {
+		return nil
+	}
+
+	result := &models.SSPortfolioAnalysis{
+		BaselineSurvivalRate: baseline.Stats.SuccessRate,
+		MonteCarloRuns:       ssPortfolioMonteCarloRuns,
+	}
+
+	primaryBenefits := ssPortfolioBenefitLookup(ssAnalysis.Options)
+	spouseBenefits := ssPortfolioBenefitLookup(ssAnalysis.SpouseOptions)
+
+	if ssPortfolioPrimaryEligible(c.Settings) {
+		result.PrimaryOptions = c.buildSSPortfolioOptions(
+			max(62, c.Settings.CurrentAge),
+			ss.ClaimAge,
+			primaryBenefits,
+			func(age int) (int, int) { return age, ss.SpouseClaimAge },
+			baseline,
+		)
+		if best, ok := bestSSPortfolioOption(result.PrimaryOptions); ok {
+			result.OptimalPrimaryAge = best.ClaimAge
+			result.OptimalSurvivalRate = max(result.OptimalSurvivalRate, best.SurvivalRate)
+		}
+	}
+
+	if ssPortfolioSpouseEligible(c.Settings) {
+		result.SpouseOptions = c.buildSSPortfolioOptions(
+			max(62, c.Settings.SpouseAge),
+			ss.SpouseClaimAge,
+			spouseBenefits,
+			func(age int) (int, int) { return ss.ClaimAge, age },
+			baseline,
+		)
+		if best, ok := bestSSPortfolioOption(result.SpouseOptions); ok {
+			result.OptimalSpouseAge = best.ClaimAge
+			result.OptimalSurvivalRate = max(result.OptimalSurvivalRate, best.SurvivalRate)
+		}
+	}
+
+	return result
+}
+
+func ssPortfolioBenefitLookup(options []models.SSClaimingOption) map[int]float64 {
+	benefits := make(map[int]float64, len(options))
+	for _, option := range options {
+		benefits[option.ClaimAge] = option.MonthlyBenefit
+	}
+	return benefits
+}
+
+func (c *Calculator) buildSSPortfolioOptions(
+	minAge int,
+	selectedAge int,
+	benefits map[int]float64,
+	claimAges func(age int) (int, int),
+	baseline *models.MonteCarloAnalysis,
+) []models.SSPortfolioOption {
+	options := make([]models.SSPortfolioOption, 0, max(0, 71-minAge))
+	baselineRate := 0.0
+	if baseline != nil && baseline.Stats != nil {
+		baselineRate = baseline.Stats.SuccessRate
+	}
+
+	for age := minAge; age <= 70; age++ {
+		mc := baseline
+		if age != selectedAge {
+			primaryAge, spouseAge := claimAges(age)
+			mc = c.runSSPortfolioCellMC(primaryAge, spouseAge)
+		}
+		if mc == nil || mc.Stats == nil {
+			continue
+		}
+
+		option := models.SSPortfolioOption{
+			ClaimAge:            age,
+			MonthlyBenefit:      benefits[age],
+			SurvivalRate:        mc.Stats.SuccessRate,
+			MedianEndingBalance: mc.Stats.MedianBalance,
+			P10EndingBalance:    mc.Stats.Percentile10,
+			P90EndingBalance:    mc.Stats.Percentile90,
+		}
+		option.DeltaSurvivalRate = option.SurvivalRate - baselineRate
+		options = append(options, option)
+	}
+
+	return options
+}
+
+func (c *Calculator) runSSPortfolioCellMC(primaryClaimAge, spouseClaimAge int) *models.MonteCarloAnalysis {
+	clone := c.cloneSettingsWithClaimAges(primaryClaimAge, spouseClaimAge)
+	if clone == nil {
+		return nil
+	}
+	cellCalc := NewCalculatorWithChain(clone, c.ResolvedChain)
+	return cellCalc.RunMonteCarloSimulation(ssPortfolioMonteCarloRuns)
+}
+
+func (c *Calculator) cloneSettingsWithClaimAges(primaryClaimAge, spouseClaimAge int) *models.WhatIfSettings {
+	if c == nil || c.Settings == nil {
+		return nil
+	}
+
+	clone := *c.Settings
+	clone.ScenarioChain = append([]models.ScenarioChainLink(nil), c.Settings.ScenarioChain...)
+	clone.Persons = append([]models.Person(nil), c.Settings.Persons...)
+	clone.HealthcarePersons = append([]models.HealthcarePerson(nil), c.Settings.HealthcarePersons...)
+	clone.IncomeSources = append([]models.IncomeSource(nil), c.Settings.IncomeSources...)
+	clone.ExpenseSources = append([]models.ExpenseSource(nil), c.Settings.ExpenseSources...)
+	clone.RemovedIncomeSources = append([]models.IncomeSource(nil), c.Settings.RemovedIncomeSources...)
+	clone.RemovedExpenseSources = append([]models.ExpenseSource(nil), c.Settings.RemovedExpenseSources...)
+	clone.BigTicketItems = append([]models.BigTicketItem(nil), c.Settings.BigTicketItems...)
+	clone.RemovedBigTicketItems = append([]models.BigTicketItem(nil), c.Settings.RemovedBigTicketItems...)
+
+	if c.Settings.SpendingPhaseConfig != nil {
+		phaseConfig := *c.Settings.SpendingPhaseConfig
+		phaseConfig.Phases = append([]models.SpendingPhase(nil), c.Settings.SpendingPhaseConfig.Phases...)
+		clone.SpendingPhaseConfig = &phaseConfig
+	}
+	if c.Settings.TaxConfig != nil {
+		taxConfig := *c.Settings.TaxConfig
+		clone.TaxConfig = &taxConfig
+	}
+	if c.Settings.RothConversion != nil {
+		rothConversion := *c.Settings.RothConversion
+		clone.RothConversion = &rothConversion
+	}
+	if c.Settings.GlidePath != nil {
+		glidePath := *c.Settings.GlidePath
+		clone.GlidePath = &glidePath
+	}
+	if c.Settings.Guardrails != nil {
+		guardrails := *c.Settings.Guardrails
+		clone.Guardrails = &guardrails
+	}
+	if c.Settings.SocialSecurity != nil {
+		ss := *c.Settings.SocialSecurity
+		ss.ClaimAge = primaryClaimAge
+		ss.SpouseClaimAge = spouseClaimAge
+		clone.SocialSecurity = &ss
+	}
+
+	return &clone
+}
+
+func bestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfolioOption, bool) {
+	if len(options) == 0 {
+		return models.SSPortfolioOption{}, false
+	}
+
+	best := options[0]
+	for _, option := range options[1:] {
+		if isBetterSSPortfolioOption(option, best) {
+			best = option
+		}
+	}
+	return best, true
+}
+
+func isBetterSSPortfolioOption(candidate, current models.SSPortfolioOption) bool {
+	if candidate.SurvivalRate != current.SurvivalRate {
+		return candidate.SurvivalRate > current.SurvivalRate
+	}
+	if candidate.MedianEndingBalance != current.MedianEndingBalance {
+		return candidate.MedianEndingBalance > current.MedianEndingBalance
+	}
+	return candidate.ClaimAge < current.ClaimAge
+}
 
 func cumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64 {
 	if targetAge <= claimAge {

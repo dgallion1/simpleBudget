@@ -4905,3 +4905,66 @@ func TestHandleWhatIfSocialSecurity_WithSpouse(t *testing.T) {
 		t.Errorf("SpouseClaimAge = %d, want 66", settings.SocialSecurity.SpouseClaimAge)
 	}
 }
+
+func TestHandleWhatIfSocialSecurity_PopulatesPortfolio(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	settings.StartDate = "2026-04"
+	settings.PortfolioValue = 1_000_000
+	settings.MonthlyLivingExpenses = 5000
+	settings.TaxDeferredPercent = 60
+	settings.RothPercent = 10
+	settings.ProjectionYears = 15
+	settings.Persons = []models.Person{
+		{ID: "p1", Name: "You", BirthMonth: "1958-11", Role: models.PersonRolePrimary},
+		{ID: "p2", Name: "Spouse", BirthMonth: "1971-08", Role: models.PersonRoleSpouse},
+	}
+	settings.ComputeAges()
+	settings.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit:       4100,
+		FRA:              66,
+		COLARate:         0.02,
+		SpouseFRABenefit: 154,
+		SpouseFRA:        67,
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("failed to seed settings: %v", err)
+	}
+
+	form := url.Values{
+		"fra_benefit":        {"4100"},
+		"fra":                {"66"},
+		"cola_rate":          {"2.0"},
+		"spouse_fra_benefit": {"154"},
+		"spouse_fra":         {"67"},
+		"spouse_claim_age":   {"62"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	var pageData models.WhatIfPageData
+	if err := json.NewDecoder(w.Body).Decode(&pageData); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if pageData.Analysis == nil || pageData.Analysis.SocialSecurity == nil {
+		t.Fatal("expected social security analysis in response")
+	}
+	if pageData.Analysis.SocialSecurity.Portfolio == nil {
+		t.Fatal("expected portfolio analysis in response")
+	}
+
+	portfolio := pageData.Analysis.SocialSecurity.Portfolio
+	if len(portfolio.SpouseOptions) == 0 {
+		t.Fatal("expected spouse portfolio options")
+	}
+	if portfolio.BaselineSurvivalRate < 0 || portfolio.BaselineSurvivalRate > 100 {
+		t.Fatalf("baseline survival rate out of range: %.2f", portfolio.BaselineSurvivalRate)
+	}
+}

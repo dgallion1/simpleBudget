@@ -1320,14 +1320,35 @@ type SSBreakevenResult struct {
 
 // SSComparisonAnalysis contains the full claiming age analysis
 type SSComparisonAnalysis struct {
-	Options                   []SSClaimingOption  `json:"options"`
-	Breakevens                []SSBreakevenResult `json:"breakevens"`
-	BestAge                   int                 `json:"best_age"`
-	SpouseOptions             []SSClaimingOption  `json:"spouse_options,omitempty"`
-	SpouseBreakevens          []SSBreakevenResult `json:"spouse_breakevens,omitempty"`
-	SpouseBestAge             int                 `json:"spouse_best_age,omitempty"`
-	SpouseUsingSpousalBenefit bool                `json:"spouse_using_spousal_benefit,omitempty"`
-	SpouseEarlyClaimGapPct    float64             `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
+	Options                   []SSClaimingOption   `json:"options"`
+	Breakevens                []SSBreakevenResult  `json:"breakevens"`
+	BestAge                   int                  `json:"best_age"`
+	SpouseOptions             []SSClaimingOption   `json:"spouse_options,omitempty"`
+	SpouseBreakevens          []SSBreakevenResult  `json:"spouse_breakevens,omitempty"`
+	SpouseBestAge             int                  `json:"spouse_best_age,omitempty"`
+	SpouseUsingSpousalBenefit bool                 `json:"spouse_using_spousal_benefit,omitempty"`
+	SpouseEarlyClaimGapPct    float64              `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
+	Portfolio                 *SSPortfolioAnalysis `json:"portfolio,omitempty"`
+}
+
+type SSPortfolioOption struct {
+	ClaimAge            int     `json:"claim_age"`
+	MonthlyBenefit      float64 `json:"monthly_benefit"`
+	SurvivalRate        float64 `json:"survival_rate"`
+	MedianEndingBalance float64 `json:"median_ending_balance"`
+	P10EndingBalance    float64 `json:"p10_ending_balance"`
+	P90EndingBalance    float64 `json:"p90_ending_balance"`
+	DeltaSurvivalRate   float64 `json:"delta_survival_rate"`
+}
+
+type SSPortfolioAnalysis struct {
+	PrimaryOptions       []SSPortfolioOption `json:"primary_options"`
+	SpouseOptions        []SSPortfolioOption `json:"spouse_options"`
+	OptimalPrimaryAge    int                 `json:"optimal_primary_age"`
+	OptimalSpouseAge     int                 `json:"optimal_spouse_age"`
+	OptimalSurvivalRate  float64             `json:"optimal_survival_rate"`
+	BaselineSurvivalRate float64             `json:"baseline_survival_rate"`
+	MonteCarloRuns       int                 `json:"monte_carlo_runs"`
 }
 
 // WhatIfPageData is the data passed to the whatif template

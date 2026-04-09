@@ -98,6 +98,7 @@ func getFuncMap() template.FuncMap {
 		"deref":                               deref,
 		"urlEncode":                           url.PathEscape,
 		"socialSecurityProjectionActive":      retirement.SocialSecurityProjectionActive,
+		"ssPortfolioEligible":                 retirement.SSPortfolioEligible,
 		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
 	}
 }

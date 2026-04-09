@@ -2989,6 +2989,9 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	var ssAnalysis *models.SSComparisonAnalysis
 	if c.Settings.SocialSecurity != nil && c.Settings.SocialSecurity.FRABenefit > 0 {
 		ssAnalysis = c.RunSSAnalysis()
+		if ssAnalysis != nil && SSPortfolioEligible(c.Settings) {
+			ssAnalysis.Portfolio = c.RunSSPortfolioAnalysis(ssAnalysis)
+		}
 	}
 
 	return &models.WhatIfAnalysis{

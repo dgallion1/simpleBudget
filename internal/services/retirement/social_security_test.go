@@ -346,11 +346,19 @@ func TestSSPortfolioEligible(t *testing.T) {
 		}
 	})
 
-	t.Run("only primary claim age set", func(t *testing.T) {
+	t.Run("primary claim age equals current age", func(t *testing.T) {
 		s := base()
-		s.SocialSecurity.ClaimAge = 67
+		s.SocialSecurity.ClaimAge = 67 // same as CurrentAge
+		if SSPortfolioEligible(s) {
+			t.Fatal("primary claim age equal to current age should be ineligible (already claiming)")
+		}
+	})
+
+	t.Run("primary claim age in future", func(t *testing.T) {
+		s := base()
+		s.SocialSecurity.ClaimAge = 68
 		if !SSPortfolioEligible(s) {
-			t.Fatal("primary-only selection should be eligible")
+			t.Fatal("primary claim age in the future should be eligible")
 		}
 	})
 
@@ -362,12 +370,12 @@ func TestSSPortfolioEligible(t *testing.T) {
 		}
 	})
 
-	t.Run("both claim ages set", func(t *testing.T) {
+	t.Run("both claim ages set future", func(t *testing.T) {
 		s := base()
-		s.SocialSecurity.ClaimAge = 67
+		s.SocialSecurity.ClaimAge = 68
 		s.SocialSecurity.SpouseClaimAge = 62
 		if !SSPortfolioEligible(s) {
-			t.Fatal("dual selection should be eligible")
+			t.Fatal("dual selection with future ages should be eligible")
 		}
 	})
 
@@ -389,23 +397,23 @@ func TestSSPortfolioEligible(t *testing.T) {
 		}
 	})
 
-	t.Run("single person primary only", func(t *testing.T) {
+	t.Run("single person primary only future", func(t *testing.T) {
 		s := base()
 		s.Persons = []models.Person{
 			{ID: "p1", Name: "You", BirthMonth: "1958-11", Role: models.PersonRolePrimary},
 		}
 		s.SpouseAge = 0
 		s.SocialSecurity.SpouseFRABenefit = 0
-		s.SocialSecurity.ClaimAge = 67
+		s.SocialSecurity.ClaimAge = 68
 		if !SSPortfolioEligible(s) {
-			t.Fatal("single primary selection should be eligible")
+			t.Fatal("single primary with future claim age should be eligible")
 		}
 	})
 
 	t.Run("selected person with zero fra benefit", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.FRABenefit = 0
-		s.SocialSecurity.ClaimAge = 67
+		s.SocialSecurity.ClaimAge = 68
 		if SSPortfolioEligible(s) {
 			t.Fatal("selected primary with zero FRA benefit should be ineligible")
 		}
@@ -476,7 +484,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 
 	t.Run("primary only varies primary ages", func(t *testing.T) {
 		s := base()
-		s.SocialSecurity.ClaimAge = 67
+		s.SocialSecurity.ClaimAge = 68 // must be > CurrentAge (67)
 		c := NewCalculator(s)
 		result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis())
 		if result == nil {
@@ -497,7 +505,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 
 	t.Run("both selected returns both tables", func(t *testing.T) {
 		s := base()
-		s.SocialSecurity.ClaimAge = 67
+		s.SocialSecurity.ClaimAge = 68 // must be > CurrentAge (67)
 		s.SocialSecurity.SpouseClaimAge = 62
 		c := NewCalculator(s)
 		result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis())

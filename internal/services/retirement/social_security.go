@@ -54,7 +54,7 @@ func ssPortfolioPrimaryEligible(s *models.WhatIfSettings) bool {
 	if s.CurrentAge <= 0 || ss.FRABenefit <= 0 || !validSSClaimAge(ss.ClaimAge) {
 		return false
 	}
-	return ss.ClaimAge >= max(62, s.CurrentAge)
+	return ss.ClaimAge > s.CurrentAge && ss.ClaimAge >= 62
 }
 
 func ssPortfolioSpouseEligible(s *models.WhatIfSettings) bool {
@@ -65,7 +65,7 @@ func ssPortfolioSpouseEligible(s *models.WhatIfSettings) bool {
 	if s.SpouseAge <= 0 || ss.SpouseFRABenefit <= 0 || !validSSClaimAge(ss.SpouseClaimAge) {
 		return false
 	}
-	return ss.SpouseClaimAge >= max(62, s.SpouseAge)
+	return ss.SpouseClaimAge > s.SpouseAge && ss.SpouseClaimAge >= 62
 }
 
 func HasManualSocialSecurityIncomeSource(s *models.WhatIfSettings) bool {

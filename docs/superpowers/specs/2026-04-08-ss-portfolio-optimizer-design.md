@@ -37,6 +37,8 @@ Show the portfolio-aware panel only when all of the following are true:
 
 If any condition fails, keep the existing SS comparison UI only.
 
+A person whose `ClaimAge == CurrentAge` (or `SpouseClaimAge == SpouseAge`) is treated as **already claiming** and excluded from the portfolio grid — only future claiming decisions can be optimized.
+
 Because ages below the current age are invalid, the grid is **up to 81 combinations**, not always exactly 81.
 
 ## Design Decisions

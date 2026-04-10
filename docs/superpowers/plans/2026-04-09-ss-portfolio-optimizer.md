@@ -26,6 +26,7 @@ Add a synchronous portfolio-impact analysis to the Social Security claiming-age 
 - Reuse the existing SS comparison logic for monthly-benefit lookups so the new panel stays aligned with the claiming tables.
 - Treat the currently selected claim-age combination as the baseline.
 - Skip ages below the relevant person's current age.
+- Exclude a person from portfolio analysis when their claim age equals their current age (already claiming).
 - Keep the Monte Carlo budget intentionally small and centralized behind a named constant so the request stays responsive.
 - Prefer deterministic or range-based tests. Do not write brittle tests that depend on specific Monte Carlo winners unless the randomness is controlled.
 - Avoid brittle implementation instructions in this plan. Verify the surrounding code before editing instead of copying code snippets blindly.

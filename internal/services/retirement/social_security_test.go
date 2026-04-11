@@ -192,6 +192,78 @@ func TestProjectedSSBenefitForMonth(t *testing.T) {
 	if !withinTolerance(got, want, 0.01) {
 		t.Fatalf("projectedSSBenefitForMonth = %.2f, want %.2f", got, want)
 	}
+
+	t.Run("zero base returns zero", func(t *testing.T) {
+		if got := projectedSSBenefitForMonth(0, 0.02, 12); got != 0 {
+			t.Fatalf("expected 0 for zero base, got %.2f", got)
+		}
+	})
+
+	t.Run("negative months returns zero", func(t *testing.T) {
+		if got := projectedSSBenefitForMonth(2000, 0.02, -1); got != 0 {
+			t.Fatalf("expected 0 for negative months, got %.2f", got)
+		}
+	})
+}
+
+func TestDerivedPIA(t *testing.T) {
+	t.Run("round trips with AdjustedSSBenefit", func(t *testing.T) {
+		for _, age := range []int{62, 65, 67, 70} {
+			pia := 2000.0
+			benefit := AdjustedSSBenefit(pia, 67, age)
+			derived := DerivedPIA(benefit, 67, age)
+			if !withinTolerance(derived, pia, 0.01) {
+				t.Errorf("age %d: DerivedPIA(%.2f) = %.2f, want %.2f", age, benefit, derived, pia)
+			}
+		}
+	})
+
+	t.Run("claimAge clamped above 70", func(t *testing.T) {
+		got := DerivedPIA(2480, 67, 75)
+		want := DerivedPIA(2480, 67, 70)
+		if !withinTolerance(got, want, 0.01) {
+			t.Fatalf("claimAge 75 = %.2f, claimAge 70 = %.2f; expected same", got, want)
+		}
+	})
+}
+
+func TestHasManualSocialSecurityIncomeSource(t *testing.T) {
+	t.Run("nil settings", func(t *testing.T) {
+		if HasManualSocialSecurityIncomeSource(nil) {
+			t.Fatal("expected false for nil settings")
+		}
+	})
+
+	t.Run("no income sources", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		if HasManualSocialSecurityIncomeSource(s) {
+			t.Fatal("expected false with no income sources")
+		}
+	})
+
+	t.Run("non-SS income source", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.IncomeSources = []models.IncomeSource{{Name: "Pension", Amount: 1000}}
+		if HasManualSocialSecurityIncomeSource(s) {
+			t.Fatal("expected false for pension")
+		}
+	})
+
+	t.Run("SS income source detected", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.IncomeSources = []models.IncomeSource{{Name: "Social Security", Amount: 2000}}
+		if !HasManualSocialSecurityIncomeSource(s) {
+			t.Fatal("expected true for Social Security income")
+		}
+	})
+
+	t.Run("SSI token detected", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.IncomeSources = []models.IncomeSource{{Name: "SSI", Amount: 1500}}
+		if !HasManualSocialSecurityIncomeSource(s) {
+			t.Fatal("expected true for SSI income")
+		}
+	})
 }
 
 func TestSpousalTopUp(t *testing.T) {
@@ -221,6 +293,13 @@ func TestSpousalTopUp(t *testing.T) {
 		got := SpousalTopUp(1000, 4000, 67, 70)
 		if got != 2000 {
 			t.Fatalf("SpousalTopUp delayed claim = %.2f, want capped 2000", got)
+		}
+	})
+
+	t.Run("zero higher PIA returns own benefit", func(t *testing.T) {
+		got := SpousalTopUp(1500, 0, 67, 67)
+		if got != 1500 {
+			t.Fatalf("SpousalTopUp = %.2f, want 1500", got)
 		}
 	})
 }
@@ -496,6 +575,175 @@ func TestSSPortfolioEligible(t *testing.T) {
 	})
 }
 
+func TestProjectedSocialSecurityIncome(t *testing.T) {
+	t.Run("inactive projection returns zero", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.SocialSecurity = nil
+		if got := projectedSocialSecurityIncome(s, 12); got != 0 {
+			t.Fatalf("expected 0 for nil SS config, got %.2f", got)
+		}
+	})
+
+	t.Run("primary with spouse top-up when spouse PIA higher", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SpouseAge = 58
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       1000,  // lower
+			FRA:              67,
+			COLARate:         0.02,
+			ClaimAge:         67,
+			SpouseFRABenefit: 4000,  // higher
+			SpouseFRA:        67,
+			SpouseClaimAge:   67,
+		}
+		// At month where both are collecting, the primary should get
+		// spousal top-up because spouse PIA ($4000) > primary PIA ($1000)
+		month := 12 * 10 // both should be past claim age
+		got := projectedSocialSecurityIncome(s, month)
+		if got <= 0 {
+			t.Fatalf("expected positive income, got %.2f", got)
+		}
+
+		// Compare without spousal top-up by making PIAs equal
+		s2 := *s
+		ss2 := *s.SocialSecurity
+		ss2.SpouseFRABenefit = 500 // lower than primary, no top-up
+		s2.SocialSecurity = &ss2
+		got2 := projectedSocialSecurityIncome(&s2, month)
+		if got <= got2 {
+			t.Fatalf("with spousal top-up (%.2f) should exceed without (%.2f)", got, got2)
+		}
+	})
+}
+
+func TestRunSSAnalysis(t *testing.T) {
+	t.Run("nil SS config returns nil", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.SocialSecurity = nil
+		c := NewCalculator(s)
+		if result := c.RunSSAnalysis(); result != nil {
+			t.Fatal("expected nil for nil SS config")
+		}
+	})
+
+	t.Run("zero FRA benefit returns nil", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 0}
+		c := NewCalculator(s)
+		if result := c.RunSSAnalysis(); result != nil {
+			t.Fatal("expected nil for zero FRA benefit")
+		}
+	})
+
+	t.Run("already claiming back-derives PIA", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 65
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 1500, // actual benefit being received
+			FRA:        67,
+			COLARate:   0.02,
+			ClaimAge:   63,
+		}
+		c := NewCalculator(s)
+		result := c.RunSSAnalysis()
+		if result == nil {
+			t.Fatal("expected analysis")
+		}
+		// Should use derived PIA, not entered benefit, for comparison
+		if result.BestAge != 63 {
+			t.Fatalf("already claiming: BestAge = %d, want 63 (current claim)", result.BestAge)
+		}
+	})
+
+	t.Run("spouse has higher PIA uses spousal top-up for primary", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SpouseAge = 60
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       1000,
+			FRA:              67,
+			COLARate:         0.02,
+			ClaimAge:         67,
+			SpouseFRABenefit: 3000, // higher than primary
+			SpouseFRA:        67,
+			SpouseClaimAge:   67,
+		}
+		c := NewCalculator(s)
+		result := c.RunSSAnalysis()
+		if result == nil {
+			t.Fatal("expected analysis")
+		}
+		if len(result.Options) == 0 {
+			t.Fatal("expected primary options with spousal top-up")
+		}
+		if len(result.SpouseOptions) == 0 {
+			t.Fatal("expected spouse options")
+		}
+	})
+
+	t.Run("spouse already claiming uses their claim age", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SpouseAge = 65
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       3000,
+			FRA:              67,
+			COLARate:         0.02,
+			SpouseFRABenefit: 1000,
+			SpouseFRA:        67,
+			SpouseClaimAge:   63, // <= SpouseAge, already claiming
+		}
+		c := NewCalculator(s)
+		result := c.RunSSAnalysis()
+		if result == nil {
+			t.Fatal("expected analysis")
+		}
+		if result.SpouseBestAge != 63 {
+			t.Fatalf("SpouseBestAge = %d, want 63 (already claiming)", result.SpouseBestAge)
+		}
+	})
+
+	t.Run("spouse age zero falls back to current age", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SpouseAge = 0
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       3000,
+			FRA:              67,
+			COLARate:         0.02,
+			SpouseFRABenefit: 1000,
+			SpouseFRA:        67,
+		}
+		c := NewCalculator(s)
+		result := c.RunSSAnalysis()
+		if result == nil {
+			t.Fatal("expected analysis")
+		}
+		// With spouseAge=0 falling back to currentAge=60, spouse options
+		// should include ages 60-70
+		if len(result.SpouseOptions) == 0 {
+			t.Fatal("expected spouse options with fallback age")
+		}
+	})
+}
+
 func TestRunSSPortfolioAnalysis(t *testing.T) {
 	base := func() *models.WhatIfSettings {
 		s := models.DefaultWhatIfSettings()
@@ -525,6 +773,15 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		c := NewCalculator(base())
 		if result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis()); result != nil {
 			t.Fatal("expected nil when no claim ages are selected")
+		}
+	})
+
+	t.Run("nil ssAnalysis returns nil", func(t *testing.T) {
+		s := base()
+		s.SocialSecurity.ClaimAge = 68
+		c := NewCalculator(s)
+		if result := c.RunSSPortfolioAnalysis(nil); result != nil {
+			t.Fatal("expected nil for nil ssAnalysis")
 		}
 	})
 
@@ -643,19 +900,128 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	})
 }
 
-func TestBestSSPortfolioOption(t *testing.T) {
-	options := []models.SSPortfolioOption{
-		{ClaimAge: 67, SurvivalRate: 88.0, MedianEndingBalance: 500_000},
-		{ClaimAge: 68, SurvivalRate: 91.0, MedianEndingBalance: 450_000},
-		{ClaimAge: 69, SurvivalRate: 91.0, MedianEndingBalance: 475_000},
-		{ClaimAge: 70, SurvivalRate: 91.0, MedianEndingBalance: 475_000},
-	}
+func TestCloneSettingsWithClaimAges(t *testing.T) {
+	t.Run("nil calculator returns nil", func(t *testing.T) {
+		var c *Calculator
+		if got := c.cloneSettingsWithClaimAges(67, 65); got != nil {
+			t.Fatal("expected nil for nil calculator")
+		}
+	})
 
-	best, ok := bestSSPortfolioOption(options)
-	if !ok {
-		t.Fatal("expected best option")
-	}
-	if best.ClaimAge != 69 {
-		t.Fatalf("best claim age = %d, want 69", best.ClaimAge)
-	}
+	t.Run("minimal settings without optional configs", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			ClaimAge:   67,
+		}
+		// Ensure optional configs are nil
+		s.SpendingPhaseConfig = nil
+		s.TaxConfig = nil
+		s.RothConversion = nil
+		s.GlidePath = nil
+		s.Guardrails = nil
+
+		c := NewCalculator(s)
+		clone := c.cloneSettingsWithClaimAges(68, 65)
+		if clone == nil {
+			t.Fatal("expected non-nil clone")
+		}
+		if clone.SocialSecurity.ClaimAge != 68 {
+			t.Fatalf("ClaimAge = %d, want 68", clone.SocialSecurity.ClaimAge)
+		}
+		if clone.SocialSecurity.SpouseClaimAge != 65 {
+			t.Fatalf("SpouseClaimAge = %d, want 65", clone.SocialSecurity.SpouseClaimAge)
+		}
+	})
+
+	t.Run("full settings clones all sub-configs", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			ClaimAge:   67,
+		}
+		s.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+			Phases: []models.SpendingPhase{{Name: "go-go", Multiplier: 1.0}},
+		}
+		s.TaxConfig = &models.TaxConfig{FilingStatus: "married"}
+		s.RothConversion = &models.RothConversionConfig{AnnualAmount: 50000}
+		s.GlidePath = &models.GlidePathConfig{Enabled: true}
+		s.Guardrails = &models.GuardrailConfig{Enabled: true}
+
+		c := NewCalculator(s)
+		clone := c.cloneSettingsWithClaimAges(70, 62)
+		if clone == nil {
+			t.Fatal("expected non-nil clone")
+		}
+
+		// Verify deep copy — mutating clone shouldn't affect original
+		clone.SocialSecurity.FRABenefit = 9999
+		if s.SocialSecurity.FRABenefit == 9999 {
+			t.Fatal("clone shares SocialSecurity pointer with original")
+		}
+		clone.SpendingPhaseConfig.Phases[0].Name = "mutated"
+		if s.SpendingPhaseConfig.Phases[0].Name == "mutated" {
+			t.Fatal("clone shares SpendingPhaseConfig.Phases with original")
+		}
+	})
+}
+
+func TestCumulativeBenefit(t *testing.T) {
+	t.Run("target at or before claim age returns zero", func(t *testing.T) {
+		if got := cumulativeBenefit(2000, 67, 67, 0.02); got != 0 {
+			t.Fatalf("same age: got %.2f, want 0", got)
+		}
+		if got := cumulativeBenefit(2000, 67, 60, 0.02); got != 0 {
+			t.Fatalf("target before claim: got %.2f, want 0", got)
+		}
+	})
+
+	t.Run("positive accumulation", func(t *testing.T) {
+		got := cumulativeBenefit(2000, 65, 67, 0.02)
+		if got <= 0 {
+			t.Fatalf("expected positive cumulative, got %.2f", got)
+		}
+	})
+}
+
+func TestBestSSPortfolioOption(t *testing.T) {
+	t.Run("empty options returns false", func(t *testing.T) {
+		_, ok := bestSSPortfolioOption(nil)
+		if ok {
+			t.Fatal("expected false for empty options")
+		}
+	})
+
+	t.Run("selects by survival rate then median balance then earlier age", func(t *testing.T) {
+		options := []models.SSPortfolioOption{
+			{ClaimAge: 67, SurvivalRate: 88.0, MedianEndingBalance: 500_000},
+			{ClaimAge: 68, SurvivalRate: 91.0, MedianEndingBalance: 450_000},
+			{ClaimAge: 69, SurvivalRate: 91.0, MedianEndingBalance: 475_000},
+			{ClaimAge: 70, SurvivalRate: 91.0, MedianEndingBalance: 475_000},
+		}
+
+		best, ok := bestSSPortfolioOption(options)
+		if !ok {
+			t.Fatal("expected best option")
+		}
+		if best.ClaimAge != 69 {
+			t.Fatalf("best claim age = %d, want 69", best.ClaimAge)
+		}
+	})
+
+	t.Run("equal survival and median picks earlier age", func(t *testing.T) {
+		options := []models.SSPortfolioOption{
+			{ClaimAge: 68, SurvivalRate: 90.0, MedianEndingBalance: 500_000},
+			{ClaimAge: 66, SurvivalRate: 90.0, MedianEndingBalance: 500_000},
+		}
+		best, ok := bestSSPortfolioOption(options)
+		if !ok {
+			t.Fatal("expected best option")
+		}
+		if best.ClaimAge != 66 {
+			t.Fatalf("best claim age = %d, want 66 (earlier)", best.ClaimAge)
+		}
+	})
 }

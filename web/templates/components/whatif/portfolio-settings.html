@@ -30,7 +30,7 @@
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
-                <select id="portfolio-range" onchange="updatePortfolioRange(this.value)"
+                <select id="portfolio-range" onchange="updatePortfolioRange(this.value, { sourceEvent: event })"
                     class="text-xs border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                     <option value="0,10000,1000" {{if le .Settings.PortfolioValue 10000.0}}selected{{end}}>$0-10K</option>
                     <option value="0,50000,1000" {{if and (gt .Settings.PortfolioValue 10000.0) (le .Settings.PortfolioValue 50000.0)}}selected{{end}}>$0-50K</option>
@@ -79,6 +79,9 @@
 <script>
 function updatePortfolioRange(rangeStr, options) {
     const shouldTriggerChange = !options || options.triggerChange !== false;
+    if (options && options.sourceEvent && typeof options.sourceEvent.stopPropagation === 'function') {
+        options.sourceEvent.stopPropagation();
+    }
     const [min, max, step] = rangeStr.split(',').map(Number);
     const slider = document.getElementById('portfolio-slider');
     if (!slider) return;
@@ -114,6 +117,13 @@ function initializePortfolioRange() {
 
 document.addEventListener('DOMContentLoaded', function() {
     initializePortfolioRange();
+});
+
+document.addEventListener('htmx:afterSettle', function(evt) {
+    const target = evt.detail && evt.detail.target;
+    if (target && (target.id === 'whatif-results' || target.id === 'whatif-portfolio-settings-card')) {
+        initializePortfolioRange();
+    }
 });
 </script>
 {{end}}

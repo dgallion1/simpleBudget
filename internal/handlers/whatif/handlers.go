@@ -2640,12 +2640,11 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	calc, _, err := buildCalculator(settings)
+	analysis, err := runAnalysisWithCache(settings)
 	if err != nil {
-		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis := calc.RunFullAnalysis()
 
 	partialData := &models.WhatIfPageData{
 		Title:    "What-If Analysis",
@@ -2701,12 +2700,11 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	calc, _, err := buildCalculator(settings)
+	analysis, err := runAnalysisWithCache(settings)
 	if err != nil {
-		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis := calc.RunFullAnalysis()
 
 	partialData := &models.WhatIfPageData{
 		Title:    "What-If Analysis",
@@ -2778,12 +2776,11 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	calc, _, err := buildCalculator(settings)
+	analysis, err := runAnalysisWithCache(settings)
 	if err != nil {
-		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis := calc.RunFullAnalysis()
 
 	partialData := &models.WhatIfPageData{
 		Title:    "What-If Analysis",

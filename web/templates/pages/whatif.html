@@ -83,7 +83,9 @@
         {{template "whatif-bigticket-card" .}}
         {{template "whatif-expense-card" .}}
         {{template "whatif-scenario-chain" .}}
-        {{template "whatif-social-security-config" .}}
+        <div id="whatif-social-security-card">
+            {{template "whatif-social-security-config" .}}
+        </div>
     </div>
 
     <!-- Right Column: Results -->
@@ -117,6 +119,9 @@
     </div>
     <div id="whatif-spending-phases-card" hx-swap-oob="true">
         {{template "whatif-spending-phases" .}}
+    </div>
+    <div id="whatif-social-security-card" hx-swap-oob="true">
+        {{template "whatif-social-security-config" .}}
     </div>
 </template>
 

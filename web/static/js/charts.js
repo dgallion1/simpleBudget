@@ -201,9 +201,15 @@ function loadChart(chartElement) {
         .catch(function(e) { console.error('Error loading chart:', e); });
 }
 
-// Load all charts on the page
-function loadAllCharts() {
-    document.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(loadChart);
+// Load all non-whatif-projection charts in a scope
+function loadAllCharts(scope) {
+    const root = scope || document;
+    root.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(function(chart) {
+        if (chart.closest('[data-whatif-projection-card]')) {
+            return;
+        }
+        loadChart(chart);
+    });
 }
 
 function formatCurrency(value) {
@@ -284,8 +290,7 @@ document.addEventListener('htmx:afterSettle', function(evt) {
     const target = evt.detail.target;
     if (target && target.id === 'whatif-results') {
         initWhatIfProjectionCards(target);
-        // Find any chart elements that need to be loaded
-        target.querySelectorAll('[id^="chart-"][data-chart-url]').forEach(loadChart);
+        loadAllCharts(target);
     }
 });
 

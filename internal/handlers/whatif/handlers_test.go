@@ -117,6 +117,28 @@ func formBody(vals url.Values) *strings.Reader {
 	return strings.NewReader(vals.Encode())
 }
 
+func readRecorderPageData(t *testing.T, w *httptest.ResponseRecorder) *models.WhatIfPageData {
+	t.Helper()
+	var pageData models.WhatIfPageData
+	if err := json.Unmarshal(w.Body.Bytes(), &pageData); err != nil {
+		t.Fatalf("unmarshal page data: %v\nbody: %s", err, w.Body.String())
+	}
+	return &pageData
+}
+
+func primeAnalysisCache(settings *models.WhatIfSettings, monthlyExpenses float64) {
+	cache.mu.Lock()
+	cache.hash = getSettingsHash(settings)
+	cache.analysis = &models.WhatIfAnalysis{
+		Settings: settings,
+		BudgetFit: &models.BudgetFitAnalysis{
+			MonthlyExpenses: monthlyExpenses,
+		},
+	}
+	cache.cachedAt = time.Now()
+	cache.mu.Unlock()
+}
+
 // ── getSettingsHash ─────────────────────────────────────────────────────────
 
 func TestGetSettingsHash(t *testing.T) {
@@ -4379,6 +4401,29 @@ func TestHandleWhatIfUpdateIncome_WithRenderer(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfSocialSecurity_WithRendererIncludesOOBRefresh(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{
+		"fra_benefit": {"2500"},
+		"fra":         {"67"},
+		"cola_rate":   {"2.0"},
+		"claim_age":   {"68"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	if !strings.Contains(w.Body.String(), `id="whatif-social-security-card" hx-swap-oob="true"`) {
+		t.Fatalf("expected Social Security OOB refresh in body: %s", w.Body.String()[:min(w.Body.Len(), 500)])
+	}
+}
+
 func TestHandleWhatIfDeleteIncome_WithRenderer(t *testing.T) {
 	rm, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -4888,6 +4933,51 @@ func TestHandleWhatIfGuardrails_Disabled(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfGuardrails_UsesAnalysisCache(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	targetSettings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	targetSettings.Guardrails = &models.GuardrailConfig{
+		Enabled:         true,
+		FloorDropPct:    20,
+		FloorCutPct:     10,
+		CeilingRisePct:  25,
+		CeilingRaisePct: 10,
+		MinSpendingPct:  75,
+		MaxSpendingPct:  125,
+	}
+	primeAnalysisCache(targetSettings, 123456)
+
+	form := url.Values{
+		"enabled":           {"on"},
+		"floor_drop_pct":    {"20"},
+		"floor_cut_pct":     {"10"},
+		"ceiling_rise_pct":  {"25"},
+		"ceiling_raise_pct": {"10"},
+		"min_spending_pct":  {"75"},
+		"max_spending_pct":  {"125"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/guardrails", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	pageData := readRecorderPageData(t, w)
+	if pageData.Analysis == nil || pageData.Analysis.BudgetFit == nil {
+		t.Fatal("expected cached analysis in response")
+	}
+	if pageData.Analysis.BudgetFit.MonthlyExpenses != 123456 {
+		t.Fatalf("MonthlyExpenses = %.0f, want cached 123456", pageData.Analysis.BudgetFit.MonthlyExpenses)
+	}
+}
+
 func TestHandleWhatIfGlidePath(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -4954,6 +5044,45 @@ func TestHandleWhatIfGlidePath_Disabled(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfGlidePath_UsesAnalysisCache(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	targetSettings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	targetSettings.GlidePath = &models.GlidePathConfig{
+		Enabled:         true,
+		StartStockPct:   80,
+		EndStockPct:     30,
+		TransitionYears: 20,
+	}
+	primeAnalysisCache(targetSettings, 234567)
+
+	form := url.Values{
+		"enabled":          {"on"},
+		"start_stock_pct":  {"80"},
+		"end_stock_pct":    {"30"},
+		"transition_years": {"20"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/glide-path", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfGlidePath(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	pageData := readRecorderPageData(t, w)
+	if pageData.Analysis == nil || pageData.Analysis.BudgetFit == nil {
+		t.Fatal("expected cached analysis in response")
+	}
+	if pageData.Analysis.BudgetFit.MonthlyExpenses != 234567 {
+		t.Fatalf("MonthlyExpenses = %.0f, want cached 234567", pageData.Analysis.BudgetFit.MonthlyExpenses)
+	}
+}
+
 func TestHandleWhatIfSocialSecurity(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -5015,6 +5144,45 @@ func TestHandleWhatIfSocialSecurity_ClearsOnZero(t *testing.T) {
 	}
 	if settings.SocialSecurity != nil {
 		t.Error("SocialSecurity should be nil when benefit is 0")
+	}
+}
+
+func TestHandleWhatIfSocialSecurity_UsesAnalysisCache(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	targetSettings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("failed to load settings: %v", err)
+	}
+	targetSettings.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 2500,
+		FRA:        67,
+		COLARate:   0.02,
+		ClaimAge:   68,
+	}
+	primeAnalysisCache(targetSettings, 345678)
+
+	form := url.Values{
+		"fra_benefit": {"2500"},
+		"fra":         {"67"},
+		"cola_rate":   {"2.0"},
+		"claim_age":   {"68"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	pageData := readRecorderPageData(t, w)
+	if pageData.Analysis == nil || pageData.Analysis.BudgetFit == nil {
+		t.Fatal("expected cached analysis in response")
+	}
+	if pageData.Analysis.BudgetFit.MonthlyExpenses != 345678 {
+		t.Fatalf("MonthlyExpenses = %.0f, want cached 345678", pageData.Analysis.BudgetFit.MonthlyExpenses)
 	}
 }
 

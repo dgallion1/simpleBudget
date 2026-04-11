@@ -64,10 +64,20 @@ Applied on 2026-04-11:
 - Finding 10 fixed. Big-ticket adds now reject malformed and negative years instead of coercing them to year `0`.
 - Finding 11 fixed. Steady-state timing now includes optimizer-driven Social Security claim starts.
 - Finding 13 fixed. The `Higher Healthcare` sensitivity scenario now varies person-based healthcare costs when `HealthcarePersons` is populated.
+- Finding 2 fixed. The Social Security config card now refreshes out-of-band with `whatif-results`, so analysis-derived helper text and warnings stay in sync with the right-column results.
+- Finding 3 fixed. Projection chart initialization no longer double-fetches on first load or after `#whatif-results` swaps.
+- Finding 4 fixed. Portfolio slider range normalization now reruns after HTMX result swaps, so min/max/step stay aligned with the selected range after OOB card refreshes.
+- Finding 6 fixed. Changing the portfolio range selector now suppresses the selector's bubbled `change` event and triggers only the canonical slider change, avoiding duplicate `/whatif/settings` recalculations.
+- Finding 7 fixed. The rate-assumptions card no longer nests the glide-path form inside the main settings form.
+- Finding 12 fixed. Budget-analysis steady-state copy now consistently describes those values as nominal dollars at the selected future year.
+- Finding 14 fixed. Historical-backtest helper text now uses neutral scenario-specific language instead of hardcoded crash-year claims.
 - Finding 15 fixed. Invalid scenario chains now fail save validation instead of being silently stripped.
 - Finding 16 fixed. Scenario CRUD handlers now map user-correctable manager errors to `400`/`404`/`409` instead of `500`.
 - Finding 17 fixed. Scenario create/rename paths now trim names and reject whitespace-only values, and blankish persisted names fall back to filenames in the switcher.
+- Finding 18 fixed. Social Security, glide path, and guardrails mutations now use the shared `runAnalysisWithCache()` path instead of bypassing the what-if analysis cache.
 - Related hardening: failed `Save` calls now clear the in-memory settings cache so invalid unsaved state does not leak into later reads.
+
+All 18 findings from this review are now resolved.
 
 Verification for the implementation pass:
 

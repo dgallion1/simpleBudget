@@ -305,6 +305,82 @@ func TestSSBreakevenAges(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("Breakeven ages do not have large non-monotonic jumps", func(t *testing.T) {
+		// The SSA's two-tier early reduction formula (5/9% per month for the
+		// first 36 months, 5/12% beyond) means marginal benefit of waiting
+		// isn't perfectly monotonic — pairs crossing the tier boundary can
+		// break even slightly earlier. But jumps larger than 3 years indicate
+		// a COLA compounding bug (e.g., using different base years for early
+		// vs late benefits).
+		for _, tc := range []struct {
+			pia  float64
+			fra  int
+			cola float64
+		}{
+			{2000, 67, 0.02},
+			{1500, 66, 0.03},
+			{3000, 67, 0.00},
+		} {
+			results := SSBreakevenAges(tc.pia, tc.fra, tc.cola)
+			for i := 1; i < len(results); i++ {
+				drop := results[i-1].BreakevenAge - results[i].BreakevenAge
+				if drop > 3 {
+					t.Errorf("PIA=%.0f FRA=%d COLA=%.0f%%: breakeven %d vs %d = age %d, "+
+						"but %d vs %d = age %d (drop of %d years is too large)",
+						tc.pia, tc.fra, tc.cola*100,
+						results[i-1].EarlyAge, results[i-1].LateAge, results[i-1].BreakevenAge,
+						results[i].EarlyAge, results[i].LateAge, results[i].BreakevenAge, drop)
+				}
+			}
+		}
+	})
+}
+
+func TestSSBreakevenAgesWithSpousalTopUp(t *testing.T) {
+	t.Run("Breakeven ages do not have large non-monotonic jumps", func(t *testing.T) {
+		// Same COLA-compounding invariant as the non-spousal version.
+		// The spousal top-up path previously shared the same bug.
+		for _, tc := range []struct {
+			pia       float64
+			fra       int
+			cola      float64
+			higherPIA float64
+		}{
+			{1500, 67, 0.02, 3000},
+			{1000, 66, 0.03, 2500},
+		} {
+			results := SSBreakevenAgesWithSpousalTopUp(tc.pia, tc.fra, tc.cola, tc.higherPIA)
+			if len(results) != 8 {
+				t.Fatalf("expected 8 results, got %d", len(results))
+			}
+			for i := 1; i < len(results); i++ {
+				// Skip pairs where either never breaks even (0 = never within age 100),
+				// which is normal for spousal benefits past FRA.
+				if results[i].BreakevenAge == 0 || results[i-1].BreakevenAge == 0 {
+					continue
+				}
+				drop := results[i-1].BreakevenAge - results[i].BreakevenAge
+				if drop > 3 {
+					t.Errorf("PIA=%.0f higherPIA=%.0f FRA=%d COLA=%.0f%%: "+
+						"breakeven %d vs %d = age %d, but %d vs %d = age %d (drop of %d years)",
+						tc.pia, tc.higherPIA, tc.fra, tc.cola*100,
+						results[i-1].EarlyAge, results[i-1].LateAge, results[i-1].BreakevenAge,
+						results[i].EarlyAge, results[i].LateAge, results[i].BreakevenAge, drop)
+				}
+			}
+		}
+	})
+
+	t.Run("All breakeven ages in valid range", func(t *testing.T) {
+		results := SSBreakevenAgesWithSpousalTopUp(1500, 67, 0.02, 3000)
+		for _, r := range results {
+			if r.BreakevenAge != 0 && (r.BreakevenAge < r.LateAge || r.BreakevenAge > 100) {
+				t.Errorf("breakeven age %d out of range [%d, 100] for early=%d late=%d",
+					r.BreakevenAge, r.LateAge, r.EarlyAge, r.LateAge)
+			}
+		}
+	})
 }
 
 func TestSSPortfolioEligible(t *testing.T) {

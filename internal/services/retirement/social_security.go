@@ -293,16 +293,13 @@ func ssBreakevenAges(pia float64, fra int, colaRate float64, adjust benefitAdjus
 		breakevenAge := 0
 		earlyCum := 0.0
 		lateCum := 0.0
-		earlyBenefit := earlyMonthly
-		lateBenefit := lateMonthly
 
 		for age := early; age <= 100; age++ {
-			if age > early {
-				earlyBenefit = earlyMonthly * math.Pow(1.0+colaRate, float64(age-early))
-			}
-			if age > late {
-				lateBenefit = lateMonthly * math.Pow(1.0+colaRate, float64(age-late))
-			}
+			// COLA is a calendar-year raise applied to everyone's PIA regardless
+			// of claiming age, so both benefits compound from the same base year.
+			cola := math.Pow(1.0+colaRate, float64(age-early))
+			earlyBenefit := earlyMonthly * cola
+			lateBenefit := lateMonthly * cola
 
 			earlyCum += earlyBenefit * 12.0
 			if age >= late {
@@ -608,8 +605,7 @@ func cumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate
 
 	total := 0.0
 	for age := claimAge; age < targetAge; age++ {
-		yearsFromClaim := age - claimAge
-		adjustedMonthly := monthlyAtClaim * math.Pow(1.0+colaRate, float64(yearsFromClaim))
+		adjustedMonthly := monthlyAtClaim * math.Pow(1.0+colaRate, float64(age-claimAge))
 		total += adjustedMonthly * 12.0
 	}
 

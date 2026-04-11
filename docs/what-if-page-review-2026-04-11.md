@@ -79,6 +79,10 @@ Applied on 2026-04-11:
 
 All 18 findings from this review are now resolved.
 
+Additional fixes (not from the original review):
+
+- SS breakeven COLA compounding bug fixed. `ssBreakevenAges()` was compounding COLA from each benefit's own claim date (`age - early` vs `age - late`), but COLA is a calendar-year raise applied to everyone's PIA uniformly. Both benefits now compound from the same base year. This caused erratic breakeven ages (e.g., 62v63=81 but 63v64=77). Fixed sequence is smooth with only small dips at SSA tier boundaries.
+
 Verification for the implementation pass:
 
 - `go test ./internal/handlers/whatif`

@@ -93,7 +93,8 @@
 
 {{/* Add Big Ticket Item Form */}}
 {{define "whatif-add-bigticket-form"}}
-<form hx-post="/whatif/bigticket" hx-target="#whatif-results" hx-on::after-request="this.reset()"
+<div id="whatif-add-bigticket-error" class="mb-2"></div>
+<form hx-post="/whatif/bigticket" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-3 border-t dark:border-gray-700 pt-3">
     <div class="grid grid-cols-2 gap-2">
         <input type="text" name="name" placeholder="Name (e.g., Home Sale)"

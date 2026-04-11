@@ -60,6 +60,8 @@
             </button>
         </form>
     </div>
+
+    <div id="whatif-scenario-error" class="mt-3"></div>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -103,6 +105,10 @@
 {{define "whatif-results"}}
 {{/* OOB updates for HTMX - these update the left column when results change */}}
 <template>
+    <div id="whatif-add-income-error" hx-swap-oob="true"></div>
+    <div id="whatif-add-expense-error" hx-swap-oob="true"></div>
+    <div id="whatif-add-healthcare-error" hx-swap-oob="true"></div>
+    <div id="whatif-add-bigticket-error" hx-swap-oob="true"></div>
     <div id="whatif-portfolio-settings-card" hx-swap-oob="true">
         {{template "whatif-portfolio-settings" .}}
     </div>

@@ -21,7 +21,8 @@
 {{/* Add Healthcare Person Form */}}
 {{define "whatif-add-healthcare-form"}}
 <div id="add-healthcare-form" class="hidden mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-    <form hx-post="/whatif/healthcare" hx-target="#whatif-results" hx-on::after-request="toggleAddHealthcare()">
+    <div id="whatif-add-healthcare-error" class="mb-3"></div>
+    <form hx-post="/whatif/healthcare" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful){this.reset(); toggleHealthcareFormMode(this); toggleAddHealthcare(false);}">
         <div class="mb-3">
             <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Person</label>
             <select name="person_id" onchange="toggleHealthcareFormMode(this.form)"
@@ -108,8 +109,12 @@
 {{/* Healthcare Toggle Script */}}
 {{define "whatif-healthcare-scripts"}}
 <script>
-function toggleAddHealthcare() {
+function toggleAddHealthcare(forceOpen) {
     const form = document.getElementById('add-healthcare-form');
+    if (typeof forceOpen === 'boolean') {
+        form.classList.toggle('hidden', !forceOpen);
+        return;
+    }
     form.classList.toggle('hidden');
 }
 

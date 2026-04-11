@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"math"
 	"net/http"
@@ -42,6 +43,25 @@ func statusForWhatIfSaveError(err error) int {
 	if errors.As(err, &chainErr) {
 		return http.StatusBadRequest
 	}
+	return http.StatusInternalServerError
+}
+
+func statusForScenarioOperationError(err error) int {
+	var validationErr *retirement.ScenarioValidationError
+	if errors.As(err, &validationErr) {
+		return http.StatusBadRequest
+	}
+
+	var notFoundErr *retirement.ScenarioNotFoundError
+	if errors.As(err, &notFoundErr) {
+		return http.StatusNotFound
+	}
+
+	var conflictErr *retirement.ScenarioConflictError
+	if errors.As(err, &conflictErr) {
+		return http.StatusConflict
+	}
+
 	return http.StatusInternalServerError
 }
 
@@ -330,7 +350,7 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 func renderError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)
-	html := fmt.Sprintf(`<div class="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+	body := fmt.Sprintf(`<div class="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
 		<div class="flex items-center">
 			<svg class="w-5 h-5 text-red-500 dark:text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -338,8 +358,14 @@ func renderError(w http.ResponseWriter, message string, statusCode int) {
 			<span class="text-red-700 dark:text-red-300 font-medium">Error</span>
 		</div>
 		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
-	</div>`, message)
-	w.Write([]byte(html))
+	</div>`, html.EscapeString(message))
+	w.Write([]byte(body))
+}
+
+func renderRetargetedError(w http.ResponseWriter, message string, statusCode int, target string) {
+	w.Header().Set("HX-Retarget", target)
+	w.Header().Set("HX-Reswap", "innerHTML")
+	renderError(w, message, statusCode)
 }
 
 // parseFormFloat parses a float64 from form data, returning an error if invalid
@@ -933,33 +959,33 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		renderError(w, "Income source name is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Income source name is required", http.StatusBadRequest, "#whatif-add-income-error")
 		return
 	}
 
 	amount, err := parseRequiredFormFloat(r, "amount")
 	if err != nil {
-		renderError(w, err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
 		return
 	}
 	if amount < 0 {
-		renderError(w, "Amount cannot be negative", http.StatusBadRequest)
+		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, "#whatif-add-income-error")
 		return
 	}
 
 	startYear, err := parseFormInt(r, "start_year")
 	if err != nil {
-		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
 		return
 	}
 	if startYear < 0 {
-		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+		renderRetargetedError(w, "Start year cannot be negative", http.StatusBadRequest, "#whatif-add-income-error")
 		return
 	}
 
@@ -967,15 +993,15 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("end_year") != "" {
 		ey, err := parseFormInt(r, "end_year")
 		if err != nil {
-			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+			renderRetargetedError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
 			return
 		}
 		if ey < 0 {
-			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			renderRetargetedError(w, "End year cannot be negative", http.StatusBadRequest, "#whatif-add-income-error")
 			return
 		}
 		if ey < startYear {
-			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+			renderRetargetedError(w, "End year cannot be before start year", http.StatusBadRequest, "#whatif-add-income-error")
 			return
 		}
 		endYearPtr = &ey
@@ -1152,33 +1178,33 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		renderError(w, "Expense name is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Expense name is required", http.StatusBadRequest, "#whatif-add-expense-error")
 		return
 	}
 
 	amount, err := parseRequiredFormFloat(r, "amount")
 	if err != nil {
-		renderError(w, err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
 		return
 	}
 	if amount < 0 {
-		renderError(w, "Amount cannot be negative", http.StatusBadRequest)
+		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, "#whatif-add-expense-error")
 		return
 	}
 
 	startYear, err := parseFormInt(r, "start_year")
 	if err != nil {
-		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
 		return
 	}
 	if startYear < 0 {
-		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+		renderRetargetedError(w, "Start year cannot be negative", http.StatusBadRequest, "#whatif-add-expense-error")
 		return
 	}
 
@@ -1186,15 +1212,15 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("end_year") != "" {
 		ey, err := parseFormInt(r, "end_year")
 		if err != nil {
-			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
+			renderRetargetedError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
 			return
 		}
 		if ey < 0 {
-			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			renderRetargetedError(w, "End year cannot be negative", http.StatusBadRequest, "#whatif-add-expense-error")
 			return
 		}
 		if ey < startYear {
-			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
+			renderRetargetedError(w, "End year cannot be before start year", http.StatusBadRequest, "#whatif-add-expense-error")
 			return
 		}
 		endYearPtr = &ey
@@ -1452,7 +1478,7 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 
 func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 
@@ -1473,7 +1499,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	if personID != "" {
 		person := settingsState.FindPerson(personID)
 		if person == nil {
-			renderError(w, "Selected person was not found", http.StatusBadRequest)
+			renderRetargetedError(w, "Selected person was not found", http.StatusBadRequest, "#whatif-add-healthcare-error")
 			return
 		}
 		name = person.Name
@@ -1485,7 +1511,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(r.FormValue("current_age")) != "" {
 			age, err = parseFormInt(r, "current_age")
 			if err != nil {
-				renderError(w, "Invalid age: "+err.Error(), http.StatusBadRequest)
+				renderRetargetedError(w, "Invalid age: "+err.Error(), http.StatusBadRequest, "#whatif-add-healthcare-error")
 				return
 			}
 		}
@@ -1497,31 +1523,31 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	coverageType := r.FormValue("current_coverage")
 	monthlyCost, err := parseFormFloat(r, "current_monthly_cost")
 	if err != nil {
-		renderError(w, "Invalid monthly cost: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid monthly cost: "+err.Error(), http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 	if monthlyCost < 0 {
-		renderError(w, "Monthly cost cannot be negative", http.StatusBadRequest)
+		renderRetargetedError(w, "Monthly cost cannot be negative", http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 	preMedicareInflation, err := parseFormFloat(r, "pre_medicare_inflation")
 	if err != nil {
-		renderError(w, "Invalid pre-Medicare inflation: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid pre-Medicare inflation: "+err.Error(), http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 	medicareCost, err := parseFormFloat(r, "medicare_monthly_cost")
 	if err != nil {
-		renderError(w, "Invalid Medicare cost: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid Medicare cost: "+err.Error(), http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 	postMedicareInflation, err := parseFormFloat(r, "post_medicare_inflation")
 	if err != nil {
-		renderError(w, "Invalid post-Medicare inflation: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid post-Medicare inflation: "+err.Error(), http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 
 	if age < 0 || age > 120 {
-		renderError(w, "Age must be between 0 and 120", http.StatusBadRequest)
+		renderRetargetedError(w, "Age must be between 0 and 120", http.StatusBadRequest, "#whatif-add-healthcare-error")
 		return
 	}
 	if coverageType == "" {
@@ -2238,32 +2264,34 @@ func maxSubmittedSpendingPhaseIndex(form map[string][]string) int {
 
 func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-bigticket-error")
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		renderError(w, "Big ticket item name is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Big ticket item name is required", http.StatusBadRequest, "#whatif-add-bigticket-error")
 		return
 	}
 
 	amount, err := parseRequiredFormFloat(r, "amount")
 	if err != nil {
-		renderError(w, err.Error(), http.StatusBadRequest)
+		renderRetargetedError(w, err.Error(), http.StatusBadRequest, "#whatif-add-bigticket-error")
 		return
 	}
 	if amount < 0 {
-		renderError(w, "Amount cannot be negative", http.StatusBadRequest)
+		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, "#whatif-add-bigticket-error")
 		return
 	}
 
 	year, err := parseFormInt(r, "year")
 	if err != nil {
-		year = 0
+		renderRetargetedError(w, "Invalid year: "+err.Error(), http.StatusBadRequest, "#whatif-add-bigticket-error")
+		return
 	}
 	if year < 0 {
-		year = 0
+		renderRetargetedError(w, "Year cannot be negative", http.StatusBadRequest, "#whatif-add-bigticket-error")
+		return
 	}
 
 	itemType := models.BigTicketType(r.FormValue("type"))
@@ -2383,13 +2411,17 @@ func handleListScenarios(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleCreateScenario(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		renderError(w, "Scenario name is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Scenario name is required", http.StatusBadRequest, "#whatif-scenario-error")
 		return
 	}
 
 	if _, err := retirementMgr.CreateScenario(name); err != nil {
+		if status := statusForScenarioOperationError(err); status != http.StatusInternalServerError {
+			renderRetargetedError(w, err.Error(), status, "#whatif-scenario-error")
+			return
+		}
 		renderError(w, "Failed to create scenario: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -2400,13 +2432,17 @@ func handleCreateScenario(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSwitchScenario(w http.ResponseWriter, r *http.Request) {
-	filename := r.FormValue("filename")
+	filename := strings.TrimSpace(r.FormValue("filename"))
 	if filename == "" {
-		renderError(w, "Scenario filename is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Scenario filename is required", http.StatusBadRequest, "#whatif-scenario-error")
 		return
 	}
 
 	if err := retirementMgr.SwitchScenario(filename); err != nil {
+		if status := statusForScenarioOperationError(err); status != http.StatusInternalServerError {
+			renderRetargetedError(w, err.Error(), status, "#whatif-scenario-error")
+			return
+		}
 		renderError(w, "Failed to switch scenario: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -2417,13 +2453,17 @@ func handleSwitchScenario(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteScenario(w http.ResponseWriter, r *http.Request) {
-	filename := chi.URLParam(r, "filename")
+	filename := strings.TrimSpace(chi.URLParam(r, "filename"))
 	if filename == "" {
-		renderError(w, "Scenario filename is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Scenario filename is required", http.StatusBadRequest, "#whatif-scenario-error")
 		return
 	}
 
 	if err := retirementMgr.DeleteScenario(filename); err != nil {
+		if status := statusForScenarioOperationError(err); status != http.StatusInternalServerError {
+			renderRetargetedError(w, err.Error(), status, "#whatif-scenario-error")
+			return
+		}
 		renderError(w, "Failed to delete scenario: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -2434,19 +2474,23 @@ func handleDeleteScenario(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRenameScenario(w http.ResponseWriter, r *http.Request) {
-	filename := chi.URLParam(r, "filename")
+	filename := strings.TrimSpace(chi.URLParam(r, "filename"))
 	if filename == "" {
-		renderError(w, "Scenario filename is required", http.StatusBadRequest)
+		renderRetargetedError(w, "Scenario filename is required", http.StatusBadRequest, "#whatif-scenario-error")
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		renderError(w, "New scenario name is required", http.StatusBadRequest)
+		renderRetargetedError(w, "New scenario name is required", http.StatusBadRequest, "#whatif-scenario-error")
 		return
 	}
 
 	if err := retirementMgr.RenameScenario(filename, name); err != nil {
+		if status := statusForScenarioOperationError(err); status != http.StatusInternalServerError {
+			renderRetargetedError(w, err.Error(), status, "#whatif-scenario-error")
+			return
+		}
 		renderError(w, "Failed to rename scenario: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

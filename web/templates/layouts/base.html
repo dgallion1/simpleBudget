@@ -161,6 +161,11 @@
             (function () {
                 var savedScroll = null;
                 document.body.addEventListener('htmx:beforeSwap', function (evt) {
+                    if (evt.detail.xhr && evt.detail.xhr.status >= 400 && evt.detail.xhr.status < 500 &&
+                        evt.detail.xhr.getResponseHeader('HX-Retarget')) {
+                        evt.detail.shouldSwap = true;
+                        evt.detail.isError = false;
+                    }
                     if (evt.detail.target && evt.detail.target.id === 'whatif-results') {
                         savedScroll = window.scrollY || document.documentElement.scrollTop;
                     }

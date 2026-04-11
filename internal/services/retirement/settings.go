@@ -2,6 +2,7 @@ package retirement
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -37,6 +38,63 @@ func (e *ScenarioChainValidationError) Error() string {
 }
 
 func (e *ScenarioChainValidationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// ScenarioValidationError reports invalid scenario input supplied by the user.
+type ScenarioValidationError struct {
+	Err error
+}
+
+func (e *ScenarioValidationError) Error() string {
+	if e == nil || e.Err == nil {
+		return "invalid scenario"
+	}
+	return e.Err.Error()
+}
+
+func (e *ScenarioValidationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// ScenarioNotFoundError reports a requested scenario file that does not exist.
+type ScenarioNotFoundError struct {
+	Err error
+}
+
+func (e *ScenarioNotFoundError) Error() string {
+	if e == nil || e.Err == nil {
+		return "scenario not found"
+	}
+	return e.Err.Error()
+}
+
+func (e *ScenarioNotFoundError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// ScenarioConflictError reports user-correctable conflicts with the current scenario state.
+type ScenarioConflictError struct {
+	Err error
+}
+
+func (e *ScenarioConflictError) Error() string {
+	if e == nil || e.Err == nil {
+		return "scenario conflict"
+	}
+	return e.Err.Error()
+}
+
+func (e *ScenarioConflictError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
@@ -1081,7 +1139,7 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 
 // slugify converts a scenario name to a URL-safe filename slug
 func slugify(name string) string {
-	slug := strings.ToLower(name)
+	slug := strings.ToLower(strings.TrimSpace(name))
 	slug = strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 			return r
@@ -1118,24 +1176,26 @@ func (sm *SettingsManager) readScenarioName(filename string) string {
 	if err := json.Unmarshal(data, &partial); err != nil {
 		return filename
 	}
-	if partial.ScenarioName == "" {
+	name := strings.TrimSpace(partial.ScenarioName)
+	if name == "" {
 		return filename
 	}
-	return partial.ScenarioName
+	return name
 }
 
 func (sm *SettingsManager) scenarioPath(filename string) (string, error) {
+	filename = strings.TrimSpace(filename)
 	if filename == "" {
-		return "", fmt.Errorf("scenario filename is required")
+		return "", &ScenarioValidationError{Err: errors.New("scenario filename is required")}
 	}
 	if filepath.Base(filename) != filename || strings.Contains(filename, "..") {
-		return "", fmt.Errorf("invalid scenario filename: %s", filename)
+		return "", &ScenarioValidationError{Err: fmt.Errorf("invalid scenario filename: %s", filename)}
 	}
 	if strings.ContainsAny(filename, `/\`) {
-		return "", fmt.Errorf("invalid scenario filename: %s", filename)
+		return "", &ScenarioValidationError{Err: fmt.Errorf("invalid scenario filename: %s", filename)}
 	}
 	if !strings.HasPrefix(filename, "whatif") || !strings.HasSuffix(filename, ".json") {
-		return "", fmt.Errorf("invalid scenario filename: %s", filename)
+		return "", &ScenarioValidationError{Err: fmt.Errorf("invalid scenario filename: %s", filename)}
 	}
 	return filepath.Join(sm.settingsDir, filename), nil
 }
@@ -1214,13 +1274,18 @@ func (sm *SettingsManager) SwitchScenario(filename string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	filename = strings.TrimSpace(filename)
+
 	// Validate the file exists
 	path, err := sm.scenarioPath(filename)
 	if err != nil {
 		return err
 	}
 	if _, err := sm.store.Stat(path); err != nil {
-		return fmt.Errorf("scenario file not found: %s", filename)
+		if os.IsNotExist(err) {
+			return &ScenarioNotFoundError{Err: fmt.Errorf("scenario file not found: %s", filename)}
+		}
+		return fmt.Errorf("checking scenario file: %w", err)
 	}
 
 	sm.filename = filename
@@ -1232,6 +1297,11 @@ func (sm *SettingsManager) SwitchScenario(filename string) error {
 func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, &ScenarioValidationError{Err: errors.New("scenario name is required")}
+	}
 
 	// Load current settings
 	settings, err := sm.loadInternal()
@@ -1249,6 +1319,8 @@ func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, 
 	for {
 		if _, err := sm.store.Stat(path); os.IsNotExist(err) {
 			break
+		} else if err != nil {
+			return nil, fmt.Errorf("checking scenario file: %w", err)
 		}
 		counter++
 		filename = fmt.Sprintf("whatif_%s-%d.json", slug, counter)
@@ -1310,13 +1382,14 @@ func (sm *SettingsManager) DeleteScenario(filename string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	filename = strings.TrimSpace(filename)
 	if filename == "whatif.json" {
-		return fmt.Errorf("cannot delete the default scenario")
+		return &ScenarioConflictError{Err: errors.New("cannot delete the default scenario")}
 	}
 
 	// Referential integrity: reject deletion if other scenarios reference this file
 	if refs := sm.scenariosReferencingFile(filename); len(refs) > 0 {
-		return fmt.Errorf("cannot delete scenario %s: referenced by %s", filename, strings.Join(refs, ", "))
+		return &ScenarioConflictError{Err: fmt.Errorf("cannot delete scenario %s: referenced by %s", filename, strings.Join(refs, ", "))}
 	}
 
 	path, err := sm.scenarioPath(filename)
@@ -1324,6 +1397,9 @@ func (sm *SettingsManager) DeleteScenario(filename string) error {
 		return err
 	}
 	if err := sm.store.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return &ScenarioNotFoundError{Err: fmt.Errorf("scenario file not found: %s", filename)}
+		}
 		return fmt.Errorf("deleting scenario: %w", err)
 	}
 
@@ -1342,8 +1418,14 @@ func (sm *SettingsManager) RenameScenario(filename, newName string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	filename = strings.TrimSpace(filename)
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return &ScenarioValidationError{Err: errors.New("scenario name is required")}
+	}
+
 	if filename == "whatif.json" {
-		return fmt.Errorf("cannot rename the default scenario")
+		return &ScenarioConflictError{Err: errors.New("cannot rename the default scenario")}
 	}
 
 	path, err := sm.scenarioPath(filename)
@@ -1352,6 +1434,9 @@ func (sm *SettingsManager) RenameScenario(filename, newName string) error {
 	}
 	data, err := sm.store.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return &ScenarioNotFoundError{Err: fmt.Errorf("scenario file not found: %s", filename)}
+		}
 		return fmt.Errorf("reading scenario: %w", err)
 	}
 

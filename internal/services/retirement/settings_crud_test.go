@@ -528,6 +528,16 @@ func TestReadScenarioName(t *testing.T) {
 		t.Errorf("readScenarioName empty = %q, want filename", got)
 	}
 
+	// File with whitespace-only scenario_name also falls back to filename
+	data, _ = json.Marshal(map[string]string{"scenario_name": "   "})
+	if err := store.WriteFile(filepath.Join(settingsDir, "whatif_blankish.json"), data, 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	got = sm.readScenarioName("whatif_blankish.json")
+	if got != "whatif_blankish.json" {
+		t.Errorf("readScenarioName whitespace = %q, want filename", got)
+	}
+
 	// Non-existent file falls back to filename
 	got = sm.readScenarioName("whatif_nope.json")
 	if got != "whatif_nope.json" {
@@ -620,6 +630,29 @@ func TestCreateScenario(t *testing.T) {
 	}
 	if s2.ScenarioName != "Early Retirement" {
 		t.Errorf("expected scenario name 'Early Retirement', got %q", s2.ScenarioName)
+	}
+}
+
+func TestCreateScenario_TrimmedName(t *testing.T) {
+	sm := newTestSM(t)
+
+	s, err := sm.CreateScenario("  Early Retirement  ")
+	if err != nil {
+		t.Fatalf("CreateScenario: %v", err)
+	}
+	if s.ScenarioName != "Early Retirement" {
+		t.Fatalf("ScenarioName = %q, want %q", s.ScenarioName, "Early Retirement")
+	}
+	if sm.ActiveFilename() != "whatif_early-retirement.json" {
+		t.Fatalf("ActiveFilename = %q, want %q", sm.ActiveFilename(), "whatif_early-retirement.json")
+	}
+}
+
+func TestCreateScenario_WhitespaceName(t *testing.T) {
+	sm := newTestSM(t)
+
+	if _, err := sm.CreateScenario("   "); err == nil {
+		t.Fatal("expected error for whitespace-only scenario name")
 	}
 }
 
@@ -955,6 +988,37 @@ func TestRenameScenario(t *testing.T) {
 		}
 		if s2.ScenarioName != "After Rename" {
 			t.Errorf("expected 'After Rename', got %q", s2.ScenarioName)
+		}
+	})
+
+	t.Run("trim whitespace around new name", func(t *testing.T) {
+		sm := newTestSM(t)
+
+		if _, err := sm.CreateScenario("Before Rename"); err != nil {
+			t.Fatalf("CreateScenario: %v", err)
+		}
+		filename := sm.ActiveFilename()
+
+		if err := sm.RenameScenario(filename, "  After Rename  "); err != nil {
+			t.Fatalf("RenameScenario: %v", err)
+		}
+
+		name := sm.readScenarioName(filename)
+		if name != "After Rename" {
+			t.Fatalf("readScenarioName = %q, want %q", name, "After Rename")
+		}
+	})
+
+	t.Run("reject whitespace-only name", func(t *testing.T) {
+		sm := newTestSM(t)
+
+		if _, err := sm.CreateScenario("Before Rename"); err != nil {
+			t.Fatalf("CreateScenario: %v", err)
+		}
+		filename := sm.ActiveFilename()
+
+		if err := sm.RenameScenario(filename, "   "); err == nil {
+			t.Fatal("expected error for whitespace-only scenario name")
 		}
 	})
 }

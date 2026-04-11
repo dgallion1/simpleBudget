@@ -74,7 +74,8 @@
 
 {{/* Add Income Form */}}
 {{define "whatif-add-income-form"}}
-<form hx-post="/whatif/income" hx-target="#whatif-results" hx-on::after-request="this.reset()"
+<div id="whatif-add-income-error" class="mb-2"></div>
+<form hx-post="/whatif/income" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-2 border-t dark:border-gray-700 pt-3">
     <div class="grid grid-cols-2 gap-2">
         <input type="text" name="name" placeholder="Name (e.g., Social Security)"

@@ -90,6 +90,16 @@ func readBody(t *testing.T, resp *http.Response) string {
 	return string(body)
 }
 
+func assertRetargetHeader(t *testing.T, w *httptest.ResponseRecorder, target string) {
+	t.Helper()
+	if got := w.Header().Get("HX-Retarget"); got != target {
+		t.Fatalf("HX-Retarget = %q, want %q", got, target)
+	}
+	if got := w.Header().Get("HX-Reswap"); got != "innerHTML" {
+		t.Fatalf("HX-Reswap = %q, want innerHTML", got)
+	}
+}
+
 // chiRequest creates an http.Request with chi URL params set.
 func chiRequest(method, path string, body io.Reader, params map[string]string) *http.Request {
 	req := httptest.NewRequest(method, path, body)
@@ -928,6 +938,7 @@ func TestHandleWhatIfAddIncome_MissingName(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-add-income-error")
 }
 
 func TestHandleWhatIfAddIncome_MissingAmount(t *testing.T) {
@@ -1190,6 +1201,7 @@ func TestHandleWhatIfAddExpense_MissingName(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-add-expense-error")
 }
 
 func TestHandleWhatIfAddExpense_MissingAmount(t *testing.T) {
@@ -1542,6 +1554,7 @@ func TestHandleWhatIfAddHealthcare_BadAge(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-add-healthcare-error")
 }
 
 func TestHandleWhatIfAddHealthcare_AgeTooHigh(t *testing.T) {
@@ -2213,25 +2226,25 @@ func TestHandleWhatIfAddBigTicket_NegativeYear(t *testing.T) {
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	handleWhatIfAddBigTicket(w, req)
-	// Negative year is clamped to 0, should succeed
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 (year clamped), got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-add-bigticket-error")
 }
 
 func TestHandleWhatIfAddBigTicket_BadYear(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Invalid year falls back to 0 (per code logic)
 	form := url.Values{"name": {"Test"}, "amount": {"100"}, "year": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	handleWhatIfAddBigTicket(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 (bad year defaults to 0), got %d", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-add-bigticket-error")
 }
 
 func TestHandleWhatIfDeleteBigTicket(t *testing.T) {
@@ -2312,6 +2325,22 @@ func TestHandleCreateScenario_MissingName(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
+}
+
+func TestHandleCreateScenario_WhitespaceName(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"name": {"   "}}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/scenarios", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleCreateScenario(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
 }
 
 func TestHandleSwitchScenario(t *testing.T) {
@@ -2390,6 +2419,69 @@ func TestHandleDeleteScenario_MissingFilename(t *testing.T) {
 	}
 }
 
+func TestHandleDeleteScenario_DefaultScenarioConflict(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/scenarios/whatif.json", nil, map[string]string{"filename": "whatif.json"})
+	handleDeleteScenario(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", w.Code)
+	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
+}
+
+func TestHandleDeleteScenario_ReferencedScenarioConflict(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if _, err := rm.CreateScenario("Primary"); err != nil {
+		t.Fatalf("CreateScenario primary: %v", err)
+	}
+	if _, err := rm.CreateScenario("Chain Target"); err != nil {
+		t.Fatalf("CreateScenario target: %v", err)
+	}
+
+	scenarios, err := rm.ListScenarios()
+	if err != nil {
+		t.Fatalf("ListScenarios: %v", err)
+	}
+
+	var primaryFile, targetFile string
+	for _, s := range scenarios {
+		if s.Name == "Primary" {
+			primaryFile = s.Filename
+		}
+		if s.Name == "Chain Target" {
+			targetFile = s.Filename
+		}
+	}
+
+	if err := rm.SwitchScenario(primaryFile); err != nil {
+		t.Fatalf("SwitchScenario primary: %v", err)
+	}
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	settings.ScenarioChain = []models.ScenarioChainLink{{
+		ScenarioFilename: targetFile,
+		TransitionAge:    70,
+	}}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/scenarios/"+targetFile, nil, map[string]string{"filename": targetFile})
+	handleDeleteScenario(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", w.Code)
+	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
+}
+
 func TestHandleRenameScenario(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -2436,6 +2528,44 @@ func TestHandleRenameScenario_MissingName(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
+}
+
+func TestHandleRenameScenario_DefaultScenarioConflict(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"name": {"Something Else"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/scenarios/whatif.json", formBody(form), map[string]string{"filename": "whatif.json"})
+	handleRenameScenario(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", w.Code)
+	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
+}
+
+func TestHandleRenameScenario_WhitespaceName(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	rm.CreateScenario("Old Name")
+	scenarios, _ := rm.ListScenarios()
+	var targetFile string
+	for _, s := range scenarios {
+		if s.Name == "Old Name" {
+			targetFile = s.Filename
+		}
+	}
+
+	form := url.Values{"name": {"   "}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/scenarios/"+targetFile, formBody(form), map[string]string{"filename": targetFile})
+	handleRenameScenario(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
 }
 
 // ── Chain ───────────────────────────────────────────────────────────────────
@@ -3708,14 +3838,15 @@ func TestHandleSwitchScenario_NonexistentFile(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"filename": {"nonexistent.json"}}
+	form := url.Values{"filename": {"whatif_nonexistent.json"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/scenarios/switch", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	handleSwitchScenario(w, req)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for nonexistent scenario, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent scenario, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
 }
 
 func TestHandleDeleteScenario_NonexistentFile(t *testing.T) {
@@ -3723,11 +3854,12 @@ func TestHandleDeleteScenario_NonexistentFile(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := chiRequest("DELETE", "/whatif/scenarios/nonexistent.json", nil, map[string]string{"filename": "nonexistent.json"})
+	req := chiRequest("DELETE", "/whatif/scenarios/whatif_nonexistent.json", nil, map[string]string{"filename": "whatif_nonexistent.json"})
 	handleDeleteScenario(w, req)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for nonexistent scenario, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent scenario, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
 }
 
 func TestHandleRenameScenario_NonexistentFile(t *testing.T) {
@@ -3736,11 +3868,12 @@ func TestHandleRenameScenario_NonexistentFile(t *testing.T) {
 
 	form := url.Values{"name": {"New Name"}}
 	w := httptest.NewRecorder()
-	req := chiRequest("PUT", "/whatif/scenarios/nonexistent.json", formBody(form), map[string]string{"filename": "nonexistent.json"})
+	req := chiRequest("PUT", "/whatif/scenarios/whatif_nonexistent.json", formBody(form), map[string]string{"filename": "whatif_nonexistent.json"})
 	handleRenameScenario(w, req)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for nonexistent scenario, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent scenario, got %d", w.Code)
 	}
+	assertRetargetHeader(t, w, "#whatif-scenario-error")
 }
 
 // ── Test handleWhatIfUpdateChain with invalid validation ───────────────────

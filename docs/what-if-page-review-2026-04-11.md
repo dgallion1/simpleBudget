@@ -58,11 +58,15 @@ Date: 2026-04-11
 Applied on 2026-04-11:
 
 - Finding 1 fixed. `GET /whatif` no longer auto-syncs and saves dashboard data on page load.
+- Finding 5 fixed. Add-income, add-expense, add-healthcare, and big-ticket validation errors now retarget to inline form error regions instead of wiping results, and the add forms only reset/hide after successful requests.
 - Finding 8 fixed. Spending-phase saves now preserve submitted phases beyond index 19.
 - Finding 9 fixed. Roth conversion updates now reject negative amounts, negative years, and `end_year < start_year`.
+- Finding 10 fixed. Big-ticket adds now reject malformed and negative years instead of coercing them to year `0`.
 - Finding 11 fixed. Steady-state timing now includes optimizer-driven Social Security claim starts.
 - Finding 13 fixed. The `Higher Healthcare` sensitivity scenario now varies person-based healthcare costs when `HealthcarePersons` is populated.
 - Finding 15 fixed. Invalid scenario chains now fail save validation instead of being silently stripped.
+- Finding 16 fixed. Scenario CRUD handlers now map user-correctable manager errors to `400`/`404`/`409` instead of `500`.
+- Finding 17 fixed. Scenario create/rename paths now trim names and reject whitespace-only values, and blankish persisted names fall back to filenames in the switcher.
 - Related hardening: failed `Save` calls now clear the in-memory settings cache so invalid unsaved state does not leak into later reads.
 
 Verification for the implementation pass:

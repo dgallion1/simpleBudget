@@ -80,7 +80,8 @@
 
 {{/* Add Expense Form */}}
 {{define "whatif-add-expense-form"}}
-<form hx-post="/whatif/expense" hx-target="#whatif-results" hx-on::after-request="this.reset()"
+<div id="whatif-add-expense-error" class="mb-2"></div>
+<form hx-post="/whatif/expense" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-2 border-t dark:border-gray-700 pt-3">
     <div class="grid grid-cols-2 gap-2">
         <input type="text" name="name" placeholder="Name (e.g., Travel)"

@@ -365,8 +365,8 @@ The What-If Planner helps you model retirement scenarios with sophisticated proj
 
 - **RMD Calculations**: IRS-compliant Required Minimum Distributions starting at age 73
 - **Roth Conversions**: Model annual conversion strategies with tax impact
-- **Spending Phases**: Go-Go/Slow-Go/No-Go retirement spending patterns
-- **Social Security Optimizer**: Compare claiming ages 62-70 and optionally select claim ages that feed directly into projection income; manual Social Security income sources are ignored while optimizer projection is active to avoid double counting.
+- **Spending Phases**: Go-Go/Slow-Go/No-Go retirement spending patterns with spending trajectory preview showing per-year spend, income, need, RMD, and withdrawal rate
+- **Social Security Optimizer**: Compare claiming ages 62-70 and optionally select claim ages that feed directly into projection income; manual Social Security income sources are ignored while optimizer projection is active to avoid double counting. When a person has already claimed (claim age <= current age), the entered amount is treated as the actual benefit received — no actuarial adjustment is applied, and the UI label changes to "Your Monthly Benefit."
 - **Healthcare Costs**: Model costs for multiple household members with Medicare transitions
 - **Big Ticket Items**: One-time events (inheritance, home sale, large purchases)
 - **Projection Start Month**: Anchor ages and chained scenarios to a specific `YYYY-MM` start month instead of duplicated saved ages

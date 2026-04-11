@@ -142,7 +142,7 @@
                         <th class="text-right py-1">Income</th>
                         <th class="text-right py-1">Need</th>
                         <th class="text-right py-1">RMD</th>
-                        <th class="text-right py-1">WR%</th>
+                        <th class="text-right py-1" title="Withdrawal Rate: annual withdrawal as % of total portfolio">WR%</th>
                     </tr>
                 </thead>
                 <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">
@@ -186,6 +186,8 @@ if (typeof updatePhasePreview === 'function') {
 
 {{/* Spending Phases Scripts */}}
 {{define "whatif-spending-phases-scripts"}}
+<input type="hidden" id="main-current-age" value="{{.Settings.CurrentAge}}">
+<input type="hidden" id="spouse-age-input" value="{{.Settings.SpouseAge}}">
 <div id="expense-sources-data-wrapper">
 {{template "whatif-expense-sources-data" .}}
 </div>
@@ -399,7 +401,10 @@ function updatePhasePreview() {
     }
 
     // Check if phases are enabled
-    const phasesEnabled = document.querySelector('[name="enabled"]')?.checked || false;
+    // Check both the checkbox (toggle) and hidden input (form state)
+    const enabledCheckbox = document.querySelector('input[type="checkbox"][name="enabled"]');
+    const enabledHidden = document.querySelector('input[type="hidden"][name="enabled"]');
+    const phasesEnabled = enabledCheckbox ? enabledCheckbox.checked : (enabledHidden?.value === 'true');
 
     // Get phase settings - dynamically detect all phases
     const phases = [];

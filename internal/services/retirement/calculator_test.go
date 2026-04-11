@@ -452,8 +452,10 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 			ClaimAge:   62,
 		}
 
+		// When already claiming (ClaimAge <= CurrentAge), the entered amount
+		// is treated as the actual benefit, not PIA — no adjustment applied.
 		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
-		want := AdjustedSSBenefit(2000, 67, 62)
+		want := 2000.0
 		if math.Abs(breakdown.SocialSecurityIncome-want) > 0.01 {
 			t.Fatalf("SocialSecurityIncome = %.2f, want %.2f", breakdown.SocialSecurityIncome, want)
 		}
@@ -479,8 +481,10 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 
 		settings.SocialSecurity.SpouseClaimAge = 67
 		withSpouseClaim := calculateMonthlyIncomeBreakdown(settings, 0)
-		if withSpouseClaim.SocialSecurityIncome != 4500 {
-			t.Fatalf("SocialSecurityIncome with spouse claim = %.2f, want 4500", withSpouseClaim.SocialSecurityIncome)
+		// Both already claiming (ClaimAge <= CurrentAge): entered amounts are
+		// actual benefits, no adjustment or spousal top-up applied (3000 + 1000).
+		if withSpouseClaim.SocialSecurityIncome != 4000 {
+			t.Fatalf("SocialSecurityIncome with spouse claim = %.2f, want 4000", withSpouseClaim.SocialSecurityIncome)
 		}
 	})
 }

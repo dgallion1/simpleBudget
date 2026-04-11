@@ -8,8 +8,9 @@
     <form hx-post="/whatif/social-security" hx-target="#whatif-results" class="space-y-3">
         {{$claimAge := 0}}
         {{if .Settings.SocialSecurity}}{{$claimAge = .Settings.SocialSecurity.ClaimAge}}{{end}}
+        {{$alreadyClaimed := and (gt $claimAge 0) (le $claimAge .Settings.CurrentAge)}}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Monthly Benefit at FRA</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{if $alreadyClaimed}}Your Monthly Benefit{{else}}Monthly Benefit at FRA{{end}}</label>
             <div class="flex items-center gap-2">
                 <span class="text-gray-500 dark:text-gray-400">$</span>
                 <input type="number" name="fra_benefit" step="1" min="0" max="10000"
@@ -17,7 +18,11 @@
                     placeholder="e.g. 2500"
                     class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             </div>
+            {{if $alreadyClaimed}}
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">The amount you currently receive each month</p>
+            {{else}}
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Find this on your SSA statement at ssa.gov</p>
+            {{end}}
         </div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -50,7 +55,7 @@
             {{if and .Analysis .Analysis.SocialSecurity (gt $claimAge 0)}}
             {{range .Analysis.SocialSecurity.Options}}
             {{if eq .ClaimAge $claimAge}}
-            <p class="text-xs text-indigo-600 dark:text-indigo-400 mt-1">Projected benefit: ${{formatNumber .MonthlyBenefit}}/mo at age {{.ClaimAge}}</p>
+            <p class="text-xs text-indigo-600 dark:text-indigo-400 mt-1">{{if $alreadyClaimed}}Current benefit{{else}}Projected benefit{{end}}: ${{formatNumber .MonthlyBenefit}}/mo at age {{.ClaimAge}}</p>
             {{end}}
             {{end}}
             {{end}}

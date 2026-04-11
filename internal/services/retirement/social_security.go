@@ -90,14 +90,25 @@ func projectedSocialSecurityIncome(s *models.WhatIfSettings, month int) float64 
 	spouseFRA := normalizedSSFRA(ss.SpouseFRA)
 	colaRate := normalizedSSCOLARate(ss.COLARate)
 
-	primaryBase := AdjustedSSBenefit(ss.FRABenefit, fra, ss.ClaimAge)
+	// When already claiming (ClaimAge <= CurrentAge), the entered amount is the
+	// actual benefit received, not the PIA — use it directly without adjustment.
+	alreadyClaiming := ss.ClaimAge <= s.CurrentAge
+	primaryBase := ss.FRABenefit
+	if !alreadyClaiming {
+		primaryBase = AdjustedSSBenefit(ss.FRABenefit, fra, ss.ClaimAge)
+	}
 	spouseBase := 0.0
+	spouseAlreadyClaiming := validSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= s.SpouseAge
 	projectSpouse := s.HasSpouse() && s.SpouseAge > 0 && ss.SpouseFRABenefit > 0 && validSSClaimAge(ss.SpouseClaimAge)
 	if projectSpouse {
-		spouseBase = AdjustedSSBenefit(ss.SpouseFRABenefit, spouseFRA, ss.SpouseClaimAge)
-		if ss.FRABenefit > ss.SpouseFRABenefit {
+		if spouseAlreadyClaiming {
+			spouseBase = ss.SpouseFRABenefit
+		} else {
+			spouseBase = AdjustedSSBenefit(ss.SpouseFRABenefit, spouseFRA, ss.SpouseClaimAge)
+		}
+		if !alreadyClaiming && ss.FRABenefit > ss.SpouseFRABenefit {
 			spouseBase = SpousalTopUp(spouseBase, ss.FRABenefit, spouseFRA, ss.SpouseClaimAge)
-		} else if ss.SpouseFRABenefit > ss.FRABenefit {
+		} else if !spouseAlreadyClaiming && ss.SpouseFRABenefit > ss.FRABenefit {
 			primaryBase = SpousalTopUp(primaryBase, ss.SpouseFRABenefit, fra, ss.ClaimAge)
 		}
 	}
@@ -166,6 +177,25 @@ func AdjustedSSBenefit(pia float64, fra int, claimAge int) float64 {
 	}
 
 	return pia
+}
+
+// DerivedPIA back-derives the PIA from an actual benefit amount and the
+// claiming age, reversing the SSA actuarial adjustment. This is used when
+// a person has already claimed and enters their actual benefit rather than PIA.
+func DerivedPIA(actualBenefit float64, fra, claimAge int) float64 {
+	if claimAge < 62 {
+		claimAge = 62
+	}
+	if claimAge > 70 {
+		claimAge = 70
+	}
+	// AdjustedSSBenefit(pia, fra, claimAge) = pia * factor
+	// So pia = actualBenefit / factor
+	factor := AdjustedSSBenefit(1.0, fra, claimAge)
+	if factor <= 0 {
+		return actualBenefit
+	}
+	return actualBenefit / factor
 }
 
 func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge int) float64 {
@@ -305,19 +335,31 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 	fra := normalizedSSFRA(ss.FRA)
 	colaRate := normalizedSSCOLARate(ss.COLARate)
 
-	options := SSComparisonTable(ss.FRABenefit, fra, c.Settings.CurrentAge, colaRate)
-	breakevens := SSBreakevenAges(ss.FRABenefit, fra, colaRate)
-	if ss.SpouseFRABenefit > ss.FRABenefit {
-		options = SSComparisonTableWithSpousalTopUp(ss.FRABenefit, fra, c.Settings.CurrentAge, colaRate, ss.SpouseFRABenefit)
-		breakevens = SSBreakevenAgesWithSpousalTopUp(ss.FRABenefit, fra, colaRate, ss.SpouseFRABenefit)
+	// When already claiming, the entered amount is the actual benefit, not PIA.
+	// Back-derive PIA for the comparison table so hypothetical ages are correct.
+	primaryPIA := ss.FRABenefit
+	if ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra {
+		primaryPIA = DerivedPIA(ss.FRABenefit, fra, ss.ClaimAge)
+	}
+
+	options := SSComparisonTable(primaryPIA, fra, c.Settings.CurrentAge, colaRate)
+	breakevens := SSBreakevenAges(primaryPIA, fra, colaRate)
+	if ss.SpouseFRABenefit > primaryPIA {
+		options = SSComparisonTableWithSpousalTopUp(primaryPIA, fra, c.Settings.CurrentAge, colaRate, ss.SpouseFRABenefit)
+		breakevens = SSBreakevenAgesWithSpousalTopUp(primaryPIA, fra, colaRate, ss.SpouseFRABenefit)
 	}
 
 	bestAge := 0
 	bestCum := 0.0
-	for _, opt := range options {
-		if opt.CumulativeAt85 > bestCum {
-			bestCum = opt.CumulativeAt85
-			bestAge = opt.ClaimAge
+	if ss.ClaimAge <= c.Settings.CurrentAge {
+		// Already claiming — don't suggest a different age
+		bestAge = ss.ClaimAge
+	} else {
+		for _, opt := range options {
+			if opt.CumulativeAt85 > bestCum {
+				bestCum = opt.CumulativeAt85
+				bestAge = opt.ClaimAge
+			}
 		}
 	}
 
@@ -340,11 +382,16 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 			spouseOptions = SSComparisonTable(ss.SpouseFRABenefit, spouseFRA, spouseAge, colaRate)
 			spouseBreakevens = SSBreakevenAges(ss.SpouseFRABenefit, spouseFRA, colaRate)
 		}
-		bestCum = 0
-		for _, opt := range spouseOptions {
-			if opt.CumulativeAt85 > bestCum {
-				bestCum = opt.CumulativeAt85
-				spouseBestAge = opt.ClaimAge
+		if validSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= spouseAge {
+			// Spouse already claiming — don't suggest a different age
+			spouseBestAge = ss.SpouseClaimAge
+		} else {
+			bestCum = 0
+			for _, opt := range spouseOptions {
+				if opt.CumulativeAt85 > bestCum {
+					bestCum = opt.CumulativeAt85
+					spouseBestAge = opt.ClaimAge
+				}
 			}
 		}
 	}

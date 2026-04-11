@@ -1389,7 +1389,7 @@ func TestValidateScenarioChain_ValidChain(t *testing.T) {
 	}
 }
 
-func TestSave_StripsInvalidChainOnAgeChange(t *testing.T) {
+func TestSave_RejectsInvalidChainOnAgeChange(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
 
 	// Create a scenario file that the chain will reference
@@ -1423,20 +1423,20 @@ func TestSave_StripsInvalidChainOnAgeChange(t *testing.T) {
 	settings2.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: "whatif_future.json", TransitionAge: 70}, // now invalid
 	}
-	if err := sm.Save(settings2); err != nil {
-		t.Fatalf("Save with raised age: %v", err)
+	if err := sm.Save(settings2); err == nil {
+		t.Fatal("expected save to fail when age change invalidates scenario chain")
 	}
 
-	// Chain should have been stripped
+	// The previous valid settings should still be on disk.
 	loaded2, err := sm.Load()
 	if err != nil {
 		t.Fatalf("Load after age change: %v", err)
 	}
-	if len(loaded2.ScenarioChain) != 0 {
-		t.Errorf("expected chain to be stripped after age change, got %d links", len(loaded2.ScenarioChain))
+	if len(loaded2.ScenarioChain) != 1 {
+		t.Errorf("expected prior valid chain to remain, got %d links", len(loaded2.ScenarioChain))
 	}
-	if loaded2.CurrentAge != 75 {
-		t.Errorf("expected CurrentAge 75, got %d", loaded2.CurrentAge)
+	if loaded2.CurrentAge != 65 {
+		t.Errorf("expected CurrentAge 65 from last successful save, got %d", loaded2.CurrentAge)
 	}
 }
 

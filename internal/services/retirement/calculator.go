@@ -1584,6 +1584,20 @@ func (c *Calculator) findSteadyStateMonth() int {
 		}
 	}
 
+	if socialSecurityProjectionActive(c.Settings) {
+		ss := c.Settings.SocialSecurity
+		if ss != nil && ss.FRABenefit > 0 {
+			if startMonth := claimStartMonth(c.Settings.CurrentAge, ss.ClaimAge); startMonth > maxStartMonth {
+				maxStartMonth = startMonth
+			}
+		}
+		if ss != nil && c.Settings.HasSpouse() && ss.SpouseFRABenefit > 0 && validSSClaimAge(ss.SpouseClaimAge) {
+			if startMonth := claimStartMonth(c.Settings.SpouseAge, ss.SpouseClaimAge); startMonth > maxStartMonth {
+				maxStartMonth = startMonth
+			}
+		}
+	}
+
 	// Cap at projection length
 	maxMonth := c.Settings.ProjectionYears * 12
 	if maxStartMonth > maxMonth {
@@ -1703,6 +1717,7 @@ func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
 		modifiedSettings := *c.Settings
 		modifiedSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 		modifiedSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
+		modifiedSettings.HealthcarePersons = append([]models.HealthcarePerson{}, c.Settings.HealthcarePersons...)
 
 		switch scenario.ParamName {
 		case "investment_return":
@@ -1712,7 +1727,15 @@ func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
 		case "monthly_living_expenses":
 			modifiedSettings.MonthlyLivingExpenses = scenario.ParamValue
 		case "monthly_healthcare":
-			modifiedSettings.MonthlyHealthcare = scenario.ParamValue
+			if len(modifiedSettings.HealthcarePersons) > 0 {
+				for i := range modifiedSettings.HealthcarePersons {
+					modifiedSettings.HealthcarePersons[i].CurrentMonthlyCost *= 1.5
+					modifiedSettings.HealthcarePersons[i].MedicareMonthlyCost *= 1.5
+					modifiedSettings.HealthcarePersons[i].ACACostAfterEmployer *= 1.5
+				}
+			} else {
+				modifiedSettings.MonthlyHealthcare = scenario.ParamValue
+			}
 		}
 
 		// Run projection with modified settings

@@ -514,12 +514,12 @@ func TestCalculateBudgetFit_HealthcarePersonsWithEmployerCoverage(t *testing.T) 
 	s.MonthlyHealthcare = 0
 	s.HealthcarePersons = []models.HealthcarePerson{
 		{
-			ID:                   "hp1",
-			Name:                 "User",
-			CurrentAge:           60,
-			CurrentCoverage:      models.CoverageEmployer,
+			ID:                    "hp1",
+			Name:                  "User",
+			CurrentAge:            60,
+			CurrentCoverage:       models.CoverageEmployer,
 			EmployerCoverageYears: 5,
-			CurrentMonthlyCost:   0,
+			CurrentMonthlyCost:    0,
 		},
 	}
 
@@ -581,13 +581,13 @@ func TestLoadScenarioSettings_WithTaxableFields(t *testing.T) {
 
 	// Create scenario with explicit taxable fields
 	settings := map[string]interface{}{
-		"scenario_name":                      "Test",
-		"portfolio_value":                    1000000,
-		"monthly_living_expenses":            3000,
-		"current_age":                        65,
-		"projection_years":                   10,
-		"taxable_dividend_yield":             2.0,
-		"taxable_qualified_dividend_percent": 0,
+		"scenario_name":                       "Test",
+		"portfolio_value":                     1000000,
+		"monthly_living_expenses":             3000,
+		"current_age":                         65,
+		"projection_years":                    10,
+		"taxable_dividend_yield":              2.0,
+		"taxable_qualified_dividend_percent":  0,
 		"taxable_cap_gains_distribution_rate": 0,
 	}
 	data, _ := json.MarshalIndent(settings, "", "  ")
@@ -764,37 +764,30 @@ func TestLoadScenarioSettings_PathTraversal(t *testing.T) {
 	}
 }
 
-// --- settings.go saveInternal: strip invalid chain on save ---
+// --- settings.go saveInternal: reject invalid chain on save ---
 
-func TestSaveInternal_StripsInvalidChain(t *testing.T) {
+func TestSaveInternal_RejectsInvalidChain(t *testing.T) {
 	sm := newTestSM(t)
 
-	// Load default settings
 	settings, err := sm.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	// Add an invalid chain (references nonexistent scenario)
 	settings.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: "whatif_nonexistent.json", TransitionAge: 70},
 	}
 
-	// UpdateSettings should trigger saveInternal which strips invalid chain
-	_, err = sm.UpdateSettings(map[string]interface{}{
-		"portfolio_value": float64(500000),
-	})
-	if err != nil {
-		t.Fatalf("UpdateSettings: %v", err)
+	if err := sm.Save(settings); err == nil {
+		t.Fatal("expected Save to reject invalid scenario chain")
 	}
 
-	// Reload and check that chain was stripped
 	reloaded, err := sm.Load()
 	if err != nil {
 		t.Fatalf("Reload: %v", err)
 	}
 	if len(reloaded.ScenarioChain) != 0 {
-		t.Errorf("expected chain to be stripped, got %d links", len(reloaded.ScenarioChain))
+		t.Errorf("expected invalid chain to remain unsaved, got %d links", len(reloaded.ScenarioChain))
 	}
 }
 
@@ -825,35 +818,35 @@ func TestUpdateSettings_AllFields(t *testing.T) {
 	sm := newTestSM(t)
 
 	updates := map[string]interface{}{
-		"portfolio_value":              float64(500000),
-		"monthly_living_expenses":      float64(4000),
-		"monthly_healthcare":           float64(300),
-		"healthcare_start_years":       int(2),
-		"current_age":                  int(62),
-		"spouse_age":                   int(60),
-		"phase_age_reference":          "younger",
-		"tax_deferred_percent":         float64(60),
-		"roth_percent":                 float64(20),
-		"stock_percent":                float64(70),
-		"cash_percent":                 float64(5),
-		"tax_deferred_stock_percent":   float64(80),
-		"tax_deferred_cash_percent":    float64(5),
-		"roth_stock_percent":           float64(90),
-		"roth_cash_percent":            float64(0),
-		"taxable_stock_percent":        float64(60),
-		"taxable_cash_percent":         float64(10),
-		"inflation_rate":               float64(2.5),
-		"healthcare_inflation":         float64(6.0),
-		"spending_decline_rate":        float64(1.0),
-		"investment_return":            float64(7.0),
-		"discount_rate":                float64(3.0),
-		"taxable_dividend_yield":       float64(1.5),
-		"taxable_qualified_dividend_percent": float64(80),
+		"portfolio_value":                     float64(500000),
+		"monthly_living_expenses":             float64(4000),
+		"monthly_healthcare":                  float64(300),
+		"healthcare_start_years":              int(2),
+		"current_age":                         int(62),
+		"spouse_age":                          int(60),
+		"phase_age_reference":                 "younger",
+		"tax_deferred_percent":                float64(60),
+		"roth_percent":                        float64(20),
+		"stock_percent":                       float64(70),
+		"cash_percent":                        float64(5),
+		"tax_deferred_stock_percent":          float64(80),
+		"tax_deferred_cash_percent":           float64(5),
+		"roth_stock_percent":                  float64(90),
+		"roth_cash_percent":                   float64(0),
+		"taxable_stock_percent":               float64(60),
+		"taxable_cash_percent":                float64(10),
+		"inflation_rate":                      float64(2.5),
+		"healthcare_inflation":                float64(6.0),
+		"spending_decline_rate":               float64(1.0),
+		"investment_return":                   float64(7.0),
+		"discount_rate":                       float64(3.0),
+		"taxable_dividend_yield":              float64(1.5),
+		"taxable_qualified_dividend_percent":  float64(80),
 		"taxable_cap_gains_distribution_rate": float64(1.0),
-		"projection_years":             int(30),
-		"projection_timing":            models.ProjectionTiming("beginning_of_month"),
-		"tax_deferred_delay_years":     int(3),
-		"steady_state_override_year":   float64(5),
+		"projection_years":                    int(30),
+		"projection_timing":                   models.ProjectionTiming("beginning_of_month"),
+		"tax_deferred_delay_years":            int(3),
+		"steady_state_override_year":          float64(5),
 	}
 
 	s, err := sm.UpdateSettings(updates)

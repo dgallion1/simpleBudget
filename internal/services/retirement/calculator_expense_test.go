@@ -967,6 +967,31 @@ func TestFindSteadyStateMonthMultipleSources(t *testing.T) {
 	})
 }
 
+func TestFindSteadyStateMonth_ProjectedSocialSecurity(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-04"
+	s.Persons = []models.Person{
+		{ID: "primary", Name: "You", BirthMonth: "1961-04", Role: models.PersonRolePrimary},
+	}
+	s.ComputeAges()
+	s.IncomeSources = nil
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 3000,
+		FRA:        67,
+		ClaimAge:   70,
+	}
+
+	calc := NewCalculator(s)
+	fit := calc.CalculateBudgetFit()
+
+	if fit.SteadyStateMonth != 60 {
+		t.Fatalf("SteadyStateMonth: want 60, got %d", fit.SteadyStateMonth)
+	}
+	if math.Abs(fit.MinSteadyStateYear-5.0) > 0.01 {
+		t.Fatalf("MinSteadyStateYear: want 5.0, got %.2f", fit.MinSteadyStateYear)
+	}
+}
+
 func TestMeanEmptySlice(t *testing.T) {
 	t.Run("empty slice returns zero", func(t *testing.T) {
 		result := mean([]float64{})

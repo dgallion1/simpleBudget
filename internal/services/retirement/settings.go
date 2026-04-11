@@ -24,6 +24,25 @@ type Scenario struct {
 	Active   bool   `json:"active"`
 }
 
+// ScenarioChainValidationError reports a user-correctable invalid scenario chain.
+type ScenarioChainValidationError struct {
+	Err error
+}
+
+func (e *ScenarioChainValidationError) Error() string {
+	if e == nil || e.Err == nil {
+		return "invalid scenario chain"
+	}
+	return e.Err.Error()
+}
+
+func (e *ScenarioChainValidationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 // SettingsManager handles persistence of what-if settings
 type SettingsManager struct {
 	settingsDir string
@@ -62,7 +81,6 @@ func normalizeStartDate(raw string) (string, bool) {
 	}
 	return raw, false
 }
-
 
 func hasTaxableFields(rawFields map[string]json.RawMessage) bool {
 	return rawFields["taxable_dividend_yield"] != nil ||
@@ -406,7 +424,11 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	return sm.saveInternal(settings)
+	if err := sm.saveInternal(settings); err != nil {
+		sm.cache = nil
+		return err
+	}
+	return nil
 }
 
 // saveInternal writes settings without acquiring lock (caller must hold lock)
@@ -417,11 +439,11 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	}
 	settings.ComputeAges()
 
-	// Validate scenario chain if one is present; strip it (with a warning) if invalid.
+	// Validate scenario chain if one is present; invalid chains must be surfaced
+	// back to the caller instead of being silently discarded on save.
 	if len(settings.ScenarioChain) > 0 {
 		if err := sm.validateChainInternal(settings.ScenarioChain, settings, sm.filename); err != nil {
-			log.Printf("WARNING: stripping invalid scenario chain on save: %v", err)
-			settings.ScenarioChain = nil
+			return &ScenarioChainValidationError{Err: err}
 		}
 	}
 

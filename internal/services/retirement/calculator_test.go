@@ -1277,6 +1277,44 @@ func TestSensitivityWithPerAccountAllocation(t *testing.T) {
 				higherReturns.Scenario.ParamValue, expectedHigher, expectedEffective)
 		}
 	})
+
+	t.Run("higher healthcare sensitivity uses person-based healthcare costs", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 2000000
+		settings.MonthlyLivingExpenses = 2500
+		settings.ProjectionYears = 10
+		settings.HealthcarePersons = []models.HealthcarePerson{
+			{
+				ID:                    "hp1",
+				Name:                  "You",
+				CurrentAge:            65,
+				CurrentCoverage:       models.CoverageMedicare,
+				CurrentMonthlyCost:    900,
+				MedicareMonthlyCost:   900,
+				PostMedicareInflation: 4,
+				MedicareEligibleAge:   65,
+			},
+		}
+
+		calc := NewCalculator(settings)
+		baseline := calc.RunProjection()
+		results := calc.CalculateSensitivity()
+
+		var higherHealthcare *models.SensitivityResult
+		for i := range results {
+			if results[i].Scenario.Name == "Higher Healthcare" {
+				higherHealthcare = &results[i]
+				break
+			}
+		}
+		if higherHealthcare == nil {
+			t.Fatal("expected Higher Healthcare scenario")
+		}
+		if higherHealthcare.FinalBalance >= baseline.FinalBalance {
+			t.Fatalf("expected higher healthcare to reduce final balance, got scenario %.2f baseline %.2f",
+				higherHealthcare.FinalBalance, baseline.FinalBalance)
+		}
+	})
 }
 
 // TestRunProjectionWithSurplusIncome verifies that surplus income is reinvested into the taxable balance.

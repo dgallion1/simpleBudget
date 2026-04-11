@@ -2026,6 +2026,44 @@ func TestHandleWhatIfRothConversion_Disabled(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfRothConversion_RejectsNegativeAnnualAmount(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"enabled":       {"on"},
+		"annual_amount": {"-1"},
+		"start_year":    {"0"},
+		"end_year":      {"10"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/roth-conversion", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfRothConversion(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400. body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleWhatIfRothConversion_RejectsEndYearBeforeStartYear(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{
+		"enabled":       {"on"},
+		"annual_amount": {"10000"},
+		"start_year":    {"5"},
+		"end_year":      {"4"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/roth-conversion", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfRothConversion(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400. body: %s", w.Code, w.Body.String())
+	}
+}
+
 // ── Big Ticket Items ────────────────────────────────────────────────────────
 
 func TestHandleWhatIfAddBigTicket(t *testing.T) {
@@ -3507,11 +3545,11 @@ func TestHandleWhatIfRothConversion_ExistingConfig(t *testing.T) {
 // ── Coverage for spending phases with many phases (beyond base) ─────────────
 
 func TestHandleWhatIfSpendingPhases_ManyPhases(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	form := url.Values{"enabled": {"on"}}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 22; i++ {
 		form.Set(fmt.Sprintf("phase_%d_name", i), fmt.Sprintf("Phase %d", i))
 		form.Set(fmt.Sprintf("phase_%d_multiplier", i), fmt.Sprintf("%.2f", 1.0-float64(i)*0.1))
 		if i > 0 {
@@ -3524,6 +3562,17 @@ func TestHandleWhatIfSpendingPhases_ManyPhases(t *testing.T) {
 	handleWhatIfSpendingPhases(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if settings.SpendingPhaseConfig == nil {
+		t.Fatal("expected spending phase config to be saved")
+	}
+	if got := len(settings.SpendingPhaseConfig.Phases); got != 22 {
+		t.Fatalf("expected 22 phases to persist, got %d", got)
 	}
 }
 
@@ -3833,10 +3882,10 @@ func TestHandleWhatIfSync_NoCsvData(t *testing.T) {
 	}
 }
 
-// ── Test handleWhatIf first load with no income sources (auto-sync) ────────
+// ── Test handleWhatIf first load keeps saved settings untouched ─────────────
 
-func TestHandleWhatIf_AutoSync(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+func TestHandleWhatIf_DoesNotAutoSyncEmptyIncomeSources(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
@@ -3846,6 +3895,14 @@ func TestHandleWhatIf_AutoSync(t *testing.T) {
 	resp := w.Result()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(settings.IncomeSources) != 0 {
+		t.Fatalf("expected no income sources to be auto-created, got %d", len(settings.IncomeSources))
 	}
 }
 

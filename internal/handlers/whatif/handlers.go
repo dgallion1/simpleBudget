@@ -3,6 +3,7 @@ package whatif
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -35,6 +36,14 @@ type analysisCache struct {
 }
 
 var cache = &analysisCache{}
+
+func statusForWhatIfSaveError(err error) int {
+	var chainErr *retirement.ScenarioChainValidationError
+	if errors.As(err, &chainErr) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
+}
 
 // getSettingsHash generates a hash of the settings for cache key
 func getSettingsHash(settings *models.WhatIfSettings) string {
@@ -504,12 +513,6 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		settings = models.DefaultWhatIfSettings()
 	}
 
-	// If no income sources saved yet, auto-sync from dashboard on first load
-	if len(settings.IncomeSources) == 0 {
-		syncSettingsFromDashboard(settings)
-		retirementMgr.Save(settings)
-	}
-
 	// Run full analysis (with caching)
 	analysis, err := runAnalysisWithCache(settings)
 	if err != nil {
@@ -905,7 +908,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		settings, err = retirementMgr.UpdateSettings(updates)
 	}
 	if err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
 		return
 	}
 
@@ -1802,9 +1805,13 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		basePhases = currentSettings.SpendingPhaseConfig.Phases
 	}
 
-	// Build phases from form data - support any number of phases
+	// Build phases from form data without truncating higher-index phases.
 	phases := []models.SpendingPhase{}
-	for i := 0; i < 20; i++ { // Support up to 20 phases (more than enough)
+	phaseCount := len(basePhases)
+	if maxSubmitted := maxSubmittedSpendingPhaseIndex(r.Form); maxSubmitted >= 0 && maxSubmitted+1 > phaseCount {
+		phaseCount = maxSubmitted + 1
+	}
+	for i := 0; i < phaseCount; i++ {
 		// Check if this phase exists in form data
 		nameKey := fmt.Sprintf("phase_%d_name", i)
 		multKey := fmt.Sprintf("phase_%d_multiplier", i)
@@ -1856,7 +1863,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 
 	settings, err := retirementMgr.UpdateSpendingPhases(enabled, phases)
 	if err != nil {
-		renderError(w, "Failed to save spending phases: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save spending phases: "+err.Error(), statusForWhatIfSaveError(err))
 		return
 	}
 
@@ -1915,7 +1922,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 	settings.SpendingPhaseConfig.Phases = append(settings.SpendingPhaseConfig.Phases, newPhase)
 
 	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
 		return
 	}
 
@@ -1980,7 +1987,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 	settings.SpendingPhaseConfig.Phases = append(phases[:index], phases[index+1:]...)
 
 	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
 		return
 	}
 
@@ -2018,7 +2025,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
 		return
 	}
 
@@ -2154,30 +2161,44 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 
 	// Parse numeric fields
 	if amount, err := parseFormFloat(r, "annual_amount"); err == nil {
+		if amount < 0 {
+			renderError(w, "Annual conversion amount cannot be negative", http.StatusBadRequest)
+			return
+		}
 		settings.RothConversion.AnnualAmount = amount
 	}
 
 	if startYear, err := parseFormInt(r, "start_year"); err == nil {
+		if startYear < 0 {
+			renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+			return
+		}
 		settings.RothConversion.StartYear = startYear
 	}
 
 	if endYear, err := parseFormInt(r, "end_year"); err == nil {
+		if endYear < 0 {
+			renderError(w, "End year cannot be negative", http.StatusBadRequest)
+			return
+		}
 		settings.RothConversion.EndYear = endYear
+	}
+	if settings.RothConversion.EndYear != 0 && settings.RothConversion.EndYear < settings.RothConversion.StartYear {
+		renderError(w, "End year cannot be earlier than start year", http.StatusBadRequest)
+		return
 	}
 
 	// Save settings
 	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
 		return
 	}
 
-	// Run analysis and return results (cache auto-invalidates on settings hash change)
-	calc, _, err := buildCalculator(settings)
+	analysis, err := runAnalysisWithCache(settings)
 	if err != nil {
-		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis := calc.RunFullAnalysis()
 
 	partialData := &models.WhatIfPageData{
 		Title:    "What-If Analysis",
@@ -2191,6 +2212,28 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+func maxSubmittedSpendingPhaseIndex(form map[string][]string) int {
+	maxIndex := -1
+	for key := range form {
+		if !strings.HasPrefix(key, "phase_") {
+			continue
+		}
+		rest := strings.TrimPrefix(key, "phase_")
+		indexText, _, ok := strings.Cut(rest, "_")
+		if !ok {
+			continue
+		}
+		index, err := strconv.Atoi(indexText)
+		if err != nil {
+			continue
+		}
+		if index > maxIndex {
+			maxIndex = index
+		}
+	}
+	return maxIndex
 }
 
 func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {

@@ -79,7 +79,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
+                    <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
             </div>
             {{if eq .CurrentCoverage "employer"}}
@@ -119,7 +119,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
+                    <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
             </div>
             <div>
@@ -146,7 +146,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
+                    <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
             </div>
             <div>

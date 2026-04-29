@@ -2,6 +2,7 @@ package retirement
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1872,5 +1873,150 @@ func TestLoadScenarioSettings_MissingFile(t *testing.T) {
 	_, err := sm.LoadScenarioSettings("whatif_nonexistent.json")
 	if err == nil {
 		t.Error("expected error for missing file")
+	}
+}
+
+// --- Restore-path duplicate detection (regression: #B4) ---
+
+// seedSettingsWithIDInBothLists writes a hand-crafted settings file with the
+// same ID present in both the active and removed lists. Simulates a corrupted
+// JSON or a legacy hand-edit; the restore path must reject this rather than
+// blindly create a duplicate active entry.
+func seedSettingsWithIDInBothLists(t *testing.T, sm *SettingsManager, build func(s *models.WhatIfSettings)) {
+	t.Helper()
+	settings := models.DefaultWhatIfSettings()
+	build(settings)
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if err := sm.saveInternal(settings); err != nil {
+		t.Fatalf("saveInternal: %v", err)
+	}
+}
+
+func TestRestoreIncomeSource_DuplicateActiveIDRejected(t *testing.T) {
+	sm := newTestSM(t)
+	seedSettingsWithIDInBothLists(t, sm, func(s *models.WhatIfSettings) {
+		src := models.IncomeSource{ID: "dup", Name: "Pension", Amount: 1000, StartMonth: 0}
+		s.IncomeSources = []models.IncomeSource{src}
+		s.RemovedIncomeSources = []models.IncomeSource{src}
+	})
+
+	_, err := sm.RestoreIncomeSource("dup")
+	if err == nil {
+		t.Fatal("expected ScenarioConflictError, got nil")
+	}
+	var conflictErr *ScenarioConflictError
+	if !errors.As(err, &conflictErr) {
+		t.Fatalf("expected *ScenarioConflictError, got %T: %v", err, err)
+	}
+
+	// State must be unchanged: active list still has it once, removed list still has it.
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.IncomeSources) != 1 || s.IncomeSources[0].ID != "dup" {
+		t.Errorf("active list mutated: %+v", s.IncomeSources)
+	}
+	if len(s.RemovedIncomeSources) != 1 || s.RemovedIncomeSources[0].ID != "dup" {
+		t.Errorf("removed list mutated: %+v", s.RemovedIncomeSources)
+	}
+}
+
+func TestRestoreExpenseSource_DuplicateActiveIDRejected(t *testing.T) {
+	sm := newTestSM(t)
+	seedSettingsWithIDInBothLists(t, sm, func(s *models.WhatIfSettings) {
+		src := models.ExpenseSource{ID: "dup", Name: "Rent", Amount: 2000, StartYear: 0}
+		s.ExpenseSources = []models.ExpenseSource{src}
+		s.RemovedExpenseSources = []models.ExpenseSource{src}
+	})
+
+	_, err := sm.RestoreExpenseSource("dup")
+	if err == nil {
+		t.Fatal("expected ScenarioConflictError, got nil")
+	}
+	var conflictErr *ScenarioConflictError
+	if !errors.As(err, &conflictErr) {
+		t.Fatalf("expected *ScenarioConflictError, got %T: %v", err, err)
+	}
+
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.ExpenseSources) != 1 {
+		t.Errorf("active list mutated: %+v", s.ExpenseSources)
+	}
+	if len(s.RemovedExpenseSources) != 1 {
+		t.Errorf("removed list mutated: %+v", s.RemovedExpenseSources)
+	}
+}
+
+func TestRestoreBigTicketItem_DuplicateActiveIDRejected(t *testing.T) {
+	sm := newTestSM(t)
+	seedSettingsWithIDInBothLists(t, sm, func(s *models.WhatIfSettings) {
+		item := models.BigTicketItem{ID: "dup", Name: "Boat", Amount: 50000, Year: 2030, Type: "expense"}
+		s.BigTicketItems = []models.BigTicketItem{item}
+		s.RemovedBigTicketItems = []models.BigTicketItem{item}
+	})
+
+	_, err := sm.RestoreBigTicketItem("dup")
+	if err == nil {
+		t.Fatal("expected ScenarioConflictError, got nil")
+	}
+	var conflictErr *ScenarioConflictError
+	if !errors.As(err, &conflictErr) {
+		t.Fatalf("expected *ScenarioConflictError, got %T: %v", err, err)
+	}
+
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.BigTicketItems) != 1 {
+		t.Errorf("active list mutated: %+v", s.BigTicketItems)
+	}
+	if len(s.RemovedBigTicketItems) != 1 {
+		t.Errorf("removed list mutated: %+v", s.RemovedBigTicketItems)
+	}
+}
+
+func TestRestoreIncomeSource_NotFound(t *testing.T) {
+	sm := newTestSM(t)
+	if _, err := sm.AddIncomeSource(models.IncomeSource{ID: "active", Name: "Wage", Amount: 5000}); err != nil {
+		t.Fatalf("AddIncomeSource: %v", err)
+	}
+
+	_, err := sm.RestoreIncomeSource("ghost")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestRestoreExpenseSource_NotFound(t *testing.T) {
+	sm := newTestSM(t)
+	_, err := sm.RestoreExpenseSource("ghost")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestRestoreBigTicketItem_NotFound(t *testing.T) {
+	sm := newTestSM(t)
+	_, err := sm.RestoreBigTicketItem("ghost")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
 	}
 }

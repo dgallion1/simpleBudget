@@ -2,7 +2,15 @@
 
 ## Unreleased
 
+### What-If Planner — Hardening (2026-04-29)
+- **Cost styling consistency**: Healthcare per-person, ACA, Medicare, total healthcare, and active expense amounts now render in red (`text-red-600 dark:text-red-400`) rather than neutral gray, matching the project rule that cost numbers are visually distinct from neutral and income figures.
+- **Restore-path safety**: `RestoreIncomeSource`, `RestoreExpenseSource`, and `RestoreBigTicketItem` now reject restoring an ID that already exists in the active list (HTTP 409) and surface a 404 when the ID is not in the removed list, instead of silently no-oping or producing duplicate active entries from a hand-edited file.
+- **Icon-button accessibility**: Decorative SVGs in the income, expense, big-ticket, and scenario-chain list cards now carry `aria-hidden="true"`, and the icon-only delete/restore buttons gained `aria-label` so screen readers announce a meaningful action.
+- **`handleWhatIfSettings` refactor**: The 363-line super-handler is now 41 lines orchestrating a declarative `fieldSpec` table (`internal/handlers/whatif/form_spec.go`). Per-field parse, bounds, and enum validation live in the spec; cross-field invariants (`tax_deferred + roth ≤ 100`, `stock + cash ≤ 100`) and per-account allocation clamping run as discrete post-passes. All error messages preserved byte-for-byte; existing 22 `TestHandleWhatIfSettings_*` tests pass unchanged.
+- **`handlers.go` file split**: The 2,797-line monolith was split by domain into `handlers.go` (shared helpers, page handler, sync), `handlers_income_expense.go`, `handlers_healthcare.go`, `handlers_scenarios.go`, and `handlers_rates.go`. Pure file move — no exported APIs or behavior changed; `RegisterRoutes` still wires every route from one place.
+
 ### Documentation
+- **What-If hardening note**: Added `docs/what-if-hardening-2026-04-29.md` documenting the structural refactor, file split, restore-path fix, a11y pass, and three Phase-1 over-claims that were investigated and dismissed (Load() TOCTOU, DeleteScenario race, glide-path/guardrails clamping).
 - **What-If retirement verification**: Added a verification note documenting the Current Plan inputs, live page values, calculator cross-check, and test command used to confirm the retirement numbers shown on the What-If page.
 
 ### What-If Planner — New Features

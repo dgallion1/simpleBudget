@@ -575,7 +575,9 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 	return settings, nil
 }
 
-// RestoreIncomeSource moves an income source back from the removed list atomically
+// RestoreIncomeSource moves an income source back from the removed list atomically.
+// Returns a ScenarioConflictError if the active list already contains the ID
+// (e.g. from a hand-edited file with the ID present in both lists).
 func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -585,14 +587,25 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 		return nil, err
 	}
 
+	for _, source := range settings.IncomeSources {
+		if source.ID == id {
+			return nil, &ScenarioConflictError{Err: fmt.Errorf("income source %s already exists in the active list", id)}
+		}
+	}
+
 	filtered := make([]models.IncomeSource, 0, len(settings.RemovedIncomeSources))
+	restored := false
 	for _, source := range settings.RemovedIncomeSources {
 		if source.ID != id {
 			filtered = append(filtered, source)
 		} else {
 			// Restore to active list
 			settings.IncomeSources = append(settings.IncomeSources, source)
+			restored = true
 		}
+	}
+	if !restored {
+		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed income source %s not found", id)}
 	}
 	settings.RemovedIncomeSources = filtered
 
@@ -712,7 +725,8 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 	return settings, nil
 }
 
-// RestoreExpenseSource moves an expense source back from the removed list atomically
+// RestoreExpenseSource moves an expense source back from the removed list atomically.
+// Returns a ScenarioConflictError if the active list already contains the ID.
 func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -722,14 +736,25 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 		return nil, err
 	}
 
+	for _, source := range settings.ExpenseSources {
+		if source.ID == id {
+			return nil, &ScenarioConflictError{Err: fmt.Errorf("expense source %s already exists in the active list", id)}
+		}
+	}
+
 	filtered := make([]models.ExpenseSource, 0, len(settings.RemovedExpenseSources))
+	restored := false
 	for _, source := range settings.RemovedExpenseSources {
 		if source.ID != id {
 			filtered = append(filtered, source)
 		} else {
 			// Restore to active list
 			settings.ExpenseSources = append(settings.ExpenseSources, source)
+			restored = true
 		}
+	}
+	if !restored {
+		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed expense source %s not found", id)}
 	}
 	settings.RemovedExpenseSources = filtered
 
@@ -1109,7 +1134,8 @@ func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSetting
 	return settings, nil
 }
 
-// RestoreBigTicketItem moves a big ticket item back from the removed list atomically
+// RestoreBigTicketItem moves a big ticket item back from the removed list atomically.
+// Returns a ScenarioConflictError if the active list already contains the ID.
 func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -1119,14 +1145,25 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 		return nil, err
 	}
 
+	for _, item := range settings.BigTicketItems {
+		if item.ID == id {
+			return nil, &ScenarioConflictError{Err: fmt.Errorf("big ticket item %s already exists in the active list", id)}
+		}
+	}
+
 	filtered := make([]models.BigTicketItem, 0, len(settings.RemovedBigTicketItems))
+	restored := false
 	for _, item := range settings.RemovedBigTicketItems {
 		if item.ID != id {
 			filtered = append(filtered, item)
 		} else {
 			// Restore to active list
 			settings.BigTicketItems = append(settings.BigTicketItems, item)
+			restored = true
 		}
+	}
+	if !restored {
+		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed big ticket item %s not found", id)}
 	}
 	settings.RemovedBigTicketItems = filtered
 

@@ -244,6 +244,31 @@ func TestBuildProjectionChartEvents_NilInputs(t *testing.T) {
 	}
 }
 
+func TestHandleWhatIfSettings_PersonsWithoutStartDate(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	vals := url.Values{
+		// start_date intentionally omitted — handler must reject persons without it.
+		"person_id[]":          {"primary"},
+		"person_name[]":        {"Alex"},
+		"person_birth_month[]": {"1960-05"},
+		"person_role[]":        {"primary"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/whatif/settings", formBody(vals))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handleWhatIfSettings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400. body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Projection start date is required") {
+		t.Errorf("body should explain missing start date, got: %s", w.Body.String())
+	}
+}
+
 func TestHandleWhatIfSettings_WithPersons(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -3750,8 +3775,8 @@ func TestHandleWhatIfRestoreIncome_NonexistentID(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := chiRequest("POST", "/whatif/income/nonexistent/restore", nil, map[string]string{"id": "nonexistent"})
 	handleWhatIfRestoreIncome(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 200 or 500, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent removed source, got %d", w.Code)
 	}
 }
 
@@ -3787,8 +3812,8 @@ func TestHandleWhatIfRestoreExpense_NonexistentID(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := chiRequest("POST", "/whatif/expense/nonexistent/restore", nil, map[string]string{"id": "nonexistent"})
 	handleWhatIfRestoreExpense(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 200 or 500, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent removed source, got %d", w.Code)
 	}
 }
 
@@ -3849,8 +3874,8 @@ func TestHandleWhatIfRestoreBigTicket_NonexistentID(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := chiRequest("POST", "/whatif/bigticket/nonexistent/restore", nil, map[string]string{"id": "nonexistent"})
 	handleWhatIfRestoreBigTicket(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 200 or 500, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent removed item, got %d", w.Code)
 	}
 }
 

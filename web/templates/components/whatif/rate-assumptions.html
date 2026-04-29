@@ -9,7 +9,7 @@
 
         <div class="space-y-3">
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Start Date</label>
+                <label for="projection-start-date" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Start Date</label>
                 <input type="month" name="start_date" id="projection-start-date" value="{{.Settings.StartDate}}"
                     onchange="updatePersonAgePreviews(); togglePhaseReferenceDropdown()"
                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
@@ -17,7 +17,7 @@
 
             <div class="space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Persons</label>
+                    <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Persons</span>
                     <button type="button" onclick="addPersonRow()"
                         class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                         + Add Person
@@ -30,24 +30,25 @@
                         <input type="hidden" name="person_id[]" value="{{.ID}}">
                         <input type="hidden" name="person_role[]" value="{{.Role}}" data-person-role-input>
                         <div class="col-span-4">
-                            <label class="block text-xs text-gray-500 dark:text-gray-400">Name</label>
-                            <input type="text" name="person_name[]" value="{{.Name}}"
+                            <label for="person-name-{{.ID}}" class="block text-xs text-gray-500 dark:text-gray-400">Name</label>
+                            <input type="text" id="person-name-{{.ID}}" name="person_name[]" value="{{.Name}}"
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                         </div>
                         <div class="col-span-3">
-                            <label class="block text-xs text-gray-500 dark:text-gray-400">Birth Month</label>
-                            <input type="month" name="person_birth_month[]" value="{{.BirthMonth}}"
+                            <label for="person-birth-month-{{.ID}}" class="block text-xs text-gray-500 dark:text-gray-400">Birth Month</label>
+                            <input type="month" id="person-birth-month-{{.ID}}" name="person_birth_month[]" value="{{.BirthMonth}}"
                                 onchange="updatePersonAgePreviews()"
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                         </div>
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-500 dark:text-gray-400">Role</label>
                             {{if eq .Role "primary"}}
+                            <span class="block text-xs text-gray-500 dark:text-gray-400">Role</span>
                             <div class="mt-1 rounded-md bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
                                 Primary
                             </div>
                             {{else}}
-                            <select data-person-role-selector onchange="updatePersonRole(this)"
+                            <label for="person-role-{{.ID}}" class="block text-xs text-gray-500 dark:text-gray-400">Role</label>
+                            <select id="person-role-{{.ID}}" data-person-role-selector onchange="updatePersonRole(this)"
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                                 <option value="spouse" {{if eq .Role "spouse"}}selected{{end}}>Spouse</option>
                                 <option value="other" {{if eq .Role "other"}}selected{{end}}>Other</option>
@@ -55,7 +56,7 @@
                             {{end}}
                         </div>
                         <div class="col-span-2">
-                            <label class="block text-xs text-gray-500 dark:text-gray-400">Derived Age</label>
+                            <span class="block text-xs text-gray-500 dark:text-gray-400">Derived Age</span>
                             <div class="mt-1 rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:bg-gray-600 dark:text-gray-100" data-person-age-preview>
                                 Age {{$.Settings.PersonAge .ID}}
                             </div>
@@ -76,7 +77,7 @@
 
         <!-- Phase Age Reference (only shown when spouse person exists) -->
         <div id="phase-age-reference-container" class="{{if not (.Settings.GetSpousePerson)}}hidden{{end}}">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Phase Based On</label>
+            <label for="phase-age-reference-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Phase Based On</label>
             <select name="phase_age_reference" id="phase-age-reference-select"
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="younger" {{if eq .Settings.PhaseAgeReference "younger"}}selected{{end}}>Younger Person (conservative)</option>
@@ -89,14 +90,14 @@
 
         <div>
             <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Portfolio Allocation</label>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Portfolio Allocation</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">Must equal 100%</span>
             </div>
             <div class="grid grid-cols-3 gap-2">
                 <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tax-Deferred</label>
+                    <label for="tax-deferred-percent-input" class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tax-Deferred</label>
                     <div class="flex items-center">
-                        <input type="number" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
+                        <input type="number" id="tax-deferred-percent-input" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
                             min="0" max="100" step="5"
                             class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             oninput="updateTaxablePercent()">
@@ -105,9 +106,9 @@
                     <span class="text-xs text-gray-400 dark:text-gray-500">401k/IRA</span>
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Roth</label>
+                    <label for="roth-percent-input" class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Roth</label>
                     <div class="flex items-center">
-                        <input type="number" name="roth_percent" value="{{printf "%.0f" .Settings.RothPercent}}"
+                        <input type="number" id="roth-percent-input" name="roth_percent" value="{{printf "%.0f" .Settings.RothPercent}}"
                             min="0" max="100" step="5"
                             class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             oninput="updateTaxablePercent()">
@@ -116,7 +117,7 @@
                     <span class="text-xs text-gray-400 dark:text-gray-500">Roth IRA/401k</span>
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Taxable</label>
+                    <span class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Taxable</span>
                     <div id="taxable-percent-display" class="py-2 px-3 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-600 rounded-md text-center">
                         {{printf "%.0f" (sub 100 (add .Settings.TaxDeferredPercent .Settings.RothPercent))}}%
                     </div>
@@ -129,8 +130,8 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Timing</label>
-            <select name="projection_timing"
+            <label for="projection-timing-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Timing</label>
+            <select id="projection-timing-select" name="projection_timing"
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="end_of_month" {{if eq .Settings.ProjectionTiming "end_of_month"}}selected{{end}}>End of month</option>
                 <option value="mid_month" {{if eq .Settings.ProjectionTiming "mid_month"}}selected{{end}}>Mid-month</option>
@@ -141,25 +142,25 @@
 
         <div class="space-y-2">
             <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Taxable Account Assumptions</label>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Taxable Account Assumptions</span>
                 <span class="text-xs text-gray-400 dark:text-gray-500">Optional Phase 4 inputs</span>
             </div>
             <div class="grid grid-cols-3 gap-3">
                 <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400">Dividend Yield %</label>
-                    <input type="number" name="taxable_dividend_yield" value="{{printf "%.1f" .Settings.TaxableDividendYield}}"
+                    <label for="taxable-dividend-yield-input" class="block text-xs text-gray-500 dark:text-gray-400">Dividend Yield %</label>
+                    <input type="number" id="taxable-dividend-yield-input" name="taxable_dividend_yield" value="{{printf "%.1f" .Settings.TaxableDividendYield}}"
                         min="0" max="20" step="0.1"
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400">Qualified Share %</label>
-                    <input type="number" name="taxable_qualified_dividend_percent" value="{{printf "%.0f" .Settings.GetTaxableQualifiedDividendPercent}}"
+                    <label for="taxable-qualified-dividend-percent-input" class="block text-xs text-gray-500 dark:text-gray-400">Qualified Share %</label>
+                    <input type="number" id="taxable-qualified-dividend-percent-input" name="taxable_qualified_dividend_percent" value="{{printf "%.0f" .Settings.GetTaxableQualifiedDividendPercent}}"
                         min="0" max="100" step="5"
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400">Cap Gains Dist. %</label>
-                    <input type="number" name="taxable_cap_gains_distribution_rate" value="{{printf "%.1f" .Settings.TaxableCapitalGainsDistributionRate}}"
+                    <label for="taxable-cap-gains-distribution-rate-input" class="block text-xs text-gray-500 dark:text-gray-400">Cap Gains Dist. %</label>
+                    <input type="number" id="taxable-cap-gains-distribution-rate-input" name="taxable_cap_gains_distribution_rate" value="{{printf "%.1f" .Settings.TaxableCapitalGainsDistributionRate}}"
                         min="0" max="20" step="0.1"
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
@@ -168,7 +169,7 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Delay Tax-Deferred Withdrawals</label>
+            <label for="tax-deferred-delay-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Delay Tax-Deferred Withdrawals</label>
             <input type="range" id="tax-deferred-delay-slider" name="tax_deferred_delay_years" value="{{.Settings.TaxDeferredDelayYears}}"
                 min="0" max="30" step="1"
                 data-quick-adjust-key="tax_deferred_delay_years"
@@ -181,7 +182,7 @@
         <!-- Per-Account Asset Allocation -->
         <div class="space-y-3">
             <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Asset Allocation by Account</label>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Asset Allocation by Account</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">Each must equal 100%</span>
             </div>
 
@@ -196,8 +197,8 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</span>
-                        <input type="number" name="tax_deferred_stock_percent"
+                        <label for="tax-deferred-stock-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</label>
+                        <input type="number" id="tax-deferred-stock-percent-input" name="tax_deferred_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredStockPct}}"
                             min="0" max="100" step="5"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
@@ -205,8 +206,8 @@
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
                     <div class="flex items-center">
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</span>
-                        <input type="number" name="tax_deferred_cash_percent"
+                        <label for="tax-deferred-cash-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</label>
+                        <input type="number" id="tax-deferred-cash-percent-input" name="tax_deferred_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredCashPct}}"
                             min="0" max="100" step="5"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
@@ -227,8 +228,8 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</span>
-                        <input type="number" name="roth_stock_percent"
+                        <label for="roth-stock-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</label>
+                        <input type="number" id="roth-stock-percent-input" name="roth_stock_percent"
                             value="{{printf "%.0f" .Settings.RothStockPct}}"
                             min="0" max="100" step="5"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
@@ -236,8 +237,8 @@
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
                     <div class="flex items-center">
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</span>
-                        <input type="number" name="roth_cash_percent"
+                        <label for="roth-cash-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</label>
+                        <input type="number" id="roth-cash-percent-input" name="roth_cash_percent"
                             value="{{printf "%.0f" .Settings.RothCashPct}}"
                             min="0" max="100" step="5"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
@@ -258,8 +259,8 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</span>
-                        <input type="number" name="taxable_stock_percent"
+                        <label for="taxable-stock-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</label>
+                        <input type="number" id="taxable-stock-percent-input" name="taxable_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxableStockPct}}"
                             min="0" max="100" step="5"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
@@ -267,8 +268,8 @@
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
                     <div class="flex items-center">
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</span>
-                        <input type="number" name="taxable_cash_percent"
+                        <label for="taxable-cash-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</label>
+                        <input type="number" id="taxable-cash-percent-input" name="taxable_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxableCashPct}}"
                             min="0" max="100" step="5"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
@@ -284,7 +285,7 @@
         <!-- Glide Path -->
         <div class="mt-3 bg-gray-50 dark:bg-gray-700/50 rounded-md p-3">
             <div class="flex items-center justify-between mb-2">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-200">Glide Path</label>
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Glide Path</span>
             </div>
             <form hx-post="/whatif/glide-path" hx-target="#whatif-results" class="space-y-2">
                 <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -296,20 +297,20 @@
                 {{if and .Settings.GlidePath .Settings.GlidePath.Enabled}}
                 <div class="grid grid-cols-3 gap-2">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Start %</label>
-                        <input type="number" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
+                        <label for="glide-start-stock-pct" class="block text-xs text-gray-500 dark:text-gray-400">Start %</label>
+                        <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
                             min="0" max="100" step="5"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">End %</label>
-                        <input type="number" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
+                        <label for="glide-end-stock-pct" class="block text-xs text-gray-500 dark:text-gray-400">End %</label>
+                        <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
                             min="0" max="100" step="5"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">Years</label>
-                        <input type="number" name="transition_years" value="{{.Settings.GlidePath.TransitionYears}}"
+                        <label for="glide-transition-years" class="block text-xs text-gray-500 dark:text-gray-400">Years</label>
+                        <input type="number" id="glide-transition-years" name="transition_years" value="{{.Settings.GlidePath.TransitionYears}}"
                             min="1" max="50" step="1"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
@@ -327,7 +328,7 @@
         class="space-y-3 mt-3">
 
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
+            <label for="inflation-rate-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
             <input type="range" id="inflation-rate-slider" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
                 min="0" max="10" step="0.1"
                 data-quick-adjust-key="inflation_rate"
@@ -340,7 +341,7 @@
             {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}
             <!-- Phases enabled - show status message -->
             <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Model</label>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Model</span>
             </div>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-2">
                 Using <span class="font-medium text-indigo-600 dark:text-indigo-400">phase-based spending</span> model.
@@ -351,7 +352,7 @@
             {{else}}
             <!-- Phases disabled - show decline rate slider -->
             <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Decline Rate (%)</label>
+                <label for="spending-decline-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Decline Rate (%)</label>
                 <button type="button" onclick="toggleSpendingPreview()"
                     class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     <span id="spending-preview-toggle-text">Show Impact</span>
@@ -390,7 +391,7 @@
 
         <div>
             <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return Override</label>
+                <label for="investment-return-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return Override</label>
                 <span class="text-xs text-gray-500 dark:text-gray-400">0% = use allocation</span>
             </div>
             <input type="range" id="investment-return-slider" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
@@ -482,26 +483,26 @@ function addPersonRow() {
         <input type="hidden" name="person_id[]" value="">
         <input type="hidden" name="person_role[]" value="${role}" data-person-role-input>
         <div class="col-span-4">
-            <label class="block text-xs text-gray-500 dark:text-gray-400">Name</label>
-            <input type="text" name="person_name[]" value=""
+            <span class="block text-xs text-gray-500 dark:text-gray-400">Name</span>
+            <input type="text" name="person_name[]" value="" aria-label="Person name"
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
         </div>
         <div class="col-span-3">
-            <label class="block text-xs text-gray-500 dark:text-gray-400">Birth Month</label>
-            <input type="month" name="person_birth_month[]" value=""
+            <span class="block text-xs text-gray-500 dark:text-gray-400">Birth Month</span>
+            <input type="month" name="person_birth_month[]" value="" aria-label="Person birth month"
                 onchange="updatePersonAgePreviews()"
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
         </div>
         <div class="col-span-2">
-            <label class="block text-xs text-gray-500 dark:text-gray-400">Role</label>
-            <select data-person-role-selector onchange="updatePersonRole(this)"
+            <span class="block text-xs text-gray-500 dark:text-gray-400">Role</span>
+            <select data-person-role-selector onchange="updatePersonRole(this)" aria-label="Person role"
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                 <option value="spouse" ${role === 'spouse' ? 'selected' : ''}>Spouse</option>
                 <option value="other" ${role === 'other' ? 'selected' : ''}>Other</option>
             </select>
         </div>
         <div class="col-span-2">
-            <label class="block text-xs text-gray-500 dark:text-gray-400">Derived Age</label>
+            <span class="block text-xs text-gray-500 dark:text-gray-400">Derived Age</span>
             <div class="mt-1 rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:bg-gray-600 dark:text-gray-100" data-person-age-preview>Age -</div>
         </div>
         <div class="col-span-1 flex justify-end">

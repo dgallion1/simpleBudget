@@ -66,6 +66,51 @@ expense, and big-ticket) gained `aria-label` so screen readers announce a
 human-readable action ("Delete expense Rent", "Restore income source
 Pension"). The scenario-chain remove button kept its existing `title="Remove"`.
 
+### A11y label/id pairings on heaviest forms
+
+The two heaviest what-if forms — `rate-assumptions.html` (762 lines) and
+`spending-phases.html` (649 lines) — had **0** explicit `<label for=...>` /
+`<input id=...>` pairings. Sighted users saw the visual labels; screen-reader
+users had no programmatic association between any label and the input it
+described.
+
+`rate-assumptions.html`:
+
+- Six labels gained `for=` against existing input IDs (Projection Start Date,
+  Spending Phase Based On, Delay Tax-Deferred Withdrawals, Inflation Rate,
+  Spending Decline Rate, Investment Return Override).
+- Nine singleton inputs gained both new `id=` and matching label `for=`
+  (Tax-Deferred %, Roth %, Projection Timing, Dividend Yield, Qualified
+  Share, Cap Gains Dist., Glide Start/End/Years).
+- Six `<span>` "Stocks"/"Cash" labels in the per-account allocation block
+  became proper `<label for=>` elements with new IDs on each input.
+- Seven non-binding section-header `<label>`s (Persons, Portfolio Allocation,
+  Taxable display, Taxable Account Assumptions, Asset Allocation by Account,
+  Glide Path, Spending Model) became `<span>` — they don't label a single
+  control, and an unbound `<label>` adjacent to multiple inputs is misleading
+  to assistive tech.
+- Person-row `{{range}}` block (Name, Birth Month, Role) now uses stable
+  `id="person-{field}-{{.ID}}"` paired with label `for=`. The Role label is
+  conditional: `<span>` when role is primary (read-only display),
+  `<label for=>` when role is spouse/other (`<select>`). "Derived Age"
+  became `<span>` (display only).
+- JS template for newly-added person rows uses `aria-label` on each input
+  since the row has no stable ID until the server assigns one on save.
+
+`spending-phases.html`:
+
+- Per-phase `Age` and `Spending` labels paired via `phase-{{$i}}-start-age`
+  and `phase-{{$i}}-multiplier`.
+
+Coverage:
+
+| File | Labels with `for=` | Total labels | Notes |
+|------|--------------------|--------------|-------|
+| `rate-assumptions.html` | 24 | 25 | The unbound 1 is a valid wrap-style `<label>` around the glide-path checkbox |
+| `spending-phases.html` | 2 | 3 | The unbound 1 is a valid wrap-style `<label>` around the enable toggle |
+
+Every `for=` resolves to an `id=` on the same page (verified via grep).
+
 ### `handleWhatIfSettings` refactor
 
 The handler grew over time into 363 lines of repetitive
@@ -177,4 +222,10 @@ web/templates/components/whatif/expense-sources-list.html
 web/templates/components/whatif/bigticket-card.html
 web/templates/components/whatif/income-sources-list.html
 web/templates/components/whatif/scenario-chain-card.html
+web/templates/components/whatif/rate-assumptions.html  (a11y: label for/id
+                                                       pairings on 28 controls;
+                                                       section headers → span)
+web/templates/components/whatif/spending-phases.html   (a11y: per-phase Age
+                                                       and Spending labels
+                                                       paired with inputs)
 ```

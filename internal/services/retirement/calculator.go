@@ -1794,9 +1794,16 @@ func (c *Calculator) CalculateFailurePoints() *models.FailurePointAnalysis {
 	}
 }
 
-// findReturnThreshold finds minimum investment return to survive
+// findReturnThreshold finds minimum investment return to survive.
+// Returns nil when InvestmentReturn==0, the sentinel for allocation-based
+// returns: the binary search would override per-account allocation with a
+// single flat rate, producing thresholds that aren't comparable to the
+// projection's actual blended return.
 func (c *Calculator) findReturnThreshold() *models.FailurePoint {
 	current := c.Settings.InvestmentReturn
+	if current == 0 {
+		return nil
+	}
 
 	// Binary search between 0% and current value
 	low, high := -5.0, current

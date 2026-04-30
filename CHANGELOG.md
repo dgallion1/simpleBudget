@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### What-If Planner — Bug Fixes (2026-04-30)
+- **Failure Thresholds: hide Investment Return card in allocation mode**: When `InvestmentReturn == 0` (the sentinel that tells the projector to derive returns from per-account asset allocation), `findReturnThreshold` was running its binary search against the literal 0 and rendering a meaningless card with `Current: 0.0%`, `Fails if below: 0.0%`, `Safety margin: 0.0 pts`. The threshold now returns nil in allocation mode so the card is omitted; the inflation, expenses, and portfolio thresholds still render as before.
+
 ### Testing — Coverage Expansion (2026-04-30)
 - **whatif**: 84.6% → 98.6% (+14.0 pts). ~85 new error-path tests covering ParseForm failures (real `%ZZ` percent-encoding, since the existing multipart-no-boundary trick is silently accepted by modern Go), `Save()` failures (chmod-based), `Load()` failures, and `runAnalysisWithCache` failures (corrupt scenario chain — a `whatif_corrupt.json` file referenced from the active scenario's chain that parses on file-existence but fails on Load). 11 handlers went from 70-78% to 100%: RothConversion, GlidePath, Guardrails, SocialSecurity, ResetPhases, UpdateChain, DeleteChainLink, plus all Delete/Restore handlers.
 - **retirement**: 94.6% → 97.2% (+2.6 pts). New tests for the four scenario error types (`ScenarioChainValidationError`, `ScenarioValidationError`, `ScenarioNotFoundError`, `ScenarioConflictError` — `Error()`/`Unwrap()` 0% → 100%), `findPreparedScenarioPerson` (0% → 100%), `ensurePrimaryPerson`/`ensureSpousePerson` (42-57% → 100%), `UpdateSettingsWithPersons` (0% → 90.9%), plus coverage for `normalizeStartDate`, `inferHealthcarePersonLink`, `decodeSettings`, `loadInternal`, and `removeSpousePersons`.

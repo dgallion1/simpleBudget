@@ -97,6 +97,19 @@ func TestFindPortfolioThreshold_ZeroPortfolio(t *testing.T) {
 	}
 }
 
+func TestFindReturnThreshold_AllocationMode(t *testing.T) {
+	// InvestmentReturn==0 is the sentinel for allocation-based returns; the
+	// binary search would override allocation with a flat rate and produce a
+	// meaningless 0%/0%/0pts card, so the threshold must be omitted.
+	s := healthySettings()
+	s.InvestmentReturn = 0
+	c := NewCalculator(s)
+	fp := c.findReturnThreshold()
+	if fp != nil {
+		t.Fatalf("expected nil when InvestmentReturn=0 (allocation mode), got %+v", fp)
+	}
+}
+
 func TestFindReturnThreshold(t *testing.T) {
 	t.Run("returns failure point with correct fields", func(t *testing.T) {
 		c := NewCalculator(healthySettings())

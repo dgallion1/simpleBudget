@@ -204,7 +204,7 @@
                 <tr><th class="text-left py-0.5">Date</th><th class="text-left py-0.5">Description</th><th class="text-right py-0.5">Amount</th><th></th></tr>
             </thead>
             <tbody>
-                {{$pinned := $.PinnedHashes}}
+                {{$pinned := .PinnedHashes}}
                 {{range .Transactions}}
                 <tr class="border-t border-gray-200 dark:border-gray-600">
                     <td class="py-0.5 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>

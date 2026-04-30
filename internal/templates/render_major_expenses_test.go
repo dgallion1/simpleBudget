@@ -27,6 +27,53 @@ func renderMajorExpensesContent(t *testing.T, data map[string]any) string {
 	return html
 }
 
+// TestRenderMajorExpenses_MultipleEntriesAllRender guards against the
+// regression where $.PinnedHashes was referenced inside the per-item
+// sub-template (where $ is the Summary, not the page). The template
+// errored mid-loop and only the first entry rendered.
+func TestRenderMajorExpenses_MultipleEntriesAllRender(t *testing.T) {
+	type summary struct {
+		Expense      models.MajorExpense
+		Count        int
+		Total        float64
+		Transactions []models.Transaction
+		PinnedHashes map[string]bool
+	}
+	now := time.Now()
+	mkSum := func(name string) summary {
+		return summary{
+			Expense:      models.MajorExpense{ID: name, Name: name, Keywords: []string{name}},
+			Count:        1,
+			Total:        100,
+			Transactions: []models.Transaction{{Date: now, Amount: -100, Description: name + " txn", Hash: "h-" + name}},
+			PinnedHashes: map[string]bool{"h-" + name: true},
+		}
+	}
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses":  []models.MajorExpense{},
+		"Summaries": []summary{mkSum("Lucid"), mkSum("Hyundai"), mkSum("Wegmans")},
+		"Match": struct {
+			Exceptions models.ExceptionsReport
+		}{Exceptions: models.ExceptionsReport{}},
+		"PinnedHashes": map[string]bool{},
+		"Threshold":    100.0,
+		"WindowDays":   30,
+	})
+	for _, name := range []string{"Lucid", "Hyundai", "Wegmans"} {
+		if !strings.Contains(html, `id="major-expense-item-`+name+`"`) {
+			t.Errorf("expected entry %q to render, but it was missing — sub-template likely errored mid-loop", name)
+		}
+	}
+	// The 📌 prefix relies on .PinnedHashes (the Summary's, not page-level).
+	// If the template wires it through correctly, every entry's matched
+	// txn should be flagged as pinned.
+	if !strings.Contains(html, `📌`) {
+		t.Errorf("expected pinned marker in matched-transactions disclosure")
+	}
+}
+
 func TestRenderMajorExpenses_EmptyState(t *testing.T) {
 	html := renderMajorExpensesContent(t, map[string]any{
 		"Title":      "Major Expenses",

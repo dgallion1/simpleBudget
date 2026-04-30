@@ -242,12 +242,17 @@ func buildPageData() (map[string]interface{}, error) {
 	})
 
 	// Build per-expense summaries so the list partial can render counts,
-	// totals, and the matched transactions without recomputing.
+	// totals, and the matched transactions without recomputing. The
+	// PinnedHashes map is scoped to THIS expense so the sub-template
+	// (where $ is the Summary, not the page data) can render the
+	// 📌-prefix and "unpin" affordance per row without traversing back
+	// up the data tree.
 	type ExpenseSummary struct {
 		Expense      models.MajorExpense
 		Count        int
 		Total        float64
 		Transactions []models.Transaction
+		PinnedHashes map[string]bool
 	}
 	summaries := make([]ExpenseSummary, 0, len(expenses))
 	for _, e := range expenses {
@@ -258,11 +263,20 @@ func buildPageData() (map[string]interface{}, error) {
 		}
 		// Most-recent first so the user sees the latest match at the top.
 		sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
+
+		pinnedForExpense := make(map[string]bool)
+		for _, t := range txns {
+			if match.PinnedHashes[t.Hash] {
+				pinnedForExpense[t.Hash] = true
+			}
+		}
+
 		summaries = append(summaries, ExpenseSummary{
 			Expense:      e,
 			Count:        len(txns),
 			Total:        total,
 			Transactions: txns,
+			PinnedHashes: pinnedForExpense,
 		})
 	}
 

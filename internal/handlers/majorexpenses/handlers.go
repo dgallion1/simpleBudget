@@ -235,7 +235,16 @@ func buildPageData() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("load transaction pins: %w", err)
 	}
 
-	match := majorexpenseengine.Match(txns, expenses, majorexpenseengine.MatchOptions{
+	// Major Expenses is an expense-tracking page — filter to outflows
+	// BEFORE matching so income (paychecks, refunds, transfers) can't
+	// inflate "matched" counts/totals when its description happens to
+	// contain a keyword (e.g. "ANTHROPIC" appearing in both a $108
+	// subscription charge AND a $2000 paycheck). The exception
+	// detectors filter to outflows internally, so this only affects
+	// grouping and the per-expense Summary roll-ups.
+	outflows := txns.FilterByType(models.Outflow)
+
+	match := majorexpenseengine.Match(outflows, expenses, majorexpenseengine.MatchOptions{
 		UnknownLargeThreshold: defaultUnknownThreshold,
 		NewMerchantWindow:     time.Duration(defaultNewWindowDays) * 24 * time.Hour,
 		Pins:                  pins,

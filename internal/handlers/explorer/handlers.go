@@ -78,8 +78,13 @@ func annotateAndFilterByMajorExpense(filtered *models.TransactionSet, selectedID
 	}
 
 	if selectedID != "" {
-		if txns, ok := match.Groups[selectedID]; ok {
-			filtered = models.NewTransactionSet(txns)
+		// Validate the ID against the declared expense list, NOT against
+		// match.Groups: an expense with zero matching transactions is
+		// missing from Groups, so a Groups-only check would silently leave
+		// `filtered` unchanged and the UI would claim "filtered to X" while
+		// actually showing every transaction.
+		if _, ok := expenseByID[selectedID]; ok {
+			filtered = models.NewTransactionSet(match.Groups[selectedID])
 		}
 	}
 	return expenses, hashToExpense, filtered

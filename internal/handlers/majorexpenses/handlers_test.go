@@ -98,6 +98,54 @@ func TestHandleAdd_Success(t *testing.T) {
 	}
 }
 
+func TestBuildPageData_IncomeNotIncludedInGroups(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Seed a CSV that has BOTH an outflow and an income with descriptions
+	// matching the same keyword. Without the outflow filter, the keyword
+	// match would put both into the same group and inflate count/total.
+	csvDir := t.TempDir()
+	csvPath := filepath.Join(csvDir, "test.csv")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Anthropic Subscription,-108,Outflow,Software\n" +
+		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Anthropic Refund,200,Income,Software\n"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	store, _ := storage.New(csvDir)
+	dl2 := dataloader.New(csvDir, store)
+	Initialize(dl2, nil)
+	defer Initialize(dl, nil) // restore for any other test that follows
+
+	if _, err := dl2.AddMajorExpense(makeExpense("anthropic", "Anthropic", []string{"anthropic"}, 0, 0)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	data, err := buildPageData()
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	// Summaries is a slice of an unexported struct, so use JSON
+	// round-trip for assertion.
+	body, _ := json.Marshal(data["Summaries"])
+	var raw []map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("decode summaries: %v\n%s", err, body)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("expected 1 summary, got %d: %s", len(raw), body)
+	}
+	count := int(raw[0]["Count"].(float64))
+	total := raw[0]["Total"].(float64)
+	if count != 1 {
+		t.Errorf("expected Count=1 (outflow only), got %d — income is being grouped", count)
+	}
+	if total != 108 {
+		t.Errorf("expected Total=108 (outflow only), got %v — income inflates total", total)
+	}
+}
+
 func TestHandleAdd_AmountOnlyAccepted(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()

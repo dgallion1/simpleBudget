@@ -130,6 +130,39 @@ func TestHandleExplorer_WithFilters(t *testing.T) {
 	}
 }
 
+// Regression: a valid major-expense filter whose group has zero
+// matched transactions used to leave `filtered` unchanged because
+// match.Groups omits empty entries. The Explorer reported "filtered"
+// but rendered every transaction.
+func TestHandleTransactionsPartial_MajorExpenseFilterWithZeroMatches(t *testing.T) {
+	dataDir := setupTestEnv(t, sampleCSV)
+
+	// Seed a major expense whose keyword matches no transaction in sampleCSV.
+	majorExpensesPath := filepath.Join(dataDir, "major_expenses.json")
+	body := `{"expenses":[{"id":"none-id","name":"Nope","keywords":["NEVERMATCH"],"expected_min":0,"expected_max":0,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}]}`
+	if err := os.WriteFile(majorExpensesPath, []byte(body), 0644); err != nil {
+		t.Fatalf("write majors: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/transactions?majorExpense=none-id", nil)
+	rec := httptest.NewRecorder()
+	handleTransactionsPartial(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, rec.Body.String())
+	}
+	if got := payload["TotalCount"]; got != float64(0) {
+		t.Errorf("expected TotalCount=0 when filter has zero matches, got %v — filter is being silently dropped", got)
+	}
+	txns, _ := payload["Transactions"].([]interface{})
+	if len(txns) != 0 {
+		t.Errorf("expected empty Transactions for zero-match filter, got %d entries", len(txns))
+	}
+}
+
 func TestHandleExplorer_EmptyResults(t *testing.T) {
 	setupTestEnv(t, sampleCSV)
 

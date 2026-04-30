@@ -20,6 +20,11 @@ type MatchOptions struct {
 	// NewMerchantWindow is the trailing window (relative to the dataset's
 	// max date) used to detect first-time merchants.
 	NewMerchantWindow time.Duration
+	// Pins maps transaction Hash → MajorExpense.ID. A pin overrides
+	// keyword/amount matching for that one transaction; if the pinned
+	// expense ID does not exist in defs, the pin is ignored and the
+	// transaction falls through to the regular matching rules.
+	Pins map[string]string
 }
 
 // MatchResult is the consolidated output the handler renders.
@@ -27,14 +32,19 @@ type MatchResult struct {
 	Groups     map[string][]models.Transaction
 	Unmatched  []models.Transaction
 	Exceptions models.ExceptionsReport
+	// PinnedHashes is the set of transaction hashes that matched
+	// because of an explicit user pin (not keyword/amount). The UI
+	// uses this to render an "unpin" affordance on those rows.
+	PinnedHashes map[string]bool
 }
 
 // Match groups transactions against the declared major expenses and
 // computes the three exception buckets.
 func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOptions) MatchResult {
 	result := MatchResult{
-		Groups:    make(map[string][]models.Transaction),
-		Unmatched: nil,
+		Groups:       make(map[string][]models.Transaction),
+		Unmatched:    nil,
+		PinnedHashes: make(map[string]bool),
 		Exceptions: models.ExceptionsReport{
 			Threshold:     opts.UnknownLargeThreshold,
 			NewWindowDays: int(opts.NewMerchantWindow / (24 * time.Hour)),
@@ -45,7 +55,21 @@ func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOpti
 		return result
 	}
 
+	validIDs := make(map[string]bool, len(defs))
+	for _, d := range defs {
+		validIDs[d.ID] = true
+	}
+
 	for _, t := range ts.Transactions {
+		// 1. Honor explicit pin if it points to an existing expense.
+		if opts.Pins != nil && t.Hash != "" {
+			if id, ok := opts.Pins[t.Hash]; ok && validIDs[id] {
+				result.Groups[id] = append(result.Groups[id], t)
+				result.PinnedHashes[t.Hash] = true
+				continue
+			}
+		}
+		// 2. Fall back to keyword/amount matching.
 		if id, ok := matchTransaction(t, defs); ok {
 			result.Groups[id] = append(result.Groups[id], t)
 		} else {
@@ -53,7 +77,7 @@ func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOpti
 		}
 	}
 
-	result.Exceptions.Anomalous = detectAnomalies(result.Groups, defs)
+	result.Exceptions.Anomalous = detectAnomalies(result.Groups, defs, result.PinnedHashes)
 	result.Exceptions.UnknownLarge = detectUnknownLarge(result.Unmatched, opts.UnknownLargeThreshold)
 	result.Exceptions.NewMerchants = detectNewMerchants(ts, opts.NewMerchantWindow)
 
@@ -148,7 +172,7 @@ func hasUsableKeyword(def models.MajorExpense) bool {
 // detectAnomalies emits an entry for every grouped transaction whose
 // abs(amount) falls outside the user's expected range. A bound of 0
 // disables that side of the check.
-func detectAnomalies(groups map[string][]models.Transaction, defs []models.MajorExpense) []models.ExceptionAnomalousAmount {
+func detectAnomalies(groups map[string][]models.Transaction, defs []models.MajorExpense, pinned map[string]bool) []models.ExceptionAnomalousAmount {
 	var out []models.ExceptionAnomalousAmount
 	// Iterate defs (not groups map) so output order is deterministic.
 	for _, def := range defs {
@@ -172,6 +196,10 @@ func detectAnomalies(groups map[string][]models.Transaction, defs []models.Major
 			continue
 		}
 		for _, t := range txns {
+			// Pinned transactions are explicit user intent — never flag.
+			if pinned != nil && pinned[t.Hash] {
+				continue
+			}
 			amt := math.Abs(t.Amount)
 			belowMin := def.ExpectedMin > 0 && amt < def.ExpectedMin
 			aboveMax := def.ExpectedMax > 0 && amt > def.ExpectedMax

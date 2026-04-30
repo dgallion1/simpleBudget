@@ -185,7 +185,7 @@ func TestDetectAnomalies_AmountOnlyDefsHaveNoAnomalies(t *testing.T) {
 	groups := map[string][]models.Transaction{
 		"car": {tx(time.Now(), -625, "Check #1", "", models.Outflow)},
 	}
-	if out := detectAnomalies(groups, defs); len(out) != 0 {
+	if out := detectAnomalies(groups, defs, nil); len(out) != 0 {
 		t.Errorf("amount-only def should produce no anomalies, got %+v", out)
 	}
 }
@@ -206,7 +206,7 @@ func TestDetectAnomalies_BelowMin(t *testing.T) {
 	groups := map[string][]models.Transaction{
 		"rent": {tx(time.Now(), -1000, "rent", "", models.Outflow)},
 	}
-	out := detectAnomalies(groups, defs)
+	out := detectAnomalies(groups, defs, nil)
 	if len(out) != 1 || out[0].MajorExpenseID != "rent" {
 		t.Errorf("expected 1 below-min anomaly, got %+v", out)
 	}
@@ -217,7 +217,7 @@ func TestDetectAnomalies_AboveMax(t *testing.T) {
 	groups := map[string][]models.Transaction{
 		"rent": {tx(time.Now(), -3000, "rent", "", models.Outflow)},
 	}
-	out := detectAnomalies(groups, defs)
+	out := detectAnomalies(groups, defs, nil)
 	if len(out) != 1 {
 		t.Errorf("expected 1 above-max anomaly, got %d", len(out))
 	}
@@ -228,7 +228,7 @@ func TestDetectAnomalies_BothBoundsZeroSkipsCheck(t *testing.T) {
 	groups := map[string][]models.Transaction{
 		"x": {tx(time.Now(), -99999, "x", "", models.Outflow)},
 	}
-	out := detectAnomalies(groups, defs)
+	out := detectAnomalies(groups, defs, nil)
 	if len(out) != 0 {
 		t.Errorf("expected no anomalies when both bounds are 0, got %d", len(out))
 	}
@@ -242,7 +242,7 @@ func TestDetectAnomalies_OnlyMinSet(t *testing.T) {
 			tx(time.Now(), -999999, "x", "", models.Outflow), // above ignored (no max)
 		},
 	}
-	out := detectAnomalies(groups, defs)
+	out := detectAnomalies(groups, defs, nil)
 	if len(out) != 1 {
 		t.Errorf("expected 1 below-min anomaly, got %d", len(out))
 	}
@@ -256,7 +256,7 @@ func TestDetectAnomalies_OnlyMaxSet(t *testing.T) {
 			tx(time.Now(), -150, "x", "", models.Outflow), // above → flag
 		},
 	}
-	out := detectAnomalies(groups, defs)
+	out := detectAnomalies(groups, defs, nil)
 	if len(out) != 1 {
 		t.Errorf("expected 1 above-max anomaly, got %d", len(out))
 	}
@@ -273,7 +273,7 @@ func TestDetectAnomalies_DeterministicOrder(t *testing.T) {
 		"b": {tx(time.Now(), -100, "b", "", models.Outflow)},
 		"a": {tx(time.Now(), -100, "a", "", models.Outflow)},
 	}
-	out := detectAnomalies(groups, defs)
+	out := detectAnomalies(groups, defs, nil)
 	if len(out) != 2 || out[0].MajorExpenseID != "a" || out[1].MajorExpenseID != "b" {
 		t.Errorf("expected order [a,b], got %+v", out)
 	}
@@ -394,6 +394,78 @@ func TestDetectNewMerchants_ZeroWindowDisables(t *testing.T) {
 	ts := models.NewTransactionSet([]models.Transaction{tx(now, -100, "x", "", models.Outflow)})
 	if out := detectNewMerchants(ts, 0); out != nil {
 		t.Errorf("zero window should disable, got %+v", out)
+	}
+}
+
+func TestMatch_PinOverridesKeywordMatch(t *testing.T) {
+	defs := []models.MajorExpense{
+		{ID: "amazon-default", Keywords: []string{"amazon"}},
+		{ID: "amazon-books"},
+		{ID: "amazon-household"},
+	}
+	tr := models.Transaction{Date: time.Now(), Amount: -50, Description: "Amazon order", Hash: "h1", TransactionType: models.Outflow}
+	ts := models.NewTransactionSet([]models.Transaction{tr})
+
+	res := Match(ts, defs, MatchOptions{Pins: map[string]string{"h1": "amazon-books"}})
+
+	if got := len(res.Groups["amazon-books"]); got != 1 {
+		t.Errorf("expected pinned txn in amazon-books, got %d", got)
+	}
+	if got := len(res.Groups["amazon-default"]); got != 0 {
+		t.Errorf("keyword match should be overridden by pin, got %d", got)
+	}
+	if !res.PinnedHashes["h1"] {
+		t.Error("expected hash to be marked as pinned")
+	}
+}
+
+func TestMatch_PinFallsBackWhenTargetMissing(t *testing.T) {
+	defs := []models.MajorExpense{
+		{ID: "amazon", Keywords: []string{"amazon"}},
+	}
+	tr := models.Transaction{Date: time.Now(), Amount: -50, Description: "Amazon order", Hash: "h1", TransactionType: models.Outflow}
+	ts := models.NewTransactionSet([]models.Transaction{tr})
+
+	// Pin points to an expense that no longer exists. Should fall back
+	// to keyword/amount matching.
+	res := Match(ts, defs, MatchOptions{Pins: map[string]string{"h1": "deleted-expense"}})
+
+	if got := len(res.Groups["amazon"]); got != 1 {
+		t.Errorf("expected fallback to keyword match, got %d", got)
+	}
+	if res.PinnedHashes["h1"] {
+		t.Error("orphan pin should not mark hash as pinned")
+	}
+}
+
+func TestMatch_PinSuppressesAnomalyFlag(t *testing.T) {
+	// User pinned a $3000 transaction to a Rent expense expecting $1500-$2000.
+	// Without the pin, this would be flagged as an anomaly. With the pin,
+	// the user has explicitly accepted it — anomaly should NOT fire.
+	defs := []models.MajorExpense{
+		{ID: "rent", Name: "Rent", Keywords: []string{"unrelated"}, ExpectedMin: 1500, ExpectedMax: 2000},
+	}
+	pinned := models.Transaction{Date: time.Now(), Amount: -3000, Description: "Anything", Hash: "h1", TransactionType: models.Outflow}
+	ts := models.NewTransactionSet([]models.Transaction{pinned})
+
+	res := Match(ts, defs, MatchOptions{Pins: map[string]string{"h1": "rent"}})
+
+	if got := len(res.Groups["rent"]); got != 1 {
+		t.Fatalf("pinned txn should be in rent group, got %d", got)
+	}
+	if got := len(res.Exceptions.Anomalous); got != 0 {
+		t.Errorf("pinned txn should NOT be flagged as anomalous, got %d: %+v", got, res.Exceptions.Anomalous)
+	}
+}
+
+func TestMatch_PinIgnoredWhenHashEmpty(t *testing.T) {
+	defs := []models.MajorExpense{{ID: "x"}}
+	tr := models.Transaction{Date: time.Now(), Amount: -50, Hash: "", TransactionType: models.Outflow}
+	ts := models.NewTransactionSet([]models.Transaction{tr})
+
+	res := Match(ts, defs, MatchOptions{Pins: map[string]string{"": "x"}})
+	if got := len(res.Unmatched); got != 1 {
+		t.Errorf("empty-hash transaction should not pin, expected unmatched, got groups %+v", res.Groups)
 	}
 }
 

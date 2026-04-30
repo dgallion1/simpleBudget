@@ -61,7 +61,8 @@
         // Don't hijack clicks on the inline delete <button> inside list items
         // or on input controls in editable rows.
         const tag = (e.target.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path') return;
+        if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path' ||
+            tag === 'select' || tag === 'option') return;
 
         // Jump-to-existing target (e.g. the expense name link inside an
         // anomalous row) — handle FIRST so it doesn't fall through to
@@ -200,14 +201,26 @@
         </summary>
         <table class="mt-1 w-full">
             <thead class="text-gray-400 dark:text-gray-500">
-                <tr><th class="text-left py-0.5">Date</th><th class="text-left py-0.5">Description</th><th class="text-right py-0.5">Amount</th></tr>
+                <tr><th class="text-left py-0.5">Date</th><th class="text-left py-0.5">Description</th><th class="text-right py-0.5">Amount</th><th></th></tr>
             </thead>
             <tbody>
+                {{$pinned := $.PinnedHashes}}
                 {{range .Transactions}}
                 <tr class="border-t border-gray-200 dark:border-gray-600">
                     <td class="py-0.5 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
-                    <td class="py-0.5 dark:text-gray-200">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Description}}{{end}}</td>
+                    <td class="py-0.5 dark:text-gray-200">
+                        {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Description}}{{end}}
+                    </td>
                     <td class="py-0.5 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
+                    <td class="py-0.5 text-right">
+                        {{if and $pinned (index $pinned .Hash)}}
+                        <button type="button"
+                            hx-delete="/major-expenses/pins/{{.Hash}}"
+                            hx-target="#major-expenses-results" hx-swap="innerHTML"
+                            class="text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                            aria-label="Unpin transaction">unpin</button>
+                        {{end}}
+                    </td>
                 </tr>
                 {{end}}
             </tbody>
@@ -280,6 +293,22 @@
 {{template "major-expenses-exceptions-panel" .}}
 {{end}}
 
+{{/* Pin picker — small <select> that posts to /major-expenses/pins.
+     Expects: dict {Hash, Expenses}. Renders nothing if no expenses. */}}
+{{define "major-expenses-pin-picker"}}
+{{if and .Hash .Expenses}}
+<form class="inline" hx-post="/major-expenses/pins" hx-target="#major-expenses-results" hx-swap="innerHTML" hx-trigger="change">
+    <input type="hidden" name="hash" value="{{.Hash}}">
+    <select name="expense_id" aria-label="Pin to existing expense"
+        class="text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5"
+        onclick="event.stopPropagation()">
+        <option value="" disabled selected>Pin to…</option>
+        {{range .Expenses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+    </select>
+</form>
+{{end}}
+{{end}}
+
 {{define "major-expenses-exceptions-panel"}}
 <div class="flex items-center justify-between mb-2">
     <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Exceptions</h2>
@@ -314,7 +343,12 @@
     {{if .Match.Exceptions.UnknownLarge}}
     <table class="w-full text-xs mt-1">
         <thead class="text-gray-500 dark:text-gray-400">
-            <tr><th class="text-left px-2 py-1">Date</th><th class="text-left px-2 py-1">Description</th><th class="text-right px-2 py-1">Amount</th></tr>
+            <tr>
+                <th class="text-left px-2 py-1">Date</th>
+                <th class="text-left px-2 py-1">Description</th>
+                <th class="text-right px-2 py-1">Amount</th>
+                {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+            </tr>
         </thead>
         <tbody>
             {{range .Match.Exceptions.UnknownLarge}}
@@ -322,10 +356,13 @@
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
-                title="Click to pre-fill the add form">
+                title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                {{if $.Expenses}}
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Expenses" $.Expenses)}}</td>
+                {{end}}
             </tr>
             {{end}}
         </tbody>
@@ -351,6 +388,7 @@
                 <th class="text-left px-2 py-1">Description</th>
                 <th class="text-right px-2 py-1">Amount</th>
                 <th class="text-right px-2 py-1">Expected</th>
+                {{if .Expenses}}<th class="text-left px-2 py-1">Move to</th>{{end}}
             </tr>
         </thead>
         <tbody>
@@ -373,6 +411,9 @@
                     {{else if gt .ExpectedMin 0.0}}≥ ${{printf "%.0f" .ExpectedMin}}
                     {{else if gt .ExpectedMax 0.0}}≤ ${{printf "%.0f" .ExpectedMax}}{{end}}
                 </td>
+                {{if $.Expenses}}
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Expenses" $.Expenses)}}</td>
+                {{end}}
             </tr>
             {{end}}
         </tbody>
@@ -396,6 +437,7 @@
                 <th class="text-left px-2 py-1">First seen</th>
                 <th class="text-left px-2 py-1">Description</th>
                 <th class="text-right px-2 py-1">Amount</th>
+                {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
             </tr>
         </thead>
         <tbody>
@@ -404,10 +446,13 @@
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
-                title="Click to pre-fill the add form">
+                title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                {{if $.Expenses}}
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Expenses" $.Expenses)}}</td>
+                {{end}}
             </tr>
             {{end}}
         </tbody>

@@ -313,6 +313,108 @@ func TestParseExpenseForm_TrimsAndDropsEmpty(t *testing.T) {
 	}
 }
 
+func TestHandlePin_Success(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// seed an expense
+	list, _ := dl.AddMajorExpense(makeExpense("amazon", "Amazon - Books", nil, 0, 0))
+	id := list[0].ID
+
+	form := url.Values{}
+	form.Set("hash", "txn-hash-1")
+	form.Set("expense_id", id)
+
+	req := httptest.NewRequest("POST", "/major-expenses/pins", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	pins, _ := dl.LoadTransactionPins()
+	if pins["txn-hash-1"] != id {
+		t.Errorf("expected pin saved, got %+v", pins)
+	}
+}
+
+func TestHandlePin_RejectsUnknownExpense(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"hash": {"x"}, "expense_id": {"does-not-exist"}}
+	req := httptest.NewRequest("POST", "/major-expenses/pins", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestHandlePin_RejectsEmptyHash(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+	list, _ := dl.AddMajorExpense(makeExpense("a", "A", nil, 0, 0))
+
+	req := httptest.NewRequest("POST", "/major-expenses/pins", strings.NewReader("hash=&expense_id="+list[0].ID))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleUnpin_Success(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	dl.SetTransactionPin("hashA", "expense-1")
+
+	req := httptest.NewRequest("DELETE", "/major-expenses/pins/hashA", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+	pins, _ := dl.LoadTransactionPins()
+	if _, exists := pins["hashA"]; exists {
+		t.Errorf("expected pin removed, still present: %+v", pins)
+	}
+}
+
+func TestHandleDelete_PrunesOrphanPins(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	list, _ := dl.AddMajorExpense(makeExpense("doomed", "Doomed", nil, 0, 0))
+	id := list[0].ID
+	dl.SetTransactionPin("orphan-hash", id)
+
+	// Confirm pin exists before delete
+	pins, _ := dl.LoadTransactionPins()
+	if pins["orphan-hash"] != id {
+		t.Fatalf("setup: expected pin, got %+v", pins)
+	}
+
+	req := httptest.NewRequest("DELETE", "/major-expenses/"+id, nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+
+	pins, _ = dl.LoadTransactionPins()
+	if _, exists := pins["orphan-hash"]; exists {
+		t.Errorf("expected orphan pin to be pruned, still present: %+v", pins)
+	}
+}
+
 func makeExpense(id, name string, keywords []string, min, max float64) models.MajorExpense {
 	return models.MajorExpense{
 		ID:          id,

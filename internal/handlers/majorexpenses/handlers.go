@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -45,6 +46,8 @@ func RegisterRoutes(r chi.Router) {
 	r.Put("/major-expenses/{id}", handleUpdate)
 	r.Delete("/major-expenses/{id}", handleDelete)
 	r.Get("/major-expenses/exceptions", handleExceptions)
+	r.Post("/major-expenses/pins", handlePin)
+	r.Delete("/major-expenses/pins/{hash}", handleUnpin)
 }
 
 func handleMajorExpensesPage(w http.ResponseWriter, r *http.Request) {
@@ -107,8 +110,75 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Missing id", http.StatusBadRequest)
 		return
 	}
-	if _, err := loader.DeleteMajorExpense(id); err != nil {
+	remaining, err := loader.DeleteMajorExpense(id)
+	if err != nil {
 		renderError(w, "Failed to delete: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Drop any pins that pointed at the deleted expense so transactions
+	// fall back to keyword/amount matching instead of disappearing.
+	validIDs := make(map[string]bool, len(remaining))
+	for _, e := range remaining {
+		validIDs[e.ID] = true
+	}
+	if err := loader.PrunePinsForMissingExpenses(validIDs); err != nil {
+		log.Printf("warning: prune pins after delete: %v", err)
+	}
+	renderResults(w)
+}
+
+// handlePin assigns a transaction (by hash) to a major expense. The
+// pin overrides keyword/amount matching for that one transaction.
+// Form body: hash, expense_id.
+func handlePin(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	hash := strings.TrimSpace(r.FormValue("hash"))
+	expenseID := strings.TrimSpace(r.FormValue("expense_id"))
+	if hash == "" {
+		renderError(w, "Missing transaction hash", http.StatusBadRequest)
+		return
+	}
+	if expenseID == "" {
+		renderError(w, "Missing expense id", http.StatusBadRequest)
+		return
+	}
+	// Validate the target expense exists.
+	expenses, err := loader.LoadMajorExpenses()
+	if err != nil {
+		renderError(w, "Failed to load expenses: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	found := false
+	for _, e := range expenses {
+		if e.ID == expenseID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		renderError(w, "Major expense not found", http.StatusNotFound)
+		return
+	}
+	if err := loader.SetTransactionPin(hash, expenseID); err != nil {
+		renderError(w, "Failed to save pin: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderResults(w)
+}
+
+// handleUnpin removes a transaction's pin so it falls back to
+// keyword/amount matching.
+func handleUnpin(w http.ResponseWriter, r *http.Request) {
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		renderError(w, "Missing hash", http.StatusBadRequest)
+		return
+	}
+	if err := loader.ClearTransactionPin(hash); err != nil {
+		renderError(w, "Failed to unpin: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	renderResults(w)
@@ -160,9 +230,15 @@ func buildPageData() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("load transactions: %w", err)
 	}
 
+	pins, err := loader.LoadTransactionPins()
+	if err != nil {
+		return nil, fmt.Errorf("load transaction pins: %w", err)
+	}
+
 	match := majorexpenseengine.Match(txns, expenses, majorexpenseengine.MatchOptions{
 		UnknownLargeThreshold: defaultUnknownThreshold,
 		NewMerchantWindow:     time.Duration(defaultNewWindowDays) * 24 * time.Hour,
+		Pins:                  pins,
 	})
 
 	// Build per-expense summaries so the list partial can render counts,
@@ -191,13 +267,14 @@ func buildPageData() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"Title":      "Major Expenses",
-		"ActiveTab":  "major-expenses",
-		"Expenses":   expenses,
-		"Summaries":  summaries,
-		"Match":      match,
-		"Threshold":  defaultUnknownThreshold,
-		"WindowDays": defaultNewWindowDays,
+		"Title":        "Major Expenses",
+		"ActiveTab":    "major-expenses",
+		"Expenses":     expenses,
+		"Summaries":    summaries,
+		"Match":        match,
+		"PinnedHashes": match.PinnedHashes,
+		"Threshold":    defaultUnknownThreshold,
+		"WindowDays":   defaultNewWindowDays,
 	}, nil
 }
 

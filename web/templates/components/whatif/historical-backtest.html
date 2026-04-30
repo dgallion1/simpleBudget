@@ -13,17 +13,13 @@
     <!-- Success Rate Comparison -->
     <div class="grid grid-cols-2 gap-4 mb-4">
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div class="text-2xl font-bold {{if ge .Analysis.HistoricalBacktest.SuccessRate 90.0}}text-green-600 dark:text-green-400
-                {{else if ge .Analysis.HistoricalBacktest.SuccessRate 75.0}}text-yellow-600 dark:text-yellow-400
-                {{else}}text-red-600 dark:text-red-400{{end}}">
+            <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.SuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.SuccessRate}}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">Historical Success</div>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div class="text-2xl font-bold {{if ge .Analysis.HistoricalBacktest.MonteCarloSuccessRate 90.0}}text-green-600 dark:text-green-400
-                {{else if ge .Analysis.HistoricalBacktest.MonteCarloSuccessRate 75.0}}text-yellow-600 dark:text-yellow-400
-                {{else}}text-red-600 dark:text-red-400{{end}}">
+            <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">Monte Carlo Success</div>

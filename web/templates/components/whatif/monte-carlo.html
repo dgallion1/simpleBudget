@@ -33,11 +33,11 @@
         </div>
         <div class="p-2 bg-orange-50 dark:bg-orange-900/20 rounded">
             <p class="text-xs text-gray-500 dark:text-gray-300">Spending Shocks</p>
-            <p class="text-sm font-medium text-orange-600 dark:text-orange-400">{{.Analysis.MonteCarlo.Stats.SpendingShockCount}} runs</p>
+            <p class="text-sm font-medium text-orange-600 dark:text-orange-400">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.SpendingShockCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
         </div>
         <div class="p-2 bg-purple-50 dark:bg-purple-900/20 rounded">
             <p class="text-xs text-gray-500 dark:text-gray-300">Health Events</p>
-            <p class="text-sm font-medium text-purple-600 dark:text-purple-400">{{.Analysis.MonteCarlo.Stats.HealthShockCount}} runs</p>
+            <p class="text-sm font-medium text-purple-600 dark:text-purple-400">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.HealthShockCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
         </div>
     </div>
 
@@ -45,12 +45,12 @@
     <div class="mb-6">
         <div class="flex items-center justify-between mb-2">
             <span class="text-gray-700 dark:text-gray-300">Success Rate</span>
-            <span class="text-2xl font-bold {{if ge .Analysis.MonteCarlo.Stats.SuccessRate 90.0}}text-green-600 dark:text-green-400{{else if ge .Analysis.MonteCarlo.Stats.SuccessRate 75.0}}text-yellow-600 dark:text-yellow-400{{else}}text-red-600 dark:text-red-400{{end}}">
+            <span class="text-2xl font-bold {{successRateTextClass .Analysis.MonteCarlo.Stats.SuccessRate}}">
                 {{printf "%.1f" .Analysis.MonteCarlo.Stats.SuccessRate}}%
             </span>
         </div>
         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-            <div class="h-3 rounded-full {{if ge .Analysis.MonteCarlo.Stats.SuccessRate 90.0}}bg-green-500{{else if ge .Analysis.MonteCarlo.Stats.SuccessRate 75.0}}bg-yellow-500{{else}}bg-red-500{{end}}" style="width: {{printf "%.1f" .Analysis.MonteCarlo.Stats.SuccessRate}}%"></div>
+            <div class="h-3 rounded-full {{successRateBarClass .Analysis.MonteCarlo.Stats.SuccessRate}}" style="width: {{printf "%.1f" .Analysis.MonteCarlo.Stats.SuccessRate}}%"></div>
         </div>
     </div>
 

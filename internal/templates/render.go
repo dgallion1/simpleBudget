@@ -93,6 +93,8 @@ func getFuncMap() template.FuncMap {
 		"isPositive":                          func(v interface{}) bool { return toFloat(v) > 0 },
 		"isNonNegative":                       isNonNegative,
 		"colorClass":                          colorClass,
+		"successRateTextClass":                successRateTextClass,
+		"successRateBarClass":                 successRateBarClass,
 		"percentOf":                           percentOf,
 		"percentDiff":                         percentDiff,
 		"deref":                               deref,
@@ -599,11 +601,49 @@ func colorClass(v float64) string {
 	return "text-gray-600 dark:text-gray-400"
 }
 
-func percentOf(part, whole float64) float64 {
-	if whole == 0 {
+// successRateTextClass maps a Monte-Carlo / historical success rate (0-100)
+// to a Tailwind text-color class. The five tiers track common retirement
+// planning thresholds: ≥90 very safe, ≥80 good, ≥70 marginal, ≥60 concerning,
+// <60 at risk. Replaces the older 90/75 binary that painted everything below
+// 75 the same red as a near-failure plan.
+func successRateTextClass(v float64) string {
+	switch {
+	case v >= 90:
+		return "text-green-600 dark:text-green-400"
+	case v >= 80:
+		return "text-lime-600 dark:text-lime-400"
+	case v >= 70:
+		return "text-yellow-600 dark:text-yellow-400"
+	case v >= 60:
+		return "text-orange-600 dark:text-orange-400"
+	default:
+		return "text-red-600 dark:text-red-400"
+	}
+}
+
+// successRateBarClass returns the Tailwind bg color for a progress bar fill,
+// using the same five-tier mapping as successRateTextClass.
+func successRateBarClass(v float64) string {
+	switch {
+	case v >= 90:
+		return "bg-green-500"
+	case v >= 80:
+		return "bg-lime-500"
+	case v >= 70:
+		return "bg-yellow-500"
+	case v >= 60:
+		return "bg-orange-500"
+	default:
+		return "bg-red-500"
+	}
+}
+
+func percentOf(part, whole interface{}) float64 {
+	w := toFloat(whole)
+	if w == 0 {
 		return 0
 	}
-	return (part / whole) * 100
+	return (toFloat(part) / w) * 100
 }
 
 // percentDiff calculates percentage difference from a reference value

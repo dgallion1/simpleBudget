@@ -215,10 +215,10 @@
     <details class="text-xs text-gray-500 dark:text-gray-400">
         <summary class="cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">How matching works</summary>
         <ul class="mt-1 ml-4 list-disc space-y-1">
-            <li><strong>Keyword</strong> matches anything whose description contains it (case-insensitive).</li>
-            <li><strong>Min = Max</strong> (e.g., 1580.00 / 1580.00) matches transactions of that exact amount — useful for fixed-amount checks. Works <em>in addition to</em> the keyword.</li>
-            <li><strong>Min &lt; Max</strong> with <em>no</em> keyword matches anything in that range. With a keyword, the range is used to flag anomalies instead.</li>
-            <li>Heads-up: amount-only matching can catch unrelated transactions of the same amount. Combine with a keyword when possible, or use a tighter range.</li>
+            <li><strong>Keyword only</strong> — matches anything whose description contains the keyword (case-insensitive). A range, if set, is used for anomaly detection.</li>
+            <li><strong>Min = Max only</strong> (no keyword) — matches every transaction of that exact amount. Useful when descriptions vary (checks).</li>
+            <li><strong>Keyword + Min = Max</strong> — both must match. Use this when several expenses share a generic keyword like "check": e.g. Lucid keyword=<code>check</code> Min=Max=<code>1580.00</code>, Car keyword=<code>check</code> Min=Max=<code>626.00</code>.</li>
+            <li><strong>Min &lt; Max</strong> (range) without a keyword matches anything in that range; with a keyword, the range is anomaly-only.</li>
         </ul>
     </details>
     <input type="text" name="notes" placeholder="Notes (optional)"

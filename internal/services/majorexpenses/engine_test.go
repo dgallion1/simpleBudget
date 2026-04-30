@@ -92,24 +92,65 @@ func TestMatchTransaction_RangeIgnoredWhenKeywordPresent(t *testing.T) {
 	}
 }
 
-func TestMatchTransaction_ExactAmountMatchesAlongsideKeyword(t *testing.T) {
-	// User's "Lucid at $1580" case: branded subscription txns match by
-	// keyword, fixed-amount checks match by exact amount.
+func TestMatchTransaction_KeywordPlusExactAmountIsAndFilter(t *testing.T) {
+	// AND semantics: keyword AND exact amount must BOTH match.
 	defs := []models.MajorExpense{
 		{ID: "lucid", Name: "Lucid", Keywords: []string{"lucid"}, ExpectedMin: 1580, ExpectedMax: 1580},
 	}
-	subscription := tx(time.Now(), -1580, "LUCID MOTORS SUBSCRIPTION", "", models.Outflow)
-	check := tx(time.Now(), -1580, "Check #2358", "", models.Outflow)
-	other := tx(time.Now(), -50, "Coffee Shop", "", models.Outflow)
+	matchBoth := tx(time.Now(), -1580, "LUCID MOTORS SUBSCRIPTION", "", models.Outflow)
+	keywordOnly := tx(time.Now(), -50, "Lucid Coffee", "", models.Outflow)        // keyword yes, amount no
+	amountOnly := tx(time.Now(), -1580, "Random vendor", "", models.Outflow)      // amount yes, keyword no
+	checkOfRightAmount := tx(time.Now(), -1580, "Check #2358", "", models.Outflow) // amount yes, keyword no
 
-	if _, ok := matchTransaction(subscription, defs); !ok {
-		t.Error("subscription txn should match by keyword")
+	if _, ok := matchTransaction(matchBoth, defs); !ok {
+		t.Error("expected match when both keyword and amount match")
 	}
-	if _, ok := matchTransaction(check, defs); !ok {
-		t.Error("check txn should match by exact amount alongside keyword")
+	if _, ok := matchTransaction(keywordOnly, defs); ok {
+		t.Error("keyword alone should NOT match when an exact amount is specified")
 	}
-	if _, ok := matchTransaction(other, defs); ok {
-		t.Error("unrelated txn should not match")
+	if _, ok := matchTransaction(amountOnly, defs); ok {
+		t.Error("amount alone should NOT match when a keyword is specified")
+	}
+	if _, ok := matchTransaction(checkOfRightAmount, defs); ok {
+		t.Error("check of right amount but no keyword match should NOT match")
+	}
+}
+
+func TestMatchTransaction_DisambiguateByAmountWithSharedKeyword(t *testing.T) {
+	// User's exact scenario: two checks (Lucid and Car) both match the
+	// keyword "check", disambiguated by amount.
+	defs := []models.MajorExpense{
+		{ID: "lucid", Name: "Lucid", Keywords: []string{"check"}, ExpectedMin: 1580, ExpectedMax: 1580},
+		{ID: "car", Name: "Car", Keywords: []string{"check"}, ExpectedMin: 626, ExpectedMax: 626},
+	}
+	lucidCheck := tx(time.Now(), -1580, "Check #2358", "", models.Outflow)
+	carCheck := tx(time.Now(), -626, "Check #1111", "", models.Outflow)
+	otherCheck := tx(time.Now(), -100, "Check #9999", "", models.Outflow)
+
+	if id, _ := matchTransaction(lucidCheck, defs); id != "lucid" {
+		t.Errorf("$1580 check should map to lucid, got %q", id)
+	}
+	if id, _ := matchTransaction(carCheck, defs); id != "car" {
+		t.Errorf("$626 check should map to car, got %q", id)
+	}
+	if _, ok := matchTransaction(otherCheck, defs); ok {
+		t.Error("$100 check should not match either def")
+	}
+}
+
+func TestMatchTransaction_KeywordAloneWithRangeStillKeywordOnly(t *testing.T) {
+	// Range with keyword: range is anomaly-only, keyword is the matcher.
+	defs := []models.MajorExpense{
+		{ID: "rent", Keywords: []string{"landlord"}, ExpectedMin: 1500, ExpectedMax: 2000},
+	}
+	hit := tx(time.Now(), -3000, "MY LANDLORD INC", "", models.Outflow) // keyword yes, amount out of range
+	miss := tx(time.Now(), -1700, "Random", "", models.Outflow)         // amount in range, no keyword
+
+	if _, ok := matchTransaction(hit, defs); !ok {
+		t.Error("keyword should match even when amount is outside the anomaly range")
+	}
+	if _, ok := matchTransaction(miss, defs); ok {
+		t.Error("range with keyword should not match by amount alone")
 	}
 }
 

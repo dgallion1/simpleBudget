@@ -66,26 +66,34 @@ func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOpti
 const exactAmountTolerance = 0.01
 
 // matchTransaction returns the first MajorExpense.ID that matches the
-// transaction. A def matches when ANY of:
+// transaction. The matching rules are:
 //
-//  1. A non-empty keyword is a case-insensitive substring of
-//     t.Description or t.DisplayName, OR
-//  2. ExpectedMin == ExpectedMax > 0 AND abs(t.Amount) is within one
-//     cent of that exact amount (works alongside keywords — useful for
-//     things like "Lucid" subscriptions that show up as both branded
-//     descriptions AND fixed-amount checks), OR
-//  3. The def has NO keywords AND ExpectedMin > 0 AND ExpectedMax > 0
-//     AND ExpectedMin != ExpectedMax AND abs(t.Amount) is in
-//     [Min, Max] (range-only matching).
+//  1. Keyword + Exact amount (Min == Max > 0):
+//     BOTH must match — the keyword AND the amount must be within
+//     exactAmountTolerance of Min. This lets users disambiguate
+//     transactions that share a generic keyword like "check" by
+//     pinning each definition to its own dollar amount.
+//
+//  2. Keyword only (no amount or a range):
+//     Match if any non-empty keyword is a case-insensitive substring
+//     of t.Description or t.DisplayName. A range (Min < Max) is
+//     used for anomaly detection only when a keyword is present.
+//
+//  3. Exact amount only (Min == Max > 0, no keyword):
+//     Match if abs(t.Amount) is within exactAmountTolerance of Min.
+//
+//  4. Range only (Min < Max, no keyword):
+//     Match if abs(t.Amount) ∈ [Min, Max].
 //
 // First-def-wins for determinism.
 func matchTransaction(t models.Transaction, defs []models.MajorExpense) (string, bool) {
 	desc := strings.ToLower(t.Description)
 	display := strings.ToLower(t.DisplayName)
 	amt := math.Abs(t.Amount)
+
 	for _, def := range defs {
-		// 1. Keyword match
 		hasKeyword := false
+		keywordMatched := false
 		for _, kw := range def.Keywords {
 			kw = strings.ToLower(strings.TrimSpace(kw))
 			if kw == "" {
@@ -93,17 +101,30 @@ func matchTransaction(t models.Transaction, defs []models.MajorExpense) (string,
 			}
 			hasKeyword = true
 			if strings.Contains(desc, kw) || (display != "" && strings.Contains(display, kw)) {
-				return def.ID, true
+				keywordMatched = true
+				break
 			}
 		}
-		// 2. Exact-amount match (works alongside keywords)
-		if def.ExpectedMin > 0 && def.ExpectedMin == def.ExpectedMax {
+
+		isExactAmount := def.ExpectedMin > 0 && def.ExpectedMin == def.ExpectedMax
+		isRange := def.ExpectedMin > 0 && def.ExpectedMax > def.ExpectedMin
+
+		switch {
+		case hasKeyword && isExactAmount:
+			// AND filter: keyword AND exact amount
+			if keywordMatched && math.Abs(amt-def.ExpectedMin) <= exactAmountTolerance {
+				return def.ID, true
+			}
+		case hasKeyword:
+			// Keyword only — any range is anomaly-only
+			if keywordMatched {
+				return def.ID, true
+			}
+		case isExactAmount:
 			if math.Abs(amt-def.ExpectedMin) <= exactAmountTolerance {
 				return def.ID, true
 			}
-		}
-		// 3. Range-only match (only when no keywords AND it's a real range)
-		if !hasKeyword && def.ExpectedMin > 0 && def.ExpectedMax > def.ExpectedMin {
+		case isRange:
 			if amt >= def.ExpectedMin && amt <= def.ExpectedMax {
 				return def.ID, true
 			}
@@ -141,6 +162,13 @@ func detectAnomalies(groups map[string][]models.Transaction, defs []models.Major
 		// Amount-only defs match BY range, so by definition every
 		// transaction in their group is in range — no anomalies possible.
 		if !hasUsableKeyword(def) {
+			continue
+		}
+		// Keyword + exact amount is an AND filter: every matched txn
+		// is already within tolerance of the expected amount. The
+		// anomaly check would just produce false positives at the
+		// edges of the float-precision tolerance.
+		if def.ExpectedMin == def.ExpectedMax {
 			continue
 		}
 		for _, t := range txns {

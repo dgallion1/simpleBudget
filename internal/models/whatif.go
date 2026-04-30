@@ -1275,7 +1275,8 @@ type HistoricalBacktestAnalysis struct {
 	DataStartYear         int                        `json:"data_start_year"`
 	DataEndYear           int                        `json:"data_end_year"`
 	TotalSequences        int                        `json:"total_sequences"`
-	SuccessRate           float64                    `json:"success_rate"` // % of sequences that survive
+	SurvivedCount         int                        `json:"survived_count"` // Count of sequences that survived
+	SuccessRate           float64                    `json:"success_rate"`   // % of sequences that survive
 	Results               []HistoricalBacktestResult `json:"results"`
 	WorstStartYears       []int                      `json:"worst_start_years"` // Top 5 worst starting years
 	BestStartYears        []int                      `json:"best_start_years"`  // Top 5 best starting years

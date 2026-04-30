@@ -146,6 +146,25 @@ func TestRunHistoricalBacktest(t *testing.T) {
 	if result.DataStartYear != 1928 {
 		t.Errorf("Expected data start year 1928, got %d", result.DataStartYear)
 	}
+
+	// SurvivedCount must agree with SuccessRate.
+	expectedSurvived := int(result.SuccessRate / 100.0 * float64(result.TotalSequences))
+	if result.SurvivedCount < expectedSurvived-1 || result.SurvivedCount > expectedSurvived+1 {
+		t.Errorf("SurvivedCount=%d not consistent with SuccessRate=%.2f over %d sequences (expected ~%d)",
+			result.SurvivedCount, result.SuccessRate, result.TotalSequences, expectedSurvived)
+	}
+
+	// Results table must be sorted with failures first (so users see why
+	// the success rate isn't 100% without scrolling past survivors).
+	seenSurvivor := false
+	for i, r := range result.Results {
+		if r.Survives {
+			seenSurvivor = true
+		} else if seenSurvivor {
+			t.Errorf("Results[%d] is a failure that appears AFTER a survivor — failures must be sorted first", i)
+			break
+		}
+	}
 }
 
 func TestYearsUntilDepletion_UsesRelativeFailureTiming(t *testing.T) {

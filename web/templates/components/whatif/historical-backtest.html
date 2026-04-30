@@ -17,6 +17,9 @@
                 {{printf "%.1f" .Analysis.HistoricalBacktest.SuccessRate}}%
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">Historical Success</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{.Analysis.HistoricalBacktest.SurvivedCount}} of {{.Analysis.HistoricalBacktest.TotalSequences}} survived
+            </div>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}">
@@ -96,7 +99,7 @@
                             {{if .Survives}}
                             <span class="text-green-600 dark:text-green-400">Survived</span>
                             {{else}}
-                            <span class="text-red-600 dark:text-red-400">Failed ({{.DepletionYear}})</span>
+                            <span class="text-red-600 dark:text-red-400" title="Year the portfolio was depleted">Failed in {{.DepletionYear}}</span>
                             {{end}}
                         </td>
                         <td class="px-2 py-1 text-right text-gray-800 dark:text-gray-200">

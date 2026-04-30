@@ -100,6 +100,21 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 	p75 := results[len(results)*3/4].FinalBalance
 	p90 := results[len(results)*9/10].FinalBalance
 
+	// Re-sort for the UI table: failures first (quickest depletion at top),
+	// then survivors ascending by final balance (worst survivor → best
+	// survivor). This puts the rows that drive the failure rate at the top of
+	// the scrollable list so users immediately see why the success rate isn't
+	// 100%, instead of having to scroll past the best survivors to find them.
+	sort.Slice(sortedByOutcome, func(i, j int) bool {
+		if sortedByOutcome[i].Survives != sortedByOutcome[j].Survives {
+			return !sortedByOutcome[i].Survives // failures first
+		}
+		if !sortedByOutcome[i].Survives {
+			return yearsUntilDepletion(sortedByOutcome[i]) < yearsUntilDepletion(sortedByOutcome[j])
+		}
+		return sortedByOutcome[i].FinalBalance < sortedByOutcome[j].FinalBalance
+	})
+
 	// Create sequence details for UI
 	sequenceDetails := make([]models.HistoricalBacktestResult, len(results))
 	for i, r := range sortedByOutcome {
@@ -124,6 +139,7 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 
 	return &models.HistoricalBacktestAnalysis{
 		TotalSequences:  len(results),
+		SurvivedCount:   successCount,
 		SuccessRate:     float64(successCount) / float64(len(results)) * 100,
 		WorstStartYears: worstYears,
 		BestStartYears:  bestYears,

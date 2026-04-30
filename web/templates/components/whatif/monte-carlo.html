@@ -29,7 +29,8 @@
     <div class="grid grid-cols-3 gap-2 mb-4 text-center">
         <div class="p-2 bg-red-50 dark:bg-red-900/20 rounded">
             <p class="text-xs text-gray-500 dark:text-gray-300">Market Crashes</p>
-            <p class="text-sm font-medium text-red-600 dark:text-red-400">{{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgCrashesPerRun}}/run</p>
+            <p class="text-sm font-medium text-red-600 dark:text-red-400">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.MarketCrashCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">avg {{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgCrashesPerRun}} each</p>
         </div>
         <div class="p-2 bg-orange-50 dark:bg-orange-900/20 rounded">
             <p class="text-xs text-gray-500 dark:text-gray-300">Spending Shocks</p>

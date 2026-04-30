@@ -36,6 +36,20 @@
                     </select>
                 </div>
 
+                <!-- Major Expense Filter -->
+                {{if .MajorExpenses}}
+                <div class="min-w-[150px]">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Major Expense</label>
+                    <select name="majorExpense"
+                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">All</option>
+                        {{range .MajorExpenses}}
+                        <option value="{{.ID}}" {{if eq $.MajorExpenseFilter .ID}}selected{{end}}>{{.Name}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                {{end}}
+
                 <!-- Type Filter -->
                 <div class="min-w-[120px]">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
@@ -533,6 +547,9 @@
                             {{end}}
                         </div>
                     </th>
+                    <th class="w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
+                        Major Expense
+                    </th>
                     <th class="w-28 text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                         onclick="sortBy('amount')">
                         <div class="flex items-center justify-end gap-1">
@@ -605,6 +622,10 @@
         <span class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs truncate block">{{if
             .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
     </td>
+    <td class="w-32 p-3 text-sm truncate">
+        {{$me := index $.HashToExpense .Hash}}
+        {{if $me}}<span class="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs truncate block" title="{{$me}}">{{$me}}</span>{{end}}
+    </td>
     <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
         {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
     </td>
@@ -620,7 +641,7 @@
 {{end}}
 {{else if eq .Page 1}}
 <tr>
-    <td colspan="6" class="p-8 text-center text-gray-500 dark:text-gray-400">
+    <td colspan="7" class="p-8 text-center text-gray-500 dark:text-gray-400">
         <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">

@@ -879,6 +879,38 @@ func TestBuildCategoryChartData_EmptyData(t *testing.T) {
 	}
 }
 
+// ---------- buildMajorExpenseChartData edge cases ----------
+
+func TestBuildMajorExpenseChartData_EmptyData(t *testing.T) {
+	ts := makeTransactionSet()
+	result := buildMajorExpenseChartData(ts)
+	data := result["data"].([]map[string]interface{})
+	trace := data[0]
+	if values, ok := trace["values"].([]float64); ok && len(values) > 0 {
+		t.Errorf("expected no values for empty data, got %v", values)
+	}
+}
+
+func TestBuildMajorExpenseChartData_AllUnmatched(t *testing.T) {
+	// No major expenses defined → every outflow lands in "Unmatched"
+	// and the residual equals the total.
+	ts := makeTransactionSet(
+		makeTransaction("Coffee", -5, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("Gas", -45, time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Auto"),
+	)
+	result := buildMajorExpenseChartData(ts)
+	data := result["data"].([]map[string]interface{})
+	trace := data[0]
+	labels := trace["labels"].([]string)
+	values := trace["values"].([]float64)
+	if len(labels) != 1 || labels[0] != "Unmatched" {
+		t.Errorf("expected single 'Unmatched' bucket, got %v", labels)
+	}
+	if len(values) != 1 || values[0] != 50 {
+		t.Errorf("expected unmatched residual = 50, got %v", values)
+	}
+}
+
 // ---------- buildMerchantsChartData edge cases ----------
 
 func TestBuildMerchantsChartData_LessThanTen(t *testing.T) {

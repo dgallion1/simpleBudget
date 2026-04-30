@@ -15,6 +15,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/majorexpenses"
 	"budget2/internal/templates"
 )
 
@@ -158,6 +159,8 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 		chartData = buildMonthlyChartData(filtered)
 	case "category":
 		chartData = buildCategoryChartData(filtered)
+	case "major-expense":
+		chartData = buildMajorExpenseChartData(filtered)
 	case "spending-trend":
 		chartData = buildSpendingTrendChartData(filtered)
 	case "merchants":
@@ -724,6 +727,77 @@ func buildCategoryChartData(ts *models.TransactionSet) map[string]interface{} {
 	for _, cv := range sorted {
 		labels = append(labels, cv.cat)
 		values = append(values, cv.val)
+	}
+
+	return map[string]interface{}{
+		"data": []map[string]interface{}{
+			{
+				"type":   "pie",
+				"labels": labels,
+				"values": values,
+				"hole":   0.4,
+			},
+		},
+	}
+}
+
+// buildMajorExpenseChartData renders a pie chart of outflow spending
+// grouped by user-declared major expense for the date-filtered window.
+// Transactions that don't match any major expense are bucketed under
+// "Unmatched" so the totals add up to the period's total outflows.
+func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{} {
+	outflows := ts.FilterByType(models.Outflow)
+
+	// Best-effort load — empty config (or no loader during unit tests)
+	// just means everything goes in "Unmatched", which is a perfectly
+	// fine empty state.
+	var expenses []models.MajorExpense
+	var pins map[string]string
+	if loader != nil {
+		expenses, _ = loader.LoadMajorExpenses()
+		pins, _ = loader.LoadTransactionPins()
+	}
+
+	match := majorexpenses.Match(outflows, expenses, majorexpenses.MatchOptions{Pins: pins})
+
+	expenseByID := make(map[string]models.MajorExpense, len(expenses))
+	for _, e := range expenses {
+		expenseByID[e.ID] = e
+	}
+
+	type bucket struct {
+		name string
+		val  float64
+	}
+	var buckets []bucket
+	for id, txns := range match.Groups {
+		name := expenseByID[id].Name
+		if name == "" {
+			continue // expense was deleted between Match and lookup; skip
+		}
+		var total float64
+		for _, t := range txns {
+			total += t.AbsAmount()
+		}
+		if total > 0 {
+			buckets = append(buckets, bucket{name, total})
+		}
+	}
+	var unmatchedTotal float64
+	for _, t := range match.Unmatched {
+		unmatchedTotal += t.AbsAmount()
+	}
+
+	sort.Slice(buckets, func(i, j int) bool { return buckets[i].val > buckets[j].val })
+	if unmatchedTotal > 0 {
+		buckets = append(buckets, bucket{"Unmatched", unmatchedTotal})
+	}
+
+	labels := make([]string, len(buckets))
+	values := make([]float64, len(buckets))
+	for i, b := range buckets {
+		labels[i] = b.name
+		values[i] = b.val
 	}
 
 	return map[string]interface{}{

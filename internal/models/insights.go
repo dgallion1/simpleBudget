@@ -4,15 +4,16 @@ import "time"
 
 // RecurringPayment represents a detected recurring expense or subscription
 type RecurringPayment struct {
-	Description  string        `json:"description"`
-	Amount       float64       `json:"amount"`
-	Frequency    string        `json:"frequency"` // "weekly", "monthly", "yearly"
-	LastDate     time.Time     `json:"last_date"`
-	NextExpected time.Time     `json:"next_expected"`
-	AnnualCost   float64       `json:"annual_cost"`
-	Occurrences  int           `json:"occurrences"`
-	Confidence   float64       `json:"confidence"` // 0.0-1.0
-	Transactions []Transaction `json:"transactions,omitempty"`
+	Description      string        `json:"description"`
+	Amount           float64       `json:"amount"`
+	Frequency        string        `json:"frequency"` // "weekly", "monthly", "yearly"
+	LastDate         time.Time     `json:"last_date"`
+	NextExpected     time.Time     `json:"next_expected"`
+	AnnualCost       float64       `json:"annual_cost"`
+	Occurrences      int           `json:"occurrences"`
+	Confidence       float64       `json:"confidence"` // 0.0-1.0
+	Transactions     []Transaction `json:"transactions,omitempty"`
+	MajorExpenseName string        `json:"major_expense_name,omitempty"` // Filled by AnnotateRecurringPayments
 }
 
 // CategoryTrend represents month-over-month spending changes in a category

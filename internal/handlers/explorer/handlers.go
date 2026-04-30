@@ -18,6 +18,7 @@ import (
 	"budget2/internal/config"
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 )
@@ -35,6 +36,53 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer, c *config.Confi
 	renderer = r
 	cfg = c
 	store = s
+}
+
+// annotateAndFilterByMajorExpense loads the user's major-expense
+// definitions plus pin overrides, runs the matching engine against the
+// filtered transaction set, and returns:
+//   - the full list of declared major expenses (for the dropdown),
+//   - a hash → expense-name lookup so the template can render the
+//     "Major Expense" column for each row,
+//   - a (possibly narrowed) transaction set: if selectedID is non-empty
+//     and points to an existing expense, the set is replaced with just
+//     that expense's matched transactions.
+//
+// Errors loading expenses or pins are logged and treated as empty.
+func annotateAndFilterByMajorExpense(filtered *models.TransactionSet, selectedID string) ([]models.MajorExpense, map[string]string, *models.TransactionSet) {
+	expenses, err := loader.LoadMajorExpenses()
+	if err != nil {
+		log.Printf("Warning: could not load major expenses: %v", err)
+		expenses = nil
+	}
+	pins, err := loader.LoadTransactionPins()
+	if err != nil {
+		log.Printf("Warning: could not load transaction pins: %v", err)
+		pins = nil
+	}
+
+	match := majorexpenses.Match(filtered, expenses, majorexpenses.MatchOptions{Pins: pins})
+
+	expenseByID := make(map[string]models.MajorExpense, len(expenses))
+	for _, e := range expenses {
+		expenseByID[e.ID] = e
+	}
+	hashToExpense := make(map[string]string)
+	for id, txns := range match.Groups {
+		name := expenseByID[id].Name
+		for _, t := range txns {
+			if t.Hash != "" {
+				hashToExpense[t.Hash] = name
+			}
+		}
+	}
+
+	if selectedID != "" {
+		if txns, ok := match.Groups[selectedID]; ok {
+			filtered = models.NewTransactionSet(txns)
+		}
+	}
+	return expenses, hashToExpense, filtered
 }
 
 // RegisterRoutes registers all explorer routes
@@ -115,6 +163,10 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Major expense annotation + filter
+	majorExpenseID := r.URL.Query().Get("majorExpense")
+	expenses, hashToExpense, filtered := annotateAndFilterByMajorExpense(filtered, majorExpenseID)
+
 	// Calculate totals before pagination
 	totalCount := filtered.Len()
 	totalIncome := filtered.FilterByType(models.Income).SumAmount()
@@ -143,29 +195,32 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := map[string]interface{}{
-		"Title":         "Data Explorer",
-		"ActiveTab":     "explorer",
-		"Transactions":  paginated.Transactions,
-		"Categories":    data.Categories(),
-		"Search":        search,
-		"Category":      category,
-		"Type":          txnType,
-		"StartDate":     startDate.Format("2006-01-02"),
-		"EndDate":       endDate.Format("2006-01-02"),
-		"MinDate":       minDate.Format("2006-01-02"),
-		"MaxDate":       maxDate.Format("2006-01-02"),
-		"Sort":          sortField,
-		"Order":         order,
-		"Page":          page,
-		"PerPage":       perPage,
-		"TotalPages":    totalPages,
-		"TotalCount":    totalCount,
-		"TotalIncome":   totalIncome,
-		"TotalExpenses": totalExpenses,
-		"NetAmount":     netAmount,
-		"PageRange":     pageRange,
-		"PageStart":     pageStart,
-		"PageEnd":       pageEnd,
+		"Title":              "Data Explorer",
+		"ActiveTab":          "explorer",
+		"Transactions":       paginated.Transactions,
+		"Categories":         data.Categories(),
+		"Search":             search,
+		"Category":           category,
+		"Type":               txnType,
+		"StartDate":          startDate.Format("2006-01-02"),
+		"EndDate":            endDate.Format("2006-01-02"),
+		"MinDate":            minDate.Format("2006-01-02"),
+		"MaxDate":            maxDate.Format("2006-01-02"),
+		"Sort":               sortField,
+		"Order":              order,
+		"Page":               page,
+		"PerPage":            perPage,
+		"TotalPages":         totalPages,
+		"TotalCount":         totalCount,
+		"TotalIncome":        totalIncome,
+		"TotalExpenses":      totalExpenses,
+		"NetAmount":          netAmount,
+		"PageRange":          pageRange,
+		"PageStart":          pageStart,
+		"PageEnd":            pageEnd,
+		"MajorExpenses":      expenses,
+		"HashToExpense":      hashToExpense,
+		"MajorExpenseFilter": majorExpenseID,
 	}
 
 	if renderer != nil {
@@ -243,6 +298,10 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Major expense annotation + filter
+	majorExpenseID := r.URL.Query().Get("majorExpense")
+	_, hashToExpense, filtered := annotateAndFilterByMajorExpense(filtered, majorExpenseID)
+
 	// Calculate totals before pagination
 	totalCount := filtered.Len()
 	totalIncome := filtered.FilterByType(models.Income).SumAmount()
@@ -273,22 +332,24 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 	appendRows := r.URL.Query().Get("append") == "true"
 
 	partialData := map[string]interface{}{
-		"Transactions":  paginated.Transactions,
-		"Search":        search,
-		"Category":      category,
-		"Type":          txnType,
-		"Sort":          sortField,
-		"Order":         order,
-		"Page":          page,
-		"PerPage":       perPage,
-		"TotalPages":    totalPages,
-		"TotalCount":    totalCount,
-		"TotalIncome":   totalIncome,
-		"TotalExpenses": totalExpenses,
-		"NetAmount":     netAmount,
-		"PageRange":     pageRange,
-		"PageStart":     pageStart,
-		"PageEnd":       pageEnd,
+		"Transactions":       paginated.Transactions,
+		"Search":             search,
+		"Category":           category,
+		"Type":               txnType,
+		"Sort":               sortField,
+		"Order":              order,
+		"Page":               page,
+		"PerPage":            perPage,
+		"TotalPages":         totalPages,
+		"TotalCount":         totalCount,
+		"TotalIncome":        totalIncome,
+		"TotalExpenses":      totalExpenses,
+		"NetAmount":          netAmount,
+		"PageRange":          pageRange,
+		"PageStart":          pageStart,
+		"PageEnd":            pageEnd,
+		"HashToExpense":      hashToExpense,
+		"MajorExpenseFilter": majorExpenseID,
 	}
 
 	if renderer != nil {

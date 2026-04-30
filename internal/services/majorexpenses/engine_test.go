@@ -469,6 +469,75 @@ func TestMatch_PinIgnoredWhenHashEmpty(t *testing.T) {
 	}
 }
 
+func TestAnnotateRecurringPayments_PinWins(t *testing.T) {
+	defs := []models.MajorExpense{
+		{ID: "kw", Name: "Keyword Match", Keywords: []string{"netflix"}},
+		{ID: "pin", Name: "Pinned Match"},
+	}
+	pinned := models.Transaction{Hash: "h1", Description: "NETFLIX SUBSCRIPTION", Amount: -15}
+	in := []models.RecurringPayment{{Description: "netflix", Transactions: []models.Transaction{pinned}}}
+
+	out := AnnotateRecurringPayments(in, defs, map[string]string{"h1": "pin"})
+	if got := out[0].MajorExpenseName; got != "Pinned Match" {
+		t.Errorf("expected pin to win, got %q", got)
+	}
+}
+
+func TestAnnotateRecurringPayments_FallsBackToKeyword(t *testing.T) {
+	defs := []models.MajorExpense{
+		{ID: "kw", Name: "Keyword Match", Keywords: []string{"netflix"}},
+	}
+	tr := models.Transaction{Hash: "h1", Description: "NETFLIX SUBSCRIPTION", Amount: -15}
+	in := []models.RecurringPayment{{Description: "netflix", Transactions: []models.Transaction{tr}}}
+
+	out := AnnotateRecurringPayments(in, defs, nil)
+	if got := out[0].MajorExpenseName; got != "Keyword Match" {
+		t.Errorf("expected keyword fallback, got %q", got)
+	}
+}
+
+func TestAnnotateRecurringPayments_NoMatchYieldsEmpty(t *testing.T) {
+	defs := []models.MajorExpense{{ID: "rent", Keywords: []string{"landlord"}}}
+	tr := models.Transaction{Hash: "h1", Description: "Random Coffee Shop", Amount: -5}
+	in := []models.RecurringPayment{{Description: "coffee", Transactions: []models.Transaction{tr}}}
+
+	out := AnnotateRecurringPayments(in, defs, nil)
+	if got := out[0].MajorExpenseName; got != "" {
+		t.Errorf("expected empty annotation, got %q", got)
+	}
+}
+
+func TestAnnotateRecurringPayments_OrphanPinIgnored(t *testing.T) {
+	defs := []models.MajorExpense{{ID: "kw", Name: "KW", Keywords: []string{"netflix"}}}
+	tr := models.Transaction{Hash: "h1", Description: "NETFLIX", Amount: -15}
+	in := []models.RecurringPayment{{Description: "netflix", Transactions: []models.Transaction{tr}}}
+
+	// Pin points to a deleted expense; should fall through to keyword.
+	out := AnnotateRecurringPayments(in, defs, map[string]string{"h1": "deleted"})
+	if got := out[0].MajorExpenseName; got != "KW" {
+		t.Errorf("expected fallback to keyword when pin orphaned, got %q", got)
+	}
+}
+
+func TestAnnotateRecurringPayments_EmptyInput(t *testing.T) {
+	if out := AnnotateRecurringPayments(nil, nil, nil); out != nil {
+		t.Errorf("nil input should return nil, got %+v", out)
+	}
+	if out := AnnotateRecurringPayments([]models.RecurringPayment{}, nil, nil); len(out) != 0 {
+		t.Errorf("empty input should return empty, got %+v", out)
+	}
+}
+
+func TestAnnotateRecurringPayments_SkipsEmptyTransactions(t *testing.T) {
+	defs := []models.MajorExpense{{ID: "x", Name: "X", Keywords: []string{"foo"}}}
+	in := []models.RecurringPayment{{Description: "foo"}} // no Transactions slice
+
+	out := AnnotateRecurringPayments(in, defs, nil)
+	if got := out[0].MajorExpenseName; got != "" {
+		t.Errorf("entry without transactions should not be annotated, got %q", got)
+	}
+}
+
 func TestMatch_Integration(t *testing.T) {
 	now := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
 	old := now.Add(-90 * 24 * time.Hour)

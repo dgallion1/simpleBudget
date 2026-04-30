@@ -12,6 +12,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/majorexpenses"
 	"budget2/internal/templates"
 )
 
@@ -143,9 +144,25 @@ func recurringTransactionSet(ts *models.TransactionSet, referenceDate time.Time)
 	return ts.FilterByDateRange(ts.MinDate(), referenceDate)
 }
 
+// annotateRecurringWithMajorExpense fills MajorExpenseName on each
+// detected recurring payment, honoring user pins. Errors and a nil
+// loader are swallowed (insights still useful without the badge — and
+// some unit tests construct insights without initializing the loader).
+func annotateRecurringWithMajorExpense(payments []models.RecurringPayment) []models.RecurringPayment {
+	if loader == nil {
+		return payments
+	}
+	expenses, err := loader.LoadMajorExpenses()
+	if err != nil {
+		return payments
+	}
+	pins, _ := loader.LoadTransactionPins()
+	return majorexpenses.AnnotateRecurringPayments(payments, expenses, pins)
+}
+
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	// Detect recurring patterns against all data so short date ranges still find them
-	recurring := detectRecurringPaymentsAt(allData, endDate)
+	recurring := annotateRecurringWithMajorExpense(detectRecurringPaymentsAt(allData, endDate))
 	trends := analyzeCategoryTrends(allData, startDate, endDate)
 	income := AnalyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)
@@ -863,7 +880,7 @@ func handleRecurringPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recurring := detectRecurringPaymentsAt(data, data.MaxDate())
+	recurring := annotateRecurringWithMajorExpense(detectRecurringPaymentsAt(data, data.MaxDate()))
 
 	var totalRecurring float64
 	for _, r := range recurring {

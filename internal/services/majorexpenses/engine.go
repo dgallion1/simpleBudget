@@ -84,6 +84,47 @@ func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOpti
 	return result
 }
 
+// AnnotateRecurringPayments fills in RecurringPayment.MajorExpenseName
+// for each detected recurring payment whose first transaction maps to a
+// declared major expense. Pins on that first transaction take
+// precedence over keyword/amount matching, mirroring the engine's main
+// matching logic.
+//
+// Returns a new slice; the input is not mutated.
+func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models.MajorExpense, pins map[string]string) []models.RecurringPayment {
+	if len(payments) == 0 {
+		return payments
+	}
+
+	validIDs := make(map[string]bool, len(defs))
+	defByID := make(map[string]models.MajorExpense, len(defs))
+	for _, d := range defs {
+		validIDs[d.ID] = true
+		defByID[d.ID] = d
+	}
+
+	out := make([]models.RecurringPayment, len(payments))
+	copy(out, payments)
+	for i := range out {
+		if len(out[i].Transactions) == 0 {
+			continue
+		}
+		first := out[i].Transactions[0]
+		// Pin wins.
+		if pins != nil && first.Hash != "" {
+			if id, ok := pins[first.Hash]; ok && validIDs[id] {
+				out[i].MajorExpenseName = defByID[id].Name
+				continue
+			}
+		}
+		// Otherwise keyword/amount matching.
+		if id, ok := matchTransaction(first, defs); ok {
+			out[i].MajorExpenseName = defByID[id].Name
+		}
+	}
+	return out
+}
+
 // exactAmountTolerance is the slack used when matching against an
 // "exact" amount (Min == Max). One cent absorbs floating-point noise
 // without expanding the match into nearby amounts.

@@ -18,6 +18,7 @@ import (
 	"budget2/internal/handlers/dashboard"
 	"budget2/internal/handlers/explorer"
 	"budget2/internal/handlers/insights"
+	"budget2/internal/handlers/majorexpenses"
 	"budget2/internal/handlers/whatif"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
@@ -66,6 +67,7 @@ func SetupDependencies(c *config.Config) error {
 	explorer.Initialize(loader, renderer, cfg, store)
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)
+	majorexpenses.Initialize(loader, renderer)
 	backup.Initialize(cfg, store, renderer)
 
 	return nil
@@ -128,6 +130,7 @@ func SetupRouter() chi.Router {
 		explorer.RegisterRoutes(r)
 		whatif.RegisterRoutes(r)
 		insights.RegisterRoutes(r)
+		majorexpenses.RegisterRoutes(r)
 
 		// File manager page (also registered outside middleware for unlock access)
 

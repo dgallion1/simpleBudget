@@ -1,0 +1,384 @@
+{{define "major-expenses-content"}}
+<div class="space-y-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Major Expenses</h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Tell the app about expenses you understand. We'll group transactions
+            that match your keywords and call out anything that looks unusual.
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div id="major-expenses-list-card" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            {{template "major-expenses-list-card-content" .}}
+        </div>
+        <div id="major-expenses-results" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            {{template "major-expenses-exceptions-panel" .}}
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    function applyExceptionFilter(query) {
+        const q = (query || '').toLowerCase().trim();
+        const rows = document.querySelectorAll('tr.major-expenses-exception-row');
+        let visible = 0;
+        rows.forEach(function (tr) {
+            const text = (tr.getAttribute('data-search') || '').toLowerCase();
+            const match = q === '' || text.includes(q);
+            tr.style.display = match ? '' : 'none';
+            if (match) visible++;
+        });
+        const status = document.getElementById('major-expenses-exception-search-status');
+        if (status) {
+            if (q === '') {
+                status.classList.add('hidden');
+                status.textContent = '';
+            } else {
+                status.classList.remove('hidden');
+                status.textContent = visible + ' of ' + rows.length;
+            }
+        }
+        // Auto-open every <details> that contains a visible match so the
+        // user doesn't have to expand each bucket manually.
+        document.querySelectorAll('#major-expenses-results details').forEach(function (d) {
+            if (q === '') return;
+            const hasMatch = d.querySelector('tr.major-expenses-exception-row:not([style*="display: none"])');
+            if (hasMatch) d.open = true;
+        });
+    }
+
+    // Search input — event delegation so it survives HTMX swaps.
+    document.addEventListener('input', function (e) {
+        if (e.target && e.target.id === 'major-expenses-exception-search') {
+            applyExceptionFilter(e.target.value);
+        }
+    });
+
+    // Click delegation: works across HTMX swaps because we listen on document.
+    document.addEventListener('click', function (e) {
+        // Don't hijack clicks on the inline delete <button> inside list items
+        // or on input controls in editable rows.
+        const tag = (e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path') return;
+
+        const fillRow = e.target.closest('tr[data-fill-name]');
+        if (fillRow) {
+            const form = document.getElementById('major-expenses-add-form');
+            if (!form) return;
+            const desc = fillRow.getAttribute('data-fill-name') || '';
+            const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
+
+            // If the description looks like a check number (or otherwise
+            // unique-per-occurrence) the keyword is useless — skip it
+            // so the user falls back to amount-only matching.
+            const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
+            const keyword = isCheckLike ? '' : desc;
+
+            // Leave Name BLANK — the user knows what to call it
+            // ("Car Payment"), the description usually doesn't.
+            form.querySelector('input[name="name"]').value = '';
+            form.querySelector('input[name="keywords"]').value = keyword;
+
+            // Pre-fill min == max with the EXACT amount (cents preserved)
+            // so amount-based matching matches the row you clicked.
+            if (amount > 0) {
+                const exact = amount.toFixed(2);
+                form.querySelector('input[name="expected_min"]').value = exact;
+                form.querySelector('input[name="expected_max"]').value = exact;
+            }
+
+            form.querySelector('input[name="name"]').focus();
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return;
+        }
+
+        const jumpRow = e.target.closest('tr[data-jump-expense]');
+        if (jumpRow) {
+            const id = jumpRow.getAttribute('data-jump-expense');
+            const item = document.getElementById('major-expense-item-' + id);
+            if (!item) return;
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Brief highlight pulse so the user can see which entry was targeted.
+            item.classList.add('ring-2', 'ring-amber-400');
+            setTimeout(function () { item.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
+        }
+    });
+})();
+</script>
+{{end}}
+
+{{/* List card content — extracted so it can be re-rendered via OOB swap */}}
+{{define "major-expenses-list-card-content"}}
+<div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Your Major Expenses</h2>
+    <span class="text-xs text-gray-500 dark:text-gray-400">{{len .Summaries}} declared</span>
+</div>
+
+{{template "major-expenses-add-form" .}}
+{{template "major-expenses-list" .}}
+{{end}}
+
+{{define "major-expenses-list"}}
+<div id="major-expenses-list" class="space-y-2 mb-4">
+    {{range .Summaries}}
+    {{template "major-expense-item" .}}
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-300 italic">
+        No major expenses declared yet. Add your first one below.
+    </p>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Single entry — expects an ExpenseSummary {Expense, Count, Total} */}}
+{{define "major-expense-item"}}
+<form id="major-expense-item-{{.Expense.ID}}" hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
+    hx-swap="innerHTML" hx-trigger="change delay:500ms"
+    class="p-3 bg-gray-50 dark:bg-gray-700 rounded text-sm scroll-mt-4 transition-shadow">
+    <div class="flex items-center justify-between mb-2">
+        <input type="text" name="name" value="{{.Expense.Name}}" required
+            class="font-medium bg-transparent border-b border-gray-300 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:border-indigo-500 px-1"
+            aria-label="Expense name">
+        <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
+            hx-target="#major-expenses-results" hx-swap="innerHTML"
+            class="text-red-500 hover:text-red-700"
+            aria-label="Delete major expense {{.Expense.Name}}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-2 text-xs">
+        <label class="block">
+            <span class="text-gray-600 dark:text-gray-300">Keywords (comma-separated, blank = match by amount)</span>
+            <input type="text" name="keywords"
+                value="{{range $i, $k := .Expense.Keywords}}{{if $i}}, {{end}}{{$k}}{{end}}"
+                class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+        </label>
+        <div class="grid grid-cols-2 gap-2">
+            <label>
+                <span class="text-gray-600 dark:text-gray-300">Min $ (0 = no min)</span>
+                <input type="number" name="expected_min" value="{{printf "%.0f" .Expense.ExpectedMin}}" min="0" step="1"
+                    class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+            </label>
+            <label>
+                <span class="text-gray-600 dark:text-gray-300">Max $ (0 = no max)</span>
+                <input type="number" name="expected_max" value="{{printf "%.0f" .Expense.ExpectedMax}}" min="0" step="1"
+                    class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+            </label>
+        </div>
+        <label class="block">
+            <span class="text-gray-600 dark:text-gray-300">Notes (optional)</span>
+            <input type="text" name="notes" value="{{.Expense.Notes}}"
+                class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+        </label>
+    </div>
+
+    <div class="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+        <span>{{.Count}} matched</span>
+        <span class="font-mono">${{printf "%.0f" .Total}} total</span>
+    </div>
+</form>
+{{end}}
+
+{{define "major-expenses-add-form"}}
+<form id="major-expenses-add-form" hx-post="/major-expenses" hx-target="#major-expenses-results" hx-swap="innerHTML"
+    hx-on::after-request="if(event.detail.successful) this.reset()"
+    class="space-y-2 pb-3 mb-3 border-b dark:border-gray-700">
+    <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Add a major expense</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
+    <label class="block">
+        <span class="text-xs text-gray-600 dark:text-gray-300">Name <span class="text-red-500">*</span></span>
+        <input type="text" name="name" placeholder="What is this? e.g., Car Payment, Rent, Groceries" required
+            class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
+    </label>
+    <label class="block">
+        <span class="text-xs text-gray-600 dark:text-gray-300">Keywords <span class="text-gray-400">(match by description)</span></span>
+        <input type="text" name="keywords" placeholder="e.g., landlord, my landlord — leave empty to match by amount only"
+            class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
+    </label>
+    <div class="grid grid-cols-2 gap-2">
+        <label class="block">
+            <span class="text-xs text-gray-600 dark:text-gray-300">Min $</span>
+            <input type="number" name="expected_min" placeholder="0 = no min" min="0" step="1"
+                class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
+        </label>
+        <label class="block">
+            <span class="text-xs text-gray-600 dark:text-gray-300">Max $</span>
+            <input type="number" name="expected_max" placeholder="0 = no max" min="0" step="1"
+                class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
+        </label>
+    </div>
+    <details class="text-xs text-gray-500 dark:text-gray-400">
+        <summary class="cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">How matching works</summary>
+        <ul class="mt-1 ml-4 list-disc space-y-1">
+            <li><strong>Keyword</strong> matches anything whose description contains it (case-insensitive).</li>
+            <li><strong>Min = Max</strong> (e.g., 1580.00 / 1580.00) matches transactions of that exact amount — useful for fixed-amount checks. Works <em>in addition to</em> the keyword.</li>
+            <li><strong>Min &lt; Max</strong> with <em>no</em> keyword matches anything in that range. With a keyword, the range is used to flag anomalies instead.</li>
+            <li>Heads-up: amount-only matching can catch unrelated transactions of the same amount. Combine with a keyword when possible, or use a tighter range.</li>
+        </ul>
+    </details>
+    <input type="text" name="notes" placeholder="Notes (optional)"
+        class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
+    <div class="flex justify-end">
+        <button type="submit" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            Add expense
+        </button>
+    </div>
+</form>
+{{end}}
+
+{{/* Exceptions response used by mutation handlers — wraps the exceptions
+     panel and adds an OOB swap that refreshes the list card. */}}
+{{define "major-expenses-results"}}
+{{template "major-expenses-exceptions-panel" .}}
+<template>
+    <div id="major-expenses-list-card" hx-swap-oob="innerHTML">
+        {{template "major-expenses-list-card-content" .}}
+    </div>
+</template>
+{{end}}
+
+{{/* Just the exceptions panel — used by GET /major-expenses/exceptions. */}}
+{{define "major-expenses-exceptions"}}
+{{template "major-expenses-exceptions-panel" .}}
+{{end}}
+
+{{define "major-expenses-exceptions-panel"}}
+<div class="flex items-center justify-between mb-2">
+    <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Exceptions</h2>
+    {{$total := 0}}
+    {{$total = add $total (len .Match.Exceptions.UnknownLarge)}}
+    {{$total = add $total (len .Match.Exceptions.Anomalous)}}
+    {{$total = add $total (len .Match.Exceptions.NewMerchants)}}
+    <span class="text-xs text-gray-500 dark:text-gray-400">{{$total}} flagged</span>
+</div>
+
+{{if eq $total 0}}
+<p class="text-sm text-gray-500 dark:text-gray-300 italic">
+    No exceptions in current dataset.
+</p>
+{{else}}
+
+<div class="mb-3 relative">
+    <input type="search" id="major-expenses-exception-search"
+        placeholder="Filter by description, name, amount (625), or date (2025-12)…"
+        class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-3 pr-8"
+        autocomplete="off">
+    <span id="major-expenses-exception-search-status" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></span>
+</div>
+
+<details class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
+    <summary class="cursor-pointer px-3 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded">
+        <span class="font-medium text-red-700 dark:text-red-300">
+            Unmatched over ${{printf "%.0f" .Threshold}}
+        </span>
+        <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len .Match.Exceptions.UnknownLarge}})</span>
+    </summary>
+    {{if .Match.Exceptions.UnknownLarge}}
+    <table class="w-full text-xs mt-1">
+        <thead class="text-gray-500 dark:text-gray-400">
+            <tr><th class="text-left px-2 py-1">Date</th><th class="text-left px-2 py-1">Description</th><th class="text-right px-2 py-1">Amount</th></tr>
+        </thead>
+        <tbody>
+            {{range .Match.Exceptions.UnknownLarge}}
+            {{$label := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$label = .Transaction.DisplayName}}{{end}}
+            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
+                data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
+                title="Click to pre-fill the add form">
+                <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
+                <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="text-xs italic text-gray-500 dark:text-gray-400 px-3 py-2">None.</p>
+    {{end}}
+</details>
+
+<details class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
+    <summary class="cursor-pointer px-3 py-2 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded">
+        <span class="font-medium text-amber-700 dark:text-amber-300">
+            Matched but anomalous amount
+        </span>
+        <span class="ml-2 text-xs text-amber-600 dark:text-amber-400">({{len .Match.Exceptions.Anomalous}})</span>
+    </summary>
+    {{if .Match.Exceptions.Anomalous}}
+    <table class="w-full text-xs mt-1">
+        <thead class="text-gray-500 dark:text-gray-400">
+            <tr>
+                <th class="text-left px-2 py-1">Date</th>
+                <th class="text-left px-2 py-1">Expense</th>
+                <th class="text-left px-2 py-1">Description</th>
+                <th class="text-right px-2 py-1">Amount</th>
+                <th class="text-right px-2 py-1">Expected</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Match.Exceptions.Anomalous}}
+            {{$desc := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$desc = .Transaction.DisplayName}}{{end}}
+            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-jump-expense="{{.MajorExpenseID}}"
+                data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
+                title="Click to scroll to the {{.MajorExpenseName}} entry on the left">
+                <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
+                <td class="px-2 py-1 dark:text-gray-200 font-medium">{{.MajorExpenseName}}</td>
+                <td class="px-2 py-1 dark:text-gray-300">{{$desc}}</td>
+                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                <td class="px-2 py-1 text-right font-mono text-gray-500 dark:text-gray-400">
+                    {{if and (gt .ExpectedMin 0.0) (gt .ExpectedMax 0.0)}}${{printf "%.0f" .ExpectedMin}}–${{printf "%.0f" .ExpectedMax}}
+                    {{else if gt .ExpectedMin 0.0}}≥ ${{printf "%.0f" .ExpectedMin}}
+                    {{else if gt .ExpectedMax 0.0}}≤ ${{printf "%.0f" .ExpectedMax}}{{end}}
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="text-xs italic text-gray-500 dark:text-gray-400 px-3 py-2">None.</p>
+    {{end}}
+</details>
+
+<details class="border border-gray-200 dark:border-gray-700 rounded">
+    <summary class="cursor-pointer px-3 py-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded">
+        <span class="font-medium text-blue-700 dark:text-blue-300">
+            New merchants <span class="text-xs">(last {{.WindowDays}} days)</span>
+        </span>
+        <span class="ml-2 text-xs text-blue-600 dark:text-blue-400">({{len .Match.Exceptions.NewMerchants}})</span>
+    </summary>
+    {{if .Match.Exceptions.NewMerchants}}
+    <table class="w-full text-xs mt-1">
+        <thead class="text-gray-500 dark:text-gray-400">
+            <tr>
+                <th class="text-left px-2 py-1">First seen</th>
+                <th class="text-left px-2 py-1">Description</th>
+                <th class="text-right px-2 py-1">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Match.Exceptions.NewMerchants}}
+            {{$label := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$label = .Transaction.DisplayName}}{{end}}
+            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
+                data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
+                title="Click to pre-fill the add form">
+                <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
+                <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="text-xs italic text-gray-500 dark:text-gray-400 px-3 py-2">None.</p>
+    {{end}}
+</details>
+
+{{end}}{{/* end if eq total 0 */}}
+{{end}}

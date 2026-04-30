@@ -1,0 +1,276 @@
+// Package majorexpenses serves the user-managed list of declared major
+// expenses and the exception buckets that fall out of matching them
+// against imported transactions.
+package majorexpenses
+
+import (
+	"encoding/json"
+	"fmt"
+	"html"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"budget2/internal/models"
+	"budget2/internal/services/dataloader"
+	majorexpenseengine "budget2/internal/services/majorexpenses"
+	"budget2/internal/templates"
+)
+
+const (
+	defaultUnknownThreshold = 100.0
+	defaultNewWindowDays    = 30
+)
+
+var (
+	loader   *dataloader.DataLoader
+	renderer *templates.Renderer
+)
+
+// Initialize sets up the package with required dependencies.
+func Initialize(l *dataloader.DataLoader, r *templates.Renderer) {
+	loader = l
+	renderer = r
+}
+
+// RegisterRoutes registers all major-expenses routes.
+func RegisterRoutes(r chi.Router) {
+	r.Get("/major-expenses", handleMajorExpensesPage)
+	r.Post("/major-expenses", handleAdd)
+	r.Put("/major-expenses/{id}", handleUpdate)
+	r.Delete("/major-expenses/{id}", handleDelete)
+	r.Get("/major-expenses/exceptions", handleExceptions)
+}
+
+func handleMajorExpensesPage(w http.ResponseWriter, r *http.Request) {
+	data, err := buildPageData()
+	if err != nil {
+		renderError(w, "Failed to build page: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if renderer != nil {
+		renderer.Render(w, "base", data)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+func handleAdd(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	me, err := parseExpenseForm(r)
+	if err != nil {
+		renderError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	me.ID = uuid.New().String()
+	if _, err := loader.AddMajorExpense(me); err != nil {
+		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderResults(w)
+}
+
+func handleUpdate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		renderError(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	me, err := parseExpenseForm(r)
+	if err != nil {
+		renderError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := loader.UpdateMajorExpense(id, me); err != nil {
+		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderResults(w)
+}
+
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		renderError(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+	if _, err := loader.DeleteMajorExpense(id); err != nil {
+		renderError(w, "Failed to delete: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderResults(w)
+}
+
+func handleExceptions(w http.ResponseWriter, r *http.Request) {
+	data, err := buildPageData()
+	if err != nil {
+		renderError(w, "Failed to compute exceptions: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if renderer != nil {
+		renderer.RenderPartial(w, "major-expenses-exceptions", data)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+// renderResults sends the combined dual-column partial used by every
+// mutation handler.
+func renderResults(w http.ResponseWriter) {
+	data, err := buildPageData()
+	if err != nil {
+		renderError(w, "Failed to refresh page: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if renderer != nil {
+		renderer.RenderPartial(w, "major-expenses-results", data)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+// buildPageData loads expenses + transactions and runs Match. It is the
+// single source of truth for both full-page and partial rendering.
+func buildPageData() (map[string]interface{}, error) {
+	expenses, err := loader.LoadMajorExpenses()
+	if err != nil {
+		return nil, fmt.Errorf("load major expenses: %w", err)
+	}
+	if expenses == nil {
+		expenses = []models.MajorExpense{}
+	}
+
+	txns, err := loader.LoadData()
+	if err != nil {
+		return nil, fmt.Errorf("load transactions: %w", err)
+	}
+
+	match := majorexpenseengine.Match(txns, expenses, majorexpenseengine.MatchOptions{
+		UnknownLargeThreshold: defaultUnknownThreshold,
+		NewMerchantWindow:     time.Duration(defaultNewWindowDays) * 24 * time.Hour,
+	})
+
+	// Build per-expense summaries so the list partial can render counts and totals
+	// without recomputing in the template.
+	type ExpenseSummary struct {
+		Expense models.MajorExpense
+		Count   int
+		Total   float64
+	}
+	summaries := make([]ExpenseSummary, 0, len(expenses))
+	for _, e := range expenses {
+		var total float64
+		txns := match.Groups[e.ID]
+		for _, t := range txns {
+			total += t.AbsAmount()
+		}
+		summaries = append(summaries, ExpenseSummary{Expense: e, Count: len(txns), Total: total})
+	}
+
+	return map[string]interface{}{
+		"Title":      "Major Expenses",
+		"ActiveTab":  "major-expenses",
+		"Expenses":   expenses,
+		"Summaries":  summaries,
+		"Match":      match,
+		"Threshold":  defaultUnknownThreshold,
+		"WindowDays": defaultNewWindowDays,
+	}, nil
+}
+
+// parseExpenseForm extracts a MajorExpense from form values without
+// stamping ID/timestamps — those are set by the storage layer or
+// preserved on update.
+func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		return models.MajorExpense{}, fmt.Errorf("name is required")
+	}
+	if len(name) > 200 {
+		return models.MajorExpense{}, fmt.Errorf("name is too long (max 200 chars)")
+	}
+
+	keywordsRaw := r.FormValue("keywords")
+	keywords := splitAndTrim(keywordsRaw, ",")
+
+	min, err := parseFormFloat(r, "expected_min")
+	if err != nil {
+		return models.MajorExpense{}, fmt.Errorf("invalid expected_min: %w", err)
+	}
+	if min < 0 {
+		return models.MajorExpense{}, fmt.Errorf("expected_min cannot be negative")
+	}
+	max, err := parseFormFloat(r, "expected_max")
+	if err != nil {
+		return models.MajorExpense{}, fmt.Errorf("invalid expected_max: %w", err)
+	}
+	if max < 0 {
+		return models.MajorExpense{}, fmt.Errorf("expected_max cannot be negative")
+	}
+	if min > 0 && max > 0 && min > max {
+		return models.MajorExpense{}, fmt.Errorf("expected_min cannot exceed expected_max")
+	}
+
+	// Either keywords OR an amount range must be supplied so we know how
+	// to match transactions. Amount-only (no keywords) is the right tool
+	// for things like fixed-amount checks where the description varies.
+	if len(keywords) == 0 && (min <= 0 || max <= 0) {
+		return models.MajorExpense{}, fmt.Errorf("specify at least one keyword OR set both Min and Max to match by amount")
+	}
+
+	return models.MajorExpense{
+		Name:        name,
+		Keywords:    keywords,
+		ExpectedMin: min,
+		ExpectedMax: max,
+		Notes:       strings.TrimSpace(r.FormValue("notes")),
+	}, nil
+}
+
+func parseFormFloat(r *http.Request, key string) (float64, error) {
+	v := strings.TrimSpace(r.FormValue(key))
+	if v == "" {
+		return 0, nil
+	}
+	return strconv.ParseFloat(v, 64)
+}
+
+func splitAndTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func renderError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusCode)
+	body := fmt.Sprintf(`<div class="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+		<div class="flex items-center">
+			<svg class="w-5 h-5 text-red-500 dark:text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+			</svg>
+			<span class="text-red-700 dark:text-red-300 font-medium">Error</span>
+		</div>
+		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
+	</div>`, html.EscapeString(message))
+	w.Write([]byte(body))
+}

@@ -63,6 +63,21 @@
         const tag = (e.target.tagName || '').toLowerCase();
         if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path') return;
 
+        // Jump-to-existing target (e.g. the expense name link inside an
+        // anomalous row) — handle FIRST so it doesn't fall through to
+        // the row-level pre-fill handler below.
+        const jumpEl = e.target.closest('[data-jump-expense]');
+        if (jumpEl) {
+            e.preventDefault();
+            const id = jumpEl.getAttribute('data-jump-expense');
+            const item = document.getElementById('major-expense-item-' + id);
+            if (!item) return;
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            item.classList.add('ring-2', 'ring-amber-400');
+            setTimeout(function () { item.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
+            return;
+        }
+
         const fillRow = e.target.closest('tr[data-fill-name]');
         if (fillRow) {
             const form = document.getElementById('major-expenses-add-form');
@@ -70,23 +85,30 @@
             const desc = fillRow.getAttribute('data-fill-name') || '';
             const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
 
-            // If the description looks like a check number (or otherwise
-            // unique-per-occurrence) the keyword is useless — skip it
-            // so the user falls back to amount-only matching.
+            // Check-like descriptions are unique-per-occurrence ("Check #1234"),
+            // so the keyword can't help. Use amount-only matching instead.
             const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
-            const keyword = isCheckLike ? '' : desc;
 
             // Leave Name BLANK — the user knows what to call it
             // ("Car Payment"), the description usually doesn't.
             form.querySelector('input[name="name"]').value = '';
-            form.querySelector('input[name="keywords"]').value = keyword;
 
-            // Pre-fill min == max with the EXACT amount (cents preserved)
-            // so amount-based matching matches the row you clicked.
-            if (amount > 0) {
-                const exact = amount.toFixed(2);
-                form.querySelector('input[name="expected_min"]').value = exact;
-                form.querySelector('input[name="expected_max"]').value = exact;
+            if (isCheckLike) {
+                // Amount-only mode: clear keywords, pin Min==Max to the exact amount.
+                form.querySelector('input[name="keywords"]').value = '';
+                if (amount > 0) {
+                    const exact = amount.toFixed(2);
+                    form.querySelector('input[name="expected_min"]').value = exact;
+                    form.querySelector('input[name="expected_max"]').value = exact;
+                }
+            } else {
+                // Keyword-friendly: prefill keyword, leave Min/Max blank
+                // so the keyword matches every similar transaction
+                // regardless of amount. Users who want a tighter filter
+                // can add a range manually.
+                form.querySelector('input[name="keywords"]').value = desc;
+                form.querySelector('input[name="expected_min"]').value = '';
+                form.querySelector('input[name="expected_max"]').value = '';
             }
 
             form.querySelector('input[name="name"]').focus();
@@ -94,16 +116,6 @@
             return;
         }
 
-        const jumpRow = e.target.closest('tr[data-jump-expense]');
-        if (jumpRow) {
-            const id = jumpRow.getAttribute('data-jump-expense');
-            const item = document.getElementById('major-expense-item-' + id);
-            if (!item) return;
-            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Brief highlight pulse so the user can see which entry was targeted.
-            item.classList.add('ring-2', 'ring-amber-400');
-            setTimeout(function () { item.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
-        }
     });
 })();
 </script>
@@ -161,12 +173,12 @@
         <div class="grid grid-cols-2 gap-2">
             <label>
                 <span class="text-gray-600 dark:text-gray-300">Min $ (0 = no min)</span>
-                <input type="number" name="expected_min" value="{{printf "%.0f" .Expense.ExpectedMin}}" min="0" step="1"
+                <input type="number" name="expected_min" value="{{printf "%.2f" .Expense.ExpectedMin}}" min="0" step="0.01"
                     class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
             </label>
             <label>
                 <span class="text-gray-600 dark:text-gray-300">Max $ (0 = no max)</span>
-                <input type="number" name="expected_max" value="{{printf "%.0f" .Expense.ExpectedMax}}" min="0" step="1"
+                <input type="number" name="expected_max" value="{{printf "%.2f" .Expense.ExpectedMax}}" min="0" step="0.01"
                     class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
             </label>
         </div>
@@ -181,6 +193,27 @@
         <span>{{.Count}} matched</span>
         <span class="font-mono">${{printf "%.0f" .Total}} total</span>
     </div>
+    {{if .Transactions}}
+    <details class="mt-2 text-xs">
+        <summary class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 select-none">
+            Show matched transactions ({{.Count}})
+        </summary>
+        <table class="mt-1 w-full">
+            <thead class="text-gray-400 dark:text-gray-500">
+                <tr><th class="text-left py-0.5">Date</th><th class="text-left py-0.5">Description</th><th class="text-right py-0.5">Amount</th></tr>
+            </thead>
+            <tbody>
+                {{range .Transactions}}
+                <tr class="border-t border-gray-200 dark:border-gray-600">
+                    <td class="py-0.5 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
+                    <td class="py-0.5 dark:text-gray-200">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Description}}{{end}}</td>
+                    <td class="py-0.5 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </details>
+    {{end}}
 </form>
 {{end}}
 
@@ -203,12 +236,12 @@
     <div class="grid grid-cols-2 gap-2">
         <label class="block">
             <span class="text-xs text-gray-600 dark:text-gray-300">Min $</span>
-            <input type="number" name="expected_min" placeholder="0 = no min" min="0" step="1"
+            <input type="number" name="expected_min" placeholder="0 = no min" min="0" step="0.01"
                 class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
         </label>
         <label class="block">
             <span class="text-xs text-gray-600 dark:text-gray-300">Max $</span>
-            <input type="number" name="expected_max" placeholder="0 = no max" min="0" step="1"
+            <input type="number" name="expected_max" placeholder="0 = no max" min="0" step="0.01"
                 class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
         </label>
     </div>
@@ -324,11 +357,15 @@
             {{range .Match.Exceptions.Anomalous}}
             {{$desc := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$desc = .Transaction.DisplayName}}{{end}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-                data-jump-expense="{{.MajorExpenseID}}"
+                data-fill-name="{{$desc}}" data-fill-keyword="{{$desc}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
-                title="Click to scroll to the {{.MajorExpenseName}} entry on the left">
+                title="Click to move this transaction to a new expense — or click the expense name to edit {{.MajorExpenseName}}">
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
-                <td class="px-2 py-1 dark:text-gray-200 font-medium">{{.MajorExpenseName}}</td>
+                <td class="px-2 py-1 dark:text-gray-200 font-medium">
+                    <a href="#major-expense-item-{{.MajorExpenseID}}" data-jump-expense="{{.MajorExpenseID}}"
+                        class="text-amber-700 dark:text-amber-300 hover:underline"
+                        title="Click to edit {{.MajorExpenseName}}">{{.MajorExpenseName}}</a>
+                </td>
                 <td class="px-2 py-1 dark:text-gray-300">{{$desc}}</td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 <td class="px-2 py-1 text-right font-mono text-gray-500 dark:text-gray-400">

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -164,21 +165,29 @@ func buildPageData() (map[string]interface{}, error) {
 		NewMerchantWindow:     time.Duration(defaultNewWindowDays) * 24 * time.Hour,
 	})
 
-	// Build per-expense summaries so the list partial can render counts and totals
-	// without recomputing in the template.
+	// Build per-expense summaries so the list partial can render counts,
+	// totals, and the matched transactions without recomputing.
 	type ExpenseSummary struct {
-		Expense models.MajorExpense
-		Count   int
-		Total   float64
+		Expense      models.MajorExpense
+		Count        int
+		Total        float64
+		Transactions []models.Transaction
 	}
 	summaries := make([]ExpenseSummary, 0, len(expenses))
 	for _, e := range expenses {
 		var total float64
-		txns := match.Groups[e.ID]
+		txns := append([]models.Transaction(nil), match.Groups[e.ID]...)
 		for _, t := range txns {
 			total += t.AbsAmount()
 		}
-		summaries = append(summaries, ExpenseSummary{Expense: e, Count: len(txns), Total: total})
+		// Most-recent first so the user sees the latest match at the top.
+		sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
+		summaries = append(summaries, ExpenseSummary{
+			Expense:      e,
+			Count:        len(txns),
+			Total:        total,
+			Transactions: txns,
+		})
 	}
 
 	return map[string]interface{}{

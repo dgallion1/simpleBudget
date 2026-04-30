@@ -48,9 +48,10 @@ func TestRenderMajorExpenses_EmptyState(t *testing.T) {
 func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	now := time.Now()
 	type summary struct {
-		Expense models.MajorExpense
-		Count   int
-		Total   float64
+		Expense      models.MajorExpense
+		Count        int
+		Total        float64
+		Transactions []models.Transaction
 	}
 	html := renderMajorExpensesContent(t, map[string]any{
 		"Title":     "Major Expenses",
@@ -110,7 +111,12 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 		t.Errorf("expected new-merchant row to expose data-fill-name attribute")
 	}
 	if !strings.Contains(html, `data-jump-expense="rent"`) {
-		t.Errorf("expected anomalous row to expose data-jump-expense attribute")
+		t.Errorf("expected anomalous expense-name link to expose data-jump-expense attribute")
+	}
+	// Anomalous rows now also expose data-fill-* so the row click moves
+	// the transaction to a new expense (jump is on the inner name link).
+	if !strings.Contains(html, `data-fill-name="My Landlord LLC"`) {
+		t.Errorf("expected anomalous row to expose data-fill-name (so click moves to a new expense)")
 	}
 	if !strings.Contains(html, `id="major-expense-item-rent"`) {
 		t.Errorf("expected list item to have id targetable by jump")
@@ -146,9 +152,10 @@ func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {
 		t.Fatalf("NewFromFS: %v", err)
 	}
 	type summary struct {
-		Expense models.MajorExpense
-		Count   int
-		Total   float64
+		Expense      models.MajorExpense
+		Count        int
+		Total        float64
+		Transactions []models.Transaction
 	}
 	html, err := r.RenderToString("major-expenses-results", map[string]any{
 		"Expenses":  []models.MajorExpense{},

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Testing — Coverage Expansion (2026-04-30)
+- **whatif**: 84.6% → 98.6% (+14.0 pts). ~85 new error-path tests covering ParseForm failures (real `%ZZ` percent-encoding, since the existing multipart-no-boundary trick is silently accepted by modern Go), `Save()` failures (chmod-based), `Load()` failures, and `runAnalysisWithCache` failures (corrupt scenario chain — a `whatif_corrupt.json` file referenced from the active scenario's chain that parses on file-existence but fails on Load). 11 handlers went from 70-78% to 100%: RothConversion, GlidePath, Guardrails, SocialSecurity, ResetPhases, UpdateChain, DeleteChainLink, plus all Delete/Restore handlers.
+- **retirement**: 94.6% → 97.2% (+2.6 pts). New tests for the four scenario error types (`ScenarioChainValidationError`, `ScenarioValidationError`, `ScenarioNotFoundError`, `ScenarioConflictError` — `Error()`/`Unwrap()` 0% → 100%), `findPreparedScenarioPerson` (0% → 100%), `ensurePrimaryPerson`/`ensureSpousePerson` (42-57% → 100%), `UpdateSettingsWithPersons` (0% → 90.9%), plus coverage for `normalizeStartDate`, `inferHealthcarePersonLink`, `decodeSettings`, `loadInternal`, and `removeSpousePersons`.
+- **New test infrastructure** (whatif): `setupTestEnvWithDir` (returns settings dir for chmod tests), `makeSaveFail` (chmod 0o500 with cleanup), `setupItemsThenBreakChain` (corrupt JSON via dangling chain link), `badEncodedRequest` (real ParseForm failures).
+- **Remaining ceilings** (intentional): storage 85.3% / backup 87.4% (YubiKey hardware paths), cmd/validate 86.5% (`main()` ceiling), whatif's last 1.4% (`getSettingsHash` json.Marshal-of-struct uncoverable, `handleListScenarios` filepath.Glob err unreachable from hardcoded pattern, `handleSwitchScenario` Stat-only path not breakable via chmod).
+
 ### What-If Planner — Hardening (2026-04-29)
 - **Cost styling consistency**: Healthcare per-person, ACA, Medicare, total healthcare, and active expense amounts now render in red (`text-red-600 dark:text-red-400`) rather than neutral gray, matching the project rule that cost numbers are visually distinct from neutral and income figures.
 - **Restore-path safety**: `RestoreIncomeSource`, `RestoreExpenseSource`, and `RestoreBigTicketItem` now reject restoring an ID that already exists in the active list (HTTP 409) and surface a 404 when the ID is not in the removed list, instead of silently no-oping or producing duplicate active entries from a hand-edited file.

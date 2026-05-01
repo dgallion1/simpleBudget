@@ -167,6 +167,9 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	// Apply user-assigned aliases
 	allTransactions = dl.applyAliases(allTransactions)
 
+	// Stamp MajorExpenseName based on user-defined major expenses + pins
+	allTransactions = dl.applyMajorExpenseNames(allTransactions)
+
 	// Compute derived fields
 	for i := range allTransactions {
 		allTransactions[i].ComputeDerivedFields()

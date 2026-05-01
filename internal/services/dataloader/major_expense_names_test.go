@@ -150,3 +150,45 @@ func TestApplyMajorExpenseNames_InvalidPinsFallsBackToMatching(t *testing.T) {
 		t.Errorf("expected fall-through to keyword match 'Mortgage' when pins file is corrupt; got %q", got[0].MajorExpenseName)
 	}
 }
+
+func TestLoadData_StampsMajorExpenseNames(t *testing.T) {
+	defs := models.MajorExpenseStore{Expenses: []models.MajorExpense{
+		{ID: "me1", Name: "Mortgage", Keywords: []string{"homeloans"}},
+	}}
+	defsJSON, _ := json.Marshal(defs)
+
+	csv := "Date,Description,Amount\n2024-01-15,BOFA HOMELOANS 0123,-1500\n2024-01-16,Whole Foods,-42\n"
+
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"transactions.csv":    csv,
+		"major_expenses.json": string(defsJSON),
+	})
+	defer cleanup()
+
+	ts, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("LoadData failed: %v", err)
+	}
+	if ts.Len() != 2 {
+		t.Fatalf("expected 2 transactions, got %d", ts.Len())
+	}
+
+	var mortgage, groceries models.Transaction
+	for _, txn := range ts.Transactions {
+		switch txn.Description {
+		case "BOFA HOMELOANS 0123":
+			mortgage = txn
+		case "Whole Foods":
+			groceries = txn
+		}
+	}
+	if mortgage.MajorExpenseName != "Mortgage" {
+		t.Errorf("mortgage row: got MajorExpenseName=%q, want %q", mortgage.MajorExpenseName, "Mortgage")
+	}
+	if groceries.MajorExpenseName != "" {
+		t.Errorf("unmatched row: got MajorExpenseName=%q, want empty", groceries.MajorExpenseName)
+	}
+	if mortgage.Label() != "Mortgage" {
+		t.Errorf("mortgage Label(): got %q, want %q", mortgage.Label(), "Mortgage")
+	}
+}

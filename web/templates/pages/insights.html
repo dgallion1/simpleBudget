@@ -170,14 +170,14 @@
             {{if .Insights.Subscriptions}}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 divide-y sm:divide-y-0 divide-gray-100 dark:divide-gray-700">
                 {{range .Insights.Subscriptions}}
-                <div class="group flex items-center justify-between p-4 hover:bg-rose-50 dark:hover:bg-rose-900/20 cursor-pointer transition-colors border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-gray-700" onclick="window.location.href='/explorer?search={{urlquery .Description}}&type=Outflow'">
+                <div class="group flex items-center justify-between p-4 hover:bg-rose-50 dark:hover:bg-rose-900/20 cursor-pointer transition-colors border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-gray-700" onclick="window.location.href='/explorer?search={{urlquery (or .MajorExpenseName .Description)}}&type=Outflow'">
                     <div class="flex items-center gap-3 min-w-0">
                         <div class="flex-shrink-0 w-8 h-8 rounded-full bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center">
-                            <span class="text-xs font-bold text-rose-600 dark:text-rose-400">{{if .Description}}{{slice .Description 0 1}}{{else}}?{{end}}</span>
+                            <span class="text-xs font-bold text-rose-600 dark:text-rose-400">{{$label := or .MajorExpenseName .Description}}{{if $label}}{{slice $label 0 1}}{{else}}?{{end}}</span>
                         </div>
                         <div class="min-w-0">
                             <div class="flex items-center gap-1">
-                                <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title="{{if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}">{{if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}</p>
+                                <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title="{{if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}</p>
                                 <svg class="w-3 h-3 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                 </svg>
@@ -246,11 +246,10 @@
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {{range .Insights.RecurringPayments}}
-                        <tr class="group hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?search={{urlquery .Description}}&type=Outflow'" data-description="{{.Description}}" data-amount="{{.Amount}}" data-frequency="{{.Frequency}}" data-annual="{{.AnnualCost}}">
+                        <tr class="group hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?search={{urlquery (or .MajorExpenseName .Description)}}&type=Outflow'" data-description="{{.Description}}" data-amount="{{.Amount}}" data-frequency="{{.Frequency}}" data-annual="{{.AnnualCost}}">
                             <td class="p-3">
                                 <div class="flex items-center gap-1">
-                                    <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{.Description}}</span>
-                                    {{if .MajorExpenseName}}<span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 truncate" title="Mapped to major expense: {{.MajorExpenseName}}">{{.MajorExpenseName}}</span>{{end}}
+                                    <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else}}{{.Description}}{{end}}</span>
                                     <svg class="w-3 h-3 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                     </svg>
@@ -624,8 +623,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="p-3">
                     <div class="flex items-center gap-1">
-                        <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs">{{.Description}}</span>
-                        {{if .MajorExpenseName}}<span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 truncate" title="Mapped to major expense: {{.MajorExpenseName}}">{{.MajorExpenseName}}</span>{{end}}
+                        <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else}}{{.Description}}{{end}}</span>
                     </div>
                     <div class="text-xs text-gray-400 dark:text-gray-500">Next: {{formatDate .NextExpected}}</div>
                 </td>

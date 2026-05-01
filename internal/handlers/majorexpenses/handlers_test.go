@@ -897,3 +897,39 @@ func TestHandleMajorExpensesPage_NonHTMXReturnsBaseLayout(t *testing.T) {
 		t.Errorf("non-HTMX response must include the base layout; got:\n%s", body)
 	}
 }
+
+func TestHandleExceptions_StartEndQueryParams(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Seed an expense definition + a multi-year fixture.
+	csvDir := t.TempDir()
+	csvPath := filepath.Join(csvDir, "test.csv")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		"2023-06-15,Random Big Purchase A,-450,Outflow,Misc\n" +
+		"2024-06-15,Random Big Purchase B,-450,Outflow,Misc\n"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	store, _ := storage.New(csvDir)
+	dl2 := dataloader.New(csvDir, store)
+	Initialize(dl2, nil)
+	defer Initialize(dl, nil)
+
+	req := httptest.NewRequest("GET", "/major-expenses/exceptions?start=2024-01-01&end=2024-12-31", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+
+	// Defaults are not "all-time" here — the query params should win.
+	if body["StartDate"] != "2024-01-01" {
+		t.Errorf("StartDate = %v, want 2024-01-01", body["StartDate"])
+	}
+	if body["EndDate"] != "2024-12-31" {
+		t.Errorf("EndDate = %v, want 2024-12-31", body["EndDate"])
+	}
+}

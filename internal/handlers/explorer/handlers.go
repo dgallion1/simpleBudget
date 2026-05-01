@@ -662,6 +662,23 @@ func sortTransactions(ts *models.TransactionSet, field, order string) *models.Tr
 			}
 			return strings.ToLower(sorted.Transactions[i].SourceFile) > strings.ToLower(sorted.Transactions[j].SourceFile)
 		})
+	case "majorExpense":
+		sort.Slice(sorted.Transactions, func(i, j int) bool {
+			// Empty MajorExpenseName means the txn matched no rule — push those
+			// to the bottom in both directions so rule-grouped rows stay together.
+			a := strings.ToLower(sorted.Transactions[i].MajorExpenseName)
+			b := strings.ToLower(sorted.Transactions[j].MajorExpenseName)
+			if a == "" && b != "" {
+				return false
+			}
+			if a != "" && b == "" {
+				return true
+			}
+			if order == "asc" {
+				return a < b
+			}
+			return a > b
+		})
 	default:
 		// Default to date descending
 		sort.Slice(sorted.Transactions, func(i, j int) bool {

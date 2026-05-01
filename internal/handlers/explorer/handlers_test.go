@@ -884,6 +884,8 @@ func TestSortTransactions(t *testing.T) {
 		{"type", "desc"},
 		{"source", "asc"},
 		{"source", "desc"},
+		{"majorExpense", "asc"},
+		{"majorExpense", "desc"},
 		{"unknown", "asc"},
 		{"unknown", "desc"},
 	}
@@ -923,6 +925,35 @@ func TestSortTransactions_EmptyCategory(t *testing.T) {
 	result2 := sortTransactions(ts, "category", "desc")
 	if result2.Len() != 4 {
 		t.Fatalf("expected 4, got %d", result2.Len())
+	}
+}
+
+func TestSortTransactions_ByMajorExpense(t *testing.T) {
+	// Transactions with empty MajorExpenseName must sort to the bottom in both
+	// directions so rule-grouped rows stay clustered. Within named groups,
+	// asc/desc follow case-insensitive alphabetical order.
+	ts := models.NewTransactionSet([]models.Transaction{
+		{Description: "T1", MajorExpenseName: "Wegmans"},
+		{Description: "T2", MajorExpenseName: ""},
+		{Description: "T3", MajorExpenseName: "Mortgage"},
+		{Description: "T4", MajorExpenseName: ""},
+		{Description: "T5", MajorExpenseName: "abundance"},
+	})
+
+	asc := sortTransactions(ts, "majorExpense", "asc")
+	wantAsc := []string{"abundance", "Mortgage", "Wegmans", "", ""}
+	for i, want := range wantAsc {
+		if got := asc.Transactions[i].MajorExpenseName; got != want {
+			t.Errorf("asc[%d] = %q, want %q", i, got, want)
+		}
+	}
+
+	desc := sortTransactions(ts, "majorExpense", "desc")
+	wantDesc := []string{"Wegmans", "Mortgage", "abundance", "", ""}
+	for i, want := range wantDesc {
+		if got := desc.Transactions[i].MajorExpenseName; got != want {
+			t.Errorf("desc[%d] = %q, want %q", i, got, want)
+		}
 	}
 }
 

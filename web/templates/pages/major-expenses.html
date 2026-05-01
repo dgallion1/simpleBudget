@@ -358,11 +358,15 @@
             <tbody>
                 {{$pinned := .PinnedHashes}}
                 {{range .Transactions}}
+                {{/* Skip Label() here: every matched txn carries the rule's MajorExpenseName, so Label() would clobber the bank text and make every row look identical. Show DisplayName (per-txn alias) → Description (bank text). */}}
+                {{$bankText := or .DisplayName .Description}}
                 <tr class="major-expense-matched-row border-t border-gray-200 dark:border-gray-600"
-                    data-search="{{.Label}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
+                    data-search="{{$bankText}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
                     <td class="py-0.5 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                     <td class="py-0.5 dark:text-gray-200">
-                        {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}{{.Label}}
+                        {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
+                            class="text-blue-600 dark:text-blue-400 hover:underline"
+                            title="Show all transactions matching “{{$bankText}}” in the Explorer">{{$bankText}}</a>
                     </td>
                     <td class="py-0.5 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
                     <td class="py-0.5 text-right">

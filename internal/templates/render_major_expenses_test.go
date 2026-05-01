@@ -115,7 +115,7 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 				Expense:      models.MajorExpense{ID: "rent", Name: "Rent", Keywords: []string{"landlord"}, ExpectedMin: 1500, ExpectedMax: 2000},
 				Count:        3,
 				Total:        4800,
-				Transactions: []models.Transaction{{Date: now, Amount: -1700, Description: "Landlord LLC", Hash: "h-rent-1"}},
+				Transactions: []models.Transaction{{Date: now, Amount: -1700, Description: "Landlord LLC", MajorExpenseName: "Rent", Hash: "h-rent-1"}},
 			},
 		},
 		"Match": struct {
@@ -199,6 +199,12 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	// unified filter can locate the transaction inside the item.
 	if !strings.Contains(html, `data-search="Landlord LLC $1700.00 `) {
 		t.Errorf("expected matched-txn row data-search to include label + amount + date")
+	}
+	// Matched-txn description must link to the explorer filtered to that
+	// bank text so the user can drill into other references for it.
+	// Go html/template encodes "+" in URL contexts as "&#43;".
+	if !strings.Contains(html, `href="/explorer?search=Landlord&#43;LLC&type=Outflow"`) {
+		t.Errorf("expected matched-txn description to link to /explorer?search=<desc>&type=Outflow, got html=%s", html)
 	}
 	// Each item form carries the row class so JS can select it.
 	if !strings.Contains(html, `class="major-expense-item-row`) {

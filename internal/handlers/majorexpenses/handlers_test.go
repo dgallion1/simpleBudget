@@ -591,3 +591,74 @@ func makeExpense(id, name string, keywords []string, min, max float64) models.Ma
 		ExpectedMax: max,
 	}
 }
+
+func TestParseRangeFromRequest(t *testing.T) {
+	// Build a small TransactionSet so MinDate/MaxDate are deterministic.
+	txns := &models.TransactionSet{Transactions: []models.Transaction{
+		{Date: time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC), Amount: -10, TransactionType: models.Outflow},
+		{Date: time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC), Amount: -20, TransactionType: models.Outflow},
+	}}
+	min := txns.MinDate()
+	max := txns.MaxDate()
+	mustParse := func(s string) time.Time {
+		t.Helper()
+		v, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			t.Fatalf("parse %q: %v", s, err)
+		}
+		return v
+	}
+
+	cases := []struct {
+		name             string
+		req              *http.Request
+		wantStart, wantEnd time.Time
+	}{
+		{
+			name:      "url query parses both",
+			req:       httptest.NewRequest("GET", "/major-expenses?start=2024-01-01&end=2024-12-31", nil),
+			wantStart: mustParse("2024-01-01"),
+			wantEnd:   mustParse("2024-12-31"),
+		},
+		{
+			name:      "missing both falls back to MinDate/MaxDate",
+			req:       httptest.NewRequest("GET", "/major-expenses", nil),
+			wantStart: min,
+			wantEnd:   max,
+		},
+		{
+			name:      "unparseable both falls back to MinDate/MaxDate",
+			req:       httptest.NewRequest("GET", "/major-expenses?start=garbage&end=also-garbage", nil),
+			wantStart: min,
+			wantEnd:   max,
+		},
+		{
+			name: "form values used when query missing",
+			req: func() *http.Request {
+				form := url.Values{"start": {"2024-03-01"}, "end": {"2024-03-31"}}
+				r := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				return r
+			}(),
+			wantStart: mustParse("2024-03-01"),
+			wantEnd:   mustParse("2024-03-31"),
+		},
+		{
+			name:      "only start parses; end falls back",
+			req:       httptest.NewRequest("GET", "/major-expenses?start=2024-05-01", nil),
+			wantStart: mustParse("2024-05-01"),
+			wantEnd:   max,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotStart, gotEnd := parseRangeFromRequest(tc.req, txns)
+			if !gotStart.Equal(tc.wantStart) {
+				t.Errorf("start = %v, want %v", gotStart, tc.wantStart)
+			}
+			if !gotEnd.Equal(tc.wantEnd) {
+				t.Errorf("end = %v, want %v", gotEnd, tc.wantEnd)
+			}
+		})
+	}
+}

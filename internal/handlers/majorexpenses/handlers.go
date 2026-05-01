@@ -461,6 +461,39 @@ func splitAndTrim(s, sep string) []string {
 	return out
 }
 
+// parseRangeFromRequest resolves the active date window for a request.
+// Order of resolution per side: URL query → form value → fallback to the
+// loaded data's MinDate / MaxDate. Unparseable values silently fall back —
+// query params are a UX convenience, not a strict API contract.
+func parseRangeFromRequest(r *http.Request, txns *models.TransactionSet) (start, end time.Time) {
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	if startStr == "" || endStr == "" {
+		// Form values cover POST/PUT/DELETE bodies (mutation handlers).
+		// ParseForm is idempotent and cheap — safe to call even on GET.
+		_ = r.ParseForm()
+		if startStr == "" {
+			startStr = r.PostForm.Get("start")
+		}
+		if endStr == "" {
+			endStr = r.PostForm.Get("end")
+		}
+	}
+	start = txns.MinDate()
+	end = txns.MaxDate()
+	if startStr != "" {
+		if t, err := time.Parse("2006-01-02", startStr); err == nil {
+			start = t
+		}
+	}
+	if endStr != "" {
+		if t, err := time.Parse("2006-01-02", endStr); err == nil {
+			end = t
+		}
+	}
+	return start, end
+}
+
 func renderError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)

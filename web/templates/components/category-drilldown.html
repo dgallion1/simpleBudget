@@ -41,7 +41,7 @@
                     {{range .Transactions}}
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td class="p-3 text-sm text-gray-600 dark:text-gray-400">{{formatDate .Date}}</td>
-                        <td class="p-3 text-sm text-gray-800 dark:text-gray-200">{{.Description}}</td>
+                        <td class="p-3 text-sm text-gray-800 dark:text-gray-200" title="{{.Description}}">{{.Label}}</td>
                         <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">{{formatMoney (abs .Amount)}}</td>
                     </tr>
                     {{end}}

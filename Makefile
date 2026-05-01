@@ -70,12 +70,15 @@ ifdef GO_OVERRIDE
     NEED_GO_INSTALL :=
 endif
 
-.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz check
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz check check-full
 
 all: build
 
-check: vet static vuln test race ## Run full quality pipeline (pre-commit)
+check: vet static vuln test ## Run quality pipeline (pre-commit; race excluded — opt in via `make check-full` or `make race`)
 	@echo "✓ all checks passed"
+
+check-full: check race ## Run full quality pipeline including race detector (CI / pre-PR)
+	@echo "✓ all checks (incl. race) passed"
 
 # Display available targets
 help:

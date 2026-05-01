@@ -180,12 +180,33 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	if !strings.Contains(html, `id="major-expenses-add-form"`) {
 		t.Errorf("expected add form to have id used by click handler")
 	}
-	// Search input + per-row data-search
-	if !strings.Contains(html, `id="major-expenses-exception-search"`) {
-		t.Errorf("expected exception search input")
+	// Unified search input (was per-card exception search; now page-level).
+	if !strings.Contains(html, `id="major-expenses-search"`) {
+		t.Errorf("expected unified search input id=major-expenses-search")
+	}
+	if strings.Contains(html, `id="major-expenses-exception-search"`) {
+		t.Errorf("old per-card exception search input must be removed once the unified bar lands")
 	}
 	if !strings.Contains(html, `class="major-expenses-exception-row`) {
 		t.Errorf("expected rows to carry the exception-row class targeted by the filter script")
+	}
+	// Each Major Expense item exposes a data-search built from name +
+	// keywords + notes so the unified filter can match the item itself.
+	if !strings.Contains(html, `data-search="Rent landlord`) {
+		t.Errorf("expected expense item data-search to include name and keywords, got html=%s", html)
+	}
+	// Matched-txn rows inside an item carry their own data-search so the
+	// unified filter can locate the transaction inside the item.
+	if !strings.Contains(html, `data-search="Landlord LLC $1700.00 `) {
+		t.Errorf("expected matched-txn row data-search to include label + amount + date")
+	}
+	// Each item form carries the row class so JS can select it.
+	if !strings.Contains(html, `class="major-expense-item-row`) {
+		t.Errorf("expected expense-item form to carry major-expense-item-row class")
+	}
+	// Each matched-txn <tr> carries the row class so JS can select it.
+	if !strings.Contains(html, `class="major-expense-matched-row`) {
+		t.Errorf("expected matched-txn row to carry major-expense-matched-row class")
 	}
 	if !strings.Contains(html, `data-search="Random Big Purchase $250.00 `) {
 		t.Errorf("expected unmatched row to include description + amount in data-search, got html=%s", html)

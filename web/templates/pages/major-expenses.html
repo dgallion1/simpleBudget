@@ -6,6 +6,13 @@
             Tell the app about expenses you understand. We'll group transactions
             that match your keywords and call out anything that looks unusual.
         </p>
+        <div class="mt-3 relative">
+            <input type="search" id="major-expenses-search"
+                placeholder="Filter expenses, keywords, notes, transactions, amounts, dates…"
+                class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-3 pr-32"
+                autocomplete="off">
+            <span id="major-expenses-search-status" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></span>
+        </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -46,34 +53,67 @@
         if (apply) apply.disabled = !active || !target || !target.value;
     }
 
-    function applyExceptionFilter(query) {
+    function applyUnifiedFilter(query) {
         const q = (query || '').toLowerCase().trim();
-        const rows = document.querySelectorAll('tr.major-expenses-exception-row');
-        let visible = 0;
-        rows.forEach(function (tr) {
+
+        // ---- LEFT CARD: Major Expense items + their matched transactions ----
+        const items = document.querySelectorAll('.major-expense-item-row');
+        let visibleExpenses = 0;
+        items.forEach(function (item) {
+            const itemHay = (item.getAttribute('data-search') || '').toLowerCase();
+            const itemMatch = q === '' || itemHay.includes(q);
+
+            // Per-row matched-txn filter inside this item.
+            const txnRows = item.querySelectorAll('.major-expense-matched-row');
+            let txnHadMatch = false;
+            txnRows.forEach(function (tr) {
+                const hay = (tr.getAttribute('data-search') || '').toLowerCase();
+                const match = q === '' || hay.includes(q);
+                tr.style.display = match ? '' : 'none';
+                if (match && q !== '') txnHadMatch = true;
+            });
+
+            const show = q === '' || itemMatch || txnHadMatch;
+            item.style.display = show ? '' : 'none';
+            if (show) visibleExpenses++;
+
+            // Force-open <details> when the user matched a contained txn.
+            // We never force-close, so the server-rendered open-when-pinned
+            // default still wins on empty queries.
+            if (q !== '' && txnHadMatch) {
+                const details = item.querySelector('details');
+                if (details) details.open = true;
+            }
+        });
+
+        // ---- RIGHT CARD: Exceptions ----
+        const exRows = document.querySelectorAll('tr.major-expenses-exception-row');
+        let visibleExceptions = 0;
+        exRows.forEach(function (tr) {
             const text = (tr.getAttribute('data-search') || '').toLowerCase();
             const match = q === '' || text.includes(q);
             tr.style.display = match ? '' : 'none';
-            if (match) visible++;
+            if (match) visibleExceptions++;
         });
-        const status = document.getElementById('major-expenses-exception-search-status');
+        document.querySelectorAll('#major-expenses-results details').forEach(function (d) {
+            if (q === '') return;
+            const hasMatch = d.querySelector('tr.major-expenses-exception-row:not([style*="display: none"])');
+            if (hasMatch) d.open = true;
+        });
+
+        // ---- Status badge ----
+        const status = document.getElementById('major-expenses-search-status');
         if (status) {
             if (q === '') {
                 status.classList.add('hidden');
                 status.textContent = '';
             } else {
                 status.classList.remove('hidden');
-                status.textContent = visible + ' of ' + rows.length;
+                status.textContent = visibleExpenses + ' expenses · ' + visibleExceptions + ' exceptions';
             }
         }
-        // Auto-open every <details> that contains a visible match so the
-        // user doesn't have to expand each bucket manually.
-        document.querySelectorAll('#major-expenses-results details').forEach(function (d) {
-            if (q === '') return;
-            const hasMatch = d.querySelector('tr.major-expenses-exception-row:not([style*="display: none"])');
-            if (hasMatch) d.open = true;
-        });
-        syncBulkPinToolbar(visible, q);
+
+        syncBulkPinToolbar(visibleExceptions, q);
     }
 
     // Persist <details> open state across HTMX swaps. Each swap replaces
@@ -103,8 +143,8 @@
         // Reapply the active search after every HTMX swap. Without this,
         // a single-pin POST refreshes the panel and the user's filter
         // input still shows the search text but every row is visible.
-        const input = document.getElementById('major-expenses-exception-search');
-        if (input && input.value) applyExceptionFilter(input.value);
+        const input = document.getElementById('major-expenses-search');
+        if (input && input.value) applyUnifiedFilter(input.value);
     });
 
     // Bulk-pin Apply: collect every visible exception hash, fire one
@@ -132,15 +172,15 @@
     // Re-enable the Apply button when the target dropdown changes.
     document.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'major-expenses-bulk-pin-target') {
-            const input = document.getElementById('major-expenses-exception-search');
-            applyExceptionFilter(input ? input.value : '');
+            const input = document.getElementById('major-expenses-search');
+            applyUnifiedFilter(input ? input.value : '');
         }
     });
 
     // Search input — event delegation so it survives HTMX swaps.
     document.addEventListener('input', function (e) {
-        if (e.target && e.target.id === 'major-expenses-exception-search') {
-            applyExceptionFilter(e.target.value);
+        if (e.target && e.target.id === 'major-expenses-search') {
+            applyUnifiedFilter(e.target.value);
         }
     });
 
@@ -237,7 +277,8 @@
 {{define "major-expense-item"}}
 <form id="major-expense-item-{{.Expense.ID}}" hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
     hx-swap="innerHTML" hx-trigger="change delay:500ms"
-    class="p-3 bg-gray-50 dark:bg-gray-700 rounded text-sm scroll-mt-4 transition-shadow">
+    data-search="{{.Expense.Name}}{{range .Expense.Keywords}} {{.}}{{end}}{{if .Expense.Notes}} {{.Expense.Notes}}{{end}}"
+    class="major-expense-item-row p-3 bg-gray-50 dark:bg-gray-700 rounded text-sm scroll-mt-4 transition-shadow">
     <div class="flex items-center justify-between mb-2">
         <input type="text" name="name" value="{{.Expense.Name}}" required
             class="font-medium bg-transparent border-b border-gray-300 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:border-indigo-500 px-1"
@@ -294,7 +335,8 @@
             <tbody>
                 {{$pinned := .PinnedHashes}}
                 {{range .Transactions}}
-                <tr class="border-t border-gray-200 dark:border-gray-600">
+                <tr class="major-expense-matched-row border-t border-gray-200 dark:border-gray-600"
+                    data-search="{{.Label}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
                     <td class="py-0.5 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                     <td class="py-0.5 dark:text-gray-200">
                         {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}{{.Label}}
@@ -414,14 +456,6 @@
     No exceptions in current dataset.
 </p>
 {{else}}
-
-<div class="mb-3 relative">
-    <input type="search" id="major-expenses-exception-search"
-        placeholder="Filter by description, name, amount (625), or date (2025-12)…"
-        class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-3 pr-8"
-        autocomplete="off">
-    <span id="major-expenses-exception-search-status" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></span>
-</div>
 
 {{if .ExpenseOptions}}
 <div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">

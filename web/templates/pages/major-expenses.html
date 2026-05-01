@@ -220,16 +220,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     }
 
     // Show/hide the bulk-pin toolbar and update its row count based on
-    // the current visible-exception set. Called after every filter
-    // change AND after HTMX swaps so the toolbar tracks the live DOM.
+    // the current visible-exception set.
     function syncBulkPinToolbar(visibleCount, query) {
         const bar = document.getElementById('major-expenses-bulk-pin');
         if (!bar) return;
         const counter = document.getElementById('major-expenses-bulk-pin-count');
         const apply = document.getElementById('major-expenses-bulk-pin-apply');
         const target = document.getElementById('major-expenses-bulk-pin-target');
-        // Only show when the user has actively narrowed the list — pinning
-        // EVERY exception with one click is too easy to misfire.
         const active = query.trim() !== '' && visibleCount > 0;
         bar.classList.toggle('hidden', !active);
         bar.classList.toggle('flex', active);
@@ -237,18 +234,25 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         if (apply) apply.disabled = !active || !target || !target.value;
     }
 
+    function setRowOpen(tbody, open) {
+        if (!tbody) return;
+        tbody.setAttribute('data-open', open ? 'true' : 'false');
+        const btn = tbody.querySelector('button.major-expense-row-toggle');
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
     function applyUnifiedFilter(query) {
         const q = (query || '').toLowerCase().trim();
 
-        // ---- LEFT CARD: Major Expense items + their matched transactions ----
-        const items = document.querySelectorAll('.major-expense-item-row');
+        // ---- LEFT CARD: iterate by tbody group, not by row. ----
+        const groups = document.querySelectorAll('#major-expenses-list tbody[data-expense-id]');
         let visibleExpenses = 0;
-        items.forEach(function (item) {
-            const itemHay = (item.getAttribute('data-search') || '').toLowerCase();
+        groups.forEach(function (group) {
+            const summary = group.querySelector('tr.major-expense-item-row');
+            const itemHay = (summary && summary.getAttribute('data-search') || '').toLowerCase();
             const itemMatch = q === '' || itemHay.includes(q);
 
-            // Per-row matched-txn filter inside this item.
-            const txnRows = item.querySelectorAll('.major-expense-matched-row');
+            const txnRows = group.querySelectorAll('tr.major-expense-matched-row');
             let txnHadMatch = false;
             txnRows.forEach(function (tr) {
                 const hay = (tr.getAttribute('data-search') || '').toLowerCase();
@@ -258,16 +262,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             });
 
             const show = q === '' || itemMatch || txnHadMatch;
-            item.style.display = show ? '' : 'none';
+            group.style.display = show ? '' : 'none';
             if (show) visibleExpenses++;
 
-            // Force-open <details> when the user matched a contained txn.
-            // We never force-close, so the server-rendered open-when-pinned
-            // default still wins on empty queries.
-            if (q !== '' && txnHadMatch) {
-                const details = item.querySelector('details');
-                if (details) details.open = true;
-            }
+            // Force-open the row when the user matched a contained txn.
+            // Empty queries leave open-state untouched so collapse
+            // defaults survive.
+            if (q !== '' && txnHadMatch) setRowOpen(group, true);
         });
 
         // ---- RIGHT CARD: Exceptions ----
@@ -296,21 +297,17 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 status.textContent = visibleExpenses + ' expenses · ' + visibleExceptions + ' exceptions';
             }
         }
-
-        // ---- Clear button visibility ----
         const clear = document.getElementById('major-expenses-search-clear');
         if (clear) clear.classList.toggle('hidden', q === '');
 
         syncBulkPinToolbar(visibleExceptions, q);
     }
 
-    // Persist <details> open state across HTMX swaps. Each swap replaces
-    // DOM nodes wholesale, which silently closes any disclosure the user
-    // had opened. We snapshot every id'd <details> in the major-expenses
-    // panel and list card before the swap, then reapply `open` after.
-    // Server-side conditionals (e.g. auto-open when PinnedCount > 0)
-    // still take effect because we only set open=true, never false.
+    // Persist <details> open state AND tbody[data-open] across HTMX
+    // swaps. Each swap replaces DOM nodes wholesale, so we snapshot
+    // before, restore after.
     let savedOpenDetails = null;
+    let savedOpenRows = null;
     function persistedDetailsSelector() {
         return '#major-expenses-results details[id], #major-expenses-list-card details[id]';
     }
@@ -320,6 +317,12 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             if (d.open) open.add(d.id);
         });
         savedOpenDetails = open;
+
+        const rows = new Set();
+        document.querySelectorAll('#major-expenses-list tbody[data-expense-id][data-open="true"]').forEach(function (tb) {
+            rows.add(tb.getAttribute('data-expense-id'));
+        });
+        savedOpenRows = rows;
     });
     document.body.addEventListener('htmx:afterSwap', function () {
         if (savedOpenDetails) {
@@ -328,16 +331,18 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             });
             savedOpenDetails = null;
         }
-        // Reapply the active search after every HTMX swap. Without this,
-        // a single-pin POST refreshes the panel and the user's filter
-        // input still shows the search text but every row is visible.
+        if (savedOpenRows) {
+            savedOpenRows.forEach(function (id) {
+                const tb = document.querySelector('#major-expenses-list tbody[data-expense-id="' + CSS.escape(id) + '"]');
+                if (tb) setRowOpen(tb, true);
+            });
+            savedOpenRows = null;
+        }
         const input = document.getElementById('major-expenses-search');
         if (input && input.value) applyUnifiedFilter(input.value);
     });
 
-    // Bulk-pin Apply: collect every visible exception hash, fire one
-    // POST /major-expenses/pins/bulk via htmx.ajax so the standard OOB
-    // swap pipeline kicks in.
+    // Bulk-pin Apply.
     document.addEventListener('click', function (e) {
         if (!e.target || e.target.id !== 'major-expenses-bulk-pin-apply') return;
         e.preventDefault();
@@ -348,9 +353,6 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         const fd = new FormData();
         fd.append('expense_id', target.value);
         hashes.forEach(function (h) { fd.append('hashes', h); });
-        // Carry the active date window so the post-mutation render
-        // preserves the user's filter (matches hx-include on the other
-        // mutation forms).
         const filterForm = document.getElementById('major-expenses-filter-form');
         if (filterForm) {
             const startVal = filterForm.querySelector('input[name="start"]').value;
@@ -367,7 +369,6 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         }
     });
 
-    // Re-enable the Apply button when the target dropdown changes.
     document.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'major-expenses-bulk-pin-target') {
             const input = document.getElementById('major-expenses-search');
@@ -375,14 +376,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         }
     });
 
-    // Search input — event delegation so it survives HTMX swaps.
+    // Search input (delegated; survives HTMX swaps).
     document.addEventListener('input', function (e) {
         if (e.target && e.target.id === 'major-expenses-search') {
             applyUnifiedFilter(e.target.value);
         }
     });
 
-    // Clear button — empties the input and re-applies the (now empty) filter.
     document.addEventListener('click', function (e) {
         const clear = e.target && e.target.closest && e.target.closest('#major-expenses-search-clear');
         if (!clear) return;
@@ -394,46 +394,72 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         input.focus();
     });
 
-    // Click delegation: works across HTMX swaps because we listen on document.
+    // Add-panel toggle: [+] icon flips <details> open state and aria.
     document.addEventListener('click', function (e) {
-        // Don't hijack clicks on the inline delete <button> inside list items
-        // or on input controls in editable rows.
+        const toggle = e.target && e.target.closest && e.target.closest('#major-expenses-add-toggle');
+        if (!toggle) return;
+        e.preventDefault();
+        const panel = document.getElementById('major-expenses-add-panel');
+        if (!panel) return;
+        const willOpen = !panel.open;
+        panel.open = willOpen;
+        toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (willOpen) {
+            const name = panel.querySelector('input[name="name"]');
+            if (name) name.focus();
+        }
+    });
+
+    // Chevron toggle: flips data-open on the parent tbody.
+    document.addEventListener('click', function (e) {
+        const btn = e.target && e.target.closest && e.target.closest('button.major-expense-row-toggle');
+        if (!btn) return;
+        e.preventDefault();
+        const tbody = btn.closest('tbody[data-expense-id]');
+        if (!tbody) return;
+        const open = tbody.getAttribute('data-open') !== 'true';
+        setRowOpen(tbody, open);
+    });
+
+    // Click delegation for jump-to-existing AND exception-row prefill.
+    document.addEventListener('click', function (e) {
         const tag = (e.target.tagName || '').toLowerCase();
         if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path' ||
             tag === 'select' || tag === 'option') return;
 
-        // Jump-to-existing target (e.g. the expense name link inside an
-        // anomalous row) — handle FIRST so it doesn't fall through to
-        // the row-level pre-fill handler below.
+        // Jump-to-existing: open the target row first.
         const jumpEl = e.target.closest('[data-jump-expense]');
         if (jumpEl) {
             e.preventDefault();
             const id = jumpEl.getAttribute('data-jump-expense');
-            const item = document.getElementById('major-expense-item-' + id);
-            if (!item) return;
-            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            item.classList.add('ring-2', 'ring-amber-400');
-            setTimeout(function () { item.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
+            const summary = document.getElementById('major-expense-item-' + id);
+            const tbody = summary && summary.closest('tbody[data-expense-id]');
+            if (!summary) return;
+            setRowOpen(tbody, true);
+            summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            summary.classList.add('ring-2', 'ring-amber-400');
+            setTimeout(function () { summary.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
             return;
         }
 
+        // Exception-row prefill: open the add panel before filling.
         const fillRow = e.target.closest('tr[data-fill-name]');
         if (fillRow) {
             const form = document.getElementById('major-expenses-add-form');
             if (!form) return;
+            const panel = document.getElementById('major-expenses-add-panel');
+            const toggle = document.getElementById('major-expenses-add-toggle');
+            if (panel && !panel.open) {
+                panel.open = true;
+                if (toggle) toggle.setAttribute('aria-expanded', 'true');
+            }
             const desc = fillRow.getAttribute('data-fill-name') || '';
             const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
-
-            // Check-like descriptions are unique-per-occurrence ("Check #1234"),
-            // so the keyword can't help. Use amount-only matching instead.
             const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
 
-            // Leave Name BLANK — the user knows what to call it
-            // ("Car Payment"), the description usually doesn't.
             form.querySelector('input[name="name"]').value = '';
 
             if (isCheckLike) {
-                // Amount-only mode: clear keywords, pin Min==Max to the exact amount.
                 form.querySelector('input[name="keywords"]').value = '';
                 if (amount > 0) {
                     const exact = amount.toFixed(2);
@@ -441,10 +467,6 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     form.querySelector('input[name="expected_max"]').value = exact;
                 }
             } else {
-                // Keyword-friendly: prefill keyword, leave Min/Max blank
-                // so the keyword matches every similar transaction
-                // regardless of amount. Users who want a tighter filter
-                // can add a range manually.
                 form.querySelector('input[name="keywords"]').value = desc;
                 form.querySelector('input[name="expected_min"]').value = '';
                 form.querySelector('input[name="expected_max"]').value = '';
@@ -454,7 +476,6 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             return;
         }
-
     });
 })();
 </script>

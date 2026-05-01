@@ -745,7 +745,15 @@ func buildCategoryChartData(ts *models.TransactionSet) map[string]interface{} {
 // grouped by user-declared major expense for the date-filtered window.
 // Transactions that don't match any major expense are bucketed under
 // "Unmatched" so the totals add up to the period's total outflows.
+//
+// To keep the donut readable when many small buckets exist, only the
+// top majorExpenseDonutLimit matched buckets are kept as individual
+// wedges; the rest are rolled into a single "Other" wedge. The list
+// of rolled-up items is returned alongside the chart in the "smaller"
+// field so the client can render a text breakdown.
 func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{} {
+	const majorExpenseDonutLimit = 8
+
 	outflows := ts.FilterByType(models.Outflow)
 
 	// Best-effort load — empty config (or no loader during unit tests)
@@ -789,18 +797,35 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 	}
 
 	sort.Slice(buckets, func(i, j int) bool { return buckets[i].val > buckets[j].val })
+
+	// Roll up the long tail past the donut limit into a single "Other"
+	// bucket and remember which entries went into it for the breakdown.
+	var rolledUp []bucket
+	if len(buckets) > majorExpenseDonutLimit {
+		// Copy out the rolled-up entries before mutating the head slice;
+		// append-in-place can otherwise overwrite the tail's storage.
+		rolledUp = append([]bucket(nil), buckets[majorExpenseDonutLimit:]...)
+		var otherTotal float64
+		for _, b := range rolledUp {
+			otherTotal += b.val
+		}
+		buckets = append(buckets[:majorExpenseDonutLimit], bucket{"Other", otherTotal})
+	}
+
 	if unmatchedTotal > 0 {
 		buckets = append(buckets, bucket{"Unmatched", unmatchedTotal})
 	}
 
 	labels := make([]string, len(buckets))
 	values := make([]float64, len(buckets))
+	var grandTotal float64
 	for i, b := range buckets {
 		labels[i] = b.name
 		values[i] = b.val
+		grandTotal += b.val
 	}
 
-	return map[string]interface{}{
+	out := map[string]interface{}{
 		"data": []map[string]interface{}{
 			{
 				"type":   "pie",
@@ -810,6 +835,31 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 			},
 		},
 	}
+
+	if len(rolledUp) > 0 {
+		smaller := make([]map[string]interface{}, 0, len(rolledUp))
+		for _, b := range rolledUp {
+			pct := 0.0
+			if grandTotal > 0 {
+				pct = b.val / grandTotal * 100
+			}
+			// One decimal for ≥ 1%, two decimals for < 1% so that a
+			// 0.45% slice does not display as "0%".
+			if pct < 1 {
+				pct = math.Round(pct*100) / 100
+			} else {
+				pct = math.Round(pct*10) / 10
+			}
+			smaller = append(smaller, map[string]interface{}{
+				"name":    b.name,
+				"amount":  b.val,
+				"percent": pct,
+			})
+		}
+		out["smaller"] = smaller
+	}
+
+	return out
 }
 
 func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface{} {

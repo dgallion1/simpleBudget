@@ -911,6 +911,212 @@ func TestBuildMajorExpenseChartData_AllUnmatched(t *testing.T) {
 	}
 }
 
+// withMajorExpenses installs a loader populated with the given major
+// expenses for the duration of the test. The loader is a package-level
+// var; restored on cleanup.
+func withMajorExpenses(t *testing.T, expenses []models.MajorExpense) {
+	t.Helper()
+	tmpDir, dl, cleanup := writeTempCSV(t, [][]string{})
+	t.Cleanup(cleanup)
+	_ = tmpDir
+	if err := dl.SaveMajorExpenses(expenses); err != nil {
+		t.Fatalf("SaveMajorExpenses: %v", err)
+	}
+	prev := loader
+	loader = dl
+	t.Cleanup(func() { loader = prev })
+}
+
+func TestBuildMajorExpenseChartData_FewerThanThreshold(t *testing.T) {
+	// 5 distinct major expenses, all matched → no "Other" wedge, no smaller.
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+	for i := 0; i < 5; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns, makeTransaction(name+"-kw payment", -float64((5-i)*100),
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"))
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	data := result["data"].([]map[string]interface{})
+	labels := data[0]["labels"].([]string)
+	for _, l := range labels {
+		if l == "Other" {
+			t.Errorf("expected no 'Other' wedge with 5 buckets, got labels=%v", labels)
+		}
+	}
+	if _, ok := result["smaller"]; ok {
+		t.Errorf("expected no 'smaller' field with 5 buckets, got %v", result["smaller"])
+	}
+}
+
+func TestBuildMajorExpenseChartData_ExactlyAtThreshold(t *testing.T) {
+	// 8 distinct major expenses → no "Other" wedge, no smaller.
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+	for i := 0; i < 8; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns, makeTransaction(name+"-kw payment", -float64((8-i)*100),
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"))
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	labels := result["data"].([]map[string]interface{})[0]["labels"].([]string)
+	if len(labels) != 8 {
+		t.Errorf("expected 8 labels (no Other), got %d: %v", len(labels), labels)
+	}
+	for _, l := range labels {
+		if l == "Other" {
+			t.Errorf("expected no 'Other' wedge at exactly 8 buckets, got labels=%v", labels)
+		}
+	}
+	if _, ok := result["smaller"]; ok {
+		t.Errorf("expected no 'smaller' field at exactly 8 buckets")
+	}
+}
+
+func TestBuildMajorExpenseChartData_AboveThresholdRollup(t *testing.T) {
+	// 11 distinct major expenses → top 8 + Other (rollup of 3) on the donut,
+	// smaller has 3 entries with descending amounts.
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+	for i := 0; i < 11; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		// Amounts: 1100, 1000, 900, ..., 100 (descending)
+		txns = append(txns, makeTransaction(name+"-kw payment", -float64((11-i)*100),
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"))
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	labels := result["data"].([]map[string]interface{})[0]["labels"].([]string)
+	values := result["data"].([]map[string]interface{})[0]["values"].([]float64)
+
+	if len(labels) != 9 {
+		t.Fatalf("expected 9 wedges (top 8 + Other), got %d: %v", len(labels), labels)
+	}
+	if labels[8] != "Other" {
+		t.Errorf("expected last wedge to be 'Other', got %q", labels[8])
+	}
+
+	// Sum of bottom 3 buckets (300+200+100 = 600).
+	if !floatEqual(values[8], 600) {
+		t.Errorf("Other value = %v, want 600", values[8])
+	}
+
+	smaller, ok := result["smaller"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected smaller []map[string]interface{}, got %T", result["smaller"])
+	}
+	if len(smaller) != 3 {
+		t.Fatalf("expected 3 smaller entries, got %d: %v", len(smaller), smaller)
+	}
+	if smaller[0]["name"] != "I-bucket" {
+		t.Errorf("smaller[0].name = %v, want I-bucket", smaller[0]["name"])
+	}
+	if a, _ := smaller[0]["amount"].(float64); !floatEqual(a, 300) {
+		t.Errorf("smaller[0].amount = %v, want 300", smaller[0]["amount"])
+	}
+	if p, _ := smaller[0]["percent"].(float64); !floatEqual(p, 4.5) && !floatEqual(p, 4.55) {
+		t.Errorf("smaller[0].percent = %v, want ~4.5", smaller[0]["percent"])
+	}
+}
+
+func TestBuildMajorExpenseChartData_RollupWithUnmatched(t *testing.T) {
+	// 11 matched + some unmatched → wedge order: top 8 matched, Other,
+	// then Unmatched last. smaller excludes Unmatched.
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+	for i := 0; i < 11; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns, makeTransaction(name+"-kw payment", -float64((11-i)*100),
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"))
+	}
+	txns = append(txns, makeTransaction("mystery", -2000,
+		time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"))
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	labels := result["data"].([]map[string]interface{})[0]["labels"].([]string)
+	if len(labels) != 10 {
+		t.Fatalf("expected 10 wedges (top 8 + Other + Unmatched), got %d: %v", len(labels), labels)
+	}
+	if labels[8] != "Other" {
+		t.Errorf("expected wedge 8 = Other, got %q", labels[8])
+	}
+	if labels[9] != "Unmatched" {
+		t.Errorf("expected wedge 9 = Unmatched (last), got %q", labels[9])
+	}
+
+	smaller := result["smaller"].([]map[string]interface{})
+	for _, item := range smaller {
+		if item["name"] == "Unmatched" {
+			t.Errorf("smaller must not contain Unmatched, got %v", smaller)
+		}
+	}
+}
+
+func TestBuildMajorExpenseChartData_SubOnePercentPrecision(t *testing.T) {
+	// One huge bucket plus 10 tiny ones → tail items have sub-1% shares
+	// and must be returned with two-decimal precision (not 0.0).
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+
+	expenses = append(expenses, models.MajorExpense{
+		ID: "big", Name: "Big", Keywords: []string{"big-kw"},
+	})
+	txns = append(txns, makeTransaction("big-kw rent", -99000,
+		time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"))
+
+	// 10 tiny buckets at $50 each → total = 500. Grand total = 99500.
+	// Each tiny share = 50/99500 ≈ 0.0503% → must NOT round to 0.0.
+	for i := 0; i < 10; i++ {
+		name := "tiny" + string(rune('A'+i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name, Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns, makeTransaction(name+"-kw small", -50,
+			time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"))
+	}
+
+	withMajorExpenses(t, expenses)
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	smaller, ok := result["smaller"].([]map[string]interface{})
+	if !ok || len(smaller) == 0 {
+		t.Fatalf("expected smaller entries, got %v", result["smaller"])
+	}
+	for _, item := range smaller {
+		p, _ := item["percent"].(float64)
+		if p == 0 {
+			t.Errorf("sub-1%% bucket rounded to 0%%; need 2-decimal precision: %v", item)
+		}
+	}
+}
+
 // ---------- buildMerchantsChartData edge cases ----------
 
 func TestBuildMerchantsChartData_LessThanTen(t *testing.T) {

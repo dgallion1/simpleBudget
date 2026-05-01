@@ -43,6 +43,34 @@
         </div>
     </div>
 
+    <!-- Automatic Backups Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-4" id="auto-backup-card">
+        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+            <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                </svg>
+                Automatic Backups
+            </h2>
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+                <span class="text-xs text-gray-500 dark:text-gray-400" id="auto-backup-toggle-label">Loading…</span>
+                <input type="checkbox" id="auto-backup-toggle"
+                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+            </label>
+        </div>
+        <div class="p-4 space-y-1.5">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                Last backup: <span id="auto-backup-last" class="font-medium text-gray-800 dark:text-gray-200">…</span>
+                &middot; <span id="auto-backup-count" class="font-medium text-gray-800 dark:text-gray-200">…</span> snapshots
+                &middot; <span id="auto-backup-bytes" class="font-medium text-gray-800 dark:text-gray-200">…</span>
+            </p>
+            <p class="text-xs text-gray-500 dark:text-gray-500">
+                Location: <code id="auto-backup-dir" class="bg-gray-100 dark:bg-gray-700 px-1 rounded">…</code>
+            </p>
+            <p id="auto-backup-error" class="text-sm text-red-600 dark:text-red-400 hidden"></p>
+        </div>
+    </div>
+
     <!-- Data Files Card -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <!-- Table Header with Quick Actions -->
@@ -326,6 +354,67 @@
     <!-- Toast notification for restore status -->
     <div id="restore-toast" class="hidden fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all"></div>
 </div>
+
+<script>
+// Auto-backup status card
+(function() {
+    function formatBytes(n) {
+        if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+        return (n / 1024).toFixed(1) + ' KB';
+    }
+
+    function refreshAutoBackupStatus() {
+        fetch('/backup/status')
+            .then(function(r) { return r.json(); })
+            .then(function(s) {
+                var toggle = document.getElementById('auto-backup-toggle');
+                var label  = document.getElementById('auto-backup-toggle-label');
+                var last   = document.getElementById('auto-backup-last');
+                var count  = document.getElementById('auto-backup-count');
+                var bytes  = document.getElementById('auto-backup-bytes');
+                var dir    = document.getElementById('auto-backup-dir');
+                var err    = document.getElementById('auto-backup-error');
+
+                if (!toggle) return; // card not on this page
+
+                toggle.checked = !!s.enabled;
+                label.textContent = s.enabled ? 'Enabled' : 'Disabled';
+                last.textContent  = s.ts || 'never';
+                count.textContent = s.snapshot_count || 0;
+                bytes.textContent = formatBytes(s.total_bytes || 0);
+                dir.textContent   = s.dir || '(not configured)';
+
+                if (s.last_error) {
+                    err.textContent = 'Last attempt failed: ' + s.last_error;
+                    err.classList.remove('hidden');
+                } else {
+                    err.classList.add('hidden');
+                }
+            })
+            .catch(function() {
+                var label = document.getElementById('auto-backup-toggle-label');
+                if (label) label.textContent = 'Unavailable';
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var toggle = document.getElementById('auto-backup-toggle');
+        if (!toggle) return;
+
+        refreshAutoBackupStatus();
+        setInterval(refreshAutoBackupStatus, 30000);
+
+        toggle.addEventListener('change', function(e) {
+            var body = new URLSearchParams({ enabled: e.target.checked ? 'true' : 'false' });
+            fetch('/backup/auto-enabled', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            }).then(refreshAutoBackupStatus);
+        });
+    });
+})();
+</script>
 
 <script>
 // Drag and drop support

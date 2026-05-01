@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"budget2/internal/config"
+	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/testdata"
@@ -23,13 +24,51 @@ var (
 	cfg      *config.Config
 	store    *storage.Storage
 	renderer *templates.Renderer
+	backupSvc *backupsvc.Service
 )
 
 // Initialize sets up the backup package with required dependencies
-func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer) {
+func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service) {
 	cfg = c
 	store = s
 	renderer = r
+	backupSvc = b
+}
+
+type backupStatusResponse struct {
+	TS            string `json:"ts"`
+	FileCount     int    `json:"file_count"`
+	TotalBytes    int64  `json:"total_bytes"`
+	Encrypted     bool   `json:"encrypted"`
+	LastError     string `json:"last_error"`
+	LastAttemptTS string `json:"last_attempt_ts"`
+	SnapshotCount int    `json:"snapshot_count"`
+	Dir           string `json:"dir"`
+	Enabled       bool   `json:"enabled"`
+}
+
+func HandleBackupStatus(w http.ResponseWriter, r *http.Request) {
+	dir := ""
+	enabled := false
+	if backupSvc != nil {
+		dir = backupSvc.BackupDir()
+		enabled = backupSvc.Enabled()
+	} else if cfg != nil {
+		dir = cfg.BackupDir
+	}
+
+	resp := backupStatusResponse{Dir: dir, Enabled: enabled}
+	if dir != "" {
+		if data, err := os.ReadFile(filepath.Join(dir, "last_backup.json")); err == nil {
+			_ = json.Unmarshal(data, &resp)
+			resp.Dir = dir
+			resp.Enabled = enabled
+		}
+		matches, _ := filepath.Glob(filepath.Join(dir, "budget_backup_*.zip"))
+		resp.SnapshotCount = len(matches)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {

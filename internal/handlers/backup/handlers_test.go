@@ -17,10 +17,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"testing/fstest"
 
 	"budget2/internal/config"
+	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/testutil"
@@ -45,7 +47,7 @@ func setupTestEnv(t *testing.T) (string, func()) {
 		DataDirectory: tmpDir,
 	}
 
-	Initialize(c, s, nil)
+	Initialize(c, s, nil, nil)
 
 	return tmpDir, func() {
 		os.RemoveAll(tmpDir)
@@ -63,7 +65,7 @@ func writeCSVFile(t *testing.T, dir, name, content string) {
 func TestInitialize(t *testing.T) {
 	c := &config.Config{DataDirectory: "/tmp/test"}
 	s := &storage.Storage{}
-	Initialize(c, s, nil)
+	Initialize(c, s, nil, nil)
 	if cfg != c {
 		t.Error("cfg not set")
 	}
@@ -2033,7 +2035,7 @@ func setupTestEnvWithRenderer(t *testing.T) (string, func()) {
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	Initialize(c, s, rend)
+	Initialize(c, s, rend, nil)
 
 	return tmpDir, func() {
 		os.RemoveAll(tmpDir)
@@ -2094,7 +2096,7 @@ func TestHandleUnlockPage_WithRenderer_RenderError(t *testing.T) {
 		t.Fatalf("templates.NewFromFS: %v", err)
 	}
 
-	Initialize(c, s, rend)
+	Initialize(c, s, rend, nil)
 
 	// Enable encryption and lock
 	writeCSVFile(t, tmpDir, "test.csv", "data")
@@ -2848,5 +2850,45 @@ func TestHandleDeleteAllData_DoesNotTouchBackupDir(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(backupDir, "budget_backup_X.zip")); err != nil {
 		t.Fatalf("BackupDir contents must survive Delete-All-Data: %v", err)
+	}
+}
+
+func TestHandleBackupStatus_ReturnsMetaAndCount(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	originalCfg := cfg
+	originalStore := store
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
+
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
+	s, _ := storage.New(dataDir)
+	store = s
+
+	// Seed a successful meta and two backup zips.
+	now := time.Now().UTC()
+	stamp := now.Format("20060102_150405")
+	must := func(err error) { t.Helper(); if err != nil { t.Fatal(err) } }
+	must(os.WriteFile(filepath.Join(backupDir, "last_backup.json"),
+		[]byte(`{"ts":"`+stamp+`","file_count":3,"total_bytes":100,"encrypted":false,"last_error":"","last_attempt_ts":"`+stamp+`"}`), 0600))
+	must(os.WriteFile(filepath.Join(backupDir, "budget_backup_"+stamp+".zip"), []byte("a"), 0600))
+	must(os.WriteFile(filepath.Join(backupDir, "budget_backup_"+now.Add(-24*time.Hour).Format("20060102_150405")+".zip"), []byte("b"), 0600))
+
+	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil { t.Fatal(err) }
+	backupSvc = svc
+
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/backup/status", nil)
+	HandleBackupStatus(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{stamp, `"file_count":3`, `"snapshot_count":2`, backupDir} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("status body missing %q: %s", want, body)
+		}
 	}
 }

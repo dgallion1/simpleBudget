@@ -68,7 +68,7 @@ func SetupDependencies(c *config.Config) error {
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)
 	majorexpenses.Initialize(loader, renderer)
-	backup.Initialize(cfg, store, renderer)
+	backup.Initialize(cfg, store, renderer, nil)
 
 	return nil
 }

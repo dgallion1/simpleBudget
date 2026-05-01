@@ -66,6 +66,47 @@ func TestComputeDerivedFields(t *testing.T) {
 	}
 }
 
+func TestTransaction_Label(t *testing.T) {
+	tests := []struct {
+		name string
+		txn  Transaction
+		want string
+	}{
+		{
+			name: "DisplayName wins over both",
+			txn:  Transaction{Description: "BANK", MajorExpenseName: "Mortgage", DisplayName: "Mort."},
+			want: "Mort.",
+		},
+		{
+			name: "MajorExpenseName beats Description",
+			txn:  Transaction{Description: "BANK", MajorExpenseName: "Mortgage"},
+			want: "Mortgage",
+		},
+		{
+			name: "Description fallback when nothing else",
+			txn:  Transaction{Description: "BANK"},
+			want: "BANK",
+		},
+		{
+			name: "all empty returns empty",
+			txn:  Transaction{},
+			want: "",
+		},
+		{
+			name: "DisplayName wins even when only it is set",
+			txn:  Transaction{DisplayName: "Friendly"},
+			want: "Friendly",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.txn.Label(); got != tc.want {
+				t.Errorf("Label() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAbsAmount(t *testing.T) {
 	tests := []struct {
 		amount float64

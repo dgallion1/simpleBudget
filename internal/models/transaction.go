@@ -20,19 +20,20 @@ const (
 
 // Transaction represents a single financial transaction
 type Transaction struct {
-	ID              string          `json:"id"`
-	Date            time.Time       `json:"date"`
-	Amount          float64         `json:"amount"`
-	Description     string          `json:"description"`
-	DisplayName     string          `json:"display_name,omitempty"` // User-assigned alias
-	Category        string          `json:"category"`
-	TransactionType TransactionType `json:"transaction_type"`
-	SourceFile      string          `json:"source_file"`
-	Hash            string          `json:"hash"`
+	ID               string          `json:"id"`
+	Date             time.Time       `json:"date"`
+	Amount           float64         `json:"amount"`
+	Description      string          `json:"description"`
+	DisplayName      string          `json:"display_name,omitempty"`       // User-assigned alias
+	MajorExpenseName string          `json:"major_expense_name,omitempty"` // Derived; stamped at load time, not persisted to source CSVs
+	Category         string          `json:"category"`
+	TransactionType  TransactionType `json:"transaction_type"`
+	SourceFile       string          `json:"source_file"`
+	Hash             string          `json:"hash"`
 
 	// Derived fields (computed, not stored)
-	Month      string `json:"month,omitempty"`       // "2024-01"
-	Week       string `json:"week,omitempty"`        // "2024-W05"
+	Month      string `json:"month,omitempty"` // "2024-01"
+	Week       string `json:"week,omitempty"`  // "2024-W05"
 	Year       int    `json:"year,omitempty"`
 	Quarter    int    `json:"quarter,omitempty"`
 	DayOfWeek  string `json:"day_of_week,omitempty"`
@@ -64,6 +65,22 @@ func (t *Transaction) ComputeDerivedFields() {
 // AbsAmount returns the absolute value of the amount
 func (t *Transaction) AbsAmount() float64 {
 	return math.Abs(t.Amount)
+}
+
+// Label returns the user-facing name for a transaction.
+// Precedence: DisplayName (per-txn alias) -> MajorExpenseName (group name)
+// -> Description (bank text). Set on display, search, aggregation, and
+// transaction-level export sites so the user-curated name always wins
+// over the bank's text when one is available.
+func (t Transaction) Label() string {
+	switch {
+	case t.DisplayName != "":
+		return t.DisplayName
+	case t.MajorExpenseName != "":
+		return t.MajorExpenseName
+	default:
+		return t.Description
+	}
 }
 
 // TransactionSet wraps a slice with filtering/aggregation methods

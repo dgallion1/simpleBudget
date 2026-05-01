@@ -14,14 +14,28 @@ type Config struct {
 	Debug      bool   `json:"debug"`
 
 	// Directories
-	DataDirectory     string `json:"data_directory"`
-	UploadsDirectory  string `json:"uploads_directory"`
-	SettingsDirectory string `json:"settings_directory"`
+	DataDirectory      string `json:"data_directory"`
+	UploadsDirectory   string `json:"uploads_directory"`
+	SettingsDirectory  string `json:"settings_directory"`
 	TemplatesDirectory string `json:"templates_directory"`
-	StaticDirectory   string `json:"static_directory"`
+	StaticDirectory    string `json:"static_directory"`
+	BackupDir          string `json:"backup_dir"`
 
 	// File paths
 	UserSettingsFile string `json:"user_settings_file"`
+}
+
+// defaultBackupDir returns the default location for automatic backup zips.
+// Follows XDG_DATA_HOME, falling back to $HOME/.local/share, falling back
+// to <DataDirectory>/../backups if no home is available.
+func defaultBackupDir(dataDir string) string {
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "budget2", "backups")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".local", "share", "budget2", "backups")
+	}
+	return filepath.Join(filepath.Dir(dataDir), "budget2-backups")
 }
 
 // DefaultConfig returns configuration with sensible defaults
@@ -41,6 +55,7 @@ func DefaultConfig() *Config {
 		TemplatesDirectory: filepath.Join(wd, "web", "templates"),
 		StaticDirectory:    filepath.Join(wd, "web", "static"),
 		UserSettingsFile:   filepath.Join(wd, "data", "settings", "user_settings.json"),
+		BackupDir:          defaultBackupDir(filepath.Join(wd, "data")),
 	}
 }
 
@@ -66,6 +81,9 @@ func Load() *Config {
 	}
 	if staticDir := os.Getenv("BUDGET_STATIC_DIR"); staticDir != "" {
 		cfg.StaticDirectory = staticDir
+	}
+	if backupDir := os.Getenv("BUDGET2_BACKUP_DIR"); backupDir != "" {
+		cfg.BackupDir = backupDir
 	}
 
 	// Ensure directories exist

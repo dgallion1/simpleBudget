@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -368,5 +369,46 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 	if loaded["rate"] != 3.14 {
 		t.Errorf("rate = %v, want 3.14", loaded["rate"])
+	}
+}
+
+func TestBackupDir_DefaultUsesXDG(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-test-home")
+	t.Setenv("BUDGET2_BACKUP_DIR", "")
+	cfg := DefaultConfig()
+	want := filepath.Join("/tmp/xdg-test-home", "budget2", "backups")
+	if cfg.BackupDir != want {
+		t.Fatalf("BackupDir=%q want %q", cfg.BackupDir, want)
+	}
+}
+
+func TestBackupDir_DefaultFallsBackToHome(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("BUDGET2_BACKUP_DIR", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir on this system")
+	}
+	cfg := DefaultConfig()
+	want := filepath.Join(home, ".local", "share", "budget2", "backups")
+	if cfg.BackupDir != want {
+		t.Fatalf("BackupDir=%q want %q", cfg.BackupDir, want)
+	}
+}
+
+func TestBackupDir_EnvOverride(t *testing.T) {
+	t.Setenv("BUDGET2_BACKUP_DIR", "/tmp/custom-backups")
+	cfg := Load()
+	if cfg.BackupDir != "/tmp/custom-backups" {
+		t.Fatalf("BackupDir=%q want /tmp/custom-backups", cfg.BackupDir)
+	}
+}
+
+func TestBackupDir_LoadHonorsDefault(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("BUDGET2_BACKUP_DIR", "")
+	cfg := Load()
+	if !strings.Contains(cfg.BackupDir, "budget2/backups") {
+		t.Fatalf("BackupDir=%q does not contain expected default suffix", cfg.BackupDir)
 	}
 }

@@ -852,7 +852,6 @@ func TestParseRangeFromRequest(t *testing.T) {
 }
 
 func TestHandleMajorExpensesPage_HTMXFilterReturnsWrapperOnly(t *testing.T) {
-	t.Skip("Re-enabled by Task 7 once major-expenses-results-wrapper template partial lands")
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
 

@@ -1,5 +1,53 @@
 {{define "major-expenses-content"}}
 <div class="space-y-4">
+    <!-- Filter card (NEW) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <form id="major-expenses-filter-form"
+              hx-get="/major-expenses"
+              hx-target="#major-expenses-results-wrapper"
+              hx-swap="outerHTML"
+              hx-push-url="true"
+              hx-trigger="change from:input[type=date], click from:.date-range-btn"
+              hx-indicator="#me-loading"
+              class="flex flex-wrap items-end gap-3">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
+                <input type="date" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
+                <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div class="flex gap-1 items-center" id="me-date-range-buttons">
+                <button type="button" onclick="meStepDateRange(-1)" title="Step back" aria-label="Step back"
+                    class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button type="button" onclick="meSetDateRange(3)" data-months="3"
+                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
+                <button type="button" onclick="meSetDateRange(6)" data-months="6"
+                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">6M</button>
+                <button type="button" onclick="meSetDateRange(12)" data-months="12"
+                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
+                <button type="button" onclick="meSetDateRange(0)" data-months="0"
+                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
+                <button type="button" onclick="meStepDateRange(1)" title="Step forward" aria-label="Step forward"
+                    class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+            <span id="me-loading" class="htmx-indicator">
+                <svg class="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </span>
+        </form>
+    </div>
+
+    <!-- Existing search/header card -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Major Expenses</h1>
         <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -22,15 +70,144 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div id="major-expenses-list-card" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            {{template "major-expenses-list-card-content" .}}
-        </div>
-        <div id="major-expenses-results" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            {{template "major-expenses-exceptions-panel" .}}
-        </div>
-    </div>
+    <!-- Wrapper for HTMX swap on date-range change -->
+    {{template "major-expenses-results-wrapper" .}}
 </div>
+
+<script>
+// Filter-form sessionStorage restore: bare /major-expenses with empty
+// query + saved key → redirect once to /major-expenses?<saved>. Mirrors
+// the pattern in pages/explorer.html.
+(function () {
+    const KEY = 'majorExpensesFilters';
+    if (window.location.search === '' || window.location.search === '?') {
+        const saved = sessionStorage.getItem(KEY);
+        if (saved && !sessionStorage.getItem(KEY + '_restoring')) {
+            sessionStorage.setItem(KEY + '_restoring', '1');
+            window.location.replace('/major-expenses?' + saved);
+            return;
+        }
+        sessionStorage.removeItem(KEY + '_restoring');
+    } else {
+        sessionStorage.removeItem(KEY + '_restoring');
+    }
+
+    // Save outgoing filter params on every htmx:configRequest from the
+    // filter form. We do NOT save window.location.search inside this
+    // handler — at this moment it still contains the OLD URL because
+    // hx-push-url runs after the request settles. Instead pull start/end
+    // from the form values so the saved value reflects what's about to
+    // be sent.
+    document.body.addEventListener('htmx:configRequest', function (evt) {
+        const form = document.getElementById('major-expenses-filter-form');
+        if (!form || !(evt.detail.elt === form || form.contains(evt.detail.elt))) return;
+        const start = form.querySelector('input[name="start"]').value;
+        const end = form.querySelector('input[name="end"]').value;
+        const params = new URLSearchParams();
+        if (start) params.set('start', start);
+        if (end) params.set('end', end);
+        sessionStorage.setItem(KEY, params.toString());
+    });
+})();
+
+// Quick-range helpers — page-local copies of Explorer's setDateRange /
+// stepDateRange / detectSelectedDateRange, scoped to the major-expenses
+// filter form. Naming is `me*` to avoid colliding with Explorer's
+// global-scope versions on the rare chance both pages ever co-exist.
+function meSetDateRange(months) {
+    const form = document.getElementById('major-expenses-filter-form');
+    if (!form) return;
+    const startInput = form.querySelector('input[name="start"]');
+    const endInput = form.querySelector('input[name="end"]');
+    const minDate = startInput.getAttribute('min');
+    const maxDate = endInput.getAttribute('max');
+    if (months === 0) {
+        startInput.value = minDate;
+        endInput.value = maxDate;
+    } else {
+        const end = new Date(maxDate);
+        const start = new Date(end);
+        start.setMonth(start.getMonth() - months);
+        const minDateObj = new Date(minDate);
+        if (start < minDateObj) start.setTime(minDateObj.getTime());
+        startInput.value = start.toISOString().split('T')[0];
+        endInput.value = maxDate;
+    }
+    meUpdateDateRangeButtons(months);
+    htmx.trigger(form, 'submit');
+}
+
+function meStepDateRange(direction) {
+    const form = document.getElementById('major-expenses-filter-form');
+    if (!form) return;
+    const startInput = form.querySelector('input[name="start"]');
+    const endInput = form.querySelector('input[name="end"]');
+    const minDate = startInput.getAttribute('min');
+    const maxDate = endInput.getAttribute('max');
+    const start = new Date(startInput.value);
+    const end = new Date(endInput.value);
+    const deltaMs = end - start;
+    let newStart, newEnd;
+    if (direction > 0) {
+        newStart = new Date(end.getTime() + 86400000);
+        newEnd = new Date(newStart.getTime() + deltaMs);
+    } else {
+        newEnd = new Date(start.getTime() - 86400000);
+        newStart = new Date(newEnd.getTime() - deltaMs);
+    }
+    const minD = new Date(minDate);
+    const maxD = new Date(maxDate);
+    if (newStart < minD) newStart = minD;
+    if (newEnd > maxD) newEnd = maxD;
+    if (newStart > maxD) return;
+    if (newEnd < minD) return;
+    startInput.value = newStart.toISOString().split('T')[0];
+    endInput.value = newEnd.toISOString().split('T')[0];
+    meUpdateDateRangeButtons(-1);
+    htmx.trigger(form, 'submit');
+}
+
+function meUpdateDateRangeButtons(selectedMonths) {
+    document.querySelectorAll('#me-date-range-buttons .date-range-btn').forEach(function (btn) {
+        const btnMonths = parseInt(btn.getAttribute('data-months'));
+        if (btnMonths === selectedMonths) {
+            btn.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            btn.classList.add('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
+        } else {
+            btn.classList.remove('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
+            btn.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+        }
+    });
+}
+
+function meDetectSelectedDateRange() {
+    const form = document.getElementById('major-expenses-filter-form');
+    if (!form) return;
+    const startInput = form.querySelector('input[name="start"]');
+    const endInput = form.querySelector('input[name="end"]');
+    const minDate = startInput.getAttribute('min');
+    const maxDate = endInput.getAttribute('max');
+    const startDate = startInput.value;
+    const endDate = endInput.value;
+    if (endDate !== maxDate) { meUpdateDateRangeButtons(-1); return; }
+    if (startDate === minDate) { meUpdateDateRangeButtons(0); return; }
+    const end = new Date(maxDate);
+    for (const months of [3, 6, 12]) {
+        const expectedStart = new Date(end);
+        expectedStart.setMonth(expectedStart.getMonth() - months);
+        if (startDate === expectedStart.toISOString().split('T')[0]) {
+            meUpdateDateRangeButtons(months);
+            return;
+        }
+    }
+    meUpdateDateRangeButtons(-1);
+}
+
+// Highlight the correct quick-range button on first paint and after
+// every HTMX swap of the wrapper (the inputs may have new values).
+document.addEventListener('DOMContentLoaded', meDetectSelectedDateRange);
+document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
+</script>
 
 <script>
 (function () {
@@ -271,6 +448,17 @@
     });
 })();
 </script>
+{{end}}
+
+{{define "major-expenses-results-wrapper"}}
+<div id="major-expenses-results-wrapper" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div id="major-expenses-list-card" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        {{template "major-expenses-list-card-content" .}}
+    </div>
+    <div id="major-expenses-results" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        {{template "major-expenses-exceptions-panel" .}}
+    </div>
+</div>
 {{end}}
 
 {{/* List card content — extracted so it can be re-rendered via OOB swap */}}

@@ -948,7 +948,7 @@ func buildMerchantsChartData(ts *models.TransactionSet) map[string]interface{} {
 	// Group by description (merchant)
 	merchantTotals := make(map[string]float64)
 	for _, t := range outflows.Transactions {
-		merchantTotals[t.Description] += math.Abs(t.Amount)
+		merchantTotals[t.Label()] += math.Abs(t.Amount)
 	}
 
 	// Sort by value

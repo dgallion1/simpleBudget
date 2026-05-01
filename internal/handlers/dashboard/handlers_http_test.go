@@ -1390,3 +1390,37 @@ func min(a, b int) int {
 
 // suppress unused import warnings
 var _ = io.Discard
+
+func TestBuildMerchantsChartData_AggregatesByLabel(t *testing.T) {
+	ts := models.NewTransactionSet([]models.Transaction{
+		{Description: "BOFA HOMELOANS 0123", MajorExpenseName: "Mortgage", Amount: -1500, TransactionType: models.Outflow},
+		{Description: "BOFA HOMELOANS 0124", MajorExpenseName: "Mortgage", Amount: -1500, TransactionType: models.Outflow},
+		{Description: "Whole Foods", Amount: -42, TransactionType: models.Outflow},
+	})
+
+	chart := buildMerchantsChartData(ts)
+	data, ok := chart["data"].([]map[string]interface{})
+	if !ok || len(data) == 0 {
+		t.Fatalf("chart[data] missing or wrong type: %T", chart["data"])
+	}
+	labels, ok := data[0]["y"].([]string)
+	if !ok {
+		t.Fatalf("data[0][y] not []string: %T", data[0]["y"])
+	}
+
+	mortgageCount := 0
+	for _, l := range labels {
+		if l == "Mortgage" {
+			mortgageCount++
+		}
+	}
+	if mortgageCount != 1 {
+		t.Errorf("expected 'Mortgage' to roll up into exactly one entry; saw %d times in %v", mortgageCount, labels)
+	}
+
+	for _, l := range labels {
+		if strings.Contains(l, "BOFA HOMELOANS") {
+			t.Errorf("expected raw bank text to be replaced by 'Mortgage'; found %q", l)
+		}
+	}
+}

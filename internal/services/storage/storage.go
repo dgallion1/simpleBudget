@@ -261,15 +261,19 @@ func (s *Storage) WriteFile(path string, data []byte, perm os.FileMode) error {
 
 	// Encrypt if enabled and unlocked
 	if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
-		recipient, err := s.provider.Recipient()
-		if err != nil {
-			return fmt.Errorf("failed to get recipient: %w", err)
+		if isAgeEncrypted(data) {
+			// Already encrypted (e.g. restoring a backup blob). Pass through.
+		} else {
+			recipient, err := s.provider.Recipient()
+			if err != nil {
+				return fmt.Errorf("failed to get recipient: %w", err)
+			}
+			encrypted, err := encryptData(data, recipient)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt: %w", err)
+			}
+			data = encrypted
 		}
-		encrypted, err := encryptData(data, recipient)
-		if err != nil {
-			return fmt.Errorf("failed to encrypt: %w", err)
-		}
-		data = encrypted
 	}
 
 	return s.atomicWrite(path, data, perm)
@@ -305,8 +309,8 @@ func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error 
 func (s *Storage) shouldSkipEncryption(path string) bool {
 	base := filepath.Base(path)
 
-	// Skip marker and verify files
-	if base == markerFile || base == verifyFile {
+	// Skip marker, verify, and config files
+	if base == markerFile || base == verifyFile || base == configFile {
 		return true
 	}
 
@@ -318,10 +322,16 @@ func (s *Storage) shouldSkipEncryption(path string) bool {
 	return false
 }
 
-// isAgeEncrypted checks if data starts with the Age encryption header
-func isAgeEncrypted(data []byte) bool {
+// IsAgeEncryptedData reports whether data appears to be an age-encrypted
+// payload by looking at its magic header. Used by callers (e.g. the backup
+// restore handler) that need to detect encrypted blobs before deciding how
+// to write them.
+func IsAgeEncryptedData(data []byte) bool {
 	return len(data) > len(ageHeader) && string(data[:len(ageHeader)]) == ageHeader
 }
+
+// isAgeEncrypted is kept for internal callers.
+func isAgeEncrypted(data []byte) bool { return IsAgeEncryptedData(data) }
 
 // Stat returns file info, useful for checking existence
 func (s *Storage) Stat(path string) (os.FileInfo, error) {

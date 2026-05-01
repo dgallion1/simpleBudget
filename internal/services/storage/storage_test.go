@@ -1,10 +1,26 @@
 package storage
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+// enableAgeEncryptionForTest sets up age-based encryption on s using a freshly
+// generated identity file. The storage is left in the unlocked state.
+func enableAgeEncryptionForTest(t *testing.T, s *Storage) {
+	t.Helper()
+	idPath, _ := createTestAgeIdentityFile(t, s.baseDir)
+	provider, err := NewAgeProvider(idPath)
+	if err != nil {
+		t.Fatalf("NewAgeProvider failed: %v", err)
+	}
+	config := &EncryptionConfig{Method: AuthMethodAge, AgeIdentityPath: idPath}
+	if err := s.EnableEncryptionWithProvider(provider, config); err != nil {
+		t.Fatalf("EnableEncryptionWithProvider failed: %v", err)
+	}
+}
 
 func TestEncryptDecryptRoundtrip(t *testing.T) {
 	dir := t.TempDir()
@@ -183,5 +199,75 @@ func TestNewFilesEncrypted(t *testing.T) {
 	}
 	if string(read) != string(content) {
 		t.Errorf("Content mismatch: got %q, want %q", string(read), string(content))
+	}
+}
+
+func TestWriteFile_PassesThroughAgeEncryptedBytes(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	enableAgeEncryptionForTest(t, s)
+
+	// Build a payload that is ALREADY age-encrypted using the package's
+	// internal encryptData with the provider's recipient.
+	plaintext := []byte("hello round-trip")
+	recipient, err := s.provider.Recipient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := encryptData(plaintext, recipient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write the already-encrypted bytes via WriteFile.
+	target := filepath.Join(dir, "round_trip.bin")
+	if err := s.WriteFile(target, encrypted, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Read raw bytes off disk; they should equal the encrypted payload, NOT
+	// be a re-encryption of it.
+	raw, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, encrypted) {
+		t.Fatalf("WriteFile re-encrypted age-encrypted bytes (double encryption)")
+	}
+
+	// Sanity: ReadFile should still give us the plaintext.
+	got, err := s.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, plaintext) {
+		t.Fatalf("round-trip mismatch: got %q want %q", got, plaintext)
+	}
+}
+
+func TestShouldSkipEncryption_IncludesEncryptionConfig(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".encryption-config.json")
+	if !s.shouldSkipEncryption(path) {
+		t.Fatalf(".encryption-config.json must be skipped from encryption")
+	}
+}
+
+func TestIsAgeEncryptedData_Exported(t *testing.T) {
+	plaintext := []byte("not encrypted")
+	if IsAgeEncryptedData(plaintext) {
+		t.Fatalf("plaintext misdetected as age-encrypted")
+	}
+	header := []byte("age-encryption.org/v1\n")
+	if !IsAgeEncryptedData(header) {
+		t.Fatalf("age header not detected")
 	}
 }

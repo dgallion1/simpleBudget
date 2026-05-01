@@ -898,6 +898,67 @@ func TestHandleMajorExpensesPage_NonHTMXReturnsBaseLayout(t *testing.T) {
 	}
 }
 
+func TestHandleAdd_PreservesDateRange(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{}
+	form.Set("name", "Rent")
+	form.Set("keywords", "landlord")
+	form.Set("expected_min", "1500")
+	form.Set("expected_max", "2000")
+	form.Set("start", "2024-01-01")
+	form.Set("end", "2024-12-31")
+
+	req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+	if body["StartDate"] != "2024-01-01" {
+		t.Errorf("StartDate = %v, want 2024-01-01 (mutation must preserve window)", body["StartDate"])
+	}
+	if body["EndDate"] != "2024-12-31" {
+		t.Errorf("EndDate = %v, want 2024-12-31 (mutation must preserve window)", body["EndDate"])
+	}
+}
+
+func TestHandleBulkPin_PreservesDateRange(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	exp, err := dl.AddMajorExpense(makeExpense("rent", "Rent", []string{"landlord"}, 0, 0))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("expense_id", exp[0].ID)
+	form.Add("hashes", "deadbeef")
+	form.Set("start", "2024-01-01")
+	form.Set("end", "2024-12-31")
+
+	req := httptest.NewRequest("POST", "/major-expenses/pins/bulk", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+	if body["StartDate"] != "2024-01-01" {
+		t.Errorf("StartDate = %v, want 2024-01-01 (bulk-pin must preserve window)", body["StartDate"])
+	}
+	if body["EndDate"] != "2024-12-31" {
+		t.Errorf("EndDate = %v, want 2024-12-31 (bulk-pin must preserve window)", body["EndDate"])
+	}
+}
+
 func TestHandleExceptions_StartEndQueryParams(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()

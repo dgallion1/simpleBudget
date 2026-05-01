@@ -52,7 +52,7 @@ func RegisterRoutes(r chi.Router) {
 }
 
 func handleMajorExpensesPage(w http.ResponseWriter, r *http.Request) {
-	data, err := buildPageData()
+	data, err := buildPageData(r)
 	if err != nil {
 		renderError(w, "Failed to build page: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -80,7 +80,7 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderResults(w)
+	renderResults(w, r)
 }
 
 func handleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +102,7 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderResults(w)
+	renderResults(w, r)
 }
 
 func handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +125,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	if err := loader.PrunePinsForMissingExpenses(validIDs); err != nil {
 		log.Printf("warning: prune pins after delete: %v", err)
 	}
-	renderResults(w)
+	renderResults(w, r)
 }
 
 // handlePin assigns a transaction (by hash) to a major expense. The
@@ -167,7 +167,7 @@ func handlePin(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to save pin: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderResults(w)
+	renderResults(w, r)
 }
 
 // handleBulkPin assigns many transactions (by hash) to a single major
@@ -218,7 +218,7 @@ func handleBulkPin(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to save pins: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderResults(w)
+	renderResults(w, r)
 }
 
 // handleUnpin removes a transaction's pin so it falls back to
@@ -233,11 +233,11 @@ func handleUnpin(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to unpin: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderResults(w)
+	renderResults(w, r)
 }
 
 func handleExceptions(w http.ResponseWriter, r *http.Request) {
-	data, err := buildPageData()
+	data, err := buildPageData(r)
 	if err != nil {
 		renderError(w, "Failed to compute exceptions: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -251,9 +251,10 @@ func handleExceptions(w http.ResponseWriter, r *http.Request) {
 }
 
 // renderResults sends the combined dual-column partial used by every
-// mutation handler.
-func renderResults(w http.ResponseWriter) {
-	data, err := buildPageData()
+// mutation handler. Threads the active window through so post-mutation
+// re-renders preserve the user's filter.
+func renderResults(w http.ResponseWriter, r *http.Request) {
+	data, err := buildPageData(r)
 	if err != nil {
 		renderError(w, "Failed to refresh page: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -266,9 +267,11 @@ func renderResults(w http.ResponseWriter) {
 	json.NewEncoder(w).Encode(data)
 }
 
-// buildPageData loads expenses + transactions and runs Match. It is the
-// single source of truth for both full-page and partial rendering.
-func buildPageData() (map[string]interface{}, error) {
+// buildPageData loads expenses + transactions, applies the active date
+// window from the request, runs Match, and produces the dual-card page
+// data. It is the single source of truth for both full-page and partial
+// rendering.
+func buildPageData(r *http.Request) (map[string]interface{}, error) {
 	expenses, err := loader.LoadMajorExpenses()
 	if err != nil {
 		return nil, fmt.Errorf("load major expenses: %w", err)
@@ -287,14 +290,20 @@ func buildPageData() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("load transaction pins: %w", err)
 	}
 
+	// Resolve the active window from the request, then narrow the
+	// transaction set BEFORE the outflow filter / matcher pipeline so
+	// per-expense rollups AND exception buckets reflect only in-window
+	// transactions.
+	minDate := txns.MinDate()
+	maxDate := txns.MaxDate()
+	startDate, endDate := parseRangeFromRequest(r, txns)
+	windowed := txns.FilterByDateRange(startDate, endDate)
+
 	// Major Expenses is an expense-tracking page — filter to outflows
 	// BEFORE matching so income (paychecks, refunds, transfers) can't
 	// inflate "matched" counts/totals when its description happens to
-	// contain a keyword (e.g. "ANTHROPIC" appearing in both a $108
-	// subscription charge AND a $2000 paycheck). The exception
-	// detectors filter to outflows internally, so this only affects
-	// grouping and the per-expense Summary roll-ups.
-	outflows := txns.FilterByType(models.Outflow)
+	// contain a keyword.
+	outflows := windowed.FilterByType(models.Outflow)
 
 	match := majorexpenseengine.Match(outflows, expenses, majorexpenseengine.MatchOptions{
 		UnknownLargeThreshold: defaultUnknownThreshold,
@@ -302,12 +311,6 @@ func buildPageData() (map[string]interface{}, error) {
 		Pins:                  pins,
 	})
 
-	// Build per-expense summaries so the list partial can render counts,
-	// totals, and the matched transactions without recomputing. The
-	// PinnedHashes map is scoped to THIS expense so the sub-template
-	// (where $ is the Summary, not the page data) can render the
-	// 📌-prefix and "unpin" affordance per row without traversing back
-	// up the data tree.
 	type ExpenseSummary struct {
 		Expense      models.MajorExpense
 		Count        int
@@ -323,7 +326,6 @@ func buildPageData() (map[string]interface{}, error) {
 		for _, t := range txns {
 			total += t.AbsAmount()
 		}
-		// Most-recent first so the user sees the latest match at the top.
 		sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
 
 		pinnedForExpense := make(map[string]bool)
@@ -353,6 +355,10 @@ func buildPageData() (map[string]interface{}, error) {
 		"PinnedHashes":   match.PinnedHashes,
 		"Threshold":      defaultUnknownThreshold,
 		"WindowDays":     defaultNewWindowDays,
+		"StartDate":      formatDateInputValue(startDate),
+		"EndDate":        formatDateInputValue(endDate),
+		"MinDate":        formatDateInputValue(minDate),
+		"MaxDate":        formatDateInputValue(maxDate),
 	}, nil
 }
 
@@ -459,6 +465,16 @@ func splitAndTrim(s, sep string) []string {
 		}
 	}
 	return out
+}
+
+// formatDateInputValue formats a date for use as an <input type="date">
+// value attribute. Returns "" for the zero time so empty data sets render
+// blank inputs rather than "0001-01-01".
+func formatDateInputValue(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("2006-01-02")
 }
 
 // parseRangeFromRequest resolves the active date window for a request.

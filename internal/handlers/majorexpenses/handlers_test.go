@@ -122,7 +122,7 @@ func TestBuildPageData_IncomeNotIncludedInGroups(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	data, err := buildPageData()
+	data, err := buildPageData(httptest.NewRequest("GET", "/major-expenses", nil))
 	if err != nil {
 		t.Fatalf("buildPageData: %v", err)
 	}
@@ -589,6 +589,68 @@ func makeExpense(id, name string, keywords []string, min, max float64) models.Ma
 		Keywords:    keywords,
 		ExpectedMin: min,
 		ExpectedMax: max,
+	}
+}
+
+func TestBuildPageData_DateRangeFiltersTransactions(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Replace the default fixture with one that spans 3 calendar years
+	// so we can prove a windowed call only sees the in-window subset.
+	csvDir := t.TempDir()
+	csvPath := filepath.Join(csvDir, "test.csv")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		"2023-06-15,Landlord LLC,-1500,Outflow,Housing\n" +
+		"2024-06-15,Landlord LLC,-1700,Outflow,Housing\n" +
+		"2025-06-15,Landlord LLC,-1900,Outflow,Housing\n"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	store, _ := storage.New(csvDir)
+	dl2 := dataloader.New(csvDir, store)
+	Initialize(dl2, nil)
+	defer Initialize(dl, nil)
+
+	if _, err := dl2.AddMajorExpense(makeExpense("rent", "Rent", []string{"landlord"}, 0, 0)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// 2024-only window — only the middle row should match.
+	req := httptest.NewRequest("GET", "/major-expenses?start=2024-01-01&end=2024-12-31", nil)
+	data, err := buildPageData(req)
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+
+	// Map keys are echoed for the template inputs.
+	if got := data["StartDate"]; got != "2024-01-01" {
+		t.Errorf("StartDate = %v, want 2024-01-01", got)
+	}
+	if got := data["EndDate"]; got != "2024-12-31" {
+		t.Errorf("EndDate = %v, want 2024-12-31", got)
+	}
+	if got := data["MinDate"]; got != "2023-06-15" {
+		t.Errorf("MinDate = %v, want 2023-06-15 (full-data min)", got)
+	}
+	if got := data["MaxDate"]; got != "2025-06-15" {
+		t.Errorf("MaxDate = %v, want 2025-06-15 (full-data max)", got)
+	}
+
+	// Per-expense rollup reflects only the 2024 transaction.
+	body, _ := json.Marshal(data["Summaries"])
+	var raw []map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("decode summaries: %v\n%s", err, body)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(raw))
+	}
+	if got := int(raw[0]["Count"].(float64)); got != 1 {
+		t.Errorf("Count = %d, want 1 (only the 2024 txn is in window)", got)
+	}
+	if got := raw[0]["Total"].(float64); got != 1700 {
+		t.Errorf("Total = %v, want 1700 (only the 2024 txn is in window)", got)
 	}
 }
 

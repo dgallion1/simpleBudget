@@ -241,6 +241,3 @@ func verifyZip(path string) error {
 	return nil
 }
 
-// applyRetention is implemented in retention.go (Task 6). Stub here so
-// Task 5 can compile and tests can run.
-func applyRetention(dir string, now time.Time) error { return nil }

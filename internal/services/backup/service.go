@@ -1,7 +1,6 @@
 package backup
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,18 +112,6 @@ func (s *Service) saveEnabled(v bool) error {
 	return os.Rename(tmp, s.enabledPath())
 }
 
-// Snapshot is the public entry point for taking a backup. The full
-// implementation (build zip, verify, retention) lands in snapshot.go.
-// The skeleton here just exercises the mutex so the service tests can
-// verify ErrSnapshotInProgress without a real zip-building dependency.
-func (s *Service) Snapshot(ctx context.Context) error {
-	if !s.tryLock() {
-		return ErrSnapshotInProgress
-	}
-	defer s.unlock()
-	return nil // real work lands in snapshot.go (Task 5)
-}
-
 // tryLock attempts a non-blocking acquire of the snapshot mutex. Returns
 // false if another snapshot is in flight.
 func (s *Service) tryLock() bool {
@@ -132,6 +119,3 @@ func (s *Service) tryLock() bool {
 }
 
 func (s *Service) unlock() { s.mu.Unlock() }
-
-// guard against unused-import noise until snapshot.go lands
-var _ = context.Canceled

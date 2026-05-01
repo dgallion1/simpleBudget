@@ -59,13 +59,17 @@ func TestRenderMajorExpenses_MultipleEntriesAllRender(t *testing.T) {
 		"Match": struct {
 			Exceptions models.ExceptionsReport
 		}{Exceptions: models.ExceptionsReport{}},
-		"PinnedHashes": map[string]bool{},
-		"Threshold":    100.0,
-		"WindowDays":   30,
+		"PinnedHashes":  map[string]bool{},
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 300.0,
 	})
 	for _, name := range []string{"Lucid", "Hyundai", "Wegmans"} {
 		if !strings.Contains(html, `id="major-expense-item-`+name+`"`) {
-			t.Errorf("expected entry %q to render, but it was missing — sub-template likely errored mid-loop", name)
+			t.Errorf("expected summary row id %q to render", name)
+		}
+		if !strings.Contains(html, `data-expense-id="`+name+`"`) {
+			t.Errorf("expected tbody for %q", name)
 		}
 	}
 	// The 📌 prefix relies on .PinnedHashes (the Summary's, not page-level).
@@ -78,16 +82,20 @@ func TestRenderMajorExpenses_MultipleEntriesAllRender(t *testing.T) {
 
 func TestRenderMajorExpenses_EmptyState(t *testing.T) {
 	html := renderMajorExpensesContent(t, map[string]any{
-		"Title":      "Major Expenses",
-		"ActiveTab":  "major-expenses",
-		"Expenses":   []models.MajorExpense{},
-		"Summaries":  []struct{}{},
-		"Match":      map[string]any{"Exceptions": models.ExceptionsReport{}},
-		"Threshold":  100.0,
-		"WindowDays": 30,
+		"Title":         "Major Expenses",
+		"ActiveTab":     "major-expenses",
+		"Expenses":      []models.MajorExpense{},
+		"Summaries":     []struct{}{},
+		"Match":         map[string]any{"Exceptions": models.ExceptionsReport{}},
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 0.0,
 	})
 	if !strings.Contains(html, "No major expenses declared yet") {
 		t.Errorf("expected empty-state copy, got: %s", html)
+	}
+	if !strings.Contains(html, "Click the + above") {
+		t.Errorf("expected empty-state to point at the new add icon, got: %s", html)
 	}
 	if !strings.Contains(html, "No exceptions in current dataset") {
 		t.Errorf("expected empty-exceptions copy, got: %s", html)
@@ -141,8 +149,9 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 				NewWindowDays: 30,
 			},
 		},
-		"Threshold":  100.0,
-		"WindowDays": 30,
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 4800.0,
 	})
 	if !strings.Contains(html, "Rent") {
 		t.Errorf("expected expense name in output")
@@ -174,11 +183,63 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	if !strings.Contains(html, `data-fill-name="My Landlord LLC"`) {
 		t.Errorf("expected anomalous row to expose data-fill-name (so click moves to a new expense)")
 	}
+	// Summary row keeps the stable jump target id.
 	if !strings.Contains(html, `id="major-expense-item-rent"`) {
-		t.Errorf("expected list item to have id targetable by jump")
+		t.Errorf("expected summary row to keep id used by jump links")
+	}
+	// Edit form moved out of the row form-wrapping into the detail cell
+	// and got its own id.
+	if !strings.Contains(html, `id="major-expense-edit-rent"`) {
+		t.Errorf("expected edit form id=major-expense-edit-rent inside detail row")
+	}
+	// Each expense renders one tbody[data-expense-id] containing a
+	// summary tr + detail tr.
+	if !strings.Contains(html, `data-expense-id="rent"`) {
+		t.Errorf("expected one tbody[data-expense-id=rent] per declared expense")
+	}
+	if !strings.Contains(html, `data-open="false"`) {
+		t.Errorf("expected initial collapsed state data-open=\"false\" on tbody")
+	}
+	// Detail row carries id used by aria-controls and the JS toggle
+	// selector.
+	if !strings.Contains(html, `id="major-expense-detail-rent"`) {
+		t.Errorf("expected detail row id used by aria-controls")
+	}
+	if !strings.Contains(html, `class="major-expense-detail-row`) {
+		t.Errorf("expected detail row class used by CSS toggle")
+	}
+	// Chevron button must expose aria-expanded so accessibility tests
+	// and the JS toggle can find it.
+	if !strings.Contains(html, `aria-expanded="false"`) {
+		t.Errorf("expected chevron button with aria-expanded=false")
+	}
+	if !strings.Contains(html, `aria-controls="major-expense-detail-rent"`) {
+		t.Errorf("expected chevron aria-controls referencing detail row id")
+	}
+	// Add form is wrapped in a details panel toggled by the [+] icon.
+	if !strings.Contains(html, `id="major-expenses-add-panel"`) {
+		t.Errorf("expected add form to be wrapped in details#major-expenses-add-panel")
 	}
 	if !strings.Contains(html, `id="major-expenses-add-form"`) {
-		t.Errorf("expected add form to have id used by click handler")
+		t.Errorf("expected add form to keep id used by click-to-prefill handler")
+	}
+	if !strings.Contains(html, `id="major-expenses-add-toggle"`) {
+		t.Errorf("expected [+] toggle button id used by header click handler")
+	}
+	// The summary row carries the row class so the unified search JS
+	// can iterate it (the form no longer wraps the row in this layout).
+	if !strings.Contains(html, `class="major-expense-item-row`) {
+		t.Errorf("expected summary tr to carry major-expense-item-row class")
+	}
+	// Matched-txn rows still carry the row class so the unified search
+	// JS can match them inside the same tbody group.
+	if !strings.Contains(html, `class="major-expense-matched-row`) {
+		t.Errorf("expected matched-txn row to carry major-expense-matched-row class")
+	}
+	// Header surfaces the total declared. Use a stable data attribute
+	// so the assertion does not bind to formatted-money output rules.
+	if !strings.Contains(html, `data-total-declared`) {
+		t.Errorf("expected header to expose data-total-declared for the running sum")
 	}
 	// Unified search input (was per-card exception search; now page-level).
 	if !strings.Contains(html, `id="major-expenses-search"`) {
@@ -206,14 +267,6 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	if !strings.Contains(html, `href="/explorer?search=Landlord&#43;LLC&type=Outflow"`) {
 		t.Errorf("expected matched-txn description to link to /explorer?search=<desc>&type=Outflow, got html=%s", html)
 	}
-	// Each item form carries the row class so JS can select it.
-	if !strings.Contains(html, `class="major-expense-item-row`) {
-		t.Errorf("expected expense-item form to carry major-expense-item-row class")
-	}
-	// Each matched-txn <tr> carries the row class so JS can select it.
-	if !strings.Contains(html, `class="major-expense-matched-row`) {
-		t.Errorf("expected matched-txn row to carry major-expense-matched-row class")
-	}
 	if !strings.Contains(html, `data-search="Random Big Purchase $250.00 `) {
 		t.Errorf("expected unmatched row to include description + amount in data-search, got html=%s", html)
 	}
@@ -230,7 +283,6 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 		`id="major-expenses-bucket-unknown-large"`,
 		`id="major-expenses-bucket-anomalous"`,
 		`id="major-expenses-bucket-new-merchants"`,
-		`id="major-expense-matched-rent"`,
 	} {
 		if !strings.Contains(html, id) {
 			t.Errorf("expected disclosure ID %s for HTMX-swap open-state persistence", id)
@@ -266,8 +318,9 @@ func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {
 		"Match": struct {
 			Exceptions models.ExceptionsReport
 		}{Exceptions: models.ExceptionsReport{Threshold: 100, NewWindowDays: 30}},
-		"Threshold":  100.0,
-		"WindowDays": 30,
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 0.0,
 	})
 	if err != nil {
 		t.Fatalf("render results: %v", err)

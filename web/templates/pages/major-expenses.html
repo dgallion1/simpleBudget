@@ -473,124 +473,174 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
 {{/* List card content — extracted so it can be re-rendered via OOB swap */}}
 {{define "major-expenses-list-card-content"}}
-<div class="flex items-center justify-between mb-3">
+<div class="flex items-center justify-between mb-3 gap-3">
     <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Your Major Expenses</h2>
-    <span class="text-xs text-gray-500 dark:text-gray-400">{{len .Summaries}} declared</span>
+    <div class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+        <span data-total-declared="{{printf "%.2f" .TotalDeclared}}">
+            Total: <span class="font-mono">${{printf "%.0f" .TotalDeclared}}</span>
+        </span>
+        <span class="text-gray-400 dark:text-gray-500">·</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400">{{len .Summaries}} declared</span>
+        <button type="button" id="major-expenses-add-toggle"
+            aria-label="Add a major expense" aria-expanded="false"
+            aria-controls="major-expenses-add-panel"
+            class="ml-1 p-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+        </button>
+    </div>
 </div>
 
-{{template "major-expenses-add-form" .}}
+<details id="major-expenses-add-panel" class="mb-3">
+    <summary class="sr-only">Add a major expense</summary>
+    {{template "major-expenses-add-form" .}}
+</details>
+
 {{template "major-expenses-list" .}}
 {{end}}
 
 {{define "major-expenses-list"}}
-<div id="major-expenses-list" class="space-y-2 mb-4">
+{{if .Summaries}}
+<style>
+    #major-expenses-list tbody[data-open="false"] > tr.major-expense-detail-row { display: none; }
+</style>
+<table id="major-expenses-list" class="w-full text-sm">
+    <thead class="text-xs text-gray-500 dark:text-gray-400">
+        <tr>
+            <th class="w-6"></th>
+            <th class="text-left py-1 px-1 font-normal">Name</th>
+            <th class="text-right py-1 px-1 font-normal">Matched</th>
+            <th class="text-right py-1 px-1 font-normal">Total</th>
+            <th class="w-6"></th>
+        </tr>
+    </thead>
     {{range .Summaries}}
     {{template "major-expense-item" .}}
-    {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-300 italic">
-        No major expenses declared yet. Add your first one below.
-    </p>
     {{end}}
-</div>
+</table>
+{{else}}
+<p class="text-sm text-gray-500 dark:text-gray-300 italic">
+    No major expenses declared yet. Click the + above to add your first one.
+</p>
+{{end}}
 {{end}}
 
 {{/* Single entry — expects an ExpenseSummary {Expense, Count, Total} */}}
 {{define "major-expense-item"}}
-<form id="major-expense-item-{{.Expense.ID}}" hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
-    hx-swap="innerHTML" hx-trigger="change delay:500ms"
-    hx-include="#major-expenses-filter-form"
-    data-search="{{.Expense.Name}}{{range .Expense.Keywords}} {{.}}{{end}}{{if .Expense.Notes}} {{.Expense.Notes}}{{end}}"
-    class="major-expense-item-row p-3 bg-gray-50 dark:bg-gray-700 rounded text-sm scroll-mt-4 transition-shadow">
-    <div class="flex items-center justify-between mb-2">
-        <input type="text" name="name" value="{{.Expense.Name}}" required
-            class="font-medium bg-transparent border-b border-gray-300 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:border-indigo-500 px-1"
-            aria-label="Expense name">
-        <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
-            hx-target="#major-expenses-results" hx-swap="innerHTML"
-            hx-include="#major-expenses-filter-form"
-            class="text-red-500 hover:text-red-700"
-            aria-label="Delete major expense {{.Expense.Name}}">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-        </button>
-    </div>
-
-    <div class="grid grid-cols-1 gap-2 text-xs">
-        <label class="block">
-            <span class="text-gray-600 dark:text-gray-300">Keywords (comma-separated, blank = match by amount)</span>
-            <input type="text" name="keywords"
-                value="{{range $i, $k := .Expense.Keywords}}{{if $i}}, {{end}}{{$k}}{{end}}"
-                class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
-        </label>
-        <div class="grid grid-cols-2 gap-2">
-            <label>
-                <span class="text-gray-600 dark:text-gray-300">Min $ (0 = no min)</span>
-                <input type="number" name="expected_min" value="{{printf "%.2f" .Expense.ExpectedMin}}" min="0" step="0.01"
-                    class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
-            </label>
-            <label>
-                <span class="text-gray-600 dark:text-gray-300">Max $ (0 = no max)</span>
-                <input type="number" name="expected_max" value="{{printf "%.2f" .Expense.ExpectedMax}}" min="0" step="0.01"
-                    class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
-            </label>
-        </div>
-        <label class="block">
-            <span class="text-gray-600 dark:text-gray-300">Notes (optional)</span>
-            <input type="text" name="notes" value="{{.Expense.Notes}}"
-                class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
-        </label>
-    </div>
-
-    <div class="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>{{.Count}} matched{{if .PinnedCount}} <span class="text-amber-600 dark:text-amber-400" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}} pinned</span>{{end}}</span>
-        <span class="font-mono">${{printf "%.0f" .Total}} total</span>
-    </div>
-    {{if .Transactions}}
-    <details id="major-expense-matched-{{.Expense.ID}}" class="mt-2 text-xs"{{if .PinnedCount}} open{{end}}>
-        <summary class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 select-none">
-            Show matched transactions ({{.Count}}{{if .PinnedCount}}, {{.PinnedCount}} pinned{{end}})
-        </summary>
-        <table class="mt-1 w-full">
-            <thead class="text-gray-400 dark:text-gray-500">
-                <tr><th class="text-left py-0.5">Date</th><th class="text-left py-0.5">Description</th><th class="text-right py-0.5">Amount</th><th></th></tr>
-            </thead>
-            <tbody>
-                {{$pinned := .PinnedHashes}}
-                {{range .Transactions}}
-                {{/* Skip Label() here: every matched txn carries the rule's MajorExpenseName, so Label() would clobber the bank text and make every row look identical. Show DisplayName (per-txn alias) → Description (bank text). */}}
-                {{$bankText := or .DisplayName .Description}}
-                <tr class="major-expense-matched-row border-t border-gray-200 dark:border-gray-600"
-                    data-search="{{$bankText}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
-                    <td class="py-0.5 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
-                    <td class="py-0.5 dark:text-gray-200">
-                        {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
-                            class="text-blue-600 dark:text-blue-400 hover:underline"
-                            title="Show all transactions matching “{{$bankText}}” in the Explorer">{{$bankText}}</a>
-                    </td>
-                    <td class="py-0.5 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
-                    <td class="py-0.5 text-right">
-                        {{if and $pinned (index $pinned .Hash)}}
-                        <button type="button"
-                            hx-delete="/major-expenses/pins/{{.Hash}}"
-                            hx-target="#major-expenses-results" hx-swap="innerHTML"
-                            hx-include="#major-expenses-filter-form"
-                            class="text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
-                            aria-label="Unpin transaction">unpin</button>
+<tbody data-expense-id="{{.Expense.ID}}" data-open="false" class="border-t border-gray-100 dark:border-gray-700">
+    <tr id="major-expense-item-{{.Expense.ID}}"
+        class="major-expense-item-row scroll-mt-4"
+        data-search="{{.Expense.Name}}{{range .Expense.Keywords}} {{.}}{{end}}{{if .Expense.Notes}} {{.Expense.Notes}}{{end}}">
+        <td class="py-1.5 px-1 align-middle">
+            <button type="button" class="major-expense-row-toggle text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                aria-expanded="false" aria-controls="major-expense-detail-{{.Expense.ID}}"
+                aria-label="Show details for {{.Expense.Name}}">
+                <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+            </button>
+        </td>
+        <td class="py-1.5 px-1 dark:text-gray-100 font-medium truncate">{{.Expense.Name}}</td>
+        <td class="py-1.5 px-1 text-right text-gray-600 dark:text-gray-300">
+            {{.Count}} matched{{if .PinnedCount}} <span class="text-amber-600 dark:text-amber-400" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}}</span>{{end}}
+        </td>
+        <td class="py-1.5 px-1 text-right font-mono dark:text-gray-100">${{printf "%.0f" .Total}}</td>
+        <td class="py-1.5 px-1 text-right align-middle">
+            <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
+                hx-target="#major-expenses-results" hx-swap="innerHTML"
+                hx-include="#major-expenses-filter-form"
+                class="text-red-500 hover:text-red-700"
+                aria-label="Delete major expense {{.Expense.Name}}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </td>
+    </tr>
+    <tr id="major-expense-detail-{{.Expense.ID}}" class="major-expense-detail-row">
+        <td colspan="5" class="px-1 pb-3 pt-1 bg-gray-50 dark:bg-gray-700/50">
+            <form id="major-expense-edit-{{.Expense.ID}}"
+                hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
+                hx-swap="innerHTML" hx-trigger="change delay:500ms"
+                hx-include="#major-expenses-filter-form"
+                class="grid grid-cols-1 gap-2 text-xs p-2">
+                <label class="block">
+                    <span class="text-gray-600 dark:text-gray-300">Name</span>
+                    <input type="text" name="name" value="{{.Expense.Name}}" required
+                        class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded"
+                        aria-label="Expense name">
+                </label>
+                <label class="block">
+                    <span class="text-gray-600 dark:text-gray-300">Keywords (comma-separated, blank = match by amount)</span>
+                    <input type="text" name="keywords"
+                        value="{{range $i, $k := .Expense.Keywords}}{{if $i}}, {{end}}{{$k}}{{end}}"
+                        class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label>
+                        <span class="text-gray-600 dark:text-gray-300">Min $ (0 = no min)</span>
+                        <input type="number" name="expected_min" value="{{printf "%.2f" .Expense.ExpectedMin}}" min="0" step="0.01"
+                            class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+                    </label>
+                    <label>
+                        <span class="text-gray-600 dark:text-gray-300">Max $ (0 = no max)</span>
+                        <input type="number" name="expected_max" value="{{printf "%.2f" .Expense.ExpectedMax}}" min="0" step="0.01"
+                            class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+                    </label>
+                </div>
+                <label class="block">
+                    <span class="text-gray-600 dark:text-gray-300">Notes (optional)</span>
+                    <input type="text" name="notes" value="{{.Expense.Notes}}"
+                        class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
+                </label>
+            </form>
+            {{if .Transactions}}
+            <div class="mt-2 text-xs">
+                <p class="text-gray-500 dark:text-gray-400 px-2 py-0.5">
+                    Matched transactions ({{.Count}}{{if .PinnedCount}}, {{.PinnedCount}} pinned{{end}})
+                </p>
+                <table class="w-full">
+                    <thead class="text-gray-400 dark:text-gray-500">
+                        <tr><th class="text-left py-0.5 px-2">Date</th><th class="text-left py-0.5 px-2">Description</th><th class="text-right py-0.5 px-2">Amount</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {{$pinned := .PinnedHashes}}
+                        {{range .Transactions}}
+                        {{$bankText := or .DisplayName .Description}}
+                        <tr class="major-expense-matched-row border-t border-gray-200 dark:border-gray-600"
+                            data-search="{{$bankText}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
+                            <td class="py-0.5 px-2 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
+                            <td class="py-0.5 px-2 dark:text-gray-200">
+                                {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
+                                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                                    title="Show all transactions matching &#34;{{$bankText}}&#34; in the Explorer">{{$bankText}}</a>
+                            </td>
+                            <td class="py-0.5 px-2 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
+                            <td class="py-0.5 px-2 text-right">
+                                {{if and $pinned (index $pinned .Hash)}}
+                                <button type="button"
+                                    hx-delete="/major-expenses/pins/{{.Hash}}"
+                                    hx-target="#major-expenses-results" hx-swap="innerHTML"
+                                    hx-include="#major-expenses-filter-form"
+                                    class="text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                                    aria-label="Unpin transaction">unpin</button>
+                                {{end}}
+                            </td>
+                        </tr>
                         {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </details>
-    {{end}}
-</form>
+                    </tbody>
+                </table>
+            </div>
+            {{end}}
+        </td>
+    </tr>
+</tbody>
 {{end}}
 
 {{define "major-expenses-add-form"}}
 <form id="major-expenses-add-form" hx-post="/major-expenses" hx-target="#major-expenses-results" hx-swap="innerHTML"
-    hx-on::after-request="if(event.detail.successful) this.reset()"
+    hx-on::after-request="if(event.detail.successful){ this.reset(); var p=document.getElementById('major-expenses-add-panel'); if(p){ p.open=false; var t=document.getElementById('major-expenses-add-toggle'); if(t){ t.setAttribute('aria-expanded','false'); } } }"
     hx-include="#major-expenses-filter-form"
     class="space-y-2 pb-3 mb-3 border-b dark:border-gray-700">
     <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Add a major expense</h3>

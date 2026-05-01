@@ -112,6 +112,89 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// restoreFromZip extracts every entry of the supplied archive into
+// cfg.DataDirectory using store.WriteFile. It validates the entire
+// archive before writing any files, so a malformed entry rejects the
+// whole operation atomically.
+//
+// Returns (count, http status, error message). On success, status is 200.
+func restoreFromZip(content []byte) (int, int, string) {
+	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return 0, http.StatusBadRequest, "Invalid ZIP file"
+	}
+
+	dataAbs, err := filepath.Abs(cfg.DataDirectory)
+	if err != nil {
+		return 0, http.StatusInternalServerError, "Bad data directory"
+	}
+
+	type prepared struct {
+		dest string
+		data []byte
+	}
+	var queue []prepared
+
+	for _, zf := range zr.File {
+		if zf.FileInfo().IsDir() {
+			continue
+		}
+		// Sanitize: forbid absolute, forbid ".." segments, must stay under data dir.
+		raw := filepath.ToSlash(zf.Name)
+		if strings.HasPrefix(raw, "/") {
+			return 0, http.StatusBadRequest, fmt.Sprintf("Absolute path in archive: %s", zf.Name)
+		}
+		clean := filepath.Clean(raw)
+		if clean == "." || clean == "" {
+			continue
+		}
+		for _, seg := range strings.Split(filepath.ToSlash(clean), "/") {
+			if seg == ".." {
+				return 0, http.StatusBadRequest, fmt.Sprintf("Path traversal in archive: %s", zf.Name)
+			}
+		}
+		dest := filepath.Join(cfg.DataDirectory, clean)
+		destAbs, err := filepath.Abs(dest)
+		if err != nil || !(destAbs == dataAbs || strings.HasPrefix(destAbs, dataAbs+string(filepath.Separator))) {
+			return 0, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
+		}
+
+		rc, err := zf.Open()
+		if err != nil {
+			return 0, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return 0, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
+		}
+
+		// Encrypted blob into unencrypted/locked store → reject the whole archive.
+		if storage.IsAgeEncryptedData(data) && !(store.IsEncrypted() && store.IsUnlocked()) {
+			return 0, http.StatusBadRequest, fmt.Sprintf(
+				"Archive contains encrypted entry %s but destination store is not encrypted/unlocked",
+				zf.Name,
+			)
+		}
+
+		queue = append(queue, prepared{dest: dest, data: data})
+	}
+
+	if len(queue) == 0 {
+		return 0, http.StatusBadRequest, "No restorable files in archive"
+	}
+
+	for _, p := range queue {
+		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
+			return 0, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
+		}
+		if err := store.WriteFile(p.dest, p.data, 0644); err != nil {
+			return 0, http.StatusInternalServerError, fmt.Sprintf("write %s: %v", p.dest, err)
+		}
+	}
+	return len(queue), http.StatusOK, ""
+}
+
 func HandleRestore(w http.ResponseWriter, r *http.Request) {
 	// Parse multipart form (max 50MB for backup files)
 	if err := r.ParseMultipartForm(50 << 20); err != nil {
@@ -132,143 +215,35 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the entire file into memory to create a ReaderAt
 	content, err := io.ReadAll(file)
 	if err != nil {
 		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
-
-	// Open zip archive from memory
-	zipReader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
-	if err != nil {
-		http.Error(w, "Invalid ZIP file", http.StatusBadRequest)
+	count, status, msg := restoreFromZip(content)
+	if status != http.StatusOK {
+		http.Error(w, msg, status)
 		return
 	}
-
-	// Extract all CSV files from the zip
-	restoredCount := 0
-	for _, zipFile := range zipReader.File {
-		// Skip directories
-		if zipFile.FileInfo().IsDir() {
-			continue
-		}
-
-		// Only extract CSV files
-		if !strings.HasSuffix(strings.ToLower(zipFile.Name), ".csv") {
-			continue
-		}
-
-		// Sanitize filename - use only the base name to prevent path traversal
-		baseName := filepath.Base(zipFile.Name)
-		if strings.Contains(baseName, "..") {
-			continue
-		}
-
-		// Open the file in the zip
-		rc, err := zipFile.Open()
-		if err != nil {
-			log.Printf("Error opening zip entry %s: %v", zipFile.Name, err)
-			continue
-		}
-
-		// Read content from zip
-		data, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			log.Printf("Error reading zip entry %s: %v", zipFile.Name, err)
-			continue
-		}
-
-		// Write via storage (handles encryption if enabled)
-		destPath := filepath.Join(cfg.DataDirectory, baseName)
-		if err := store.WriteFile(destPath, data, 0644); err != nil {
-			log.Printf("Error writing file %s: %v", destPath, err)
-			continue
-		}
-
-		restoredCount++
-		log.Printf("Restored file: %s", baseName)
-	}
-
-	if restoredCount == 0 {
-		http.Error(w, "No CSV files found in backup", http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Restore complete: %d files restored", restoredCount)
+	log.Printf("Restore complete: %d files restored", count)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Restored %d files", restoredCount)
+	fmt.Fprintf(w, "Restored %d files", count)
 }
 
 func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
-	// Read the embedded test backup
 	content, err := testdata.TestBackupFS.ReadFile("test_backup.zip")
 	if err != nil {
 		http.Error(w, "Test backup not available", http.StatusInternalServerError)
 		return
 	}
-
-	// Open zip archive from memory
-	zipReader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
-	if err != nil {
-		http.Error(w, "Invalid embedded ZIP file", http.StatusInternalServerError)
+	count, status, msg := restoreFromZip(content)
+	if status != http.StatusOK {
+		http.Error(w, msg, status)
 		return
 	}
-
-	// Extract all CSV files from the zip
-	restoredCount := 0
-	for _, zipFile := range zipReader.File {
-		// Skip directories
-		if zipFile.FileInfo().IsDir() {
-			continue
-		}
-
-		// Only extract CSV files
-		if !strings.HasSuffix(strings.ToLower(zipFile.Name), ".csv") {
-			continue
-		}
-
-		// Sanitize filename - use only the base name to prevent path traversal
-		baseName := filepath.Base(zipFile.Name)
-		if strings.Contains(baseName, "..") {
-			continue
-		}
-
-		// Open the file in the zip
-		rc, err := zipFile.Open()
-		if err != nil {
-			log.Printf("Error opening zip entry %s: %v", zipFile.Name, err)
-			continue
-		}
-
-		// Read content from zip
-		data, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			log.Printf("Error reading zip entry %s: %v", zipFile.Name, err)
-			continue
-		}
-
-		// Write via storage (handles encryption if enabled)
-		destPath := filepath.Join(cfg.DataDirectory, baseName)
-		if err := store.WriteFile(destPath, data, 0644); err != nil {
-			log.Printf("Error writing file %s: %v", destPath, err)
-			continue
-		}
-
-		restoredCount++
-		log.Printf("Restored file from test data: %s", baseName)
-	}
-
-	if restoredCount == 0 {
-		http.Error(w, "No CSV files found in test backup", http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Test data restore complete: %d files restored", restoredCount)
+	log.Printf("Test data restore complete: %d files restored", count)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Restored %d test files", restoredCount)
+	fmt.Fprintf(w, "Restored %d test files", count)
 }
 
 func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {

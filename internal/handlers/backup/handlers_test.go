@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"os/exec"
@@ -214,11 +216,12 @@ func TestHandleRestore(t *testing.T) {
 	tmpDir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create a zip with CSV files
+	// Create a zip with CSV files and a non-CSV file.
+	// After the refactor all file types are restored.
 	zipBuf := createZipBuffer(t, map[string]string{
 		"accounts.csv":     "name,balance\nChecking,1000\n",
 		"transactions.csv": "date,amount\n2024-01-01,50\n",
-		"readme.txt":       "This should be skipped",
+		"readme.txt":       "Also restored now",
 	})
 
 	body, contentType := createMultipartBody(t, "file", "backup.zip", zipBuf.Bytes())
@@ -236,20 +239,20 @@ func TestHandleRestore(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, respBody)
 	}
 
-	if !strings.Contains(string(respBody), "Restored 2 files") {
+	if !strings.Contains(string(respBody), "Restored 3 files") {
 		t.Errorf("unexpected body: %s", respBody)
 	}
 
-	// Verify files were actually written
+	// Verify all files were written (all file types now restored)
 	if _, err := os.Stat(filepath.Join(tmpDir, "accounts.csv")); err != nil {
 		t.Error("accounts.csv not restored")
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, "transactions.csv")); err != nil {
 		t.Error("transactions.csv not restored")
 	}
-	// Non-CSV should not be restored
-	if _, err := os.Stat(filepath.Join(tmpDir, "readme.txt")); err == nil {
-		t.Error("readme.txt should not have been restored")
+	// Non-CSV is now also restored
+	if _, err := os.Stat(filepath.Join(tmpDir, "readme.txt")); err != nil {
+		t.Error("readme.txt should have been restored")
 	}
 }
 
@@ -325,10 +328,11 @@ func TestHandleRestoreInvalidZip(t *testing.T) {
 }
 
 func TestHandleRestoreNoCsvFiles(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	tmpDir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Zip with only non-CSV files
+	// Zip with only non-CSV files. After the all-file-types refactor, these
+	// are now restored successfully (the old CSV-only filter no longer exists).
 	zipBuf := createZipBuffer(t, map[string]string{
 		"readme.txt": "no csv here",
 	})
@@ -341,8 +345,11 @@ func TestHandleRestoreNoCsvFiles(t *testing.T) {
 
 	HandleRestore(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 (all file types restored now), got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "readme.txt")); err != nil {
+		t.Error("readme.txt should have been restored")
 	}
 }
 
@@ -1533,10 +1540,9 @@ func TestHandleRestoreWithPathTraversal(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create a zip with path traversal attempts
+	// Create a zip with path traversal — the whole archive must be rejected.
 	buf := new(bytes.Buffer)
 	zw := zip.NewWriter(buf)
-	// The handler uses filepath.Base which strips directory components
 	fw, _ := zw.Create("../../etc/passwd.csv")
 	fw.Write([]byte("malicious"))
 	fw2, _ := zw.Create("normal.csv")
@@ -1551,9 +1557,9 @@ func TestHandleRestoreWithPathTraversal(t *testing.T) {
 
 	HandleRestore(w, r)
 
-	// Should succeed - base name stripping prevents traversal
-	if w.Code != http.StatusOK {
-		t.Logf("Status: %d, Body: %s", w.Code, w.Body.String())
+	// Path traversal entry must cause a 400 rejection of the entire archive.
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for path-traversal archive, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -1887,9 +1893,11 @@ func TestHandleEnableSSHEncryptionAlreadyEnabled(t *testing.T) {
 }
 
 func TestHandleRestoreNonCSVFilesOnly(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	tmpDir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
+	// All file types are now restored — this archive has only non-CSV but
+	// that's fine; all three files should land on disk.
 	zipBuf := createZipBuffer(t, map[string]string{
 		"readme.txt":  "text file",
 		"image.png":   "fake image",
@@ -1904,8 +1912,14 @@ func TestHandleRestoreNonCSVFilesOnly(t *testing.T) {
 
 	HandleRestore(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 (all file types now restored), got %d: %s", w.Code, w.Body.String())
+	}
+	// All three files should be on disk
+	for _, name := range []string{"readme.txt", "image.png", "config.json"} {
+		if _, err := os.Stat(filepath.Join(tmpDir, name)); err != nil {
+			t.Errorf("%s should have been restored", name)
+		}
 	}
 }
 
@@ -2438,7 +2452,7 @@ func TestHandleRestoreWriteError(t *testing.T) {
 	tmpDir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Make data directory read-only to cause write failures
+	// Make data directory read-only to cause write failures.
 	zipBuf := createZipBuffer(t, map[string]string{
 		"test.csv": "data",
 	})
@@ -2455,9 +2469,10 @@ func TestHandleRestoreWriteError(t *testing.T) {
 
 	HandleRestore(w, r)
 
-	// With write failure, no files restored, should be 400
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	// The new restoreFromZip validates first, then writes. A write error
+	// returns 500 (internal server error), not 400.
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on write error, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -2601,7 +2616,8 @@ func TestHandleRestoreWithMixedFiles(t *testing.T) {
 	tmpDir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create zip with CSV and non-CSV files in subdirectories
+	// Create zip with CSV and non-CSV files in subdirectories.
+	// After refactor: all file types are restored; subdirectory paths are preserved.
 	buf := new(bytes.Buffer)
 	zw := zip.NewWriter(buf)
 	fw, _ := zw.Create("subdir/data.csv")
@@ -2624,11 +2640,182 @@ func TestHandleRestoreWithMixedFiles(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// data.csv should be extracted with base name (path traversal safe)
-	if _, err := os.Stat(filepath.Join(tmpDir, "data.csv")); err != nil {
-		t.Error("data.csv should exist")
+	// subdir/data.csv now preserves its path (nested under dataDir/subdir/)
+	if _, err := os.Stat(filepath.Join(tmpDir, "subdir", "data.csv")); err != nil {
+		t.Error("subdir/data.csv should exist at its nested path")
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, "UPPER.CSV")); err != nil {
 		t.Error("UPPER.CSV should exist")
+	}
+	// Non-CSV files are also restored now
+	if _, err := os.Stat(filepath.Join(tmpDir, "other.txt")); err != nil {
+		t.Error("other.txt should exist (all file types restored)")
+	}
+}
+
+// ---------- Task-8 new tests: round-trip, path sanitization, encrypted-blob ----------
+
+func TestHandleRestore_RoundTripsAllFileTypes(t *testing.T) {
+	dataDir := t.TempDir()
+	originalCfg := cfg
+	originalStore := store
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+
+	cfg = &config.Config{DataDirectory: dataDir}
+	s, _ := storage.New(dataDir)
+	store = s
+
+	// Build an in-memory zip with csv + json + nested settings/.
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "banking.csv", []byte("a,b\n1,2\n"))
+	mustZip(t, zw, "major_expenses.json", []byte(`{"x":1}`))
+	mustZip(t, zw, "settings/whatif_state.json", []byte(`{"baseline":"foo"}`))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	mustReadEqual(t, filepath.Join(dataDir, "banking.csv"), []byte("a,b\n1,2\n"))
+	mustReadEqual(t, filepath.Join(dataDir, "major_expenses.json"), []byte(`{"x":1}`))
+	mustReadEqual(t, filepath.Join(dataDir, "settings/whatif_state.json"), []byte(`{"baseline":"foo"}`))
+}
+
+func TestHandleRestore_RejectsPathTraversal(t *testing.T) {
+	dataDir := t.TempDir()
+	originalCfg := cfg
+	originalStore := store
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+
+	cfg = &config.Config{DataDirectory: dataDir}
+	s, _ := storage.New(dataDir)
+	store = s
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "../escape.txt", []byte("nope"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("path traversal must return 400, got %d", rec.Code)
+	}
+	// And ensure NOTHING was written above the data dir.
+	parent := filepath.Dir(dataDir)
+	if _, err := os.Stat(filepath.Join(parent, "escape.txt")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("path traversal escaped the data directory")
+	}
+}
+
+func TestHandleRestore_RejectsAbsolutePathEntries(t *testing.T) {
+	dataDir := t.TempDir()
+	originalCfg := cfg
+	originalStore := store
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+
+	cfg = &config.Config{DataDirectory: dataDir}
+	s, _ := storage.New(dataDir)
+	store = s
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "/etc/passwd", []byte("nope"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("absolute path must return 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleRestore_RejectsEncryptedBlobsIntoUnencryptedStore(t *testing.T) {
+	dataDir := t.TempDir()
+	originalCfg := cfg
+	originalStore := store
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+
+	cfg = &config.Config{DataDirectory: dataDir}
+	s, _ := storage.New(dataDir)
+	store = s
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	// Forge an "encrypted" entry by prefixing the age header magic.
+	encrypted := append([]byte("age-encryption.org/v1\n"), []byte("payload")...)
+	mustZip(t, zw, "secret.csv", encrypted)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("encrypted blob into unencrypted store must 400, got %d", rec.Code)
+	}
+}
+
+// mustZip appends a zip entry with the given content.
+func mustZip(t *testing.T, zw *zip.Writer, name string, content []byte) {
+	t.Helper()
+	w, err := zw.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(content); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// recRequest bundles a ResponseRecorder with its corresponding Request so
+// callers can pass both to a handler without separate variables.
+type recRequest struct {
+	*httptest.ResponseRecorder
+	Request *http.Request
+}
+
+// postMultipartZip builds a multipart POST with a single file part and returns
+// a recRequest whose .Request field is ready to pass to a handler.
+func postMultipartZip(t *testing.T, url, field, filename string, content []byte) *recRequest {
+	t.Helper()
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile(field, filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, url, &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	return &recRequest{ResponseRecorder: httptest.NewRecorder(), Request: r}
+}
+
+// mustReadEqual reads the file at path and fatals if the content differs from want.
+func mustReadEqual(t *testing.T, path string, want []byte) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("%s: got %q want %q", path, got, want)
 	}
 }

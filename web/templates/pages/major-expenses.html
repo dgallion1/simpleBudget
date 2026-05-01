@@ -9,9 +9,16 @@
         <div class="mt-3 relative">
             <input type="search" id="major-expenses-search"
                 placeholder="Filter expenses, keywords, notes, transactions, amounts, dates…"
-                class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-3 pr-32"
+                class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-3 pr-40"
                 autocomplete="off">
-            <span id="major-expenses-search-status" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></span>
+            <span id="major-expenses-search-status" class="hidden absolute right-9 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400 pointer-events-none" aria-live="polite"></span>
+            <button type="button" id="major-expenses-search-clear"
+                class="hidden absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
+                aria-label="Clear search">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
         </div>
     </div>
 
@@ -113,6 +120,10 @@
             }
         }
 
+        // ---- Clear button visibility ----
+        const clear = document.getElementById('major-expenses-search-clear');
+        if (clear) clear.classList.toggle('hidden', q === '');
+
         syncBulkPinToolbar(visibleExceptions, q);
     }
 
@@ -182,6 +193,18 @@
         if (e.target && e.target.id === 'major-expenses-search') {
             applyUnifiedFilter(e.target.value);
         }
+    });
+
+    // Clear button — empties the input and re-applies the (now empty) filter.
+    document.addEventListener('click', function (e) {
+        const clear = e.target && e.target.closest && e.target.closest('#major-expenses-search-clear');
+        if (!clear) return;
+        e.preventDefault();
+        const input = document.getElementById('major-expenses-search');
+        if (!input) return;
+        input.value = '';
+        applyUnifiedFilter('');
+        input.focus();
     });
 
     // Click delegation: works across HTMX swaps because we listen on document.

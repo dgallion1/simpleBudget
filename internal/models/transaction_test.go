@@ -212,6 +212,21 @@ func TestFilterBySearch(t *testing.T) {
 	}
 }
 
+func TestTransactionSet_FilterBySearch_MatchesMajorExpenseName(t *testing.T) {
+	ts := NewTransactionSet([]Transaction{
+		{Description: "BOFA HOMELOANS 0123", MajorExpenseName: "Mortgage"},
+		{Description: "Whole Foods", MajorExpenseName: "Groceries"},
+		{Description: "Starbucks"},
+	})
+	got := ts.FilterBySearch("mortgage")
+	if got.Len() != 1 {
+		t.Fatalf("expected 1 match, got %d", got.Len())
+	}
+	if got.Transactions[0].Description != "BOFA HOMELOANS 0123" {
+		t.Errorf("wrong row matched: %q", got.Transactions[0].Description)
+	}
+}
+
 func TestSumAmount(t *testing.T) {
 	ts := NewTransactionSet(makeTestTransactions())
 	sum := ts.SumAmount()

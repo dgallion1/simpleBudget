@@ -135,13 +135,15 @@ func (ts *TransactionSet) FilterByCategory(category string) *TransactionSet {
 	return result
 }
 
-// FilterBySearch returns transactions matching the search term in description or display name
+// FilterBySearch returns transactions matching the search term in
+// description, display name, or major-expense name.
 func (ts *TransactionSet) FilterBySearch(search string) *TransactionSet {
 	result := &TransactionSet{}
 	searchLower := strings.ToLower(search)
 	for _, t := range ts.Transactions {
 		if strings.Contains(strings.ToLower(t.Description), searchLower) ||
-			(t.DisplayName != "" && strings.Contains(strings.ToLower(t.DisplayName), searchLower)) {
+			(t.DisplayName != "" && strings.Contains(strings.ToLower(t.DisplayName), searchLower)) ||
+			(t.MajorExpenseName != "" && strings.Contains(strings.ToLower(t.MajorExpenseName), searchLower)) {
 			result.Transactions = append(result.Transactions, t)
 		}
 	}

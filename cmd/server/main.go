@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,6 +28,7 @@ import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
+	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/templates"
 	"budget2/internal/version"
 	"budget2/web"
@@ -34,6 +40,7 @@ var (
 	loader        *dataloader.DataLoader
 	renderer      *templates.Renderer
 	retirementMgr *retirement.SettingsManager
+	backupService *backupsvc.Service
 )
 
 // SetupDependencies initializes all global dependencies with the given config.
@@ -62,13 +69,23 @@ func SetupDependencies(c *config.Config) error {
 	settingsDir := filepath.Join(cfg.DataDirectory, "settings")
 	retirementMgr = retirement.NewSettingsManager(settingsDir, store)
 
+	// Initialize backup service
+	backupService, err = backupsvc.New(backupsvc.Config{
+		BackupDir: cfg.BackupDir,
+		DataDir:   cfg.DataDirectory,
+		Store:     store,
+	})
+	if err != nil {
+		return fmt.Errorf("backup service init: %w", err)
+	}
+
 	// Initialize handler packages
 	dashboard.Initialize(loader, renderer)
 	explorer.Initialize(loader, renderer, cfg, store)
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)
 	majorexpenses.Initialize(loader, renderer)
-	backup.Initialize(cfg, store, renderer, nil)
+	backup.Initialize(cfg, store, renderer, backupService)
 
 	return nil
 }
@@ -139,6 +156,8 @@ func SetupRouter() chi.Router {
 		r.Post("/restore", backup.HandleRestore)
 		r.Post("/restore/test-data", backup.HandleRestoreTestData)
 		r.Delete("/data/all", backup.HandleDeleteAllData)
+		r.Get("/backup/status", backup.HandleBackupStatus)
+		r.Post("/backup/auto-enabled", backup.HandleSetAutoBackupEnabled)
 
 		// Encryption management routes
 		r.Post("/encryption/enable", backup.HandleEnableEncryptionWithMethod)
@@ -211,7 +230,47 @@ func main() {
 	if err != nil {
 		log.Fatalf("FATAL: %v", err)
 	}
-	log.Fatal(http.ListenAndServe(addr, handler))
+
+	// Initial stale-check (fast no-op if a fresh backup already exists).
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := backupService.SnapshotIfStale(ctx, 24*time.Hour); err != nil {
+			log.Printf("backup: initial snapshot: %v", err)
+		}
+	}()
+
+	// Hourly scheduler — exits when the server context is cancelled.
+	schedCtx, schedCancel := context.WithCancel(context.Background())
+	go backupService.Run(schedCtx, 24*time.Hour)
+
+	// Start HTTP server in background.
+	srv := &http.Server{Addr: addr, Handler: handler}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP server error: %v", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for signal.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	log.Print("shutting down")
+
+	// Stop scheduler.
+	schedCancel()
+
+	// Best-effort shutdown snapshot (bounded to 30 s).
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := backupService.Snapshot(shutdownCtx); err != nil &&
+		!errors.Is(err, backupsvc.ErrSnapshotInProgress) {
+		log.Printf("backup: shutdown snapshot: %v", err)
+	}
+
+	_ = srv.Shutdown(shutdownCtx)
 }
 
 // handleVersion returns version information as JSON

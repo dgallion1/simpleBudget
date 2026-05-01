@@ -31,6 +31,7 @@ func setupTestServer(t *testing.T) *testutil.TestServer {
 		SettingsDirectory:  testutil.TestDataDir() + "/settings",
 		TemplatesDirectory: root + "/web/templates",
 		StaticDirectory:    root + "/web/static",
+		BackupDir:          t.TempDir(),
 	}
 
 	// Initialize storage (unencrypted for tests)
@@ -384,6 +385,7 @@ func TestSetupDependencies_Production(t *testing.T) {
 		SettingsDirectory:  testutil.TestDataDir() + "/settings",
 		TemplatesDirectory: root + "/web/templates",
 		StaticDirectory:    root + "/web/static",
+		BackupDir:          t.TempDir(),
 	}
 
 	var err error
@@ -408,6 +410,7 @@ func TestSetupRouter_Production(t *testing.T) {
 		SettingsDirectory:  testutil.TestDataDir() + "/settings",
 		TemplatesDirectory: root + "/web/templates",
 		StaticDirectory:    root + "/web/static",
+		BackupDir:          t.TempDir(),
 	}
 
 	var err error
@@ -759,6 +762,7 @@ func TestSetupDependencies_Error(t *testing.T) {
 		SettingsDirectory:  testutil.TestDataDir() + "/settings",
 		TemplatesDirectory: "/nonexistent/templates/dir",
 		StaticDirectory:    "/nonexistent/static/dir",
+		BackupDir:          t.TempDir(),
 	}
 
 	var err error

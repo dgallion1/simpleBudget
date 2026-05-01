@@ -129,3 +129,24 @@ func TestApplyMajorExpenseNames_InvalidJSONFallsBack(t *testing.T) {
 		t.Error("expected empty MajorExpenseName when defs file is corrupt (graceful no-op)")
 	}
 }
+
+func TestApplyMajorExpenseNames_InvalidPinsFallsBackToMatching(t *testing.T) {
+	defs := models.MajorExpenseStore{Expenses: []models.MajorExpense{
+		{ID: "me-mortgage", Name: "Mortgage", Keywords: []string{"homeloans"}},
+	}}
+	defsJSON, _ := json.Marshal(defs)
+
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"major_expenses.json":   string(defsJSON),
+		"transaction_pins.json": "broken json{{{",
+	})
+	defer cleanup()
+
+	txns := []models.Transaction{
+		{Hash: "h1", Description: "BOFA HOMELOANS 0123", Amount: -1500},
+	}
+	got := loader.applyMajorExpenseNames(txns)
+	if got[0].MajorExpenseName != "Mortgage" {
+		t.Errorf("expected fall-through to keyword match 'Mortgage' when pins file is corrupt; got %q", got[0].MajorExpenseName)
+	}
+}

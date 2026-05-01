@@ -2892,3 +2892,64 @@ func TestHandleBackupStatus_ReturnsMetaAndCount(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleSetAutoBackupEnabled_TogglesAndPersists(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	originalCfg := cfg
+	originalStore := store
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
+
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
+	s, _ := storage.New(dataDir)
+	store = s
+	svc, _ := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir})
+	backupSvc = svc
+
+	if !svc.Enabled() { t.Fatalf("default Enabled() should be true") }
+
+	rec := httptest.NewRecorder()
+	form := strings.NewReader("enabled=false")
+	r := httptest.NewRequest(http.MethodPost, "/backup/auto-enabled", form)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleSetAutoBackupEnabled(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if svc.Enabled() {
+		t.Fatalf("Enabled() should be false after toggle")
+	}
+
+	// Persist across service restart.
+	svc2, _ := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir})
+	if svc2.Enabled() {
+		t.Fatalf("Enabled() should persist as false")
+	}
+}
+
+func TestHandleSetAutoBackupEnabled_RejectsBadValue(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	originalCfg := cfg
+	originalStore := store
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
+
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
+	s, _ := storage.New(dataDir)
+	store = s
+	svc, _ := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir})
+	backupSvc = svc
+
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/auto-enabled",
+		strings.NewReader("enabled=banana"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleSetAutoBackupEnabled(rec, r)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad value should 400, got %d", rec.Code)
+	}
+}

@@ -819,6 +819,33 @@ func HandleYubiKeyIdentity(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func HandleSetAutoBackupEnabled(w http.ResponseWriter, r *http.Request) {
+	if backupSvc == nil {
+		http.Error(w, "backup service not initialized", http.StatusInternalServerError)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	val := r.FormValue("enabled")
+	var enabled bool
+	switch val {
+	case "true", "1", "on", "yes":
+		enabled = true
+	case "false", "0", "off", "no":
+		enabled = false
+	default:
+		http.Error(w, "enabled must be true/false", http.StatusBadRequest)
+		return
+	}
+	if err := backupSvc.SetEnabled(enabled); err != nil {
+		http.Error(w, fmt.Sprintf("persist enabled: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 // HandleYubiKeySetup returns instructions for YubiKey setup
 // YubiKey setup requires terminal interaction and cannot be done via web
 func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request) {

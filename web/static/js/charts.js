@@ -106,6 +106,67 @@ function renderChart(containerId, chartData) {
             }
         });
     }
+
+    // Render the "Other" breakdown for the major-expense donut.
+    if (containerId === 'chart-major-expense') {
+        renderMajorExpenseBreakdown(data.smaller);
+    }
+}
+
+/**
+ * Render the text breakdown of rolled-up "Other" major-expense items
+ * into the breakdown sibling div. Clears the div when no items.
+ * Built with DOM APIs and textContent — never innerHTML — so any HTML
+ * inside a major-expense name renders as plain text.
+ * @param {Array<{name: string, amount: number, percent: number}>} items
+ */
+function renderMajorExpenseBreakdown(items) {
+    const target = document.getElementById('chart-major-expense-breakdown');
+    if (!target) return;
+
+    while (target.firstChild) {
+        target.removeChild(target.firstChild);
+    }
+
+    if (!items || items.length === 0) {
+        return;
+    }
+
+    const fmtMoney = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+
+    const header = document.createElement('div');
+    header.className = 'font-medium text-gray-700 dark:text-gray-200 mb-1';
+    header.textContent = 'Other categories';
+    target.appendChild(header);
+
+    items.forEach(function(it) {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between gap-4 py-0.5';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'truncate';
+        nameEl.textContent = String(it.name);
+        row.appendChild(nameEl);
+
+        const valEl = document.createElement('span');
+        valEl.className = 'tabular-nums whitespace-nowrap';
+        valEl.appendChild(document.createTextNode(fmtMoney.format(it.amount) + '  '));
+
+        const pctEl = document.createElement('span');
+        pctEl.className = 'text-gray-500 dark:text-gray-400';
+        const pctNum = Number(it.percent);
+        const pctText = (pctNum < 1 ? pctNum.toFixed(2) : pctNum.toFixed(1)) + '%';
+        pctEl.textContent = pctText;
+        valEl.appendChild(pctEl);
+
+        row.appendChild(valEl);
+        target.appendChild(row);
+    });
 }
 
 /**

@@ -20,6 +20,32 @@
 
 <script>
 (function () {
+    function visibleExceptionHashes() {
+        return Array.from(
+            document.querySelectorAll('tr.major-expenses-exception-row:not([style*="display: none"])')
+        ).map(function (tr) {
+            return tr.getAttribute('data-hash') || '';
+        }).filter(Boolean);
+    }
+
+    // Show/hide the bulk-pin toolbar and update its row count based on
+    // the current visible-exception set. Called after every filter
+    // change AND after HTMX swaps so the toolbar tracks the live DOM.
+    function syncBulkPinToolbar(visibleCount, query) {
+        const bar = document.getElementById('major-expenses-bulk-pin');
+        if (!bar) return;
+        const counter = document.getElementById('major-expenses-bulk-pin-count');
+        const apply = document.getElementById('major-expenses-bulk-pin-apply');
+        const target = document.getElementById('major-expenses-bulk-pin-target');
+        // Only show when the user has actively narrowed the list — pinning
+        // EVERY exception with one click is too easy to misfire.
+        const active = query.trim() !== '' && visibleCount > 0;
+        bar.classList.toggle('hidden', !active);
+        bar.classList.toggle('flex', active);
+        if (counter) counter.textContent = String(visibleCount);
+        if (apply) apply.disabled = !active || !target || !target.value;
+    }
+
     function applyExceptionFilter(query) {
         const q = (query || '').toLowerCase().trim();
         const rows = document.querySelectorAll('tr.major-expenses-exception-row');
@@ -47,7 +73,46 @@
             const hasMatch = d.querySelector('tr.major-expenses-exception-row:not([style*="display: none"])');
             if (hasMatch) d.open = true;
         });
+        syncBulkPinToolbar(visible, q);
     }
+
+    // Reapply the active search after every HTMX swap. Without this, a
+    // single-pin POST refreshes the panel and the user's filter input
+    // still shows the search text but every row is visible again.
+    document.body.addEventListener('htmx:afterSwap', function () {
+        const input = document.getElementById('major-expenses-exception-search');
+        if (input && input.value) applyExceptionFilter(input.value);
+    });
+
+    // Bulk-pin Apply: collect every visible exception hash, fire one
+    // POST /major-expenses/pins/bulk via htmx.ajax so the standard OOB
+    // swap pipeline kicks in.
+    document.addEventListener('click', function (e) {
+        if (!e.target || e.target.id !== 'major-expenses-bulk-pin-apply') return;
+        e.preventDefault();
+        const target = document.getElementById('major-expenses-bulk-pin-target');
+        if (!target || !target.value) return;
+        const hashes = visibleExceptionHashes();
+        if (!hashes.length) return;
+        const fd = new FormData();
+        fd.append('expense_id', target.value);
+        hashes.forEach(function (h) { fd.append('hashes', h); });
+        if (window.htmx && typeof window.htmx.ajax === 'function') {
+            window.htmx.ajax('POST', '/major-expenses/pins/bulk', {
+                target: '#major-expenses-results',
+                swap: 'innerHTML',
+                values: fd,
+            });
+        }
+    });
+
+    // Re-enable the Apply button when the target dropdown changes.
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'major-expenses-bulk-pin-target') {
+            const input = document.getElementById('major-expenses-exception-search');
+            applyExceptionFilter(input ? input.value : '');
+        }
+    });
 
     // Search input — event delegation so it survives HTMX swaps.
     document.addEventListener('input', function (e) {
@@ -334,6 +399,22 @@
     <span id="major-expenses-exception-search-status" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite"></span>
 </div>
 
+{{if .ExpenseOptions}}
+<div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+    <span class="text-amber-700 dark:text-amber-300 font-medium">
+        Pin all <span id="major-expenses-bulk-pin-count">0</span> matching →
+    </span>
+    <select id="major-expenses-bulk-pin-target" aria-label="Pin all matching exceptions to this expense"
+        class="text-xs border border-amber-300 dark:border-amber-700 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 flex-1 min-w-0">
+        <option value="" disabled selected>Choose expense…</option>
+        {{range .ExpenseOptions}}<option value="{{.ID}}" title="{{.Label}}">{{.Label}}</option>{{end}}
+    </select>
+    <button type="button" id="major-expenses-bulk-pin-apply"
+        class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>Apply</button>
+</div>
+{{end}}
+
 <details class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
     <summary class="cursor-pointer px-3 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded">
         <span class="font-medium text-red-700 dark:text-red-300">
@@ -355,6 +436,7 @@
             {{range .Match.Exceptions.UnknownLarge}}
             {{$label := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$label = .Transaction.DisplayName}}{{end}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-hash="{{.Transaction.Hash}}"
                 data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
@@ -396,6 +478,7 @@
             {{range .Match.Exceptions.Anomalous}}
             {{$desc := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$desc = .Transaction.DisplayName}}{{end}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-hash="{{.Transaction.Hash}}"
                 data-fill-name="{{$desc}}" data-fill-keyword="{{$desc}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to move this transaction to a new expense — or click the expense name to edit {{.MajorExpenseName}}">
@@ -445,6 +528,7 @@
             {{range .Match.Exceptions.NewMerchants}}
             {{$label := .Transaction.Description}}{{if .Transaction.DisplayName}}{{$label = .Transaction.DisplayName}}{{end}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                data-hash="{{.Transaction.Hash}}"
                 data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
                 title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">

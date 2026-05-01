@@ -47,6 +47,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Delete("/major-expenses/{id}", handleDelete)
 	r.Get("/major-expenses/exceptions", handleExceptions)
 	r.Post("/major-expenses/pins", handlePin)
+	r.Post("/major-expenses/pins/bulk", handleBulkPin)
 	r.Delete("/major-expenses/pins/{hash}", handleUnpin)
 }
 
@@ -164,6 +165,57 @@ func handlePin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := loader.SetTransactionPin(hash, expenseID); err != nil {
 		renderError(w, "Failed to save pin: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderResults(w)
+}
+
+// handleBulkPin assigns many transactions (by hash) to a single major
+// expense in one disk write. Form body: expense_id, hashes (repeated
+// form field — one entry per transaction). The UI uses this to pin
+// every currently-visible exception row when the user has narrowed the
+// list with the search filter, so they don't have to dropdown-and-pick
+// 30 times.
+func handleBulkPin(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	expenseID := strings.TrimSpace(r.FormValue("expense_id"))
+	if expenseID == "" {
+		renderError(w, "Missing expense id", http.StatusBadRequest)
+		return
+	}
+	rawHashes := r.Form["hashes"]
+	updates := make(map[string]string, len(rawHashes))
+	for _, h := range rawHashes {
+		if h = strings.TrimSpace(h); h != "" {
+			updates[h] = expenseID
+		}
+	}
+	if len(updates) == 0 {
+		renderError(w, "No transaction hashes supplied", http.StatusBadRequest)
+		return
+	}
+
+	expenses, err := loader.LoadMajorExpenses()
+	if err != nil {
+		renderError(w, "Failed to load expenses: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	found := false
+	for _, e := range expenses {
+		if e.ID == expenseID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		renderError(w, "Major expense not found", http.StatusNotFound)
+		return
+	}
+	if _, err := loader.SetTransactionPins(updates); err != nil {
+		renderError(w, "Failed to save pins: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	renderResults(w)

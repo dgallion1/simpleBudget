@@ -60,6 +60,49 @@ func (dl *DataLoader) ClearTransactionPin(hash string) error {
 	return dl.SetTransactionPin(hash, "")
 }
 
+// SetTransactionPins writes many hash → expense-ID pins in one disk
+// round-trip. Existing pins for hashes not in the input map are left
+// untouched; pins in the input map with an empty expenseID are removed.
+// Empty hashes are silently skipped so callers don't have to filter
+// upstream. Returns the number of pins actually changed.
+func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error) {
+	if len(updates) == 0 {
+		return 0, nil
+	}
+	pins, err := dl.LoadTransactionPins()
+	if err != nil {
+		return 0, err
+	}
+	changed := 0
+	for hash, expenseID := range updates {
+		if hash == "" {
+			continue
+		}
+		if expenseID == "" {
+			if _, ok := pins[hash]; ok {
+				delete(pins, hash)
+				changed++
+			}
+			continue
+		}
+		if pins[hash] != expenseID {
+			pins[hash] = expenseID
+			changed++
+		}
+	}
+	if changed == 0 {
+		return 0, nil
+	}
+	data, err := json.MarshalIndent(pins, "", "  ")
+	if err != nil {
+		return 0, err
+	}
+	if err := dl.store.WriteFile(dl.transactionPinsPath(), data, 0644); err != nil {
+		return 0, err
+	}
+	return changed, nil
+}
+
 // PrunePinsForMissingExpenses drops pins whose target ID is not in the
 // supplied list of valid expense IDs. Used by DeleteMajorExpense and on
 // startup to prevent orphaned pins from quietly hiding transactions.

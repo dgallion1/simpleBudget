@@ -165,3 +165,66 @@ func TestPrunePinsForMissingExpenses_NoChange(t *testing.T) {
 		t.Error("should not have changed")
 	}
 }
+
+func TestSetTransactionPins_BulkWrite(t *testing.T) {
+	_, loader, cleanup := setupTestDir(t, nil)
+	defer cleanup()
+
+	if err := loader.SetTransactionPin("existing", "old-expense"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	updates := map[string]string{
+		"hashA": "expense-1",
+		"hashB": "expense-1",
+		"hashC": "expense-2",
+		"":      "skipped", // empty hash is ignored, not an error
+	}
+	n, err := loader.SetTransactionPins(updates)
+	if err != nil {
+		t.Fatalf("SetTransactionPins: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("changed = %d, want 3", n)
+	}
+	pins, _ := loader.LoadTransactionPins()
+	if pins["existing"] != "old-expense" {
+		t.Errorf("existing pin clobbered: %+v", pins)
+	}
+	if pins["hashA"] != "expense-1" || pins["hashB"] != "expense-1" || pins["hashC"] != "expense-2" {
+		t.Errorf("bulk pins not applied: %+v", pins)
+	}
+	if _, ok := pins[""]; ok {
+		t.Error("empty hash should not have been written")
+	}
+}
+
+func TestSetTransactionPins_RemovesAndDedupes(t *testing.T) {
+	_, loader, cleanup := setupTestDir(t, nil)
+	defer cleanup()
+
+	loader.SetTransactionPin("keep", "x")
+	loader.SetTransactionPin("drop", "x")
+
+	n, err := loader.SetTransactionPins(map[string]string{
+		"keep": "x",
+		"drop": "",
+		"new":  "y",
+	})
+	if err != nil {
+		t.Fatalf("SetTransactionPins: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("changed = %d, want 2 (drop + new)", n)
+	}
+	pins, _ := loader.LoadTransactionPins()
+	if pins["keep"] != "x" {
+		t.Error("keep should remain")
+	}
+	if _, ok := pins["drop"]; ok {
+		t.Error("drop should be removed")
+	}
+	if pins["new"] != "y" {
+		t.Error("new should be added")
+	}
+}

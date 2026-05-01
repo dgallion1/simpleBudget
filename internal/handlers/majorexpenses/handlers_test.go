@@ -402,6 +402,62 @@ func TestHandlePin_RejectsUnknownExpense(t *testing.T) {
 	}
 }
 
+func TestHandleBulkPin_Success(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	list, _ := dl.AddMajorExpense(makeExpense("amazon", "Amazon", nil, 0, 0))
+	id := list[0].ID
+
+	form := url.Values{
+		"expense_id": {id},
+		"hashes":     {"h1", "h2", "h3"},
+	}
+	req := httptest.NewRequest("POST", "/major-expenses/pins/bulk", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	pins, _ := dl.LoadTransactionPins()
+	if pins["h1"] != id || pins["h2"] != id || pins["h3"] != id {
+		t.Errorf("expected all 3 hashes pinned to %s, got %+v", id, pins)
+	}
+}
+
+func TestHandleBulkPin_RejectsEmptyHashList(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+	list, _ := dl.AddMajorExpense(makeExpense("a", "A", nil, 0, 0))
+
+	form := url.Values{"expense_id": {list[0].ID}}
+	req := httptest.NewRequest("POST", "/major-expenses/pins/bulk", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleBulkPin_RejectsUnknownExpense(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"expense_id": {"missing"}, "hashes": {"h1"}}
+	req := httptest.NewRequest("POST", "/major-expenses/pins/bulk", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
 func TestHandlePin_RejectsEmptyHash(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()

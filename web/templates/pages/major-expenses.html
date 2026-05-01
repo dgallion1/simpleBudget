@@ -458,10 +458,10 @@
         </thead>
         <tbody>
             {{range .Match.Exceptions.UnknownLarge}}
-            {{$label := .Transaction.Label}}
+            {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-hash="{{.Transaction.Hash}}"
-                data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
+                data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
@@ -500,10 +500,10 @@
         </thead>
         <tbody>
             {{range .Match.Exceptions.Anomalous}}
-            {{$desc := .Transaction.Label}}
+            {{$desc := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-hash="{{.Transaction.Hash}}"
-                data-fill-name="{{$desc}}" data-fill-keyword="{{$desc}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
+                data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to move this transaction to a new expense — or click the expense name to edit {{.MajorExpenseName}}">
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
@@ -550,10 +550,10 @@
         </thead>
         <tbody>
             {{range .Match.Exceptions.NewMerchants}}
-            {{$label := .Transaction.Label}}
+            {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
             <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-hash="{{.Transaction.Hash}}"
-                data-fill-name="{{$label}}" data-fill-keyword="{{$label}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
+                data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
                 title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>

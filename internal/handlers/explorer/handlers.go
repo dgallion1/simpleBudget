@@ -622,9 +622,9 @@ func sortTransactions(ts *models.TransactionSet, field, order string) *models.Tr
 	case "description":
 		sort.Slice(sorted.Transactions, func(i, j int) bool {
 			if order == "asc" {
-				return strings.ToLower(sorted.Transactions[i].Description) < strings.ToLower(sorted.Transactions[j].Description)
+				return strings.ToLower(sorted.Transactions[i].Label()) < strings.ToLower(sorted.Transactions[j].Label())
 			}
-			return strings.ToLower(sorted.Transactions[i].Description) > strings.ToLower(sorted.Transactions[j].Description)
+			return strings.ToLower(sorted.Transactions[i].Label()) > strings.ToLower(sorted.Transactions[j].Label())
 		})
 	case "category":
 		sort.Slice(sorted.Transactions, func(i, j int) bool {

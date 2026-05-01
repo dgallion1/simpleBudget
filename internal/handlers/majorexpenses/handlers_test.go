@@ -3,6 +3,7 @@ package majorexpenses
 import (
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +18,8 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/storage"
+	"budget2/internal/templates"
+	"budget2/web"
 )
 
 func setupTestEnv(t *testing.T) (*dataloader.DataLoader, func()) {
@@ -592,6 +595,29 @@ func makeExpense(id, name string, keywords []string, min, max float64) models.Ma
 	}
 }
 
+// setupTestEnvWithRenderer wires the package up with a real templates.Renderer
+// pulling from the embedded FS, so tests can assert on rendered HTML rather
+// than the JSON fallback. Mirrors setupTestEnv otherwise.
+func setupTestEnvWithRenderer(t *testing.T) (*dataloader.DataLoader, func()) {
+	t.Helper()
+	dl, cleanup := setupTestEnv(t)
+
+	templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
+	if err != nil {
+		t.Fatalf("fs.Sub: %v", err)
+	}
+	rend, err := templates.NewFromFS(templatesFS, false)
+	if err != nil {
+		t.Fatalf("NewFromFS: %v", err)
+	}
+	Initialize(dl, rend)
+	prevCleanup := cleanup
+	return dl, func() {
+		prevCleanup()
+		Initialize(dl, nil) // restore JSON-mode for any tests that follow
+	}
+}
+
 func TestBuildPageData_DateRangeFiltersTransactions(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -822,5 +848,52 @@ func TestParseRangeFromRequest(t *testing.T) {
 				t.Errorf("end = %v, want %v", gotEnd, tc.wantEnd)
 			}
 		})
+	}
+}
+
+func TestHandleMajorExpensesPage_HTMXFilterReturnsWrapperOnly(t *testing.T) {
+	t.Skip("Re-enabled by Task 7 once major-expenses-results-wrapper template partial lands")
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/major-expenses?start=2024-01-01&end=2024-12-31", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "major-expenses-results-wrapper")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	// Wrapper marker is present.
+	if !strings.Contains(body, `id="major-expenses-results-wrapper"`) {
+		t.Errorf("expected wrapper id in HTMX response; got:\n%s", body)
+	}
+	// Base-layout markers are absent — otherwise the swap nests a full
+	// page inside the wrapper.
+	if strings.Contains(strings.ToLower(body), "<!doctype") {
+		t.Errorf("HTMX response must NOT include the base layout; found <!doctype")
+	}
+	if strings.Contains(body, "<html") {
+		t.Errorf("HTMX response must NOT include the base layout; found <html>")
+	}
+}
+
+func TestHandleMajorExpensesPage_NonHTMXReturnsBaseLayout(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/major-expenses", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := strings.ToLower(w.Body.String())
+	if !strings.Contains(body, "<!doctype") && !strings.Contains(body, "<html") {
+		t.Errorf("non-HTMX response must include the base layout; got:\n%s", body)
 	}
 }

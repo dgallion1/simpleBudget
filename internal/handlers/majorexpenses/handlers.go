@@ -58,6 +58,13 @@ func handleMajorExpensesPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if renderer != nil {
+		// HTMX requests targeting the results wrapper get only the
+		// wrapper partial. Returning the full base layout into the
+		// wrapper would nest a complete page inside the results area.
+		if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Target") == "major-expenses-results-wrapper" {
+			renderer.RenderPartial(w, "major-expenses-results-wrapper", data)
+			return
+		}
 		renderer.Render(w, "base", data)
 		return
 	}

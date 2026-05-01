@@ -363,7 +363,7 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 		"Expenses":       expenses,
 		"ExpenseOptions": buildExpenseOptions(expenses),
 		"Summaries":      summaries,
-		"TotalDeclared": totalDeclared,
+		"TotalDeclared":  totalDeclared,
 		"Match":          match,
 		"PinnedHashes":   match.PinnedHashes,
 		"Threshold":      defaultUnknownThreshold,

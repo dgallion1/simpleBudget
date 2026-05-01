@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Major Expenses — Persist Disclosure Open State Across Swaps (2026-04-30)
+- **Bucket disclosures no longer collapse on every pin**: each HTMX swap replaced the entire `<details>` element wholesale, so any bucket the user had opened (Unmatched / Anomalous / New merchants) closed itself the moment they pinned a transaction. Now a `htmx:beforeSwap` listener snapshots the IDs of every open `<details>` inside `#major-expenses-results` / `#major-expenses-list-card`, and `htmx:afterSwap` reapplies `open=true` to each one whose ID is back. Because we only set true and never false, the server-side auto-open-when-PinnedCount-greater-than-0 logic still wins for newly-pinned expenses.
+- **Stable IDs added**: `major-expenses-bucket-unknown-large`, `major-expenses-bucket-anomalous`, `major-expenses-bucket-new-merchants`, and per-expense `major-expense-matched-{ID}`. The render test now asserts these so a future template edit can't silently regress to the closing-bucket behavior.
+
 ### Major Expenses — Pin-Only Targets (2026-04-30)
 - **Allow expenses with no keywords AND no amount range**: previously `parseExpenseForm` rejected an expense with empty keywords and `Min/Max == 0`, even though the per-transaction-pinning feature was originally pitched around the "Amazon — Books" / "Amazon — Household" / "Amazon — Gifts" sub-bucket use case (no field on the transaction reliably distinguishes those, so users want to pin manually). The validation now accepts that configuration as the fourth matching mode and rejects only the genuinely-broken partial-range cases (only Min, or only Max, with no keyword). Error copy updated to reflect the new option.
 - **"How matching works" help adds the Pin-only mode** as a fourth bullet, and the Keywords-input placeholder now reads `leave blank for amount-only or pin-only` instead of just `match by amount only`.

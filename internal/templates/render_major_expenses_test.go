@@ -111,7 +111,12 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 			{ID: "rent", Name: "Rent", Keywords: []string{"landlord"}, ExpectedMin: 1500, ExpectedMax: 2000},
 		},
 		"Summaries": []summary{
-			{Expense: models.MajorExpense{ID: "rent", Name: "Rent", Keywords: []string{"landlord"}, ExpectedMin: 1500, ExpectedMax: 2000}, Count: 3, Total: 4800},
+			{
+				Expense:      models.MajorExpense{ID: "rent", Name: "Rent", Keywords: []string{"landlord"}, ExpectedMin: 1500, ExpectedMax: 2000},
+				Count:        3,
+				Total:        4800,
+				Transactions: []models.Transaction{{Date: now, Amount: -1700, Description: "Landlord LLC", Hash: "h-rent-1"}},
+			},
 		},
 		"Match": struct {
 			Exceptions models.ExceptionsReport
@@ -190,6 +195,24 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	}
 	if !strings.Contains(html, `data-search="Brand New Store $75.00 `) {
 		t.Errorf("expected new-merchant row to include amount in data-search")
+	}
+	// The persist-open-state JS relies on stable disclosure IDs to
+	// snapshot/restore <details> across HTMX swaps. If a future edit
+	// drops an ID the bucket will close on every pin again.
+	for _, id := range []string{
+		`id="major-expenses-bucket-unknown-large"`,
+		`id="major-expenses-bucket-anomalous"`,
+		`id="major-expenses-bucket-new-merchants"`,
+		`id="major-expense-matched-rent"`,
+	} {
+		if !strings.Contains(html, id) {
+			t.Errorf("expected disclosure ID %s for HTMX-swap open-state persistence", id)
+		}
+	}
+	// Each exception row exposes the transaction hash so the bulk-pin
+	// toolbar can collect them without parsing form values.
+	if !strings.Contains(html, `data-hash=`) {
+		t.Errorf("expected exception rows to expose data-hash for bulk pinning")
 	}
 }
 

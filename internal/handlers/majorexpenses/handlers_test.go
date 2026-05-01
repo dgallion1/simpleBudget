@@ -654,6 +654,106 @@ func TestBuildPageData_DateRangeFiltersTransactions(t *testing.T) {
 	}
 }
 
+func TestHandleMajorExpensesPage_NoQueryParamsDefaultsToAllTime(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/major-expenses", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+	// MinDate/MaxDate are populated by the fixture (now-2mo .. now-1mo).
+	// Default window equals the full range when no params are provided.
+	if body["StartDate"] != body["MinDate"] {
+		t.Errorf("StartDate = %v, want = MinDate %v", body["StartDate"], body["MinDate"])
+	}
+	if body["EndDate"] != body["MaxDate"] {
+		t.Errorf("EndDate = %v, want = MaxDate %v", body["EndDate"], body["MaxDate"])
+	}
+}
+
+func TestHandleMajorExpensesPage_StartEndQueryParamsEchoed(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/major-expenses?start=2024-01-01&end=2024-12-31", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+	if body["StartDate"] != "2024-01-01" {
+		t.Errorf("StartDate = %v, want 2024-01-01", body["StartDate"])
+	}
+	if body["EndDate"] != "2024-12-31" {
+		t.Errorf("EndDate = %v, want 2024-12-31", body["EndDate"])
+	}
+}
+
+func TestHandleMajorExpensesPage_UnparseableDatesFallBackToAllTime(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/major-expenses?start=garbage&end=also-garbage", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+	if body["StartDate"] != body["MinDate"] {
+		t.Errorf("unparseable start should fall back to MinDate; StartDate=%v MinDate=%v", body["StartDate"], body["MinDate"])
+	}
+	if body["EndDate"] != body["MaxDate"] {
+		t.Errorf("unparseable end should fall back to MaxDate; EndDate=%v MaxDate=%v", body["EndDate"], body["MaxDate"])
+	}
+}
+
+func TestHandleMajorExpensesPage_StartAfterEndReturnsEmptyWindow(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Seed a defined expense so we can confirm it still appears with
+	// zero counts/totals when the window collapses.
+	if _, err := dl.AddMajorExpense(makeExpense("rent", "Rent", []string{"landlord"}, 0, 0)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/major-expenses?start=2099-01-01&end=2024-01-01", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := readJSON(t, w.Result())
+
+	// The defined expense is still listed (left card always shows every
+	// definition) — but with zero count and zero total because the
+	// window is empty.
+	rawSummaries, _ := json.Marshal(body["Summaries"])
+	var summaries []map[string]interface{}
+	if err := json.Unmarshal(rawSummaries, &summaries); err != nil {
+		t.Fatalf("decode summaries: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary (defined expense), got %d", len(summaries))
+	}
+	if got := int(summaries[0]["Count"].(float64)); got != 0 {
+		t.Errorf("Count = %d, want 0 (empty window)", got)
+	}
+	if got := summaries[0]["Total"].(float64); got != 0 {
+		t.Errorf("Total = %v, want 0 (empty window)", got)
+	}
+}
+
 func TestParseRangeFromRequest(t *testing.T) {
 	// Build a small TransactionSet so MinDate/MaxDate are deterministic.
 	txns := &models.TransactionSet{Transactions: []models.Transaction{

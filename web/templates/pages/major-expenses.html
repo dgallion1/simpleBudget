@@ -308,7 +308,7 @@
     </label>
     <label class="block">
         <span class="text-xs text-gray-600 dark:text-gray-300">Keywords <span class="text-gray-400">(match by description)</span></span>
-        <input type="text" name="keywords" placeholder="e.g., landlord, my landlord — leave empty to match by amount only"
+        <input type="text" name="keywords" placeholder="e.g., landlord — leave blank for amount-only or pin-only"
             class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
     </label>
     <div class="grid grid-cols-2 gap-2">
@@ -330,6 +330,7 @@
             <li><strong>Min = Max only</strong> (no keyword) — matches every transaction of that exact amount. Useful when descriptions vary (checks).</li>
             <li><strong>Keyword + Min = Max</strong> — both must match. Use this when several expenses share a generic keyword like "check": e.g. Lucid keyword=<code>check</code> Min=Max=<code>1580.00</code>, Car keyword=<code>check</code> Min=Max=<code>626.00</code>.</li>
             <li><strong>Min &lt; Max</strong> (range) without a keyword matches anything in that range; with a keyword, the range is anomaly-only.</li>
+            <li><strong>Pin-only</strong> (no keyword, no Min/Max) — auto-matches nothing. Use this for sub-buckets like "Amazon — Books" where no keyword reliably distinguishes them; assign transactions one-by-one via the "Pin to…" dropdown on each exception row, or bulk-pin filtered exceptions.</li>
         </ul>
     </details>
     <input type="text" name="notes" placeholder="Notes (optional)"

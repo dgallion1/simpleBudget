@@ -419,11 +419,18 @@ func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
 		return models.MajorExpense{}, fmt.Errorf("expected_min cannot exceed expected_max")
 	}
 
-	// Either keywords OR an amount range must be supplied so we know how
-	// to match transactions. Amount-only (no keywords) is the right tool
-	// for things like fixed-amount checks where the description varies.
-	if len(keywords) == 0 && (min <= 0 || max <= 0) {
-		return models.MajorExpense{}, fmt.Errorf("specify at least one keyword OR set both Min and Max to match by amount")
+	// An expense is valid in three configurations:
+	//  1. At least one keyword (range optional, anomaly-only when set).
+	//  2. No keywords + both Min and Max > 0 (amount-only match — useful
+	//     for fixed-dollar checks where the description varies).
+	//  3. No keywords + Min == Max == 0 (pin-only target — the user
+	//     plans to manually pin transactions to it; e.g. an "Amazon —
+	//     Books" sub-bucket separate from "Amazon — Household").
+	// Anything else is a partial/inconsistent config: only Min or only
+	// Max set without a keyword usually means the user forgot the other
+	// half of the range.
+	if len(keywords) == 0 && (min > 0) != (max > 0) {
+		return models.MajorExpense{}, fmt.Errorf("set BOTH Min and Max to match by amount, or leave both blank to create a pin-only target")
 	}
 
 	return models.MajorExpense{

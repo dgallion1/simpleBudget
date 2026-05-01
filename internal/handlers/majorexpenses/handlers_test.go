@@ -173,14 +173,51 @@ func TestHandleAdd_AmountOnlyAccepted(t *testing.T) {
 	}
 }
 
+func TestHandleAdd_PinOnlyTargetAccepted(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// No keywords, no amount range — this is a "pin-only" target: the
+	// user will manually assign transactions to it via the Pin to…
+	// dropdown. This is the original Amazon-Books / Amazon-Household
+	// use case from the per-transaction-pinning feature.
+	form := url.Values{
+		"name":         {"Amazon - Books"},
+		"keywords":     {""},
+		"expected_min": {"0"},
+		"expected_max": {"0"},
+	}
+	req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("pin-only entry should be accepted, got %d body=%s", w.Code, w.Body.String())
+	}
+	out, err := dl.LoadMajorExpenses()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 expense, got %d", len(out))
+	}
+	if out[0].Name != "Amazon - Books" {
+		t.Errorf("name = %q, want %q", out[0].Name, "Amazon - Books")
+	}
+	if len(out[0].Keywords) != 0 || out[0].ExpectedMin != 0 || out[0].ExpectedMax != 0 {
+		t.Errorf("expected empty keywords + zero range, got %+v", out[0])
+	}
+}
+
 func TestHandleAdd_ValidationErrors(t *testing.T) {
 	cases := []struct {
 		name string
 		form url.Values
 	}{
 		{"missing name", url.Values{"keywords": {"x"}}},
-		{"empty keywords without amount range", url.Values{"name": {"X"}, "keywords": {"  ,  "}}},
 		{"empty keywords with only min", url.Values{"name": {"X"}, "keywords": {"  ,  "}, "expected_min": {"100"}}},
+		{"empty keywords with only max", url.Values{"name": {"X"}, "keywords": {"  ,  "}, "expected_max": {"100"}}},
 		{"min > max", url.Values{"name": {"X"}, "keywords": {"x"}, "expected_min": {"500"}, "expected_max": {"100"}}},
 		{"negative min", url.Values{"name": {"X"}, "keywords": {"x"}, "expected_min": {"-1"}}},
 		{"non-numeric min", url.Values{"name": {"X"}, "keywords": {"x"}, "expected_min": {"abc"}}},

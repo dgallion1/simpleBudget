@@ -236,10 +236,11 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	if !strings.Contains(html, `class="major-expense-matched-row`) {
 		t.Errorf("expected matched-txn row to carry major-expense-matched-row class")
 	}
-	// Header surfaces the total declared. Use a stable data attribute
-	// so the assertion does not bind to formatted-money output rules.
-	if !strings.Contains(html, `data-total-declared`) {
-		t.Errorf("expected header to expose data-total-declared for the running sum")
+	// Header surfaces the total declared. The data attribute carries
+	// the precise value (printf "%.2f") so a regression in the template
+	// expression or format verb is caught here, not just at runtime.
+	if !strings.Contains(html, `data-total-declared="4800.00"`) {
+		t.Errorf("expected data-total-declared=\"4800.00\" in header, got html=%s", html)
 	}
 	// Unified search input (was per-card exception search; now page-level).
 	if !strings.Contains(html, `id="major-expenses-search"`) {

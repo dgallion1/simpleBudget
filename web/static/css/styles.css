@@ -89,3 +89,10 @@ input:focus, select:focus {
         page-break-before: always;
     }
 }
+
+/* Major Expenses — collapsible row state.
+   Each <tbody data-expense-id> wraps a summary <tr> + a detail <tr>.
+   The detail row is hidden until the chevron toggles data-open="true". */
+#major-expenses-list tbody[data-open="false"] > tr.major-expense-detail-row {
+    display: none;
+}

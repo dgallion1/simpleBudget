@@ -481,10 +481,11 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </span>
         <span class="text-gray-400 dark:text-gray-500">·</span>
         <span class="text-xs text-gray-500 dark:text-gray-400">{{len .Summaries}} declared</span>
+        <span class="text-gray-400 dark:text-gray-500">·</span>
         <button type="button" id="major-expenses-add-toggle"
             aria-label="Add a major expense" aria-expanded="false"
             aria-controls="major-expenses-add-panel"
-            class="ml-1 p-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            class="p-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -502,9 +503,6 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
 {{define "major-expenses-list"}}
 {{if .Summaries}}
-<style>
-    #major-expenses-list tbody[data-open="false"] > tr.major-expense-detail-row { display: none; }
-</style>
 <table id="major-expenses-list" class="w-full text-sm">
     <thead class="text-xs text-gray-500 dark:text-gray-400">
         <tr>
@@ -535,17 +533,17 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <td class="py-1.5 px-1 align-middle">
             <button type="button" class="major-expense-row-toggle text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 aria-expanded="false" aria-controls="major-expense-detail-{{.Expense.ID}}"
-                aria-label="Show details for {{.Expense.Name}}">
+                aria-label="Details for {{.Expense.Name}}">
                 <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                 </svg>
             </button>
         </td>
-        <td class="py-1.5 px-1 dark:text-gray-100 font-medium truncate">{{.Expense.Name}}</td>
+        <td class="py-1.5 px-1 text-gray-800 dark:text-gray-100 font-medium">{{.Expense.Name}}</td>
         <td class="py-1.5 px-1 text-right text-gray-600 dark:text-gray-300">
             {{.Count}} matched{{if .PinnedCount}} <span class="text-amber-600 dark:text-amber-400" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}}</span>{{end}}
         </td>
-        <td class="py-1.5 px-1 text-right font-mono dark:text-gray-100">${{printf "%.0f" .Total}}</td>
+        <td class="py-1.5 px-1 text-right font-mono text-gray-800 dark:text-gray-100">${{printf "%.0f" .Total}}</td>
         <td class="py-1.5 px-1 text-right align-middle">
             <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
                 hx-target="#major-expenses-results" hx-swap="innerHTML"

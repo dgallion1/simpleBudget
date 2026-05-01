@@ -352,12 +352,18 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 		})
 	}
 
+	var totalDeclared float64
+	for _, s := range summaries {
+		totalDeclared += s.Total
+	}
+
 	return map[string]interface{}{
 		"Title":          "Major Expenses",
 		"ActiveTab":      "major-expenses",
 		"Expenses":       expenses,
 		"ExpenseOptions": buildExpenseOptions(expenses),
 		"Summaries":      summaries,
+		"TotalDeclared": totalDeclared,
 		"Match":          match,
 		"PinnedHashes":   match.PinnedHashes,
 		"Threshold":      defaultUnknownThreshold,

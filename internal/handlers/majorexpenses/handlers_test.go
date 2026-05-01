@@ -680,6 +680,61 @@ func TestBuildPageData_DateRangeFiltersTransactions(t *testing.T) {
 	}
 }
 
+func TestBuildPageData_TotalDeclared(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Seed two outflows that match two different expenses. Total must
+	// equal the sum of their absolute amounts.
+	csvDir := t.TempDir()
+	csvPath := filepath.Join(csvDir, "test.csv")
+	today := time.Now().Format("2006-01-02")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		today + ",Anthropic Subscription,-108,Outflow,Software\n" +
+		today + ",Verizon Wireless,-92,Outflow,Utilities\n"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	store, _ := storage.New(csvDir)
+	dl2 := dataloader.New(csvDir, store)
+	Initialize(dl2, nil)
+	defer Initialize(dl, nil)
+
+	if _, err := dl2.AddMajorExpense(makeExpense("anthropic", "Anthropic", []string{"anthropic"}, 0, 0)); err != nil {
+		t.Fatalf("seed anthropic: %v", err)
+	}
+	if _, err := dl2.AddMajorExpense(makeExpense("verizon", "Verizon", []string{"verizon"}, 0, 0)); err != nil {
+		t.Fatalf("seed verizon: %v", err)
+	}
+
+	data, err := buildPageData(httptest.NewRequest("GET", "/major-expenses", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+
+	total, ok := data["TotalDeclared"].(float64)
+	if !ok {
+		t.Fatalf("expected TotalDeclared float64 in context, got %T (%v)", data["TotalDeclared"], data["TotalDeclared"])
+	}
+	if total != 200 {
+		t.Errorf("TotalDeclared = %v, want 200 (108 + 92)", total)
+	}
+
+	// Cross-check: TotalDeclared must equal the sum of Summaries[].Total.
+	body, _ := json.Marshal(data["Summaries"])
+	var raw []map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("decode summaries: %v", err)
+	}
+	var sum float64
+	for _, s := range raw {
+		sum += s["Total"].(float64)
+	}
+	if sum != total {
+		t.Errorf("TotalDeclared (%v) != sum of Summaries[].Total (%v)", total, sum)
+	}
+}
+
 func TestHandleMajorExpensesPage_NoQueryParamsDefaultsToAllTime(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()

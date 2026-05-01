@@ -355,10 +355,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         hashes.forEach(function (h) { fd.append('hashes', h); });
         const filterForm = document.getElementById('major-expenses-filter-form');
         if (filterForm) {
-            const startVal = filterForm.querySelector('input[name="start"]').value;
-            const endVal = filterForm.querySelector('input[name="end"]').value;
-            if (startVal) fd.append('start', startVal);
-            if (endVal) fd.append('end', endVal);
+            // Carry the active date window so the post-mutation render
+            // preserves the user's filter. Guard each input — an OOB
+            // swap mid-request could leave the form without one.
+            const startInput = filterForm.querySelector('input[name="start"]');
+            const endInput = filterForm.querySelector('input[name="end"]');
+            if (startInput && startInput.value) fd.append('start', startInput.value);
+            if (endInput && endInput.value) fd.append('end', endInput.value);
         }
         if (window.htmx && typeof window.htmx.ajax === 'function') {
             window.htmx.ajax('POST', '/major-expenses/pins/bulk', {
@@ -455,24 +458,33 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             }
             const desc = fillRow.getAttribute('data-fill-name') || '';
             const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
+            // Check-like descriptions ("Check #1234", "#1580") have no
+            // useful keyword — match by exact amount instead so each
+            // check expense gets its own auto-match rule.
             const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
 
-            form.querySelector('input[name="name"]').value = '';
+            const nameInput = form.querySelector('input[name="name"]');
+            const kwInput = form.querySelector('input[name="keywords"]');
+            const minInput = form.querySelector('input[name="expected_min"]');
+            const maxInput = form.querySelector('input[name="expected_max"]');
+            if (!nameInput || !kwInput || !minInput || !maxInput) return;
+
+            nameInput.value = '';
 
             if (isCheckLike) {
-                form.querySelector('input[name="keywords"]').value = '';
+                kwInput.value = '';
                 if (amount > 0) {
                     const exact = amount.toFixed(2);
-                    form.querySelector('input[name="expected_min"]').value = exact;
-                    form.querySelector('input[name="expected_max"]').value = exact;
+                    minInput.value = exact;
+                    maxInput.value = exact;
                 }
             } else {
-                form.querySelector('input[name="keywords"]').value = desc;
-                form.querySelector('input[name="expected_min"]').value = '';
-                form.querySelector('input[name="expected_max"]').value = '';
+                kwInput.value = desc;
+                minInput.value = '';
+                maxInput.value = '';
             }
 
-            form.querySelector('input[name="name"]').focus();
+            nameInput.focus();
             form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             return;
         }

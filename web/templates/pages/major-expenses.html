@@ -614,7 +614,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                             <td class="py-0.5 px-2 dark:text-gray-200">
                                 {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
                                     class="text-blue-600 dark:text-blue-400 hover:underline"
-                                    title="Show all transactions matching &#34;{{$bankText}}&#34; in the Explorer">{{$bankText}}</a>
+                                    title="Show all transactions matching “{{$bankText}}” in the Explorer">{{$bankText}}</a>
                             </td>
                             <td class="py-0.5 px-2 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
                             <td class="py-0.5 px-2 text-right">

@@ -23,7 +23,7 @@ func TestMatchTransaction_KeywordSubstringCaseInsensitive(t *testing.T) {
 	}
 	tr := tx(time.Now(), -2000, "ACH from My Landlord LLC", "", models.Outflow)
 
-	id, ok := matchTransaction(tr, defs)
+	id, ok := MatchTransaction(tr, defs)
 	if !ok || id != "rent" {
 		t.Errorf("expected match on rent, got %q ok=%v", id, ok)
 	}
@@ -36,7 +36,7 @@ func TestMatchTransaction_FirstDefinitionWins(t *testing.T) {
 	}
 	tr := tx(time.Now(), -100, "CHASE CARD PAYMENT", "", models.Outflow)
 
-	id, _ := matchTransaction(tr, defs)
+	id, _ := MatchTransaction(tr, defs)
 	if id != "first" {
 		t.Errorf("expected first def to win, got %q", id)
 	}
@@ -48,7 +48,7 @@ func TestMatchTransaction_DisplayNameMatches(t *testing.T) {
 	}
 	tr := tx(time.Now(), -10, "ACH 12345", "Planet Fitness Membership", models.Outflow)
 
-	id, ok := matchTransaction(tr, defs)
+	id, ok := MatchTransaction(tr, defs)
 	if !ok || id != "gym" {
 		t.Errorf("expected match via DisplayName, got %q ok=%v", id, ok)
 	}
@@ -60,7 +60,7 @@ func TestMatchTransaction_EmptyKeywordsIgnored(t *testing.T) {
 	}
 	tr := tx(time.Now(), -100, "anything goes here", "", models.Outflow)
 
-	if _, ok := matchTransaction(tr, defs); ok {
+	if _, ok := MatchTransaction(tr, defs); ok {
 		t.Error("empty keywords should not produce a match")
 	}
 }
@@ -72,10 +72,10 @@ func TestMatchTransaction_AmountOnlyWhenNoKeywords(t *testing.T) {
 	hit := tx(time.Now(), -625, "Check #996562", "", models.Outflow)
 	miss := tx(time.Now(), -700, "Check #996563", "", models.Outflow)
 
-	if id, ok := matchTransaction(hit, defs); !ok || id != "car" {
+	if id, ok := MatchTransaction(hit, defs); !ok || id != "car" {
 		t.Errorf("expected amount-only match for $625, got id=%q ok=%v", id, ok)
 	}
-	if _, ok := matchTransaction(miss, defs); ok {
+	if _, ok := MatchTransaction(miss, defs); ok {
 		t.Error("$700 should not match amount-only def of $620–$630")
 	}
 }
@@ -87,7 +87,7 @@ func TestMatchTransaction_RangeIgnoredWhenKeywordPresent(t *testing.T) {
 		{ID: "x", Name: "X", Keywords: []string{"groceries"}, ExpectedMin: 620, ExpectedMax: 630},
 	}
 	tr := tx(time.Now(), -625, "Check #996562", "", models.Outflow)
-	if _, ok := matchTransaction(tr, defs); ok {
+	if _, ok := MatchTransaction(tr, defs); ok {
 		t.Error("range with keyword should not match (range is anomaly-only when keyword present)")
 	}
 }
@@ -102,16 +102,16 @@ func TestMatchTransaction_KeywordPlusExactAmountIsAndFilter(t *testing.T) {
 	amountOnly := tx(time.Now(), -1580, "Random vendor", "", models.Outflow)      // amount yes, keyword no
 	checkOfRightAmount := tx(time.Now(), -1580, "Check #2358", "", models.Outflow) // amount yes, keyword no
 
-	if _, ok := matchTransaction(matchBoth, defs); !ok {
+	if _, ok := MatchTransaction(matchBoth, defs); !ok {
 		t.Error("expected match when both keyword and amount match")
 	}
-	if _, ok := matchTransaction(keywordOnly, defs); ok {
+	if _, ok := MatchTransaction(keywordOnly, defs); ok {
 		t.Error("keyword alone should NOT match when an exact amount is specified")
 	}
-	if _, ok := matchTransaction(amountOnly, defs); ok {
+	if _, ok := MatchTransaction(amountOnly, defs); ok {
 		t.Error("amount alone should NOT match when a keyword is specified")
 	}
-	if _, ok := matchTransaction(checkOfRightAmount, defs); ok {
+	if _, ok := MatchTransaction(checkOfRightAmount, defs); ok {
 		t.Error("check of right amount but no keyword match should NOT match")
 	}
 }
@@ -127,13 +127,13 @@ func TestMatchTransaction_DisambiguateByAmountWithSharedKeyword(t *testing.T) {
 	carCheck := tx(time.Now(), -626, "Check #1111", "", models.Outflow)
 	otherCheck := tx(time.Now(), -100, "Check #9999", "", models.Outflow)
 
-	if id, _ := matchTransaction(lucidCheck, defs); id != "lucid" {
+	if id, _ := MatchTransaction(lucidCheck, defs); id != "lucid" {
 		t.Errorf("$1580 check should map to lucid, got %q", id)
 	}
-	if id, _ := matchTransaction(carCheck, defs); id != "car" {
+	if id, _ := MatchTransaction(carCheck, defs); id != "car" {
 		t.Errorf("$626 check should map to car, got %q", id)
 	}
-	if _, ok := matchTransaction(otherCheck, defs); ok {
+	if _, ok := MatchTransaction(otherCheck, defs); ok {
 		t.Error("$100 check should not match either def")
 	}
 }
@@ -146,10 +146,10 @@ func TestMatchTransaction_KeywordAloneWithRangeStillKeywordOnly(t *testing.T) {
 	hit := tx(time.Now(), -3000, "MY LANDLORD INC", "", models.Outflow) // keyword yes, amount out of range
 	miss := tx(time.Now(), -1700, "Random", "", models.Outflow)         // amount in range, no keyword
 
-	if _, ok := matchTransaction(hit, defs); !ok {
+	if _, ok := MatchTransaction(hit, defs); !ok {
 		t.Error("keyword should match even when amount is outside the anomaly range")
 	}
-	if _, ok := matchTransaction(miss, defs); ok {
+	if _, ok := MatchTransaction(miss, defs); ok {
 		t.Error("range with keyword should not match by amount alone")
 	}
 }
@@ -159,11 +159,11 @@ func TestMatchTransaction_ExactAmountTolerance(t *testing.T) {
 		{ID: "x", ExpectedMin: 1580.00, ExpectedMax: 1580.00},
 	}
 	// Within ±$0.01 → match (float precision tolerance)
-	if _, ok := matchTransaction(tx(time.Now(), -1580.005, "x", "", models.Outflow), defs); !ok {
+	if _, ok := MatchTransaction(tx(time.Now(), -1580.005, "x", "", models.Outflow), defs); !ok {
 		t.Error("should match within float-precision tolerance")
 	}
 	// $0.35 outside → no match (real-money difference)
-	if _, ok := matchTransaction(tx(time.Now(), -1580.35, "x", "", models.Outflow), defs); ok {
+	if _, ok := MatchTransaction(tx(time.Now(), -1580.35, "x", "", models.Outflow), defs); ok {
 		t.Error("$0.35 difference should not match exact amount")
 	}
 }
@@ -173,7 +173,7 @@ func TestMatchTransaction_AmountOnlyRequiresBothBounds(t *testing.T) {
 		{ID: "x", Name: "X", ExpectedMin: 600, ExpectedMax: 0},
 	}
 	tr := tx(time.Now(), -625, "Check #1", "", models.Outflow)
-	if _, ok := matchTransaction(tr, defs); ok {
+	if _, ok := MatchTransaction(tr, defs); ok {
 		t.Error("amount-only matching requires both min and max > 0")
 	}
 }
@@ -196,7 +196,7 @@ func TestMatchTransaction_NoMatch(t *testing.T) {
 	}
 	tr := tx(time.Now(), -100, "starbucks", "", models.Outflow)
 
-	if _, ok := matchTransaction(tr, defs); ok {
+	if _, ok := MatchTransaction(tr, defs); ok {
 		t.Error("expected no match")
 	}
 }

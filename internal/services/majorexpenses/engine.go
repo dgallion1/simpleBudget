@@ -70,7 +70,7 @@ func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOpti
 			}
 		}
 		// 2. Fall back to keyword/amount matching.
-		if id, ok := matchTransaction(t, defs); ok {
+		if id, ok := MatchTransaction(t, defs); ok {
 			result.Groups[id] = append(result.Groups[id], t)
 		} else {
 			result.Unmatched = append(result.Unmatched, t)
@@ -118,7 +118,7 @@ func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models
 			}
 		}
 		// Otherwise keyword/amount matching.
-		if id, ok := matchTransaction(first, defs); ok {
+		if id, ok := MatchTransaction(first, defs); ok {
 			out[i].MajorExpenseName = defByID[id].Name
 		}
 	}
@@ -130,7 +130,7 @@ func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models
 // without expanding the match into nearby amounts.
 const exactAmountTolerance = 0.01
 
-// matchTransaction returns the first MajorExpense.ID that matches the
+// MatchTransaction returns the first MajorExpense.ID that matches the
 // transaction. The matching rules are:
 //
 //  1. Keyword + Exact amount (Min == Max > 0):
@@ -151,7 +151,7 @@ const exactAmountTolerance = 0.01
 //     Match if abs(t.Amount) ∈ [Min, Max].
 //
 // First-def-wins for determinism.
-func matchTransaction(t models.Transaction, defs []models.MajorExpense) (string, bool) {
+func MatchTransaction(t models.Transaction, defs []models.MajorExpense) (string, bool) {
 	desc := strings.ToLower(t.Description)
 	display := strings.ToLower(t.DisplayName)
 	amt := math.Abs(t.Amount)

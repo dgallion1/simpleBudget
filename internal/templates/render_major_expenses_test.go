@@ -35,6 +35,7 @@ func TestRenderMajorExpenses_MultipleEntriesAllRender(t *testing.T) {
 	type summary struct {
 		Expense      models.MajorExpense
 		Count        int
+		PinnedCount  int
 		Total        float64
 		Transactions []models.Transaction
 		PinnedHashes map[string]bool
@@ -44,6 +45,7 @@ func TestRenderMajorExpenses_MultipleEntriesAllRender(t *testing.T) {
 		return summary{
 			Expense:      models.MajorExpense{ID: name, Name: name, Keywords: []string{name}},
 			Count:        1,
+			PinnedCount:  1,
 			Total:        100,
 			Transactions: []models.Transaction{{Date: now, Amount: -100, Description: name + " txn", Hash: "h-" + name}},
 			PinnedHashes: map[string]bool{"h-" + name: true},
@@ -97,8 +99,10 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	type summary struct {
 		Expense      models.MajorExpense
 		Count        int
+		PinnedCount  int
 		Total        float64
 		Transactions []models.Transaction
+		PinnedHashes map[string]bool
 	}
 	html := renderMajorExpensesContent(t, map[string]any{
 		"Title":     "Major Expenses",
@@ -201,8 +205,10 @@ func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {
 	type summary struct {
 		Expense      models.MajorExpense
 		Count        int
+		PinnedCount  int
 		Total        float64
 		Transactions []models.Transaction
+		PinnedHashes map[string]bool
 	}
 	html, err := r.RenderToString("major-expenses-results", map[string]any{
 		"Expenses":  []models.MajorExpense{},

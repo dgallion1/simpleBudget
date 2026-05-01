@@ -191,13 +191,13 @@
     </div>
 
     <div class="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>{{.Count}} matched</span>
+        <span>{{.Count}} matched{{if .PinnedCount}} <span class="text-amber-600 dark:text-amber-400" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}} pinned</span>{{end}}</span>
         <span class="font-mono">${{printf "%.0f" .Total}} total</span>
     </div>
     {{if .Transactions}}
-    <details class="mt-2 text-xs">
+    <details class="mt-2 text-xs"{{if .PinnedCount}} open{{end}}>
         <summary class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 select-none">
-            Show matched transactions ({{.Count}})
+            Show matched transactions ({{.Count}}{{if .PinnedCount}}, {{.PinnedCount}} pinned{{end}})
         </summary>
         <table class="mt-1 w-full">
             <thead class="text-gray-400 dark:text-gray-500">
@@ -294,16 +294,17 @@
 {{end}}
 
 {{/* Pin picker — small <select> that posts to /major-expenses/pins.
-     Expects: dict {Hash, Expenses}. Renders nothing if no expenses. */}}
+     Expects: dict {Hash, Options} where Options is []ExpenseOption with
+     pre-computed Label strings. Renders nothing if no options. */}}
 {{define "major-expenses-pin-picker"}}
-{{if and .Hash .Expenses}}
+{{if and .Hash .Options}}
 <form class="inline" hx-post="/major-expenses/pins" hx-target="#major-expenses-results" hx-swap="innerHTML" hx-trigger="change">
     <input type="hidden" name="hash" value="{{.Hash}}">
     <select name="expense_id" aria-label="Pin to existing expense"
-        class="text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5"
+        class="text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 min-w-[14rem]"
         onclick="event.stopPropagation()">
         <option value="" disabled selected>Pin to…</option>
-        {{range .Expenses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        {{range .Options}}<option value="{{.ID}}" title="{{.Label}}">{{.Label}}</option>{{end}}
     </select>
 </form>
 {{end}}
@@ -361,7 +362,7 @@
                 <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 {{if $.Expenses}}
-                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Expenses" $.Expenses)}}</td>
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions)}}</td>
                 {{end}}
             </tr>
             {{end}}
@@ -412,7 +413,7 @@
                     {{else if gt .ExpectedMax 0.0}}≤ ${{printf "%.0f" .ExpectedMax}}{{end}}
                 </td>
                 {{if $.Expenses}}
-                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Expenses" $.Expenses)}}</td>
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions)}}</td>
                 {{end}}
             </tr>
             {{end}}
@@ -451,7 +452,7 @@
                 <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 {{if $.Expenses}}
-                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Expenses" $.Expenses)}}</td>
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions)}}</td>
                 {{end}}
             </tr>
             {{end}}

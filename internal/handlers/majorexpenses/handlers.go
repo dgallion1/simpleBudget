@@ -259,6 +259,7 @@ func buildPageData() (map[string]interface{}, error) {
 	type ExpenseSummary struct {
 		Expense      models.MajorExpense
 		Count        int
+		PinnedCount  int
 		Total        float64
 		Transactions []models.Transaction
 		PinnedHashes map[string]bool
@@ -283,6 +284,7 @@ func buildPageData() (map[string]interface{}, error) {
 		summaries = append(summaries, ExpenseSummary{
 			Expense:      e,
 			Count:        len(txns),
+			PinnedCount:  len(pinnedForExpense),
 			Total:        total,
 			Transactions: txns,
 			PinnedHashes: pinnedForExpense,
@@ -290,15 +292,46 @@ func buildPageData() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"Title":        "Major Expenses",
-		"ActiveTab":    "major-expenses",
-		"Expenses":     expenses,
-		"Summaries":    summaries,
-		"Match":        match,
-		"PinnedHashes": match.PinnedHashes,
-		"Threshold":    defaultUnknownThreshold,
-		"WindowDays":   defaultNewWindowDays,
+		"Title":          "Major Expenses",
+		"ActiveTab":      "major-expenses",
+		"Expenses":       expenses,
+		"ExpenseOptions": buildExpenseOptions(expenses),
+		"Summaries":      summaries,
+		"Match":          match,
+		"PinnedHashes":   match.PinnedHashes,
+		"Threshold":      defaultUnknownThreshold,
+		"WindowDays":     defaultNewWindowDays,
 	}, nil
+}
+
+// ExpenseOption is the label model used by the "Pin to…" picker. Labels
+// are disambiguated by appending the first keyword only when the name
+// collides with another entry, so unique names stay short.
+type ExpenseOption struct {
+	ID    string
+	Label string
+}
+
+func buildExpenseOptions(expenses []models.MajorExpense) []ExpenseOption {
+	nameCount := make(map[string]int, len(expenses))
+	for _, e := range expenses {
+		nameCount[strings.ToLower(strings.TrimSpace(e.Name))]++
+	}
+	out := make([]ExpenseOption, 0, len(expenses))
+	for _, e := range expenses {
+		label := e.Name
+		key := strings.ToLower(strings.TrimSpace(e.Name))
+		if nameCount[key] > 1 && len(e.Keywords) > 0 {
+			if kw := strings.TrimSpace(e.Keywords[0]); kw != "" {
+				label = e.Name + " — " + kw
+			}
+		}
+		out = append(out, ExpenseOption{ID: e.ID, Label: label})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Label) < strings.ToLower(out[j].Label)
+	})
+	return out
 }
 
 // parseExpenseForm extracts a MajorExpense from form values without

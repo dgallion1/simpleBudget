@@ -463,6 +463,32 @@ func TestHandleDelete_PrunesOrphanPins(t *testing.T) {
 	}
 }
 
+func TestBuildExpenseOptions_SortsAndDisambiguates(t *testing.T) {
+	in := []models.MajorExpense{
+		makeExpense("1", "Home Improvement", []string{"Lowe's"}, 0, 0),
+		makeExpense("2", "Cellphone", []string{"AT&T"}, 0, 0),
+		makeExpense("3", "Home Improvement", []string{"The Home Depot"}, 0, 0),
+		makeExpense("4", "Booze", []string{"Chateau"}, 0, 0),
+		makeExpense("5", "home improvement", []string{"Weiders"}, 0, 0), // case-insensitive collision
+	}
+	got := buildExpenseOptions(in)
+	wantLabels := []string{
+		"Booze",
+		"Cellphone",
+		"Home Improvement — Lowe's",
+		"Home Improvement — The Home Depot",
+		"home improvement — Weiders",
+	}
+	if len(got) != len(wantLabels) {
+		t.Fatalf("len = %d, want %d", len(got), len(wantLabels))
+	}
+	for i, w := range wantLabels {
+		if got[i].Label != w {
+			t.Errorf("[%d] Label = %q, want %q", i, got[i].Label, w)
+		}
+	}
+}
+
 func makeExpense(id, name string, keywords []string, min, max float64) models.MajorExpense {
 	return models.MajorExpense{
 		ID:          id,

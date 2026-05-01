@@ -348,6 +348,16 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         const fd = new FormData();
         fd.append('expense_id', target.value);
         hashes.forEach(function (h) { fd.append('hashes', h); });
+        // Carry the active date window so the post-mutation render
+        // preserves the user's filter (matches hx-include on the other
+        // mutation forms).
+        const filterForm = document.getElementById('major-expenses-filter-form');
+        if (filterForm) {
+            const startVal = filterForm.querySelector('input[name="start"]').value;
+            const endVal = filterForm.querySelector('input[name="end"]').value;
+            if (startVal) fd.append('start', startVal);
+            if (endVal) fd.append('end', endVal);
+        }
         if (window.htmx && typeof window.htmx.ajax === 'function') {
             window.htmx.ajax('POST', '/major-expenses/pins/bulk', {
                 target: '#major-expenses-results',
@@ -488,6 +498,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{define "major-expense-item"}}
 <form id="major-expense-item-{{.Expense.ID}}" hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
     hx-swap="innerHTML" hx-trigger="change delay:500ms"
+    hx-include="#major-expenses-filter-form"
     data-search="{{.Expense.Name}}{{range .Expense.Keywords}} {{.}}{{end}}{{if .Expense.Notes}} {{.Expense.Notes}}{{end}}"
     class="major-expense-item-row p-3 bg-gray-50 dark:bg-gray-700 rounded text-sm scroll-mt-4 transition-shadow">
     <div class="flex items-center justify-between mb-2">
@@ -496,6 +507,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             aria-label="Expense name">
         <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
             hx-target="#major-expenses-results" hx-swap="innerHTML"
+            hx-include="#major-expenses-filter-form"
             class="text-red-500 hover:text-red-700"
             aria-label="Delete major expense {{.Expense.Name}}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -562,6 +574,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                         <button type="button"
                             hx-delete="/major-expenses/pins/{{.Hash}}"
                             hx-target="#major-expenses-results" hx-swap="innerHTML"
+                            hx-include="#major-expenses-filter-form"
                             class="text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
                             aria-label="Unpin transaction">unpin</button>
                         {{end}}
@@ -578,6 +591,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{define "major-expenses-add-form"}}
 <form id="major-expenses-add-form" hx-post="/major-expenses" hx-target="#major-expenses-results" hx-swap="innerHTML"
     hx-on::after-request="if(event.detail.successful) this.reset()"
+    hx-include="#major-expenses-filter-form"
     class="space-y-2 pb-3 mb-3 border-b dark:border-gray-700">
     <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Add a major expense</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
@@ -644,7 +658,8 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
      pre-computed Label strings. Renders nothing if no options. */}}
 {{define "major-expenses-pin-picker"}}
 {{if and .Hash .Options}}
-<form class="inline" hx-post="/major-expenses/pins" hx-target="#major-expenses-results" hx-swap="innerHTML" hx-trigger="change">
+<form class="inline" hx-post="/major-expenses/pins" hx-target="#major-expenses-results" hx-swap="innerHTML" hx-trigger="change"
+    hx-include="#major-expenses-filter-form">
     <input type="hidden" name="hash" value="{{.Hash}}">
     <select name="expense_id" aria-label="Pin to existing expense"
         class="text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 min-w-[14rem]"

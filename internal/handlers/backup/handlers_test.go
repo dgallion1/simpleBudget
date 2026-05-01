@@ -2819,3 +2819,34 @@ func mustReadEqual(t *testing.T, path string, want []byte) {
 		t.Fatalf("%s: got %q want %q", path, got, want)
 	}
 }
+
+func TestHandleDeleteAllData_DoesNotTouchBackupDir(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := filepath.Join(dataDir, "backups") // worst case: nested
+	if err := os.MkdirAll(backupDir, 0700); err != nil { t.Fatal(err) }
+
+	originalCfg := cfg
+	originalStore := store
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
+	s, _ := storage.New(dataDir)
+	store = s
+
+	if err := os.WriteFile(filepath.Join(backupDir, "budget_backup_X.zip"),
+		[]byte("dummy"), 0600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(dataDir, "txns.csv"), []byte("a,b\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/data/all", nil)
+	HandleDeleteAllData(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(backupDir, "budget_backup_X.zip")); err != nil {
+		t.Fatalf("BackupDir contents must survive Delete-All-Data: %v", err)
+	}
+}

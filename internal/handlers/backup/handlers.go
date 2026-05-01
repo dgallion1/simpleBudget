@@ -256,6 +256,15 @@ func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
 
 	deletedCount := 0
 	for _, entry := range entries {
+		// Skip BackupDir to defend the safety net even if future code broadens
+		// what HandleDeleteAllData removes.
+		if cfg.BackupDir != "" {
+			backupAbs, _ := filepath.Abs(cfg.BackupDir)
+			entryAbs, _ := filepath.Abs(filepath.Join(cfg.DataDirectory, entry.Name()))
+			if backupAbs != "" && (entryAbs == backupAbs || strings.HasPrefix(entryAbs, backupAbs+string(filepath.Separator))) {
+				continue
+			}
+		}
 		// Only delete CSV files, skip directories and other files
 		if entry.IsDir() {
 			continue

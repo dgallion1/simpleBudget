@@ -40,8 +40,72 @@
                 <span id="restore-btn-text">Restore</span>
             </button>
             <input type="file" id="restore-file-input" accept=".zip" class="hidden" onchange="handleRestoreFile(this.files)">
+            {{if and .IsEncrypted (not .IsLocked)}}
+            <button type="button" onclick="openPlaintextExportModal()"
+                title="Decrypt all data and download as plaintext zip"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm rounded hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                Plaintext Export
+            </button>
+            {{end}}
         </div>
     </div>
+
+    {{if and .IsEncrypted (not .IsLocked)}}
+    <!-- Break-glass plaintext export modal -->
+    <div id="plaintext-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+            <div class="flex items-start gap-3 mb-3">
+                <svg class="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Plaintext Export</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Break-glass: decrypt all data to a zip</p>
+                </div>
+            </div>
+            <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-4">
+                <p class="text-sm text-red-800 dark:text-red-200">
+                    The downloaded file contains <strong>fully decrypted</strong> copies of every CSV and settings file. Anyone with this file can read your finances. Lands in your Downloads folder — keep it secure or delete it after use.
+                </p>
+            </div>
+            <form id="plaintext-form" class="space-y-3">
+                {{if eq .AuthMethod "password"}}
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Re-enter your encryption password
+                    </label>
+                    <input type="password" name="password" id="plaintext-password" required autocomplete="current-password"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                </div>
+                {{else}}
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Type <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded font-mono text-xs">EXPORT</code> to confirm
+                    </label>
+                    <input type="text" name="confirm" id="plaintext-confirm" required autocomplete="off" spellcheck="false"
+                        placeholder="EXPORT"
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                </div>
+                {{end}}
+                <div id="plaintext-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" onclick="closePlaintextExportModal()"
+                        class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button type="submit" id="plaintext-submit"
+                        class="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Download Plaintext
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {{end}}
 
     <!-- Automatic Backups Card -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-4" id="auto-backup-card">
@@ -64,8 +128,20 @@
                 &middot; <span id="auto-backup-count" class="font-medium text-gray-800 dark:text-gray-200">…</span> snapshots
                 &middot; <span id="auto-backup-bytes" class="font-medium text-gray-800 dark:text-gray-200">…</span>
             </p>
-            <p class="text-xs text-gray-500 dark:text-gray-500">
-                Location: <code id="auto-backup-dir" class="bg-gray-100 dark:bg-gray-700 px-1 rounded">…</code>
+            <p class="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1.5 flex-wrap">
+                <span>Location:</span>
+                <code id="auto-backup-dir"
+                    onclick="copyBackupDir()"
+                    title="Click to copy path"
+                    class="bg-gray-100 dark:bg-gray-700 px-1 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 select-all">…</code>
+                <button id="auto-backup-open-btn" type="button" onclick="openBackupDir()"
+                    title="Open in file manager"
+                    class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                    </svg>
+                    Open
+                </button>
             </p>
             <p id="auto-backup-error" class="text-sm text-red-600 dark:text-red-400 hidden"></p>
         </div>
@@ -413,6 +489,41 @@
             }).then(refreshAutoBackupStatus);
         });
     });
+
+    window.copyBackupDir = function() {
+        var dir = document.getElementById('auto-backup-dir');
+        if (!dir) return;
+        var text = dir.textContent || '';
+        if (!text || text === '…' || text === '(not configured)') return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                showToast('Path copied', 'success');
+            }).catch(function() {
+                showToast('Failed to copy', 'error');
+            });
+        } else {
+            // Fallback: select the text so the user can copy manually
+            var range = document.createRange();
+            range.selectNodeContents(dir);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            showToast('Press Ctrl+C to copy', 'info');
+        }
+    };
+
+    window.openBackupDir = function() {
+        fetch('/backup/open-dir', { method: 'POST' })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); });
+                }
+                showToast('Opened in file manager', 'success');
+            })
+            .catch(function(err) {
+                showToast('Could not open: ' + err.message, 'error');
+            });
+    };
 })();
 </script>
 
@@ -514,6 +625,79 @@ function restoreBackup(file) {
             showToast(err.message, 'error');
         });
 }
+
+// Plaintext export ("break-glass") modal
+function openPlaintextExportModal() {
+    var m = document.getElementById('plaintext-modal');
+    if (!m) return;
+    m.classList.remove('hidden');
+    var first = m.querySelector('input');
+    if (first) { first.value = ''; first.focus(); }
+    var err = document.getElementById('plaintext-error');
+    if (err) { err.textContent = ''; err.classList.add('hidden'); }
+}
+function closePlaintextExportModal() {
+    var m = document.getElementById('plaintext-modal');
+    if (!m) return;
+    m.classList.add('hidden');
+    m.querySelectorAll('input').forEach(function(i) { i.value = ''; });
+    var err = document.getElementById('plaintext-error');
+    if (err) { err.textContent = ''; err.classList.add('hidden'); }
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var m = document.getElementById('plaintext-modal');
+        if (m && !m.classList.contains('hidden')) closePlaintextExportModal();
+    }
+});
+document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('plaintext-form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = document.getElementById('plaintext-submit');
+        var err = document.getElementById('plaintext-error');
+        err.classList.add('hidden');
+        var origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Decrypting…';
+
+        var fd = new FormData(form);
+        var params = new URLSearchParams();
+        fd.forEach(function(value, key) { params.append(key, value); });
+
+        fetch('/backup/plaintext', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params
+        }).then(function(r) {
+            if (!r.ok) {
+                return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); });
+            }
+            var disp = r.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename=([^;]+)/);
+            var filename = m ? m[1].trim() : 'budget_plaintext.zip';
+            return r.blob().then(function(blob) {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('Plaintext export downloaded', 'success');
+                closePlaintextExportModal();
+            });
+        }).catch(function(ex) {
+            err.textContent = ex.message;
+            err.classList.remove('hidden');
+        }).finally(function() {
+            btn.disabled = false;
+            btn.textContent = origText;
+        });
+    });
+});
 
 // Method selection
 let currentEncryptionMethod = 'password';

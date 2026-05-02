@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -71,6 +73,54 @@ func HandleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// HandleOpenBackupDir launches the OS file manager pointed at the configured
+// BackupDir. The path is taken from server config — no client input is used —
+// so this cannot be coerced into opening arbitrary directories.
+func HandleOpenBackupDir(w http.ResponseWriter, r *http.Request) {
+	dir := ""
+	if backupSvc != nil {
+		dir = backupSvc.BackupDir()
+	} else if cfg != nil {
+		dir = cfg.BackupDir
+	}
+	if dir == "" {
+		http.Error(w, "backup directory not configured", http.StatusInternalServerError)
+		return
+	}
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			if mkErr := os.MkdirAll(dir, 0700); mkErr != nil {
+				http.Error(w, fmt.Sprintf("backup directory missing and could not be created: %v", mkErr), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			http.Error(w, fmt.Sprintf("stat backup dir: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", dir)
+	case "windows":
+		cmd = exec.Command("explorer", dir)
+	default:
+		cmd = exec.Command("xdg-open", dir)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("open backup dir failed: %v", err)
+		http.Error(w, fmt.Sprintf("could not launch file manager: %v", err), http.StatusInternalServerError)
+		return
+	}
+	// Don't block on the file manager — it may stay open. Reap the child
+	// in a goroutine so we don't leak a zombie.
+	go func() { _ = cmd.Wait() }()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "dir": dir})
+}
+
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -102,44 +152,51 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 	zw := zip.NewWriter(w)
 	defer zw.Close()
 
-	// Walk the data directory
 	dataDir := cfg.DataDirectory
-	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 
-		// Skip directories
+		base := filepath.Base(path)
+
 		if info.IsDir() {
+			// Skip the cache subdirectory entirely; matches auto-snapshot behavior.
+			if base == "cache" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
-		// Skip encryption marker and verify files
-		base := filepath.Base(path)
+		// Skip atomicWrite leftovers and encryption markers.
+		if strings.HasSuffix(base, ".tmp") {
+			return nil
+		}
 		if base == ".encrypted" || base == ".encryption-verify" {
 			return nil
 		}
 
-		// Create a file in the zip archive
 		relPath, err := filepath.Rel(dataDir, path)
 		if err != nil {
 			return err
 		}
+		entryName := filepath.ToSlash(relPath)
 
-		f, err := zw.Create(relPath)
+		f, err := zw.Create(entryName)
 		if err != nil {
 			return err
 		}
 
-		// Read file via storage (handles decryption)
-		// Backup files are always unencrypted for portability
-		file, err := store.OpenFile(path)
+		// Read on-disk bytes verbatim. When the store is encrypted, the zip
+		// preserves age-encrypted payloads — restore re-attaches them to an
+		// unlocked encrypted store. Matches automatic-snapshot behavior so
+		// manual and scheduled backups are byte-identical.
+		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
 
-		// Copy file content to zip writer
 		_, err = io.Copy(f, file)
 		return err
 	})
@@ -149,6 +206,114 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 		// Note: Since we've already started writing headers and potentially content,
 		// we can't easily change to an error response, but we can log it.
 	}
+}
+
+// HandleBackupPlaintext is the "break-glass" plaintext export. Walks the data
+// dir reading via store.OpenFile (which decrypts), and returns a zip with
+// plaintext entries. Only available when storage is encrypted and unlocked.
+// For password method, the user must re-enter their password (re-verified via
+// store.Unlock). For age/SSH/YubiKey, the user types "EXPORT" to confirm.
+//
+// The friction is intentional — accidental plaintext exports defeat
+// at-rest encryption.
+func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
+	if store == nil || !store.IsEncrypted() {
+		http.Error(w, "encryption is not enabled; use /backup", http.StatusBadRequest)
+		return
+	}
+	if !store.IsUnlocked() {
+		http.Error(w, "storage is locked; unlock first", http.StatusUnauthorized)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	method := store.GetAuthMethod()
+	switch method {
+	case storage.AuthMethodPassword:
+		password := r.FormValue("password")
+		if password == "" {
+			http.Error(w, "password is required to confirm plaintext export", http.StatusBadRequest)
+			return
+		}
+		if err := store.Unlock(password); err != nil {
+			log.Printf("Plaintext export blocked: password verification failed")
+			http.Error(w, "incorrect password", http.StatusUnauthorized)
+			return
+		}
+	default:
+		// Age/SSH/YubiKey: possession of the unlocked session is the auth
+		// signal; the typed phrase prevents one-click drive-by exports.
+		if r.FormValue("confirm") != "EXPORT" {
+			http.Error(w, `type "EXPORT" to confirm plaintext export`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("budget_plaintext_%s.zip", timestamp)
+	log.Printf("PLAINTEXT EXPORT initiated (method=%s, file=%s)", method, filename)
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	dataDir := cfg.DataDirectory
+	var fileCount int
+	var totalBytes int64
+	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		base := filepath.Base(path)
+		if info.IsDir() {
+			if base == "cache" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(base, ".tmp") {
+			return nil
+		}
+		if base == ".encrypted" || base == ".encryption-verify" {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(dataDir, path)
+		if err != nil {
+			return err
+		}
+		entryName := filepath.ToSlash(relPath)
+
+		f, err := zw.Create(entryName)
+		if err != nil {
+			return err
+		}
+
+		// Decrypt on read. This is the whole point of the break-glass path.
+		file, err := store.OpenFile(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		n, err := io.Copy(f, file)
+		if err != nil {
+			return err
+		}
+		fileCount++
+		totalBytes += n
+		return nil
+	})
+	if err != nil {
+		log.Printf("PLAINTEXT EXPORT error during walk: %v", err)
+		return
+	}
+	log.Printf("PLAINTEXT EXPORT complete: %d files, %d bytes (method=%s)", fileCount, totalBytes, method)
 }
 
 // restoreFromZip extracts every entry of the supplied archive into

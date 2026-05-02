@@ -439,13 +439,14 @@ Open http://localhost:8080 and authenticate using your configured method:
 |-----------|---------------|
 | CSV transaction files | Cache files (plotly.js) |
 | JSON settings (whatif.json) | Encryption marker files |
-| User settings | Backup downloads (for portability) |
+| User settings | `.encryption-config.json` (method metadata only) |
 
 ### Security Notes
 
 - **Password requirements**: Minimum 8 characters (for password method)
 - **No recovery**: If you lose your credentials, your data cannot be recovered
-- **Backups are unencrypted**: Downloaded backup ZIPs are plain files for portability
+- **Backups mirror storage state**: Both manual downloads (`/backup`) and automatic snapshots preserve files in their on-disk form. With encryption enabled, the resulting ZIP contains age-encrypted blobs that can only be restored into an unlocked encrypted store with the same credentials. With encryption disabled, the ZIP is plaintext.
+- **Break-glass plaintext export**: A separate, deliberate "Plaintext Export" button in the File Manager decrypts every file into a plaintext ZIP. Password method requires re-entering the password; other methods require typing `EXPORT`. Useful for migration to a new machine or for restoring without the original key. The downloaded file is unencrypted — keep it secure or delete it after use.
 - **Cross-platform**: Works on Linux, macOS, and Windows
 - **No fallback**: Each encryption setup uses a single auth method - keep backups of your keys
 

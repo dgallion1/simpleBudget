@@ -1599,6 +1599,237 @@ func TestHandleBackupWithSubdirectory(t *testing.T) {
 	}
 }
 
+// TestHandleBackup_EncryptedStorePreservesOnDiskBytes locks in the contract
+// that a manual backup download preserves the on-disk format. With encryption
+// enabled the zip must contain age-encrypted blobs, not decrypted plaintext —
+// matching automatic-snapshot behavior. Regression test for the prior
+// behavior where /backup decrypted files for "portability".
+func TestHandleBackup_EncryptedStorePreservesOnDiskBytes(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	plaintext := "date,amount\n2024-01-01,50\n"
+	writeCSVFile(t, tmpDir, "transactions.csv", plaintext)
+
+	if err := store.EnableEncryption("mypassword123"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	// Sanity: file is encrypted on disk after EnableEncryption.
+	onDisk, err := os.ReadFile(filepath.Join(tmpDir, "transactions.csv"))
+	if err != nil {
+		t.Fatalf("read on-disk: %v", err)
+	}
+	if !storage.IsAgeEncryptedData(onDisk) {
+		t.Fatalf("precondition failed: on-disk file is not age-encrypted")
+	}
+	if bytes.Equal(onDisk, []byte(plaintext)) {
+		t.Fatalf("precondition failed: on-disk equals plaintext")
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/backup", nil)
+	HandleBackup(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+
+	var got []byte
+	var found bool
+	for _, f := range zr.File {
+		if f.Name == "transactions.csv" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("open zip entry: %v", err)
+			}
+			got, err = io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				t.Fatalf("read zip entry: %v", err)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("transactions.csv missing from zip")
+	}
+	if !storage.IsAgeEncryptedData(got) {
+		t.Errorf("zip entry is not age-encrypted (length=%d, prefix=%q) — manual backup leaked plaintext",
+			len(got), string(got[:min(20, len(got))]))
+	}
+	if bytes.Equal(got, []byte(plaintext)) {
+		t.Errorf("zip entry equals plaintext — manual backup decrypted user data")
+	}
+	if !bytes.Equal(got, onDisk) {
+		t.Errorf("zip entry differs from on-disk bytes; want byte-identical to disk")
+	}
+}
+
+// TestHandleBackup_SkipsCacheAndTmp documents that the manual backup excludes
+// the cache subdirectory and *.tmp leftovers, matching auto-snapshot behavior.
+func TestHandleBackup_SkipsCacheAndTmp(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "keep.csv", "data")
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatalf("mkdir cache: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "plotly.min.js"), []byte("cached"), 0644); err != nil {
+		t.Fatalf("write cache file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "stale.tmp"), []byte("partial"), 0644); err != nil {
+		t.Fatalf("write tmp: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/backup", nil)
+	HandleBackup(w, r)
+
+	body, _ := io.ReadAll(w.Result().Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	if !names["keep.csv"] {
+		t.Error("keep.csv missing from zip")
+	}
+	if names["cache/plotly.min.js"] {
+		t.Error("cache/ contents must be skipped")
+	}
+	if names["stale.tmp"] {
+		t.Error("*.tmp leftovers must be skipped")
+	}
+}
+
+// TestHandleBackupPlaintext_RejectsWhenNotEncrypted verifies the break-glass
+// endpoint refuses to run when there's nothing to decrypt.
+func TestHandleBackupPlaintext_RejectsWhenNotEncrypted(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+	writeCSVFile(t, tmpDir, "x.csv", "data")
+
+	form := url.Values{"password": {"whatever"}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/plaintext", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleBackupPlaintext(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestHandleBackupPlaintext_RejectsBadPassword verifies password verification
+// (via store.Unlock) blocks export with wrong credentials.
+func TestHandleBackupPlaintext_RejectsBadPassword(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+	writeCSVFile(t, tmpDir, "x.csv", "data")
+	if err := store.EnableEncryption("correct-password-1"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	form := url.Values{"password": {"wrong"}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/plaintext", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleBackupPlaintext(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+// TestHandleBackupPlaintext_RejectsMissingPassword ensures empty password is
+// not accepted as confirmation for password-method users.
+func TestHandleBackupPlaintext_RejectsMissingPassword(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+	writeCSVFile(t, tmpDir, "x.csv", "data")
+	if err := store.EnableEncryption("correct-password-1"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	form := url.Values{"password": {""}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/plaintext", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleBackupPlaintext(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestHandleBackupPlaintext_DecryptsWithCorrectPassword is the happy path:
+// correct password produces a zip with decrypted plaintext entries.
+func TestHandleBackupPlaintext_DecryptsWithCorrectPassword(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	plaintext := "date,amount\n2024-01-01,42\n"
+	writeCSVFile(t, tmpDir, "transactions.csv", plaintext)
+
+	if err := store.EnableEncryption("correct-password-1"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+	// Sanity: file is encrypted on disk.
+	onDisk, _ := os.ReadFile(filepath.Join(tmpDir, "transactions.csv"))
+	if !storage.IsAgeEncryptedData(onDisk) {
+		t.Fatalf("precondition: on-disk should be encrypted")
+	}
+
+	form := url.Values{"password": {"correct-password-1"}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/plaintext", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleBackupPlaintext(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/zip" {
+		t.Errorf("expected application/zip, got %s", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment; filename=budget_plaintext_") {
+		t.Errorf("unexpected Content-Disposition: %s", cd)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	var got []byte
+	for _, f := range zr.File {
+		if f.Name == "transactions.csv" {
+			rc, _ := f.Open()
+			got, _ = io.ReadAll(rc)
+			rc.Close()
+		}
+	}
+	if string(got) != plaintext {
+		t.Errorf("zip entry not decrypted to plaintext.\n  got:  %q\n  want: %q", got, plaintext)
+	}
+	if storage.IsAgeEncryptedData(got) {
+		t.Errorf("zip entry is still age-encrypted; break-glass failed to decrypt")
+	}
+}
+
 func TestHandleDisableEncryptionNotEnabled(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()

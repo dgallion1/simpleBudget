@@ -7901,3 +7901,123 @@ func TestHandleWhatIfRothConversion_NilInitializesConfig(t *testing.T) {
 		t.Fatal("expected RothConversion to be initialized")
 	}
 }
+
+func TestHandleWhatIfPurgeIncome(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	src := models.IncomeSource{ID: "purge-inc-1", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
+	if _, err := rm.AddIncomeSource(src); err != nil {
+		t.Fatalf("AddIncomeSource: %v", err)
+	}
+	if _, err := rm.RemoveIncomeSource("purge-inc-1"); err != nil {
+		t.Fatalf("RemoveIncomeSource: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/income/purge-inc-1/purge", nil, map[string]string{"id": "purge-inc-1"})
+	handleWhatIfPurgeIncome(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(settings.RemovedIncomeSources) != 0 {
+		t.Errorf("expected RemovedIncomeSources empty, got %+v", settings.RemovedIncomeSources)
+	}
+}
+
+func TestHandleWhatIfPurgeIncome_NonexistentID(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/income/nonexistent/purge", nil, map[string]string{"id": "nonexistent"})
+	handleWhatIfPurgeIncome(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent removed source, got %d", w.Code)
+	}
+}
+
+func TestHandleWhatIfPurgeExpense(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	src := models.ExpenseSource{ID: "purge-exp-1", Name: "Test", Amount: 500, StartYear: 0}
+	if _, err := rm.AddExpenseSource(src); err != nil {
+		t.Fatalf("AddExpenseSource: %v", err)
+	}
+	if _, err := rm.RemoveExpenseSource("purge-exp-1"); err != nil {
+		t.Fatalf("RemoveExpenseSource: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/expense/purge-exp-1/purge", nil, map[string]string{"id": "purge-exp-1"})
+	handleWhatIfPurgeExpense(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(settings.RemovedExpenseSources) != 0 {
+		t.Errorf("expected RemovedExpenseSources empty, got %+v", settings.RemovedExpenseSources)
+	}
+}
+
+func TestHandleWhatIfPurgeExpense_NonexistentID(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/expense/nonexistent/purge", nil, map[string]string{"id": "nonexistent"})
+	handleWhatIfPurgeExpense(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent removed source, got %d", w.Code)
+	}
+}
+
+func TestHandleWhatIfPurgeBigTicket(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	item := models.BigTicketItem{ID: "purge-bt-1", Name: "Test", Amount: 10000, Year: 2030, Type: "expense"}
+	if _, err := rm.AddBigTicketItem(item); err != nil {
+		t.Fatalf("AddBigTicketItem: %v", err)
+	}
+	if _, err := rm.RemoveBigTicketItem("purge-bt-1"); err != nil {
+		t.Fatalf("RemoveBigTicketItem: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/bigticket/purge-bt-1/purge", nil, map[string]string{"id": "purge-bt-1"})
+	handleWhatIfPurgeBigTicket(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(settings.RemovedBigTicketItems) != 0 {
+		t.Errorf("expected RemovedBigTicketItems empty, got %+v", settings.RemovedBigTicketItems)
+	}
+}
+
+func TestHandleWhatIfPurgeBigTicket_NonexistentID(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/bigticket/nonexistent/purge", nil, map[string]string{"id": "nonexistent"})
+	handleWhatIfPurgeBigTicket(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for nonexistent removed item, got %d", w.Code)
+	}
+}

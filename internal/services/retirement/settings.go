@@ -616,6 +616,39 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 	return settings, nil
 }
 
+// PurgeRemovedIncomeSource permanently removes an income source from the
+// removed list. Returns ScenarioNotFoundError if the ID is not in
+// RemovedIncomeSources. Does not touch the active IncomeSources list.
+func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.IncomeSource, 0, len(settings.RemovedIncomeSources))
+	purged := false
+	for _, source := range settings.RemovedIncomeSources {
+		if source.ID == id {
+			purged = true
+			continue
+		}
+		filtered = append(filtered, source)
+	}
+	if !purged {
+		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed income source %s not found", id)}
+	}
+	settings.RemovedIncomeSources = filtered
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
 // UpdateIncomeSource updates an existing income source by ID atomically
 func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear *int, colaRate float64) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
@@ -754,6 +787,39 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 		}
 	}
 	if !restored {
+		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed expense source %s not found", id)}
+	}
+	settings.RemovedExpenseSources = filtered
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// PurgeRemovedExpenseSource permanently removes an expense source from the
+// removed list. Returns ScenarioNotFoundError if the ID is not in
+// RemovedExpenseSources. Does not touch the active ExpenseSources list.
+func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.ExpenseSource, 0, len(settings.RemovedExpenseSources))
+	purged := false
+	for _, source := range settings.RemovedExpenseSources {
+		if source.ID == id {
+			purged = true
+			continue
+		}
+		filtered = append(filtered, source)
+	}
+	if !purged {
 		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed expense source %s not found", id)}
 	}
 	settings.RemovedExpenseSources = filtered
@@ -1163,6 +1229,39 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 		}
 	}
 	if !restored {
+		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed big ticket item %s not found", id)}
+	}
+	settings.RemovedBigTicketItems = filtered
+
+	if err := sm.saveInternal(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// PurgeRemovedBigTicketItem permanently removes a big ticket item from the
+// removed list. Returns ScenarioNotFoundError if the ID is not in
+// RemovedBigTicketItems. Does not touch the active BigTicketItems list.
+func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.BigTicketItem, 0, len(settings.RemovedBigTicketItems))
+	purged := false
+	for _, item := range settings.RemovedBigTicketItems {
+		if item.ID == id {
+			purged = true
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	if !purged {
 		return nil, &ScenarioNotFoundError{Err: fmt.Errorf("removed big ticket item %s not found", id)}
 	}
 	settings.RemovedBigTicketItems = filtered

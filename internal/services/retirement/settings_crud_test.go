@@ -2020,3 +2020,224 @@ func TestRestoreBigTicketItem_NotFound(t *testing.T) {
 		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
 	}
 }
+
+func TestPurgeRemovedIncomeSource_HappyPath(t *testing.T) {
+	sm := newTestSM(t)
+	src := models.IncomeSource{ID: "p-1", Name: "Old Pension", Amount: 100, Type: models.IncomeFixed}
+	if _, err := sm.AddIncomeSource(src); err != nil {
+		t.Fatalf("AddIncomeSource: %v", err)
+	}
+	if _, err := sm.RemoveIncomeSource("p-1"); err != nil {
+		t.Fatalf("RemoveIncomeSource: %v", err)
+	}
+
+	settings, err := sm.PurgeRemovedIncomeSource("p-1")
+	if err != nil {
+		t.Fatalf("PurgeRemovedIncomeSource: %v", err)
+	}
+	if len(settings.RemovedIncomeSources) != 0 {
+		t.Fatalf("expected RemovedIncomeSources empty, got %+v", settings.RemovedIncomeSources)
+	}
+	if len(settings.IncomeSources) != 0 {
+		t.Fatalf("active list should remain empty, got %+v", settings.IncomeSources)
+	}
+
+	reloaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(reloaded.RemovedIncomeSources) != 0 {
+		t.Fatalf("purge not persisted: %+v", reloaded.RemovedIncomeSources)
+	}
+}
+
+func TestPurgeRemovedIncomeSource_NotFound(t *testing.T) {
+	sm := newTestSM(t)
+	_, err := sm.PurgeRemovedIncomeSource("ghost")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestPurgeRemovedIncomeSource_ActiveOnlyIDNotFound(t *testing.T) {
+	sm := newTestSM(t)
+	if _, err := sm.AddIncomeSource(models.IncomeSource{ID: "active-only", Name: "Wage", Amount: 5000}); err != nil {
+		t.Fatalf("AddIncomeSource: %v", err)
+	}
+
+	_, err := sm.PurgeRemovedIncomeSource("active-only")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.IncomeSources) != 1 || s.IncomeSources[0].ID != "active-only" {
+		t.Errorf("active list mutated: %+v", s.IncomeSources)
+	}
+}
+
+func TestPurgeRemovedIncomeSource_PreservesOtherEntries(t *testing.T) {
+	sm := newTestSM(t)
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := sm.AddIncomeSource(models.IncomeSource{ID: id, Name: id, Amount: 100}); err != nil {
+			t.Fatalf("AddIncomeSource %s: %v", id, err)
+		}
+		if _, err := sm.RemoveIncomeSource(id); err != nil {
+			t.Fatalf("RemoveIncomeSource %s: %v", id, err)
+		}
+	}
+
+	settings, err := sm.PurgeRemovedIncomeSource("b")
+	if err != nil {
+		t.Fatalf("PurgeRemovedIncomeSource: %v", err)
+	}
+	if len(settings.RemovedIncomeSources) != 2 {
+		t.Fatalf("expected 2 remaining, got %d: %+v", len(settings.RemovedIncomeSources), settings.RemovedIncomeSources)
+	}
+	if settings.RemovedIncomeSources[0].ID != "a" || settings.RemovedIncomeSources[1].ID != "c" {
+		t.Errorf("order not preserved: %+v", settings.RemovedIncomeSources)
+	}
+}
+
+func TestPurgeRemovedExpenseSource_HappyPath(t *testing.T) {
+	sm := newTestSM(t)
+	src := models.ExpenseSource{ID: "px-1", Name: "Old Rent", Amount: 2000, StartYear: 0}
+	if _, err := sm.AddExpenseSource(src); err != nil {
+		t.Fatalf("AddExpenseSource: %v", err)
+	}
+	if _, err := sm.RemoveExpenseSource("px-1"); err != nil {
+		t.Fatalf("RemoveExpenseSource: %v", err)
+	}
+
+	settings, err := sm.PurgeRemovedExpenseSource("px-1")
+	if err != nil {
+		t.Fatalf("PurgeRemovedExpenseSource: %v", err)
+	}
+	if len(settings.RemovedExpenseSources) != 0 {
+		t.Fatalf("expected RemovedExpenseSources empty, got %+v", settings.RemovedExpenseSources)
+	}
+	if len(settings.ExpenseSources) != 0 {
+		t.Fatalf("active list should remain empty, got %+v", settings.ExpenseSources)
+	}
+
+	reloaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(reloaded.RemovedExpenseSources) != 0 {
+		t.Fatalf("purge not persisted: %+v", reloaded.RemovedExpenseSources)
+	}
+}
+
+func TestPurgeRemovedExpenseSource_NotFound(t *testing.T) {
+	sm := newTestSM(t)
+	_, err := sm.PurgeRemovedExpenseSource("ghost")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestPurgeRemovedExpenseSource_ActiveOnlyIDNotFound(t *testing.T) {
+	sm := newTestSM(t)
+	if _, err := sm.AddExpenseSource(models.ExpenseSource{ID: "active-only", Name: "Rent", Amount: 1000, StartYear: 0}); err != nil {
+		t.Fatalf("AddExpenseSource: %v", err)
+	}
+
+	_, err := sm.PurgeRemovedExpenseSource("active-only")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.ExpenseSources) != 1 || s.ExpenseSources[0].ID != "active-only" {
+		t.Errorf("active list mutated: %+v", s.ExpenseSources)
+	}
+}
+
+func TestPurgeRemovedBigTicketItem_HappyPath(t *testing.T) {
+	sm := newTestSM(t)
+	item := models.BigTicketItem{ID: "bt-1", Name: "Old Boat", Amount: 50000, Year: 2030, Type: "expense"}
+	if _, err := sm.AddBigTicketItem(item); err != nil {
+		t.Fatalf("AddBigTicketItem: %v", err)
+	}
+	if _, err := sm.RemoveBigTicketItem("bt-1"); err != nil {
+		t.Fatalf("RemoveBigTicketItem: %v", err)
+	}
+
+	settings, err := sm.PurgeRemovedBigTicketItem("bt-1")
+	if err != nil {
+		t.Fatalf("PurgeRemovedBigTicketItem: %v", err)
+	}
+	if len(settings.RemovedBigTicketItems) != 0 {
+		t.Fatalf("expected RemovedBigTicketItems empty, got %+v", settings.RemovedBigTicketItems)
+	}
+	if len(settings.BigTicketItems) != 0 {
+		t.Fatalf("active list should remain empty, got %+v", settings.BigTicketItems)
+	}
+
+	reloaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(reloaded.RemovedBigTicketItems) != 0 {
+		t.Fatalf("purge not persisted: %+v", reloaded.RemovedBigTicketItems)
+	}
+}
+
+func TestPurgeRemovedBigTicketItem_NotFound(t *testing.T) {
+	sm := newTestSM(t)
+	_, err := sm.PurgeRemovedBigTicketItem("ghost")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestPurgeRemovedBigTicketItem_ActiveOnlyIDNotFound(t *testing.T) {
+	sm := newTestSM(t)
+	if _, err := sm.AddBigTicketItem(models.BigTicketItem{ID: "active-only", Name: "Boat", Amount: 5000, Year: 2030, Type: "expense"}); err != nil {
+		t.Fatalf("AddBigTicketItem: %v", err)
+	}
+
+	_, err := sm.PurgeRemovedBigTicketItem("active-only")
+	if err == nil {
+		t.Fatal("expected ScenarioNotFoundError, got nil")
+	}
+	var notFoundErr *ScenarioNotFoundError
+	if !errors.As(err, &notFoundErr) {
+		t.Fatalf("expected *ScenarioNotFoundError, got %T: %v", err, err)
+	}
+
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(s.BigTicketItems) != 1 || s.BigTicketItems[0].ID != "active-only" {
+		t.Errorf("active list mutated: %+v", s.BigTicketItems)
+	}
+}

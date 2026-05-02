@@ -565,3 +565,87 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
+func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.PurgeRemovedIncomeSource(id)
+	if err != nil {
+		renderError(w, "Failed to purge income source: "+err.Error(), statusForScenarioOperationError(err))
+		return
+	}
+
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.PurgeRemovedExpenseSource(id)
+	if err != nil {
+		renderError(w, "Failed to purge expense source: "+err.Error(), statusForScenarioOperationError(err))
+		return
+	}
+
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	settings, err := retirementMgr.PurgeRemovedBigTicketItem(id)
+	if err != nil {
+		renderError(w, "Failed to purge big ticket item: "+err.Error(), statusForScenarioOperationError(err))
+		return
+	}
+
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}

@@ -2276,3 +2276,162 @@ func TestAnalyzeCategoryTrends_DisappearedCategory(t *testing.T) {
 	}
 	t.Error("expected 'fitness' category in trends")
 }
+
+// --- analyzeMajorExpenseTrends tests ---
+
+func TestAnalyzeMajorExpenseTrends_GroupsByExpenseName(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	defs := []models.MajorExpense{
+		{ID: "mortgage", Name: "Mortgage", Keywords: []string{"wells fargo home"}},
+		{ID: "tesla", Name: "Tesla Loan", Keywords: []string{"tesla finance"}},
+	}
+
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			// Previous period
+			catTxn("Wells Fargo Home Mortgage", "housing", 2000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)),
+			catTxn("Tesla Finance Loan", "transport", 800, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)),
+			// Unmatched outflow that should NOT appear in trends
+			catTxn("Trader Joes Grocery", "food", 250, time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC)),
+			// Current period
+			catTxn("Wells Fargo Home Mortgage", "housing", 2300, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC)),
+			catTxn("Tesla Finance Loan", "transport", 800, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC)),
+			catTxn("Trader Joes Grocery", "food", 999, time.Date(2025, 2, 12, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	trends := analyzeMajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+
+	got := make(map[string]models.CategoryTrend, len(trends))
+	for _, tr := range trends {
+		got[tr.Category] = tr
+	}
+
+	if _, ok := got["food"]; ok {
+		t.Errorf("unmatched outflows must not appear in trends; saw category=food")
+	}
+
+	mortgage, ok := got["Mortgage"]
+	if !ok {
+		t.Fatalf("expected trend for major-expense name 'Mortgage', got categories: %v", keysOf(got))
+	}
+	if mortgage.CurrentAmount != 2300 || mortgage.PreviousAmount != 2000 {
+		t.Errorf("Mortgage amounts = (current=%.2f, previous=%.2f), want (2300, 2000)", mortgage.CurrentAmount, mortgage.PreviousAmount)
+	}
+	if mortgage.Direction != "up" {
+		t.Errorf("Mortgage direction = %q, want \"up\"", mortgage.Direction)
+	}
+
+	tesla, ok := got["Tesla Loan"]
+	if !ok {
+		t.Fatalf("expected trend for 'Tesla Loan'")
+	}
+	if tesla.Direction != "stable" {
+		t.Errorf("Tesla Loan direction = %q, want \"stable\" (no change)", tesla.Direction)
+	}
+}
+
+func TestAnalyzeMajorExpenseTrends_PinOverridesKeyword(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	defs := []models.MajorExpense{
+		{ID: "groc", Name: "Groceries", Keywords: []string{"trader joe"}},
+		{ID: "treat", Name: "Eating Out"},
+	}
+
+	pinned := models.Transaction{
+		Description: "Trader Joe's Run",
+		Amount:      -150,
+		Hash:        "h-trader-pin",
+		Date:        time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC),
+		TransactionType: models.Outflow,
+	}
+	ts := &models.TransactionSet{Transactions: []models.Transaction{pinned}}
+	pins := map[string]string{"h-trader-pin": "treat"}
+
+	trends := analyzeMajorExpenseTrends(ts, defs, pins, currentStart, currentEnd)
+
+	for _, tr := range trends {
+		if tr.Category == "Groceries" {
+			t.Errorf("pinned txn fell back to keyword match; got Groceries with current=%.2f", tr.CurrentAmount)
+		}
+	}
+	found := false
+	for _, tr := range trends {
+		if tr.Category == "Eating Out" && tr.CurrentAmount == 150 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected pinned $150 outflow to land in 'Eating Out'; got %+v", trends)
+	}
+}
+
+func TestAnalyzeMajorExpenseTrends_NoDefsReturnsNil(t *testing.T) {
+	ts := &models.TransactionSet{Transactions: []models.Transaction{
+		catTxn("anything", "food", 10, time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)),
+	}}
+	if got := analyzeMajorExpenseTrends(ts, nil, nil, time.Now().AddDate(0, -1, 0), time.Now()); got != nil {
+		t.Errorf("expected nil trends with no defs, got %v", got)
+	}
+}
+
+func TestLoadAndAnalyzeTrends_FallsBackWhenNoDefs(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	data, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("LoadData failed: %v", err)
+	}
+
+	// No major expenses on disk → falls back to category-based trends.
+	trends := loadAndAnalyzeTrends(data, data.MaxDate().AddDate(0, -1, 0), data.MaxDate())
+	if len(trends) == 0 {
+		t.Fatalf("expected category-trend fallback to return entries, got 0")
+	}
+}
+
+func TestLoadAndAnalyzeTrends_UsesMajorExpensesWhenConfigured(t *testing.T) {
+	cleanup := setupTestLoader(t, testCSV())
+	defer cleanup()
+
+	defs := []models.MajorExpense{
+		{ID: "elec", Name: "Power Bill", Keywords: []string{"electric company"}},
+	}
+	if err := loader.SaveMajorExpenses(defs); err != nil {
+		t.Fatalf("SaveMajorExpenses failed: %v", err)
+	}
+
+	data, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("LoadData failed: %v", err)
+	}
+
+	trends := loadAndAnalyzeTrends(data, data.MaxDate().AddDate(0, -1, 0), data.MaxDate())
+	for _, tr := range trends {
+		if tr.Category == "Utilities" {
+			t.Errorf("expected major-expense names, but raw category 'Utilities' surfaced: %+v", tr)
+		}
+	}
+	found := false
+	for _, tr := range trends {
+		if tr.Category == "Power Bill" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'Power Bill' (major-expense name) in trends, got %+v", trends)
+	}
+}
+
+func keysOf(m map[string]models.CategoryTrend) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}

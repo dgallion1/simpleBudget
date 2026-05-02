@@ -247,6 +247,9 @@
                             <th class="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('frequency')" data-sort="frequency">
                                 <span class="flex items-center justify-center gap-1">Freq <span class="sort-icon" data-col="frequency"></span></span>
                             </th>
+                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('monthly')" data-sort="monthly">
+                                <span class="flex items-center justify-end gap-1">Monthly <span class="sort-icon" data-col="monthly"></span></span>
+                            </th>
                             <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('annual')" data-sort="annual">
                                 <span class="flex items-center justify-end gap-1">Annual <span class="sort-icon" data-col="annual"></span></span>
                             </th>
@@ -254,7 +257,7 @@
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {{range .Insights.RecurringPayments}}
-                        <tr class="group hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?search={{urlquery (or .MajorExpenseName .Description)}}&type=Outflow'" data-description="{{.Description}}" data-amount="{{.Amount}}" data-frequency="{{.Frequency}}" data-annual="{{.AnnualCost}}">
+                        <tr class="group hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?search={{urlquery (or .MajorExpenseName .Description)}}&type=Outflow'" data-description="{{.Description}}" data-amount="{{.Amount}}" data-frequency="{{.Frequency}}" data-monthly="{{div .AnnualCost 12.0}}" data-annual="{{.AnnualCost}}">
                             <td class="p-3">
                                 <div class="flex items-center gap-1">
                                     <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else}}{{.Description}}{{end}}</span>
@@ -276,6 +279,7 @@
                                     {{if eq .Frequency "ongoing"}}{{.Occurrences}}x{{else}}{{.Frequency}}{{end}}
                                 </span>
                             </td>
+                            <td class="p-3 text-sm text-right font-medium text-purple-700 dark:text-purple-300">{{formatMoney (div .AnnualCost 12.0)}}</td>
                             <td class="p-3 text-sm text-right font-medium text-purple-600 dark:text-purple-400">{{formatMoney .AnnualCost}}</td>
                         </tr>
                         {{end}}
@@ -378,18 +382,26 @@
         {{if .Insights.CategoryTrends}}
         <div class="border-t dark:border-gray-700">
             <div class="overflow-x-auto">
-                <table class="w-full">
+                <table id="category-trends-table" class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-900">
                         <tr>
-                            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Category</th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Current</th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Previous</th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Change</th>
+                            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('category')" data-sort="category">
+                                <span class="flex items-center gap-1">Category <span class="sort-icon" data-col="category"></span></span>
+                            </th>
+                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('current')" data-sort="current">
+                                <span class="flex items-center justify-end gap-1">Current <span class="sort-icon" data-col="current"></span></span>
+                            </th>
+                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('previous')" data-sort="previous">
+                                <span class="flex items-center justify-end gap-1">Previous <span class="sort-icon" data-col="previous"></span></span>
+                            </th>
+                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('change')" data-sort="change">
+                                <span class="flex items-center justify-end gap-1">Change <span class="sort-icon" data-col="change"></span></span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {{range .Insights.CategoryTrends}}
-                        <tr class="group hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?category={{urlquery .Category}}'">
+                        <tr class="group hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?category={{urlquery .Category}}'" data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.ChangePercent}}">
                             <td class="p-3 text-sm text-gray-800 dark:text-gray-200">
                                 <div class="flex items-center gap-1">
                                     <span>{{.Category}}</span>
@@ -516,7 +528,7 @@ function sortRecurringTable(column) {
         let bVal = b.dataset[column];
 
         // Handle numeric columns
-        if (column === 'amount' || column === 'annual') {
+        if (column === 'amount' || column === 'monthly' || column === 'annual') {
             aVal = parseFloat(aVal) || 0;
             bVal = parseFloat(bVal) || 0;
             return recurringSortState.ascending ? aVal - bVal : bVal - aVal;
@@ -543,6 +555,46 @@ function sortRecurringTable(column) {
 
     // Update sort indicators
     updateSortIcons('recurring-payments-table', column, recurringSortState.ascending);
+}
+
+// Category trends table sorting
+let trendsSortState = { column: null, ascending: true };
+
+function sortTrendsTable(column) {
+    const table = document.getElementById('category-trends-table');
+    if (!table) return;
+
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (trendsSortState.column === column) {
+        trendsSortState.ascending = !trendsSortState.ascending;
+    } else {
+        trendsSortState.column = column;
+        // Numeric columns default to descending (largest first) — matches the
+        // chart, which sorts by absolute change. Category defaults to A→Z.
+        trendsSortState.ascending = column === 'category';
+    }
+
+    rows.sort((a, b) => {
+        let aVal = a.dataset[column];
+        let bVal = b.dataset[column];
+
+        if (column === 'current' || column === 'previous' || column === 'change') {
+            aVal = parseFloat(aVal) || 0;
+            bVal = parseFloat(bVal) || 0;
+            return trendsSortState.ascending ? aVal - bVal : bVal - aVal;
+        }
+
+        aVal = (aVal || '').toLowerCase();
+        bVal = (bVal || '').toLowerCase();
+        if (aVal < bVal) return trendsSortState.ascending ? -1 : 1;
+        if (aVal > bVal) return trendsSortState.ascending ? 1 : -1;
+        return 0;
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+    updateSortIcons('category-trends-table', column, trendsSortState.ascending);
 }
 
 function updateSortIcons(tableId, column, ascending) {
@@ -629,6 +681,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                 <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
                 <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
                 <th class="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Freq</th>
+                <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Monthly</th>
                 <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Annual</th>
             </tr>
         </thead>
@@ -653,6 +706,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                         {{.Frequency}}
                     </span>
                 </td>
+                <td class="p-3 text-sm text-right font-medium text-purple-700 dark:text-purple-300">{{formatMoney (div .AnnualCost 12.0)}}</td>
                 <td class="p-3 text-sm text-right font-medium text-purple-600 dark:text-purple-400">{{formatMoney .AnnualCost}}</td>
             </tr>
             {{end}}
@@ -667,18 +721,26 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
 {{end}}
 
 {{define "category-trends"}}
-<table class="w-full">
+<table id="category-trends-table" class="w-full">
     <thead class="bg-gray-50 dark:bg-gray-900">
         <tr>
-            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Category</th>
-            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Current</th>
-            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Previous</th>
-            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Change</th>
+            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('category')" data-sort="category">
+                <span class="flex items-center gap-1">Category <span class="sort-icon" data-col="category"></span></span>
+            </th>
+            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('current')" data-sort="current">
+                <span class="flex items-center justify-end gap-1">Current <span class="sort-icon" data-col="current"></span></span>
+            </th>
+            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('previous')" data-sort="previous">
+                <span class="flex items-center justify-end gap-1">Previous <span class="sort-icon" data-col="previous"></span></span>
+            </th>
+            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('change')" data-sort="change">
+                <span class="flex items-center justify-end gap-1">Change <span class="sort-icon" data-col="change"></span></span>
+            </th>
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
         {{range .CategoryTrends}}
-        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.ChangePercent}}">
             <td class="p-3 text-sm text-gray-800 dark:text-gray-200">{{.Category}}</td>
             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .CurrentAmount}}</td>
             <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>

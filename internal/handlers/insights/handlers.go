@@ -163,7 +163,7 @@ func annotateRecurringWithMajorExpense(payments []models.RecurringPayment) []mod
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	// Detect recurring patterns against all data so short date ranges still find them
 	recurring := annotateRecurringWithMajorExpense(detectRecurringPaymentsAt(allData, endDate))
-	trends := analyzeCategoryTrends(allData, startDate, endDate)
+	trends := loadAndAnalyzeTrends(allData, startDate, endDate)
 	income := AnalyzeIncomePatterns(filtered)
 	velocity := calculateSpendingVelocity(filtered, allData)
 
@@ -605,6 +605,122 @@ func detectByAmount(alreadyMatched map[string]bool, groups map[string][]models.T
 	return results
 }
 
+// loadAndAnalyzeTrends returns the trends shown in the "Category Spending
+// Trends" section. When the user has declared major expenses, transactions
+// are grouped by major-expense name (pins + keyword/amount matching) and
+// unmatched outflows are dropped — the user told us which spend matters.
+// With no defs configured (or no loader in tests), it falls back to plain
+// category grouping so new users still see something.
+func loadAndAnalyzeTrends(ts *models.TransactionSet, currentStart, currentEnd time.Time) []models.CategoryTrend {
+	if loader == nil {
+		return analyzeCategoryTrends(ts, currentStart, currentEnd)
+	}
+	defs, err := loader.LoadMajorExpenses()
+	if err != nil || len(defs) == 0 {
+		return analyzeCategoryTrends(ts, currentStart, currentEnd)
+	}
+	pins, _ := loader.LoadTransactionPins()
+	return analyzeMajorExpenseTrends(ts, defs, pins, currentStart, currentEnd)
+}
+
+// analyzeMajorExpenseTrends groups outflows by matched MajorExpense.Name
+// for the current and previous periods and returns the same CategoryTrend
+// shape as analyzeCategoryTrends so existing UI can render it. Unmatched
+// transactions are intentionally excluded — the trend list is meant to
+// surface movement on what the user has declared important. Pins win
+// over keyword/amount matching, mirroring the rest of the engine.
+func analyzeMajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, pins map[string]string, currentStart, currentEnd time.Time) []models.CategoryTrend {
+	if ts == nil || len(defs) == 0 {
+		return nil
+	}
+
+	defByID := make(map[string]models.MajorExpense, len(defs))
+	for _, d := range defs {
+		defByID[d.ID] = d
+	}
+
+	duration := currentEnd.Sub(currentStart)
+	prevStart := currentStart.Add(-duration - 24*time.Hour)
+	prevEnd := currentStart.Add(-24 * time.Hour)
+
+	sumByExpense := func(window *models.TransactionSet) map[string]float64 {
+		totals := make(map[string]float64)
+		for _, t := range window.FilterByType(models.Outflow).Transactions {
+			// Pin wins.
+			if pins != nil && t.Hash != "" {
+				if id, ok := pins[t.Hash]; ok {
+					if def, exists := defByID[id]; exists {
+						totals[def.Name] += math.Abs(t.Amount)
+						continue
+					}
+				}
+			}
+			if id, ok := majorexpenses.MatchTransaction(t, defs); ok {
+				totals[defByID[id].Name] += math.Abs(t.Amount)
+			}
+		}
+		return totals
+	}
+
+	currentTotals := sumByExpense(ts.FilterByDateRange(currentStart, currentEnd))
+	prevTotals := sumByExpense(ts.FilterByDateRange(prevStart, prevEnd))
+
+	nameSet := make(map[string]bool)
+	for n := range currentTotals {
+		nameSet[n] = true
+	}
+	for n := range prevTotals {
+		nameSet[n] = true
+	}
+
+	var trends []models.CategoryTrend
+	for name := range nameSet {
+		current := currentTotals[name]
+		previous := prevTotals[name]
+
+		var changePercent float64
+		var direction string
+		if previous == 0 {
+			if current == 0 {
+				changePercent = 0
+				direction = "stable"
+			} else {
+				changePercent = 100
+				direction = "up"
+			}
+		} else {
+			changePercent = ((current - previous) / previous) * 100
+			switch {
+			case changePercent > 5:
+				direction = "up"
+			case changePercent < -5:
+				direction = "down"
+			default:
+				direction = "stable"
+			}
+		}
+
+		trends = append(trends, models.CategoryTrend{
+			Category:       name,
+			CurrentAmount:  current,
+			PreviousAmount: previous,
+			ChangePercent:  changePercent,
+			ChangeAmount:   current - previous,
+			Direction:      direction,
+		})
+	}
+
+	sort.Slice(trends, func(i, j int) bool {
+		return math.Abs(trends[i].ChangeAmount) > math.Abs(trends[j].ChangeAmount)
+	})
+
+	if len(trends) > 10 {
+		trends = trends[:10]
+	}
+
+	return trends
+}
+
 func analyzeCategoryTrends(ts *models.TransactionSet, currentStart, currentEnd time.Time) []models.CategoryTrend {
 	var trends []models.CategoryTrend
 
@@ -921,7 +1037,7 @@ func handleTrendsPartial(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	trends := analyzeCategoryTrends(data, startDate, endDate)
+	trends := loadAndAnalyzeTrends(data, startDate, endDate)
 
 	partialData := map[string]interface{}{
 		"CategoryTrends": trends,
@@ -955,7 +1071,7 @@ func handleTrendsChartData(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	trends := analyzeCategoryTrends(data, startDate, endDate)
+	trends := loadAndAnalyzeTrends(data, startDate, endDate)
 
 	var categories []string
 	var currentValues []float64

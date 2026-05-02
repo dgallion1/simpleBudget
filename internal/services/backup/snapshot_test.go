@@ -164,6 +164,24 @@ func TestSnapshotIfStale_SkipsWhenFresh(t *testing.T) {
 	}
 }
 
+func TestSnapshotIfStale_NoOpWhenDisabled(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	seedDataDir(t, dataDir, map[string][]byte{"a.csv": []byte("x")})
+	svc, _ := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err := svc.SetEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SnapshotIfStale(context.Background(), 24*time.Hour); err != nil {
+		t.Fatalf("SnapshotIfStale should be a no-op when disabled, got %v", err)
+	}
+	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
+	if len(zips) != 0 {
+		t.Fatalf("disabled SnapshotIfStale created %d zips, want 0", len(zips))
+	}
+}
+
 func TestSnapshotIfStale_FiresWhenStale(t *testing.T) {
 	dataDir := t.TempDir()
 	backupDir := t.TempDir()

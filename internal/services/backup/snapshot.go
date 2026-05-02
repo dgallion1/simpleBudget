@@ -30,8 +30,14 @@ func (s *Service) Snapshot(ctx context.Context) error {
 }
 
 // SnapshotIfStale runs a snapshot only when the most recent successful
-// snapshot is older than maxAge (or no snapshot has run yet).
+// snapshot is older than maxAge (or no snapshot has run yet). Returns
+// nil without snapshotting when the user has disabled auto-backup, so
+// every caller (startup, scheduler, future use) honors the toggle
+// without having to gate the call site.
 func (s *Service) SnapshotIfStale(ctx context.Context, maxAge time.Duration) error {
+	if !s.Enabled() {
+		return nil
+	}
 	m, err := loadMeta(s.cfg.BackupDir)
 	if err != nil {
 		// Treat unreadable meta as "stale, take one".

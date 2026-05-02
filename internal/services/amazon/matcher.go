@@ -145,7 +145,12 @@ func findMatch(txDate time.Time, amt float64, shipments []Shipment, consumed []b
 // 111-1234567-1234567); when present this is unambiguous and bypasses
 // amount/window checks. Run it AFTER Match for transactions that came
 // back unmatched.
-func MatchByDescription(transactions []models.Transaction, shipments []Shipment, alreadyMatched map[string]bool, opts MatchOptions) []MatchResult {
+//
+// consumedOrderIDs lists Order IDs already attributed to a transaction
+// in the prior pass; matches against them are skipped so a second
+// transaction whose description happens to contain the same Order ID
+// does not get the same shipment's label re-applied.
+func MatchByDescription(transactions []models.Transaction, shipments []Shipment, alreadyMatched map[string]bool, consumedOrderIDs map[string]bool, opts MatchOptions) []MatchResult {
 	if opts.MaxLabelLen <= 0 {
 		opts.MaxLabelLen = 80
 	}
@@ -165,6 +170,9 @@ func MatchByDescription(transactions []models.Transaction, shipments []Shipment,
 		desc := tx.Description
 		for id, idx := range byID {
 			if id == "" {
+				continue
+			}
+			if consumedOrderIDs[id] {
 				continue
 			}
 			if strings.Contains(desc, id) {

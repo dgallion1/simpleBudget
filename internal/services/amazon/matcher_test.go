@@ -162,7 +162,7 @@ func TestMatchByDescription_OrderIDInDesc(t *testing.T) {
 		// 60 days off — would never match by amount/window.
 		mkShip("2024-04-01", 50.00, "111-9999999-1234567", "Far Item"),
 	}
-	got := MatchByDescription(txs, ships, nil, MatchOptions{})
+	got := MatchByDescription(txs, ships, nil, nil, MatchOptions{})
 	if len(got) != 1 {
 		t.Fatalf("expected 1 desc match; got %d", len(got))
 	}
@@ -176,8 +176,28 @@ func TestMatchByDescription_SkipsAlreadyMatched(t *testing.T) {
 	txs := []models.Transaction{tx}
 	ships := []Shipment{mkShip("2024-04-01", 50.00, "111-9999999-1234567", "Far Item")}
 	already := map[string]bool{tx.Hash: true}
-	got := MatchByDescription(txs, ships, already, MatchOptions{})
+	got := MatchByDescription(txs, ships, already, nil, MatchOptions{})
 	if len(got) != 0 {
 		t.Fatalf("expected 0 (already matched); got %d", len(got))
+	}
+}
+
+func TestMatchByDescription_SkipsConsumedOrderIDs(t *testing.T) {
+	// Pass 1 (Match) attributed order 111-9999999-1234567 to txA via
+	// amount+window. Pass 2 sees txB whose description embeds the same
+	// order ID but has a different (unrelated) amount. Without the
+	// consumed-order-ID guard, txB would inherit txA's label.
+	txA := mkTx("2024-04-03", -50.00, "AMZN Mktp US")
+	txB := mkTx("2024-06-01", -7.99, "AMZN Mktp US 111-9999999-1234567")
+	ships := []Shipment{
+		mkShip("2024-04-01", 50.00, "111-9999999-1234567", "Far Item"),
+	}
+
+	already := map[string]bool{txA.Hash: true}
+	consumed := map[string]bool{"111-9999999-1234567": true}
+
+	got := MatchByDescription([]models.Transaction{txA, txB}, ships, already, consumed, MatchOptions{})
+	if len(got) != 0 {
+		t.Fatalf("expected 0 (order id already consumed); got %d (%+v)", len(got), got)
 	}
 }

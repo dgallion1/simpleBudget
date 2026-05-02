@@ -88,11 +88,18 @@ func run(amazonDir, dataDir string, windowDays int, dryRun bool, previewN int) e
 	matches := amazon.Match(ts.Transactions, shipments, opts)
 
 	// Second pass: try Order-ID-in-description for whatever's left.
+	// Carry forward Order IDs already attributed in pass 1 so a second
+	// transaction whose description happens to contain one of them
+	// doesn't reuse the same shipment's product label.
 	already := make(map[string]bool, len(matches))
+	consumedOrders := make(map[string]bool)
 	for _, m := range matches {
 		already[m.TxHash] = true
+		for _, id := range m.OrderIDs {
+			consumedOrders[id] = true
+		}
 	}
-	descMatches := amazon.MatchByDescription(ts.Transactions, shipments, already, opts)
+	descMatches := amazon.MatchByDescription(ts.Transactions, shipments, already, consumedOrders, opts)
 	matches = append(matches, descMatches...)
 
 	enrichment := make(map[string]string, len(matches))

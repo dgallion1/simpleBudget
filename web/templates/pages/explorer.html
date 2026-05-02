@@ -82,6 +82,10 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
                                 </svg>
                             </button>
+                            <button type="button" onclick="setDateRange(1)" data-months="1"
+                                class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">1M</button>
+                            <button type="button" onclick="setDateRange(2)" data-months="2"
+                                class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">2M</button>
                             <button type="button" onclick="setDateRange(3)" data-months="3"
                                 class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
                             <button type="button" onclick="setDateRange(6)" data-months="6"
@@ -315,7 +319,10 @@
         const endDate = endInput.value;
 
         // If end date isn't max, no button matches
-        if (endDate !== maxDate) return;
+        if (endDate !== maxDate) {
+            updateDateRangeButtons(-1);
+            return;
+        }
 
         // Check if "All" is selected
         if (startDate === minDate) {
@@ -323,9 +330,9 @@
             return;
         }
 
-        // Check for 3, 6, 12 month ranges
+        // Check for 1, 2, 3, 6, 12 month ranges
         const end = new Date(maxDate);
-        for (const months of [3, 6, 12]) {
+        for (const months of [1, 2, 3, 6, 12]) {
             const expectedStart = new Date(end);
             expectedStart.setMonth(expectedStart.getMonth() - months);
             if (startDate === expectedStart.toISOString().split('T')[0]) {
@@ -333,6 +340,8 @@
                 return;
             }
         }
+
+        updateDateRangeButtons(-1);
     }
 
     // Filter by clicking on a description

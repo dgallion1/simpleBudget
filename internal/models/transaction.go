@@ -23,9 +23,10 @@ type Transaction struct {
 	ID               string          `json:"id"`
 	Date             time.Time       `json:"date"`
 	Amount           float64         `json:"amount"`
-	Description      string          `json:"description"`
-	DisplayName      string          `json:"display_name,omitempty"`       // User-assigned alias
-	MajorExpenseName string          `json:"major_expense_name,omitempty"` // Derived; stamped at load time, not persisted to source CSVs
+	Description         string          `json:"description"`
+	DisplayName         string          `json:"display_name,omitempty"`         // User-assigned alias
+	MajorExpenseName    string          `json:"major_expense_name,omitempty"`   // Derived; stamped at load time, not persisted to source CSVs
+	EnrichedDescription string          `json:"enriched_description,omitempty"` // Derived from external sources (e.g. Amazon order data); stamped at load time
 	Category         string          `json:"category"`
 	TransactionType  TransactionType `json:"transaction_type"`
 	SourceFile       string          `json:"source_file"`
@@ -68,14 +69,18 @@ func (t *Transaction) AbsAmount() float64 {
 }
 
 // Label returns the user-facing name for a transaction.
-// Precedence: DisplayName (per-txn alias) -> MajorExpenseName (group name)
-// -> Description (bank text). Set on display, search, aggregation, and
-// transaction-level export sites so the user-curated name always wins
-// over the bank's text when one is available.
+// Precedence: DisplayName (per-txn alias) -> EnrichedDescription
+// (per-txn external data, e.g. Amazon product) -> MajorExpenseName
+// (rule-based group name) -> Description (bank text). Per-transaction
+// signals win over rule-based grouping because they're strictly more
+// specific; grouping/aggregation reads MajorExpenseName directly so
+// it's unaffected by this ordering.
 func (t Transaction) Label() string {
 	switch {
 	case t.DisplayName != "":
 		return t.DisplayName
+	case t.EnrichedDescription != "":
+		return t.EnrichedDescription
 	case t.MajorExpenseName != "":
 		return t.MajorExpenseName
 	default:
@@ -136,14 +141,15 @@ func (ts *TransactionSet) FilterByCategory(category string) *TransactionSet {
 }
 
 // FilterBySearch returns transactions matching the search term in
-// description, display name, or major-expense name.
+// description, display name, major-expense name, or enriched description.
 func (ts *TransactionSet) FilterBySearch(search string) *TransactionSet {
 	result := &TransactionSet{}
 	searchLower := strings.ToLower(search)
 	for _, t := range ts.Transactions {
 		if strings.Contains(strings.ToLower(t.Description), searchLower) ||
 			(t.DisplayName != "" && strings.Contains(strings.ToLower(t.DisplayName), searchLower)) ||
-			(t.MajorExpenseName != "" && strings.Contains(strings.ToLower(t.MajorExpenseName), searchLower)) {
+			(t.MajorExpenseName != "" && strings.Contains(strings.ToLower(t.MajorExpenseName), searchLower)) ||
+			(t.EnrichedDescription != "" && strings.Contains(strings.ToLower(t.EnrichedDescription), searchLower)) {
 			result.Transactions = append(result.Transactions, t)
 		}
 	}

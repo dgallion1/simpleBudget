@@ -170,6 +170,9 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	// Stamp MajorExpenseName based on user-defined major expenses + pins
 	allTransactions = dl.applyMajorExpenseNames(allTransactions)
 
+	// Stamp EnrichedDescription from Amazon order data (no-op if file absent)
+	allTransactions = dl.applyAmazonEnrichment(allTransactions)
+
 	// Compute derived fields
 	for i := range allTransactions {
 		allTransactions[i].ComputeDerivedFields()

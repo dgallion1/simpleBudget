@@ -73,12 +73,17 @@ func TestTransaction_Label(t *testing.T) {
 		want string
 	}{
 		{
-			name: "DisplayName wins over both",
-			txn:  Transaction{Description: "BANK", MajorExpenseName: "Mortgage", DisplayName: "Mort."},
+			name: "DisplayName wins over all",
+			txn:  Transaction{Description: "BANK", MajorExpenseName: "Mortgage", EnrichedDescription: "Amazon: X", DisplayName: "Mort."},
 			want: "Mort.",
 		},
 		{
-			name: "MajorExpenseName beats Description",
+			name: "EnrichedDescription beats MajorExpenseName (per-txn beats group)",
+			txn:  Transaction{Description: "AMZN MKTP US", MajorExpenseName: "Amazon", EnrichedDescription: "Amazon: Rosemary Whole Organic 1 LB"},
+			want: "Amazon: Rosemary Whole Organic 1 LB",
+		},
+		{
+			name: "MajorExpenseName beats Description when no enrichment",
 			txn:  Transaction{Description: "BANK", MajorExpenseName: "Mortgage"},
 			want: "Mortgage",
 		},

@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Branch:** data-storage-improvements
-**Status:** Ready for implementation
+**Status:** Implemented (`c298d6e`..`1d60faa`)
 
 ## Problem
 

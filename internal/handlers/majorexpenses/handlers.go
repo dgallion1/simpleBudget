@@ -386,6 +386,10 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 			PinnedHashes: pinnedForExpense,
 		})
 	}
+	sort.Slice(summaries, func(i, j int) bool {
+		return strings.ToLower(strings.TrimSpace(summaries[i].Expense.Name)) <
+			strings.ToLower(strings.TrimSpace(summaries[j].Expense.Name))
+	})
 
 	var totalDeclared float64
 	for _, s := range summaries {

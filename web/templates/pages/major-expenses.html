@@ -532,6 +532,70 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             return;
         }
     });
+
+    // Sortable tables: any <table class="major-expenses-sortable"> with
+    // <th data-sort-key data-sort-type="text|number"> headers will sort
+    // its <tbody> rows on header click. Rows declare values via
+    // data-sort-{key} attrs. State is per-table and resets on HTMX swap
+    // (which is fine — the server's default sort takes over).
+    const sortStates = new WeakMap();
+    function applyTableSort(table, key, type, dir) {
+        const cmp = function (av, bv) {
+            let v;
+            if (type === 'number') {
+                v = (parseFloat(av) || 0) - (parseFloat(bv) || 0);
+            } else {
+                v = (av || '').localeCompare(bv || '', undefined, { sensitivity: 'base' });
+            }
+            return dir === 'asc' ? v : -v;
+        };
+        // Two layouts: a single tbody of <tr> rows (default), OR multiple
+        // <tbody data-expense-id> groups under one table (the expenses
+        // list, where each row is a group of summary+detail+matched-txn
+        // sub-rows). data-sort-groups="tbody" picks the latter.
+        if (table.getAttribute('data-sort-groups') === 'tbody') {
+            const groups = Array.from(table.querySelectorAll(':scope > tbody[data-expense-id]'));
+            groups.sort(function (a, b) {
+                return cmp(a.getAttribute('data-sort-' + key), b.getAttribute('data-sort-' + key));
+            });
+            groups.forEach(function (g) { table.appendChild(g); });
+        } else {
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort(function (a, b) {
+                return cmp(a.getAttribute('data-sort-' + key), b.getAttribute('data-sort-' + key));
+            });
+            rows.forEach(function (r) { tbody.appendChild(r); });
+        }
+        table.querySelectorAll('thead th[data-sort-key]').forEach(function (th) {
+            const ind = th.querySelector('.major-expenses-sort-indicator');
+            if (th.getAttribute('data-sort-key') === key) {
+                if (ind) ind.textContent = dir === 'asc' ? '▲' : '▼';
+                th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+            } else {
+                if (ind) ind.textContent = '';
+                th.setAttribute('aria-sort', 'none');
+            }
+        });
+    }
+    document.addEventListener('click', function (e) {
+        const th = e.target && e.target.closest && e.target.closest('th[data-sort-key]');
+        if (!th) return;
+        const table = th.closest('table.major-expenses-sortable');
+        if (!table) return;
+        const key = th.getAttribute('data-sort-key');
+        const type = th.getAttribute('data-sort-type') || 'text';
+        let state = sortStates.get(table);
+        if (!state || state.key !== key) {
+            // First click on a column: numeric → desc (biggest first), text → asc.
+            state = { key: key, dir: type === 'number' ? 'desc' : 'asc' };
+        } else {
+            state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+        }
+        sortStates.set(table, state);
+        applyTableSort(table, key, type, state.dir);
+    });
 })();
 </script>
 {{end}}
@@ -642,13 +706,19 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
 {{define "major-expenses-list"}}
 {{if .Summaries}}
-<table id="major-expenses-list" class="w-full text-sm">
+<table id="major-expenses-list" class="w-full text-sm major-expenses-sortable" data-sort-groups="tbody">
     <thead class="text-xs text-gray-500 dark:text-gray-400">
         <tr>
             <th class="w-6"></th>
-            <th class="text-left py-1 px-1 font-normal">Name</th>
-            <th class="text-right py-1 px-1 font-normal">Matched</th>
-            <th class="text-right py-1 px-1 font-normal">Total</th>
+            <th class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
+                <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block">▲</span></span>
+            </th>
+            <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="matched" data-sort-type="number" aria-sort="none">
+                <span class="inline-flex items-center justify-end gap-1">Matched <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+            </th>
+            <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="total" data-sort-type="number" aria-sort="none">
+                <span class="inline-flex items-center justify-end gap-1">Total <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+            </th>
             <th class="w-6"></th>
         </tr>
     </thead>
@@ -665,7 +735,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
 {{/* Single entry — expects an ExpenseSummary {Expense, Count, Total} */}}
 {{define "major-expense-item"}}
-<tbody data-expense-id="{{.Expense.ID}}" data-open="false" class="border-t border-gray-100 dark:border-gray-700">
+<tbody data-expense-id="{{.Expense.ID}}" data-open="false" class="border-t border-gray-100 dark:border-gray-700"
+    data-sort-name="{{.Expense.Name}}"
+    data-sort-matched="{{.Count}}"
+    data-sort-total="{{printf "%.2f" .Total}}">
     <tr id="major-expense-item-{{.Expense.ID}}"
         class="major-expense-item-row scroll-mt-4"
         data-search="{{.Expense.Name}}{{range .Expense.Keywords}} {{.}}{{end}}{{if .Expense.Notes}} {{.Expense.Notes}}{{end}}">
@@ -926,7 +999,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len .Match.Exceptions.UnknownLarge}} over ${{printf "%.0f" .Threshold}})</span>
         {{else}}
             <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len $unmatchedRows}})</span>
-            <span class="ml-1 text-xs italic text-red-500 dark:text-red-400">sorted by amount; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
+            <span class="ml-1 text-xs italic text-red-500 dark:text-red-400">click headers to sort; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
         {{end}}
     </summary>
     {{if $unmatchedFromExceptions}}
@@ -968,12 +1041,18 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         {{end}}
     {{else}}
         {{if $unmatchedRows}}
-        <table class="w-full text-xs mt-1">
+        <table class="w-full text-xs mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-500 dark:text-gray-400">
                 <tr>
-                    <th class="text-left px-2 py-1">Date</th>
-                    <th class="text-left px-2 py-1">Description</th>
-                    <th class="text-right px-2 py-1">Amount</th>
+                    <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
+                        <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                    </th>
+                    <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="desc" data-sort-type="text" aria-sort="none">
+                        <span class="inline-flex items-center gap-1">Description <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                    </th>
+                    <th class="text-right px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="amount" data-sort-type="number" aria-sort="descending">
+                        <span class="inline-flex items-center justify-end gap-1">Amount <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block">▼</span></span>
+                    </th>
                     {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
                 </tr>
             </thead>
@@ -986,6 +1065,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-hash="{{.Hash}}"
                     data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" $amt}}"
                     data-search="{{$label}} ${{printf "%.2f" $amt}} {{.Date.Format "2006-01-02"}}"
+                    data-sort-date="{{.Date.Format "2006-01-02"}}"
+                    data-sort-desc="{{$label}}"
+                    data-sort-amount="{{printf "%.2f" $amt}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                     <td class="px-2 py-1 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"

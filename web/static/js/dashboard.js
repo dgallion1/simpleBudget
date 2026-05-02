@@ -81,6 +81,12 @@ function setPreset(preset) {
         case 'ytd':
             start = new Date(end.getFullYear(), 0, 1);
             break;
+        case '1m':
+            start.setMonth(start.getMonth() - 1);
+            break;
+        case '2m':
+            start.setMonth(start.getMonth() - 2);
+            break;
         case '3m':
             start.setMonth(start.getMonth() - 3);
             break;

@@ -678,8 +678,9 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 		}
 	}
 
-	// Calculate and set average monthly expenses
-	totalExpenses := outflows.SumAbsAmount()
+	// Calculate and set average monthly expenses.
+	// Signed sum + math.Abs so refunds reduce the total instead of inflating it.
+	totalExpenses := math.Abs(outflows.SumAmount())
 	settings.MonthlyLivingExpenses = totalExpenses / months
 
 	// Use insights income pattern detection for individual income sources

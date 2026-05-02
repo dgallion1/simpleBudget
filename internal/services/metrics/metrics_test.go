@@ -121,6 +121,32 @@ func TestCalculateMetrics_MixedIncomeAndExpenses(t *testing.T) {
 	}
 }
 
+// Regression: a refund (opposite-signed Outflow row) must REDUCE TotalExpenses,
+// not be added as an absolute value. Pre-fix bug: $3500 of purchases plus a
+// $300 refund produced TotalExpenses=$3800 instead of $3200.
+func TestCalculateMetrics_RefundReducesTotalExpenses(t *testing.T) {
+	s := New()
+	txns := []models.Transaction{
+		makeTransaction("2025-01-15", 5000, models.Income),
+		makeTransaction("2025-01-20", -2000, models.Outflow), // purchase (negative-convention)
+		makeTransaction("2025-02-20", -1500, models.Outflow), // purchase
+		makeTransaction("2025-02-25", 300, models.Outflow),   // refund (opposite sign)
+	}
+	ts := models.NewTransactionSet(txns)
+	m := s.CalculateMetrics(ts)
+
+	if m.TotalExpenses != 3200 {
+		t.Errorf("TotalExpenses = %.2f, want 3200 (refund of +300 must subtract)", m.TotalExpenses)
+	}
+	if m.NetSavings != 1800 {
+		t.Errorf("NetSavings = %.2f, want 1800", m.NetSavings)
+	}
+	// February has -1500 + 300 = -1200, abs = 1200
+	if len(m.ExpensesTrend) != 2 || m.ExpensesTrend[1] != 1200 {
+		t.Errorf("ExpensesTrend = %v, want Feb total 1200 (refund must subtract within month)", m.ExpensesTrend)
+	}
+}
+
 func TestCalculateMetrics_TrendLabels(t *testing.T) {
 	s := New()
 	txns := []models.Transaction{

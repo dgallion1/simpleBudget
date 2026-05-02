@@ -203,7 +203,7 @@ func handleCategoryDrilldown(w http.ResponseWriter, r *http.Request) {
 	categoryTxns := outflows.FilterByCategory(category).SortByDateDesc()
 
 	// Calculate category stats
-	total := categoryTxns.SumAbsAmount()
+	total := math.Abs(categoryTxns.SumAmount())
 	count := categoryTxns.Len()
 	var avgAmount float64
 	if count > 0 {
@@ -291,7 +291,7 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = exp.SumAbsAmount()
+			expAmt = math.Abs(exp.SumAmount())
 		}
 
 		savings := incAmt - expAmt
@@ -451,7 +451,7 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = exp.SumAbsAmount()
+			expAmt = math.Abs(exp.SumAmount())
 		}
 
 		savings := incAmt - expAmt
@@ -511,7 +511,7 @@ func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
 	outflows := ts.FilterByType(models.Outflow)
 
 	totalIncome := income.SumAmount()
-	totalExpenses := outflows.SumAbsAmount()
+	totalExpenses := math.Abs(outflows.SumAmount())
 	netSavings := totalIncome - totalExpenses
 
 	var savingsRate float64
@@ -554,7 +554,7 @@ func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
 
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = exp.SumAbsAmount()
+			expAmt = math.Abs(exp.SumAmount())
 		}
 
 		incomeTrend = append(incomeTrend, incAmt)
@@ -660,7 +660,7 @@ func buildMonthlyChartData(ts *models.TransactionSet) map[string]interface{} {
 			incomeValues = append(incomeValues, 0)
 		}
 		if exp, ok := monthlyOutflows[m]; ok {
-			expenseValues = append(expenseValues, exp.SumAbsAmount())
+			expenseValues = append(expenseValues, math.Abs(exp.SumAmount()))
 		} else {
 			expenseValues = append(expenseValues, 0)
 		}
@@ -875,7 +875,7 @@ func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface
 
 	monthlyTotals := make(map[string]float64, len(months))
 	for _, m := range months {
-		monthlyTotals[m] = monthlyOutflowSets[m].SumAbsAmount()
+		monthlyTotals[m] = math.Abs(monthlyOutflowSets[m].SumAmount())
 	}
 
 	// Need at least 2 months to show change

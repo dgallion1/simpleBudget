@@ -823,6 +823,31 @@ func TestCalculateSpendingVelocity_EmptyData(t *testing.T) {
 	}
 }
 
+// Regression: a refund (opposite-signed Outflow row) must REDUCE the burn rate
+// numerator, not be added as an absolute value. Pre-fix: $600 of purchases
+// plus a $50 refund produced DailyAverage=$650/day instead of $550/day.
+func TestCalculateSpendingVelocity_RefundReducesDailyAverage(t *testing.T) {
+	now := time.Now()
+	txns := []models.Transaction{
+		{Description: "purchase", Amount: -100, Date: now, TransactionType: models.Outflow},
+		{Description: "purchase", Amount: -200, Date: now, TransactionType: models.Outflow},
+		{Description: "purchase", Amount: -300, Date: now, TransactionType: models.Outflow},
+		{Description: "refund", Amount: 50, Date: now, TransactionType: models.Outflow}, // opposite sign
+	}
+	period := &models.TransactionSet{Transactions: txns}
+
+	velocity := calculateSpendingVelocity(period, period)
+
+	// All same day -> currentDays clamped to 1, so DailyAverage = net spend.
+	const want = 550.0
+	if math.Abs(velocity.DailyAverage-want) > 0.01 {
+		t.Errorf("DailyAverage = %.2f, want %.2f (refund must subtract, not add)", velocity.DailyAverage, want)
+	}
+	if math.Abs(velocity.HistoricalDaily-want) > 0.01 {
+		t.Errorf("HistoricalDaily = %.2f, want %.2f", velocity.HistoricalDaily, want)
+	}
+}
+
 // --- AnalyzeIncomePatterns tests ---
 
 func TestAnalyzeIncomePatterns_MonthlyIncome(t *testing.T) {

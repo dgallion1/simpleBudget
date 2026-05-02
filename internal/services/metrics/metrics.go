@@ -22,7 +22,9 @@ func (s *Service) CalculateMetrics(ts *models.TransactionSet) *models.DashboardM
 	outflows := ts.FilterByType(models.Outflow)
 
 	totalIncome := income.SumAmount()
-	totalExpenses := outflows.SumAbsAmount()
+	// Signed sum + math.Abs so refunds (opposite-signed Outflow rows) reduce the
+	// total, regardless of CSV sign convention.
+	totalExpenses := math.Abs(outflows.SumAmount())
 	netSavings := totalIncome - totalExpenses
 
 	var savingsRate float64
@@ -65,7 +67,7 @@ func (s *Service) CalculateMetrics(ts *models.TransactionSet) *models.DashboardM
 
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = exp.SumAbsAmount()
+			expAmt = math.Abs(exp.SumAmount())
 		}
 
 		incomeTrend = append(incomeTrend, incAmt)

@@ -898,7 +898,7 @@ func calculateSpendingVelocity(currentPeriod, allData *models.TransactionSet) *m
 	if currentDays < 1 {
 		currentDays = 1
 	}
-	dailyAvg := currentOutflows.SumAbsAmount() / currentDays
+	dailyAvg := math.Abs(currentOutflows.SumAmount()) / currentDays
 
 	allMin := allData.MinDate()
 	allMax := allData.MaxDate()
@@ -906,7 +906,7 @@ func calculateSpendingVelocity(currentPeriod, allData *models.TransactionSet) *m
 	if allDays < 1 {
 		allDays = 1
 	}
-	historicalDaily := allOutflows.SumAbsAmount() / allDays
+	historicalDaily := math.Abs(allOutflows.SumAmount()) / allDays
 
 	now := time.Now()
 	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, time.Local).Day()
@@ -916,7 +916,7 @@ func calculateSpendingVelocity(currentPeriod, allData *models.TransactionSet) *m
 	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	currentMonthData := currentPeriod.FilterByDateRange(currentMonthStart, now)
 	currentMonthOutflows := currentMonthData.FilterByType(models.Outflow)
-	spentSoFar := currentMonthOutflows.SumAbsAmount()
+	spentSoFar := math.Abs(currentMonthOutflows.SumAmount())
 
 	monthProjection := spentSoFar + (dailyAvg * float64(daysRemaining))
 

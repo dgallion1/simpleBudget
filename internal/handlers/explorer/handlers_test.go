@@ -176,6 +176,49 @@ func TestHandleExplorer_EmptyResults(t *testing.T) {
 	}
 }
 
+// Regression: a refund row (opposite-signed amount) within the Outflow type
+// must REDUCE TotalExpenses, not be added as an absolute value.
+// Bug symptom: a -$199.78 refund mixed with $549.39 of purchases produced
+// TotalExpenses=$749.17 (refund's magnitude added) instead of $349.61.
+func TestHandleTransactionsPartial_RefundReducesTotalExpenses(t *testing.T) {
+	// Amounts mirror the user's reported scenario: positive-convention CSV
+	// where purchases are positive and the refund is negative.
+	csv := `Date,Description,Amount,Category
+2026-04-14,Shenandoahfood&beverag,4.84,Food & Dining
+2026-04-14,Shenandoah Lodging,259.78,Hotel
+2026-04-13,Shenandoahfood&beverag,30.31,Food & Dining
+2026-04-13,Shenandoahfood&beverag,34.68,Food & Dining
+2026-04-13,Shenandoah National Park,20.00,Uncategorized
+2026-04-12,Shenandoah Lodging,-199.78,Hotel
+2026-03-16,Shenandoah Lodging,199.78,Hotel
+`
+	setupTestEnv(t, csv)
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/transactions?search=shen&type=Outflow", nil)
+	rec := httptest.NewRecorder()
+	handleTransactionsPartial(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, rec.Body.String())
+	}
+
+	const want = 349.61 // 4.84+259.78+30.31+34.68+20.00+199.78 - 199.78
+	gotExpenses, _ := payload["TotalExpenses"].(float64)
+	if diff := gotExpenses - want; diff > 0.01 || diff < -0.01 {
+		t.Errorf("TotalExpenses = %.2f, want %.2f (refund of -199.78 must subtract, not add)", gotExpenses, want)
+	}
+
+	gotNet, _ := payload["NetAmount"].(float64)
+	if diff := gotNet - (-want); diff > 0.01 || diff < -0.01 {
+		t.Errorf("NetAmount = %.2f, want %.2f", gotNet, -want)
+	}
+}
+
 // ---- handleTransactionsPartial tests ----
 
 func TestHandleTransactionsPartial_Basic(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -175,7 +176,10 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 	// Calculate totals before pagination
 	totalCount := filtered.Len()
 	totalIncome := filtered.FilterByType(models.Income).SumAmount()
-	totalExpenses := filtered.FilterByType(models.Outflow).SumAbsAmount()
+	// Use signed sum so refunds (opposite-signed Outflow rows) reduce the total.
+	// math.Abs makes it positive regardless of CSV convention (purchases stored
+	// as positive vs. negative).
+	totalExpenses := math.Abs(filtered.FilterByType(models.Outflow).SumAmount())
 	netAmount := totalIncome - totalExpenses
 
 	// Apply sorting
@@ -310,7 +314,10 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 	// Calculate totals before pagination
 	totalCount := filtered.Len()
 	totalIncome := filtered.FilterByType(models.Income).SumAmount()
-	totalExpenses := filtered.FilterByType(models.Outflow).SumAbsAmount()
+	// Use signed sum so refunds (opposite-signed Outflow rows) reduce the total.
+	// math.Abs makes it positive regardless of CSV convention (purchases stored
+	// as positive vs. negative).
+	totalExpenses := math.Abs(filtered.FilterByType(models.Outflow).SumAmount())
 	netAmount := totalIncome - totalExpenses
 
 	// Apply sorting

@@ -306,6 +306,55 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 	}
 }
 
+// Regression: a refund (opposite-signed Outflow row) must REDUCE the monthly
+// expense bar value, not be added as an absolute value. Pre-fix: $1500 of
+// purchases plus a $300 refund produced an expense bar of $1800 instead of $1200.
+func TestBuildMonthlyChartData_RefundReducesExpenseBar(t *testing.T) {
+	jan := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, jan, models.Income, "Payroll"),
+		makeTransaction("Rent", -1500, jan, models.Outflow, "Housing"),
+		makeTransaction("Refund", 300, jan, models.Outflow, "Housing"), // opposite sign
+	)
+
+	result := buildMonthlyChartData(ts)
+	data := result["data"].([]map[string]interface{})
+
+	// Trace order: [income, expenses]
+	expenseTrace := data[1]
+	values := expenseTrace["y"].([]float64)
+	if !floatEqual(values[0], 1200) {
+		t.Errorf("Jan expense bar = %.2f, want 1200 (refund of +300 must subtract)", values[0])
+	}
+}
+
+// Regression: refunds within a month must reduce that month's total in the
+// trend chart, so month-over-month change reflects net spending.
+// Pre-fix: Jan=$1000, Feb=$1000 purchase + $200 refund produced Feb total
+// $1200 (showing +20% increase) instead of $800 (-20% decrease).
+func TestBuildSpendingTrendChartData_RefundReducesMonthlyTotal(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -1000, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Refund", 200, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	result := buildSpendingTrendChartData(ts)
+	data := result["data"].([]map[string]interface{})
+	trace := data[0]
+
+	// Jan=1000, Feb=1000-200=800 -> change = -20%
+	values := trace["y"].([]float64)
+	if !floatEqual(values[0], -20.0) {
+		t.Errorf("change = %.2f, want -20 (refund must reduce Feb total to 800)", values[0])
+	}
+
+	customdata := trace["customdata"].([][]float64)
+	if !floatEqual(customdata[0][0], 800) {
+		t.Errorf("Feb total = %.2f, want 800", customdata[0][0])
+	}
+}
+
 // --- buildSpendingTrendChartData ---
 
 func TestBuildSpendingTrendChartData_Basic(t *testing.T) {

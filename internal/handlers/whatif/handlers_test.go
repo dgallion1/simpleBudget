@@ -4261,6 +4261,40 @@ func TestSyncSettingsFromDashboard_WithFrequentIncome(t *testing.T) {
 	}
 }
 
+// Regression: a refund row (opposite-signed Outflow) must REDUCE
+// MonthlyLivingExpenses, not be added as an absolute value.
+// Pre-fix bug: $1000 of purchases + $200 refund produced expenses=$1200
+// instead of $800.
+func TestSyncSettingsFromDashboard_RefundReducesMonthlyExpenses(t *testing.T) {
+	settingsDir := t.TempDir()
+	csvDir := t.TempDir()
+
+	today := time.Now().Format("2006-01-02")
+	lines := "Date,Description,Amount,Category\n" +
+		today + ",Hotel,1000.00,Hotel\n" +
+		today + ",Hotel Refund,-200.00,Hotel\n"
+	if err := os.WriteFile(filepath.Join(csvDir, "test.csv"), []byte(lines), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	store, _ := storage.New(settingsDir)
+	rm := retirement.NewSettingsManager(settingsDir, store)
+	dl := dataloader.New(csvDir, store)
+	Initialize(dl, nil, rm)
+
+	s := models.DefaultWhatIfSettings()
+	if err := syncSettingsFromDashboard(s); err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+
+	// All transactions are dated today, so months is clamped to 1 (< 1 floor).
+	// Net spending = 1000 - 200 = 800. Pre-fix would have been 1200.
+	const want = 800.0
+	if diff := s.MonthlyLivingExpenses - want; diff > 0.01 || diff < -0.01 {
+		t.Errorf("MonthlyLivingExpenses = %.2f, want %.2f (refund must subtract)", s.MonthlyLivingExpenses, want)
+	}
+}
+
 // ── Test syncSettingsFromDashboard with short date range ───────────────────
 
 func TestSyncSettingsFromDashboard_ShortDateRange(t *testing.T) {

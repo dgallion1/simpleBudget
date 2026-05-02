@@ -22,7 +22,7 @@ type UserSettings struct {
 	SavingsGoals        []SavingsGoal             `json:"savings_goals"`
 
 	// UI preferences
-	DefaultDateRange string   `json:"default_date_range"` // ytd, 3m, 6m, 12m, all
+	DefaultDateRange string   `json:"default_date_range"` // ytd, 1m, 2m, 3m, 6m, 12m, all
 	EnabledFiles     []string `json:"enabled_files"`      // List of enabled CSV files
 }
 

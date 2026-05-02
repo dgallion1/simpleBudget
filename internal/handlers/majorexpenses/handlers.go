@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -95,6 +96,7 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	// the keywords alone. Pin failure does not roll back the create.
 	if pinHash := strings.TrimSpace(r.FormValue("pin_hash")); pinHash != "" {
 		if err := loader.SetTransactionPin(pinHash, me.ID); err != nil {
+			log.Printf("major-expenses: create-and-pin failed for hash=%q expense=%q: %v", pinHash, me.ID, err)
 			fmt.Fprintf(w, "<!-- pin_hash %q ignored: %v -->", pinHash, err)
 		}
 	}
@@ -513,21 +515,21 @@ func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
 	keywordsRaw := r.FormValue("keywords")
 	keywords := splitAndTrim(keywordsRaw, ",")
 
-	min, err := parseFormFloat(r, "expected_min")
+	expectedMin, err := parseFormFloat(r, "expected_min")
 	if err != nil {
 		return models.MajorExpense{}, fmt.Errorf("invalid expected_min: %w", err)
 	}
-	if min < 0 {
+	if expectedMin < 0 {
 		return models.MajorExpense{}, fmt.Errorf("expected_min cannot be negative")
 	}
-	max, err := parseFormFloat(r, "expected_max")
+	expectedMax, err := parseFormFloat(r, "expected_max")
 	if err != nil {
 		return models.MajorExpense{}, fmt.Errorf("invalid expected_max: %w", err)
 	}
-	if max < 0 {
+	if expectedMax < 0 {
 		return models.MajorExpense{}, fmt.Errorf("expected_max cannot be negative")
 	}
-	if min > 0 && max > 0 && min > max {
+	if expectedMin > 0 && expectedMax > 0 && expectedMin > expectedMax {
 		return models.MajorExpense{}, fmt.Errorf("expected_min cannot exceed expected_max")
 	}
 
@@ -541,15 +543,15 @@ func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
 	// Anything else is a partial/inconsistent config: only Min or only
 	// Max set without a keyword usually means the user forgot the other
 	// half of the range.
-	if len(keywords) == 0 && (min > 0) != (max > 0) {
+	if len(keywords) == 0 && (expectedMin > 0) != (expectedMax > 0) {
 		return models.MajorExpense{}, fmt.Errorf("set BOTH Min and Max to match by amount, or leave both blank to create a pin-only target")
 	}
 
 	return models.MajorExpense{
 		Name:        name,
 		Keywords:    keywords,
-		ExpectedMin: min,
-		ExpectedMax: max,
+		ExpectedMin: expectedMin,
+		ExpectedMax: expectedMax,
 		Notes:       strings.TrimSpace(r.FormValue("notes")),
 	}, nil
 }

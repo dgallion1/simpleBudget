@@ -61,6 +61,9 @@ func HandleBackupStatus(w http.ResponseWriter, r *http.Request) {
 
 	resp := backupStatusResponse{Dir: dir, Enabled: enabled}
 	if dir != "" {
+		// last_backup.json is always plaintext: it lives in BackupDir, which
+		// defaults to an XDG path outside DataDir, so the storage layer's
+		// encryption never applies. Read it directly with os.ReadFile.
 		if data, err := os.ReadFile(filepath.Join(dir, "last_backup.json")); err == nil {
 			_ = json.Unmarshal(data, &resp)
 			resp.Dir = dir

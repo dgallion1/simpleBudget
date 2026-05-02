@@ -26,8 +26,13 @@ type Config struct {
 
 // Service owns automatic backup snapshot, retention, and scheduling.
 type Service struct {
-	cfg   Config
-	mu    sync.Mutex // serializes Snapshot
+	cfg Config
+	// mu serializes Snapshot writes (and the meta updates piggy-backed on
+	// each snapshot). Acquired non-blocking via tryLock so overlapping
+	// scheduler ticks and shutdown hooks degrade to a no-op rather than
+	// queuing. Do NOT use this mutex for unrelated state — enabled has its
+	// own RWMutex below.
+	mu    sync.Mutex
 	clock Clock
 
 	enabledMu sync.RWMutex

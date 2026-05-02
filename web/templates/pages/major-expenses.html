@@ -951,7 +951,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                     <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
-                    <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                    <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
+                        class="text-blue-600 dark:text-blue-400 hover:underline"
+                        title="Show this transaction in the Explorer"
+                        onclick="event.stopPropagation()">{{$label}}</a></td>
                     <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                     {{if $.Expenses}}
                     <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
@@ -985,7 +988,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-search="{{$label}} ${{printf "%.2f" $amt}} {{.Date.Format "2006-01-02"}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
                     <td class="px-2 py-1 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
-                    <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                    <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
+                        class="text-blue-600 dark:text-blue-400 hover:underline"
+                        title="Show this transaction in the Explorer"
+                        onclick="event.stopPropagation()">{{$label}}</a></td>
                     <td class="px-2 py-1 text-right font-mono {{if $dim}}text-gray-500 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">${{printf "%.2f" $amt}}</td>
                     {{if $.Expenses}}
                     <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
@@ -1033,7 +1039,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                         class="text-amber-700 dark:text-amber-300 hover:underline"
                         title="Click to edit {{.MajorExpenseName}}">{{.MajorExpenseName}}</a>
                 </td>
-                <td class="px-2 py-1 dark:text-gray-300">{{$desc}}</td>
+                <td class="px-2 py-1 dark:text-gray-300"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
+                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                    title="Show this transaction in the Explorer"
+                    onclick="event.stopPropagation()">{{$desc}}</a></td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 <td class="px-2 py-1 text-right font-mono text-gray-500 dark:text-gray-400">
                     {{if and (gt .ExpectedMin 0.0) (gt .ExpectedMax 0.0)}}${{printf "%.0f" .ExpectedMin}}–${{printf "%.0f" .ExpectedMax}}
@@ -1081,7 +1090,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
                 title="{{if $matchedID}}Already grouped under a major expense{{else}}Click to pre-fill the add form, or use the dropdown to pin to an existing expense{{end}}">
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
-                <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
+                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                    title="Show this transaction in the Explorer"
+                    onclick="event.stopPropagation()">{{$label}}</a></td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 {{if $.Expenses}}
                 <td class="px-2 py-1">

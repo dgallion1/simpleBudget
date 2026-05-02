@@ -68,6 +68,18 @@ func TestRenderMajorExpenses_UnmatchedBucketShowsAllRowsWithDimming(t *testing.T
 	if strings.Contains(html, "Unmatched over $") {
 		t.Errorf("expected bucket title to be 'Unmatched' (no '… over $X'), got: %s", html)
 	}
+	// AllUnmatched render path: each row's Description must link back
+	// to the Explorer for the bank text, with click-propagation stopped
+	// so the row's pre-fill handler does not fire alongside navigation.
+	if !strings.Contains(html, `<a href="/explorer?search=Big&#43;Unknown&#43;Charge&type=Outflow"`) {
+		t.Errorf("expected AllUnmatched description to link to /explorer, got html=%s", html)
+	}
+	if !strings.Contains(html, `<a href="/explorer?search=Tiny&#43;Coffee&type=Outflow"`) {
+		t.Errorf("expected sub-threshold AllUnmatched description to link to /explorer, got html=%s", html)
+	}
+	if got := strings.Count(html, `onclick="event.stopPropagation()"`); got < 2 {
+		t.Errorf("expected stopPropagation handler on each AllUnmatched description anchor (2 rows), got %d. html=%s", got, html)
+	}
 }
 
 // TestRenderMajorExpenses_UnmatchedBadgeAndDeletedPanel verifies the
@@ -449,6 +461,28 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	// toolbar can collect them without parsing form values.
 	if !strings.Contains(html, `data-hash=`) {
 		t.Errorf("expected exception rows to expose data-hash for bulk pinning")
+	}
+	// Each exception bucket's Description column links to the Explorer
+	// pre-filtered to that bank text (Outflow), giving users a path back
+	// to the underlying bank transaction. The anchor must stop click
+	// propagation so the row-level click handler (which pre-fills the
+	// add form) does not also fire. Spaces are URL-encoded as "+" and
+	// then HTML-escaped as "&#43;" by html/template in attribute context.
+	if !strings.Contains(html, `<a href="/explorer?search=Random&#43;Big&#43;Purchase&type=Outflow"`) {
+		t.Errorf("expected unknown-large description to link to /explorer, got html=%s", html)
+	}
+	if !strings.Contains(html, `<a href="/explorer?search=My&#43;Landlord&#43;LLC&type=Outflow"`) {
+		t.Errorf("expected anomalous description to link to /explorer, got html=%s", html)
+	}
+	if !strings.Contains(html, `<a href="/explorer?search=Brand&#43;New&#43;Store&type=Outflow"`) {
+		t.Errorf("expected new-merchant description to link to /explorer, got html=%s", html)
+	}
+	// One stopPropagation per exception description anchor (3 in this
+	// fixture: UnknownLarge, Anomalous, NewMerchants). The matched-row
+	// anchor does NOT use stopPropagation (no row click handler there),
+	// so the count is a tight lower bound on the exception anchors.
+	if got := strings.Count(html, `onclick="event.stopPropagation()"`); got < 3 {
+		t.Errorf("expected at least 3 stopPropagation handlers on exception description anchors, got %d. html=%s", got, html)
 	}
 }
 

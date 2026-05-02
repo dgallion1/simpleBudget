@@ -31,6 +31,14 @@
             <input type="hidden" name="preset" value="{{.Preset}}">
             <div class="flex items-center space-x-2 ml-auto">
                 <span class="text-sm text-gray-500 dark:text-gray-400">Quick:</span>
+                <button type="button" onclick="setInsightPreset('1m')" data-preset="1m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "1m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                    1M
+                </button>
+                <button type="button" onclick="setInsightPreset('2m')" data-preset="2m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "2m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                    2M
+                </button>
                 <button type="button" onclick="setInsightPreset('3m')" data-preset="3m"
                         class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "3m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     3M
@@ -563,6 +571,12 @@ function setInsightPreset(preset) {
     let start = new Date();
 
     switch(preset) {
+        case '1m':
+            start.setMonth(start.getMonth() - 1);
+            break;
+        case '2m':
+            start.setMonth(start.getMonth() - 2);
+            break;
         case '3m':
             start.setMonth(start.getMonth() - 3);
             break;

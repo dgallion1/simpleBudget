@@ -27,6 +27,162 @@ func renderMajorExpensesContent(t *testing.T, data map[string]any) string {
 	return html
 }
 
+// TestRenderMajorExpenses_UnmatchedBucketShowsAllRowsWithDimming
+// verifies that AllUnmatched (the comprehensive list) drives the
+// "Unmatched" exception bucket: every row renders, big rows are
+// red, sub-threshold rows are dimmed (opacity-70 class), and the
+// header badge anchors to the bucket.
+func TestRenderMajorExpenses_UnmatchedBucketShowsAllRowsWithDimming(t *testing.T) {
+	now := time.Now()
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":          "Major Expenses",
+		"ActiveTab":      "major-expenses",
+		"Expenses":       []models.MajorExpense{},
+		"Summaries":      []struct{}{},
+		"Match":          map[string]any{"Exceptions": models.ExceptionsReport{}},
+		"AllUnmatched": []models.Transaction{
+			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
+			{Date: now, Amount: -19.44, Description: "Tiny Coffee", Hash: "h-tiny"},
+		},
+		"Threshold":      100.0,
+		"WindowDays":     30,
+		"TotalDeclared":  0.0,
+		"UnmatchedTotal": 269.44,
+		"UnmatchedCount": 2,
+	})
+	if !strings.Contains(html, "Big Unknown Charge") {
+		t.Errorf("expected over-threshold row in output, got: %s", html)
+	}
+	if !strings.Contains(html, "Tiny Coffee") {
+		t.Errorf("expected sub-threshold row in output (was previously hidden), got: %s", html)
+	}
+	// Sub-threshold row should be dimmed; over-threshold should not be.
+	if !strings.Contains(html, `data-fill-name="Tiny Coffee"`) {
+		t.Errorf("expected tiny row data-fill-name attribute")
+	}
+	// Header badge is now an anchor to the bucket.
+	if !strings.Contains(html, `href="#major-expenses-bucket-unknown-large"`) {
+		t.Errorf("expected header Unmatched badge to anchor to the bucket id, got: %s", html)
+	}
+	// The bucket label is now generic 'Unmatched', not '… over $100'.
+	if strings.Contains(html, "Unmatched over $") {
+		t.Errorf("expected bucket title to be 'Unmatched' (no '… over $X'), got: %s", html)
+	}
+}
+
+// TestRenderMajorExpenses_UnmatchedBadgeAndDeletedPanel verifies the
+// new visibility additions: the amber "Unmatched: $X · N txns" badge in
+// the list-card header, and the Deleted panel that surfaces archived
+// expenses with Restore/Discard affordances.
+func TestRenderMajorExpenses_UnmatchedBadgeAndDeletedPanel(t *testing.T) {
+	now := time.Now()
+	deleted := []models.DeletedMajorExpense{
+		{
+			Expense:      models.MajorExpense{ID: "gone", Name: "Vanished Subscription"},
+			DeletedAt:    now.AddDate(0, 0, -3),
+			PinnedHashes: []string{"hh1", "hh2"},
+		},
+	}
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":          "Major Expenses",
+		"ActiveTab":      "major-expenses",
+		"Expenses":       []models.MajorExpense{},
+		"Summaries":      []struct{}{},
+		"Match":          map[string]any{"Exceptions": models.ExceptionsReport{}},
+		"Threshold":      100.0,
+		"WindowDays":     30,
+		"TotalDeclared":  0.0,
+		"UnmatchedTotal": 1215.57,
+		"UnmatchedCount": 42,
+		"Deleted":        deleted,
+	})
+	if !strings.Contains(html, "Unmatched:") {
+		t.Errorf("expected 'Unmatched:' badge in header, got: %s", html)
+	}
+	if !strings.Contains(html, "$1216") {
+		t.Errorf("expected unmatched total '$1216' (rounded), got: %s", html)
+	}
+	if !strings.Contains(html, "42 txns") {
+		t.Errorf("expected '42 txns' count in header, got: %s", html)
+	}
+	if !strings.Contains(html, "Vanished Subscription") {
+		t.Errorf("expected deleted expense name in panel, got: %s", html)
+	}
+	if !strings.Contains(html, `hx-post="/major-expenses/gone/restore"`) {
+		t.Errorf("expected restore form for archived id, got: %s", html)
+	}
+	if !strings.Contains(html, `hx-delete="/major-expenses/deleted/gone"`) {
+		t.Errorf("expected discard form for archived id, got: %s", html)
+	}
+}
+
+// TestRenderMajorExpenses_PinPickerNewSentinelAndCurrent verifies the
+// pin picker's new behavior: it includes a "+ Create new from this…"
+// sentinel option, and pre-selects an existing pin via CurrentPin.
+func TestRenderMajorExpenses_PinPickerNewSentinelAndCurrent(t *testing.T) {
+	now := time.Now()
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses": []models.MajorExpense{
+			{ID: "rent", Name: "Rent", Keywords: []string{"landlord"}},
+			{ID: "food", Name: "Food", Keywords: []string{"grocery"}},
+		},
+		"ExpenseOptions": []struct {
+			ID    string
+			Label string
+		}{
+			{ID: "rent", Label: "Rent"},
+			{ID: "food", Label: "Food"},
+		},
+		"Summaries": []struct{}{},
+		"Match": struct {
+			Exceptions models.ExceptionsReport
+		}{
+			Exceptions: models.ExceptionsReport{
+				UnknownLarge: []models.ExceptionUnknownLargeTxn{
+					{Transaction: models.Transaction{Date: now, Amount: -250, Description: "Big Thing", Hash: "h-big"}},
+				},
+				NewMerchants: []models.ExceptionNewMerchant{
+					{Description: "matched merchant", FirstSeen: now, Transaction: models.Transaction{Date: now, Amount: -50, Description: "Whole Foods", Hash: "h-matched"}},
+				},
+				Threshold:     100,
+				NewWindowDays: 30,
+			},
+		},
+		"PinMap": map[string]string{
+			"h-big": "rent",
+		},
+		"MatchedHashToExpenseID": map[string]string{
+			"h-matched": "food",
+		},
+		"ExpenseByID": map[string]models.MajorExpense{
+			"rent": {ID: "rent", Name: "Rent"},
+			"food": {ID: "food", Name: "Food"},
+		},
+		"TotalDeclared": 0.0,
+		"Threshold":     100.0,
+		"WindowDays":    30,
+	})
+	// Sentinel option present in any rendered picker.
+	if !strings.Contains(html, `<option value="__new__"`) {
+		t.Errorf("expected '+ Create new from this' sentinel option, got: %s", html)
+	}
+	// Current pin pre-selected for the unknown-large row pinned to rent.
+	if !strings.Contains(html, `<option value="rent" title="Rent" selected>Rent</option>`) {
+		t.Errorf("expected rent option to be pre-selected for h-big, got: %s", html)
+	}
+	// New-merchant matched row shows the badge instead of a dropdown.
+	if !strings.Contains(html, "Whole Foods") {
+		t.Errorf("expected new-merchant description in output")
+	}
+	// The matched-state branch renders the matched expense name as a link
+	// and does NOT render a pin picker for that row.
+	if !strings.Contains(html, `data-jump-expense="food"`) {
+		t.Errorf("expected matched-state link with data-jump-expense=food, got: %s", html)
+	}
+}
+
 // TestRenderMajorExpenses_MultipleEntriesAllRender guards against the
 // regression where $.PinnedHashes was referenced inside the per-item
 // sub-template (where $ is the Summary, not the page). The template

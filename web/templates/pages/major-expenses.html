@@ -402,6 +402,8 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     });
 
     // Add-panel toggle: [+] icon flips <details> open state and aria.
+    // Opening from this button is a "blank-slate" create — clear any
+    // pin_hash that an earlier "+ Create new from this" might have set.
     document.addEventListener('click', function (e) {
         const toggle = e.target && e.target.closest && e.target.closest('#major-expenses-add-toggle');
         if (!toggle) return;
@@ -412,9 +414,80 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         panel.open = willOpen;
         toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         if (willOpen) {
+            const ph = document.getElementById('major-expenses-add-pin-hash');
+            if (ph) ph.value = '';
+            const hint = document.getElementById('major-expenses-add-pin-hash-hint');
+            if (hint) hint.classList.add('hidden');
             const name = panel.querySelector('input[name="name"]');
             if (name) name.focus();
         }
+    });
+
+    // Prefill the add form from an exception row's data-fill-* attrs.
+    // If pinHash is non-empty, also stage that hash so submit will pin
+    // the originating transaction to the newly created expense.
+    function prefillAddFormFromRow(fillRow, pinHash) {
+        const form = document.getElementById('major-expenses-add-form');
+        if (!form) return;
+        const panel = document.getElementById('major-expenses-add-panel');
+        const toggle = document.getElementById('major-expenses-add-toggle');
+        if (panel && !panel.open) {
+            panel.open = true;
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+        const desc = fillRow.getAttribute('data-fill-name') || '';
+        const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
+        const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
+
+        const nameInput = form.querySelector('input[name="name"]');
+        const kwInput = form.querySelector('input[name="keywords"]');
+        const minInput = form.querySelector('input[name="expected_min"]');
+        const maxInput = form.querySelector('input[name="expected_max"]');
+        if (!nameInput || !kwInput || !minInput || !maxInput) return;
+
+        nameInput.value = '';
+        if (isCheckLike) {
+            kwInput.value = '';
+            if (amount > 0) {
+                const exact = amount.toFixed(2);
+                minInput.value = exact;
+                maxInput.value = exact;
+            }
+        } else {
+            kwInput.value = desc;
+            minInput.value = '';
+            maxInput.value = '';
+        }
+
+        const ph = document.getElementById('major-expenses-add-pin-hash');
+        const hint = document.getElementById('major-expenses-add-pin-hash-hint');
+        if (ph) ph.value = pinHash || '';
+        if (hint) hint.classList.toggle('hidden', !pinHash);
+
+        nameInput.focus();
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // "+ Create new from this…" sentinel in pin pickers. We intercept
+    // before HTMX fires (the form's hx-trigger excludes value=='__new__'
+    // already, but we also reset the select so it doesn't stay stuck on
+    // the sentinel after the user backs out).
+    document.addEventListener('change', function (e) {
+        const select = e.target && e.target.closest && e.target.closest('select.major-expenses-pin-select');
+        if (!select) return;
+        if (select.value !== '__new__') return;
+        const hash = select.getAttribute('data-hash') || '';
+        const row = select.closest('tr[data-fill-name]');
+        // Reset the select back to its previous selection (or placeholder)
+        // so re-selecting "+ Create new" later still fires `change`.
+        select.value = '';
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].defaultSelected) {
+                select.value = select.options[i].value;
+                break;
+            }
+        }
+        if (row) prefillAddFormFromRow(row, hash);
     });
 
     // Chevron toggle: flips data-open on the parent tbody.
@@ -450,46 +523,12 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         }
 
         // Exception-row prefill: open the add panel before filling.
+        // Plain row click does NOT pin — only the "+ Create new from
+        // this…" path does. Keyword-only matching is the historical
+        // behavior and stays the default for clicking the row body.
         const fillRow = e.target.closest('tr[data-fill-name]');
         if (fillRow) {
-            const form = document.getElementById('major-expenses-add-form');
-            if (!form) return;
-            const panel = document.getElementById('major-expenses-add-panel');
-            const toggle = document.getElementById('major-expenses-add-toggle');
-            if (panel && !panel.open) {
-                panel.open = true;
-                if (toggle) toggle.setAttribute('aria-expanded', 'true');
-            }
-            const desc = fillRow.getAttribute('data-fill-name') || '';
-            const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
-            // Check-like descriptions ("Check #1234", "#1580") have no
-            // useful keyword — match by exact amount instead so each
-            // check expense gets its own auto-match rule.
-            const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
-
-            const nameInput = form.querySelector('input[name="name"]');
-            const kwInput = form.querySelector('input[name="keywords"]');
-            const minInput = form.querySelector('input[name="expected_min"]');
-            const maxInput = form.querySelector('input[name="expected_max"]');
-            if (!nameInput || !kwInput || !minInput || !maxInput) return;
-
-            nameInput.value = '';
-
-            if (isCheckLike) {
-                kwInput.value = '';
-                if (amount > 0) {
-                    const exact = amount.toFixed(2);
-                    minInput.value = exact;
-                    maxInput.value = exact;
-                }
-            } else {
-                kwInput.value = desc;
-                minInput.value = '';
-                maxInput.value = '';
-            }
-
-            nameInput.focus();
-            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            prefillAddFormFromRow(fillRow, '');
             return;
         }
     });
@@ -512,12 +551,22 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{define "major-expenses-list-card-content"}}
 <div class="flex items-center justify-between mb-3 gap-3">
     <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Your Major Expenses</h2>
-    <div class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+    <div class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 flex-wrap">
         <span data-total-declared="{{printf "%.2f" .TotalDeclared}}">
             Total: <span class="font-mono">${{printf "%.0f" .TotalDeclared}}</span>
         </span>
         <span class="text-gray-400 dark:text-gray-500">·</span>
         <span class="text-xs text-gray-500 dark:text-gray-400">{{len .Summaries}} declared</span>
+        {{if .UnmatchedCount}}
+        <span class="text-gray-400 dark:text-gray-500">·</span>
+        <a href="#major-expenses-bucket-unknown-large"
+              data-unmatched-total="{{printf "%.2f" .UnmatchedTotal}}"
+              class="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+              title="Click to jump to the Unmatched bucket. Dashboard total = Declared + Unmatched.">
+            Unmatched: <span class="font-mono">${{printf "%.0f" .UnmatchedTotal}}</span>
+            · {{.UnmatchedCount}} txn{{if ne .UnmatchedCount 1}}s{{end}}
+        </a>
+        {{end}}
         <span class="text-gray-400 dark:text-gray-500">·</span>
         <button type="button" id="major-expenses-add-toggle"
             aria-label="Add a major expense" aria-expanded="false"
@@ -536,6 +585,59 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 </details>
 
 {{template "major-expenses-list" .}}
+
+{{if .Deleted}}
+{{template "major-expenses-deleted-panel" .}}
+{{end}}
+{{end}}
+
+{{define "major-expenses-deleted-panel"}}
+<details id="major-expenses-deleted-panel" class="mt-3 border border-gray-200 dark:border-gray-700 rounded">
+    <summary class="cursor-pointer px-3 py-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+        <span class="font-medium text-gray-700 dark:text-gray-200">Deleted</span>
+        <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">({{len .Deleted}})</span>
+        <span class="ml-2 text-xs italic text-gray-500 dark:text-gray-400">restore brings back the definition and pinned transactions</span>
+    </summary>
+    <table class="w-full text-xs mt-1">
+        <thead class="text-gray-500 dark:text-gray-400">
+            <tr>
+                <th class="text-left px-2 py-1">Name</th>
+                <th class="text-left px-2 py-1">Deleted</th>
+                <th class="text-right px-2 py-1">Pins</th>
+                <th class="text-left px-2 py-1">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Deleted}}
+            <tr class="border-t border-gray-100 dark:border-gray-700"
+                data-deleted-expense-id="{{.Expense.ID}}">
+                <td class="px-2 py-1 dark:text-gray-200 font-medium">{{.Expense.Name}}</td>
+                <td class="px-2 py-1 text-gray-500 dark:text-gray-400">{{.DeletedAt.Format "2006-01-02"}}</td>
+                <td class="px-2 py-1 text-right font-mono text-gray-600 dark:text-gray-300">{{len .PinnedHashes}}</td>
+                <td class="px-2 py-1">
+                    <form class="inline" hx-post="/major-expenses/{{.Expense.ID}}/restore"
+                          hx-target="#major-expenses-results" hx-swap="innerHTML"
+                          hx-include="#major-expenses-filter-form">
+                        <button type="submit"
+                                class="text-xs px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">
+                            Restore
+                        </button>
+                    </form>
+                    <form class="inline ml-1" hx-delete="/major-expenses/deleted/{{.Expense.ID}}"
+                          hx-target="#major-expenses-results" hx-swap="innerHTML"
+                          hx-include="#major-expenses-filter-form"
+                          hx-confirm="Permanently discard {{.Expense.Name}}? This cannot be undone.">
+                        <button type="submit"
+                                class="text-xs px-2 py-0.5 rounded border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30">
+                            Discard
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</details>
 {{end}}
 
 {{define "major-expenses-list"}}
@@ -675,11 +777,17 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
 {{define "major-expenses-add-form"}}
 <form id="major-expenses-add-form" hx-post="/major-expenses" hx-target="#major-expenses-results" hx-swap="innerHTML"
-    hx-on::after-request="if(event.detail.successful){ this.reset(); var p=document.getElementById('major-expenses-add-panel'); if(p){ p.open=false; var t=document.getElementById('major-expenses-add-toggle'); if(t){ t.setAttribute('aria-expanded','false'); } } }"
+    hx-on::after-request="if(event.detail.successful){ this.reset(); var ph=document.getElementById('major-expenses-add-pin-hash'); if(ph){ ph.value=''; } var p=document.getElementById('major-expenses-add-panel'); if(p){ p.open=false; var t=document.getElementById('major-expenses-add-toggle'); if(t){ t.setAttribute('aria-expanded','false'); } } }"
     hx-include="#major-expenses-filter-form"
     class="space-y-2 pb-3 mb-3 border-b dark:border-gray-700">
     <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Add a major expense</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
+    {{/* Optional pin: when set by JS via "+ Create new from this", the
+         server pins this transaction to the new expense ID after add. */}}
+    <input type="hidden" name="pin_hash" id="major-expenses-add-pin-hash" value="">
+    <p id="major-expenses-add-pin-hash-hint" class="text-xs italic text-emerald-700 dark:text-emerald-300 hidden">
+        Will also pin the originating transaction to this new expense.
+    </p>
     <label class="block">
         <span class="text-xs text-gray-600 dark:text-gray-300">Name <span class="text-red-500">*</span></span>
         <input type="text" name="name" placeholder="What is this? e.g., Car Payment, Rent, Groceries" required
@@ -739,18 +847,28 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{end}}
 
 {{/* Pin picker — small <select> that posts to /major-expenses/pins.
-     Expects: dict {Hash, Options} where Options is []ExpenseOption with
-     pre-computed Label strings. Renders nothing if no options. */}}
+     Expects: dict {Hash, Options, CurrentPin}.
+       - Hash:       transaction hash being pinned
+       - Options:    []ExpenseOption with pre-computed Label strings
+       - CurrentPin: optional expense ID this hash is already pinned to
+                     (selected by default if set; otherwise placeholder)
+     Renders nothing if no options. The "+ Create new from this…" entry
+     is intercepted client-side: it opens the add form pre-filled and
+     stamps the hash into a hidden pin_hash field so submit creates AND
+     pins atomically. */}}
 {{define "major-expenses-pin-picker"}}
 {{if and .Hash .Options}}
-<form class="inline" hx-post="/major-expenses/pins" hx-target="#major-expenses-results" hx-swap="innerHTML" hx-trigger="change"
+<form class="major-expenses-pin-form inline" hx-post="/major-expenses/pins" hx-target="#major-expenses-results" hx-swap="innerHTML"
+    hx-trigger="change[target.value!='__new__']"
     hx-include="#major-expenses-filter-form">
     <input type="hidden" name="hash" value="{{.Hash}}">
     <select name="expense_id" aria-label="Pin to existing expense"
-        class="text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 min-w-[14rem]"
+        class="major-expenses-pin-select text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 min-w-[14rem]"
+        data-hash="{{.Hash}}"
         onclick="event.stopPropagation()">
-        <option value="" disabled selected>Pin to…</option>
-        {{range .Options}}<option value="{{.ID}}" title="{{.Label}}">{{.Label}}</option>{{end}}
+        <option value="" disabled {{if not .CurrentPin}}selected{{end}}>Pin to…</option>
+        {{range .Options}}<option value="{{.ID}}" title="{{.Label}}"{{if eq $.CurrentPin .ID}} selected{{end}}>{{.Label}}</option>{{end}}
+        <option value="__new__" class="major-expenses-pin-create-option">+ Create new from this…</option>
     </select>
 </form>
 {{end}}
@@ -760,7 +878,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 <div class="flex items-center justify-between mb-2">
     <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Exceptions</h2>
     {{$total := 0}}
-    {{$total = add $total (len .Match.Exceptions.UnknownLarge)}}
+    {{/* Use AllUnmatched (the full list) for the flagged-count, falling
+         back to the threshold-filtered UnknownLarge for fixtures that
+         predate the comprehensive view. */}}
+    {{if .AllUnmatched}}{{$total = add $total (len .AllUnmatched)}}{{else}}{{$total = add $total (len .Match.Exceptions.UnknownLarge)}}{{end}}
     {{$total = add $total (len .Match.Exceptions.Anomalous)}}
     {{$total = add $total (len .Match.Exceptions.NewMerchants)}}
     <span class="text-xs text-gray-500 dark:text-gray-400">{{$total}} flagged</span>
@@ -788,43 +909,94 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 </div>
 {{end}}
 
+{{/* AllUnmatched is the comprehensive list (all sizes), sorted desc by
+     amount in the handler. Test fixtures that predate this key fall
+     back to the original UnknownLarge subset. */}}
+{{$unmatchedRows := .AllUnmatched}}
+{{$unmatchedFromExceptions := false}}
+{{if not $unmatchedRows}}
+    {{$unmatchedFromExceptions = true}}
+{{end}}
 <details id="major-expenses-bucket-unknown-large" class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
     <summary class="cursor-pointer px-3 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded">
         <span class="font-medium text-red-700 dark:text-red-300">
-            Unmatched over ${{printf "%.0f" .Threshold}}
+            Unmatched
         </span>
-        <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len .Match.Exceptions.UnknownLarge}})</span>
+        {{if $unmatchedFromExceptions}}
+            <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len .Match.Exceptions.UnknownLarge}} over ${{printf "%.0f" .Threshold}})</span>
+        {{else}}
+            <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len $unmatchedRows}})</span>
+            <span class="ml-1 text-xs italic text-red-500 dark:text-red-400">sorted by amount; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
+        {{end}}
     </summary>
-    {{if .Match.Exceptions.UnknownLarge}}
-    <table class="w-full text-xs mt-1">
-        <thead class="text-gray-500 dark:text-gray-400">
-            <tr>
-                <th class="text-left px-2 py-1">Date</th>
-                <th class="text-left px-2 py-1">Description</th>
-                <th class="text-right px-2 py-1">Amount</th>
-                {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Match.Exceptions.UnknownLarge}}
-            {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
-            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-                data-hash="{{.Transaction.Hash}}"
-                data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
-                data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
-                title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
-                <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
-                <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
-                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
-                {{if $.Expenses}}
-                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions)}}</td>
+    {{if $unmatchedFromExceptions}}
+        {{/* Legacy render path for fixtures without AllUnmatched. */}}
+        {{if .Match.Exceptions.UnknownLarge}}
+        <table class="w-full text-xs mt-1">
+            <thead class="text-gray-500 dark:text-gray-400">
+                <tr>
+                    <th class="text-left px-2 py-1">Date</th>
+                    <th class="text-left px-2 py-1">Description</th>
+                    <th class="text-right px-2 py-1">Amount</th>
+                    {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Match.Exceptions.UnknownLarge}}
+                {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
+                {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Transaction.Hash}}{{end}}
+                <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    data-hash="{{.Transaction.Hash}}"
+                    data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
+                    data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
+                    title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
+                    <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
+                    <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                    <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                    {{if $.Expenses}}
+                    <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
+                    {{end}}
+                </tr>
                 {{end}}
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+            </tbody>
+        </table>
+        {{else}}
+        <p class="text-xs italic text-gray-500 dark:text-gray-400 px-3 py-2">None.</p>
+        {{end}}
     {{else}}
-    <p class="text-xs italic text-gray-500 dark:text-gray-400 px-3 py-2">None.</p>
+        {{if $unmatchedRows}}
+        <table class="w-full text-xs mt-1">
+            <thead class="text-gray-500 dark:text-gray-400">
+                <tr>
+                    <th class="text-left px-2 py-1">Date</th>
+                    <th class="text-left px-2 py-1">Description</th>
+                    <th class="text-right px-2 py-1">Amount</th>
+                    {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                </tr>
+            </thead>
+            <tbody>
+                {{range $unmatchedRows}}
+                {{$label := .Label}}{{$rawText := or .DisplayName .Description}}
+                {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Hash}}{{end}}
+                {{$amt := .AbsAmount}}{{$dim := lt $amt $.Threshold}}
+                <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700{{if $dim}} opacity-70{{end}}"
+                    data-hash="{{.Hash}}"
+                    data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" $amt}}"
+                    data-search="{{$label}} ${{printf "%.2f" $amt}} {{.Date.Format "2006-01-02"}}"
+                    title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
+                    <td class="px-2 py-1 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
+                    <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
+                    <td class="px-2 py-1 text-right font-mono {{if $dim}}text-gray-500 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">${{printf "%.2f" $amt}}</td>
+                    {{if $.Expenses}}
+                    <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
+                    {{end}}
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="text-xs italic text-gray-500 dark:text-gray-400 px-3 py-2">None.</p>
+        {{end}}
     {{end}}
 </details>
 
@@ -868,8 +1040,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     {{else if gt .ExpectedMin 0.0}}≥ ${{printf "%.0f" .ExpectedMin}}
                     {{else if gt .ExpectedMax 0.0}}≤ ${{printf "%.0f" .ExpectedMax}}{{end}}
                 </td>
+                {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Transaction.Hash}}{{end}}
                 {{if $.Expenses}}
-                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions)}}</td>
+                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
                 {{end}}
             </tr>
             {{end}}
@@ -900,16 +1073,33 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <tbody>
             {{range .Match.Exceptions.NewMerchants}}
             {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
-            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+            {{$matchedID := ""}}{{if $.MatchedHashToExpenseID}}{{$matchedID = index $.MatchedHashToExpenseID .Transaction.Hash}}{{end}}
+            {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Transaction.Hash}}{{end}}
+            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700{{if $matchedID}} opacity-75{{end}}"
                 data-hash="{{.Transaction.Hash}}"
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
-                title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
+                title="{{if $matchedID}}Already grouped under a major expense{{else}}Click to pre-fill the add form, or use the dropdown to pin to an existing expense{{end}}">
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200">{{$label}}</td>
                 <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 {{if $.Expenses}}
-                <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions)}}</td>
+                <td class="px-2 py-1">
+                    {{if $matchedID}}
+                        {{$matchedName := $matchedID}}{{if $.ExpenseByID}}{{with index $.ExpenseByID $matchedID}}{{$matchedName = .Name}}{{end}}{{end}}
+                        <span class="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
+                              title="This transaction is already grouped under {{$matchedName}}{{if $pinnedID}} (pinned){{end}}">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            <a href="#major-expense-item-{{$matchedID}}" data-jump-expense="{{$matchedID}}"
+                               class="hover:underline" onclick="event.stopPropagation()">{{$matchedName}}</a>
+                            {{if $pinnedID}}<span class="text-emerald-600 dark:text-emerald-400" aria-label="pinned" title="Pinned">📌</span>{{end}}
+                        </span>
+                    {{else}}
+                        {{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}
+                    {{end}}
+                </td>
                 {{end}}
             </tr>
             {{end}}

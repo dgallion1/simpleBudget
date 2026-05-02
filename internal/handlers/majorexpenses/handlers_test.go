@@ -532,30 +532,184 @@ func TestHandleUnpin_Success(t *testing.T) {
 	}
 }
 
-func TestHandleDelete_PrunesOrphanPins(t *testing.T) {
+func TestHandleDelete_ArchivesExpenseAndPins(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	list, _ := dl.AddMajorExpense(makeExpense("doomed", "Doomed", nil, 0, 0))
 	id := list[0].ID
-	dl.SetTransactionPin("orphan-hash", id)
-
-	// Confirm pin exists before delete
-	pins, _ := dl.LoadTransactionPins()
-	if pins["orphan-hash"] != id {
-		t.Fatalf("setup: expected pin, got %+v", pins)
+	if err := dl.SetTransactionPin("orphan-hash", id); err != nil {
+		t.Fatalf("seed pin: %v", err)
 	}
 
 	req := httptest.NewRequest("DELETE", "/major-expenses/"+id, nil)
 	w := httptest.NewRecorder()
 	newRouter().ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("status=%d", w.Code)
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 
-	pins, _ = dl.LoadTransactionPins()
+	// Active pin map no longer contains the hash.
+	pins, _ := dl.LoadTransactionPins()
 	if _, exists := pins["orphan-hash"]; exists {
-		t.Errorf("expected orphan pin to be pruned, still present: %+v", pins)
+		t.Errorf("expected pin to be detached from active map, still present: %+v", pins)
+	}
+
+	// Archive contains the definition and the pin hash.
+	deleted, err := dl.LoadDeletedMajorExpenses()
+	if err != nil {
+		t.Fatalf("load deleted: %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].Expense.ID != id {
+		t.Fatalf("expected 1 archived entry for %s, got %+v", id, deleted)
+	}
+	if len(deleted[0].PinnedHashes) != 1 || deleted[0].PinnedHashes[0] != "orphan-hash" {
+		t.Errorf("expected orphan-hash in archive, got %+v", deleted[0].PinnedHashes)
+	}
+}
+
+func TestHandleRestore_ReturnsExpenseAndPinsToActive(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	list, _ := dl.AddMajorExpense(makeExpense("back", "Back", []string{"x"}, 10, 20))
+	id := list[0].ID
+	dl.SetTransactionPin("h1", id)
+	dl.SetTransactionPin("h2", id)
+
+	if err := dl.ArchiveMajorExpense(id); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/major-expenses/"+id+"/restore", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	active, _ := dl.LoadMajorExpenses()
+	if len(active) != 1 || active[0].ID != id {
+		t.Errorf("expected restored, got %+v", active)
+	}
+	pins, _ := dl.LoadTransactionPins()
+	if pins["h1"] != id || pins["h2"] != id {
+		t.Errorf("pins not restored: %+v", pins)
+	}
+	deleted, _ := dl.LoadDeletedMajorExpenses()
+	if len(deleted) != 0 {
+		t.Errorf("archive should be empty, got %+v", deleted)
+	}
+}
+
+func TestHandleDiscard_RemovesFromArchive(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	list, _ := dl.AddMajorExpense(makeExpense("trash", "T", nil, 0, 0))
+	id := list[0].ID
+	if err := dl.ArchiveMajorExpense(id); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	req := httptest.NewRequest("DELETE", "/major-expenses/deleted/"+id, nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	deleted, _ := dl.LoadDeletedMajorExpenses()
+	if len(deleted) != 0 {
+		t.Errorf("archive should be empty after discard, got %+v", deleted)
+	}
+}
+
+func TestHandleAdd_WithPinHash_PinsImmediately(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{}
+	form.Set("name", "AdHoc")
+	form.Set("keywords", "this-keyword-wont-match-any-csv-row")
+	form.Set("pin_hash", "specific-hash-9876")
+
+	req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	expenses, _ := dl.LoadMajorExpenses()
+	if len(expenses) != 1 {
+		t.Fatalf("expected 1 expense, got %+v", expenses)
+	}
+	pins, _ := dl.LoadTransactionPins()
+	if pins["specific-hash-9876"] != expenses[0].ID {
+		t.Errorf("expected hash pinned to new expense, got %+v", pins)
+	}
+}
+
+func TestBuildPageData_UnmatchedTotalAndCount(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// setupTestEnv seeds: 2x landlord (-1700, -3500), 1x random big (-450),
+	// 1x tiny coffee (-5). With NO declared expenses, every outflow goes
+	// to Unmatched. Total should sum the abs amounts.
+	req := httptest.NewRequest("GET", "/major-expenses", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	body := readJSON(t, w.Result())
+	count, ok := body["UnmatchedCount"].(float64)
+	if !ok {
+		t.Fatalf("UnmatchedCount missing/not a number: %+v", body["UnmatchedCount"])
+	}
+	if int(count) != 4 {
+		t.Errorf("UnmatchedCount = %v, want 4", count)
+	}
+	total, ok := body["UnmatchedTotal"].(float64)
+	if !ok {
+		t.Fatalf("UnmatchedTotal missing/not a number")
+	}
+	want := 1700.0 + 3500.0 + 450.0 + 5.0
+	if total != want {
+		t.Errorf("UnmatchedTotal = %v, want %v", total, want)
+	}
+}
+
+func TestBuildPageData_MatchedHashToExpenseID_Inverted(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Declare Rent matching the seeded landlord rows.
+	if _, err := dl.AddMajorExpense(makeExpense("rent", "Rent", []string{"landlord"}, 1000, 5000)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/major-expenses", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+	body := readJSON(t, w.Result())
+	matched, ok := body["MatchedHashToExpenseID"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("MatchedHashToExpenseID missing or wrong type: %+v", body["MatchedHashToExpenseID"])
+	}
+	if len(matched) == 0 {
+		t.Errorf("expected at least one matched hash, got empty map")
+	}
+	for _, v := range matched {
+		if id, _ := v.(string); id != "rent" {
+			t.Errorf("expected all matched hashes to point to 'rent', got %v", v)
+		}
 	}
 }
 

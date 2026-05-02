@@ -23,6 +23,22 @@ type MajorExpenseStore struct {
 	Expenses []MajorExpense `json:"expenses"`
 }
 
+// DeletedMajorExpense is an archived MajorExpense plus the pin hashes
+// that pointed at it at the moment of deletion. Restoring the expense
+// reinserts it into the active list and re-applies the captured pins
+// (skipping any hash that has since been pinned to a different expense).
+type DeletedMajorExpense struct {
+	Expense      MajorExpense `json:"expense"`
+	DeletedAt    time.Time    `json:"deleted_at"`
+	PinnedHashes []string     `json:"pinned_hashes"`
+}
+
+// DeletedMajorExpenseStore is the persisted shape of
+// deleted_major_expenses.json.
+type DeletedMajorExpenseStore struct {
+	Deleted []DeletedMajorExpense `json:"deleted"`
+}
+
 // ExceptionUnknownLargeTxn flags a transaction that does not match any
 // declared major expense and exceeds the user's notable-amount threshold.
 type ExceptionUnknownLargeTxn struct {

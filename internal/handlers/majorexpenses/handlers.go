@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -45,6 +44,8 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/major-expenses", handleAdd)
 	r.Put("/major-expenses/{id}", handleUpdate)
 	r.Delete("/major-expenses/{id}", handleDelete)
+	r.Post("/major-expenses/{id}/restore", handleRestore)
+	r.Delete("/major-expenses/deleted/{id}", handleDiscard)
 	r.Get("/major-expenses/exceptions", handleExceptions)
 	r.Post("/major-expenses/pins", handlePin)
 	r.Post("/major-expenses/pins/bulk", handleBulkPin)
@@ -87,6 +88,16 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to save: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Optional: pin a specific transaction to the new expense in the
+	// same operation. Used by the "+ Create new from this" affordance on
+	// exception rows so the originating transaction is guaranteed to be
+	// matched, even if its description wouldn't have been picked up by
+	// the keywords alone. Pin failure does not roll back the create.
+	if pinHash := strings.TrimSpace(r.FormValue("pin_hash")); pinHash != "" {
+		if err := loader.SetTransactionPin(pinHash, me.ID); err != nil {
+			fmt.Fprintf(w, "<!-- pin_hash %q ignored: %v -->", pinHash, err)
+		}
+	}
 	renderResults(w, r)
 }
 
@@ -118,19 +129,43 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Missing id", http.StatusBadRequest)
 		return
 	}
-	remaining, err := loader.DeleteMajorExpense(id)
-	if err != nil {
+	// Soft-delete: archive the definition and capture pinned hashes so
+	// the user can Restore later. ArchiveMajorExpense removes the entry
+	// from the active list and detaches its pins.
+	if err := loader.ArchiveMajorExpense(id); err != nil {
 		renderError(w, "Failed to delete: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Drop any pins that pointed at the deleted expense so transactions
-	// fall back to keyword/amount matching instead of disappearing.
-	validIDs := make(map[string]bool, len(remaining))
-	for _, e := range remaining {
-		validIDs[e.ID] = true
+	renderResults(w, r)
+}
+
+// handleRestore moves a soft-deleted expense back into the active list,
+// re-applying captured pins for transactions that aren't currently
+// pinned to a different expense.
+func handleRestore(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		renderError(w, "Missing id", http.StatusBadRequest)
+		return
 	}
-	if err := loader.PrunePinsForMissingExpenses(validIDs); err != nil {
-		log.Printf("warning: prune pins after delete: %v", err)
+	if err := loader.RestoreMajorExpense(id); err != nil {
+		renderError(w, "Failed to restore: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderResults(w, r)
+}
+
+// handleDiscard permanently removes an archived expense from the
+// soft-delete archive. There is no undo.
+func handleDiscard(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		renderError(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+	if err := loader.DiscardDeletedMajorExpense(id); err != nil {
+		renderError(w, "Failed to discard: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 	renderResults(w, r)
 }
@@ -357,21 +392,75 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 		totalDeclared += s.Total
 	}
 
+	// Surface the silent unmatched gap. match.Unmatched contains every
+	// in-window outflow that didn't match a keyword/amount/pin — its sum
+	// is what makes Dashboard's total exceed Major Expenses' "declared"
+	// total when the over-$100 exception bucket is empty.
+	var unmatchedTotal float64
+	for _, t := range match.Unmatched {
+		unmatchedTotal += t.AbsAmount()
+	}
+
+	// Pre-sort the full unmatched list by abs amount desc so the bucket
+	// renders biggest-first. Over-threshold items naturally float to the
+	// top (they used to be the only visible rows); sub-threshold items
+	// follow so the user can see — and pin — the previously-hidden long
+	// tail of small transactions.
+	allUnmatched := append([]models.Transaction(nil), match.Unmatched...)
+	sort.Slice(allUnmatched, func(i, j int) bool {
+		return allUnmatched[i].AbsAmount() > allUnmatched[j].AbsAmount()
+	})
+
+	// Inverted maps for O(1) per-row lookups in the template:
+	//   matchedHashToExpenseID: which expense a transaction is matched to
+	//   expenseByID:            full definition for label rendering
+	matchedHashToExpenseID := make(map[string]string)
+	for expenseID, group := range match.Groups {
+		for _, t := range group {
+			if t.Hash != "" {
+				matchedHashToExpenseID[t.Hash] = expenseID
+			}
+		}
+	}
+	expenseByID := make(map[string]models.MajorExpense, len(expenses))
+	for _, e := range expenses {
+		expenseByID[e.ID] = e
+	}
+
+	deleted, err := loader.LoadDeletedMajorExpenses()
+	if err != nil {
+		return nil, fmt.Errorf("load deleted major expenses: %w", err)
+	}
+	if deleted == nil {
+		deleted = []models.DeletedMajorExpense{}
+	}
+	// Most-recently-deleted first so the panel reads top-down by recency.
+	sort.Slice(deleted, func(i, j int) bool {
+		return deleted[i].DeletedAt.After(deleted[j].DeletedAt)
+	})
+
 	return map[string]interface{}{
-		"Title":          "Major Expenses",
-		"ActiveTab":      "major-expenses",
-		"Expenses":       expenses,
-		"ExpenseOptions": buildExpenseOptions(expenses),
-		"Summaries":      summaries,
-		"TotalDeclared":  totalDeclared,
-		"Match":          match,
-		"PinnedHashes":   match.PinnedHashes,
-		"Threshold":      defaultUnknownThreshold,
-		"WindowDays":     defaultNewWindowDays,
-		"StartDate":      formatDateInputValue(startDate),
-		"EndDate":        formatDateInputValue(endDate),
-		"MinDate":        formatDateInputValue(minDate),
-		"MaxDate":        formatDateInputValue(maxDate),
+		"Title":                  "Major Expenses",
+		"ActiveTab":              "major-expenses",
+		"Expenses":               expenses,
+		"ExpenseByID":            expenseByID,
+		"ExpenseOptions":         buildExpenseOptions(expenses),
+		"Summaries":              summaries,
+		"TotalDeclared":          totalDeclared,
+		"UnmatchedTotal":         unmatchedTotal,
+		"UnmatchedCount":         len(match.Unmatched),
+		"AllUnmatched":           allUnmatched,
+		"Match":                  match,
+		"MatchedHashToExpenseID": matchedHashToExpenseID,
+		"PinnedHashes":           match.PinnedHashes,
+		"PinMap":                 pins,
+		"Deleted":                deleted,
+		"Threshold":              defaultUnknownThreshold,
+		"WindowDays":             defaultNewWindowDays,
+		"StartDate":              formatDateInputValue(startDate),
+		"EndDate":                formatDateInputValue(endDate),
+		"MinDate":                formatDateInputValue(minDate),
+		"MaxDate":                formatDateInputValue(maxDate),
 	}, nil
 }
 

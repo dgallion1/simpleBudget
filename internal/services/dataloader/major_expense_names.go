@@ -42,6 +42,13 @@ func (dl *DataLoader) applyMajorExpenseNames(transactions []models.Transaction) 
 
 	for i := range transactions {
 		t := transactions[i]
+		// Major Expenses is an outflow concept. Skip income so a paycheck
+		// or refund whose description happens to contain an expense
+		// keyword (e.g. "BOFA HOMELOANS REFUND") doesn't get stamped and
+		// then surface as that expense via Transaction.Label().
+		if t.TransactionType == models.Income {
+			continue
+		}
 		// Pin wins when it points to an existing expense.
 		if pins != nil && t.Hash != "" {
 			if id, ok := pins[t.Hash]; ok && validIDs[id] {

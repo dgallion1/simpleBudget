@@ -281,6 +281,12 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
 		for i := range transactions {
 			transactions[i].Amount = -transactions[i].Amount
+			// Re-key on the post-flip amount so dedup, pins, and
+			// enrichment all match the value the app actually uses.
+			// Without this, the same transaction from a CC-convention
+			// source and a bank-convention source hashes differently
+			// and survives deduplicateTransactions.
+			transactions[i].Hash = transactions[i].ComputeHash()
 		}
 	}
 

@@ -821,7 +821,10 @@ func bucketMajorExpenses(ts *models.TransactionSet) (buckets []majorExpenseBucke
 		}
 		var total float64
 		for _, t := range txns {
-			total += t.AbsAmount()
+			// Net spend: refunds (positive Outflow amounts per classifier
+			// convention) reduce the bucket instead of inflating it via
+			// AbsAmount. Mirrors the Major Expenses page.
+			total += -t.Amount
 		}
 		if total > 0 {
 			buckets = append(buckets, majorExpenseBucket{name: name, txns: txns, total: total})
@@ -847,7 +850,8 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 
 	var unmatchedTotal float64
 	for _, t := range unmatchedTxns {
-		unmatchedTotal += t.AbsAmount()
+		// Net spend, consistent with bucketMajorExpenses.
+		unmatchedTotal += -t.Amount
 	}
 
 	type wedge struct {

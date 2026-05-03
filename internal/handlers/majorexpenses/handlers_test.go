@@ -149,6 +149,55 @@ func TestBuildPageData_IncomeNotIncludedInGroups(t *testing.T) {
 	}
 }
 
+func TestBuildPageData_PositiveCreditReducesGroupTotal(t *testing.T) {
+	// A positive-amount row with no income keyword in its description
+	// is classified as Outflow with positive sign by the classifier
+	// (refund/credit). It still keyword-matches a Major Expense, so it
+	// joins that group. The group total should count it as a *reduction*
+	// of net spend, not inflate spend via AbsAmount().
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	csvDir := t.TempDir()
+	csvPath := filepath.Join(csvDir, "test.csv")
+	day := time.Now().AddDate(0, -1, 0).Format("2006-01-02")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		day + ",TARGET PURCHASE,-50,Outflow,Shopping\n" +
+		day + ",TARGET MERCH ADJ,25,Outflow,Shopping\n"
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	store, _ := storage.New(csvDir)
+	dl2 := dataloader.New(csvDir, store)
+	Initialize(dl2, nil)
+	defer Initialize(dl, nil)
+
+	if _, err := dl2.AddMajorExpense(makeExpense("target", "Target", []string{"target"}, 0, 0)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	data, err := buildPageData(httptest.NewRequest("GET", "/major-expenses", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	body, _ := json.Marshal(data["Summaries"])
+	var raw []map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("decode summaries: %v\n%s", err, body)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("expected 1 summary, got %d: %s", len(raw), body)
+	}
+	count := int(raw[0]["Count"].(float64))
+	total := raw[0]["Total"].(float64)
+	if count != 2 {
+		t.Errorf("expected Count=2 (purchase + refund grouped), got %d", count)
+	}
+	if total != 25 {
+		t.Errorf("expected Total=25 (purchase 50 minus refund 25), got %v — refund inflating instead of reducing", total)
+	}
+}
+
 func TestHandleAdd_AmountOnlyAccepted(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()

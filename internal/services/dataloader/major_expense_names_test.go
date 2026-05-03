@@ -44,6 +44,34 @@ func TestApplyMajorExpenseNames_KeywordMatch(t *testing.T) {
 	}
 }
 
+func TestApplyMajorExpenseNames_SkipsIncome(t *testing.T) {
+	// Income with a description that happens to contain a Major Expense
+	// keyword (e.g. "TARGET REFUND", "BOFA HOMELOANS REFUND") must not
+	// be stamped — Major Expenses is an outflow concept, and Label()
+	// would otherwise display the income row as the expense name.
+	defs := models.MajorExpenseStore{Expenses: []models.MajorExpense{
+		{ID: "me1", Name: "Mortgage", Keywords: []string{"homeloans"}},
+	}}
+	defsJSON, _ := json.Marshal(defs)
+
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"major_expenses.json": string(defsJSON),
+	})
+	defer cleanup()
+
+	txns := []models.Transaction{
+		{Hash: "h1", Description: "BOFA HOMELOANS REFUND", Amount: 1500, TransactionType: models.Income},
+		{Hash: "h2", Description: "BOFA HOMELOANS 0123", Amount: -1500, TransactionType: models.Outflow},
+	}
+	got := loader.applyMajorExpenseNames(txns)
+	if got[0].MajorExpenseName != "" {
+		t.Errorf("income row should not be stamped; got %q", got[0].MajorExpenseName)
+	}
+	if got[1].MajorExpenseName != "Mortgage" {
+		t.Errorf("outflow row should still be stamped 'Mortgage'; got %q", got[1].MajorExpenseName)
+	}
+}
+
 func TestApplyMajorExpenseNames_PinOverridesMatching(t *testing.T) {
 	defs := models.MajorExpenseStore{Expenses: []models.MajorExpense{
 		{ID: "me-mortgage", Name: "Mortgage", Keywords: []string{"homeloans"}},

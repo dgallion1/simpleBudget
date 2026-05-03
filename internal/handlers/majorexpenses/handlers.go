@@ -368,7 +368,11 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 		var total float64
 		txns := append([]models.Transaction(nil), match.Groups[e.ID]...)
 		for _, t := range txns {
-			total += t.AbsAmount()
+			// Outflows: purchases are negative, refunds/credits stay
+			// positive (classifier convention). Net spend = -sum(amount)
+			// so refunds reduce the group total instead of inflating it
+			// via AbsAmount.
+			total += -t.Amount
 		}
 		sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
 
@@ -404,7 +408,10 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 	// total when the over-$100 exception bucket is empty.
 	var unmatchedTotal float64
 	for _, t := range match.Unmatched {
-		unmatchedTotal += t.AbsAmount()
+		// Net spend, consistent with per-group totals: refunds (positive
+		// Outflow amounts in the classifier convention) reduce the gap
+		// instead of inflating it via AbsAmount.
+		unmatchedTotal += -t.Amount
 	}
 
 	// Pre-sort the full unmatched list by abs amount desc so the bucket

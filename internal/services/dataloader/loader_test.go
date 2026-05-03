@@ -435,6 +435,57 @@ func TestLoadCSVFile_FlipsCreditCardSignConvention(t *testing.T) {
 	}
 }
 
+// TestLoadCSVFile_HashReflectsPostFlipAmount verifies that when a CSV is
+// auto-flipped from credit-card to bank sign convention, the per-row Hash
+// is recomputed against the *post-flip* amount. Otherwise dedup, pins,
+// and enrichment all key off a stale value that doesn't match what the
+// app actually shows. The bug also breaks dedup of the same transaction
+// when one source uses CC convention and another uses bank convention.
+func TestLoadCSVFile_HashReflectsPostFlipAmount(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dataloader_hash_test")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// CC-convention CSV: positive = charge, no bank-only signals. The
+	// loader will flip every amount to negative; hashes must reflect
+	// the flipped amount.
+	csv := `Date,Description,Category,Amount
+2025-02-01,Wegmans,Groceries,50.00
+2025-02-02,Amazon,Shopping,30.00
+2025-02-03,Walgreens,Pharmacy,15.00
+2025-02-04,Netflix,Television,20.00
+2025-02-05,Restaurant,Restaurants,40.00
+2025-02-06,Spotify,Music,10.00
+2025-02-07,Amazon,Shopping,25.00
+2025-02-08,Wegmans,Groceries,60.00
+2025-02-09,Amazon,Shopping,12.00
+2025-02-10,Coffee,Food,5.00`
+
+	csvPath := filepath.Join(tmpDir, "test.csv")
+	if err := os.WriteFile(csvPath, []byte(csv), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	store, _ := storage.New(tmpDir)
+	loader := New(tmpDir, store)
+
+	txns, err := loader.loadCSVFile(csvPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(txns) == 0 {
+		t.Fatalf("no transactions loaded")
+	}
+	for i := range txns {
+		want := txns[i].ComputeHash()
+		if txns[i].Hash != want {
+			t.Errorf("txn[%d] (%s, %.2f): Hash=%s, want %s — hash not recomputed after sign flip",
+				i, txns[i].Description, txns[i].Amount, txns[i].Hash, want)
+		}
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))

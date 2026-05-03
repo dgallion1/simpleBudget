@@ -104,7 +104,7 @@ func TestDashboard(t *testing.T) {
 			"Dashboard",
 			"Total Income",
 			"Total Expenses",
-			"Net Savings",
+			"Monthly Living Expenses",
 		)
 }
 

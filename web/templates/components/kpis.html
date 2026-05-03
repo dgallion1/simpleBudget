@@ -8,8 +8,7 @@
                 <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney .Metrics.TotalIncome}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p
-                    class="text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
                     {{formatPercent .PeriodComparison.IncomeChange}}%
                 </p>
                 {{end}}
@@ -23,8 +22,7 @@
                 </svg>
             </div>
         </div>
-        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#22c55e">
-        </div>
+        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#22c55e"></div>
     </div>
 
     <!-- Total Expenses -->
@@ -35,8 +33,7 @@
                 <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p
-                    class="text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
                     {{formatPercent .PeriodComparison.ExpensesChange}}%
                 </p>
                 {{end}}
@@ -50,64 +47,75 @@
                 </svg>
             </div>
         </div>
-        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}"
-            data-color="#ef4444"></div>
+        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#ef4444"></div>
     </div>
 
-    <!-- Net Savings -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('savings')">
+    <!-- Monthly Living Expenses -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Net Savings</p>
-                <p class="text-2xl font-bold {{colorClass .Metrics.NetSavings}}">{{formatMoney .Metrics.NetSavings}}</p>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Living Expenses</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.ActualMonthly}}</p>
+                {{if .Metrics.HasBudgetTarget}}
+                <p class="text-sm {{if gt .Metrics.PerMonthDelta 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                    Target {{formatMoney .Metrics.BudgetTarget}} · {{formatMoney (abs .Metrics.PerMonthDelta)}}/mo {{if gt .Metrics.PerMonthDelta 0.0}}over{{else}}under{{end}}
+                </p>
+                {{else}}
+                <p class="text-sm text-gray-400 dark:text-gray-500 italic">No budget set</p>
+                {{end}}
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p
-                    class="text-sm {{if ge .PeriodComparison.SavingsChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
-                    {{formatPercent .PeriodComparison.SavingsChange}}%
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    {{if ge .PeriodComparison.ActualMonthlyChange 0.0}}+{{else}}-{{end}}{{formatMoney (abs .PeriodComparison.ActualMonthlyChange)}}/mo vs prior
                 </p>
                 {{end}}
                 {{end}}
             </div>
-            <div class="p-3 {{if isNonNegative .Metrics.NetSavings}}bg-green-100 dark:bg-green-900/50{{else}}bg-red-100 dark:bg-red-900/50{{end}} rounded-full">
-                <svg class="w-6 h-6 {{if isNonNegative .Metrics.NetSavings}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}"
-                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
+                <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
-                    </path>
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
                 </svg>
             </div>
         </div>
-        <div id="sparkline-savings" class="h-10 mt-2" data-values="{{toJSON .Metrics.SavingsTrend}}"
-            data-color="#6366f1"></div>
+        <div id="sparkline-monthly" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#9ca3af"></div>
     </div>
 
-    <!-- Savings Rate -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('savings-rate')">
+    <!-- Budget (cumulative variance for the period) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Savings Rate</p>
-                <p
-                    class="text-2xl font-bold {{if ge .Metrics.SavingsRate 20.0}}text-green-600 dark:text-green-400{{else if ge .Metrics.SavingsRate 10.0}}text-yellow-600 dark:text-yellow-400{{else}}text-red-600 dark:text-red-400{{end}}">
-                    {{printf "%.1f" .Metrics.SavingsRate}}%
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Budget</p>
+                {{if .Metrics.HasBudgetTarget}}
+                {{if gt .Metrics.CumulativeDelta 1.0}}
+                <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney (abs .Metrics.CumulativeDelta)}} over</p>
+                {{else if lt .Metrics.CumulativeDelta -1.0}}
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney (abs .Metrics.CumulativeDelta)}} under</p>
+                {{else}}
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
+                {{end}}
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{printf "%.1f" .Metrics.MonthsInRange}} mo @ {{if ge .Metrics.PerMonthDelta 0.0}}+{{else}}-{{end}}{{formatMoney (abs .Metrics.PerMonthDelta)}}/mo
                 </p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p
-                    class="text-sm {{if ge .PeriodComparison.SavingsRateChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
-                    {{printf "%+.1f" .PeriodComparison.SavingsRateChange}}pp
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    {{if ge .PeriodComparison.CumulativeDeltaChange 0.0}}+{{else}}-{{end}}{{formatMoney (abs .PeriodComparison.CumulativeDeltaChange)}} vs prior
                 </p>
                 {{end}}
                 {{end}}
+                {{else}}
+                <p class="text-2xl font-bold text-gray-400 dark:text-gray-500 italic">Not set</p>
+                <a href="/whatif" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-block">Set a budget in What-If →</a>
+                {{end}}
             </div>
-            <div class="p-3 bg-indigo-100 dark:bg-indigo-900/50 rounded-full">
-                <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 {{if and .Metrics.HasBudgetTarget (gt .Metrics.CumulativeDelta 0.0)}}bg-red-100 dark:bg-red-900/50{{else if .Metrics.HasBudgetTarget}}bg-green-100 dark:bg-green-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">
+                <svg class="w-6 h-6 {{if and .Metrics.HasBudgetTarget (gt .Metrics.CumulativeDelta 0.0)}}text-red-600 dark:text-red-400{{else if .Metrics.HasBudgetTarget}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                 </svg>
             </div>
         </div>
-        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">{{.Metrics.TransactionCount}} transactions</p>
     </div>
 </div>
 {{end}}

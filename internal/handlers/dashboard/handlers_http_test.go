@@ -14,6 +14,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/testutil"
@@ -1386,6 +1387,82 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ---------- KPI card content assertions ----------
+
+func TestDashboardKPIs_RendersBudgetCards_NoTarget(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, [][]string{
+		{"2025-01-15", "Salary", "5000", "Payroll"},
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+	})
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpis?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Monthly Living Expenses") {
+		t.Errorf("response missing 'Monthly Living Expenses' card; body:\n%s", body)
+	}
+	if !strings.Contains(body, "Budget") {
+		t.Errorf("response missing 'Budget' card; body:\n%s", body)
+	}
+	if strings.Contains(body, "Savings Rate") {
+		t.Errorf("response still contains 'Savings Rate' card (should be removed); body:\n%s", body)
+	}
+	// No retirement manager wired (setupTestEnvWithRenderer passes nil) → fallback link
+	if !strings.Contains(body, "Set a budget in What-If") {
+		t.Errorf("response missing fallback link 'Set a budget in What-If'; body:\n%s", body)
+	}
+}
+
+func TestDashboardKPIs_RendersBudgetCards_WithTarget(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-05", "Rent", "-3000", "Housing"},
+	}
+	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	defer cleanup()
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	rm := retirement.NewSettingsManager(tmpDir, store)
+	// Write the settings file directly so the manager loads our target.
+	settingsPath := filepath.Join(tmpDir, "whatif.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 1000}`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	Initialize(dl, rend, rm)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	rec := doGet(t, r, "/dashboard/kpis?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	if strings.Contains(body, "Set a budget in What-If") {
+		t.Errorf("budget loaded but fallback link still rendered; body:\n%s", body)
+	}
+	if !strings.Contains(body, "over") {
+		t.Errorf("expected Budget card to show 'over'; body:\n%s", body)
+	}
+	if !strings.Contains(body, "Target") {
+		t.Errorf("expected Monthly Living Expenses card to show 'Target'; body:\n%s", body)
+	}
 }
 
 // suppress unused import warnings

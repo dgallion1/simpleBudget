@@ -266,6 +266,90 @@ func TestHasManualSocialSecurityIncomeSource(t *testing.T) {
 	})
 }
 
+func TestAdjustedSpousalBenefit(t *testing.T) {
+	tests := []struct {
+		name       string
+		spousalPIA float64
+		spouseFRA  int
+		claimAge   int
+		wantMin    float64
+		wantMax    float64
+	}{
+		{
+			// SSA rule: 25/36 of 1% per month for first 36 months early, then
+			// 5/12 of 1%. At FRA 67 / claim 62 → 60 months early →
+			// 36*25/3600 + 24*5/1200 = 0.25 + 0.10 = 0.35 reduction → 65%.
+			// 65% × 50% of worker PIA = 32.5% of worker PIA.
+			name:       "claim at 62 with FRA 67 (35% spousal reduction = 32.5% of $4100 worker PIA)",
+			spousalPIA: 2050, // 50% of $4100 worker PIA
+			spouseFRA:  67,
+			claimAge:   62,
+			wantMin:    1332,
+			wantMax:    1333,
+		},
+		{
+			name:       "claim at FRA 67 (no reduction → 50% of worker PIA)",
+			spousalPIA: 2050,
+			spouseFRA:  67,
+			claimAge:   67,
+			wantMin:    2049,
+			wantMax:    2051,
+		},
+		{
+			name:       "claim at 70 with FRA 67 (no DRC for spousal benefits)",
+			spousalPIA: 2050,
+			spouseFRA:  67,
+			claimAge:   70,
+			wantMin:    2049,
+			wantMax:    2051,
+		},
+		{
+			// 36 months early × 25/3600 = 25% reduction → 75%.
+			name:       "claim at 64 with FRA 67 (25% reduction)",
+			spousalPIA: 2000,
+			spouseFRA:  67,
+			claimAge:   64,
+			wantMin:    1499,
+			wantMax:    1501,
+		},
+		{
+			// 48 months early at FRA 66: 36*25/3600 + 12*5/1200 = 0.30 → 70%.
+			name:       "FRA 66, claim at 62 (30% reduction)",
+			spousalPIA: 1500,
+			spouseFRA:  66,
+			claimAge:   62,
+			wantMin:    1049,
+			wantMax:    1051,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := AdjustedSpousalBenefit(tc.spousalPIA, tc.spouseFRA, tc.claimAge)
+			if got < tc.wantMin || got > tc.wantMax {
+				t.Errorf("AdjustedSpousalBenefit(%.0f, %d, %d) = %.2f, want between %.0f and %.0f",
+					tc.spousalPIA, tc.spouseFRA, tc.claimAge, got, tc.wantMin, tc.wantMax)
+			}
+		})
+	}
+
+	t.Run("spousal early reduction is steeper than worker reduction", func(t *testing.T) {
+		spousal := AdjustedSpousalBenefit(2000, 67, 62)
+		worker := AdjustedSSBenefit(2000, 67, 62)
+		if spousal >= worker {
+			t.Errorf("expected spousal (%.2f) < worker (%.2f) at age 62 with FRA 67", spousal, worker)
+		}
+	})
+
+	t.Run("claim below 62 clamped to 62", func(t *testing.T) {
+		at62 := AdjustedSpousalBenefit(2000, 67, 62)
+		at60 := AdjustedSpousalBenefit(2000, 67, 60)
+		if !withinTolerance(at62, at60, 0.01) {
+			t.Errorf("claimAge 60 = %.2f, claimAge 62 = %.2f; expected same", at60, at62)
+		}
+	})
+}
+
 func TestSpousalTopUp(t *testing.T) {
 	t.Run("own benefit already exceeds half higher PIA", func(t *testing.T) {
 		got := SpousalTopUp(2100, 4000, 67, 67)
@@ -281,11 +365,18 @@ func TestSpousalTopUp(t *testing.T) {
 		}
 	})
 
-	t.Run("early claim reduces spousal amount", func(t *testing.T) {
+	t.Run("early claim uses spousal reduction (not worker reduction)", func(t *testing.T) {
 		got := SpousalTopUp(500, 4000, 67, 62)
-		want := AdjustedSSBenefit(2000, 67, 62)
+		want := AdjustedSpousalBenefit(2000, 67, 62)
 		if !withinTolerance(got, want, 0.01) {
 			t.Fatalf("SpousalTopUp = %.2f, want %.2f", got, want)
+		}
+	})
+
+	t.Run("32.5%% rule at age 62 with worker PIA $4100", func(t *testing.T) {
+		got := SpousalTopUp(0, 4100, 67, 62)
+		if !withinTolerance(got, 1332.50, 0.5) {
+			t.Fatalf("SpousalTopUp(0, 4100, 67, 62) = %.2f, want ~1332.50", got)
 		}
 	})
 
@@ -617,6 +708,230 @@ func TestProjectedSocialSecurityIncome(t *testing.T) {
 		got2 := projectedSocialSecurityIncome(&s2, month)
 		if got <= got2 {
 			t.Fatalf("with spousal top-up (%.2f) should exceed without (%.2f)", got, got2)
+		}
+	})
+
+	t.Run("spouse gets spousal top-up even when primary already claiming", func(t *testing.T) {
+		// Bug 2 + 3 regression. Primary $4100 actual benefit at age 67 with FRA 66
+		// → true PIA = 4100 / 1.08 ≈ $3796. Spouse age 54 plans to claim at 62
+		// with own PIA $1500. Spousal benefit at 62 (65% of half true PIA) =
+		// 0.65 × $1898 ≈ $1234, which exceeds her own reduced benefit ($1500 × 0.70
+		// = $1050). The pre-fix code skipped top-up entirely when primary alreadyClaiming.
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 67
+		s.SpouseAge = 54
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       4100, // actual benefit (already claiming)
+			FRA:              66,
+			COLARate:         0.02, // explicit 2% (matches normalized default)
+			ClaimAge:         67,   // = CurrentAge → alreadyClaiming
+			SpouseFRABenefit: 1500, // spouse's own PIA
+			SpouseFRA:        67,
+			SpouseClaimAge:   62, // future claim
+		}
+
+		spouseStart := (62 - 54) * 12 // month 96
+		got := projectedSocialSecurityIncome(s, spouseStart)
+		// Primary at month 96: 4100 × 1.02^8 ≈ 4803.95.
+		// Spouse top-up at month 96 (just claimed, no COLA yet):
+		//   0.65 × 0.5 × DerivedPIA(4100, 66, 67) = 0.65 × 0.5 × 3796.30 ≈ 1233.80.
+		want := 4803.95 + 1233.80
+		if !withinTolerance(got, want, 5.0) {
+			t.Errorf("expected ≈ $%.2f (primary $4804 + spouse w/ top-up ≈ $1234), got %.2f", want, got)
+		}
+	})
+
+	t.Run("spousal benefit applies SSA reduction not worker reduction", func(t *testing.T) {
+		// Worker formula at age 62 / FRA 67 → 30% reduction → 70% × spousalPIA.
+		// Spousal formula at age 62 / FRA 67 → 35% reduction → 65% × spousalPIA.
+		// With $4000 worker PIA, spousal at 62 should be 0.65 × $2000 = $1300,
+		// not 0.70 × $2000 = $1400.
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 67
+		s.SpouseAge = 60 // not yet claiming
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       4000, // claim at FRA → actual benefit = PIA
+			FRA:              67,
+			COLARate:         0.02, // matches normalized default
+			ClaimAge:         67,   // = CurrentAge → alreadyClaiming, derived PIA = 4000
+			SpouseFRABenefit: 1,    // tiny so spousal top-up dominates
+			SpouseFRA:        67,
+			SpouseClaimAge:   62, // future claim, 24 months away
+		}
+
+		spouseStart := (62 - 60) * 12 // month 24
+		got := projectedSocialSecurityIncome(s, spouseStart)
+		// Primary at month 24: 4000 × 1.02^2 ≈ 4161.60.
+		// Spouse spousal at 62 (just claimed): 0.65 × $2000 = $1300.
+		want := 4161.60 + 1300.0
+		if !withinTolerance(got, want, 5.0) {
+			t.Errorf("expected ≈ $%.0f (worker $4162 + spousal $1300 with SSA reduction), got %.2f",
+				want, got)
+		}
+	})
+}
+
+func TestProjectedSSEntries(t *testing.T) {
+	t.Run("inactive optimizer returns nil", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.SocialSecurity = nil
+		if got := ProjectedSSEntries(s); got != nil {
+			t.Fatalf("expected nil for nil SS config, got %+v", got)
+		}
+	})
+
+	t.Run("primary only when no spouse configured", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 2000,
+			FRA:        67,
+			COLARate:   0.02,
+			ClaimAge:   67,
+		}
+		entries := ProjectedSSEntries(s)
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 entry, got %d", len(entries))
+		}
+		if entries[0].Label != "Your Social Security" {
+			t.Errorf("label = %q, want 'Your Social Security'", entries[0].Label)
+		}
+		if !withinTolerance(entries[0].MonthlyAmount, 2000, 0.01) {
+			t.Errorf("amount = %.2f, want 2000", entries[0].MonthlyAmount)
+		}
+		if entries[0].ClaimAge != 67 {
+			t.Errorf("claim age = %d, want 67", entries[0].ClaimAge)
+		}
+		if entries[0].StartMonth != 7*12 {
+			t.Errorf("start month = %d, want %d", entries[0].StartMonth, 7*12)
+		}
+		if entries[0].AlreadyClaiming {
+			t.Error("expected AlreadyClaiming=false")
+		}
+		if entries[0].SpousalTopUp {
+			t.Error("expected SpousalTopUp=false")
+		}
+	})
+
+	t.Run("primary alreadyClaiming uses entered actual benefit", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 67
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit: 4100, // actual benefit
+			FRA:        66,
+			COLARate:   0.02,
+			ClaimAge:   67, // = CurrentAge
+		}
+		entries := ProjectedSSEntries(s)
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 entry, got %d", len(entries))
+		}
+		if !withinTolerance(entries[0].MonthlyAmount, 4100, 0.01) {
+			t.Errorf("amount = %.2f, want 4100 (actual benefit, not adjusted)", entries[0].MonthlyAmount)
+		}
+		if !entries[0].AlreadyClaiming {
+			t.Error("expected AlreadyClaiming=true")
+		}
+		if entries[0].StartMonth != 0 {
+			t.Errorf("start month = %d, want 0", entries[0].StartMonth)
+		}
+	})
+
+	t.Run("spouse entry includes spousal top-up flag when applicable", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 67
+		s.SpouseAge = 54
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       4100,
+			FRA:              66,
+			COLARate:         0.02,
+			ClaimAge:         67,
+			SpouseFRABenefit: 1500,
+			SpouseFRA:        67,
+			SpouseClaimAge:   62,
+		}
+		entries := ProjectedSSEntries(s)
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 entries (primary + spouse), got %d", len(entries))
+		}
+		spouse := entries[1]
+		if spouse.Label != "Spouse Social Security" {
+			t.Errorf("spouse label = %q, want 'Spouse Social Security'", spouse.Label)
+		}
+		if !spouse.SpousalTopUp {
+			t.Error("expected spousal top-up flag set (own $1500 < spousal ~$1234... actually own > spousal here, recheck)")
+		}
+		// Spouse own at 62 = 1500 × 0.70 = 1050.
+		// Spousal top-up at 62 = 0.65 × 0.5 × DerivedPIA(4100, 66, 67) ≈ 1233.80.
+		// Top-up wins → expect ~1234 with flag set.
+		if !withinTolerance(spouse.MonthlyAmount, 1233.80, 5.0) {
+			t.Errorf("spouse amount = %.2f, want ~1234 (spousal top-up)", spouse.MonthlyAmount)
+		}
+		if spouse.StartMonth != (62-54)*12 {
+			t.Errorf("spouse start month = %d, want %d", spouse.StartMonth, (62-54)*12)
+		}
+	})
+
+	t.Run("spouse entry without top-up when own benefit higher", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SpouseAge = 58
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       1000,
+			FRA:              67,
+			COLARate:         0.02,
+			ClaimAge:         67,
+			SpouseFRABenefit: 4000, // spouse PIA higher → primary should get top-up
+			SpouseFRA:        67,
+			SpouseClaimAge:   67,
+		}
+		entries := ProjectedSSEntries(s)
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 entries, got %d", len(entries))
+		}
+		if !entries[0].SpousalTopUp {
+			t.Error("expected primary to receive spousal top-up (PIA $1000 < $2000 spousal)")
+		}
+		if entries[1].SpousalTopUp {
+			t.Error("expected spouse not to receive top-up (own $4000 > $500 primary spousal)")
+		}
+	})
+
+	t.Run("spouse entry omitted when no spouse claim age set", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 67
+		s.SpouseAge = 54
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       4100,
+			FRA:              66,
+			ClaimAge:         67,
+			SpouseFRABenefit: 1500,
+			SpouseFRA:        67,
+			// SpouseClaimAge is zero → not yet configured
+		}
+		entries := ProjectedSSEntries(s)
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 entry (no spouse claim age), got %d", len(entries))
 		}
 	})
 }

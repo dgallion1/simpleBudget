@@ -144,10 +144,22 @@
     </div>
 
     <div id="income-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
+        {{$optimizerActive := socialSecurityProjectionActive .Settings}}
+        {{if $optimizerActive}}
+        {{range projectedSSEntries .Settings}}
+        {{template "whatif-projected-ss-item" .}}
+        {{end}}
+        {{end}}
         {{range .Settings.IncomeSources}}
-        {{template "whatif-income-source-item" .}}
+        {{if and $optimizerActive (isSocialSecurityIncomeSource .)}}
+        {{template "whatif-income-source-item-excluded" .}}
         {{else}}
+        {{template "whatif-income-source-item" .}}
+        {{end}}
+        {{else}}
+        {{if not $optimizerActive}}
         <p class="text-sm text-gray-500 dark:text-gray-300 italic">No income sources added</p>
+        {{end}}
         {{end}}
     </div>
 

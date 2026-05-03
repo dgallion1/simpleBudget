@@ -80,52 +80,104 @@ func HasManualSocialSecurityIncomeSource(s *models.WhatIfSettings) bool {
 	return false
 }
 
-func projectedSocialSecurityIncome(s *models.WhatIfSettings, month int) float64 {
+// ProjectedSSEntry describes a single Social Security income stream computed
+// by the SS Optimizer for display alongside manual income sources.
+type ProjectedSSEntry struct {
+	Label           string  // "Your Social Security" or "Spouse Social Security"
+	MonthlyAmount   float64 // benefit at start of payout, before COLA growth
+	ClaimAge        int
+	StartMonth      int  // month within the projection at which payments begin
+	AlreadyClaiming bool // claim age has already passed at projection start
+	SpousalTopUp    bool // amount reflects spousal top-up vs own benefit
+}
+
+// ProjectedSSEntries returns the optimizer-derived Social Security income
+// streams (primary + spouse where applicable). Returns nil when the optimizer
+// is inactive. The values match what projectedSocialSecurityIncome uses, so
+// they accurately represent what the projection includes for SS income.
+func ProjectedSSEntries(s *models.WhatIfSettings) []ProjectedSSEntry {
 	if !socialSecurityProjectionActive(s) {
-		return 0
+		return nil
 	}
 
 	ss := s.SocialSecurity
 	fra := normalizedSSFRA(ss.FRA)
 	spouseFRA := normalizedSSFRA(ss.SpouseFRA)
-	colaRate := normalizedSSCOLARate(ss.COLARate)
 
-	// When already claiming (ClaimAge <= CurrentAge), the entered amount is the
-	// actual benefit received, not the PIA — use it directly without adjustment.
 	alreadyClaiming := ss.ClaimAge <= s.CurrentAge
+	primaryPIA := ss.FRABenefit
 	primaryBase := ss.FRABenefit
-	if !alreadyClaiming {
-		primaryBase = AdjustedSSBenefit(ss.FRABenefit, fra, ss.ClaimAge)
+	if alreadyClaiming {
+		primaryPIA = DerivedPIA(ss.FRABenefit, fra, ss.ClaimAge)
+	} else {
+		primaryBase = AdjustedSSBenefit(primaryPIA, fra, ss.ClaimAge)
 	}
-	spouseBase := 0.0
+
 	spouseAlreadyClaiming := validSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= s.SpouseAge
 	projectSpouse := s.HasSpouse() && s.SpouseAge > 0 && ss.SpouseFRABenefit > 0 && validSSClaimAge(ss.SpouseClaimAge)
+
+	var spousePIA, spouseBase float64
 	if projectSpouse {
+		spousePIA = ss.SpouseFRABenefit
 		if spouseAlreadyClaiming {
+			spousePIA = DerivedPIA(ss.SpouseFRABenefit, spouseFRA, ss.SpouseClaimAge)
 			spouseBase = ss.SpouseFRABenefit
 		} else {
-			spouseBase = AdjustedSSBenefit(ss.SpouseFRABenefit, spouseFRA, ss.SpouseClaimAge)
-		}
-		if !alreadyClaiming && ss.FRABenefit > ss.SpouseFRABenefit {
-			spouseBase = SpousalTopUp(spouseBase, ss.FRABenefit, spouseFRA, ss.SpouseClaimAge)
-		} else if !spouseAlreadyClaiming && ss.SpouseFRABenefit > ss.FRABenefit {
-			primaryBase = SpousalTopUp(primaryBase, ss.SpouseFRABenefit, fra, ss.ClaimAge)
+			spouseBase = AdjustedSSBenefit(spousePIA, spouseFRA, ss.SpouseClaimAge)
 		}
 	}
 
-	total := 0.0
-	primaryStart := claimStartMonth(s.CurrentAge, ss.ClaimAge)
-	if month >= primaryStart {
-		total += projectedSSBenefitForMonth(primaryBase, colaRate, month-primaryStart)
-	}
-
+	primaryTopUp := false
+	spouseTopUp := false
 	if projectSpouse {
-		spouseStart := claimStartMonth(s.SpouseAge, ss.SpouseClaimAge)
-		if month >= spouseStart {
-			total += projectedSSBenefitForMonth(spouseBase, colaRate, month-spouseStart)
+		if !spouseAlreadyClaiming && primaryPIA > spousePIA {
+			adjusted := SpousalTopUp(spouseBase, primaryPIA, spouseFRA, ss.SpouseClaimAge)
+			if adjusted > spouseBase {
+				spouseBase = adjusted
+				spouseTopUp = true
+			}
+		} else if !alreadyClaiming && spousePIA > primaryPIA {
+			adjusted := SpousalTopUp(primaryBase, spousePIA, fra, ss.ClaimAge)
+			if adjusted > primaryBase {
+				primaryBase = adjusted
+				primaryTopUp = true
+			}
 		}
 	}
 
+	entries := []ProjectedSSEntry{{
+		Label:           "Your Social Security",
+		MonthlyAmount:   primaryBase,
+		ClaimAge:        ss.ClaimAge,
+		StartMonth:      claimStartMonth(s.CurrentAge, ss.ClaimAge),
+		AlreadyClaiming: alreadyClaiming,
+		SpousalTopUp:    primaryTopUp,
+	}}
+	if projectSpouse {
+		entries = append(entries, ProjectedSSEntry{
+			Label:           "Spouse Social Security",
+			MonthlyAmount:   spouseBase,
+			ClaimAge:        ss.SpouseClaimAge,
+			StartMonth:      claimStartMonth(s.SpouseAge, ss.SpouseClaimAge),
+			AlreadyClaiming: spouseAlreadyClaiming,
+			SpousalTopUp:    spouseTopUp,
+		})
+	}
+	return entries
+}
+
+func projectedSocialSecurityIncome(s *models.WhatIfSettings, month int) float64 {
+	entries := ProjectedSSEntries(s)
+	if len(entries) == 0 {
+		return 0
+	}
+	colaRate := normalizedSSCOLARate(s.SocialSecurity.COLARate)
+	total := 0.0
+	for _, e := range entries {
+		if month >= e.StartMonth {
+			total += projectedSSBenefitForMonth(e.MonthlyAmount, colaRate, month-e.StartMonth)
+		}
+	}
 	return total
 }
 
@@ -198,6 +250,31 @@ func DerivedPIA(actualBenefit float64, fra, claimAge int) float64 {
 	return actualBenefit / factor
 }
 
+// AdjustedSpousalBenefit calculates the monthly spousal Social Security benefit
+// for a given claiming age. The spousal early-claim reduction is steeper than
+// the worker's own reduction: 25/36 of 1% per month for the first 36 months
+// before FRA, then 5/12 of 1% per month for additional earlier months. Spousal
+// benefits do not earn delayed retirement credits, so claims at or past FRA
+// return the full spousal PIA.
+func AdjustedSpousalBenefit(spousalPIA float64, spouseFRA, claimAge int) float64 {
+	if claimAge < 62 {
+		claimAge = 62
+	}
+	spouseFRA = normalizedSSFRA(spouseFRA)
+	if claimAge >= spouseFRA {
+		return spousalPIA
+	}
+
+	monthsEarly := (spouseFRA - claimAge) * 12
+	reduction := 0.0
+	if monthsEarly <= 36 {
+		reduction = float64(monthsEarly) * 25.0 / 3600.0
+	} else {
+		reduction = 36.0*25.0/3600.0 + float64(monthsEarly-36)*5.0/1200.0
+	}
+	return spousalPIA * (1.0 - reduction)
+}
+
 func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge int) float64 {
 	if higherPIA <= 0 {
 		return spouseOwnBenefit
@@ -209,12 +286,7 @@ func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge
 		return spouseOwnBenefit
 	}
 
-	effectiveClaimAge := spouseClaimAge
-	if effectiveClaimAge > spouseFRA {
-		effectiveClaimAge = spouseFRA
-	}
-
-	spousalBenefit := AdjustedSSBenefit(spousalPIA, spouseFRA, effectiveClaimAge)
+	spousalBenefit := AdjustedSpousalBenefit(spousalPIA, spouseFRA, spouseClaimAge)
 	if spousalBenefit > spouseOwnBenefit {
 		return spousalBenefit
 	}
@@ -338,12 +410,19 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 	if ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra {
 		primaryPIA = DerivedPIA(ss.FRABenefit, fra, ss.ClaimAge)
 	}
+	// Same logic for spouse — derived once so both the spouse-side comparison
+	// and the primary-side spousal top-up use the correct PIA.
+	spouseFRA := normalizedSSFRA(ss.SpouseFRA)
+	spousePIA := ss.SpouseFRABenefit
+	if validSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= c.Settings.SpouseAge && ss.SpouseClaimAge != spouseFRA {
+		spousePIA = DerivedPIA(ss.SpouseFRABenefit, spouseFRA, ss.SpouseClaimAge)
+	}
 
 	options := SSComparisonTable(primaryPIA, fra, c.Settings.CurrentAge, colaRate)
 	breakevens := SSBreakevenAges(primaryPIA, fra, colaRate)
-	if ss.SpouseFRABenefit > primaryPIA {
-		options = SSComparisonTableWithSpousalTopUp(primaryPIA, fra, c.Settings.CurrentAge, colaRate, ss.SpouseFRABenefit)
-		breakevens = SSBreakevenAgesWithSpousalTopUp(primaryPIA, fra, colaRate, ss.SpouseFRABenefit)
+	if spousePIA > primaryPIA {
+		options = SSComparisonTableWithSpousalTopUp(primaryPIA, fra, c.Settings.CurrentAge, colaRate, spousePIA)
+		breakevens = SSBreakevenAgesWithSpousalTopUp(primaryPIA, fra, colaRate, spousePIA)
 	}
 
 	bestAge := 0
@@ -366,18 +445,17 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 	var spouseBreakevens []models.SSBreakevenResult
 	spouseBestAge := 0
 	if ss.SpouseFRABenefit > 0 {
-		spouseFRA := normalizedSSFRA(ss.SpouseFRA)
 		spouseAge := c.Settings.SpouseAge
 		if spouseAge == 0 {
 			spouseAge = c.Settings.CurrentAge
 		}
 
-		if ss.FRABenefit > ss.SpouseFRABenefit {
-			spouseOptions = SSComparisonTableWithSpousalTopUp(ss.SpouseFRABenefit, spouseFRA, spouseAge, colaRate, ss.FRABenefit)
-			spouseBreakevens = SSBreakevenAgesWithSpousalTopUp(ss.SpouseFRABenefit, spouseFRA, colaRate, ss.FRABenefit)
+		if primaryPIA > spousePIA {
+			spouseOptions = SSComparisonTableWithSpousalTopUp(spousePIA, spouseFRA, spouseAge, colaRate, primaryPIA)
+			spouseBreakevens = SSBreakevenAgesWithSpousalTopUp(spousePIA, spouseFRA, colaRate, primaryPIA)
 		} else {
-			spouseOptions = SSComparisonTable(ss.SpouseFRABenefit, spouseFRA, spouseAge, colaRate)
-			spouseBreakevens = SSBreakevenAges(ss.SpouseFRABenefit, spouseFRA, colaRate)
+			spouseOptions = SSComparisonTable(spousePIA, spouseFRA, spouseAge, colaRate)
+			spouseBreakevens = SSBreakevenAges(spousePIA, spouseFRA, colaRate)
 		}
 		if validSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= spouseAge {
 			// Spouse already claiming — don't suggest a different age

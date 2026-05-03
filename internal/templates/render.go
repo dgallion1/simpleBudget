@@ -102,6 +102,8 @@ func getFuncMap() template.FuncMap {
 		"socialSecurityProjectionActive":      retirement.SocialSecurityProjectionActive,
 		"ssPortfolioEligible":                 retirement.SSPortfolioEligible,
 		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
+		"projectedSSEntries":                  retirement.ProjectedSSEntries,
+		"isSocialSecurityIncomeSource":        retirement.IsSocialSecurityIncomeSource,
 	}
 }
 

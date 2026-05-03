@@ -2,11 +2,67 @@
 {{/* Expects: .Settings with IncomeSources and RemovedIncomeSources */}}
 {{define "whatif-income-sources-list"}}
 <div id="income-sources-list" class="space-y-2 mb-4">
+    {{$optimizerActive := socialSecurityProjectionActive .Settings}}
+    {{if $optimizerActive}}
+    {{range projectedSSEntries .Settings}}
+    {{template "whatif-projected-ss-item" .}}
+    {{end}}
+    {{end}}
     {{range .Settings.IncomeSources}}
-    {{template "whatif-income-source-item" .}}
+    {{if and $optimizerActive (isSocialSecurityIncomeSource .)}}
+    {{template "whatif-income-source-item-excluded" .}}
     {{else}}
+    {{template "whatif-income-source-item" .}}
+    {{end}}
+    {{else}}
+    {{if not $optimizerActive}}
     <p class="text-sm text-gray-500 dark:text-gray-300 italic">No income sources added</p>
     {{end}}
+    {{end}}
+</div>
+{{end}}
+
+{{/* Read-only Social Security item rendered from SS Optimizer settings */}}
+{{define "whatif-projected-ss-item"}}
+<div class="p-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded text-sm" title="Computed from the SS Claiming Age Optimizer below. Edit there to change.">
+    <div class="flex items-center justify-between mb-1">
+        <div>
+            <span class="font-medium text-indigo-900 dark:text-indigo-100">{{.Label}}</span>
+            <span class="text-indigo-700 dark:text-indigo-200">- ${{printf "%.0f" .MonthlyAmount}}/mo</span>
+            {{if .SpousalTopUp}}
+            <span class="ml-1 text-xs text-indigo-600 dark:text-indigo-300" title="Includes spousal top-up (50% of higher earner's PIA, reduced for early claim)">+ spousal</span>
+            {{end}}
+        </div>
+        <span class="text-xs text-indigo-500 dark:text-indigo-300">from SS Optimizer</span>
+    </div>
+    <div class="text-xs text-indigo-700 dark:text-indigo-200">
+        {{if .AlreadyClaiming}}
+        Already claiming at age {{.ClaimAge}}
+        {{else}}
+        Starts age {{.ClaimAge}} (yr {{div .StartMonth 12}})
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+{{/* Income source flagged as excluded because the SS Optimizer is active and
+this source name matches the SS detection rule. Read-only with a "remove or
+keep" affordance so the user can either delete the duplicate or rename it. */}}
+{{define "whatif-income-source-item-excluded"}}
+<div class="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-sm" title="Excluded from the projection because the SS Optimizer is active and this source name looks like a Social Security entry.">
+    <div class="flex items-center justify-between">
+        <div>
+            <span class="font-medium text-amber-900 dark:text-amber-100 line-through">{{.Name}}</span>
+            <span class="text-amber-700 dark:text-amber-200">- ${{printf "%.0f" .Amount}}/mo</span>
+            <span class="ml-1 text-xs text-amber-600 dark:text-amber-300">excluded — handled by SS Optimizer</span>
+        </div>
+        <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
+            class="text-red-500 hover:text-red-700" title="Delete this duplicate" aria-label="Delete income source {{.Name}}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
 </div>
 {{end}}
 

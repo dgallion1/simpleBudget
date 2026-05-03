@@ -402,6 +402,12 @@ func isSocialSecurityIncomeSource(source models.IncomeSource) bool {
 	return false
 }
 
+// IsSocialSecurityIncomeSource exposes the SS income-source detection rule for
+// use in templates that need to flag manual SS sources excluded by the optimizer.
+func IsSocialSecurityIncomeSource(source models.IncomeSource) bool {
+	return isSocialSecurityIncomeSource(source)
+}
+
 func rothConversionAmountForYear(s *models.WhatIfSettings, currentYear int, availableTaxDeferred float64) float64 {
 	if s.RothConversion == nil || !s.RothConversion.Enabled || availableTaxDeferred <= 0 {
 		return 0

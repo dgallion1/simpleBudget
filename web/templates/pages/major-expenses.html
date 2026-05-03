@@ -492,6 +492,11 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         savedOpenRows = rows;
     });
     document.body.addEventListener('htmx:afterSwap', function () {
+        // Incoming markup has fresh, unchecked checkboxes; the prior
+        // anchors point at hashes that are no longer in the DOM (or
+        // moved buckets). Reset before any sync runs.
+        lastCheckedByBucket = Object.create(null);
+
         if (savedOpenDetails) {
             document.querySelectorAll(persistedDetailsSelector()).forEach(function (d) {
                 if (savedOpenDetails.has(d.id)) d.open = true;
@@ -507,6 +512,8 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         }
         const input = document.getElementById('major-expenses-search');
         if (input && input.value) applyUnifiedFilter(input.value);
+        refreshAllBucketHeaders();
+        refreshCountChip();
     });
 
     // Bulk-pin Apply.
@@ -515,7 +522,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         e.preventDefault();
         const target = document.getElementById('major-expenses-bulk-pin-target');
         if (!target || !target.value) return;
-        const hashes = visibleExceptionHashes();
+        const hashes = countChecked() > 0 ? collectCheckedHashes() : visibleExceptionHashes();
         if (!hashes.length) return;
         const fd = new FormData();
         fd.append('expense_id', target.value);
@@ -632,6 +639,22 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
         // Always record the anchor on click (shift or not).
         lastCheckedByBucket[bucket] = targetHash;
+    });
+
+    // Clear button: uncheck every row + every header, reset the
+    // anchor map, and re-sync everything visible.
+    document.addEventListener('click', function (e) {
+        if (!e.target || e.target.id !== 'major-expenses-bulk-pin-clear') return;
+        e.preventDefault();
+        rowCheckboxes().forEach(function (cb) { cb.checked = false; });
+        document.querySelectorAll('input.major-expenses-pin-check-header').forEach(function (h) {
+            h.checked = false;
+            h.indeterminate = false;
+        });
+        lastCheckedByBucket = Object.create(null);
+        refreshCountChip();
+        const input = document.getElementById('major-expenses-search');
+        applyUnifiedFilter(input ? input.value : '');
     });
 
     // Search input (delegated; survives HTMX swaps).

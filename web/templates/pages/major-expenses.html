@@ -385,10 +385,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
         if (counter) counter.textContent = String(displayCount);
 
-        // Update the lead label between "Pin all" (filter) and
-        // "Pin" (checked). The trailing "matching →" / "selected →"
-        // is text after the counter; we swap it via labelLead's
-        // dataset markers.
+        // Update the lead and trail labels between "Pin all"/"matching"
+        // (filter) and "Pin"/"selected" (checked) by swapping each
+        // span's textContent.
         if (labelLead) {
             labelLead.textContent = mode === 'checked' ? 'Pin ' : 'Pin all ';
         }

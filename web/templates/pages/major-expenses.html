@@ -583,6 +583,55 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             applyUnifiedFilter(input ? input.value : '');
             return;
         }
+    }); // end change listener
+
+    // Click on a row checkbox. Two responsibilities:
+    //   1. Record the bucket anchor (always, on every click).
+    //   2. If shift is held AND there is a previous anchor in this
+    //      bucket AND it is still visible, toggle the visible-range
+    //      between anchor and target to the target's NEW value.
+    //
+    // Click fires before change; the target's `checked` reflects the
+    // pre-click state during the listener. We compute the new state
+    // as !target.checked.
+    document.addEventListener('click', function (e) {
+        const t = e.target;
+        if (!t || !t.classList || !t.classList.contains('major-expenses-pin-check')) return;
+        const bucket = t.getAttribute('data-bucket') || '';
+        const targetHash = t.getAttribute('data-hash') || '';
+
+        const anchorHash = lastCheckedByBucket[bucket] || '';
+        const wantApplyRange = e.shiftKey && anchorHash && anchorHash !== targetHash;
+
+        if (wantApplyRange) {
+            const visible = visibleRowCheckboxesInBucket(bucket);
+            const idxAnchor = visible.findIndex(function (cb) { return cb.getAttribute('data-hash') === anchorHash; });
+            const idxTarget = visible.findIndex(function (cb) { return cb.getAttribute('data-hash') === targetHash; });
+            if (idxAnchor === -1) {
+                // Anchor no longer visible; treat as a fresh click.
+                lastCheckedByBucket[bucket] = targetHash;
+                return;
+            }
+            // Browser will toggle target after this listener returns;
+            // its NEW state is !current. Apply that to every visible
+            // checkbox in [min, max].
+            const newState = !t.checked;
+            const lo = Math.min(idxAnchor, idxTarget);
+            const hi = Math.max(idxAnchor, idxTarget);
+            for (let i = lo; i <= hi; i++) {
+                visible[i].checked = newState;
+            }
+            // Refresh state synchronously; the change event for `t`
+            // will still fire and trigger another refresh, which is
+            // a harmless no-op.
+            refreshBucketHeader(bucket);
+            refreshCountChip();
+            const input = document.getElementById('major-expenses-search');
+            applyUnifiedFilter(input ? input.value : '');
+        }
+
+        // Always record the anchor on click (shift or not).
+        lastCheckedByBucket[bucket] = targetHash;
     });
 
     // Search input (delegated; survives HTMX swaps).

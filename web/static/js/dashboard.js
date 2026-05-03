@@ -116,6 +116,7 @@ function setPreset(preset) {
             btn.style.color = '';
         }
     });
+    form.dataset.activePreset = preset;
 
     // Update KPIs via HTMX (uses innerHTML swap, works reliably)
     const params = new URLSearchParams(new FormData(form)).toString();
@@ -128,8 +129,87 @@ function setPreset(preset) {
     refreshCharts();
 }
 
+// Parse "YYYY-MM-DD" as a local-timezone date (avoids UTC off-by-one).
+function parseDateLocal(s) {
+    if (!s) return null;
+    const parts = s.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+// Format a Date as "YYYY-MM-DD" using local components.
+function formatDateLocal(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+}
+
+// Shift the date window forward (+1) or backward (-1) by the current window size.
+// If a month-based preset is active, shift by N months (preserves day-of-month).
+// Otherwise, shift by the current span in days. Clamps to the input's min/max.
+function shiftWindow(direction) {
+    const form = document.getElementById('date-filter-form');
+    if (!form) return;
+    const startInput = form.querySelector('input[name="start"]');
+    const endInput = form.querySelector('input[name="end"]');
+    const currentStart = parseDateLocal(startInput.value);
+    const currentEnd = parseDateLocal(endInput.value);
+    if (!currentStart || !currentEnd) return;
+
+    const monthMap = { '1m': 1, '2m': 2, '3m': 3, '6m': 6, '12m': 12 };
+    const activePreset = form.dataset.activePreset || '';
+    let newStart, newEnd;
+
+    if (monthMap[activePreset]) {
+        const months = monthMap[activePreset] * direction;
+        newStart = new Date(currentStart);
+        newStart.setMonth(newStart.getMonth() + months);
+        newEnd = new Date(currentEnd);
+        newEnd.setMonth(newEnd.getMonth() + months);
+    } else {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
+        const shiftMs = spanDays * direction * dayMs;
+        newStart = new Date(currentStart.getTime() + shiftMs);
+        newEnd = new Date(currentEnd.getTime() + shiftMs);
+    }
+
+    // Clamp to min/max bounds, preserving window size when possible.
+    const minDate = parseDateLocal(startInput.min);
+    const maxDate = parseDateLocal(endInput.max);
+    if (minDate && newStart < minDate) {
+        const diffMs = minDate - newStart;
+        newStart = new Date(newStart.getTime() + diffMs);
+        newEnd = new Date(newEnd.getTime() + diffMs);
+    }
+    if (maxDate && newEnd > maxDate) {
+        const diffMs = newEnd - maxDate;
+        newStart = new Date(newStart.getTime() - diffMs);
+        newEnd = new Date(newEnd.getTime() - diffMs);
+    }
+    if (minDate && newStart < minDate) newStart = new Date(minDate);
+    if (maxDate && newEnd > maxDate) newEnd = new Date(maxDate);
+
+    // No-op if clamping produced the same range we already had.
+    const newStartStr = formatDateLocal(newStart);
+    const newEndStr = formatDateLocal(newEnd);
+    if (newStartStr === startInput.value && newEndStr === endInput.value) return;
+
+    startInput.value = newStartStr;
+    endInput.value = newEndStr;
+
+    const params = new URLSearchParams(new FormData(form)).toString();
+    htmx.ajax('GET', '/dashboard/kpis?' + params, {
+        target: '#kpis-container',
+        swap: 'innerHTML'
+    });
+    refreshCharts();
+}
+
 // Refresh charts when date inputs change manually
 document.addEventListener('DOMContentLoaded', function() {
+    const filterForm = document.getElementById('date-filter-form');
     document.querySelectorAll('#date-filter-form input[type="date"]').forEach(function(input) {
         input.addEventListener('change', function() {
             // Clear preset selection
@@ -137,6 +217,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.style.backgroundColor = '';
                 btn.style.color = '';
             });
+            if (filterForm) filterForm.dataset.activePreset = '';
             refreshCharts();
         });
     });

@@ -65,6 +65,12 @@
             <!-- Quick presets -->
             <div class="flex items-center space-x-2 ml-auto">
                 <span class="text-sm text-gray-500 dark:text-gray-400">Quick:</span>
+                <button type="button" onclick="shiftWindow(-1)" title="Shift window backward" aria-label="Shift window backward"
+                    class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </button>
                 <button type="button" onclick="setPreset('ytd')" data-preset="ytd"
                     class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
                     YTD
@@ -92,6 +98,12 @@
                 <button type="button" onclick="setPreset('all')" data-preset="all"
                     class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
                     All
+                </button>
+                <button type="button" onclick="shiftWindow(1)" title="Shift window forward" aria-label="Shift window forward"
+                    class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
                 </button>
             </div>
 

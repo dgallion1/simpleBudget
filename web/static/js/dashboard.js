@@ -1,20 +1,21 @@
 // Dashboard-specific JavaScript functionality
 
-// Category drilldown functions
-function openCategoryDrilldown(category) {
+// Major Expense drilldown functions
+function openMajorExpenseDrilldown(name) {
     const form = document.getElementById('date-filter-form');
     const start = form.querySelector('input[name="start"]').value;
     const end = form.querySelector('input[name="end"]').value;
 
-    htmx.ajax('GET', `/dashboard/category/${encodeURIComponent(category)}?start=${start}&end=${end}`, {
-        target: '#category-drilldown-container',
+    htmx.ajax('GET', `/dashboard/major-expense?name=${encodeURIComponent(name)}&start=${start}&end=${end}`, {
+        target: '#major-expense-drilldown-container',
         swap: 'innerHTML'
     });
 }
 
-function closeCategoryModal(event) {
+function closeMajorExpenseModal(event) {
     if (event && event.target !== event.currentTarget) return;
-    document.getElementById('category-drilldown-container').innerHTML = '';
+    const container = document.getElementById('major-expense-drilldown-container');
+    if (container) container.replaceChildren();
 }
 
 // KPI detail functions
@@ -44,7 +45,7 @@ function exportKPIToCSV(kpiType) {
 // Close modal on escape key
 document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
-        closeCategoryModal();
+        closeMajorExpenseModal();
         closeKPIModal();
     }
 });

@@ -497,51 +497,6 @@ func TestBuildMonthlyChartData_Basic(t *testing.T) {
 	}
 }
 
-// --- buildCategoryChartData ---
-
-func TestBuildCategoryChartData_TopTenPlusOther(t *testing.T) {
-	var txns []models.Transaction
-	// Create 12 categories with decreasing amounts
-	for i := 0; i < 12; i++ {
-		cat := string(rune('A'+i)) + "-Category"
-		amount := -float64(1200-i*100) // -1200, -1100, ..., -100
-		txns = append(txns, makeTransaction("Merchant", amount,
-			time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, cat))
-	}
-	ts := makeTransactionSet(txns...)
-
-	result := buildCategoryChartData(ts)
-
-	data := result["data"].([]map[string]interface{})
-	if len(data) != 1 {
-		t.Fatalf("expected 1 trace (pie), got %d", len(data))
-	}
-
-	trace := data[0]
-	if trace["type"] != "pie" {
-		t.Errorf("chart type = %v, want pie", trace["type"])
-	}
-
-	labels := trace["labels"].([]string)
-	values := trace["values"].([]float64)
-
-	// Should have 11 entries: top 10 categories + "Other"
-	if len(labels) != 11 {
-		t.Errorf("expected 11 labels (top 10 + Other), got %d: %v", len(labels), labels)
-	}
-
-	// Last label should be "Other"
-	if labels[len(labels)-1] != "Other" {
-		t.Errorf("last label = %v, want Other", labels[len(labels)-1])
-	}
-
-	// "Other" should be sum of categories 11 and 12 (amounts 200 + 100 = 300)
-	otherVal := values[len(values)-1]
-	if !floatEqual(otherVal, 300) {
-		t.Errorf("Other value = %v, want 300", otherVal)
-	}
-}
-
 // --- buildMerchantsChartData ---
 
 func TestBuildMerchantsChartData_TopTen(t *testing.T) {

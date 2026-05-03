@@ -141,7 +141,7 @@ func TestRegisterRoutes(t *testing.T) {
 		"GET /dashboard",
 		"GET /dashboard/kpis",
 		"GET /dashboard/charts/data/{chartType}",
-		"GET /dashboard/category/{category}",
+		"GET /dashboard/major-expense",
 		"GET /dashboard/kpi/{kpiType}",
 		"GET /dashboard/kpi/{kpiType}/export",
 	}
@@ -297,16 +297,6 @@ func TestHandleChartData_Monthly(t *testing.T) {
 	}
 }
 
-func TestHandleChartData_Category(t *testing.T) {
-	router, cleanup := setupTestEnv(t, defaultRows())
-	defer cleanup()
-
-	rec := doGet(t, router, "/dashboard/charts/data/category?start=2025-01-01&end=2025-03-31")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-}
-
 func TestHandleChartData_SpendingTrend(t *testing.T) {
 	router, cleanup := setupTestEnv(t, defaultRows())
 	defer cleanup()
@@ -375,53 +365,52 @@ func TestHandleChartData_LoadError(t *testing.T) {
 	_ = rec // just ensure no panic
 }
 
-// ---------- handleCategoryDrilldown ----------
+// ---------- handleMajorExpenseDrilldown ----------
 
-func TestHandleCategoryDrilldown_OK(t *testing.T) {
+func TestHandleMajorExpenseDrilldown_Unmatched(t *testing.T) {
 	router, cleanup := setupTestEnv(t, defaultRows())
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/category/Food?start=2025-01-01&end=2025-03-31")
+	rec := doGet(t, router, "/dashboard/major-expense?name=Unmatched&start=2025-01-01&end=2025-03-31")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	// nil renderer => JSON
 	var result map[string]interface{}
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)
 	}
-	if result["Category"] != "Food" {
-		t.Errorf("Category = %v, want Food", result["Category"])
+	if result["Name"] != "Unmatched" {
+		t.Errorf("Name = %v, want Unmatched", result["Name"])
 	}
 }
 
-func TestHandleCategoryDrilldown_DefaultDates(t *testing.T) {
+func TestHandleMajorExpenseDrilldown_DefaultDates(t *testing.T) {
 	router, cleanup := setupTestEnv(t, defaultRows())
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/category/Housing")
+	rec := doGet(t, router, "/dashboard/major-expense?name=Other")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 }
 
-func TestHandleCategoryDrilldown_NoMatchingTransactions(t *testing.T) {
+func TestHandleMajorExpenseDrilldown_UnknownName(t *testing.T) {
 	router, cleanup := setupTestEnv(t, defaultRows())
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/category/NonExistent?start=2025-01-01&end=2025-03-31")
+	rec := doGet(t, router, "/dashboard/major-expense?name=DoesNotExist&start=2025-01-01&end=2025-03-31")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	var result map[string]interface{}
 	json.NewDecoder(rec.Body).Decode(&result)
 	if count, ok := result["Count"].(float64); ok && count != 0 {
-		t.Errorf("Count = %v, want 0 for non-existent category", count)
+		t.Errorf("Count = %v, want 0 for unknown wedge", count)
 	}
 }
 
-func TestHandleCategoryDrilldown_LoadError(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dashboard-cat-err-*")
+func TestHandleMajorExpenseDrilldown_LoadError(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "dashboard-me-err-*")
 	defer os.RemoveAll(tmpDir)
 	badCSV := filepath.Join(tmpDir, "bad.csv")
 	os.Mkdir(badCSV, 0755)
@@ -433,7 +422,7 @@ func TestHandleCategoryDrilldown_LoadError(t *testing.T) {
 	r := chi.NewRouter()
 	RegisterRoutes(r)
 
-	rec := doGet(t, r, "/dashboard/category/Food")
+	rec := doGet(t, r, "/dashboard/major-expense?name=Foo")
 	_ = rec
 }
 
@@ -838,44 +827,6 @@ func TestBuildSpendingTrendChartData_ZeroPreviousMonth(t *testing.T) {
 		values := trace["y"].([]float64)
 		if len(values) > 0 && !floatEqual(values[0], 0) {
 			t.Errorf("change with zero prev = %v, want 0", values[0])
-		}
-	}
-}
-
-// ---------- buildCategoryChartData edge cases ----------
-
-func TestBuildCategoryChartData_LessThanTenCategories(t *testing.T) {
-	ts := makeTransactionSet(
-		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-		makeTransaction("Food", -500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
-	)
-
-	result := buildCategoryChartData(ts)
-	data := result["data"].([]map[string]interface{})
-	trace := data[0]
-	labels := trace["labels"].([]string)
-
-	// Should have exactly 2 categories, no "Other"
-	if len(labels) != 2 {
-		t.Errorf("expected 2 labels, got %d: %v", len(labels), labels)
-	}
-	for _, l := range labels {
-		if l == "Other" {
-			t.Error("should not have 'Other' with <= 10 categories")
-		}
-	}
-}
-
-func TestBuildCategoryChartData_EmptyData(t *testing.T) {
-	ts := makeTransactionSet()
-	result := buildCategoryChartData(ts)
-	data := result["data"].([]map[string]interface{})
-	trace := data[0]
-	// With no outflows, labels and values should be nil/empty.
-	labels := trace["labels"]
-	if labels != nil {
-		if ls, ok := labels.([]string); ok && len(ls) > 0 {
-			t.Errorf("expected no labels for empty data, got %v", ls)
 		}
 	}
 }
@@ -1306,11 +1257,11 @@ func TestHandleChartData_LoadErrorReturns500(t *testing.T) {
 	}
 }
 
-func TestHandleCategoryDrilldown_LoadErrorReturns500(t *testing.T) {
+func TestHandleMajorExpenseDrilldown_LoadErrorReturns500(t *testing.T) {
 	router, cleanup := setupBrokenLoader(t)
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/category/Food")
+	rec := doGet(t, router, "/dashboard/major-expense?name=Foo")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
 	}
@@ -1361,11 +1312,11 @@ func TestHandleKPIsPartial_WithRenderer(t *testing.T) {
 	}
 }
 
-func TestHandleCategoryDrilldown_WithRenderer(t *testing.T) {
+func TestHandleMajorExpenseDrilldown_WithRenderer(t *testing.T) {
 	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/category/Food?start=2025-01-01&end=2025-03-31")
+	rec := doGet(t, router, "/dashboard/major-expense?name=Unmatched&start=2025-01-01&end=2025-03-31")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
 	}

@@ -637,12 +637,14 @@
     <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate" data-hash="{{.Hash}}" data-description="{{.Description}}" data-display-name="{{.DisplayName}}" data-major-expense-name="{{.MajorExpenseName}}">
         <span class="alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-xs text-gray-400 dark:text-gray-500">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
     </td>
+    {{$me := index $.HashToExpense .Hash}}
     <td class="w-32 p-3 text-sm">
+        {{if not $me}}
         <span class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs truncate block">{{if
             .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span>
+        {{end}}
     </td>
     <td class="w-32 p-3 text-sm truncate">
-        {{$me := index $.HashToExpense .Hash}}
         {{if $me}}<span class="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs truncate block" title="{{$me}}">{{$me}}</span>{{end}}
     </td>
     <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">

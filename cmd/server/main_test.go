@@ -127,7 +127,7 @@ func TestDashboardChartData(t *testing.T) {
 
 	chartTypes := []string{
 		"monthly",
-		"category",
+		"major-expense",
 		"spending-trend",
 		"merchants",
 		"cumulative",

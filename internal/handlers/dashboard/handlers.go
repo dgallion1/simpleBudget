@@ -53,7 +53,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/dashboard", handleDashboard)
 	r.Get("/dashboard/kpis", handleKPIsPartial)
 	r.Get("/dashboard/charts/data/{chartType}", handleChartData)
-	r.Get("/dashboard/category/{category}", handleCategoryDrilldown)
+	r.Get("/dashboard/major-expense", handleMajorExpenseDrilldown)
 	r.Get("/dashboard/kpi/{kpiType}", handleKPIDetail)
 	r.Get("/dashboard/kpi/{kpiType}/export", handleKPIExport)
 }
@@ -177,8 +177,6 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 	switch chartType {
 	case "monthly":
 		chartData = buildMonthlyChartData(filtered)
-	case "category":
-		chartData = buildCategoryChartData(filtered)
 	case "major-expense":
 		chartData = buildMajorExpenseChartData(filtered)
 	case "spending-trend":
@@ -196,8 +194,14 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(chartData)
 }
 
-func handleCategoryDrilldown(w http.ResponseWriter, r *http.Request) {
-	category := chi.URLParam(r, "category")
+// handleMajorExpenseDrilldown returns the transactions covered by a
+// single wedge in the Spending by Major Expense donut. The wedge name
+// is taken from the "name" query param (URL-safe; major expense names
+// can include arbitrary user text). Two synthetic wedges are honored:
+// "Unmatched" returns outflows that didn't match any major expense, and
+// "Other" returns the rolled-up tail beyond the donut display limit.
+func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
 
 	data, err := loader.LoadData()
 	if err != nil {
@@ -219,27 +223,49 @@ func handleCategoryDrilldown(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	outflows := filtered.FilterByType(models.Outflow)
-	categoryTxns := outflows.FilterByCategory(category).SortByDateDesc()
+	buckets, unmatched := bucketMajorExpenses(filtered)
 
-	// Calculate category stats
-	total := math.Abs(categoryTxns.SumAmount())
-	count := categoryTxns.Len()
+	var txns []models.Transaction
+	switch name {
+	case "Unmatched":
+		txns = unmatched
+	case "Other":
+		if len(buckets) > majorExpenseDonutLimit {
+			for _, b := range buckets[majorExpenseDonutLimit:] {
+				txns = append(txns, b.txns...)
+			}
+		}
+	default:
+		for _, b := range buckets {
+			if b.name == name {
+				txns = b.txns
+				break
+			}
+		}
+	}
+
+	sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
+
+	var total float64
+	for _, t := range txns {
+		total += math.Abs(t.Amount)
+	}
+	count := len(txns)
 	var avgAmount float64
 	if count > 0 {
 		avgAmount = total / float64(count)
 	}
 
 	partialData := map[string]interface{}{
-		"Category":     category,
-		"Transactions": categoryTxns.Transactions,
+		"Name":         name,
+		"Transactions": txns,
 		"Total":        total,
 		"Count":        count,
 		"AvgAmount":    avgAmount,
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "category-drilldown", partialData)
+		renderer.RenderPartial(w, "major-expense-drilldown", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(partialData)
@@ -744,67 +770,31 @@ func buildMonthlyChartData(ts *models.TransactionSet) map[string]interface{} {
 	}
 }
 
-func buildCategoryChartData(ts *models.TransactionSet) map[string]interface{} {
-	outflows := ts.FilterByType(models.Outflow)
-	categoryTotals := outflows.CategoryTotals()
+// majorExpenseDonutLimit caps the number of individual wedges shown in
+// the Spending by Major Expense donut. Anything past this is rolled
+// into a single "Other" wedge with a text breakdown beneath the chart.
+// The drilldown handler reads the same constant so clicking "Other"
+// returns exactly the rolled-up tail.
+const majorExpenseDonutLimit = 8
 
-	// Sort by value
-	type catVal struct {
-		cat string
-		val float64
-	}
-	var sorted []catVal
-	for cat, val := range categoryTotals {
-		sorted = append(sorted, catVal{cat, val})
-	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].val > sorted[j].val
-	})
-
-	// Take top 10
-	if len(sorted) > 10 {
-		other := 0.0
-		for _, cv := range sorted[10:] {
-			other += cv.val
-		}
-		sorted = sorted[:10]
-		if other > 0 {
-			sorted = append(sorted, catVal{"Other", other})
-		}
-	}
-
-	var labels []string
-	var values []float64
-	for _, cv := range sorted {
-		labels = append(labels, cv.cat)
-		values = append(values, cv.val)
-	}
-
-	return map[string]interface{}{
-		"data": []map[string]interface{}{
-			{
-				"type":   "pie",
-				"labels": labels,
-				"values": values,
-				"hole":   0.4,
-			},
-		},
-	}
+// majorExpenseBucket is one wedge candidate: a named major expense plus
+// every outflow that landed in it (after pin overrides + keyword/amount
+// matching) and the pre-summed absolute total used for sorting.
+type majorExpenseBucket struct {
+	name  string
+	txns  []models.Transaction
+	total float64
 }
 
-// buildMajorExpenseChartData renders a pie chart of outflow spending
-// grouped by user-declared major expense for the date-filtered window.
-// Transactions that don't match any major expense are bucketed under
-// "Unmatched" so the totals add up to the period's total outflows.
-//
-// To keep the donut readable when many small buckets exist, only the
-// top majorExpenseDonutLimit matched buckets are kept as individual
-// wedges; the rest are rolled into a single "Other" wedge. The list
-// of rolled-up items is returned alongside the chart in the "smaller"
-// field so the client can render a text breakdown.
-func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{} {
-	const majorExpenseDonutLimit = 8
-
+// bucketMajorExpenses groups outflows by user-declared major expense
+// and returns the sorted (descending by total) bucket list plus the
+// unmatched outflows. Both the chart builder and the drilldown handler
+// call this so they always agree on which transactions belong to which
+// wedge — including pin overrides.
+func bucketMajorExpenses(ts *models.TransactionSet) (buckets []majorExpenseBucket, unmatched []models.Transaction) {
+	if ts == nil {
+		return nil, nil
+	}
 	outflows := ts.FilterByType(models.Outflow)
 
 	// Best-effort load — empty config (or no loader during unit tests)
@@ -824,11 +814,6 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 		expenseByID[e.ID] = e
 	}
 
-	type bucket struct {
-		name string
-		val  float64
-	}
-	var buckets []bucket
 	for id, txns := range match.Groups {
 		name := expenseByID[id].Name
 		if name == "" {
@@ -839,41 +824,65 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 			total += t.AbsAmount()
 		}
 		if total > 0 {
-			buckets = append(buckets, bucket{name, total})
+			buckets = append(buckets, majorExpenseBucket{name: name, txns: txns, total: total})
 		}
 	}
+
+	sort.Slice(buckets, func(i, j int) bool { return buckets[i].total > buckets[j].total })
+	return buckets, match.Unmatched
+}
+
+// buildMajorExpenseChartData renders a pie chart of outflow spending
+// grouped by user-declared major expense for the date-filtered window.
+// Transactions that don't match any major expense are bucketed under
+// "Unmatched" so the totals add up to the period's total outflows.
+//
+// To keep the donut readable when many small buckets exist, only the
+// top majorExpenseDonutLimit matched buckets are kept as individual
+// wedges; the rest are rolled into a single "Other" wedge. The list
+// of rolled-up items is returned alongside the chart in the "smaller"
+// field so the client can render a text breakdown.
+func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{} {
+	buckets, unmatchedTxns := bucketMajorExpenses(ts)
+
 	var unmatchedTotal float64
-	for _, t := range match.Unmatched {
+	for _, t := range unmatchedTxns {
 		unmatchedTotal += t.AbsAmount()
 	}
 
-	sort.Slice(buckets, func(i, j int) bool { return buckets[i].val > buckets[j].val })
-
-	// Roll up the long tail past the donut limit into a single "Other"
-	// bucket and remember which entries went into it for the breakdown.
-	var rolledUp []bucket
+	type wedge struct {
+		name string
+		val  float64
+	}
+	display := make([]wedge, 0, len(buckets)+2)
+	var rolledUp []wedge
 	if len(buckets) > majorExpenseDonutLimit {
-		// Copy out the rolled-up entries before mutating the head slice;
-		// append-in-place can otherwise overwrite the tail's storage.
-		rolledUp = append([]bucket(nil), buckets[majorExpenseDonutLimit:]...)
-		var otherTotal float64
-		for _, b := range rolledUp {
-			otherTotal += b.val
+		for _, b := range buckets[:majorExpenseDonutLimit] {
+			display = append(display, wedge{b.name, b.total})
 		}
-		buckets = append(buckets[:majorExpenseDonutLimit], bucket{"Other", otherTotal})
+		var otherTotal float64
+		for _, b := range buckets[majorExpenseDonutLimit:] {
+			rolledUp = append(rolledUp, wedge{b.name, b.total})
+			otherTotal += b.total
+		}
+		display = append(display, wedge{"Other", otherTotal})
+	} else {
+		for _, b := range buckets {
+			display = append(display, wedge{b.name, b.total})
+		}
 	}
 
 	if unmatchedTotal > 0 {
-		buckets = append(buckets, bucket{"Unmatched", unmatchedTotal})
+		display = append(display, wedge{"Unmatched", unmatchedTotal})
 	}
 
-	labels := make([]string, len(buckets))
-	values := make([]float64, len(buckets))
+	labels := make([]string, len(display))
+	values := make([]float64, len(display))
 	var grandTotal float64
-	for i, b := range buckets {
-		labels[i] = b.name
-		values[i] = b.val
-		grandTotal += b.val
+	for i, w := range display {
+		labels[i] = w.name
+		values[i] = w.val
+		grandTotal += w.val
 	}
 
 	out := map[string]interface{}{
@@ -889,10 +898,10 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 
 	if len(rolledUp) > 0 {
 		smaller := make([]map[string]interface{}, 0, len(rolledUp))
-		for _, b := range rolledUp {
+		for _, w := range rolledUp {
 			pct := 0.0
 			if grandTotal > 0 {
-				pct = b.val / grandTotal * 100
+				pct = w.val / grandTotal * 100
 			}
 			// One decimal for ≥ 1%, two decimals for < 1% so that a
 			// 0.45% slice does not display as "0%".
@@ -902,8 +911,8 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 				pct = math.Round(pct*10) / 10
 			}
 			smaller = append(smaller, map[string]interface{}{
-				"name":    b.name,
-				"amount":  b.val,
+				"name":    w.name,
+				"amount":  w.val,
 				"percent": pct,
 			})
 		}

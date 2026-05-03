@@ -94,21 +94,16 @@ function renderChart(containerId, chartData) {
     // Render
     Plotly.newPlot(containerId, data.data, layout, config);
 
-    // Add click handler for category pie chart
-    if (containerId === 'chart-category') {
-        const container = document.getElementById(containerId);
+    // Click handler + "Other" breakdown for the major-expense donut.
+    if (containerId === 'chart-major-expense') {
         container.on('plotly_click', function(eventData) {
             if (eventData.points && eventData.points.length > 0) {
-                const category = eventData.points[0].label;
-                if (category && typeof openCategoryDrilldown === 'function') {
-                    openCategoryDrilldown(category);
+                const name = eventData.points[0].label;
+                if (name && typeof openMajorExpenseDrilldown === 'function') {
+                    openMajorExpenseDrilldown(name);
                 }
             }
         });
-    }
-
-    // Render the "Other" breakdown for the major-expense donut.
-    if (containerId === 'chart-major-expense') {
         renderMajorExpenseBreakdown(data.smaller);
     }
 }

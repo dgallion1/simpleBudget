@@ -277,7 +277,91 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		transactions = append(transactions, t)
 	}
 
+	if usesCreditCardSignConvention(transactions) {
+		log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
+		for i := range transactions {
+			transactions[i].Amount = -transactions[i].Amount
+		}
+	}
+
 	return transactions, nil
+}
+
+// minSignConventionSample is the minimum number of non-zero amounts required
+// before sign-convention auto-detection runs. Below this we don't have enough
+// signal and the file is left untouched.
+const minSignConventionSample = 10
+
+// ccConventionPositiveThreshold is the share of non-zero amounts that must be
+// positive for a file to be treated as a credit-card statement, when no
+// bank-style signals are present.
+const ccConventionPositiveThreshold = 0.7
+
+// usesCreditCardSignConvention reports whether a parsed CSV's amounts follow
+// credit-card statement convention (positive = charge, negative = payment) as
+// opposed to bank convention (positive = deposit, negative = debit).
+//
+// A file is treated as a credit-card statement only when it lacks every
+// bank-only signal (paychecks/dividends/interest, paper checks, wire and
+// payroll transfers) AND its non-zero amounts are predominantly positive.
+// This avoids flipping legitimate bank files that happen to have a positive
+// month, while correctly normalizing CC exports whose sign convention is
+// inverted relative to the rest of the system.
+func usesCreditCardSignConvention(txns []models.Transaction) bool {
+	if len(txns) < minSignConventionSample {
+		return false
+	}
+	pos, neg := 0, 0
+	for i := range txns {
+		t := &txns[i]
+		if hasBankOnlySignal(t) {
+			return false
+		}
+		switch {
+		case t.Amount > 0:
+			pos++
+		case t.Amount < 0:
+			neg++
+		}
+	}
+	nonZero := pos + neg
+	if nonZero < minSignConventionSample {
+		return false
+	}
+	return float64(pos)/float64(nonZero) >= ccConventionPositiveThreshold
+}
+
+// hasBankOnlySignal returns true when a transaction carries a marker that
+// only appears in bank-account exports (never in credit-card statements):
+// classifiable income, paper checks, or wire/payroll transfer descriptions.
+func hasBankOnlySignal(t *models.Transaction) bool {
+	if classifier.IsPotentialIncome(t) {
+		return true
+	}
+	descLower := strings.ToLower(strings.TrimSpace(t.Description))
+	catLower := strings.ToLower(strings.TrimSpace(t.Category))
+
+	if catLower == "check" {
+		return true
+	}
+	if strings.HasPrefix(descLower, "check #") || strings.HasPrefix(descLower, "chk #") {
+		return true
+	}
+
+	for _, p := range bankOnlyDescPatterns {
+		if strings.Contains(descLower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// bankOnlyDescPatterns are description fragments that only appear in
+// bank-account exports — never in credit-card statements.
+var bankOnlyDescPatterns = []string{
+	"wire transfer", "funds transfer",
+	"direct deposit", "direct dep",
+	"payroll",
 }
 
 // parseDebitCredit combines Debit and Credit columns into a single amount

@@ -301,6 +301,140 @@ Grocery Store,-50.00`,
 	}
 }
 
+// TestLoadCSVFile_FlipsCreditCardSignConvention verifies that a CSV in
+// credit-card sign convention (positive = charge) is auto-flipped to bank
+// convention (negative = expense) at load time, so downstream Abs(Sum)
+// expense math doesn't cancel positive CC charges against negative bank
+// debits in aggregated views. Also verifies that bank-style files (income
+// rows, paper checks, wire transfers) are NEVER flipped, even in
+// positive-heavy months.
+func TestLoadCSVFile_FlipsCreditCardSignConvention(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dataloader_signconv_test")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tests := []struct {
+		name          string
+		csvContent    string
+		wantFlipped   bool
+		wantFirstAmt  float64
+	}{
+		{
+			name: "credit card statement: predominantly positive, no bank signals -> flipped",
+			csvContent: `Date,Description,Category,Amount
+2025-02-01,Wegmans,Groceries,50.00
+2025-02-02,Amazon,Shopping,30.00
+2025-02-03,Walgreens,Pharmacy,15.00
+2025-02-04,Netflix,Television,20.00
+2025-02-05,Restaurant,Restaurants,40.00
+2025-02-06,Spotify,Music,10.00
+2025-02-07,Amazon,Shopping,25.00
+2025-02-08,Wegmans,Groceries,60.00
+2025-02-09,Amazon,Shopping,12.00
+2025-02-10,Refund,Shopping,-5.00`,
+			wantFlipped:  true,
+			wantFirstAmt: -50.00,
+		},
+		{
+			name: "bank statement with paychecks: not flipped even when positive-heavy",
+			csvContent: `Date,Description,Category,Amount
+2025-02-01,Direct Deposit Payroll,Paycheck,3000.00
+2025-02-02,Direct Deposit Payroll,Paycheck,3000.00
+2025-02-03,Wegmans,Groceries,50.00
+2025-02-04,Amazon,Shopping,30.00
+2025-02-05,Restaurant,Restaurants,40.00
+2025-02-06,Spotify,Music,10.00
+2025-02-07,Amazon,Shopping,25.00
+2025-02-08,Wegmans,Groceries,60.00
+2025-02-09,Amazon,Shopping,12.00
+2025-02-10,Coffee,Food & Dining,5.00`,
+			wantFlipped:  false,
+			wantFirstAmt: 3000.00,
+		},
+		{
+			name: "bank statement with paper checks: not flipped",
+			csvContent: `Date,Description,Category,Amount
+2025-02-01,Check #1234,Check,500.00
+2025-02-02,Wegmans,Groceries,50.00
+2025-02-03,Amazon,Shopping,30.00
+2025-02-04,Walgreens,Pharmacy,15.00
+2025-02-05,Netflix,Television,20.00
+2025-02-06,Spotify,Music,10.00
+2025-02-07,Amazon,Shopping,25.00
+2025-02-08,Wegmans,Groceries,60.00
+2025-02-09,Amazon,Shopping,12.00
+2025-02-10,Coffee,Food & Dining,5.00`,
+			wantFlipped:  false,
+			wantFirstAmt: 500.00,
+		},
+		{
+			name: "bank statement with wire transfer: not flipped",
+			csvContent: `Date,Description,Category,Amount
+2025-02-01,Incoming Wire Transfer,Transfer,5000.00
+2025-02-02,Wegmans,Groceries,50.00
+2025-02-03,Amazon,Shopping,30.00
+2025-02-04,Walgreens,Pharmacy,15.00
+2025-02-05,Netflix,Television,20.00
+2025-02-06,Spotify,Music,10.00
+2025-02-07,Amazon,Shopping,25.00
+2025-02-08,Wegmans,Groceries,60.00
+2025-02-09,Amazon,Shopping,12.00
+2025-02-10,Coffee,Food & Dining,5.00`,
+			wantFlipped:  false,
+			wantFirstAmt: 5000.00,
+		},
+		{
+			name: "small file under sample threshold: not flipped",
+			csvContent: `Date,Description,Category,Amount
+2025-02-01,Amazon,Shopping,30.00
+2025-02-02,Wegmans,Groceries,50.00`,
+			wantFlipped:  false,
+			wantFirstAmt: 30.00,
+		},
+		{
+			name: "predominantly negative bank file: not flipped",
+			csvContent: `Date,Description,Category,Amount
+2025-02-01,Rochester Gas,Utilities,-100.00
+2025-02-02,Monroe Water,Utilities,-25.00
+2025-02-03,Property Insurance,Financial,-300.00
+2025-02-04,Internet,Utilities,-80.00
+2025-02-05,Cable,Utilities,-90.00
+2025-02-06,Mortgage,Mortgage,-1500.00
+2025-02-07,Cell Phone,Utilities,-60.00
+2025-02-08,Electric,Utilities,-150.00
+2025-02-09,Subscription,Subscriptions,-15.00
+2025-02-10,Refund,Refund,5.00`,
+			wantFlipped:  false,
+			wantFirstAmt: -100.00,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csvPath := filepath.Join(tmpDir, "test.csv")
+			if err := os.WriteFile(csvPath, []byte(tt.csvContent), 0644); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			defer os.Remove(csvPath)
+
+			store, _ := storage.New(tmpDir)
+			loader := New(tmpDir, store)
+			txns, err := loader.loadCSVFile(csvPath)
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			if len(txns) == 0 {
+				t.Fatalf("no transactions loaded")
+			}
+			if got := txns[0].Amount; got != tt.wantFirstAmt {
+				t.Errorf("first txn amount = %v, want %v (flipped=%v)", got, tt.wantFirstAmt, tt.wantFlipped)
+			}
+		})
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))

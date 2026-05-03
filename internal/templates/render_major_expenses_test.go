@@ -675,6 +675,9 @@ func TestRenderMajorExpenses_CountChipAndClearButton(t *testing.T) {
 	if !strings.Contains(html, `class="major-expenses-bulk-pin-clear`) {
 		t.Errorf("expected Clear button class for JS hooks, got: %s", html)
 	}
+	if !strings.Contains(html, `class="major-expenses-bulk-pin-clear hidden`) {
+		t.Errorf("expected Clear button rendered with hidden class, got: %s", html)
+	}
 }
 
 // TestRenderMajorExpenses_CheckboxesRenderWithoutExpenses verifies

@@ -1021,11 +1021,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     {{if .AllUnmatched}}{{$total = add $total (len .AllUnmatched)}}{{else}}{{$total = add $total (len .Match.Exceptions.UnknownLarge)}}{{end}}
     {{$total = add $total (len .Match.Exceptions.Anomalous)}}
     {{$total = add $total (len .Match.Exceptions.NewMerchants)}}
-    <span class="text-xs text-gray-500 dark:text-gray-400">
+    <span class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
         {{$total}} flagged
         <span id="major-expenses-pin-count-chip"
-              class="major-expenses-pin-count-chip hidden ml-1 text-amber-700 dark:text-amber-300"
-              aria-live="polite">
+              class="major-expenses-pin-count-chip hidden ml-1 text-amber-700 dark:text-amber-300">
             · <span id="major-expenses-pin-count-chip-num">0</span> selected
         </span>
     </span>

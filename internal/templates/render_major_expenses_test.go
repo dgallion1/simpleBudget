@@ -624,6 +624,92 @@ func TestRenderMajorExpenses_ExceptionsHaveCheckboxColumn(t *testing.T) {
 	})
 }
 
+// TestRenderMajorExpenses_CountChipAndClearButton verifies the
+// server-side markup for the bulk-pin selection chip in the panel
+// header and the Clear button inside the bulk-pin toolbar. Both
+// must render hidden by default; JS reveals them when N > 0.
+func TestRenderMajorExpenses_CountChipAndClearButton(t *testing.T) {
+	now := time.Now()
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses": []models.MajorExpense{
+			{ID: "rent", Name: "Rent"},
+		},
+		"ExpenseOptions": []struct {
+			ID    string
+			Label string
+		}{{ID: "rent", Label: "Rent"}},
+		"Summaries": []struct{}{},
+		"Match": struct {
+			Exceptions models.ExceptionsReport
+		}{
+			Exceptions: models.ExceptionsReport{
+				Threshold:     100,
+				NewWindowDays: 30,
+			},
+		},
+		"AllUnmatched": []models.Transaction{
+			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
+		},
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 0.0,
+	})
+
+	// Count chip is rendered with the "hidden" class so it is invisible
+	// at SSR time. JS toggles visibility on selection change.
+	if !strings.Contains(html, `id="major-expenses-pin-count-chip"`) {
+		t.Errorf("expected count chip element id in panel header, got: %s", html)
+	}
+	if !strings.Contains(html, `class="major-expenses-pin-count-chip hidden`) {
+		t.Errorf("expected count chip rendered with hidden class, got: %s", html)
+	}
+
+	// Clear button lives inside the existing bulk-pin toolbar and is
+	// always rendered with a hidden class — JS reveals it in checked
+	// mode only.
+	if !strings.Contains(html, `id="major-expenses-bulk-pin-clear"`) {
+		t.Errorf("expected Clear button id inside bulk-pin toolbar, got: %s", html)
+	}
+	if !strings.Contains(html, `class="major-expenses-bulk-pin-clear`) {
+		t.Errorf("expected Clear button class for JS hooks, got: %s", html)
+	}
+}
+
+// TestRenderMajorExpenses_CheckboxesRenderWithoutExpenses verifies
+// the spec's edge case: row + header checkboxes still render even
+// when .ExpenseOptions is empty, but the bulk toolbar is absent.
+func TestRenderMajorExpenses_CheckboxesRenderWithoutExpenses(t *testing.T) {
+	now := time.Now()
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses":  []models.MajorExpense{},
+		// No ExpenseOptions key -> nil/empty.
+		"Summaries": []struct{}{},
+		"Match": struct {
+			Exceptions models.ExceptionsReport
+		}{Exceptions: models.ExceptionsReport{Threshold: 100, NewWindowDays: 30}},
+		"AllUnmatched": []models.Transaction{
+			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
+		},
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 0.0,
+	})
+
+	if !strings.Contains(html, `class="major-expenses-pin-check"`) {
+		t.Errorf("expected row checkbox even without expenses, got: %s", html)
+	}
+	if !strings.Contains(html, `id="major-expenses-pin-check-header-unmatched"`) {
+		t.Errorf("expected header checkbox even without expenses, got: %s", html)
+	}
+	if strings.Contains(html, `id="major-expenses-bulk-pin"`) {
+		t.Errorf("bulk-pin toolbar must NOT render when ExpenseOptions is empty, got: %s", html)
+	}
+}
+
 func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {
 	templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
 	if err != nil {

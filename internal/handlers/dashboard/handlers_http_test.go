@@ -1195,7 +1195,7 @@ func TestBuildCumulativeChartData_MultipleTxnsSameDay(t *testing.T) {
 
 func TestCalculateMetrics_EmptyTransactionSet(t *testing.T) {
 	ts := makeTransactionSet()
-	m := calculateMetrics(ts)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
 
 	if m.TotalIncome != 0 || m.TotalExpenses != 0 || m.NetSavings != 0 {
 		t.Errorf("expected all zeros, got income=%v, expenses=%v, savings=%v",

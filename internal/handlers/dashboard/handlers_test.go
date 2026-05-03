@@ -236,7 +236,7 @@ func TestCalculateMetrics_BasicTotals(t *testing.T) {
 		makeTransaction("Groceries", -500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
 	)
 
-	m := calculateMetrics(ts)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
 
 	if !floatEqual(m.TotalIncome, 6000) {
 		t.Errorf("TotalIncome = %v, want 6000", m.TotalIncome)
@@ -262,7 +262,7 @@ func TestCalculateMetrics_ZeroIncome(t *testing.T) {
 		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	m := calculateMetrics(ts)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
 
 	if m.SavingsRate != 0 {
 		t.Errorf("SavingsRate = %v, want 0 when no income", m.SavingsRate)
@@ -285,7 +285,7 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 	}
 	ts := makeTransactionSet(txns...)
 
-	m := calculateMetrics(ts)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
 
 	if len(m.IncomeTrend) != 6 {
 		t.Errorf("IncomeTrend length = %v, want 6", len(m.IncomeTrend))
@@ -691,5 +691,141 @@ func TestBuildCumulativeChartData_NegativeBalance(t *testing.T) {
 	fillColor := trace["fillcolor"].(string)
 	if fillColor != "rgba(239, 68, 68, 0.1)" {
 		t.Errorf("fill color = %v, want rgba(239, 68, 68, 0.1)", fillColor)
+	}
+}
+
+// --- calculateMetrics: budget tracking ---
+
+func TestCalculateMetrics_MonthsInRange_ApproxFromDates(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1000, time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // 90-day inclusive span
+
+	m := calculateMetrics(ts, start, end, 0)
+
+	// Jan 1 to Mar 31: end.Sub(start) = 89 days; +1 for inclusive = 90 days / 30.4375 ≈ 2.957
+	if m.MonthsInRange < 2.90 || m.MonthsInRange > 3.05 {
+		t.Errorf("MonthsInRange = %v, want ~2.957 (Jan-Mar inclusive span)", m.MonthsInRange)
+	}
+}
+
+func TestCalculateMetrics_ActualMonthly_DividesExpensesByMonths(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Groceries", -3000, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("Gas", -3000, time.Date(2025, 3, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Auto"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // ~3 months
+
+	m := calculateMetrics(ts, start, end, 0)
+
+	if !floatEqual(m.TotalExpenses, 9000) {
+		t.Fatalf("precondition: TotalExpenses = %v, want 9000", m.TotalExpenses)
+	}
+	// 9000 / ~2.99 ≈ 3010
+	if m.ActualMonthly < 2950 || m.ActualMonthly > 3050 {
+		t.Errorf("ActualMonthly = %v, want ~3010", m.ActualMonthly)
+	}
+}
+
+func TestCalculateMetrics_BudgetOverTarget(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -6000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Groceries", -6000, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("Gas", -6000, time.Date(2025, 3, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Auto"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // ~3 months
+
+	target := 5000.0
+	m := calculateMetrics(ts, start, end, target)
+
+	if !m.HasBudgetTarget {
+		t.Errorf("HasBudgetTarget = false, want true (target=%v)", target)
+	}
+	if !floatEqual(m.BudgetTarget, target) {
+		t.Errorf("BudgetTarget = %v, want %v", m.BudgetTarget, target)
+	}
+	// ActualMonthly ≈ 6080; PerMonthDelta = 6080 - 5000 = ~1080
+	// (90 days / 30.4375 ≈ 2.957 months; 18000/2.957 ≈ 6088)
+	if m.PerMonthDelta < 950 || m.PerMonthDelta > 1200 {
+		t.Errorf("PerMonthDelta = %v, want ~1080 (over)", m.PerMonthDelta)
+	}
+	// CumulativeDelta = 18000 - 5000 * 2.957 = 18000 - 14784 = ~3216
+	if m.CumulativeDelta < 3000 || m.CumulativeDelta > 3400 {
+		t.Errorf("CumulativeDelta = %v, want ~3216 (over)", m.CumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_BudgetUnderTarget(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Groceries", -3000, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("Gas", -3000, time.Date(2025, 3, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Auto"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 5000)
+
+	// ActualMonthly ≈ 3044; PerMonthDelta = 3044 - 5000 = ~-1956
+	// (90 days / 30.4375 ≈ 2.957 months; 9000/2.957 ≈ 3044)
+	if m.PerMonthDelta > -1800 || m.PerMonthDelta < -2100 {
+		t.Errorf("PerMonthDelta = %v, want ~-1956 (under)", m.PerMonthDelta)
+	}
+	// CumulativeDelta = 9000 - 5000*2.957 = 9000 - 14784 = ~-5784
+	if m.CumulativeDelta > -5600 || m.CumulativeDelta < -6000 {
+		t.Errorf("CumulativeDelta = %v, want ~-5784 (under)", m.CumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_NoBudgetTarget(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 0)
+
+	if m.HasBudgetTarget {
+		t.Errorf("HasBudgetTarget = true, want false when target=0")
+	}
+	if !floatEqual(m.BudgetTarget, 0) {
+		t.Errorf("BudgetTarget = %v, want 0", m.BudgetTarget)
+	}
+	// ActualMonthly should still be computed
+	if m.ActualMonthly == 0 {
+		t.Errorf("ActualMonthly = 0, want non-zero (TotalExpenses > 0 even without target)")
+	}
+	// PerMonthDelta = ActualMonthly - 0 = ActualMonthly
+	if !floatEqual(m.PerMonthDelta, m.ActualMonthly) {
+		t.Errorf("PerMonthDelta = %v, want ActualMonthly (%v) when target=0", m.PerMonthDelta, m.ActualMonthly)
+	}
+	// CumulativeDelta = TotalExpenses - 0 = TotalExpenses
+	if !floatEqual(m.CumulativeDelta, m.TotalExpenses) {
+		t.Errorf("CumulativeDelta = %v, want TotalExpenses (%v) when target=0", m.CumulativeDelta, m.TotalExpenses)
+	}
+}
+
+func TestCalculateMetrics_SingleDayRange_NoDivideByZero(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	day := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("calculateMetrics panicked on single-day range: %v", r)
+		}
+	}()
+	m := calculateMetrics(ts, day, day, 5000)
+
+	// (0 + 1) / 30.4375 ≈ 0.0329
+	if m.MonthsInRange < 0.03 || m.MonthsInRange > 0.04 {
+		t.Errorf("MonthsInRange = %v, want ~0.033 (single-day span)", m.MonthsInRange)
 	}
 }

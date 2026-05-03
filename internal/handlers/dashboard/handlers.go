@@ -59,7 +59,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	startDate, endDate := resolveDateRange(startStr, endStr, minDate, maxDate)
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	metrics := calculateMetrics(filtered)
+	metrics := calculateMetrics(filtered, startDate, endDate, 0)
 
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
@@ -109,7 +109,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	metrics := calculateMetrics(filtered)
+	metrics := calculateMetrics(filtered, startDate, endDate, 0)
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
@@ -506,7 +506,21 @@ func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time
 	return startDate, endDate
 }
 
-func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
+// avgDaysPerMonth is 365.25 / 12 — the standard average-calendar-month length.
+const avgDaysPerMonth = 30.4375
+
+// monthsBetween returns the average-calendar-month count between two
+// inclusive dates. A single-day span returns 1/avgDaysPerMonth (~0.033),
+// never zero, so callers can safely divide by the result.
+func monthsBetween(start, end time.Time) float64 {
+	days := end.Sub(start).Hours()/24 + 1
+	if days < 1 {
+		days = 1
+	}
+	return days / avgDaysPerMonth
+}
+
+func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget float64) *models.DashboardMetrics {
 	income := ts.FilterByType(models.Income)
 	outflows := ts.FilterByType(models.Outflow)
 
@@ -518,6 +532,15 @@ func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
 	if totalIncome > 0 {
 		savingsRate = (netSavings / totalIncome) * 100
 	}
+
+	// Budget tracking — uses the dashboard date range (not transaction min/max)
+	// so a sparse range still divides expenses across the full window the user
+	// selected.
+	monthsInRange := monthsBetween(rangeStart, rangeEnd)
+	actualMonthly := totalExpenses / monthsInRange
+	perMonthDelta := actualMonthly - budgetTarget
+	cumulativeDelta := totalExpenses - budgetTarget*monthsInRange
+	hasBudgetTarget := budgetTarget > 0
 
 	// Calculate monthly trends
 	var incomeTrend, expensesTrend, savingsTrend []float64
@@ -575,6 +598,12 @@ func calculateMetrics(ts *models.TransactionSet) *models.DashboardMetrics {
 		ExpensesTrend:    expensesTrend,
 		SavingsTrend:     savingsTrend,
 		TrendLabels:      trendLabels,
+		MonthsInRange:    monthsInRange,
+		ActualMonthly:    actualMonthly,
+		BudgetTarget:     budgetTarget,
+		PerMonthDelta:    perMonthDelta,
+		CumulativeDelta:  cumulativeDelta,
+		HasBudgetTarget:  hasBudgetTarget,
 	}
 }
 
@@ -601,8 +630,8 @@ func calculateComparison(data *models.TransactionSet, start, end time.Time, comp
 		return &models.PeriodComparison{HasData: false}
 	}
 
-	currentMetrics := calculateMetrics(currentFiltered)
-	compMetrics := calculateMetrics(compFiltered)
+	currentMetrics := calculateMetrics(currentFiltered, start, end, 0)
+	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, 0)
 
 	incomeChange := percentChange(currentMetrics.TotalIncome, compMetrics.TotalIncome)
 	expensesChange := percentChange(currentMetrics.TotalExpenses, compMetrics.TotalExpenses)

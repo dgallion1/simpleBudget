@@ -19,7 +19,10 @@ type DashboardMetrics struct {
 	TrendLabels   []string  `json:"trend_labels"` // Month labels
 
 	// Budget tracking (compares actual outflows to the active what-if
-	// MonthlyLivingExpenses target). All zero-valued when no target is set.
+	// MonthlyLivingExpenses target). When HasBudgetTarget is false,
+	// BudgetTarget is 0 and PerMonthDelta/CumulativeDelta degenerate to
+	// ActualMonthly and TotalExpenses respectively — consumers must gate
+	// on HasBudgetTarget before treating those fields as variance.
 	MonthsInRange   float64 `json:"months_in_range"`   // average-calendar-month count for the date range
 	ActualMonthly   float64 `json:"actual_monthly"`    // TotalExpenses / MonthsInRange
 	BudgetTarget    float64 `json:"budget_target"`     // from what-if MonthlyLivingExpenses

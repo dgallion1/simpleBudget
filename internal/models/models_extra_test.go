@@ -3,6 +3,7 @@ package models
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 // --- Healthcare tests ---
@@ -400,6 +401,62 @@ func TestGetPhaseReferenceAge(t *testing.T) {
 	s2 := &WhatIfSettings{CurrentAge: 65, SpouseAge: 0, PhaseAgeReference: "spouse"}
 	if got := s2.GetPhaseReferenceAge(5); got != 70 {
 		t.Errorf("spouse ref no spouse: got %d, want 70", got)
+	}
+}
+
+func TestSpendingMultiplierAt(t *testing.T) {
+	// Primary turns 65 in Jan 2025; default phases: Go-Go (0+, 1.0),
+	// Active (65+, 0.95), Slow-Go (75+, 0.85), Late Slow-Go (80+, 0.75),
+	// No-Go (85+, 0.65).
+	s := &WhatIfSettings{
+		StartDate: "2025-01",
+		Persons: []Person{
+			{ID: "p1", Name: "P", Role: PersonRolePrimary, BirthMonth: BirthMonthForAge("2025-01", 65)},
+		},
+		PhaseAgeReference: "primary",
+		SpendingPhaseConfig: &SpendingPhaseConfig{
+			Enabled: true,
+			Phases:  DefaultSpendingPhases(),
+		},
+	}
+	s.ComputeAges()
+
+	tests := []struct {
+		name string
+		when time.Time
+		want float64
+	}{
+		{"start of projection age 65", time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), 0.95},
+		{"five years later (still 65+)", time.Date(2030, 6, 1, 0, 0, 0, 0, time.UTC), 0.95},
+		{"age 75 → Slow-Go", time.Date(2035, 1, 1, 0, 0, 0, 0, time.UTC), 0.85},
+		{"age 85 → No-Go", time.Date(2045, 1, 1, 0, 0, 0, 0, time.UTC), 0.65},
+		{"3 years before start (age 62)", time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC), 1.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.SpendingMultiplierAt(tt.when)
+			if got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	// Phases disabled → always 1.0
+	s.SpendingPhaseConfig.Enabled = false
+	if got := s.SpendingMultiplierAt(time.Date(2045, 1, 1, 0, 0, 0, 0, time.UTC)); got != 1.0 {
+		t.Errorf("phases disabled: got %v, want 1.0", got)
+	}
+
+	// Bad StartDate → 1.0 (defensive fallback)
+	s2 := &WhatIfSettings{
+		StartDate: "not-a-date",
+		SpendingPhaseConfig: &SpendingPhaseConfig{
+			Enabled: true,
+			Phases:  DefaultSpendingPhases(),
+		},
+	}
+	if got := s2.SpendingMultiplierAt(time.Now()); got != 1.0 {
+		t.Errorf("invalid StartDate: got %v, want 1.0", got)
 	}
 }
 

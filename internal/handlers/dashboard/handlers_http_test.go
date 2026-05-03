@@ -1176,7 +1176,7 @@ func TestCalculateComparison_SavingsRateChange(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "previous", 0)
+	result := calculateComparison(ts, start, end, "previous", nil)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}

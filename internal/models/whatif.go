@@ -466,6 +466,31 @@ func (s *WhatIfSettings) GetSpendingMultiplier(age int) float64 {
 	return multiplier
 }
 
+// SpendingMultiplierAt returns the phase multiplier for a calendar
+// instant t, using the same phase-age reference (older/younger/primary/
+// spouse) the projection uses. Returns 1.0 when phases are disabled or
+// when StartDate is unparseable. yearsElapsed is computed from the
+// projection StartDate using floor division so months before StartDate
+// produce a negative offset (Go-Go's StartAge=0 still applies for
+// reasonable historical ages).
+func (s *WhatIfSettings) SpendingMultiplierAt(t time.Time) float64 {
+	config := s.SpendingPhaseConfig
+	if config == nil || !config.Enabled || len(config.Phases) == 0 {
+		return 1.0
+	}
+	sd, err := parseYearMonth(s.StartDate)
+	if err != nil {
+		return 1.0
+	}
+	monthsFromStart := (t.Year()-sd.Year())*12 + int(t.Month()) - int(sd.Month())
+	yearsElapsed := monthsFromStart / 12
+	if monthsFromStart < 0 && monthsFromStart%12 != 0 {
+		yearsElapsed--
+	}
+	age := s.GetPhaseReferenceAge(yearsElapsed)
+	return s.GetSpendingMultiplier(age)
+}
+
 // GetTotalHealthcareCost returns total healthcare cost for a given month
 // Uses multi-person model if HealthcarePersons is populated, otherwise falls back to legacy single value
 func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {

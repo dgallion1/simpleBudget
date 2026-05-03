@@ -309,3 +309,62 @@ the "loaded target" and "missing/zero target" paths.
    both new cards when the prior period has data.
 7. All existing dashboard tests still pass; new tests cover the new
    logic; coverage ceiling held.
+
+---
+
+## Addendum (2026-05-03) — Go-Go phase adjustment
+
+The dashboard budget target now applies the active what-if **spending
+phase multiplier** to `MonthlyLivingExpenses`, mirroring how the
+retirement projection treats the same value (`Go-Go → Active → Slow-Go
+→ Late Slow-Go → No-Go`, per `models.DefaultSpendingPhases`). Without
+this, the target stayed flat across the user's lifetime even though the
+projection assumes spending tapers with age, leaving the dashboard and
+the projection telling different stories.
+
+### Behavior
+
+- For each calendar month in the dashboard date range, look up the
+  user's age via `WhatIfSettings.GetPhaseReferenceAge(yearsElapsed)`,
+  fetch the multiplier from `GetSpendingMultiplier(age)`, and weight
+  `MonthlyLivingExpenses` by the **average** of those per-month
+  multipliers.
+- Range fully inside one phase → target = `base × phaseMultiplier`.
+- Range straddling a phase boundary (e.g., the user crosses age 65
+  inside the dashboard window) → target = weighted average across the
+  range. `CumulativeDelta` stays exact because
+  `BudgetTarget × MonthsInRange` collapses to the summed monthly target.
+- `SpendingPhaseConfig.Enabled = false`, missing settings, or
+  unparseable `StartDate` → falls back to the flat
+  `MonthlyLivingExpenses` value (prior behavior).
+- `MonthlyLivingExpenses == 0` → returns `0`, preserving the
+  `HasBudgetTarget = false` "no budget configured" sentinel.
+
+### Period comparison
+
+`calculateComparison` now takes `*models.WhatIfSettings` (instead of a
+flat float). Each side of the comparison (current and prior) gets its
+own phase-adjusted target, so a year-over-year comparison correctly
+reflects a phase boundary the user crossed in between.
+
+### API
+
+- New: `WhatIfSettings.SpendingMultiplierAt(t time.Time) float64` —
+  returns the phase multiplier for any calendar instant, anchored at
+  `StartDate`. Public so other surfaces (insights, exports) can adopt
+  the same math.
+- New (handler-private): `phaseAdjustedMonthlyTarget(s, rangeStart,
+  rangeEnd) float64` — returns the average phase-adjusted monthly
+  target for a date range.
+- Renamed: `currentBudgetTarget()` → `currentBudgetSettings()` returning
+  `*WhatIfSettings`; the target is now derived per-call in the handler.
+
+### Tests
+
+- `internal/models/models_extra_test.go::TestSpendingMultiplierAt` —
+  covers Go-Go, Active, Slow-Go, No-Go, pre-projection dates, phases
+  disabled, and unparseable `StartDate`.
+- `internal/handlers/dashboard/handlers_test.go::TestPhaseAdjustedMonthlyTarget_*` —
+  nil settings, zero base, phases disabled, single-phase range,
+  range straddling Go-Go → Active, and end-to-end into
+  `calculateMetrics`.

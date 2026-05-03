@@ -100,7 +100,7 @@ func TestCalculateComparison_PreviousPeriod(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "previous", 0)
+	result := calculateComparison(ts, start, end, "previous", nil)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -139,7 +139,7 @@ func TestCalculateComparison_YearOverYear(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "year", 0)
+	result := calculateComparison(ts, start, end, "year", nil)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -171,7 +171,7 @@ func TestCalculateComparison_NoComparisonData(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "previous", 0)
+	result := calculateComparison(ts, start, end, "previous", nil)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -189,7 +189,7 @@ func TestCalculateComparison_InvalidType(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "bogus", 0)
+	result := calculateComparison(ts, start, end, "bogus", nil)
 
 	if result != nil {
 		t.Errorf("expected nil for unknown comparison type, got %+v", result)
@@ -777,7 +777,7 @@ func TestCalculateComparison_PopulatesBudgetDeltas(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	pc := calculateComparison(ts, start, end, "previous", 0)
+	pc := calculateComparison(ts, start, end, "previous", nil)
 	if pc == nil || !pc.HasData {
 		t.Fatalf("expected non-nil comparison with HasData=true, got %+v", pc)
 	}
@@ -795,6 +795,133 @@ func TestCalculateComparison_PopulatesBudgetDeltas(t *testing.T) {
 	// CumulativeDeltaChange = 2500 - 1500 = 1000
 	if pc.CumulativeDeltaChange < 950 || pc.CumulativeDeltaChange > 1050 {
 		t.Errorf("CumulativeDeltaChange = %v, want ~1000", pc.CumulativeDeltaChange)
+	}
+}
+
+// --- phaseAdjustedMonthlyTarget ---
+
+// makePhaseSettings builds a WhatIfSettings with a primary person whose
+// birth month places them at `ageAtStart` on `startMonth`, plus the
+// default Go-Go/Active/Slow-Go phase ladder. Used by phase-adjustment
+// tests that need to anchor the projection to a specific calendar age.
+func makePhaseSettings(t *testing.T, monthlyExpenses float64, startMonth string, ageAtStart int, phasesEnabled bool) *models.WhatIfSettings {
+	t.Helper()
+	birth := models.BirthMonthForAge(startMonth, ageAtStart)
+	if birth == "" {
+		t.Fatalf("BirthMonthForAge(%q, %d) returned empty", startMonth, ageAtStart)
+	}
+	s := &models.WhatIfSettings{
+		MonthlyLivingExpenses: monthlyExpenses,
+		StartDate:             startMonth,
+		Persons: []models.Person{
+			{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: birth},
+		},
+		PhaseAgeReference: "primary",
+		SpendingPhaseConfig: &models.SpendingPhaseConfig{
+			Enabled: phasesEnabled,
+			Phases:  models.DefaultSpendingPhases(),
+		},
+	}
+	s.ComputeAges()
+	return s
+}
+
+func TestPhaseAdjustedMonthlyTarget_NilSettings(t *testing.T) {
+	got := phaseAdjustedMonthlyTarget(nil,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got != 0 {
+		t.Errorf("phaseAdjustedMonthlyTarget(nil, ...) = %v, want 0", got)
+	}
+}
+
+func TestPhaseAdjustedMonthlyTarget_ZeroBaseExpenses(t *testing.T) {
+	s := makePhaseSettings(t, 0, "2025-01", 70, true)
+	got := phaseAdjustedMonthlyTarget(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got != 0 {
+		t.Errorf("phaseAdjustedMonthlyTarget with zero MonthlyLivingExpenses = %v, want 0", got)
+	}
+}
+
+func TestPhaseAdjustedMonthlyTarget_PhasesDisabled_PassesBaseThrough(t *testing.T) {
+	s := makePhaseSettings(t, 5000, "2025-01", 80, false) // No-Go age, but phases off
+	got := phaseAdjustedMonthlyTarget(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if !floatEqual(got, 5000) {
+		t.Errorf("phases disabled → got %v, want flat 5000", got)
+	}
+}
+
+func TestPhaseAdjustedMonthlyTarget_GoGoPhase_NoChange(t *testing.T) {
+	// Default Go-Go starts at age 0 → multiplier 1.0
+	// Primary is 60 at start → still in Go-Go (next phase Active@65)
+	s := makePhaseSettings(t, 5000, "2025-01", 60, true)
+	got := phaseAdjustedMonthlyTarget(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if !floatEqual(got, 5000) {
+		t.Errorf("Go-Go (mult 1.0) → got %v, want 5000", got)
+	}
+}
+
+func TestPhaseAdjustedMonthlyTarget_NoGoPhase_AppliesMultiplier(t *testing.T) {
+	// Primary is 86 at start → No-Go phase (multiplier 0.65)
+	s := makePhaseSettings(t, 5000, "2025-01", 86, true)
+	got := phaseAdjustedMonthlyTarget(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	want := 5000 * 0.65
+	if !floatEqual(got, want) {
+		t.Errorf("No-Go (mult 0.65) → got %v, want %v", got, want)
+	}
+}
+
+func TestPhaseAdjustedMonthlyTarget_StraddlesPhaseTransition(t *testing.T) {
+	// Primary turns 65 at start (Jan 2025): 12-month range Jan-Dec 2025.
+	// All 12 months are at age 65+ in Active phase (mult 0.95).
+	// (Phase boundaries are integer ages; the user is age 65 throughout.)
+	s := makePhaseSettings(t, 5000, "2025-01", 65, true)
+	got := phaseAdjustedMonthlyTarget(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	want := 5000 * 0.95
+	if !floatEqual(got, want) {
+		t.Errorf("12 months at age 65 (Active 0.95) → got %v, want %v", got, want)
+	}
+
+	// Now: primary is 64 at start, range spans Jan 2025 → Dec 2026 (24
+	// months). Year 1 (age 64) is Go-Go (1.00); year 2 (age 65) is
+	// Active (0.95). Average multiplier = (12*1.00 + 12*0.95)/24 = 0.975.
+	s64 := makePhaseSettings(t, 5000, "2025-01", 64, true)
+	got2 := phaseAdjustedMonthlyTarget(s64,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
+	want2 := 5000 * 0.975
+	if !floatEqual(got2, want2) {
+		t.Errorf("range straddles Go-Go→Active → got %v, want %v", got2, want2)
+	}
+}
+
+func TestPhaseAdjustedMonthlyTarget_FlowsIntoCalculateMetrics(t *testing.T) {
+	// Verify the full pipeline: phase-adjusted target reaches DashboardMetrics.
+	s := makePhaseSettings(t, 5000, "2025-01", 86, true) // No-Go (0.65)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	target := phaseAdjustedMonthlyTarget(s, start, end)
+	m := calculateMetrics(ts, start, end, target)
+
+	if !m.HasBudgetTarget {
+		t.Fatalf("HasBudgetTarget = false, want true")
+	}
+	if !floatEqual(m.BudgetTarget, 3250) { // 5000 * 0.65
+		t.Errorf("BudgetTarget = %v, want 3250 (No-Go-adjusted)", m.BudgetTarget)
 	}
 }
 

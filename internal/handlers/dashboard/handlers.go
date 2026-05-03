@@ -33,19 +33,58 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.
 	retirementMgr = rm
 }
 
-// currentBudgetTarget returns the active what-if MonthlyLivingExpenses
-// value, or 0 if the settings manager is unset or the load fails. The
-// dashboard treats a zero target as "no budget configured" and renders
+// currentBudgetSettings returns the active what-if settings used to
+// derive the dashboard budget target, or nil if the settings manager
+// is unset or the load fails. The dashboard treats a missing settings
+// (or zero MonthlyLivingExpenses) as "no budget configured" and renders
 // the fallback card; loading errors are non-fatal.
-func currentBudgetTarget() float64 {
+func currentBudgetSettings() *models.WhatIfSettings {
 	if retirementMgr == nil {
-		return 0
+		return nil
 	}
 	settings, err := retirementMgr.Load()
-	if err != nil || settings == nil {
+	if err != nil {
+		return nil
+	}
+	return settings
+}
+
+// phaseAdjustedMonthlyTarget returns the phase-adjusted monthly living
+// expense target averaged across [rangeStart, rangeEnd]. When phases
+// are disabled or unavailable, returns settings.MonthlyLivingExpenses
+// unchanged. When phases are enabled, each calendar month in the range
+// contributes its own multiplier so a range that straddles a phase
+// transition (e.g., crossing the 65th-birthday "Active" cutoff)
+// produces a weighted average.
+//
+// Returns 0 when settings is nil or MonthlyLivingExpenses is zero so
+// callers can rely on that as the "no budget configured" sentinel.
+func phaseAdjustedMonthlyTarget(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) float64 {
+	if s == nil || s.MonthlyLivingExpenses <= 0 {
 		return 0
 	}
-	return settings.MonthlyLivingExpenses
+	base := s.MonthlyLivingExpenses
+	if s.SpendingPhaseConfig == nil || !s.SpendingPhaseConfig.Enabled || len(s.SpendingPhaseConfig.Phases) == 0 {
+		return base
+	}
+
+	cur := time.Date(rangeStart.Year(), rangeStart.Month(), 1, 0, 0, 0, 0, rangeStart.Location())
+	end := time.Date(rangeEnd.Year(), rangeEnd.Month(), 1, 0, 0, 0, 0, rangeEnd.Location())
+	if end.Before(cur) {
+		return base * s.SpendingMultiplierAt(cur)
+	}
+
+	var sum float64
+	count := 0
+	for !cur.After(end) {
+		sum += s.SpendingMultiplierAt(cur)
+		count++
+		cur = cur.AddDate(0, 1, 0)
+	}
+	if count == 0 {
+		return base
+	}
+	return base * (sum / float64(count))
 }
 
 // RegisterRoutes registers all dashboard routes
@@ -77,13 +116,14 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	startDate, endDate := resolveDateRange(startStr, endStr, minDate, maxDate)
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	target := currentBudgetTarget()
+	settings := currentBudgetSettings()
+	target := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
 	metrics := calculateMetrics(filtered, startDate, endDate, target)
 
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = calculateComparison(data, startDate, endDate, comparison, target)
+		periodComparison = calculateComparison(data, startDate, endDate, comparison, settings)
 	}
 
 	pageData := map[string]interface{}{
@@ -128,12 +168,13 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	target := currentBudgetTarget()
+	settings := currentBudgetSettings()
+	target := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
 	metrics := calculateMetrics(filtered, startDate, endDate, target)
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = calculateComparison(data, startDate, endDate, comparison, target)
+		periodComparison = calculateComparison(data, startDate, endDate, comparison, settings)
 	}
 
 	partialData := map[string]interface{}{
@@ -653,7 +694,7 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 	}
 }
 
-func calculateComparison(data *models.TransactionSet, start, end time.Time, compType string, budgetTarget float64) *models.PeriodComparison {
+func calculateComparison(data *models.TransactionSet, start, end time.Time, compType string, settings *models.WhatIfSettings) *models.PeriodComparison {
 	duration := end.Sub(start)
 
 	var compStart, compEnd time.Time
@@ -676,8 +717,13 @@ func calculateComparison(data *models.TransactionSet, start, end time.Time, comp
 		return &models.PeriodComparison{HasData: false}
 	}
 
-	currentMetrics := calculateMetrics(currentFiltered, start, end, budgetTarget)
-	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, budgetTarget)
+	// Phase-adjust the target for each range independently — comparison
+	// windows can sit in different phases (e.g., "year ago" was Go-Go,
+	// current is Active), and a flat target would hide that effect.
+	currentTarget := phaseAdjustedMonthlyTarget(settings, start, end)
+	compTarget := phaseAdjustedMonthlyTarget(settings, compStart, compEnd)
+	currentMetrics := calculateMetrics(currentFiltered, start, end, currentTarget)
+	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, compTarget)
 
 	incomeChange := percentChange(currentMetrics.TotalIncome, compMetrics.TotalIncome)
 	expensesChange := percentChange(currentMetrics.TotalExpenses, compMetrics.TotalExpenses)

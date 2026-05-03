@@ -556,7 +556,7 @@ func TestRenderMajorExpenses_ExceptionsHaveCheckboxColumn(t *testing.T) {
 
 	// Row checkboxes must stop click propagation so row-click prefill
 	// is not triggered by interacting with the checkbox.
-	if !strings.Contains(html, `class="major-expenses-pin-check-cell"`) {
+	if !strings.Contains(html, `class="major-expenses-pin-check-cell `) {
 		t.Errorf("expected wrapping td.major-expenses-pin-check-cell to scope propagation-stop CSS, got html=%s", html)
 	}
 

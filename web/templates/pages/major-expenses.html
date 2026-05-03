@@ -475,6 +475,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     // before, restore after.
     let savedOpenDetails = null;
     let savedOpenRows = null;
+    let savedCheckedHashes = null;
     function persistedDetailsSelector() {
         return '#major-expenses-results details[id], #major-expenses-list-card details[id]';
     }
@@ -490,11 +491,18 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             rows.add(tb.getAttribute('data-expense-id'));
         });
         savedOpenRows = rows;
+
+        const checked = new Set();
+        document.querySelectorAll('input.major-expenses-pin-check:checked').forEach(function (cb) {
+            const h = cb.getAttribute('data-hash');
+            if (h) checked.add(h);
+        });
+        savedCheckedHashes = checked;
     });
     document.body.addEventListener('htmx:afterSwap', function () {
-        // Incoming markup has fresh, unchecked checkboxes; the prior
-        // anchors point at hashes that are no longer in the DOM (or
-        // moved buckets). Reset before any sync runs.
+        // Incoming markup has fresh, unchecked checkboxes. Anchors are
+        // bucket-positional and can't survive a re-render, so wipe
+        // those; checkbox selections are restored by hash below.
         lastCheckedByBucket = Object.create(null);
 
         if (savedOpenDetails) {
@@ -510,10 +518,25 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             });
             savedOpenRows = null;
         }
+        if (savedCheckedHashes && savedCheckedHashes.size > 0) {
+            document.querySelectorAll('input.major-expenses-pin-check').forEach(function (cb) {
+                const h = cb.getAttribute('data-hash');
+                if (h && savedCheckedHashes.has(h)) cb.checked = true;
+            });
+        }
+        savedCheckedHashes = null;
+
         const input = document.getElementById('major-expenses-search');
         if (input && input.value) applyUnifiedFilter(input.value);
         refreshAllBucketHeaders();
         refreshCountChip();
+        // syncBulkPinToolbar isn't called by applyUnifiedFilter when
+        // the search box is empty, so call it directly to surface the
+        // bulk-pin bar for restored selections.
+        const visibleExceptions = document.querySelectorAll(
+            'tr.major-expenses-exception-row:not([style*="display: none"])'
+        ).length;
+        syncBulkPinToolbar(visibleExceptions, input ? input.value : '');
     });
 
     // Bulk-pin Apply.

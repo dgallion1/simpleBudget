@@ -809,3 +809,55 @@ func TestRenderMajorExpenses_BulkToolbarLeadTrailSpans(t *testing.T) {
 		t.Errorf("expected trail label span class for JS mode-switch, got: %s", html)
 	}
 }
+
+// TestRenderMajorExpenses_PreservesCheckedAcrossHTMXSwaps locks in the
+// htmx:beforeSwap / htmx:afterSwap wiring that snapshots checked
+// exception checkboxes by data-hash and restores them after the
+// partial re-renders. Without this, every date-filter change or pin
+// mutation wipes the user's selections and they have to re-check
+// every row before the next bulk operation.
+func TestRenderMajorExpenses_PreservesCheckedAcrossHTMXSwaps(t *testing.T) {
+	now := time.Now()
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses":  []models.MajorExpense{{ID: "rent", Name: "Rent"}},
+		"ExpenseOptions": []struct {
+			ID    string
+			Label string
+		}{{ID: "rent", Label: "Rent"}},
+		"Summaries": []struct{}{},
+		"Match": struct {
+			Exceptions models.ExceptionsReport
+		}{Exceptions: models.ExceptionsReport{Threshold: 100, NewWindowDays: 30}},
+		"AllUnmatched": []models.Transaction{
+			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
+		},
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 0.0,
+	})
+
+	// Snapshot bucket: the beforeSwap handler must collect every
+	// currently-checked exception checkbox into savedCheckedHashes.
+	if !strings.Contains(html, `let savedCheckedHashes = null;`) {
+		t.Errorf("expected savedCheckedHashes declaration in JS, got: %s", html)
+	}
+	if !strings.Contains(html, `input.major-expenses-pin-check:checked`) {
+		t.Errorf("expected beforeSwap to query checked exception checkboxes, got: %s", html)
+	}
+
+	// Restore bucket: afterSwap must look up each fresh checkbox by
+	// data-hash and re-check it if the snapshot held that hash.
+	if !strings.Contains(html, `savedCheckedHashes.has(h)`) {
+		t.Errorf("expected afterSwap restore to consult savedCheckedHashes, got: %s", html)
+	}
+
+	// The restored selections must surface the bulk-pin toolbar even
+	// when no search filter is active (applyUnifiedFilter only runs
+	// for non-empty queries, so syncBulkPinToolbar must be called
+	// directly from afterSwap).
+	if !strings.Contains(html, `syncBulkPinToolbar(visibleExceptions, input ? input.value : '');`) {
+		t.Errorf("expected afterSwap to refresh bulk-pin toolbar after restoring checks, got: %s", html)
+	}
+}

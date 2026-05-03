@@ -750,3 +750,38 @@ func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {
 		t.Errorf("expected list-card OOB target id")
 	}
 }
+
+// TestRenderMajorExpenses_BulkToolbarLeadTrailSpans verifies the
+// toolbar label is split into lead/trail spans so the JS mode-
+// switch can rewrite each independently. Without this split JS
+// would have to regex the inner text.
+func TestRenderMajorExpenses_BulkToolbarLeadTrailSpans(t *testing.T) {
+	now := time.Now()
+	html := renderMajorExpensesContent(t, map[string]any{
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses": []models.MajorExpense{
+			{ID: "rent", Name: "Rent"},
+		},
+		"ExpenseOptions": []struct {
+			ID    string
+			Label string
+		}{{ID: "rent", Label: "Rent"}},
+		"Summaries": []struct{}{},
+		"Match": struct {
+			Exceptions models.ExceptionsReport
+		}{Exceptions: models.ExceptionsReport{Threshold: 100, NewWindowDays: 30}},
+		"AllUnmatched": []models.Transaction{
+			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
+		},
+		"Threshold":     100.0,
+		"WindowDays":    30,
+		"TotalDeclared": 0.0,
+	})
+	if !strings.Contains(html, `class="major-expenses-bulk-pin-label-lead"`) {
+		t.Errorf("expected lead label span class for JS mode-switch, got: %s", html)
+	}
+	if !strings.Contains(html, `class="major-expenses-bulk-pin-label-trail"`) {
+		t.Errorf("expected trail label span class for JS mode-switch, got: %s", html)
+	}
+}

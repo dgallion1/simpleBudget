@@ -619,6 +619,12 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 lastCheckedByBucket[bucket] = targetHash;
                 return;
             }
+            if (idxTarget === -1) {
+                // Target not in visible set (rare race with a concurrent
+                // filter); treat as a plain click.
+                lastCheckedByBucket[bucket] = targetHash;
+                return;
+            }
             // Browser will toggle target after this listener returns;
             // its NEW state is !current. Apply that to every visible
             // checkbox in [min, max].

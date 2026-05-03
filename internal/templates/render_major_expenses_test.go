@@ -570,6 +570,30 @@ func TestRenderMajorExpenses_ExceptionsHaveCheckboxColumn(t *testing.T) {
 				t.Errorf("expected row checkbox to expose %s, got html=%s", bucket, html)
 			}
 		}
+
+		// Header aria-labels must match the spec wording exactly so a
+		// future rename can't silently blank them.
+		for _, want := range []string{
+			`aria-label="Select visible unmatched exceptions"`,
+			`aria-label="Select visible anomalous exceptions"`,
+			`aria-label="Select visible new-merchant exceptions"`,
+		} {
+			if !strings.Contains(html, want) {
+				t.Errorf("expected header checkbox aria-label %q, got html=%s", want, html)
+			}
+		}
+		// Row aria-labels are template-generated from the transaction
+		// label/desc; verify the three fixture rows render the expected
+		// text so a binding change can't silently empty them.
+		for _, want := range []string{
+			`aria-label="Select Big Unknown Charge for bulk pinning"`,
+			`aria-label="Select My Landlord LLC for bulk pinning"`,
+			`aria-label="Select Brand New Store for bulk pinning"`,
+		} {
+			if !strings.Contains(html, want) {
+				t.Errorf("expected row checkbox aria-label %q, got html=%s", want, html)
+			}
+		}
 	})
 
 	t.Run("legacy_path", func(t *testing.T) {

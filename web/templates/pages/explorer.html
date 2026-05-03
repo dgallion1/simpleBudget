@@ -210,45 +210,96 @@
 
         // Highlight the correct date range button on page load
         detectSelectedDateRange();
+
+        // Clear stored activeMonths when the user manually edits a date
+        // input, so post-swap detection runs from the date values.
+        const filterForm = document.getElementById('explorer-filter-form');
+        if (filterForm) {
+            filterForm.querySelectorAll('input[type="date"]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    filterForm.dataset.activeMonths = '';
+                });
+            });
+        }
     });
 
-    // Step the date range forward or backward by its current delta
+    // Re-detect after every HTMX swap (the inputs may have new values).
+    document.body.addEventListener('htmx:afterSwap', detectSelectedDateRange);
+
+    // Parse "YYYY-MM-DD" as a local-timezone date (avoids UTC off-by-one).
+    function parseDateLocal(s) {
+        if (!s) return null;
+        const parts = s.split('-').map(Number);
+        if (parts.length !== 3 || parts.some(isNaN)) return null;
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
+    function formatDateLocal(d) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+    }
+
+    // Step the date range forward or backward.
+    // If a month-based preset is active (1/2/3/6/12), shift by N months
+    // preserving day-of-month and keeping the preset highlight. Otherwise,
+    // shift by the current span in days. The "All" preset is a no-op.
     function stepDateRange(direction) {
         const form = document.getElementById('explorer-filter-form');
         const startInput = form.querySelector('input[name="start"]');
         const endInput = form.querySelector('input[name="end"]');
         const pageInput = form.querySelector('input[name="page"]');
 
-        const minDate = startInput.getAttribute('min');
-        const maxDate = endInput.getAttribute('max');
+        const currentStart = parseDateLocal(startInput.value);
+        const currentEnd = parseDateLocal(endInput.value);
+        if (!currentStart || !currentEnd) return;
 
-        const start = new Date(startInput.value);
-        const end = new Date(endInput.value);
-        const deltaMs = end - start;
-
+        const monthMap = { 1: 1, 2: 2, 3: 3, 6: 6, 12: 12 };
+        const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
         let newStart, newEnd;
-        if (direction > 0) {
-            newStart = new Date(end.getTime() + 86400000); // day after current end
-            newEnd = new Date(newStart.getTime() + deltaMs);
+
+        if (monthMap[activeMonths]) {
+            const months = monthMap[activeMonths] * direction;
+            newStart = new Date(currentStart);
+            newStart.setMonth(newStart.getMonth() + months);
+            newEnd = new Date(currentEnd);
+            newEnd.setMonth(newEnd.getMonth() + months);
+        } else if (activeMonths === 0) {
+            return;
         } else {
-            newEnd = new Date(start.getTime() - 86400000); // day before current start
-            newStart = new Date(newEnd.getTime() - deltaMs);
+            const dayMs = 86400000;
+            const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
+            const shiftMs = spanDays * direction * dayMs;
+            newStart = new Date(currentStart.getTime() + shiftMs);
+            newEnd = new Date(currentEnd.getTime() + shiftMs);
         }
 
-        // Clamp to min/max
-        const minD = new Date(minDate);
-        const maxD = new Date(maxDate);
-        if (newStart < minD) newStart = minD;
-        if (newEnd > maxD) newEnd = maxD;
-        if (newStart > maxD) return;
-        if (newEnd < minD) return;
+        const minDate = parseDateLocal(startInput.getAttribute('min'));
+        const maxDate = parseDateLocal(endInput.getAttribute('max'));
+        if (minDate && newStart < minDate) {
+            const diffMs = minDate - newStart;
+            newStart = new Date(newStart.getTime() + diffMs);
+            newEnd = new Date(newEnd.getTime() + diffMs);
+        }
+        if (maxDate && newEnd > maxDate) {
+            const diffMs = newEnd - maxDate;
+            newStart = new Date(newStart.getTime() - diffMs);
+            newEnd = new Date(newEnd.getTime() - diffMs);
+        }
+        if (minDate && newStart < minDate) newStart = new Date(minDate);
+        if (maxDate && newEnd > maxDate) newEnd = new Date(maxDate);
 
-        startInput.value = newStart.toISOString().split('T')[0];
-        endInput.value = newEnd.toISOString().split('T')[0];
+        const newStartStr = formatDateLocal(newStart);
+        const newEndStr = formatDateLocal(newEnd);
+        if (newStartStr === startInput.value && newEndStr === endInput.value) return;
 
-        // Clear any active quick-range button highlight
-        updateDateRangeButtons(-1);
+        startInput.value = newStartStr;
+        endInput.value = newEndStr;
 
+        // Preset highlight is intentionally preserved across shifts —
+        // form.dataset.activeMonths stays set so post-swap detection
+        // re-applies the same highlight.
         pageInput.value = '1';
         htmx.trigger(form, 'submit');
     }
@@ -284,6 +335,7 @@
         }
 
         // Update button selection state
+        form.dataset.activeMonths = String(months);
         updateDateRangeButtons(months);
 
         pageInput.value = '1';
@@ -310,6 +362,13 @@
     // Detect which date range button should be selected based on current dates
     function detectSelectedDateRange() {
         const form = document.getElementById('explorer-filter-form');
+        // Honor an explicit activeMonths set by setDateRange / stepDateRange
+        // so a scrolled window keeps its preset highlight across swaps.
+        const explicit = parseInt(form.dataset.activeMonths || '', 10);
+        if (!isNaN(explicit) && [0, 1, 2, 3, 6, 12].includes(explicit)) {
+            updateDateRangeButtons(explicit);
+            return;
+        }
         const startInput = form.querySelector('input[name="start"]');
         const endInput = form.querySelector('input[name="end"]');
 

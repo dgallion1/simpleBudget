@@ -31,6 +31,12 @@
             <input type="hidden" name="preset" value="{{.Preset}}">
             <div class="flex items-center space-x-2 ml-auto">
                 <span class="text-sm text-gray-500 dark:text-gray-400">Quick:</span>
+                <button type="button" onclick="shiftInsightWindow(-1)" title="Shift window backward" aria-label="Shift window backward"
+                        class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </button>
                 <button type="button" onclick="setInsightPreset('1m')" data-preset="1m"
                         class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "1m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     1M
@@ -54,6 +60,12 @@
                 <button type="button" onclick="setInsightPreset('all')" data-preset="all"
                         class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "all"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
                     All
+                </button>
+                <button type="button" onclick="shiftInsightWindow(1)" title="Shift window forward" aria-label="Shift window forward"
+                        class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
                 </button>
             </div>
 
@@ -648,6 +660,84 @@ function setInsightPreset(preset) {
 
     // Navigate directly with all params - use partial update to prevent page jump
     htmx.ajax('GET', '/insights?start=' + startStr + '&end=' + endStr + '&preset=' + preset, {
+        target: '#insights-wrapper',
+        select: '#insights-wrapper',
+        swap: 'outerHTML',
+        pushUrl: true
+    });
+}
+
+// Shift the insights date window forward (+1) or backward (-1).
+// If a month-based preset is active (1m/2m/3m/6m/12m), shift by N months
+// preserving day-of-month and the preset highlight (server reads the
+// preset hidden input). Otherwise shift by the current span in days.
+// "all" is a no-op.
+function shiftInsightWindow(direction) {
+    const form = document.getElementById('insights-date-filter');
+    if (!form) return;
+    const startInput = form.querySelector('input[name="start"]');
+    const endInput = form.querySelector('input[name="end"]');
+    const presetInput = form.querySelector('input[name="preset"]');
+
+    const parseLocal = function (s) {
+        if (!s) return null;
+        const parts = s.split('-').map(Number);
+        if (parts.length !== 3 || parts.some(isNaN)) return null;
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    };
+    const formatLocal = function (d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + dd;
+    };
+
+    const currentStart = parseLocal(startInput.value);
+    const currentEnd = parseLocal(endInput.value);
+    if (!currentStart || !currentEnd) return;
+
+    const presetVal = presetInput ? presetInput.value : '';
+    const monthMap = { '1m': 1, '2m': 2, '3m': 3, '6m': 6, '12m': 12 };
+    let newStart, newEnd;
+
+    if (monthMap[presetVal]) {
+        const months = monthMap[presetVal] * direction;
+        newStart = new Date(currentStart);
+        newStart.setMonth(newStart.getMonth() + months);
+        newEnd = new Date(currentEnd);
+        newEnd.setMonth(newEnd.getMonth() + months);
+    } else if (presetVal === 'all') {
+        return;
+    } else {
+        const dayMs = 86400000;
+        const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
+        const shiftMs = spanDays * direction * dayMs;
+        newStart = new Date(currentStart.getTime() + shiftMs);
+        newEnd = new Date(currentEnd.getTime() + shiftMs);
+    }
+
+    const minDate = parseLocal(startInput.min);
+    const maxDate = parseLocal(endInput.max);
+    if (minDate && newStart < minDate) {
+        const diffMs = minDate - newStart;
+        newStart = new Date(newStart.getTime() + diffMs);
+        newEnd = new Date(newEnd.getTime() + diffMs);
+    }
+    if (maxDate && newEnd > maxDate) {
+        const diffMs = newEnd - maxDate;
+        newStart = new Date(newStart.getTime() - diffMs);
+        newEnd = new Date(newEnd.getTime() - diffMs);
+    }
+    if (minDate && newStart < minDate) newStart = new Date(minDate);
+    if (maxDate && newEnd > maxDate) newEnd = new Date(maxDate);
+
+    const startStr = formatLocal(newStart);
+    const endStr = formatLocal(newEnd);
+    if (startStr === startInput.value && endStr === endInput.value) return;
+
+    const url = '/insights?start=' + startStr + '&end=' + endStr +
+        (presetVal ? '&preset=' + encodeURIComponent(presetVal) : '');
+    htmx.ajax('GET', url, {
         target: '#insights-wrapper',
         select: '#insights-wrapper',
         swap: 'outerHTML',

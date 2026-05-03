@@ -118,6 +118,20 @@
 // stepDateRange / detectSelectedDateRange, scoped to the major-expenses
 // filter form. Naming is `me*` to avoid colliding with Explorer's
 // global-scope versions on the rare chance both pages ever co-exist.
+function meParseDateLocal(s) {
+    if (!s) return null;
+    const parts = s.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function meFormatDateLocal(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+}
+
 function meSetDateRange(months) {
     const form = document.getElementById('major-expenses-filter-form');
     if (!form) return;
@@ -137,37 +151,68 @@ function meSetDateRange(months) {
         startInput.value = start.toISOString().split('T')[0];
         endInput.value = maxDate;
     }
+    form.dataset.activeMonths = String(months);
     meUpdateDateRangeButtons(months);
     htmx.trigger(form, 'submit');
 }
 
+// Shift the date window forward (+1) or backward (-1).
+// If a month-based preset is active (1/2/3/6/12), shift by N months
+// preserving day-of-month and keeping the preset highlight. Otherwise,
+// shift by the current span in days. The "All" preset is a no-op.
 function meStepDateRange(direction) {
     const form = document.getElementById('major-expenses-filter-form');
     if (!form) return;
     const startInput = form.querySelector('input[name="start"]');
     const endInput = form.querySelector('input[name="end"]');
-    const minDate = startInput.getAttribute('min');
-    const maxDate = endInput.getAttribute('max');
-    const start = new Date(startInput.value);
-    const end = new Date(endInput.value);
-    const deltaMs = end - start;
+    const currentStart = meParseDateLocal(startInput.value);
+    const currentEnd = meParseDateLocal(endInput.value);
+    if (!currentStart || !currentEnd) return;
+
+    const monthMap = { 1: 1, 2: 2, 3: 3, 6: 6, 12: 12 };
+    const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
     let newStart, newEnd;
-    if (direction > 0) {
-        newStart = new Date(end.getTime() + 86400000);
-        newEnd = new Date(newStart.getTime() + deltaMs);
+
+    if (monthMap[activeMonths]) {
+        const months = monthMap[activeMonths] * direction;
+        newStart = new Date(currentStart);
+        newStart.setMonth(newStart.getMonth() + months);
+        newEnd = new Date(currentEnd);
+        newEnd.setMonth(newEnd.getMonth() + months);
+    } else if (activeMonths === 0) {
+        return;
     } else {
-        newEnd = new Date(start.getTime() - 86400000);
-        newStart = new Date(newEnd.getTime() - deltaMs);
+        const dayMs = 86400000;
+        const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
+        const shiftMs = spanDays * direction * dayMs;
+        newStart = new Date(currentStart.getTime() + shiftMs);
+        newEnd = new Date(currentEnd.getTime() + shiftMs);
     }
-    const minD = new Date(minDate);
-    const maxD = new Date(maxDate);
-    if (newStart < minD) newStart = minD;
-    if (newEnd > maxD) newEnd = maxD;
-    if (newStart > maxD) return;
-    if (newEnd < minD) return;
-    startInput.value = newStart.toISOString().split('T')[0];
-    endInput.value = newEnd.toISOString().split('T')[0];
-    meUpdateDateRangeButtons(-1);
+
+    const minDate = meParseDateLocal(startInput.getAttribute('min'));
+    const maxDate = meParseDateLocal(endInput.getAttribute('max'));
+    if (minDate && newStart < minDate) {
+        const diffMs = minDate - newStart;
+        newStart = new Date(newStart.getTime() + diffMs);
+        newEnd = new Date(newEnd.getTime() + diffMs);
+    }
+    if (maxDate && newEnd > maxDate) {
+        const diffMs = newEnd - maxDate;
+        newStart = new Date(newStart.getTime() - diffMs);
+        newEnd = new Date(newEnd.getTime() - diffMs);
+    }
+    if (minDate && newStart < minDate) newStart = new Date(minDate);
+    if (maxDate && newEnd > maxDate) newEnd = new Date(maxDate);
+
+    const newStartStr = meFormatDateLocal(newStart);
+    const newEndStr = meFormatDateLocal(newEnd);
+    if (newStartStr === startInput.value && newEndStr === endInput.value) return;
+
+    startInput.value = newStartStr;
+    endInput.value = newEndStr;
+    // Preset highlight is intentionally preserved across shifts —
+    // form.dataset.activeMonths stays set so post-swap detection
+    // re-applies the same highlight.
     htmx.trigger(form, 'submit');
 }
 
@@ -187,6 +232,13 @@ function meUpdateDateRangeButtons(selectedMonths) {
 function meDetectSelectedDateRange() {
     const form = document.getElementById('major-expenses-filter-form');
     if (!form) return;
+    // Honor an explicit activeMonths set by setDateRange / stepDateRange
+    // so a scrolled window keeps its preset highlight across swaps.
+    const explicit = parseInt(form.dataset.activeMonths || '', 10);
+    if (!isNaN(explicit) && [0, 1, 2, 3, 6, 12].includes(explicit)) {
+        meUpdateDateRangeButtons(explicit);
+        return;
+    }
     const startInput = form.querySelector('input[name="start"]');
     const endInput = form.querySelector('input[name="end"]');
     const minDate = startInput.getAttribute('min');
@@ -206,6 +258,18 @@ function meDetectSelectedDateRange() {
     }
     meUpdateDateRangeButtons(-1);
 }
+
+// Clear the stored preset when the user manually edits a date input,
+// so post-swap detection runs from the date values instead of stale state.
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('major-expenses-filter-form');
+    if (!form) return;
+    form.querySelectorAll('input[type="date"]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            form.dataset.activeMonths = '';
+        });
+    });
+});
 
 // Highlight the correct quick-range button on first paint and after
 // every HTMX swap of the wrapper (the inputs may have new values).

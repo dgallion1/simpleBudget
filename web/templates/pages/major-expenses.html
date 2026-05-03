@@ -466,6 +466,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         const clear = document.getElementById('major-expenses-search-clear');
         if (clear) clear.classList.toggle('hidden', q === '');
 
+        refreshAllBucketHeaders();
         syncBulkPinToolbar(visibleExceptions, q);
     }
 
@@ -542,6 +543,45 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         if (e.target && e.target.id === 'major-expenses-bulk-pin-target') {
             const input = document.getElementById('major-expenses-search');
             applyUnifiedFilter(input ? input.value : '');
+        }
+    });
+
+    // Row + header checkbox change. Delegated so HTMX swaps don't
+    // need rebinding. Note: shift-click range is handled in the
+    // 'click' phase (a separate listener) because by the time
+    // 'change' fires the browser has already toggled the box.
+    document.addEventListener('change', function (e) {
+        const t = e.target;
+        if (!t) return;
+
+        // Header checkbox: toggle every visible row in this bucket
+        // to the header's new state.
+        if (t.classList && t.classList.contains('major-expenses-pin-check-header')) {
+            const bucket = t.getAttribute('data-bucket') || '';
+            const want = !!t.checked;
+            visibleRowCheckboxesInBucket(bucket).forEach(function (cb) {
+                cb.checked = want;
+            });
+            // Header was just clicked; keep its state authoritative
+            // (refreshBucketHeader could reset it to indeterminate
+            // if any visible row diverges, but right now they all
+            // match `want`).
+            refreshBucketHeader(bucket);
+            refreshCountChip();
+            const input = document.getElementById('major-expenses-search');
+            applyUnifiedFilter(input ? input.value : '');
+            return;
+        }
+
+        // Row checkbox: update bucket header and count chip. Anchor
+        // is recorded on click (next task) — change does not touch it.
+        if (t.classList && t.classList.contains('major-expenses-pin-check')) {
+            const bucket = t.getAttribute('data-bucket') || '';
+            refreshBucketHeader(bucket);
+            refreshCountChip();
+            const input = document.getElementById('major-expenses-search');
+            applyUnifiedFilter(input ? input.value : '');
+            return;
         }
     });
 

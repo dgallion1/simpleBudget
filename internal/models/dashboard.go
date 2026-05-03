@@ -17,19 +17,32 @@ type DashboardMetrics struct {
 	ExpensesTrend []float64 `json:"expenses_trend"`
 	SavingsTrend  []float64 `json:"savings_trend"`
 	TrendLabels   []string  `json:"trend_labels"` // Month labels
+
+	// Budget tracking (compares actual outflows to the active what-if
+	// MonthlyLivingExpenses target). All zero-valued when no target is set.
+	MonthsInRange   float64 `json:"months_in_range"`   // average-calendar-month count for the date range
+	ActualMonthly   float64 `json:"actual_monthly"`    // TotalExpenses / MonthsInRange
+	BudgetTarget    float64 `json:"budget_target"`     // from what-if MonthlyLivingExpenses
+	PerMonthDelta   float64 `json:"per_month_delta"`   // ActualMonthly - BudgetTarget; positive = over
+	CumulativeDelta float64 `json:"cumulative_delta"`  // TotalExpenses - BudgetTarget*MonthsInRange; positive = over
+	HasBudgetTarget bool    `json:"has_budget_target"` // BudgetTarget > 0
 }
 
 // PeriodComparison holds metrics for two periods for comparison
 type PeriodComparison struct {
-	Current    *DashboardMetrics `json:"current"`
-	Previous   *DashboardMetrics `json:"previous"`
-	HasData    bool              `json:"has_data"`
+	Current  *DashboardMetrics `json:"current"`
+	Previous *DashboardMetrics `json:"previous"`
+	HasData  bool              `json:"has_data"`
 
 	// Percentage changes
 	IncomeChange      float64 `json:"income_change_pct"`
 	ExpensesChange    float64 `json:"expenses_change_pct"`
 	SavingsChange     float64 `json:"savings_change_pct"`
 	SavingsRateChange float64 `json:"savings_rate_change_pp"` // percentage points
+
+	// Budget tracking deltas (current - previous; signed, in dollars)
+	ActualMonthlyChange   float64 `json:"actual_monthly_change"`
+	CumulativeDeltaChange float64 `json:"cumulative_delta_change"`
 }
 
 // SecondaryMetrics contains additional dashboard metrics

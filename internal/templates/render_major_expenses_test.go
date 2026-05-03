@@ -492,81 +492,136 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 // prefill behavior on the rest of the row is not triggered.
 func TestRenderMajorExpenses_ExceptionsHaveCheckboxColumn(t *testing.T) {
 	now := time.Now()
-	html := renderMajorExpensesContent(t, map[string]any{
-		"Title":     "Major Expenses",
-		"ActiveTab": "major-expenses",
-		"Expenses": []models.MajorExpense{
-			{ID: "rent", Name: "Rent"},
-		},
-		"ExpenseOptions": []struct {
-			ID    string
-			Label string
-		}{{ID: "rent", Label: "Rent"}},
-		"Summaries": []struct{}{},
-		"Match": struct {
-			Exceptions models.ExceptionsReport
-		}{
-			Exceptions: models.ExceptionsReport{
-				Anomalous: []models.ExceptionAnomalousAmount{
-					{
-						MajorExpenseID:   "rent",
-						MajorExpenseName: "Rent",
-						Transaction:      models.Transaction{Date: now, Amount: -3500, Description: "My Landlord LLC", Hash: "h-anom"},
-						ExpectedMin:      1500,
-						ExpectedMax:      2000,
-					},
-				},
-				NewMerchants: []models.ExceptionNewMerchant{
-					{Description: "brand new store", FirstSeen: now, Transaction: models.Transaction{Date: now, Amount: -75, Description: "Brand New Store", Hash: "h-new"}},
-				},
-				Threshold:     100,
-				NewWindowDays: 30,
+
+	t.Run("comprehensive_path", func(t *testing.T) {
+		html := renderMajorExpensesContent(t, map[string]any{
+			"Title":     "Major Expenses",
+			"ActiveTab": "major-expenses",
+			"Expenses": []models.MajorExpense{
+				{ID: "rent", Name: "Rent"},
 			},
-		},
-		"AllUnmatched": []models.Transaction{
-			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
-		},
-		"Threshold":     100.0,
-		"WindowDays":    30,
-		"TotalDeclared": 0.0,
+			"ExpenseOptions": []struct {
+				ID    string
+				Label string
+			}{{ID: "rent", Label: "Rent"}},
+			"Summaries": []struct{}{},
+			"Match": struct {
+				Exceptions models.ExceptionsReport
+			}{
+				Exceptions: models.ExceptionsReport{
+					Anomalous: []models.ExceptionAnomalousAmount{
+						{
+							MajorExpenseID:   "rent",
+							MajorExpenseName: "Rent",
+							Transaction:      models.Transaction{Date: now, Amount: -3500, Description: "My Landlord LLC", Hash: "h-anom"},
+							ExpectedMin:      1500,
+							ExpectedMax:      2000,
+						},
+					},
+					NewMerchants: []models.ExceptionNewMerchant{
+						{Description: "brand new store", FirstSeen: now, Transaction: models.Transaction{Date: now, Amount: -75, Description: "Brand New Store", Hash: "h-new"}},
+					},
+					Threshold:     100,
+					NewWindowDays: 30,
+				},
+			},
+			"AllUnmatched": []models.Transaction{
+				{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
+			},
+			"Threshold":     100.0,
+			"WindowDays":    30,
+			"TotalDeclared": 0.0,
+		})
+
+		// Each of the three exception buckets must emit a header checkbox.
+		for _, bucket := range []string{
+			"major-expenses-pin-check-header-unmatched",
+			"major-expenses-pin-check-header-anomalous",
+			"major-expenses-pin-check-header-new-merchants",
+		} {
+			if !strings.Contains(html, `id="`+bucket+`"`) {
+				t.Errorf("expected header checkbox id %q on its bucket, got html=%s", bucket, html)
+			}
+		}
+
+		// Row checkbox class check is independent of any individual hash.
+		if !strings.Contains(html, `class="major-expenses-pin-check"`) {
+			t.Errorf("expected row checkbox class major-expenses-pin-check in output, got html=%s", html)
+		}
+
+		// Each row carries its own checkbox bound to the transaction hash.
+		for _, hash := range []string{"h-big", "h-anom", "h-new"} {
+			dataAttr := `data-hash="` + hash + `"`
+			if !strings.Contains(html, dataAttr) {
+				t.Errorf("expected data-hash=%q on the corresponding row, got html=%s", hash, html)
+			}
+		}
+
+		// Row checkboxes must stop click propagation so row-click prefill
+		// is not triggered by interacting with the checkbox.
+		if !strings.Contains(html, `class="major-expenses-pin-check-cell `) {
+			t.Errorf("expected wrapping td.major-expenses-pin-check-cell to scope propagation-stop CSS, got html=%s", html)
+		}
+
+		// data-bucket on each row checkbox identifies which bucket the row
+		// belongs to so shift-click can scope ranges per-bucket.
+		for _, bucket := range []string{`data-bucket="unmatched"`, `data-bucket="anomalous"`, `data-bucket="new-merchants"`} {
+			if !strings.Contains(html, bucket) {
+				t.Errorf("expected row checkbox to expose %s, got html=%s", bucket, html)
+			}
+		}
 	})
 
-	// Each of the three exception buckets must emit a header checkbox.
-	for _, bucket := range []string{
-		"major-expenses-pin-check-header-unmatched",
-		"major-expenses-pin-check-header-anomalous",
-		"major-expenses-pin-check-header-new-merchants",
-	} {
-		if !strings.Contains(html, `id="`+bucket+`"`) {
-			t.Errorf("expected header checkbox id %q on its bucket, got html=%s", bucket, html)
-		}
-	}
+	t.Run("legacy_path", func(t *testing.T) {
+		// No AllUnmatched key — forces the template's $unmatchedFromExceptions
+		// branch (legacy path driven by Match.Exceptions.UnknownLarge).
+		html := renderMajorExpensesContent(t, map[string]any{
+			"Title":     "Major Expenses",
+			"ActiveTab": "major-expenses",
+			"Expenses": []models.MajorExpense{
+				{ID: "rent", Name: "Rent"},
+			},
+			"ExpenseOptions": []struct {
+				ID    string
+				Label string
+			}{{ID: "rent", Label: "Rent"}},
+			"Summaries": []struct{}{},
+			"Match": struct {
+				Exceptions models.ExceptionsReport
+			}{
+				Exceptions: models.ExceptionsReport{
+					UnknownLarge: []models.ExceptionUnknownLargeTxn{
+						{Transaction: models.Transaction{Date: now, Amount: -400, Description: "Legacy Big Charge", Hash: "h-legacy"}},
+					},
+					Threshold:     100,
+					NewWindowDays: 30,
+				},
+			},
+			"Threshold":     100.0,
+			"WindowDays":    30,
+			"TotalDeclared": 0.0,
+		})
 
-	// Each row carries its own checkbox bound to the transaction hash.
-	for _, hash := range []string{"h-big", "h-anom", "h-new"} {
-		want := `class="major-expenses-pin-check"` // class on the input
-		if !strings.Contains(html, want) {
-			t.Fatalf("expected row checkbox class %q in output", want)
+		// The unmatched bucket header checkbox must still render in the legacy path.
+		if !strings.Contains(html, `id="major-expenses-pin-check-header-unmatched"`) {
+			t.Errorf("expected header checkbox id major-expenses-pin-check-header-unmatched on its bucket, got html=%s", html)
 		}
-		dataAttr := `data-hash="` + hash + `"`
-		if !strings.Contains(html, dataAttr) {
-			t.Errorf("expected data-hash=%q on the corresponding row, got html=%s", hash, html)
-		}
-	}
 
-	// Row checkboxes must stop click propagation so row-click prefill
-	// is not triggered by interacting with the checkbox.
-	if !strings.Contains(html, `class="major-expenses-pin-check-cell `) {
-		t.Errorf("expected wrapping td.major-expenses-pin-check-cell to scope propagation-stop CSS, got html=%s", html)
-	}
-
-	// data-bucket on each row checkbox identifies which bucket the row
-	// belongs to so shift-click can scope ranges per-bucket.
-	for _, bucket := range []string{`data-bucket="unmatched"`, `data-bucket="anomalous"`, `data-bucket="new-merchants"`} {
-		if !strings.Contains(html, bucket) {
-			t.Errorf("expected row checkbox to expose %s, got html=%s", bucket, html)
+		// Row checkbox class check.
+		if !strings.Contains(html, `class="major-expenses-pin-check"`) {
+			t.Errorf("expected row checkbox class major-expenses-pin-check in output, got html=%s", html)
 		}
-	}
+
+		// The legacy row must expose the transaction hash.
+		if !strings.Contains(html, `data-hash="h-legacy"`) {
+			t.Errorf("expected data-hash=\"h-legacy\" on the legacy UnknownLarge row, got html=%s", html)
+		}
+
+		// The legacy row must expose the unmatched bucket label.
+		if !strings.Contains(html, `data-bucket="unmatched"`) {
+			t.Errorf("expected data-bucket=\"unmatched\" on the legacy UnknownLarge row, got html=%s", html)
+		}
+	})
 }
 
 func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {

@@ -1072,6 +1072,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <table class="w-full text-xs mt-1">
             <thead class="text-gray-500 dark:text-gray-400">
                 <tr>
+                    <th class="px-2 py-1 w-6">
+                        <input type="checkbox"
+                               id="major-expenses-pin-check-header-unmatched"
+                               class="major-expenses-pin-check-header"
+                               data-bucket="unmatched"
+                               aria-label="Select visible unmatched exceptions"
+                               onclick="event.stopPropagation()">
+                    </th>
                     <th class="text-left px-2 py-1">Date</th>
                     <th class="text-left px-2 py-1">Description</th>
                     <th class="text-right px-2 py-1">Amount</th>
@@ -1087,6 +1095,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                     data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
+                    <td class="major-expenses-pin-check-cell" onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                               class="major-expenses-pin-check"
+                               data-hash="{{.Transaction.Hash}}"
+                               data-bucket="unmatched"
+                               aria-label="Select {{$label}} for bulk pinning"
+                               onclick="event.stopPropagation()">
+                    </td>
                     <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
                         class="text-blue-600 dark:text-blue-400 hover:underline"
@@ -1108,6 +1124,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <table class="w-full text-xs mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-500 dark:text-gray-400">
                 <tr>
+                    <th class="px-2 py-1 w-6">
+                        <input type="checkbox"
+                               id="major-expenses-pin-check-header-unmatched"
+                               class="major-expenses-pin-check-header"
+                               data-bucket="unmatched"
+                               aria-label="Select visible unmatched exceptions"
+                               onclick="event.stopPropagation()">
+                    </th>
                     <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
                         <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
                     </th>
@@ -1133,6 +1157,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-sort-desc="{{$label}}"
                     data-sort-amount="{{printf "%.2f" $amt}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
+                    <td class="major-expenses-pin-check-cell" onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                               class="major-expenses-pin-check"
+                               data-hash="{{.Hash}}"
+                               data-bucket="unmatched"
+                               aria-label="Select {{$label}} for bulk pinning"
+                               onclick="event.stopPropagation()">
+                    </td>
                     <td class="px-2 py-1 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
                         class="text-blue-600 dark:text-blue-400 hover:underline"
@@ -1163,6 +1195,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <table class="w-full text-xs mt-1">
         <thead class="text-gray-500 dark:text-gray-400">
             <tr>
+                <th class="px-2 py-1 w-6">
+                    <input type="checkbox"
+                           id="major-expenses-pin-check-header-anomalous"
+                           class="major-expenses-pin-check-header"
+                           data-bucket="anomalous"
+                           aria-label="Select visible anomalous exceptions"
+                           onclick="event.stopPropagation()">
+                </th>
                 <th class="text-left px-2 py-1">Date</th>
                 <th class="text-left px-2 py-1">Expense</th>
                 <th class="text-left px-2 py-1">Description</th>
@@ -1179,6 +1219,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to move this transaction to a new expense — or click the expense name to edit {{.MajorExpenseName}}">
+                <td class="major-expenses-pin-check-cell" onclick="event.stopPropagation()">
+                    <input type="checkbox"
+                           class="major-expenses-pin-check"
+                           data-hash="{{.Transaction.Hash}}"
+                           data-bucket="anomalous"
+                           aria-label="Select {{$desc}} for bulk pinning"
+                           onclick="event.stopPropagation()">
+                </td>
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200 font-medium">
                     <a href="#major-expense-item-{{.MajorExpenseID}}" data-jump-expense="{{.MajorExpenseID}}"
@@ -1219,6 +1267,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <table class="w-full text-xs mt-1">
         <thead class="text-gray-500 dark:text-gray-400">
             <tr>
+                <th class="px-2 py-1 w-6">
+                    <input type="checkbox"
+                           id="major-expenses-pin-check-header-new-merchants"
+                           class="major-expenses-pin-check-header"
+                           data-bucket="new-merchants"
+                           aria-label="Select visible new-merchant exceptions"
+                           onclick="event.stopPropagation()">
+                </th>
                 <th class="text-left px-2 py-1">First seen</th>
                 <th class="text-left px-2 py-1">Description</th>
                 <th class="text-right px-2 py-1">Amount</th>
@@ -1235,6 +1291,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
                 title="{{if $matchedID}}Already grouped under a major expense{{else}}Click to pre-fill the add form, or use the dropdown to pin to an existing expense{{end}}">
+                <td class="major-expenses-pin-check-cell" onclick="event.stopPropagation()">
+                    <input type="checkbox"
+                           class="major-expenses-pin-check"
+                           data-hash="{{.Transaction.Hash}}"
+                           data-bucket="new-merchants"
+                           aria-label="Select {{$label}} for bulk pinning"
+                           onclick="event.stopPropagation()">
+                </td>
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
                     class="text-blue-600 dark:text-blue-400 hover:underline"

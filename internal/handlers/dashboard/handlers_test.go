@@ -100,7 +100,7 @@ func TestCalculateComparison_PreviousPeriod(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "previous")
+	result := calculateComparison(ts, start, end, "previous", 0)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -139,7 +139,7 @@ func TestCalculateComparison_YearOverYear(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "year")
+	result := calculateComparison(ts, start, end, "year", 0)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -171,7 +171,7 @@ func TestCalculateComparison_NoComparisonData(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "previous")
+	result := calculateComparison(ts, start, end, "previous", 0)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -189,7 +189,7 @@ func TestCalculateComparison_InvalidType(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "bogus")
+	result := calculateComparison(ts, start, end, "bogus", 0)
 
 	if result != nil {
 		t.Errorf("expected nil for unknown comparison type, got %+v", result)
@@ -822,7 +822,7 @@ func TestCalculateComparison_PopulatesBudgetDeltas(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	pc := calculateComparison(ts, start, end, "previous")
+	pc := calculateComparison(ts, start, end, "previous", 0)
 	if pc == nil || !pc.HasData {
 		t.Fatalf("expected non-nil comparison with HasData=true, got %+v", pc)
 	}

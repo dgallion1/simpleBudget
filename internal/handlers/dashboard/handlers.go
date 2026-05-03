@@ -16,18 +16,36 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/majorexpenses"
+	"budget2/internal/services/retirement"
 	"budget2/internal/templates"
 )
 
 var (
-	loader   *dataloader.DataLoader
-	renderer *templates.Renderer
+	loader        *dataloader.DataLoader
+	renderer      *templates.Renderer
+	retirementMgr *retirement.SettingsManager
 )
 
-// Initialize sets up the dashboard package with required dependencies
-func Initialize(l *dataloader.DataLoader, r *templates.Renderer) {
+// Initialize sets up the dashboard package with required dependencies.
+func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.SettingsManager) {
 	loader = l
 	renderer = r
+	retirementMgr = rm
+}
+
+// currentBudgetTarget returns the active what-if MonthlyLivingExpenses
+// value, or 0 if the settings manager is unset or the load fails. The
+// dashboard treats a zero target as "no budget configured" and renders
+// the fallback card; loading errors are non-fatal.
+func currentBudgetTarget() float64 {
+	if retirementMgr == nil {
+		return 0
+	}
+	settings, err := retirementMgr.Load()
+	if err != nil || settings == nil {
+		return 0
+	}
+	return settings.MonthlyLivingExpenses
 }
 
 // RegisterRoutes registers all dashboard routes
@@ -59,12 +77,13 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	startDate, endDate := resolveDateRange(startStr, endStr, minDate, maxDate)
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	metrics := calculateMetrics(filtered, startDate, endDate, 0)
+	target := currentBudgetTarget()
+	metrics := calculateMetrics(filtered, startDate, endDate, target)
 
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = calculateComparison(data, startDate, endDate, comparison)
+		periodComparison = calculateComparison(data, startDate, endDate, comparison, target)
 	}
 
 	pageData := map[string]interface{}{
@@ -109,11 +128,12 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filtered := data.FilterByDateRange(startDate, endDate)
-	metrics := calculateMetrics(filtered, startDate, endDate, 0)
+	target := currentBudgetTarget()
+	metrics := calculateMetrics(filtered, startDate, endDate, target)
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = calculateComparison(data, startDate, endDate, comparison)
+		periodComparison = calculateComparison(data, startDate, endDate, comparison, target)
 	}
 
 	partialData := map[string]interface{}{
@@ -607,7 +627,7 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 	}
 }
 
-func calculateComparison(data *models.TransactionSet, start, end time.Time, compType string) *models.PeriodComparison {
+func calculateComparison(data *models.TransactionSet, start, end time.Time, compType string, budgetTarget float64) *models.PeriodComparison {
 	duration := end.Sub(start)
 
 	var compStart, compEnd time.Time
@@ -630,8 +650,8 @@ func calculateComparison(data *models.TransactionSet, start, end time.Time, comp
 		return &models.PeriodComparison{HasData: false}
 	}
 
-	currentMetrics := calculateMetrics(currentFiltered, start, end, 0)
-	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, 0)
+	currentMetrics := calculateMetrics(currentFiltered, start, end, budgetTarget)
+	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, budgetTarget)
 
 	incomeChange := percentChange(currentMetrics.TotalIncome, compMetrics.TotalIncome)
 	expensesChange := percentChange(currentMetrics.TotalExpenses, compMetrics.TotalExpenses)

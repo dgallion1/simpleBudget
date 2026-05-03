@@ -62,7 +62,7 @@ func setupTestEnv(t *testing.T, rows [][]string) (chi.Router, func()) {
 	t.Helper()
 
 	_, dl, cleanup := writeTempCSV(t, rows)
-	Initialize(dl, nil) // nil renderer triggers fallback paths
+	Initialize(dl, nil, nil) // nil renderer triggers fallback paths
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -85,7 +85,7 @@ func setupTestEnvWithRenderer(t *testing.T, rows [][]string) (chi.Router, func()
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	Initialize(dl, rend)
+	Initialize(dl, rend, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -124,7 +124,7 @@ func doGet(t *testing.T, router chi.Router, path string) *httptest.ResponseRecor
 
 func TestInitialize(t *testing.T) {
 	// Just verify it doesn't panic and sets globals.
-	Initialize(nil, nil)
+	Initialize(nil, nil, nil)
 }
 
 func TestRegisterRoutes(t *testing.T) {
@@ -202,7 +202,7 @@ func TestHandleDashboard_LoadDataError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(filepath.Join(tmpDir, "nonexistent"), store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -266,7 +266,7 @@ func TestHandleKPIsPartial_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -365,7 +365,7 @@ func TestHandleChartData_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -427,7 +427,7 @@ func TestHandleCategoryDrilldown_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -539,7 +539,7 @@ func TestHandleKPIDetail_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -683,7 +683,7 @@ func TestHandleKPIExport_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -1224,7 +1224,7 @@ func TestCalculateComparison_SavingsRateChange(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := calculateComparison(ts, start, end, "previous")
+	result := calculateComparison(ts, start, end, "previous", 0)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1268,7 +1268,7 @@ func setupBrokenLoader(t *testing.T) (chi.Router, func()) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(badDir, store)
-	Initialize(dl, nil)
+	Initialize(dl, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)

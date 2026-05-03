@@ -287,6 +287,73 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         }).filter(Boolean);
     }
 
+    // ---- Bulk-selection helpers (DOM is the source of truth) ----
+
+    // Anchor for shift-click range select, keyed by bucket id. Reset
+    // on every htmx:afterSwap so post-mutation state is clean.
+    let lastCheckedByBucket = Object.create(null);
+
+    function rowCheckboxes(bucketID) {
+        const sel = bucketID
+            ? 'input.major-expenses-pin-check[data-bucket="' + bucketID + '"]'
+            : 'input.major-expenses-pin-check';
+        return Array.from(document.querySelectorAll(sel));
+    }
+
+    function visibleRowCheckboxesInBucket(bucketID) {
+        return rowCheckboxes(bucketID).filter(function (cb) {
+            const tr = cb.closest('tr.major-expenses-exception-row');
+            return tr && tr.style.display !== 'none';
+        });
+    }
+
+    function checkedRowCheckboxes() {
+        return rowCheckboxes().filter(function (cb) { return cb.checked; });
+    }
+
+    function countChecked() { return checkedRowCheckboxes().length; }
+
+    function collectCheckedHashes() {
+        return checkedRowCheckboxes().map(function (cb) {
+            return cb.getAttribute('data-hash') || '';
+        }).filter(Boolean);
+    }
+
+    function refreshBucketHeader(bucketID) {
+        const header = document.getElementById('major-expenses-pin-check-header-' + bucketID);
+        if (!header) return;
+        const visible = visibleRowCheckboxesInBucket(bucketID);
+        if (!visible.length) {
+            header.checked = false;
+            header.indeterminate = false;
+            return;
+        }
+        const checkedCount = visible.filter(function (cb) { return cb.checked; }).length;
+        if (checkedCount === 0) {
+            header.checked = false;
+            header.indeterminate = false;
+        } else if (checkedCount === visible.length) {
+            header.checked = true;
+            header.indeterminate = false;
+        } else {
+            header.checked = false;
+            header.indeterminate = true;
+        }
+    }
+
+    function refreshAllBucketHeaders() {
+        ['unmatched', 'anomalous', 'new-merchants'].forEach(refreshBucketHeader);
+    }
+
+    function refreshCountChip() {
+        const chip = document.getElementById('major-expenses-pin-count-chip');
+        const num = document.getElementById('major-expenses-pin-count-chip-num');
+        if (!chip || !num) return;
+        const n = countChecked();
+        num.textContent = String(n);
+        chip.classList.toggle('hidden', n === 0);
+    }
+
     // Show/hide the bulk-pin toolbar and update its row count based on
     // the current visible-exception set.
     function syncBulkPinToolbar(visibleCount, query) {
@@ -295,11 +362,43 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         const counter = document.getElementById('major-expenses-bulk-pin-count');
         const apply = document.getElementById('major-expenses-bulk-pin-apply');
         const target = document.getElementById('major-expenses-bulk-pin-target');
-        const active = query.trim() !== '' && visibleCount > 0;
-        bar.classList.toggle('hidden', !active);
-        bar.classList.toggle('flex', active);
-        if (counter) counter.textContent = String(visibleCount);
-        if (apply) apply.disabled = !active || !target || !target.value;
+        const clear = document.getElementById('major-expenses-bulk-pin-clear');
+        const labelLead = bar.querySelector('span.major-expenses-bulk-pin-label-lead');
+
+        const checkedCount = countChecked();
+        const filterActive = (query || '').trim() !== '' && visibleCount > 0;
+
+        // Mode priority: checked > filter > hidden.
+        let mode = 'hidden';
+        let displayCount = 0;
+        if (checkedCount > 0) {
+            mode = 'checked';
+            displayCount = checkedCount;
+        } else if (filterActive) {
+            mode = 'filter';
+            displayCount = visibleCount;
+        }
+
+        const visibleBar = mode !== 'hidden';
+        bar.classList.toggle('hidden', !visibleBar);
+        bar.classList.toggle('flex', visibleBar);
+
+        if (counter) counter.textContent = String(displayCount);
+
+        // Update the lead label between "Pin all" (filter) and
+        // "Pin" (checked). The trailing "matching →" / "selected →"
+        // is text after the counter; we swap it via labelLead's
+        // dataset markers.
+        if (labelLead) {
+            labelLead.textContent = mode === 'checked' ? 'Pin ' : 'Pin all ';
+        }
+        const labelTrail = bar.querySelector('span.major-expenses-bulk-pin-label-trail');
+        if (labelTrail) {
+            labelTrail.textContent = mode === 'checked' ? ' selected →' : ' matching →';
+        }
+
+        if (apply) apply.disabled = !visibleBar || !target || !target.value;
+        if (clear) clear.classList.toggle('hidden', mode !== 'checked');
     }
 
     function setRowOpen(tbody, open) {
@@ -1039,7 +1138,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{if .ExpenseOptions}}
 <div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
     <span class="text-amber-700 dark:text-amber-300 font-medium">
-        Pin all <span id="major-expenses-bulk-pin-count">0</span> matching →
+        <span class="major-expenses-bulk-pin-label-lead">Pin all </span><span id="major-expenses-bulk-pin-count">0</span><span class="major-expenses-bulk-pin-label-trail"> matching →</span>
     </span>
     <select id="major-expenses-bulk-pin-target" aria-label="Pin all matching exceptions to this expense"
         class="text-xs border border-amber-300 dark:border-amber-700 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 flex-1 min-w-0">

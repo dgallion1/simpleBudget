@@ -639,13 +639,15 @@ func calculateComparison(data *models.TransactionSet, start, end time.Time, comp
 	savingsRateChange := currentMetrics.SavingsRate - compMetrics.SavingsRate
 
 	return &models.PeriodComparison{
-		Current:           currentMetrics,
-		Previous:          compMetrics,
-		HasData:           true,
-		IncomeChange:      incomeChange,
-		ExpensesChange:    expensesChange,
-		SavingsChange:     savingsChange,
-		SavingsRateChange: savingsRateChange,
+		Current:               currentMetrics,
+		Previous:              compMetrics,
+		HasData:               true,
+		IncomeChange:          incomeChange,
+		ExpensesChange:        expensesChange,
+		SavingsChange:         savingsChange,
+		SavingsRateChange:     savingsRateChange,
+		ActualMonthlyChange:   currentMetrics.ActualMonthly - compMetrics.ActualMonthly,
+		CumulativeDeltaChange: currentMetrics.CumulativeDelta - compMetrics.CumulativeDelta,
 	}
 }
 

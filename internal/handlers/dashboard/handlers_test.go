@@ -811,6 +811,38 @@ func TestCalculateMetrics_NoBudgetTarget(t *testing.T) {
 	}
 }
 
+func TestCalculateComparison_PopulatesBudgetDeltas(t *testing.T) {
+	ts := makeTransactionSet(
+		// Jan 2025: 1500 outflow → previous period
+		makeTransaction("Rent", -1500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		// Feb 2025: 2500 outflow → current period (1000 more)
+		makeTransaction("Rent", -2500, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	pc := calculateComparison(ts, start, end, "previous")
+	if pc == nil || !pc.HasData {
+		t.Fatalf("expected non-nil comparison with HasData=true, got %+v", pc)
+	}
+
+	// Each period spans ~28 days ≈ 0.95 months.
+	// current.ActualMonthly  ≈ 2500 / 0.95 ≈ 2632
+	// previous.ActualMonthly ≈ 1500 / 0.95 ≈ 1579
+	// ActualMonthlyChange    ≈ 2632 - 1579 ≈ 1053
+	if pc.ActualMonthlyChange < 950 || pc.ActualMonthlyChange > 1150 {
+		t.Errorf("ActualMonthlyChange = %v, want ~1053", pc.ActualMonthlyChange)
+	}
+
+	// CumulativeDeltaChange = current.CumulativeDelta - previous.CumulativeDelta
+	// With target=0 (passed below), CumulativeDelta = TotalExpenses, so
+	// CumulativeDeltaChange = 2500 - 1500 = 1000
+	if pc.CumulativeDeltaChange < 950 || pc.CumulativeDeltaChange > 1050 {
+		t.Errorf("CumulativeDeltaChange = %v, want ~1000", pc.CumulativeDeltaChange)
+	}
+}
+
 func TestCalculateMetrics_SingleDayRange_NoDivideByZero(t *testing.T) {
 	ts := makeTransactionSet(
 		makeTransaction("Rent", -1000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),

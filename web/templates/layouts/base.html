@@ -133,6 +133,8 @@
         {{template "insights-content" .}}
         {{else if eq .ActiveTab "major-expenses"}}
         {{template "major-expenses-content" .}}
+        {{else if eq .ActiveTab "duplicates"}}
+        {{template "duplicates-content" .}}
         {{else if eq .ActiveTab "filemanager"}}
         {{template "filemanager-content" .}}
         {{else}}

@@ -739,39 +739,27 @@ func TestResolveDateRange_InvalidDateStrings(t *testing.T) {
 	_ = end
 }
 
-// ---------- buildMonthlyChartData edge cases ----------
+// ---------- buildMonthlyVarianceChartData edge cases ----------
 
-func TestBuildMonthlyChartData_MonthWithOnlyIncome(t *testing.T) {
-	// One month has income only, another has outflows only — tests the 0-value else branches.
+func TestBuildMonthlyVarianceChartData_MonthWithOnlyIncome(t *testing.T) {
+	// Income-only month must be omitted (no outflow → no variance bar).
+	// Outflow-only month still produces one bar.
 	ts := makeTransactionSet(
 		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
 		makeTransaction("Rent", -1500, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	result := buildMonthlyChartData(ts)
+	result := buildMonthlyVarianceChartData(ts, 2000)
 	data := result["data"].([]map[string]interface{})
 
-	incomeTrace := data[0]
-	expenseTrace := data[1]
+	xs := data[0]["x"].([]string)
+	ys := data[0]["y"].([]float64)
 
-	incomeY := incomeTrace["y"].([]float64)
-	expenseY := expenseTrace["y"].([]float64)
-
-	// Jan: income=5000, expenses=0; Feb: income=0, expenses=1500
-	if len(incomeY) != 2 || len(expenseY) != 2 {
-		t.Fatalf("expected 2 months; income=%d, expenses=%d", len(incomeY), len(expenseY))
+	if len(xs) != 1 || xs[0] != "2025-02" {
+		t.Fatalf("expected only Feb in variance chart, got x=%v", xs)
 	}
-	if !floatEqual(incomeY[0], 5000) {
-		t.Errorf("income Jan = %v, want 5000", incomeY[0])
-	}
-	if !floatEqual(expenseY[0], 0) {
-		t.Errorf("expenses Jan = %v, want 0", expenseY[0])
-	}
-	if !floatEqual(incomeY[1], 0) {
-		t.Errorf("income Feb = %v, want 0", incomeY[1])
-	}
-	if !floatEqual(expenseY[1], 1500) {
-		t.Errorf("expenses Feb = %v, want 1500", expenseY[1])
+	if !floatEqual(ys[0], -500) {
+		t.Errorf("Feb delta = %v, want -500 (1500 actual vs 2000 target)", ys[0])
 	}
 }
 
@@ -1147,7 +1135,7 @@ func TestBuildCumulativeChartData_MultipleTxnsSameDay(t *testing.T) {
 
 func TestCalculateMetrics_EmptyTransactionSet(t *testing.T) {
 	ts := makeTransactionSet()
-	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
 
 	if m.TotalIncome != 0 || m.TotalExpenses != 0 || m.NetSavings != 0 {
 		t.Errorf("expected all zeros, got income=%v, expenses=%v, savings=%v",

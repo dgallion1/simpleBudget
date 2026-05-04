@@ -18,17 +18,51 @@ type DashboardMetrics struct {
 	SavingsTrend  []float64 `json:"savings_trend"`
 	TrendLabels   []string  `json:"trend_labels"` // Month labels
 
-	// Budget tracking (compares actual outflows to the active what-if
-	// MonthlyLivingExpenses target). When HasBudgetTarget is false,
-	// BudgetTarget is 0 and PerMonthDelta/CumulativeDelta degenerate to
-	// ActualMonthly and TotalExpenses respectively — consumers must gate
-	// on HasBudgetTarget before treating those fields as variance.
-	MonthsInRange   float64 `json:"months_in_range"`   // average-calendar-month count for the date range
-	ActualMonthly   float64 `json:"actual_monthly"`    // TotalExpenses / MonthsInRange
-	BudgetTarget    float64 `json:"budget_target"`     // from what-if MonthlyLivingExpenses
-	PerMonthDelta   float64 `json:"per_month_delta"`   // ActualMonthly - BudgetTarget; positive = over
-	CumulativeDelta float64 `json:"cumulative_delta"`  // TotalExpenses - BudgetTarget*MonthsInRange; positive = over
-	HasBudgetTarget bool    `json:"has_budget_target"` // BudgetTarget > 0
+	// Budget tracking (compares living-expense outflows to the active
+	// what-if MonthlyLivingExpenses target). "Living" excludes the
+	// Health Insurance category, which has its own KPI below — counting
+	// premiums in both would double-bill the user. When HasBudgetTarget
+	// is false, BudgetTarget is 0 and PerMonthDelta/CumulativeDelta
+	// degenerate to ActualMonthly and LivingExpensesTotal respectively
+	// — consumers must gate on HasBudgetTarget before treating those
+	// fields as variance.
+	MonthsInRange       float64 `json:"months_in_range"`        // average-calendar-month count for the date range
+	LivingExpensesTotal float64 `json:"living_expenses_total"`  // TotalExpenses - healthcare premium total over the range
+	ActualMonthly       float64 `json:"actual_monthly"`         // LivingExpensesTotal / MonthsInRange
+	BudgetTarget        float64 `json:"budget_target"`          // from what-if MonthlyLivingExpenses (phase-adjusted)
+	PerMonthDelta       float64 `json:"per_month_delta"`        // ActualMonthly - BudgetTarget; positive = over
+	CumulativeDelta     float64 `json:"cumulative_delta"`       // LivingExpensesTotal - BudgetTarget*MonthsInRange; positive = over
+	HasBudgetTarget     bool    `json:"has_budget_target"`      // BudgetTarget > 0
+	LivingExpensesTrend []float64 `json:"living_expenses_trend"` // monthly living (non-healthcare) outflows aligned with TrendLabels
+
+	// Healthcare tracking (compares "Health Insurance" category outflows
+	// to the active what-if HealthcarePersons premium total at month 0).
+	// Mirrors the BudgetTarget fields above. When HasHealthcareTarget is
+	// false, HealthcareTarget is 0 and the deltas degenerate the same way.
+	HealthcareActual          float64   `json:"healthcare_actual"`           // sum of "Health Insurance" outflows / MonthsInRange
+	HealthcareTotal           float64   `json:"healthcare_total"`            // sum of "Health Insurance" outflows over the range
+	HealthcareTarget          float64   `json:"healthcare_target"`           // from what-if GetTotalHealthcareCost(0)
+	HealthcarePerMonthDelta   float64   `json:"healthcare_per_month_delta"`  // HealthcareActual - HealthcareTarget; positive = over
+	HealthcareCumulativeDelta float64   `json:"healthcare_cumulative_delta"` // HealthcareTotal - HealthcareTarget*MonthsInRange; positive = over
+	HasHealthcareTarget       bool      `json:"has_healthcare_target"`       // HealthcareTarget > 0
+	HealthcareTrend           []float64 `json:"healthcare_trend"`            // monthly "Health Insurance" actuals (last 6 months, aligned with TrendLabels)
+
+	// Combined plan variance — Living + Healthcare against their summed
+	// targets. Drives the "Budget" KPI card so the user sees a single
+	// "am I net over my whole plan?" number that nets a category being
+	// under against another being over.
+	CombinedTarget          float64 `json:"combined_target"`            // BudgetTarget + HealthcareTarget
+	CombinedActualMonthly   float64 `json:"combined_actual_monthly"`    // ActualMonthly + HealthcareActual
+	CombinedPerMonthDelta   float64 `json:"combined_per_month_delta"`   // CombinedActualMonthly - CombinedTarget; positive = over
+	CombinedCumulativeDelta float64 `json:"combined_cumulative_delta"`  // (LivingExpensesTotal + HealthcareTotal) - CombinedTarget*MonthsInRange
+	HasCombinedTarget       bool    `json:"has_combined_target"`        // CombinedTarget > 0
+
+	// Cumulative target totals over the date range (each = monthly
+	// target × MonthsInRange). Surfaced on the Budget card so the user
+	// can read off "Living spent X of Y" and "Health spent X of Y" and
+	// see exactly how the headline cumulative variance composes.
+	LivingTargetTotal     float64 `json:"living_target_total"`     // BudgetTarget * MonthsInRange
+	HealthcareTargetTotal float64 `json:"healthcare_target_total"` // HealthcareTarget * MonthsInRange
 }
 
 // PeriodComparison holds metrics for two periods for comparison

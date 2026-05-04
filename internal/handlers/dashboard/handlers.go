@@ -49,6 +49,23 @@ func currentBudgetSettings() *models.WhatIfSettings {
 	return settings
 }
 
+// currentHealthcareTarget returns the active monthly healthcare
+// premium budget pulled from what-if. Uses GetTotalHealthcareCost(0)
+// — month 0 represents "today's" planned premium, which is what the
+// dashboard compares against recent "Health Insurance" transactions.
+// Healthcare is intentionally NOT phase-multiplied (the calculator
+// does not apply spending phases to healthcare, since costs tend to
+// rise with age rather than fall).
+//
+// Returns 0 when settings is nil or no healthcare is configured so
+// callers can rely on that as the "no healthcare budget" sentinel.
+func currentHealthcareTarget(s *models.WhatIfSettings) float64 {
+	if s == nil {
+		return 0
+	}
+	return s.GetTotalHealthcareCost(0)
+}
+
 // phaseAdjustedMonthlyTarget returns the phase-adjusted monthly living
 // expense target averaged across [rangeStart, rangeEnd]. When phases
 // are disabled or unavailable, returns settings.MonthlyLivingExpenses
@@ -118,7 +135,8 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	filtered := data.FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
 	target := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
-	metrics := calculateMetrics(filtered, startDate, endDate, target)
+	healthTarget := currentHealthcareTarget(settings)
+	metrics := calculateMetrics(filtered, startDate, endDate, target, healthTarget)
 
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
@@ -170,7 +188,8 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	filtered := data.FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
 	target := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
-	metrics := calculateMetrics(filtered, startDate, endDate, target)
+	healthTarget := currentHealthcareTarget(settings)
+	metrics := calculateMetrics(filtered, startDate, endDate, target, healthTarget)
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
@@ -217,7 +236,10 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 
 	switch chartType {
 	case "monthly":
-		chartData = buildMonthlyChartData(filtered)
+		settings := currentBudgetSettings()
+		livingTarget := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
+		healthTarget := currentHealthcareTarget(settings)
+		chartData = buildMonthlyVarianceChartData(filtered, livingTarget+healthTarget)
 	case "major-expense":
 		chartData = buildMajorExpenseChartData(filtered)
 	case "spending-trend":
@@ -596,6 +618,11 @@ func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time
 // avgDaysPerMonth is 365.25 / 12 — the standard average-calendar-month length.
 const avgDaysPerMonth = 30.4375
 
+// healthInsuranceCategory is the canonical category name used to
+// identify health-insurance premium transactions for the dashboard
+// Healthcare KPI. Matches what bank/credit-card CSVs export.
+const healthInsuranceCategory = "Health Insurance"
+
 // monthsBetween returns the average-calendar-month count between two
 // inclusive dates. A single-day span returns 1/avgDaysPerMonth (~0.033),
 // never zero, so callers can safely divide by the result.
@@ -607,7 +634,7 @@ func monthsBetween(start, end time.Time) float64 {
 	return days / avgDaysPerMonth
 }
 
-func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget float64) *models.DashboardMetrics {
+func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64) *models.DashboardMetrics {
 	income := ts.FilterByType(models.Income)
 	outflows := ts.FilterByType(models.Outflow)
 
@@ -623,18 +650,43 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 	// Budget tracking — uses the dashboard date range (not transaction min/max)
 	// so a sparse range still divides expenses across the full window the user
 	// selected.
+	//
+	// Healthcare premiums are tracked by their own KPI below, so they are
+	// subtracted from the living-expenses figure used for the Monthly
+	// Living Expenses card and the Budget cumulative variance. Without
+	// this split, premium spend would be counted in both cards and the
+	// living-vs-target variance would silently include non-living costs.
 	monthsInRange := monthsBetween(rangeStart, rangeEnd)
-	actualMonthly := totalExpenses / monthsInRange
+
+	healthcareOutflows := outflows.FilterByCategory(healthInsuranceCategory)
+	healthcareTotal := math.Abs(healthcareOutflows.SumAmount())
+	healthcareActual := healthcareTotal / monthsInRange
+	healthcarePerMonthDelta := healthcareActual - healthcareTarget
+	healthcareCumulativeDelta := healthcareTotal - healthcareTarget*monthsInRange
+	hasHealthcareTarget := healthcareTarget > 0
+
+	livingTotal := totalExpenses - healthcareTotal
+	actualMonthly := livingTotal / monthsInRange
 	perMonthDelta := actualMonthly - budgetTarget
-	cumulativeDelta := totalExpenses - budgetTarget*monthsInRange
+	cumulativeDelta := livingTotal - budgetTarget*monthsInRange
 	hasBudgetTarget := budgetTarget > 0
 
+	// Combined plan variance — single number that nets Living + Healthcare
+	// against their summed targets. Drives the Budget KPI card so a category
+	// being under can offset another being over.
+	combinedTarget := budgetTarget + healthcareTarget
+	combinedActualMonthly := actualMonthly + healthcareActual
+	combinedPerMonthDelta := combinedActualMonthly - combinedTarget
+	combinedCumulativeDelta := (livingTotal + healthcareTotal) - combinedTarget*monthsInRange
+	hasCombinedTarget := combinedTarget > 0
+
 	// Calculate monthly trends
-	var incomeTrend, expensesTrend, savingsTrend []float64
+	var incomeTrend, expensesTrend, savingsTrend, healthcareTrend, livingTrend []float64
 	var trendLabels []string
 
 	monthlyIncome := income.GroupByMonth()
 	monthlyOutflows := outflows.GroupByMonth()
+	monthlyHealthcare := healthcareOutflows.GroupByMonth()
 
 	// Get sorted months
 	monthSet := make(map[string]bool)
@@ -667,30 +719,53 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 			expAmt = math.Abs(exp.SumAmount())
 		}
 
+		hcAmt := 0.0
+		if hc, ok := monthlyHealthcare[m]; ok {
+			hcAmt = math.Abs(hc.SumAmount())
+		}
+
 		incomeTrend = append(incomeTrend, incAmt)
 		expensesTrend = append(expensesTrend, expAmt)
 		savingsTrend = append(savingsTrend, incAmt-expAmt)
+		healthcareTrend = append(healthcareTrend, hcAmt)
+		livingTrend = append(livingTrend, expAmt-hcAmt)
 		trendLabels = append(trendLabels, m)
 	}
 
 	return &models.DashboardMetrics{
-		TotalIncome:      totalIncome,
-		TotalExpenses:    totalExpenses,
-		NetSavings:       netSavings,
-		SavingsRate:      savingsRate,
-		TransactionCount: ts.Len(),
-		StartDate:        ts.MinDate(),
-		EndDate:          ts.MaxDate(),
-		IncomeTrend:      incomeTrend,
-		ExpensesTrend:    expensesTrend,
-		SavingsTrend:     savingsTrend,
-		TrendLabels:      trendLabels,
-		MonthsInRange:    monthsInRange,
-		ActualMonthly:    actualMonthly,
-		BudgetTarget:     budgetTarget,
-		PerMonthDelta:    perMonthDelta,
-		CumulativeDelta:  cumulativeDelta,
-		HasBudgetTarget:  hasBudgetTarget,
+		TotalIncome:               totalIncome,
+		TotalExpenses:             totalExpenses,
+		NetSavings:                netSavings,
+		SavingsRate:                savingsRate,
+		TransactionCount:          ts.Len(),
+		StartDate:                 ts.MinDate(),
+		EndDate:                   ts.MaxDate(),
+		IncomeTrend:               incomeTrend,
+		ExpensesTrend:             expensesTrend,
+		SavingsTrend:              savingsTrend,
+		TrendLabels:               trendLabels,
+		MonthsInRange:             monthsInRange,
+		LivingExpensesTotal:       livingTotal,
+		ActualMonthly:             actualMonthly,
+		BudgetTarget:              budgetTarget,
+		PerMonthDelta:             perMonthDelta,
+		CumulativeDelta:           cumulativeDelta,
+		HasBudgetTarget:           hasBudgetTarget,
+		LivingExpensesTrend:       livingTrend,
+		HealthcareActual:          healthcareActual,
+		HealthcareTotal:           healthcareTotal,
+		HealthcareTarget:          healthcareTarget,
+		HealthcarePerMonthDelta:   healthcarePerMonthDelta,
+		HealthcareCumulativeDelta: healthcareCumulativeDelta,
+		HasHealthcareTarget:       hasHealthcareTarget,
+		HealthcareTrend:           healthcareTrend,
+		CombinedTarget:            combinedTarget,
+		CombinedActualMonthly:     combinedActualMonthly,
+		CombinedPerMonthDelta:     combinedPerMonthDelta,
+		CombinedCumulativeDelta:   combinedCumulativeDelta,
+		HasCombinedTarget:         hasCombinedTarget,
+		LivingTargetTotal:         budgetTarget * monthsInRange,
+		HealthcareTargetTotal:     healthcareTarget * monthsInRange,
 	}
 }
 
@@ -720,10 +795,12 @@ func calculateComparison(data *models.TransactionSet, start, end time.Time, comp
 	// Phase-adjust the target for each range independently — comparison
 	// windows can sit in different phases (e.g., "year ago" was Go-Go,
 	// current is Active), and a flat target would hide that effect.
+	// Healthcare target is not phase-adjusted (uses today's premium).
 	currentTarget := phaseAdjustedMonthlyTarget(settings, start, end)
 	compTarget := phaseAdjustedMonthlyTarget(settings, compStart, compEnd)
-	currentMetrics := calculateMetrics(currentFiltered, start, end, currentTarget)
-	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, compTarget)
+	healthTarget := currentHealthcareTarget(settings)
+	currentMetrics := calculateMetrics(currentFiltered, start, end, currentTarget, healthTarget)
+	compMetrics := calculateMetrics(compFiltered, compStart, compEnd, compTarget, healthTarget)
 
 	incomeChange := percentChange(currentMetrics.TotalIncome, compMetrics.TotalIncome)
 	expensesChange := percentChange(currentMetrics.TotalExpenses, compMetrics.TotalExpenses)
@@ -753,66 +830,94 @@ func percentChange(current, previous float64) float64 {
 	return ((current - previous) / math.Abs(previous)) * 100
 }
 
-func buildMonthlyChartData(ts *models.TransactionSet) map[string]interface{} {
-	income := ts.FilterByType(models.Income)
+// buildMonthlyVarianceChartData renders one bar per month showing how
+// far that month landed over (positive, red) or under (negative, green)
+// the combined Living + Healthcare budget. y is the signed delta in
+// dollars: actualOutflows[month] − combinedTarget. When the combined
+// target is 0 (no budget configured), bars fall back to neutral gray
+// and y = monthly outflows (so the user still sees the shape of their
+// spending).
+func buildMonthlyVarianceChartData(ts *models.TransactionSet, combinedTarget float64) map[string]interface{} {
 	outflows := ts.FilterByType(models.Outflow)
-
-	monthlyIncome := income.GroupByMonth()
 	monthlyOutflows := outflows.GroupByMonth()
 
-	// Combine and sort months
-	monthSet := make(map[string]bool)
-	for m := range monthlyIncome {
-		monthSet[m] = true
-	}
-	for m := range monthlyOutflows {
-		monthSet[m] = true
-	}
-
 	var months []string
-	for m := range monthSet {
+	for m := range monthlyOutflows {
 		months = append(months, m)
 	}
 	sort.Strings(months)
 
-	var incomeValues, expenseValues []float64
+	values := make([]float64, 0, len(months))
+	colors := make([]string, 0, len(months))
+	hovers := make([]string, 0, len(months))
+	hasTarget := combinedTarget > 0
+
 	for _, m := range months {
-		if inc, ok := monthlyIncome[m]; ok {
-			incomeValues = append(incomeValues, inc.SumAmount())
+		actual := math.Abs(monthlyOutflows[m].SumAmount())
+		var y float64
+		var color, hover string
+		if hasTarget {
+			y = actual - combinedTarget
+			if y > 0 {
+				color = "#ef4444" // red — over
+				hover = fmt.Sprintf("%s<br>$%.0f over<br>(actual $%.0f vs target $%.0f)", m, y, actual, combinedTarget)
+			} else {
+				color = "#22c55e" // green — under
+				hover = fmt.Sprintf("%s<br>$%.0f under<br>(actual $%.0f vs target $%.0f)", m, -y, actual, combinedTarget)
+			}
 		} else {
-			incomeValues = append(incomeValues, 0)
+			y = actual
+			color = "#9ca3af" // neutral gray — no target
+			hover = fmt.Sprintf("%s<br>actual $%.0f<br>(no budget set)", m, actual)
 		}
-		if exp, ok := monthlyOutflows[m]; ok {
-			expenseValues = append(expenseValues, math.Abs(exp.SumAmount()))
-		} else {
-			expenseValues = append(expenseValues, 0)
+		values = append(values, y)
+		colors = append(colors, color)
+		hovers = append(hovers, hover)
+	}
+
+	trace := map[string]interface{}{
+		"type": "bar",
+		"name": "Variance",
+		"x":    months,
+		"y":    values,
+		"marker": map[string]interface{}{
+			"color": colors,
+		},
+		"hovertext":    hovers,
+		"hoverinfo":    "text",
+		"textposition": "none",
+	}
+
+	layout := map[string]interface{}{
+		"showlegend": false,
+		"yaxis": map[string]interface{}{
+			"zeroline":      true,
+			"zerolinecolor": "#9ca3af",
+			"zerolinewidth": 2,
+		},
+	}
+	if hasTarget {
+		layout["shapes"] = []map[string]interface{}{
+			{
+				"type":      "line",
+				"xref":      "paper",
+				"x0":        0,
+				"x1":        1,
+				"yref":      "y",
+				"y0":        0,
+				"y1":        0,
+				"line": map[string]interface{}{
+					"color": "#6b7280",
+					"width": 1,
+					"dash":  "dot",
+				},
+			},
 		}
 	}
 
 	return map[string]interface{}{
-		"data": []map[string]interface{}{
-			{
-				"type": "bar",
-				"name": "Income",
-				"x":    months,
-				"y":    incomeValues,
-				"marker": map[string]string{
-					"color": "#22c55e",
-				},
-			},
-			{
-				"type": "bar",
-				"name": "Expenses",
-				"x":    months,
-				"y":    expenseValues,
-				"marker": map[string]string{
-					"color": "#ef4444",
-				},
-			},
-		},
-		"layout": map[string]interface{}{
-			"barmode": "group",
-		},
+		"data":   []map[string]interface{}{trace},
+		"layout": layout,
 	}
 }
 

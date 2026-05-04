@@ -1,5 +1,5 @@
 {{define "kpis"}}
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
     <!-- Total Income -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('income')">
         <div class="flex items-center justify-between">
@@ -78,25 +78,64 @@
                 </svg>
             </div>
         </div>
-        <div id="sparkline-monthly" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#9ca3af"></div>
+        <div id="sparkline-monthly" class="h-10 mt-2" data-values="{{toJSON .Metrics.LivingExpensesTrend}}" data-color="#9ca3af"></div>
     </div>
 
-    <!-- Budget (cumulative variance for the period) -->
+    <!-- Monthly Healthcare (premiums tagged "Health Insurance" vs what-if target) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Healthcare</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.HealthcareActual}}</p>
+                {{if .Metrics.HasHealthcareTarget}}
+                <p class="text-sm {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                    Target {{formatMoney .Metrics.HealthcareTarget}} · {{formatMoney (abs .Metrics.HealthcarePerMonthDelta)}}/mo {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}over{{else}}under{{end}}
+                </p>
+                {{else}}
+                <p class="text-sm text-gray-400 dark:text-gray-500 italic">No premium target set</p>
+                {{end}}
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Category: Health Insurance</p>
+            </div>
+            <div class="p-3 bg-rose-100 dark:bg-rose-900/50 rounded-full">
+                <svg class="w-6 h-6 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="sparkline-healthcare" class="h-10 mt-2" data-values="{{toJSON .Metrics.HealthcareTrend}}" data-color="#e11d48"></div>
+    </div>
+
+    <!-- Budget (combined cumulative variance: Living + Healthcare for the period) -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Budget</p>
-                {{if .Metrics.HasBudgetTarget}}
-                {{if gt .Metrics.CumulativeDelta 1.0}}
-                <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney (abs .Metrics.CumulativeDelta)}} over</p>
-                {{else if lt .Metrics.CumulativeDelta -1.0}}
-                <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney (abs .Metrics.CumulativeDelta)}} under</p>
+                {{if .Metrics.HasCombinedTarget}}
+                {{if gt .Metrics.CombinedCumulativeDelta 1.0}}
+                <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}} over</p>
+                {{else if lt .Metrics.CombinedCumulativeDelta -1.0}}
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}} under</p>
                 {{else}}
                 <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
                 {{end}}
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {{printf "%.1f" .Metrics.MonthsInRange}} mo @ {{if ge .Metrics.PerMonthDelta 0.0}}+{{else}}-{{end}}{{formatMoney (abs .Metrics.PerMonthDelta)}}/mo
+                    over {{printf "%.1f" .Metrics.MonthsInRange}} mo
                 </p>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-0.5 leading-snug">
+                    <div class="flex justify-between gap-2">
+                        <span>Living: {{formatMoney .Metrics.LivingExpensesTotal}} of {{formatMoney .Metrics.LivingTargetTotal}}</span>
+                        <span class="{{if gt .Metrics.CumulativeDelta 0.0}}text-red-500 dark:text-red-400{{else}}text-green-500 dark:text-green-400{{end}}">
+                            {{formatMoney (abs .Metrics.CumulativeDelta)}} {{if gt .Metrics.CumulativeDelta 0.0}}over{{else}}under{{end}}
+                        </span>
+                    </div>
+                    <div class="flex justify-between gap-2">
+                        <span>Health: {{formatMoney .Metrics.HealthcareTotal}} of {{formatMoney .Metrics.HealthcareTargetTotal}}</span>
+                        <span class="{{if gt .Metrics.HealthcareCumulativeDelta 0.0}}text-red-500 dark:text-red-400{{else}}text-green-500 dark:text-green-400{{end}}">
+                            {{formatMoney (abs .Metrics.HealthcareCumulativeDelta)}} {{if gt .Metrics.HealthcareCumulativeDelta 0.0}}over{{else}}under{{end}}
+                        </span>
+                    </div>
+                </div>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
                 <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -109,8 +148,8 @@
                 <a href="/whatif" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-block">Set a budget in What-If →</a>
                 {{end}}
             </div>
-            <div class="p-3 {{if and .Metrics.HasBudgetTarget (gt .Metrics.CumulativeDelta 0.0)}}bg-red-100 dark:bg-red-900/50{{else if .Metrics.HasBudgetTarget}}bg-green-100 dark:bg-green-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">
-                <svg class="w-6 h-6 {{if and .Metrics.HasBudgetTarget (gt .Metrics.CumulativeDelta 0.0)}}text-red-600 dark:text-red-400{{else if .Metrics.HasBudgetTarget}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 {{if and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)}}bg-red-100 dark:bg-red-900/50{{else if .Metrics.HasCombinedTarget}}bg-green-100 dark:bg-green-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">
+                <svg class="w-6 h-6 {{if and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)}}text-red-600 dark:text-red-400{{else if .Metrics.HasCombinedTarget}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                 </svg>

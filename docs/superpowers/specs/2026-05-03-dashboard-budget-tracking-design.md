@@ -40,14 +40,16 @@ switch. We want it on the dashboard.
 
 ## KPI Row — Final Shape
 
-The four KPI cards become:
+The five KPI cards become (Healthcare added 2026-05-03 as a separate
+target alongside Living):
 
 | Position | Card | Source | Notes |
 |---|---|---|---|
 | 1 | **Total Income** | sum of inflows in date range | unchanged |
 | 2 | **Total Expenses** | sum of outflows in date range (already nets refunds, per `12c5ef9`) | unchanged |
-| 3 | **Monthly Living Expenses** *(new)* | `TotalExpenses ÷ months` | shows target underneath, and per-month variance |
-| 4 | **Budget** *(replaces Net Savings slot)* | `Actual − Target × months` for the period | green if under, red if over |
+| 3 | **Monthly Living Expenses** | `LivingExpensesTotal ÷ months` (excludes "Health Insurance") | shows target underneath, and per-month variance |
+| 4 | **Monthly Healthcare** | sum of "Health Insurance" outflows ÷ months | target = `WhatIfSettings.GetTotalHealthcareCost(0)` (premiums only; no phase multiplier) |
+| 5 | **Budget** *(replaces Net Savings slot)* | combined: `(LivingExpensesTotal + HealthcareTotal) − (LivingTarget + HealthcareTarget) × months` | nets a category being under against another being over; green if under, red if over |
 
 **Removed:** Savings Rate card. (It has no sparkline, just a transaction-count
 sub-line, so removal is a straight delete of the card block.)
@@ -73,11 +75,27 @@ settings via the existing what-if store; no new persistence layer.
 ### Derived values
 
 ```
-ActualMonthly  = TotalExpenses / months           // card 3 headline
-PerMonthDelta  = ActualMonthly - Target            // card 3 sub-line
-CumulativeDelta = TotalExpenses - Target * months  // card 4 headline
-                = PerMonthDelta * months           // equivalent
+LivingExpensesTotal = TotalExpenses - HealthcareTotal       // exclude premiums
+ActualMonthly       = LivingExpensesTotal / months          // card 3 headline
+PerMonthDelta       = ActualMonthly - Target                // card 3 sub-line
+CumulativeDelta     = LivingExpensesTotal - Target * months // living-only cumulative
+                    = PerMonthDelta * months                // equivalent
+
+HealthcareTotal           = sum of "Health Insurance" outflows
+HealthcareActual          = HealthcareTotal / months              // card 4 headline
+HealthcarePerMonthDelta   = HealthcareActual - HealthcareTarget   // card 4 sub-line
+HealthcareCumulativeDelta = HealthcareTotal - HealthcareTarget * months
+
+CombinedTarget          = Target + HealthcareTarget                            // card 5
+CombinedActualMonthly   = ActualMonthly + HealthcareActual
+CombinedPerMonthDelta   = CombinedActualMonthly - CombinedTarget
+CombinedCumulativeDelta = (LivingExpensesTotal + HealthcareTotal)
+                          - CombinedTarget * months                            // card 5 headline
 ```
+
+Premiums are intentionally excluded from `LivingExpensesTotal` — counting
+them in both Living and Healthcare KPIs would double-charge the user
+when reading the Budget cumulative variance.
 
 Sign convention: **positive = over budget (bad)**, **negative = under (good)**.
 Display always shows absolute value with a "over" / "under" label rather than
@@ -121,8 +139,10 @@ optional comparison line, sparkline if applicable).
 - Sub-line text: `Target ${{target}} · {{abs delta}}/mo {{over|under}}`.
   - Red (`text-red-600 dark:text-red-400`) when over.
   - Green (`text-green-600 dark:text-green-400`) when under.
-- Sparkline: reuses `ExpensesTrend` data (no new field needed); same color
-  as the Total Expenses sparkline (`#ef4444`).
+- Sparkline: uses `LivingExpensesTrend` (per-month outflows minus
+  Health Insurance per month, aligned with `TrendLabels`); rendered in
+  neutral gray (`#9ca3af`) so it visually pairs with the Living card,
+  not the red Total Expenses card.
 - Click → opens the existing expenses drilldown modal
   (`openKPIDetail('expenses')`).
 
@@ -171,12 +191,30 @@ anywhere else in the codebase — ignore it for this work.)
 Add to `DashboardMetrics`:
 
 ```go
-MonthsInRange      float64 // average-calendar-month count for the date range
-ActualMonthly      float64 // TotalExpenses / MonthsInRange
-BudgetTarget       float64 // from what-if MonthlyLivingExpenses
-PerMonthDelta      float64 // ActualMonthly - BudgetTarget; signed
-CumulativeDelta    float64 // TotalExpenses - BudgetTarget*MonthsInRange; signed
-HasBudgetTarget    bool    // BudgetTarget > 0
+MonthsInRange       float64   // average-calendar-month count for the date range
+LivingExpensesTotal float64   // TotalExpenses - HealthcareTotal
+ActualMonthly       float64   // LivingExpensesTotal / MonthsInRange
+BudgetTarget        float64   // from what-if MonthlyLivingExpenses (phase-adjusted)
+PerMonthDelta       float64   // ActualMonthly - BudgetTarget; signed
+CumulativeDelta     float64   // LivingExpensesTotal - BudgetTarget*MonthsInRange; signed
+HasBudgetTarget     bool      // BudgetTarget > 0
+LivingExpensesTrend []float64 // monthly living (non-healthcare) outflows aligned with TrendLabels
+
+// Healthcare KPI (added 2026-05-03)
+HealthcareActual          float64
+HealthcareTotal           float64
+HealthcareTarget          float64
+HealthcarePerMonthDelta   float64
+HealthcareCumulativeDelta float64
+HasHealthcareTarget       bool
+HealthcareTrend           []float64
+
+// Combined plan variance — drives the Budget card (added 2026-05-03)
+CombinedTarget          float64
+CombinedActualMonthly   float64
+CombinedPerMonthDelta   float64
+CombinedCumulativeDelta float64
+HasCombinedTarget       bool
 ```
 
 Keep `SavingsRate` on the struct for backward compatibility with anything
@@ -200,12 +238,13 @@ After computing `totalExpenses`:
 Refactor signature:
 
 ```go
-func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, target float64) *models.DashboardMetrics
+func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64) *models.DashboardMetrics
 ```
 
-The two callers (`Index` and `KPIs`) already have the date range; both pass
-it through. Both load the target from the what-if store at the handler
-level and pass it in.
+The two callers (`Index` and `KPIs`) already have the date range; both
+pass it through. Both load the targets from the what-if store at the
+handler level via `phaseAdjustedMonthlyTarget(...)` (living, phase-aware)
+and `currentHealthcareTarget(...)` (premiums, no phase multiplier).
 
 ### Period comparison
 
@@ -250,7 +289,8 @@ Add cases to `TestCalculateMetrics` (or create one if it doesn't exist):
    3-month range. Expect `CumulativeDelta ≈ −$3,000`.
 3. **No target:** target `0`. Expect `HasBudgetTarget = false`,
    `ActualMonthly` still computed, `PerMonthDelta = ActualMonthly`,
-   `CumulativeDelta = TotalExpenses`.
+   `CumulativeDelta = LivingExpensesTotal` (degenerates to
+   `TotalExpenses` when there are no Health Insurance txns).
 4. **Single-day range:** `monthsInRange ≈ 0.033`, no divide-by-zero panic.
 5. **Empty range:** zero transactions → all derived fields are `0`,
    `HasBudgetTarget` reflects target only.
@@ -311,6 +351,83 @@ the "loaded target" and "missing/zero target" paths.
    logic; coverage ceiling held.
 
 ---
+
+## Addendum (2026-05-03) — Combined Budget card
+
+The Budget card was further repurposed to show **combined plan variance**:
+Living + Healthcare actuals against the sum of their targets. The
+per-card detail (Living variance, Healthcare variance) lives on cards 3
+and 4; the Budget card now answers the holistic question "am I net over
+my plan?" — so a Living overrun can be netted against a Healthcare
+underrun.
+
+`CumulativeDelta` (living-only) is preserved on the metrics struct for
+back-compat and the period-comparison subtitle, but the Budget card
+headline reads from `CombinedCumulativeDelta`.
+
+### Body breakdown — verifiable math
+
+The card body shows a two-row breakdown so the user can see exactly
+how the cumulative figure is composed:
+
+```
+Budget
+$X under                                ← CombinedCumulativeDelta
+over Y mo                               ← MonthsInRange
+Living: $A of $B            $C under    ← LivingExpensesTotal of LivingTargetTotal
+Health: $D of $E            $F under    ← HealthcareTotal   of HealthcareTargetTotal
+```
+
+Invariant: `C + F == X` exactly (within float precision). The previous
+"per month @ $/mo" subtitle was removed because rounding `MonthsInRange`
+to one decimal made `mo × $/mo` appear not to multiply out to the
+headline cumulative. The new breakdown sidesteps rounding entirely —
+each row's inputs are the raw cumulative values, and the deltas sum.
+
+Two new fields on `DashboardMetrics` back this breakdown:
+
+```go
+LivingTargetTotal     float64 // BudgetTarget * MonthsInRange
+HealthcareTargetTotal float64 // HealthcareTarget * MonthsInRange
+```
+
+## Addendum (2026-05-03) — Monthly Variance chart
+
+The original "Monthly Income vs Expenses" grouped bar chart was
+replaced with **"Monthly Variance vs Budget"** — one signed bar per
+month, where `y = monthlyOutflows[m] - combinedTarget`. Bars below
+zero are green (under), bars above zero are red (over). When no
+target is configured, the chart falls back to neutral-gray bars whose
+y is the raw monthly outflow, so the user still sees a shape.
+
+Income is intentionally absent from this chart — it has its own KPI
+card, and the goal of this chart is "did I stay within plan this
+month?", which is a one-sided spending question.
+
+Backend: `buildMonthlyVarianceChartData(ts, combinedTarget) → Plotly
+trace`. The chart route resolves `combinedTarget` from the active
+what-if settings the same way the KPI cards do
+(`phaseAdjustedMonthlyTarget + currentHealthcareTarget`).
+
+## Addendum (2026-05-03) — Healthcare KPI split
+
+A fifth KPI card, **Monthly Healthcare**, was added between Monthly
+Living Expenses and Budget. Premiums now compare against
+`WhatIfSettings.GetTotalHealthcareCost(0)` (no phase multiplier — the
+calculator does not phase-adjust healthcare). Only outflows tagged with
+the canonical `"Health Insurance"` category feed this KPI; the user
+splits premiums vs extra costs (co-pays, prescriptions, fitness) by
+tagging.
+
+To keep variance honest, premiums are subtracted from the Living
+Expenses figure (`LivingExpensesTotal = TotalExpenses − HealthcareTotal`)
+that drives the Monthly Living Expenses card and the Budget cumulative
+variance. Total Expenses keeps the full outflow total — that card is a
+true sum.
+
+The KPI grid moves from `lg:grid-cols-4` to
+`lg:grid-cols-3 xl:grid-cols-5` to fit the additional card without
+crowding mid-width screens.
 
 ## Addendum (2026-05-03) — Go-Go phase adjustment
 

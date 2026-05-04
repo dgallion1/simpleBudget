@@ -236,7 +236,7 @@ func TestCalculateMetrics_BasicTotals(t *testing.T) {
 		makeTransaction("Groceries", -500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
 	)
 
-	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
 
 	if !floatEqual(m.TotalIncome, 6000) {
 		t.Errorf("TotalIncome = %v, want 6000", m.TotalIncome)
@@ -262,7 +262,7 @@ func TestCalculateMetrics_ZeroIncome(t *testing.T) {
 		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
 
 	if m.SavingsRate != 0 {
 		t.Errorf("SavingsRate = %v, want 0 when no income", m.SavingsRate)
@@ -285,7 +285,7 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 	}
 	ts := makeTransactionSet(txns...)
 
-	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
 
 	if len(m.IncomeTrend) != 6 {
 		t.Errorf("IncomeTrend length = %v, want 6", len(m.IncomeTrend))
@@ -309,7 +309,7 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 // Regression: a refund (opposite-signed Outflow row) must REDUCE the monthly
 // expense bar value, not be added as an absolute value. Pre-fix: $1500 of
 // purchases plus a $300 refund produced an expense bar of $1800 instead of $1200.
-func TestBuildMonthlyChartData_RefundReducesExpenseBar(t *testing.T) {
+func TestBuildMonthlyVarianceChartData_RefundReducesMonthOutflow(t *testing.T) {
 	jan := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
 	ts := makeTransactionSet(
 		makeTransaction("Salary", 5000, jan, models.Income, "Payroll"),
@@ -317,14 +317,12 @@ func TestBuildMonthlyChartData_RefundReducesExpenseBar(t *testing.T) {
 		makeTransaction("Refund", 300, jan, models.Outflow, "Housing"), // opposite sign
 	)
 
-	result := buildMonthlyChartData(ts)
+	// target = $1200 → Jan actual = $1200 net → exactly on budget (delta=0)
+	result := buildMonthlyVarianceChartData(ts, 1200)
 	data := result["data"].([]map[string]interface{})
-
-	// Trace order: [income, expenses]
-	expenseTrace := data[1]
-	values := expenseTrace["y"].([]float64)
-	if !floatEqual(values[0], 1200) {
-		t.Errorf("Jan expense bar = %.2f, want 1200 (refund of +300 must subtract)", values[0])
+	values := data[0]["y"].([]float64)
+	if !floatEqual(values[0], 0) {
+		t.Errorf("Jan delta = %.2f, want 0 (refund of +300 must subtract before variance)", values[0])
 	}
 }
 
@@ -446,54 +444,65 @@ func TestBuildSpendingTrendChartData_DecreasingSpending(t *testing.T) {
 	}
 }
 
-// --- buildMonthlyChartData ---
+// --- buildMonthlyVarianceChartData ---
 
-func TestBuildMonthlyChartData_Basic(t *testing.T) {
+func TestBuildMonthlyVarianceChartData_OverAndUnder(t *testing.T) {
 	ts := makeTransactionSet(
-		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
 		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-		makeTransaction("Salary", 5000, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
-		makeTransaction("Rent", -2000, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -2500, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	result := buildMonthlyChartData(ts)
-
+	// target = $2000 → Jan under by $500 (green), Feb over by $500 (red)
+	result := buildMonthlyVarianceChartData(ts, 2000)
 	data := result["data"].([]map[string]interface{})
-	if len(data) != 2 {
-		t.Fatalf("expected 2 traces (income + expenses), got %d", len(data))
+	if len(data) != 1 {
+		t.Fatalf("expected 1 variance trace, got %d", len(data))
 	}
+	values := data[0]["y"].([]float64)
+	colors := data[0]["marker"].(map[string]interface{})["color"].([]string)
 
-	incomeTrace := data[0]
-	expenseTrace := data[1]
+	if !floatEqual(values[0], -500) {
+		t.Errorf("Jan delta = %v, want -500 (under)", values[0])
+	}
+	if !floatEqual(values[1], 500) {
+		t.Errorf("Feb delta = %v, want +500 (over)", values[1])
+	}
+	if colors[0] != "#22c55e" {
+		t.Errorf("Jan color = %v, want green (#22c55e)", colors[0])
+	}
+	if colors[1] != "#ef4444" {
+		t.Errorf("Feb color = %v, want red (#ef4444)", colors[1])
+	}
+}
 
-	if incomeTrace["name"] != "Income" {
-		t.Errorf("first trace name = %v, want Income", incomeTrace["name"])
-	}
-	if expenseTrace["name"] != "Expenses" {
-		t.Errorf("second trace name = %v, want Expenses", expenseTrace["name"])
-	}
+func TestBuildMonthlyVarianceChartData_NoTargetFallback(t *testing.T) {
+	// With combinedTarget = 0, bars are neutral gray and y = monthly outflows.
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	result := buildMonthlyVarianceChartData(ts, 0)
+	data := result["data"].([]map[string]interface{})
+	values := data[0]["y"].([]float64)
+	colors := data[0]["marker"].(map[string]interface{})["color"].([]string)
 
-	incomeY := incomeTrace["y"].([]float64)
-	expenseY := expenseTrace["y"].([]float64)
+	if !floatEqual(values[0], 1500) {
+		t.Errorf("Jan y = %v, want 1500 (no-target fallback shows actual)", values[0])
+	}
+	if colors[0] != "#9ca3af" {
+		t.Errorf("Jan color = %v, want gray (#9ca3af)", colors[0])
+	}
+}
 
-	if len(incomeY) != 2 || len(expenseY) != 2 {
-		t.Fatalf("expected 2 months of data, got income=%d, expenses=%d", len(incomeY), len(expenseY))
-	}
-
-	if !floatEqual(incomeY[0], 5000) {
-		t.Errorf("income Jan = %v, want 5000", incomeY[0])
-	}
-	if !floatEqual(expenseY[0], 1500) {
-		t.Errorf("expenses Jan = %v, want 1500", expenseY[0])
-	}
-	if !floatEqual(expenseY[1], 2000) {
-		t.Errorf("expenses Feb = %v, want 2000", expenseY[1])
-	}
-
-	// Check layout has barmode group
-	layout := result["layout"].(map[string]interface{})
-	if layout["barmode"] != "group" {
-		t.Errorf("layout barmode = %v, want group", layout["barmode"])
+func TestBuildMonthlyVarianceChartData_IncomeIgnored(t *testing.T) {
+	// Income transactions must NOT show up in the variance chart.
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 9999, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	result := buildMonthlyVarianceChartData(ts, 2000)
+	values := result["data"].([]map[string]interface{})[0]["y"].([]float64)
+	if !floatEqual(values[0], -500) {
+		t.Errorf("Jan delta = %v, want -500 (income $9999 must not enter variance)", values[0])
 	}
 }
 
@@ -658,7 +667,7 @@ func TestCalculateMetrics_MonthsInRange_ApproxFromDates(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // 90-day inclusive span
 
-	m := calculateMetrics(ts, start, end, 0)
+	m := calculateMetrics(ts, start, end, 0, 0)
 
 	// Jan 1 to Mar 31: end.Sub(start) = 89 days; +1 for inclusive = 90 days / 30.4375 ≈ 2.957
 	if m.MonthsInRange < 2.90 || m.MonthsInRange > 3.05 {
@@ -675,7 +684,7 @@ func TestCalculateMetrics_ActualMonthly_DividesExpensesByMonths(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // ~3 months
 
-	m := calculateMetrics(ts, start, end, 0)
+	m := calculateMetrics(ts, start, end, 0, 0)
 
 	if !floatEqual(m.TotalExpenses, 9000) {
 		t.Fatalf("precondition: TotalExpenses = %v, want 9000", m.TotalExpenses)
@@ -696,7 +705,7 @@ func TestCalculateMetrics_BudgetOverTarget(t *testing.T) {
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // ~3 months
 
 	target := 5000.0
-	m := calculateMetrics(ts, start, end, target)
+	m := calculateMetrics(ts, start, end, target, 0)
 
 	if !m.HasBudgetTarget {
 		t.Errorf("HasBudgetTarget = false, want true (target=%v)", target)
@@ -724,7 +733,7 @@ func TestCalculateMetrics_BudgetUnderTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
 
-	m := calculateMetrics(ts, start, end, 5000)
+	m := calculateMetrics(ts, start, end, 5000, 0)
 
 	// ActualMonthly ≈ 3044; PerMonthDelta = 3044 - 5000 = ~-1956
 	// (90 days / 30.4375 ≈ 2.957 months; 9000/2.957 ≈ 3044)
@@ -744,7 +753,7 @@ func TestCalculateMetrics_NoBudgetTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := calculateMetrics(ts, start, end, 0)
+	m := calculateMetrics(ts, start, end, 0, 0)
 
 	if m.HasBudgetTarget {
 		t.Errorf("HasBudgetTarget = true, want false when target=0")
@@ -763,6 +772,306 @@ func TestCalculateMetrics_NoBudgetTarget(t *testing.T) {
 	// CumulativeDelta = TotalExpenses - 0 = TotalExpenses
 	if !floatEqual(m.CumulativeDelta, m.TotalExpenses) {
 		t.Errorf("CumulativeDelta = %v, want TotalExpenses (%v) when target=0", m.CumulativeDelta, m.TotalExpenses)
+	}
+}
+
+// --- Healthcare KPI ---
+
+func TestCalculateMetrics_HealthcareUnderTarget(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+		makeTransaction("Premium", -1500, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC) // ~1.94 months
+
+	m := calculateMetrics(ts, start, end, 0, 2000)
+
+	if !m.HasHealthcareTarget {
+		t.Errorf("HasHealthcareTarget = false, want true (target=2000)")
+	}
+	if !floatEqual(m.HealthcareTarget, 2000) {
+		t.Errorf("HealthcareTarget = %v, want 2000", m.HealthcareTarget)
+	}
+	if !floatEqual(m.HealthcareTotal, 3000) {
+		t.Errorf("HealthcareTotal = %v, want 3000", m.HealthcareTotal)
+	}
+	// HealthcareActual ≈ 3000 / 1.939 ≈ 1547
+	if m.HealthcareActual < 1500 || m.HealthcareActual > 1600 {
+		t.Errorf("HealthcareActual = %v, want ~1547", m.HealthcareActual)
+	}
+	// PerMonthDelta = ~1547 - 2000 ≈ -453 (under)
+	if m.HealthcarePerMonthDelta > -400 || m.HealthcarePerMonthDelta < -500 {
+		t.Errorf("HealthcarePerMonthDelta = %v, want ~-453 (under)", m.HealthcarePerMonthDelta)
+	}
+	// CumulativeDelta = 3000 - 2000*1.939 ≈ -879 (under)
+	if m.HealthcareCumulativeDelta > -800 || m.HealthcareCumulativeDelta < -950 {
+		t.Errorf("HealthcareCumulativeDelta = %v, want ~-879 (under)", m.HealthcareCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_HealthcareOverTarget(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Premium", -2500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+		makeTransaction("Premium", -2500, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 0, 2000)
+
+	if m.HealthcarePerMonthDelta <= 0 {
+		t.Errorf("HealthcarePerMonthDelta = %v, want positive (over)", m.HealthcarePerMonthDelta)
+	}
+	if m.HealthcareCumulativeDelta <= 0 {
+		t.Errorf("HealthcareCumulativeDelta = %v, want positive (over)", m.HealthcareCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_HealthcareIgnoresOtherCategories(t *testing.T) {
+	// Health & Fitness, medical co-pays, anything outside "Health Insurance"
+	// must NOT count toward the premium KPI — the user splits premiums vs
+	// extra costs by tagging.
+	ts := makeTransactionSet(
+		makeTransaction("Fitbit", -86, time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC), models.Outflow, "Health & Fitness"),
+		makeTransaction("Copay", -50, time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC), models.Outflow, "Medical"),
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 0, 1500)
+	if !floatEqual(m.HealthcareTotal, 1500) {
+		t.Errorf("HealthcareTotal = %v, want 1500 (only Health Insurance counts)", m.HealthcareTotal)
+	}
+}
+
+func TestCalculateMetrics_HealthcareCategoryCaseInsensitive(t *testing.T) {
+	// FilterByCategory uses case-insensitive match — verify that holds for
+	// users whose CSVs export "health insurance" with different casing.
+	ts := makeTransactionSet(
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "health insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 0, 1500)
+	if !floatEqual(m.HealthcareTotal, 1500) {
+		t.Errorf("HealthcareTotal = %v, want 1500 (case-insensitive match)", m.HealthcareTotal)
+	}
+}
+
+func TestCalculateMetrics_NoHealthcareTarget(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 0, 0)
+	if m.HasHealthcareTarget {
+		t.Errorf("HasHealthcareTarget = true, want false when target=0")
+	}
+	// Actual still computed (so the user can see spend even without a target).
+	if m.HealthcareTotal == 0 {
+		t.Errorf("HealthcareTotal = 0, want 1500")
+	}
+}
+
+func TestCalculateMetrics_LivingExpensesExcludeHealthInsurance(t *testing.T) {
+	// Living-vs-target variance must NOT include Health Insurance
+	// premiums — those are tracked by the Healthcare KPI. Without this
+	// split, $X premium spend would inflate Living variance + the
+	// Budget cumulative card by the same $X tracked elsewhere.
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Groceries", -500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC) // ~1 month
+
+	m := calculateMetrics(ts, start, end, 4000, 1500)
+
+	// TotalExpenses keeps every outflow (Total Expenses card unchanged)
+	if !floatEqual(m.TotalExpenses, 5000) {
+		t.Errorf("TotalExpenses = %v, want 5000 (all outflows)", m.TotalExpenses)
+	}
+	// LivingExpensesTotal subtracts the $1500 premium
+	if !floatEqual(m.LivingExpensesTotal, 3500) {
+		t.Errorf("LivingExpensesTotal = %v, want 3500 (5000 - 1500 healthcare)", m.LivingExpensesTotal)
+	}
+	// ActualMonthly tracks LIVING only — ~3500 / ~1.02 months ≈ 3434
+	if m.ActualMonthly < 3300 || m.ActualMonthly > 3600 {
+		t.Errorf("ActualMonthly = %v, want ~3434 (living only, not 4900 total)", m.ActualMonthly)
+	}
+	// PerMonthDelta = ActualMonthly - 4000 ≈ -566 (under living target)
+	if m.PerMonthDelta > -400 || m.PerMonthDelta < -700 {
+		t.Errorf("PerMonthDelta = %v, want ~-566 (under target after excluding healthcare)", m.PerMonthDelta)
+	}
+	// Healthcare KPI still owns the $1500 premium
+	if !floatEqual(m.HealthcareTotal, 1500) {
+		t.Errorf("HealthcareTotal = %v, want 1500", m.HealthcareTotal)
+	}
+}
+
+func TestCalculateMetrics_LivingExpensesTrendExcludesHealthcare(t *testing.T) {
+	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, jan, models.Outflow, "Housing"),
+		makeTransaction("Premium", -1500, jan, models.Outflow, "Health Insurance"),
+		makeTransaction("Rent", -3000, feb, models.Outflow, "Housing"),
+		makeTransaction("Premium", -1500, feb, models.Outflow, "Health Insurance"),
+	)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
+
+	if len(m.LivingExpensesTrend) != len(m.TrendLabels) {
+		t.Fatalf("LivingExpensesTrend length = %d, want %d", len(m.LivingExpensesTrend), len(m.TrendLabels))
+	}
+	for i, v := range m.LivingExpensesTrend {
+		if !floatEqual(v, 3000) {
+			t.Errorf("LivingExpensesTrend[%d] = %v, want 3000 (rent only, not 4500)", i, v)
+		}
+	}
+	// ExpensesTrend (Total Expenses card) still shows the full 4500
+	for i, v := range m.ExpensesTrend {
+		if !floatEqual(v, 4500) {
+			t.Errorf("ExpensesTrend[%d] = %v, want 4500 (all outflows)", i, v)
+		}
+	}
+}
+
+func TestCalculateMetrics_HealthcareTrendPopulated(t *testing.T) {
+	var txns []models.Transaction
+	for i := 0; i < 4; i++ {
+		date := time.Date(2025, time.Month(i+1), 15, 0, 0, 0, 0, time.UTC)
+		txns = append(txns, makeTransaction("Salary", 5000, date, models.Income, "Payroll"))
+		txns = append(txns, makeTransaction("Premium", -1500, date, models.Outflow, "Health Insurance"))
+	}
+	ts := makeTransactionSet(txns...)
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 1500)
+
+	if len(m.HealthcareTrend) != len(m.TrendLabels) {
+		t.Errorf("HealthcareTrend length = %d, want %d (aligned with TrendLabels)",
+			len(m.HealthcareTrend), len(m.TrendLabels))
+	}
+	for i, v := range m.HealthcareTrend {
+		if !floatEqual(v, 1500) {
+			t.Errorf("HealthcareTrend[%d] = %v, want 1500", i, v)
+		}
+	}
+}
+
+// --- Combined plan variance (Budget card) ---
+
+func TestCalculateMetrics_CombinedNetsLivingAndHealthcare(t *testing.T) {
+	// Living over by 200/mo, Healthcare under by 500/mo → combined under 300/mo.
+	// 1-month range, target Living=3000, Healthcare=2000.
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3200, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 3000, 2000)
+
+	if !m.HasCombinedTarget {
+		t.Errorf("HasCombinedTarget = false, want true")
+	}
+	if !floatEqual(m.CombinedTarget, 5000) {
+		t.Errorf("CombinedTarget = %v, want 5000", m.CombinedTarget)
+	}
+	// CombinedActualMonthly ≈ (3200+1500)/1.018 ≈ 4615; under by ~385 vs 5000 target
+	if m.CombinedPerMonthDelta > -300 || m.CombinedPerMonthDelta < -500 {
+		t.Errorf("CombinedPerMonthDelta = %v, want ~-385 (net under)", m.CombinedPerMonthDelta)
+	}
+	if m.CombinedCumulativeDelta >= 0 {
+		t.Errorf("CombinedCumulativeDelta = %v, want negative (net under)", m.CombinedCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_CombinedDegeneratesWhenOnlyOneTarget(t *testing.T) {
+	// Only living target — combined target = living target only.
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 4000, 0)
+	if !floatEqual(m.CombinedTarget, 4000) {
+		t.Errorf("CombinedTarget = %v, want 4000 (living only)", m.CombinedTarget)
+	}
+	// CombinedCumulativeDelta == CumulativeDelta when there's no healthcare
+	if !floatEqual(m.CombinedCumulativeDelta, m.CumulativeDelta) {
+		t.Errorf("CombinedCumulativeDelta = %v, want %v (matches living-only)", m.CombinedCumulativeDelta, m.CumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_CumulativeTargetTotalsExposed(t *testing.T) {
+	// Budget card needs the cumulative target totals (target × months) so
+	// the user can read "Living spent X of Y" with the math working out.
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Premium", -1500, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC) // ~1.02 months
+
+	m := calculateMetrics(ts, start, end, 4000, 2000)
+
+	wantLiving := 4000 * m.MonthsInRange
+	wantHealth := 2000 * m.MonthsInRange
+	if !floatEqual(m.LivingTargetTotal, wantLiving) {
+		t.Errorf("LivingTargetTotal = %v, want %v (4000 × %v months)", m.LivingTargetTotal, wantLiving, m.MonthsInRange)
+	}
+	if !floatEqual(m.HealthcareTargetTotal, wantHealth) {
+		t.Errorf("HealthcareTargetTotal = %v, want %v (2000 × %v months)", m.HealthcareTargetTotal, wantHealth, m.MonthsInRange)
+	}
+	// Composition check: living variance + healthcare variance == combined variance (within float precision).
+	got := m.CumulativeDelta + m.HealthcareCumulativeDelta
+	if !floatEqual(got, m.CombinedCumulativeDelta) {
+		t.Errorf("CumulativeDelta + HealthcareCumulativeDelta = %v, want %v (CombinedCumulativeDelta)", got, m.CombinedCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_CombinedZeroTargets(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -3000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	m := calculateMetrics(ts, start, end, 0, 0)
+	if m.HasCombinedTarget {
+		t.Errorf("HasCombinedTarget = true, want false when both targets are 0")
+	}
+}
+
+func TestCurrentHealthcareTarget_NilSettings(t *testing.T) {
+	if got := currentHealthcareTarget(nil); got != 0 {
+		t.Errorf("currentHealthcareTarget(nil) = %v, want 0", got)
+	}
+}
+
+func TestCurrentHealthcareTarget_NoHealthcareConfigured(t *testing.T) {
+	s := &models.WhatIfSettings{MonthlyLivingExpenses: 5000}
+	if got := currentHealthcareTarget(s); got != 0 {
+		t.Errorf("currentHealthcareTarget(empty) = %v, want 0", got)
+	}
+}
+
+func TestCurrentHealthcareTarget_LegacySingleValue(t *testing.T) {
+	// Legacy single-person model: HealthcareStartYears=0 means active at month 0.
+	s := &models.WhatIfSettings{
+		MonthlyHealthcare:    1200,
+		HealthcareStartYears: 0,
+	}
+	if got := currentHealthcareTarget(s); !floatEqual(got, 1200) {
+		t.Errorf("currentHealthcareTarget(legacy) = %v, want 1200", got)
 	}
 }
 
@@ -915,7 +1224,7 @@ func TestPhaseAdjustedMonthlyTarget_FlowsIntoCalculateMetrics(t *testing.T) {
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
 	target := phaseAdjustedMonthlyTarget(s, start, end)
-	m := calculateMetrics(ts, start, end, target)
+	m := calculateMetrics(ts, start, end, target, 0)
 
 	if !m.HasBudgetTarget {
 		t.Fatalf("HasBudgetTarget = false, want true")
@@ -936,7 +1245,7 @@ func TestCalculateMetrics_SingleDayRange_NoDivideByZero(t *testing.T) {
 			t.Fatalf("calculateMetrics panicked on single-day range: %v", r)
 		}
 	}()
-	m := calculateMetrics(ts, day, day, 5000)
+	m := calculateMetrics(ts, day, day, 5000, 0)
 
 	// (0 + 1) / 30.4375 ≈ 0.0329
 	if m.MonthsInRange < 0.03 || m.MonthsInRange > 0.04 {

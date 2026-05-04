@@ -708,8 +708,8 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 		months = months[len(months)-6:]
 	}
 
-	var combinedCumulativeTrend []float64
-	var runningCombinedVariance float64
+	var combinedCumulativeBalance []float64
+	var runningCombinedBalance float64
 	for _, m := range months {
 		incAmt := 0.0
 		if inc, ok := monthlyIncome[m]; ok {
@@ -736,8 +736,8 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 		trendLabels = append(trendLabels, m)
 
 		if hasCombinedTarget {
-			runningCombinedVariance += (livingMonth + hcAmt) - combinedTarget
-			combinedCumulativeTrend = append(combinedCumulativeTrend, runningCombinedVariance)
+			runningCombinedBalance += combinedTarget - (livingMonth + hcAmt)
+			combinedCumulativeBalance = append(combinedCumulativeBalance, runningCombinedBalance)
 		}
 	}
 
@@ -775,7 +775,7 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 		HasCombinedTarget:         hasCombinedTarget,
 		LivingTargetTotal:         budgetTarget * monthsInRange,
 		HealthcareTargetTotal:     healthcareTarget * monthsInRange,
-		CombinedCumulativeTrend:   combinedCumulativeTrend,
+		CombinedCumulativeBalance: combinedCumulativeBalance,
 	}
 }
 
@@ -842,10 +842,12 @@ func percentChange(current, previous float64) float64 {
 
 // buildBudgetVsActualChartData renders a two-panel Plotly chart showing
 // monthly Living + Healthcare actuals stacked against a combined budget
-// target line (top panel) and the per-month running cumulative variance
-// (bottom panel). Returns a payload with empty data when the combined
-// target is 0 so the front end can branch on len(data)==0 to show its
-// "Set a budget in What-If →" empty state.
+// target line (top panel) and the per-month running cumulative balance
+// (bottom panel). Balance uses the savings convention: positive = ahead
+// of budget (saved), negative = behind (overspent), opposite of the
+// CombinedCumulativeDelta KPI field. Returns a payload with empty data
+// when the combined target is 0 so the front end can branch on
+// len(data)==0 to show its "Set a budget in What-If →" empty state.
 func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, livingTarget, healthcareTarget float64) map[string]interface{} {
 	combinedTarget := livingTarget + healthcareTarget
 	if combinedTarget <= 0 {
@@ -889,7 +891,7 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		livingValues = append(livingValues, livingMonth)
 		healthcareValues = append(healthcareValues, hcAmt)
 
-		running += (livingMonth + hcAmt) - combinedTarget
+		running += combinedTarget - (livingMonth + hcAmt)
 		cumulativeValues = append(cumulativeValues, running)
 	}
 
@@ -920,7 +922,7 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 	cumulativeTrace := map[string]interface{}{
 		"type": "scatter",
 		"mode": "lines+markers",
-		"name": "Cumulative variance",
+		"name": "Cumulative balance",
 		"x":    months,
 		"y":    cumulativeValues,
 		"line": map[string]interface{}{
@@ -956,7 +958,7 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 			"anchor": "y2",
 		},
 		"yaxis2": map[string]interface{}{
-			"title":         map[string]interface{}{"text": "Cumulative variance $"},
+			"title":         map[string]interface{}{"text": "Cumulative balance $"},
 			"domain":        []float64{0.0, 0.42},
 			"zeroline":      true,
 			"zerolinecolor": "#6b7280",

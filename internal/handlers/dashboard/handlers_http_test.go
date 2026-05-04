@@ -1359,7 +1359,7 @@ func TestDashboardKPIs_LivingSparkline_HasTargetAttribute(t *testing.T) {
 	}
 }
 
-func TestDashboardKPIs_BudgetSparkline_VarianceMode(t *testing.T) {
+func TestDashboardKPIs_BudgetSparkline_BalanceMode(t *testing.T) {
 	rows := [][]string{
 		{"2025-01-05", "Rent", "-1500", "Housing"},
 	}
@@ -1396,8 +1396,8 @@ func TestDashboardKPIs_BudgetSparkline_VarianceMode(t *testing.T) {
 	if !strings.Contains(body, `id="sparkline-budget"`) {
 		t.Errorf("response missing sparkline-budget container")
 	}
-	if !strings.Contains(body, `data-mode="variance"`) {
-		t.Errorf("sparkline-budget missing data-mode=\"variance\"; body excerpt: %s", excerptAround(body, "sparkline-budget", 200))
+	if !strings.Contains(body, `data-mode="balance"`) {
+		t.Errorf("sparkline-budget missing data-mode=\"balance\"; body excerpt: %s", excerptAround(body, "sparkline-budget", 200))
 	}
 }
 

@@ -165,16 +165,17 @@ function renderMajorExpenseBreakdown(items) {
 }
 
 /**
- * Render a sparkline chart with optional target overlay or variance mode.
+ * Render a sparkline chart with optional target overlay or balance mode.
  *
  * @param {string} containerId - The ID of the container element
- * @param {number[]} values - The data values (or cumulative variance values when mode==="variance")
+ * @param {number[]} values - The data values (or cumulative balance values when mode==="balance")
  * @param {string} color - The line color (used when no target/mode customization applies)
  * @param {object} [options] - Optional rendering options
  * @param {number} [options.target] - When set, draws a dashed horizontal target line.
  *                                    Months above the line fill red, below fill green.
- * @param {string} [options.mode] - When "variance", values are cumulative deltas.
- *                                  Zero is the reference; fill above zero red, below green.
+ * @param {string} [options.mode] - When "balance", values are cumulative balances
+ *                                  (target − actual; positive = saved, negative = overspent).
+ *                                  Zero is the reference; fill above zero green, below red.
  *                                  Overrides options.target.
  */
 function renderSparkline(containerId, values, color, options) {
@@ -184,8 +185,8 @@ function renderSparkline(containerId, values, color, options) {
     }
 
     options = options || {};
-    const isVariance = options.mode === 'variance';
-    const hasTarget = !isVariance && typeof options.target === 'number' && isFinite(options.target);
+    const isBalance = options.mode === 'balance';
+    const hasTarget = !isBalance && typeof options.target === 'number' && isFinite(options.target);
 
     const data = [];
     const layout = {
@@ -197,10 +198,10 @@ function renderSparkline(containerId, values, color, options) {
         showlegend: false
     };
 
-    if (isVariance) {
-        // Split the line into above-zero (red) and below-zero (green) segments
-        // by clamping each direction. Using two filled traces against the zero
-        // baseline gives the divergent fill.
+    if (isBalance) {
+        // Split the line into above-zero (green = saved) and below-zero
+        // (red = overspent) segments by clamping each direction. Two filled
+        // traces against the zero baseline give the divergent fill.
         const above = values.map(v => v > 0 ? v : 0);
         const below = values.map(v => v < 0 ? v : 0);
 
@@ -208,17 +209,17 @@ function renderSparkline(containerId, values, color, options) {
             type: 'scatter',
             mode: 'lines',
             y: below,
-            line: { color: '#22c55e', width: 1 },
+            line: { color: '#ef4444', width: 1 },
             fill: 'tozeroy',
-            fillcolor: 'rgba(34, 197, 94, 0.3)'
+            fillcolor: 'rgba(239, 68, 68, 0.3)'
         });
         data.push({
             type: 'scatter',
             mode: 'lines',
             y: above,
-            line: { color: '#ef4444', width: 1 },
+            line: { color: '#22c55e', width: 1 },
             fill: 'tozeroy',
-            fillcolor: 'rgba(239, 68, 68, 0.3)'
+            fillcolor: 'rgba(34, 197, 94, 0.3)'
         });
         data.push({
             type: 'scatter',

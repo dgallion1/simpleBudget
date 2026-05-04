@@ -1171,9 +1171,9 @@ func TestCalculateMetrics_SingleDayRange_NoDivideByZero(t *testing.T) {
 	}
 }
 
-// --- calculateMetrics: cumulative variance trend ---
+// --- calculateMetrics: cumulative balance trend ---
 
-func TestCalculateMetrics_CombinedCumulativeTrend_NoTargetReturnsNil(t *testing.T) {
+func TestCalculateMetrics_CombinedCumulativeBalance_NoTargetReturnsNil(t *testing.T) {
 	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
 	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
 	ts := makeTransactionSet(
@@ -1183,14 +1183,15 @@ func TestCalculateMetrics_CombinedCumulativeTrend_NoTargetReturnsNil(t *testing.
 
 	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
 
-	if m.CombinedCumulativeTrend != nil {
-		t.Errorf("CombinedCumulativeTrend = %v, want nil when no combined target", m.CombinedCumulativeTrend)
+	if m.CombinedCumulativeBalance != nil {
+		t.Errorf("CombinedCumulativeBalance = %v, want nil when no combined target", m.CombinedCumulativeBalance)
 	}
 }
 
-func TestCalculateMetrics_CombinedCumulativeTrend_AccumulatesMonthlyDelta(t *testing.T) {
+func TestCalculateMetrics_CombinedCumulativeBalance_AccumulatesMonthlyBalance(t *testing.T) {
 	// Two months: Jan $1000 living, Feb $2000 living. Target $1500/mo combined,
-	// no healthcare. Cumulative variance: Jan = -500 (under), Feb = -500+500 = 0.
+	// no healthcare. Balance uses target-actual (positive = saved):
+	// Jan = +500 (under by $500), Feb = +500 - 500 = 0.
 	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
 	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1202,22 +1203,23 @@ func TestCalculateMetrics_CombinedCumulativeTrend_AccumulatesMonthlyDelta(t *tes
 
 	m := calculateMetrics(ts, start, end, 1500, 0)
 
-	if len(m.CombinedCumulativeTrend) != 2 {
-		t.Fatalf("CombinedCumulativeTrend length = %d, want 2", len(m.CombinedCumulativeTrend))
+	if len(m.CombinedCumulativeBalance) != 2 {
+		t.Fatalf("CombinedCumulativeBalance length = %d, want 2", len(m.CombinedCumulativeBalance))
 	}
-	if !floatEqual(m.CombinedCumulativeTrend[0], -500) {
-		t.Errorf("CombinedCumulativeTrend[0] = %.2f, want -500", m.CombinedCumulativeTrend[0])
+	if !floatEqual(m.CombinedCumulativeBalance[0], 500) {
+		t.Errorf("CombinedCumulativeBalance[0] = %.2f, want +500 (saved $500 in Jan)", m.CombinedCumulativeBalance[0])
 	}
-	if !floatEqual(m.CombinedCumulativeTrend[1], 0) {
-		t.Errorf("CombinedCumulativeTrend[1] = %.2f, want 0", m.CombinedCumulativeTrend[1])
+	if !floatEqual(m.CombinedCumulativeBalance[1], 0) {
+		t.Errorf("CombinedCumulativeBalance[1] = %.2f, want 0 (Feb $500 over erases Jan savings)", m.CombinedCumulativeBalance[1])
 	}
 }
 
-func TestCalculateMetrics_CombinedCumulativeTrend_LastEqualsCumulativeDelta(t *testing.T) {
-	// Invariant: the last value of the cumulative trend, computed from the
-	// per-month accumulator, must agree with CombinedCumulativeDelta which is
-	// computed in closed form. If they diverge, the chart and KPI card will
-	// show contradictory numbers.
+func TestCalculateMetrics_CombinedCumulativeBalance_LastIsNegationOfCumulativeDelta(t *testing.T) {
+	// Invariant: the last value of CombinedCumulativeBalance must equal the
+	// negation of CombinedCumulativeDelta (within month-rounding slack).
+	// Balance uses target-actual; Delta uses actual-target. If they fail to
+	// negate, the chart and the Budget KPI card will show contradictory
+	// over/under signs.
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
 	ts := makeTransactionSet(
@@ -1231,18 +1233,18 @@ func TestCalculateMetrics_CombinedCumulativeTrend_LastEqualsCumulativeDelta(t *t
 
 	m := calculateMetrics(ts, start, end, 1200, 350) // combined target = 1550
 
-	if len(m.CombinedCumulativeTrend) == 0 {
-		t.Fatalf("CombinedCumulativeTrend empty; want non-empty when combined target is set")
+	if len(m.CombinedCumulativeBalance) == 0 {
+		t.Fatalf("CombinedCumulativeBalance empty; want non-empty when combined target is set")
 	}
-	last := m.CombinedCumulativeTrend[len(m.CombinedCumulativeTrend)-1]
+	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
 	// Slack: per-month series uses integer-month target (1550) while
 	// CombinedCumulativeDelta uses fractional MonthsInRange (e.g. 2.957 mo
 	// for a 90-day Jan 1 – Mar 31 window). Difference is bounded by
 	// combinedTarget * |len(trend) - MonthsInRange| ≈ 1550 * 0.043 ≈ $67,
 	// so we allow $100 to comfortably cover the rounding gap while still
 	// catching any real divergence between the chart and the KPI card.
-	if math.Abs(last-m.CombinedCumulativeDelta) > 100 {
-		t.Errorf("trend tail %.2f vs CombinedCumulativeDelta %.2f — must agree (within $100 month-rounding slack)", last, m.CombinedCumulativeDelta)
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 100 {
+		t.Errorf("balance tail %.2f vs -CombinedCumulativeDelta %.2f — must agree (within $100 month-rounding slack)", last, -m.CombinedCumulativeDelta)
 	}
 }
 
@@ -1310,9 +1312,10 @@ func TestBuildBudgetVsActualChartData_Structure(t *testing.T) {
 		t.Errorf("trace[2].yaxis = %v, want y2 (bottom subplot)", data[2]["yaxis"])
 	}
 	cumY := data[2]["y"].([]float64)
-	// Combined target = 1550. Jan: 1900-1550 = +350. Feb: cum = +350 + 350 = 700.
-	if len(cumY) != 2 || !floatEqual(cumY[0], 350) || !floatEqual(cumY[1], 700) {
-		t.Errorf("trace[2].y = %v, want [350 700]", cumY)
+	// Combined target = 1550. Balance = target - actual.
+	// Jan: 1550 - 1900 = -350 (overspent). Feb: cum = -350 + (-350) = -700.
+	if len(cumY) != 2 || !floatEqual(cumY[0], -350) || !floatEqual(cumY[1], -700) {
+		t.Errorf("trace[2].y = %v, want [-350 -700]", cumY)
 	}
 
 	// Layout has barmode=stack and a target line shape

@@ -155,9 +155,9 @@
                 {{end}}
                 {{if .Metrics.HasCombinedTarget}}
                 <div id="sparkline-budget" class="h-10 mt-2"
-                     data-values="{{toJSON .Metrics.CombinedCumulativeTrend}}"
+                     data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}"
                      data-color="#6366f1"
-                     data-mode="variance"></div>
+                     data-mode="balance"></div>
                 {{end}}
             </div>
             <div class="p-3 {{if and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)}}bg-red-100 dark:bg-red-900/50{{else if .Metrics.HasCombinedTarget}}bg-green-100 dark:bg-green-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">

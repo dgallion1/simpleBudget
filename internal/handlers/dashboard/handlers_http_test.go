@@ -1320,6 +1320,42 @@ func TestHandleKPIDetail_WithRenderer(t *testing.T) {
 	}
 }
 
+// ---------- /dashboard/charts/data/budget-vs-actual ----------
+
+func TestHandleChartData_BudgetVsActual_Empty(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/charts/data/budget-vs-actual?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response not JSON: %v", err)
+	}
+	data, ok := payload["data"].([]interface{})
+	if !ok {
+		t.Fatalf("response.data missing or wrong type")
+	}
+	// No retirement manager wired (Initialize(_, _, nil)) so no combined target;
+	// builder returns empty data.
+	if len(data) != 0 {
+		t.Errorf("data length = %d, want 0 when no combined target configured", len(data))
+	}
+}
+
+func TestHandleChartData_BudgetVsActual_BadType(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/charts/data/not-a-real-chart-type")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for unknown chart type", rec.Code)
+	}
+}
+
 // min helper for Go < 1.21
 func min(a, b int) int {
 	if a < b {

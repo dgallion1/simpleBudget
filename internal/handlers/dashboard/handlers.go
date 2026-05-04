@@ -248,6 +248,11 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 		chartData = buildMerchantsChartData(filtered)
 	case "cumulative":
 		chartData = buildCumulativeChartData(filtered)
+	case "budget-vs-actual":
+		settings := currentBudgetSettings()
+		livingTarget := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
+		healthTarget := currentHealthcareTarget(settings)
+		chartData = buildBudgetVsActualChartData(filtered, startDate, endDate, livingTarget, healthTarget)
 	default:
 		http.Error(w, "Unknown chart type", http.StatusBadRequest)
 		return
@@ -927,6 +932,169 @@ func buildMonthlyVarianceChartData(ts *models.TransactionSet, combinedTarget flo
 
 	return map[string]interface{}{
 		"data":   []map[string]interface{}{trace},
+		"layout": layout,
+	}
+}
+
+// buildBudgetVsActualChartData renders a two-panel Plotly chart showing
+// monthly Living + Healthcare actuals stacked against a combined budget
+// target line (top panel) and the per-month running cumulative variance
+// (bottom panel). Returns a payload with empty data when the combined
+// target is 0 so the front end can branch on len(data)==0 to show its
+// "Set a budget in What-If →" empty state.
+func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, livingTarget, healthcareTarget float64) map[string]interface{} {
+	combinedTarget := livingTarget + healthcareTarget
+	if combinedTarget <= 0 {
+		return map[string]interface{}{
+			"data":   []map[string]interface{}{},
+			"layout": map[string]interface{}{},
+		}
+	}
+
+	outflows := ts.FilterByType(models.Outflow)
+	healthcareOutflows := outflows.FilterByCategory(healthInsuranceCategory)
+	monthlyOutflows := outflows.GroupByMonth()
+	monthlyHealthcare := healthcareOutflows.GroupByMonth()
+
+	monthSet := make(map[string]bool)
+	for m := range monthlyOutflows {
+		monthSet[m] = true
+	}
+	var months []string
+	for m := range monthSet {
+		months = append(months, m)
+	}
+	sort.Strings(months)
+
+	livingValues := make([]float64, 0, len(months))
+	healthcareValues := make([]float64, 0, len(months))
+	cumulativeValues := make([]float64, 0, len(months))
+
+	var running float64
+	for _, m := range months {
+		expAmt := 0.0
+		if exp, ok := monthlyOutflows[m]; ok {
+			expAmt = math.Abs(exp.SumAmount())
+		}
+		hcAmt := 0.0
+		if hc, ok := monthlyHealthcare[m]; ok {
+			hcAmt = math.Abs(hc.SumAmount())
+		}
+		livingMonth := expAmt - hcAmt
+
+		livingValues = append(livingValues, livingMonth)
+		healthcareValues = append(healthcareValues, hcAmt)
+
+		running += (livingMonth + hcAmt) - combinedTarget
+		cumulativeValues = append(cumulativeValues, running)
+	}
+
+	livingTrace := map[string]interface{}{
+		"type": "bar",
+		"name": "Living",
+		"x":    months,
+		"y":    livingValues,
+		"marker": map[string]interface{}{
+			"color": "#9ca3af", // gray — matches Living card icon
+		},
+		"xaxis": "x",
+		"yaxis": "y",
+	}
+
+	healthcareTrace := map[string]interface{}{
+		"type": "bar",
+		"name": "Healthcare",
+		"x":    months,
+		"y":    healthcareValues,
+		"marker": map[string]interface{}{
+			"color": "#e11d48", // rose — matches Healthcare card icon
+		},
+		"xaxis": "x",
+		"yaxis": "y",
+	}
+
+	cumulativeTrace := map[string]interface{}{
+		"type": "scatter",
+		"mode": "lines+markers",
+		"name": "Cumulative variance",
+		"x":    months,
+		"y":    cumulativeValues,
+		"line": map[string]interface{}{
+			"color": "#6366f1",
+			"width": 2,
+		},
+		"fill":      "tozeroy",
+		"fillcolor": "rgba(99, 102, 241, 0.2)",
+		"xaxis":     "x2",
+		"yaxis":     "y2",
+	}
+
+	layout := map[string]interface{}{
+		"barmode":    "stack",
+		"showlegend": true,
+		"legend": map[string]interface{}{
+			"orientation": "h",
+			"y":           1.12,
+		},
+		"grid": map[string]interface{}{
+			"rows":    2,
+			"columns": 1,
+			"pattern": "independent",
+		},
+		"xaxis": map[string]interface{}{
+			"showticklabels": false,
+		},
+		"yaxis": map[string]interface{}{
+			"title":  map[string]interface{}{"text": "Monthly $"},
+			"domain": []float64{0.55, 1.0},
+		},
+		"xaxis2": map[string]interface{}{
+			"anchor": "y2",
+		},
+		"yaxis2": map[string]interface{}{
+			"title":         map[string]interface{}{"text": "Cumulative variance $"},
+			"domain":        []float64{0.0, 0.42},
+			"zeroline":      true,
+			"zerolinecolor": "#6b7280",
+			"zerolinewidth": 2,
+		},
+		"shapes": []map[string]interface{}{
+			{
+				// Combined target line on top subplot
+				"type": "line",
+				"xref": "paper",
+				"x0":   0,
+				"x1":   1,
+				"yref": "y",
+				"y0":   combinedTarget,
+				"y1":   combinedTarget,
+				"line": map[string]interface{}{
+					"color": "#6b7280",
+					"width": 2,
+					"dash":  "dash",
+				},
+			},
+		},
+		"annotations": []map[string]interface{}{
+			{
+				"xref":      "paper",
+				"yref":      "y",
+				"x":         1,
+				"xanchor":   "right",
+				"y":         combinedTarget,
+				"yanchor":   "bottom",
+				"text":      fmt.Sprintf("Target $%.0f", combinedTarget),
+				"showarrow": false,
+				"font": map[string]interface{}{
+					"color": "#6b7280",
+					"size":  11,
+				},
+			},
+		},
+	}
+
+	return map[string]interface{}{
+		"data":   []map[string]interface{}{livingTrace, healthcareTrace, cumulativeTrace},
 		"layout": layout,
 	}
 }

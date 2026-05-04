@@ -1327,3 +1327,102 @@ func TestCalculateMetrics_CombinedCumulativeTrend_LastEqualsCumulativeDelta(t *t
 		t.Errorf("trend tail %.2f vs CombinedCumulativeDelta %.2f — must agree (within $100 month-rounding slack)", last, m.CombinedCumulativeDelta)
 	}
 }
+
+// --- buildBudgetVsActualChartData ---
+
+func TestBuildBudgetVsActualChartData_Empty(t *testing.T) {
+	ts := makeTransactionSet()
+
+	result := buildBudgetVsActualChartData(ts, time.Time{}, time.Time{}, 0, 0)
+
+	data, ok := result["data"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("data field missing or wrong type")
+	}
+	if len(data) != 0 {
+		t.Errorf("data length = %d, want 0 for empty target+empty txns", len(data))
+	}
+}
+
+func TestBuildBudgetVsActualChartData_Structure(t *testing.T) {
+	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1500, jan, models.Outflow, "Housing"),
+		makeTransaction("Rent", -1500, feb, models.Outflow, "Housing"),
+		makeTransaction("Premium", -400, jan, models.Outflow, "Health Insurance"),
+		makeTransaction("Premium", -400, feb, models.Outflow, "Health Insurance"),
+	)
+
+	result := buildBudgetVsActualChartData(ts, start, end, 1200, 350)
+
+	data, ok := result["data"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("data field missing")
+	}
+	// 3 traces: living bar, healthcare bar, cumulative line
+	if len(data) != 3 {
+		t.Fatalf("traces = %d, want 3 (living bar + healthcare bar + cumulative line)", len(data))
+	}
+
+	// Trace 0: living bar
+	if data[0]["type"] != "bar" {
+		t.Errorf("trace[0].type = %v, want bar", data[0]["type"])
+	}
+	if data[0]["name"] != "Living" {
+		t.Errorf("trace[0].name = %v, want Living", data[0]["name"])
+	}
+	livingY := data[0]["y"].([]float64)
+	if len(livingY) != 2 || !floatEqual(livingY[0], 1500) || !floatEqual(livingY[1], 1500) {
+		t.Errorf("trace[0].y = %v, want [1500 1500]", livingY)
+	}
+
+	// Trace 1: healthcare bar
+	if data[1]["name"] != "Healthcare" {
+		t.Errorf("trace[1].name = %v, want Healthcare", data[1]["name"])
+	}
+
+	// Trace 2: cumulative line on subplot 2
+	if data[2]["type"] != "scatter" {
+		t.Errorf("trace[2].type = %v, want scatter", data[2]["type"])
+	}
+	if data[2]["yaxis"] != "y2" {
+		t.Errorf("trace[2].yaxis = %v, want y2 (bottom subplot)", data[2]["yaxis"])
+	}
+	cumY := data[2]["y"].([]float64)
+	// Combined target = 1550. Jan: 1900-1550 = +350. Feb: cum = +350 + 350 = 700.
+	if len(cumY) != 2 || !floatEqual(cumY[0], 350) || !floatEqual(cumY[1], 700) {
+		t.Errorf("trace[2].y = %v, want [350 700]", cumY)
+	}
+
+	// Layout has barmode=stack and a target line shape
+	layout, ok := result["layout"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("layout missing")
+	}
+	if layout["barmode"] != "stack" {
+		t.Errorf("layout.barmode = %v, want stack", layout["barmode"])
+	}
+	shapes, ok := layout["shapes"].([]map[string]interface{})
+	if !ok || len(shapes) == 0 {
+		t.Fatalf("layout.shapes missing or empty; want target line + zero baseline")
+	}
+}
+
+func TestBuildBudgetVsActualChartData_NoTarget(t *testing.T) {
+	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1500, jan, models.Outflow, "Housing"),
+	)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	result := buildBudgetVsActualChartData(ts, start, end, 0, 0)
+
+	data := result["data"].([]map[string]interface{})
+	if len(data) != 0 {
+		t.Errorf("traces = %d, want 0 when no combined target (front end shows empty state)", len(data))
+	}
+}

@@ -1252,3 +1252,78 @@ func TestCalculateMetrics_SingleDayRange_NoDivideByZero(t *testing.T) {
 		t.Errorf("MonthsInRange = %v, want ~0.033 (single-day span)", m.MonthsInRange)
 	}
 }
+
+// --- calculateMetrics: cumulative variance trend ---
+
+func TestCalculateMetrics_CombinedCumulativeTrend_NoTargetReturnsNil(t *testing.T) {
+	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1500, jan, models.Outflow, "Housing"),
+		makeTransaction("Rent", -1500, feb, models.Outflow, "Housing"),
+	)
+
+	m := calculateMetrics(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
+
+	if m.CombinedCumulativeTrend != nil {
+		t.Errorf("CombinedCumulativeTrend = %v, want nil when no combined target", m.CombinedCumulativeTrend)
+	}
+}
+
+func TestCalculateMetrics_CombinedCumulativeTrend_AccumulatesMonthlyDelta(t *testing.T) {
+	// Two months: Jan $1000 living, Feb $2000 living. Target $1500/mo combined,
+	// no healthcare. Cumulative variance: Jan = -500 (under), Feb = -500+500 = 0.
+	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1000, jan, models.Outflow, "Housing"),
+		makeTransaction("Rent", -2000, feb, models.Outflow, "Housing"),
+	)
+
+	m := calculateMetrics(ts, start, end, 1500, 0)
+
+	if len(m.CombinedCumulativeTrend) != 2 {
+		t.Fatalf("CombinedCumulativeTrend length = %d, want 2", len(m.CombinedCumulativeTrend))
+	}
+	if !floatEqual(m.CombinedCumulativeTrend[0], -500) {
+		t.Errorf("CombinedCumulativeTrend[0] = %.2f, want -500", m.CombinedCumulativeTrend[0])
+	}
+	if !floatEqual(m.CombinedCumulativeTrend[1], 0) {
+		t.Errorf("CombinedCumulativeTrend[1] = %.2f, want 0", m.CombinedCumulativeTrend[1])
+	}
+}
+
+func TestCalculateMetrics_CombinedCumulativeTrend_LastEqualsCumulativeDelta(t *testing.T) {
+	// Invariant: the last value of the cumulative trend, computed from the
+	// per-month accumulator, must agree with CombinedCumulativeDelta which is
+	// computed in closed form. If they diverge, the chart and KPI card will
+	// show contradictory numbers.
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -1500, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -1500, time.Date(2025, 3, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Premium", -400, time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+		makeTransaction("Premium", -400, time.Date(2025, 2, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+		makeTransaction("Premium", -400, time.Date(2025, 3, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+
+	m := calculateMetrics(ts, start, end, 1200, 350) // combined target = 1550
+
+	if len(m.CombinedCumulativeTrend) == 0 {
+		t.Fatalf("CombinedCumulativeTrend empty; want non-empty when combined target is set")
+	}
+	last := m.CombinedCumulativeTrend[len(m.CombinedCumulativeTrend)-1]
+	// Slack: per-month series uses integer-month target (1550) while
+	// CombinedCumulativeDelta uses fractional MonthsInRange (e.g. 2.957 mo
+	// for a 90-day Jan 1 – Mar 31 window). Difference is bounded by
+	// combinedTarget * |len(trend) - MonthsInRange| ≈ 1550 * 0.043 ≈ $67,
+	// so we allow $100 to comfortably cover the rounding gap while still
+	// catching any real divergence between the chart and the KPI card.
+	if math.Abs(last-m.CombinedCumulativeDelta) > 100 {
+		t.Errorf("trend tail %.2f vs CombinedCumulativeDelta %.2f — must agree (within $100 month-rounding slack)", last, m.CombinedCumulativeDelta)
+	}
+}

@@ -708,6 +708,11 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 		months = months[len(months)-6:]
 	}
 
+	var combinedCumulativeTrend []float64
+	combinedTargetForTrend := budgetTarget + healthcareTarget
+	hasCombinedTrend := combinedTargetForTrend > 0
+
+	var runningCumVariance float64
 	for _, m := range months {
 		incAmt := 0.0
 		if inc, ok := monthlyIncome[m]; ok {
@@ -724,12 +729,19 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 			hcAmt = math.Abs(hc.SumAmount())
 		}
 
+		livingMonth := expAmt - hcAmt
+
 		incomeTrend = append(incomeTrend, incAmt)
 		expensesTrend = append(expensesTrend, expAmt)
 		savingsTrend = append(savingsTrend, incAmt-expAmt)
 		healthcareTrend = append(healthcareTrend, hcAmt)
-		livingTrend = append(livingTrend, expAmt-hcAmt)
+		livingTrend = append(livingTrend, livingMonth)
 		trendLabels = append(trendLabels, m)
+
+		if hasCombinedTrend {
+			runningCumVariance += (livingMonth + hcAmt) - combinedTargetForTrend
+			combinedCumulativeTrend = append(combinedCumulativeTrend, runningCumVariance)
+		}
 	}
 
 	return &models.DashboardMetrics{
@@ -766,6 +778,7 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 		HasCombinedTarget:         hasCombinedTarget,
 		LivingTargetTotal:         budgetTarget * monthsInRange,
 		HealthcareTargetTotal:     healthcareTarget * monthsInRange,
+		CombinedCumulativeTrend:   combinedCumulativeTrend,
 	}
 }
 

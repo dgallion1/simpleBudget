@@ -63,6 +63,14 @@ type DashboardMetrics struct {
 	// see exactly how the headline cumulative variance composes.
 	LivingTargetTotal     float64 `json:"living_target_total"`     // BudgetTarget * MonthsInRange
 	HealthcareTargetTotal float64 `json:"healthcare_target_total"` // HealthcareTarget * MonthsInRange
+
+	// Per-month running cumulative variance for combined Living + Healthcare
+	// against CombinedTarget. Element i = sum_{j<=i} ((LivingTrend[j] +
+	// HealthcareTrend[j]) - CombinedTarget). Same length as TrendLabels when
+	// HasCombinedTarget; nil when no combined target is configured. The last
+	// element must agree with CombinedCumulativeDelta (within month-rounding
+	// slack) so the Budget card text and the chart never diverge.
+	CombinedCumulativeTrend []float64 `json:"combined_cumulative_trend"`
 }
 
 // PeriodComparison holds metrics for two periods for comparison

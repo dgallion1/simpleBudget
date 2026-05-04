@@ -100,7 +100,7 @@
         {{.Date.Format "2006-01-02"}}
         {{if .Status}}<span class="ml-2 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">{{.Status}}</span>{{end}}
     </div>
-    <div class="text-sm text-red-600 dark:text-red-400 mt-1">${{printf "%.2f" .Amount}}</div>
+    <div class="text-sm text-red-600 dark:text-red-400 mt-1">-${{printf "%.2f" .AbsAmount}}</div>
     <div class="text-xs text-gray-400 mt-1">{{.SourceFile}}</div>
 </div>
 {{end}}

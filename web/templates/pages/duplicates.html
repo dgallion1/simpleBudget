@@ -1,0 +1,106 @@
+{{define "duplicates-content"}}
+<div class="space-y-6">
+    <header>
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Duplicate Review</h1>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mt-1">
+            Bill-pay and posted-check entries that may represent the same payment.
+            Pick one to keep, or mark them as both real.
+        </p>
+    </header>
+
+    <section>
+        <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100 mb-3">
+            Unresolved
+            {{if .Unresolved}}<span class="ml-2 text-sm text-gray-500">({{len .Unresolved}})</span>{{end}}
+        </h2>
+        {{if .Unresolved}}
+        <div class="space-y-3">
+            {{range .Unresolved}}
+            <div id="{{.Key}}" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {{template "dup-card-side" .Left}}
+                    {{template "dup-card-side" .Right}}
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <form method="post" action="/duplicates/resolve" class="inline">
+                        <input type="hidden" name="pair_key" value="{{.Key}}">
+                        <input type="hidden" name="outcome" value="kept_winner">
+                        <input type="hidden" name="kept_hash" value="{{.Left.Hash}}">
+                        <input type="hidden" name="suppressed_hash" value="{{.Right.Hash}}">
+                        <button type="submit" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+                            Keep left
+                        </button>
+                    </form>
+                    <form method="post" action="/duplicates/resolve" class="inline">
+                        <input type="hidden" name="pair_key" value="{{.Key}}">
+                        <input type="hidden" name="outcome" value="kept_winner">
+                        <input type="hidden" name="kept_hash" value="{{.Right.Hash}}">
+                        <input type="hidden" name="suppressed_hash" value="{{.Left.Hash}}">
+                        <button type="submit" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+                            Keep right
+                        </button>
+                    </form>
+                    <form method="post" action="/duplicates/resolve" class="inline">
+                        <input type="hidden" name="pair_key" value="{{.Key}}">
+                        <input type="hidden" name="outcome" value="kept_both">
+                        <button type="submit" class="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                            Both real (stop flagging)
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="text-sm text-gray-500 dark:text-gray-400">No unresolved candidate pairs.</p>
+        {{end}}
+    </section>
+
+    <section>
+        <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100 mb-3">
+            Suppressed
+            {{if .Resolved}}<span class="ml-2 text-sm text-gray-500">({{len .Resolved}})</span>{{end}}
+        </h2>
+        {{if .Resolved}}
+        <div class="space-y-3">
+            {{range .Resolved}}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-xs text-gray-500 mb-1">Kept</p>
+                        {{template "dup-card-side" .Left}}
+                    </div>
+                    <div class="opacity-60">
+                        <p class="text-xs text-gray-500 mb-1">Suppressed</p>
+                        {{template "dup-card-side" .Right}}
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <form method="post" action="/duplicates/undo" class="inline">
+                        <input type="hidden" name="pair_key" value="{{.Key}}">
+                        <button type="submit" class="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                            Undo
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="text-sm text-gray-500 dark:text-gray-400">No suppressed pairs.</p>
+        {{end}}
+    </section>
+</div>
+{{end}}
+
+{{define "dup-card-side"}}
+<div class="border border-gray-200 dark:border-gray-700 rounded p-3">
+    <div class="text-sm font-medium text-gray-800 dark:text-gray-100">{{.Description}}</div>
+    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+        {{.Date.Format "2006-01-02"}}
+        {{if .Status}}<span class="ml-2 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">{{.Status}}</span>{{end}}
+    </div>
+    <div class="text-sm text-red-600 dark:text-red-400 mt-1">${{printf "%.2f" .Amount}}</div>
+    <div class="text-xs text-gray-400 mt-1">{{.SourceFile}}</div>
+</div>
+{{end}}

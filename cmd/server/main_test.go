@@ -126,7 +126,7 @@ func TestDashboardChartData(t *testing.T) {
 	defer ts.Close()
 
 	chartTypes := []string{
-		"monthly",
+		"budget-vs-actual",
 		"major-expense",
 		"spending-trend",
 		"merchants",

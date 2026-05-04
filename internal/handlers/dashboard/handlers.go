@@ -235,11 +235,6 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 	var chartData interface{}
 
 	switch chartType {
-	case "monthly":
-		settings := currentBudgetSettings()
-		livingTarget := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
-		healthTarget := currentHealthcareTarget(settings)
-		chartData = buildMonthlyVarianceChartData(filtered, livingTarget+healthTarget)
 	case "major-expense":
 		chartData = buildMajorExpenseChartData(filtered)
 	case "spending-trend":
@@ -843,97 +838,6 @@ func percentChange(current, previous float64) float64 {
 		return 100
 	}
 	return ((current - previous) / math.Abs(previous)) * 100
-}
-
-// buildMonthlyVarianceChartData renders one bar per month showing how
-// far that month landed over (positive, red) or under (negative, green)
-// the combined Living + Healthcare budget. y is the signed delta in
-// dollars: actualOutflows[month] − combinedTarget. When the combined
-// target is 0 (no budget configured), bars fall back to neutral gray
-// and y = monthly outflows (so the user still sees the shape of their
-// spending).
-func buildMonthlyVarianceChartData(ts *models.TransactionSet, combinedTarget float64) map[string]interface{} {
-	outflows := ts.FilterByType(models.Outflow)
-	monthlyOutflows := outflows.GroupByMonth()
-
-	var months []string
-	for m := range monthlyOutflows {
-		months = append(months, m)
-	}
-	sort.Strings(months)
-
-	values := make([]float64, 0, len(months))
-	colors := make([]string, 0, len(months))
-	hovers := make([]string, 0, len(months))
-	hasTarget := combinedTarget > 0
-
-	for _, m := range months {
-		actual := math.Abs(monthlyOutflows[m].SumAmount())
-		var y float64
-		var color, hover string
-		if hasTarget {
-			y = actual - combinedTarget
-			if y > 0 {
-				color = "#ef4444" // red — over
-				hover = fmt.Sprintf("%s<br>$%.0f over<br>(actual $%.0f vs target $%.0f)", m, y, actual, combinedTarget)
-			} else {
-				color = "#22c55e" // green — under
-				hover = fmt.Sprintf("%s<br>$%.0f under<br>(actual $%.0f vs target $%.0f)", m, -y, actual, combinedTarget)
-			}
-		} else {
-			y = actual
-			color = "#9ca3af" // neutral gray — no target
-			hover = fmt.Sprintf("%s<br>actual $%.0f<br>(no budget set)", m, actual)
-		}
-		values = append(values, y)
-		colors = append(colors, color)
-		hovers = append(hovers, hover)
-	}
-
-	trace := map[string]interface{}{
-		"type": "bar",
-		"name": "Variance",
-		"x":    months,
-		"y":    values,
-		"marker": map[string]interface{}{
-			"color": colors,
-		},
-		"hovertext":    hovers,
-		"hoverinfo":    "text",
-		"textposition": "none",
-	}
-
-	layout := map[string]interface{}{
-		"showlegend": false,
-		"yaxis": map[string]interface{}{
-			"zeroline":      true,
-			"zerolinecolor": "#9ca3af",
-			"zerolinewidth": 2,
-		},
-	}
-	if hasTarget {
-		layout["shapes"] = []map[string]interface{}{
-			{
-				"type":      "line",
-				"xref":      "paper",
-				"x0":        0,
-				"x1":        1,
-				"yref":      "y",
-				"y0":        0,
-				"y1":        0,
-				"line": map[string]interface{}{
-					"color": "#6b7280",
-					"width": 1,
-					"dash":  "dot",
-				},
-			},
-		}
-	}
-
-	return map[string]interface{}{
-		"data":   []map[string]interface{}{trace},
-		"layout": layout,
-	}
 }
 
 // buildBudgetVsActualChartData renders a two-panel Plotly chart showing

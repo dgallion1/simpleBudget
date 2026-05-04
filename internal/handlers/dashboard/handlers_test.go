@@ -306,26 +306,6 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 	}
 }
 
-// Regression: a refund (opposite-signed Outflow row) must REDUCE the monthly
-// expense bar value, not be added as an absolute value. Pre-fix: $1500 of
-// purchases plus a $300 refund produced an expense bar of $1800 instead of $1200.
-func TestBuildMonthlyVarianceChartData_RefundReducesMonthOutflow(t *testing.T) {
-	jan := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
-	ts := makeTransactionSet(
-		makeTransaction("Salary", 5000, jan, models.Income, "Payroll"),
-		makeTransaction("Rent", -1500, jan, models.Outflow, "Housing"),
-		makeTransaction("Refund", 300, jan, models.Outflow, "Housing"), // opposite sign
-	)
-
-	// target = $1200 → Jan actual = $1200 net → exactly on budget (delta=0)
-	result := buildMonthlyVarianceChartData(ts, 1200)
-	data := result["data"].([]map[string]interface{})
-	values := data[0]["y"].([]float64)
-	if !floatEqual(values[0], 0) {
-		t.Errorf("Jan delta = %.2f, want 0 (refund of +300 must subtract before variance)", values[0])
-	}
-}
-
 // Regression: refunds within a month must reduce that month's total in the
 // trend chart, so month-over-month change reflects net spending.
 // Pre-fix: Jan=$1000, Feb=$1000 purchase + $200 refund produced Feb total
@@ -441,68 +421,6 @@ func TestBuildSpendingTrendChartData_DecreasingSpending(t *testing.T) {
 	colors := trace["marker"].(map[string]interface{})["color"].([]string)
 	if colors[0] != "#22c55e" {
 		t.Errorf("color = %v, want #22c55e (green for decrease)", colors[0])
-	}
-}
-
-// --- buildMonthlyVarianceChartData ---
-
-func TestBuildMonthlyVarianceChartData_OverAndUnder(t *testing.T) {
-	ts := makeTransactionSet(
-		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-		makeTransaction("Rent", -2500, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-	)
-
-	// target = $2000 → Jan under by $500 (green), Feb over by $500 (red)
-	result := buildMonthlyVarianceChartData(ts, 2000)
-	data := result["data"].([]map[string]interface{})
-	if len(data) != 1 {
-		t.Fatalf("expected 1 variance trace, got %d", len(data))
-	}
-	values := data[0]["y"].([]float64)
-	colors := data[0]["marker"].(map[string]interface{})["color"].([]string)
-
-	if !floatEqual(values[0], -500) {
-		t.Errorf("Jan delta = %v, want -500 (under)", values[0])
-	}
-	if !floatEqual(values[1], 500) {
-		t.Errorf("Feb delta = %v, want +500 (over)", values[1])
-	}
-	if colors[0] != "#22c55e" {
-		t.Errorf("Jan color = %v, want green (#22c55e)", colors[0])
-	}
-	if colors[1] != "#ef4444" {
-		t.Errorf("Feb color = %v, want red (#ef4444)", colors[1])
-	}
-}
-
-func TestBuildMonthlyVarianceChartData_NoTargetFallback(t *testing.T) {
-	// With combinedTarget = 0, bars are neutral gray and y = monthly outflows.
-	ts := makeTransactionSet(
-		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-	)
-	result := buildMonthlyVarianceChartData(ts, 0)
-	data := result["data"].([]map[string]interface{})
-	values := data[0]["y"].([]float64)
-	colors := data[0]["marker"].(map[string]interface{})["color"].([]string)
-
-	if !floatEqual(values[0], 1500) {
-		t.Errorf("Jan y = %v, want 1500 (no-target fallback shows actual)", values[0])
-	}
-	if colors[0] != "#9ca3af" {
-		t.Errorf("Jan color = %v, want gray (#9ca3af)", colors[0])
-	}
-}
-
-func TestBuildMonthlyVarianceChartData_IncomeIgnored(t *testing.T) {
-	// Income transactions must NOT show up in the variance chart.
-	ts := makeTransactionSet(
-		makeTransaction("Salary", 9999, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
-		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-	)
-	result := buildMonthlyVarianceChartData(ts, 2000)
-	values := result["data"].([]map[string]interface{})[0]["y"].([]float64)
-	if !floatEqual(values[0], -500) {
-		t.Errorf("Jan delta = %v, want -500 (income $9999 must not enter variance)", values[0])
 	}
 }
 
@@ -1424,5 +1342,35 @@ func TestBuildBudgetVsActualChartData_NoTarget(t *testing.T) {
 	data := result["data"].([]map[string]interface{})
 	if len(data) != 0 {
 		t.Errorf("traces = %d, want 0 when no combined target (front end shows empty state)", len(data))
+	}
+}
+
+// Regression: refund rows (opposite-signed Outflow) must reduce the month's
+// effective outflow used by the new Budget vs Actual chart. Previously, on
+// the now-removed Monthly Variance chart, $1500 purchases plus a $300 refund
+// produced $1800 instead of $1200. Same invariant applies on the new builder.
+func TestBuildBudgetVsActualChartData_RefundReducesMonthLiving(t *testing.T) {
+	jan := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, jan, models.Income, "Payroll"),
+		makeTransaction("Rent", -1500, jan, models.Outflow, "Housing"),
+		makeTransaction("Refund", 300, jan, models.Outflow, "Housing"),
+	)
+
+	result := buildBudgetVsActualChartData(ts, start, end, 1200, 0)
+
+	data := result["data"].([]map[string]interface{})
+	if len(data) == 0 {
+		t.Fatalf("expected traces; got empty data")
+	}
+	livingY := data[0]["y"].([]float64)
+	if !floatEqual(livingY[0], 1200) {
+		t.Errorf("Jan living = %.2f, want 1200 (refund of +300 must subtract)", livingY[0])
+	}
+	cumY := data[2]["y"].([]float64)
+	if !floatEqual(cumY[0], 0) {
+		t.Errorf("Jan cumulative variance = %.2f, want 0 (1200 actual = 1200 target)", cumY[0])
 	}
 }

@@ -28,7 +28,7 @@ var endpoints = []endpoint{
 
 	// Dashboard partials
 	{path: "/dashboard/kpis", method: "GET", contentType: "text/html", contains: []string{"Total Income"}},
-	{path: "/dashboard/charts/data/monthly", method: "GET", contentType: "application/json", contains: nil},
+	{path: "/dashboard/charts/data/budget-vs-actual", method: "GET", contentType: "application/json", contains: nil},
 	{path: "/dashboard/charts/data/category", method: "GET", contentType: "application/json", contains: nil},
 	{path: "/dashboard/charts/data/spending-trend", method: "GET", contentType: "application/json", contains: nil},
 	{path: "/dashboard/charts/data/merchants", method: "GET", contentType: "application/json", contains: nil},

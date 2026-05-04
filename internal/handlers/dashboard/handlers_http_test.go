@@ -279,24 +279,6 @@ func TestHandleKPIsPartial_LoadError(t *testing.T) {
 
 // ---------- handleChartData ----------
 
-func TestHandleChartData_Monthly(t *testing.T) {
-	router, cleanup := setupTestEnv(t, defaultRows())
-	defer cleanup()
-
-	rec := doGet(t, router, "/dashboard/charts/data/monthly?start=2025-01-01&end=2025-03-31")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
-		t.Errorf("content-type = %q, want application/json", ct)
-	}
-	var result map[string]interface{}
-	json.NewDecoder(rec.Body).Decode(&result)
-	if _, ok := result["data"]; !ok {
-		t.Error("response missing 'data' key")
-	}
-}
-
 func TestHandleChartData_SpendingTrend(t *testing.T) {
 	router, cleanup := setupTestEnv(t, defaultRows())
 	defer cleanup()
@@ -341,7 +323,7 @@ func TestHandleChartData_DefaultDates(t *testing.T) {
 	router, cleanup := setupTestEnv(t, defaultRows())
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/charts/data/monthly")
+	rec := doGet(t, router, "/dashboard/charts/data/spending-trend")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -361,7 +343,7 @@ func TestHandleChartData_LoadError(t *testing.T) {
 	r := chi.NewRouter()
 	RegisterRoutes(r)
 
-	rec := doGet(t, r, "/dashboard/charts/data/monthly")
+	rec := doGet(t, r, "/dashboard/charts/data/spending-trend")
 	_ = rec // just ensure no panic
 }
 
@@ -737,30 +719,6 @@ func TestResolveDateRange_InvalidDateStrings(t *testing.T) {
 	// startDate is zero. It doesn't re-default. This is just testing current behavior.
 	_ = start
 	_ = end
-}
-
-// ---------- buildMonthlyVarianceChartData edge cases ----------
-
-func TestBuildMonthlyVarianceChartData_MonthWithOnlyIncome(t *testing.T) {
-	// Income-only month must be omitted (no outflow → no variance bar).
-	// Outflow-only month still produces one bar.
-	ts := makeTransactionSet(
-		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
-		makeTransaction("Rent", -1500, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
-	)
-
-	result := buildMonthlyVarianceChartData(ts, 2000)
-	data := result["data"].([]map[string]interface{})
-
-	xs := data[0]["x"].([]string)
-	ys := data[0]["y"].([]float64)
-
-	if len(xs) != 1 || xs[0] != "2025-02" {
-		t.Fatalf("expected only Feb in variance chart, got x=%v", xs)
-	}
-	if !floatEqual(ys[0], -500) {
-		t.Errorf("Feb delta = %v, want -500 (1500 actual vs 2000 target)", ys[0])
-	}
 }
 
 // ---------- handleKPIDetail edge cases ----------
@@ -1239,7 +1197,7 @@ func TestHandleChartData_LoadErrorReturns500(t *testing.T) {
 	router, cleanup := setupBrokenLoader(t)
 	defer cleanup()
 
-	rec := doGet(t, router, "/dashboard/charts/data/monthly")
+	rec := doGet(t, router, "/dashboard/charts/data/spending-trend")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
 	}

@@ -481,3 +481,47 @@ func TestCopy(t *testing.T) {
 		t.Error("modifying copy should not affect original")
 	}
 }
+
+func TestTransactionSet_Active_FiltersSuppressed(t *testing.T) {
+	ts := NewTransactionSet([]Transaction{
+		{Hash: "a", Amount: -10, Suppressed: false},
+		{Hash: "b", Amount: -20, Suppressed: true},
+		{Hash: "c", Amount: -30, Suppressed: false},
+	})
+
+	got := ts.Active()
+	if got.Len() != 2 {
+		t.Fatalf("expected 2 active, got %d", got.Len())
+	}
+	for _, tr := range got.Transactions {
+		if tr.Suppressed {
+			t.Errorf("Active() returned suppressed: %+v", tr)
+		}
+	}
+}
+
+func TestTransactionSet_Active_NoSuppression_PreservesAll(t *testing.T) {
+	ts := NewTransactionSet([]Transaction{
+		{Hash: "a", Amount: -10},
+		{Hash: "b", Amount: -20},
+	})
+	got := ts.Active()
+	if got.Len() != 2 {
+		t.Errorf("expected 2 active, got %d", got.Len())
+	}
+}
+
+func TestTransactionSet_Active_NilSafe(t *testing.T) {
+	var ts *TransactionSet
+	got := ts.Active()
+	if got == nil || got.Len() != 0 {
+		t.Errorf("Active() on nil should return empty set, got %+v", got)
+	}
+}
+
+func TestTransaction_DuplicateFields_DefaultZero(t *testing.T) {
+	tr := Transaction{}
+	if tr.Status != "" || tr.Suppressed || tr.DuplicatePairKey != "" {
+		t.Errorf("default values incorrect: %+v", tr)
+	}
+}

@@ -74,6 +74,11 @@ var columnMappings = map[string][]string{
 		"money in", "Money In", "MONEY IN",
 		"income", "Income", "INCOME",
 	},
+	"Status": {
+		"status", "Status", "STATUS",
+		"transaction status", "Transaction Status", "TRANSACTION STATUS",
+		"state", "State",
+	},
 }
 
 // New creates a new DataLoader
@@ -272,6 +277,12 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		// Parse Category (optional)
 		if idx, ok := colIndex["Category"]; ok && idx < len(record) {
 			t.Category = strings.TrimSpace(record[idx])
+		}
+
+		// Parse Status (optional). Used by near-duplicate detection
+		// to distinguish scheduled bill-pays from posted checks.
+		if idx, ok := colIndex["Status"]; ok && idx < len(record) {
+			t.Status = strings.TrimSpace(record[idx])
 		}
 
 		t.Hash = t.ComputeHash()

@@ -486,6 +486,40 @@ func TestLoadCSVFile_HashReflectsPostFlipAmount(t *testing.T) {
 	}
 }
 
+func TestLoadCSVFile_PopulatesStatus(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dataloader_status_test")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	csv := "Date,Description,Amount,Status\n" +
+		"2026-03-19,Lucid,-1580.43,Scheduled Bill Pay\n" +
+		"2026-03-20,Check #996583,-1580.43,Posted\n"
+
+	csvPath := filepath.Join(tmpDir, "bank.csv")
+	if err := os.WriteFile(csvPath, []byte(csv), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	store, _ := storage.New(tmpDir)
+	loader := New(tmpDir, store)
+
+	got, err := loader.loadCSVFile(csvPath)
+	if err != nil {
+		t.Fatalf("loadCSVFile: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(got))
+	}
+	if got[0].Status != "Scheduled Bill Pay" {
+		t.Errorf("first row Status = %q, want %q", got[0].Status, "Scheduled Bill Pay")
+	}
+	if got[1].Status != "Posted" {
+		t.Errorf("second row Status = %q, want %q", got[1].Status, "Posted")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))

@@ -165,41 +165,143 @@ function renderMajorExpenseBreakdown(items) {
 }
 
 /**
- * Render a sparkline chart
+ * Render a sparkline chart with optional target overlay or variance mode.
+ *
  * @param {string} containerId - The ID of the container element
- * @param {number[]} values - The data values
- * @param {string} color - The line color
+ * @param {number[]} values - The data values (or cumulative variance values when mode==="variance")
+ * @param {string} color - The line color (used when no target/mode customization applies)
+ * @param {object} [options] - Optional rendering options
+ * @param {number} [options.target] - When set, draws a dashed horizontal target line.
+ *                                    Months above the line fill red, below fill green.
+ * @param {string} [options.mode] - When "variance", values are cumulative deltas.
+ *                                  Zero is the reference; fill above zero red, below green.
+ *                                  Overrides options.target.
  */
-function renderSparkline(containerId, values, color) {
+function renderSparkline(containerId, values, color, options) {
     const container = document.getElementById(containerId);
     if (!container || !values || values.length === 0) {
         return;
     }
 
-    const data = [{
-        type: 'scatter',
-        mode: 'lines',
-        y: values,
-        line: {
-            color: color || '#6366f1',
-            width: 2
-        },
-        fill: 'tozeroy',
-        fillcolor: (color || '#6366f1') + '20'
-    }];
+    options = options || {};
+    const isVariance = options.mode === 'variance';
+    const hasTarget = !isVariance && typeof options.target === 'number' && isFinite(options.target);
 
+    const data = [];
     const layout = {
         margin: { t: 0, r: 0, b: 0, l: 0 },
         paper_bgcolor: 'transparent',
         plot_bgcolor: 'transparent',
-        xaxis: {
-            visible: false
-        },
-        yaxis: {
-            visible: false
-        },
+        xaxis: { visible: false },
+        yaxis: { visible: false },
         showlegend: false
     };
+
+    if (isVariance) {
+        // Split the line into above-zero (red) and below-zero (green) segments
+        // by clamping each direction. Using two filled traces against the zero
+        // baseline gives the divergent fill.
+        const above = values.map(v => v > 0 ? v : 0);
+        const below = values.map(v => v < 0 ? v : 0);
+
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: below,
+            line: { color: '#22c55e', width: 1 },
+            fill: 'tozeroy',
+            fillcolor: 'rgba(34, 197, 94, 0.3)'
+        });
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: above,
+            line: { color: '#ef4444', width: 1 },
+            fill: 'tozeroy',
+            fillcolor: 'rgba(239, 68, 68, 0.3)'
+        });
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: values,
+            line: { color: color || '#6366f1', width: 2 }
+        });
+
+        layout.shapes = [{
+            type: 'line',
+            xref: 'paper',
+            x0: 0,
+            x1: 1,
+            yref: 'y',
+            y0: 0,
+            y1: 0,
+            line: { color: '#6b7280', width: 1, dash: 'dash' }
+        }];
+    } else if (hasTarget) {
+        // Above-target fill (red) and below-target fill (green) achieved by
+        // plotting two clamped series with fill: 'tonexty' relative to a flat
+        // target baseline.
+        const target = options.target;
+        const targetSeries = values.map(() => target);
+        const above = values.map(v => v > target ? v : target);
+        const below = values.map(v => v < target ? v : target);
+
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: targetSeries,
+            line: { color: 'transparent', width: 0 }
+        });
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: below,
+            line: { color: 'transparent', width: 0 },
+            fill: 'tonexty',
+            fillcolor: 'rgba(34, 197, 94, 0.3)'
+        });
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: targetSeries,
+            line: { color: 'transparent', width: 0 }
+        });
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: above,
+            line: { color: 'transparent', width: 0 },
+            fill: 'tonexty',
+            fillcolor: 'rgba(239, 68, 68, 0.3)'
+        });
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: values,
+            line: { color: color || '#6366f1', width: 2 }
+        });
+
+        layout.shapes = [{
+            type: 'line',
+            xref: 'paper',
+            x0: 0,
+            x1: 1,
+            yref: 'y',
+            y0: target,
+            y1: target,
+            line: { color: '#6b7280', width: 1, dash: 'dash' }
+        }];
+    } else {
+        // Original behavior — single filled line, no target reference.
+        data.push({
+            type: 'scatter',
+            mode: 'lines',
+            y: values,
+            line: { color: color || '#6366f1', width: 2 },
+            fill: 'tozeroy',
+            fillcolor: (color || '#6366f1') + '20'
+        });
+    }
 
     const config = {
         responsive: true,
@@ -355,12 +457,24 @@ function initSparklines() {
     document.querySelectorAll('[id^="sparkline-"]').forEach(function(el) {
         const valuesAttr = el.getAttribute('data-values');
         const color = el.getAttribute('data-color') || '#6366f1';
+        const targetAttr = el.getAttribute('data-target');
+        const mode = el.getAttribute('data-mode') || '';
 
         if (valuesAttr && valuesAttr !== 'null' && valuesAttr !== '[]') {
             try {
                 const values = JSON.parse(valuesAttr);
                 if (values && values.length > 0) {
-                    renderSparkline(el.id, values, color);
+                    const options = {};
+                    if (mode) {
+                        options.mode = mode;
+                    }
+                    if (targetAttr !== null && targetAttr !== '') {
+                        const t = parseFloat(targetAttr);
+                        if (isFinite(t) && t > 0) {
+                            options.target = t;
+                        }
+                    }
+                    renderSparkline(el.id, values, color, options);
                 }
             } catch (e) {
                 console.error('Error parsing sparkline data:', e);

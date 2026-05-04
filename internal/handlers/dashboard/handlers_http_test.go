@@ -1460,6 +1460,66 @@ func excerptAround(body, needle string, around int) string {
 	return body[start:end]
 }
 
+// ---------- Budget vs Actual chart card ----------
+
+func TestHandleDashboard_RendersBudgetVsActualCard(t *testing.T) {
+	rows := defaultRows()
+	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	defer cleanup()
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	rm := retirement.NewSettingsManager(tmpDir, store)
+	settingsPath := filepath.Join(tmpDir, "whatif.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	Initialize(dl, rend, rm)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	rec := doGet(t, r, "/dashboard?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="chart-budget-vs-actual"`) {
+		t.Errorf("dashboard page missing chart-budget-vs-actual container")
+	}
+	if !strings.Contains(body, `data-chart-url="/dashboard/charts/data/budget-vs-actual"`) {
+		t.Errorf("chart container missing data-chart-url attribute")
+	}
+}
+
+func TestHandleDashboard_BudgetVsActualCard_EmptyState(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	// When HasCombinedTarget is false (no retirement manager wired), the chart
+	// card renders the empty-state link instead of the chart container.
+	if strings.Contains(body, `id="chart-budget-vs-actual"`) {
+		t.Errorf("chart container rendered when no combined target — expected empty state")
+	}
+	if !strings.Contains(body, "Budget vs Actual Over Time") {
+		t.Errorf("chart card heading missing")
+	}
+}
+
 // min helper for Go < 1.21
 func min(a, b int) int {
 	if a < b {

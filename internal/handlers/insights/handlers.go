@@ -966,9 +966,10 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		endDate = maxDate
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	active := data.Active()
+	filtered := active.FilterByDateRange(startDate, endDate)
 
-	insights := calculateInsights(data, filtered, startDate, endDate)
+	insights := calculateInsights(active, filtered, startDate, endDate)
 
 	pageData := map[string]interface{}{
 		"Title":     "Insights",
@@ -996,7 +997,7 @@ func handleRecurringPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recurring := annotateRecurringWithMajorExpense(detectRecurringPaymentsAt(data, data.MaxDate()))
+	recurring := annotateRecurringWithMajorExpense(detectRecurringPaymentsAt(data.Active(), data.MaxDate()))
 
 	var totalRecurring float64
 	for _, r := range recurring {
@@ -1037,7 +1038,7 @@ func handleTrendsPartial(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	trends := loadAndAnalyzeTrends(data, startDate, endDate)
+	trends := loadAndAnalyzeTrends(data.Active(), startDate, endDate)
 
 	partialData := map[string]interface{}{
 		"CategoryTrends": trends,
@@ -1071,7 +1072,7 @@ func handleTrendsChartData(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	trends := loadAndAnalyzeTrends(data, startDate, endDate)
+	trends := loadAndAnalyzeTrends(data.Active(), startDate, endDate)
 
 	var categories []string
 	var currentValues []float64
@@ -1137,8 +1138,9 @@ func handleVelocityPartial(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
-	velocity := calculateSpendingVelocity(filtered, data)
+	active := data.Active()
+	filtered := active.FilterByDateRange(startDate, endDate)
+	velocity := calculateSpendingVelocity(filtered, active)
 
 	partialData := map[string]interface{}{
 		"Velocity": velocity,
@@ -1159,7 +1161,7 @@ func handleIncomePartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	income := AnalyzeIncomePatterns(data)
+	income := AnalyzeIncomePatterns(data.Active())
 
 	var regularTotal float64
 	for _, ip := range income {

@@ -1320,7 +1320,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <table class="w-full text-xs mt-1">
             <thead class="text-gray-500 dark:text-gray-400">
                 <tr>
-                    <th class="px-2 py-1 w-6">
+                    <th class="px-2 py-1 w-10">
                         <input type="checkbox"
                                id="major-expenses-pin-check-header-unmatched"
                                class="major-expenses-pin-check-header"
@@ -1343,7 +1343,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                     data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
-                    <td class="major-expenses-pin-check-cell px-2 py-1 w-6" onclick="event.stopPropagation()">
+                    <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
                         <input type="checkbox"
                                class="major-expenses-pin-check"
                                data-hash="{{.Transaction.Hash}}"
@@ -1372,7 +1372,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <table class="w-full text-xs mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-500 dark:text-gray-400">
                 <tr>
-                    <th class="px-2 py-1 w-6">
+                    <th class="px-2 py-1 w-10">
                         <input type="checkbox"
                                id="major-expenses-pin-check-header-unmatched"
                                class="major-expenses-pin-check-header"
@@ -1405,7 +1405,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-sort-desc="{{$label}}"
                     data-sort-amount="{{printf "%.2f" $amt}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
-                    <td class="major-expenses-pin-check-cell px-2 py-1 w-6" onclick="event.stopPropagation()">
+                    <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
                         <input type="checkbox"
                                class="major-expenses-pin-check"
                                data-hash="{{.Hash}}"
@@ -1443,7 +1443,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <table class="w-full text-xs mt-1">
         <thead class="text-gray-500 dark:text-gray-400">
             <tr>
-                <th class="px-2 py-1 w-6">
+                <th class="px-2 py-1 w-10">
                     <input type="checkbox"
                            id="major-expenses-pin-check-header-anomalous"
                            class="major-expenses-pin-check-header"
@@ -1467,7 +1467,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to move this transaction to a new expense — or click the expense name to edit {{.MajorExpenseName}}">
-                <td class="major-expenses-pin-check-cell px-2 py-1 w-6" onclick="event.stopPropagation()">
+                <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
                     <input type="checkbox"
                            class="major-expenses-pin-check"
                            data-hash="{{.Transaction.Hash}}"
@@ -1515,7 +1515,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <table class="w-full text-xs mt-1">
         <thead class="text-gray-500 dark:text-gray-400">
             <tr>
-                <th class="px-2 py-1 w-6">
+                <th class="px-2 py-1 w-10">
                     <input type="checkbox"
                            id="major-expenses-pin-check-header-new-merchants"
                            class="major-expenses-pin-check-header"
@@ -1539,7 +1539,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
                 title="{{if $matchedID}}Already grouped under a major expense{{else}}Click to pre-fill the add form, or use the dropdown to pin to an existing expense{{end}}">
-                <td class="major-expenses-pin-check-cell px-2 py-1 w-6" onclick="event.stopPropagation()">
+                <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
                     <input type="checkbox"
                            class="major-expenses-pin-check"
                            data-hash="{{.Transaction.Hash}}"

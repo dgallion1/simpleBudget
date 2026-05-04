@@ -341,7 +341,7 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 	minDate := txns.MinDate()
 	maxDate := txns.MaxDate()
 	startDate, endDate := parseRangeFromRequest(r, txns)
-	windowed := txns.FilterByDateRange(startDate, endDate)
+	windowed := txns.Active().FilterByDateRange(startDate, endDate)
 
 	// Major Expenses is an expense-tracking page — filter to outflows
 	// BEFORE matching so income (paychecks, refunds, transfers) can't

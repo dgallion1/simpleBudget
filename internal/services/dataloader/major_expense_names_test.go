@@ -179,6 +179,39 @@ func TestApplyMajorExpenseNames_InvalidPinsFallsBackToMatching(t *testing.T) {
 	}
 }
 
+func TestApplyMajorExpenseNames_SkipsSuppressed(t *testing.T) {
+	defs := models.MajorExpenseStore{Expenses: []models.MajorExpense{
+		{ID: "me1", Name: "Lucid", Keywords: []string{"lucid"}},
+	}}
+	defsJSON, _ := json.Marshal(defs)
+
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"major_expenses.json": string(defsJSON),
+	})
+	defer cleanup()
+
+	// Two transactions matching "Lucid" — one suppressed, one not.
+	txns := []models.Transaction{
+		{
+			Hash: "h1", Description: "Lucid", Amount: -1580.43,
+			TransactionType: models.Outflow, Suppressed: true,
+		},
+		{
+			Hash: "h2", Description: "Lucid", Amount: -1580.43,
+			TransactionType: models.Outflow,
+		},
+	}
+	got := loader.applyMajorExpenseNames(txns)
+	if got[0].MajorExpenseName != "" {
+		t.Errorf("suppressed transaction should not be labeled, got %q",
+			got[0].MajorExpenseName)
+	}
+	if got[1].MajorExpenseName != "Lucid" {
+		t.Errorf("active transaction should be labeled, got %q",
+			got[1].MajorExpenseName)
+	}
+}
+
 func TestLoadData_StampsMajorExpenseNames(t *testing.T) {
 	defs := models.MajorExpenseStore{Expenses: []models.MajorExpense{
 		{ID: "me1", Name: "Mortgage", Keywords: []string{"homeloans"}},

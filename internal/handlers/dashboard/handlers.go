@@ -132,7 +132,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	startDate, endDate := resolveDateRange(startStr, endStr, minDate, maxDate)
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
 	target := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
 	healthTarget := currentHealthcareTarget(settings)
@@ -141,7 +141,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = calculateComparison(data, startDate, endDate, comparison, settings)
+		periodComparison = calculateComparison(data.Active(), startDate, endDate, comparison, settings)
 	}
 
 	pageData := map[string]interface{}{
@@ -185,7 +185,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
 	target := phaseAdjustedMonthlyTarget(settings, startDate, endDate)
 	healthTarget := currentHealthcareTarget(settings)
@@ -193,7 +193,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = calculateComparison(data, startDate, endDate, comparison, settings)
+		periodComparison = calculateComparison(data.Active(), startDate, endDate, comparison, settings)
 	}
 
 	partialData := map[string]interface{}{
@@ -230,7 +230,7 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
 
 	var chartData interface{}
 
@@ -285,7 +285,7 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	buckets, unmatched := bucketMajorExpenses(filtered)
 
 	var txns []models.Transaction
@@ -357,7 +357,7 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	income := filtered.FilterByType(models.Income)
 	outflows := filtered.FilterByType(models.Outflow)
 
@@ -515,7 +515,7 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 		endDate = data.MaxDate()
 	}
 
-	filtered := data.FilterByDateRange(startDate, endDate)
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	income := filtered.FilterByType(models.Income)
 	outflows := filtered.FilterByType(models.Outflow)
 
@@ -795,8 +795,8 @@ func calculateComparison(data *models.TransactionSet, start, end time.Time, comp
 		return nil
 	}
 
-	currentFiltered := data.FilterByDateRange(start, end)
-	compFiltered := data.FilterByDateRange(compStart, compEnd)
+	currentFiltered := data.Active().FilterByDateRange(start, end)
+	compFiltered := data.Active().FilterByDateRange(compStart, compEnd)
 
 	if compFiltered.Len() == 0 {
 		return &models.PeriodComparison{HasData: false}

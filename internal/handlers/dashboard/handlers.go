@@ -709,10 +709,7 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 	}
 
 	var combinedCumulativeTrend []float64
-	combinedTargetForTrend := budgetTarget + healthcareTarget
-	hasCombinedTrend := combinedTargetForTrend > 0
-
-	var runningCumVariance float64
+	var runningCombinedVariance float64
 	for _, m := range months {
 		incAmt := 0.0
 		if inc, ok := monthlyIncome[m]; ok {
@@ -738,9 +735,9 @@ func calculateMetrics(ts *models.TransactionSet, rangeStart, rangeEnd time.Time,
 		livingTrend = append(livingTrend, livingMonth)
 		trendLabels = append(trendLabels, m)
 
-		if hasCombinedTrend {
-			runningCumVariance += (livingMonth + hcAmt) - combinedTargetForTrend
-			combinedCumulativeTrend = append(combinedCumulativeTrend, runningCumVariance)
+		if hasCombinedTarget {
+			runningCombinedVariance += (livingMonth + hcAmt) - combinedTarget
+			combinedCumulativeTrend = append(combinedCumulativeTrend, runningCombinedVariance)
 		}
 	}
 

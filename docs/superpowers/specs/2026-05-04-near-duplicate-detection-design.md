@@ -1,8 +1,22 @@
+---
+title: Near-Duplicate Transaction Detection
+date: 2026-05-04
+status: reviewed-ready-for-implementation-plan
+---
+
 # Near-Duplicate Transaction Detection — Design
 
 **Date:** 2026-05-04
-**Status:** Approved (brainstorming complete; awaiting implementation plan)
+**Status:** Reviewed design — ready for implementation plan
 **Triggering case:** A single Lucid car payment appeared as two transactions in the explorer — `2026-03-19 "Lucid" -1580.43` (Status: Scheduled Bill Pay) and `2026-03-20 "Check #996583" -1580.43` (Status: Posted) — because two CSV exports overlapped and captured the same payment in different lifecycle states. Existing hash-based deduplication (`date|description|amount`) cannot detect this because both date and description differ.
+
+## 0. Review notes from current code
+
+- The loader entrypoint is `DataLoader.LoadData`, not `LoadAll`.
+- `models.Transaction` currently has no `Status`, `Suppressed`, or `DuplicatePairKey` fields.
+- `columnMappings` currently has no `Status` mapping. Implementation must add the mapping and parse the value from CSV rows; the earlier assumption that status aliases already existed was incorrect.
+- `storage.Storage.WriteFile` already writes atomically via a temp file and rename, and preserves encrypted-storage behavior. New persistence should use `dl.store.WriteFile` rather than bypassing storage with direct `os.WriteFile`.
+- Because the explorer must remain an audit view, suppression should not filter rows inside `LoadData`. Filtering belongs at aggregate/reporting call sites via an explicit active-transaction helper.
 
 ## 1. Goals & non-goals
 
@@ -25,20 +39,21 @@
 
 A pair `(A, B)` is a candidate iff ALL of the following hold:
 
-1. Both are outflows (`Amount < 0`) AND `|A.Amount| == |B.Amount|`.
+1. Both are outflows (`TransactionType == Outflow` and `Amount < 0`) AND their rounded cent values match exactly.
 2. `|A.Date − B.Date| ≤ 7 days`.
 3. Exactly one side is a **scheduled bill pay** AND the other is a **posted check**:
-   - **Scheduled bill pay:** `Status` contains "Scheduled" or "Pending" (case-insensitive) OR description does NOT match the check-prefix regex below.
-   - **Posted check:** description matches `(?i)^check\s*#\s*\d+\b` (case-insensitive prefix match, after trim) AND (`Status` contains "Posted" OR `Status` is empty).
+   - **Scheduled bill pay:** description does NOT match the check-prefix regex below AND (`Status` contains "Scheduled", "Pending", "Processing", or "Bill Pay" case-insensitively OR `Status` is empty).
+   - **Posted check:** description matches `(?i)^check\s*#\s*\d+\b` (case-insensitive prefix match, after trim) AND (`Status` contains "Posted", "Cleared", or "Processed" OR `Status` is empty).
 
-The regex is anchored at the start but not the end so it tolerates banks that append text after the check number (e.g. `Check #996583 cleared`). Whitespace tolerance covers `Check#996583`, `CHECK # 996583`, etc.
+The regex is anchored at the start but not the end so it tolerates banks that append text after the check number (e.g. `Check #996583 cleared`). Whitespace tolerance covers `Check#996583`, `CHECK # 996583`, etc. Empty status is accepted because some CSV exports omit status; the posted-check side still requires the check description prefix, which keeps the heuristic narrow.
 
 ### One-pair-per-transaction rule
 
 A transaction can appear in at most one candidate pair. If multiple matches are possible:
 
 1. Prefer the pair with the smallest date difference.
-2. Tie-break by lexicographically smaller partner hash for determinism.
+2. Prefer a pair where both statuses are non-empty and lifecycle-compatible.
+3. Tie-break by lexicographically smaller partner hash for determinism.
 
 ### Why tight
 
@@ -54,7 +69,24 @@ The only false-positive class possible under this rule is "you wrote a check the
 | `Suppressed` | `bool` | Derived during load | True iff this hash is the suppressed side of a `kept_winner` decision |
 | `DuplicatePairKey` | `string` | Derived during load | Non-empty iff this transaction is part of an unresolved candidate pair |
 
-The CSV column-mapping system already includes `Status` aliases; the loader currently reads but discards the value. No mapping changes needed.
+Implementation must add `Status` aliases to `columnMappings` in `internal/services/dataloader/loader.go` and parse the value in `loadCSVFile`. Suggested aliases: `status`, `Status`, `STATUS`, `transaction status`, `Transaction Status`, `TRANSACTION STATUS`, `state`, and `State`.
+
+Add small review types in `internal/services/dataloader/near_duplicates.go` (or `internal/models` only if templates need to import them directly):
+
+```go
+type DuplicatePair struct {
+	Key   string
+	Left  models.Transaction
+	Right models.Transaction
+}
+
+type DuplicateDecision struct {
+	KeptHash       string    `json:"kept_hash"`
+	SuppressedHash string    `json:"suppressed_hash,omitempty"`
+	Outcome        string    `json:"outcome"` // kept_winner | kept_both
+	DecidedAt      time.Time `json:"decided_at"`
+}
+```
 
 ### Pair key
 
@@ -92,15 +124,22 @@ Schema:
 
 New file `internal/services/dataloader/duplicate_decisions.go`, mirroring the shape of `transaction_pins.go`:
 
-- `LoadDuplicateDecisions() (map[string]Decision, error)`
-- `SaveDuplicateDecision(pairKey string, decision Decision) error`
+- `LoadDuplicateDecisions() (map[string]DuplicateDecision, error)`
+- `SaveDuplicateDecision(pairKey string, decision DuplicateDecision) error`
 - `ClearDuplicateDecision(pairKey string) error`
 
-Atomic write (write to `*.tmp`, then rename) like the existing pin store.
+Use `dl.store.ReadFile`, `dl.store.WriteFile`, and `dl.store.Remove` where applicable. `Storage.WriteFile` already performs atomic temp-file writes and handles encrypted storage, so this feature should not write the JSON file directly with `os.WriteFile`.
+
+Validation rules:
+
+- Empty `pairKey` returns an error on save/clear.
+- `outcome` must be `kept_winner` or `kept_both`.
+- `kept_winner` requires both `kept_hash` and `suppressed_hash`.
+- `kept_both` requires `kept_hash == ""` and `suppressed_hash == ""`, or the implementation should ignore those fields consistently.
 
 ## 5. Load pipeline integration
 
-In `LoadAll`, after the existing `deduplicateTransactions(...)` step:
+In `DataLoader.LoadData`, after the existing `deduplicateTransactions(...)` step:
 
 ```
 1. detected := detectNearDuplicatePairs(transactions)
@@ -113,24 +152,27 @@ In `LoadAll`, after the existing `deduplicateTransactions(...)` step:
        else:
            transactions[A].DuplicatePairKey = pair.key
            transactions[B].DuplicatePairKey = pair.key
-4. dl.UnresolvedDuplicateCount = count of unresolved pairs
+4. expose unresolved/resolved review data to handlers by recomputing from the loaded `TransactionSet` and decisions, or by storing per-load state with an explicit invalidation path
 ```
+
+Avoid long-lived global duplicate-pair caches in v1 unless the implementation also invalidates them when CSV files, enabled files, decisions, aliases, major expenses, or enrichment files change.
 
 ### Suppression boundary
 
-Introduce a single helper:
+Do not filter suppressed rows inside `LoadData()`. The explorer needs the raw row set so the user can see and undo suppressions. Introduce a single helper on `models.TransactionSet`:
 
 ```go
-func (dl *DataLoader) ActiveTransactions() []models.Transaction
+func (ts *TransactionSet) Active() *TransactionSet
 ```
 
-…that returns the slice with `Suppressed == true` filtered out.
+…that returns a new transaction set with `Suppressed == true` filtered out.
 
-Aggregation call sites that switch from raw slice to `ActiveTransactions()`:
+Aggregation call sites that switch from the raw transaction set to `Active()`:
 
 - Dashboard handlers (`internal/handlers/dashboard/handlers.go`)
 - Insights handlers (`internal/handlers/insights/handlers.go`)
 - What-if income/expense classification
+- Major Expenses handlers (`internal/handlers/majorexpenses/handlers.go`)
 - Major-expense matching (`internal/services/dataloader/major_expense_names.go`)
 
 The explorer keeps using the raw slice and renders badges based on `Suppressed` / `DuplicatePairKey`.
@@ -140,6 +182,13 @@ The explorer keeps using the raw slice and renders badges based on `Suppressed` 
 ### Top nav
 
 Add a "Duplicates" link rendered with a count badge: `Duplicates (3)`. The link is hidden entirely when `UnresolvedDuplicateCount == 0`.
+
+Implementation note: `web/templates/layouts/base.html` currently has no shared nav-count data source. Choose one of these during implementation planning:
+
+- Add a shared page-data helper so every full-page render receives `UnresolvedDuplicateCount`.
+- Always render a placeholder nav item and hydrate/hide it with a tiny HTMX endpoint.
+
+The shared helper avoids an extra request but touches more handler payloads. The HTMX endpoint isolates the feature but adds one request per full-page load.
 
 ### Dashboard alert card
 
@@ -159,7 +208,7 @@ New handler at `/duplicates` (file: `internal/handlers/duplicates/handlers.go`).
 
 - `Keep left` — writes `outcome=kept_winner` with `suppressed_hash = right.Hash`
 - `Keep right` — writes `outcome=kept_winner` with `suppressed_hash = left.Hash`
-- `Both real (stop flagging)` — writes `outcome=kept_both` with empty `suppressed_hash`
+- `Both real (stop flagging)` — writes `outcome=kept_both` with empty `kept_hash` and `suppressed_hash`
 
 After action, the card disappears from the unresolved tab; if `kept_winner`, it reappears in the suppressed tab.
 
@@ -167,8 +216,10 @@ After action, the card disappears from the unresolved tab; if `kept_winner`, it 
 
 ### Explorer integration
 
-- Transactions with `DuplicatePairKey != ""` (unresolved partner): render `🔁 dup?` badge linking to `/duplicates#<pairKey>` (anchor scrolls to the relevant card).
-- Transactions with `Suppressed == true`: render `🚫 suppressed dup` badge with faded/strikethrough styling and an inline `Undo` link calling `ClearDuplicateDecision`.
+- Transactions with `DuplicatePairKey != ""` (unresolved partner): render a compact `dup?` badge linking to `/duplicates#<pairKey>` (anchor scrolls to the relevant card).
+- Transactions with `Suppressed == true`: render a compact `suppressed dup` badge with faded/strikethrough styling and an inline `Undo` link calling `ClearDuplicateDecision`.
+
+Avoid emoji-only badges; text labels are easier to scan and simpler to assert in template tests.
 
 ## 7. Error handling
 
@@ -179,6 +230,8 @@ After action, the card disappears from the unresolved tab; if `kept_winner`, it 
 | Decision references hashes that no longer exist (CSV deleted) | Keep decision silently — CSV may return on next import |
 | Pair detection runs on every load | Idempotent; same input → same pair keys → same outcomes apply |
 | Two pair candidates share a transaction | Resolved by tie-break rules in §2 |
+| Status column missing from a CSV | Treat status as empty; rely on the check-prefix description for the posted side |
+| Amount values differ only by floating-point representation | Compare rounded integer cents, not raw `float64` equality |
 
 ## 8. Testing
 
@@ -192,8 +245,10 @@ Synthetic transaction fixtures covering:
 - Negative: same amount, both bill-pays (no check pattern) → no pair.
 - Negative: opposite signs (income + outflow) → no pair.
 - Negative: status mismatch (e.g., both "Posted") → no pair.
+- Positive: missing scheduled-side status still detects when the other side is a posted check.
 - Triplet: three same-amount transactions inside the window with mixed statuses → exactly one pair (closest date wins; tie-break by hash).
 - Idempotency: re-running detection produces identical pair keys.
+- Amount precision: cents are compared after rounding to integer cents.
 
 ### Persistence tests — `internal/services/dataloader/duplicate_decisions_test.go`
 
@@ -204,6 +259,7 @@ Mirror the structure of `transaction_pins_test.go`:
 - Save decision → loadable round-trip.
 - Clear decision → key absent on reload.
 - Atomic write: simulated failure leaves prior file intact.
+- Validation: empty pair key, unknown outcome, and incomplete `kept_winner` decisions return errors.
 
 ### Integration test — `internal/services/dataloader/loader_test.go`
 
@@ -213,6 +269,8 @@ Fixture CSVs containing one bill-pay-vs-check pair → load → expect:
 - Both transactions tagged with `DuplicatePairKey`.
 - After saving a `kept_winner` decision and reloading: one transaction has `Suppressed=true`, neither has `DuplicatePairKey`.
 - After saving `kept_both`: neither has `DuplicatePairKey`, neither has `Suppressed`.
+- `TransactionSet.Active()` excludes suppressed rows while preserving unsuppressed rows and derived fields.
+- Corrupt `duplicate_decisions.json` logs/continues and leaves candidates unresolved.
 
 ### Handler tests — `internal/handlers/duplicates/handlers_test.go`
 
@@ -239,7 +297,10 @@ Fixture CSVs containing one bill-pay-vs-check pair → load → expect:
 - **No account isolation.** The heuristic runs against the unified transaction stream and does not filter by source account or source CSV file. A bill-pay in account A and a same-amount posted check in account B within 7 days would be flagged as a candidate pair. Given the conjunction of constraints (same exact amount, ≤ 7 day window, status-pattern match, and a check from a *different* account) this is rare enough to accept as a false-positive class the user can dismiss via "Both real (stop flagging)".
 - **No batch dismissal.** Each flagged pair must be resolved individually. If a CSV cleanup produces a flood of new candidates, the user resolves them one at a time.
 - **Decisions referencing missing hashes are kept indefinitely.** A garbage-collection pass for dead decisions is deferred.
+- **No global loader cache in v1.** Duplicate review data should be recomputed from the loaded transaction set unless implementation adds an explicit invalidation strategy.
 
 ## 11. Open questions
 
-None at design time. Implementation may surface edge cases that warrant follow-ups.
+- Should the nav badge be server-rendered through a shared page-data helper or hydrated through a small HTMX endpoint?
+- Should the review UI stay neutral with `Keep left` / `Keep right`, or should it recommend keeping the posted check while still allowing either side?
+- Do the real CSV exports use additional status header names beyond the aliases listed in §3?

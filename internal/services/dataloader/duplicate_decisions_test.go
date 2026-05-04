@@ -58,6 +58,23 @@ func TestLoadDuplicateDecisions_ValidFile(t *testing.T) {
 	}
 }
 
+func TestLoadDuplicateDecisions_EmptyFile(t *testing.T) {
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"duplicate_decisions.json": "",
+	})
+	defer cleanup()
+	got, err := loader.LoadDuplicateDecisions()
+	if err != nil {
+		t.Fatalf("empty file should not error, got: %v", err)
+	}
+	if got == nil {
+		t.Error("empty file should return non-nil empty map")
+	}
+	if len(got) != 0 {
+		t.Errorf("empty file should return empty map, got %d entries", len(got))
+	}
+}
+
 func TestLoadDuplicateDecisions_InvalidJSON(t *testing.T) {
 	_, loader, cleanup := setupTestDir(t, map[string]string{
 		"duplicate_decisions.json": "{{not json",

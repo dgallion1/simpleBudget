@@ -43,7 +43,10 @@ func (dl *DataLoader) duplicateDecisionsPath() string {
 }
 
 // LoadDuplicateDecisions reads the pairKey → DuplicateDecision map
-// from disk. Returns an empty map if the file does not exist.
+// from disk. Returns an empty map when the file is missing or empty;
+// returns an error only when the file exists with non-empty contents
+// that fail to parse. Callers can rely on a non-error result always
+// being a usable map.
 func (dl *DataLoader) LoadDuplicateDecisions() (map[string]DuplicateDecision, error) {
 	path := dl.duplicateDecisionsPath()
 	data, err := dl.store.ReadFile(path)
@@ -52,6 +55,9 @@ func (dl *DataLoader) LoadDuplicateDecisions() (map[string]DuplicateDecision, er
 			return make(map[string]DuplicateDecision), nil
 		}
 		return nil, err
+	}
+	if len(data) == 0 {
+		return make(map[string]DuplicateDecision), nil
 	}
 	var doc duplicateDecisionsDoc
 	if err := json.Unmarshal(data, &doc); err != nil {

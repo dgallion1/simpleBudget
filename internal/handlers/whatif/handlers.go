@@ -563,6 +563,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"ActiveFilename": activeFilename,
 	}
 
+	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
 		renderer.Render(w, "base", pageData)
 	} else {

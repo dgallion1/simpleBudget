@@ -156,6 +156,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"Comparison":       comparison,
 	}
 
+	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
 		renderer.Render(w, "base", pageData)
 	} else {

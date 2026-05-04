@@ -67,6 +67,7 @@ func handleMajorExpensesPage(w http.ResponseWriter, r *http.Request) {
 			renderer.RenderPartial(w, "major-expenses-results-wrapper", data)
 			return
 		}
+		templates.AttachDuplicateCount(data, loader)
 		renderer.Render(w, "base", data)
 		return
 	}

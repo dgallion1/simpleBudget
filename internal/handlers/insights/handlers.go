@@ -982,6 +982,7 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		"Preset":    preset,
 	}
 
+	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
 		renderer.Render(w, "base", pageData)
 	} else {

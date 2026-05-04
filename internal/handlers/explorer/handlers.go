@@ -232,6 +232,7 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 		"MajorExpenseFilter": majorExpenseID,
 	}
 
+	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
 		renderer.Render(w, "base", pageData)
 	} else {
@@ -424,6 +425,7 @@ func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 		data["Files"] = files
 	}
 
+	templates.AttachDuplicateCount(data, loader)
 	renderer.Render(w, "base", data)
 }
 

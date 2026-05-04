@@ -27,6 +27,10 @@ type DataLoader struct {
 	FilteredTransferCount int
 	enabledFiles          map[string]bool
 	store                 *storage.Storage
+
+	// Populated by every LoadData call. Read-only for callers.
+	unresolvedDuplicates []DuplicatePair
+	resolvedDuplicates   []DuplicatePair
 }
 
 // columnMappings maps common bank export column names to our standard names
@@ -73,6 +77,11 @@ var columnMappings = map[string][]string{
 		"deposits", "Deposits", "DEPOSITS",
 		"money in", "Money In", "MONEY IN",
 		"income", "Income", "INCOME",
+	},
+	"Status": {
+		"status", "Status", "STATUS",
+		"transaction status", "Transaction Status", "TRANSACTION STATUS",
+		"state", "State",
 	},
 }
 
@@ -164,6 +173,11 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	allTransactions = dl.filterInternalTransfers(allTransactions)
 	allTransactions = classifier.ClassifyTransactions(allTransactions)
 	allTransactions = dl.deduplicateTransactions(allTransactions)
+
+	// Detect near-duplicate pairs and apply user decisions. Failure
+	// modes are non-fatal: a corrupt decisions file still allows the
+	// load to complete, just with all candidates marked unresolved.
+	allTransactions = dl.applyDuplicateDetection(allTransactions)
 
 	// Apply user-assigned aliases
 	allTransactions = dl.applyAliases(allTransactions)
@@ -272,6 +286,12 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		// Parse Category (optional)
 		if idx, ok := colIndex["Category"]; ok && idx < len(record) {
 			t.Category = strings.TrimSpace(record[idx])
+		}
+
+		// Parse Status (optional). Used by near-duplicate detection
+		// to distinguish scheduled bill-pays from posted checks.
+		if idx, ok := colIndex["Status"]; ok && idx < len(record) {
+			t.Status = strings.TrimSpace(record[idx])
 		}
 
 		t.Hash = t.ComputeHash()
@@ -678,4 +698,88 @@ func (dl *DataLoader) applyAliases(transactions []models.Transaction) []models.T
 		}
 	}
 	return transactions
+}
+
+// UnresolvedDuplicateCount returns the number of candidate pairs that
+// have not yet been resolved by the user. Recomputed on every LoadData.
+func (dl *DataLoader) UnresolvedDuplicateCount() int {
+	return len(dl.unresolvedDuplicates)
+}
+
+// UnresolvedDuplicates returns the candidate pairs awaiting user
+// review, in detection order.
+func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair {
+	out := make([]DuplicatePair, len(dl.unresolvedDuplicates))
+	copy(out, dl.unresolvedDuplicates)
+	return out
+}
+
+// ResolvedDuplicates returns the kept_winner pairs the user has
+// already resolved, sourced from the most recent load. The Left side
+// is the kept transaction; Right is the suppressed one.
+func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair {
+	out := make([]DuplicatePair, len(dl.resolvedDuplicates))
+	copy(out, dl.resolvedDuplicates)
+	return out
+}
+
+// applyDuplicateDetection runs near-duplicate detection, loads any
+// saved decisions, and stamps Suppressed / DuplicatePairKey on the
+// transactions accordingly. Caches unresolved/resolved pairs on the
+// loader for handlers to read.
+func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []models.Transaction {
+	dl.unresolvedDuplicates = nil
+	dl.resolvedDuplicates = nil
+
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) == 0 {
+		return txns
+	}
+
+	decisions, err := dl.LoadDuplicateDecisions()
+	if err != nil {
+		log.Printf("Warning: could not load duplicate decisions: %v", err)
+		decisions = nil
+	}
+
+	// Build hash → index lookup once.
+	idxByHash := make(map[string]int, len(txns))
+	for i, t := range txns {
+		idxByHash[t.Hash] = i
+	}
+
+	for _, pair := range pairs {
+		decision, resolved := decisions[pair.Key]
+		if !resolved {
+			// Tag both sides for badge rendering.
+			if i, ok := idxByHash[pair.Left.Hash]; ok {
+				txns[i].DuplicatePairKey = pair.Key
+			}
+			if i, ok := idxByHash[pair.Right.Hash]; ok {
+				txns[i].DuplicatePairKey = pair.Key
+			}
+			dl.unresolvedDuplicates = append(dl.unresolvedDuplicates, pair)
+			continue
+		}
+		switch decision.Outcome {
+		case DuplicateOutcomeKeptWinner:
+			if i, ok := idxByHash[decision.SuppressedHash]; ok {
+				txns[i].Suppressed = true
+			}
+			// Keep the user-side roles in the resolved list: Left = kept.
+			leftKept := pair.Left
+			rightSuppressed := pair.Right
+			if pair.Left.Hash == decision.SuppressedHash {
+				leftKept, rightSuppressed = pair.Right, pair.Left
+			}
+			dl.resolvedDuplicates = append(dl.resolvedDuplicates, DuplicatePair{
+				Key:   pair.Key,
+				Left:  leftKept,
+				Right: rightSuppressed,
+			})
+		case DuplicateOutcomeKeptBoth:
+			// No-op: leave both transactions live and untagged.
+		}
+	}
+	return txns
 }

@@ -32,6 +32,21 @@ type Transaction struct {
 	SourceFile       string          `json:"source_file"`
 	Hash             string          `json:"hash"`
 
+	// Status is the bank-reported lifecycle marker (e.g. "Posted",
+	// "Scheduled Bill Pay"). Optional; populated when the source CSV
+	// has a Status column. Used by near-duplicate detection.
+	Status string `json:"status,omitempty"`
+
+	// Suppressed is true when the user has resolved a near-duplicate
+	// pair and chose to drop this side from totals/aggregations.
+	// The transaction stays in the explorer view for audit/undo.
+	Suppressed bool `json:"suppressed,omitempty"`
+
+	// DuplicatePairKey is non-empty when this transaction is part of
+	// an unresolved near-duplicate candidate pair. Used to render
+	// "possible duplicate" badges and link to the review panel.
+	DuplicatePairKey string `json:"duplicate_pair_key,omitempty"`
+
 	// Derived fields (computed, not stored)
 	Month      string `json:"month,omitempty"` // "2024-01"
 	Week       string `json:"week,omitempty"`  // "2024-W05"
@@ -351,4 +366,22 @@ func (ts *TransactionSet) Copy() *TransactionSet {
 	copied := make([]Transaction, len(ts.Transactions))
 	copy(copied, ts.Transactions)
 	return &TransactionSet{Transactions: copied}
+}
+
+// Active returns a new TransactionSet with Suppressed transactions
+// filtered out. Aggregation/reporting call sites should use this to
+// avoid double-counting near-duplicate pairs the user has resolved.
+// The explorer keeps the raw slice so users can see and undo
+// suppressions. Safe on a nil receiver.
+func (ts *TransactionSet) Active() *TransactionSet {
+	if ts == nil {
+		return &TransactionSet{}
+	}
+	result := &TransactionSet{}
+	for _, t := range ts.Transactions {
+		if !t.Suppressed {
+			result.Transactions = append(result.Transactions, t)
+		}
+	}
+	return result
 }

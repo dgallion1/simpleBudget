@@ -3,6 +3,7 @@ package dataloader
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"budget2/internal/services/storage"
@@ -486,6 +487,40 @@ func TestLoadCSVFile_HashReflectsPostFlipAmount(t *testing.T) {
 	}
 }
 
+func TestLoadCSVFile_PopulatesStatus(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dataloader_status_test")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	csv := "Date,Description,Amount,Status\n" +
+		"2026-03-19,Lucid,-1580.43,Scheduled Bill Pay\n" +
+		"2026-03-20,Check #996583,-1580.43,Posted\n"
+
+	csvPath := filepath.Join(tmpDir, "bank.csv")
+	if err := os.WriteFile(csvPath, []byte(csv), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	store, _ := storage.New(tmpDir)
+	loader := New(tmpDir, store)
+
+	got, err := loader.loadCSVFile(csvPath)
+	if err != nil {
+		t.Fatalf("loadCSVFile: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(got))
+	}
+	if got[0].Status != "Scheduled Bill Pay" {
+		t.Errorf("first row Status = %q, want %q", got[0].Status, "Scheduled Bill Pay")
+	}
+	if got[1].Status != "Posted" {
+		t.Errorf("second row Status = %q, want %q", got[1].Status, "Posted")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
@@ -498,4 +533,168 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestLoadData_DetectsAndExposesUnresolvedPair(t *testing.T) {
+	csvA := "Date,Description,Amount,Status\n" +
+		"2026-03-19,Lucid,-1580.43,Scheduled Bill Pay\n"
+	csvB := "Date,Description,Amount,Status\n" +
+		"2026-03-20,Check #996583,-1580.43,Posted\n"
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"a.csv": csvA, "b.csv": csvB,
+	})
+	defer cleanup()
+
+	ts, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("LoadData: %v", err)
+	}
+	if loader.UnresolvedDuplicateCount() != 1 {
+		t.Errorf("UnresolvedDuplicateCount = %d, want 1", loader.UnresolvedDuplicateCount())
+	}
+	tagged := 0
+	for _, tr := range ts.Transactions {
+		if tr.DuplicatePairKey != "" {
+			tagged++
+		}
+		if tr.Suppressed {
+			t.Errorf("no decision saved yet, no transaction should be Suppressed: %+v", tr)
+		}
+	}
+	if tagged != 2 {
+		t.Errorf("expected both sides tagged with DuplicatePairKey, got %d tagged", tagged)
+	}
+}
+
+func TestLoadData_AppliesKeptWinnerDecision(t *testing.T) {
+	csvA := "Date,Description,Amount,Status\n" +
+		"2026-03-19,Lucid,-1580.43,Scheduled Bill Pay\n"
+	csvB := "Date,Description,Amount,Status\n" +
+		"2026-03-20,Check #996583,-1580.43,Posted\n"
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"a.csv": csvA, "b.csv": csvB,
+	})
+	defer cleanup()
+
+	// First load: discover pair and capture both hashes.
+	ts1, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("first load: %v", err)
+	}
+	var pk, billHash, checkHash string
+	for _, tr := range ts1.Transactions {
+		if strings.HasPrefix(strings.ToLower(tr.Description), "check") {
+			checkHash = tr.Hash
+		} else {
+			billHash = tr.Hash
+		}
+		if tr.DuplicatePairKey != "" {
+			pk = tr.DuplicatePairKey
+		}
+	}
+	if pk == "" || billHash == "" || checkHash == "" {
+		t.Fatalf("setup: pk=%q bill=%q check=%q", pk, billHash, checkHash)
+	}
+
+	// Save kept_winner: keep the check, suppress the bill-pay.
+	if err := loader.SaveDuplicateDecision(pk, DuplicateDecision{
+		KeptHash:       checkHash,
+		SuppressedHash: billHash,
+		Outcome:        DuplicateOutcomeKeptWinner,
+	}); err != nil {
+		t.Fatalf("save decision: %v", err)
+	}
+
+	// Second load: bill-pay should be Suppressed; pair no longer
+	// counted as unresolved.
+	ts2, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("second load: %v", err)
+	}
+	if loader.UnresolvedDuplicateCount() != 0 {
+		t.Errorf("UnresolvedDuplicateCount after decision = %d, want 0",
+			loader.UnresolvedDuplicateCount())
+	}
+	for _, tr := range ts2.Transactions {
+		if tr.Hash == billHash && !tr.Suppressed {
+			t.Errorf("bill-pay should be Suppressed: %+v", tr)
+		}
+		if tr.Hash == checkHash && tr.Suppressed {
+			t.Errorf("kept check should not be Suppressed: %+v", tr)
+		}
+		if tr.DuplicatePairKey != "" {
+			t.Errorf("resolved pair should clear DuplicatePairKey: %+v", tr)
+		}
+	}
+
+	// Active() should drop the suppressed bill-pay.
+	if got := ts2.Active().Len(); got != 1 {
+		t.Errorf("Active() len = %d, want 1", got)
+	}
+}
+
+func TestLoadData_AppliesKeptBothDecision(t *testing.T) {
+	csvA := "Date,Description,Amount,Status\n" +
+		"2026-03-19,Lucid,-1580.43,Scheduled Bill Pay\n"
+	csvB := "Date,Description,Amount,Status\n" +
+		"2026-03-20,Check #996583,-1580.43,Posted\n"
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"a.csv": csvA, "b.csv": csvB,
+	})
+	defer cleanup()
+
+	ts1, _ := loader.LoadData()
+	var pk string
+	for _, tr := range ts1.Transactions {
+		if tr.DuplicatePairKey != "" {
+			pk = tr.DuplicatePairKey
+		}
+	}
+	loader.SaveDuplicateDecision(pk, DuplicateDecision{Outcome: DuplicateOutcomeKeptBoth})
+
+	ts2, _ := loader.LoadData()
+	if loader.UnresolvedDuplicateCount() != 0 {
+		t.Errorf("UnresolvedDuplicateCount = %d, want 0",
+			loader.UnresolvedDuplicateCount())
+	}
+	suppressed := 0
+	tagged := 0
+	for _, tr := range ts2.Transactions {
+		if tr.Suppressed {
+			suppressed++
+		}
+		if tr.DuplicatePairKey != "" {
+			tagged++
+		}
+	}
+	if suppressed != 0 {
+		t.Errorf("kept_both should not suppress anything, got %d Suppressed", suppressed)
+	}
+	if tagged != 0 {
+		t.Errorf("kept_both should clear DuplicatePairKey, got %d tagged", tagged)
+	}
+}
+
+func TestLoadData_CorruptDecisionsFile_DoesNotBlockLoad(t *testing.T) {
+	csvA := "Date,Description,Amount,Status\n" +
+		"2026-03-19,Lucid,-1580.43,Scheduled Bill Pay\n" +
+		"2026-03-20,Check #996583,-1580.43,Posted\n"
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"a.csv":                    csvA,
+		"duplicate_decisions.json": "{{not json",
+	})
+	defer cleanup()
+
+	ts, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("LoadData should not block on corrupt decisions: %v", err)
+	}
+	if ts.Len() != 2 {
+		t.Errorf("expected 2 transactions, got %d", ts.Len())
+	}
+	// Detection still happened, decisions just couldn't be applied.
+	if loader.UnresolvedDuplicateCount() != 1 {
+		t.Errorf("UnresolvedDuplicateCount = %d, want 1",
+			loader.UnresolvedDuplicateCount())
+	}
 }

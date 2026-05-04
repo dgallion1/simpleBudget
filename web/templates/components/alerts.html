@@ -1,4 +1,6 @@
 {{define "alerts"}}
+{{if or .Alerts .UnresolvedDuplicateCount}}
+<div class="space-y-4">
 {{if .Alerts}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center">
@@ -50,6 +52,33 @@
         </a>
         {{end}}
     </div>
+</div>
+{{end}}
+{{if .UnresolvedDuplicateCount}}
+<a href="/duplicates" class="block bg-white dark:bg-gray-800 rounded-lg shadow p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+    <div class="flex items-center">
+        <div class="flex-shrink-0 mr-3">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+            </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                {{.UnresolvedDuplicateCount}} possible duplicate {{if eq .UnresolvedDuplicateCount 1}}pair needs{{else}}pairs need{{end}} review
+            </p>
+            <p class="text-sm text-gray-600 dark:text-gray-300">
+                Bill-pay and posted-check entries from overlapping CSV exports.
+            </p>
+        </div>
+        <div class="flex-shrink-0 ml-2 text-amber-500">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+        </div>
+    </div>
+</a>
+{{end}}
 </div>
 {{end}}
 {{end}}

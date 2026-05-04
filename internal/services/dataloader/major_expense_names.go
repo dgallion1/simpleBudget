@@ -49,6 +49,12 @@ func (dl *DataLoader) applyMajorExpenseNames(transactions []models.Transaction) 
 		if t.TransactionType == models.Income {
 			continue
 		}
+		// Suppressed transactions are the losing side of a resolved
+		// near-duplicate pair. Excluding them here keeps Major Expense
+		// totals consistent with the dashboard's Active() aggregation.
+		if t.Suppressed {
+			continue
+		}
 		// Pin wins when it points to an existing expense.
 		if pins != nil && t.Hash != "" {
 			if id, ok := pins[t.Hash]; ok && validIDs[id] {

@@ -563,6 +563,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"ActiveFilename": activeFilename,
 	}
 
+	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
 		renderer.Render(w, "base", pageData)
 	} else {
@@ -667,7 +668,7 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	// Calculate average monthly values from last 12 months
 	now := time.Now()
 	yearAgo := now.AddDate(-1, 0, 0)
-	filtered := data.FilterByDateRange(yearAgo, now)
+	filtered := data.Active().FilterByDateRange(yearAgo, now)
 	outflows := filtered.FilterByType(models.Outflow)
 
 	months := 12.0

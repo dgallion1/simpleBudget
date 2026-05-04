@@ -689,12 +689,14 @@
 {{$currentPage := .Page}}
 {{$totalPages := .TotalPages}}
 {{range $index, $txn := .Transactions}}
-<tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
+<tr class="{{if .Suppressed}}opacity-50{{end}} hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
     $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
     <td class="w-24 p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
     <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate" data-hash="{{.Hash}}" data-description="{{.Description}}" data-display-name="{{.DisplayName}}" data-major-expense-name="{{.MajorExpenseName}}">
         <span class="alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-xs text-gray-400 dark:text-gray-500">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
+        {{if .DuplicatePairKey}}<a href="/duplicates#{{.DuplicatePairKey}}" class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60" title="Unresolved duplicate">dup?</a>{{end}}
+        {{if .Suppressed}}<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 line-through" title="Suppressed duplicate">suppressed dup</span>{{end}}
     </td>
     {{$me := index $.HashToExpense .Hash}}
     <td class="w-32 p-3 text-sm">

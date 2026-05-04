@@ -1356,6 +1356,110 @@ func TestHandleChartData_BudgetVsActual_BadType(t *testing.T) {
 	}
 }
 
+// ---------- KPI sparkline target overlays ----------
+
+func TestDashboardKPIs_LivingSparkline_HasTargetAttribute(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-15", "Salary", "5000", "Payroll"},
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+	}
+	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	defer cleanup()
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	rm := retirement.NewSettingsManager(tmpDir, store)
+	settingsPath := filepath.Join(tmpDir, "whatif.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	Initialize(dl, rend, rm)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	rec := doGet(t, r, "/dashboard/kpis?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `id="sparkline-monthly"`) {
+		t.Errorf("response missing sparkline-monthly container")
+	}
+	if !strings.Contains(body, `data-target="2000"`) {
+		t.Errorf("sparkline-monthly missing data-target=\"2000\"; body excerpt: %s", excerptAround(body, "sparkline-monthly", 200))
+	}
+}
+
+func TestDashboardKPIs_BudgetSparkline_VarianceMode(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+	}
+	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	defer cleanup()
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	rm := retirement.NewSettingsManager(tmpDir, store)
+	settingsPath := filepath.Join(tmpDir, "whatif.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	Initialize(dl, rend, rm)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	rec := doGet(t, r, "/dashboard/kpis?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `id="sparkline-budget"`) {
+		t.Errorf("response missing sparkline-budget container")
+	}
+	if !strings.Contains(body, `data-mode="variance"`) {
+		t.Errorf("sparkline-budget missing data-mode=\"variance\"; body excerpt: %s", excerptAround(body, "sparkline-budget", 200))
+	}
+}
+
+// excerptAround returns a substring of body centered on needle for diagnostics.
+func excerptAround(body, needle string, around int) string {
+	idx := strings.Index(body, needle)
+	if idx < 0 {
+		return "(needle not found)"
+	}
+	start := idx - around
+	if start < 0 {
+		start = 0
+	}
+	end := idx + around
+	if end > len(body) {
+		end = len(body)
+	}
+	return body[start:end]
+}
+
 // min helper for Go < 1.21
 func min(a, b int) int {
 	if a < b {

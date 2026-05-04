@@ -78,7 +78,10 @@
                 </svg>
             </div>
         </div>
-        <div id="sparkline-monthly" class="h-10 mt-2" data-values="{{toJSON .Metrics.LivingExpensesTrend}}" data-color="#9ca3af"></div>
+        <div id="sparkline-monthly" class="h-10 mt-2"
+             data-values="{{toJSON .Metrics.LivingExpensesTrend}}"
+             data-color="#9ca3af"
+             {{if .Metrics.HasBudgetTarget}}data-target="{{.Metrics.BudgetTarget}}"{{end}}></div>
     </div>
 
     <!-- Monthly Healthcare (premiums tagged "Health Insurance" vs what-if target) -->
@@ -103,7 +106,10 @@
                 </svg>
             </div>
         </div>
-        <div id="sparkline-healthcare" class="h-10 mt-2" data-values="{{toJSON .Metrics.HealthcareTrend}}" data-color="#e11d48"></div>
+        <div id="sparkline-healthcare" class="h-10 mt-2"
+             data-values="{{toJSON .Metrics.HealthcareTrend}}"
+             data-color="#e11d48"
+             {{if .Metrics.HasHealthcareTarget}}data-target="{{.Metrics.HealthcareTarget}}"{{end}}></div>
     </div>
 
     <!-- Budget (combined cumulative variance: Living + Healthcare for the period) -->
@@ -146,6 +152,12 @@
                 {{else}}
                 <p class="text-2xl font-bold text-gray-400 dark:text-gray-500 italic">Not set</p>
                 <a href="/whatif" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-block">Set a budget in What-If →</a>
+                {{end}}
+                {{if .Metrics.HasCombinedTarget}}
+                <div id="sparkline-budget" class="h-10 mt-2"
+                     data-values="{{toJSON .Metrics.CombinedCumulativeTrend}}"
+                     data-color="#6366f1"
+                     data-mode="variance"></div>
                 {{end}}
             </div>
             <div class="p-3 {{if and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)}}bg-red-100 dark:bg-red-900/50{{else if .Metrics.HasCombinedTarget}}bg-green-100 dark:bg-green-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">

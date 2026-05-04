@@ -798,6 +798,73 @@ func TestParseDebitCredit_IndexOutOfBounds(t *testing.T) {
 	}
 }
 
+func TestFilterInternalTransfers_UserFlaggedMajorExpense(t *testing.T) {
+	// A user-declared major expense flagged as IsInternalTransfer should
+	// drop matching transactions just like the hardcoded patterns do.
+	store := models.MajorExpenseStore{Expenses: []models.MajorExpense{
+		{
+			ID:                 "tx-1",
+			Name:               "Brokerage funding",
+			Keywords:           []string{"my custom broker"},
+			IsInternalTransfer: true,
+		},
+	}}
+	data, _ := json.Marshal(store)
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"major_expenses.json": string(data),
+	})
+	defer cleanup()
+
+	transactions := []models.Transaction{
+		{Description: "Grocery Store", Amount: -50.00},
+		{Description: "MY CUSTOM BROKER ACH", Amount: -1000.00}, // should be dropped
+		{Description: "Paycheck", Amount: 3000.00},
+	}
+	result := loader.filterInternalTransfers(transactions)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 surviving txns, got %d: %+v", len(result), result)
+	}
+	for _, txn := range result {
+		if txn.Description == "MY CUSTOM BROKER ACH" {
+			t.Error("flagged-major-expense transaction should have been filtered out")
+		}
+	}
+	if loader.FilteredTransferCount != 1 {
+		t.Errorf("FilteredTransferCount = %d, want 1", loader.FilteredTransferCount)
+	}
+}
+
+func TestFilterInternalTransfers_NonFlaggedMajorExpenseDoesNotFilter(t *testing.T) {
+	// A regular major expense (IsInternalTransfer=false) must NOT cause
+	// matching transactions to be dropped — that would silently remove
+	// real spending. Bug guard: this is the contract that distinguishes
+	// the new flag from the existing major-expense matching system.
+	store := models.MajorExpenseStore{Expenses: []models.MajorExpense{
+		{
+			ID:       "tx-2",
+			Name:     "Groceries",
+			Keywords: []string{"wegmans"},
+			// IsInternalTransfer intentionally not set
+		},
+	}}
+	data, _ := json.Marshal(store)
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"major_expenses.json": string(data),
+	})
+	defer cleanup()
+
+	transactions := []models.Transaction{
+		{Description: "WEGMANS GROCERY", Amount: -75.00},
+	}
+	result := loader.filterInternalTransfers(transactions)
+	if len(result) != 1 {
+		t.Errorf("regular major-expense match must not be filtered; got %d surviving txns", len(result))
+	}
+	if loader.FilteredTransferCount != 0 {
+		t.Errorf("FilteredTransferCount = %d, want 0", loader.FilteredTransferCount)
+	}
+}
+
 func TestFilterInternalTransfers_WithTransfers(t *testing.T) {
 	_, loader, cleanup := setupTestDir(t, nil)
 	defer cleanup()

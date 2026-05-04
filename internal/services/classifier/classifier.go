@@ -42,8 +42,13 @@ var NeverIncomeKeywords = []string{
 	"usaa credit card payment", "recurring scheduled payment",
 }
 
-// Internal transfer patterns to filter (lowercase)
+// Internal transfer patterns to filter (lowercase). Sourced from the
+// distinctive substrings the major US brokers and banks include in
+// their transfer descriptions — narrow enough that a real merchant
+// payment is unlikely to match. Users can add more via Major Expenses
+// flagged with IsInternalTransfer=true.
 var InternalTransferPatterns = []string{
+	// Generic banking / credit-card payments
 	"usaa funds transfer",
 	"internal transfer",
 	"credit card payment",
@@ -51,6 +56,19 @@ var InternalTransferPatterns = []string{
 	"automatic payment - thank you",
 	"cc payment",
 	"recurring scheduled payment",
+	// Brokerage / investment transfers (ACH/wire descriptions used
+	// by the major US brokers; matched as substrings, lowercase).
+	"schwab moneylink",        // Charles Schwab
+	"schwab brokerage",        // Schwab brokerage account transfers
+	"fid bkg svc llc",         // Fidelity (FID BKG SVC LLC)
+	"vanguard buy investment", // Vanguard buy
+	"vanguard sell",           // Vanguard sell / withdrawal
+	"etrade ach",              // E*TRADE
+	"e*trade ach",
+	"coinbase ach",     // Coinbase ACH
+	"coinbase inc.",    // Coinbase wire
+	"robinhood ach",    // Robinhood
+	"interactive brokers",
 }
 
 // ClassifyTransactions classifies each transaction as Income or Outflow

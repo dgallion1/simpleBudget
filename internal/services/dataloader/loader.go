@@ -15,6 +15,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/classifier"
+	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/storage"
 )
 
@@ -446,15 +447,44 @@ func parseAmount(s string) float64 {
 	return amount
 }
 
-// filterInternalTransfers removes internal transfers to avoid double-counting
+// filterInternalTransfers removes internal transfers to avoid double-counting.
+// Two sources are consulted:
+//
+//  1. The hardcoded classifier.InternalTransferPatterns list (covers
+//     common bank/broker descriptions out of the box).
+//  2. User-declared major expenses flagged with IsInternalTransfer=true,
+//     matched via majorexpenses.MatchTransaction (same keyword/amount
+//     rules as the Major Expenses page). Lets every user filter their
+//     own broker without code changes.
+//
+// Major-expense load failure is non-fatal — we log and proceed with just
+// the hardcoded patterns so a corrupt major_expenses.json doesn't break
+// CSV ingestion entirely.
 func (dl *DataLoader) filterInternalTransfers(transactions []models.Transaction) []models.Transaction {
 	initialCount := len(transactions)
-	var filtered []models.Transaction
 
-	for _, t := range transactions {
-		if !classifier.IsInternalTransfer(&t) {
-			filtered = append(filtered, t)
+	var transferDefs []models.MajorExpense
+	if defs, err := dl.LoadMajorExpenses(); err != nil {
+		log.Printf("Warning: could not load major expenses for transfer filtering: %v", err)
+	} else {
+		for _, d := range defs {
+			if d.IsInternalTransfer {
+				transferDefs = append(transferDefs, d)
+			}
 		}
+	}
+
+	var filtered []models.Transaction
+	for _, t := range transactions {
+		if classifier.IsInternalTransfer(&t) {
+			continue
+		}
+		if len(transferDefs) > 0 {
+			if _, ok := majorexpenses.MatchTransaction(t, transferDefs); ok {
+				continue
+			}
+		}
+		filtered = append(filtered, t)
 	}
 
 	dl.FilteredTransferCount = initialCount - len(filtered)

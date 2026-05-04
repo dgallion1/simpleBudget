@@ -81,6 +81,7 @@ func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense)
 			list[i].ExpectedMin = updates.ExpectedMin
 			list[i].ExpectedMax = updates.ExpectedMax
 			list[i].Notes = updates.Notes
+			list[i].IsInternalTransfer = updates.IsInternalTransfer
 			list[i].UpdatedAt = time.Now().UTC()
 			found = true
 			break

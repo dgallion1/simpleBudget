@@ -554,13 +554,30 @@ func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
 		return models.MajorExpense{}, fmt.Errorf("set BOTH Min and Max to match by amount, or leave both blank to create a pin-only target")
 	}
 
+	isTransfer := parseFormBool(r, "is_internal_transfer")
+	// A transfer filter only makes sense if it can match something
+	// automatically — pin-only doesn't filter at load time. Require at
+	// least a keyword or an amount rule.
+	if isTransfer && len(keywords) == 0 && expectedMin == 0 && expectedMax == 0 {
+		return models.MajorExpense{}, fmt.Errorf("internal-transfer filter needs at least one keyword or an amount range to match against")
+	}
+
 	return models.MajorExpense{
-		Name:        name,
-		Keywords:    keywords,
-		ExpectedMin: expectedMin,
-		ExpectedMax: expectedMax,
-		Notes:       strings.TrimSpace(r.FormValue("notes")),
+		Name:               name,
+		Keywords:           keywords,
+		ExpectedMin:        expectedMin,
+		ExpectedMax:        expectedMax,
+		Notes:              strings.TrimSpace(r.FormValue("notes")),
+		IsInternalTransfer: isTransfer,
 	}, nil
+}
+
+// parseFormBool returns true when the form value is "on", "true", or "1"
+// (case-insensitive). Browsers send "on" for unset-value checkboxes and
+// omit the field entirely when unchecked, so a missing key yields false.
+func parseFormBool(r *http.Request, key string) bool {
+	v := strings.ToLower(strings.TrimSpace(r.FormValue(key)))
+	return v == "on" || v == "true" || v == "1"
 }
 
 func parseFormFloat(r *http.Request, key string) (float64, error) {

@@ -6,14 +6,22 @@ import "time"
 // well enough to use as a baseline for grouping transactions and flagging
 // unusual amounts.
 type MajorExpense struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Keywords    []string  `json:"keywords"`
-	ExpectedMin float64   `json:"expected_min"`
-	ExpectedMax float64   `json:"expected_max"`
-	Notes       string    `json:"notes,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Keywords    []string `json:"keywords"`
+	ExpectedMin float64  `json:"expected_min"`
+	ExpectedMax float64  `json:"expected_max"`
+	Notes       string   `json:"notes,omitempty"`
+	// IsInternalTransfer marks this entry as an internal-transfer filter
+	// rather than a real expense. When true, transactions matched by its
+	// keywords (and/or amount range) are dropped at load time alongside
+	// the hardcoded transfer patterns, so they don't inflate spending
+	// charts. The entry is hidden from spending rollups but still shown
+	// in the Major Expenses list so the user can see what's being
+	// filtered and edit it.
+	IsInternalTransfer bool      `json:"is_internal_transfer,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // MajorExpenseStore is the persisted shape of major_expenses.json. The

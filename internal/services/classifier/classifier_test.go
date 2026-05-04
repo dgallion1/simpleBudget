@@ -248,6 +248,36 @@ func TestIsInternalTransfer(t *testing.T) {
 	}
 }
 
+func TestIsInternalTransfer_BrokerPatterns(t *testing.T) {
+	// Real-world descriptions seen from major US brokers — these should
+	// all be filtered as internal transfers (positive amounts mean money
+	// flowing back into the bank account from the brokerage).
+	tests := []struct {
+		name string
+		desc string
+	}{
+		{"schwab moneylink debit", "SCHWAB BROKERAGE MONEYLINK ***********1115"},
+		{"schwab moneylink credit", "Schwab Brokerage MoneyLink"},
+		{"fidelity ach", "FID BKG SVC LLC MONEYLINE"},
+		{"vanguard buy", "VANGUARD BUY INVESTMENT"},
+		{"vanguard sell", "VANGUARD SELL INVESTMENT"},
+		{"etrade ach lower", "etrade ach"},
+		{"etrade ach with star", "E*TRADE ACH"},
+		{"coinbase ach", "COINBASE ACH"},
+		{"coinbase wire", "Coinbase Inc."},
+		{"robinhood ach", "ROBINHOOD ACH"},
+		{"interactive brokers", "INTERACTIVE BROKERS LLC"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			txn := &models.Transaction{Description: tt.desc, Amount: -1000}
+			if !IsInternalTransfer(txn) {
+				t.Errorf("expected %q to be detected as internal transfer", tt.desc)
+			}
+		})
+	}
+}
+
 func TestIsInternalTransfer_WhitespaceHandling(t *testing.T) {
 	txn := &models.Transaction{
 		Description: "  USAA FUNDS TRANSFER  ",

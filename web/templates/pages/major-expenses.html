@@ -1107,6 +1107,15 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     <input type="text" name="notes" value="{{.Expense.Notes}}"
                         class="mt-0.5 w-full px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded">
                 </label>
+                <label class="flex items-center gap-2 mt-1">
+                    <input type="checkbox" name="is_internal_transfer" value="on"
+                        {{if .Expense.IsInternalTransfer}}checked{{end}}
+                        class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-gray-600 dark:text-gray-300">
+                        Treat as internal transfer
+                        <span class="text-gray-400 dark:text-gray-500">— matches are dropped at load time, not counted as spending</span>
+                    </span>
+                </label>
             </form>
             {{if .Transactions}}
             <div class="mt-2 text-xs">
@@ -1194,10 +1203,21 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             <li><strong>Keyword + Min = Max</strong> — both must match. Use this when several expenses share a generic keyword like "check": e.g. Lucid keyword=<code>check</code> Min=Max=<code>1580.00</code>, Car keyword=<code>check</code> Min=Max=<code>626.00</code>.</li>
             <li><strong>Min &lt; Max</strong> (range) without a keyword matches anything in that range; with a keyword, the range is anomaly-only.</li>
             <li><strong>Pin-only</strong> (no keyword, no Min/Max) — auto-matches nothing. Use this for sub-buckets like "Amazon — Books" where no keyword reliably distinguishes them; assign transactions one-by-one via the "Pin to…" dropdown on each exception row, or bulk-pin filtered exceptions.</li>
+            <li><strong>Internal transfer</strong> (checkbox below) — flips the behavior: instead of bucketing matches as spending, drop them at load time so they don't show up in any chart or total. Use this for moves between your own accounts (brokerage, savings, second checking) that your bank reports as outflows. Common broker descriptions like "schwab moneylink", "fid bkg svc", "vanguard buy/sell", "etrade ach", "coinbase ach", "robinhood ach", "interactive brokers" are filtered automatically — you only need this checkbox for descriptions that aren't covered out of the box.</li>
         </ul>
     </details>
     <input type="text" name="notes" placeholder="Notes (optional)"
         class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
+    <label class="flex items-start gap-2 text-xs">
+        <input type="checkbox" name="is_internal_transfer" value="on"
+            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+        <span class="text-gray-600 dark:text-gray-300">
+            Treat as internal transfer
+            <span class="block text-gray-400 dark:text-gray-500">
+                Drop matches at load time so they don't show as spending. Use this for transfers to your own brokerage / savings (e.g. "schwab moneylink", "fid bkg svc").
+            </span>
+        </span>
+    </label>
     <div class="flex justify-end">
         <button type="submit" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
             Add expense

@@ -450,6 +450,62 @@ func TestParseExpenseForm_TrimsAndDropsEmpty(t *testing.T) {
 	}
 }
 
+func TestParseExpenseForm_IsInternalTransfer(t *testing.T) {
+	t.Run("checkbox on yields true", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Brokerage funding")
+		form.Set("keywords", "schwab moneylink")
+		form.Set("is_internal_transfer", "on")
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := req.ParseForm(); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		me, err := parseExpenseForm(req)
+		if err != nil {
+			t.Fatalf("parseExpenseForm: %v", err)
+		}
+		if !me.IsInternalTransfer {
+			t.Error("expected IsInternalTransfer=true when checkbox value is 'on'")
+		}
+	})
+
+	t.Run("missing checkbox yields false", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Groceries")
+		form.Set("keywords", "wegmans")
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := req.ParseForm(); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		me, err := parseExpenseForm(req)
+		if err != nil {
+			t.Fatalf("parseExpenseForm: %v", err)
+		}
+		if me.IsInternalTransfer {
+			t.Error("expected IsInternalTransfer=false when checkbox is omitted")
+		}
+	})
+
+	t.Run("transfer flag without keyword or amount is rejected", func(t *testing.T) {
+		// A pin-only entry can't auto-filter — require at least a keyword
+		// or amount rule when the transfer flag is set so the user gets a
+		// clear error instead of a no-op filter.
+		form := url.Values{}
+		form.Set("name", "Empty transfer")
+		form.Set("is_internal_transfer", "on")
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := req.ParseForm(); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if _, err := parseExpenseForm(req); err == nil {
+			t.Error("expected error for transfer flag without match rule")
+		}
+	})
+}
+
 func TestHandlePin_Success(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()

@@ -21,3 +21,15 @@ data/
 Thumbs.db
 .aider*
 .gitnexus
+
+# Agent / tooling state (per-machine, not source)
+.claude/
+.playwright-mcp/
+.superpowers/
+
+# Screenshots from QA / dogfooding sessions (root-level only;
+# legitimate UI assets live under web/static/img/)
+/dashboard-*.png
+/expenses-*.png
+/major-expense-*.png
+/filter-test-*.png

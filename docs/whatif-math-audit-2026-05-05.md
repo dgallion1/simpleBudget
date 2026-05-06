@@ -937,7 +937,176 @@ func isBetterSSPortfolioOption(candidate, current models.SSPortfolioOption) bool
 
 ## 4. RMD
 
-_Filled in by Task 4._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `GetLifeExpectancyFactor` | `rmd.go:64` | PASS (F-033) |
+| `CalculateRMD` | `rmd.go:76` | PASS (F-034) |
+| `(c *Calculator) CalculateRMDAnalysis` | `rmd.go:87` | PASS (F-032, F-035, F-036) |
+
+### Constants verified
+
+| Table | Cells checked | Mismatches |
+|-------|---------------|------------|
+| `uniformLifetimeTable` | 49 (ages 72–120) | 0 |
+| `RMDStartAge` | 1 | 0 (see F-032) |
+
+All 49 cells of `uniformLifetimeTable` verified cell-by-cell against IRS Pub 590-B Appendix B Table III (post-2022, Notice 2020-22 / Notice 2022-53). Every value matches exactly. The table correctly uses age 120 (not "120+") as the map key; `GetLifeExpectancyFactor` handles ages above 120 with a fallback of 2.0, matching the authoritative "120+" row.
+
+`RMDStartAge = 73` matches the SECURE 2.0 Act rule for 2023–2032. SECURE 2.0 will raise the start age to 75 beginning 2033; the constant is a single hard-coded value with no year-dependent logic (see F-032).
+
+### Worked examples
+
+#### WE-4.1: RMD at age 73, $1,000,000 balance
+
+**Source:** IRS Pub 590-B Appendix B Table III — factor at age 73 = 26.5.
+
+| Step | Value |
+|------|-------|
+| Table III factor (age 73) | 26.5 |
+| Expected RMD: $1,000,000 / 26.5 | **$37,735.849057…** |
+| Expected percent: 1 / 26.5 × 100 | **3.77358491%** |
+| Actual from `CalculateRMD(1_000_000, 73)` — amount | **$37,735.849057** |
+| Actual from `CalculateRMD(1_000_000, 73)` — percent | **3.77358491%** |
+| Delta | $0.00 / 0.000000% |
+
+#### WE-4.2: Monthly compound rate for 5% annual
+
+**Source:** Standard geometric monthly rate derivation: `(1 + 0.05)^(1/12) - 1`.
+
+| Step | Value |
+|------|-------|
+| Expected `monthlyCompoundFactorFromPercent(5.0) - 1` | **0.0040741238** |
+| Actual (measured) | **0.0040741238** |
+| Delta | < 1e-12 |
+
+The post-fix line `monthlyReturn := monthlyCompoundFactorFromPercent(investmentReturn) - 1` (rmd.go:112) is correct.
+
+#### WE-4.3: RMD at age 100, $500,000 balance
+
+**Source:** IRS Pub 590-B Appendix B Table III — factor at age 100 = 6.4.
+
+| Step | Value |
+|------|-------|
+| Table III factor (age 100) | 6.4 |
+| Expected RMD: $500,000 / 6.4 | **$78,125.00** |
+| Actual from `CalculateRMD(500_000, 100)` | **$78,125.00** |
+| Delta | $0.00 |
+
+### Findings
+
+### F-032 — MEDIUM `RMDStartAge` is a single constant; does not model SECURE 2.0 age-75 transition in 2033
+
+**Location:** `internal/services/retirement/rmd.go:6` — `RMDStartAge` constant; `rmd.go:97`, `rmd.go:120` — call sites in `CalculateRMDAnalysis`
+
+**Source consulted:** SECURE 2.0 Act of 2022 (§107): RMD start age 73 for taxpayers turning 73 in 2023–2032; age 75 for taxpayers turning 75 in 2033 or later.
+
+**What it does:** `RMDStartAge = 73` is used both to compute `startsInYears` (rmd.go:97) and as the loop guard (rmd.go:120). It is a compile-time constant with no year-dependent logic.
+
+**Finding:** For a user who is, for example, age 60 today (2026), the planner will incorrectly show RMDs beginning at age 73 (year 2039), when SECURE 2.0 will actually defer them until age 75 (year 2041). Any projection that crosses the 2033 boundary for a user who has not yet turned 73 will over-report required withdrawals for 2033–2041 and will under-report the 2-year additional tax-deferred accumulation window. This is a systematic planning error for younger retirement scenarios.
+
+**Evidence / repro:** A user currently age 60 viewing the What-If RMD panel will see "RMDs begin in 13 years (at age 73, year 2039)." Correct answer under SECURE 2.0: RMDs begin at age 75 (year 2041), because this user turns 75 in 2041 which is ≥ 2033.
+
+**Recommended fix sketch:** Replace the single constant with a function `rmdStartAge(birthYear int) int` returning 73 if `birthYear + 73 < 2033` (i.e., if they turn 73 before 2033) and 75 otherwise. Pass the projected birth year (derived from current year minus current age) when computing `startsInYears` and when entering the RMD projection loop.
+
+**Test coverage note:** No test covers a user whose RMD start age under SECURE 2.0 is 75. The existing tests (age 60, 65, 70, 72, 75) either already past RMD start or start at 73 with no cross-2033 validation.
+
+### F-033 — MEDIUM `GetLifeExpectancyFactor`: age 72 is in the table but `CalculateRMDAnalysis` skips it; age-71-or-below returns 0 (no divide-by-zero, but silent)
+
+**Location:** `internal/services/retirement/rmd.go:64` — `GetLifeExpectancyFactor`; `rmd.go:120` — caller guard `if age >= RMDStartAge`
+
+**Source consulted:** IRS Pub 590-B Appendix B Table III; code inspection.
+
+**What it does:** `GetLifeExpectancyFactor(age int)` returns 0 for age < 72, returns the table value for ages 72–120, and returns 2.0 for ages > 120.
+
+**Finding (two sub-issues):**
+
+1. **Age 72 is in the table but is unreachable via `CalculateRMDAnalysis`**: The loop guard at rmd.go:120 is `age >= RMDStartAge` (i.e., `>= 73`), which is correct under SECURE 2.0 — age 72 is in the post-2022 table only for reference (it is still present in the IRS table but the required begin date moved from 72 to 73). The factor for age 72 (27.4) is stored in the map but `CalculateRMDAnalysis` will never return a projection row at age 72. This is *correct behavior* — the table row is harmless dead data. However, `CalculateRMD(balance, 72)` called directly (e.g., from a future caller) would return a non-zero RMD, which could mislead. The `GetLifeExpectancyFactor` function has no internal guard against returning a factor for a pre-RMD-start age.
+
+2. **Age below 72 returns 0 silently**: `GetLifeExpectancyFactor` returns 0 for age < 72. `CalculateRMD` correctly guards against `factor == 0` and returns (0, 0). However, no comment or error signals the caller that a factor of 0 means "below start age" vs. "lookup error." This is low-stakes today (there is only one caller path) but a documentation/API clarity gap.
+
+**Evidence / repro:** Verified by temp test:
+```
+GetLifeExpectancyFactor(71) = 0.0000   // below table — returns 0
+GetLifeExpectancyFactor(72) = 27.4000  // in table, never triggered by CalculateRMDAnalysis
+CalculateRMD(1_000_000, 72) = (36496.35, 3.65%)  // callable, non-zero — misleading if called directly
+```
+
+**Recommended fix sketch:** Add a sentinel constant or a named function `GetLifeExpectancyFactor` could return a second `bool` `ok` parameter (`0, false` for out-of-range). Alternatively, add a guard in `GetLifeExpectancyFactor` that also returns 0 for `age < RMDStartAge` to make the no-RMD case consistent and safe.
+
+**Test coverage note:** `GetLifeExpectancyFactor(72)` is not tested in any existing test. `CalculateRMD` with age 72 is not tested. `TestGetLifeExpectancyFactor` covers only age 60, 73, and 125.
+
+### F-034 — LOW `CalculateRMD`: negative balance produces a negative RMD amount with no guard
+
+**Location:** `internal/services/retirement/rmd.go:76` — `CalculateRMD`
+
+**Source consulted:** IRS Pub 590-B §IRA (RMD cannot be negative — a negative account balance is undefined in IRS rules); code inspection.
+
+**What it does:** Computes `amount = taxDeferredBalance / factor`. If `taxDeferredBalance` is negative (corrupt state), `amount` will be negative.
+
+**Finding:** A negative balance is semantically impossible in a real account, but the function does not guard against it and would silently return a negative RMD amount. `CalculateRMDAnalysis` guards against `currentBalance < 0` (line 140–142) before calling `CalculateRMD` in its own loop, so this path is not reachable through the standard analysis. However, `CalculateRMD` is an exported function; any future caller supplying a negative balance would receive a negative RMD without warning.
+
+**Evidence / repro:** Verified by temp test:
+```
+CalculateRMD(-100000, 73): amount=-3773.5849  pct=3.7736
+```
+
+**Recommended fix sketch:** Add a guard at the top of `CalculateRMD`: `if taxDeferredBalance <= 0 { return 0, 0 }`. This is consistent with the zero-balance path (`balance = 0` already returns 0 due to arithmetic, but the guard makes intent explicit) and protects future callers.
+
+**Test coverage note:** No existing test passes a negative balance to `CalculateRMD`. The `TestCalculateRMD_BelowStartAge` test covers age below RMD start but not negative balance. Adding a negative-balance test would close this gap.
+
+### F-035 — MEDIUM `CalculateRMDAnalysis`: RMD withdrawn before year-end growth is applied; order is economically aggressive
+
+**Location:** `internal/services/retirement/rmd.go:138–148` — growth/withdrawal ordering in `CalculateRMDAnalysis`
+
+**Source consulted:** IRS Pub 590-B (RMD calculated on prior-year-end balance; typically the account grows throughout the year before the RMD deadline); code inspection.
+
+**What it does:** Each year the loop: (1) computes RMD on `currentBalance`, (2) deducts RMD from `currentBalance`, then (3) applies 12 months of growth to the post-RMD balance.
+
+**Finding:** The IRS-prescribed RMD for year N is computed on the December 31 balance of year N−1. The account then grows during year N, and the RMD must be distributed by December 31 of year N (April 1 of year N+1 for the first RMD). By deducting the RMD *before* applying the full year's growth, the model implicitly assumes the RMD is taken at the start of the year, which understates the growth on the RMD proceeds and slightly understates the projected balance in subsequent years. A more accurate model would: (a) apply full-year growth, (b) compute RMD on the year-start balance (which equals last year's ending balance), then (c) deduct the RMD. The error is modest in magnitude — for a $1M balance at 6% annual return, the "beginning of year" model distributes the RMD ~$2,400 earlier than midpoint-withdrawal, reducing the next year's starting balance by a few hundred dollars — but it accumulates over a 20-year projection.
+
+**Evidence / repro:** Loop structure (rmd.go:138–148):
+```go
+currentBalance -= rmdAmount   // RMD deducted first
+if currentBalance < 0 { currentBalance = 0 }
+// then full-year growth applied to post-RMD balance
+for m := 0; m < 12; m++ {
+    currentBalance *= (1 + monthlyReturn)
+}
+```
+
+A corrected flow: apply growth first (or split into half-year pre/post RMD), then deduct RMD, then apply remaining growth.
+
+**Recommended fix sketch:** Apply the full year's growth to the starting balance, then compute and deduct the RMD. This matches the IRS model where the account balance at year-end (post-growth) is the basis for the following year's RMD, and the current year's RMD is withdrawn after that year's growth has occurred.
+
+**Test coverage note:** No existing test validates the sequencing of growth vs. RMD withdrawal. The `TestCalculateRMDAnalysis` subtests check shape/direction of results but not the precise per-year trajectory.
+
+### F-036 — MEDIUM `CalculateRMDAnalysis`: test coverage gaps across multiple boundaries
+
+**Location:** `internal/services/retirement/rmd.go:87` — `CalculateRMDAnalysis`; `rmd_tax_test.go:10`; `calculator_coverage_test.go:183`
+
+**Source consulted:** Code inspection of `rmd_tax_test.go` and `calculator_coverage_test.go`.
+
+**What it does:** `CalculateRMDAnalysis` projects RMDs over a multi-year horizon. Existing tests cover: age 65 (8 years to RMD), age 75 (already past), spouse older age, zero investment return, zero portfolio.
+
+**Finding:** The following boundaries are not exercised:
+
+| Boundary | Concern |
+|----------|---------|
+| `GetLifeExpectancyFactor(72)` called directly | Returns non-zero RMD for a pre-SECURE-2.0 boundary age — no test |
+| `CalculateRMD` with age 72 directly | Can produce a non-zero RMD at a legally ambiguous age |
+| `CalculateRMD` with negative balance | Returns negative RMD (see F-034) |
+| Projection crossing year 2033 for a user below age 73 | SECURE 2.0 age-75 transition never validated (see F-032) |
+| Age > 120 in `CalculateRMDAnalysis` | The `GetLifeExpectancyFactor` fallback (2.0) is used but no test projects to age 120+ |
+| `ProjectionYears` that would generate > 20 RMD rows | The `rmdCount < 20` cap is untested — a very young entrant with a long projection period would silently cap at 20 rows |
+| Spouse younger by more than 10 years | IRS Table II (Joint Life and Last Survivor table) should be used instead of Table III — not modeled at all (informational; separate from `CalculateRMDAnalysis` scope) |
+
+**Recommended fix sketch:** Add tests for: (a) direct `GetLifeExpectancyFactor(72)` and `CalculateRMD(balance, 72)` edge, (b) negative balance in `CalculateRMD`, (c) a projection that hits the 20-RMD cap, (d) a projection that reaches age 121 to confirm the 2.0 fallback propagates correctly through the full loop.
+
+**Test coverage note:** See table above for untested boundaries.
 
 ## 5. Present value & monthly compounding
 
@@ -1582,3 +1751,108 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 **Recommended fix sketch:** Add a comment explaining the rationale for the `ClaimAge` tiebreaker.
 
 **Test coverage note:** `isBetterSSPortfolioOption` and `bestSSPortfolioOption` are not directly unit-tested; the `MedianEndingBalance` and `ClaimAge` tiebreakers are never exercised in isolation.
+
+### F-032 — MEDIUM `RMDStartAge` is a single constant; does not model SECURE 2.0 age-75 transition in 2033
+
+**Location:** `internal/services/retirement/rmd.go:6` — `RMDStartAge` constant; `rmd.go:97`, `rmd.go:120` — call sites in `CalculateRMDAnalysis`
+
+**Source consulted:** SECURE 2.0 Act of 2022 (§107): RMD start age 73 for taxpayers turning 73 in 2023–2032; age 75 for taxpayers turning 75 in 2033 or later.
+
+**What it does:** `RMDStartAge = 73` is used both to compute `startsInYears` (rmd.go:97) and as the loop guard (rmd.go:120). It is a compile-time constant with no year-dependent logic.
+
+**Finding:** For a user who is, for example, age 60 today (2026), the planner will incorrectly show RMDs beginning at age 73 (year 2039), when SECURE 2.0 will actually defer them until age 75 (year 2041). Any projection that crosses the 2033 boundary for a user who has not yet turned 73 will over-report required withdrawals for 2033–2041 and will under-report the 2-year additional tax-deferred accumulation window. This is a systematic planning error for younger retirement scenarios.
+
+**Evidence / repro:** A user currently age 60 viewing the What-If RMD panel will see "RMDs begin in 13 years (at age 73, year 2039)." Correct answer under SECURE 2.0: RMDs begin at age 75 (year 2041), because this user turns 75 in 2041 which is ≥ 2033.
+
+**Recommended fix sketch:** Replace the single constant with a function `rmdStartAge(birthYear int) int` returning 73 if `birthYear + 73 < 2033` (i.e., if they turn 73 before 2033) and 75 otherwise. Pass the projected birth year (derived from current year minus current age) when computing `startsInYears` and when entering the RMD projection loop.
+
+**Test coverage note:** No test covers a user whose RMD start age under SECURE 2.0 is 75. The existing tests (age 60, 65, 70, 72, 75) either already past RMD start or start at 73 with no cross-2033 validation.
+
+### F-033 — MEDIUM `GetLifeExpectancyFactor`: age 72 is in the table but `CalculateRMDAnalysis` skips it; age below 72 returns 0 silently
+
+**Location:** `internal/services/retirement/rmd.go:64` — `GetLifeExpectancyFactor`; `rmd.go:120` — caller guard `if age >= RMDStartAge`
+
+**Source consulted:** IRS Pub 590-B Appendix B Table III; code inspection.
+
+**What it does:** `GetLifeExpectancyFactor(age int)` returns 0 for age < 72, returns the table value for ages 72–120, and returns 2.0 for ages > 120.
+
+**Finding (two sub-issues):**
+
+1. **Age 72 is in the table but is unreachable via `CalculateRMDAnalysis`**: The loop guard at rmd.go:120 is `age >= RMDStartAge` (i.e., `>= 73`), which is correct under SECURE 2.0. The factor for age 72 (27.4) is stored in the map but `CalculateRMDAnalysis` will never return a projection row at age 72. However, `CalculateRMD(balance, 72)` called directly returns a non-zero RMD, which could mislead future callers.
+
+2. **Age below 72 returns 0 silently**: No comment or error signals the caller that a factor of 0 means "below start age" vs. "lookup error."
+
+**Evidence / repro:** Verified by temp test:
+```
+GetLifeExpectancyFactor(71) = 0.0000   // below table — returns 0
+GetLifeExpectancyFactor(72) = 27.4000  // in table, never triggered by CalculateRMDAnalysis
+CalculateRMD(1_000_000, 72) = (36496.35, 3.65%)  // callable, non-zero
+```
+
+**Recommended fix sketch:** Consider returning a second `bool` `ok` parameter from `GetLifeExpectancyFactor`, or guard `CalculateRMD` against ages below `RMDStartAge` in addition to the zero-factor guard. At minimum, document the age-72 dead entry.
+
+**Test coverage note:** `GetLifeExpectancyFactor(72)` and `CalculateRMD(balance, 72)` are not tested. `TestGetLifeExpectancyFactor` covers only ages 60, 73, and 125.
+
+### F-034 — LOW `CalculateRMD`: negative balance produces a negative RMD amount with no guard
+
+**Location:** `internal/services/retirement/rmd.go:76` — `CalculateRMD`
+
+**Source consulted:** IRS Pub 590-B (RMD is always non-negative); code inspection.
+
+**What it does:** Computes `amount = taxDeferredBalance / factor`. No guard against negative input.
+
+**Finding:** A negative balance is semantically impossible but the exported function does not guard against it, returning a negative RMD silently. `CalculateRMDAnalysis` clamps `currentBalance` to 0 before calling `CalculateRMD` in its loop (rmd.go:140–142), so this is not reachable via the normal analysis path. However, it is a latent hazard for future callers.
+
+**Evidence / repro:** Verified by temp test:
+```
+CalculateRMD(-100000, 73): amount=-3773.5849  pct=3.7736
+```
+
+**Recommended fix sketch:** Add `if taxDeferredBalance <= 0 { return 0, 0 }` at the top of `CalculateRMD`.
+
+**Test coverage note:** No existing test passes a negative balance to `CalculateRMD`.
+
+### F-035 — MEDIUM `CalculateRMDAnalysis`: RMD deducted before year-end growth is applied; order is economically aggressive
+
+**Location:** `internal/services/retirement/rmd.go:138–148` — growth/withdrawal ordering in `CalculateRMDAnalysis`
+
+**Source consulted:** IRS Pub 590-B (RMD calculated on prior-year-end balance; account grows during year N before RMD deadline); code inspection.
+
+**What it does:** Each projection year: (1) computes RMD on `currentBalance`, (2) deducts RMD, (3) applies 12 months of growth to post-RMD balance.
+
+**Finding:** The IRS-prescribed RMD for year N is computed on the December 31 balance of year N−1. The account then grows during year N, and the distribution is due by December 31 of year N. By deducting the RMD before applying the full year's growth, the model assumes distribution at year-start, understating subsequent projected balances. The error accumulates over long projections.
+
+**Evidence / repro:**
+```go
+currentBalance -= rmdAmount          // RMD deducted first
+if currentBalance < 0 { currentBalance = 0 }
+for m := 0; m < 12; m++ {
+    currentBalance *= (1 + monthlyReturn)   // growth on post-RMD balance only
+}
+```
+
+**Recommended fix sketch:** Apply full-year growth to the year-start balance first, then compute and deduct the RMD. This matches the IRS model where the RMD is based on the prior-year-end balance, and the distribution is made from the account that has already grown.
+
+**Test coverage note:** No test validates the per-year balance trajectory precisely enough to catch this sequencing issue.
+
+### F-036 — MEDIUM `CalculateRMDAnalysis`: multiple test-coverage gaps
+
+**Location:** `internal/services/retirement/rmd.go:87` — `CalculateRMDAnalysis`; `rmd_tax_test.go:10`; `calculator_coverage_test.go:183`
+
+**Source consulted:** Code inspection of all RMD-related test files.
+
+**What it does:** Projects RMDs over a multi-year horizon. Existing tests cover ages 65, 72, 75, spouse-older scenario, zero return, zero portfolio.
+
+**Finding:** Untested boundaries:
+
+| Boundary | Concern |
+|----------|---------|
+| `GetLifeExpectancyFactor(72)` / `CalculateRMD(balance, 72)` directly | Returns non-zero RMD for pre-SECURE-2.0 boundary age |
+| `CalculateRMD` with negative balance | Returns negative RMD (see F-034) |
+| Projection crossing 2033 for user below age 73 | SECURE 2.0 age-75 transition not validated (see F-032) |
+| Projection reaching age 121+ | Fallback factor 2.0 used but never validated in a full loop |
+| `ProjectionYears` triggering > 20 RMD rows | The `rmdCount < 20` cap is untested |
+
+**Recommended fix sketch:** Add tests for each row above. The 20-row cap and the age-72 direct-call path are especially low-cost to add.
+
+**Test coverage note:** See table above.

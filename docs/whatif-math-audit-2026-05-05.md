@@ -1402,7 +1402,243 @@ if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 
 ## 7. Taxable account, allocation, and tax-aware withdrawals
 
-_Filled in by Task 7._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `newTaxableAccountState` | `calculator.go:445` | PASS |
+| `taxableAccountState.syncAssumptions` | `calculator.go:457` | PASS |
+| `taxableAccountState.addCash` | `calculator.go:464` | PASS |
+| `taxableAccountState.withdraw` | `calculator.go:472` | PASS (F-045) |
+| `buildTaxableReturnComponents` | `calculator.go:498` | PASS (F-046) |
+| `taxableAccountState.applyGrowth` | `calculator.go:511` | PASS |
+| `expectedTaxableMonthlyCashFlow` | `calculator.go:540` | PASS |
+| `projectionTimingGrowthFractions` | `calculator.go:594` | PASS (F-047) |
+| `fractionalMonthlyReturn` | `calculator.go:605` | PASS (cross-ref Task 5) |
+| `executeTaxAwarePortfolioMonth` | `calculator.go:630` | PASS (F-048) |
+| `executePortfolioCashFlowWithTaxableState` | `calculator.go:784` | PASS (F-048) |
+| `reinvestRequiredRMDToTaxableState` | `calculator.go:748` | PARTIAL (F-049) |
+| `applyBigTicketExpenseWithTaxableState` | `calculator.go:759` | PASS (F-050) |
+| `taxDeferredDelayActive` | `calculator.go:821` | PASS (F-051) |
+| `shortfallIsTemporaryDueToDelay` | `calculator.go:825` | PASS (F-051) |
+| `earlyWithdrawalPenaltyRate` | `calculator.go:836` | PASS (F-050) |
+| `GetEffectiveAssetAllocation` | `models/whatif.go:533` | PASS |
+| `GetTaxDeferredAllocation` | `models/whatif.go:569` | PASS |
+| `GetRothAllocation` | `models/whatif.go:586` | PASS |
+| `GetTaxableAllocation` | `models/whatif.go:603` | PASS |
+| `GlidePathStockPct` | `models/whatif.go:646` | PASS (F-052) |
+| `GetAllocationAtYear` | `models/whatif.go:662` | PASS |
+| `GetBlendedReturn` | `models/whatif.go:689` | PASS |
+| `GetExpectedReturnFromAllocation` | `models/whatif.go:697` | PASS |
+
+### Conventions used by the planner
+
+**Cost-basis convention:** Pro-rata (average cost). When `withdraw(amount)` is called on a `taxableAccountState`, the basis reduction is `costBasis × (min(amount, marketValue) / marketValue)`. The entire position is treated as one lot with a blended average cost per share. FIFO and specific-identification are not modeled.
+
+**Withdrawal ordering:** The standard tax-aware order inside `withdrawForExpenses` is:
+1. RMDs from tax-deferred (first, regardless of other sources)
+2. Taxable account (brokerage)
+3. Roth (tax-free)
+4. Tax-deferred (non-RMD), if `allowTaxDeferred = true` and still not met
+
+`applyBigTicketExpenseWithTaxableState` uses: taxable → Roth → tax-deferred (same relative priority for big-ticket items).
+
+When `taxDeferredDelayActive(s, currentYear)` is true, tax-deferred withdrawals (step 4) are blocked; the resulting shortfall is flagged as temporary.
+
+**Projection-timing modes:** `projectionTimingGrowthFractions` returns `(before, after)` fractions for applying growth within a month:
+- `ProjectionTimingStartOfMonth`: `(0, 1)` — expenses precede growth
+- `ProjectionTimingMidMonth`: `(0.5, 0.5)` — half growth before, half after
+- `ProjectionTimingEndOfMonth` (default): `(1, 0)` — full growth before expenses
+
+**Glide-path interpolation:** `GlidePathStockPct(year)` returns the stock percentage at projection year `year` via linear interpolation: `StartStockPct + (year / TransitionYears) × (EndStockPct − StartStockPct)`. Held at `StartStockPct` for `year ≤ 0` and at `EndStockPct` for `year ≥ TransitionYears`. Glide path applies a common stock target to all three account types (tax-deferred, Roth, taxable), preserving each account's cash percentage and absorbing the difference into bonds.
+
+**Cash allocation:** There is no separate bond bucket field — bond percentage is computed as `100 − stock − cash`. The three-way split (stock, bond, cash) is fully determined by two stored fields (`StockPercent`, `CashPercent`) at the global level or (`TaxDeferredStockPercent`, `TaxDeferredCashPercent`) at the per-account level.
+
+**Early withdrawal penalty:** `earlyWithdrawalPenaltyRate` returns 0.10 when `currentAge + currentYear < 60`, else 0. The code comment acknowledges this uses age 60 as a proxy for 59½ because the model operates in whole-year steps. See F-050 for the boundary nuance.
+
+**Dividend reinvestment:** Dividends and cap-gains distributions returned by `applyGrowth` (pre- or post-expense fractions) are handled differently: "before" dividends reduce the amount needed from the portfolio (they fund expenses); "after" dividends are reinvested into the taxable account via `addCash` (increasing both `MarketValue` and `CostBasis` by the distribution amount). This is correct for a dividend-reinvestment assumption.
+
+### Worked examples
+
+#### WE-7.1: Pro-rata cost basis withdrawal
+
+Initial state: `MarketValue = $200,000`, `CostBasis = $100,000`. Call `withdraw(50,000)`.
+
+| Step | Expected | Actual |
+|------|----------|--------|
+| cash = min(50000, 200000) | $50,000.00 | $50,000.00 ✓ |
+| basisReduction = 100000 × (50000/200000) | $25,000.00 | $25,000.00 ✓ |
+| realizedGain = 50000 − 25000 | $25,000.00 | $25,000.00 ✓ |
+| new CostBasis = 100000 − 25000 | $75,000.00 | $75,000.00 ✓ |
+| new MarketValue = 200000 − 50000 | $150,000.00 | $150,000.00 ✓ |
+
+Delta on all values: $0.00. Convention: pro-rata (average cost).
+
+#### WE-7.2: Return component sum
+
+Inputs: `totalAnnualReturn = 7%`, `TaxableDividendYield = 2%`, `TaxableQualifiedDividendPercent = 85%`, `TaxableCapitalGainsDistributionRate = 0.5%`.
+
+| Component | Monthly rate |
+|-----------|-------------|
+| Qualified dividend | `(1.017)^(1/12) − 1 = 0.001406` |
+| Non-qualified dividend | `(1.003)^(1/12) − 1 = 0.000250` |
+| Capital gains distribution | `(1.005)^(1/12) − 1 = 0.000416` |
+| Appreciation (residual) | `totalMonthly − sum of above = 0.003583` |
+| **Sum** | **= totalMonthly = `(1.07)^(1/12) − 1 = 0.005654`** |
+
+Delta from `totalMonthlyReturn`: 0.0 (exact by construction — Appreciation is the residual). Verified within ±1e-9.
+
+Note: The components are NOT additive in annual percentage terms due to compounding non-linearity. The monthly-compounding approach keeps the sub-components consistent with the total monthly compounding of the portfolio.
+
+#### WE-7.3: Big-ticket pre-59½ penalty
+
+Inputs: `amount = $10,000`, `allowTaxDeferred = true`, `earlyPenaltyRate = 0.10`, taxable balance = 0, Roth = 0, tax-deferred = $50,000.
+
+| Step | Value |
+|------|-------|
+| effectiveFactor = 1 − 0.10 | 0.90 |
+| grossNeeded = 10,000 / 0.90 | $11,111.11 |
+| fromTaxDeferred = min(11111.11, 50000) | $11,111.11 |
+| net to spending = 11111.11 × 0.90 | $10,000.00 |
+| remaining need after | $0.00 |
+| taxDeferred remaining | $38,888.89 |
+
+Convention: the code draws the **gross** amount from tax-deferred (including the penalty portion), and only the net `(gross × effectiveFactor)` counts toward meeting the spending need. The penalty is the difference (`grossDrawn − net`). The $10,000 net need is met exactly.
+
+#### WE-7.4: Glide-path interpolation
+
+Inputs: `StartStockPct = 80`, `EndStockPct = 40`, `TransitionYears = 20`.
+
+| Year | Formula | Expected | Actual |
+|------|---------|----------|--------|
+| 0 | held at start | 80.0 | 80.0 ✓ |
+| 5 | 80 + (5/20)(40−80) = 80 − 10 | 70.0 | 70.0 ✓ |
+| 10 | 80 + (10/20)(40−80) = 80 − 20 | 60.0 | 60.0 ✓ |
+| 20 | at end | 40.0 | 40.0 ✓ |
+| 25 | held at end | 40.0 | 40.0 ✓ |
+
+All values match expected within ±1e-9.
+
+### Findings
+
+#### F-045 — LOW `taxableAccountState.withdraw`: W=Y exact boundary and zero-gain boundary not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:472` — `taxableAccountState.withdraw`
+**Source consulted:** Code inspection; `coverage_gaps_test.go:168–196`; `calculator_test.go:1393`.
+**What it does:** Withdraws up to `amount` from the account using pro-rata average-cost basis. Returns `(cash, basisReduction, realizedGain)`.
+**Finding:** The following boundary cases are not covered by any test:
+1. **W = Y exactly** (withdraw exactly the market value): the `a.MarketValue <= 0` clamp at line 485 would fire, clearing both `MarketValue` and `CostBasis` to 0. `TestWithdraw_FullDepletion` tests W > Y (over-withdraw clips to Y) but not W == Y. The exact-equality case is mathematically identical to the over-withdraw case here (both set CostBasis to 0) but the code path differs: `cash = math.Min(Y, Y) = Y`, then the `MarketValue <= 0` branch fires after subtracting. No test exercises this with W == Y exactly.
+2. **Zero unrealized gain** (CostBasis == MarketValue, e.g., newly purchased asset): withdraw should produce `realizedGain = 0`. Neither `coverage_gaps_test.go` nor `calculator_test.go` has a case with `CostBasis == MarketValue` and a positive withdrawal. The pro-rata formula yields `basisReduction = CostBasis × (W/Y) = W` and `realizedGain = W − W = 0`, which is correct, but untested.
+**Evidence / repro:** `TestWithdraw_FullDepletion` uses `W=10000 > Y=5000`. No test uses `W=5000 == Y=5000`. `TestTaxableAccountWithdrawUsesAverageCostBasis` uses MV=120000 CB=100000 (gain present).
+**Recommended fix sketch:** Add two cases to the existing `TestWithdraw_*` group: (a) `MarketValue=5000, CostBasis=5000, withdraw(5000)` → `realizedGain=0, newBasis=0, cash=5000`; (b) same but with cost basis below market value and W=Y.
+**Test coverage note:** The `a.MarketValue <= 0` zeroing branch (line 485–488) is only exercised via over-withdrawal, not exact-equality withdrawal.
+
+---
+
+#### F-046 — LOW `buildTaxableReturnComponents`: negative-appreciation scenario not tested
+
+**Location:** `internal/services/retirement/calculator.go:498` — `buildTaxableReturnComponents`
+**Source consulted:** Code inspection; `coverage_gaps_test.go:202–225`.
+**What it does:** Decomposes total annual return into four monthly components: appreciation (residual), qualified dividends, non-qualified dividends, and capital gains distributions. Appreciation is defined as `totalMonthlyReturn − qualifiedDividendMonthly − nonQualifiedDividendMonthly − capitalGainsDistributionMonthly`, guaranteeing the sum equals `totalMonthlyReturn` exactly.
+**Finding:** The formula is correct by construction: the sum of all four components always equals `totalMonthlyReturn` within floating-point precision. However, if `dividendYield + capitalGainsDistributionRate > totalAnnualReturnPercent`, the `Appreciation` component becomes negative. This is plausible in a down market (e.g., total return = 2%, dividends = 3%) and would cause `applyGrowth` to apply a negative appreciation factor (reducing `MarketValue`). No test exercises this scenario. The math is correct but the downstream behavior (MarketValue declines despite positive dividends being paid out) is the correct economic picture and should be documented.
+**Evidence / repro:** `buildTaxableReturnComponents(2.0, s)` with `TaxableDividendYield=3.0, TaxableCapitalGainsDistributionRate=0.5` would yield `Appreciation < 0`. No test covers this combination.
+**Recommended fix sketch:** Add a test: `totalReturn=2%, dividendYield=3%, capGains=0.5%` → assert `Appreciation < 0`; assert sum of all components equals total monthly return; assert `applyGrowth` produces negative `TotalGrowth` (correct behavior).
+**Test coverage note:** The negative-appreciation path of `applyGrowth` is tested in `TestApplyGrowth_NegativeMarketValueClamp` (using an artificial extreme), but not via `buildTaxableReturnComponents` with economically plausible inputs.
+
+---
+
+#### F-047 — LOW `projectionTimingGrowthFractions`: never directly tested; MidMonth path not covered
+
+**Location:** `internal/services/retirement/calculator.go:594` — `projectionTimingGrowthFractions`
+**Source consulted:** Code inspection; `calculator_test.go:1474`; `backtest_test.go:269`.
+**What it does:** Maps a `ProjectionTiming` enum to `(before, after)` fractions for growth allocation: StartOfMonth → (0,1), MidMonth → (0.5,0.5), EndOfMonth (default) → (1,0).
+**Finding:** `projectionTimingGrowthFractions` is never called directly in any test. It is exercised indirectly through `executeTaxAwarePortfolioMonth` in the end-to-end projection tests. `TestProjectionTimingAffectsDeterministicAndMonteCarloResults` exercises all three timing modes at the projection level but does not assert the specific `(before, after)` return values. The exact (0,1), (0.5,0.5), (1,0) outputs are not directly verified. Additionally, the `default` case (which covers EndOfMonth and any invalid value) returns `(1, 0)` — the behavior for an invalid/unknown timing string is untested.
+**Evidence / repro:** `grep "projectionTimingGrowthFractions" *_test.go` returns no results in the test files.
+**Recommended fix sketch:** Add `TestProjectionTimingGrowthFractions` with cases: `StartOfMonth → (0,1)`, `MidMonth → (0.5,0.5)`, `EndOfMonth → (1,0)`, and an invalid string → `(1,0)` (default). Each case should assert both the `before` and `after` values.
+**Test coverage note:** All three enum branches and the default fallback are dark from a direct-assertion perspective.
+
+---
+
+#### F-048 — LOW `executeTaxAwarePortfolioMonth` / `executePortfolioCashFlowWithTaxableState`: taxable basis tracking in the re-undo pattern not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:630` — `executeTaxAwarePortfolioMonth`; `:784` — `executePortfolioCashFlowWithTaxableState`
+**Source consulted:** Code inspection; `calculator_test.go:1412`; `coverage_gaps_test.go`.
+**What it does:** `executePortfolioCashFlowWithTaxableState` calls `withdrawForExpenses` (which deducts from `taxable.MarketValue` directly, bypassing basis tracking), then undoes and redoes the taxable withdrawal via `taxable.withdraw()` to restore correct basis tracking. `executeTaxAwarePortfolioMonth` wraps the full iterative tax convergence loop.
+**Finding:** The undo/redo pattern for taxable withdrawals (lines 795–801) is correct but fragile: if `withdrawForExpenses` deducts `W` from `taxable.MarketValue`, and then the code adds `W` back and calls `taxable.withdraw(W)`, the net effect on `MarketValue` is correct. However, this pattern is not directly unit-tested — no test calls `executePortfolioCashFlowWithTaxableState` with a taxable account that has unrealized gains and verifies that the realized-gain field is populated correctly by the undo/redo path. The integration test `TestRunProjectionTaxableSalesOfBasisRemainUntaxed` covers the end-to-end projection with zero basis appreciation, which does not exercise the undo/redo with actual unrealized gains.
+**Evidence / repro:** `TestRunProjectionTaxableSalesOfBasisRemainUntaxed` sets `CostBasis = MarketValue` (no unrealized gain), so `realizedGain = 0` throughout and the undo/redo path produces zero `TaxableRealizedGain`. A scenario with `CostBasis < MarketValue` and a taxable withdrawal in the same month is not directly tested at the `executePortfolioCashFlowWithTaxableState` level.
+**Recommended fix sketch:** Add a unit test calling `executePortfolioCashFlowWithTaxableState` directly with a taxable account having market value $100K and cost basis $60K, neededFromPortfolio=$20K, RMD=0, no Roth, no tax-deferred. Verify `TaxableRealizedGain = 20K × (40K/100K) = $8,000`.
+**Test coverage note:** The undo/redo realized-gain path is verified at the end-to-end level only with zero-gain scenarios. The path with nonzero unrealized gains is not covered at the unit level.
+
+---
+
+#### F-049 — MEDIUM `reinvestRequiredRMDToTaxableState`: reinvests pre-tax RMD amount; basis overstated by tax liability
+
+**Location:** `internal/services/retirement/calculator.go:748` — `reinvestRequiredRMDToTaxableState`
+**Source consulted:** IRS Pub 550 §Cost Basis; IRC § 72 (RMD tax treatment); code inspection.
+**What it does:** When an RMD must be taken but the cash is not needed for expenses, withdraws the RMD from tax-deferred and reinvests it in the taxable account via `taxable.addCash(rmdWithdrawal)`. The `addCash` method increases both `MarketValue` and `CostBasis` by the full RMD amount.
+**Finding:** The RMD is fully taxable ordinary income (IRC § 72). The investor's actual net-of-tax amount deposited into the taxable brokerage account is `rmdWithdrawal × (1 − effectiveTaxRate)`. The code reinvests the **pre-tax** RMD and records the full pre-tax amount as the new cost basis. This overstates the cost basis by the tax owed on the RMD. Over many years with forced RMDs, the cumulative overstatement of basis reduces future realized-gain calculations, understating taxable capital gains on later taxable-account withdrawals. The tax on the RMD itself is captured separately in the iterative tax convergence loop, so income tax is not double-counted — but the cost basis of the reinvested amount reflects gross rather than net-of-tax dollars.
+
+**Evidence / repro:**
+```
+RMD = $10,000, effective tax rate = 25%
+After-tax reinvested = $7,500
+Code sets: MarketValue += 10,000; CostBasis += 10,000
+Correct:    MarketValue += 7,500 (or 10,000); CostBasis += 7,500
+```
+If the $10,000 is later withdrawn at the same market value: code computes realizedGain = 10,000 − 10,000 = $0; correct answer = 10,000 − 7,500 = $2,500 gain (the appreciation on the after-tax amount). The cost-basis overstatement reduces future capital gains by $2,500 per $10,000 RMD reinvested. At a 15% LTCG rate, the under-collected tax is $375 per $10,000 reinvested RMD.
+
+**Recommended fix sketch:** Pass the effective tax rate into `reinvestRequiredRMDToTaxableState` (or compute it at the call site from `taxesPaid / grossIncome`) and call `taxable.addCash(rmdWithdrawal × (1 − effectiveTaxRate))` to set basis equal to the net-of-tax amount. Alternatively, use `taxable.MarketValue += rmdWithdrawal` (preserve market value at gross for growth purposes) but `taxable.CostBasis += rmdWithdrawal × (1 − effectiveTaxRate)`.
+**Test coverage note:** `reinvestRequiredRMDToTaxableState` is never called directly in any test. Its behavior is exercised only indirectly through the full projection path, where the long-term cost-basis distortion is not measured.
+
+---
+
+#### F-050 — LOW `earlyWithdrawalPenaltyRate`: age-60 proxy overstates penalty window by up to 6 months; boundary at exactly 59 in final year untested
+
+**Location:** `internal/services/retirement/calculator.go:836` — `earlyWithdrawalPenaltyRate`
+**Source consulted:** IRC § 72(t)(2)(A)(i); code comment.
+**What it does:** Returns 0.10 when `currentAge + currentYear < 60`, else 0. The comment explicitly states this uses age 60 as a proxy for 59½ since the model operates in whole-year steps.
+**Finding:** IRC § 72(t) exempts distributions made after the participant reaches age 59½. The code exempts distributions when `currentAge + currentYear ≥ 60`, meaning the penalty is charged throughout projection year Y when `currentAge + Y = 59`. A person who turns 59.5 partway through that year (6 months in) incurs the penalty for the remaining 6 months of that year when no penalty is legally required. The over-penalty window is at most 6 months × `monthlyWithdrawal × 10%`. For a $3,000/month withdrawal, the maximum over-assessment per affected year is $1,800 (6 months × $300). The code comment acknowledges this approximation. No direct test exercises `earlyWithdrawalPenaltyRate(59, 0)` or the boundary transition year (`earlyWithdrawalPenaltyRate(59, 1) == 0`).
+**Evidence / repro:**
+```go
+earlyWithdrawalPenaltyRate(59, 0)  // → 0.10 (correct: age 59 in year 0)
+earlyWithdrawalPenaltyRate(59, 1)  // → 0  (correct: age 60 in year 1)
+earlyWithdrawalPenaltyRate(58, 1)  // → 0.10 (correct: age 59 in year 1)
+// Not tested: earlyWithdrawalPenaltyRate(60, 0) → 0
+// Not tested: earlyWithdrawalPenaltyRate(59, 0) → 0.10
+```
+**Recommended fix sketch:** Add `TestEarlyWithdrawalPenaltyRate` with table-driven cases: `(59,0)→0.10`, `(59,1)→0.00`, `(58,1)→0.10`, `(60,0)→0.00`, `(0,0)→0.10`. Add a code comment quantifying the 6-month over-penalty approximation.
+**Test coverage note:** `earlyWithdrawalPenaltyRate` is never called directly in any test. The exact boundary at `currentAge+currentYear = 59` (last year of penalty) and `= 60` (first exempt year) are untested.
+
+---
+
+#### F-051 — LOW `taxDeferredDelayActive` / `shortfallIsTemporaryDueToDelay`: never directly tested
+
+**Location:** `internal/services/retirement/calculator.go:821` — `taxDeferredDelayActive`; `:825` — `shortfallIsTemporaryDueToDelay`
+**Source consulted:** Code inspection; `calculator_delay_test.go`.
+**What it does:** `taxDeferredDelayActive` returns true when the delay feature is enabled and `currentYear < TaxDeferredDelayYears`. `shortfallIsTemporaryDueToDelay` returns true when there is a shortfall, tax-deferred is not allowed this year, and the tax-deferred balance is nonzero (meaning the shortfall is temporary — once the delay period ends, funds are available).
+**Finding:** Neither function is called directly in any test. They are exercised indirectly via the full projection in `calculator_delay_test.go`. Specific boundary cases not tested:
+1. `taxDeferredDelayActive`: `TaxDeferredDelayYears=0` (disabled — should return false). `currentYear == TaxDeferredDelayYears` (boundary year — should return false, delay has ended). Negative `TaxDeferredDelayYears` (should return false).
+2. `shortfallIsTemporaryDueToDelay`: all three conditions simultaneously true is tested indirectly, but the false branches (shortfall=0, or allowTaxDeferred=true, or taxDeferredBalance=0) are not directly asserted.
+**Evidence / repro:** `grep "taxDeferredDelayActive\|shortfallIsTemporaryDueToDelay" *_test.go` returns no results.
+**Recommended fix sketch:** Add `TestTaxDeferredDelayActive` with cases: delay=0 → false; delay=5 year=4 → true; delay=5 year=5 → false; delay=5 year=6 → false. Add `TestShortfallIsTemporaryDueToDelay` with the four logical combinations.
+**Test coverage note:** Both functions are fully dark from a direct-test perspective.
+
+---
+
+#### F-052 — LOW `GlidePathStockPct`: negative-year path and `TransitionYears=0` guard not directly tested
+
+**Location:** `internal/models/whatif.go:646` — `GlidePathStockPct`
+**Source consulted:** Code inspection; `internal/models/allocation_test.go:79`.
+**What it does:** Returns the glide-path stock percentage at a given projection year. Returns −1 if glide path is disabled or `TransitionYears ≤ 0`. Clips to `StartStockPct` for `year ≤ 0` and to `EndStockPct` for `year ≥ TransitionYears`.
+**Finding:** `TestGlidePathStockPct` covers year=0 (start boundary), year=10 (mid), year=20 (at end), year=30 (past end), and disabled (`Enabled=false`). Missing cases:
+1. **year < 0**: the `year ≤ 0` guard at line 653 covers this, but no test asserts `GlidePathStockPct(-1) == StartStockPct`. The guard is exercised by the year=0 case but the negative sub-case is dark.
+2. **`TransitionYears = 0` with `Enabled = true`**: the guard `TransitionYears <= 0` at line 647 would return −1, but no test enables glide path and sets `TransitionYears=0`.
+3. **`GlidePath == nil` with access**: the nil guard is not tested directly (the disabled test uses `&WhatIfSettings{}` which has `GlidePath=nil` — this DOES exercise the nil guard ✓).
+**Evidence / repro:** Test "disabled returns -1" uses `s2 := &WhatIfSettings{}` with nil GlidePath → exercises nil guard. But no test uses enabled path with `year=-1` or `TransitionYears=0`.
+**Recommended fix sketch:** Add subtest `year -5 returns StartStockPct` to `TestGlidePathStockPct`. Add subtest `TransitionYears=0, Enabled=true → returns -1`.
+**Test coverage note:** The `year < 0` sub-case of the `year ≤ 0` branch is dark (year=0 exercises the branch but not the negative sub-range).
 
 ## 8. Roth conversion math
 
@@ -2279,3 +2515,99 @@ if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 **Evidence / repro:** The "with spending phases enabled" and "discretionary expense gets phase multiplier" subtests both use `InflationRate = 0`.
 **Recommended fix sketch:** Extend "with spending phases enabled" subtest to use 3% inflation and verify at month 120 (phase boundary). Add a test for `PhaseAgeReference = "younger"` with a couple to confirm the correct person's age drives phase transitions.
 **Test coverage note:** Boundaries (a)–(d) above are absent.
+
+---
+
+### F-045 — LOW `taxableAccountState.withdraw`: W=Y exact boundary and zero-gain boundary not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:472` — `taxableAccountState.withdraw`
+**Source consulted:** Code inspection; `coverage_gaps_test.go:168–196`; `calculator_test.go:1393`.
+**What it does:** Withdraws up to `amount` from the account using pro-rata average-cost basis. Returns `(cash, basisReduction, realizedGain)`.
+**Finding:** Two boundary cases are not covered: (1) W=Y exactly — both `MarketValue` and `CostBasis` are zeroed by the `MarketValue <= 0` clamp after subtraction, but no test uses `withdraw(Y)` with W equal to Y; (2) zero unrealized gain (CostBasis == MarketValue) — the formula yields `realizedGain = 0` correctly but is untested.
+**Evidence / repro:** `TestWithdraw_FullDepletion` uses W=10000 > Y=5000; no test uses W=Y exactly. `TestTaxableAccountWithdrawUsesAverageCostBasis` uses MV=120000 CB=100000 (gain present).
+**Recommended fix sketch:** Add: (a) `MarketValue=5000, CostBasis=5000, withdraw(5000)` → `realizedGain=0, newBasis=0, cash=5000`; (b) `MarketValue=5000, CostBasis=3000, withdraw(5000)` → `realizedGain=2000, newBasis=0, cash=5000`.
+**Test coverage note:** The `a.MarketValue <= 0` zeroing branch (line 485–488) is only exercised via over-withdrawal, not exact-equality withdrawal.
+
+---
+
+### F-046 — LOW `buildTaxableReturnComponents`: negative-appreciation scenario not tested
+
+**Location:** `internal/services/retirement/calculator.go:498` — `buildTaxableReturnComponents`
+**Source consulted:** Code inspection; `coverage_gaps_test.go:202–225`.
+**What it does:** Decomposes total annual return into four monthly components. Appreciation is the residual after subtracting dividend and cap-gains distribution components; the sum of all four components always equals `totalMonthlyReturn` exactly.
+**Finding:** If `dividendYield + capitalGainsDistributionRate > totalAnnualReturnPercent`, the Appreciation component is negative (e.g., total return 2%, dividends 3%). This plausible scenario is not tested. The math is correct by construction, but the downstream behavior in `applyGrowth` (MarketValue decreases while dividends are still paid out) is not verified.
+**Evidence / repro:** No test calls `buildTaxableReturnComponents` with dividends exceeding total return.
+**Recommended fix sketch:** Add test: `totalReturn=2%, dividendYield=3%, capGains=0.5%` → assert `Appreciation < 0` and component sum equals total monthly return.
+**Test coverage note:** Negative-appreciation branch of `applyGrowth` exercised only with artificially extreme values, not via realistic inputs from `buildTaxableReturnComponents`.
+
+---
+
+### F-047 — LOW `projectionTimingGrowthFractions`: never directly tested; MidMonth exact values not verified
+
+**Location:** `internal/services/retirement/calculator.go:594` — `projectionTimingGrowthFractions`
+**Source consulted:** Code inspection; `calculator_test.go:1474`.
+**What it does:** Maps `ProjectionTiming` to `(before, after)` growth fractions: StartOfMonth → (0,1), MidMonth → (0.5,0.5), EndOfMonth → (1,0).
+**Finding:** Never called directly in tests. Integration tests exercise all three timing modes but do not assert the specific `(before, after)` pair. The default branch (EndOfMonth and any unknown value → (1,0)) is not explicitly verified.
+**Evidence / repro:** `grep "projectionTimingGrowthFractions" *_test.go` returns no direct calls.
+**Recommended fix sketch:** Add `TestProjectionTimingGrowthFractions`: StartOfMonth → (0,1), MidMonth → (0.5,0.5), EndOfMonth → (1,0), unknown string → (1,0).
+**Test coverage note:** All three enum branches and the default fallback are dark from a direct-assertion perspective.
+
+---
+
+### F-048 — LOW `executePortfolioCashFlowWithTaxableState`: undo/redo realized-gain path not directly tested with nonzero gain
+
+**Location:** `internal/services/retirement/calculator.go:784` — `executePortfolioCashFlowWithTaxableState`
+**Source consulted:** Code inspection; `calculator_test.go:1412`.
+**What it does:** Calls `withdrawForExpenses` (bypasses basis), then undoes/redoes the taxable withdrawal via `taxable.withdraw()` to populate `TaxableRealizedGain` correctly.
+**Finding:** The undo/redo pattern is correct but untested at the unit level with nonzero unrealized gains. The integration test `TestRunProjectionTaxableSalesOfBasisRemainUntaxed` uses zero unrealized gain (CostBasis = MarketValue), so `TaxableRealizedGain` is always 0 and the undo/redo path produces a trivial result.
+**Evidence / repro:** The end-to-end test sets `TaxableQualifiedDividendPercent=0, TaxableDividendYield=0, TaxableCapitalGainsDistributionRate=0` and buys at cost (no gain). The undo/redo math with `realizedGain > 0` is untested at the function level.
+**Recommended fix sketch:** Add unit test: taxable account MV=$100K, CB=$60K, neededFromPortfolio=$20K, no RMD, no Roth, no tax-deferred. Verify `TaxableRealizedGain = 20K × (40K/100K) = $8,000`.
+**Test coverage note:** Undo/redo path with nonzero unrealized gain is dark at the unit level.
+
+---
+
+### F-049 — MEDIUM `reinvestRequiredRMDToTaxableState`: reinvests pre-tax RMD; cost basis overstated by tax liability
+
+**Location:** `internal/services/retirement/calculator.go:748` — `reinvestRequiredRMDToTaxableState`
+**Source consulted:** IRS Pub 550 (cost basis); IRC § 72 (RMD tax treatment).
+**What it does:** Withdraws an unneeded RMD from tax-deferred and reinvests via `taxable.addCash(rmdWithdrawal)`, which sets `CostBasis += rmdWithdrawal` (pre-tax amount).
+**Finding:** The RMD is 100% taxable ordinary income. The investor's actual net-of-tax reinvested amount is `rmdWithdrawal × (1 − effectiveTaxRate)`. Recording the pre-tax RMD as cost basis overstates the basis, understating future realized gains on taxable withdrawals. The tax on the RMD is captured in the convergence loop (income tax is not double-counted), but the basis distortion reduces future LTCG by the tax amount.
+**Evidence / repro:** RMD=$10K, effectiveTaxRate=25%: code basis += $10K; correct basis += $7.5K. Later withdrawal: code realizedGain=$0; correct realizedGain=$2.5K (at 15% LTCG rate: $375 under-collected).
+**Recommended fix sketch:** Pass the effective tax rate to `reinvestRequiredRMDToTaxableState` and call `taxable.addCash(rmdWithdrawal × (1 − effectiveTaxRate))`.
+**Test coverage note:** `reinvestRequiredRMDToTaxableState` never called directly in tests; long-term basis distortion unmeasured.
+
+---
+
+### F-050 — LOW `earlyWithdrawalPenaltyRate`: age-60 proxy over-penalizes by up to 6 months; boundary not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:836` — `earlyWithdrawalPenaltyRate`
+**Source consulted:** IRC § 72(t)(2)(A)(i).
+**What it does:** Returns 0.10 when `currentAge + currentYear < 60`, else 0 — approximating the IRC 59½ threshold.
+**Finding:** Penalizes all withdrawals in the year when `currentAge + currentYear = 59`, even during the second half of that year when the participant is past 59½. Over-penalty window is at most 6 months per person. For $3,000/month withdrawal, maximum over-assessment is $1,800 per affected year. The approximation is intentional (documented in code comment), but the boundary transition is never directly tested.
+**Evidence / repro:** No test calls `earlyWithdrawalPenaltyRate` directly. `earlyWithdrawalPenaltyRate(59,0)→0.10` and `earlyWithdrawalPenaltyRate(59,1)→0.00` are not asserted.
+**Recommended fix sketch:** Add `TestEarlyWithdrawalPenaltyRate` with table-driven cases covering the boundary: `(59,0)→0.10`, `(59,1)→0.00`, `(60,0)→0.00`, `(58,1)→0.10`. Quantify the 6-month over-penalty in the code comment.
+**Test coverage note:** Function never called directly in tests; boundary at `sum=59` and `sum=60` is dark.
+
+---
+
+### F-051 — LOW `taxDeferredDelayActive` / `shortfallIsTemporaryDueToDelay`: never directly tested
+
+**Location:** `internal/services/retirement/calculator.go:821` — `taxDeferredDelayActive`; `:825` — `shortfallIsTemporaryDueToDelay`
+**Source consulted:** Code inspection; `calculator_delay_test.go`.
+**What it does:** `taxDeferredDelayActive` returns true while the delay period is active. `shortfallIsTemporaryDueToDelay` identifies shortfalls that will resolve when the delay ends.
+**Finding:** Neither function is directly tested. Key boundary cases unexercised: `TaxDeferredDelayYears=0` (disabled), `currentYear == TaxDeferredDelayYears` (boundary — should return false), and all logical branches of `shortfallIsTemporaryDueToDelay`.
+**Evidence / repro:** `grep "taxDeferredDelayActive\|shortfallIsTemporaryDueToDelay" *_test.go` returns no direct calls.
+**Recommended fix sketch:** Add `TestTaxDeferredDelayActive`: delay=0→false, delay=5 year=4→true, delay=5 year=5→false. Add `TestShortfallIsTemporaryDueToDelay` with four logical combinations.
+**Test coverage note:** Both functions are fully dark from direct-test perspective.
+
+---
+
+### F-052 — LOW `GlidePathStockPct`: negative-year and `TransitionYears=0` paths not tested
+
+**Location:** `internal/models/whatif.go:646` — `GlidePathStockPct`
+**Source consulted:** Code inspection; `internal/models/allocation_test.go:79`.
+**What it does:** Returns glide-path stock % at a given projection year, clipping to start/end and returning −1 if disabled.
+**Finding:** `TestGlidePathStockPct` covers year=0, 10, 20, 30, and disabled. Missing: (1) `year < 0` — the `year ≤ 0` guard exercises this at year=0 but not at year=−1; (2) `Enabled=true, TransitionYears=0` — the `TransitionYears ≤ 0` guard should return −1 but is untested with glide path enabled.
+**Evidence / repro:** No test asserts `GlidePathStockPct(-1) == StartStockPct` or `GlidePathStockPct(5)` with `TransitionYears=0`.
+**Recommended fix sketch:** Add subtest `year=-5 → StartStockPct`; add subtest `Enabled=true, TransitionYears=0, year=5 → -1`.
+**Test coverage note:** The `year < 0` sub-range of the `year ≤ 0` branch, and the `TransitionYears=0` with enabled path, are dark.

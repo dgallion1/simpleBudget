@@ -1135,6 +1135,8 @@ The post-fix line `monthlyReturn := monthlyCompoundFactorFromPercent(investmentR
 
 **Test coverage note:** No test covers a user whose RMD start age under SECURE 2.0 is 75. The existing tests (age 60, 65, 70, 72, 75) either already past RMD start or start at 73 with no cross-2033 validation.
 
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `EffectiveRMDStartAge(s *WhatIfSettings) int` returning 73 for projections starting before 2033 and 75 for 2033+; `CalculateRMDAnalysis` replaced the constant with a dynamic call and `RMDAnalysis.StartAge` now reflects the effective age. Four tests cover pre-2033, 2033, post-2033, nil-safe, and 2032-boundary cases.
+
 ### F-033 — MEDIUM `GetLifeExpectancyFactor`: age 72 is in the table but `CalculateRMDAnalysis` skips it; age-71-or-below returns 0 (no divide-by-zero, but silent)
 
 **Location:** `internal/services/retirement/rmd.go:64` — `GetLifeExpectancyFactor`; `rmd.go:120` — caller guard `if age >= RMDStartAge`
@@ -3142,6 +3144,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 
 **Test coverage note:** No test covers a user whose RMD start age under SECURE 2.0 is 75. The existing tests (age 60, 65, 70, 72, 75) either already past RMD start or start at 73 with no cross-2033 validation.
 
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `EffectiveRMDStartAge(s *WhatIfSettings) int` returning 73 for projections starting before 2033 and 75 for 2033+; `CalculateRMDAnalysis` replaced the constant with a dynamic call and `RMDAnalysis.StartAge` now reflects the effective age. Four tests cover pre-2033, 2033, post-2033, nil-safe, and 2032-boundary cases.
+
 ### F-033 — MEDIUM `GetLifeExpectancyFactor`: age 72 is in the table but `CalculateRMDAnalysis` skips it; age below 72 returns 0 silently
 
 **Location:** `internal/services/retirement/rmd.go:64` — `GetLifeExpectancyFactor`; `rmd.go:120` — caller guard `if age >= RMDStartAge`
@@ -3208,6 +3212,8 @@ for m := 0; m < 12; m++ {
 **Recommended fix sketch:** Apply full-year growth to the year-start balance first, then compute and deduct the RMD. This matches the IRS model where the RMD is based on the prior-year-end balance, and the distribution is made from the account that has already grown.
 
 **Test coverage note:** No test validates the per-year balance trajectory precisely enough to catch this sequencing issue.
+
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `RMDTiming` enum (start_of_year/mid_year/end_of_year) to `WhatIfSettings`; `NormalizeRMDTiming` defaults empty string → mid_year for new scenarios. Settings load migrates legacy saved scenarios to start_of_year. `CalculateRMDAnalysis` splits growth via `rmdGrowthFractions()` before and after the RMD. Surfaced in the rate-assumptions UI; `applyRMDTiming` handler follows the `projection_timing` pattern. Five F-035 tests validate each timing option and ordering invariant.
 
 ### F-036 — MEDIUM `CalculateRMDAnalysis`: multiple test-coverage gaps
 
@@ -3670,6 +3676,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** Person age 64 (birthday in month 6 of year 1): `GetMonthlyCost(11)` = $600 (ACA), `GetMonthlyCost(12)` = $200 (Medicare). The transition fires 6 months before the 65th birthday.
 **Recommended fix sketch:** Accept a `birthMonth int` (1–12) parameter and compute the true transition month as `(MedicareEligibleAge − CurrentAge) × 12 + (birthMonth − startMonth%12 + 12) % 12`. Alternatively, link `HealthcarePerson` to the `Person.BirthMonth` string and compute the exact transition month at initialization.
 **Test coverage note:** Existing tests verify compounding within phases but do not test mid-year birthday scenarios.
+
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `BirthMonth string` field to `HealthcarePerson` and `GetMonthlyCostAt(month int, startDate string)` which computes `monthsUntilMedicareEligible` as `(birth.AddDate(MedicareEligibleAge,0,0) - start)` in months when both fields are set; falls back to year-based otherwise. `GetTotalHealthcareCost` now passes `s.StartDate` for all persons. Four F-067 tests validate month-precise transition at birth month, the year-bucket regression, the legacy fallback, and the end-to-end `GetTotalHealthcareCost` path.
 
 ---
 

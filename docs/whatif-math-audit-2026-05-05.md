@@ -652,6 +652,8 @@ MFS-lived-apart example: `CalculateTaxableSocialSecurity(20000, 0, 0, 0, FilingM
 
 **Test coverage note:** The existing test `TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct` asserts the current 85% behavior for all income levels. No test exists for MFS-lived-apart scenarios. The threshold-boundary tests in `coverage_gaps2_test.go` do not include MFS.
 
+**Resolution:** Closed by commit 25a1fa4 on `feat/whatif-fixes`. `TaxConfig.MFSLivedWithSpouse bool` field added; `TaxCalculator` copies it from config. Free `CalculateTaxableSocialSecurity` gains `mfsLivedWithSpouse bool` parameter: `true` → returns `ssBenefits * 0.85` directly (26 USC § 86(c)(2)(B)); `false` → `socialSecurityTaxThresholdsMFSLivedApart` ($25K/$34K, same as Single, per § 86(c)(2)(A)). Method version reads `tc.MFSLivedWithSpouse`. Verified via `Test*_F018_*` (5 tests); WE-2.1 MFJ regression guard ($23,850) preserved.
+
 ---
 
 #### F-019 — MEDIUM `CalculateNIIT`: MAGI at exact threshold not tested; NIIT inflation note
@@ -2857,6 +2859,8 @@ MFS-lived-apart example: `CalculateTaxableSocialSecurity(20000, 0, 0, 0, FilingM
 **Recommended fix sketch:** Add a `MFSLivedApart bool` flag to `WhatIfSettings` (or a new `SocialSecurityMFSTreatment` enum). If lived-apart, delegate to the Single/HoH threshold path; if lived-with-spouse or unspecified, retain the 85%-always treatment (conservative default).
 
 **Test coverage note:** The existing test `TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct` asserts the current 85% behavior for all income levels. No test exists for MFS-lived-apart scenarios. The threshold-boundary tests in `coverage_gaps2_test.go` do not include MFS.
+
+**Resolution:** Closed by commit 25a1fa4 on `feat/whatif-fixes`. `TaxConfig.MFSLivedWithSpouse bool` field added; `TaxCalculator` copies it from config. Free `CalculateTaxableSocialSecurity` gains `mfsLivedWithSpouse bool` parameter: `true` → returns `ssBenefits * 0.85` directly (26 USC § 86(c)(2)(B)); `false` → `socialSecurityTaxThresholdsMFSLivedApart` ($25K/$34K, same as Single, per § 86(c)(2)(A)). Method version reads `tc.MFSLivedWithSpouse`. Verified via `Test*_F018_*` (5 tests); WE-2.1 MFJ regression guard ($23,850) preserved.
 
 ---
 

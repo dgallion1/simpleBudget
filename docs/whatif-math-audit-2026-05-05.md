@@ -1970,6 +1970,8 @@ if additionalTax > conversionAmount*0.37 { t.Errorf(...) }
 
 **Root cause:** `GetAvailableStartYears` uses `maxIdx = len(HistoricalReturns) - projectionYears` and iterates `i < maxIdx`, producing indices 0 through `maxIdx−1`. But `GetHistoricalSequence(1995, 30)` correctly accepts `startIdx=67`, `startIdx+yearsNeeded=97`, and the guard condition `97 > 97` is false, so the sequence is valid. The exclusive upper bound in `GetAvailableStartYears` is off by one. See F-057.
 
+**Resolution:** Closed by commit 61bfd3c on `feat/whatif-fixes`. `GetAvailableStartYears` upper bound corrected from exclusive to inclusive (`maxIdx = len - projectionYears + 1`). Verified via `TestGetAvailableStartYears_F057_*`.
+
 #### WE-9.3: Guardrail trigger
 
 **CPR analog (floor):** Initial $1M, drop to $750K (25% from peak ≥ 20% threshold) → spending multiplier cut to **0.90** (−10%). PASS.
@@ -3528,6 +3530,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** `GetHistoricalSequence(1995, 30)` succeeds (guard: `67 + 30 = 97 > 97` is false), yet `GetAvailableStartYears(30)` stops at 1994. WE-9.2 confirmed: `TotalSequences=67`, expected 68.
 **Recommended fix sketch:** Change `maxIdx := len(HistoricalReturns) - projectionYears` to `maxIdx := len(HistoricalReturns) - projectionYears + 1` and adjust the loop `for i := 0; i < maxIdx; i++`. Verify `GetHistoricalSequence` correctly handles the last entry (it does).
 **Test coverage note:** `TestGetAvailableStartYears` checks `lastYear <= data[last].Year - 29` which passes under the buggy code. Add an assertion `lastYear == data[last].Year - projectionYears + 1`.
+
+**Resolution:** Closed by commit 61bfd3c on `feat/whatif-fixes`. `GetAvailableStartYears` upper bound corrected from exclusive to inclusive. Verified via `TestGetAvailableStartYears_F057_*`.
 
 ---
 

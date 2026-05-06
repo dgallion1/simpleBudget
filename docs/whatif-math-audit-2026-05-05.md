@@ -2045,6 +2045,8 @@ See F-057 through F-064 in Appendix C.
 
 **Finding (F-065):** When the same scenario is run with `SpendingDeclineRate = 1.0` (the default value), the chain delta at month 360 is **$178,943** (MEDIUM). Root cause: `rebaseLivingExpensesAtTransition` anchors the expense level to `MonthlyLivingExpenses × cumulativeInflation` where `cumulativeInflation` accumulates at the **full** `InflationRate`, but the ongoing pre-transition computation applies `InflationRate − SpendingDeclineRate`. At the chain boundary, expenses are therefore stepped up by `cumulativeInflation(full) / cumulativeInflation(net)`, permanently inflating the post-transition run.
 
+**Resolution:** Closed by commit dde7652 on `feat/whatif-fixes`. All three projection loops (RunProjection, RunMonteCarloSimulation, backtest) now maintain a parallel `netCumulativeInflation` variable that compounds at `(InflationRate − SpendingDeclineRate)` per month. `rebaseLivingExpensesAtTransition` was extended to accept both `cumulativeInflation` (used for the spending-phases path) and `netCumulativeInflation` (used for the no-phase path), eliminating the step-up error. Verified via `TestSpendingPhaseTransition_F065_DeclineRateRespected`.
+
 #### WE-10.2: Healthcare ACA → Medicare transition
 
 **Setup:** Person, age 64, `CoverageACA`, `CurrentMonthlyCost = 600` (representing $1,000 ACA − $400 employer = $600 net), `PreMedicareInflation = 0`, `MedicareMonthlyCost = 200`, `PostMedicareInflation = 0`, `MedicareEligibleAge = 65`.
@@ -3620,6 +3622,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** WE-10.1 test: transparent-chain delta with `SpendingDeclineRate = 0` = $0.00; with `SpendingDeclineRate = 1.0` = $178,943.35.
 **Recommended fix sketch:** Pass both `InflationRate` and `SpendingDeclineRate` to `rebaseLivingExpensesAtTransition`; compute a separate `netCumulativeInflation` that uses `InflationRate − SpendingDeclineRate`, and use that for the rebase instead of `cumulativeInflation`.
 **Test coverage note:** No chain test uses non-zero `SpendingDeclineRate`; the gap is undetected in the existing suite.
+
+**Resolution:** Closed by commit dde7652 on `feat/whatif-fixes`. Phase-transition rebase callers in RunProjection, RunMonteCarloSimulation, and the backtest loop now maintain a parallel `netCumulativeInflation` variable that compounds at `(InflationRate − SpendingDeclineRate)` per month, matching the per-month no-phase expense trajectory. `rebaseLivingExpensesAtTransition` was extended to take both `cumulativeInflation` and `netCumulativeInflation`; the non-phase path uses `netCumulativeInflation`. Verified via `TestSpendingPhaseTransition_F065_DeclineRateRespected`.
 
 ---
 

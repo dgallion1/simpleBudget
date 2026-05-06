@@ -29,6 +29,8 @@ _To be filled in last (Task 12). Sorted by severity then area._
 
 ### Functions audited
 
+_Legend: **PASS** = formula correct, no associated finding. **PASS (F-NNN)** = formula correct, but an associated finding (typically test-gap, severity LOW or MEDIUM) exists. **PARTIAL (F-NNN)** = formula partially correct; a real feature gap or missing behavior is noted in the finding. **FAIL (F-NNN)** = formula incorrect._
+
 | Function | Location | Status |
 |----------|----------|--------|
 | `CalculateFederalTax` | `tax.go:349` | PASS (F-007) |
@@ -42,7 +44,7 @@ _To be filled in last (Task 12). Sorted by severity then area._
 | `GetMarginalRate` | `tax.go:499` | PASS (F-013) |
 | `GetAdjustedBrackets` | `tax.go:181` | PASS (F-004, F-014) |
 | `GetAdjustedLongTermCapitalGainsBrackets` | `tax.go:210` | PASS (F-015) |
-| `GetAdjustedStandardDeduction` | `tax.go:238` | F-001 (MEDIUM), F-006 (LOW), F-016 (LOW) |
+| `GetAdjustedStandardDeduction` | `tax.go:238` | PARTIAL (F-001), PASS (F-006, F-016) |
 | `inflationFactor` | `tax.go:251` | PASS (F-004) |
 | `normalizeFilingStatus` | `tax.go:258` | PASS (F-017) |
 
@@ -69,7 +71,7 @@ _To be filled in last (Task 12). Sorted by severity then area._
 | 22% × ($65,400 − $47,150) = 22% × $18,250 | $4,015.00 |
 | **Expected total** | **$9,441.00** |
 | **Actual from `CalculateFederalTax(80000, 0)` (Single, year-0)** | **$9,441.00** |
-| Delta | $0.00 ✓ |
+| Delta | $0.00 |
 
 #### WE-1.2: MFJ, $170,800 ordinary + $20,000 LTCG, year-0
 
@@ -88,7 +90,7 @@ _To be filled in last (Task 12). Sorted by severity then area._
 | LTCG tax: $20,000 at 15% (total taxable $190,800 < MFJ 15% ceiling $583,750) | $3,000.00 |
 | **Expected total federal** | **$30,682.00** |
 | **Actual from `CalculateTaxWithInvestmentIncome(200000, 0, 20000, 0)` (MFJ, year-0)** | **$30,682.00** |
-| Delta | $0.00 ✓ |
+| Delta | $0.00 |
 
 ### Findings
 
@@ -100,7 +102,7 @@ _To be filled in last (Task 12). Sorted by severity then area._
 
 **What it does:** Returns the base 2024 standard deduction for the filing status, inflated forward. No age-based adjustment is applied.
 
-**Finding:** Rev. Proc. 2023-34 §3.16 provides an additional standard deduction for taxpayers who are 65 or older: $1,550 for Single or Head of Household filers, and $1,300 per qualifying spouse for MFJ filers (i.e., $2,600 if both spouses are 65+). Since this planner targets retirees who are typically 65 or older, the base deduction is likely understated by $1,300–$2,600 for most users. This causes over-taxation of ordinary income.
+**Finding:** Rev. Proc. 2023-34 §3.16 provides an additional standard deduction for taxpayers who are 65 or older: **$1,950 per qualifying person for Single and Head of Household filers**, and **$1,550 per qualifying spouse for MFJ and MFS filers** (i.e., $3,100 if both MFJ spouses are 65+). The per-person amount is intentionally higher for Single/HoH filers under the IRS code. Since this planner targets retirees who are typically 65 or older, the base deduction is likely understated by $1,550–$3,900 for most users (the upper bound is a Single or HoH filer who is both 65+ and blind, adding two $1,950 increments). This causes over-taxation of ordinary income.
 
 **Evidence / repro:**
 ```go
@@ -112,9 +114,14 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
     // No age-65+ addition anywhere in the call chain.
 }
 ```
-A 65+ Single filer at $80,000 gross income would have actual taxable income of $65,400 − $1,550 = $63,850 (not $65,400), yielding true federal tax of $9,100 vs the code's $9,441, a $341 over-estimate (3.6% error on tax owed).
+A 65+ Single filer at $80,000 gross income would have:
+- Standard deduction (Single, age 65+): $14,600 + $1,950 = **$16,550**
+- Taxable income: $80,000 − $16,550 = **$63,450**
+- Tax: 10% × $11,600 + 12% × ($47,150 − $11,600) + 22% × ($63,450 − $47,150) = $1,160 + $4,266 + $3,586 = **$9,012**
+- Code's tax (WE-1.1, no age-65+ adjustment): **$9,441**
+- Over-estimate: $9,441 − $9,012 = **$429** (**4.8%** error on tax owed)
 
-**Recommended fix sketch:** Add an `Age65Count int` field (0, 1, or 2) to `TaxCalculator` and a `StandardDeduction2024Additional` constant map keyed on filing status; sum the base deduction with `Age65Count * additional` before inflating.
+**Recommended fix sketch:** Add an `Age65Count int` field (0, 1, or 2) to `TaxCalculator` and a `StandardDeduction2024Additional` constant map keyed on filing status (Single/HoH → $1,950; MFJ/MFS → $1,550); sum the base deduction with `Age65Count * additional` before inflating.
 
 **Test coverage note:** No test exercises the age-65+ deduction path because the function doesn't implement it. A boundary test at the qualifying age transition (the year the client turns 65) is entirely absent.
 
@@ -194,7 +201,7 @@ A 65+ Single filer at $80,000 gross income would have actual taxable income of $
 
 #### F-006 — LOW Dead fallback branch in `GetAdjustedStandardDeduction`
 
-**Location:** `internal/services/retirement/tax.go:239` — `GetAdjustedStandardDeduction`
+**Location:** `internal/services/retirement/tax.go:238` — `GetAdjustedStandardDeduction`
 
 **Source consulted:** Code inspection.
 
@@ -218,7 +225,7 @@ A 65+ Single filer at $80,000 gross income would have actual taxable income of $
 
 **What it does:** Computes federal income tax given gross income and years from base year; applies standard deduction and progressive brackets.
 
-**Finding:** `TestCalculateFederalTax` constructs a MFJ calculator and only checks that tax falls within loose bounds. No test uses Single, MFJ, MFS, or HoH constructors independently; no test passes `yearsFromBase > 0` to verify bracket inflation; no test passes a negative income value (the function returns zero for `grossIncome <= 0` per the guard, but this is not asserted).
+**Finding:** `TestCalculateFederalTax` constructs a MFJ calculator and only checks that tax falls within loose bounds. Only MFJ is exercised; Single, MFS, and HoH are not tested for this function. No test passes `yearsFromBase > 0` to verify bracket inflation; no test passes a negative income value (the function returns zero for `grossIncome <= 0` per the guard, but this is not asserted).
 
 **Evidence / repro:** `TestCalculateFederalTax` has four subtests (zero, low, middle, higher income), all using MFJ and `yearsFromBase=0`.
 
@@ -465,7 +472,7 @@ ID order. Task 12 reads this list to produce the findings table above._
 
 **What it does:** Returns the base 2024 standard deduction for the filing status, inflated forward. No age-based adjustment is applied.
 
-**Finding:** Rev. Proc. 2023-34 §3.16 provides an additional standard deduction for taxpayers who are 65 or older: $1,550 for Single or Head of Household filers, and $1,300 per qualifying spouse for MFJ filers (i.e., $2,600 if both spouses are 65+). Since this planner targets retirees who are typically 65 or older, the base deduction is likely understated by $1,300–$2,600 for most users. This causes over-taxation of ordinary income.
+**Finding:** Rev. Proc. 2023-34 §3.16 provides an additional standard deduction for taxpayers who are 65 or older: **$1,950 per qualifying person for Single and Head of Household filers**, and **$1,550 per qualifying spouse for MFJ and MFS filers** (i.e., $3,100 if both MFJ spouses are 65+). The per-person amount is intentionally higher for Single/HoH filers under the IRS code. Since this planner targets retirees who are typically 65 or older, the base deduction is likely understated by $1,550–$3,900 for most users (the upper bound is a Single or HoH filer who is both 65+ and blind, adding two $1,950 increments). This causes over-taxation of ordinary income.
 
 **Evidence / repro:**
 ```go
@@ -477,9 +484,14 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
     // No age-65+ addition anywhere in the call chain.
 }
 ```
-A 65+ Single filer at $80,000 gross income would have actual taxable income of $65,400 − $1,550 = $63,850 (not $65,400), yielding true federal tax of $9,100 vs the code's $9,441, a $341 over-estimate (3.6% error on tax owed).
+A 65+ Single filer at $80,000 gross income would have:
+- Standard deduction (Single, age 65+): $14,600 + $1,950 = **$16,550**
+- Taxable income: $80,000 − $16,550 = **$63,450**
+- Tax: 10% × $11,600 + 12% × ($47,150 − $11,600) + 22% × ($63,450 − $47,150) = $1,160 + $4,266 + $3,586 = **$9,012**
+- Code's tax (WE-1.1, no age-65+ adjustment): **$9,441**
+- Over-estimate: $9,441 − $9,012 = **$429** (**4.8%** error on tax owed)
 
-**Recommended fix sketch:** Add an `Age65Count int` field (0, 1, or 2) to `TaxCalculator` and a `StandardDeduction2024Additional` constant map keyed on filing status; sum the base deduction with `Age65Count * additional` before inflating.
+**Recommended fix sketch:** Add an `Age65Count int` field (0, 1, or 2) to `TaxCalculator` and a `StandardDeduction2024Additional` constant map keyed on filing status (Single/HoH → $1,950; MFJ/MFS → $1,550); sum the base deduction with `Age65Count * additional` before inflating.
 
 **Test coverage note:** No test exercises the age-65+ deduction path because the function doesn't implement it. A boundary test at the qualifying age transition (the year the client turns 65) is entirely absent.
 
@@ -559,7 +571,7 @@ A 65+ Single filer at $80,000 gross income would have actual taxable income of $
 
 ### F-006 — LOW Dead fallback branch in `GetAdjustedStandardDeduction`
 
-**Location:** `internal/services/retirement/tax.go:239` — `GetAdjustedStandardDeduction`
+**Location:** `internal/services/retirement/tax.go:238` — `GetAdjustedStandardDeduction`
 
 **Source consulted:** Code inspection.
 
@@ -583,7 +595,7 @@ A 65+ Single filer at $80,000 gross income would have actual taxable income of $
 
 **What it does:** Computes federal income tax given gross income and years from base year; applies standard deduction and progressive brackets.
 
-**Finding:** `TestCalculateFederalTax` constructs a MFJ calculator and only checks that tax falls within loose bounds. No test uses Single, MFJ, MFS, or HoH constructors independently; no test passes `yearsFromBase > 0` to verify bracket inflation; no test passes a negative income value (the function returns zero for `grossIncome <= 0` per the guard, but this is not asserted).
+**Finding:** `TestCalculateFederalTax` constructs a MFJ calculator and only checks that tax falls within loose bounds. Only MFJ is exercised; Single, MFS, and HoH are not tested for this function. No test passes `yearsFromBase > 0` to verify bracket inflation; no test passes a negative income value (the function returns zero for `grossIncome <= 0` per the guard, but this is not asserted).
 
 **Evidence / repro:** `TestCalculateFederalTax` has four subtests (zero, low, middle, higher income), all using MFJ and `yearsFromBase=0`.
 

@@ -212,3 +212,113 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 		TotalRMDsOver10Yr: totalRMDs10Yr,
 	}
 }
+
+// BuildRMDAnalysis (F-072) builds the RMD analysis from the actual projection
+// instead of an isolated standalone math model. It samples each RMD year's
+// starting tax-deferred balance and sums the actual RMDWithdrawal over the
+// year, so the panel cannot diverge from the main projection.
+//
+// Replaces CalculateRMDAnalysis. Old function is removed in the follow-up
+// commit (Task 3).
+func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *models.RMDAnalysis {
+	s := c.Settings
+
+	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)
+	effectiveStartAge := EffectiveRMDStartAge(s)
+	olderAge := s.GetOlderAge()
+	startsInYears := effectiveStartAge - olderAge
+	if startsInYears < 0 {
+		startsInYears = 0
+	}
+
+	result := &models.RMDAnalysis{
+		StartsInYears:    startsInYears,
+		StartAge:         effectiveStartAge,
+		CurrentAge:       olderAge,
+		TaxDeferredValue: taxDeferredValue,
+		Projections:      []models.RMDProjection{},
+	}
+
+	if projection == nil || len(projection.Months) == 0 {
+		return result
+	}
+
+	// Surface depletion year (whole years from start; floor of months/12).
+	if projection.DepletionMonth != nil {
+		dy := *projection.DepletionMonth / 12
+		da := olderAge + dy
+		result.DepletionYear = &dy
+		result.DepletionAge = &da
+		if dy < startsInYears {
+			result.DepletedBeforeRMD = true
+			return result
+		}
+	}
+
+	// Iterate projection years, emit a row when age >= effectiveStartAge.
+	maxYears := s.ProjectionYears
+	if maxYears > len(projection.Months)/12 {
+		maxYears = len(projection.Months) / 12
+	}
+
+	rmdCount := 0
+	for y := 0; y <= maxYears && rmdCount < 20; y++ {
+		age := olderAge + y
+		if age < effectiveStartAge {
+			continue
+		}
+		// Stop at depletion year — no further rows.
+		if result.DepletionYear != nil && y >= *result.DepletionYear {
+			break
+		}
+
+		// Start-of-year tax-deferred balance.
+		startIdx := 12*y - 1
+		if y == 0 {
+			startIdx = 0
+		}
+		if startIdx >= len(projection.Months) {
+			break
+		}
+		startBalance := projection.Months[startIdx].TaxDeferredBalance
+
+		// Sum actual RMDWithdrawal across the 12 months of this year.
+		startMonth := 12 * y
+		endMonth := startMonth + 12
+		if endMonth > len(projection.Months) {
+			endMonth = len(projection.Months)
+		}
+		rmdAmount := 0.0
+		for m := startMonth; m < endMonth; m++ {
+			rmdAmount += projection.Months[m].RMDWithdrawal
+		}
+
+		// Skip years with no realized RMD withdrawal — the analysis reflects
+		// actual projection activity, not a hypothetical IRS-table schedule.
+		if rmdAmount == 0 {
+			continue
+		}
+
+		factor := GetLifeExpectancyFactor(age)
+		rmdPercent := 0.0
+		if factor > 0 {
+			rmdPercent = 100.0 / factor
+		}
+
+		result.Projections = append(result.Projections, models.RMDProjection{
+			Age:            age,
+			Year:           y,
+			TaxDeferredBal: startBalance,
+			LifeExpFactor:  factor,
+			RMDAmount:      rmdAmount,
+			RMDPercent:     rmdPercent,
+		})
+
+		if rmdCount < 10 {
+			result.TotalRMDsOver10Yr += rmdAmount
+		}
+		rmdCount++
+	}
+
+	return result
+}

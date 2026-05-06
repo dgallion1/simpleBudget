@@ -444,7 +444,7 @@ func TestCalculateFederalTax_F001_AuditWE1_1_PreservedForUnder65(t *testing.T) {
 	}, 0)
 	tax, _, _ := tc.CalculateFederalTax(80000, 0)
 	want := 9441.0
-	if math.Abs(tax-want) > 1.0 {
+	if math.Abs(tax-want) > 0.01 {
 		t.Fatalf("WE-1.1 regression: CalculateFederalTax(Single, 80K, Age65Count=0) = %.2f, want %.2f", tax, want)
 	}
 }
@@ -458,7 +458,7 @@ func TestCalculateFederalTax_F001_Age65SingleLowersTax(t *testing.T) {
 	}, 0)
 	tax, _, _ := tc.CalculateFederalTax(80000, 0)
 	want := 9012.0
-	if math.Abs(tax-want) > 1.0 {
+	if math.Abs(tax-want) > 0.01 {
 		t.Fatalf("F-001 fix: CalculateFederalTax(Single 65+, 80K, Age65Count=1) = %.2f, want %.2f", tax, want)
 	}
 }

@@ -42,7 +42,7 @@ func PresentValue(futureValue, annualRate float64, periods int) float64 {
 	if annualRate <= 0 {
 		return futureValue
 	}
-	monthlyRate := annualRate / 100 / 12
+	monthlyRate := monthlyCompoundFactorFromPercent(annualRate) - 1
 	return futureValue / math.Pow(1+monthlyRate, float64(periods))
 }
 
@@ -53,17 +53,15 @@ func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, 
 		return 0
 	}
 
-	monthlyRate := discountRate / 100 / 12
-	monthlyGrowth := growthRate / 100 / 12
+	monthlyRate := monthlyCompoundFactorFromPercent(discountRate) - 1
+	monthlyGrowth := monthlyCompoundFactorFromPercent(growthRate) - 1
 
 	var pvAtStart float64
 
 	if monthlyRate <= 0 {
-		// No discounting
-		if monthlyGrowth <= 0 {
+		if monthlyGrowth == 0 {
 			pvAtStart = payment * float64(numPayments)
 		} else {
-			// Sum with growth
 			total := 0.0
 			for m := 0; m < numPayments; m++ {
 				total += payment * math.Pow(1+monthlyGrowth, float64(m))
@@ -73,7 +71,7 @@ func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, 
 	} else if math.Abs(monthlyRate-monthlyGrowth) < 1e-10 {
 		// Growth equals discount rate
 		pvAtStart = payment * float64(numPayments)
-	} else if monthlyGrowth > 0 {
+	} else if monthlyGrowth != 0 {
 		// Growing annuity formula
 		growthFactor := (1 + monthlyGrowth) / (1 + monthlyRate)
 		pvAtStart = payment * (1 - math.Pow(growthFactor, float64(numPayments))) / (monthlyRate - monthlyGrowth)

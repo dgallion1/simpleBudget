@@ -39,9 +39,9 @@ func TestCalculateRMDAnalysis(t *testing.T) {
 		if result.Projections[0].Age != 73 {
 			t.Errorf("first projection age = %d, want 73", result.Projections[0].Age)
 		}
-		// Balance should have grown over 8 years before first RMD
-		if result.Projections[0].TaxDeferredBal <= expectedTDValue {
-			t.Errorf("balance at 73 (%.2f) should exceed initial (%.2f) due to growth", result.Projections[0].TaxDeferredBal, expectedTDValue)
+		expectedBalanceAt73 := expectedTDValue * math.Pow(1.06, 8)
+		if math.Abs(result.Projections[0].TaxDeferredBal-expectedBalanceAt73) > 0.01 {
+			t.Errorf("balance at 73 = %.2f, want %.2f", result.Projections[0].TaxDeferredBal, expectedBalanceAt73)
 		}
 		if result.TotalRMDsOver10Yr <= 0 {
 			t.Error("TotalRMDsOver10Yr should be positive")

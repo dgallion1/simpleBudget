@@ -37,9 +37,8 @@ func TestPresentValue(t *testing.T) {
 	})
 
 	t.Run("normal discounting", func(t *testing.T) {
-		// PV = 10000 / (1 + 0.06/12)^12 = 10000 / (1.005)^12
 		got := PresentValue(10000, 6.0, 12)
-		expected := 10000 / math.Pow(1.005, 12)
+		expected := 10000 / 1.06
 		if math.Abs(got-expected) > 0.01 {
 			t.Errorf("expected %.2f, got %.2f", expected, got)
 		}
@@ -48,7 +47,7 @@ func TestPresentValue(t *testing.T) {
 	t.Run("multi-year discounting", func(t *testing.T) {
 		// 5% annual rate, 60 months (5 years)
 		got := PresentValue(50000, 5.0, 60)
-		monthlyRate := 0.05 / 12
+		monthlyRate := monthlyCompoundFactorFromPercent(5.0) - 1
 		expected := 50000 / math.Pow(1+monthlyRate, 60)
 		if math.Abs(got-expected) > 0.01 {
 			t.Errorf("expected %.2f, got %.2f", expected, got)
@@ -80,8 +79,7 @@ func TestPresentValueAnnuity(t *testing.T) {
 	})
 
 	t.Run("no discount rate with growth", func(t *testing.T) {
-		// Sum of 1000 * (1+g)^m for m=0..11, g = 0.06/12 = 0.005
-		monthlyGrowth := 0.06 / 12
+		monthlyGrowth := monthlyCompoundFactorFromPercent(6.0) - 1
 		expected := 0.0
 		for m := 0; m < 12; m++ {
 			expected += 1000 * math.Pow(1+monthlyGrowth, float64(m))
@@ -89,6 +87,21 @@ func TestPresentValueAnnuity(t *testing.T) {
 		got := PresentValueAnnuity(1000, 0, 6.0, 0, 12)
 		if math.Abs(got-expected) > 0.01 {
 			t.Errorf("expected %.2f, got %.2f", expected, got)
+		}
+	})
+
+	t.Run("no discount rate with negative growth", func(t *testing.T) {
+		monthlyGrowth := monthlyCompoundFactorFromPercent(-3.0) - 1
+		expected := 0.0
+		for m := 0; m < 24; m++ {
+			expected += 1000 * math.Pow(1+monthlyGrowth, float64(m))
+		}
+		got := PresentValueAnnuity(1000, 0, -3.0, 0, 24)
+		if math.Abs(got-expected) > 0.01 {
+			t.Errorf("expected %.2f, got %.2f", expected, got)
+		}
+		if got >= 24000 {
+			t.Errorf("expected declining payments below flat total, got %.2f", got)
 		}
 	})
 
@@ -105,8 +118,8 @@ func TestPresentValueAnnuity(t *testing.T) {
 		dr := 6.0
 		gr := 3.0
 		n := 120
-		mr := dr / 100 / 12
-		mg := gr / 100 / 12
+		mr := monthlyCompoundFactorFromPercent(dr) - 1
+		mg := monthlyCompoundFactorFromPercent(gr) - 1
 		gf := (1 + mg) / (1 + mr)
 		expected := 1000 * (1 - math.Pow(gf, float64(n))) / (mr - mg)
 
@@ -120,7 +133,7 @@ func TestPresentValueAnnuity(t *testing.T) {
 		// discount=6%, no growth, 120 payments
 		dr := 6.0
 		n := 120
-		mr := dr / 100 / 12
+		mr := monthlyCompoundFactorFromPercent(dr) - 1
 		expected := 1000 * (1 - math.Pow(1+mr, -float64(n))) / mr
 
 		got := PresentValueAnnuity(1000, dr, 0, 0, n)
@@ -134,7 +147,7 @@ func TestPresentValueAnnuity(t *testing.T) {
 		pvAtStart := PresentValueAnnuity(1000, 6.0, 0, 0, 120)
 		pvFutureStart := PresentValueAnnuity(1000, 6.0, 0, 12, 120)
 
-		mr := 6.0 / 100 / 12
+		mr := monthlyCompoundFactorFromPercent(6.0) - 1
 		expectedFuture := pvAtStart / math.Pow(1+mr, 12)
 		if math.Abs(pvFutureStart-expectedFuture)/expectedFuture > 0.001 {
 			t.Errorf("expected %.2f, got %.2f", expectedFuture, pvFutureStart)
@@ -158,13 +171,13 @@ func TestCalculateHealthcarePV(t *testing.T) {
 		calc := NewCalculator(settings)
 
 		person := models.HealthcarePerson{
-			Name:                 "Retiree",
-			CurrentAge:           67,
-			CurrentCoverage:      models.CoverageMedicare,
-			CurrentMonthlyCost:   459,
-			MedicareMonthlyCost:  459,
+			Name:                  "Retiree",
+			CurrentAge:            67,
+			CurrentCoverage:       models.CoverageMedicare,
+			CurrentMonthlyCost:    459,
+			MedicareMonthlyCost:   459,
 			PostMedicareInflation: 4.0,
-			MedicareEligibleAge:  65,
+			MedicareEligibleAge:   65,
 		}
 
 		got := calc.calculateHealthcarePV(person, 5.0, 360)
@@ -180,14 +193,14 @@ func TestCalculateHealthcarePV(t *testing.T) {
 		calc := NewCalculator(settings)
 
 		person := models.HealthcarePerson{
-			Name:                 "Young",
-			CurrentAge:           40,
-			CurrentCoverage:      models.CoverageACA,
-			CurrentMonthlyCost:   1100,
-			MedicareMonthlyCost:  459,
-			PreMedicareInflation: 7.0,
+			Name:                  "Young",
+			CurrentAge:            40,
+			CurrentCoverage:       models.CoverageACA,
+			CurrentMonthlyCost:    1100,
+			MedicareMonthlyCost:   459,
+			PreMedicareInflation:  7.0,
 			PostMedicareInflation: 4.0,
-			MedicareEligibleAge:  65,
+			MedicareEligibleAge:   65,
 		}
 
 		// 10-year projection, person is 40, Medicare at 65 -> 25 years away
@@ -205,17 +218,17 @@ func TestCalculateHealthcarePV(t *testing.T) {
 		calc := NewCalculator(settings)
 
 		person := models.HealthcarePerson{
-			Name:                 "PreRetiree",
-			CurrentAge:           60,
-			CurrentCoverage:      models.CoverageACA,
-			CurrentMonthlyCost:   1100,
-			MedicareMonthlyCost:  459,
-			PreMedicareInflation: 7.0,
+			Name:                  "PreRetiree",
+			CurrentAge:            60,
+			CurrentCoverage:       models.CoverageACA,
+			CurrentMonthlyCost:    1100,
+			MedicareMonthlyCost:   459,
+			PreMedicareInflation:  7.0,
 			PostMedicareInflation: 4.0,
-			MedicareEligibleAge:  65,
+			MedicareEligibleAge:   65,
 		}
 
-		totalMonths := 360 // 30 years
+		totalMonths := 360          // 30 years
 		preMedicareMonths := 5 * 12 // 60 months until Medicare
 
 		got := calc.calculateHealthcarePV(person, 5.0, totalMonths)
@@ -237,14 +250,14 @@ func TestCalculateHealthcarePV(t *testing.T) {
 		calc := NewCalculator(settings)
 
 		person := models.HealthcarePerson{
-			Name:                 "JustTurned65",
-			CurrentAge:           65,
-			CurrentCoverage:      models.CoverageACA,
-			CurrentMonthlyCost:   1100,
-			MedicareMonthlyCost:  459,
-			PreMedicareInflation: 7.0,
+			Name:                  "JustTurned65",
+			CurrentAge:            65,
+			CurrentCoverage:       models.CoverageACA,
+			CurrentMonthlyCost:    1100,
+			MedicareMonthlyCost:   459,
+			PreMedicareInflation:  7.0,
 			PostMedicareInflation: 4.0,
-			MedicareEligibleAge:  65,
+			MedicareEligibleAge:   65,
 		}
 
 		// IsOnMedicare() returns true when age >= MedicareEligibleAge
@@ -450,8 +463,8 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		result := calc.CalculatePresentValueAnalysis()
 
 		livingPV := PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
-		propTaxPV := PresentValueAnnuity(500, 5.0, 3.0, 0, 360)    // inflation-adjusted, perpetual
-		carPV := PresentValueAnnuity(400, 5.0, 0, 0, 60)            // no inflation, 5 years
+		propTaxPV := PresentValueAnnuity(500, 5.0, 3.0, 0, 360) // inflation-adjusted, perpetual
+		carPV := PresentValueAnnuity(400, 5.0, 0, 0, 60)        // no inflation, 5 years
 		expectedExpenses := livingPV + propTaxPV + carPV
 
 		if math.Abs(result.PVExpenses-expectedExpenses)/expectedExpenses > 0.001 {

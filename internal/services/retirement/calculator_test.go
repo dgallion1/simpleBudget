@@ -42,6 +42,32 @@ func TestDefaultMonteCarloConfig(t *testing.T) {
 	}
 }
 
+func TestRunProjection_AnnualReturnCompoundsToAnnualRate(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 100000
+	settings.MonthlyLivingExpenses = 0
+	settings.MonthlyHealthcare = 0
+	settings.HealthcarePersons = nil
+	settings.IncomeSources = nil
+	settings.ExpenseSources = nil
+	settings.TaxDeferredPercent = 0
+	settings.RothPercent = 0
+	settings.InvestmentReturn = 6.0
+	settings.InflationRate = 0
+	settings.ProjectionYears = 1
+	settings.ProjectionTiming = models.ProjectionTimingEndOfMonth
+
+	result := NewCalculator(settings).RunProjection()
+	if len(result.Months) != 12 {
+		t.Fatalf("got %d months, want 12", len(result.Months))
+	}
+
+	expected := settings.PortfolioValue * 1.06
+	if math.Abs(result.FinalBalance-expected) > 0.01 {
+		t.Fatalf("final balance = %.2f, want %.2f", result.FinalBalance, expected)
+	}
+}
+
 // TestGenerateYearlyReturns verifies return generation with crashes and volatility
 func TestGenerateYearlyReturns(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()

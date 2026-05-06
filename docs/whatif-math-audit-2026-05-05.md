@@ -244,6 +244,8 @@ A 65+ Single filer at $80,000 gross income would have:
 
 **Test coverage note:** No test exercises the age-65+ deduction path because the function doesn't implement it. A boundary test at the qualifying age transition (the year the client turns 65) is entirely absent.
 
+**Resolution:** Closed by commit 3d316a26c5c26c2c809a8f3d0c8f5792ac100403 on `feat/whatif-fixes`. Added `AdditionalStandardDeduction2024Age65` table, `TaxConfig.Age65Count` field, and modified `GetAdjustedStandardDeduction` to honor age-65+ additional deduction per IRS Rev. Proc. 2023-34 §3.16(2). Settings UI surfacing of the new field is the user's call (not in this PR; field defaults to 0, preserving non-65+ projection behavior).
+
 ---
 
 #### F-002 — INFO State tax is a single flat rate
@@ -2529,6 +2531,8 @@ A 65+ Single filer at $80,000 gross income would have:
 **Recommended fix sketch:** Add an `Age65Count int` field (0, 1, or 2) to `TaxCalculator` and a `StandardDeduction2024Additional` constant map keyed on filing status (Single/HoH → $1,950; MFJ/MFS → $1,550); sum the base deduction with `Age65Count * additional` before inflating.
 
 **Test coverage note:** No test exercises the age-65+ deduction path because the function doesn't implement it. A boundary test at the qualifying age transition (the year the client turns 65) is entirely absent.
+
+**Resolution:** Closed by commit 3d316a26c5c26c2c809a8f3d0c8f5792ac100403 on `feat/whatif-fixes`. Added `AdditionalStandardDeduction2024Age65` table, `TaxConfig.Age65Count` field, and modified `GetAdjustedStandardDeduction` to honor age-65+ additional deduction per IRS Rev. Proc. 2023-34 §3.16(2). Settings UI surfacing of the new field is the user's call (not in this PR; field defaults to 0, preserving non-65+ projection behavior).
 
 ---
 

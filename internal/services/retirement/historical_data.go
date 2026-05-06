@@ -142,7 +142,10 @@ func GetHistoricalSequence(startYear int, yearsNeeded int) []HistoricalYear {
 // GetAvailableStartYears returns the years that can be used as starting points for backtesting
 // given the required projection length
 func GetAvailableStartYears(projectionYears int) []int {
-	maxIdx := len(HistoricalReturns) - projectionYears
+	// F-057: inclusive upper bound; for N-year horizon the last viable
+	// start year is (lastYear - N + 1). E.g., 30-year horizon over
+	// 1928-2024 = 1995 inclusive (97 - 30 + 1 = 68 sequences).
+	maxIdx := len(HistoricalReturns) - projectionYears + 1
 	if maxIdx <= 0 {
 		return nil
 	}

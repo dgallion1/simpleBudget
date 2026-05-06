@@ -7,9 +7,11 @@
 
 ## Goal
 
-Resolve every actionable finding from the what-if math audit. Land formula
-fixes, close test-coverage gaps, decide the constants-currency question, and
-update misleading UI copy — without breaking anything that already works.
+Resolve audit findings that affect what users see in the projection,
+without breaking anything that already works. The user's stated objective
+is "improve projections so the user isn't confused" — the campaign is
+re-scoped (2026-05-06) around user-visible accuracy and UI clarity, with
+internal-only test-hardening (the 45 LOWs) deferred.
 
 ## Non-goals
 
@@ -21,21 +23,36 @@ update misleading UI copy — without breaking anything that already works.
   `internal/models/whatif.go`, and the relevant `web/templates/components/whatif/*.html`
   files. UI/copy fixes touch templates only.
 
-## Scope (all 71 findings)
+## Scope — re-prioritized for user-visible impact
 
-| Severity | Count | Treatment |
-|----------|-------|-----------|
-| HIGH | 0 | n/a |
-| MEDIUM | 14 | Formula fixes via TDD per finding |
-| LOW | 45 | Test-coverage gaps closed by adding the missing edge-case tests |
-| INFO | 12 | Mostly currency notes / doc copy tweaks; some no-ops |
+The 71 audit findings split by what the user notices:
 
-The 14 MEDIUMs include both real formula bugs (F-001, F-018, F-026, F-029,
-F-049, F-057, F-065 — 7 items) and substantive test-coverage gaps that an
-auditor flagged as MEDIUM because they could mask future regressions
-(F-011, F-019, F-032, F-033, F-035, F-036, F-062 — 7 items). These get the
-same TDD treatment as the formula bugs, just with the test as the deliverable
-rather than the test-then-fix.
+| Tier | Findings | Treatment |
+|------|----------|-----------|
+| **P1 — User-visible math bugs** | F-001, F-018, F-026, F-029, F-049, F-057, F-065 | Formula fixes via TDD, one PR each (7 PRs) |
+| **P2 — UI clarity / labels / docs** | F-063, F-070 | Rename / refresh, one PR each (2 PRs) |
+| **P3 — Config gaps** | F-032, F-035, F-067 | One PR bundling year-boundary timing fixes |
+| **P4 — Constants currency** | (TY2024 → TY2025) | Deferred decision; PR prepared not merged |
+| **P5 — Test hardening (45 LOWs)** | F-007–F-017 (mostly), F-040, F-042–F-048, etc. | **Dropped from this campaign.** Internal regression guards; do not affect what the user sees. Revisit only if a future regression shows the gap was load-bearing. |
+
+The other MEDIUMs that aren't in P1 (F-011, F-019, F-032, F-033, F-035,
+F-036, F-062) are either subsumed into P3 (F-032, F-035) or were classified
+MEDIUM because they're substantive test gaps but not output errors —
+treated as P5 for this campaign.
+
+### Locked decisions on ambiguous findings
+
+- **F-035 (RMD timing).** Implement option (b) from the explanation: make
+  RMD timing configurable (`start_of_year` / `mid_year` / `end_of_year`),
+  default to `mid_year`. This removes the ambiguity that confuses users
+  comparing this tool's output to other planners. Settings field added,
+  surfaced in the UI as a small dropdown.
+- **F-063 (guardrails mislabel).** Implement option (a): rename the UI
+  label and tooltip from "Guyton-Klinger guardrails" to "Drop/rise
+  guardrails (simple)" with a one-line tooltip explaining the trigger.
+  Math unchanged. A separate follow-up ticket (`whatif-full-gk`) is filed
+  for implementing actual G-K rules later if usage data justifies the
+  larger work.
 
 ## Approach
 
@@ -76,31 +93,33 @@ F-050-52, F-054-56, F-061, F-064, F-066-69, F-071):
    audit doc to reflect the upgrade.
 3. Commit the test.
 
-### One PR per area
+### One PR per finding (P1 + P2), one bundle PR for P3
 
-Ten area PRs, in this priority order (highest impact first):
+Ten PRs, in priority order (highest user-visible impact first):
 
-| Order | PR | Area | Findings | Notes |
-|-------|----|------|----------|-------|
-| 1 | `whatif-fixes-area-1` | Federal & state tax | F-001 (M), F-007–F-017 (L) | F-001 is the highest-impact formula fix. |
-| 2 | `whatif-fixes-area-7` | Taxable account & withdrawals | F-049 (M), F-045–F-048, F-050–F-052 (L) | F-049 silently under-collects LTCG. |
-| 3 | `whatif-fixes-area-10` | Chain, healthcare, budget-fit | F-065 (M), F-066–F-071 (L) | F-065 is the largest dollar-magnitude error. |
-| 4 | `whatif-fixes-area-2` | Specialized tax surcharges | F-018, F-019 (M), F-020–F-024 (L/I) | F-018 fixes MFS taxable SS handling. |
-| 5 | `whatif-fixes-area-3` | Social Security | F-026, F-029 (M), F-025, F-027–F-031 (L/I) | F-026 (zero-COLA inexpressible) and F-029 (display bug) are real UX bugs. |
-| 6 | `whatif-fixes-area-4` | RMD | F-032, F-033, F-035, F-036 (M), F-034 (L) | SECURE 2.0 age-75 transition handling. |
-| 7 | `whatif-fixes-area-9` | Backtest, MC, guardrails | F-057 (M), F-062 (M), F-058–F-061, F-063, F-064 (L/I) | F-057 (off-by-one window). F-063 (UI copy) split out — see PR 11. |
-| 8 | `whatif-fixes-area-5` | PV & compounding | F-037, F-038, F-039, F-040, F-041 (L/I) | All LOWs/INFOs — b978aa9 already fixed the substantive issues. |
-| 9 | `whatif-fixes-area-6` | Living-expense projection | F-042, F-043, F-044 (L) | F-043 is a dead-code observation; resolve by deletion or annotation. |
-| 10 | `whatif-fixes-area-8` | Roth conversion | F-053–F-056 (L/I) | All test gaps + observations. |
+| # | PR | Finding(s) | What changes for the user |
+|---|----|-----------|---------------------------|
+| 1 | `fix-f001-age65-deduction` | F-001 | Tax line drops by ~$429/yr for retirees ≥65 (Single). |
+| 2 | `fix-f065-chain-rebase` | F-065 | 30-year chain scenarios with `SpendingDeclineRate > 0` show ~$179K lower late-life expenses. |
+| 3 | `fix-f049-rmd-reinvest-basis` | F-049 | Long-term LTCG correctly reflects after-tax RMD basis. ~$375 per $10K reinvested at 22% marginal. |
+| 4 | `fix-f057-backtest-window` | F-057 | Historical backtest shows 68 sequences instead of 67; 1995–2024 window now included. |
+| 5 | `fix-f026-zero-cola` | F-026 | Setting SS COLA to 0% honors the input (was silently substituting 2%). |
+| 6 | `fix-f029-spousal-display` | F-029 | Spousal benefit display flag and dollar amount correct for already-claiming primary. |
+| 7 | `fix-f018-mfs-taxable-ss` | F-018 | MFS filers get correct § 86 thresholds ($0 lived-with-spouse; Single thresholds lived-apart). |
+| 8 | `fix-f063-guardrails-label` | F-063 | UI says "Drop/rise guardrails (simple)" with honest tooltip. Math unchanged. |
+| 9 | `fix-f070-verification-doc` | F-070 | `docs/what-if-retirement-verification.md` reference numbers refreshed for current code. |
+| 10 | `fix-config-gaps-year-boundary` | F-032, F-035, F-067 | (a) RMD start age handles SECURE 2.0 age-75 bump for projections crossing 2033. (b) RMD timing configurable. (c) Healthcare ACA→Medicare transition handled month-precise. |
 
-Plus two cross-cutting PRs:
+Optional / deferred:
 
-| Order | PR | Findings / scope |
-|-------|----|------------------|
-| 11 | `whatif-fixes-doc-cleanup` | F-063 (guardrails copy), other INFO copy items, audit doc "Codebase audited at" SHA refresh after each area lands. |
-| 12 | `whatif-fixes-constants-bump` | Constants currency: TY2024 → TY2025 federal brackets / LTCG / std deduction. Standalone decision; may defer until TY2026 publishes. |
+| # | PR | Notes |
+|---|----|-------|
+| 11 | `bump-tax-tables-ty2025` | Constants currency: TY2024 → TY2025. **Held — user decides timing.** |
 
-Total: **12 PRs**.
+Total: **10 PRs in scope**, plus the deferred bump.
+
+If the user later wants to close the test-coverage LOWs, that's a separate
+campaign (one big "test hardening" PR per area).
 
 ### Branch strategy
 
@@ -171,34 +190,40 @@ without explicit go-ahead. The audit's Appendix A serves as the diff source.
 
 | Risk | Mitigation |
 |------|------------|
-| Fix introduces a regression caught only at runtime (e.g., handler returns wrong response). | Pre-commit hook runs full `go test ./...`. Each area PR also runs the handlers package test suite. |
+| Fix introduces a regression caught only at runtime (e.g., handler returns wrong response). | Pre-commit hook runs full `go test ./...`. Each PR also runs the handlers package test suite. |
 | Fix breaks an existing test that asserts wrong behavior. | When a fix breaks an existing test, treat the existing test's expectation as suspect. Read the test's source comment / git blame. If it asserted wrong behavior to match buggy code, update the test. Otherwise stop and escalate. |
-| Two areas fix the same function (e.g., F-049 and F-068 both touch `calculator.go`). | Branch order respects priority. Later branches rebase on earlier-merged work. Subagent prompt includes the latest-merged commit SHA so it knows the baseline. |
-| Audit doc's line numbers go stale as code is reformatted. | After each area PR merges, refresh the audit doc's line citations as part of `whatif-fixes-doc-cleanup` (PR 11). |
-| Constants bump produces unexpected output drift. | Run a side-by-side regression: the live page values from `docs/what-if-retirement-verification.md` (currently anchored to TY2024 brackets). Document expected drift in PR 12 before merging. |
+| Two PRs touch the same file (e.g., PRs 1 and 7 both touch `tax.go`). | Linear ordering. Each subagent dispatch sees the prior PR's merged code as baseline. |
+| Audit doc's line numbers go stale as code is reformatted. | Out of scope for this campaign — citations remain valid against `b978aa9`. The audit doc remains a snapshot artifact of that code state. |
+| Constants bump (PR 11) produces unexpected output drift. | Side-by-side regression: live page values from `docs/what-if-retirement-verification.md` post-fix (refreshed by PR 9) become the new baseline. Document expected drift in PR 11 before merging. |
+| F-035 (configurable RMD timing) breaks existing saved scenarios. | Default new field to `mid_year` for new scenarios; for existing saved scenarios without the field, use `start_of_year` (current code's implicit behavior) so saved projections don't change. |
+| F-026 (zero-COLA) — fixing the silent 2% substitution may surprise users who relied on the silent default. | The fix preserves a 2% default when the field is unset / never touched; only respects 0% when the user explicitly enters 0. |
 
 ## Process
 
-1. Approve this spec. (Awaiting user.)
+1. Spec approved by delegation ("continue as you see fit"); decisions on
+   F-035 and F-063 documented above. User may override before any PR
+   merges.
 2. Move to `writing-plans` skill to produce a step-by-step plan covering
-   the 12 PRs.
-3. Execute via subagent-driven-development, one area at a time.
-4. After all 10 area PRs merge, decide on the constants bump (PR 12).
-5. Refresh audit doc line citations and ship doc-cleanup (PR 11).
+   the 10 in-scope PRs.
+3. Execute via subagent-driven-development, one PR at a time.
+4. After all 10 PRs land, decide on the constants bump (PR 11).
 
 ## Open questions
 
-None at design time. Mechanics decisions locked above:
+None at design time. Mechanics locked:
 
-- Scope: every actionable finding (14 MEDIUMs + 45 LOWs + 12 INFOs).
-- Granularity: 10 area PRs + 2 cross-cutting PRs.
-- Workflow: per-area subagent dispatch, two-stage review.
-- Branch strategy: umbrella branch with per-area children.
-- Order: by audit-finding impact (Areas 1, 7, 10 first).
-- Constants bump: deferred decision, gated on TY2026 timing.
+- Scope: 10 user-visible findings (P1 + P2 + P3). Test hardening (P5) and
+  constants bump (P4) deferred.
+- Granularity: one PR per finding for P1/P2; one bundled PR for P3.
+- Workflow: per-PR subagent dispatch, two-stage review.
+- Branch strategy: linear commits on `feat/whatif-fixes`.
+- Order: F-001 → F-065 → F-049 → F-057 → F-026 → F-029 → F-018 → F-063
+  → F-070 → P3 bundle.
+- F-035: configurable timing, default mid-year.
+- F-063: rename only; full G-K filed as separate ticket.
 
 ## Approval
 
-After this spec is approved, the next step is `writing-plans` to produce a
-plan with one section per PR. The plan will own per-finding TDD instructions
-and subagent dispatch templates.
+The next step is `writing-plans` to produce a plan with one section per
+PR. The plan owns per-finding TDD instructions and subagent dispatch
+templates.

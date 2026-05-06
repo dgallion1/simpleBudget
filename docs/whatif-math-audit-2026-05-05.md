@@ -415,7 +415,252 @@ A 65+ Single filer at $80,000 gross income would have:
 
 ## 2. Specialized federal tax surcharges (Taxable SS, NIIT, IRMAA)
 
-_Filled in by Task 2._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding (typically test-gap) · PARTIAL (F-NNN) = formula partially correct, missing feature · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `CalculateTaxableSocialSecurity` (free) | `tax.go:267` | PARTIAL (F-018) |
+| `(tc *TaxCalculator) CalculateTaxableSocialSecurity` (method) | `tax.go:335` | PASS |
+| `CalculateNIIT` (free) | `tax.go:292` | PASS (F-019) |
+| `(tc *TaxCalculator) CalculateNIIT` (method) | `tax.go:339` | PASS |
+| `CalculateMonthlyIRMAA` (free) | `tax.go:308` | PASS (F-020, F-021) |
+| `(tc *TaxCalculator) CalculateMonthlyIRMAA` (method) | `tax.go:343` | PASS |
+| `resolveIRMALookbackMAGI` | `calculator.go:286` | PASS (F-022) |
+| `medicareEligibleAdultCountAtYear` | `calculator.go:315` | PASS (F-023) |
+| `plannerIRMAAInflationFactorForYear` | `calculator.go:337` | PASS (F-024) |
+
+### Constants verified
+
+| Table | Cells checked | Mismatches |
+|-------|---------------|------------|
+| `socialSecurityTaxThresholds` | 9 (3 statuses × 3 fields each) | 0 (MFS absent by design; handling noted in F-018) |
+| `niitThresholds` | 4 | 0 |
+| `monthlyIRMAASurcharge2026` | 22 (tier counts × 2 fields across 4 statuses) | 0 verified against code logic; see F-020 for manual CMS cross-check advisory |
+
+### Worked examples
+
+#### WE-2.1: Taxable SS, MFJ, $50,000 other + $30,000 SS
+
+**Source:** 26 USC § 86; IRS Pub 915 worksheet.
+
+| Step | Value |
+|------|-------|
+| Provisional income: $50,000 + ½($30,000) | $65,000 |
+| Exceeds upper threshold ($44,000 MFJ) | yes |
+| Step 1: ($65,000 − $44,000) × 85% | $17,850 |
+| Step 2: lesser of [BaseTaxableAmount $6,000, ½($30,000) $15,000] | $6,000 |
+| Step 3: $17,850 + $6,000 | $23,850 |
+| Cap: 85% × $30,000 | $25,500 |
+| **Expected** | **$23,850** |
+| **Actual** (`CalculateTaxableSocialSecurity(30000, 50000, 0, 0, MFJ)`) | **$23,850.00** |
+| Delta | $0.00 ✓ |
+
+#### WE-2.2: NIIT, MFJ, MAGI $300K, NII $40K
+
+**Source:** 26 USC § 1411; IRS Pub 550.
+
+| Step | Value |
+|------|-------|
+| Excess MAGI: $300,000 − $250,000 | $50,000 |
+| Lesser of NII $40,000 or excess $50,000 | $40,000 |
+| NIIT: 3.8% × $40,000 | **$1,520** |
+| **Actual** (`CalculateNIIT(300000, 40000, MFJ)`) | **$1,520.00** |
+| Delta | $0.00 ✓ |
+
+#### WE-2.3: NIIT lesser-of, MFJ, MAGI $290K, NII $60K
+
+**Source:** 26 USC § 1411 (lesser-of branch where NII > excess MAGI).
+
+| Step | Value |
+|------|-------|
+| Excess MAGI: $290,000 − $250,000 | $40,000 |
+| Lesser of NII $60,000 or excess $40,000 | $40,000 |
+| NIIT: 3.8% × $40,000 | **$1,520** |
+| **Actual** (`CalculateNIIT(290000, 60000, MFJ)`) | **$1,520.00** |
+| Delta | $0.00 ✓ |
+
+#### WE-2.4: IRMAA tier selection, MFJ, MAGI $300K, inflationFactor=1.0
+
+**Source:** CMS 2026 IRMAA table (code's `monthlyIRMAASurcharge2026`); `plannerIRMAAInflationFactorForYear` design.
+
+Inflation factor 1.0 means no scaling of the 2026 thresholds (as would occur at 0% inflation or for testing purposes). The raw 2026 table applies.
+
+| Tier | MFJ upper MAGI | Combined monthly surcharge |
+|------|---------------|---------------------------|
+| 1 | $218,000 | $0.00 |
+| 2 | $274,000 | $95.70 |
+| 3 | $342,000 | $240.40 |
+
+MAGI $300,000 exceeds tier-2 upper ($274,000) and falls at or below tier-3 upper ($342,000), selecting tier-3 surcharge.
+
+| Expected monthly surcharge | **$240.40** (202.90 Part B + 37.50 Part D) |
+|---|---|
+| **Actual** (`CalculateMonthlyIRMAA(300000, MFJ, 1.0)`) | **$240.40** |
+| Delta | $0.00 ✓ |
+
+**`plannerIRMAAInflationFactorForYear` at year 0:**
+- `yearsFromIRMAABase = 0 − (2026−2024) = −2`
+- At 0% inflation: `(1+0)^(−2) = 1.0` (confirmed by test)
+- At 3% inflation: `(1.03)^(−2) = 0.9426…` (confirmed by test)
+- The design correctly deflates the 2026 IRMAA table back to projection-year-0 (2024) purchasing power, so year-N MAGI is compared on equal footing with the year-N IRMAA thresholds.
+
+### Findings
+
+#### F-018 — MEDIUM `CalculateTaxableSocialSecurity`: MFS always-85% overstates tax for lived-apart filers
+
+**Location:** `internal/services/retirement/tax.go:267` — `CalculateTaxableSocialSecurity`
+
+**Source consulted:** 26 USC § 86(c)(2); IRS Pub 915 ("How Much Is Taxable?" worksheet for MFS filers).
+
+**What it does:** When `filingStatus == FilingMarriedSeparate`, the function immediately returns `ssBenefits * 0.85` — i.e., 85% of benefits are always taxable. No provisional-income test is applied.
+
+**Finding:** Under 26 USC § 86(c)(2), the 85% cap with $0 thresholds only applies to MFS filers who **lived with their spouse at any time during the tax year**. MFS filers who **lived apart from their spouse the entire year** are subject to the same provisional-income thresholds as Single filers ($25,000 base / $34,000 upper). The code applies the higher (85%-always) treatment to ALL MFS filers regardless of living arrangements, which overstates taxable SS (and thus tax) for MFS-lived-apart filers. For a filer with $20,000 SS and $0 other income: code returns $17,000 taxable; correct amount under lived-apart rules is $0 (provisional income $10,000 < $25,000 base threshold).
+
+**Evidence / repro:**
+```go
+// tax.go:273-275
+if filingStatus == models.FilingMarriedSeparate {
+    return ssBenefits * 0.85
+}
+```
+MFS-lived-apart example: `CalculateTaxableSocialSecurity(20000, 0, 0, 0, FilingMarriedSeparate)` → returns $17,000. Per statute (lived apart): PI = $10,000 < $25,000 → correct answer is **$0**. Overstatement: $17,000 taxable SS.
+
+**Recommended fix sketch:** Add a `MFSLivedApart bool` flag to `WhatIfSettings` (or a new `SocialSecurityMFSTreatment` enum). If lived-apart, delegate to the Single/HoH threshold path; if lived-with-spouse or unspecified, retain the 85%-always treatment (conservative default).
+
+**Test coverage note:** The existing test `TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct` asserts the current 85% behavior for all income levels. No test exists for MFS-lived-apart scenarios. The threshold-boundary tests in `coverage_gaps2_test.go` do not include MFS.
+
+---
+
+#### F-019 — MEDIUM `CalculateNIIT`: MAGI at exact threshold not tested; NIIT inflation note
+
+**Location:** `internal/services/retirement/tax.go:292` — `CalculateNIIT`
+
+**Source consulted:** 26 USC § 1411; IRS Pub 550 (NIIT); IRC § 1411(b) (thresholds not indexed).
+
+**What it does:** Computes 3.8% NIIT on the lesser of net investment income or excess MAGI above the filing-status threshold. Returns 0 when MAGI ≤ threshold.
+
+**Finding (two parts):**
+
+*Part A — Formula and thresholds are correct.* The `niitThresholds` map correctly encodes the statutory amounts ($200K Single/HoH, $250K MFJ, $125K MFS). The code does NOT inflate these thresholds (verified: `CalculateNIIT` receives unadjusted MAGI and a fixed threshold — no `yearsFromBase` parameter exists, consistent with the statute's instruction that thresholds are NOT indexed for inflation, per 26 USC § 1411(b)). This is correct behavior.
+
+*Part B — Test gap: MAGI exactly at threshold.* The test suite does not test `CalculateNIIT` at exactly the threshold amount (e.g., `magi = 200000` for Single). The guard `excessMAGI <= 0` covers this, but it is not directly asserted. The `TestCalculateNIIT` cases use $190K (below) and $260K, $215K, $140K (above) — no case uses the exact boundary.
+
+**Evidence / repro:**
+- `CalculateNIIT(200000, 50000, FilingSingle)`: expected 0 (at threshold), not tested.
+- `CalculateNIIT(125000, 10000, FilingMarriedSeparate)`: expected 0 (at MFS threshold), not tested.
+
+**Recommended fix sketch:** Add exact-threshold cases to `TestCalculateNIIT`: `magi=200000 Single → 0`, `magi=250000 MFJ → 0`, `magi=125000 MFS → 0`; add one case just above each threshold for completeness.
+
+**Test coverage note:** The `excessMAGI <= 0` branch is only exercised via the `magi=190000 < 200000` case (excess is negative); the `excessMAGI == 0` sub-case (MAGI exactly at threshold) is dark.
+
+---
+
+#### F-020 — INFO `monthlyIRMAASurcharge2026`: CMS 2026 IRMAA table values require manual cross-check
+
+**Location:** `internal/services/retirement/tax.go:124–157` — `monthlyIRMAASurcharge2026`
+
+**Source consulted:** CMS 2026 Medicare Part B & D IRMAA announcement (late 2025); 42 USC § 1395r-1.
+
+**What it does:** Defines the 2026 monthly IRMAA surcharge (Part B + Part D) and MAGI tier upper bounds for all four filing statuses. The code comment states these are the source amounts, with the planner rescaling them to the 2024 tax base year and inflating forward.
+
+**Finding:** The surcharge dollar amounts and MAGI tier boundaries in the code cannot be independently verified from training-data knowledge with certainty — the 2026 IRMAA values were announced by CMS in late 2025. Based on best available knowledge, the tier structure (6 tiers for Single/MFJ/HoH, 3 tiers for MFS) and the relationship between Single/MFJ/MFS thresholds (MFJ approximately 2× Single; MFS tier 2 upper = ~$391K) match the legislative intent of 42 USC § 1395r-1. The Part B and Part D amounts are coded separately and summed (e.g., 81.20 + 14.50 = 95.70 for tier 2 Single). However, the specific dollar amounts should be manually cross-checked against the official CMS 2026 announcement to confirm accuracy. The code's internal consistency is intact (MFJ thresholds are exactly 2× Single thresholds where applicable; MFS special treatment follows § 1395r-1(f)(2)).
+
+**Evidence / repro:** n/a (informational advisory, not a confirmed error).
+
+**Recommended fix sketch:** Add a comment in the source referencing the exact CMS publication title and URL (e.g., CMS Fact Sheet "2026 Medicare Parts A and B Premiums and Deductibles"). Add a regression test that asserts specific known dollar amounts so future table updates are intentional changes caught by tests.
+
+**Test coverage note:** The existing IRMAA test cases check tier selection and math (correct) but do not assert that the underlying dollar amounts match the CMS source — a future table-entry typo would not be caught unless the nominal dollar values are compared against a trusted constant.
+
+---
+
+#### F-021 — LOW `CalculateMonthlyIRMAA`: tier-boundary exact values not tested; HoH coverage absent
+
+**Location:** `internal/services/retirement/tax.go:308` — `CalculateMonthlyIRMAA`
+
+**Source consulted:** Code inspection and `internal/services/retirement/tax_test.go`, `coverage_gaps2_test.go`.
+
+**What it does:** Returns the monthly IRMAA surcharge for a given MAGI, filing status, and inflation factor, by walking the tier table.
+
+**Finding:** The test suite covers Single (below threshold, mid-tier, inflation shift), MFJ (top tier), and MFS (three-tier structure), but has these gaps:
+
+1. **Head of Household (HoH) not tested.** HoH uses the same bracket table as Single, but this equivalence is not directly asserted for IRMAA (unlike taxable SS and NIIT where HoH tests exist).
+2. **Exact tier-boundary MAGI values not tested.** The Single table has boundaries at $109K, $137K, $171K, $205K, $500K. No test uses these exact boundary values to verify the inclusive `<=` comparison (e.g., `magi = 109000` should return 0; `magi = 109001` should return $95.70).
+3. **MFJ tier boundaries not tested.** Only the MFJ top tier is tested ($800K); the intermediate tier boundaries ($218K, $274K, $342K, $410K, $750K) are not exercised.
+
+**Evidence / repro:** In `tax_test.go`, IRMAA tests: Single $100K (below), Single $160K (mid), MFJ $800K (top), Single $110K with 1.05 factor (inflation shifts). In `coverage_gaps2_test.go`, MFS 3-tier tests plus edge cases. HoH is absent.
+
+**Recommended fix sketch:** Add HoH test case asserting same result as Single for equivalent MAGI. Add table-driven test with MAGI at each Single and MFJ tier boundary (both at and just above).
+
+**Test coverage note:** The IRMAA loop's exact boundary behavior (`magi <= upperMAGI` with `<=`) is tested indirectly but not with exact boundary-match values.
+
+---
+
+#### F-022 — LOW `resolveIRMALookbackMAGI`: never directly tested; len=1 boundary not covered
+
+**Location:** `internal/services/retirement/calculator.go:286` — `resolveIRMALookbackMAGI`
+
+**Source consulted:** Code inspection; `calculator_test.go`.
+
+**What it does:** Returns the MAGI from 2 years prior (index `len-2` of the history slice) if history has ≥ 2 entries; otherwise falls back to `assumedIRMALookbackMAGI` if provided; otherwise returns (0, false) indicating no lookback available.
+
+**Finding:** `resolveIRMALookbackMAGI` is never called directly in any test. It is exercised indirectly via `estimateMonthlySnapshot` in `TestEstimateMonthlySnapshot_IRMAALookback` (len=2 history) and via the full projection in `TestRunProjectionDelaysIRMAAUntilLookbackYear`. The following branches are untested:
+
+1. **`len == 1`** (single year of history): the function should fall through to `assumedIRMALookbackMAGI`. This branch is never exercised.
+2. **`len == 0` with no assumed MAGI**: returns (0, false). Not directly tested.
+3. **Negative assumed MAGI** (`*assumedIRMALookbackMAGI < 0`): clamped to 0 by `math.Max`. This branch is untested.
+4. **`len == 2` exact boundary**: tested via the IRMAA lookback test.
+
+**Evidence / repro:** `grep "resolveIRMALookbackMAGI" *_test.go` returns no direct calls.
+
+**Recommended fix sketch:** Add `TestResolveIRMALookbackMAGI` with table-driven cases: empty history + nil assumed → (0, false); empty history + valid assumed → (assumed, true); empty history + negative assumed → (0, true); len-1 history + nil assumed → (0, false); len-1 history + valid assumed → (assumed, true); len-2 history → (history[0], true); len-3 history → (history[1], true).
+
+**Test coverage note:** The `len == 1` path and the negative-assumed-MAGI clamp are dark.
+
+---
+
+#### F-023 — LOW `medicareEligibleAdultCountAtYear`: uses start-of-year age; mid-year birthdate not modeled
+
+**Location:** `internal/services/retirement/calculator.go:315` — `medicareEligibleAdultCountAtYear`
+
+**Source consulted:** Code inspection; 42 USC § 1395o (Medicare eligibility at age 65); `calculator_test.go`.
+
+**What it does:** Returns 0, 1, or 2 — the count of adults (primary + spouse) who are Medicare-eligible (age ≥ 65) at projection year `year`. Age is computed as `CurrentAge + year` (integer year offset), which effectively uses start-of-year age.
+
+**Finding:** The function uses `PrimaryAgeAt(year) = CurrentAge + year`, which is a whole-year step. A person who turns 65 partway through projection year N will show `age = 65` for the entire year N (since `PrimaryAgeAt(N)` equals their integer age at the start of year N + N years). This is a known modeling simplification: Medicare eligibility is actually month-specific (begins the month of the 65th birthday, or 3 months prior for enrollment purposes). The code counts someone as Medicare-eligible for the entire year in which they reach 65, which may overstate IRMAA for up to 11 months at the Medicare transition year.
+
+The test coverage for this function is good: it covers nil settings, both ages below 65, one at 65, one above 65, and both at 65. All test cases use integer year boundaries (no mid-year fractional tests, which aren't possible given the function signature).
+
+**Evidence / repro:**
+```go
+// calculator.go:315-328
+func medicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
+    if s.PrimaryAgeAt(year) >= 65 { count++ }  // integer year only
+```
+A 64-year-old who turns 65 in month 6 of year 1: `PrimaryAgeAt(1) = 65` → counted Medicare-eligible for all of year 1 (12 months), but is only eligible for ~6 months.
+
+**Recommended fix sketch:** For higher fidelity, pass a `month int` parameter and check `CurrentAge + year + (month >= birthMonth ? 0 : -1)` — but this requires birth-month data not currently in the model. The existing simplification is reasonable for a projection tool and should be documented in comments.
+
+**Test coverage note:** The function is well-tested for its current (start-of-year) semantics. The known modeling limitation (no mid-year granularity) is a design constraint, not a test gap.
+
+---
+
+#### F-024 — INFO `plannerIRMAAInflationFactorForYear`: zero-equality guard has floating-point fragility
+
+**Location:** `internal/services/retirement/calculator.go:337` — `plannerIRMAAInflationFactorForYear`
+
+**Source consulted:** Code inspection; `calculator_test.go` `TestPlannerIRMAAInflationFactorForYear_Rebases2026TableOntoTaxBaseYear`.
+
+**What it does:** Computes the inflation factor to rescale the 2026 IRMAA table to projection year N. At year N=2 (= irmaaBaseYear−taxBaseYear), `yearsFromIRMAABase = 0` and the function returns exactly 1.0. For other years, it returns `(1+rate/100)^yearsFromIRMAABase`.
+
+**Finding:** The early-return guard `if yearsFromIRMAABase == 0` uses exact float64 equality. Since `yearsFromTaxBase` is passed as `float64` (it is computed as `float64(month)/12` in the projection loop), and `irmaaBaseYear-taxBaseYear = 2` is an exact integer, the subtraction `yearsFromTaxBase - 2.0` can produce floating-point values that are not exactly 0 even when semantically at year 2 (e.g., month 24 → `24.0/12.0 = 2.0` exactly — safe; but month 25 → not 2). For the specific case where yearsFromTaxBase is derived from integer months, `float64(24)/12.0 = 2.0` is exact and the guard is safe. However, the function could be called with fractional years in future refactors, introducing fragility. Not a current bug but worth noting.
+
+**Evidence / repro:** `float64(24)/12.0` is exactly `2.0` in IEEE 754; the early return fires correctly. If the function were called with, e.g., `1.9999999999` the guard would miss and return `math.Pow(1.03, -0.0000000001) ≈ 1.0` — negligible error, but the guard would not fire.
+
+**Recommended fix sketch:** Replace `if yearsFromIRMAABase == 0` with `if math.Abs(yearsFromIRMAABase) < 1e-9` for robustness, or use integer arithmetic for the year comparison.
+
+**Test coverage note:** The test covers year=0, year=2, and year=5. The guard fires correctly for year=2. No test passes a fractional value within epsilon of 2.0.
 
 ## 3. Social Security
 
@@ -782,3 +1027,154 @@ A 65+ Single filer at $80,000 gross income would have:
 **Recommended fix sketch:** Add a `TestNormalizeFilingStatus` with all four valid statuses (assert identity) plus one invalid/zero value (assert MFJ default).
 
 **Test coverage note:** The default fallback branch (`return models.FilingMarriedJoint`) is never reached in tests.
+
+
+---
+
+### F-018 — MEDIUM `CalculateTaxableSocialSecurity`: MFS always-85% overstates tax for lived-apart filers
+
+**Location:** `internal/services/retirement/tax.go:267` — `CalculateTaxableSocialSecurity`
+
+**Source consulted:** 26 USC § 86(c)(2); IRS Pub 915 ("How Much Is Taxable?" worksheet for MFS filers).
+
+**What it does:** When `filingStatus == FilingMarriedSeparate`, the function immediately returns `ssBenefits * 0.85` — i.e., 85% of benefits are always taxable. No provisional-income test is applied.
+
+**Finding:** Under 26 USC § 86(c)(2), the 85% cap with $0 thresholds only applies to MFS filers who **lived with their spouse at any time during the tax year**. MFS filers who **lived apart from their spouse the entire year** are subject to the same provisional-income thresholds as Single filers ($25,000 base / $34,000 upper). The code applies the higher (85%-always) treatment to ALL MFS filers regardless of living arrangements, which overstates taxable SS (and thus tax) for MFS-lived-apart filers. For a filer with $20,000 SS and $0 other income: code returns $17,000 taxable; correct amount under lived-apart rules is $0 (provisional income $10,000 < $25,000 base threshold).
+
+**Evidence / repro:**
+```go
+// tax.go:273-275
+if filingStatus == models.FilingMarriedSeparate {
+    return ssBenefits * 0.85
+}
+```
+MFS-lived-apart example: `CalculateTaxableSocialSecurity(20000, 0, 0, 0, FilingMarriedSeparate)` → returns $17,000. Per statute (lived apart): PI = $10,000 < $25,000 → correct answer is **$0**. Overstatement: $17,000 taxable SS.
+
+**Recommended fix sketch:** Add a `MFSLivedApart bool` flag to `WhatIfSettings` (or a new `SocialSecurityMFSTreatment` enum). If lived-apart, delegate to the Single/HoH threshold path; if lived-with-spouse or unspecified, retain the 85%-always treatment (conservative default).
+
+**Test coverage note:** The existing test `TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct` asserts the current 85% behavior for all income levels. No test exists for MFS-lived-apart scenarios. The threshold-boundary tests in `coverage_gaps2_test.go` do not include MFS.
+
+---
+
+### F-019 — MEDIUM `CalculateNIIT`: MAGI at exact threshold not tested; NIIT inflation note
+
+**Location:** `internal/services/retirement/tax.go:292` — `CalculateNIIT`
+
+**Source consulted:** 26 USC § 1411; IRS Pub 550 (NIIT); IRC § 1411(b) (thresholds not indexed).
+
+**What it does:** Computes 3.8% NIIT on the lesser of net investment income or excess MAGI above the filing-status threshold. Returns 0 when MAGI <= threshold.
+
+**Finding (two parts):**
+
+*Part A — Formula and thresholds are correct.* The `niitThresholds` map correctly encodes the statutory amounts ($200K Single/HoH, $250K MFJ, $125K MFS). The code does NOT inflate these thresholds (verified: `CalculateNIIT` receives unadjusted MAGI and a fixed threshold — no `yearsFromBase` parameter exists, consistent with the statute's instruction that thresholds are NOT indexed for inflation, per 26 USC § 1411(b)). This is correct behavior.
+
+*Part B — Test gap: MAGI exactly at threshold.* The test suite does not test `CalculateNIIT` at exactly the threshold amount (e.g., `magi = 200000` for Single). The guard `excessMAGI <= 0` covers this, but it is not directly asserted. The `TestCalculateNIIT` cases use $190K (below) and $260K, $215K, $140K (above) — no case uses the exact boundary.
+
+**Evidence / repro:**
+- `CalculateNIIT(200000, 50000, FilingSingle)`: expected 0 (at threshold), not tested.
+- `CalculateNIIT(125000, 10000, FilingMarriedSeparate)`: expected 0 (at MFS threshold), not tested.
+
+**Recommended fix sketch:** Add exact-threshold cases to `TestCalculateNIIT`: `magi=200000 Single → 0`, `magi=250000 MFJ → 0`, `magi=125000 MFS → 0`; add one case just above each threshold for completeness.
+
+**Test coverage note:** The `excessMAGI <= 0` branch is only exercised via the `magi=190000 < 200000` case (excess is negative); the `excessMAGI == 0` sub-case (MAGI exactly at threshold) is dark.
+
+---
+
+### F-020 — INFO `monthlyIRMAASurcharge2026`: CMS 2026 IRMAA table values require manual cross-check
+
+**Location:** `internal/services/retirement/tax.go:124-157` — `monthlyIRMAASurcharge2026`
+
+**Source consulted:** CMS 2026 Medicare Part B & D IRMAA announcement (late 2025); 42 USC § 1395r-1.
+
+**What it does:** Defines the 2026 monthly IRMAA surcharge (Part B + Part D) and MAGI tier upper bounds for all four filing statuses. The code comment states these are the source amounts, with the planner rescaling them to the 2024 tax base year and inflating forward.
+
+**Finding:** The surcharge dollar amounts and MAGI tier boundaries in the code cannot be independently verified from training-data knowledge with certainty — the 2026 IRMAA values were announced by CMS in late 2025. Based on best available knowledge, the tier structure (6 tiers for Single/MFJ/HoH, 3 tiers for MFS) and the relationship between Single/MFJ/MFS thresholds (MFJ approximately 2x Single; MFS tier 2 upper approximately $391K) match the legislative intent of 42 USC § 1395r-1. The Part B and Part D amounts are coded separately and summed (e.g., 81.20 + 14.50 = 95.70 for tier 2 Single). However, the specific dollar amounts should be manually cross-checked against the official CMS 2026 announcement to confirm accuracy. The code's internal consistency is intact (MFJ thresholds are exactly 2x Single thresholds where applicable; MFS special treatment follows § 1395r-1(f)(2)).
+
+**Evidence / repro:** n/a (informational advisory, not a confirmed error).
+
+**Recommended fix sketch:** Add a comment in the source referencing the exact CMS publication title and URL (e.g., CMS Fact Sheet "2026 Medicare Parts A and B Premiums and Deductibles"). Add a regression test that asserts specific known dollar amounts so future table updates are intentional changes caught by tests.
+
+**Test coverage note:** The existing IRMAA test cases check tier selection and math (correct) but do not assert that the underlying dollar amounts match the CMS source — a future table-entry typo would not be caught unless the nominal dollar values are compared against a trusted constant.
+
+---
+
+### F-021 — LOW `CalculateMonthlyIRMAA`: tier-boundary exact values not tested; HoH coverage absent
+
+**Location:** `internal/services/retirement/tax.go:308` — `CalculateMonthlyIRMAA`
+
+**Source consulted:** Code inspection and `internal/services/retirement/tax_test.go`, `coverage_gaps2_test.go`.
+
+**What it does:** Returns the monthly IRMAA surcharge for a given MAGI, filing status, and inflation factor, by walking the tier table.
+
+**Finding:** The test suite covers Single (below threshold, mid-tier, inflation shift), MFJ (top tier), and MFS (three-tier structure), but has these gaps:
+
+1. **Head of Household (HoH) not tested.** HoH uses the same bracket table as Single, but this equivalence is not directly asserted for IRMAA (unlike taxable SS and NIIT where HoH tests exist).
+2. **Exact tier-boundary MAGI values not tested.** The Single table has boundaries at $109K, $137K, $171K, $205K, $500K. No test uses these exact boundary values to verify the inclusive `<=` comparison (e.g., `magi = 109000` should return 0; `magi = 109001` should return $95.70).
+3. **MFJ tier boundaries not tested.** Only the MFJ top tier is tested ($800K); the intermediate tier boundaries ($218K, $274K, $342K, $410K, $750K) are not exercised.
+
+**Evidence / repro:** In `tax_test.go`, IRMAA tests: Single $100K (below), Single $160K (mid), MFJ $800K (top), Single $110K with 1.05 factor (inflation shifts). In `coverage_gaps2_test.go`, MFS 3-tier tests plus edge cases. HoH is absent.
+
+**Recommended fix sketch:** Add HoH test case asserting same result as Single for equivalent MAGI. Add table-driven test with MAGI at each Single and MFJ tier boundary (both at and just above).
+
+**Test coverage note:** The IRMAA loop's exact boundary behavior (`magi <= upperMAGI` with `<=`) is tested indirectly but not with exact boundary-match values.
+
+---
+
+### F-022 — LOW `resolveIRMALookbackMAGI`: never directly tested; len=1 boundary not covered
+
+**Location:** `internal/services/retirement/calculator.go:286` — `resolveIRMALookbackMAGI`
+
+**Source consulted:** Code inspection; `calculator_test.go`.
+
+**What it does:** Returns the MAGI from 2 years prior (index `len-2` of the history slice) if history has >= 2 entries; otherwise falls back to `assumedIRMALookbackMAGI` if provided; otherwise returns (0, false) indicating no lookback available.
+
+**Finding:** `resolveIRMALookbackMAGI` is never called directly in any test. It is exercised indirectly via `estimateMonthlySnapshot` in `TestEstimateMonthlySnapshot_IRMAALookback` (len=2 history) and via the full projection in `TestRunProjectionDelaysIRMAAUntilLookbackYear`. The following branches are untested:
+
+1. **`len == 1`** (single year of history): the function should fall through to `assumedIRMALookbackMAGI`. This branch is never exercised.
+2. **`len == 0` with no assumed MAGI**: returns (0, false). Not directly tested.
+3. **Negative assumed MAGI** (`*assumedIRMALookbackMAGI < 0`): clamped to 0 by `math.Max`. This branch is untested.
+4. **`len == 2` exact boundary**: tested via the IRMAA lookback test.
+
+**Evidence / repro:** `grep "resolveIRMALookbackMAGI" *_test.go` returns no direct calls.
+
+**Recommended fix sketch:** Add `TestResolveIRMALookbackMAGI` with table-driven cases: empty history + nil assumed → (0, false); empty history + valid assumed → (assumed, true); empty history + negative assumed → (0, true); len-1 history + nil assumed → (0, false); len-1 history + valid assumed → (assumed, true); len-2 history → (history[0], true); len-3 history → (history[1], true).
+
+**Test coverage note:** The `len == 1` path and the negative-assumed-MAGI clamp are dark.
+
+---
+
+### F-023 — LOW `medicareEligibleAdultCountAtYear`: uses start-of-year age; mid-year birthdate not modeled
+
+**Location:** `internal/services/retirement/calculator.go:315` — `medicareEligibleAdultCountAtYear`
+
+**Source consulted:** Code inspection; 42 USC § 1395o (Medicare eligibility at age 65); `calculator_test.go`.
+
+**What it does:** Returns 0, 1, or 2 — the count of adults (primary + spouse) who are Medicare-eligible (age >= 65) at projection year `year`. Age is computed as `CurrentAge + year` (integer year offset), which effectively uses start-of-year age.
+
+**Finding:** The function uses `PrimaryAgeAt(year) = CurrentAge + year`, which is a whole-year step. A person who turns 65 partway through projection year N will show `age = 65` for the entire year N (since `PrimaryAgeAt(N)` equals their integer age at the start of year N + N years). This is a known modeling simplification: Medicare eligibility is actually month-specific (begins the month of the 65th birthday, or 3 months prior for enrollment purposes). The code counts someone as Medicare-eligible for the entire year in which they reach 65, which may overstate IRMAA for up to 11 months at the Medicare transition year.
+
+The test coverage for this function is good: it covers nil settings, both ages below 65, one at 65, one above 65, and both at 65. All test cases use integer year boundaries (no mid-year fractional tests, which are not possible given the function signature).
+
+**Evidence / repro:** A 64-year-old who turns 65 in month 6 of year 1: `PrimaryAgeAt(1) = 65` → counted Medicare-eligible for all of year 1 (12 months), but is only eligible for approximately 6 months.
+
+**Recommended fix sketch:** For higher fidelity, pass a `month int` parameter and check `CurrentAge + year + (month >= birthMonth ? 0 : -1)` — but this requires birth-month data not currently in the model. The existing simplification is reasonable for a projection tool and should be documented in comments.
+
+**Test coverage note:** The function is well-tested for its current (start-of-year) semantics. The known modeling limitation (no mid-year granularity) is a design constraint, not a test gap.
+
+---
+
+### F-024 — INFO `plannerIRMAAInflationFactorForYear`: zero-equality guard has floating-point fragility
+
+**Location:** `internal/services/retirement/calculator.go:337` — `plannerIRMAAInflationFactorForYear`
+
+**Source consulted:** Code inspection; `calculator_test.go` `TestPlannerIRMAAInflationFactorForYear_Rebases2026TableOntoTaxBaseYear`.
+
+**What it does:** Computes the inflation factor to rescale the 2026 IRMAA table to projection year N. At year N=2 (= irmaaBaseYear minus taxBaseYear), `yearsFromIRMAABase = 0` and the function returns exactly 1.0. For other years, it returns `(1+rate/100)^yearsFromIRMAABase`.
+
+**Finding:** The early-return guard `if yearsFromIRMAABase == 0` uses exact float64 equality. Since `yearsFromTaxBase` is passed as `float64` (it is computed as `float64(month)/12` in the projection loop), and `irmaaBaseYear-taxBaseYear = 2` is an exact integer, the subtraction `yearsFromTaxBase - 2.0` can produce floating-point values that are not exactly 0 even when semantically at year 2 (e.g., month 24 → `24.0/12.0 = 2.0` exactly — safe; but month 25 → not 2). For the specific case where yearsFromTaxBase is derived from integer months, `float64(24)/12.0 = 2.0` is exact and the guard is safe. However, the function could be called with fractional years in future refactors, introducing fragility. Not a current bug but worth noting.
+
+**Evidence / repro:** `float64(24)/12.0` is exactly `2.0` in IEEE 754; the early return fires correctly. If the function were called with, e.g., `1.9999999999` the guard would miss and return `math.Pow(1.03, -0.0000000001) ≈ 1.0` — negligible error, but the guard would not fire.
+
+**Recommended fix sketch:** Replace `if yearsFromIRMAABase == 0` with `if math.Abs(yearsFromIRMAABase) < 1e-9` for robustness, or use integer arithmetic for the year comparison.
+
+**Test coverage note:** The test covers year=0, year=2, and year=5. The guard fires correctly for year=2. No test passes a fractional value within epsilon of 2.0.

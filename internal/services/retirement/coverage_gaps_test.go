@@ -1333,7 +1333,7 @@ func TestRunSingleHistoricalSequence_SpendingPhasesDetail(t *testing.T) {
 
 // --- RMD analysis with already-started RMDs ---
 
-func TestCalculateRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
+func TestBuildRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.CurrentAge = 80 // Already past 73
 	s.TaxDeferredPercent = 50
@@ -2400,7 +2400,7 @@ func TestSaveInternal_MkdirAllError(t *testing.T) {
 
 // --- RMD analysis: InvestmentReturn=0 path ---
 
-func TestCalculateRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
+func TestBuildRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.CurrentAge = 70
 	s.TaxDeferredPercent = 50

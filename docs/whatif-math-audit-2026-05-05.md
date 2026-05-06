@@ -889,9 +889,9 @@ result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > ss.SpouseFRABenefit
 
 **Source consulted:** Code inspection; `internal/models/whatif.go:147` (`ClaimAge int` default is 0 for "unset").
 
-**What it does:** `RunSSAnalysis` computes the SS comparison table and picks a recommended `BestAge`. It treats `ss.ClaimAge <= c.Settings.CurrentAge` as "already claiming."
+**What it does:** `RunSSAnalysis` computes the SS comparison table and picks a recommended `BestAge`. It treats `ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra` as "already claiming."
 
-**Finding:** `ClaimAge` defaults to 0 (Go zero value, documented as "0 means unset"). When `ClaimAge == 0` and `CurrentAge > 0` (which is always true for active users), the condition `ss.ClaimAge <= c.Settings.CurrentAge` is true. This causes two incorrect behaviors:
+**Finding:** `ClaimAge` defaults to 0 (Go zero value, documented as "0 means unset"). When `ClaimAge == 0` and `CurrentAge > 0` (which is always true for active users), the condition `ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra` is true (since `0 != 67`). This causes two incorrect behaviors:
 
 1. **Line 410**: `DerivedPIA(ss.FRABenefit, fra, 0)` is called — inside `DerivedPIA`, `claimAge=0` is clamped to 62, so PIA is incorrectly back-derived as though the primary claimed at 62. The true PIA (which the user entered as `FRABenefit`) is underused.
 
@@ -899,9 +899,9 @@ result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > ss.SpouseFRABenefit
 
 In practice, `RunSSAnalysis` is only called from `RunFullAnalysis`, and `RunFullAnalysis` (or the UI) likely guards against calling it with an unset claim age. However, if `RunSSAnalysis` is ever called directly with an unconfigured SS state, it silently miscomputes rather than returning nil or an error.
 
-**Evidence / repro:** `ClaimAge=0, CurrentAge=60`: `0 <= 60` → true; `DerivedPIA(pia, 67, 0)` internally uses claimAge=62; `bestAge = 0`.
+**Evidence / repro:** `ClaimAge=0, CurrentAge=60`: `0 <= 60` and `0 != 67` → true; `DerivedPIA(pia, 67, 0)` internally uses claimAge=62; `bestAge = 0`.
 
-**Recommended fix sketch:** Add a guard at the top of the `already claiming` check: `ss.ClaimAge <= c.Settings.CurrentAge && validSSClaimAge(ss.ClaimAge)`. This mirrors the pattern used in `ssPortfolioPrimaryEligible` (line 57).
+**Recommended fix sketch:** Update the existing condition at `social_security.go:410` from `ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra` to `ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra && validSSClaimAge(ss.ClaimAge)`. The added `validSSClaimAge` guard rejects unset (0) and other out-of-range claim ages before the already-claiming branch runs.
 
 **Test coverage note:** No test passes `ClaimAge=0` with a positive `CurrentAge` to `RunSSAnalysis`. The zero-ClaimAge path through the `already claiming` branch is dark.
 
@@ -1555,13 +1555,13 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 
 **Source consulted:** Code inspection; `internal/models/whatif.go:147`.
 
-**What it does:** Identifies whether the primary person is already claiming (`ss.ClaimAge <= c.Settings.CurrentAge`) to back-derive PIA and lock the best-age recommendation.
+**What it does:** Identifies whether the primary person is already claiming (`ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra`) to back-derive PIA and lock the best-age recommendation.
 
 **Finding:** `ClaimAge` defaults to 0 (Go zero value, meaning "unset"). When `ClaimAge=0` and `CurrentAge > 0`, `0 <= CurrentAge` is true, triggering: (1) `DerivedPIA(pia, fra, 0)` — clamped to 62, incorrectly back-derives PIA as if claimed at 62; (2) `bestAge = 0` — an invalid recommended age. The guard should require `validSSClaimAge(ss.ClaimAge)`.
 
 **Evidence / repro:** `ClaimAge=0, CurrentAge=60`: `0 <= 60` → true; `DerivedPIA(pia, 67, 0)` uses claimAge=62 internally; `bestAge = 0`.
 
-**Recommended fix sketch:** Change line 410 to `if ss.ClaimAge <= c.Settings.CurrentAge && validSSClaimAge(ss.ClaimAge)` and line 430 similarly.
+**Recommended fix sketch:** Update the existing condition at `social_security.go:410` from `ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra` to `ss.ClaimAge <= c.Settings.CurrentAge && ss.ClaimAge != fra && validSSClaimAge(ss.ClaimAge)`. The added `validSSClaimAge` guard rejects unset (0) and other out-of-range claim ages before the already-claiming branch runs.
 
 **Test coverage note:** No test passes `ClaimAge=0` with a positive `CurrentAge` to `RunSSAnalysis`. The zero-ClaimAge "already claiming" path is dark.
 
@@ -1582,5 +1582,3 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 **Recommended fix sketch:** Add a comment explaining the rationale for the `ClaimAge` tiebreaker.
 
 **Test coverage note:** `isBetterSSPortfolioOption` and `bestSSPortfolioOption` are not directly unit-tested; the `MedianEndingBalance` and `ClaimAge` tiebreakers are never exercised in isolation.
-
-**Test coverage note:** The test covers year=0, year=2, and year=5. The guard fires correctly for year=2. No test passes a fractional value within epsilon of 2.0.

@@ -17,17 +17,130 @@ edge-case test coverage gaps. Audit-only — no source changes in this pass.
 
 ## Executive summary
 
-_To be filled in last (Task 12). Will state functions audited, finding counts
-by severity, and the top three concerns._
+**What was audited.** 134 functions across 10 math areas, 129 numeric
+constants (tax brackets, LTCG brackets, standard deduction, Social Security
+thresholds, NIIT thresholds, IRMAA tier table, RMD uniform lifetime table),
+and 33 worked examples cross-checked by hand against IRS publications, SSA
+POMS, CMS regulations, and first-principles finance. Codebase audited at
+`b978aa9` ("Fix what-if compounding math") and downstream audit-only commits.
+
+**What was found.** 0 HIGH, 14 MEDIUM, 45 LOW, 12 INFO findings (F-001
+through F-071). Of 134 functions audited, 114 passed with no formula error
+(though many carry associated test-gap or informational findings); 6 passed
+with a real but partial feature gap (PARTIAL status); 1 has a confirmed
+formula error (FAIL: `GetAvailableStartYears`, F-057). No formula errors at
+HIGH severity were found — all 129 constants and all core formulas verified to
+within ±$0.01 currency / ±1e-6 ratio against authoritative sources, except
+where noted as PARTIAL or FAIL.
+
+**Top concerns.** Three highest-impact items, in order:
+
+1. **[F-001] Missing age-65+ additional standard deduction.** The standard
+   deduction for taxpayers 65 or older includes an IRS-mandated additional
+   amount ($1,550–$1,950 per qualifying person per Rev. Proc. 2023-34 §3.16)
+   that `GetAdjustedStandardDeduction` does not apply. Since virtually all
+   planner users are retirees, this causes systematic over-taxation of ordinary
+   income — approximately $429/year (4.8%) for a 65+ Single filer at $80K
+   gross income, compounding across a 30-year retirement into tens of thousands
+   of dollars of cumulative error.
+
+2. **[F-065] Spending-decline rebase applies full inflation instead of net
+   inflation.** `rebaseLivingExpensesAtTransition` inflates the base spending
+   at the full `InflationRate` even when `SpendingDeclineRate > 0`. The correct
+   rebase rate is `inflationRate − declineRate` (net), not `inflationRate`
+   alone. For a scenario with 3% inflation and 1% decline rate, spending at
+   age-90 is inflated by ~$179K more than the user intends over a 30-year
+   projection, overstating late-life expenses and making the portfolio look
+   more constrained than it is.
+
+3. **[F-049] RMD reinvestment overstates taxable cost basis.** When required
+   RMDs are reinvested to the taxable account via `reinvestRequiredRMDToTaxableState`,
+   the full pre-tax RMD amount is added as cost basis. The RMD is ordinary
+   income; the user will pay income tax on it and reinvest only the after-tax
+   portion. Treating the full gross amount as basis understates future LTCG
+   by approximately $375 per $10K RMD reinvested (at a 22% marginal rate),
+   causing LTCG to be under-collected in later years.
 
 ---
 
 ## Findings table
 
-_To be filled in last (Task 12). Sorted by severity then area._
+Sorted by severity, then area, then ID. Click an ID to jump to its full entry
+in Appendix C.
 
 | ID | Sev | Area | Location | Summary |
 |----|-----|------|----------|---------|
+| [F-001](#f-001--medium-missing-age-65-additional-standard-deduction) | MEDIUM | 1. Federal & state income tax | `tax.go:238` | `GetAdjustedStandardDeduction` omits IRS age-65+ additional deduction ($1,550–$1,950/person); over-taxes retirees by ~4.8% |
+| [F-011](#f-011--medium-calculatetaxwithinvestmentincomeinternal--calculatetaxwithinvestmentincomebreakdown-nonqualifieddividends-path-and-breakdown-entry-point-untested) | MEDIUM | 1. Federal & state income tax | `tax.go:429,433` | `nonQualifiedDividends` NIIT path and `CalculateTaxWithInvestmentIncomeBreakdown` entry point entirely untested |
+| [F-018](#f-018--medium-calculatetaxablesocialsecurity-mfs-always-85-overstates-tax-for-lived-apart-filers) | MEDIUM | 2. Specialized federal tax surcharges | `tax.go:267` | MFS always-85% rule applied to all MFS filers; lived-apart filers should use Single thresholds — overstates taxable SS |
+| [F-019](#f-019--medium-calculateniit-magi-at-exact-threshold-not-tested-niit-inflation-note) | MEDIUM | 2. Specialized federal tax surcharges | `tax.go:292` | `CalculateNIIT` MAGI exactly at threshold untested; NIIT thresholds correctly not inflated (formula correct) |
+| [F-026](#f-026--medium-normalizedsscolorate-zero-cola-scenario-inexpressible-silently-substitutes-2-default) | MEDIUM | 3. Social Security | `social_security.go:23` | Zero COLA rate silently replaced with 2% default; user cannot model a 0% COLA scenario |
+| [F-029](#f-029--medium-runssanalysis-spouseusingspousalbenefitdisplayflag-uses-raw-frabenefit-instead-of-derived-pia) | MEDIUM | 3. Social Security | `social_security.go:484` | `SpouseUsingSpousalBenefit` flag uses raw `FRABenefit` instead of `primaryPIA`; display wrong for already-claiming-at-non-FRA primary |
+| [F-032](#f-032--medium-rmdstartage-is-a-single-constant-does-not-model-secure-20-age-75-transition-in-2033) | MEDIUM | 4. RMD | `rmd.go:6` | `RMDStartAge` hard-coded to 73; no logic to switch to 75 when SECURE 2.0 age-75 rule takes effect in 2033 |
+| [F-033](#f-033--medium-getlifeexpectancyfactor-age-72-is-in-the-table-but-calculatermdanalysis-skips-it-age-below-72-returns-0-silently) | MEDIUM | 4. RMD | `rmd.go:64,120` | Age 72 in IRS table but caller guard skips it; age < 72 returns 0 silently — no RMD computed for transitional age |
+| [F-035](#f-035--medium-calculatermdanalysis-rmd-deducted-before-year-end-growth-is-applied-order-is-economically-aggressive) | MEDIUM | 4. RMD | `rmd.go:138` | RMD withdrawn before year-end growth applied; economically aggressive ordering understates final balance |
+| [F-036](#f-036--medium-calculatermdanalysis-multiple-test-coverage-gaps) | MEDIUM | 4. RMD | `rmd.go:87` | Multiple `CalculateRMDAnalysis` coverage gaps: zero balance, age-72, age-120+, multi-year sequences |
+| [F-049](#f-049--medium-reinvestrequiredrmdtotaxablestate-reinvests-pre-tax-rmd-cost-basis-overstated-by-tax-liability) | MEDIUM | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:748` | Pre-tax RMD amount added as cost basis; after-tax reinvestment is smaller — LTCG understated ~$375 per $10K reinvested |
+| [F-057](#f-057--medium-getavailablestartyears-off-by-one-excludes-the-most-recent-valid-30-year-window) | MEDIUM | 9. Backtest, Monte Carlo, guardrails | `historical_data.go:144` | Off-by-one in `GetAvailableStartYears` excludes the most recent valid 30-year backtest window |
+| [F-062](#f-062--medium-runmontecarlosimulation-degenerate-inputs-runs0-runs1-have-no-coverage) | MEDIUM | 9. Backtest, Monte Carlo, guardrails | `calculator.go:2102` | `RunMonteCarloSimulation` degenerate inputs (runs=0, runs=1) have no test coverage |
+| [F-065](#f-065--medium-rebaselivingexpensesattransition-uses-full-inflation-instead-of-net-inflation-when-spendingdeclinerate--0) | MEDIUM | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:163` | Spending rebase uses full inflation not net (`inflation − decline`); ~$179K compounding error over 30-year scenario |
+| [F-006](#f-006--low-dead-fallback-branch-in-getadjustedstandarddeduction) | LOW | 1. Federal & state income tax | `tax.go:238` | Dead MFJ fallback branch in `GetAdjustedStandardDeduction` for unknown filing status; not reachable from normalized callers |
+| [F-007](#f-007--low-calculatefederaltax-filing-status-and-time-axis-coverage-gaps) | LOW | 1. Federal & state income tax | `tax.go:349` | `CalculateFederalTax` tests only MFJ at year-0; Single/MFS/HoH and `yearsFromBase>0` not covered |
+| [F-008](#f-008--low-calculatestatetax-no-direct-test-coverage) | LOW | 1. Federal & state income tax | `tax.go:396` | `CalculateStateTax` never called directly in tests; positive state-tax path completely untested |
+| [F-009](#f-009--low-calculatetotaltax-indirect-coverage-only-filing-status-and-inflation-gaps) | LOW | 1. Federal & state income tax | `tax.go:404` | `CalculateTotalTax` only tested via indirection; federal/state split values never independently asserted |
+| [F-010](#f-010--low-calculatetaxwithinvestmentincome-single-filing-status-no-ltcg-at-20-bracket) | LOW | 1. Federal & state income tax | `tax.go:421` | `CalculateTaxWithInvestmentIncome` tests Single only; 20% LTCG bracket never entered in any test |
+| [F-012](#f-012--low-estimaterothconversiontax-negative-conversion-and-multi-year-not-tested) | LOW | 1. Federal & state income tax | `tax.go:484` | `EstimateRothConversionTax` not tested with negative amount or `yearsFromBase>0` |
+| [F-013](#f-013--low-getmarginalrate-single-filing-status-no-year-offset-coverage) | LOW | 1. Federal & state income tax | `tax.go:499` | `GetMarginalRate` tests only Single at year-0; MFJ/MFS/HoH thresholds and inflation not exercised |
+| [F-014](#f-014--low-getadjustedbrackets-mfs-and-hoh-filing-statuses-and-negative-year-not-tested) | LOW | 1. Federal & state income tax | `tax.go:181` | `GetAdjustedBrackets` MFS, HoH, and negative year untested; nil-bracket fallback unreachable |
+| [F-015](#f-015--low-getadjustedlongtermalcapitalgainsbrackets-never-directly-tested) | LOW | 1. Federal & state income tax | `tax.go:210` | `GetAdjustedLongTermCapitalGainsBrackets` never directly tested |
+| [F-016](#f-016--low-getadjustedstandarddeduction-never-directly-tested) | LOW | 1. Federal & state income tax | `tax.go:238` | `GetAdjustedStandardDeduction` never directly tested; exact base values unasserted |
+| [F-017](#f-017--low-normalizefilingstatus-never-directly-tested) | LOW | 1. Federal & state income tax | `tax.go:258` | `normalizeFilingStatus` never directly tested; invalid-status fallback branch unreachable in tests |
+| [F-021](#f-021--low-calculatemonthlyirmaa-tier-boundary-exact-values-not-tested-hoh-coverage-absent) | LOW | 2. Specialized federal tax surcharges | `tax.go:308` | `CalculateMonthlyIRMAA` tier-boundary exact values untested; HoH filing status absent |
+| [F-022](#f-022--low-resolveirmalookbackmagi-never-directly-tested-len1-boundary-not-covered) | LOW | 2. Specialized federal tax surcharges | `calculator.go:286` | `resolveIRMALookbackMAGI` never directly tested; len=1 history and negative assumed-MAGI paths dark |
+| [F-023](#f-023--low-medicareeligibleadultcountatyear-uses-start-of-year-age-mid-year-birthdate-not-modeled) | LOW | 2. Specialized federal tax surcharges | `calculator.go:315` | Medicare eligibility uses whole-year age; mid-year birthdate not modeled — up to 11 months IRMAA overcount at transition |
+| [F-025](#f-025--low-utility-helpers-validssclaimage-normalizedssfrा-claimstartmonth-not-directly-tested) | LOW | 3. Social Security | `social_security.go:12,16,194` | `validSSClaimAge`, `normalizedSSFRA`, `claimStartMonth` helpers never directly tested; boundaries 62/70 dark |
+| [F-027](#f-027--low-adjustedssbenefit-fra-values-other-than-66-and-67-not-tested-derivedpia-round-trip-only-covers-fra67) | LOW | 3. Social Security | `social_security.go:205,237` | `AdjustedSSBenefit` not tested for FRA=65; `DerivedPIA` round-trip covers FRA=67 only |
+| [F-028](#f-028--low-adjustedspousalbenefitclaim-age--70-not-explicitly-clamped-or-tested) | LOW | 3. Social Security | `social_security.go:259` | `AdjustedSpousalBenefit` claim age >70 not explicitly clamped or tested |
+| [F-030](#f-030--low-runssanalysis-zero-claimage-triggers-spurious-already-claiming-logic) | LOW | 3. Social Security | `social_security.go:398` | Zero `ClaimAge` (unset) triggers "already claiming" branch; back-derives PIA incorrectly as if claimed at 62 |
+| [F-034](#f-034--low-calculatermd-negative-balance-produces-a-negative-rmd-amount-with-no-guard) | LOW | 4. RMD | `rmd.go:76` | `CalculateRMD` returns negative amount for negative balance with no guard |
+| [F-037](#f-037--low-presentvalue-negative-rate-deflation-returns-futurevalue-unchanged-economically-incorrect) | LOW | 5. Present value & monthly compounding | `calculator.go:42` | `PresentValue` returns `futureValue` unchanged for negative rates (deflation); economically incorrect |
+| [F-038](#f-038--low-presentvalue--presentvalueannuity-zero-rate-guard-inconsistency-between-the-two-functions) | LOW | 5. Present value & monthly compounding | `calculator.go:42,56` | Zero-rate guard inconsistency between `PresentValue` and `PresentValueAnnuity` |
+| [F-039](#f-039--low-presentvalueannuity-startmonth--0-deferral-not-applied-when-monthlyrate--0) | LOW | 5. Present value & monthly compounding | `calculator.go:84` | `PresentValueAnnuity` deferral (`startMonth>0`) not applied when `monthlyRate<=0` |
+| [F-040](#f-040--low-plannerinflationfactorforyear-zero-inflation-rate-boundary-not-tested) | LOW | 5. Present value & monthly compounding | `calculator.go:330` | `plannerInflationFactorForYear` zero-rate boundary not exercised by tests |
+| [F-042](#f-042--low-calculatelivingexpensesatmonth-no-test-exercises-phase-transitions-with-nonzero-inflation) | LOW | 6. Living-expense projection mechanics | `calculator.go:151` | `calculateLivingExpensesAtMonth` phase transitions with nonzero inflation never tested |
+| [F-043](#f-043--low-rebaselivingexpensesattransition-dead-code-in-spending-phases-path-not-directly-tested) | LOW | 6. Living-expense projection mechanics | `calculator.go:163` | `rebaseLivingExpensesAtTransition` dead code in spending-phases path; not directly tested |
+| [F-044](#f-044--low-calculatetotalexpenses-phase-boundary-with-inflation-not-tested-expense-source-phase-multiplier-edge-cases-missing) | LOW | 6. Living-expense projection mechanics | `calculator.go:546` | `CalculateTotalExpenses` phase boundary with inflation untested; expense-source multiplier edge cases missing |
+| [F-045](#f-045--low-taxableaccountstate-withdraw-wy-exact-boundary-and-zero-gain-boundary-not-directly-tested) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:472` | `taxableAccountState.withdraw` W=Y and zero-gain exact boundaries not directly tested |
+| [F-046](#f-046--low-buildtaxablereturncomponents-negative-appreciation-scenario-not-tested) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:498` | `buildTaxableReturnComponents` negative-appreciation scenario not tested |
+| [F-047](#f-047--low-projectiontiminggrowthfractions-never-directly-tested-midmonth-exact-values-not-verified) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:594` | `projectionTimingGrowthFractions` never directly tested; MidMonth exact fractions unverified |
+| [F-048](#f-048--low-executeportfoliocashflowwithtaxablestate-undoredo-realized-gain-path-not-directly-tested-with-nonzero-gain) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:784` | Undo/redo realized-gain path in `executePortfolioCashFlowWithTaxableState` not tested with nonzero gain |
+| [F-050](#f-050--low-earlywithdrawalpenaltyrate-age-60-proxy-over-penalizes-by-up-to-6-months-boundary-not-directly-tested) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:836` | `earlyWithdrawalPenaltyRate` uses age-60 proxy; over-penalizes by up to 6 months; boundary not tested |
+| [F-051](#f-051--low-taxdeferreddelayactive--shortfallistemporaryduetodelay-never-directly-tested) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `calculator.go:821,825` | `taxDeferredDelayActive` / `shortfallIsTemporaryDueToDelay` never directly tested |
+| [F-052](#f-052--low-glidepathstockpct-negative-year-and-transitionyears0-paths-not-tested) | LOW | 7. Taxable account, allocation, tax-aware withdrawals | `models/whatif.go:646` | `GlidePathStockPct` negative-year and `TransitionYears=0` paths not tested |
+| [F-053](#f-053--low-rothconversionamountforyear-no-internal-clamp-for-negative-annualamount) | LOW | 8. Roth conversion math | `calculator.go:419` | `rothConversionAmountForYear` has no clamp for negative `AnnualAmount` |
+| [F-054](#f-054--low-rothconversionamountforyear-missing-tests-for-exact-boundary-years-and-zero-annualamount) | LOW | 8. Roth conversion math | `calculator.go:409` | `rothConversionAmountForYear` boundary years and zero `AnnualAmount` not directly unit-tested |
+| [F-055](#f-055--low-estimaterothconversiontax-test-checks-direction-only-not-exact-value-several-input-variants-uncovered) | LOW | 8. Roth conversion math | `tax.go:484` | `EstimateRothConversionTax` test asserts direction only; exact value and multiple input variants uncovered |
+| [F-058](#f-058--low-historical-backtest-computes-percentiles-but-discards-them-without-exposing-them) | LOW | 9. Backtest, Monte Carlo, guardrails | `backtest.go:97` | Backtest computes percentiles internally but discards them; not exposed in output |
+| [F-059](#f-059--low-historical-backtest-percentile-indexing-has-systematic-1-element-upward-bias) | LOW | 9. Backtest, Monte Carlo, guardrails | `backtest.go:97` | Percentile indexing has systematic +1 element upward bias in backtest and Monte Carlo |
+| [F-061](#f-061--low-runmontecarlosimulation-is-time-seeded-deterministic-testing-relies-on-private-helper) | LOW | 9. Backtest, Monte Carlo, guardrails | `calculator.go:2122` | `RunMonteCarloSimulation` is time-seeded; deterministic testing depends on private helper |
+| [F-064](#f-064--low-evaluate-consecutive-year-guardrail-behavior-and-multiple-trigger-interaction-not-tested) | LOW | 9. Backtest, Monte Carlo, guardrails | `guardrails.go:28` | Consecutive-year guardrail behavior and multiple-trigger interaction not tested |
+| [F-066](#f-066--low-calculatetotalincome-stale-public-function-does-not-apply-ss-optimizer-projection) | LOW | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:125` | `CalculateTotalIncome` is a stale public function that does not apply SS optimizer projection |
+| [F-067](#f-067--low-getmonthlycost-medicare-transition-is-year-based-not-month-based) | LOW | 10. Scenario chain, healthcare, budget-fit / steady-state | `models/healthcare.go:87` | `GetMonthlyCost` Medicare transition is year-based; up to 11-month granularity gap |
+| [F-068](#f-068--low-gettotalhealthcarecost--getmonthlycost-no-guard-against-negative-net-cost-in-multi-person-model) | LOW | 10. Scenario chain, healthcare, budget-fit / steady-state | `models/whatif.go:496` | No guard against negative net cost in multi-person healthcare model |
+| [F-069](#f-069--low-findsteadystatemonth-no-coverage-for-projected-ss-with-spouse-only-ss-or-when-primary-ss-already-started) | LOW | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:1579` | `findSteadyStateMonth` lacks coverage for spouse-only SS and already-started primary SS scenarios |
+| [F-071](#f-071--low-buildprojectionexplainability-tax-share-denominator-is-gross-cash-flow-not-gross-income--undocumented) | LOW | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:2984` | `buildProjectionExplainability` tax-share denominator is gross cash flow, not gross income — undocumented |
+| [F-002](#f-002--info-state-tax-is-a-single-flat-rate) | INFO | 1. Federal & state income tax | `tax.go:396` | State tax modeled as single flat rate; no progressive brackets or pension/SS exemptions (known simplification) |
+| [F-003](#f-003--info-calculatetotaltax-uses-federal-standard-deduction-for-state-taxable-income) | INFO | 1. Federal & state income tax | `tax.go:404` | State taxable income uses federal standard deduction; most states differ (known simplification) |
+| [F-004](#f-004--info-inflation-projection-uses-pure-compound-growth-irs-uses-chained-cpi-rounded-to-nearest-50) | INFO | 1. Federal & state income tax | `tax.go:181,251` | Bracket inflation uses continuous compounding; IRS uses chained CPI-U-RS rounded to $50 (intended approximation) |
+| [F-005](#f-005--info-inflationfactor-negative-years-path-not-exercised-by-tests) | INFO | 1. Federal & state income tax | `tax.go:251` | `inflationFactor` negative-years branch (`year<0` → return 1.0) not exercised by any test |
+| [F-020](#f-020--info-monthlyirmaasurcharge2026-cms-2026-irmaa-table-values-require-manual-cross-check) | INFO | 2. Specialized federal tax surcharges | `tax.go:124` | 2026 IRMAA table amounts unverifiable from training data; manual cross-check against CMS publication advised |
+| [F-024](#f-024--info-plannerirmaainflationfactorforyear-zero-equality-guard-has-floating-point-fragility) | INFO | 2. Specialized federal tax surcharges | `calculator.go:337` | `plannerIRMAAInflationFactorForYear` uses `==0` float guard; safe today but fragile to future fractional-year refactors |
+| [F-031](#f-031--info-runssportfolioanalysis--bestsssportfoliooption--isbetterssportfoliooption-decision-rule-documented) | INFO | 3. Social Security | `social_security.go:500,655,669` | SS portfolio optimizer decision rule documented (maximize expected portfolio value); no formula error |
+| [F-041](#f-041--info-calculatehealthcarepv-irmaa-excluded-by-design-pv-summary-page-should-document-this) | INFO | 5. Present value & monthly compounding | `calculator.go:93` | `calculateHealthcarePV` excludes IRMAA by design; PV summary page should document the omission |
+| [F-056](#f-056--info-roth-conversion-magi-propagation-to-niit-and-irmaa-not-directly-tested) | INFO | 8. Roth conversion math | `calculator.go:249,460` | Roth conversion MAGI propagation to NIIT and IRMAA not directly tested end-to-end |
+| [F-060](#f-060--info-gethistoricalstats-uses-population-standard-deviation-monte-carlo-uses-arithmetic-mean-as-draw-center) | INFO | 9. Backtest, Monte Carlo, guardrails | `historical_data.go:158` | Population StdDev (not sample) used; arithmetic mean (not geometric) as draw center — standard practice, documented |
+| [F-063](#f-063--info-guardrail-implementation-is-a-portfolio-drop-heuristic-not-guyton-klinger-2006) | INFO | 9. Backtest, Monte Carlo, guardrails | `guardrails.go:28` | Guardrail labeled "guardrails" is a portfolio-drop heuristic, not the full Guyton-Klinger (2006) rules |
+| [F-070](#f-070--info-calculatepresentvalueanalysis-reference-values-in-verification-doc-are-stale-postb978aa9) | INFO | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:1615` | `CalculatePresentValueAnalysis` reference values in verification doc are stale after the b978aa9 compounding fix |
 
 ---
 

@@ -502,7 +502,13 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 		result.SpouseOptions = spouseOptions
 		result.SpouseBreakevens = spouseBreakevens
 		result.SpouseBestAge = spouseBestAge
-		result.SpouseUsingSpousalBenefit = ss.FRABenefit*0.5 > ss.SpouseFRABenefit
+		// F-029: When primary is already claiming at a non-FRA age, FRABenefit
+		// is the reduced (or DRC-increased) amount, not the PIA. The spousal
+		// benefit entitlement is 50% of the primary PIA, so derive PIA first.
+		// primaryPIA is already correctly computed above (back-derived when
+		// primary is already claiming at non-FRA); use it here instead of raw
+		// ss.FRABenefit to avoid understating the spousal entitlement.
+		result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > spousePIA
 
 		// Calculate gap between earliest and best cumulative at 85
 		if len(spouseOptions) > 1 && bestCum > 0 {

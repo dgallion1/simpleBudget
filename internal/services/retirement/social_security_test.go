@@ -1373,3 +1373,42 @@ func TestNormalizedSSCOLARate_F026_PositiveValuePreserved(t *testing.T) {
 		t.Errorf("positive COLA = %.4f; want 3.5", got)
 	}
 }
+
+// F-029: When the primary is already claiming at a non-FRA age, the
+// SpouseUsingSpousalBenefit flag must be derived from the primary PIA
+// (back-derived from FRABenefit + claim age + FRA), not from the raw
+// FRABenefit.  Pre-fix: ss.FRABenefit*0.5 underestimates the spousal
+// entitlement, which can cause the flag to be false when the spousal
+// benefit actually exceeds the spouse's own benefit.
+//
+// Setup:
+//   Primary: FRABenefit=$1,000 at claim 62, FRA 67, already claiming.
+//   PIA = 1000 / 0.70 ≈ 1428.57  (30% early-claim reduction).
+//   Spousal entitlement at FRA = PIA × 0.5 ≈ 714.28 > SpouseFRABenefit 600.
+//   → SpouseUsingSpousalBenefit should be TRUE.
+//
+//   Buggy path: 1000 × 0.5 = 500 < 600 → flag set FALSE (wrong).
+func TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 67
+	s.SpouseAge = 62
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit:       1000.0, // actual benefit at claim 62; PIA ≈ 1428.57
+		FRA:              67,
+		COLARate:         0.02,
+		ClaimAge:         62, // primary already claiming at 62
+		SpouseFRABenefit: 600.0, // spouse own PIA; not yet claiming
+		SpouseFRA:        67,
+		// SpouseClaimAge intentionally zero — spouse not yet claiming
+	}
+	calc := NewCalculator(s)
+	analysis := calc.RunSSAnalysis()
+	if analysis == nil {
+		t.Fatal("expected non-nil SS analysis")
+	}
+	if !analysis.SpouseUsingSpousalBenefit {
+		t.Errorf("SpouseUsingSpousalBenefit = false; want true "+
+			"(primaryPIA≈1428.57 × 0.5 ≈ 714 > SpouseFRABenefit 600). "+
+			"Bug: ss.FRABenefit(1000) × 0.5 = 500 < 600 gives wrong false.")
+	}
+}

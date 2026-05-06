@@ -293,12 +293,6 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 			rmdAmount += projection.Months[m].RMDWithdrawal
 		}
 
-		// Skip years with no realized RMD withdrawal — the analysis reflects
-		// actual projection activity, not a hypothetical IRS-table schedule.
-		if rmdAmount == 0 {
-			continue
-		}
-
 		factor := GetLifeExpectancyFactor(age)
 		rmdPercent := 0.0
 		if factor > 0 {

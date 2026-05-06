@@ -98,7 +98,7 @@ in Appendix C.
 | [F-021](#f-021--low-calculatemonthlyirmaa-tier-boundary-exact-values-not-tested-hoh-coverage-absent) | LOW | 2. Specialized federal tax surcharges | `tax.go:308` | `CalculateMonthlyIRMAA` tier-boundary exact values untested; HoH filing status absent |
 | [F-022](#f-022--low-resolveirmalookbackmagi-never-directly-tested-len1-boundary-not-covered) | LOW | 2. Specialized federal tax surcharges | `calculator.go:286` | `resolveIRMALookbackMAGI` never directly tested; len=1 history and negative assumed-MAGI paths dark |
 | [F-023](#f-023--low-medicareeligibleadultcountatyear-uses-start-of-year-age-mid-year-birthdate-not-modeled) | LOW | 2. Specialized federal tax surcharges | `calculator.go:315` | Medicare eligibility uses whole-year age; mid-year birthdate not modeled — up to 11 months IRMAA overcount at transition |
-| [F-025](#f-025--low-utility-helpers-validssclaimage-normalizedssfrा-claimstartmonth-not-directly-tested) | LOW | 3. Social Security | `social_security.go:12,16,194` | `validSSClaimAge`, `normalizedSSFRA`, `claimStartMonth` helpers never directly tested; boundaries 62/70 dark |
+| [F-025](#f-025--low-utility-helpers-validssclaimage-normalizedssfra-claimstartmonth-not-directly-tested) | LOW | 3. Social Security | `social_security.go:12,16,194` | `validSSClaimAge`, `normalizedSSFRA`, `claimStartMonth` helpers never directly tested; boundaries 62/70 dark |
 | [F-027](#f-027--low-adjustedssbenefit-fra-values-other-than-66-and-67-not-tested-derivedpia-round-trip-only-covers-fra67) | LOW | 3. Social Security | `social_security.go:205,237` | `AdjustedSSBenefit` not tested for FRA=65; `DerivedPIA` round-trip covers FRA=67 only |
 | [F-028](#f-028--low-adjustedspousalbenefitclaim-age--70-not-explicitly-clamped-or-tested) | LOW | 3. Social Security | `social_security.go:259` | `AdjustedSpousalBenefit` claim age >70 not explicitly clamped or tested |
 | [F-030](#f-030--low-runssanalysis-zero-claimage-triggers-spurious-already-claiming-logic) | LOW | 3. Social Security | `social_security.go:398` | Zero `ClaimAge` (unset) triggers "already claiming" branch; back-derives PIA incorrectly as if claimed at 62 |
@@ -2373,7 +2373,126 @@ published CMS 2026 announcement (see F-020).
 
 ## Appendix B — Audit method
 
-_Filled in by Task 13._
+### Branch and commit baseline
+
+The audit was conducted on branch `feat/whatif-math-audit`, branched from `dev`
+at commit `3ec6440` (the implementation plan). During the audit, the user
+authored commit `b978aa9` ("Fix what-if compounding math") which became the
+post-fix baseline for Tasks 3 onward. Tasks 1 and 2 had already completed
+against `3ec6440`; their scope (`tax.go`) does not intersect `b978aa9`'s
+changes (which touch only PV/compounding helpers in `calculator.go` and the
+monthly-return calculation in `rmd.go`). All commits on the audit branch from
+`da5d93d` ("scaffold whatif math audit document") through `7f5ba42`
+("executive summary + findings table") are documentation-only; no source files
+under `internal/` were modified during the audit pass.
+
+### Source map used
+
+Each finding cites an authoritative source by name and section. The default
+source mapping for this audit:
+
+| Area | Authoritative source |
+|------|---------------------|
+| Federal income tax brackets, standard deduction (TY2024) | IRS Rev. Proc. 2023-34 §§3.01, 3.16 |
+| LTCG brackets (TY2024) | IRS Rev. Proc. 2023-34 §3.03 |
+| Taxable Social Security thresholds | 26 USC § 86; IRS Pub 915 worksheet |
+| NIIT rate and thresholds | 26 USC § 1411; IRS Pub 550 |
+| IRMAA tiers (2026) | CMS 2026 Medicare Part B and Part D IRMAA announcement (42 USC § 1395r-1) |
+| RMD life expectancy factors | IRS Pub 590-B Appendix B Table III (post-2022 edition; Notice 2020-22 / Notice 2022-53) |
+| RMD start age | SECURE 2.0 Act of 2022 §107 (age 73 for 2023–2032; age 75 from 2033) |
+| SS PIA → benefit at claim age | SSA POMS RS 00615.105 (early retirement reduction); RS 00615.690 (delayed retirement credits) |
+| SS spousal benefit reduction | SSA POMS RS 00615.020 |
+| SS taxable-income filing-status thresholds | 26 USC § 86 |
+| Present value formulas | Standard finance first principles (formula stated explicitly for independent re-derivation) |
+| Monte Carlo / backtest | Internal statistical model — no external authority; statistical correctness verified only |
+| Guyton-Klinger guardrails | Guyton & Klinger (2006), *Decision Rules and Maximum Initial Withdrawal Rates* |
+
+For internal-model functions (allocation glide path, spending phases, scenario
+chain hand-offs, projection timing), the audit verifies internal consistency
+rather than external authority: invariants such as balance preservation across
+hand-offs, fractions summing to 1, and no negative growth factor.
+
+### Severity rubric
+
+The rubric was applied uniformly to every finding:
+
+- **HIGH** — math is wrong in a way that produces a >5% error in a realistic
+  scenario, or is qualitatively wrong (entire tax category missed, sign
+  flipped, wrong bracket selected).
+- **MEDIUM** — edge-case wrong, small-magnitude error in realistic input
+  ranges, or a meaningful test-coverage gap that could let a future change
+  ship a bug undetected.
+- **LOW** — cosmetic or precision issue, unrealistic-input handling, dead
+  branches, or defensive code that does not match documented behavior.
+- **INFO** — observation, constants-currency note, naming concern, or
+  documentation drift. No action required, but surfaced for awareness.
+
+Severity was assigned by the auditing agent for each finding and
+cross-checked against the spec and quality-review pass before committing.
+
+### Boundary checklist
+
+The following boundary conditions were evaluated for every in-scope function.
+Conditions not exercised by the existing test suite were noted as findings
+(LOW or MEDIUM depending on risk):
+
+- Zero input
+- Negative input (where mathematically meaningful)
+- Very large input (overflow or saturation)
+- Bracket and threshold boundaries (just-below, exact, just-above)
+- Each filing status (Single, MFJ, MFS, HoH) where applicable
+- Time-zero (year 0, month 0, claim age equal to current age)
+- Time-end (final projection year)
+- Inflation factor = 1 (zero inflation)
+- Empty or nil settings; empty income or expense lists
+- Off-by-one age transitions: RMD start (73 / 75), FRA, Medicare 65,
+  spending-phase boundaries
+- Year wrapping inside scenario chain hand-offs
+
+### Worked-example tolerance
+
+Currency outputs: ±$0.01 absolute. Pure factors and ratios: ±1e-6. Tighter
+tolerances were applied where the underlying formula is exact — for example,
+`monthlyCompoundFactorFromPercent(0.0) == 1.0` must hold exactly (no
+floating-point arithmetic on the zero path), and `PresentValueAnnuity` with
+equal discount and growth rates must return `payment × n` exactly (the
+degenerate-case branch fires before any division).
+
+Worked examples were calculated by hand from the cited source and then
+compared against the code output. Any delta outside the tolerance is a
+finding at MEDIUM or HIGH severity.
+
+### What was NOT audited
+
+- UI rendering, formatting, and HTMX flow (covered by the April 11 review).
+- Settings persistence, scenario CRUD, and file I/O.
+- Performance, concurrency, and race conditions.
+- The Monte Carlo sampling internals (only the aggregation and decision rule
+  were verified).
+- Whether published TY2025 / 2026 tables should be bumped — the constants
+  currency appendix (Appendix A) surfaces stale constants; triage is the
+  user's call.
+
+### Reproduction checklist
+
+To re-run this audit at a future commit:
+
+1. Branch from current `dev` to `feat/whatif-math-audit-YYYY-MM-DD`.
+2. Read the audit spec:
+   `docs/superpowers/specs/2026-05-05-whatif-math-audit-design.md`.
+3. Read the audit plan:
+   `docs/superpowers/plans/2026-05-05-whatif-math-audit.md`.
+4. For each of the 10 areas, follow the plan's steps for that area in order.
+5. Worked examples: write a temporary test file `audit_weN_test.go` under
+   `internal/services/retirement/`, run
+   `go test ./internal/services/retirement -run AuditWE`, then delete the
+   temporary file before committing. No audit test files should remain on
+   the branch.
+6. Compare current findings against this baseline (F-001 through F-071) to
+   determine which findings have been resolved, which remain open, and what
+   new findings have emerged.
+7. Verify `ls internal/services/retirement/audit*` returns nothing before
+   the final commit.
 
 ## Appendix C — Findings ledger (running list)
 

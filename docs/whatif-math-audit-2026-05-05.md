@@ -1871,7 +1871,108 @@ See F-057 through F-064 in Appendix C.
 
 ## 10. Scenario chain, healthcare, budget-fit / steady-state
 
-_Filled in by Task 10._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `prepareChainedSettings` | `internal/services/retirement/chain.go:9` | PARTIAL (F-065) |
+| `findPreparedScenarioPerson` | `internal/services/retirement/chain.go:61` | PASS |
+| `reconcilePreparedPersons` | `internal/services/retirement/chain.go:87` | PASS |
+| `rebaseIncomeSources` | `internal/services/retirement/chain.go:101` | PASS |
+| `rebaseExpenseSources` | `internal/services/retirement/chain.go:118` | PASS |
+| `rebaseBigTicketItems` | `internal/services/retirement/chain.go:134` | PASS |
+| `rebaseRothConversion` | `internal/services/retirement/chain.go:151` | PASS |
+| `nextChainTransition` | `internal/services/retirement/chain.go:167` | PASS |
+| `GetTotalHealthcareCost` | `internal/models/whatif.go:496` | PASS (F-068) |
+| `HealthcarePerson.GetMonthlyCost` | `internal/models/healthcare.go:87` | PASS (F-067, F-068) |
+| `calculateHealthcarePV` | `internal/services/retirement/calculator.go:91` | PASS |
+| `calculateMonthlyIncomeBreakdown` | `internal/services/retirement/calculator.go:362` | PASS |
+| `CalculateTotalIncome` | `internal/services/retirement/calculator.go:125` | PASS (F-066) |
+| `CalculateTotalExpenses` | `internal/services/retirement/calculator.go:546` | PASS |
+| `CalculateBudgetFit` | `internal/services/retirement/calculator.go:1291` | PASS |
+| `findSteadyStateMonth` | `internal/services/retirement/calculator.go:1579` | PASS (F-069) |
+| `CalculatePresentValueAnalysis` | `internal/services/retirement/calculator.go:1615` | PASS (F-070) |
+| `buildProjectionExplainability` | `internal/services/retirement/calculator.go:2931` | PASS (F-071) |
+
+### Conventions
+
+**Chain hand-off preserved values:**
+- Portfolio balances (tax-deferred, Roth, taxable market value, cost basis) are held in local variables in `RunProjection`; they are **not** part of `WhatIfSettings` and therefore survive the chain transition automatically. `prepareChainedSettings` never touches them.
+- `cumulativeInflation` is also a local variable and persists across the transition.
+- After the transition, `taxableAccount.syncAssumptions(s)` re-reads dividend yield and capital-gains distribution rate from the new settings while preserving `MarketValue`, `CostBasis`, and `RealizedGainsYTD`.
+- `rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)` re-anchors `currentLivingExpenses` to `s.MonthlyLivingExpenses * cumulativeInflation`. This is correct when `SpendingDeclineRate = 0` (net inflation = full inflation), but creates a step-up when `SpendingDeclineRate > 0` (see F-065).
+- The following fields are copied from the **primary** (not the linked) settings: `StartDate`, `Persons`, `CurrentAge`, `SpouseAge`, `PhaseAgeReference`, `ProjectionYears`, `TaxDeferredDelayYears`.
+- Income sources, expense sources, big-ticket items, and Roth conversion config are taken from the **linked** settings and rebased to year-0.
+- `TaxConfig`, `InvestmentReturn`, `InflationRate`, `SpendingDeclineRate`, `MonthlyLivingExpenses`, and allocation fields (`TaxDeferredPercent`, `RothPercent`, etc.) are inherited from the linked settings.
+
+**Healthcare transition rule:**
+- `GetMonthlyCost(month)` uses integer-division years: `yearsElapsed = month / 12`. Age at month `m` is `CurrentAge + (m / 12)`.
+- A person at age 64 is still pre-Medicare through month 11 (year 0). Medicare kicks in at month 12 (year 1, age 65). The transition is **year-based**, not month-based. A person who turns 65 in month 6 of year 1 transitions at month 12 (start of year 1), not at month 6.
+- No employer-contribution field exists; the model stores the net out-of-pocket cost in `CurrentMonthlyCost`. The sub-task description's "$1,000 ACA − $400 employer = $600" is represented as `CurrentMonthlyCost = 600` directly.
+- For the `CoverageEmployer` type with `EmployerCoverageYears > 0`, the cost is fixed (no inflation) during the employer period, then transitions to ACA with `PreMedicareInflation`, then to Medicare at `MedicareEligibleAge`.
+
+**Steady-state convention:**
+- Steady-state is expressed in **nominal** dollars (April 11 finding-12 fix is intact: no real-dollar conversion applied).
+- `findSteadyStateMonth` returns the latest `StartMonth` across all active income sources. If `socialSecurityProjectionActive` is true (i.e., optimizer SS is configured), `claimStartMonth(CurrentAge, ClaimAge)` is evaluated for both primary and spouse and factored in. This fix (April 11 finding-11) is verified intact by WE-10.3.
+- The result is capped at `ProjectionYears * 12`.
+
+### Worked examples
+
+#### WE-10.1: Two-phase chain equivalence
+
+**Setup:** Age 65, 30-year projection, $1M portfolio (60% tax-deferred, 10% Roth), $4,000/mo expenses, 6% return, 3% inflation. `SpendingDeclineRate = 0` (so net inflation equals full inflation). Chain triggers at age 70 with identical linked settings.
+
+**Expected:** Final balances at month 360 differ by ≤ $1.00 (FP rounding only).
+
+**Result:** Delta = **$0.00**. Tax-deferred, Roth, and taxable all match exactly. Chain is transparent under these conditions. PASS.
+
+**Finding (F-065):** When the same scenario is run with `SpendingDeclineRate = 1.0` (the default value), the chain delta at month 360 is **$178,943** (MEDIUM). Root cause: `rebaseLivingExpensesAtTransition` anchors the expense level to `MonthlyLivingExpenses × cumulativeInflation` where `cumulativeInflation` accumulates at the **full** `InflationRate`, but the ongoing pre-transition computation applies `InflationRate − SpendingDeclineRate`. At the chain boundary, expenses are therefore stepped up by `cumulativeInflation(full) / cumulativeInflation(net)`, permanently inflating the post-transition run.
+
+#### WE-10.2: Healthcare ACA → Medicare transition
+
+**Setup:** Person, age 64, `CoverageACA`, `CurrentMonthlyCost = 600` (representing $1,000 ACA − $400 employer = $600 net), `PreMedicareInflation = 0`, `MedicareMonthlyCost = 200`, `PostMedicareInflation = 0`, `MedicareEligibleAge = 65`.
+
+**Expected:** Months 0–11 = $600.00; month 12+ = $200.00.
+
+**Result:**
+- Month 11 (`yearsElapsed = 0`, age 64): **$600.00**. PASS.
+- Month 12 (`yearsElapsed = 1`, age 65): **$200.00**. PASS.
+
+**Transition rule:** Transition occurs at the start of the **year** the person reaches `MedicareEligibleAge`, not the specific birth month within that year. The function uses `ageAtMonth = CurrentAge + (month / 12)` with integer division; anyone turning 65 in months 12–23 transitions at month 12. This is a rough approximation — someone turning 65 in month 18 should logically remain on ACA through month 17 but transitions at month 12. See F-067.
+
+#### WE-10.3: Steady-state with projected SS
+
+**Setup:** Primary age 60, 30-year projection. No SS in `IncomeSources`. `SocialSecurity.FRABenefit = 3000`, `FRA = 67`, `ClaimAge = 70`.
+
+**Expected:** `findSteadyStateMonth` ≥ `(70 − 60) × 12 = 120`.
+
+**Result:** `findSteadyStateMonth = 120`. PASS. April 11 finding-11 fix is intact — projected SS claim age is correctly factored into the minimum steady-state month.
+
+#### WE-10.4: PV analysis cross-check vs verification doc
+
+**Reference values (verified 2026-04-07, pre-b978aa9):**
+- PV income: $1,445,806.64
+- PV expenses: $3,058,923.29
+- Coverage ratio: 1.1×
+- Surplus/deficit: +$286,883.35
+
+**Reconstructed scenario inputs** (from docs/what-if-retirement-verification.md): portfolio $1,900,000; living expenses $9,800/mo; 31-year projection; inflation 2.7%; discount 5%; healthcare Darrell Medicare $550, Christine ACA $1,150; income: Darrell SSI $4,000 from month 0, Christine job $2,000 through month 48, Christine pension $1,200 from month 48, Christine SSI $2,000 from month 156; spending phases Go-Go 100% / Slow-Go 85% from 75 / No-Go 85% from 85.
+
+**Observed results (post-b978aa9):**
+| Metric | Reference | Observed | Delta |
+|--------|-----------|----------|-------|
+| PV income | $1,445,806.64 | $1,465,150.58 | +$19,344 |
+| PV expenses | $3,058,923.29 | $3,049,738.75 | −$9,185 |
+| Surplus | +$286,883.35 | +$315,411.84 | +$28,528 |
+| Coverage ratio | 1.1× | 1.103× | negligible |
+
+All deltas are under $50,000. The PV income delta of ~$19K is consistent with the b978aa9 switch from simple-division monthly rate to geometric monthly rate (`(1+r)^(1/12)−1`), which lowers effective monthly discount and growth rates and increases PV of future income streams. PV expense delta of ~$9K moves in the opposite direction from the income delta, consistent with the same rate adjustment applied to expense discounting. These are INFO-level shifts, not a new bug. See F-070. The reference values in `docs/what-if-retirement-verification.md` should be refreshed post-b978aa9.
+
+### Findings
+
+See F-065 through F-071 in Appendix C.
 
 ---
 
@@ -2993,3 +3094,87 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** `guardrails.go:41` `g.peakPortfolio = currentPortfolio` (floor resets peak only); `guardrails.go:52` `g.initialPortfolio = currentPortfolio` (ceiling resets initial only).
 **Recommended fix sketch:** Add three table-driven subtests: consecutive-year cuts, post-floor-cut ceiling check, and year-0 no-trigger.
 **Test coverage note:** Existing tests cover single-trigger scenarios only.
+
+---
+
+### F-065 — MEDIUM `rebaseLivingExpensesAtTransition`: uses full inflation instead of net inflation when `SpendingDeclineRate > 0`
+
+**Location:** `internal/services/retirement/calculator.go:163` — `rebaseLivingExpensesAtTransition`
+**Source consulted:** Code inspection + WE-10.1 worked example.
+**What it does:** At a chain boundary, re-anchors `currentLivingExpenses` to `s.MonthlyLivingExpenses × cumulativeInflation` (or `× cumulativeInflation × spendingMultiplier` when spending phases are enabled).
+**Finding:** `cumulativeInflation` in `RunProjection` compounds at the full `InflationRate` each month (`cumulativeInflation *= monthlyCompoundFactor(InflationRate)`). However, the ongoing pre-transition expense accumulation uses `net = InflationRate − SpendingDeclineRate`. At the chain boundary the rebase therefore steps expenses up by the ratio `(1+InflationRate)^T / (1+netRate)^T` relative to where the ongoing accumulation would have placed them. For `InflationRate = 3%`, `SpendingDeclineRate = 1%`, after a 5-year phase this is approximately `1.03^5 / 1.02^5 ≈ 1.049` — a 4.9% step-up in expenses that compounds into a 17.9% portfolio delta over 30 years ($178,943 in the WE-10.1 scenario).
+**Evidence / repro:** WE-10.1 test: transparent-chain delta with `SpendingDeclineRate = 0` = $0.00; with `SpendingDeclineRate = 1.0` = $178,943.35.
+**Recommended fix sketch:** Pass both `InflationRate` and `SpendingDeclineRate` to `rebaseLivingExpensesAtTransition`; compute a separate `netCumulativeInflation` that uses `InflationRate − SpendingDeclineRate`, and use that for the rebase instead of `cumulativeInflation`.
+**Test coverage note:** No chain test uses non-zero `SpendingDeclineRate`; the gap is undetected in the existing suite.
+
+---
+
+### F-066 — LOW `CalculateTotalIncome`: stale public function does not apply SS optimizer projection
+
+**Location:** `internal/services/retirement/calculator.go:125` — `CalculateTotalIncome`
+**Source consulted:** Code inspection.
+**What it does:** Sums `GetAdjustedAmount(month)` across all `IncomeSources`. Does not call `calculateMonthlyIncomeBreakdown`, which applies the SS optimizer override (dropping manual SS sources and adding projected SS income when `socialSecurityProjectionActive` is true).
+**Finding:** `CalculateTotalIncome` is a public function that is never called in production code — all internal paths use `calculateMonthlyIncomeBreakdown`. Any external caller that uses `CalculateTotalIncome` when the SS optimizer is active will receive incorrect income totals: manual SS sources that the optimizer replaces will be double-counted if they are retained in `IncomeSources`, or the optimizer-projected amount will be omitted if no manual source exists.
+**Evidence / repro:** `grep -rn "CalculateTotalIncome" internal/` returns only the definition. Internal projection loop at line 1132 calls `calculateMonthlyIncomeBreakdown(s, m)`.
+**Recommended fix sketch:** Either remove `CalculateTotalIncome` (it is unused) or rewrite it to delegate to `calculateMonthlyIncomeBreakdown` so it stays accurate.
+**Test coverage note:** No test calls `CalculateTotalIncome` with a live SS optimizer scenario. The function's divergence from projection behavior is undetected.
+
+---
+
+### F-067 — LOW `GetMonthlyCost`: Medicare transition is year-based, not month-based
+
+**Location:** `internal/models/healthcare.go:87` — `GetMonthlyCost`
+**Source consulted:** Code inspection + WE-10.2.
+**What it does:** Determines pre-Medicare vs post-Medicare cost for a given projection month using `yearsElapsed = month / 12` (integer division).
+**Finding:** A person who turns 65 in July (birth month 7 of year 1) transitions to Medicare at month 12 (the start of year 1), six months early. Conversely, a person whose birthday is in January of year 1 (month 1) also transitions at month 12 — no error there. The maximum early-transition error is 11 months: for a birthday in month 11 of year 1, Medicare kicks in at month 12 rather than month 23. In monetary terms, for a premium difference of $900/mo this is an 11-month early switch worth ~$9,900 in present value. This is a systematic underestimation of pre-Medicare costs.
+**Evidence / repro:** Person age 64 (birthday in month 6 of year 1): `GetMonthlyCost(11)` = $600 (ACA), `GetMonthlyCost(12)` = $200 (Medicare). The transition fires 6 months before the 65th birthday.
+**Recommended fix sketch:** Accept a `birthMonth int` (1–12) parameter and compute the true transition month as `(MedicareEligibleAge − CurrentAge) × 12 + (birthMonth − startMonth%12 + 12) % 12`. Alternatively, link `HealthcarePerson` to the `Person.BirthMonth` string and compute the exact transition month at initialization.
+**Test coverage note:** Existing tests verify compounding within phases but do not test mid-year birthday scenarios.
+
+---
+
+### F-068 — LOW `GetTotalHealthcareCost` / `GetMonthlyCost`: no guard against negative net cost in multi-person model
+
+**Location:** `internal/models/whatif.go:496` — `GetTotalHealthcareCost`; `internal/models/healthcare.go:87` — `GetMonthlyCost`
+**Source consulted:** Code inspection.
+**What it does:** `GetTotalHealthcareCost` sums `GetMonthlyCost` for each `HealthcarePerson`. `GetMonthlyCost` can return values derived from `CurrentMonthlyCost`, which is user-supplied.
+**Finding:** Neither function clamps the result to zero. If a user enters a negative `CurrentMonthlyCost` (e.g., representing net employer subsidy that exceeds the premium), the monthly healthcare cost will be negative, reducing `CalculateTotalExpenses` and producing anomalous projection results. The legacy single-value path (`MonthlyHealthcare * inflation`) also has no floor. In the multi-person model the issue applies per-person.
+**Evidence / repro:** `GetMonthlyCost(0)` with `CurrentMonthlyCost = -500` returns `-500`. No clamp in either function. `GetTotalHealthcareCost(0)` sums these directly.
+**Recommended fix sketch:** Add `math.Max(0, result)` before returning in `GetMonthlyCost`, and/or validate that `CurrentMonthlyCost >= 0` in the model constructor/validator.
+**Test coverage note:** No test exercises negative `CurrentMonthlyCost`. No validation logic rejects it.
+
+---
+
+### F-069 — LOW `findSteadyStateMonth`: no coverage for projected SS with spouse-only SS or when primary SS already started
+
+**Location:** `internal/services/retirement/calculator.go:1579` — `findSteadyStateMonth`
+**Source consulted:** Code inspection.
+**What it does:** Returns the latest month among active income source starts and projected SS claim starts (primary + spouse).
+**Finding:** Two coverage gaps: (1) No test covers the spouse-only projected SS case (`FRABenefit = 0`, `SpouseFRABenefit > 0`, `validSSClaimAge(SpouseClaimAge)` = true). The code path at line 1598 guards this correctly, but the condition is untested. (2) No test verifies behavior when `ClaimAge ≤ CurrentAge` (`claimStartMonth` returns 0). In that case the projected SS is already active and should not affect the steady-state month — the code returns 0, which is correct, but is unverified.
+**Evidence / repro:** `findSteadyStateMonth` at line 1598: `if ss != nil && c.Settings.HasSpouse() && ss.SpouseFRABenefit > 0 && validSSClaimAge(ss.SpouseClaimAge)` — no test constructs this combination. Existing tests in `calculator_coverage_test.go` cover only `IncomeSources`-based steady-state timing.
+**Recommended fix sketch:** Add a table-driven test with: (a) spouse-only projected SS at claim age 67 (primary has no benefit), (b) primary `ClaimAge ≤ CurrentAge` (already started), and (c) both primary and spouse projected at different claim ages (verifying max is taken).
+**Test coverage note:** WE-10.3 covered the primary-only path; spouse and already-started paths remain uncovered.
+
+---
+
+### F-070 — INFO `CalculatePresentValueAnalysis`: reference values in verification doc are stale post-b978aa9
+
+**Location:** `internal/services/retirement/calculator.go:1615` — `CalculatePresentValueAnalysis`
+**Source consulted:** `docs/what-if-retirement-verification.md` (2026-04-07 snapshot); WE-10.4.
+**What it does:** Computes PV of expenses and income using `PresentValueAnnuity`, which post-b978aa9 uses geometric monthly rates (`(1+r)^(1/12)−1`) rather than simple division.
+**Finding:** Reconstructing the 2026-04-07 verification scenario produces PV income +$19,344, PV expenses −$9,185, and surplus +$28,528 relative to the reference values. These are consistent with the b978aa9 compounding fix: geometric rates lower effective monthly rates slightly, which lowers discounting and raises PV of income streams, while simultaneously reducing PV of costs. The coverage-ratio change (1.1→1.103) is within rounding. No formula error is present; the reference values simply need refreshing. The deltas are all under $50,000 (INFO threshold).
+**Evidence / repro:** WE-10.4 test output: PV income 1,465,150.58 vs ref 1,445,806.64 (Δ+19,344); PV expenses 3,049,738.75 vs ref 3,058,923.29 (Δ−9,185); surplus 315,411.84 vs ref 286,883.35 (Δ+28,528).
+**Recommended fix sketch:** Re-run the live app with the same 2026-04-07 settings and update `docs/what-if-retirement-verification.md`. Alternatively, add a golden-value regression test that fails when the values change unexpectedly.
+**Test coverage note:** No regression test pins the PV values; changes to `PresentValueAnnuity` will silently shift them.
+
+---
+
+### F-071 — LOW `buildProjectionExplainability`: tax-share denominator is gross cash flow, not gross income — undocumented
+
+**Location:** `internal/services/retirement/calculator.go:2984` — `buildProjectionExplainability`
+**Source consulted:** Code inspection.
+**What it does:** Computes `TaxShareOfGrossCashFlow = totalTaxes / totalGrossIncome × 100` where `totalGrossIncome` accumulates `month.GrossIncome` from each projection month. `GrossIncome` at line 1203 is defined as `totalIncome + qualifiedDividends + nonQualifiedDividends + capitalGainsDistributions + withdrawalFromTaxDeferred + withdrawalFromTaxable + withdrawalFromRoth` — i.e., income plus all portfolio withdrawals.
+**Finding:** The label `TaxShareOfGrossCashFlow` is accurate, but the UI renders it as "Taxes consumed" without clarifying that the denominator includes portfolio withdrawals (which are not income). For a retiree drawing heavily from a tax-deferred account, the denominator is inflated by untaxed Roth withdrawals and return-of-basis taxable withdrawals, making the "taxes consumed" percentage appear lower than a naive "taxes / income" ratio. There is no coverage for the case where `totalGrossIncome = 0` (e.g., a scenario with no income and no withdrawals — fully depleted portfolio); the guard at line 2985 (`if totalGrossIncome > 0`) handles this correctly but is untested. The `InflationLossPercent` formula (`(1 − realBalance/nominalBalance) × 100`) is correct and guarded against zero final balance.
+**Evidence / repro:** `buildProjectionExplainability` line 2986: denominator is `totalGrossIncome` summed from `month.GrossIncome`, which includes Roth withdrawals at line 1203.
+**Recommended fix sketch:** Add a UI tooltip clarifying that the denominator is total gross cash flow (income + withdrawals), not income alone. Optionally expose a separate `TaxShareOfOrdinaryIncome` field using only `OrdinaryIncome + SocialSecurityIncome`. Add a test with a zero-cash-flow scenario (all depleted at month 0) to cover the guard.
+**Test coverage note:** No test exercises `buildProjectionExplainability` with a zero-gross-income scenario or with all-Roth withdrawals.

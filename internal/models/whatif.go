@@ -1001,6 +1001,11 @@ type RMDAnalysis struct {
 	TaxDeferredValue  float64         `json:"tax_deferred_value"` // Current tax-deferred balance
 	Projections       []RMDProjection `json:"projections"`        // Year-by-year projections
 	TotalRMDsOver10Yr float64         `json:"total_rmds_10yr"`    // Sum of first 10 years of RMDs
+
+	// F-072: depletion context driven by the actual projection.
+	DepletionYear     *int `json:"depletion_year,omitempty"`     // year index of portfolio depletion; nil if survives
+	DepletionAge      *int `json:"depletion_age,omitempty"`      // older-person age at depletion year
+	DepletedBeforeRMD bool `json:"depleted_before_rmd"`          // true when depletion precedes the first RMD year
 }
 
 // PresentValueAnalysis shows PV of expenses vs income

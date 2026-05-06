@@ -163,11 +163,11 @@ func TestBuildRMDAnalysis_F072_TaxDeferredPercentZero(t *testing.T) {
 	if analysis.TaxDeferredValue != 0 {
 		t.Errorf("TaxDeferredValue = %.2f; want 0", analysis.TaxDeferredValue)
 	}
-	if len(analysis.Projections) == 0 {
-		// Acceptable: no RMDs to report. But TotalRMDsOver10Yr must be 0.
-		if analysis.TotalRMDsOver10Yr != 0 {
-			t.Errorf("TotalRMDsOver10Yr = %.2f; want 0", analysis.TotalRMDsOver10Yr)
-		}
+	if len(analysis.Projections) != 0 {
+		t.Errorf("len(Projections) = %d; want 0 (no tax-deferred bucket)", len(analysis.Projections))
+	}
+	if analysis.TotalRMDsOver10Yr != 0 {
+		t.Errorf("TotalRMDsOver10Yr = %.2f; want 0", analysis.TotalRMDsOver10Yr)
 	}
 }
 

@@ -239,6 +239,10 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 		Projections:      []models.RMDProjection{},
 	}
 
+	if taxDeferredValue == 0 {
+		return result
+	}
+
 	if projection == nil || len(projection.Months) == 0 {
 		return result
 	}
@@ -262,7 +266,7 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 	}
 
 	rmdCount := 0
-	for y := 0; y <= maxYears && rmdCount < 20; y++ {
+	for y := 0; y < maxYears && rmdCount < 20; y++ {
 		age := olderAge + y
 		if age < effectiveStartAge {
 			continue

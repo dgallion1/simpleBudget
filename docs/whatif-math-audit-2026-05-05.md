@@ -929,6 +929,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 
 **Test coverage note:** `normalizedSSCOLARate` is never called directly in tests. No test verifies the zero-substitution behavior or its downstream effect on the comparison table.
 
+**Resolution:** Closed by commit da4d270 on `feat/whatif-fixes`. `normalizedSSCOLARate` now takes `*float64`; nil → 2% default, non-nil → use the value (negatives clamped to 0 per SSA convention). New `SocialSecurityConfig.COLARateSet bool` distinguishes explicit 0 from unset. `ssConfigCOLARate` helper bridges settings → pointer. Form handler sets `COLARateSet = true` on every SS form submit. Saved scenarios without the flag preserve the 2% default (no migration needed). Verified via `TestNormalizedSSCOLARate_F026_*` and `TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA`.
+
 ---
 
 #### F-027 — LOW `AdjustedSSBenefit`: FRA values other than 66 and 67 not tested; DerivedPIA round-trip only covers FRA=67
@@ -3023,6 +3025,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 **Recommended fix sketch:** Use a sentinel (e.g., −1) for "use default," treat 0 as explicit user intent, and update UI validation to reject negative COLA rates. Alternatively add `COLARateIsDefault bool` to `SocialSecurityConfig`.
 
 **Test coverage note:** `normalizedSSCOLARate` is never called directly in tests. No test verifies the zero-substitution behavior or its downstream effect.
+
+**Resolution:** Closed by commit da4d270 on `feat/whatif-fixes`. `normalizedSSCOLARate` now takes `*float64`; nil → 2% default, non-nil → use the value (negatives clamped to 0 per SSA convention). New `SocialSecurityConfig.COLARateSet bool` distinguishes explicit 0 from unset. `ssConfigCOLARate` helper bridges settings → pointer. Form handler sets `COLARateSet = true` on every SS form submit. Saved scenarios without the flag preserve the 2% default (no migration needed). Verified via `TestNormalizedSSCOLARate_F026_*` and `TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA`.
 
 ---
 

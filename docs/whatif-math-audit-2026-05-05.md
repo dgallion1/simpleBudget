@@ -1787,7 +1787,87 @@ if additionalTax > conversionAmount*0.37 { t.Errorf(...) }
 
 ## 9. Backtest, Monte Carlo, guardrails
 
-_Filled in by Task 9._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `yearsUntilDepletion` | `backtest.go:24` | PASS |
+| `RunHistoricalBacktest` | `backtest.go:35` | PASS (F-057, F-058, F-059) |
+| `runSingleHistoricalSequence` | `backtest.go:153` | PASS |
+| `newGuardrailState` | `guardrails.go:18` | PASS |
+| `evaluate` | `guardrails.go:28` | PASS (F-063, F-064) |
+| `multiplier` | `guardrails.go:65` | PASS |
+| `GetHistoricalReturns` | `historical_data.go:120` | PASS |
+| `GetHistoricalSequence` | `historical_data.go:126` | PASS |
+| `GetAvailableStartYears` | `historical_data.go:144` | FAIL (F-057) |
+| `GetHistoricalStats` | `historical_data.go:158` | PASS (F-060) |
+| `sqrt` | `historical_data.go:193` | PASS |
+| `RunMonteCarloSimulation` | `calculator.go:2102` | PASS (F-061, F-062) |
+| `runSingleMonteCarloSimulation` | `calculator.go:2247` | PASS |
+| `generateAssetReturns` | `calculator.go:2539` | PASS (F-060) |
+| `generateYearlyReturns` | `calculator.go:2600` | PASS |
+| `calculateSequenceRiskImpact` | `calculator.go:2619` | PASS |
+| `calculateSequenceRiskBreakdown` | `calculator.go:2657` | PASS |
+
+### Conventions identified
+
+- **Monte Carlo distribution:** **Normal** (`r = mean + σ·Z` where Z ← `rand.NormFloat64()`). Used for both stock and bond returns in normal years. Crash years substitute a deterministic crash-severity range; recovery years use `mean + RecoveryBoost + σ·0.8·Z`. Returns are clamped to `[−50%, +60%]` for stocks and `[−20%, +40%]` for bonds, preventing the worst tails a pure normal can produce. Lognormal would be theoretically preferable for long horizons but normal is acceptable here given the clamping. Documented as INFO (see F-060).
+- **Mean and volatility inputs:** Derived at runtime from `GetHistoricalStats()` which computes **arithmetic** mean and **population** standard deviation of the 1928–2024 historical series (97 observations). Units: percent per year (annual). Arithmetic mean, not geometric mean, is used as the draw center; this produces a slight upward bias relative to the geometric (compound) mean but is standard practice for drawing a single-year return.
+- **Random number generator:** `math/rand` with a wall-clock seed (`time.Now().UnixNano()`) for the primary simulation run. A separate fixed-seed source (`rand.NewSource(42)`) is used for the adaptive-spending sub-run. Seeded interface is exposed via `runSingleMonteCarloSimulation(rng, config)` making deterministic testing feasible. No `crypto/rand`.
+- **Number of trials:** Default 1,000 (caller supplies `runs`; if `runs ≤ 0` it is reset to 1,000). No documented max; the adaptive sub-run uses `runs/2`. The SS optimizer hard-codes 250 runs.
+- **Historical data source and range:** `HistoricalReturns` slice in `historical_data.go`, covering **1928–2024** (97 years). Sources cited in the file header: S&P 500 (Shiller data), 10-Year Treasury (FRED), 3-Month T-Bill (NYU Stern/Damodaran), Inflation (BLS CPI-U).
+- **Rolling-window construction:** Annual data only; no monthly rebalancing within the historical backtest. Each sequence year uses that calendar year's asset returns applied with the geometric monthly-compounding formula `(1+r)^(1/12)−1`. Rebalancing is implicit — per-account allocations are applied to each year's blended returns, effectively annual rebalancing.
+- **Guardrail rules implemented:** The implementation uses a **portfolio-value-based guardrail** (not the original withdrawal-rate-based Guyton-Klinger rules). Two triggers: (1) **Floor** — if portfolio drops `FloorDropPct`% from its peak, cut spending by `FloorCutPct`% and reset peak. (2) **Ceiling** — if portfolio rises `CeilingRisePct`% above `initialPortfolio`, raise spending by `CeilingRaisePct`% and update initialPortfolio. The canonical Guyton-Klinger (2006) **Capital Preservation Rule** (cut when withdrawal rate exceeds initial × 1.2), **Prosperity Rule** (raise when withdrawal rate is below initial × 0.8), **Inflation Rule** (no inflation adjustment after a loss year), and **Withdrawal Rule** (no inflation adjustment unless portfolio return exceeded inflation) are **not implemented**. The planner's approach is a plausible dynamic guardrail but is not the Guyton-Klinger protocol. Documented as INFO (see F-063).
+
+### Worked examples
+
+#### WE-9.1: Monte Carlo aggregation sanity
+
+**Setup:** 500 trials, $1M portfolio, $3,000/mo expenses (3.6% WR), age 65, 30 years, 60/40/5 allocation, 7% nominal return, 2.5% inflation. Time-seeded RNG (non-reproducible). Separate 100-trial deterministic run with seed 42 used to measure median bias.
+
+**Results:**
+
+| Metric | Value |
+|--------|-------|
+| Runs | 500 |
+| SuccessRate | 93.6% |
+| MedianBalance | $2,641,802 |
+| MeanBalance | $3,931,337 |
+| Percentile10 | $269,389 |
+| Percentile90 | $9,109,506 |
+| Ordering (P10≤P25≤Med≤P75≤P90) | PASS |
+
+**Median bias check (seeded 100-trial):** Implementation uses `balances[runs/2]` = `balances[50]` (51st element out of 100). True median = average of elements 49 and 50. Measured implied median: $2,998,005; true median: $2,975,174; bias: +0.77%. For large `runs` (≥1,000) the bias falls below 0.1%, which is acceptable. See F-061 for the indexing detail.
+
+**Conclusion:** Aggregation logic is statistically sound at production scale. All ordering invariants hold.
+
+#### WE-9.2: Historical backtest window count
+
+**Setup:** 97 years of data (1928–2024), 30-year horizon.
+
+**Standard formula:** N − H + 1 = 97 − 30 + 1 = **68** starting years (1928 through 1995).
+
+**Planner result:** `GetAvailableStartYears(30)` returns **67** years (1928 through 1994). The 1995–2024 sequence (the most recent complete 30-year window, ending exactly at the 2024 data point) is **excluded**.
+
+**Root cause:** `GetAvailableStartYears` uses `maxIdx = len(HistoricalReturns) - projectionYears` and iterates `i < maxIdx`, producing indices 0 through `maxIdx−1`. But `GetHistoricalSequence(1995, 30)` correctly accepts `startIdx=67`, `startIdx+yearsNeeded=97`, and the guard condition `97 > 97` is false, so the sequence is valid. The exclusive upper bound in `GetAvailableStartYears` is off by one. See F-057.
+
+#### WE-9.3: Guardrail trigger
+
+**CPR analog (floor):** Initial $1M, drop to $750K (25% from peak ≥ 20% threshold) → spending multiplier cut to **0.90** (−10%). PASS.
+
+**PR analog (ceiling):** Initial $1M, rise to $1.3M (30% from initial ≥ 20% threshold) → spending multiplier raised to **1.10** (+10%). PASS.
+
+**Exact threshold:** Drop to exactly $800K from $1M (exactly 20% ≥ 20%) → trigger fires → multiplier 0.90. The condition is `>=`, so the threshold is inclusive. PASS.
+
+**Below threshold:** Drop to $801K (≈19.9% < 20%) → no trigger → multiplier 1.00. PASS.
+
+**Note on Guyton-Klinger (2006) fidelity:** The canonical CPR fires when the current *withdrawal rate* (annual withdrawal / current portfolio) exceeds the *initial rate × 1.20*, not when the portfolio drops by a fixed percentage from peak. The planner's portfolio-drop approach is a simpler proxy that will not match G-K behavior exactly (it can fire earlier or later than the G-K rule depending on whether spending has already been adjusted). See F-063.
+
+### Findings
+
+See F-057 through F-064 in Appendix C.
 
 ## 10. Scenario chain, healthcare, budget-fit / steady-state
 
@@ -2815,3 +2895,101 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** `grep -rn "RothConversion" *_test.go | grep -i "NIIT\|IRMAA"` returns no results.
 **Recommended fix sketch:** Add snapshot-level test: MFJ, $240K base, $50K conversion → assert `AnnualNIIT > 0`. Add 3-year projection test with large year-0 conversion → assert year-2 IRMAA surcharge appears.
 **Test coverage note:** Both NIIT-from-conversion and IRMAA-lookback-from-conversion paths are tested only incidentally through full-projection smoke tests.
+
+---
+
+### F-057 — MEDIUM `GetAvailableStartYears` off-by-one excludes the most recent valid 30-year window
+
+**Location:** `internal/services/retirement/historical_data.go:144` — `GetAvailableStartYears`
+**Source consulted:** Internal model — rolling-window backtest construction.
+**What it does:** Returns the slice of calendar years that can be used as backtest starting points given a required projection length.
+**Finding:** The implementation uses `maxIdx = len(HistoricalReturns) - projectionYears` and iterates `i < maxIdx`, yielding `maxIdx` entries. The correct count of valid starting years is N − H + 1 (standard rolling-window formula). With 97 data years and a 30-year horizon this produces 67 windows instead of 68, excluding the 1995–2024 window — the most recent complete 30-year period, which covers the dot-com crash, the 2008 financial crisis, COVID, and the 2022 rate shock. The excluded window is the one with the most relevance to near-term retirees.
+**Evidence / repro:** `GetHistoricalSequence(1995, 30)` succeeds (guard: `67 + 30 = 97 > 97` is false), yet `GetAvailableStartYears(30)` stops at 1994. WE-9.2 confirmed: `TotalSequences=67`, expected 68.
+**Recommended fix sketch:** Change `maxIdx := len(HistoricalReturns) - projectionYears` to `maxIdx := len(HistoricalReturns) - projectionYears + 1` and adjust the loop `for i := 0; i < maxIdx; i++`. Verify `GetHistoricalSequence` correctly handles the last entry (it does).
+**Test coverage note:** `TestGetAvailableStartYears` checks `lastYear <= data[last].Year - 29` which passes under the buggy code. Add an assertion `lastYear == data[last].Year - projectionYears + 1`.
+
+---
+
+### F-058 — LOW Historical backtest computes percentiles but discards them without exposing them
+
+**Location:** `internal/services/retirement/backtest.go:97–138` — `RunHistoricalBacktest`
+**Source consulted:** Internal model.
+**What it does:** Computes `p10`, `p25`, `p50`, `p75`, `p90` of final balances across all backtest sequences, then assigns them to blank identifiers (`_ = p10` etc.) so they are silently dropped.
+**Finding:** The five percentile values are computed but never stored in `models.HistoricalBacktestAnalysis`, so callers cannot display them. The Monte Carlo result exposes analogous percentiles. The backtest percentiles would allow users to see the P10/P90 corridor of historical outcomes, which is more informative than listing individual start years. The computation is correct but dead code.
+**Evidence / repro:** `backtest.go:134–138` — `_ = p10; _ = p25; _ = p50; _ = p75; _ = p90`.
+**Recommended fix sketch:** Add `Percentile10, Percentile25, Percentile50, Percentile75, Percentile90 float64` to `models.HistoricalBacktestAnalysis` and populate them from the computed values; remove the blank assignments.
+**Test coverage note:** No test can assert these fields because they are not set.
+
+---
+
+### F-059 — LOW Historical backtest percentile indexing has systematic +1 element upward bias
+
+**Location:** `internal/services/retirement/backtest.go:97–101` — `RunHistoricalBacktest`; `internal/services/retirement/calculator.go:2162–2167` — `RunMonteCarloSimulation`
+**Source consulted:** Standard percentile definition.
+**What it does:** Both functions compute percentiles as `sorted[n/2]`, `sorted[n/4]`, etc. using integer division (floor division).
+**Finding:** For a sorted array of length `n`, the element at index `⌊n/k⌋` is the `(⌊n/k⌋+1)`th value — slightly above the true `(100/k)`th percentile. For n=1,000 the bias is 0.1 percentage point (negligible). For n=100 it reaches 1–2 pp; for n=10 the "P10" is actually P20 (the 2nd of 10 elements). At the default 1,000-trial MC run the bias is immaterial. The historical backtest with 67 sequences (after the F-057 fix, 68) has a slightly larger but still acceptable bias (≤ 1 pp). Documented as LOW because it may mislead at small trial counts.
+**Evidence / repro:** `n=100`, `balances[100/2]=balances[50]` is the 51st element (P51.0). Seeded 100-trial test showed implied median $2,998,005 vs true median $2,975,174 (+0.77%). For `n=10`, `balances[10/10]=balances[1]` is the 2nd element (P20, not P10).
+**Recommended fix sketch:** For median: `(sorted[n/2-1] + sorted[n/2]) / 2` when `n` is even. For percentile-k: use the nearest-rank formula `max(0, int(float64(n)*pct/100 + 0.5) - 1)`. This is most important to fix if the MC ever exposes a small-sample mode.
+**Test coverage note:** No test asserts the exact median formula; only ordering invariants are checked.
+
+---
+
+### F-060 — INFO `GetHistoricalStats` uses population standard deviation; Monte Carlo uses arithmetic mean as draw center
+
+**Location:** `internal/services/retirement/historical_data.go:158` — `GetHistoricalStats`; `internal/services/retirement/calculator.go:2545` — `generateAssetReturns`
+**Source consulted:** Statistical convention; historical data series 1928–2024.
+**What it does:** Computes arithmetic mean and population stddev of the 97-year series, then uses them as parameters for `NormFloat64() * stockStdDev` in Monte Carlo draws.
+**Finding (a) — Population vs. sample stddev:** Divides by `n=97` instead of `n−1=96`. Underestimates true sample stddev by factor √(97/96) ≈ 1.0052 (0.52%). For σ ≈ 19.7% this is ≈ 0.1 pp — negligible. INFO.
+**Finding (b) — Arithmetic mean as draw center:** Using the arithmetic mean (~11.5%) rather than the geometric/compound mean (~9.6%) causes the Monte Carlo to draw slightly optimistic returns on average. For a 30-year projection the compounding effect of this ~1.9 pp overstatement is material: `1.115^30 / 1.096^30 ≈ 1.76`, meaning terminal wealth could be overstated by ≈76% in the median trial. The difference reflects the Jensen's inequality relationship between arithmetic and geometric mean. INFO only because this is a common modeling choice and the crash/volatility overlays offset some of the excess; but users comparing MC output to historical backtest output may be confused.
+**Finding (c) — Distribution choice:** Normal distribution is used (not lognormal). For stock σ ≈ 19.7%, a −2σ draw gives −28%, and −3σ gives −48% — within the hard clamp of −50%. Normal is acceptable here given the clamping.
+**Evidence / repro:** `historical_data.go:186` `sqrt(sumSqDiffStock / n)`; `calculator.go:2580` `stockMean + rng.NormFloat64()*stockStdDev`.
+**Recommended fix sketch:** Consider using geometric mean `= exp(mean(ln(1+r))) − 1` as the draw center for multi-year projections; keep arithmetic mean in single-year contexts. The population/sample difference is immaterial and not worth changing.
+**Test coverage note:** `TestGetHistoricalStats` checks ranges but not the population-vs-sample distinction.
+
+---
+
+### F-061 — LOW `RunMonteCarloSimulation` is time-seeded; deterministic testing relies on private helper
+
+**Location:** `internal/services/retirement/calculator.go:2122` — `RunMonteCarloSimulation`
+**Source consulted:** Code inspection.
+**What it does:** Creates `rng := rand.New(rand.NewSource(time.Now().UnixNano()))` for the primary simulation, making the public function non-reproducible.
+**Finding:** The public `RunMonteCarloSimulation` function cannot be deterministically tested. Test files rely on calling the private `runSingleMonteCarloSimulation(rng, config)` with a fixed-seed `rng`. If the public function's aggregation logic is ever changed, those internal tests may not catch regressions. The adaptive sub-run does use a fixed seed (42) for reproducibility. LOW severity because the private interface is accessible within the package.
+**Evidence / repro:** `calculator.go:2122` `rand.New(rand.NewSource(time.Now().UnixNano()))`.
+**Recommended fix sketch:** Accept an optional `rand.Source` parameter (or extract an `RunMonteCarloSimulationWithSource(runs int, src rand.Source)` overload) so callers can supply a fixed seed in tests. The time-seeded default is fine for production.
+**Test coverage note:** No test exercises `RunMonteCarloSimulation` in a statistically rigorous way (e.g., verifying convergence of the success rate to a known analytical bound). Tests only check shape (non-nil, ordering invariants).
+
+---
+
+### F-062 — MEDIUM `RunMonteCarloSimulation`: degenerate inputs (runs=0, runs=1) have no coverage
+
+**Location:** `internal/services/retirement/calculator.go:2102` — `RunMonteCarloSimulation`
+**Source consulted:** Code inspection.
+**What it does:** When `runs ≤ 0`, resets to 1,000. When `runs=1`, computes percentiles on a length-1 sorted array.
+**Finding:** (a) `runs=0` → resets to 1,000 silently. The intent is defensible but undocumented. (b) `runs=1` → `balances[1/2] = balances[0]` (median), `balances[1/10] = balances[0]` (P10), `balances[1*3/4] = balances[0]` (P75 = index 0), `balances[1*9/10] = balances[0]` (P90 = index 0). All percentiles collapse to the single element, which is correct but exercises the same array element every time. No panic, but the output is degenerate. (c) `runs=2` → `balances[2/4] = balances[0]` (P25 = first element), `balances[2*3/4] = balances[1]` (P75 = second element), but `balances[2/10] = balances[0]` (P10 = same as P25). Degenerate but no panic.
+**Evidence / repro:** Integer division: `2/10 = 0`; for `runs=2`, P10 = P25 = `balances[0]`, which is potentially confusing.
+**Recommended fix sketch:** Guard `runs < 10` with a documented minimum (e.g., clamp to 100). Add a test asserting `RunMonteCarloSimulation(0)` returns non-nil with `Stats.Runs == 1000` and `RunMonteCarloSimulation(1)` returns non-nil without panic.
+**Test coverage note:** No test covers `runs=0` guard or `runs=1` degenerate case.
+
+---
+
+### F-063 — INFO Guardrail implementation is a portfolio-drop heuristic, not Guyton-Klinger (2006)
+
+**Location:** `internal/services/retirement/guardrails.go:28` — `evaluate`
+**Source consulted:** Guyton & Klinger (2006), *Decision Rules and Maximum Initial Withdrawal Rates*, Journal of Financial Planning, March 2006.
+**What it does:** Compares the current portfolio value to a tracked peak (floor trigger) and to the initial portfolio value (ceiling trigger). Adjusts a spending multiplier by configured percentages.
+**Finding:** The Guyton-Klinger (2006) rules are defined in terms of the **current withdrawal rate** (annual withdrawal / current portfolio) relative to the **initial withdrawal rate**. The canonical rules are: (1) Capital Preservation Rule — if current WR > initial WR × 1.20, cut withdrawal by 10%; (2) Prosperity Rule — if current WR < initial WR × 0.80, raise withdrawal by 10%; (3) Inflation Rule — do not take the inflation increase in years when the previous year's portfolio return was negative; (4) Withdrawal Rule — do not take the full inflation increase unless the portfolio return exceeded inflation. None of these four rules are implemented. The planner's portfolio-drop/rise approach will fire on different events than the G-K rules. For example, if spending is reduced (e.g., by an earlier guardrail cut), the current WR falls even without a portfolio gain, and the Prosperity Rule would eventually trigger — but the planner's ceiling trigger requires the portfolio to physically rise above its initial value. This is not a calculation bug (the planner's implementation is internally consistent), but it is materially different from G-K and should not be labeled as "Guyton-Klinger" in the UI.
+**Evidence / repro:** `guardrails.go:38` `dropPct := (g.peakPortfolio - currentPortfolio) / g.peakPortfolio * 100` — portfolio-drop criterion, not withdrawal-rate criterion.
+**Recommended fix sketch:** Either implement the withdrawal-rate-based G-K rules (tracking `initialWithdrawalRate` and `currentWithdrawalRate`), or rename the UI label from "Guyton-Klinger" to "Dynamic Guardrails" to avoid misrepresenting the model.
+**Test coverage note:** Tests correctly exercise the implemented portfolio-drop/rise logic. No test compares planner output to published G-K example scenarios.
+
+---
+
+### F-064 — LOW `evaluate`: consecutive-year guardrail behavior and multiple-trigger interaction not tested
+
+**Location:** `internal/services/retirement/guardrails.go:28` — `evaluate`
+**Source consulted:** Code inspection.
+**What it does:** Applies floor or ceiling adjustments, resets peak/initial, and clamps the multiplier.
+**Finding:** Three coverage gaps: (1) No test calls `evaluate` in consecutive years to verify that multiplier compounding works (e.g., two successive 10% cuts → 0.81, not 0.80). (2) No test verifies behavior when the floor triggers, the peak is reset to current value, and then the portfolio rises — ensuring the ceiling is measured from the post-floor-trigger portfolio value (which is `initialPortfolio`, not the reset peak). The `initialPortfolio` field is not updated by floor triggers; only `peakPortfolio` is reset. This asymmetry is intentional but untested. (3) No test covers `evaluate` at year 0 (first call with portfolio equal to initial — no trigger expected).
+**Evidence / repro:** `guardrails.go:41` `g.peakPortfolio = currentPortfolio` (floor resets peak only); `guardrails.go:52` `g.initialPortfolio = currentPortfolio` (ceiling resets initial only).
+**Recommended fix sketch:** Add three table-driven subtests: consecutive-year cuts, post-floor-cut ceiling check, and year-0 no-trigger.
+**Test coverage note:** Existing tests cover single-trigger scenarios only.

@@ -121,6 +121,14 @@ var socialSecurityTaxThresholds = map[models.FilingStatus]socialSecurityTaxThres
 	models.FilingHeadOfHousehold: {BaseThreshold: 25000, UpperThreshold: 34000, BaseTaxableAmount: 4500},
 }
 
+// F-018: MFS lived-apart threshold per 26 USC § 86(c)(2)(A).
+// MFS lived-with-spouse: handled directly as 85% return (no threshold lookup needed).
+var socialSecurityTaxThresholdsMFSLivedApart = socialSecurityTaxThreshold{
+	BaseThreshold:     25000,
+	UpperThreshold:    34000,
+	BaseTaxableAmount: 4500,
+}
+
 var niitThresholds = map[models.FilingStatus]float64{
 	models.FilingSingle:          200000,
 	models.FilingMarriedJoint:    250000,
@@ -167,11 +175,12 @@ var monthlyIRMAASurcharge2026 = map[models.FilingStatus][]struct {
 
 // TaxCalculator computes federal and state income taxes
 type TaxCalculator struct {
-	FilingStatus  models.FilingStatus
-	StateRate     float64 // State income tax rate as percentage (e.g., 5.0 for 5%)
-	InflationRate float64 // Annual inflation rate for bracket adjustment
-	BaseYear      int     // Year the brackets are based on
-	Age65Count    int     // F-001: number of filers 65 or older (0, 1, or 2 for MFJ)
+	FilingStatus       models.FilingStatus
+	StateRate          float64 // State income tax rate as percentage (e.g., 5.0 for 5%)
+	InflationRate      float64 // Annual inflation rate for bracket adjustment
+	BaseYear           int     // Year the brackets are based on
+	Age65Count         int     // F-001: number of filers 65 or older (0, 1, or 2 for MFJ)
+	MFSLivedWithSpouse bool    // F-018: 26 USC § 86(c)(2) sub-case; true = lived with spouse → $0/$0 SS thresholds
 }
 
 // NewTaxCalculator creates a tax calculator with the given configuration
@@ -180,11 +189,12 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 		config = models.DefaultTaxConfig()
 	}
 	return &TaxCalculator{
-		FilingStatus:  config.FilingStatus,
-		StateRate:     config.StateIncomeTaxRate,
-		InflationRate: inflationRate,
-		BaseYear:      taxBaseYear,
-		Age65Count:    config.Age65Count,
+		FilingStatus:       config.FilingStatus,
+		StateRate:          config.StateIncomeTaxRate,
+		InflationRate:      inflationRate,
+		BaseYear:           taxBaseYear,
+		Age65Count:         config.Age65Count,
+		MFSLivedWithSpouse: config.MFSLivedWithSpouse,
 	}
 }
 
@@ -281,17 +291,34 @@ func normalizeFilingStatus(filingStatus models.FilingStatus) models.FilingStatus
 	}
 }
 
-func CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64, filingStatus models.FilingStatus) float64 {
+func CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64, filingStatus models.FilingStatus, mfsLivedWithSpouse bool) float64 {
 	if ssBenefits <= 0 {
 		return 0
 	}
 
 	filingStatus = normalizeFilingStatus(filingStatus)
+
+	// F-018: MFS has two sub-cases per 26 USC § 86(c)(2).
 	if filingStatus == models.FilingMarriedSeparate {
-		return ssBenefits * 0.85
+		if mfsLivedWithSpouse {
+			// 26 USC § 86(c)(2)(B): $0 base threshold — no exclusion; 85% cap applies
+			// immediately to all SS benefits regardless of other income.
+			return ssBenefits * 0.85
+		}
+		// MFS lived-apart: uses Single thresholds ($25K/$34K) per § 86(c)(2)(A).
+		thresholds := socialSecurityTaxThresholdsMFSLivedApart
+		provisionalIncome := math.Max(0, otherIncome) + math.Max(0, qualifiedDividends) + math.Max(0, longTermCapitalGains) + (0.5 * ssBenefits)
+		if provisionalIncome <= thresholds.BaseThreshold {
+			return 0
+		}
+		if provisionalIncome <= thresholds.UpperThreshold {
+			return math.Min(ssBenefits*0.5, (provisionalIncome-thresholds.BaseThreshold)*0.5)
+		}
+		taxable := math.Min(ssBenefits*0.5, thresholds.BaseTaxableAmount) + (provisionalIncome-thresholds.UpperThreshold)*0.85
+		return math.Min(ssBenefits*0.85, taxable)
 	}
 
-	// normalizeFilingStatus guarantees a valid key; MFS is handled above
+	// normalizeFilingStatus guarantees a valid key for all non-MFS statuses.
 	thresholds := socialSecurityTaxThresholds[filingStatus]
 
 	provisionalIncome := math.Max(0, otherIncome) + math.Max(0, qualifiedDividends) + math.Max(0, longTermCapitalGains) + (0.5 * ssBenefits)
@@ -350,7 +377,7 @@ func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, infla
 }
 
 func (tc *TaxCalculator) CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64) float64 {
-	return CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains, tc.FilingStatus)
+	return CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains, tc.FilingStatus, tc.MFSLivedWithSpouse)
 }
 
 func (tc *TaxCalculator) CalculateNIIT(magi, netInvestmentIncome float64) float64 {

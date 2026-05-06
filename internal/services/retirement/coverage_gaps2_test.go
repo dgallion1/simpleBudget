@@ -47,8 +47,8 @@ func TestCalculateTaxableSocialSecurity_InvestmentIncomeAffectsPI(t *testing.T) 
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			withInvestment := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status)
-			withoutInvestment := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, 0, 0, tt.status)
+			withInvestment := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status, false)
+			withoutInvestment := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, 0, 0, tt.status, false)
 
 			if withInvestment <= withoutInvestment {
 				t.Errorf("expected investment income to increase taxable SS: with=%f without=%f", withInvestment, withoutInvestment)
@@ -136,7 +136,7 @@ func TestCalculateTaxableSocialSecurity_ExactThresholds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, 0, 0, tt.status)
+			got := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, 0, 0, tt.status, false)
 			if tt.wantZero && got != 0 {
 				t.Errorf("%s: expected 0, got %f", tt.desc, got)
 			}
@@ -153,7 +153,7 @@ func TestCalculateTaxableSocialSecurity_BetweenVsAboveUpperThreshold(t *testing.
 	ssBenefits := 20000.0
 	otherIncomeAtUpper := 24000.0 // PI = 34000
 
-	atUpper := CalculateTaxableSocialSecurity(ssBenefits, otherIncomeAtUpper, 0, 0, models.FilingSingle)
+	atUpper := CalculateTaxableSocialSecurity(ssBenefits, otherIncomeAtUpper, 0, 0, models.FilingSingle, false)
 	// Between thresholds: min(SS*0.5, (PI - baseThreshold)*0.5) = min(10000, (34000-25000)*0.5) = min(10000, 4500) = 4500
 	if math.Abs(atUpper-4500) > 0.01 {
 		t.Errorf("at upper threshold expected 4500, got %f", atUpper)
@@ -161,7 +161,7 @@ func TestCalculateTaxableSocialSecurity_BetweenVsAboveUpperThreshold(t *testing.
 
 	// Just above upper threshold: taxable = min(SS*0.5, baseTaxableAmount) + (PI - upperThreshold)*0.85
 	otherIncomeAboveUpper := 25000.0 // PI = 35000
-	aboveUpper := CalculateTaxableSocialSecurity(ssBenefits, otherIncomeAboveUpper, 0, 0, models.FilingSingle)
+	aboveUpper := CalculateTaxableSocialSecurity(ssBenefits, otherIncomeAboveUpper, 0, 0, models.FilingSingle, false)
 	// taxable = min(10000, 4500) + (35000-34000)*0.85 = 4500 + 850 = 5350
 	// capped: min(SS*0.85, 5350) = min(17000, 5350) = 5350
 	if math.Abs(aboveUpper-5350) > 0.01 {
@@ -170,7 +170,7 @@ func TestCalculateTaxableSocialSecurity_BetweenVsAboveUpperThreshold(t *testing.
 }
 
 func TestCalculateTaxableSocialSecurity_NegativeSSBenefits(t *testing.T) {
-	got := CalculateTaxableSocialSecurity(-1000, 50000, 0, 0, models.FilingSingle)
+	got := CalculateTaxableSocialSecurity(-1000, 50000, 0, 0, models.FilingSingle, false)
 	if got != 0 {
 		t.Errorf("expected 0 for negative SS benefits, got %f", got)
 	}
@@ -178,8 +178,8 @@ func TestCalculateTaxableSocialSecurity_NegativeSSBenefits(t *testing.T) {
 
 func TestCalculateTaxableSocialSecurity_HeadOfHousehold(t *testing.T) {
 	// HOH uses same thresholds as single
-	gotHOH := CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingHeadOfHousehold)
-	gotSingle := CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingSingle)
+	gotHOH := CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingHeadOfHousehold, false)
+	gotSingle := CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingSingle, false)
 	if math.Abs(gotHOH-gotSingle) > 0.01 {
 		t.Errorf("HOH and single should have same SS taxation: HOH=%f single=%f", gotHOH, gotSingle)
 	}
@@ -985,10 +985,11 @@ func TestTaxCalculator_CalculateMonthlyIRMAA(t *testing.T) {
 // --- SS with married separate always 85% ---
 
 func TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct(t *testing.T) {
-	// Regardless of income level, MFS should always be 85%
+	// MFS-lived-with-spouse: $0/$0 thresholds → 85% cap applies immediately
+	// (per 26 USC § 86(c)(2)(B), F-018). mfsLivedWithSpouse=true.
 	tests := []float64{1000, 10000, 50000, 100000}
 	for _, ss := range tests {
-		got := CalculateTaxableSocialSecurity(ss, 0, 0, 0, models.FilingMarriedSeparate)
+		got := CalculateTaxableSocialSecurity(ss, 0, 0, 0, models.FilingMarriedSeparate, true)
 		want := ss * 0.85
 		if math.Abs(got-want) > 0.01 {
 			t.Errorf("SS=%f: expected %f (85%%), got %f", ss, want, got)
@@ -1000,7 +1001,7 @@ func TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct(t *testing.T)
 
 func TestCalculateTaxableSocialSecurity_NegativeOtherIncome(t *testing.T) {
 	// Negative otherIncome is clamped to 0 via math.Max
-	got := CalculateTaxableSocialSecurity(20000, -50000, 0, 0, models.FilingSingle)
+	got := CalculateTaxableSocialSecurity(20000, -50000, 0, 0, models.FilingSingle, false)
 	// PI = max(0, -50000) + 0 + 0 + 0.5*20000 = 10000, below 25K threshold
 	if got != 0 {
 		t.Errorf("expected 0 with negative other income, got %f", got)
@@ -1012,7 +1013,7 @@ func TestCalculateTaxableSocialSecurity_NegativeOtherIncome(t *testing.T) {
 func TestCalculateTaxableSocialSecurity_CappedAt85Percent(t *testing.T) {
 	// Very high income should cap taxable SS at 85% of benefits
 	ssBenefits := 30000.0
-	got := CalculateTaxableSocialSecurity(ssBenefits, 500000, 0, 0, models.FilingSingle)
+	got := CalculateTaxableSocialSecurity(ssBenefits, 500000, 0, 0, models.FilingSingle, false)
 	maxTaxable := ssBenefits * 0.85
 	if got > maxTaxable+0.01 {
 		t.Errorf("taxable SS should be capped at 85%%: got=%f, max=%f", got, maxTaxable)

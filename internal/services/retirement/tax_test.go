@@ -252,13 +252,14 @@ func TestCalculateTaxWithInvestmentIncome(t *testing.T) {
 
 func TestCalculateTaxableSocialSecurity(t *testing.T) {
 	tests := []struct {
-		name        string
-		ssBenefits  float64
-		otherIncome float64
-		qd          float64
-		ltcg        float64
-		status      models.FilingStatus
-		want        float64
+		name               string
+		ssBenefits         float64
+		otherIncome        float64
+		qd                 float64
+		ltcg               float64
+		status             models.FilingStatus
+		mfsLivedWithSpouse bool
+		want               float64
 	}{
 		{
 			name:       "below first threshold",
@@ -281,16 +282,18 @@ func TestCalculateTaxableSocialSecurity(t *testing.T) {
 			want:        30600,
 		},
 		{
-			name:       "married separate treated as 85 percent taxable",
-			ssBenefits: 30000,
-			status:     models.FilingMarriedSeparate,
-			want:       25500,
+			// F-018: MFS-lived-with-spouse → $0/$0 thresholds → 85% cap immediate.
+			name:               "married separate lived-with-spouse treated as 85 percent taxable",
+			ssBenefits:         30000,
+			status:             models.FilingMarriedSeparate,
+			mfsLivedWithSpouse: true,
+			want:               25500,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status)
+			got := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status, tt.mfsLivedWithSpouse)
 			if math.Abs(got-tt.want) > 0.01 {
 				t.Fatalf("CalculateTaxableSocialSecurity() = %.2f, want %.2f", got, tt.want)
 			}
@@ -460,5 +463,65 @@ func TestCalculateFederalTax_F001_Age65SingleLowersTax(t *testing.T) {
 	want := 9012.0
 	if math.Abs(tax-want) > 0.01 {
 		t.Fatalf("F-001 fix: CalculateFederalTax(Single 65+, 80K, Age65Count=1) = %.2f, want %.2f", tax, want)
+	}
+}
+
+// F-018: MFS lived-with-spouse — both thresholds $0; full 85% applies above 0.
+// Per 26 USC § 86(c)(2)(B).
+func TestCalculateTaxableSocialSecurity_F018_MFSLivedWithSpouse(t *testing.T) {
+	taxable := CalculateTaxableSocialSecurity(20000, 0, 0, 0, models.FilingMarriedSeparate, true)
+	want := 0.85 * 20000 // $17,000 (85% cap immediately applies because thresholds are 0)
+	if math.Abs(taxable-want) > 0.01 {
+		t.Errorf("MFS-lived-with-spouse: taxable SS = %.2f; want %.2f", taxable, want)
+	}
+}
+
+// F-018: MFS lived-apart — uses Single thresholds ($25K / $34K).
+func TestCalculateTaxableSocialSecurity_F018_MFSLivedApart(t *testing.T) {
+	// MFS-lived-apart with $20K SS, $30K other income:
+	//   Provisional = $30K + $10K = $40K (above upper $34K)
+	//   Step 1: ($40K - $34K) × 85% = $5,100
+	//   Step 2: 50% × min(($40K - $25K), ($34K - $25K)) = 50% × $9K = $4,500
+	//   Sum: $9,600
+	//   85% cap: 0.85 × $20K = $17,000 → take lesser = $9,600
+	taxable := CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingMarriedSeparate, false)
+	want := 9600.0
+	if math.Abs(taxable-want) > 0.01 {
+		t.Errorf("MFS-lived-apart: taxable SS = %.2f; want %.2f", taxable, want)
+	}
+}
+
+// F-018: TaxCalculator method-version with TaxConfig.MFSLivedWithSpouse.
+func TestTaxCalculator_CalculateTaxableSocialSecurity_F018_MFSLivedWithSpouse(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus:       models.FilingMarriedSeparate,
+		MFSLivedWithSpouse: true,
+	}, 0)
+	taxable := tc.CalculateTaxableSocialSecurity(20000, 0, 0, 0)
+	want := 0.85 * 20000
+	if math.Abs(taxable-want) > 0.01 {
+		t.Errorf("method MFS-lived-with-spouse = %.2f; want %.2f", taxable, want)
+	}
+}
+
+func TestTaxCalculator_CalculateTaxableSocialSecurity_F018_MFSLivedApart(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus:       models.FilingMarriedSeparate,
+		MFSLivedWithSpouse: false,
+	}, 0)
+	taxable := tc.CalculateTaxableSocialSecurity(20000, 30000, 0, 0)
+	want := 9600.0
+	if math.Abs(taxable-want) > 0.01 {
+		t.Errorf("method MFS-lived-apart = %.2f; want %.2f", taxable, want)
+	}
+}
+
+// F-018 regression: existing non-MFS paths preserved.
+// MFJ at $50K other + $30K SS still produces WE-2.1's $23,850.
+func TestCalculateTaxableSocialSecurity_F018_MFJUnchanged(t *testing.T) {
+	taxable := CalculateTaxableSocialSecurity(30000, 50000, 0, 0, models.FilingMarriedJoint, false)
+	want := 23850.0
+	if math.Abs(taxable-want) > 0.01 {
+		t.Errorf("MFJ regression: taxable SS = %.2f; want %.2f (WE-2.1)", taxable, want)
 	}
 }

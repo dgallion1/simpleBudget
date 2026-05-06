@@ -998,6 +998,8 @@ result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > ss.SpouseFRABenefit
 
 **Test coverage note:** No `TestRunSSAnalysis` case combines an already-claiming primary (non-FRA claim age) with a lower-PIA spouse to verify this flag. The existing "already claiming back-derives PIA" test only checks `BestAge`, not `SpouseUsingSpousalBenefit`.
 
+**Resolution:** Closed by commit 7731732 on `feat/whatif-fixes`. `RunSSAnalysis` now uses `primaryPIA*0.5 > spousePIA` (both variables correctly derived above the flag assignment) instead of `ss.FRABenefit*0.5 > ss.SpouseFRABenefit`. Verified via `TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA`.
+
 ---
 
 #### F-030 — LOW `RunSSAnalysis`: zero `ClaimAge` triggers spurious "already claiming" logic
@@ -3081,6 +3083,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 **Recommended fix sketch:** Replace `ss.FRABenefit` with `primaryPIA` on line 484. Update `social-security.html:177` to derive the dollar display from the analysis result rather than raw settings.
 
 **Test coverage note:** No test checks `SpouseUsingSpousalBenefit` for an already-claiming primary at a non-FRA age.
+
+**Resolution:** Closed by commit 7731732 on `feat/whatif-fixes`. `RunSSAnalysis` now uses `primaryPIA*0.5 > spousePIA` (both variables correctly derived above the flag assignment) instead of `ss.FRABenefit*0.5 > ss.SpouseFRABenefit`. Verified via `TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA`.
 
 ---
 

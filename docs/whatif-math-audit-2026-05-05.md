@@ -1,7 +1,13 @@
 # What-If Math Audit
 
-**Date:** 2026-05-05
-**Codebase audited at commit:** `3ec6440`
+**Date:** 2026-05-05 (audit baseline updated 2026-05-06)
+**Codebase audited at commit:** `b978aa9` ("Fix what-if compounding math") —
+the HEAD of `dev` at the time the user-authored compounding fix landed. Tasks
+1 and 2 of this audit were drafted against `3ec6440` (one commit prior), but
+neither task's scope intersects `b978aa9`'s changes (which touch only PV /
+compounding helpers in `calculator.go` and the monthly-return calculation in
+`rmd.go:CalculateRMDAnalysis`). All other tasks (3–10) audit the post-fix
+code.
 **Spec:** `docs/superpowers/specs/2026-05-05-whatif-math-audit-design.md`
 **Scope:** Every numerical computation feeding the What-If page.
 **Method:** Verify formulas and constants against authoritative sources; report

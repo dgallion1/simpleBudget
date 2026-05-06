@@ -1707,6 +1707,8 @@ If the $10,000 is later withdrawn at the same market value: code computes realiz
 **Recommended fix sketch:** Pass the effective tax rate into `reinvestRequiredRMDToTaxableState` (or compute it at the call site from `taxesPaid / grossIncome`) and call `taxable.addCash(rmdWithdrawal × (1 − effectiveTaxRate))` to set basis equal to the net-of-tax amount. Alternatively, use `taxable.MarketValue += rmdWithdrawal` (preserve market value at gross for growth purposes) but `taxable.CostBasis += rmdWithdrawal × (1 − effectiveTaxRate)`.
 **Test coverage note:** `reinvestRequiredRMDToTaxableState` is never called directly in any test. Its behavior is exercised only indirectly through the full projection path, where the long-term cost-basis distortion is not measured.
 
+**Resolution:** Closed by commit 0e9057fc3cb697758cc590f573c6fb1d4580b0b1 on `feat/whatif-fixes`. `reinvestRequiredRMDToTaxableState` now takes `marginalRate` and reinvests the after-tax amount (gross × (1 - marginalRate)) as both the market value addition and cost basis. Marginal rate is sourced from `taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear)` in the convergence loop of `executeTaxAwarePortfolioMonth`, updated each iteration. Verified via `TestReinvestRequiredRMD_F049_BasisIsAfterTax`, `TestReinvestRequiredRMD_F049_ZeroMarginalRate`, `TestReinvestRequiredRMD_F049_MarginalRateClamped`.
+
 ---
 
 #### F-050 — LOW `earlyWithdrawalPenaltyRate`: age-60 proxy overstates penalty window by up to 6 months; boundary at exactly 59 in final year untested
@@ -3413,6 +3415,8 @@ if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 **Evidence / repro:** RMD=$10K, effectiveTaxRate=25%: code basis += $10K; correct basis += $7.5K. Later withdrawal: code realizedGain=$0; correct realizedGain=$2.5K (at 15% LTCG rate: $375 under-collected).
 **Recommended fix sketch:** Pass the effective tax rate to `reinvestRequiredRMDToTaxableState` and call `taxable.addCash(rmdWithdrawal × (1 − effectiveTaxRate))`.
 **Test coverage note:** `reinvestRequiredRMDToTaxableState` never called directly in tests; long-term basis distortion unmeasured.
+
+**Resolution:** Closed by commit 0e9057fc3cb697758cc590f573c6fb1d4580b0b1 on `feat/whatif-fixes`. `reinvestRequiredRMDToTaxableState` now takes `marginalRate` and reinvests the after-tax amount (gross × (1 - marginalRate)) as both the market value addition and cost basis. Marginal rate is sourced from `taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear)` in the convergence loop of `executeTaxAwarePortfolioMonth`, updated each iteration. Verified via `TestReinvestRequiredRMD_F049_BasisIsAfterTax`, `TestReinvestRequiredRMD_F049_ZeroMarginalRate`, `TestReinvestRequiredRMD_F049_MarginalRateClamped`.
 
 ---
 

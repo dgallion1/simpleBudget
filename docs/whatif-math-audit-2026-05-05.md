@@ -1642,7 +1642,148 @@ earlyWithdrawalPenaltyRate(58, 1)  // → 0.10 (correct: age 59 in year 1)
 
 ## 8. Roth conversion math
 
-_Filled in by Task 8._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `rothConversionAmountForYear` | `calculator.go:409` | PASS (F-053, F-054) |
+| `EstimateRothConversionTax` | `tax.go:484` | PASS (F-055) |
+| Conversion application — `RunProjection` | `calculator.go:1062–1067` | PASS |
+| Conversion application — `runSingleHistoricalSequence` | `calculator.go:2357–2362` | PASS |
+| MAGI/tax accumulator integration | `calculator.go:249, 1199` | PASS (F-056) |
+
+### Conventions used by the planner
+
+**Amount cap:** `rothConversionAmountForYear` returns `min(AnnualAmount, availableTaxDeferred)`. Conversion is blocked if `availableTaxDeferred ≤ 0` or if `RothConversion == nil` or `!Enabled`.
+
+**Year window:** Enabled when `currentYear ≥ StartYear`. Disabled after `EndYear` when `EndYear != 0`; `EndYear = 0` means indefinite.
+
+**Frequency:** Conversion fires once per year at the year-boundary month (month 0 of each year, i.e., `m % 12 == 0`). Months 1–11 carry `rothConversionThisMonth = 0`.
+
+**Portfolio mutation:** At year boundary: `taxDeferredBalance -= conversionAmount; rothBalance += conversionAmount`. Tax cash is NOT separately deducted from Roth or taxable here — it flows through the normal monthly tax-estimation loop (`estimateMonthlySnapshot` → `estimateMonthlyTaxes`), which adds the conversion amount to ordinary income and drives up estimated taxes paid from the general expense pool.
+
+**Tax treatment:** Roth conversion amount is added to `otherIncome` (line 249: `otherIncome = ordinaryIncome + taxableWithdrawals + RothConversions`) and flows into `estimatedOrdinaryIncome`, which is then passed to `CalculateTaxWithInvestmentIncomeBreakdown`. The tax formula is marginal: `Tax(baseIncome + conversion) − Tax(baseIncome)` (verified — see WE-8.1).
+
+**MAGI inclusion:** The conversion amount is included in `estimatedOrdinaryIncome` which is the `ordinaryIncome` parameter to `calculateTaxWithInvestmentIncomeInternal`. Inside that function, `magi = ordinaryIncome + qualifiedDividends + longTermCapitalGains`, so Roth conversions are properly included in MAGI. This means conversions correctly affect the NIIT threshold and the IRMAA lookback MAGI.
+
+**NIIT:** A large conversion can push MAGI above the NIIT threshold ($250,000 MFJ). The NIIT calculation correctly uses the MAGI that includes the conversion.
+
+**IRMAA lookback:** `completedMAGIHistory` accumulates `AnnualMAGI` (which includes conversions) at year end (line 1260 and surrounding context). The 2-year lookback resolves from this history (line 288). This means a large conversion in year Y correctly raises IRMAA premiums in year Y+2.
+
+**Non-annualization of Roth conversions:** `annualizedInputs` (line 224) does NOT apply the `annualizationFactor` to `RothConversions`, unlike all other income types. This is intentional and correct: a conversion is a discrete lump-sum event that has already occurred (at month 0 of the year), not a recurring monthly flow. The test `TestAnnualizedInputs_RothConversionsNotAnnualized` explicitly documents this design.
+
+**Negative `AnnualAmount` defense:** `rothConversionAmountForYear` computes `math.Min(AnnualAmount, availableTaxDeferred)`. For `AnnualAmount = −10000`, `math.Min(−10000, 100000) = −10000`, so the function returns `−10000`. However, both projection call sites gate on `conversionAmount > 0` (lines 1063 and 2358), so the negative return is safely discarded. The function itself has no internal clamp. See F-053.
+
+### Worked examples
+
+#### WE-8.1: EstimateRothConversionTax, MFJ, $80K base + $50K conversion
+
+**Source:** IRS Rev. Proc. 2023-34 §3.01, Table 3 (MFJ 2024 brackets); standard deduction $29,200.
+
+| Step | Value |
+|------|-------|
+| Tax on $80,000 — taxable income | $80,000 − $29,200 = $50,800 |
+| 10% × $23,200 | $2,320.00 |
+| 12% × ($50,800 − $23,200) = 12% × $27,600 | $3,312.00 |
+| Tax on $80,000 | **$5,632.00** |
+| Tax on $130,000 — taxable income | $130,000 − $29,200 = $100,800 |
+| 10% × $23,200 | $2,320.00 |
+| 12% × ($94,300 − $23,200) = 12% × $71,100 | $8,532.00 |
+| 22% × ($100,800 − $94,300) = 22% × $6,500 | $1,430.00 |
+| Tax on $130,000 | **$12,282.00** |
+| Conversion tax = $12,282 − $5,632 | **$6,650.00** |
+| Actual `EstimateRothConversionTax(80000, 50000, 0)` MFJ year-0 | **$6,650.00** |
+| Delta | $0.00 ✓ |
+
+#### WE-8.2: rothConversionAmountForYear cap behavior
+
+Settings: `AnnualAmount = $50,000, StartYear = 2026, EndYear = 2030`.
+
+| Case | Input | Expected | Actual | Result |
+|------|-------|----------|--------|--------|
+| Year 2025 (before start) | availableTaxDeferred = $100,000 | 0 | 0 | ✓ |
+| Year 2026, balance limited | availableTaxDeferred = $30,000 | $30,000 | $30,000 | ✓ |
+| Year 2027, full amount | availableTaxDeferred = $100,000 | $50,000 | $50,000 | ✓ |
+| Year 2031 (past end) | availableTaxDeferred = $100,000 | 0 | 0 | ✓ |
+
+#### WE-8.3: rothConversionAmountForYear negative AnnualAmount defense
+
+Settings: `AnnualAmount = −$10,000, StartYear = 0, EndYear = 10, Enabled = true`. Year = 5, availableTaxDeferred = $100,000.
+
+| Step | Result |
+|------|--------|
+| `math.Min(−10000, 100000)` | −10,000 |
+| Function return value | **−10,000** (no clamp inside function) |
+| Call site `conversionAmount > 0` guard | **blocks**: −10,000 ≤ 0 → conversion skipped |
+| Net portfolio effect | No mutation — safe |
+
+The function returns a negative value, but both call sites (`calculator.go:1063`, `calculator.go:2358`) gate with `> 0`, preventing the reversal. The function-level defense is absent; the call site saves correctness. See F-053.
+
+### Findings
+
+### F-053 — LOW `rothConversionAmountForYear`: no internal clamp for negative `AnnualAmount`
+
+**Location:** `calculator.go:419` — `rothConversionAmountForYear`
+**Source consulted:** Code inspection; WE-8.3 (above); IRS Pub 590-A (Roth conversions must be non-negative amounts).
+**What it does:** Returns the actual conversion amount for a projection year, capped at the available tax-deferred balance. For `AnnualAmount < 0`, `math.Min(negativeAmount, availableTaxDeferred)` returns the negative amount.
+**Finding:** The function returns a negative value for negative `AnnualAmount`, relying entirely on call-site `> 0` guards for safety. Both current call sites are correctly guarded (lines 1063 and 2358), so no runtime bug exists today. However, the function contract is silently violated: a caller who omits the `> 0` guard (e.g., in the `estimateTaxSnapshot` path at lines 1410, 1528, 1546) would pass a negative `rothConversion` into `estimateMonthlySnapshot`, adding negative income to the tax accumulator and reducing estimated taxes incorrectly. HTTP-layer validation rejects negative amounts, but the calculator has no defense-in-depth.
+**Evidence / repro:**
+```go
+// calculator.go:419
+return math.Min(s.RothConversion.AnnualAmount, availableTaxDeferred)
+// For AnnualAmount=-10000, availableTaxDeferred=100000 → returns -10000
+// WE-8.3 test confirmed: function returns -10000
+```
+**Recommended fix sketch:** Add `if s.RothConversion.AnnualAmount <= 0 { return 0 }` before the `math.Min`. This makes the function safe regardless of call context.
+**Test coverage note:** No test exercises `AnnualAmount < 0`; a test asserting `return 0` for negative amounts would be the correct fix validation.
+
+---
+
+### F-054 — LOW `rothConversionAmountForYear`: boundary at `StartYear` and `EndYear = EndYear` not directly unit-tested
+
+**Location:** `calculator.go:409` — `rothConversionAmountForYear`
+**Source consulted:** Test files: `coverage_gaps_test.go:134–164, 1405–1461`.
+**What it does:** Returns 0 before `StartYear`, returns 0 after `EndYear` (if non-zero), returns capped amount within window.
+**Finding:** Existing tests cover: past-end-year, limited-by-balance, `EndYear=0` (no end), disabled, nil, and before-start-year. Missing boundary cases: (1) `year == StartYear` exactly (first eligible year with full balance) — tests use `StartYear=0` and test `year=0` indirectly through `TestRothConversionAmountForYear_LimitedByBalance` but do not assert the non-limited case with `year == StartYear` when balance > AnnualAmount; (2) `year == EndYear` exactly (last eligible year) — no test asserts the conversion fires on the last year (`EndYear=5, year=5` should return amount, but only `year=6` is tested in `TestRothConversionAmountForYear_PastEndYear`); (3) `AnnualAmount = 0` (zero conversion with enabled config) — not tested.
+**Evidence / repro:**
+```go
+// TestRothConversionAmountForYear_PastEndYear tests year=6 > EndYear=5
+// Missing: test for year=5 == EndYear=5 (should return amount, not 0)
+```
+**Recommended fix sketch:** Add subtests: `year == EndYear` → returns AnnualAmount (not 0); `year == StartYear, balance > AnnualAmount` → returns AnnualAmount; `AnnualAmount = 0, Enabled = true` → returns 0.
+**Test coverage note:** The `year == EndYear` case is the highest priority gap — an off-by-one bug in the `>` vs `>=` check would not be caught by current tests.
+
+---
+
+### F-055 — LOW `EstimateRothConversionTax`: test asserts only direction, not exact value
+
+**Location:** `tax.go:484` — `EstimateRothConversionTax`
+**Source consulted:** `tax_test.go:135`; WE-8.1 hand computation.
+**What it does:** Returns marginal tax increase from adding `conversionAmount` to `baseIncome`. Formula is `Tax(baseIncome + conversion) − Tax(baseIncome)` (correct).
+**Finding:** `TestEstimateRothConversionTax` checks only that `additionalTax > 0` and `additionalTax ≤ conversion × 0.37`. The test does not assert the exact value. WE-8.1 confirms the formula is correct ($6,650 for MFJ, $80K base, $50K conversion), but without a pinned numeric assertion, a regression that changes the formula (e.g., to proportional tax) would go undetected. Additionally, no test covers: (1) conversion that spans a bracket boundary; (2) negative `conversionAmount` (currently guarded by `≤ 0` return-0 check — correctly handled); (3) inflated brackets (`yearsFromBase > 0`); (4) filing status other than MFJ.
+**Evidence / repro:**
+```go
+// tax_test.go:146-152 — direction only, no pinned value
+if additionalTax <= 0 { t.Errorf(...) }
+if additionalTax > conversionAmount*0.37 { t.Errorf(...) }
+// WE-8.1: correct answer is $6,650 but test would pass even if returned $5,000
+```
+**Recommended fix sketch:** Add `if math.Abs(additionalTax - 6650) > 0.01 { t.Errorf(...) }` to the existing test. Add a subtest for `yearsFromBase = 5` to cover inflated brackets.
+**Test coverage note:** Exact-value assertion, bracket-crossing case, and inflated-bracket case are all missing.
+
+---
+
+### F-056 — INFO Roth conversion MAGI propagation: NIIT and IRMAA threshold effects are not directly tested
+
+**Location:** `calculator.go:249, 460` — `estimateMonthlySnapshot` / `calculateTaxWithInvestmentIncomeInternal`
+**Source consulted:** IRS Pub 590-A; IRC §1411 (NIIT); SSA IRMAA lookback rules.
+**What it does:** Roth conversion amount is correctly included in `otherIncome` and flows into `estimatedOrdinaryIncome`, which becomes the `ordinaryIncome` parameter of `CalculateTaxWithInvestmentIncomeBreakdown`. Inside that function, `magi = ordinaryIncome + qualifiedDividends + longTermCapitalGains`, correctly including the conversion in MAGI used for NIIT and IRMAA thresholds.
+**Finding:** The MAGI propagation is correct. However, no integration test verifies that a conversion that pushes MAGI above the NIIT threshold ($250K MFJ) results in a non-zero NIIT charge, or that a conversion in year Y raises IRMAA premiums in year Y+2 via the lookback. These are important retirement-planning scenarios that lack coverage.
+**Evidence / repro:** Grep shows no test combining `RothConversion` with NIIT or IRMAA assertions. The code path is exercised incidentally through full-projection tests, but no test pins the expected NIIT or IRMAA increment.
+**Recommended fix sketch:** Add an integration test: MFJ, MAGI just below $250K without conversion, conversion of $50K pushing above threshold → assert `AnnualNIIT > 0` in the returned snapshot. Add a 3-year projection test: large conversion in year 0 → assert IRMAA surcharge appears in year 2 (via `completedMAGIHistory`).
+**Test coverage note:** NIIT-from-conversion path and IRMAA-lookback-from-conversion path are exercised only through incidental full-projection tests; no assertion pins the amount.
 
 ## 9. Backtest, Monte Carlo, guardrails
 
@@ -2611,3 +2752,66 @@ if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 **Evidence / repro:** No test asserts `GlidePathStockPct(-1) == StartStockPct` or `GlidePathStockPct(5)` with `TransitionYears=0`.
 **Recommended fix sketch:** Add subtest `year=-5 → StartStockPct`; add subtest `Enabled=true, TransitionYears=0, year=5 → -1`.
 **Test coverage note:** The `year < 0` sub-range of the `year ≤ 0` branch, and the `TransitionYears=0` with enabled path, are dark.
+
+---
+
+### F-053 — LOW `rothConversionAmountForYear`: no internal clamp for negative `AnnualAmount`
+
+**Location:** `internal/services/retirement/calculator.go:419` — `rothConversionAmountForYear`
+**Source consulted:** Code inspection; WE-8.3; IRS Pub 590-A (Roth conversions are non-negative).
+**What it does:** Returns `math.Min(AnnualAmount, availableTaxDeferred)`. For `AnnualAmount < 0`, returns a negative value.
+**Finding:** The function returns a negative value for negative `AnnualAmount`. Both main projection call sites guard with `conversionAmount > 0` (lines 1063, 2358), preventing runtime portfolio mutation. However, the snapshot/summary call sites (lines 1410, 1528, 1546) pass the return value directly to `estimateMonthlySnapshot` without a `> 0` guard. A negative `rothConversion` there would flow into `otherIncome` and reduce estimated taxes incorrectly. HTTP-layer validation currently rejects negative values, providing an outer defense, but the calculator has no defense-in-depth. WE-8.3 confirmed: function returns −10,000 for `AnnualAmount = −10,000`.
+**Evidence / repro:**
+```go
+// calculator.go:419
+return math.Min(s.RothConversion.AnnualAmount, availableTaxDeferred)
+// AnnualAmount=-10000, available=100000 → returns -10000
+```
+**Recommended fix sketch:** Add `if s.RothConversion.AnnualAmount <= 0 { return 0 }` before the `math.Min` call.
+**Test coverage note:** No test exercises `AnnualAmount < 0`. A test asserting `return 0` for negative amounts would validate the fix.
+
+---
+
+### F-054 — LOW `rothConversionAmountForYear`: missing tests for exact boundary years and zero AnnualAmount
+
+**Location:** `internal/services/retirement/calculator.go:409` — `rothConversionAmountForYear`
+**Source consulted:** `internal/services/retirement/coverage_gaps_test.go:134–164, 1405–1461`.
+**What it does:** Returns 0 outside [StartYear, EndYear], returns capped amount inside window.
+**Finding:** Missing boundary-case tests: (1) `year == EndYear` exactly — only `year = EndYear + 1` is tested; an off-by-one in the `>` operator would not be caught; (2) `year == StartYear` with `balance > AnnualAmount` — tests that exercise StartYear use a balance-limited scenario only; (3) `AnnualAmount = 0` with `Enabled = true` — not tested; returns 0 (correct), but uncovered.
+**Evidence / repro:**
+```go
+// coverage_gaps_test.go:136 — tests year=6 > EndYear=5 only
+// Missing: year=5 == EndYear=5 should return amount
+```
+**Recommended fix sketch:** Add subtests: `year == EndYear → AnnualAmount`; `year == StartYear, balance > AnnualAmount → AnnualAmount`; `AnnualAmount == 0 → 0`.
+**Test coverage note:** The exact-boundary (year == EndYear) case is the highest-priority gap for off-by-one regression detection.
+
+---
+
+### F-055 — LOW `EstimateRothConversionTax`: test checks direction only, not exact value; several input variants uncovered
+
+**Location:** `internal/services/retirement/tax.go:484` — `EstimateRothConversionTax`
+**Source consulted:** `internal/services/retirement/tax_test.go:135`; WE-8.1.
+**What it does:** Returns `Tax(baseIncome + conversion) − Tax(baseIncome)` — correct marginal formula, confirmed by WE-8.1.
+**Finding:** `TestEstimateRothConversionTax` asserts only `additionalTax > 0` and `additionalTax ≤ conversion × 0.37`. No pinned numeric value. WE-8.1 shows the correct answer is $6,650; a proportional-formula bug returning $5,992 would pass the test. Missing: (1) exact-value assertion; (2) bracket-crossing case (where conversion spans two brackets); (3) `yearsFromBase > 0` (inflated brackets); (4) filing status other than MFJ.
+**Evidence / repro:**
+```go
+// tax_test.go:146-152
+if additionalTax <= 0 { t.Errorf(...) }        // direction only
+if additionalTax > conversionAmount*0.37 { ... } // upper bound only
+// WE-8.1 actual: $6,650.00; test would pass at any value in (0, 9250]
+```
+**Recommended fix sketch:** Pin to $6,650 ± $0.01 for the existing MFJ case. Add a bracket-crossing subtest (e.g., base near 12%/22% boundary, conversion spanning into 22%). Add `yearsFromBase = 5` case.
+**Test coverage note:** Exact-value, bracket-crossing, inflated-bracket, and non-MFJ paths are all dark.
+
+---
+
+### F-056 — INFO Roth conversion MAGI propagation to NIIT and IRMAA not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:249, 460` — `estimateMonthlySnapshot` / `calculateTaxWithInvestmentIncomeInternal`
+**Source consulted:** IRS Pub 590-A; IRC §1411; SSA IRMAA lookback.
+**What it does:** Conversion amount is correctly included in MAGI (via `otherIncome → estimatedOrdinaryIncome → ordinaryIncome` parameter) and thus affects NIIT threshold and IRMAA lookback.
+**Finding:** The MAGI propagation is mechanically correct. No test pins: (1) NIIT charge when a conversion pushes MAGI above $250K (MFJ); (2) IRMAA surcharge in year Y+2 due to a large conversion in year Y (via `completedMAGIHistory`). These are high-value retirement-planning scenarios. Absence of pinned tests means a refactor that accidentally excludes conversion from MAGI would not be caught.
+**Evidence / repro:** `grep -rn "RothConversion" *_test.go | grep -i "NIIT\|IRMAA"` returns no results.
+**Recommended fix sketch:** Add snapshot-level test: MFJ, $240K base, $50K conversion → assert `AnnualNIIT > 0`. Add 3-year projection test with large year-0 conversion → assert year-2 IRMAA surcharge appears.
+**Test coverage note:** Both NIIT-from-conversion and IRMAA-lookback-from-conversion paths are tested only incidentally through full-projection smoke tests.

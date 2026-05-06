@@ -1,7 +1,6 @@
 package retirement
 
 import (
-	"math"
 	"time"
 
 	"budget2/internal/models"
@@ -115,111 +114,10 @@ func CalculateRMD(taxDeferredBalance float64, age int) (amount float64, percent 
 	return amount, percent
 }
 
-// rmdGrowthFractions returns the fraction of annual growth applied before and
-// after the RMD withdrawal, based on the configured timing.
-func rmdGrowthFractions(timing models.RMDTiming) (before, after float64) {
-	switch timing {
-	case models.RMDTimingStartOfYear:
-		return 0.0, 1.0
-	case models.RMDTimingEndOfYear:
-		return 1.0, 0.0
-	default: // mid_year
-		return 0.5, 0.5
-	}
-}
-
-// CalculateRMDAnalysis generates RMD projections based on current settings
-func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
-	s := c.Settings
-
-	// Calculate tax-deferred portion of portfolio
-	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-
-	// RMD uses OLDER person's age - whoever hits 73 first triggers RMD.
-	// F-032: start age depends on projection start year per SECURE 2.0.
-	effectiveStartAge := EffectiveRMDStartAge(s)
-	olderAge := s.GetOlderAge()
-
-	// Calculate years until RMDs begin
-	startsInYears := effectiveStartAge - olderAge
-	if startsInYears < 0 {
-		startsInYears = 0
-	}
-
-	// Generate projections for the projection period
-	projections := make([]models.RMDProjection, 0)
-	totalRMDs10Yr := 0.0
-
-	// Get effective return (either explicit or calculated from per-account allocation)
-	// When InvestmentReturn=0, the projection uses per-account asset allocation blended returns
-	investmentReturn := s.InvestmentReturn
-	if investmentReturn == 0 {
-		investmentReturn = s.GetExpectedReturnFromAllocation()
-	}
-	monthlyReturn := monthlyCompoundFactorFromPercent(investmentReturn) - 1
-	currentBalance := taxDeferredValue
-
-	// F-035: honour configured RMD timing.
-	timing := models.NormalizeRMDTiming(s.RMDTiming)
-	beforeFraction, afterFraction := rmdGrowthFractions(timing)
-
-	rmdCount := 0
-	for year := 0; year <= s.ProjectionYears && rmdCount < 20; year++ {
-		age := olderAge + year
-
-		// Only project RMDs for ages effectiveStartAge+
-		if age >= effectiveStartAge {
-			// F-035: apply pre-RMD growth fraction.
-			preRMDBalance := currentBalance * math.Pow(1+monthlyReturn, 12*beforeFraction)
-
-			factor := GetLifeExpectancyFactor(age)
-			rmdAmount, rmdPercent := CalculateRMD(preRMDBalance, age)
-
-			projections = append(projections, models.RMDProjection{
-				Age:            age,
-				Year:           year,
-				TaxDeferredBal: preRMDBalance,
-				LifeExpFactor:  factor,
-				RMDAmount:      rmdAmount,
-				RMDPercent:     rmdPercent,
-			})
-
-			if rmdCount < 10 {
-				totalRMDs10Yr += rmdAmount
-			}
-			rmdCount++
-
-			// Reduce balance by RMD, then apply post-RMD growth fraction.
-			afterRMD := preRMDBalance - rmdAmount
-			if afterRMD < 0 {
-				afterRMD = 0
-			}
-			currentBalance = afterRMD * math.Pow(1+monthlyReturn, 12*afterFraction)
-		} else {
-			// Pre-RMD year: apply full year of growth.
-			for m := 0; m < 12; m++ {
-				currentBalance *= (1 + monthlyReturn)
-			}
-		}
-	}
-
-	return &models.RMDAnalysis{
-		StartsInYears:     startsInYears,
-		StartAge:          effectiveStartAge,
-		CurrentAge:        olderAge, // Uses older person's age for RMD calculations
-		TaxDeferredValue:  taxDeferredValue,
-		Projections:       projections,
-		TotalRMDsOver10Yr: totalRMDs10Yr,
-	}
-}
-
 // BuildRMDAnalysis (F-072) builds the RMD analysis from the actual projection
 // instead of an isolated standalone math model. It samples each RMD year's
 // starting tax-deferred balance and sums the actual RMDWithdrawal over the
 // year, so the panel cannot diverge from the main projection.
-//
-// Replaces CalculateRMDAnalysis. Old function is removed in the follow-up
-// commit (Task 3).
 func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *models.RMDAnalysis {
 	s := c.Settings
 

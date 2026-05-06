@@ -1340,7 +1340,7 @@ func TestCalculateRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
 	s.ProjectionYears = 10
 
 	c := NewCalculator(s)
-	rmd := c.CalculateRMDAnalysis()
+	rmd := c.BuildRMDAnalysis(c.RunProjection())
 
 	if rmd == nil {
 		t.Fatal("expected non-nil RMD analysis")
@@ -2408,7 +2408,7 @@ func TestCalculateRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
 	s.InvestmentReturn = 0 // Should use allocation-based return
 
 	c := NewCalculator(s)
-	rmd := c.CalculateRMDAnalysis()
+	rmd := c.BuildRMDAnalysis(c.RunProjection())
 	if rmd == nil {
 		t.Fatal("expected non-nil RMD analysis")
 	}

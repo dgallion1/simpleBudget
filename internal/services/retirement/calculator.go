@@ -3065,7 +3065,7 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	sensitivity := c.CalculateSensitivity()
 	failurePoints := c.CalculateFailurePoints()
 	monteCarlo := c.RunMonteCarloSimulation(1000)
-	rmd := c.CalculateRMDAnalysis()
+	rmd := c.BuildRMDAnalysis(projection)
 	historicalBacktest := c.RunHistoricalBacktest()
 
 	// Add Monte Carlo success rate for comparison

@@ -476,7 +476,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 
 	t.Run("rmd_analysis", func(t *testing.T) {
 		c := NewCalculator(s)
-		rmd := c.CalculateRMDAnalysis()
+		rmd := c.BuildRMDAnalysis(c.RunProjection())
 
 		if rmd.TaxDeferredValue != 0 {
 			t.Errorf("expected 0 tax-deferred value, got %f", rmd.TaxDeferredValue)

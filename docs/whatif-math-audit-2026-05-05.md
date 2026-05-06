@@ -1978,7 +1978,285 @@ See F-065 through F-071 in Appendix C.
 
 ## Appendix A — Constants currency
 
-_Filled in by Task 11._
+This appendix lists every authoritatively-bound numeric constant referenced by
+the audited math, with as-coded value and most-current published value side-by-
+side. Status definitions:
+
+- `current` — code matches the most-current published value
+- `stale` — code is from an older tax year; bump candidate
+- `absent` — constant is not in the codebase but the audit recommends adding it
+- `check` — audit-time uncertainty; recommend manual verification
+- `n/a` — internal model constant, no external authority applicable
+
+Internal-model constants (allocation defaults, spending-phase ages, default
+return / inflation rates, etc.) are not in this table — they are calibration
+defaults the user can override, not authoritatively fixed reference values.
+
+---
+
+### Federal income tax brackets (`tax.go` `TaxBrackets2024`)
+
+Source: IRS Rev. Proc. 2023-34 §3.01 (TY2024, as-coded) vs IRS Rev. Proc.
+2024-40 §3.01 (TY2025, current). Six upper-boundary values per filing status
+(the top 37% bracket has no upper boundary and is omitted from the comparison).
+
+| Filing | Bracket | As-coded (TY2024) | Current (TY2025) | Status |
+|--------|---------|-------------------|------------------|--------|
+| Single | 10% → 12% | 11,600 | 11,925 | stale |
+| Single | 12% → 22% | 47,150 | 48,475 | stale |
+| Single | 22% → 24% | 100,525 | 103,350 | stale |
+| Single | 24% → 32% | 191,950 | 197,300 | stale |
+| Single | 32% → 35% | 243,725 | 250,525 | stale |
+| Single | 35% → 37% | 609,350 | 626,350 | stale |
+| MFJ | 10% → 12% | 23,200 | 23,850 | stale |
+| MFJ | 12% → 22% | 94,300 | 96,950 | stale |
+| MFJ | 22% → 24% | 201,050 | 206,700 | stale |
+| MFJ | 24% → 32% | 383,900 | 394,600 | stale |
+| MFJ | 32% → 35% | 487,450 | 501,050 | stale |
+| MFJ | 35% → 37% | 731,200 | 751,600 | stale |
+| MFS | 10% → 12% | 11,600 | 11,925 | stale |
+| MFS | 12% → 22% | 47,150 | 48,475 | stale |
+| MFS | 22% → 24% | 100,525 | 103,350 | stale |
+| MFS | 24% → 32% | 191,950 | 197,300 | stale |
+| MFS | 32% → 35% | 243,725 | 250,525 | stale |
+| MFS | 35% → 37% | 365,600 | 375,800 | stale |
+| HoH | 10% → 12% | 16,550 | 17,000 | stale |
+| HoH | 12% → 22% | 63,100 | 64,850 | stale |
+| HoH | 22% → 24% | 100,500 | 103,350 | stale |
+| HoH | 24% → 32% | 191,950 | 197,300 | stale |
+| HoH | 32% → 35% | 243,700 | 250,500 | stale |
+| HoH | 35% → 37% | 609,350 | 626,350 | stale |
+
+Rates (10%, 12%, 22%, 24%, 32%, 35%, 37%) are set by statute and do not change year-to-year under current law; not repeated here.
+
+---
+
+### Federal LTCG brackets (`tax.go` `LongTermCapitalGainsBrackets2024`)
+
+Source: IRS Rev. Proc. 2023-34 §3.03 (TY2024, as-coded) vs Rev. Proc. 2024-40
+§3.03 (TY2025, current). Two upper-boundary values per filing status (20% bracket
+has no upper boundary).
+
+| Filing | Bracket | As-coded (TY2024) | Current (TY2025) | Status |
+|--------|---------|-------------------|------------------|--------|
+| Single | 0% → 15% | 47,025 | 48,350 | stale |
+| Single | 15% → 20% | 518,900 | 533,400 | stale |
+| MFJ | 0% → 15% | 94,050 | 96,700 | stale |
+| MFJ | 15% → 20% | 583,750 | 600,050 | stale |
+| MFS | 0% → 15% | 47,025 | 48,350 | stale |
+| MFS | 15% → 20% | 291,850 | 300,000 | stale |
+| HoH | 0% → 15% | 63,000 | 64,750 | stale |
+| HoH | 15% → 20% | 551,350 | 566,700 | stale |
+
+Rates (0%, 15%, 20%) are set by statute and do not change year-to-year under current law; not repeated here.
+
+---
+
+### Standard deduction (`tax.go` `StandardDeduction2024`)
+
+Source: IRS Rev. Proc. 2023-34 §3.16 (TY2024, as-coded) vs Rev. Proc. 2024-40
+§3.16 (TY2025, current).
+
+| Filing | As-coded (TY2024) | Current (TY2025) | Status |
+|--------|-------------------|------------------|--------|
+| Single | 14,600 | 15,000 | stale |
+| MFJ | 29,200 | 30,000 | stale |
+| MFS | 14,600 | 15,000 | stale |
+| HoH | 21,900 | 22,500 | stale |
+
+---
+
+### Additional standard deduction for age 65+ / blind (NOT in code)
+
+Cross-reference F-001. These constants are **absent** from the codebase today;
+the audit recommends adding them. Values are per qualifying person, per year.
+
+| Filing | TY2024 value (as published) | TY2025 value | Status |
+|--------|-----------------------------|--------------|--------|
+| Single | 1,950 | 2,000 | absent |
+| HoH | 1,950 | 2,000 | absent |
+| MFJ (per qualifying spouse) | 1,550 | 1,600 | absent |
+| MFS (per qualifying person) | 1,550 | 1,600 | absent |
+
+Source: IRS Rev. Proc. 2023-34 §3.16 (TY2024); Rev. Proc. 2024-40 §3.16 (TY2025).
+
+---
+
+### Taxable Social Security thresholds (`tax.go` `socialSecurityTaxThresholds`)
+
+Source: 26 USC § 86 (statute — never inflated). As-coded values are permanent
+statute; current published value equals as-coded value.
+
+| Filing | Field | As-coded | Statute | Status |
+|--------|-------|----------|---------|--------|
+| Single | BaseThreshold | 25,000 | 25,000 | current |
+| Single | UpperThreshold | 34,000 | 34,000 | current |
+| Single | BaseTaxableAmount | 4,500 | 4,500 | current |
+| MFJ | BaseThreshold | 32,000 | 32,000 | current |
+| MFJ | UpperThreshold | 44,000 | 44,000 | current |
+| MFJ | BaseTaxableAmount | 6,000 | 6,000 | current |
+| HoH | BaseThreshold | 25,000 | 25,000 | current |
+| HoH | UpperThreshold | 34,000 | 34,000 | current |
+| HoH | BaseTaxableAmount | 4,500 | 4,500 | current |
+
+Note: MFS filing status is not present in `socialSecurityTaxThresholds`; the
+code falls back to an always-85% rule for MFS. Cross-reference F-018.
+
+---
+
+### NIIT thresholds (`tax.go` `niitThresholds`)
+
+Source: 26 USC § 1411 (statute — never inflated).
+
+| Filing | As-coded | Statute | Status |
+|--------|----------|---------|--------|
+| Single | 200,000 | 200,000 | current |
+| MFJ | 250,000 | 250,000 | current |
+| MFS | 125,000 | 125,000 | current |
+| HoH | 200,000 | 200,000 | current |
+
+---
+
+### IRMAA 2026 tiers (`tax.go` `monthlyIRMAASurcharge2026`)
+
+Source: CMS 2026 Medicare Part B and Part D IRMAA announcement. Cross-reference
+F-020 (audit-time advisory — recommend manual verification against the published
+CMS 2026 announcement for the exact per-tier dollar amounts; the audit did not
+independently obtain the primary CMS document).
+
+Surcharge shown is Part B + Part D combined monthly dollar amount (as-coded).
+The top-boundary `math.MaxFloat64` rows represent "above all thresholds" and are
+omitted from the MAGI column.
+
+| Filing | Tier MAGI upper | Part B + Part D surcharge (as-coded) | Status |
+|--------|-----------------|--------------------------------------|--------|
+| Single | 109,000 | 0.00 | check |
+| Single | 137,000 | 95.70 | check |
+| Single | 171,000 | 240.40 | check |
+| Single | 205,000 | 385.00 | check |
+| Single | 500,000 | 529.60 | check |
+| Single | (above 500,000) | 578.00 | check |
+| MFJ | 218,000 | 0.00 | check |
+| MFJ | 274,000 | 95.70 | check |
+| MFJ | 342,000 | 240.40 | check |
+| MFJ | 410,000 | 385.00 | check |
+| MFJ | 750,000 | 529.60 | check |
+| MFJ | (above 750,000) | 578.00 | check |
+| MFS | 109,000 | 0.00 | check |
+| MFS | 391,000 | 529.60 | check |
+| MFS | (above 391,000) | 578.00 | check |
+| HoH | 109,000 | 0.00 | check |
+| HoH | 137,000 | 95.70 | check |
+| HoH | 171,000 | 240.40 | check |
+| HoH | 205,000 | 385.00 | check |
+| HoH | 500,000 | 529.60 | check |
+| HoH | (above 500,000) | 578.00 | check |
+
+Note: surcharge values shown are the sum of the inline Part B and Part D
+addends in the code (e.g., `81.20 + 14.50 = 95.70`).
+
+---
+
+### RMD Uniform Lifetime Table (`rmd.go` `uniformLifetimeTable`)
+
+Source: IRS Pub 590-B Appendix B Table III, post-2022 edition (Notice 2020-22 /
+Notice 2022-53). Task 4 verified all 49 cells against the published table: zero
+mismatches found.
+
+| Age | As-coded factor | Pub 590-B factor | Status |
+|-----|-----------------|------------------|--------|
+| 72 | 27.4 | 27.4 | current |
+| 73 | 26.5 | 26.5 | current |
+| 74 | 25.5 | 25.5 | current |
+| 75 | 24.6 | 24.6 | current |
+| 76 | 23.7 | 23.7 | current |
+| 77 | 22.9 | 22.9 | current |
+| 78 | 22.0 | 22.0 | current |
+| 79 | 21.1 | 21.1 | current |
+| 80 | 20.2 | 20.2 | current |
+| 81 | 19.4 | 19.4 | current |
+| 82 | 18.5 | 18.5 | current |
+| 83 | 17.7 | 17.7 | current |
+| 84 | 16.8 | 16.8 | current |
+| 85 | 16.0 | 16.0 | current |
+| 86 | 15.2 | 15.2 | current |
+| 87 | 14.4 | 14.4 | current |
+| 88 | 13.7 | 13.7 | current |
+| 89 | 12.9 | 12.9 | current |
+| 90 | 12.2 | 12.2 | current |
+| 91 | 11.5 | 11.5 | current |
+| 92 | 10.8 | 10.8 | current |
+| 93 | 10.1 | 10.1 | current |
+| 94 | 9.5 | 9.5 | current |
+| 95 | 8.9 | 8.9 | current |
+| 96 | 8.4 | 8.4 | current |
+| 97 | 7.8 | 7.8 | current |
+| 98 | 7.3 | 7.3 | current |
+| 99 | 6.8 | 6.8 | current |
+| 100 | 6.4 | 6.4 | current |
+| 101 | 6.0 | 6.0 | current |
+| 102 | 5.6 | 5.6 | current |
+| 103 | 5.2 | 5.2 | current |
+| 104 | 4.9 | 4.9 | current |
+| 105 | 4.6 | 4.6 | current |
+| 106 | 4.3 | 4.3 | current |
+| 107 | 4.1 | 4.1 | current |
+| 108 | 3.9 | 3.9 | current |
+| 109 | 3.7 | 3.7 | current |
+| 110 | 3.5 | 3.5 | current |
+| 111 | 3.4 | 3.4 | current |
+| 112 | 3.3 | 3.3 | current |
+| 113 | 3.1 | 3.1 | current |
+| 114 | 3.0 | 3.0 | current |
+| 115 | 2.9 | 2.9 | current |
+| 116 | 2.8 | 2.8 | current |
+| 117 | 2.7 | 2.7 | current |
+| 118 | 2.5 | 2.5 | current |
+| 119 | 2.3 | 2.3 | current |
+| 120 | 2.0 | 2.0 | current |
+
+---
+
+### Other authoritative constants
+
+| Constant | Location | As-coded value | Source value | Status |
+|----------|----------|----------------|--------------|--------|
+| `RMDStartAge` | `rmd.go:6` | 73 | SECURE 2.0 — 73 for 2023–2032; 75 from 2033 | current pre-2033; see F-032 |
+| Early withdrawal penalty rate | `calculator.go:838` | 0.10 (10%) | IRC § 72(t) — 10% | current |
+| Early withdrawal age cutoff (proxy) | `calculator.go:837` | 60 (whole-year proxy for 59½) | IRC § 72(t) — 59½ | check (F-050) |
+| `MedicareEligibleAge` | `settings.go:283` | 65 | 42 USC § 426 — 65 | current |
+| NIIT rate | `tax.go:305` | 0.038 (3.8%) | 26 USC § 1411 — 3.8% | current |
+
+---
+
+### Currency status summary
+
+| Category | Rows in scope | current | stale | absent | check |
+|----------|---------------|---------|-------|--------|-------|
+| Federal income tax bracket boundaries | 24 | 0 | 24 | 0 | 0 |
+| LTCG bracket boundaries | 8 | 0 | 8 | 0 | 0 |
+| Standard deduction | 4 | 0 | 4 | 0 | 0 |
+| Additional std deduction (65+/blind) | 4 | 0 | 0 | 4 | 0 |
+| Taxable SS thresholds | 9 | 9 | 0 | 0 | 0 |
+| NIIT thresholds | 4 | 4 | 0 | 0 | 0 |
+| IRMAA 2026 tiers | 21 | 0 | 0 | 0 | 21 |
+| RMD Uniform Lifetime Table | 49 | 49 | 0 | 0 | 0 |
+| Other authoritative constants | 5 | 3 | 0 | 0 | 2 |
+| **Total** | **128** | **65** | **36** | **4** | **23** |
+
+- **Total cells in scope:** 128
+- `current`: 65
+- `stale`: 36
+- `absent` (recommended additions): 4
+- `check` (audit-time uncertainty): 23
+
+**Triage recommendation:** All 36 stale cells are federal income tax and LTCG
+bracket boundaries, along with the four standard deduction values — a single
+annual bump from TY2024 to TY2025 tables (IRS Rev. Proc. 2024-40) would resolve
+all stale rows at once. The 4 absent rows (additional standard deduction for
+age 65+) require a new constant and new code path (see F-001). The 23 `check`
+rows are IRMAA tier amounts that should be manually verified against the
+published CMS 2026 announcement (see F-020).
 
 ## Appendix B — Audit method
 

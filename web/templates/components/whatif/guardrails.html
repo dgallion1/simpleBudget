@@ -1,8 +1,9 @@
 {{/* Spending Guardrails Card */}}
 {{define "whatif-guardrails"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Spending Guardrails</h3>
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Drop/rise guardrails (simple)</h3>
     <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Automatically adjust spending based on portfolio performance.</p>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">Cuts withdrawal when portfolio drops from peak; raises withdrawal when portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
 
     <form hx-post="/whatif/guardrails" hx-target="#whatif-results" class="space-y-3">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">

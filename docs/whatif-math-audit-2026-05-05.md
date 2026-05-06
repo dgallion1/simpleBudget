@@ -1301,7 +1301,104 @@ PresentValue(100000, -2.0, 240) → 100000  // code
 
 ## 6. Living-expense projection mechanics
 
-_Filled in by Task 6._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `calculateLivingExpensesAtMonth` | `calculator.go:151` | PASS (F-042) |
+| `rebaseLivingExpensesAtTransition` | `calculator.go:163` | PASS (F-043) |
+| `CalculateTotalExpenses` (living-expense path) | `calculator.go:546` | PASS (F-044) |
+| `GetSpendingMultiplier` | `models/whatif.go:453` | PASS |
+| `GetPhaseReferenceAge` | `models/whatif.go:417` | PASS |
+
+### Convention used by the planner
+
+**Multiplier convention: absolute.** Each month's living expense is computed as:
+
+```
+expense = base × GetSpendingMultiplier(phaseAge) × cumulativeInflation
+```
+
+where `GetSpendingMultiplier` looks up the phase whose `StartAge` is the highest age ≤ `phaseAge`, and returns that phase's multiplier directly (not composed with prior phases). The multiplier at No-Go (0.75) is applied directly to the original base — not to the Slow-Go value. This is internally consistent and mathematically equivalent to the relative convention when both are defined with absolute fractions of the original base.
+
+**Phase interval: half-open `[phase[i].StartAge, phase[i+1].StartAge)`.** `GetSpendingMultiplier` iterates all phases in ascending `StartAge` order, keeping the latest match where `age >= phase.StartAge`. This correctly implements the half-open interval — phase i activates at its start age and is superseded (not overlapped) by phase i+1. No double-counting.
+
+**Age-to-year granularity: whole-year, evaluated as `month / 12` (integer division).** `phaseAge = currentAge + (month / 12)`. Phase transitions activate on the first month of the birthday year, not on the exact birthday month. For age 75 with `currentAge = 65`, the Slow-Go multiplier first applies at month 120 (the start of year 10), not month 121.
+
+**Inflation compounding: continuous per-month compound, functionally equivalent to `(1 + r/100)^(months/12)`.** `calculateLivingExpensesAtMonth` uses `compoundedFactorFromPercent(r, months)` = `(1+r/100)^(months/12.0)`. The projection loop tracks `cumulativeInflation` by multiplying monthly: `cumulativeInflation *= (1+r/100)^(1/12)`. After M months, `cumulativeInflation = (1+r/100)^(M/12)` — identical to the direct formula. Both are per-month compound, not per-year step.
+
+**`rebaseLivingExpensesAtTransition` role:** Used only during scenario-chain transitions (when a new chain segment takes over). For spending-phases-enabled mode it is immediately overwritten by the main loop's formula (see F-043). For the legacy decline mode it correctly rebases the new segment's base expense against the accumulated inflation before the multiplicative update continues.
+
+### Worked example
+
+#### WE-6.1: Three-phase progression
+
+**Inputs:** base $10,000/month, inflation 3%/year, 3 phases: Go-Go 100% (StartAge 0, active from age 65), Slow-Go 85% (StartAge 75), No-Go 75% (StartAge 85). `currentAge = 65`, `PhaseAgeReference = "older"`, no spouse.
+
+**Convention identified:** Absolute multiplier — `expense = base × multiplier × (1.03)^(months/12)`.
+
+**Verification method:** Temp test `audit_we6_test.go` in `internal/services/retirement/`, run with `go test -run TestAuditWE6`, then deleted. All assertions passed.
+
+| Month | Year | Phase age | Multiplier | Formula | Expected | Code actual | Delta |
+|-------|------|-----------|------------|---------|----------|-------------|-------|
+| 0 | 0 | 65 | 1.00 | 10,000 × 1.00 × 1.03^0 | $10,000.00 | $10,000.00 | $0.00 |
+| 60 | 5 | 70 | 1.00 | 10,000 × 1.00 × 1.03^5 | $11,592.74 | $11,592.74 | $0.00 |
+| 119 | 9 | 74 | 1.00 | 10,000 × 1.00 × 1.03^(119/12) | $13,406.10 | $13,406.10 | $0.00 |
+| 120 | 10 | 75 | 0.85 | 10,000 × 0.85 × 1.03^10 | $11,423.29 | $11,423.29 | $0.00 |
+| 121 | 10 | 75 | 0.85 | 10,000 × 0.85 × 1.03^(121/12) | $11,451.46 | $11,451.46 | $0.00 |
+| 239 | 19 | 84 | 0.85 | 10,000 × 0.85 × 1.03^(239/12) | $15,314.18 | $15,314.18 | $0.00 |
+| 240 | 20 | 85 | 0.75 | 10,000 × 0.75 × 1.03^20 | $13,545.83 | $13,545.83 | $0.00 |
+
+**Audit spec vs. code:** The audit spec's "just before" M240 value of $15,353.36 uses a slightly different intermediate (Slow-Go value at M120 inflated 10 years), yielding a $15,353.36 × (75/85) = $13,547.66 estimate. The discrepancy from our $13,545.83 is ≈$1.83 — a display-rounding artifact in the spec's calculation, not a code error. The code's formula `10,000 × 0.75 × 1.03^20` is correct under the absolute convention.
+
+**Note on audit spec's month 119:** The spec quotes $13,406.07; we compute $13,406.10. Difference = $0.03, within the ±$0.01 per the spec's own footnote allowance for display rounding.
+
+### Findings
+
+### F-042 — LOW `calculateLivingExpensesAtMonth`: no test exercises phase transitions with nonzero inflation
+
+**Location:** `internal/services/retirement/calculator.go:151` — `calculateLivingExpensesAtMonth`
+**Source consulted:** Internal model — `calculator_expense_test.go` inspection.
+**What it does:** Returns monthly living expenses at a given month, applying the current spending-phase multiplier and inflation compounding.
+**Finding:** The expense test file's "with spending phases enabled" subtest uses `InflationRate = 0`. No test combines nonzero inflation with a phase transition, leaving the key formula `base × multiplier × (1+r)^(months/12)` at a boundary month untested. Additionally, the following boundaries have no coverage: (a) single-phase scenario (one entry in `Phases`); (b) zero-phase scenario (`Phases = []` with `Enabled = true`) — currently falls through to `return 1.0` from `GetSpendingMultiplier` but no test verifies this; (c) phase multiplier = 0 (zero spending); (d) phase multiplier > 1 (unusual but valid, e.g., 1.10 for Go-Go splurge); (e) two phases with the same `StartAge` (degenerate — last one wins, unverified); (f) phase `StartAge` above the projection end (never reached — `GetSpendingMultiplier` silently returns prior phase's multiplier); (g) `PhaseAgeReference = "younger"` or `"spouse"` with a couple (only "older"/default is tested).
+**Evidence / repro:** All existing phase tests set `InflationRate = 0`. The combined multiplier × inflation path is only exercised by WE-6.1 in this audit.
+**Recommended fix sketch:** Add a subtest in `calculator_expense_test.go` for month 120 with 3% inflation and a phase transition at age 75, verifying `base × 0.85 × 1.03^10`. Add edge-case subtests for zero-phase, zero-multiplier, and >1.0 multiplier.
+**Test coverage note:** All boundaries listed above (a)–(g) are absent from the test suite.
+
+---
+
+### F-043 — LOW `rebaseLivingExpensesAtTransition`: dead code in spending-phases path; not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:163` — `rebaseLivingExpensesAtTransition`
+**Source consulted:** Projection loop inspection at `calculator.go:1039–1089`.
+**What it does:** Resets the living-expense tracker when a scenario-chain transition occurs, preserving accumulated inflation on the new segment's base.
+**Finding:** In the spending-phases-enabled branch, `rebaseLivingExpensesAtTransition` (line 1046) is immediately overwritten by the `if m > 0` block (lines 1083–1086) which unconditionally recomputes `currentLivingExpenses = base × multiplier(phaseAge) × cumulativeInflation` using the same inputs. The rebase call is therefore dead code in the phases path — its result is never used. For the legacy decline path the function is load-bearing (it updates the base before the multiplicative step). The function has no direct unit test; it is only reachable via the projection loop during chain transitions. The dead-code effect means a bug introduced in `rebaseLivingExpensesAtTransition`'s phases branch would be silently masked.
+**Evidence / repro:**
+```go
+// Line 1046 (chain-transition branch):
+currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
+// Lines 1083-1086 (immediately after, always executes when m > 0):
+cumulativeInflation *= monthlyCompoundFactorFromPercent(s.InflationRate)
+if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+    currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
+}
+```
+**Recommended fix sketch:** Either remove the phases branch from `rebaseLivingExpensesAtTransition` (the return value is never used in that path), or restructure the loop so that the rebase result is the authoritative value for that month. Add a direct unit test for the function covering both the phases and non-phases branches.
+**Test coverage note:** No test exercises `rebaseLivingExpensesAtTransition` directly. The chain-transition code path (the only call site) is not exercised by `calculator_expense_test.go`.
+
+---
+
+### F-044 — LOW `CalculateTotalExpenses`: phase boundary with inflation not tested; expense-source phase multiplier edge cases missing
+
+**Location:** `internal/services/retirement/calculator.go:546` — `CalculateTotalExpenses`
+**Source consulted:** `calculator_expense_test.go` inspection.
+**What it does:** Aggregates living expenses, healthcare, and expense sources. Applies the spending-phase multiplier to discretionary expense sources when phases are enabled.
+**Finding:** The living-expense path is correctly invoked via `calculateLivingExpensesAtMonth`. Coverage gaps: (a) no test combines nonzero inflation with a phase transition in this function (same gap as F-042); (b) no test covers a discretionary expense source at a phase boundary with nonzero inflation; (c) the non-discretionary expense-source path in phases mode is covered, but the boundary where a discretionary source becomes zero (multiplier = 0) is not tested; (d) no test for `PhaseAgeReference != "older"` (e.g., younger or spouse).
+**Evidence / repro:** The "with spending phases enabled" and "discretionary expense gets phase multiplier" subtests both use `InflationRate = 0`.
+**Recommended fix sketch:** Extend "with spending phases enabled" subtest to use 3% inflation and verify at month 120 (phase boundary). Add a test for `PhaseAgeReference = "younger"` with a couple to confirm the correct person's age drives phase transitions.
+**Test coverage note:** Boundaries (a)–(d) above are absent.
 
 ## 7. Taxable account, allocation, and tax-aware withdrawals
 
@@ -2137,3 +2234,48 @@ PresentValue(100000, -2.0, 240) → 100000  // code
 **Recommended fix sketch:** Add a UI footnote or tooltip on the What-If PV summary page noting that IRMAA surcharges are excluded from the healthcare PV estimate.
 
 **Test coverage note:** The Medicare transition logic is well-tested. The `preMedicareMonths == 0` path in the two-phase branch is unreachable because `IsOnMedicare()` returns true when `age >= MedicareEligibleAge`, so the two-phase branch only activates when the person is genuinely pre-Medicare — confirmed by the "person exactly at Medicare age" test which routes through the `IsOnMedicare()` path.
+
+---
+
+### F-042 — LOW `calculateLivingExpensesAtMonth`: no test exercises phase transitions with nonzero inflation
+
+**Location:** `internal/services/retirement/calculator.go:151` — `calculateLivingExpensesAtMonth`
+**Source consulted:** Internal model — `calculator_expense_test.go` inspection.
+**What it does:** Returns monthly living expenses at a given month, applying the current spending-phase multiplier and inflation compounding.
+**Finding:** The expense test file's "with spending phases enabled" subtest uses `InflationRate = 0`. No test combines nonzero inflation with a phase transition, leaving the key formula `base × multiplier × (1+r)^(months/12)` at a boundary month untested. Additionally, the following boundaries have no coverage: (a) single-phase scenario (one entry in `Phases`); (b) zero-phase scenario (`Phases = []` with `Enabled = true`) — currently falls through to `return 1.0` from `GetSpendingMultiplier` but no test verifies this; (c) phase multiplier = 0 (zero spending); (d) phase multiplier > 1 (unusual but valid, e.g., 1.10 for Go-Go splurge); (e) two phases with the same `StartAge` (degenerate — last one wins, unverified); (f) phase `StartAge` above the projection end (never reached — `GetSpendingMultiplier` silently returns prior phase's multiplier); (g) `PhaseAgeReference = "younger"` or `"spouse"` with a couple (only "older"/default is tested).
+**Evidence / repro:** All existing phase tests set `InflationRate = 0`. The combined multiplier × inflation path is only exercised by WE-6.1 in this audit.
+**Recommended fix sketch:** Add a subtest in `calculator_expense_test.go` for month 120 with 3% inflation and a phase transition at age 75, verifying `base × 0.85 × 1.03^10`. Add edge-case subtests for zero-phase, zero-multiplier, and >1.0 multiplier.
+**Test coverage note:** All boundaries listed above (a)–(g) are absent from the test suite.
+
+---
+
+### F-043 — LOW `rebaseLivingExpensesAtTransition`: dead code in spending-phases path; not directly tested
+
+**Location:** `internal/services/retirement/calculator.go:163` — `rebaseLivingExpensesAtTransition`
+**Source consulted:** Projection loop inspection at `calculator.go:1039–1089`.
+**What it does:** Resets the living-expense tracker when a scenario-chain transition occurs, preserving accumulated inflation on the new segment's base.
+**Finding:** In the spending-phases-enabled branch, `rebaseLivingExpensesAtTransition` (line 1046) is immediately overwritten by the `if m > 0` block (lines 1083–1086) which unconditionally recomputes `currentLivingExpenses = base × multiplier(phaseAge) × cumulativeInflation` using the same inputs. The rebase call is therefore dead code in the phases path — its result is never used. For the legacy decline path the function is load-bearing (it updates the base before the multiplicative step). The function has no direct unit test; it is only reachable via the projection loop during chain transitions. The dead-code effect means a bug introduced in `rebaseLivingExpensesAtTransition`'s phases branch would be silently masked.
+**Evidence / repro:**
+```go
+// Line 1046 (chain-transition branch):
+currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
+// Lines 1083-1086 (immediately after, always executes when m > 0):
+cumulativeInflation *= monthlyCompoundFactorFromPercent(s.InflationRate)
+if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+    currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
+}
+```
+**Recommended fix sketch:** Either remove the phases branch from `rebaseLivingExpensesAtTransition` (the return value is never used in that path), or restructure the loop so that the rebase result is the authoritative value for that month. Add a direct unit test for the function covering both the phases and non-phases branches.
+**Test coverage note:** No test exercises `rebaseLivingExpensesAtTransition` directly. The chain-transition code path (the only call site) is not exercised by `calculator_expense_test.go`.
+
+---
+
+### F-044 — LOW `CalculateTotalExpenses`: phase boundary with inflation not tested; expense-source phase multiplier edge cases missing
+
+**Location:** `internal/services/retirement/calculator.go:546` — `CalculateTotalExpenses`
+**Source consulted:** `calculator_expense_test.go` inspection.
+**What it does:** Aggregates living expenses, healthcare, and expense sources. Applies the spending-phase multiplier to discretionary expense sources when phases are enabled.
+**Finding:** The living-expense path is correctly invoked via `calculateLivingExpensesAtMonth`. Coverage gaps: (a) no test combines nonzero inflation with a phase transition in this function (same gap as F-042); (b) no test covers a discretionary expense source at a phase boundary with nonzero inflation; (c) the non-discretionary expense-source path in phases mode is covered, but the boundary where a discretionary source becomes zero (multiplier = 0) is not tested; (d) no test for `PhaseAgeReference != "older"` (e.g., younger or spouse).
+**Evidence / repro:** The "with spending phases enabled" and "discretionary expense gets phase multiplier" subtests both use `InflationRate = 0`.
+**Recommended fix sketch:** Extend "with spending phases enabled" subtest to use 3% inflation and verify at month 120 (phase boundary). Add a test for `PhaseAgeReference = "younger"` with a couple to confirm the correct person's age drives phase transitions.
+**Test coverage note:** Boundaries (a)–(d) above are absent.

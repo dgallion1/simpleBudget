@@ -102,6 +102,62 @@ func TestHistoricalSequence_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums
 	}
 }
 
+// F-049: reinvestRequiredRMDToTaxableState must reinvest the after-tax
+// portion of the RMD as basis, not the pre-tax amount. With marginal rate
+// 22%, an RMD of $10,000 pays $2,200 tax → $7,800 reinvested with basis
+// $7,800 (not $10,000).
+func TestReinvestRequiredRMD_F049_BasisIsAfterTax(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	taxable := newTaxableAccountState(s, 0)
+	taxDeferred := 100000.0
+	rmd := 10000.0
+	marginalRate := 0.22 // 22%
+
+	addedNet := reinvestRequiredRMDToTaxableState(rmd, marginalRate, &taxDeferred, &taxable)
+	wantNet := 7800.0
+
+	if math.Abs(addedNet-wantNet) > 0.01 {
+		t.Errorf("addedNet = %.2f; want %.2f", addedNet, wantNet)
+	}
+	if math.Abs(taxable.MarketValue-wantNet) > 0.01 {
+		t.Errorf("taxable.MarketValue = %.2f; want %.2f", taxable.MarketValue, wantNet)
+	}
+	if math.Abs(taxable.CostBasis-wantNet) > 0.01 {
+		t.Errorf("taxable.CostBasis = %.2f; want %.2f", taxable.CostBasis, wantNet)
+	}
+	if math.Abs(taxDeferred-90000.0) > 0.01 {
+		t.Errorf("taxDeferred remaining = %.2f; want 90000", taxDeferred)
+	}
+}
+
+func TestReinvestRequiredRMD_F049_ZeroMarginalRate(t *testing.T) {
+	// marginalRate = 0 → reinvest gross (no tax owed; after-tax == gross).
+	s := models.DefaultWhatIfSettings()
+	taxable := newTaxableAccountState(s, 0)
+	taxDeferred := 100000.0
+	addedNet := reinvestRequiredRMDToTaxableState(10000, 0.0, &taxDeferred, &taxable)
+	if math.Abs(addedNet-10000.0) > 0.01 {
+		t.Errorf("zero-marginal addedNet = %.2f; want 10000", addedNet)
+	}
+}
+
+func TestReinvestRequiredRMD_F049_MarginalRateClamped(t *testing.T) {
+	// marginalRate > 1 should clamp to 1; < 0 to 0.
+	s := models.DefaultWhatIfSettings()
+	taxable := newTaxableAccountState(s, 0)
+	taxDeferred := 100000.0
+	addedNet := reinvestRequiredRMDToTaxableState(10000, 1.5, &taxDeferred, &taxable)
+	if math.Abs(addedNet-0.0) > 0.01 {
+		t.Errorf("marginal>1 addedNet = %.2f; want 0", addedNet)
+	}
+	taxDeferred = 100000.0
+	taxable = newTaxableAccountState(s, 0)
+	addedNet = reinvestRequiredRMDToTaxableState(10000, -0.5, &taxDeferred, &taxable)
+	if math.Abs(addedNet-10000.0) > 0.01 {
+		t.Errorf("marginal<0 addedNet = %.2f; want 10000", addedNet)
+	}
+}
+
 func TestMonteCarlo_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums(t *testing.T) {
 	preMedicare := highIncomeMedicareSimulationSettings(64)
 	medicare := highIncomeMedicareSimulationSettings(65)

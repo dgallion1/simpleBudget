@@ -71,8 +71,9 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesEnabled(t *testing.T) {
 	}
 	s.MonthlyLivingExpenses = 3000
 
-	// With spending phases enabled, should apply multiplier
-	result := rebaseLivingExpensesAtTransition(s, 65, 1.1)
+	// With spending phases enabled, should apply multiplier using full cumulativeInflation.
+	// netCumulativeInflation is ignored by the phases path.
+	result := rebaseLivingExpensesAtTransition(s, 65, 1.1, 1.0)
 	expected := 3000 * s.GetSpendingMultiplier(65) * 1.1
 	if math.Abs(result-expected) > 0.01 {
 		t.Errorf("expected %f, got %f", expected, result)
@@ -84,7 +85,8 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesDisabled(t *testing.T) {
 	s.MonthlyLivingExpenses = 3000
 	s.SpendingPhaseConfig = nil
 
-	result := rebaseLivingExpensesAtTransition(s, 65, 1.1)
+	// With spending phases disabled, the function uses netCumulativeInflation (4th arg).
+	result := rebaseLivingExpensesAtTransition(s, 65, 1.1, 1.1)
 	expected := 3000 * 1.1
 	if math.Abs(result-expected) > 0.01 {
 		t.Errorf("expected %f, got %f", expected, result)

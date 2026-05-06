@@ -1014,3 +1014,81 @@ func TestMeanEmptySlice(t *testing.T) {
 		}
 	})
 }
+
+// F-065: rebaseLivingExpensesAtTransition must use net inflation
+// (InflationRate - SpendingDeclineRate), not full inflation, when computing
+// the value at a chain-scenario phase boundary. Otherwise the post-transition
+// trajectory drifts upward by the decline-rate compounding error.
+func TestSpendingPhaseTransition_F065_DeclineRateRespected(t *testing.T) {
+	// Primary settings: 3% inflation, 1% decline → net 2%/yr
+	primary := models.DefaultWhatIfSettings()
+	primary.CurrentAge = 65
+	primary.ProjectionYears = 30
+	primary.MonthlyLivingExpenses = 10000
+	primary.MonthlyHealthcare = 0
+	primary.HealthcarePersons = nil
+	primary.IncomeSources = nil
+	primary.ExpenseSources = nil
+	primary.InflationRate = 3.0
+	primary.SpendingDeclineRate = 1.0
+	primary.InvestmentReturn = 0.0
+	primary.PortfolioValue = 10_000_000 // large enough to never deplete
+	primary.TaxDeferredPercent = 0
+	primary.RothPercent = 0
+	// SpendingPhaseConfig is disabled (default), so non-phase path is used
+
+	// Chain scenario at age 75 (year 10): same base expenses and inflation,
+	// simulating a "transparent" chain that should not change the expense trajectory.
+	linked := models.DefaultWhatIfSettings()
+	linked.MonthlyLivingExpenses = 10000
+	linked.MonthlyHealthcare = 0
+	linked.HealthcarePersons = nil
+	linked.IncomeSources = nil
+	linked.ExpenseSources = nil
+	linked.InflationRate = 3.0
+	linked.SpendingDeclineRate = 1.0
+	linked.InvestmentReturn = 0.0
+	linked.PortfolioValue = 10_000_000
+	linked.TaxDeferredPercent = 0
+	linked.RothPercent = 0
+
+	chain := []ResolvedScenarioChainLink{
+		{TransitionAge: 75, Settings: linked},
+	}
+
+	calc := NewCalculatorWithChain(primary, chain)
+	result := calc.RunProjection()
+
+	if result == nil || len(result.Months) < 122 {
+		t.Fatalf("expected at least 122 months of projection, got %d", len(result.Months))
+	}
+
+	// Net inflation: 3% - 1% = 2%/yr.
+	// At month 120 (first month of year 10), the chain transition fires.
+	// The year-boundary rebase runs first (setting currentLivingExpenses),
+	// then the m>0 block compounds it by one month at net rate.
+	//
+	// Correct (with fix): rebase uses net cumulative inflation (1.02)^(119/12)
+	//   then m>0 applies one more month: result = 10000 × (1.02)^(120/12) = 10000 × (1.02)^10
+	//   ≈ 12189.94
+	//
+	// Buggy (without fix): rebase uses full cumulative inflation (1.03)^(119/12)
+	//   then m>0 applies net month: result ≈ 10000 × (1.03)^(119/12) × (1.02)^(1/12)
+	//   ≈ 13428
+
+	wantNetFactor := math.Pow(1.02, 10)     // (1.02)^10 ≈ 1.21899
+	want := 10000 * wantNetFactor            // ≈ 12189.94
+	got := result.Months[120].GeneralExpenses
+
+	if math.Abs(got-want) > 5.00 { // ±$5 for rounding
+		t.Errorf("month 120 (post-chain-transition) GeneralExpenses = %.2f; want %.2f (net inflation rebase, F-065)", got, want)
+	}
+
+	// Also verify month 119 (pre-transition) is at net inflation — baseline sanity
+	// Month 119: 10000 × (1.02)^(119/12)
+	wantPre := 10000 * math.Pow(1.02, 119.0/12.0)
+	gotPre := result.Months[119].GeneralExpenses
+	if math.Abs(gotPre-wantPre) > 2.00 {
+		t.Errorf("month 119 (pre-chain-transition) GeneralExpenses = %.2f; want %.2f", gotPre, wantPre)
+	}
+}

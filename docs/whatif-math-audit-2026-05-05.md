@@ -670,7 +670,270 @@ A 64-year-old who turns 65 in month 6 of year 1: `PrimaryAgeAt(1) = 65` → coun
 
 ## 3. Social Security
 
-_Filled in by Task 3._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `validSSClaimAge` | `social_security.go:12` | PASS (F-025) |
+| `normalizedSSFRA` | `social_security.go:16` | PASS (F-025) |
+| `normalizedSSCOLARate` | `social_security.go:23` | PARTIAL (F-026) |
+| `AdjustedSSBenefit` | `social_security.go:205` | PASS (F-027) |
+| `DerivedPIA` | `social_security.go:237` | PASS |
+| `AdjustedSpousalBenefit` | `social_security.go:259` | PASS (F-028) |
+| `SpousalTopUp` | `social_security.go:278` | PASS |
+| `claimStartMonth` | `social_security.go:194` | PASS (F-025) |
+| `projectedSSBenefitForMonth` | `social_security.go:187` | PASS |
+| `projectedSocialSecurityIncome` | `social_security.go:169` | PASS |
+| `ProjectedSSEntries` | `social_security.go:98` | PASS (F-029) |
+| `SSComparisonTable` | `social_security.go:306` | PASS |
+| `ssComparisonTable` | `social_security.go:316` | PASS |
+| `SSBreakevenAges` | `social_security.go:353` | PASS |
+| `ssBreakevenAges` | `social_security.go:357` | PASS |
+| `cumulativeBenefit` | `social_security.go:679` | PASS |
+| `RunSSAnalysis` | `social_security.go:398` | PARTIAL (F-029, F-030) |
+| `RunSSPortfolioAnalysis` | `social_security.go:500` | PASS (F-031) |
+| `bestSSPortfolioOption` | `social_security.go:655` | PASS (F-031) |
+| `isBetterSSPortfolioOption` | `social_security.go:669` | PASS (F-031) |
+
+### Worked examples
+
+#### WE-3.1: AdjustedSSBenefit, PIA=$2,000, FRA=67, claim age 62
+
+**Source:** POMS RS 00615.105 (early retirement reduction schedule).
+
+| Step | Value |
+|------|-------|
+| Months early: (67 − 62) × 12 | 60 |
+| First 36 months: 36 × 5/900 | 0.2000 |
+| Next 24 months: 24 × 5/1200 | 0.1000 |
+| Total reduction | 0.3000 (30%) |
+| Code: `reduction = 36*5/900 + (60-36)*5/1200 = 0.20 + 0.10` | 0.3000 |
+| **Expected** | **$1,400.00** |
+| **Actual (`AdjustedSSBenefit(2000, 67, 62)`)** | **$1,400.00** |
+| Delta | $0.00 ✓ |
+
+Cross-check: SSA published table for FRA-67 cohort shows 70% benefit ratio at age 62.
+
+#### WE-3.2: AdjustedSSBenefit, PIA=$2,000, FRA=67, claim age 70
+
+**Source:** POMS RS 00615.690 (delayed retirement credits, born 1943+: 8%/yr = 2/3%/mo).
+
+| Step | Value |
+|------|-------|
+| Months delayed: (70 − 67) × 12 | 36 |
+| DRC: 36 × 2/300 | 0.2400 (24%) |
+| Code: `increase = 36 * 2/300 = 0.24` | 0.2400 |
+| **Expected** | **$2,480.00** |
+| **Actual (`AdjustedSSBenefit(2000, 67, 70)`)** | **$2,480.00** |
+| Delta | $0.00 ✓ |
+
+Note: 2/300 per month = 2/3 of 1% per month = 8%/year. POMS RS 00615.690 confirmed.
+
+#### WE-3.3: AdjustedSpousalBenefit, spousal PIA $1,500, spouse FRA=67, claim 62
+
+**Source:** POMS RS 00615.020 (spousal benefit reduction: 25/36 of 1% first 36 months, 5/12 of 1% beyond).
+
+| Step | Value |
+|------|-------|
+| Months early: (67 − 62) × 12 | 60 |
+| First 36 months: 36 × 25/3600 | 0.2500 (25%) |
+| Next 24 months: 24 × 5/1200 | 0.1000 (10%) |
+| Total reduction | 0.3500 (35%) |
+| Code: `reduction = 36*25/3600 + (60-36)*5/1200 = 0.25 + 0.10` | 0.3500 |
+| **Expected** | **$975.00** |
+| **Actual (`AdjustedSpousalBenefit(1500, 67, 62)`)** | **$975.00** |
+| Delta | $0.00 ✓ |
+
+Spousal at FRA = $1,500 (already 50% of $3,000 worker PIA by caller convention). No DRC confirmed (claim at 70 returns $1,500 = spousal PIA, no increase).
+
+#### WE-3.4: SSBreakevenAges, PIA=$2,000, FRA=67, COLA=0, compare 62 vs 70
+
+**Source:** Manual simulation using `ssBreakevenAges` logic (annual cumulative).
+
+| Step | Value |
+|------|-------|
+| Monthly at 62 | $1,400 |
+| Monthly at 70 | $2,480 |
+| Breakeven equation (analytical): 1,400(T − 62) = 2,480(T − 70) → T ≈ 80.4 | ~80 |
+| Acceptable range | 78–82 |
+| **Actual (manual simulation with COLA=0)** | **age 80** |
+| In range? | Yes ✓ |
+
+Note: `ssBreakevenAges` computes adjacent pairs (62-63, 63-64, …) only; the direct 62-vs-70 breakeven was verified by replaying the same annual-loop logic. `SSBreakevenAges` with COLA=0 is accepted by the function (colaRate passes through unchanged — unlike `projectedSocialSecurityIncome` which substitutes the default via `normalizedSSCOLARate`).
+
+### Findings
+
+#### F-025 — LOW Utility helpers `validSSClaimAge`, `normalizedSSFRA`, `claimStartMonth` not directly tested
+
+**Location:** `internal/services/retirement/social_security.go:12` — `validSSClaimAge`; `:16` — `normalizedSSFRA`; `:194` — `claimStartMonth`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** `validSSClaimAge` returns true iff age is in [62, 70]. `normalizedSSFRA` substitutes FRA=0 with the default (67). `claimStartMonth` computes `(claimAge − currentAge) × 12` for future claims, or 0 for already-claiming.
+
+**Finding:** None of these three helpers are called directly in any test. They are exercised indirectly through higher-level functions, but specific boundary values are untested:
+- `validSSClaimAge`: exact boundaries 62 and 70 are never asserted; neither is the `false` case at 61 or 71.
+- `normalizedSSFRA`: zero-input substitution (0 → 67) is never directly asserted; non-zero passthrough is untested directly.
+- `claimStartMonth`: the `claimAge <= currentAge → 0` path and the `(claimAge − currentAge) × 12` math are exercised only via `ProjectedSSEntries` integration tests, not in isolation.
+
+**Evidence / repro:** `grep -n "validSSClaimAge\|normalizedSSFRA\|claimStartMonth" social_security_test.go` returns no direct calls.
+
+**Recommended fix sketch:** Add a `TestValidSSClaimAge` covering 61 (false), 62 (true), 70 (true), 71 (false); `TestNormalizedSSFRA` covering 0 → 67 and 66 → 66; `TestClaimStartMonth` covering already-claiming (→ 0) and future claim (exact multiplication).
+
+**Test coverage note:** All three boundary conditions (inclusive range endpoints for `validSSClaimAge`, zero-substitution for `normalizedSSFRA`, already-claiming path for `claimStartMonth`) are dark from a direct-test perspective.
+
+---
+
+#### F-026 — MEDIUM `normalizedSSCOLARate`: zero-COLA scenario inexpressible; silently substitutes 2% default
+
+**Location:** `internal/services/retirement/social_security.go:23` — `normalizedSSCOLARate`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`; `internal/models/whatif.go:144`.
+
+**What it does:** Converts a COLA rate of 0 to the default 2% (`defaultSocialSecurityCOLARate = 0.02`). Non-zero values pass through unchanged. Used in both `projectedSocialSecurityIncome` and `RunSSAnalysis`, so every user-facing SS computation goes through this normalization.
+
+**Finding:** A user who sets `COLARate: 0.0` in their `SocialSecurityConfig` intends zero COLA growth — a conservative "what if SS gives no cost-of-living adjustment" scenario that SSA has historically delivered (e.g., 0% COLA in 2010, 2011, 2016). The code silently substitutes 2%, making the zero-COLA scenario inexpressible by users. The normalization is also inconsistent with how `SSBreakevenAges` handles COLA: that function receives the rate directly (without normalization), so `SSBreakevenAges(pia, fra, 0.0)` works correctly at COLA=0, but `RunSSAnalysis` (which calls `normalizedSSCOLARate`) cannot produce the same result.
+
+The function is never directly tested; `normalizedSSCOLARate(0) = 0.02` is not asserted anywhere.
+
+**Evidence / repro:**
+```go
+// social_security.go:23-28
+func normalizedSSCOLARate(colaRate float64) float64 {
+    if colaRate == 0 {
+        return defaultSocialSecurityCOLARate  // 0.02 — zero is inexpressible
+    }
+    return colaRate
+}
+```
+`RunSSAnalysis` at line 405: `colaRate := normalizedSSCOLARate(ss.COLARate)` — always at least 2%.
+
+**Recommended fix sketch:** Use a sentinel value (e.g., −1) to mean "use default," and treat 0 as "user explicitly wants 0% COLA." Alternatively, add a `COLARateIsDefault bool` flag to `SocialSecurityConfig`. A simpler fix: change the normalization condition to `colaRate < 0` instead of `colaRate == 0`, reserving 0 for explicit user intent, and update UI validation to reject negative COLA rates.
+
+**Test coverage note:** `normalizedSSCOLARate` is never called directly in tests. No test verifies the zero-substitution behavior or its downstream effect on the comparison table.
+
+---
+
+#### F-027 — LOW `AdjustedSSBenefit`: FRA values other than 66 and 67 not tested; DerivedPIA round-trip only covers FRA=67
+
+**Location:** `internal/services/retirement/social_security.go:205` — `AdjustedSSBenefit`; `:237` — `DerivedPIA`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** `AdjustedSSBenefit` applies the SSA's two-tier early-reduction / DRC schedule for any FRA. `DerivedPIA` is its exact algebraic inverse.
+
+**Finding (formula is correct):** The formulas implement POMS RS 00615.105 and RS 00615.690 exactly (confirmed by WE-3.1 and WE-3.2). The `DerivedPIA` round-trip `DerivedPIA(AdjustedSSBenefit(pia, fra, claimAge), fra, claimAge) == pia` holds for all tested inputs (verified for FRA=67 at claimAge 62, 64, 67, 70; and FRA=66 at 62; delta 0.000000 in all cases).
+
+**Test coverage gap:** `TestAdjustedSSBenefit` covers FRA=67 (claimAge 62, 64, 67, 70) and FRA=66 (claimAge 62), but does not test FRA=65 (birth years ~1937–1938) or FRA=66+months (birth years 1955–1959). `TestDerivedPIA` round-trips only at FRA=67. The claim-at-FRA identity (`AdjustedSSBenefit(pia, fra, fra) == pia`) is tested only for FRA=67; for other FRA values this would be caught by a round-trip test but is not directly asserted.
+
+**Evidence / repro:** `TestAdjustedSSBenefit` has five cases; four use FRA=67. The fifth uses FRA=66 with claimAge=62 (below-FRA path). The at-FRA path and above-FRA path for FRA=66 are not tested.
+
+**Recommended fix sketch:** Add `AdjustedSSBenefit(pia, 65, 65)` asserting result == pia; add `AdjustedSSBenefit(pia, 65, 70)` for the DRC path; extend `TestDerivedPIA` to round-trip at FRA=65 and FRA=66.
+
+**Test coverage note:** The `monthsDiff == 0` branch (claim at FRA, return PIA directly) is only tested for FRA=67; the `monthsDiff > 0` branch (DRC) is also only tested for FRA=67.
+
+---
+
+#### F-028 — LOW `AdjustedSpousalBenefit`: claim age > 70 not explicitly clamped or tested
+
+**Location:** `internal/services/retirement/social_security.go:259` — `AdjustedSpousalBenefit`
+
+**Source consulted:** Code inspection; POMS RS 00615.020; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** Applies spousal early-reduction schedule for claim ages before spouseFRA. Returns spousalPIA unchanged for claimAge ≥ spouseFRA (no DRC for spousal). Clamps claimAge < 62 to 62.
+
+**Finding (formula is correct):** The early-reduction formula matches POMS RS 00615.020 exactly (25/36 of 1% for first 36 months, 5/12 of 1% beyond, confirmed by WE-3.3). The no-DRC rule is correctly enforced by the `claimAge >= spouseFRA` guard. Spousal at FRA returns spousalPIA; spousal at 70 also returns spousalPIA (no increase). These behaviors were confirmed by existing tests.
+
+**Test coverage gap:** Unlike `AdjustedSSBenefit`, the function does NOT clamp `claimAge > 70` at the top. For all realistic spouseFRA values (≤ 67), any `claimAge ≥ spouseFRA` will return `spousalPIA` correctly. But there is no explicit `claimAge > 70` clamp and no test asserting that behavior. If `spouseFRA` were ever set above 67 by a future model change, the missing clamp could cause the early-reduction formula to run for ages above 70.
+
+**Evidence / repro:** `AdjustedSSBenefit` clamps at lines 206–211; `AdjustedSpousalBenefit` clamps only at line 261 (< 62). For `claimAge = 75, spouseFRA = 67`: `75 >= 67` → returns `spousalPIA` (correct, but relies on the FRA-cap logic, not an explicit age cap).
+
+**Recommended fix sketch:** Add `if claimAge > 70 { claimAge = 70 }` after the `< 62` clamp for defensive consistency with `AdjustedSSBenefit`. Add a test asserting `AdjustedSpousalBenefit(pia, 67, 75) == AdjustedSpousalBenefit(pia, 67, 70)`.
+
+**Test coverage note:** `claimAge > 70` path not tested; relied on implicitly by the `claimAge >= spouseFRA` guard.
+
+---
+
+#### F-029 — MEDIUM `RunSSAnalysis` / `ProjectedSSEntries`: `SpouseUsingSpousalBenefit` display flag uses raw `FRABenefit` instead of derived PIA
+
+**Location:** `internal/services/retirement/social_security.go:484` — `RunSSAnalysis`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`; `web/templates/components/whatif/social-security.html:176`.
+
+**What it does:** `RunSSAnalysis` sets `result.SpouseUsingSpousalBenefit` to indicate whether the spouse's comparison table uses the spousal top-up path. The UI uses this flag to display "Using 50% spousal benefit ($X/mo) — higher than own benefit ($Y/mo)" alongside `Settings.SocialSecurity.FRABenefit * 0.5` as the dollar amount shown.
+
+**Finding:** Line 484 computes the flag using `ss.FRABenefit * 0.5 > ss.SpouseFRABenefit`. When the primary person is **already claiming at a non-FRA age**, `ss.FRABenefit` is the **actual benefit being received** (not the PIA), and `DerivedPIA` has been applied to derive `primaryPIA` (lines 409–412). The comparison should use `primaryPIA * 0.5` (the true spousal PIA) but instead uses `ss.FRABenefit * 0.5` (the actual reduced/enhanced benefit, which is less than PIA for early claimants).
+
+Concrete example: Primary claimed at age 62, PIA=$2,000, actual benefit=$1,400 (`ss.FRABenefit=1400`). Spouse own PIA=$800. Spousal entitlement = $1,000 (50% of PIA). Correct flag: `1000 > 800` → true (spouse uses spousal top-up). Code computes: `1400*0.5 = 700 > 800` → false (flag shows wrong — spouse appears not to use spousal benefit). The **computation** uses `primaryPIA` correctly (lines 423, 453-455) so the comparison table numbers are right; only the display flag and the associated UI text ($X/mo label) are wrong.
+
+**Evidence / repro:**
+```go
+// social_security.go:484
+result.SpouseUsingSpousalBenefit = ss.FRABenefit*0.5 > ss.SpouseFRABenefit
+// Should be:
+result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > ss.SpouseFRABenefit
+```
+`primaryPIA` is in scope at this point (derived at lines 409–412).
+
+**Recommended fix sketch:** Replace `ss.FRABenefit` with `primaryPIA` on line 484. The UI template at `social-security.html:177` also references `Settings.SocialSecurity.FRABenefit * 0.5` for the dollar display; that should likewise render from the analysis result (which has the correct `primaryPIA`-derived numbers) rather than raw settings.
+
+**Test coverage note:** No `TestRunSSAnalysis` case combines an already-claiming primary (non-FRA claim age) with a lower-PIA spouse to verify this flag. The existing "already claiming back-derives PIA" test only checks `BestAge`, not `SpouseUsingSpousalBenefit`.
+
+---
+
+#### F-030 — LOW `RunSSAnalysis`: zero `ClaimAge` triggers spurious "already claiming" logic
+
+**Location:** `internal/services/retirement/social_security.go:398` — `RunSSAnalysis`
+
+**Source consulted:** Code inspection; `internal/models/whatif.go:147` (`ClaimAge int` default is 0 for "unset").
+
+**What it does:** `RunSSAnalysis` computes the SS comparison table and picks a recommended `BestAge`. It treats `ss.ClaimAge <= c.Settings.CurrentAge` as "already claiming."
+
+**Finding:** `ClaimAge` defaults to 0 (Go zero value, documented as "0 means unset"). When `ClaimAge == 0` and `CurrentAge > 0` (which is always true for active users), the condition `ss.ClaimAge <= c.Settings.CurrentAge` is true. This causes two incorrect behaviors:
+
+1. **Line 410**: `DerivedPIA(ss.FRABenefit, fra, 0)` is called — inside `DerivedPIA`, `claimAge=0` is clamped to 62, so PIA is incorrectly back-derived as though the primary claimed at 62. The true PIA (which the user entered as `FRABenefit`) is underused.
+
+2. **Line 430**: `bestAge = ss.ClaimAge = 0` is set, locking the recommended age to 0 — an invalid age that should never appear in the UI.
+
+In practice, `RunSSAnalysis` is only called from `RunFullAnalysis`, and `RunFullAnalysis` (or the UI) likely guards against calling it with an unset claim age. However, if `RunSSAnalysis` is ever called directly with an unconfigured SS state, it silently miscomputes rather than returning nil or an error.
+
+**Evidence / repro:** `ClaimAge=0, CurrentAge=60`: `0 <= 60` → true; `DerivedPIA(pia, 67, 0)` internally uses claimAge=62; `bestAge = 0`.
+
+**Recommended fix sketch:** Add a guard at the top of the `already claiming` check: `ss.ClaimAge <= c.Settings.CurrentAge && validSSClaimAge(ss.ClaimAge)`. This mirrors the pattern used in `ssPortfolioPrimaryEligible` (line 57).
+
+**Test coverage note:** No test passes `ClaimAge=0` with a positive `CurrentAge` to `RunSSAnalysis`. The zero-ClaimAge path through the `already claiming` branch is dark.
+
+---
+
+#### F-031 — INFO `RunSSPortfolioAnalysis` / `bestSSPortfolioOption` / `isBetterSSPortfolioOption`: decision rule documented
+
+**Location:** `internal/services/retirement/social_security.go:500` — `RunSSPortfolioAnalysis`; `:655` — `bestSSPortfolioOption`; `:669` — `isBetterSSPortfolioOption`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** `RunSSPortfolioAnalysis` runs Monte Carlo simulations for each eligible claiming age (holding the other person's age fixed) and assembles portfolio survival statistics per claiming age. `bestSSPortfolioOption` picks the overall winner. `isBetterSSPortfolioOption` defines the ordering: (1) higher portfolio survival rate (`SurvivalRate`) wins; (2) tie-break on higher `MedianEndingBalance`; (3) second tie-break on lower `ClaimAge` (prefer earlier claiming when outcomes are identical).
+
+**Finding (decision rule is consistent and sound):** The lexicographic rule is deterministic and well-defined. Using `SurvivalRate` as the primary metric correctly prioritizes avoiding portfolio depletion over maximizing wealth. The `MedianEndingBalance` secondary sort is a reasonable proxy for wealth accumulation when survival rates tie. The `ClaimAge` tiebreaker (prefer earlier) follows the conservative principle that, at equal portfolio outcomes, earlier certainty is better. No inconsistency or contradiction found.
+
+**Evidence / repro:**
+```go
+// social_security.go:669-677
+func isBetterSSPortfolioOption(candidate, current models.SSPortfolioOption) bool {
+    if candidate.SurvivalRate != current.SurvivalRate {
+        return candidate.SurvivalRate > current.SurvivalRate
+    }
+    if candidate.MedianEndingBalance != current.MedianEndingBalance {
+        return candidate.MedianEndingBalance > current.MedianEndingBalance
+    }
+    return candidate.ClaimAge < current.ClaimAge  // prefer earlier
+}
+```
+
+**Recommended fix sketch:** No change needed. Consider adding a comment explaining the rationale for the `ClaimAge` tiebreaker (prefer earlier when economically equivalent) for future maintainers.
+
+**Test coverage note:** `isBetterSSPortfolioOption` and `bestSSPortfolioOption` are not directly unit-tested. Exercised indirectly via `TestRunSSPortfolioAnalysis`. No test exercises the `MedianEndingBalance` tiebreaker or the `ClaimAge` tiebreaker in isolation.
 
 ## 4. RMD
 
@@ -1182,5 +1445,142 @@ The test coverage for this function is good: it covers nil settings, both ages b
 **Evidence / repro:** `float64(24)/12.0` is exactly `2.0` in IEEE 754; the early return fires correctly. If the function were called with, e.g., `1.9999999999` the guard would miss and return `math.Pow(1.03, -0.0000000001) ≈ 1.0` — negligible error, but the guard would not fire.
 
 **Recommended fix sketch:** Replace `if yearsFromIRMAABase == 0` with `if math.Abs(yearsFromIRMAABase) < 1e-9` for robustness, or use integer arithmetic for the year comparison.
+
+**Test coverage note:** The test covers year=0, year=2, and year=5. No test passes a fractional value within epsilon of 2.0.
+
+---
+
+### F-025 — LOW Utility helpers `validSSClaimAge`, `normalizedSSFRA`, `claimStartMonth` not directly tested
+
+**Location:** `internal/services/retirement/social_security.go:12` — `validSSClaimAge`; `:16` — `normalizedSSFRA`; `:194` — `claimStartMonth`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** `validSSClaimAge` returns true iff age is in [62, 70]. `normalizedSSFRA` substitutes FRA=0 with the default (67). `claimStartMonth` computes `(claimAge − currentAge) × 12` for future claims, or 0 for already-claiming.
+
+**Finding:** None of these three helpers are called directly in any test. They are exercised indirectly through higher-level functions, but specific boundary values are untested: exact boundaries 62 and 70 for `validSSClaimAge`; zero-substitution for `normalizedSSFRA`; the already-claiming (→ 0) path for `claimStartMonth`.
+
+**Evidence / repro:** `grep -n "validSSClaimAge\|normalizedSSFRA\|claimStartMonth" social_security_test.go` returns no direct calls.
+
+**Recommended fix sketch:** Add `TestValidSSClaimAge` covering 61 (false), 62 (true), 70 (true), 71 (false); `TestNormalizedSSFRA` covering 0 → 67 and 66 → 66; `TestClaimStartMonth` covering already-claiming (→ 0) and future claim (exact multiplication).
+
+**Test coverage note:** All three boundary conditions are dark from a direct-test perspective.
+
+---
+
+### F-026 — MEDIUM `normalizedSSCOLARate`: zero-COLA scenario inexpressible; silently substitutes 2% default
+
+**Location:** `internal/services/retirement/social_security.go:23` — `normalizedSSCOLARate`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`; `internal/models/whatif.go:144`.
+
+**What it does:** Converts a COLA rate of 0 to the default 2% (`defaultSocialSecurityCOLARate = 0.02`). Non-zero values pass through unchanged. Used in both `projectedSocialSecurityIncome` and `RunSSAnalysis`, covering all user-facing SS computations.
+
+**Finding:** A user who sets `COLARate: 0.0` intends zero COLA growth — a real SSA scenario (0% COLA in 2010, 2011, 2016). The code silently substitutes 2%. This makes the zero-COLA scenario inexpressible and is inconsistent with `SSBreakevenAges`, which accepts raw colaRate without normalization and correctly handles 0.0. The function is never directly tested; `normalizedSSCOLARate(0) = 0.02` is not asserted anywhere.
+
+**Evidence / repro:**
+```go
+func normalizedSSCOLARate(colaRate float64) float64 {
+    if colaRate == 0 {
+        return defaultSocialSecurityCOLARate  // 0.02 — zero is inexpressible
+    }
+    return colaRate
+}
+```
+`RunSSAnalysis` line 405: `colaRate := normalizedSSCOLARate(ss.COLARate)` — always at least 2%.
+
+**Recommended fix sketch:** Use a sentinel (e.g., −1) for "use default," treat 0 as explicit user intent, and update UI validation to reject negative COLA rates. Alternatively add `COLARateIsDefault bool` to `SocialSecurityConfig`.
+
+**Test coverage note:** `normalizedSSCOLARate` is never called directly in tests. No test verifies the zero-substitution behavior or its downstream effect.
+
+---
+
+### F-027 — LOW `AdjustedSSBenefit`: FRA values other than 66 and 67 not tested; `DerivedPIA` round-trip only covers FRA=67
+
+**Location:** `internal/services/retirement/social_security.go:205` — `AdjustedSSBenefit`; `:237` — `DerivedPIA`
+
+**Source consulted:** POMS RS 00615.105; POMS RS 00615.690; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** `AdjustedSSBenefit` applies the SSA's two-tier early-reduction / DRC schedule. `DerivedPIA` is its exact algebraic inverse. Both are formula-correct (verified by WE-3.1, WE-3.2, and the round-trip test).
+
+**Finding (formula correct; coverage gap):** `TestAdjustedSSBenefit` tests FRA=67 (claimAge 62, 64, 67, 70) and FRA=66 (claimAge 62). FRA=65 (birth years ~1937–1938) and the at-FRA identity for non-67 FRA are not directly tested. `TestDerivedPIA` round-trips only at FRA=67.
+
+**Evidence / repro:** Five test cases; four use FRA=67. `TestDerivedPIA` has two subtests, both FRA=67.
+
+**Recommended fix sketch:** Add `AdjustedSSBenefit(pia, 65, 65)` asserting result == pia; add `AdjustedSSBenefit(pia, 65, 70)` for DRC at FRA=65; extend `TestDerivedPIA` round-trip to FRA=65 and FRA=66.
+
+**Test coverage note:** The `monthsDiff == 0` and `monthsDiff > 0` branches are only tested for FRA=67.
+
+---
+
+### F-028 — LOW `AdjustedSpousalBenefit`: claim age > 70 not explicitly clamped or tested
+
+**Location:** `internal/services/retirement/social_security.go:259` — `AdjustedSpousalBenefit`
+
+**Source consulted:** POMS RS 00615.020; code inspection; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** Applies spousal early-reduction schedule for claim ages before spouseFRA. Returns spousalPIA unchanged for claimAge ≥ spouseFRA (no DRC for spousal). Clamps claimAge < 62 to 62. Formula verified correct by WE-3.3.
+
+**Finding (formula correct; coverage gap):** Unlike `AdjustedSSBenefit`, there is no explicit `claimAge > 70` clamp. For all realistic spouseFRA values (≤ 67), the `claimAge >= spouseFRA` guard correctly caps the benefit, but no test asserts that `AdjustedSpousalBenefit(pia, 67, 75)` equals `AdjustedSpousalBenefit(pia, 67, 70)`.
+
+**Evidence / repro:** `AdjustedSSBenefit` clamps explicitly at lines 206–211; `AdjustedSpousalBenefit` clamps only `< 62` at line 261.
+
+**Recommended fix sketch:** Add `if claimAge > 70 { claimAge = 70 }` for defensive consistency. Add a test asserting equivalence at age 75 and 70.
+
+**Test coverage note:** `claimAge > 70` path not tested; relied on implicitly by the FRA-cap logic.
+
+---
+
+### F-029 — MEDIUM `RunSSAnalysis`: `SpouseUsingSpousalBenefit` display flag uses raw `FRABenefit` instead of derived PIA
+
+**Location:** `internal/services/retirement/social_security.go:484` — `RunSSAnalysis`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`; `web/templates/components/whatif/social-security.html:176`.
+
+**What it does:** Sets `result.SpouseUsingSpousalBenefit` to flag whether the spouse uses the spousal benefit path in the comparison table. The UI uses this flag to show "Using 50% spousal benefit ($X/mo) — higher than own benefit ($Y/mo)."
+
+**Finding:** Line 484 computes `ss.FRABenefit*0.5 > ss.SpouseFRABenefit`. When primary is already claiming at a non-FRA age, `ss.FRABenefit` is the actual benefit (not PIA). The flag should use `primaryPIA*0.5` (derived at line 411 and in scope). The actual computation numbers are correct (they use `primaryPIA`); only the display flag and the associated UI dollar label are wrong for the already-claiming-at-non-FRA-age case.
+
+**Evidence / repro:** Primary claimed age 62 (PIA=$2,000, actual=$1,400). Spouse own PIA=$800. `ss.FRABenefit*0.5 = 700 < 800` → flag false (wrong); `primaryPIA*0.5 = 1000 > 800` → flag should be true.
+
+**Recommended fix sketch:** Replace `ss.FRABenefit` with `primaryPIA` on line 484. Update `social-security.html:177` to derive the dollar display from the analysis result rather than raw settings.
+
+**Test coverage note:** No test checks `SpouseUsingSpousalBenefit` for an already-claiming primary at a non-FRA age.
+
+---
+
+### F-030 — LOW `RunSSAnalysis`: zero `ClaimAge` triggers spurious "already claiming" logic
+
+**Location:** `internal/services/retirement/social_security.go:398` — `RunSSAnalysis`
+
+**Source consulted:** Code inspection; `internal/models/whatif.go:147`.
+
+**What it does:** Identifies whether the primary person is already claiming (`ss.ClaimAge <= c.Settings.CurrentAge`) to back-derive PIA and lock the best-age recommendation.
+
+**Finding:** `ClaimAge` defaults to 0 (Go zero value, meaning "unset"). When `ClaimAge=0` and `CurrentAge > 0`, `0 <= CurrentAge` is true, triggering: (1) `DerivedPIA(pia, fra, 0)` — clamped to 62, incorrectly back-derives PIA as if claimed at 62; (2) `bestAge = 0` — an invalid recommended age. The guard should require `validSSClaimAge(ss.ClaimAge)`.
+
+**Evidence / repro:** `ClaimAge=0, CurrentAge=60`: `0 <= 60` → true; `DerivedPIA(pia, 67, 0)` uses claimAge=62 internally; `bestAge = 0`.
+
+**Recommended fix sketch:** Change line 410 to `if ss.ClaimAge <= c.Settings.CurrentAge && validSSClaimAge(ss.ClaimAge)` and line 430 similarly.
+
+**Test coverage note:** No test passes `ClaimAge=0` with a positive `CurrentAge` to `RunSSAnalysis`. The zero-ClaimAge "already claiming" path is dark.
+
+---
+
+### F-031 — INFO `RunSSPortfolioAnalysis` / `bestSSPortfolioOption` / `isBetterSSPortfolioOption`: decision rule documented
+
+**Location:** `internal/services/retirement/social_security.go:500` — `RunSSPortfolioAnalysis`; `:655` — `bestSSPortfolioOption`; `:669` — `isBetterSSPortfolioOption`
+
+**Source consulted:** Code inspection; `internal/services/retirement/social_security_test.go`.
+
+**What it does:** Evaluates claiming ages by portfolio Monte Carlo survival. `isBetterSSPortfolioOption` uses a three-level lexicographic rule: (1) higher `SurvivalRate`; (2) higher `MedianEndingBalance`; (3) lower `ClaimAge` (prefer earlier when outcomes are identical).
+
+**Finding (decision rule correct and consistent):** The ordering is deterministic. `SurvivalRate`-first correctly prioritizes portfolio safety. The `ClaimAge` tiebreaker (prefer earlier) is a reasonable conservative default when economic outcomes are identical. No inconsistency found. Informational documentation only.
+
+**Evidence / repro:** `isBetterSSPortfolioOption` at lines 670–677.
+
+**Recommended fix sketch:** Add a comment explaining the rationale for the `ClaimAge` tiebreaker.
+
+**Test coverage note:** `isBetterSSPortfolioOption` and `bestSSPortfolioOption` are not directly unit-tested; the `MedianEndingBalance` and `ClaimAge` tiebreakers are never exercised in isolation.
 
 **Test coverage note:** The test covers year=0, year=2, and year=5. The guard fires correctly for year=2. No test passes a fractional value within epsilon of 2.0.

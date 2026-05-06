@@ -1195,6 +1195,7 @@ const (
 type TaxConfig struct {
 	FilingStatus       FilingStatus `json:"filing_status"`
 	StateIncomeTaxRate float64      `json:"state_income_tax_rate"` // As percentage (e.g., 5.0 for 5%)
+	Age65Count         int          `json:"age_65_count"`          // F-001: number of filers 65 or older (0, 1, or 2 for MFJ).
 }
 
 // DefaultTaxConfig returns sensible tax defaults

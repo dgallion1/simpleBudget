@@ -393,3 +393,72 @@ func TestCalculateMonthlyIRMAA(t *testing.T) {
 		})
 	}
 }
+
+// F-001: age-65+ additional standard deduction tests
+
+func TestGetAdjustedStandardDeduction_F001_Age65Single(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus: models.FilingSingle,
+		Age65Count:   1,
+	}, 0)
+	// TY2024: 14600 base + 1950 age-65 = 16550; yearsFromBase=0 so no inflation.
+	got := tc.GetAdjustedStandardDeduction(0)
+	want := 16550.0
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("GetAdjustedStandardDeduction(Single, Age65Count=1) = %.2f, want %.2f", got, want)
+	}
+}
+
+func TestGetAdjustedStandardDeduction_F001_Age65MFJBoth(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus: models.FilingMarriedJoint,
+		Age65Count:   2,
+	}, 0)
+	// TY2024: 29200 base + 2*1550 = 32300; yearsFromBase=0 so no inflation.
+	got := tc.GetAdjustedStandardDeduction(0)
+	want := 32300.0
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("GetAdjustedStandardDeduction(MFJ, Age65Count=2) = %.2f, want %.2f", got, want)
+	}
+}
+
+func TestGetAdjustedStandardDeduction_F001_Age65Zero(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus: models.FilingSingle,
+		Age65Count:   0,
+	}, 0)
+	// No age-65 adjustment: base 14600 unchanged.
+	got := tc.GetAdjustedStandardDeduction(0)
+	want := 14600.0
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("GetAdjustedStandardDeduction(Single, Age65Count=0) = %.2f, want %.2f", got, want)
+	}
+}
+
+// TestCalculateFederalTax_F001_AuditWE1_1_PreservedForUnder65 is the regression guard.
+// Audit WE-1.1: Single under 65, $80K gross → federal tax $9,441 (no age-65 deduction).
+func TestCalculateFederalTax_F001_AuditWE1_1_PreservedForUnder65(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus: models.FilingSingle,
+		Age65Count:   0,
+	}, 0)
+	tax, _, _ := tc.CalculateFederalTax(80000, 0)
+	want := 9441.0
+	if math.Abs(tax-want) > 1.0 {
+		t.Fatalf("WE-1.1 regression: CalculateFederalTax(Single, 80K, Age65Count=0) = %.2f, want %.2f", tax, want)
+	}
+}
+
+// TestCalculateFederalTax_F001_Age65SingleLowersTax verifies the fix.
+// Single 65+ at $80K: deduction = 14600+1950 = 16550; expected tax $9,012.
+func TestCalculateFederalTax_F001_Age65SingleLowersTax(t *testing.T) {
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus: models.FilingSingle,
+		Age65Count:   1,
+	}, 0)
+	tax, _, _ := tc.CalculateFederalTax(80000, 0)
+	want := 9012.0
+	if math.Abs(tax-want) > 1.0 {
+		t.Fatalf("F-001 fix: CalculateFederalTax(Single 65+, 80K, Age65Count=1) = %.2f, want %.2f", tax, want)
+	}
+}

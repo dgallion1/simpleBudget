@@ -106,6 +106,15 @@ var StandardDeduction2024 = map[models.FilingStatus]float64{
 	models.FilingHeadOfHousehold: 21900,
 }
 
+// AdditionalStandardDeduction2024Age65 — TY2024 amounts per qualifying
+// person 65 or older. Source: IRS Rev. Proc. 2023-34 §3.16(2).
+var AdditionalStandardDeduction2024Age65 = map[models.FilingStatus]float64{
+	models.FilingSingle:          1950,
+	models.FilingHeadOfHousehold: 1950,
+	models.FilingMarriedJoint:    1550,
+	models.FilingMarriedSeparate: 1550,
+}
+
 var socialSecurityTaxThresholds = map[models.FilingStatus]socialSecurityTaxThreshold{
 	models.FilingSingle:          {BaseThreshold: 25000, UpperThreshold: 34000, BaseTaxableAmount: 4500},
 	models.FilingMarriedJoint:    {BaseThreshold: 32000, UpperThreshold: 44000, BaseTaxableAmount: 6000},
@@ -162,6 +171,7 @@ type TaxCalculator struct {
 	StateRate     float64 // State income tax rate as percentage (e.g., 5.0 for 5%)
 	InflationRate float64 // Annual inflation rate for bracket adjustment
 	BaseYear      int     // Year the brackets are based on
+	Age65Count    int     // F-001: number of filers 65 or older (0, 1, or 2 for MFJ)
 }
 
 // NewTaxCalculator creates a tax calculator with the given configuration
@@ -174,6 +184,7 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 		StateRate:     config.StateIncomeTaxRate,
 		InflationRate: inflationRate,
 		BaseYear:      taxBaseYear,
+		Age65Count:    config.Age65Count,
 	}
 }
 
@@ -234,18 +245,24 @@ func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase i
 	return adjusted
 }
 
-// GetAdjustedStandardDeduction returns standard deduction adjusted for inflation
+// GetAdjustedStandardDeduction returns standard deduction adjusted for inflation,
+// including the age-65+ additional deduction per IRS Rev. Proc. 2023-34 §3.16(2).
 func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64 {
-	baseDeduction := StandardDeduction2024[tc.FilingStatus]
-	if baseDeduction == 0 {
-		baseDeduction = StandardDeduction2024[models.FilingMarriedJoint]
+	status := normalizeFilingStatus(tc.FilingStatus)
+	base, ok := StandardDeduction2024[status]
+	if !ok {
+		base = StandardDeduction2024[models.FilingMarriedJoint]
 	}
-
-	if yearsFromBase <= 0 {
-		return baseDeduction
+	addPerPerson := AdditionalStandardDeduction2024Age65[status]
+	count := tc.Age65Count
+	if count < 0 {
+		count = 0
 	}
-
-	return baseDeduction * tc.inflationFactor(yearsFromBase)
+	if count > 2 {
+		count = 2
+	}
+	additional := float64(count) * addPerPerson
+	return (base + additional) * tc.inflationFactor(yearsFromBase)
 }
 
 func (tc *TaxCalculator) inflationFactor(yearsFromBase int) float64 {

@@ -142,6 +142,7 @@ type SocialSecurityConfig struct {
 	FRABenefit       float64 `json:"fra_benefit"`                  // Monthly PIA (benefit at FRA)
 	FRA              int     `json:"fra"`                          // Full retirement age (default 67)
 	COLARate         float64 `json:"cola_rate"`                    // Annual COLA as decimal (default 0.02)
+	COLARateSet      bool    `json:"cola_rate_set,omitempty"`      // F-026: distinguishes explicit 0 from unset
 	SpouseFRABenefit float64 `json:"spouse_fra_benefit,omitempty"` // Spouse PIA if applicable
 	SpouseFRA        int     `json:"spouse_fra,omitempty"`         // Spouse FRA
 	ClaimAge         int     `json:"claim_age,omitempty"`          // Primary claiming age, 62-70; 0 means unset

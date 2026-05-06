@@ -487,7 +487,8 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 
 	if colaRate, err := parseFormFloat(r, "cola_rate"); err == nil {
 		settings.SocialSecurity.COLARate = colaRate / 100.0
-	} else if settings.SocialSecurity.COLARate == 0 {
+		settings.SocialSecurity.COLARateSet = true // F-026: user explicitly submitted a value
+	} else if settings.SocialSecurity.COLARate == 0 && !settings.SocialSecurity.COLARateSet {
 		settings.SocialSecurity.COLARate = 0.02
 	}
 

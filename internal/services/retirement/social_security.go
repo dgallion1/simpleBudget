@@ -20,11 +20,32 @@ func normalizedSSFRA(fra int) int {
 	return fra
 }
 
-func normalizedSSCOLARate(colaRate float64) float64 {
-	if colaRate == 0 {
+// normalizedSSCOLARate returns the SS COLA rate to apply.
+// nil rate → returns the 2% default (caller did not supply a value).
+// Non-nil → returns the value, clamping negatives to 0 (SSA COLA is
+// never negative). Explicit 0 is honored. F-026.
+func normalizedSSCOLARate(rate *float64) float64 {
+	if rate == nil {
 		return defaultSocialSecurityCOLARate
 	}
-	return colaRate
+	if *rate < 0 {
+		return 0.0
+	}
+	return *rate
+}
+
+// ssConfigCOLARate extracts the effective COLA rate from WhatIfSettings.
+// If SocialSecurityConfig.COLARateSet is true the stored value is used (even 0);
+// otherwise the 2% default is returned. F-026.
+func ssConfigCOLARate(s *models.WhatIfSettings) float64 {
+	if s == nil || s.SocialSecurity == nil {
+		return defaultSocialSecurityCOLARate
+	}
+	var ptr *float64
+	if s.SocialSecurity.COLARateSet {
+		ptr = &s.SocialSecurity.COLARate
+	}
+	return normalizedSSCOLARate(ptr)
 }
 
 func SocialSecurityProjectionActive(s *models.WhatIfSettings) bool {
@@ -171,7 +192,7 @@ func projectedSocialSecurityIncome(s *models.WhatIfSettings, month int) float64 
 	if len(entries) == 0 {
 		return 0
 	}
-	colaRate := normalizedSSCOLARate(s.SocialSecurity.COLARate)
+	colaRate := ssConfigCOLARate(s)
 	total := 0.0
 	for _, e := range entries {
 		if month >= e.StartMonth {
@@ -402,7 +423,7 @@ func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
 	}
 
 	fra := normalizedSSFRA(ss.FRA)
-	colaRate := normalizedSSCOLARate(ss.COLARate)
+	colaRate := ssConfigCOLARate(c.Settings)
 
 	// When already claiming, the entered amount is the actual benefit, not PIA.
 	// Back-derive PIA for the comparison table so hypothetical ages are correct.

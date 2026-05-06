@@ -1340,3 +1340,36 @@ func TestBestSSPortfolioOption(t *testing.T) {
 		}
 	})
 }
+
+// F-026: explicit zero COLA must be honored, not silently substituted.
+func TestNormalizedSSCOLARate_F026_ExplicitZero(t *testing.T) {
+	zero := 0.0
+	got := normalizedSSCOLARate(&zero)
+	if got != 0.0 {
+		t.Errorf("explicit zero COLA = %.4f; want 0.0", got)
+	}
+}
+
+func TestNormalizedSSCOLARate_F026_UnsetUsesDefault(t *testing.T) {
+	got := normalizedSSCOLARate(nil)
+	want := 0.02 // 2% default (as decimal) when caller did not supply a value
+	if math.Abs(got-want) > 1e-9 {
+		t.Errorf("unset COLA = %.4f; want %.4f (default)", got, want)
+	}
+}
+
+func TestNormalizedSSCOLARate_F026_NegativeClamped(t *testing.T) {
+	neg := -1.0
+	got := normalizedSSCOLARate(&neg)
+	if got != 0.0 {
+		t.Errorf("negative COLA = %.4f; want 0.0 (SS COLA never negative)", got)
+	}
+}
+
+func TestNormalizedSSCOLARate_F026_PositiveValuePreserved(t *testing.T) {
+	v := 3.5
+	got := normalizedSSCOLARate(&v)
+	if math.Abs(got-3.5) > 1e-9 {
+		t.Errorf("positive COLA = %.4f; want 3.5", got)
+	}
+}

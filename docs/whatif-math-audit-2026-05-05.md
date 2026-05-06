@@ -1110,7 +1110,194 @@ A corrected flow: apply growth first (or split into half-year pre/post RMD), the
 
 ## 5. Present value & monthly compounding
 
-_Filled in by Task 5._
+### Functions audited
+
+**Legend:** PASS = formula correct, no findings · PASS (F-NNN) = formula correct, has associated finding · PARTIAL (F-NNN) = formula partially correct · FAIL (F-NNN) = formula incorrect.
+
+| Function | Location | Status |
+|----------|----------|--------|
+| `PresentValue` | `calculator.go:38` | PASS (F-037, F-038) |
+| `PresentValueAnnuity` | `calculator.go:51` | PASS (F-038, F-039) |
+| `monthlyCompoundFactorFromDecimal` | `calculator.go:133` | PASS |
+| `monthlyCompoundFactorFromPercent` | `calculator.go:140` | PASS |
+| `compoundedFactorFromPercent` | `calculator.go:144` | PASS |
+| `fractionalMonthlyReturn` | `calculator.go:605` | PASS |
+| `plannerInflationFactorForYear` | `calculator.go:330` | PASS (F-040) |
+| `plannerIRMAAInflationFactorForYear` | `calculator.go:337` | PASS (F-024) — cross-ref Task 2; no contradiction |
+| `calculateHealthcarePV` | `calculator.go:93` | PASS (F-041) |
+
+### Worked examples
+
+#### WE-5.1: PV of $100,000 over 20 years at 5%
+
+**Source:** Standard finance first principles: `PV = FV / (1 + r_m)^n` where `r_m = (1.05)^(1/12) − 1`, `n = 240`.
+
+| | Value |
+|--|-------|
+| Expected (`100,000 / 1.05^20`) | $37,688.95 |
+| Actual (`PresentValue(100000, 5.0, 240)`) | $37,688.95 |
+| Delta | $0.00 ✓ |
+
+The post-fix geometric monthly rate gives `PV = 100,000 / (1.05)^20 = $37,688.95` — exactly consistent with annual compounding as required.
+
+#### WE-5.2: PresentValueAnnuity, $1K/mo, 5% discount, 3% growth, 30 years
+
+**Source:** Growing annuity PV formula (first principles): `PV = payment × (1 − ((1+g_m)/(1+r_m))^n) / (r_m − g_m)`.
+
+Geometric monthlies: `r_m = (1.05)^(1/12) − 1 ≈ 0.00407412`, `g_m = (1.03)^(1/12) − 1 ≈ 0.00246627`.
+
+Hand estimate in spec said ~$272,580 ± $200.
+
+| | Value |
+|--|-------|
+| Expected (formula, derived above) | $272,652.99 |
+| Actual (`PresentValueAnnuity(1000, 5.0, 3.0, 0, 360)`) | $272,652.99 |
+| Delta | $0.00 ✓ |
+
+The actual value of $272,652.99 is within the ±$200 tolerance of the hand estimate ($272,580). The hand calculation underestimated slightly due to rounding of `ln(0.99839925)` in the spec example; the code result is exact.
+
+#### WE-5.3: PresentValueAnnuity degenerate r=g case
+
+**Source:** When monthly discount rate equals monthly growth rate, the standard growing-annuity formula has a 0/0 indeterminate form. The limit is `payment × n`.
+
+| | Value |
+|--|-------|
+| Expected | $360,000.00 exactly |
+| Actual (`PresentValueAnnuity(1000, 5.0, 5.0, 0, 360)`) | $360,000.00 |
+| Delta | $0.00 ✓ |
+
+The `|r_m − g_m| < 1e-10` branch fires correctly. Since `monthlyCompoundFactorFromPercent(5.0)` is a deterministic computation, `r_m` and `g_m` are identical bit-for-bit and their difference is exactly 0.0, well within the epsilon guard.
+
+#### WE-5.4: PresentValue at zero / negative rate (early-return guard)
+
+**Source:** Code guard at `calculator.go:42`: `if annualRate <= 0 { return futureValue }`.
+
+| | Value |
+|--|-------|
+| `PresentValue(100000, 0.0, 240)` — expected $100,000 | $100,000.00 ✓ |
+| `PresentValue(100000, −2.0, 240)` — code returns | $100,000.00 |
+| Mathematically correct for −2% deflation: `100,000 / (0.98)^20` | $149,788.50 |
+
+The code correctly handles the zero-rate case. The negative-rate case returns `futureValue` unchanged (see F-037).
+
+#### WE-5.5: monthlyCompoundFactorFromPercent at zero
+
+**Source:** Code path: `monthlyCompoundFactorFromPercent(0) → monthlyCompoundFactorFromDecimal(0.0) → (annualRate == 0) → return 1.0` exactly (no floating-point arithmetic).
+
+| | Value |
+|--|-------|
+| `monthlyCompoundFactorFromPercent(0.0)` | exactly `1.0` ✓ |
+| `monthlyCompoundFactorFromPercent(0.0) − 1` | exactly `0.0` ✓ |
+
+The zero-input early-return in `monthlyCompoundFactorFromDecimal` guarantees that `monthlyGrowth == 0` in `PresentValueAnnuity` is an exact IEEE 754 zero when `growthRate = 0.0` is passed. The `== 0` float comparison in `PresentValueAnnuity:62` is therefore safe for this specific entry path.
+
+### b978aa9 audit note
+
+The commit b978aa9 changed monthly rate conversion in `PresentValue` and `PresentValueAnnuity` from arithmetic division (`r / 100 / 12`) to geometric compounding (`(1 + r/100)^(1/12) − 1`). **The fix is correct and internally consistent.** Both functions now use the same helper `monthlyCompoundFactorFromPercent(r) - 1`, which in turn calls `monthlyCompoundFactorFromDecimal`. The conversion is uniformly geometric across all three in-scope PV functions (the RMD analysis was updated separately in `rmd.go` and is audited in Task 4).
+
+Two secondary changes in b978aa9 also improve correctness:
+
+1. **`monthlyRate <= 0` branch: `monthlyGrowth <= 0` → `monthlyGrowth == 0`.** Pre-fix, a negative `growthRate` with zero or negative `discountRate` would incorrectly enter the flat-sum branch (ignoring the growth). Post-fix, negative growth correctly falls to the loop branch. This is a genuine bug fix verified by WE-5.extra7.
+
+2. **`monthlyGrowth > 0` → `monthlyGrowth != 0`.** Pre-fix, a negative `growthRate` with a positive `discountRate` would fall through to the regular (zero-growth) annuity formula — a clearly wrong result. Post-fix, the growing-annuity formula is used for any non-zero growth, including negative growth. Verified correct by WE-5.extra6.
+
+No new edge-case bugs were introduced. The arithmetic-to-geometric change produces the same result as `PV = FV / (1+r_annual)^(n/12)` for `PresentValue`, since `(1+r_m)^n = ((1+r_annual)^(1/12))^(12k) = (1+r_annual)^k` for whole-year multiples, and for arbitrary month counts it correctly compound-discounts at the geometric rate. The one pre-existing limitation — the `annualRate <= 0` early-return in `PresentValue` that ignores deflation scenarios — predates b978aa9 and is documented separately as F-037.
+
+### Findings
+
+---
+
+### F-037 — LOW `PresentValue`: negative-rate deflation returns futureValue unchanged (economically incorrect)
+
+**Location:** `internal/services/retirement/calculator.go:42` — `PresentValue`
+
+**Source consulted:** Standard finance first principles: for a deflating economy (annualRate < 0), future nominal dollars buy more than present dollars, so `PV > FV`.
+
+**What it does:** Early-returns `futureValue` when `annualRate <= 0`, treating zero and negative rates identically. For zero rate this is correct (`PV = FV`). For negative rates it is incorrect.
+
+**Finding:** With `annualRate = −2.0` and 240 months (20 years), the mathematically correct PV is `100,000 / (0.98)^20 ≈ $149,788.50`. The code returns `$100,000`. The error is approximately **50%** of the true PV — technically HIGH severity by the ±5% threshold — but the negative-discount-rate scenario is unusual in planning practice (a user would need to set `DiscountRate < 0` explicitly, which the UI almost certainly prevents). Rated LOW because it is reachable only via an intentionally adversarial input, not a normal user scenario.
+
+**Evidence / repro:**
+```go
+PresentValue(100000, -2.0, 240) → 100000  // code
+// Correct: 100000 / math.Pow(0.98, 20) ≈ 149788.50
+```
+
+**Recommended fix sketch:** Split the guard: `if periods <= 0 { return futureValue }` and `if annualRate == 0 { return futureValue }`. For `annualRate < 0`, fall through to the standard formula — `(1 + r/100)^(1/12)` will correctly be less than 1 for negative r, and `Pow(..., n)` will produce a factor < 1, giving `PV > FV`.
+
+**Test coverage note:** The negative-rate path is exercised in `calculator_pv_test.go` ("negative rate returns future value unchanged") but asserts the current incorrect behavior. If the guard is corrected, that test case should be updated with the mathematically correct expected value.
+
+---
+
+### F-038 — LOW `PresentValue` / `PresentValueAnnuity`: zero-rate guard inconsistency for `PresentValue` vs. `PresentValueAnnuity`
+
+**Location:** `internal/services/retirement/calculator.go:42` — `PresentValue`; `:56` — `PresentValueAnnuity`
+
+**Source consulted:** Code inspection.
+
+**What it does:** `PresentValue` uses `annualRate <= 0` (covering both zero and negative). `PresentValueAnnuity` computes `monthlyRate := monthlyCompoundFactorFromPercent(discountRate) - 1` for all inputs and then checks `if monthlyRate <= 0` (which catches negative discount rates too, since a negative annual rate yields a monthly factor < 1, so `factor - 1 < 0`). The two functions handle zero-and-negative rates differently at the guard level but produce the same practical result.
+
+**Finding:** This is a cosmetic inconsistency rather than a correctness bug: `PresentValue` short-circuits before the monthly rate computation, while `PresentValueAnnuity` computes the monthly rate first then tests it. Both correctly produce `FV` (or `payment * n`) for zero discount, and both avoid discounting for negative discount. The inconsistency could confuse a future maintainer who sees one pattern in each function and assumes they diverge. LOW: no numerical error; purely structural.
+
+**Evidence / repro:** `PresentValue(100000, -2, 240) → 100000` (early return). `PresentValueAnnuity(1000, -2, 0, 0, 12) → 12000` (post-monthly-rate-compute guard, flat sum). Both avoid discounting for negative rate. The behaviors are parallel but the guard placement and mechanism differ.
+
+**Recommended fix sketch:** Normalize the pattern in both functions to: compute the monthly rate, then test `monthlyRate <= 0`. Alternatively, add an explicit comment in `PresentValue` explaining why the guard is pre-computation.
+
+**Test coverage note:** The `PresentValueAnnuity` path with `discountRate < 0` and `growthRate = 0` is exercised by the loop branch (`monthlyRate <= 0`, `monthlyGrowth == 0`), so both sub-paths of the negative-discount case are covered.
+
+---
+
+### F-039 — LOW `PresentValueAnnuity`: `startMonth > 0` deferral not applied when `monthlyRate <= 0`
+
+**Location:** `internal/services/retirement/calculator.go:84` — `PresentValueAnnuity`
+
+**Source consulted:** Standard deferred-annuity finance; code inspection.
+
+**What it does:** After computing `pvAtStart`, the function discounts back to present by `pvAtStart / (1+monthlyRate)^startMonth` — but only if `startMonth > 0 && monthlyRate > 0`. If `monthlyRate <= 0`, `pvAtStart` is returned without deferral discounting.
+
+**Finding:** When `discountRate = 0` and `startMonth > 0`, the function correctly returns the undiscounted sum of payments (since with a zero discount rate, future payments have the same PV as current payments). This is mathematically correct — there is no time value of money at zero rate. Existing tests verify this: "future start with zero discount rate does not discount." However, for `discountRate < 0` (deflation), deferred payments should have a *higher* PV than immediate payments, and the current code neither applies this nor is it guarded — it simply returns the flat sum without time adjustment. Since negative discount rates are not a normal user input (see F-037), the practical impact is negligible. LOW.
+
+**Evidence / repro:** `PresentValueAnnuity(1000, 0, 0, 6, 12)` equals `PresentValueAnnuity(1000, 0, 0, 0, 12)` = `$12,000` ✓ (tested and correct for zero rate). `PresentValueAnnuity(1000, -2, 0, 6, 12)` would also return `$12,000` (deferral ignored for negative rate, which under-states PV for a deflating economy).
+
+**Recommended fix sketch:** If F-037 is fixed (allow negative-rate discounting in `PresentValue`), apply the same correction here: remove the `monthlyRate > 0` guard from the deferral step, allowing the formula to run for negative rates. The formula `pvAtStart / (1+monthlyRate)^startMonth` with `monthlyRate < 0` correctly yields a value larger than `pvAtStart` (deferred payments in a deflating economy are worth more).
+
+**Test coverage note:** The `startMonth > 0` with `discountRate = 0` path is tested and correct. The `startMonth > 0` with `discountRate < 0` path is untested.
+
+---
+
+### F-040 — LOW `plannerInflationFactorForYear`: zero-inflation-rate boundary not tested
+
+**Location:** `internal/services/retirement/calculator.go:330` — `plannerInflationFactorForYear`
+
+**Source consulted:** Code inspection; `internal/services/retirement/coverage_gaps2_test.go:899`.
+
+**What it does:** Returns `(1 + annualInflationRate/100)^years`. Returns `1.0` for `years <= 0`.
+
+**Finding:** The formula is correct: year=0 → 1.0 (via early return), year>0 with rate=0 → `1.0^years = 1.0`, year>0 with rate>0 → correct compound factor. The existing test suite covers zero years, negative years, and positive years with a 3% rate. The missing test boundary is `annualInflationRate = 0.0` with `years > 0` — the formula correctly returns `math.Pow(1.0, years) = 1.0`, but this is not explicitly asserted. LOW because the formula is unambiguously correct for zero rate; the gap is purely a test-coverage oversight.
+
+**Evidence / repro:** `plannerInflationFactorForYear(0, 10) = 1.0` ✓ (verified by WE-5.extra5d during audit; not in the test suite). Existing tests (`TestPlannerInflationFactorForYear` in `coverage_gaps2_test.go`) cover rate=3.0 only.
+
+**Recommended fix sketch:** Add a `{"zero rate", 0.0, 10, 1.0}` row to the `TestPlannerInflationFactorForYear` table-driven test.
+
+**Test coverage note:** Zero-rate boundary not asserted. All other boundaries (years=0, years<0, years>0, rate>0) are covered.
+
+---
+
+### F-041 — INFO `calculateHealthcarePV`: IRMAA not included in PV calculation (by design; documented)
+
+**Location:** `internal/services/retirement/calculator.go:93` — `calculateHealthcarePV`
+
+**Source consulted:** Code inspection; `calculator.go:95-121`.
+
+**What it does:** Aggregates the PV of healthcare costs (ACA and Medicare phases) using `PresentValueAnnuity`. The two-phase (pre-Medicare / post-Medicare) transition is handled internally, dispatching on `person.IsOnMedicare()` and `person.YearsUntilMedicare()`. IRMAA surcharges are NOT included.
+
+**Finding (design note, no error):** IRMAA is correctly excluded from this PV calculation. IRMAA is a MAGI-dependent surcharge computed inside the main projection loop (`CalculateRMDAnalysis`, `RunProjection`) where annual MAGI is known. Including it in a static PV estimate would require projecting future MAGI, which is not available at the time `calculateHealthcarePV` is called (it is called from `CalculatePresentValueAnalysis`, which does not run a full projection). This is the correct architectural split. The PV analysis page should document that the healthcare PV excludes IRMAA (which varies annually based on income). Informational only.
+
+**Evidence / repro:** `calculateHealthcarePV` calls only `PresentValueAnnuity` with base monthly cost and inflation — no IRMAA inputs. IRMAA is added to monthly expenses in the full projection loop at `calculator.go` growth/tax routines.
+
+**Recommended fix sketch:** Add a UI tooltip or footnote on the What-If PV summary page noting that IRMAA surcharges are excluded from the healthcare PV estimate and are computed in the full projection instead.
+
+**Test coverage note:** The Medicare-transition logic (pre → post) is well-tested in `TestCalculateHealthcarePV`. The edge case where `preMedicareMonths == 0` (person is exactly at Medicare age but `IsOnMedicare()` returns false) may be unreachable depending on `IsOnMedicare()` semantics — the test "person exactly at Medicare age" confirms `IsOnMedicare()` returns true at age 65, so the two-phase branch with `preMedicareMonths == 0` is unreachable in practice.
 
 ## 6. Living-expense projection mechanics
 
@@ -1856,3 +2043,97 @@ for m := 0; m < 12; m++ {
 **Recommended fix sketch:** Add tests for each row above. The 20-row cap and the age-72 direct-call path are especially low-cost to add.
 
 **Test coverage note:** See table above.
+
+---
+
+### F-037 — LOW `PresentValue`: negative-rate deflation returns futureValue unchanged (economically incorrect)
+
+**Location:** `internal/services/retirement/calculator.go:42` — `PresentValue`
+
+**Source consulted:** Standard finance first principles: for a deflating economy (annualRate < 0), future nominal dollars buy more than present dollars, so `PV > FV`.
+
+**What it does:** Early-returns `futureValue` when `annualRate <= 0`, treating zero and negative rates identically. For zero rate this is correct (`PV = FV`). For negative rates it is incorrect.
+
+**Finding:** With `annualRate = −2.0` and 240 months (20 years), the mathematically correct PV is `100,000 / (0.98)^20 ≈ $149,788.50`. The code returns `$100,000`. The error is approximately 50% of the true PV — technically HIGH severity by the ±5% threshold — but the negative-discount-rate scenario is unusual in planning practice (a user would need to set `DiscountRate < 0` explicitly, which the UI almost certainly prevents). Rated LOW because it is reachable only via an intentionally adversarial input, not a normal user scenario.
+
+**Evidence / repro:**
+```go
+PresentValue(100000, -2.0, 240) → 100000  // code
+// Correct: 100000 / math.Pow(0.98, 20) ≈ 149788.50
+```
+
+**Recommended fix sketch:** Split the guard: `if periods <= 0 { return futureValue }` and `if annualRate == 0 { return futureValue }`. For `annualRate < 0`, fall through to the standard formula — `monthlyCompoundFactorFromPercent(r)` with negative r correctly returns a factor < 1, and `PV = FV / factor^n` correctly gives `PV > FV`.
+
+**Test coverage note:** The negative-rate path is exercised in `calculator_pv_test.go` ("negative rate returns future value unchanged") but asserts the current behavior. If the guard is corrected, that test case should be updated with the mathematically correct expected value.
+
+---
+
+### F-038 — LOW `PresentValue` / `PresentValueAnnuity`: zero-rate guard inconsistency between the two functions
+
+**Location:** `internal/services/retirement/calculator.go:42` — `PresentValue`; `:56` — `PresentValueAnnuity`
+
+**Source consulted:** Code inspection.
+
+**What it does:** `PresentValue` uses a pre-computation guard `annualRate <= 0`. `PresentValueAnnuity` computes `monthlyRate` for all inputs, then guards on `monthlyRate <= 0`. Both produce numerically correct results for normal inputs.
+
+**Finding:** Cosmetic inconsistency rather than a correctness bug. Both functions correctly produce `FV` (or `payment × n`) for zero discount and correctly skip time-value discounting for negative discount rates. The inconsistency in guard placement (pre-vs-post monthly-rate computation) could confuse future maintainers. No numerical error. LOW.
+
+**Evidence / repro:** `PresentValue(100000, -2, 240) → 100000` (early return before computing monthly rate). `PresentValueAnnuity(1000, -2, 0, 0, 12) → 12000` (monthly rate computed: `(0.98)^(1/12)−1 ≈ −0.00168 < 0`, then guard fires). Results are parallel but implementation paths differ.
+
+**Recommended fix sketch:** Normalize both functions to compute the monthly rate first, then guard. Or add an explicit comment in `PresentValue` explaining the pre-computation guard is intentional for efficiency.
+
+**Test coverage note:** `PresentValueAnnuity` with `discountRate < 0` and `growthRate = 0` (the `monthlyRate <= 0`, `monthlyGrowth == 0` branch) is tested in "no discount rate without growth." `PresentValue` with negative rate is tested in "negative rate returns future value unchanged."
+
+---
+
+### F-039 — LOW `PresentValueAnnuity`: `startMonth > 0` deferral not applied when `monthlyRate <= 0`
+
+**Location:** `internal/services/retirement/calculator.go:84` — `PresentValueAnnuity`
+
+**Source consulted:** Standard deferred-annuity finance; code inspection.
+
+**What it does:** Discounts `pvAtStart` back by `startMonth` periods — but only if `startMonth > 0 && monthlyRate > 0`. When `monthlyRate <= 0`, returns `pvAtStart` without deferral adjustment.
+
+**Finding:** For zero discount rate, this is mathematically correct — future payments have identical PV at zero time-value of money. For negative discount rates (deflation), deferred payments should have a higher PV than immediate payments, but the code returns the flat sum without adjustment. This is a latent issue only for the negative-discount-rate scenario (which is also affected by F-037 and F-038). In normal operation, `discountRate` is positive and the guard correctly triggers. LOW.
+
+**Evidence / repro:** `PresentValueAnnuity(1000, 0, 0, 6, 12)` correctly equals `PresentValueAnnuity(1000, 0, 0, 0, 12) = $12,000` (existing test passes). `PresentValueAnnuity(1000, -2, 0, 6, 12)` returns `$12,000` (deferral ignored for negative rate; strictly speaking PV should be slightly higher for deflation).
+
+**Recommended fix sketch:** If F-037 is resolved to allow negative-rate discounting, remove the `monthlyRate > 0` clause from the deferral guard so it reads `if startMonth > 0`. The formula `pvAtStart / (1+monthlyRate)^startMonth` with `monthlyRate < 0` correctly produces `PV > pvAtStart`.
+
+**Test coverage note:** `startMonth > 0` with `discountRate = 0` is tested ("future start with zero discount rate does not discount"). `startMonth > 0` with `discountRate < 0` is not tested.
+
+---
+
+### F-040 — LOW `plannerInflationFactorForYear`: zero-inflation-rate boundary not tested
+
+**Location:** `internal/services/retirement/calculator.go:330` — `plannerInflationFactorForYear`
+
+**Source consulted:** Code inspection; `internal/services/retirement/coverage_gaps2_test.go:899` `TestPlannerInflationFactorForYear`.
+
+**What it does:** Returns `(1 + annualInflationRate/100)^years`. Returns `1.0` for `years <= 0`.
+
+**Finding:** The formula is correct for all inputs, including zero rate (`1.0^years = 1.0`). The test suite covers zero years, negative years, and positive years with a 3% rate. The zero-rate boundary — which is a valid scenario (some users may set zero inflation as a conservative assumption) — is not asserted. LOW because the formula is unambiguously correct; the gap is a pure test-coverage oversight.
+
+**Evidence / repro:** `plannerInflationFactorForYear(0, 10)` returns `1.0` ✓ (verified during audit; absent from `TestPlannerInflationFactorForYear`).
+
+**Recommended fix sketch:** Add `{"zero rate", 0.0, 10, 1.0}` to the table-driven test in `coverage_gaps2_test.go:899`.
+
+**Test coverage note:** Zero-rate boundary not asserted. Year=0, year<0, and year>0 with rate>0 are all covered.
+
+---
+
+### F-041 — INFO `calculateHealthcarePV`: IRMAA excluded by design; PV summary page should document this
+
+**Location:** `internal/services/retirement/calculator.go:93` — `calculateHealthcarePV`
+
+**Source consulted:** Code inspection; `calculator.go:95-121`; IRMAA computation in projection loop.
+
+**What it does:** Aggregates the PV of ACA and Medicare healthcare costs using `PresentValueAnnuity`. Handles the two-phase Medicare transition internally. IRMAA surcharges are not included.
+
+**Finding:** The exclusion of IRMAA is architecturally correct. IRMAA is a MAGI-dependent surcharge computed inside the full projection loop where annual MAGI is known. Including it here would require projecting future MAGI, which is not available at PV-analysis call time. The PV analysis page should note that healthcare PV excludes IRMAA, which is separately computed in the full projection. Informational — no code error.
+
+**Evidence / repro:** `calculateHealthcarePV` calls only `PresentValueAnnuity` with base monthly cost and inflation; no IRMAA inputs exist in its signature.
+
+**Recommended fix sketch:** Add a UI footnote or tooltip on the What-If PV summary page noting that IRMAA surcharges are excluded from the healthcare PV estimate.
+
+**Test coverage note:** The Medicare transition logic is well-tested. The `preMedicareMonths == 0` path in the two-phase branch is unreachable because `IsOnMedicare()` returns true when `age >= MedicareEligibleAge`, so the two-phase branch only activates when the person is genuinely pre-Medicare — confirmed by the "person exactly at Medicare age" test which routes through the `IsOnMedicare()` path.

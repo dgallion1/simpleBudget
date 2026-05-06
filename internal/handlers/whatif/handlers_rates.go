@@ -38,6 +38,10 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		renderError(w, msg, http.StatusBadRequest)
 		return
 	}
+	if msg := applyRMDTiming(r, updates); msg != "" {
+		renderError(w, msg, http.StatusBadRequest)
+		return
+	}
 	if msg := validateSettingsCrossFieldInvariants(r, updates); msg != "" {
 		renderError(w, msg, http.StatusBadRequest)
 		return

@@ -1,9 +1,41 @@
 package retirement
 
-import "budget2/internal/models"
+import (
+	"math"
+	"time"
+
+	"budget2/internal/models"
+)
 
 // RMD start age per IRS rules (SECURE 2.0 Act)
 const RMDStartAge = 73
+
+// EffectiveRMDStartAge returns the SECURE 2.0 RMD start age for the
+// projection's start year. 73 for projections starting before 2033;
+// 75 for projections starting 2033 or later (per SECURE 2.0 Act of 2022).
+func EffectiveRMDStartAge(s *models.WhatIfSettings) int {
+	if s == nil {
+		return 73
+	}
+	year := parseStartYear(s.StartDate)
+	if year >= 2033 {
+		return 75
+	}
+	return 73
+}
+
+// parseStartYear extracts the year from a "YYYY-MM" start date string.
+// Returns the current year if the string is empty or unparseable.
+func parseStartYear(startDate string) int {
+	if startDate == "" {
+		return time.Now().Year()
+	}
+	t, err := time.Parse("2006-01", startDate)
+	if err != nil {
+		return time.Now().Year()
+	}
+	return t.Year()
+}
 
 // uniformLifetimeTable contains IRS Uniform Lifetime Table factors
 // Used when the sole beneficiary is not a spouse more than 10 years younger
@@ -83,6 +115,19 @@ func CalculateRMD(taxDeferredBalance float64, age int) (amount float64, percent 
 	return amount, percent
 }
 
+// rmdGrowthFractions returns the fraction of annual growth applied before and
+// after the RMD withdrawal, based on the configured timing.
+func rmdGrowthFractions(timing models.RMDTiming) (before, after float64) {
+	switch timing {
+	case models.RMDTimingStartOfYear:
+		return 0.0, 1.0
+	case models.RMDTimingEndOfYear:
+		return 1.0, 0.0
+	default: // mid_year
+		return 0.5, 0.5
+	}
+}
+
 // CalculateRMDAnalysis generates RMD projections based on current settings
 func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	s := c.Settings
@@ -90,11 +135,13 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	// Calculate tax-deferred portion of portfolio
 	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 
-	// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
+	// RMD uses OLDER person's age - whoever hits 73 first triggers RMD.
+	// F-032: start age depends on projection start year per SECURE 2.0.
+	effectiveStartAge := EffectiveRMDStartAge(s)
 	olderAge := s.GetOlderAge()
 
 	// Calculate years until RMDs begin
-	startsInYears := RMDStartAge - olderAge
+	startsInYears := effectiveStartAge - olderAge
 	if startsInYears < 0 {
 		startsInYears = 0
 	}
@@ -112,19 +159,26 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 	monthlyReturn := monthlyCompoundFactorFromPercent(investmentReturn) - 1
 	currentBalance := taxDeferredValue
 
+	// F-035: honour configured RMD timing.
+	timing := models.NormalizeRMDTiming(s.RMDTiming)
+	beforeFraction, afterFraction := rmdGrowthFractions(timing)
+
 	rmdCount := 0
 	for year := 0; year <= s.ProjectionYears && rmdCount < 20; year++ {
 		age := olderAge + year
 
-		// Only project RMDs for ages 73+
-		if age >= RMDStartAge {
+		// Only project RMDs for ages effectiveStartAge+
+		if age >= effectiveStartAge {
+			// F-035: apply pre-RMD growth fraction.
+			preRMDBalance := currentBalance * math.Pow(1+monthlyReturn, 12*beforeFraction)
+
 			factor := GetLifeExpectancyFactor(age)
-			rmdAmount, rmdPercent := CalculateRMD(currentBalance, age)
+			rmdAmount, rmdPercent := CalculateRMD(preRMDBalance, age)
 
 			projections = append(projections, models.RMDProjection{
 				Age:            age,
 				Year:           year,
-				TaxDeferredBal: currentBalance,
+				TaxDeferredBal: preRMDBalance,
 				LifeExpFactor:  factor,
 				RMDAmount:      rmdAmount,
 				RMDPercent:     rmdPercent,
@@ -135,22 +189,23 @@ func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
 			}
 			rmdCount++
 
-			// Reduce balance by RMD, then grow for next year
-			currentBalance -= rmdAmount
-			if currentBalance < 0 {
-				currentBalance = 0
+			// Reduce balance by RMD, then apply post-RMD growth fraction.
+			afterRMD := preRMDBalance - rmdAmount
+			if afterRMD < 0 {
+				afterRMD = 0
 			}
-		}
-
-		// Apply annual growth (simplified - in reality this happens monthly)
-		for m := 0; m < 12; m++ {
-			currentBalance *= (1 + monthlyReturn)
+			currentBalance = afterRMD * math.Pow(1+monthlyReturn, 12*afterFraction)
+		} else {
+			// Pre-RMD year: apply full year of growth.
+			for m := 0; m < 12; m++ {
+				currentBalance *= (1 + monthlyReturn)
+			}
 		}
 	}
 
 	return &models.RMDAnalysis{
 		StartsInYears:     startsInYears,
-		StartAge:          RMDStartAge,
+		StartAge:          effectiveStartAge,
 		CurrentAge:        olderAge, // Uses older person's age for RMD calculations
 		TaxDeferredValue:  taxDeferredValue,
 		Projections:       projections,

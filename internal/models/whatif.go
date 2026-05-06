@@ -43,6 +43,28 @@ func NormalizeProjectionTiming(timing ProjectionTiming) ProjectionTiming {
 	}
 }
 
+// RMDTiming controls when during each projection year the RMD withdrawal occurs.
+type RMDTiming string
+
+const (
+	RMDTimingStartOfYear RMDTiming = "start_of_year"
+	RMDTimingMidYear     RMDTiming = "mid_year"
+	RMDTimingEndOfYear   RMDTiming = "end_of_year"
+)
+
+// NormalizeRMDTiming clamps to known values. The empty string (zero value) maps
+// to mid_year for new scenarios. Settings loading migrates legacy saved scenarios
+// to start_of_year so their existing projections are preserved (see
+// initializeLoadedSettings in settings.go).
+func NormalizeRMDTiming(t RMDTiming) RMDTiming {
+	switch t {
+	case RMDTimingStartOfYear, RMDTimingMidYear, RMDTimingEndOfYear:
+		return t
+	default:
+		return RMDTimingMidYear
+	}
+}
+
 // ScenarioChainLink references a scenario to transition to at a given age
 type ScenarioChainLink struct {
 	ScenarioFilename string `json:"scenario_filename"`
@@ -108,6 +130,11 @@ type WhatIfSettings struct {
 	ProjectionTiming        ProjectionTiming `json:"projection_timing,omitempty"` // When monthly cash flow occurs relative to growth
 	SteadyStateOverrideYear float64          `json:"steady_state_override_year"`  // User-adjustable projection year (0 = auto)
 	TaxDeferredDelayYears   int              `json:"tax_deferred_delay_years"`    // Years before tax-deferred withdrawals begin (0 = immediate)
+
+	// RMD timing: when during each projection year the RMD withdrawal is taken.
+	// F-035: empty string → NormalizeRMDTiming returns mid_year (new default).
+	// Settings loading migrates legacy saved scenarios to start_of_year.
+	RMDTiming RMDTiming `json:"rmd_timing,omitempty"`
 
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
@@ -499,7 +526,9 @@ func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {
 	if len(s.HealthcarePersons) > 0 {
 		total := 0.0
 		for _, person := range s.HealthcarePersons {
-			total += person.GetMonthlyCost(month)
+			// F-067: pass StartDate for month-precise ACA→Medicare transition when
+			// BirthMonth is set on the HealthcarePerson.
+			total += person.GetMonthlyCostAt(month, s.StartDate)
 		}
 		return total
 	}

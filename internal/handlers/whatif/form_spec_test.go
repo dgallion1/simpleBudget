@@ -367,3 +367,53 @@ func TestApplyProjectionTiming(t *testing.T) {
 		}
 	})
 }
+
+// F-035: applyRMDTiming tests mirror applyProjectionTiming.
+func TestApplyRMDTiming_F035(t *testing.T) {
+	t.Run("empty skipped", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		if msg := applyRMDTiming(formReq(url.Values{}), updates); msg != "" {
+			t.Errorf("msg=%q", msg)
+		}
+		if _, ok := updates["rmd_timing"]; ok {
+			t.Errorf("expected no key on empty input")
+		}
+	})
+	t.Run("invalid value", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		msg := applyRMDTiming(formReq(url.Values{"rmd_timing": {"quarterly"}}), updates)
+		if msg != "Invalid RMD timing" {
+			t.Errorf("got %q", msg)
+		}
+	})
+	t.Run("valid start_of_year", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		valid := string(models.RMDTimingStartOfYear)
+		if msg := applyRMDTiming(formReq(url.Values{"rmd_timing": {valid}}), updates); msg != "" {
+			t.Errorf("unexpected msg=%q", msg)
+		}
+		if got, ok := updates["rmd_timing"].(models.RMDTiming); !ok || string(got) != valid {
+			t.Errorf("got %v, want %s", updates["rmd_timing"], valid)
+		}
+	})
+	t.Run("valid mid_year", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		if msg := applyRMDTiming(formReq(url.Values{"rmd_timing": {"mid_year"}}), updates); msg != "" {
+			t.Errorf("unexpected msg=%q", msg)
+		}
+		got, ok := updates["rmd_timing"].(models.RMDTiming)
+		if !ok || got != models.RMDTimingMidYear {
+			t.Errorf("got %v, want mid_year", updates["rmd_timing"])
+		}
+	})
+	t.Run("valid end_of_year", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		if msg := applyRMDTiming(formReq(url.Values{"rmd_timing": {"end_of_year"}}), updates); msg != "" {
+			t.Errorf("unexpected msg=%q", msg)
+		}
+		got, ok := updates["rmd_timing"].(models.RMDTiming)
+		if !ok || got != models.RMDTimingEndOfYear {
+			t.Errorf("got %v, want end_of_year", updates["rmd_timing"])
+		}
+	})
+}

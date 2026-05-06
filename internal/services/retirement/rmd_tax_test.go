@@ -7,6 +7,50 @@ import (
 	"budget2/internal/models"
 )
 
+// F-032 tests — EffectiveRMDStartAge
+
+func TestEffectiveRMDStartAge_F032_Pre2033(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate: "2026-01",
+	}
+	if got := EffectiveRMDStartAge(s); got != 73 {
+		t.Errorf("pre-2033 start age = %d; want 73", got)
+	}
+}
+
+func TestEffectiveRMDStartAge_F032_PostJan2033(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate: "2033-01",
+	}
+	if got := EffectiveRMDStartAge(s); got != 75 {
+		t.Errorf("2033 start age = %d; want 75", got)
+	}
+}
+
+func TestEffectiveRMDStartAge_F032_Post2033(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate: "2040-06",
+	}
+	if got := EffectiveRMDStartAge(s); got != 75 {
+		t.Errorf("2040 start age = %d; want 75", got)
+	}
+}
+
+func TestEffectiveRMDStartAge_F032_NilSafe(t *testing.T) {
+	if got := EffectiveRMDStartAge(nil); got != 73 {
+		t.Errorf("nil settings start age = %d; want 73", got)
+	}
+}
+
+func TestEffectiveRMDStartAge_F032_ExactBoundary2032(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate: "2032-12",
+	}
+	if got := EffectiveRMDStartAge(s); got != 73 {
+		t.Errorf("Dec 2032 start age = %d; want 73", got)
+	}
+}
+
 func TestCalculateRMDAnalysis(t *testing.T) {
 	t.Run("age 65 with 8 years until RMD", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
@@ -16,6 +60,8 @@ func TestCalculateRMDAnalysis(t *testing.T) {
 		s.TaxDeferredPercent = 60
 		s.InvestmentReturn = 6.0
 		s.ProjectionYears = 30
+		// Pin to start-of-year to match original test assertions (which predate F-035).
+		s.RMDTiming = models.RMDTimingStartOfYear
 
 		c := NewCalculator(s)
 		result := c.CalculateRMDAnalysis()
@@ -317,5 +363,132 @@ func TestRunProjectionDeductsTaxesFromRMDCashFlow(t *testing.T) {
 	}
 	if month0.TaxableBalance >= month0.RMDWithdrawal {
 		t.Fatalf("expected some RMD cash to be consumed by taxes, got taxable balance %.2f from RMD %.2f", month0.TaxableBalance, month0.RMDWithdrawal)
+	}
+}
+
+// F-035 tests — configurable RMD timing
+
+// buildF035Settings creates settings for a 73-year-old at projection start
+// with $1M all in tax-deferred, 7% return, and zero inflation.
+func buildF035Settings(timing models.RMDTiming) *models.WhatIfSettings {
+	s := models.DefaultWhatIfSettings()
+	// Set BirthMonth so that age = 73 at StartDate "2026-01".
+	// BirthMonthForAge("2026-01", 73) → "1953-01".
+	s.StartDate = "2026-01"
+	if primary := s.GetPrimaryPerson(); primary != nil {
+		primary.BirthMonth = models.BirthMonthForAge("2026-01", 73)
+	}
+	s.SpouseAge = 0
+	s.PortfolioValue = 1_000_000
+	s.TaxDeferredPercent = 100
+	s.RothPercent = 0
+	s.InvestmentReturn = 7.0
+	s.InflationRate = 0
+	s.ProjectionYears = 1
+	s.RMDTiming = timing
+	s.ComputeAges()
+	return s
+}
+
+// At age 73, factor=26.5 → RMD = balance/26.5.
+// All three timings produce the same mathematical year-end balance
+// (B×G×(1-1/F)), but they apply growth differently around the RMD,
+// so the recorded TaxDeferredBal (= balance at RMD time) differs.
+
+func TestCalculateRMDAnalysis_F035_TimingStartOfYear(t *testing.T) {
+	s := buildF035Settings(models.RMDTimingStartOfYear)
+	calc := NewCalculator(s)
+	analysis := calc.CalculateRMDAnalysis()
+	if analysis == nil || len(analysis.Projections) == 0 {
+		t.Fatal("nil or empty analysis")
+	}
+	p := analysis.Projections[0]
+	// Start-of-year: no pre-RMD growth → TaxDeferredBal = 1,000,000.
+	wantBal := 1_000_000.0
+	if math.Abs(p.TaxDeferredBal-wantBal) > 1.0 {
+		t.Errorf("start-of-year TaxDeferredBal = %.2f; want ~%.2f", p.TaxDeferredBal, wantBal)
+	}
+	// RMD = 1,000,000 / 26.5 ≈ 37,735.85
+	wantRMD := 1_000_000.0 / 26.5
+	if math.Abs(p.RMDAmount-wantRMD) > 1.0 {
+		t.Errorf("start-of-year RMDAmount = %.2f; want ~%.2f", p.RMDAmount, wantRMD)
+	}
+}
+
+func TestCalculateRMDAnalysis_F035_TimingMidYearIsDefault(t *testing.T) {
+	// Empty RMDTiming → NormalizeRMDTiming → mid_year for new scenarios.
+	s := buildF035Settings("") // empty → mid_year
+	calc := NewCalculator(s)
+	analysis := calc.CalculateRMDAnalysis()
+	if analysis == nil || len(analysis.Projections) == 0 {
+		t.Fatal("nil or empty analysis")
+	}
+	p := analysis.Projections[0]
+	// Mid-year: half-year growth before RMD.
+	// TaxDeferredBal = 1M × 1.07^0.5 ≈ 1,034,408.
+	wantBal := 1_000_000.0 * math.Pow(1.07, 0.5)
+	if math.Abs(p.TaxDeferredBal-wantBal) > 10.0 {
+		t.Errorf("mid-year TaxDeferredBal = %.2f; want ~%.2f", p.TaxDeferredBal, wantBal)
+	}
+	// RMD is larger because balance grew before withdrawal.
+	if p.RMDAmount <= 1_000_000.0/26.5 {
+		t.Errorf("mid-year RMDAmount (%.2f) should exceed start-of-year RMD (%.2f)",
+			p.RMDAmount, 1_000_000.0/26.5)
+	}
+}
+
+func TestCalculateRMDAnalysis_F035_TimingEndOfYear(t *testing.T) {
+	s := buildF035Settings(models.RMDTimingEndOfYear)
+	calc := NewCalculator(s)
+	analysis := calc.CalculateRMDAnalysis()
+	if analysis == nil || len(analysis.Projections) == 0 {
+		t.Fatal("nil or empty analysis")
+	}
+	p := analysis.Projections[0]
+	// End-of-year: full year of growth before RMD.
+	// TaxDeferredBal = 1M × 1.07 = 1,070,000.
+	wantBal := 1_000_000.0 * 1.07
+	if math.Abs(p.TaxDeferredBal-wantBal) > 10.0 {
+		t.Errorf("end-of-year TaxDeferredBal = %.2f; want ~%.2f", p.TaxDeferredBal, wantBal)
+	}
+	// RMD is even larger because a full year's growth precedes it.
+	wantRMD := wantBal / 26.5
+	if math.Abs(p.RMDAmount-wantRMD) > 1.0 {
+		t.Errorf("end-of-year RMDAmount = %.2f; want ~%.2f", p.RMDAmount, wantRMD)
+	}
+}
+
+func TestCalculateRMDAnalysis_F035_StartOfYearLargestBalance(t *testing.T) {
+	// The three timings should record increasing TaxDeferredBal values:
+	// start < mid < end (because more pre-RMD growth → larger recorded balance).
+	soy := buildF035Settings(models.RMDTimingStartOfYear)
+	mid := buildF035Settings(models.RMDTimingMidYear)
+	eoy := buildF035Settings(models.RMDTimingEndOfYear)
+
+	pSOY := NewCalculator(soy).CalculateRMDAnalysis().Projections[0].TaxDeferredBal
+	pMid := NewCalculator(mid).CalculateRMDAnalysis().Projections[0].TaxDeferredBal
+	pEOY := NewCalculator(eoy).CalculateRMDAnalysis().Projections[0].TaxDeferredBal
+
+	if !(pSOY < pMid && pMid < pEOY) {
+		t.Errorf("expected SOY(%.2f) < Mid(%.2f) < EOY(%.2f)", pSOY, pMid, pEOY)
+	}
+}
+
+func TestNormalizeRMDTiming_F035(t *testing.T) {
+	cases := []struct {
+		input models.RMDTiming
+		want  models.RMDTiming
+	}{
+		{models.RMDTimingStartOfYear, models.RMDTimingStartOfYear},
+		{models.RMDTimingMidYear, models.RMDTimingMidYear},
+		{models.RMDTimingEndOfYear, models.RMDTimingEndOfYear},
+		{"", models.RMDTimingMidYear},
+		{"bogus", models.RMDTimingMidYear},
+	}
+	for _, tc := range cases {
+		got := models.NormalizeRMDTiming(tc.input)
+		if got != tc.want {
+			t.Errorf("NormalizeRMDTiming(%q) = %q; want %q", tc.input, got, tc.want)
+		}
 	}
 }

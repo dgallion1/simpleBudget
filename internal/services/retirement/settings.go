@@ -186,6 +186,15 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 	}
 
 	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
+
+	// F-035 migration: scenarios saved before RMDTiming existed have an empty
+	// string. Preserve the original start-of-year behaviour for those so that
+	// existing saved projections don't change. New scenarios constructed in
+	// memory (empty string from a fresh form) get mid-year via
+	// NormalizeRMDTiming at calculation time rather than here.
+	if settings.RMDTiming == "" {
+		settings.RMDTiming = models.RMDTimingStartOfYear
+	}
 }
 
 func parseLegacyAges(rawFields map[string]json.RawMessage) legacyAgeFields {
@@ -506,6 +515,9 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	}
 
 	settings.ProjectionTiming = models.NormalizeProjectionTiming(settings.ProjectionTiming)
+	// Do NOT normalize RMDTiming here: empty string is a valid sentinel meaning
+	// "new scenario, use mid-year at calculation time". The migration in
+	// initializeLoadedSettings handles legacy saved files.
 
 	// Ensure settings directory exists
 	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
@@ -952,6 +964,9 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	}
 	if v, ok := updates["projection_timing"].(models.ProjectionTiming); ok {
 		settings.ProjectionTiming = models.NormalizeProjectionTiming(v)
+	}
+	if v, ok := updates["rmd_timing"].(models.RMDTiming); ok {
+		settings.RMDTiming = v
 	}
 	if v, ok := updates["tax_deferred_delay_years"].(int); ok {
 		settings.TaxDeferredDelayYears = v

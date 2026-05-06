@@ -2095,7 +2095,7 @@ See F-057 through F-064 in Appendix C.
 | Surplus | +$286,883.35 | +$315,411.84 | +$28,528 |
 | Coverage ratio | 1.1× | 1.103× | negligible |
 
-All deltas are under $50,000. The PV income delta of ~$19K is consistent with the b978aa9 switch from simple-division monthly rate to geometric monthly rate (`(1+r)^(1/12)−1`), which lowers effective monthly discount and growth rates and increases PV of future income streams. PV expense delta of ~$9K moves in the opposite direction from the income delta, consistent with the same rate adjustment applied to expense discounting. These are INFO-level shifts, not a new bug. See F-070. The reference values in `docs/what-if-retirement-verification.md` should be refreshed post-b978aa9.
+All deltas are under $50,000. The PV income delta of ~$19K is consistent with the b978aa9 switch from simple-division monthly rate to geometric monthly rate (`(1+r)^(1/12)−1`), which lowers effective monthly discount and growth rates and increases PV of future income streams. PV expense delta of ~$9K moves in the opposite direction from the income delta, consistent with the same rate adjustment applied to expense discounting. These are INFO-level shifts, not a new bug. See F-070. **F-070 resolved:** `docs/what-if-retirement-verification.md` refreshed with current code output on 2026-05-06 (commit `5283e66`).
 
 ### Findings
 
@@ -3706,6 +3706,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** WE-10.4 test output: PV income 1,465,150.58 vs ref 1,445,806.64 (Δ+19,344); PV expenses 3,049,738.75 vs ref 3,058,923.29 (Δ−9,185); surplus 315,411.84 vs ref 286,883.35 (Δ+28,528).
 **Recommended fix sketch:** Re-run the live app with the same 2026-04-07 settings and update `docs/what-if-retirement-verification.md`. Alternatively, add a golden-value regression test that fails when the values change unexpectedly.
 **Test coverage note:** No regression test pins the PV values; changes to `PresentValueAnnuity` will silently shift them.
+
+**Resolution:** Closed by commit `5283e66` on `feat/whatif-fixes`. `docs/what-if-retirement-verification.md` refreshed with current code's output values (post-b978aa9 compounding fix and PRs 1-8 of the fix campaign). Future verification passes baseline against the new numbers.
 
 ---
 

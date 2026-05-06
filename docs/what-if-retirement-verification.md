@@ -1,7 +1,12 @@
 # What-If Retirement Verification
 
-This note records the verification pass for the live What-If planner values on
-2026-04-07.
+This note records the verification pass for the live What-If planner values.
+
+**Last refreshed:** 2026-05-06 — post-`b978aa9` compounding fix and
+post-`feat/whatif-fixes` PRs 1-8 (F-001, F-018, F-026, F-029, F-049,
+F-057, F-063, F-065 closed).
+
+---
 
 ## Scope
 
@@ -17,20 +22,22 @@ Verified the live `/whatif` page against the calculator output loaded from
 
 The saved Current Plan scenario used these key inputs:
 
-- Portfolio value: `$1,900,000`
-- Monthly living expenses: `$9,800`
+- Portfolio value: `$2,000,000`
+- Monthly living expenses: `$8,100` (base)
 - Projection start month: `2026-04`
 - Projection length: `31` years
 - Projection timing: `end_of_month`
 - Discount rate: `5%`
-- Inflation rate: `2.7%`
+- Inflation rate: `4.2%`
+- Investment return: `6%`
 - Tax-deferred allocation: `80%`
 - Roth allocation: `0%`
 - Per-account stock allocation: `80%` tax-deferred, `20%` taxable
-- Healthcare: Darrell Gallion on Medicare at `$550/mo`, Christine on ACA at `$1,150/mo`
-- Income sources: Darrell SSI `$4,000/mo` from month 0, Christine job `$2,000/mo` through month 48, Christine pension `$1,200/mo` from month 48, Christine SSI `$2,000/mo` from month 156
-- Spending phases enabled with `Go-Go` at `100%`, `Slow-Go` at `85%` from age 75, and `No-Go` at `85%` from age 85
-- Steady-state override year: `13`
+- Healthcare: Darrell Gallion on Medicare (`$650/mo` current, `$550/mo` Medicare), Christine on ACA (`$1,600/mo` current)
+- Income sources: Christine Pension `$1,200/mo` from month 48 (all other sources removed)
+- Social Security: Darrell FRA benefit `$4,100/mo` claimed at 67, spouse benefit `$1,500/mo` claimed at 62
+- Spending phases enabled with `Go-Go` at `1.05x`, `Slow-Go` at `0.95x` from age 73, and `No-Go` at `0.85x` from age 85
+- Steady-state override year: `4`
 
 Settings load normalizes `start_date`, derives working ages from `persons`, and
 recomputes linked healthcare ages before running the planner. For this scenario,
@@ -42,34 +49,34 @@ The live page matched the calculator output exactly after UI rounding:
 
 | Panel | Value | Verified output |
 | --- | --- | --- |
-| Current budget | Monthly expenses | `$11,500.00` |
-| Current budget | Monthly income | `$6,000.00` |
-| Current budget | Estimated taxes | `$35.00` |
-| Current budget | Taxable Social Security | `20%` |
-| Current budget | Monthly gap | `$5,535.00` shortfall |
-| Current budget | Required rate | `3.5%` |
-| Steady state | Year | `13` |
-| Steady state | Monthly expenses | `$13,617.70` |
-| Steady state | Monthly income | `$8,608.54` |
-| Steady state | Estimated RMD | `$13,374.80` |
-| Steady state | Estimated taxes | `$2,676.92` |
+| Current budget | Monthly expenses | `$10,755.00` |
+| Current budget | Monthly income | `$4,100.00` |
+| Current budget | Estimated taxes | `$0.00` |
+| Current budget | Taxable Social Security | `0%` |
+| Current budget | Monthly gap | `$6,655.00` shortfall |
+| Current budget | Required rate | `4.0%` |
+| Steady state | Year | `4` |
+| Steady state | Monthly expenses | `$14,367.71` |
+| Steady state | Monthly income | `$7,336.52` |
+| Steady state | Estimated RMD | `$8,638.74` |
+| Steady state | Estimated taxes | `$1,425.47` |
 | Steady state | Taxable Social Security | `85%` |
-| Steady state | Monthly gap | `+$5,688.72` surplus |
+| Steady state | Monthly gap | `-$182.08` surplus |
 | Steady state | Required rate | `0.0%` |
-| Present value | Total resources | `$3,345,806.64` |
-| Present value | PV income | `$1,445,806.64` |
-| Present value | PV expenses | `$3,058,923.29` |
-| Present value | Coverage ratio | `1.1x` |
-| Present value | Surplus / deficit | `+$286,883.35` |
+| Present value | Total resources | `$2,221,209.18` |
+| Present value | PV income | `$221,209.18` |
+| Present value | PV expenses | `$3,231,862.12` |
+| Present value | Coverage ratio | `0.7x` |
+| Present value | Surplus / deficit | `-$1,010,652.94` |
 | Portfolio longevity | Longevity | `31+ years` |
-| Portfolio longevity | Final balance, nominal | `$3,052,007.82` |
-| Portfolio longevity | Final balance, real | `$1,339,263.69` |
-| Projection explainability | Taxes consumed | `9.7%` |
-| Projection explainability | Cumulative inflation | `127.9%` |
-| Projection explainability | Inflation distortion removed in real mode | `56.1%` |
+| Portfolio longevity | Final balance, nominal | `$2,014,811.97` |
+| Portfolio longevity | Final balance, real | `$564,708.35` |
+| Projection explainability | Taxes consumed | `7.3%` |
+| Projection explainability | Cumulative inflation | `3.6%` |
+| Projection explainability | Inflation distortion removed in real mode | `72.0%` |
 
-The steady-state gap is negative in the calculator (`-5688.72`), meaning a
-surplus. The UI intentionally formats that as `+$5,688.72` with the `Surplus`
+The steady-state gap is negative in the calculator (`-182.08`), meaning a
+surplus. The UI intentionally formats that as `+$182.08` with the `Surplus`
 label.
 
 ## Verification Method

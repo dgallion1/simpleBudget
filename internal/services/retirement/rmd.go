@@ -71,6 +71,45 @@ func effectiveRMDStartAgeForBirthYear(birthYear int) int {
 	return 73
 }
 
+// olderBirthYear returns the older household member's birth year. Prefers
+// the BirthMonth on Person records; falls back to startYear - GetOlderAge()
+// for legacy callers that build settings without populating Persons. The
+// older person — the one with the earlier birth year — drives the
+// household's RMD timing per SECURE 2.0.
+func olderBirthYear(s *models.WhatIfSettings) int {
+	if s == nil {
+		return time.Now().Year() - 73
+	}
+	if y, ok := earliestPersonBirthYear(s); ok {
+		return y
+	}
+	return parseStartYear(s.StartDate) - s.GetOlderAge()
+}
+
+// FirstRMDCalendarYear returns the first calendar year in which the older
+// household member must take an RMD under SECURE 2.0. Equals the older
+// person's birth year + their applicable age (73 or 75). Anchors all
+// calendar-year RMD gating so floor'd integer ages can't slip the first
+// RMD year by one for late-year births.
+func FirstRMDCalendarYear(s *models.WhatIfSettings) int {
+	return olderBirthYear(s) + EffectiveRMDStartAge(s)
+}
+
+// RMDApplies reports whether RMD applies to the older household member in
+// the given calendar year.
+func RMDApplies(s *models.WhatIfSettings, calendarYear int) bool {
+	return calendarYear >= FirstRMDCalendarYear(s)
+}
+
+// RMDAgeForCalendarYear returns the age the older household member attains
+// by December 31 of the given calendar year. This is the age the IRS
+// Uniform Lifetime Table is keyed off, so it's the age that must be passed
+// to CalculateRMD — not the start-of-year floor'd age that GetOlderAge()
+// returns.
+func RMDAgeForCalendarYear(s *models.WhatIfSettings, calendarYear int) int {
+	return calendarYear - olderBirthYear(s)
+}
+
 // rmdTriggerMonth returns the month-of-year (0-11) at which the full
 // annual RMD is withdrawn for the given timing. F-074: the projection
 // applies the entire year's RMD as a single monthly amount in the trigger

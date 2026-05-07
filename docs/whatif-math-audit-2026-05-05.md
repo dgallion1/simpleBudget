@@ -3777,3 +3777,19 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Tests:**
 - 3 new tests in `rmd_timing_test.go`: `TestRMDTriggerMonth_F074_AllTimings` (helper unit), `TestProjection_F074_TimingAffectsYearEndBalance` (asserts ordering invariant + same annual total across timings), and `TestProjection_F074_TriggerMonthIsExclusive` (asserts only the trigger month has a non-zero `RMDWithdrawal`).
 - 1 existing test updated in `rmd_tax_test.go`: `TestRunProjectionDeductsTaxesFromRMDCashFlow` now explicitly sets `s.RMDTiming = RMDTimingStartOfYear` so its month-0 assertion remains valid; the test's purpose (tax deduction from RMD cash flow) is unchanged.
+
+### F-075 — HIGH — Projection and event timeline still gated on legacy `RMDStartAge=73` constant
+
+**Status:** RESOLVED in PR 3 of `feat/rmd-audit-followup` (extends F-032).
+
+**Location:** `internal/services/retirement/calculator.go` (six conditional gates: main projection year-boundary, budget-fit RMD, steady-state RMD, IRMAA lookback RMD, Monte Carlo year-boundary, plus the budget-fit single-month branch), `internal/services/retirement/backtest.go` (backtest year-boundary), and `internal/handlers/whatif/handlers.go:218-224` (event timeline "RMD starts" label).
+
+**Symptom:** `BuildRMDAnalysis` correctly switched to `EffectiveRMDStartAge(s)` in F-032 (returns 75 when `StartDate ≥ 2033-01`, else 73 — per SECURE 2.0 Act of 2022). Every projection-side gate, however, still compared `olderAge >= RMDStartAge` against the constant 73. For 2033+ scenarios the RMD panel said "RMDs start at 75" while the projection actually withdrew at 73 (e.g. a 73-year-old in 2033 with $1M tax-deferred saw a $37,735 RMD in month 0 of the projection), and the Whatif chart's "RMD starts in N years" event label was computed from 73 rather than 75. The panel and the projection disagreed for any plan starting in 2033 or later.
+
+**Cause:** F-032 only updated `BuildRMDAnalysis` and the Whatif analysis renderer. Six call sites in `calculator.go`, the backtest year-boundary in `backtest.go`, and the chart-event handler in `handlers.go` were missed. The legacy `RMDStartAge` constant is still meaningful as the SECURE 2.0 legal floor (the lowest possible RMD start age), so simply renaming it would have lost that semantic.
+
+**Fix:** Replaced six `RMDStartAge` comparisons in `calculator.go` (year-boundary projection gate, budget-fit gate, steady-state gate, IRMAA lookback gate, Monte Carlo year-boundary gate) plus the one in `backtest.go` (historical-sequence year-boundary) with `EffectiveRMDStartAge(s)` calls. The handler block in `handlers.go` now computes `effectiveStart := retirement.EffectiveRMDStartAge(settings)` once and uses it for both the threshold comparison and the years-until label. The `RMDStartAge` constant is retained as documentation of the SECURE 2.0 legal floor; only production conditional gates were migrated.
+
+**Tests:**
+- 3 new tests in `rmd_start_age_projection_test.go`: `TestProjection_F075_2033StartAge73NoRMD` (regression bar — the failing test before the fix; asserts no RMD for age 73 in 2033), `TestProjection_F075_2033StartAge75DoesRMD` (positive case at the new SECURE 2.0 threshold), and `TestProjection_F075_2026StartAge73DoesRMD` (legacy pre-2033 path still triggers RMD at 73).
+- 2 new tests in `handlers_test.go`: `TestBuildProjectionChartEvents_F075_RMDStartsUsesEffectiveAge` (2033+ start date → "RMD starts" event year is `75 - olderAge`) and `TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73` (pre-2033 start date → year is `73 - olderAge`).

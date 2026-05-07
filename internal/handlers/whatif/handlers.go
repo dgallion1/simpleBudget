@@ -215,9 +215,12 @@ func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *mod
 		}
 	}
 
+	// F-075: use EffectiveRMDStartAge (75 for 2033+ projections per SECURE 2.0)
+	// so the timeline label matches BuildRMDAnalysis and the projection engine.
 	olderAge := settings.GetOlderAge()
-	if olderAge < retirement.RMDStartAge {
-		appendEvent(float64(retirement.RMDStartAge-olderAge), "RMD starts")
+	effectiveStart := retirement.EffectiveRMDStartAge(settings)
+	if olderAge < effectiveStart {
+		appendEvent(float64(effectiveStart-olderAge), "RMD starts")
 	}
 
 	sort.Slice(events, func(i, j int) bool {

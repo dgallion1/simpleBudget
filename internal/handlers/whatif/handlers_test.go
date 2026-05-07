@@ -2982,6 +2982,57 @@ func TestBuildProjectionChartEvents_RMDNotAdded(t *testing.T) {
 	}
 }
 
+// F-075: event-timeline "RMD starts" label uses EffectiveRMDStartAge so
+// 2033+ scenarios show 75 - olderAge instead of 73 - olderAge.
+func TestBuildProjectionChartEvents_F075_RMDStartsUsesEffectiveAge(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.CurrentAge = 70
+	settings.SpouseAge = 0
+	settings.ProjectionYears = 15
+	settings.StartDate = "2033-01" // SECURE 2.0: effective RMD age = 75
+
+	projection := sampleProjectionForChart()
+	events := buildProjectionChartEvents(settings, projection)
+
+	var found bool
+	for _, e := range events {
+		if e.Label == "RMD starts" {
+			found = true
+			if e.Year != 5 { // 75 - 70 = 5 (not 73 - 70 = 3)
+				t.Errorf("RMD starts year = %v; want 5 (2033+ effective start age 75 minus current 70)", e.Year)
+			}
+		}
+	}
+	if !found {
+		t.Error("RMD starts event not found in timeline")
+	}
+}
+
+// F-075: pre-2033 scenarios still surface "RMD starts" at age 73 minus olderAge.
+func TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.CurrentAge = 70
+	settings.SpouseAge = 0
+	settings.ProjectionYears = 15
+	settings.StartDate = "2026-01" // pre-SECURE-2.0 transition: age 73
+
+	projection := sampleProjectionForChart()
+	events := buildProjectionChartEvents(settings, projection)
+
+	var found bool
+	for _, e := range events {
+		if e.Label == "RMD starts" {
+			found = true
+			if e.Year != 3 { // 73 - 70 = 3
+				t.Errorf("RMD starts year = %v; want 3 (pre-2033 start age 73 minus current 70)", e.Year)
+			}
+		}
+	}
+	if !found {
+		t.Error("RMD starts event not found in timeline")
+	}
+}
+
 // ── Spending phases with base phase fallback ───────────────────────────────
 
 func TestHandleWhatIfSpendingPhases_BasePhasePreserved(t *testing.T) {

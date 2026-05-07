@@ -246,7 +246,8 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 			// F-074: see PR 2 — annualRMD computed once per year, applied
 			// only in the trigger month inside the month loop.
-			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ per SECURE 2.0).
+			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
 				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 			} else {
 				annualRMD = 0

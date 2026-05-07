@@ -1107,7 +1107,9 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			// F-074: compute annualRMD once per year on year-start tax-deferred
 			// balance (matches IRS "December 31 prior year" rule). Per-month
 			// monthlyRMD is set inside the month loop based on RMDTiming.
-			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ projections per
+			// SECURE 2.0) so projection matches the BuildRMDAnalysis panel.
+			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
 				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 			} else {
 				annualRMD = 0
@@ -1460,11 +1462,11 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		})
 	}
 
-	// Calculate RMD if age 73+ and have tax-deferred balance
-	// Uses older person's age - whoever hits 73 first triggers RMD
+	// Calculate RMD if older spouse has reached the effective RMD start age
+	// (73 pre-2033, 75 from 2033 onward per SECURE 2.0 — F-075).
 	monthlyRMD := 0.0
 	olderAge := s.GetOlderAge()
-	if olderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+	if olderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
 		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 		annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
 		monthlyRMD = annualRMD / 12
@@ -1577,10 +1579,12 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		steadyStateTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, steadyStateTaxableBalance, taxableAnnualReturn)
 		result.SteadyStateIncome += steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
 
-		// Calculate RMD at steady state age (uses older person's age)
+		// Calculate RMD at steady state age (uses older person's age).
+		// F-075: gate on EffectiveRMDStartAge so 2033+ projections honor the
+		// SECURE 2.0 age-75 threshold here too.
 		steadyStateOlderAge := s.GetOlderAge() + (steadyStateMonth / 12)
 		estimatedTaxDeferred := 0.0
-		if steadyStateOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+		if steadyStateOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
 			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
 			estimatedTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 				math.Pow(1+effectiveReturn/100, yearsToSteadyState)
@@ -1599,7 +1603,8 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 			lookbackOlderAge := s.GetOlderAge() + (lookbackMonth / 12)
 			lookbackTaxDeferred := 0.0
 			lookbackRMD := 0.0
-			if lookbackOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+			// F-075: gate on EffectiveRMDStartAge for SECURE 2.0 2033+ rule.
+			if lookbackOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
 				lookbackTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 					math.Pow(1+effectiveReturn/100, yearsToLookback)
 				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, lookbackOlderAge)
@@ -2417,7 +2422,8 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 			// F-074: see PR 2 — annualRMD computed once per year, applied
 			// only in the trigger month inside the month loop.
-			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ per SECURE 2.0).
+			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
 				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 			} else {
 				annualRMD = 0

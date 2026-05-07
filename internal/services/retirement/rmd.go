@@ -9,15 +9,33 @@ import (
 // RMD start age per IRS rules (SECURE 2.0 Act)
 const RMDStartAge = 73
 
-// EffectiveRMDStartAge returns the SECURE 2.0 RMD start age for the
-// projection's start year. 73 for projections starting before 2033;
-// 75 for projections starting 2033 or later (per SECURE 2.0 Act of 2022).
+// EffectiveRMDStartAge returns the SECURE 2.0 RMD applicable age for the
+// older person in the household. Per SECURE 2.0 §107 and IRS Notice 2023-23,
+// the applicable age is determined by the calendar year the person attains
+// age 73:
+//
+//   - Attains age 73 in 2032 or earlier (born 1959 or earlier) → 73
+//   - Attains age 73 in 2033 or later  (born 1960 or later)   → 75
+//
+// The older spouse drives the household's RMD timing, so this function uses
+// GetOlderAge() against the projection's start year to derive the relevant
+// birth year. F-077: prior implementation keyed off StartDate.Year() alone,
+// which produced the wrong answer for any projection that begins before
+// 2033 with a person born in 1960 or later.
 func EffectiveRMDStartAge(s *models.WhatIfSettings) int {
 	if s == nil {
 		return 73
 	}
-	year := parseStartYear(s.StartDate)
-	if year >= 2033 {
+	startYear := parseStartYear(s.StartDate)
+	olderBirthYear := startYear - s.GetOlderAge()
+	return effectiveRMDStartAgeForBirthYear(olderBirthYear)
+}
+
+// effectiveRMDStartAgeForBirthYear returns the SECURE 2.0 RMD applicable age
+// for a person born in the given calendar year. Boundary: birth year ≥ 1960
+// → 75 (attains 73 in 2033 or later); otherwise → 73.
+func effectiveRMDStartAgeForBirthYear(birthYear int) int {
+	if birthYear+73 >= 2033 {
 		return 75
 	}
 	return 73

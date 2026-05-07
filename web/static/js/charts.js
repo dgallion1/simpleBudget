@@ -528,25 +528,37 @@ window.addEventListener('themechange', function() {
 
 // Guardrail-comparison overlay: when toggled on, fetch the no-guardrails projection
 // and add a dashed series alongside the primary balance line.
+function setCompareButtonState(button, pressed) {
+    button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    if (pressed) {
+        button.classList.remove('bg-white', 'dark:bg-gray-700', 'text-gray-600', 'dark:text-gray-200');
+        button.classList.add('bg-indigo-600', 'text-white');
+    } else {
+        button.classList.remove('bg-indigo-600', 'text-white');
+        button.classList.add('bg-white', 'dark:bg-gray-700', 'text-gray-600', 'dark:text-gray-200');
+    }
+}
+
 function toggleGuardrailCompareOverlay(card, button) {
     if (!card || !button) return;
     const chart = card.querySelector('#chart-projection');
-    if (!chart || !chart._fullData) return; // Plotly hasn't rendered yet
+    if (!chart || !chart.data) return; // Plotly hasn't rendered yet
 
     const isPressed = button.getAttribute('aria-pressed') === 'true';
     if (isPressed) {
         // Remove overlay
-        const overlayIdx = chart._fullData.findIndex(t => t.name === 'Without guardrails');
+        const overlayIdx = chart.data.findIndex(t => t.name === 'Without guardrails');
         if (overlayIdx >= 0) {
             Plotly.deleteTraces(chart, overlayIdx);
         }
-        button.setAttribute('aria-pressed', 'false');
-        button.classList.remove('bg-indigo-600', 'text-white');
-        button.classList.add('bg-white', 'dark:bg-gray-700', 'text-gray-600', 'dark:text-gray-200');
+        setCompareButtonState(button, false);
         return;
     }
 
-    // Add overlay
+    // Optimistic lock: flip button state synchronously so a rapid double-click
+    // is detected as already-pressed and no second fetch is issued. Reverted in .catch.
+    setCompareButtonState(button, true);
+
     const baseUrl = '/whatif/chart/projection/no-guardrails';
     const primaryUrl = chart.getAttribute('data-chart-url') || '';
     const mode = primaryUrl.includes('display_dollars=real') ? 'real' : 'nominal';
@@ -568,12 +580,10 @@ function toggleGuardrailCompareOverlay(card, button) {
                 hoverinfo: 'x+y+name'
             };
             Plotly.addTraces(chart, overlay);
-            button.setAttribute('aria-pressed', 'true');
-            button.classList.remove('bg-white', 'dark:bg-gray-700', 'text-gray-600', 'dark:text-gray-200');
-            button.classList.add('bg-indigo-600', 'text-white');
         })
         .catch(err => {
             console.error('Failed to load no-guardrails overlay:', err);
+            setCompareButtonState(button, false);
         });
 }
 

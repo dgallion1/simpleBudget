@@ -8325,6 +8325,21 @@ func TestHandleWhatIfProjectionChartNoGuardrails(t *testing.T) {
 	if data["data"] == nil {
 		t.Fatal("expected chart data array")
 	}
+
+	// Sanity: the no-guardrails endpoint must produce a different balance series
+	// than the guardrails-on endpoint with the same settings. If they were equal,
+	// the handler is failing to disable guardrails (e.g., clone.Guardrails = nil
+	// got dropped). With InvestmentReturn=0 and a hair-trigger cut, the two paths
+	// must diverge.
+	wOn := httptest.NewRecorder()
+	reqOn := httptest.NewRequest("GET", "/whatif/chart/projection?display_dollars=nominal", nil)
+	handleWhatIfProjectionChart(wOn, reqOn)
+	if wOn.Code != http.StatusOK {
+		t.Fatalf("guardrails-on status = %d", wOn.Code)
+	}
+	if w.Body.String() == wOn.Body.String() {
+		t.Errorf("no-guardrails response is byte-identical to guardrails-on response; clone.Guardrails = nil may have been dropped")
+	}
 }
 
 // The no-guardrails projection must be insensitive to the configured guardrail thresholds —

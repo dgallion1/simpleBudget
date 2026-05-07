@@ -726,6 +726,10 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
 		s.CurrentAge = 75 // Above RMDStartAge (73)
+		// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so
+		// RMDApplies/RMDAgeForCalendarYear see a birth year that's actually
+		// >= the SECURE 2.0 RMD age this calendar year.
+		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 		s.TaxDeferredPercent = 80
 		s.RothPercent = 10
 		s.SpendingPhaseConfig = nil
@@ -766,6 +770,8 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
 		s.CurrentAge = 75
+		// F-078: sync BirthMonth so RMDApplies sees the right birth year.
+		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 		s.TaxDeferredPercent = 90
 		s.RothPercent = 5
 		s.SpendingPhaseConfig = nil
@@ -807,6 +813,8 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
 		s.CurrentAge = 75
+		// F-078: sync BirthMonth so RMDApplies sees the right birth year.
+		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 		s.TaxDeferredPercent = 70
 		s.RothPercent = 10
 		s.SpendingPhaseConfig = nil

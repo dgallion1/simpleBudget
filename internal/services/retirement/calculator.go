@@ -1463,13 +1463,15 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		})
 	}
 
-	// Calculate RMD if older spouse has reached the effective RMD start age
-	// (73 pre-2033, 75 from 2033 onward per SECURE 2.0 — F-075).
+	// F-078: first-year snapshot gates on calendar year vs FirstRMDCalendarYear
+	// and uses RMDAgeForCalendarYear so a household where the older person
+	// turns 73 later this calendar year still produces a non-zero current
+	// snapshot (and uses the right UL Table row).
 	monthlyRMD := 0.0
-	olderAge := s.GetOlderAge()
-	if olderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
+	currentCalendarYear := parseStartYear(s.StartDate)
+	if RMDApplies(s, currentCalendarYear) && s.TaxDeferredPercent > 0 {
 		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-		annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
+		annualRMD, _ := CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, currentCalendarYear))
 		monthlyRMD = annualRMD / 12
 	}
 

@@ -3745,3 +3745,19 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Tests:**
 - 7 unit tests in `rmd_test.go` covering depletion before/during/after RMD, SECURE 2.0 transition, already-at-RMD-age, zero TaxDeferredPercent, and IRS-table percent semantics.
 - 2 integration tests in `calculator_test.go`: `TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows` (regression bar for the user-reported bug) and `TestRunFullAnalysis_F072_RMDMatchesProjection` (structural invariant).
+
+### F-073 — HIGH — Surplus RMD reported as net (after-tax) instead of gross taxable distribution
+
+**Status:** RESOLVED in PR 1 of `feat/rmd-audit-followup` (extends F-049).
+
+**Location:** `internal/services/retirement/calculator.go:776-801` (function) and `calculator.go:847-860` (the two callers in `executePortfolioCashFlowWithTaxableState`).
+
+**Symptom:** During every surplus-RMD month (RMD forced but not all needed for expenses), `result.RMDWithdrawal` and `result.WithdrawalFromTaxDeferred` carried the *net* (after-tax) reinvestment amount instead of the *gross* IRS distribution. Downstream `grossIncome` aggregation (calculator.go:1252) then understated ordinary income, federal/state tax, MAGI/IRMAA tier, and RMD-analysis totals by exactly `gross × marginalRate` per month — e.g. a $5,000 RMD at 22% marginal silently reported $3,900 instead of $5,000.
+
+**Cause:** F-049 fixed the *basis* contract (taxable deposit and basis are correctly net-of-tax) but the function still returned only the net amount, and both callers stored that single return value into `RMDWithdrawal` / `WithdrawalFromTaxDeferred`. The reported distribution and the deposited basis were conflated.
+
+**Fix:** `reinvestRequiredRMDToTaxableState` now returns `(gross, net float64)`. Both callers in `executePortfolioCashFlowWithTaxableState` (the surplus `else` branch and the partial-shortfall `unmetRMD > 0` branch) use the gross value for `RMDWithdrawal` and `WithdrawalFromTaxDeferred`. The taxable-account deposit and basis remain net (F-049 contract preserved). Tax-deferred is decremented by the gross amount, which matches the legal IRS distribution.
+
+**Tests:**
+- 2 new tests in `calculator_rmd_gross_test.go`: `TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross` (pure surplus path) and `TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross` (mixed path where RMD partially covers expenses).
+- 3 existing F-049 tests in `taxable_simulation_test.go` updated to destructure both return values, asserting gross == 10,000 and net == 7,800 (or appropriate clamp-result) on each path.

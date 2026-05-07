@@ -778,13 +778,19 @@ func executeTaxAwarePortfolioMonth(
 // amount is decremented from tax-deferred (the gross RMD is the legal
 // distribution); the after-tax portion (gross × (1 - marginalRate)) is
 // added to the taxable account with that net amount as cost basis. Returns
-// the net amount added to taxable.
+// (gross, net) — gross is the IRS distribution amount that callers must
+// report as ordinary taxable income; net is the cash actually deposited into
+// the taxable account.
 //
 // F-049: prior implementation used gross as both reinvested amount and
 // basis, which silently understated future LTCG on later withdrawals.
-func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState) float64 {
+// F-073: prior implementation returned only the net amount; callers
+// stored that net into RMDWithdrawal and WithdrawalFromTaxDeferred, which
+// understated ordinary income, taxes, MAGI, and RMD-analysis totals by
+// exactly gross × marginalRate every surplus-RMD month.
+func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState) (gross, net float64) {
 	if monthlyRMD <= 0 || *taxDeferredBalance <= 0 {
-		return 0
+		return 0, 0
 	}
 	if marginalRate < 0 {
 		marginalRate = 0
@@ -793,11 +799,11 @@ func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDefe
 		marginalRate = 1
 	}
 
-	rmdWithdrawal := math.Min(monthlyRMD, *taxDeferredBalance)
-	*taxDeferredBalance -= rmdWithdrawal
-	netAfterTax := rmdWithdrawal * (1 - marginalRate)
-	taxable.addCash(netAfterTax)
-	return netAfterTax
+	gross = math.Min(monthlyRMD, *taxDeferredBalance)
+	*taxDeferredBalance -= gross
+	net = gross * (1 - marginalRate)
+	taxable.addCash(net)
+	return gross, net
 }
 
 func applyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) float64 {
@@ -846,17 +852,17 @@ func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 
 		unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
 		if unmetRMD > 0 {
-			reinvested := reinvestRequiredRMDToTaxableState(unmetRMD, marginalRate, taxDeferredBalance, taxable)
-			result.RMDWithdrawal += reinvested
-			result.WithdrawalFromTaxDeferred += reinvested
+			gross, _ := reinvestRequiredRMDToTaxableState(unmetRMD, marginalRate, taxDeferredBalance, taxable)
+			result.RMDWithdrawal += gross
+			result.WithdrawalFromTaxDeferred += gross
 		}
 	} else {
 		if neededFromPortfolio < 0 {
 			taxable.addCash(math.Abs(neededFromPortfolio))
 		}
-		reinvested := reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate, taxDeferredBalance, taxable)
-		result.RMDWithdrawal = reinvested
-		result.WithdrawalFromTaxDeferred += reinvested
+		gross, _ := reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate, taxDeferredBalance, taxable)
+		result.RMDWithdrawal = gross
+		result.WithdrawalFromTaxDeferred += gross
 	}
 
 	return result

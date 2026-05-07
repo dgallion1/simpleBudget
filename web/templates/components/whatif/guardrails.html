@@ -88,7 +88,7 @@
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Guardrail Events</h3>
     <div class="space-y-1">
         {{range .Analysis.Projection.GuardrailEvents}}
-        <div class="flex items-center justify-between text-sm py-1 px-2 rounded {{if eq .Type "cut"}}bg-red-50 dark:bg-red-900/20{{else}}bg-green-50 dark:bg-green-900/20{{end}}">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-sm py-1 px-2 rounded {{if eq .Type "cut"}}bg-red-50 dark:bg-red-900/20{{else}}bg-green-50 dark:bg-green-900/20{{end}}">
             <span class="text-gray-700 dark:text-gray-300">
                 Year {{.Year}}:
                 {{if eq .Type "cut"}}
@@ -97,6 +97,11 @@
                 <span class="text-green-600 dark:text-green-400">Raise to {{printf "%.0f" (mul .Multiplier 100)}}%</span>
                 {{end}}
             </span>
+            {{if and (gt .MonthlySpendingBefore 0.0) (gt .MonthlySpendingAfter 0.0)}}
+            <span data-event-spending-delta class="text-xs tabular-nums {{if eq .Type "cut"}}text-red-600 dark:text-red-300{{else}}text-green-600 dark:text-green-300{{end}}">
+                {{formatMoney .MonthlySpendingBefore}}/mo → {{formatMoney .MonthlySpendingAfter}}/mo
+            </span>
+            {{end}}
             <span class="text-xs text-gray-500 dark:text-gray-400">Portfolio: {{formatMoney .Portfolio}}</span>
         </div>
         {{end}}

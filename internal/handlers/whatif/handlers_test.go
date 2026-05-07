@@ -8247,3 +8247,43 @@ func TestHandleWhatIf_BreakdownShowsGuardrailEffect(t *testing.T) {
 		t.Errorf("expected data-planned-spending marker in breakdown body, not found")
 	}
 }
+
+func TestHandleWhatIf_EventsPanelShowsDollarDelta(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled:         true,
+		FloorDropPct:    1,
+		FloorCutPct:     10,
+		CeilingRisePct:  500,
+		CeilingRaisePct: 10,
+		MinSpendingPct:  50,
+		MaxSpendingPct:  150,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif", nil)
+	handleWhatIf(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "data-event-spending-delta") {
+		t.Errorf("expected data-event-spending-delta marker in events panel, not found")
+	}
+}

@@ -17,18 +17,48 @@ const RMDStartAge = 73
 //   - Attains age 73 in 2032 or earlier (born 1959 or earlier) → 73
 //   - Attains age 73 in 2033 or later  (born 1960 or later)   → 75
 //
-// The older spouse drives the household's RMD timing, so this function uses
-// GetOlderAge() against the projection's start year to derive the relevant
-// birth year. F-077: prior implementation keyed off StartDate.Year() alone,
-// which produced the wrong answer for any projection that begins before
-// 2033 with a person born in 1960 or later.
+// The older spouse drives the household's RMD timing. F-077 fixup: when any
+// Person.BirthMonth is set, derive the birth year directly from it — the
+// floor'd integer ages on WhatIfSettings (CurrentAge/SpouseAge) read 1 year
+// low whenever the birthday hasn't yet occurred in StartDate's calendar year,
+// which silently pushed people born late in 1959 onto the post-2032 (age 75)
+// rule. Falls back to startYear - GetOlderAge() only for legacy callers that
+// build settings without populating Persons.
 func EffectiveRMDStartAge(s *models.WhatIfSettings) int {
 	if s == nil {
 		return 73
 	}
+	if year, ok := earliestPersonBirthYear(s); ok {
+		return effectiveRMDStartAgeForBirthYear(year)
+	}
 	startYear := parseStartYear(s.StartDate)
 	olderBirthYear := startYear - s.GetOlderAge()
 	return effectiveRMDStartAgeForBirthYear(olderBirthYear)
+}
+
+// earliestPersonBirthYear returns the earliest (oldest) parseable BirthMonth
+// year across primary and spouse. Only the year matters for the SECURE 2.0
+// cusp, and the older person — the one with the earlier birth year — drives
+// the household's RMD timing.
+func earliestPersonBirthYear(s *models.WhatIfSettings) (int, bool) {
+	candidates := []*models.Person{s.GetPrimaryPerson(), s.GetSpousePerson()}
+	earliest := 0
+	found := false
+	for _, p := range candidates {
+		if p == nil || p.BirthMonth == "" {
+			continue
+		}
+		t, err := time.Parse("2006-01", p.BirthMonth)
+		if err != nil {
+			continue
+		}
+		y := t.Year()
+		if !found || y < earliest {
+			earliest = y
+			found = true
+		}
+	}
+	return earliest, found
 }
 
 // effectiveRMDStartAgeForBirthYear returns the SECURE 2.0 RMD applicable age

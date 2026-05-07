@@ -73,6 +73,7 @@ func TestProjection_F077_BornBefore1960ReachesRMDAt73(t *testing.T) {
 	s.InflationRate = 0
 	s.ProjectionYears = 10
 	s.StartDate = "2026-01"
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
 	proj := NewCalculator(s).RunProjection()
@@ -111,6 +112,13 @@ func TestProjection_F077_OlderSpouseDrivesRMDAge(t *testing.T) {
 	s.InflationRate = 0
 	s.ProjectionYears = 5
 	s.StartDate = "2026-01"
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
+	s.Persons = append(s.Persons, models.Person{
+		ID:         "spouse-test",
+		Name:       "Spouse",
+		Role:       models.PersonRoleSpouse,
+		BirthMonth: models.BirthMonthForAge(s.StartDate, s.SpouseAge),
+	})
 	s.RMDTiming = models.RMDTimingStartOfYear
 
 	proj := NewCalculator(s).RunProjection()
@@ -151,5 +159,94 @@ func TestEffectiveRMDStartAge_F077_BirthYearBoundary(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: EffectiveRMDStartAge = %d; want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// F-077 fixup: when Person.BirthMonth is set, applicable age must derive from
+// the actual birth year, not the floor'd integer age. Prior code used
+// startYear - GetOlderAge(); for a Dec 1959 birthday and a Jan 2026 start,
+// the floor'd age is 66 → derived birth year 1960 → wrong answer 75. Real
+// birth year 1959 should keep applicable age at 73 per SECURE 2.0.
+func TestEffectiveRMDStartAge_F077Fixup_BirthMonthBeatsAgeFloor(t *testing.T) {
+	cases := []struct {
+		name             string
+		primaryBirth     string
+		spouseBirth      string
+		startDate        string
+		wantApplicable   int
+		wantOlderAgeOnly int // documents legacy fallback to assert it would have failed
+	}{
+		{
+			name:             "primary born Dec 1959, Jan 2026 start → 73 (was 75)",
+			primaryBirth:     "1959-12",
+			startDate:        "2026-01",
+			wantApplicable:   73,
+			wantOlderAgeOnly: 75,
+		},
+		{
+			name:             "primary born Jan 1959, Jan 2026 start → 73 (matches legacy)",
+			primaryBirth:     "1959-01",
+			startDate:        "2026-01",
+			wantApplicable:   73,
+			wantOlderAgeOnly: 73,
+		},
+		{
+			name:             "primary born Dec 1960, Jan 2026 start → 75 (right answer either way)",
+			primaryBirth:     "1960-12",
+			startDate:        "2026-01",
+			wantApplicable:   75,
+			wantOlderAgeOnly: 75,
+		},
+		{
+			name:             "older spouse born Nov 1959, primary 1965 → 73 (was 75)",
+			primaryBirth:     "1965-06",
+			spouseBirth:      "1959-11",
+			startDate:        "2026-01",
+			wantApplicable:   73,
+			wantOlderAgeOnly: 75,
+		},
+		{
+			name:             "both born 1959 with late months → 73 (was 75)",
+			primaryBirth:     "1959-12",
+			spouseBirth:      "1959-11",
+			startDate:        "2026-01",
+			wantApplicable:   73,
+			wantOlderAgeOnly: 75,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := models.DefaultWhatIfSettings()
+			s.StartDate = c.startDate
+			s.Persons = []models.Person{
+				{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: c.primaryBirth},
+			}
+			if c.spouseBirth != "" {
+				s.Persons = append(s.Persons, models.Person{
+					ID: "s1", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: c.spouseBirth,
+				})
+			}
+			s.ComputeAges()
+
+			got := EffectiveRMDStartAge(s)
+			if got != c.wantApplicable {
+				t.Errorf("EffectiveRMDStartAge = %d; want %d (CurrentAge=%d, SpouseAge=%d)",
+					got, c.wantApplicable, s.CurrentAge, s.SpouseAge)
+			}
+		})
+	}
+}
+
+// F-077 fixup: when no Person has BirthMonth set (legacy code paths that
+// build WhatIfSettings with raw CurrentAge/SpouseAge), the function must
+// preserve the existing startYear - olderAge derivation so older callers
+// keep working.
+func TestEffectiveRMDStartAge_F077Fixup_LegacyFallbackUnchanged(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate:  "2026-01",
+		CurrentAge: 66, // legacy: no BirthMonth, age implies birth year 1960 → 75
+	}
+	if got := EffectiveRMDStartAge(s); got != 75 {
+		t.Errorf("legacy fallback (no BirthMonth, age 66, 2026 start) = %d; want 75", got)
 	}
 }

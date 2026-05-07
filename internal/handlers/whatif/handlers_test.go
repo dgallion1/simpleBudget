@@ -3015,6 +3015,7 @@ func TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73(t *testing.T) {
 	settings.SpouseAge = 0
 	settings.ProjectionYears = 15
 	settings.StartDate = "2026-01" // pre-SECURE-2.0 transition: age 73
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, settings.CurrentAge)
 
 	projection := sampleProjectionForChart()
 	events := buildProjectionChartEvents(settings, projection)

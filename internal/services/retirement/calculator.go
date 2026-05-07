@@ -1582,16 +1582,14 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		steadyStateTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, steadyStateTaxableBalance, taxableAnnualReturn)
 		result.SteadyStateIncome += steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
 
-		// Calculate RMD at steady state age (uses older person's age).
-		// F-075: gate on EffectiveRMDStartAge so 2033+ projections honor the
-		// SECURE 2.0 age-75 threshold here too.
-		steadyStateOlderAge := s.GetOlderAge() + (steadyStateMonth / 12)
+		// F-078: gate on calendar year + use age-at-year-end for the divisor.
+		steadyStateCalendarYear := parseStartYear(s.StartDate) + (steadyStateMonth / 12)
 		estimatedTaxDeferred := 0.0
-		if steadyStateOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
+		if RMDApplies(s, steadyStateCalendarYear) && s.TaxDeferredPercent > 0 {
 			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
 			estimatedTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 				math.Pow(1+effectiveReturn/100, yearsToSteadyState)
-			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, steadyStateOlderAge)
+			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, RMDAgeForCalendarYear(s, steadyStateCalendarYear))
 			result.SteadyStateRMD = annualRMD / 12
 		}
 
@@ -1603,14 +1601,14 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 			lookbackTaxableBalance := taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToLookback)
 			lookbackTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, lookbackTaxableBalance, taxableAnnualReturn)
 
-			lookbackOlderAge := s.GetOlderAge() + (lookbackMonth / 12)
+			lookbackCalendarYear := parseStartYear(s.StartDate) + (lookbackMonth / 12)
 			lookbackTaxDeferred := 0.0
 			lookbackRMD := 0.0
-			// F-075: gate on EffectiveRMDStartAge for SECURE 2.0 2033+ rule.
-			if lookbackOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
+			// F-078: calendar-year gate + age-at-year-end divisor.
+			if RMDApplies(s, lookbackCalendarYear) && s.TaxDeferredPercent > 0 {
 				lookbackTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 					math.Pow(1+effectiveReturn/100, yearsToLookback)
-				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, lookbackOlderAge)
+				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, RMDAgeForCalendarYear(s, lookbackCalendarYear))
 				lookbackRMD = annualRMD / 12
 			}
 

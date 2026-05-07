@@ -2970,6 +2970,9 @@ func TestBuildProjectionChartData_MultipleEventsAtSameYear(t *testing.T) {
 func TestBuildProjectionChartEvents_RMDNotAdded(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.CurrentAge = 80 // Already past RMD age
+	// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so the
+	// calendar-year RMD gate sees the intended birth year.
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, settings.CurrentAge)
 	settings.ProjectionYears = 15
 
 	projection := sampleProjectionForChart()
@@ -2990,6 +2993,9 @@ func TestBuildProjectionChartEvents_F075_RMDStartsUsesEffectiveAge(t *testing.T)
 	settings.SpouseAge = 0
 	settings.ProjectionYears = 15
 	settings.StartDate = "2033-01" // SECURE 2.0: effective RMD age = 75
+	// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so the
+	// calendar-year RMD gate sees the intended birth year.
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, settings.CurrentAge)
 
 	projection := sampleProjectionForChart()
 	events := buildProjectionChartEvents(settings, projection)
@@ -3032,6 +3038,36 @@ func TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73(t *testing.T) {
 	if !found {
 		t.Error("RMD starts event not found in timeline")
 	}
+}
+
+// F-078: the "RMD starts" event-timeline label must use the calendar year
+// of first RMD (FirstRMDCalendarYear), not floor'd-age arithmetic. For a
+// primary born 1959-12 with StartDate=2026-01, RMDs start in calendar
+// year 2032 → 6 years from start, not 7.
+func TestProjectionChartEvents_F078_RMDStartsLabel_LateYearBirth(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-01"
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
+	}
+	s.ComputeAges()
+	s.PortfolioValue = 1_000_000
+	s.TaxDeferredPercent = 100
+	s.ProjectionYears = 10
+
+	calc := retirement.NewCalculator(s)
+	proj := calc.RunProjection()
+	events := buildProjectionChartEvents(s, proj)
+
+	for _, e := range events {
+		if e.Label == "RMD starts" {
+			if e.Year != 6 {
+				t.Errorf("RMD starts event year = %.2f; want 6 (born 1959-12, first RMD calendar 2032)", e.Year)
+			}
+			return
+		}
+	}
+	t.Fatalf("no 'RMD starts' event in %+v", events)
 }
 
 // ── Spending phases with base phase fallback ───────────────────────────────

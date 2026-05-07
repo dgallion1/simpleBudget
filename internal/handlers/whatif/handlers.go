@@ -170,6 +170,20 @@ func humanizeScenarioFilename(filename string) string {
 	return cases.Title(language.English).String(name)
 }
 
+// parseProjectionStartYear extracts the year from a "YYYY-MM" StartDate.
+// Falls back to the current calendar year on parse failure (mirrors
+// retirement.parseStartYear, which is unexported in that package).
+func parseProjectionStartYear(startDate string) int {
+	if startDate == "" {
+		return time.Now().Year()
+	}
+	t, err := time.Parse("2006-01", startDate)
+	if err != nil {
+		return time.Now().Year()
+	}
+	return t.Year()
+}
+
 func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *models.ProjectionResult) []projectionChartEvent {
 	if settings == nil || projection == nil {
 		return nil
@@ -215,12 +229,13 @@ func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *mod
 		}
 	}
 
-	// F-075: use EffectiveRMDStartAge (75 for 2033+ projections per SECURE 2.0)
-	// so the timeline label matches BuildRMDAnalysis and the projection engine.
-	olderAge := settings.GetOlderAge()
-	effectiveStart := retirement.EffectiveRMDStartAge(settings)
-	if olderAge < effectiveStart {
-		appendEvent(float64(effectiveStart-olderAge), "RMD starts")
+	// F-078: use calendar-year arithmetic so late-year births land on the
+	// right offset. FirstRMDCalendarYear knows about BirthMonth; floor'd
+	// age subtraction does not.
+	startYear := parseProjectionStartYear(settings.StartDate)
+	firstRMDYear := retirement.FirstRMDCalendarYear(settings)
+	if firstRMDYear > startYear {
+		appendEvent(float64(firstRMDYear-startYear), "RMD starts")
 	}
 
 	sort.Slice(events, func(i, j int) bool {

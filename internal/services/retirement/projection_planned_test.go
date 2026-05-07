@@ -35,23 +35,31 @@ func TestProjection_PlannedFields_NoGuardrails(t *testing.T) {
 	}
 }
 
-// With guardrails enabled and a forced cut, post-cut months must show:
-//
-//	GuardrailMultiplier < 1.0
-//	PlannedLivingExpenses unchanged (planned line is multiplier-independent)
-func TestProjection_PlannedFields_WithCut(t *testing.T) {
+// cutTriggeringSettings produces a fixture that forces a guardrail floor cut
+// in year 1: zero growth + high spending + hair-trigger drop pct. Used by every
+// guardrail-active test in this file.
+func cutTriggeringSettings() *models.WhatIfSettings {
 	s := defaultSettingsForTest()
 	s.InvestmentReturn = 0        // no growth so portfolio shrinks under spending pressure
 	s.MonthlyLivingExpenses = 8000 // large enough to deplete >1% of $1M portfolio per year
 	s.Guardrails = &models.GuardrailConfig{
 		Enabled:         true,
-		FloorDropPct:    1,  // hair-trigger so a cut fires near year 1
+		FloorDropPct:    1, // hair-trigger so a cut fires near year 1
 		FloorCutPct:     10,
 		CeilingRisePct:  500, // disabled in practice
 		CeilingRaisePct: 10,
 		MinSpendingPct:  50,
 		MaxSpendingPct:  150,
 	}
+	return s
+}
+
+// With guardrails enabled and a forced cut, post-cut months must show:
+//
+//	GuardrailMultiplier < 1.0
+//	PlannedLivingExpenses unchanged (planned line is multiplier-independent)
+func TestProjection_PlannedFields_WithCut(t *testing.T) {
+	s := cutTriggeringSettings()
 
 	calc := NewCalculator(s)
 	result := calc.RunFullAnalysis()
@@ -77,11 +85,16 @@ func TestProjection_PlannedFields_WithCut(t *testing.T) {
 	}
 }
 
-// YearSummary.PlannedExpenses must equal Expenses when guardrails are disabled.
-// When a cut fires mid-projection, PlannedExpenses must exceed Expenses for that year.
+// YearSummary.PlannedExpenses must equal Expenses when guardrails are disabled —
+// across all expense components: living, healthcare, IRMAA, and ExpenseSources.
+// The ExpenseSource is included to catch a mirroring bug where the projection loop
+// forgets to accumulate non-living-expense components into PlannedExpenses.
 func TestProjectionYear_PlannedExpenses_NoGuardrails(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.Guardrails = nil
+	s.ExpenseSources = []models.ExpenseSource{
+		{ID: "subs", Name: "Subscriptions", Amount: 500, StartYear: 0, EndYear: 0, Inflation: false},
+	}
 
 	result := NewCalculator(s).RunFullAnalysis()
 	for i, ys := range result.Projection.YearlySummaries {
@@ -96,14 +109,7 @@ func TestProjectionYear_PlannedExpenses_NoGuardrails(t *testing.T) {
 }
 
 func TestProjectionYear_PlannedExpenses_WithCut(t *testing.T) {
-	s := defaultSettingsForTest()
-	s.InvestmentReturn = 0
-	s.MonthlyLivingExpenses = 8000
-	s.Guardrails = &models.GuardrailConfig{
-		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
-		CeilingRisePct: 500, CeilingRaisePct: 10,
-		MinSpendingPct: 50, MaxSpendingPct: 150,
-	}
+	s := cutTriggeringSettings()
 
 	result := NewCalculator(s).RunFullAnalysis()
 	sawCutYear := false
@@ -123,14 +129,7 @@ func TestProjectionYear_PlannedExpenses_WithCut(t *testing.T) {
 
 // GuardrailEvent.MonthlySpendingBefore/After must be populated and consistent with the multiplier change.
 func TestGuardrailEvent_DollarFields(t *testing.T) {
-	s := defaultSettingsForTest()
-	s.InvestmentReturn = 0
-	s.MonthlyLivingExpenses = 8000
-	s.Guardrails = &models.GuardrailConfig{
-		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
-		CeilingRisePct: 500, CeilingRaisePct: 10,
-		MinSpendingPct: 50, MaxSpendingPct: 150,
-	}
+	s := cutTriggeringSettings()
 
 	result := NewCalculator(s).RunFullAnalysis()
 	if len(result.Projection.GuardrailEvents) == 0 {

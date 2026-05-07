@@ -1184,12 +1184,14 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		totalExpenses := adjustedLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Add expense sources (discretionary sources get phase multiplier when enabled)
+		// ExpenseSources are not subject to guardrail cuts — keep planned and adjusted in sync.
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
 				expenseAmount *= s.GetSpendingMultiplier(phaseAge)
 			}
 			totalExpenses += expenseAmount
+			plannedTotalExpenses += expenseAmount
 		}
 
 		// Calculate income using the active settings for this month.

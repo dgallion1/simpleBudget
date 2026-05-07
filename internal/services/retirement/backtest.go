@@ -182,6 +182,10 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	totalWithdrawals := 0.0
 	totalBalance := s.PortfolioValue
 	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
+	// netCumulativeInflation tracks (inflationRate−SpendingDeclineRate) compounding,
+	// mirroring the per-month no-phase expense accumulation. Used by
+	// rebaseLivingExpensesAtTransition to avoid the F-065 step-up error.
+	netCumulativeInflation := 1.0
 	inflationRate := 0.0
 
 	// Spending guardrails for this backtest run
@@ -224,7 +228,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 					s = activeSettings
 					nextChainIdx = newIdx
 
-					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
+					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
 					taxableAccount.syncAssumptions(s)
 				}
 			}
@@ -267,6 +271,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 
 		if m > 0 {
 			cumulativeInflation *= monthlyCompoundFactorFromDecimal(inflationRate)
+			netCumulativeInflation *= monthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
 			} else {

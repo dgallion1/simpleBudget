@@ -5,8 +5,12 @@ import (
 	"math"
 )
 
-// guardrailState tracks portfolio peaks and spending adjustments for
-// dynamic guardrail-based spending strategies.
+// guardrailState tracks portfolio peaks and spending adjustments for a simple
+// portfolio-drop/rise guardrail strategy. This is NOT the four-rule
+// Guyton & Klinger (2006) model (which fires on withdrawal-rate thresholds,
+// not portfolio-value thresholds, and includes an Inflation Rule and a
+// Withdrawal Rule). Full G-K implementation is tracked at
+// docs/superpowers/specs/2026-05-06-full-gk-guardrails-followup.md.
 type guardrailState struct {
 	peakPortfolio    float64
 	initialPortfolio float64

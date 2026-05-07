@@ -444,3 +444,38 @@ func TestHistoricalBacktest_ChainTransition(t *testing.T) {
 			chainBT.SuccessRate, noChainBT.SuccessRate)
 	}
 }
+
+// F-057: GetAvailableStartYears for a 30-year horizon over 1928-2024
+// (97 years of data) must produce 97 - 30 + 1 = 68 starting years
+// (1928 through 1995 inclusive). Pre-fix produced 67 (excluded 1995).
+func TestGetAvailableStartYears_F057_OffByOne(t *testing.T) {
+	years := GetAvailableStartYears(30)
+	if len(years) != 68 {
+		t.Errorf("30-year horizon: got %d start years, want 68", len(years))
+	}
+	if len(years) > 0 && years[0] != 1928 {
+		t.Errorf("first start year = %d; want 1928", years[0])
+	}
+	if len(years) > 0 && years[len(years)-1] != 1995 {
+		t.Errorf("last start year = %d; want 1995", years[len(years)-1])
+	}
+}
+
+func TestGetAvailableStartYears_F057_FullHistoryHorizon(t *testing.T) {
+	// 97-year horizon over 97 years of data: exactly 1 start year.
+	years := GetAvailableStartYears(97)
+	if len(years) != 1 {
+		t.Errorf("97-year horizon: got %d start years, want 1", len(years))
+	}
+	if len(years) > 0 && years[0] != 1928 {
+		t.Errorf("only start year = %d; want 1928", years[0])
+	}
+}
+
+func TestGetAvailableStartYears_F057_LongerThanHistory(t *testing.T) {
+	// Horizon longer than data: zero start years, no panic.
+	years := GetAvailableStartYears(98)
+	if len(years) != 0 {
+		t.Errorf("98-year horizon: got %d start years, want 0", len(years))
+	}
+}

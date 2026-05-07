@@ -43,6 +43,28 @@ func NormalizeProjectionTiming(timing ProjectionTiming) ProjectionTiming {
 	}
 }
 
+// RMDTiming controls when during each projection year the RMD withdrawal occurs.
+type RMDTiming string
+
+const (
+	RMDTimingStartOfYear RMDTiming = "start_of_year"
+	RMDTimingMidYear     RMDTiming = "mid_year"
+	RMDTimingEndOfYear   RMDTiming = "end_of_year"
+)
+
+// NormalizeRMDTiming clamps to known values. The empty string (zero value) maps
+// to mid_year for new scenarios. Settings loading migrates legacy saved scenarios
+// to start_of_year so their existing projections are preserved (see
+// initializeLoadedSettings in settings.go).
+func NormalizeRMDTiming(t RMDTiming) RMDTiming {
+	switch t {
+	case RMDTimingStartOfYear, RMDTimingMidYear, RMDTimingEndOfYear:
+		return t
+	default:
+		return RMDTimingMidYear
+	}
+}
+
 // ScenarioChainLink references a scenario to transition to at a given age
 type ScenarioChainLink struct {
 	ScenarioFilename string `json:"scenario_filename"`
@@ -109,6 +131,11 @@ type WhatIfSettings struct {
 	SteadyStateOverrideYear float64          `json:"steady_state_override_year"`  // User-adjustable projection year (0 = auto)
 	TaxDeferredDelayYears   int              `json:"tax_deferred_delay_years"`    // Years before tax-deferred withdrawals begin (0 = immediate)
 
+	// RMD timing: when during each projection year the RMD withdrawal is taken.
+	// F-035: empty string → NormalizeRMDTiming returns mid_year (new default).
+	// Settings loading migrates legacy saved scenarios to start_of_year.
+	RMDTiming RMDTiming `json:"rmd_timing,omitempty"`
+
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
 	ExpenseSources []ExpenseSource `json:"expense_sources"`
@@ -142,6 +169,7 @@ type SocialSecurityConfig struct {
 	FRABenefit       float64 `json:"fra_benefit"`                  // Monthly PIA (benefit at FRA)
 	FRA              int     `json:"fra"`                          // Full retirement age (default 67)
 	COLARate         float64 `json:"cola_rate"`                    // Annual COLA as decimal (default 0.02)
+	COLARateSet      bool    `json:"cola_rate_set,omitempty"`      // F-026: distinguishes explicit 0 from unset
 	SpouseFRABenefit float64 `json:"spouse_fra_benefit,omitempty"` // Spouse PIA if applicable
 	SpouseFRA        int     `json:"spouse_fra,omitempty"`         // Spouse FRA
 	ClaimAge         int     `json:"claim_age,omitempty"`          // Primary claiming age, 62-70; 0 means unset
@@ -498,7 +526,9 @@ func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {
 	if len(s.HealthcarePersons) > 0 {
 		total := 0.0
 		for _, person := range s.HealthcarePersons {
-			total += person.GetMonthlyCost(month)
+			// F-067: pass StartDate for month-precise ACA→Medicare transition when
+			// BirthMonth is set on the HealthcarePerson.
+			total += person.GetMonthlyCostAt(month, s.StartDate)
 		}
 		return total
 	}
@@ -971,6 +1001,11 @@ type RMDAnalysis struct {
 	TaxDeferredValue  float64         `json:"tax_deferred_value"` // Current tax-deferred balance
 	Projections       []RMDProjection `json:"projections"`        // Year-by-year projections
 	TotalRMDsOver10Yr float64         `json:"total_rmds_10yr"`    // Sum of first 10 years of RMDs
+
+	// F-072: depletion context driven by the actual projection.
+	DepletionYear     *int `json:"depletion_year,omitempty"`     // year index of portfolio depletion; nil if survives
+	DepletionAge      *int `json:"depletion_age,omitempty"`      // older-person age at depletion year
+	DepletedBeforeRMD bool `json:"depleted_before_rmd"`          // true when depletion precedes the first RMD year
 }
 
 // PresentValueAnalysis shows PV of expenses vs income
@@ -1195,6 +1230,8 @@ const (
 type TaxConfig struct {
 	FilingStatus       FilingStatus `json:"filing_status"`
 	StateIncomeTaxRate float64      `json:"state_income_tax_rate"` // As percentage (e.g., 5.0 for 5%)
+	Age65Count         int          `json:"age_65_count"`          // F-001: number of filers 65 or older (0, 1, or 2 for MFJ).
+	MFSLivedWithSpouse bool         `json:"mfs_lived_with_spouse"` // F-018: 26 USC § 86(c)(2) sub-case; true = lived with spouse → $0/$0 thresholds.
 }
 
 // DefaultTaxConfig returns sensible tax defaults

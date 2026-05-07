@@ -84,6 +84,7 @@ in Appendix C.
 | [F-057](#f-057--medium-getavailablestartyears-off-by-one-excludes-the-most-recent-valid-30-year-window) | MEDIUM | 9. Backtest, Monte Carlo, guardrails | `historical_data.go:144` | Off-by-one in `GetAvailableStartYears` excludes the most recent valid 30-year backtest window |
 | [F-062](#f-062--medium-runmontecarlosimulation-degenerate-inputs-runs0-runs1-have-no-coverage) | MEDIUM | 9. Backtest, Monte Carlo, guardrails | `calculator.go:2102` | `RunMonteCarloSimulation` degenerate inputs (runs=0, runs=1) have no test coverage |
 | [F-065](#f-065--medium-rebaselivingexpensesattransition-uses-full-inflation-instead-of-net-inflation-when-spendingdeclinerate--0) | MEDIUM | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:163` | Spending rebase uses full inflation not net (`inflation − decline`); ~$179K compounding error over 30-year scenario |
+| [F-072](#f-072--medium--rmd-analysis-detached-from-actual-projection-misleading-balances-when-portfolio-depletes-early) | MEDIUM | 10. Scenario chain, healthcare, budget-fit / steady-state | `rmd.go:132` | `CalculateRMDAnalysis` is computed in isolation from `RunProjection`; RMD card shows compounding balances and quotes future RMDs even when the main projection has already depleted the portfolio |
 | [F-006](#f-006--low-dead-fallback-branch-in-getadjustedstandarddeduction) | LOW | 1. Federal & state income tax | `tax.go:238` | Dead MFJ fallback branch in `GetAdjustedStandardDeduction` for unknown filing status; not reachable from normalized callers |
 | [F-007](#f-007--low-calculatefederaltax-filing-status-and-time-axis-coverage-gaps) | LOW | 1. Federal & state income tax | `tax.go:349` | `CalculateFederalTax` tests only MFJ at year-0; Single/MFS/HoH and `yearsFromBase>0` not covered |
 | [F-008](#f-008--low-calculatestatetax-no-direct-test-coverage) | LOW | 1. Federal & state income tax | `tax.go:396` | `CalculateStateTax` never called directly in tests; positive state-tax path completely untested |
@@ -243,6 +244,8 @@ A 65+ Single filer at $80,000 gross income would have:
 **Recommended fix sketch:** Add an `Age65Count int` field (0, 1, or 2) to `TaxCalculator` and a `StandardDeduction2024Additional` constant map keyed on filing status (Single/HoH → $1,950; MFJ/MFS → $1,550); sum the base deduction with `Age65Count * additional` before inflating.
 
 **Test coverage note:** No test exercises the age-65+ deduction path because the function doesn't implement it. A boundary test at the qualifying age transition (the year the client turns 65) is entirely absent.
+
+**Resolution:** Closed by commit 3d316a26c5c26c2c809a8f3d0c8f5792ac100403 on `feat/whatif-fixes`. Added `AdditionalStandardDeduction2024Age65` table, `TaxConfig.Age65Count` field, and modified `GetAdjustedStandardDeduction` to honor age-65+ additional deduction per IRS Rev. Proc. 2023-34 §3.16(2). Settings UI surfacing of the new field is the user's call (not in this PR; field defaults to 0, preserving non-65+ projection behavior).
 
 ---
 
@@ -650,6 +653,8 @@ MFS-lived-apart example: `CalculateTaxableSocialSecurity(20000, 0, 0, 0, FilingM
 
 **Test coverage note:** The existing test `TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct` asserts the current 85% behavior for all income levels. No test exists for MFS-lived-apart scenarios. The threshold-boundary tests in `coverage_gaps2_test.go` do not include MFS.
 
+**Resolution:** Closed by commit 25a1fa4 on `feat/whatif-fixes`. `TaxConfig.MFSLivedWithSpouse bool` field added; `TaxCalculator` copies it from config. Free `CalculateTaxableSocialSecurity` gains `mfsLivedWithSpouse bool` parameter: `true` → returns `ssBenefits * 0.85` directly (26 USC § 86(c)(2)(B)); `false` → `socialSecurityTaxThresholdsMFSLivedApart` ($25K/$34K, same as Single, per § 86(c)(2)(A)). Method version reads `tc.MFSLivedWithSpouse`. Verified via `Test*_F018_*` (5 tests); WE-2.1 MFJ regression guard ($23,850) preserved.
+
 ---
 
 #### F-019 — MEDIUM `CalculateNIIT`: MAGI at exact threshold not tested; NIIT inflation note
@@ -927,6 +932,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 
 **Test coverage note:** `normalizedSSCOLARate` is never called directly in tests. No test verifies the zero-substitution behavior or its downstream effect on the comparison table.
 
+**Resolution:** Closed by commit da4d270 on `feat/whatif-fixes`. `normalizedSSCOLARate` now takes `*float64`; nil → 2% default, non-nil → use the value (negatives clamped to 0 per SSA convention). New `SocialSecurityConfig.COLARateSet bool` distinguishes explicit 0 from unset. `ssConfigCOLARate` helper bridges settings → pointer. Form handler sets `COLARateSet = true` on every SS form submit. Saved scenarios without the flag preserve the 2% default (no migration needed). Verified via `TestNormalizedSSCOLARate_F026_*` and `TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA`.
+
 ---
 
 #### F-027 — LOW `AdjustedSSBenefit`: FRA values other than 66 and 67 not tested; DerivedPIA round-trip only covers FRA=67
@@ -993,6 +1000,8 @@ result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > ss.SpouseFRABenefit
 **Recommended fix sketch:** Replace `ss.FRABenefit` with `primaryPIA` on line 484. The UI template at `social-security.html:177` also references `Settings.SocialSecurity.FRABenefit * 0.5` for the dollar display; that should likewise render from the analysis result (which has the correct `primaryPIA`-derived numbers) rather than raw settings.
 
 **Test coverage note:** No `TestRunSSAnalysis` case combines an already-claiming primary (non-FRA claim age) with a lower-PIA spouse to verify this flag. The existing "already claiming back-derives PIA" test only checks `BestAge`, not `SpouseUsingSpousalBenefit`.
+
+**Resolution:** Closed by commit 7731732 on `feat/whatif-fixes`. `RunSSAnalysis` now uses `primaryPIA*0.5 > spousePIA` (both variables correctly derived above the flag assignment) instead of `ss.FRABenefit*0.5 > ss.SpouseFRABenefit`. Verified via `TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA`.
 
 ---
 
@@ -1126,6 +1135,8 @@ The post-fix line `monthlyReturn := monthlyCompoundFactorFromPercent(investmentR
 **Recommended fix sketch:** Replace the single constant with a function `rmdStartAge(birthYear int) int` returning 73 if `birthYear + 73 < 2033` (i.e., if they turn 73 before 2033) and 75 otherwise. Pass the projected birth year (derived from current year minus current age) when computing `startsInYears` and when entering the RMD projection loop.
 
 **Test coverage note:** No test covers a user whose RMD start age under SECURE 2.0 is 75. The existing tests (age 60, 65, 70, 72, 75) either already past RMD start or start at 73 with no cross-2033 validation.
+
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `EffectiveRMDStartAge(s *WhatIfSettings) int` returning 73 for projections starting before 2033 and 75 for 2033+; `CalculateRMDAnalysis` replaced the constant with a dynamic call and `RMDAnalysis.StartAge` now reflects the effective age. Four tests cover pre-2033, 2033, post-2033, nil-safe, and 2032-boundary cases.
 
 ### F-033 — MEDIUM `GetLifeExpectancyFactor`: age 72 is in the table but `CalculateRMDAnalysis` skips it; age-71-or-below returns 0 (no divide-by-zero, but silent)
 
@@ -1705,6 +1716,8 @@ If the $10,000 is later withdrawn at the same market value: code computes realiz
 **Recommended fix sketch:** Pass the effective tax rate into `reinvestRequiredRMDToTaxableState` (or compute it at the call site from `taxesPaid / grossIncome`) and call `taxable.addCash(rmdWithdrawal × (1 − effectiveTaxRate))` to set basis equal to the net-of-tax amount. Alternatively, use `taxable.MarketValue += rmdWithdrawal` (preserve market value at gross for growth purposes) but `taxable.CostBasis += rmdWithdrawal × (1 − effectiveTaxRate)`.
 **Test coverage note:** `reinvestRequiredRMDToTaxableState` is never called directly in any test. Its behavior is exercised only indirectly through the full projection path, where the long-term cost-basis distortion is not measured.
 
+**Resolution:** Closed by commit 0e9057fc3cb697758cc590f573c6fb1d4580b0b1 on `feat/whatif-fixes`. `reinvestRequiredRMDToTaxableState` now takes `marginalRate` and reinvests the after-tax amount (gross × (1 - marginalRate)) as both the market value addition and cost basis. Marginal rate is sourced from `taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear)` in the convergence loop of `executeTaxAwarePortfolioMonth`, updated each iteration. Verified via `TestReinvestRequiredRMD_F049_BasisIsAfterTax`, `TestReinvestRequiredRMD_F049_ZeroMarginalRate`, `TestReinvestRequiredRMD_F049_MarginalRateClamped`.
+
 ---
 
 #### F-050 — LOW `earlyWithdrawalPenaltyRate`: age-60 proxy overstates penalty window by up to 6 months; boundary at exactly 59 in final year untested
@@ -1932,7 +1945,7 @@ if additionalTax > conversionAmount*0.37 { t.Errorf(...) }
 - **Number of trials:** Default 1,000 (caller supplies `runs`; if `runs ≤ 0` it is reset to 1,000). No documented max; the adaptive sub-run uses `runs/2`. The SS optimizer hard-codes 250 runs.
 - **Historical data source and range:** `HistoricalReturns` slice in `historical_data.go`, covering **1928–2024** (97 years). Sources cited in the file header: S&P 500 (Shiller data), 10-Year Treasury (FRED), 3-Month T-Bill (NYU Stern/Damodaran), Inflation (BLS CPI-U).
 - **Rolling-window construction:** Annual data only; no monthly rebalancing within the historical backtest. Each sequence year uses that calendar year's asset returns applied with the geometric monthly-compounding formula `(1+r)^(1/12)−1`. Rebalancing is implicit — per-account allocations are applied to each year's blended returns, effectively annual rebalancing.
-- **Guardrail rules implemented:** The implementation uses a **portfolio-value-based guardrail** (not the original withdrawal-rate-based Guyton-Klinger rules). Two triggers: (1) **Floor** — if portfolio drops `FloorDropPct`% from its peak, cut spending by `FloorCutPct`% and reset peak. (2) **Ceiling** — if portfolio rises `CeilingRisePct`% above `initialPortfolio`, raise spending by `CeilingRaisePct`% and update initialPortfolio. The canonical Guyton-Klinger (2006) **Capital Preservation Rule** (cut when withdrawal rate exceeds initial × 1.2), **Prosperity Rule** (raise when withdrawal rate is below initial × 0.8), **Inflation Rule** (no inflation adjustment after a loss year), and **Withdrawal Rule** (no inflation adjustment unless portfolio return exceeded inflation) are **not implemented**. The planner's approach is a plausible dynamic guardrail but is not the Guyton-Klinger protocol. Documented as INFO (see F-063).
+- **Guardrail rules implemented:** The implementation uses a **portfolio-value-based guardrail** (not the original withdrawal-rate-based Guyton-Klinger rules). Two triggers: (1) **Floor** — if portfolio drops `FloorDropPct`% from its peak, cut spending by `FloorCutPct`% and reset peak. (2) **Ceiling** — if portfolio rises `CeilingRisePct`% above `initialPortfolio`, raise spending by `CeilingRaisePct`% and update initialPortfolio. The canonical Guyton-Klinger (2006) **Capital Preservation Rule** (cut when withdrawal rate exceeds initial × 1.2), **Prosperity Rule** (raise when withdrawal rate is below initial × 0.8), **Inflation Rule** (no inflation adjustment after a loss year), and **Withdrawal Rule** (no inflation adjustment unless portfolio return exceeded inflation) are **not implemented**. The planner's approach is a plausible dynamic guardrail but is not the Guyton-Klinger protocol. Documented as INFO (see F-063). **Resolution:** Closed by commit c3187f4 on `feat/whatif-fixes`. UI label renamed to "Drop/rise guardrails (simple)" with honest tooltip. Math unchanged. Full Guyton-Klinger implementation deferred to `docs/superpowers/specs/2026-05-06-full-gk-guardrails-followup.md`, gated on user demand or usage signal.
 
 ### Worked examples
 
@@ -1965,6 +1978,8 @@ if additionalTax > conversionAmount*0.37 { t.Errorf(...) }
 **Planner result:** `GetAvailableStartYears(30)` returns **67** years (1928 through 1994). The 1995–2024 sequence (the most recent complete 30-year window, ending exactly at the 2024 data point) is **excluded**.
 
 **Root cause:** `GetAvailableStartYears` uses `maxIdx = len(HistoricalReturns) - projectionYears` and iterates `i < maxIdx`, producing indices 0 through `maxIdx−1`. But `GetHistoricalSequence(1995, 30)` correctly accepts `startIdx=67`, `startIdx+yearsNeeded=97`, and the guard condition `97 > 97` is false, so the sequence is valid. The exclusive upper bound in `GetAvailableStartYears` is off by one. See F-057.
+
+**Resolution:** Closed by commit 61bfd3c on `feat/whatif-fixes`. `GetAvailableStartYears` upper bound corrected from exclusive to inclusive (`maxIdx = len - projectionYears + 1`). Verified via `TestGetAvailableStartYears_F057_*`.
 
 #### WE-9.3: Guardrail trigger
 
@@ -2043,6 +2058,8 @@ See F-057 through F-064 in Appendix C.
 
 **Finding (F-065):** When the same scenario is run with `SpendingDeclineRate = 1.0` (the default value), the chain delta at month 360 is **$178,943** (MEDIUM). Root cause: `rebaseLivingExpensesAtTransition` anchors the expense level to `MonthlyLivingExpenses × cumulativeInflation` where `cumulativeInflation` accumulates at the **full** `InflationRate`, but the ongoing pre-transition computation applies `InflationRate − SpendingDeclineRate`. At the chain boundary, expenses are therefore stepped up by `cumulativeInflation(full) / cumulativeInflation(net)`, permanently inflating the post-transition run.
 
+**Resolution:** Closed by commit dde7652 on `feat/whatif-fixes`. All three projection loops (RunProjection, RunMonteCarloSimulation, backtest) now maintain a parallel `netCumulativeInflation` variable that compounds at `(InflationRate − SpendingDeclineRate)` per month. `rebaseLivingExpensesAtTransition` was extended to accept both `cumulativeInflation` (used for the spending-phases path) and `netCumulativeInflation` (used for the no-phase path), eliminating the step-up error. Verified via `TestSpendingPhaseTransition_F065_DeclineRateRespected`.
+
 #### WE-10.2: Healthcare ACA → Medicare transition
 
 **Setup:** Person, age 64, `CoverageACA`, `CurrentMonthlyCost = 600` (representing $1,000 ACA − $400 employer = $600 net), `PreMedicareInflation = 0`, `MedicareMonthlyCost = 200`, `PostMedicareInflation = 0`, `MedicareEligibleAge = 65`.
@@ -2081,7 +2098,7 @@ See F-057 through F-064 in Appendix C.
 | Surplus | +$286,883.35 | +$315,411.84 | +$28,528 |
 | Coverage ratio | 1.1× | 1.103× | negligible |
 
-All deltas are under $50,000. The PV income delta of ~$19K is consistent with the b978aa9 switch from simple-division monthly rate to geometric monthly rate (`(1+r)^(1/12)−1`), which lowers effective monthly discount and growth rates and increases PV of future income streams. PV expense delta of ~$9K moves in the opposite direction from the income delta, consistent with the same rate adjustment applied to expense discounting. These are INFO-level shifts, not a new bug. See F-070. The reference values in `docs/what-if-retirement-verification.md` should be refreshed post-b978aa9.
+All deltas are under $50,000. The PV income delta of ~$19K is consistent with the b978aa9 switch from simple-division monthly rate to geometric monthly rate (`(1+r)^(1/12)−1`), which lowers effective monthly discount and growth rates and increases PV of future income streams. PV expense delta of ~$9K moves in the opposite direction from the income delta, consistent with the same rate adjustment applied to expense discounting. These are INFO-level shifts, not a new bug. See F-070. **F-070 resolved:** `docs/what-if-retirement-verification.md` refreshed with current code output on 2026-05-06 (commit `5283e66`).
 
 ### Findings
 
@@ -2530,6 +2547,8 @@ A 65+ Single filer at $80,000 gross income would have:
 
 **Test coverage note:** No test exercises the age-65+ deduction path because the function doesn't implement it. A boundary test at the qualifying age transition (the year the client turns 65) is entirely absent.
 
+**Resolution:** Closed by commit 3d316a26c5c26c2c809a8f3d0c8f5792ac100403 on `feat/whatif-fixes`. Added `AdditionalStandardDeduction2024Age65` table, `TaxConfig.Age65Count` field, and modified `GetAdjustedStandardDeduction` to honor age-65+ additional deduction per IRS Rev. Proc. 2023-34 §3.16(2). Settings UI surfacing of the new field is the user's call (not in this PR; field defaults to 0, preserving non-65+ projection behavior).
+
 ---
 
 ### F-002 — INFO State tax is a single flat rate
@@ -2844,6 +2863,8 @@ MFS-lived-apart example: `CalculateTaxableSocialSecurity(20000, 0, 0, 0, FilingM
 
 **Test coverage note:** The existing test `TestCalculateTaxableSocialSecurity_MarriedSeparateAlways85Pct` asserts the current 85% behavior for all income levels. No test exists for MFS-lived-apart scenarios. The threshold-boundary tests in `coverage_gaps2_test.go` do not include MFS.
 
+**Resolution:** Closed by commit 25a1fa4 on `feat/whatif-fixes`. `TaxConfig.MFSLivedWithSpouse bool` field added; `TaxCalculator` copies it from config. Free `CalculateTaxableSocialSecurity` gains `mfsLivedWithSpouse bool` parameter: `true` → returns `ssBenefits * 0.85` directly (26 USC § 86(c)(2)(B)); `false` → `socialSecurityTaxThresholdsMFSLivedApart` ($25K/$34K, same as Single, per § 86(c)(2)(A)). Method version reads `tc.MFSLivedWithSpouse`. Verified via `Test*_F018_*` (5 tests); WE-2.1 MFJ regression guard ($23,850) preserved.
+
 ---
 
 ### F-019 — MEDIUM `CalculateNIIT`: MAGI at exact threshold not tested; NIIT inflation note
@@ -3014,6 +3035,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 
 **Test coverage note:** `normalizedSSCOLARate` is never called directly in tests. No test verifies the zero-substitution behavior or its downstream effect.
 
+**Resolution:** Closed by commit da4d270 on `feat/whatif-fixes`. `normalizedSSCOLARate` now takes `*float64`; nil → 2% default, non-nil → use the value (negatives clamped to 0 per SSA convention). New `SocialSecurityConfig.COLARateSet bool` distinguishes explicit 0 from unset. `ssConfigCOLARate` helper bridges settings → pointer. Form handler sets `COLARateSet = true` on every SS form submit. Saved scenarios without the flag preserve the 2% default (no migration needed). Verified via `TestNormalizedSSCOLARate_F026_*` and `TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA`.
+
 ---
 
 ### F-027 — LOW `AdjustedSSBenefit`: FRA values other than 66 and 67 not tested; `DerivedPIA` round-trip only covers FRA=67
@@ -3068,6 +3091,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 
 **Test coverage note:** No test checks `SpouseUsingSpousalBenefit` for an already-claiming primary at a non-FRA age.
 
+**Resolution:** Closed by commit 7731732 on `feat/whatif-fixes`. `RunSSAnalysis` now uses `primaryPIA*0.5 > spousePIA` (both variables correctly derived above the flag assignment) instead of `ss.FRABenefit*0.5 > ss.SpouseFRABenefit`. Verified via `TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA`.
+
 ---
 
 ### F-030 — LOW `RunSSAnalysis`: zero `ClaimAge` triggers spurious "already claiming" logic
@@ -3119,6 +3144,8 @@ func normalizedSSCOLARate(colaRate float64) float64 {
 **Recommended fix sketch:** Replace the single constant with a function `rmdStartAge(birthYear int) int` returning 73 if `birthYear + 73 < 2033` (i.e., if they turn 73 before 2033) and 75 otherwise. Pass the projected birth year (derived from current year minus current age) when computing `startsInYears` and when entering the RMD projection loop.
 
 **Test coverage note:** No test covers a user whose RMD start age under SECURE 2.0 is 75. The existing tests (age 60, 65, 70, 72, 75) either already past RMD start or start at 73 with no cross-2033 validation.
+
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `EffectiveRMDStartAge(s *WhatIfSettings) int` returning 73 for projections starting before 2033 and 75 for 2033+; `CalculateRMDAnalysis` replaced the constant with a dynamic call and `RMDAnalysis.StartAge` now reflects the effective age. Four tests cover pre-2033, 2033, post-2033, nil-safe, and 2032-boundary cases.
 
 ### F-033 — MEDIUM `GetLifeExpectancyFactor`: age 72 is in the table but `CalculateRMDAnalysis` skips it; age below 72 returns 0 silently
 
@@ -3186,6 +3213,8 @@ for m := 0; m < 12; m++ {
 **Recommended fix sketch:** Apply full-year growth to the year-start balance first, then compute and deduct the RMD. This matches the IRS model where the RMD is based on the prior-year-end balance, and the distribution is made from the account that has already grown.
 
 **Test coverage note:** No test validates the per-year balance trajectory precisely enough to catch this sequencing issue.
+
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `RMDTiming` enum (start_of_year/mid_year/end_of_year) to `WhatIfSettings`; `NormalizeRMDTiming` defaults empty string → mid_year for new scenarios. Settings load migrates legacy saved scenarios to start_of_year. `CalculateRMDAnalysis` splits growth via `rmdGrowthFractions()` before and after the RMD. Surfaced in the rate-assumptions UI; `applyRMDTiming` handler follows the `projection_timing` pattern. Five F-035 tests validate each timing option and ordering invariant.
 
 ### F-036 — MEDIUM `CalculateRMDAnalysis`: multiple test-coverage gaps
 
@@ -3408,6 +3437,8 @@ if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 **Recommended fix sketch:** Pass the effective tax rate to `reinvestRequiredRMDToTaxableState` and call `taxable.addCash(rmdWithdrawal × (1 − effectiveTaxRate))`.
 **Test coverage note:** `reinvestRequiredRMDToTaxableState` never called directly in tests; long-term basis distortion unmeasured.
 
+**Resolution:** Closed by commit 0e9057fc3cb697758cc590f573c6fb1d4580b0b1 on `feat/whatif-fixes`. `reinvestRequiredRMDToTaxableState` now takes `marginalRate` and reinvests the after-tax amount (gross × (1 - marginalRate)) as both the market value addition and cost basis. Marginal rate is sourced from `taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear)` in the convergence loop of `executeTaxAwarePortfolioMonth`, updated each iteration. Verified via `TestReinvestRequiredRMD_F049_BasisIsAfterTax`, `TestReinvestRequiredRMD_F049_ZeroMarginalRate`, `TestReinvestRequiredRMD_F049_MarginalRateClamped`.
+
 ---
 
 ### F-050 — LOW `earlyWithdrawalPenaltyRate`: age-60 proxy over-penalizes by up to 6 months; boundary not directly tested
@@ -3519,6 +3550,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Recommended fix sketch:** Change `maxIdx := len(HistoricalReturns) - projectionYears` to `maxIdx := len(HistoricalReturns) - projectionYears + 1` and adjust the loop `for i := 0; i < maxIdx; i++`. Verify `GetHistoricalSequence` correctly handles the last entry (it does).
 **Test coverage note:** `TestGetAvailableStartYears` checks `lastYear <= data[last].Year - 29` which passes under the buggy code. Add an assertion `lastYear == data[last].Year - projectionYears + 1`.
 
+**Resolution:** Closed by commit 61bfd3c on `feat/whatif-fixes`. `GetAvailableStartYears` upper bound corrected from exclusive to inclusive. Verified via `TestGetAvailableStartYears_F057_*`.
+
 ---
 
 ### F-058 — LOW Historical backtest computes percentiles but discards them without exposing them
@@ -3593,6 +3626,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Recommended fix sketch:** Either implement the withdrawal-rate-based G-K rules (tracking `initialWithdrawalRate` and `currentWithdrawalRate`), or rename the UI label from "Guyton-Klinger" to "Dynamic Guardrails" to avoid misrepresenting the model.
 **Test coverage note:** Tests correctly exercise the implemented portfolio-drop/rise logic. No test compares planner output to published G-K example scenarios.
 
+**Resolution:** Closed by commit c3187f4 on `feat/whatif-fixes`. UI label renamed to "Drop/rise guardrails (simple)" with honest tooltip. Math unchanged. Full Guyton-Klinger implementation deferred to `docs/superpowers/specs/2026-05-06-full-gk-guardrails-followup.md`, gated on user demand or usage signal.
+
 ---
 
 ### F-064 — LOW `evaluate`: consecutive-year guardrail behavior and multiple-trigger interaction not tested
@@ -3617,6 +3652,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Recommended fix sketch:** Pass both `InflationRate` and `SpendingDeclineRate` to `rebaseLivingExpensesAtTransition`; compute a separate `netCumulativeInflation` that uses `InflationRate − SpendingDeclineRate`, and use that for the rebase instead of `cumulativeInflation`.
 **Test coverage note:** No chain test uses non-zero `SpendingDeclineRate`; the gap is undetected in the existing suite.
 
+**Resolution:** Closed by commit dde7652 on `feat/whatif-fixes`. Phase-transition rebase callers in RunProjection, RunMonteCarloSimulation, and the backtest loop now maintain a parallel `netCumulativeInflation` variable that compounds at `(InflationRate − SpendingDeclineRate)` per month, matching the per-month no-phase expense trajectory. `rebaseLivingExpensesAtTransition` was extended to take both `cumulativeInflation` and `netCumulativeInflation`; the non-phase path uses `netCumulativeInflation`. Verified via `TestSpendingPhaseTransition_F065_DeclineRateRespected`.
+
 ---
 
 ### F-066 — LOW `CalculateTotalIncome`: stale public function does not apply SS optimizer projection
@@ -3640,6 +3677,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** Person age 64 (birthday in month 6 of year 1): `GetMonthlyCost(11)` = $600 (ACA), `GetMonthlyCost(12)` = $200 (Medicare). The transition fires 6 months before the 65th birthday.
 **Recommended fix sketch:** Accept a `birthMonth int` (1–12) parameter and compute the true transition month as `(MedicareEligibleAge − CurrentAge) × 12 + (birthMonth − startMonth%12 + 12) % 12`. Alternatively, link `HealthcarePerson` to the `Person.BirthMonth` string and compute the exact transition month at initialization.
 **Test coverage note:** Existing tests verify compounding within phases but do not test mid-year birthday scenarios.
+
+**Resolution:** Closed by commit `1a9452b` on `feat/whatif-fixes`. Added `BirthMonth string` field to `HealthcarePerson` and `GetMonthlyCostAt(month int, startDate string)` which computes `monthsUntilMedicareEligible` as `(birth.AddDate(MedicareEligibleAge,0,0) - start)` in months when both fields are set; falls back to year-based otherwise. `GetTotalHealthcareCost` now passes `s.StartDate` for all persons. Four F-067 tests validate month-precise transition at birth month, the year-bucket regression, the legacy fallback, and the end-to-end `GetTotalHealthcareCost` path.
 
 ---
 
@@ -3677,6 +3716,8 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Recommended fix sketch:** Re-run the live app with the same 2026-04-07 settings and update `docs/what-if-retirement-verification.md`. Alternatively, add a golden-value regression test that fails when the values change unexpectedly.
 **Test coverage note:** No regression test pins the PV values; changes to `PresentValueAnnuity` will silently shift them.
 
+**Resolution:** Closed by commit `5283e66` on `feat/whatif-fixes`. `docs/what-if-retirement-verification.md` refreshed with current code's output values (post-b978aa9 compounding fix and PRs 1-8 of the fix campaign). Future verification passes baseline against the new numbers.
+
 ---
 
 ### F-071 — LOW `buildProjectionExplainability`: tax-share denominator is gross cash flow, not gross income — undocumented
@@ -3688,3 +3729,19 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** `buildProjectionExplainability` line 2986: denominator is `totalGrossIncome` summed from `month.GrossIncome`, which includes Roth withdrawals at line 1203.
 **Recommended fix sketch:** Add a UI tooltip clarifying that the denominator is total gross cash flow (income + withdrawals), not income alone. Optionally expose a separate `TaxShareOfOrdinaryIncome` field using only `OrdinaryIncome + SocialSecurityIncome`. Add a test with a zero-cash-flow scenario (all depleted at month 0) to cover the guard.
 **Test coverage note:** No test exercises `buildProjectionExplainability` with a zero-gross-income scenario or with all-Roth withdrawals.
+
+### F-072 — MEDIUM — RMD analysis detached from actual projection; misleading balances when portfolio depletes early
+
+**Status:** RESOLVED in PR 11 (commit range `94219bd..HEAD` on `feat/whatif-fixes`).
+
+**Location:** `internal/services/retirement/rmd.go:132` (pre-fix); the new entry point is `BuildRMDAnalysis(projection)` invoked from `RunFullAnalysis` at `calculator.go:3068`.
+
+**Symptom:** A user with a low portfolio relative to expenses sees the main projection deplete in under two years, while the RMD card cheerfully shows the tax-deferred bucket compounding for ten or more years and projects RMDs against balances that do not exist in the user's plan.
+
+**Cause:** `CalculateRMDAnalysis` re-derived the RMD trajectory from `s.PortfolioValue * s.TaxDeferredPercent / 100` and applied only investment growth and the RMD itself. It never accounted for living expenses, healthcare, taxes, big-ticket spending, or the actual `RunProjection` cash-flow drawdown.
+
+**Fix:** Replaced with `BuildRMDAnalysis(projection *ProjectionResult)` which samples each January's `TaxDeferredBalance` and sums the year's `RMDWithdrawal` from `projection.Months[]`. Three new fields on `RMDAnalysis` (`DepletionYear`, `DepletionAge`, `DepletedBeforeRMD`) drive depletion-aware rendering. The template renders one of three states: banner (depleted before RMD), truncated table with footer note (depleted during RMD years), or standard table with an IRS-vs-actual percent disclosure.
+
+**Tests:**
+- 7 unit tests in `rmd_test.go` covering depletion before/during/after RMD, SECURE 2.0 transition, already-at-RMD-age, zero TaxDeferredPercent, and IRS-table percent semantics.
+- 2 integration tests in `calculator_test.go`: `TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows` (regression bar for the user-reported bug) and `TestRunFullAnalysis_F072_RMDMatchesProjection` (structural invariant).

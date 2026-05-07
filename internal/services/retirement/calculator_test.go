@@ -1703,3 +1703,79 @@ func TestMonteCarloSimulation_ChainTransition(t *testing.T) {
 			chainMC.Stats.SuccessRate, noChainMC.Stats.SuccessRate)
 	}
 }
+
+// TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows is the regression test
+// for the user-visible bug: when the projection depletes the portfolio before
+// RMD age, the RMD panel must report zero rows, not idealized compounding.
+func TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows(t *testing.T) {
+	// Use CurrentAge=65 (the default from DefaultWhatIfSettings) so we don't
+	// fight the Persons[]/CurrentAge derivation. RMD start at 73 → 8yr cushion;
+	// $5K portfolio against $5K/mo spending depletes month 1, far before RMD.
+	s := models.DefaultWhatIfSettings()
+	s.PortfolioValue = 5_000   // tiny vs. expenses below
+	s.TaxDeferredPercent = 100 // all in tax-deferred so RMD bucket = portfolio
+	s.MonthlyLivingExpenses = 5_000
+	s.MonthlyHealthcare = 0
+	s.ProjectionYears = 30
+	s.SocialSecurity = nil // no income to cushion
+
+	calc := NewCalculator(s)
+	analysis := calc.RunFullAnalysis()
+
+	if analysis.RMD == nil {
+		t.Fatal("analysis.RMD is nil")
+	}
+	if analysis.Projection == nil || analysis.Projection.DepletionMonth == nil {
+		t.Fatal("expected the main projection to deplete; got survival")
+	}
+	if !analysis.RMD.DepletedBeforeRMD {
+		t.Errorf("DepletedBeforeRMD = false; expected true (projection should deplete before age 73)")
+	}
+	if len(analysis.RMD.Projections) != 0 {
+		t.Errorf("len(RMD.Projections) = %d; expected 0 when depleted before RMD",
+			len(analysis.RMD.Projections))
+	}
+	if analysis.RMD.TotalRMDsOver10Yr != 0 {
+		t.Errorf("TotalRMDsOver10Yr = %.2f; expected 0 when depleted before RMD",
+			analysis.RMD.TotalRMDsOver10Yr)
+	}
+}
+
+// TestRunFullAnalysis_F072_RMDMatchesProjection enforces the structural
+// invariant: each emitted RMD row's amount equals the sum of RMDWithdrawal
+// across that year's months in the main projection.
+func TestRunFullAnalysis_F072_RMDMatchesProjection(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.PortfolioValue = 1_500_000
+	s.TaxDeferredPercent = 60
+	s.RothPercent = 10
+	s.InvestmentReturn = 5.0
+	s.ProjectionYears = 30
+	s.MonthlyLivingExpenses = 4_000
+
+	calc := NewCalculator(s)
+	analysis := calc.RunFullAnalysis()
+
+	if analysis.RMD == nil || len(analysis.RMD.Projections) == 0 {
+		t.Skip("no RMD rows in scenario; structural test does not apply")
+	}
+	if analysis.Projection == nil || len(analysis.Projection.Months) == 0 {
+		t.Fatal("missing projection")
+	}
+
+	for _, row := range analysis.RMD.Projections {
+		startMonth := 12 * row.Year
+		endMonth := startMonth + 12
+		if endMonth > len(analysis.Projection.Months) {
+			endMonth = len(analysis.Projection.Months)
+		}
+		var got float64
+		for m := startMonth; m < endMonth; m++ {
+			got += analysis.Projection.Months[m].RMDWithdrawal
+		}
+		if (row.RMDAmount-got) > 0.01 || (got-row.RMDAmount) > 0.01 {
+			t.Errorf("year %d (age %d): RMD.RMDAmount = %.4f; sum of Projection.RMDWithdrawal = %.4f",
+				row.Year, row.Age, row.RMDAmount, got)
+		}
+	}
+}

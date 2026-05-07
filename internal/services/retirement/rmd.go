@@ -1,9 +1,40 @@
 package retirement
 
-import "budget2/internal/models"
+import (
+	"time"
+
+	"budget2/internal/models"
+)
 
 // RMD start age per IRS rules (SECURE 2.0 Act)
 const RMDStartAge = 73
+
+// EffectiveRMDStartAge returns the SECURE 2.0 RMD start age for the
+// projection's start year. 73 for projections starting before 2033;
+// 75 for projections starting 2033 or later (per SECURE 2.0 Act of 2022).
+func EffectiveRMDStartAge(s *models.WhatIfSettings) int {
+	if s == nil {
+		return 73
+	}
+	year := parseStartYear(s.StartDate)
+	if year >= 2033 {
+		return 75
+	}
+	return 73
+}
+
+// parseStartYear extracts the year from a "YYYY-MM" start date string.
+// Returns the current year if the string is empty or unparseable.
+func parseStartYear(startDate string) int {
+	if startDate == "" {
+		return time.Now().Year()
+	}
+	t, err := time.Parse("2006-01", startDate)
+	if err != nil {
+		return time.Now().Year()
+	}
+	return t.Year()
+}
 
 // uniformLifetimeTable contains IRS Uniform Lifetime Table factors
 // Used when the sole beneficiary is not a spouse more than 10 years younger
@@ -83,77 +114,107 @@ func CalculateRMD(taxDeferredBalance float64, age int) (amount float64, percent 
 	return amount, percent
 }
 
-// CalculateRMDAnalysis generates RMD projections based on current settings
-func (c *Calculator) CalculateRMDAnalysis() *models.RMDAnalysis {
+// BuildRMDAnalysis (F-072) builds the RMD analysis from the actual projection
+// instead of an isolated standalone math model. It samples each RMD year's
+// starting tax-deferred balance and sums the actual RMDWithdrawal over the
+// year, so the panel cannot diverge from the main projection.
+func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *models.RMDAnalysis {
 	s := c.Settings
 
-	// Calculate tax-deferred portion of portfolio
 	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-
-	// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
+	effectiveStartAge := EffectiveRMDStartAge(s)
 	olderAge := s.GetOlderAge()
-
-	// Calculate years until RMDs begin
-	startsInYears := RMDStartAge - olderAge
+	startsInYears := effectiveStartAge - olderAge
 	if startsInYears < 0 {
 		startsInYears = 0
 	}
 
-	// Generate projections for the projection period
-	projections := make([]models.RMDProjection, 0)
-	totalRMDs10Yr := 0.0
-
-	// Get effective return (either explicit or calculated from per-account allocation)
-	// When InvestmentReturn=0, the projection uses per-account asset allocation blended returns
-	investmentReturn := s.InvestmentReturn
-	if investmentReturn == 0 {
-		investmentReturn = s.GetExpectedReturnFromAllocation()
+	result := &models.RMDAnalysis{
+		StartsInYears:    startsInYears,
+		StartAge:         effectiveStartAge,
+		CurrentAge:       olderAge,
+		TaxDeferredValue: taxDeferredValue,
+		Projections:      []models.RMDProjection{},
 	}
-	monthlyReturn := monthlyCompoundFactorFromPercent(investmentReturn) - 1
-	currentBalance := taxDeferredValue
+
+	if taxDeferredValue == 0 {
+		return result
+	}
+
+	if projection == nil || len(projection.Months) == 0 {
+		return result
+	}
+
+	// Surface depletion year (whole years from start; floor of months/12).
+	if projection.DepletionMonth != nil {
+		dy := *projection.DepletionMonth / 12
+		da := olderAge + dy
+		result.DepletionYear = &dy
+		result.DepletionAge = &da
+		if dy <= startsInYears {
+			result.DepletedBeforeRMD = true
+			return result
+		}
+	}
+
+	// Iterate projection years, emit a row when age >= effectiveStartAge.
+	maxYears := s.ProjectionYears
+	if maxYears > len(projection.Months)/12 {
+		maxYears = len(projection.Months) / 12
+	}
 
 	rmdCount := 0
-	for year := 0; year <= s.ProjectionYears && rmdCount < 20; year++ {
-		age := olderAge + year
-
-		// Only project RMDs for ages 73+
-		if age >= RMDStartAge {
-			factor := GetLifeExpectancyFactor(age)
-			rmdAmount, rmdPercent := CalculateRMD(currentBalance, age)
-
-			projections = append(projections, models.RMDProjection{
-				Age:            age,
-				Year:           year,
-				TaxDeferredBal: currentBalance,
-				LifeExpFactor:  factor,
-				RMDAmount:      rmdAmount,
-				RMDPercent:     rmdPercent,
-			})
-
-			if rmdCount < 10 {
-				totalRMDs10Yr += rmdAmount
-			}
-			rmdCount++
-
-			// Reduce balance by RMD, then grow for next year
-			currentBalance -= rmdAmount
-			if currentBalance < 0 {
-				currentBalance = 0
-			}
+	for y := 0; y < maxYears && rmdCount < 20; y++ {
+		age := olderAge + y
+		if age < effectiveStartAge {
+			continue
+		}
+		// Stop at depletion year — no further rows.
+		if result.DepletionYear != nil && y >= *result.DepletionYear {
+			break
 		}
 
-		// Apply annual growth (simplified - in reality this happens monthly)
-		for m := 0; m < 12; m++ {
-			currentBalance *= (1 + monthlyReturn)
+		// Start-of-year tax-deferred balance.
+		startIdx := 12*y - 1
+		if y == 0 {
+			startIdx = 0
 		}
+		if startIdx >= len(projection.Months) {
+			break
+		}
+		startBalance := projection.Months[startIdx].TaxDeferredBalance
+
+		// Sum actual RMDWithdrawal across the 12 months of this year.
+		startMonth := 12 * y
+		endMonth := startMonth + 12
+		if endMonth > len(projection.Months) {
+			endMonth = len(projection.Months)
+		}
+		rmdAmount := 0.0
+		for m := startMonth; m < endMonth; m++ {
+			rmdAmount += projection.Months[m].RMDWithdrawal
+		}
+
+		factor := GetLifeExpectancyFactor(age)
+		rmdPercent := 0.0
+		if factor > 0 {
+			rmdPercent = 100.0 / factor
+		}
+
+		result.Projections = append(result.Projections, models.RMDProjection{
+			Age:            age,
+			Year:           y,
+			TaxDeferredBal: startBalance,
+			LifeExpFactor:  factor,
+			RMDAmount:      rmdAmount,
+			RMDPercent:     rmdPercent,
+		})
+
+		if rmdCount < 10 {
+			result.TotalRMDsOver10Yr += rmdAmount
+		}
+		rmdCount++
 	}
 
-	return &models.RMDAnalysis{
-		StartsInYears:     startsInYears,
-		StartAge:          RMDStartAge,
-		CurrentAge:        olderAge, // Uses older person's age for RMD calculations
-		TaxDeferredValue:  taxDeferredValue,
-		Projections:       projections,
-		TotalRMDsOver10Yr: totalRMDs10Yr,
-	}
+	return result
 }

@@ -2,6 +2,7 @@ package models
 
 import (
 	"math"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -27,6 +28,12 @@ type HealthcarePerson struct {
 	MedicareMonthlyCost   float64      `json:"medicare_monthly_cost"`   // Cost when turning 65
 	PostMedicareInflation float64      `json:"post_medicare_inflation"` // Annual % (e.g., 4 for 4%)
 	MedicareEligibleAge   int          `json:"medicare_eligible_age"`   // Usually 65
+
+	// F-067: birth month ("YYYY-MM") for month-precise ACA→Medicare transition.
+	// When set, GetMonthlyCost uses exact birth-month arithmetic instead of
+	// integer-year bucketing (which can be off by up to 11 months for
+	// mid-year birthdays). Populated from the linked Person.BirthMonth.
+	BirthMonth string `json:"birth_month,omitempty"`
 
 	// Employer coverage transition fields
 	EmployerCoverageYears int     `json:"employer_coverage_years"` // Years of remaining employer coverage (0 = indefinite until Medicare)
@@ -82,16 +89,53 @@ func (hp *HealthcarePerson) YearsUntilMedicare() int {
 	return hp.MedicareEligibleAge - hp.CurrentAge
 }
 
+// monthsUntilMedicareEligible returns the number of months from projection
+// month 0 until this person becomes Medicare-eligible.
+//
+// F-067: when BirthMonth ("YYYY-MM") and startDate ("YYYY-MM") are both set,
+// use month-precise arithmetic so that mid-year birthdays don't round to the
+// wrong year (up to 11-month error with the year-based fallback).
+func (hp *HealthcarePerson) monthsUntilMedicareEligible(startDate string) int {
+	if hp.BirthMonth != "" && startDate != "" {
+		birth, err := time.Parse("2006-01", hp.BirthMonth)
+		if err == nil {
+			start, err2 := time.Parse("2006-01", startDate)
+			if err2 == nil {
+				eligibleDate := birth.AddDate(hp.MedicareEligibleAge, 0, 0)
+				months := (eligibleDate.Year()-start.Year())*12 + int(eligibleDate.Month()) - int(start.Month())
+				if months < 0 {
+					return 0
+				}
+				return months
+			}
+		}
+	}
+	// Legacy year-based fallback.
+	yearsUntil := hp.MedicareEligibleAge - hp.CurrentAge
+	if yearsUntil < 0 {
+		return 0
+	}
+	return yearsUntil * 12
+}
+
 // GetMonthlyCost calculates the healthcare cost for a given month in the projection
 // month 0 = current month, month 12 = 1 year from now, etc.
+//
+// Note: prefer GetMonthlyCostAt for month-precise F-067 ACA→Medicare transitions
+// when hp.BirthMonth is set. This method uses the legacy year-based fallback.
 func (hp *HealthcarePerson) GetMonthlyCost(month int) float64 {
-	yearsElapsed := month / 12
+	return hp.GetMonthlyCostAt(month, "")
+}
+
+// GetMonthlyCostAt calculates the healthcare cost for a given month.
+// startDate ("YYYY-MM") enables month-precise ACA→Medicare transitions
+// (F-067) when hp.BirthMonth is also set; otherwise falls back to the
+// year-based legacy calculation.
+func (hp *HealthcarePerson) GetMonthlyCostAt(month int, startDate string) float64 {
 	yearsElapsedFloat := float64(month) / 12.0
-	ageAtMonth := hp.CurrentAge + yearsElapsed
-	yearsUntilMedicare := hp.MedicareEligibleAge - hp.CurrentAge
-	if yearsUntilMedicare < 0 {
-		yearsUntilMedicare = 0
-	}
+
+	// F-067: use month-precise Medicare transition when BirthMonth+startDate are set.
+	monthsUntilMedicare := hp.monthsUntilMedicareEligible(startDate)
 
 	// Already on Medicare coverage type
 	if hp.CurrentCoverage == CoverageMedicare {
@@ -101,22 +145,22 @@ func (hp *HealthcarePerson) GetMonthlyCost(month int) float64 {
 	// Employer coverage with limited duration - check this BEFORE age-based Medicare transition
 	// This handles the case where someone is already past Medicare age but still has employer coverage
 	if hp.CurrentCoverage == CoverageEmployer && hp.EmployerCoverageYears > 0 {
+		monthsOnEmployer := hp.EmployerCoverageYears * 12
 		// Still on employer coverage
-		if yearsElapsed < hp.EmployerCoverageYears {
+		if month < monthsOnEmployer {
 			return hp.CurrentMonthlyCost // Employer cost doesn't inflate (it's subsidized)
 		}
 
 		// Employer coverage ended - determine what's next
-		monthsAfterEmployer := month - (hp.EmployerCoverageYears * 12)
-		ageWhenEmployerEnds := hp.CurrentAge + hp.EmployerCoverageYears
+		monthsAfterEmployer := month - monthsOnEmployer
 
 		// If already Medicare-eligible when employer coverage ends, go straight to Medicare
-		if ageWhenEmployerEnds >= hp.MedicareEligibleAge {
+		if monthsOnEmployer >= monthsUntilMedicare {
 			return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(monthsAfterEmployer)/12.0)
 		}
 
 		// Not yet Medicare-eligible when employer ends - go to ACA first
-		monthsOnACABeforeMedicare := (hp.MedicareEligibleAge - ageWhenEmployerEnds) * 12
+		monthsOnACABeforeMedicare := monthsUntilMedicare - monthsOnEmployer
 		if monthsAfterEmployer < monthsOnACABeforeMedicare {
 			// Still on ACA
 			return hp.ACACostAfterEmployer * math.Pow(1+hp.PreMedicareInflation/100, float64(monthsAfterEmployer)/12.0)
@@ -128,8 +172,8 @@ func (hp *HealthcarePerson) GetMonthlyCost(month int) float64 {
 	}
 
 	// Check if person transitions to Medicare in this projection period (ACA or unlimited employer)
-	if ageAtMonth >= hp.MedicareEligibleAge {
-		monthsOnMedicare := month - (yearsUntilMedicare * 12)
+	if month >= monthsUntilMedicare {
+		monthsOnMedicare := month - monthsUntilMedicare
 		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(monthsOnMedicare)/12.0)
 	}
 

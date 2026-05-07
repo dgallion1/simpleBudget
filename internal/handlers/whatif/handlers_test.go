@@ -5215,10 +5215,11 @@ func TestHandleWhatIfSocialSecurity_UsesAnalysisCache(t *testing.T) {
 		t.Fatalf("failed to load settings: %v", err)
 	}
 	targetSettings.SocialSecurity = &models.SocialSecurityConfig{
-		FRABenefit: 2500,
-		FRA:        67,
-		COLARate:   0.02,
-		ClaimAge:   68,
+		FRABenefit:  2500,
+		FRA:         67,
+		COLARate:    0.02,
+		COLARateSet: true, // F-026: form handler always sets this flag on submit
+		ClaimAge:    68,
 	}
 	primeAnalysisCache(targetSettings, 345678)
 
@@ -8053,5 +8054,56 @@ func TestHandleWhatIfPurgeBigTicket_NonexistentID(t *testing.T) {
 	handleWhatIfPurgeBigTicket(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for nonexistent removed item, got %d", w.Code)
+	}
+}
+
+// ── F-026: explicit zero COLA honored after handler save ──────────────────────
+
+func TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Seed with a non-zero COLA so we can confirm the zero overwrite sticks.
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	settings.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit:  2000,
+		FRA:         67,
+		COLARate:    0.02, // prior non-zero value
+		COLARateSet: false,
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// POST cola_rate=0 — user explicitly wants 0% COLA.
+	form := url.Values{
+		"fra_benefit": {"2000"},
+		"fra":         {"67"},
+		"cola_rate":   {"0"},
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/social-security", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSocialSecurity(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	loaded, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.SocialSecurity == nil {
+		t.Fatal("expected SocialSecurity settings")
+	}
+	// F-026: explicit 0 must be stored, not silently replaced with 0.02.
+	if loaded.SocialSecurity.COLARate != 0.0 {
+		t.Errorf("COLARate = %v, want 0.0 (explicit zero honored)", loaded.SocialSecurity.COLARate)
+	}
+	if !loaded.SocialSecurity.COLARateSet {
+		t.Errorf("COLARateSet = false; want true (form submit should set the flag)")
 	}
 }

@@ -5,10 +5,6 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Required Minimum Distributions (RMD)</h3>
 
-    {{if .Settings.ScenarioChain}}
-    <p class="text-xs text-amber-600 dark:text-amber-400 mb-2 italic">Scenario chain is not yet applied to this panel.</p>
-    {{end}}
-
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">Current Age</p>
@@ -34,7 +30,13 @@
         </div>
     </div>
 
-    {{if .Analysis.RMD.Projections}}
+    {{if .Analysis.RMD.DepletedBeforeRMD}}
+    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+        <p class="text-sm text-amber-800 dark:text-amber-200">
+            Portfolio depletes in year {{.Analysis.RMD.DepletionYear}}{{if .Analysis.RMD.DepletionAge}} (age {{.Analysis.RMD.DepletionAge}}){{end}} — no RMDs would apply in this scenario.
+        </p>
+    </div>
+    {{else if .Analysis.RMD.Projections}}
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead>
@@ -63,8 +65,13 @@
             </tbody>
         </table>
     </div>
+    {{if .Analysis.RMD.DepletionYear}}
+    <p class="text-xs text-amber-600 dark:text-amber-400 mt-2">
+        Portfolio depletes in year {{.Analysis.RMD.DepletionYear}}{{if .Analysis.RMD.DepletionAge}} (age {{.Analysis.RMD.DepletionAge}}){{end}}; subsequent RMD years not shown.
+    </p>
+    {{end}}
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-        Estimates based on IRS Uniform Lifetime Table. Actual RMDs depend on prior-year balance.
+        RMD % is the IRS Uniform Lifetime factor; RMD amount is the projected withdrawal from your scenario.
     </p>
     {{else}}
     <p class="text-sm text-gray-500 dark:text-gray-300">

@@ -71,8 +71,9 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesEnabled(t *testing.T) {
 	}
 	s.MonthlyLivingExpenses = 3000
 
-	// With spending phases enabled, should apply multiplier
-	result := rebaseLivingExpensesAtTransition(s, 65, 1.1)
+	// With spending phases enabled, should apply multiplier using full cumulativeInflation.
+	// netCumulativeInflation is ignored by the phases path.
+	result := rebaseLivingExpensesAtTransition(s, 65, 1.1, 1.0)
 	expected := 3000 * s.GetSpendingMultiplier(65) * 1.1
 	if math.Abs(result-expected) > 0.01 {
 		t.Errorf("expected %f, got %f", expected, result)
@@ -84,7 +85,8 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesDisabled(t *testing.T) {
 	s.MonthlyLivingExpenses = 3000
 	s.SpendingPhaseConfig = nil
 
-	result := rebaseLivingExpensesAtTransition(s, 65, 1.1)
+	// With spending phases disabled, the function uses netCumulativeInflation (4th arg).
+	result := rebaseLivingExpensesAtTransition(s, 65, 1.1, 1.1)
 	expected := 3000 * 1.1
 	if math.Abs(result-expected) > 0.01 {
 		t.Errorf("expected %f, got %f", expected, result)
@@ -1331,14 +1333,14 @@ func TestRunSingleHistoricalSequence_SpendingPhasesDetail(t *testing.T) {
 
 // --- RMD analysis with already-started RMDs ---
 
-func TestCalculateRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
+func TestBuildRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.CurrentAge = 80 // Already past 73
 	s.TaxDeferredPercent = 50
 	s.ProjectionYears = 10
 
 	c := NewCalculator(s)
-	rmd := c.CalculateRMDAnalysis()
+	rmd := c.BuildRMDAnalysis(c.RunProjection())
 
 	if rmd == nil {
 		t.Fatal("expected non-nil RMD analysis")
@@ -2398,7 +2400,7 @@ func TestSaveInternal_MkdirAllError(t *testing.T) {
 
 // --- RMD analysis: InvestmentReturn=0 path ---
 
-func TestCalculateRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
+func TestBuildRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.CurrentAge = 70
 	s.TaxDeferredPercent = 50
@@ -2406,7 +2408,7 @@ func TestCalculateRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
 	s.InvestmentReturn = 0 // Should use allocation-based return
 
 	c := NewCalculator(s)
-	rmd := c.CalculateRMDAnalysis()
+	rmd := c.BuildRMDAnalysis(c.RunProjection())
 	if rmd == nil {
 		t.Fatal("expected non-nil RMD analysis")
 	}

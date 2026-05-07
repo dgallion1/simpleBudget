@@ -199,8 +199,9 @@ func TestGetAvailableStartYears_EdgeCases(t *testing.T) {
 	if years[0] != HistoricalReturns[0].Year {
 		t.Errorf("expected first year %d, got %d", HistoricalReturns[0].Year, years[0])
 	}
-	// Each start year must allow a full 30-year sequence
-	lastAllowed := HistoricalReturns[len(HistoricalReturns)-1].Year - 30
+	// Each start year must allow a full 30-year sequence.
+	// F-057: last viable start year is lastDataYear - N + 1 (inclusive).
+	lastAllowed := HistoricalReturns[len(HistoricalReturns)-1].Year - 30 + 1
 	lastReturned := years[len(years)-1]
 	if lastReturned > lastAllowed {
 		t.Errorf("last start year %d exceeds allowed %d", lastReturned, lastAllowed)
@@ -475,7 +476,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 
 	t.Run("rmd_analysis", func(t *testing.T) {
 		c := NewCalculator(s)
-		rmd := c.CalculateRMDAnalysis()
+		rmd := c.BuildRMDAnalysis(c.RunProjection())
 
 		if rmd.TaxDeferredValue != 0 {
 			t.Errorf("expected 0 tax-deferred value, got %f", rmd.TaxDeferredValue)

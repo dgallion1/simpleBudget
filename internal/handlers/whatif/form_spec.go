@@ -196,6 +196,21 @@ func applyProjectionTiming(r *http.Request, updates map[string]interface{}) stri
 	return ""
 }
 
+// applyRMDTiming parses the rmd_timing form field. Returns an empty string on
+// success or a user-facing message on invalid input.
+func applyRMDTiming(r *http.Request, updates map[string]interface{}) string {
+	v := r.FormValue("rmd_timing")
+	if v == "" {
+		return ""
+	}
+	timing := models.RMDTiming(v)
+	if models.NormalizeRMDTiming(timing) != timing {
+		return "Invalid RMD timing"
+	}
+	updates["rmd_timing"] = timing
+	return ""
+}
+
 // validateSettingsCrossFieldInvariants enforces the two cross-field rules
 // from the legacy handler: tax_deferred + roth ≤ 100 (when roth is being set)
 // and stock + cash ≤ 100 (when cash is being set). For each rule, the partner

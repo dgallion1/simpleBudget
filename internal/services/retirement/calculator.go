@@ -160,12 +160,29 @@ func calculateLivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64
 	return s.MonthlyLivingExpenses * compoundedFactorFromPercent(s.InflationRate-s.SpendingDeclineRate, monthsElapsed)
 }
 
-func rebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cumulativeInflation float64) float64 {
+// rebaseLivingExpensesAtTransition anchors currentLivingExpenses to the new
+// chain settings at a scenario boundary.
+//
+// cumulativeInflation    – full-inflation cumulative factor (used for spending
+//
+//	phases, which compound at the full rate).
+//
+// netCumulativeInflation – (InflationRate−SpendingDeclineRate) cumulative factor
+//
+//	(used for the no-phase path, which compounds at the
+//	net rate per month). Passing the correct net factor
+//	prevents the step-up error described in F-065.
+func rebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cumulativeInflation float64, netCumulativeInflation float64) float64 {
 	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+		// Phases compound currentLivingExpenses at full InflationRate each month,
+		// so the rebase anchor must also use full inflation.
 		return s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
 	}
 
-	return s.MonthlyLivingExpenses * cumulativeInflation
+	// No phases: currentLivingExpenses compounds at net rate (InflationRate −
+	// SpendingDeclineRate) each month. Use netCumulativeInflation so the rebase
+	// anchor matches the ongoing per-month trajectory. (F-065)
+	return s.MonthlyLivingExpenses * netCumulativeInflation
 }
 
 // Phase 4 projection tax policy:
@@ -670,6 +687,13 @@ func executeTaxAwarePortfolioMonth(
 	)
 	taxesPaid := snapshot.MonthlyTax
 	irmaaExpense := snapshot.MonthlyIRMAA
+	// Marginal rate derived from estimated annual MAGI; updated each iteration
+	// alongside taxesPaid/irmaaExpense so the RMD after-tax reinvestment uses a
+	// converged rate. GetMarginalRate returns a percent (e.g. 22.0), so divide by 100.
+	marginalRate := 0.0
+	if taxCalculator != nil {
+		marginalRate = taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear) / 100
+	}
 	finalSnapshot := snapshot
 	result := taxAwarePortfolioMonthResult{}
 	growthBeforeFraction, growthAfterFraction := projectionTimingGrowthFractions(timing)
@@ -686,7 +710,7 @@ func executeTaxAwarePortfolioMonth(
 		beforeTaxableGrowth := trialTaxable.applyGrowth(taxableComponents, growthBeforeFraction)
 
 		trialNeededFromPortfolio := totalExpenses + irmaaExpense + taxesPaid - incomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
-		trialCashFlow := executePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
+		trialCashFlow := executePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
 
 		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(taxDeferredMonthlyReturn, growthAfterFraction)
 		rothAfterGrowth := trialRoth * fractionalMonthlyReturn(rothMonthlyReturn, growthAfterFraction)
@@ -737,6 +761,10 @@ func executeTaxAwarePortfolioMonth(
 
 		taxesPaid = recalculatedSnapshot.MonthlyTax
 		irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
+		// Update marginal rate from converged MAGI for next iteration's RMD reinvestment
+		if taxCalculator != nil {
+			marginalRate = taxCalculator.GetMarginalRate(recalculatedSnapshot.AnnualMAGI, currentYear) / 100
+		}
 	}
 
 	result.TaxesPaid = taxesPaid
@@ -745,15 +773,31 @@ func executeTaxAwarePortfolioMonth(
 	return result
 }
 
-func reinvestRequiredRMDToTaxableState(monthlyRMD float64, taxDeferredBalance *float64, taxable *taxableAccountState) float64 {
+// reinvestRequiredRMDToTaxableState moves an RMD from tax-deferred into the
+// taxable account, with the after-tax amount as new basis. The pre-tax
+// amount is decremented from tax-deferred (the gross RMD is the legal
+// distribution); the after-tax portion (gross × (1 - marginalRate)) is
+// added to the taxable account with that net amount as cost basis. Returns
+// the net amount added to taxable.
+//
+// F-049: prior implementation used gross as both reinvested amount and
+// basis, which silently understated future LTCG on later withdrawals.
+func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState) float64 {
 	if monthlyRMD <= 0 || *taxDeferredBalance <= 0 {
 		return 0
+	}
+	if marginalRate < 0 {
+		marginalRate = 0
+	}
+	if marginalRate > 1 {
+		marginalRate = 1
 	}
 
 	rmdWithdrawal := math.Min(monthlyRMD, *taxDeferredBalance)
 	*taxDeferredBalance -= rmdWithdrawal
-	taxable.addCash(rmdWithdrawal)
-	return rmdWithdrawal
+	netAfterTax := rmdWithdrawal * (1 - marginalRate)
+	taxable.addCash(netAfterTax)
+	return netAfterTax
 }
 
 func applyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) float64 {
@@ -781,7 +825,7 @@ func applyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 	return remaining
 }
 
-func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) portfolioCashFlowResult {
+func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) portfolioCashFlowResult {
 	result := portfolioCashFlowResult{}
 
 	if neededFromPortfolio > 0 {
@@ -802,7 +846,7 @@ func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 
 		unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
 		if unmetRMD > 0 {
-			reinvested := reinvestRequiredRMDToTaxableState(unmetRMD, taxDeferredBalance, taxable)
+			reinvested := reinvestRequiredRMDToTaxableState(unmetRMD, marginalRate, taxDeferredBalance, taxable)
 			result.RMDWithdrawal += reinvested
 			result.WithdrawalFromTaxDeferred += reinvested
 		}
@@ -810,7 +854,7 @@ func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 		if neededFromPortfolio < 0 {
 			taxable.addCash(math.Abs(neededFromPortfolio))
 		}
-		reinvested := reinvestRequiredRMDToTaxableState(monthlyRMD, taxDeferredBalance, taxable)
+		reinvested := reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate, taxDeferredBalance, taxable)
 		result.RMDWithdrawal = reinvested
 		result.WithdrawalFromTaxDeferred += reinvested
 	}
@@ -980,6 +1024,10 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 	// Track cumulative inflation for spending phase calculations
 	cumulativeInflation := 1.0
+	// netCumulativeInflation tracks (InflationRate−SpendingDeclineRate) compounding,
+	// mirroring the per-month no-phase expense accumulation. Used by
+	// rebaseLivingExpensesAtTransition to avoid the F-065 step-up error.
+	netCumulativeInflation := 1.0
 
 	// Spending guardrails
 	var grState *guardrailState
@@ -1043,7 +1091,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 					s = activeSettings
 					nextChainIdx = newIdx
 
-					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
+					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
 					taxableAccount.syncAssumptions(s)
 				}
 			}
@@ -1082,6 +1130,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		if m > 0 {
 			cumulativeInflation *= monthlyCompoundFactorFromPercent(s.InflationRate)
+			netCumulativeInflation *= monthlyCompoundFactorFromPercent(s.InflationRate - s.SpendingDeclineRate)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
 			} else {
@@ -2293,6 +2342,10 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 	// Track cumulative inflation for spending phase calculations
 	cumulativeInflation := 1.0
+	// netCumulativeInflation tracks (InflationRate−SpendingDeclineRate) compounding,
+	// mirroring the per-month no-phase expense accumulation. Used by
+	// rebaseLivingExpensesAtTransition to avoid the F-065 step-up error.
+	netCumulativeInflation := 1.0
 
 	// Adaptive spending: track when we're in reduced-spending mode
 	adaptationEndYear := -1 // Year when adaptation ends (-1 = not adapting)
@@ -2331,7 +2384,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 					s = activeSettings
 					nextChainIdx = newIdx
 
-					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation)
+					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
 					taxableAccount.syncAssumptions(s)
 				}
 			}
@@ -2376,6 +2429,7 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		if m > 0 {
 			cumulativeInflation *= monthlyCompoundFactorFromDecimal(s.InflationRate / 100 * inflationVar)
+			netCumulativeInflation *= monthlyCompoundFactorFromDecimal((s.InflationRate - s.SpendingDeclineRate) / 100 * inflationVar)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
 			} else {
@@ -3011,7 +3065,7 @@ func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
 	sensitivity := c.CalculateSensitivity()
 	failurePoints := c.CalculateFailurePoints()
 	monteCarlo := c.RunMonteCarloSimulation(1000)
-	rmd := c.CalculateRMDAnalysis()
+	rmd := c.BuildRMDAnalysis(projection)
 	historicalBacktest := c.RunHistoricalBacktest()
 
 	// Add Monte Carlo success rate for comparison

@@ -267,3 +267,32 @@ func TestBuildRMDAnalysis_F072_RMDPercentIsTableValue(t *testing.T) {
 		t.Errorf("RMDAmount = %.2f; want ~1000 (the fixture value)", analysis.Projections[0].RMDAmount)
 	}
 }
+
+// 8. Depletion exactly at the first RMD year → DepletedBeforeRMD true.
+//
+// Boundary case caught in F-072 final review: when dy == startsInYears,
+// no row can be emitted (depletion break at y == dy excludes the depletion
+// year), and the banner must still fire so the user sees the depletion
+// context instead of the generic empty-state.
+func TestBuildRMDAnalysis_F072_DepletionAtFirstRMDYear(t *testing.T) {
+	// olderAge=65, startAge=73, startsInYears=8
+	// depletion at month 96 → dy=8 (exactly first RMD year)
+	calc := newCalcF072(65, 0, 100_000, 60, 30, "2026-01")
+	depletion := 96
+	proj := fixtureProjection(360, func(m int) float64 { return 1.0 }, nil, &depletion)
+
+	analysis := calc.BuildRMDAnalysis(proj)
+
+	if !analysis.DepletedBeforeRMD {
+		t.Errorf("DepletedBeforeRMD = false; want true (depletion at exactly first RMD year)")
+	}
+	if len(analysis.Projections) != 0 {
+		t.Errorf("len(Projections) = %d; want 0", len(analysis.Projections))
+	}
+	if analysis.DepletionYear == nil || *analysis.DepletionYear != 8 {
+		t.Errorf("DepletionYear = %v; want 8", analysis.DepletionYear)
+	}
+	if analysis.DepletionAge == nil || *analysis.DepletionAge != 73 {
+		t.Errorf("DepletionAge = %v; want 73", analysis.DepletionAge)
+	}
+}

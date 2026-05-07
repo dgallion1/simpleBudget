@@ -151,7 +151,7 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 		da := olderAge + dy
 		result.DepletionYear = &dy
 		result.DepletionAge = &da
-		if dy < startsInYears {
+		if dy <= startsInYears {
 			result.DepletedBeforeRMD = true
 			return result
 		}

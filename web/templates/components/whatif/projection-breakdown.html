@@ -28,22 +28,40 @@
                 </tr>
             </thead>
             <tbody>
-                {{range .YearlySummaries}}
-                <tr class="border-b border-gray-100 align-top odd:bg-white even:bg-gray-50/70 dark:border-gray-700/60 dark:odd:bg-gray-800 dark:even:bg-gray-900/30">
-                    <td class="py-2.5 pr-4 pl-3 font-medium text-gray-700 dark:text-gray-200">{{.Year}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .StartingBalance}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums {{if ge .Growth 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney .Growth}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .GrossIncome}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .MAGI}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-600 dark:text-red-400">{{formatMoney .Taxes}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-500 dark:text-red-300">{{formatMoney .NIIT}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .IRMAA}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{printf "%.0f%%" .TaxableSocialSecurityPct}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney .Expenses}}</td>
-                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-amber-600 dark:text-amber-400">{{formatMoney .Withdrawals}}</td>
+                {{range $idx, $ys := .YearlySummaries}}
+                {{$mult := $ys.GuardrailMultiplier}}
+                {{$accent := ""}}
+                {{$accentTitle := ""}}
+                {{if and $mult (lt $mult 1.0)}}
+                  {{$accent = "border-l-4 border-l-red-500"}}
+                  {{$accentTitle = "Guardrail cut active this year"}}
+                {{else if and $mult (gt $mult 1.0)}}
+                  {{$accent = "border-l-4 border-l-green-500"}}
+                  {{$accentTitle = "Guardrail raise active this year"}}
+                {{end}}
+                <tr title="{{$accentTitle}}" class="{{$accent}} border-b border-gray-100 align-top odd:bg-white even:bg-gray-50/70 dark:border-gray-700/60 dark:odd:bg-gray-800 dark:even:bg-gray-900/30">
+                    <td class="py-2.5 pr-4 pl-3 font-medium text-gray-700 dark:text-gray-200">{{$ys.Year}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney $ys.StartingBalance}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums {{if ge $ys.Growth 0.0}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney $ys.Growth}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney $ys.GrossIncome}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney $ys.MAGI}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-600 dark:text-red-400">{{formatMoney $ys.Taxes}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-500 dark:text-red-300">{{formatMoney $ys.NIIT}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney $ys.IRMAA}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{printf "%.0f%%" $ys.TaxableSocialSecurityPct}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">
+                        <div>{{formatMoney $ys.Expenses}}</div>
+                        {{if and $mult (ne $mult 1.0) (gt $ys.PlannedExpenses 0.0)}}
+                        <div data-planned-spending class="text-[11px] text-gray-400 dark:text-gray-500">
+                            {{formatMoney $ys.PlannedExpenses}} ·
+                            <span class="{{if lt $mult 1.0}}text-red-500 dark:text-red-300{{else}}text-green-600 dark:text-green-300{{end}}">×{{printf "%.2f" $mult}}</span>
+                        </div>
+                        {{end}}
+                    </td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-amber-600 dark:text-amber-400">{{formatMoney $ys.Withdrawals}}</td>
                     <td class="py-2.5 pr-3">
-                        <div class="whitespace-nowrap tabular-nums font-medium text-gray-800 dark:text-gray-100">{{formatMoney .EndingBalance}}</div>
-                        <div class="whitespace-nowrap text-xs tabular-nums text-sky-700 dark:text-sky-300">Real {{formatMoney .EndingBalanceReal}}</div>
+                        <div class="whitespace-nowrap tabular-nums font-medium text-gray-800 dark:text-gray-100">{{formatMoney $ys.EndingBalance}}</div>
+                        <div class="whitespace-nowrap text-xs tabular-nums text-sky-700 dark:text-sky-300">Real {{formatMoney $ys.EndingBalanceReal}}</div>
                     </td>
                 </tr>
                 {{end}}

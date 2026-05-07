@@ -8195,3 +8195,55 @@ func TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA(t *testing.T) {
 		t.Errorf("COLARateSet = false; want true (form submit should set the flag)")
 	}
 }
+
+// ── handleWhatIf breakdown guardrail visibility ─────────────────────────────
+
+// The breakdown table must surface the planned-vs-adjusted spending stack
+// and the guardrail multiplier badge when guardrails are enabled and a cut fires.
+func TestHandleWhatIf_BreakdownShowsGuardrailEffect(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	// PortfolioValue must be nonzero so the guardrail state initialises with a
+	// real peak; InvestmentReturn=0 means no growth, so the portfolio drops each
+	// year from spending, triggering the floor cut after the first year.
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled:         true,
+		FloorDropPct:    1,
+		FloorCutPct:     10,
+		CeilingRisePct:  500,
+		CeilingRaisePct: 10,
+		MinSpendingPct:  50,
+		MaxSpendingPct:  150,
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif", nil)
+	handleWhatIf(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	// Multiplier badge text — "×0.90" produced by `printf "%.2f"` for a 10% cut.
+	if !strings.Contains(body, "×0.90") && !strings.Contains(body, "×0.9") {
+		t.Errorf("expected ×0.90 multiplier badge in breakdown body, not found")
+	}
+	// Planned-spending suffix — relies on the data-planned-spending marker we render.
+	if !strings.Contains(body, "data-planned-spending") {
+		t.Errorf("expected data-planned-spending marker in breakdown body, not found")
+	}
+}

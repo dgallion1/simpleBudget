@@ -897,7 +897,7 @@ type ProjectionMonth struct {
 
 	// Guardrail visibility (F-079)
 	PlannedLivingExpenses float64 `json:"planned_living_expenses,omitempty"` // Pre-guardrail-multiplier living expense for the month
-	GuardrailMultiplier   float64 `json:"guardrail_multiplier,omitempty"`    // Active guardrail spending multiplier (1.0 if disabled)
+	GuardrailMultiplier   float64 `json:"guardrail_multiplier"`              // Active guardrail spending multiplier (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
 }
 
 // ProjectionResult contains the complete projection with summary metrics
@@ -929,8 +929,8 @@ type ProjectionYearSummary struct {
 	CumulativeInflation      float64 `json:"cumulative_inflation"`
 
 	// Guardrail visibility (F-079)
-	PlannedExpenses     float64 `json:"planned_expenses,omitempty"`     // Total expenses recomputed with guardrail multiplier locked at 1.0
-	GuardrailMultiplier float64 `json:"guardrail_multiplier,omitempty"` // Multiplier in effect at year-end (1.0 if disabled)
+	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
+	GuardrailMultiplier float64 `json:"guardrail_multiplier"`       // Multiplier in effect at year-end (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
 }
 
 // ProjectionExplainability contains reconciliation data for the projection UI.

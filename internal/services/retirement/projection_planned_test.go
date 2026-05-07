@@ -57,11 +57,18 @@ func TestProjection_PlannedFields_WithCut(t *testing.T) {
 	result := calc.RunFullAnalysis()
 
 	sawAdjusted := false
-	for _, m := range result.Projection.Months {
+	for i, m := range result.Projection.Months {
 		if m.GuardrailMultiplier < 1.0 {
 			sawAdjusted = true
 			if m.PlannedLivingExpenses <= 0 {
-				t.Fatalf("PlannedLivingExpenses must remain > 0 even after a cut, got %v", m.PlannedLivingExpenses)
+				t.Fatalf("month %d: PlannedLivingExpenses must remain > 0 even after a cut, got %v", i, m.PlannedLivingExpenses)
+			}
+			// PlannedLivingExpenses must remain multiplier-independent: it should still equal
+			// GeneralExpenses (both are sourced from currentLivingExpenses pre-multiplier).
+			// A bug that stored the adjusted value in PlannedLivingExpenses would diverge here.
+			if !almostEqual(m.PlannedLivingExpenses, m.GeneralExpenses) {
+				t.Errorf("month %d: PlannedLivingExpenses (%v) != GeneralExpenses (%v) — planned line should be multiplier-independent",
+					i, m.PlannedLivingExpenses, m.GeneralExpenses)
 			}
 		}
 	}

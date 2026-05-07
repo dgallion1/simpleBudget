@@ -3745,3 +3745,67 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Tests:**
 - 7 unit tests in `rmd_test.go` covering depletion before/during/after RMD, SECURE 2.0 transition, already-at-RMD-age, zero TaxDeferredPercent, and IRS-table percent semantics.
 - 2 integration tests in `calculator_test.go`: `TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows` (regression bar for the user-reported bug) and `TestRunFullAnalysis_F072_RMDMatchesProjection` (structural invariant).
+
+### F-073 — HIGH — Surplus RMD reported as net (after-tax) instead of gross taxable distribution
+
+**Status:** RESOLVED in PR 1 of `feat/rmd-audit-followup` (extends F-049).
+
+**Location:** `internal/services/retirement/calculator.go:776-801` (function) and `calculator.go:847-860` (the two callers in `executePortfolioCashFlowWithTaxableState`).
+
+**Symptom:** During every surplus-RMD month (RMD forced but not all needed for expenses), `result.RMDWithdrawal` and `result.WithdrawalFromTaxDeferred` carried the *net* (after-tax) reinvestment amount instead of the *gross* IRS distribution. Downstream `grossIncome` aggregation (calculator.go:1252) then understated ordinary income, federal/state tax, MAGI/IRMAA tier, and RMD-analysis totals by exactly `gross × marginalRate` per month — e.g. a $5,000 RMD at 22% marginal silently reported $3,900 instead of $5,000.
+
+**Cause:** F-049 fixed the *basis* contract (taxable deposit and basis are correctly net-of-tax) but the function still returned only the net amount, and both callers stored that single return value into `RMDWithdrawal` / `WithdrawalFromTaxDeferred`. The reported distribution and the deposited basis were conflated.
+
+**Fix:** `reinvestRequiredRMDToTaxableState` now returns `(gross, net float64)`. Both callers in `executePortfolioCashFlowWithTaxableState` (the surplus `else` branch and the partial-shortfall `unmetRMD > 0` branch) use the gross value for `RMDWithdrawal` and `WithdrawalFromTaxDeferred`. The taxable-account deposit and basis remain net (F-049 contract preserved). Tax-deferred is decremented by the gross amount, which matches the legal IRS distribution.
+
+**Tests:**
+- 2 new tests in `calculator_rmd_gross_test.go`: `TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross` (pure surplus path) and `TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross` (mixed path where RMD partially covers expenses).
+- 3 existing F-049 tests in `taxable_simulation_test.go` updated to destructure both return values, asserting gross == 10,000 and net == 7,800 (or appropriate clamp-result) on each path.
+
+### F-074 — HIGH — `RMDTiming` setting saved and rendered but never read by the projection engine
+
+**Status:** RESOLVED in PR 2 of `feat/rmd-audit-followup` (extends F-035).
+
+**Location:** `internal/services/retirement/calculator.go:1107-1115` (projection year-boundary), `calculator.go:~1219` (projection month loop), `calculator.go:~2408-2414` (Monte Carlo year-boundary), `calculator.go:~2526` (Monte Carlo month loop), `internal/services/retirement/backtest.go:244-250` (backtest year-boundary), `backtest.go:~329` (backtest month loop), and `internal/services/retirement/rmd.go` (new `rmdTriggerMonth` helper).
+
+**Symptom:** The `RMDTiming` model field (`start_of_year` / `mid_year` / `end_of_year`) was previously persisted in saved scenarios, surfaced in the rate-assumptions UI dropdown, normalised by `NormalizeRMDTiming`, and migrated for legacy scenarios — but the projection engine, Monte Carlo, and historical backtest never read it. All three computed `monthlyRMD = annualRMD / 12` at the year boundary and applied the same monthly amount in every month, so all three timing options produced identical projections, identical month-by-month `RMDWithdrawal`, and identical year-end portfolio balances. The user-facing control was a lie: changing the dropdown re-saved the scenario but did not move a single dollar.
+
+**Cause:** F-035 (commit `1a9452b`) only wired `RMDTiming` into the standalone `CalculateRMDAnalysis` panel via `rmdGrowthFractions`; the actual `RunProjection`/`RunMonteCarlo`/`runHistoricalSequence` cash-flow loops were not updated. The three loops continued to use the legacy uniform-spread arithmetic.
+
+**Fix:** Added `rmdTriggerMonth(timing) int` helper in `rmd.go` returning 0/6/11 for `start_of_year`/`mid_year`/`end_of_year` (and 6 for the empty-string default, matching `NormalizeRMDTiming`). All three engines (projection, Monte Carlo, backtest) now compute `annualRMD` once at the year boundary on the year-start tax-deferred balance (matches the IRS "December 31 prior year" rule) and, immediately before each per-month `executeTaxAwarePortfolioMonth` call, set `monthlyRMD = math.Min(annualRMD, taxDeferredBalance)` only when `monthInYear == rmdTriggerMonth(s.RMDTiming)` and zero otherwise. Annual `RMDWithdrawal` totals match `CalculateRMD` exactly; portfolio growth trajectory now responds to the dropdown — `end_of_year > mid_year > start_of_year` for year-end balance under steady positive returns. Monte Carlo and backtest required hoisting `annualRMD` from a year-scope local declaration to a function-scope `var` so the per-month block can read it.
+
+**Tests:**
+- 3 new tests in `rmd_timing_test.go`: `TestRMDTriggerMonth_F074_AllTimings` (helper unit), `TestProjection_F074_TimingAffectsYearEndBalance` (asserts ordering invariant + same annual total across timings), and `TestProjection_F074_TriggerMonthIsExclusive` (asserts only the trigger month has a non-zero `RMDWithdrawal`).
+- 1 existing test updated in `rmd_tax_test.go`: `TestRunProjectionDeductsTaxesFromRMDCashFlow` now explicitly sets `s.RMDTiming = RMDTimingStartOfYear` so its month-0 assertion remains valid; the test's purpose (tax deduction from RMD cash flow) is unchanged.
+
+### F-075 — HIGH — Projection and event timeline still gated on legacy `RMDStartAge=73` constant
+
+**Status:** RESOLVED in PR 3 of `feat/rmd-audit-followup` (extends F-032).
+
+**Location:** `internal/services/retirement/calculator.go` (six conditional gates: main projection year-boundary, budget-fit RMD, steady-state RMD, IRMAA lookback RMD, Monte Carlo year-boundary, plus the budget-fit single-month branch), `internal/services/retirement/backtest.go` (backtest year-boundary), and `internal/handlers/whatif/handlers.go:218-224` (event timeline "RMD starts" label).
+
+**Symptom:** `BuildRMDAnalysis` correctly switched to `EffectiveRMDStartAge(s)` in F-032 (returns 75 when `StartDate ≥ 2033-01`, else 73 — per SECURE 2.0 Act of 2022). Every projection-side gate, however, still compared `olderAge >= RMDStartAge` against the constant 73. For 2033+ scenarios the RMD panel said "RMDs start at 75" while the projection actually withdrew at 73 (e.g. a 73-year-old in 2033 with $1M tax-deferred saw a $37,735 RMD in month 0 of the projection), and the Whatif chart's "RMD starts in N years" event label was computed from 73 rather than 75. The panel and the projection disagreed for any plan starting in 2033 or later.
+
+**Cause:** F-032 only updated `BuildRMDAnalysis` and the Whatif analysis renderer. Six call sites in `calculator.go`, the backtest year-boundary in `backtest.go`, and the chart-event handler in `handlers.go` were missed. The legacy `RMDStartAge` constant is still meaningful as the SECURE 2.0 legal floor (the lowest possible RMD start age), so simply renaming it would have lost that semantic.
+
+**Fix:** Replaced six `RMDStartAge` comparisons in `calculator.go` (year-boundary projection gate, budget-fit gate, steady-state gate, IRMAA lookback gate, Monte Carlo year-boundary gate) plus the one in `backtest.go` (historical-sequence year-boundary) with `EffectiveRMDStartAge(s)` calls. The handler block in `handlers.go` now computes `effectiveStart := retirement.EffectiveRMDStartAge(settings)` once and uses it for both the threshold comparison and the years-until label. The `RMDStartAge` constant is retained as documentation of the SECURE 2.0 legal floor; only production conditional gates were migrated.
+
+**Tests:**
+- 3 new tests in `rmd_start_age_projection_test.go`: `TestProjection_F075_2033StartAge73NoRMD` (regression bar — the failing test before the fix; asserts no RMD for age 73 in 2033), `TestProjection_F075_2033StartAge75DoesRMD` (positive case at the new SECURE 2.0 threshold), and `TestProjection_F075_2026StartAge73DoesRMD` (legacy pre-2033 path still triggers RMD at 73).
+- 2 new tests in `handlers_test.go`: `TestBuildProjectionChartEvents_F075_RMDStartsUsesEffectiveAge` (2033+ start date → "RMD starts" event year is `75 - olderAge`) and `TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73` (pre-2033 start date → year is `73 - olderAge`).
+
+### F-076 — MEDIUM — Portfolio Value range dropdown snaps back to value-derived bucket on selection
+
+**Status:** RESOLVED in PR 4 of `feat/rmd-audit-followup`. Discovered during F-073/F-074/F-075 review (not in the original 2026-05-05 audit; user-reported regression surfaced while QA-ing the RMD audit fixes).
+
+**Location:** `web/templates/components/whatif/portfolio-settings.html:33` (canonical dropdown) and `web/templates/components/whatif/quick-adjust.html:82` (mirror dropdown in the floating Quick Adjust panel).
+
+**Symptom:** With `PortfolioValue=$100,000` the dropdown renders "$0-100K" selected. Picking a wider bucket (e.g. "$0-500K") visibly expanded the slider for a fraction of a second and then the dropdown immediately snapped back to "$0-100K", making it impossible to widen the slider range without first dragging the slider into the new bucket. Reported by the user during PR 4 staging review.
+
+**Cause:** `updatePortfolioRange(this.value, { sourceEvent: event })` updated the slider's `min`/`max`/`step` and then dispatched a synthetic `change` event on the slider (`portfolio-settings.html:106`). The form's `hx-trigger="change delay:500ms"` (line 27) caught that synthetic event and POSTed `/whatif/settings` with the unchanged `portfolio_value`. The server-rendered template then re-derived the dropdown's `selected` attribute from the unchanged value bucket, collapsing the user's range pick. The `quick-adjust.html` mirror dropdown shared the same bug because it also called `updatePortfolioRange(this.value)` without `triggerChange: false`. The JS handler already supported the `triggerChange: false` option (line 81: `shouldTriggerChange = !options || options.triggerChange !== false`; line 105: synthetic dispatch gated on `if (shouldTriggerChange)`); only `initializePortfolioRange` was passing it.
+
+**Fix:** Both dropdowns now pass `{ triggerChange: false }` to `updatePortfolioRange`. Dropdown selection still updates the slider's min/max/step client-side and clamps the current value into range, but no synthetic `change` event fires, so HTMX does not auto-submit. The next real user interaction (dragging the slider) fires a genuine change event that submits the form with the updated value. Cross-render persistence of the dropdown's wider-than-value range is intentionally out of scope for this PR — once the user drags into the new bucket the value-derived `selected` matches what the user picked, and the most common workflow ("widen range, then drag") is now smooth.
+
+**Tests:**
+- No Go test asset added — change is template-only and the bug only manifests through HTMX-triggered form submission. Manual smoke test: load Whatif with a $100K portfolio, change the dropdown to "$0-500K", confirm dropdown stays on "$0-500K" and slider's max becomes 500,000 with no network request fired until the slider is dragged.
+- `go test ./internal/handlers/whatif/ -count=1` exercises the template-rendering path and stayed green, confirming no template syntax regression.

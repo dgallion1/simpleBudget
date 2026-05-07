@@ -778,13 +778,19 @@ func executeTaxAwarePortfolioMonth(
 // amount is decremented from tax-deferred (the gross RMD is the legal
 // distribution); the after-tax portion (gross × (1 - marginalRate)) is
 // added to the taxable account with that net amount as cost basis. Returns
-// the net amount added to taxable.
+// (gross, net) — gross is the IRS distribution amount that callers must
+// report as ordinary taxable income; net is the cash actually deposited into
+// the taxable account.
 //
 // F-049: prior implementation used gross as both reinvested amount and
 // basis, which silently understated future LTCG on later withdrawals.
-func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState) float64 {
+// F-073: prior implementation returned only the net amount; callers
+// stored that net into RMDWithdrawal and WithdrawalFromTaxDeferred, which
+// understated ordinary income, taxes, MAGI, and RMD-analysis totals by
+// exactly gross × marginalRate every surplus-RMD month.
+func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState) (gross, net float64) {
 	if monthlyRMD <= 0 || *taxDeferredBalance <= 0 {
-		return 0
+		return 0, 0
 	}
 	if marginalRate < 0 {
 		marginalRate = 0
@@ -793,11 +799,11 @@ func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDefe
 		marginalRate = 1
 	}
 
-	rmdWithdrawal := math.Min(monthlyRMD, *taxDeferredBalance)
-	*taxDeferredBalance -= rmdWithdrawal
-	netAfterTax := rmdWithdrawal * (1 - marginalRate)
-	taxable.addCash(netAfterTax)
-	return netAfterTax
+	gross = math.Min(monthlyRMD, *taxDeferredBalance)
+	*taxDeferredBalance -= gross
+	net = gross * (1 - marginalRate)
+	taxable.addCash(net)
+	return gross, net
 }
 
 func applyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) float64 {
@@ -846,17 +852,17 @@ func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 
 		unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
 		if unmetRMD > 0 {
-			reinvested := reinvestRequiredRMDToTaxableState(unmetRMD, marginalRate, taxDeferredBalance, taxable)
-			result.RMDWithdrawal += reinvested
-			result.WithdrawalFromTaxDeferred += reinvested
+			gross, _ := reinvestRequiredRMDToTaxableState(unmetRMD, marginalRate, taxDeferredBalance, taxable)
+			result.RMDWithdrawal += gross
+			result.WithdrawalFromTaxDeferred += gross
 		}
 	} else {
 		if neededFromPortfolio < 0 {
 			taxable.addCash(math.Abs(neededFromPortfolio))
 		}
-		reinvested := reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate, taxDeferredBalance, taxable)
-		result.RMDWithdrawal = reinvested
-		result.WithdrawalFromTaxDeferred += reinvested
+		gross, _ := reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate, taxDeferredBalance, taxable)
+		result.RMDWithdrawal = gross
+		result.WithdrawalFromTaxDeferred += gross
 	}
 
 	return result
@@ -1098,14 +1104,17 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
 			taxableAccount.RealizedGainsYTD = 0
 
-			// Calculate annual RMD at start of each year (age 73+)
-			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
+			// F-074: compute annualRMD once per year on year-start tax-deferred
+			// balance (matches IRS "December 31 prior year" rule). Per-month
+			// monthlyRMD is set inside the month loop based on RMDTiming.
+			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ projections per
+			// SECURE 2.0) so projection matches the BuildRMDAnalysis panel.
+			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
 				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
-				monthlyRMD = annualRMD / 12
 			} else {
 				annualRMD = 0
-				monthlyRMD = 0
 			}
+			monthlyRMD = 0
 
 			// Process Roth conversions (annual, at year boundary)
 			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
@@ -1208,6 +1217,13 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		totalGrowth := 0.0
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+
+		// F-074: apply the full annual RMD only in the trigger month for
+		// the user's selected timing. Other months withdraw 0.
+		monthlyRMD = 0
+		if annualRMD > 0 && monthInYear == rmdTriggerMonth(s.RMDTiming) {
+			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
+		}
 
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
@@ -1446,11 +1462,11 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		})
 	}
 
-	// Calculate RMD if age 73+ and have tax-deferred balance
-	// Uses older person's age - whoever hits 73 first triggers RMD
+	// Calculate RMD if older spouse has reached the effective RMD start age
+	// (73 pre-2033, 75 from 2033 onward per SECURE 2.0 — F-075).
 	monthlyRMD := 0.0
 	olderAge := s.GetOlderAge()
-	if olderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+	if olderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
 		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 		annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
 		monthlyRMD = annualRMD / 12
@@ -1563,10 +1579,12 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		steadyStateTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, steadyStateTaxableBalance, taxableAnnualReturn)
 		result.SteadyStateIncome += steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
 
-		// Calculate RMD at steady state age (uses older person's age)
+		// Calculate RMD at steady state age (uses older person's age).
+		// F-075: gate on EffectiveRMDStartAge so 2033+ projections honor the
+		// SECURE 2.0 age-75 threshold here too.
 		steadyStateOlderAge := s.GetOlderAge() + (steadyStateMonth / 12)
 		estimatedTaxDeferred := 0.0
-		if steadyStateOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+		if steadyStateOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
 			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
 			estimatedTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 				math.Pow(1+effectiveReturn/100, yearsToSteadyState)
@@ -1585,7 +1603,8 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 			lookbackOlderAge := s.GetOlderAge() + (lookbackMonth / 12)
 			lookbackTaxDeferred := 0.0
 			lookbackRMD := 0.0
-			if lookbackOlderAge >= RMDStartAge && s.TaxDeferredPercent > 0 {
+			// F-075: gate on EffectiveRMDStartAge for SECURE 2.0 2033+ rule.
+			if lookbackOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
 				lookbackTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 					math.Pow(1+effectiveReturn/100, yearsToLookback)
 				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, lookbackOlderAge)
@@ -2329,7 +2348,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	healthShocks := 0
 	lastCrashYear := -999 // Track for recovery boost
 
-	// Annual RMD tracking
+	// Annual RMD tracking (F-074: annualRMD persists across months so the
+	// trigger-month logic can apply the full year's RMD in a single month).
+	var annualRMD float64
 	var monthlyRMD float64
 	var taxState projectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
@@ -2399,13 +2420,15 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			// Healthcare cost variation (healthcare is more volatile, +/- 2%)
 			healthcareVariation = 1 + (rng.Float64()-0.5)*0.04
 
-			// Calculate annual RMD
-			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
-				annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
-				monthlyRMD = annualRMD / 12
+			// F-074: see PR 2 — annualRMD computed once per year, applied
+			// only in the trigger month inside the month loop.
+			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ per SECURE 2.0).
+			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 			} else {
-				monthlyRMD = 0
+				annualRMD = 0
 			}
+			monthlyRMD = 0
 
 			// Process Roth conversions (annual, at year boundary)
 			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
@@ -2506,6 +2529,13 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		taxableComponents := buildTaxableReturnComponents(taxReturn, s)
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+
+		// F-074: apply the full annual RMD only in the trigger month.
+		monthlyRMD = 0
+		if annualRMD > 0 && m%12 == rmdTriggerMonth(s.RMDTiming) {
+			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
+		}
+
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,

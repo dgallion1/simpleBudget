@@ -169,6 +169,9 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	taxableAccount := newTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
 
 	currentLivingExpenses := calculateLivingExpensesAtMonth(s, 0)
+	// F-074: annualRMD persists across months so the trigger-month logic
+	// can apply the full year's RMD in a single month.
+	var annualRMD float64
 	var monthlyRMD float64
 	var taxState projectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
@@ -241,13 +244,15 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			yearData := sequence[currentYear]
 			inflationRate = yearData.InflationRate / 100
 
-			// Calculate RMD
-			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
-				annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
-				monthlyRMD = annualRMD / 12
+			// F-074: see PR 2 — annualRMD computed once per year, applied
+			// only in the trigger month inside the month loop.
+			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ per SECURE 2.0).
+			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 			} else {
-				monthlyRMD = 0
+				annualRMD = 0
 			}
+			monthlyRMD = 0
 
 			// Process Roth conversions
 			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
@@ -322,6 +327,13 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		taxableComponents := buildTaxableReturnComponents(taxAnnualReturn, s)
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+
+		// F-074: apply the full annual RMD only in the trigger month.
+		monthlyRMD = 0
+		if annualRMD > 0 && m%12 == rmdTriggerMonth(s.RMDTiming) {
+			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
+		}
+
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,

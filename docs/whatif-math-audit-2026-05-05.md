@@ -84,6 +84,7 @@ in Appendix C.
 | [F-057](#f-057--medium-getavailablestartyears-off-by-one-excludes-the-most-recent-valid-30-year-window) | MEDIUM | 9. Backtest, Monte Carlo, guardrails | `historical_data.go:144` | Off-by-one in `GetAvailableStartYears` excludes the most recent valid 30-year backtest window |
 | [F-062](#f-062--medium-runmontecarlosimulation-degenerate-inputs-runs0-runs1-have-no-coverage) | MEDIUM | 9. Backtest, Monte Carlo, guardrails | `calculator.go:2102` | `RunMonteCarloSimulation` degenerate inputs (runs=0, runs=1) have no test coverage |
 | [F-065](#f-065--medium-rebaselivingexpensesattransition-uses-full-inflation-instead-of-net-inflation-when-spendingdeclinerate--0) | MEDIUM | 10. Scenario chain, healthcare, budget-fit / steady-state | `calculator.go:163` | Spending rebase uses full inflation not net (`inflation − decline`); ~$179K compounding error over 30-year scenario |
+| [F-072](#f-072--medium--rmd-analysis-detached-from-actual-projection-misleading-balances-when-portfolio-depletes-early) | MEDIUM | 10. Scenario chain, healthcare, budget-fit / steady-state | `rmd.go:132` | `CalculateRMDAnalysis` is computed in isolation from `RunProjection`; RMD card shows compounding balances and quotes future RMDs even when the main projection has already depleted the portfolio |
 | [F-006](#f-006--low-dead-fallback-branch-in-getadjustedstandarddeduction) | LOW | 1. Federal & state income tax | `tax.go:238` | Dead MFJ fallback branch in `GetAdjustedStandardDeduction` for unknown filing status; not reachable from normalized callers |
 | [F-007](#f-007--low-calculatefederaltax-filing-status-and-time-axis-coverage-gaps) | LOW | 1. Federal & state income tax | `tax.go:349` | `CalculateFederalTax` tests only MFJ at year-0; Single/MFS/HoH and `yearsFromBase>0` not covered |
 | [F-008](#f-008--low-calculatestatetax-no-direct-test-coverage) | LOW | 1. Federal & state income tax | `tax.go:396` | `CalculateStateTax` never called directly in tests; positive state-tax path completely untested |
@@ -3728,3 +3729,19 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Evidence / repro:** `buildProjectionExplainability` line 2986: denominator is `totalGrossIncome` summed from `month.GrossIncome`, which includes Roth withdrawals at line 1203.
 **Recommended fix sketch:** Add a UI tooltip clarifying that the denominator is total gross cash flow (income + withdrawals), not income alone. Optionally expose a separate `TaxShareOfOrdinaryIncome` field using only `OrdinaryIncome + SocialSecurityIncome`. Add a test with a zero-cash-flow scenario (all depleted at month 0) to cover the guard.
 **Test coverage note:** No test exercises `buildProjectionExplainability` with a zero-gross-income scenario or with all-Roth withdrawals.
+
+### F-072 — MEDIUM — RMD analysis detached from actual projection; misleading balances when portfolio depletes early
+
+**Status:** RESOLVED in PR 11 (commit range `94219bd..HEAD` on `feat/whatif-fixes`).
+
+**Location:** `internal/services/retirement/rmd.go:132` (pre-fix); the new entry point is `BuildRMDAnalysis(projection)` invoked from `RunFullAnalysis` at `calculator.go:3068`.
+
+**Symptom:** A user with a low portfolio relative to expenses sees the main projection deplete in under two years, while the RMD card cheerfully shows the tax-deferred bucket compounding for ten or more years and projects RMDs against balances that do not exist in the user's plan.
+
+**Cause:** `CalculateRMDAnalysis` re-derived the RMD trajectory from `s.PortfolioValue * s.TaxDeferredPercent / 100` and applied only investment growth and the RMD itself. It never accounted for living expenses, healthcare, taxes, big-ticket spending, or the actual `RunProjection` cash-flow drawdown.
+
+**Fix:** Replaced with `BuildRMDAnalysis(projection *ProjectionResult)` which samples each January's `TaxDeferredBalance` and sums the year's `RMDWithdrawal` from `projection.Months[]`. Three new fields on `RMDAnalysis` (`DepletionYear`, `DepletionAge`, `DepletedBeforeRMD`) drive depletion-aware rendering. The template renders one of three states: banner (depleted before RMD), truncated table with footer note (depleted during RMD years), or standard table with an IRS-vs-actual percent disclosure.
+
+**Tests:**
+- 7 unit tests in `rmd_test.go` covering depletion before/during/after RMD, SECURE 2.0 transition, already-at-RMD-age, zero TaxDeferredPercent, and IRS-table percent semantics.
+- 2 integration tests in `calculator_test.go`: `TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows` (regression bar for the user-reported bug) and `TestRunFullAnalysis_F072_RMDMatchesProjection` (structural invariant).

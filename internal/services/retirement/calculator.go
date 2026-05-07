@@ -2385,8 +2385,6 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		currentYear := m / 12
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
-		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
-		olderAge := s.GetOlderAge() + currentYear
 		bigTicketExpenseThisMonth := 0.0
 		rothConversionThisMonth := 0.0
 		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
@@ -2423,9 +2421,11 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 			// F-074: see PR 2 — annualRMD computed once per year, applied
 			// only in the trigger month inside the month loop.
-			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ per SECURE 2.0).
-			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
+			// F-078: calendar-year gate + age-at-year-end divisor so MC
+			// matches the deterministic projection for late-year births.
+			calendarYear := parseStartYear(s.StartDate) + currentYear
+			if RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
 			} else {
 				annualRMD = 0
 			}

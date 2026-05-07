@@ -1604,6 +1604,9 @@ func TestCalculateBudgetFit_SteadyStateRMD(t *testing.T) {
 	s.ProjectionYears = 20
 	// Income starts at year 8 (month 96), so steady state is at month 96 / year 8
 	// At age 65+8=73, RMD should kick in
+	// F-077: pin StartDate so olderBirthYear=1959 (CurrentAge=65 ⇒ StartDate=2024)
+	// → applicable RMD age 73, preserving this test's "RMD at age 73" intent.
+	s.StartDate = "2024-01"
 	s.IncomeSources = []models.IncomeSource{
 		{ID: "1", Name: "SS", Amount: 2000, StartMonth: 96},
 	}

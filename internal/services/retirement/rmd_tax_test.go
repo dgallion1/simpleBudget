@@ -7,32 +7,38 @@ import (
 	"budget2/internal/models"
 )
 
-// F-032 tests — EffectiveRMDStartAge
+// F-032 tests — EffectiveRMDStartAge (updated for F-077 birth-year semantics)
 
 func TestEffectiveRMDStartAge_F032_Pre2033(t *testing.T) {
+	// Older spouse turns 73 in 2029 (born 1956) — applicable age 73.
 	s := &models.WhatIfSettings{
-		StartDate: "2026-01",
+		StartDate:  "2026-01",
+		CurrentAge: 70,
 	}
 	if got := EffectiveRMDStartAge(s); got != 73 {
-		t.Errorf("pre-2033 start age = %d; want 73", got)
+		t.Errorf("born 1956, pre-2033 attainment, start age = %d; want 73", got)
 	}
 }
 
 func TestEffectiveRMDStartAge_F032_PostJan2033(t *testing.T) {
+	// Older spouse turns 73 in 2033 (born 1960) — applicable age 75.
 	s := &models.WhatIfSettings{
-		StartDate: "2033-01",
+		StartDate:  "2033-01",
+		CurrentAge: 73,
 	}
 	if got := EffectiveRMDStartAge(s); got != 75 {
-		t.Errorf("2033 start age = %d; want 75", got)
+		t.Errorf("born 1960, attains 73 in 2033, start age = %d; want 75", got)
 	}
 }
 
 func TestEffectiveRMDStartAge_F032_Post2033(t *testing.T) {
+	// Older spouse turns 73 in 2034 (born 1961) — applicable age 75.
 	s := &models.WhatIfSettings{
-		StartDate: "2040-06",
+		StartDate:  "2040-06",
+		CurrentAge: 79,
 	}
 	if got := EffectiveRMDStartAge(s); got != 75 {
-		t.Errorf("2040 start age = %d; want 75", got)
+		t.Errorf("born 1961, attains 73 in 2034, start age = %d; want 75", got)
 	}
 }
 
@@ -43,11 +49,13 @@ func TestEffectiveRMDStartAge_F032_NilSafe(t *testing.T) {
 }
 
 func TestEffectiveRMDStartAge_F032_ExactBoundary2032(t *testing.T) {
+	// Older spouse turns 73 in 2032 (born 1959) — applicable age 73 (last legacy year).
 	s := &models.WhatIfSettings{
-		StartDate: "2032-12",
+		StartDate:  "2032-12",
+		CurrentAge: 73,
 	}
 	if got := EffectiveRMDStartAge(s); got != 73 {
-		t.Errorf("Dec 2032 start age = %d; want 73", got)
+		t.Errorf("born 1959, attains 73 in 2032, start age = %d; want 73", got)
 	}
 }
 

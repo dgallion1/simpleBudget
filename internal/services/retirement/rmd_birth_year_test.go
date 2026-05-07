@@ -1,6 +1,7 @@
 package retirement
 
 import (
+	"math"
 	"testing"
 
 	"budget2/internal/models"
@@ -248,5 +249,73 @@ func TestEffectiveRMDStartAge_F077Fixup_LegacyFallbackUnchanged(t *testing.T) {
 	}
 	if got := EffectiveRMDStartAge(s); got != 75 {
 		t.Errorf("legacy fallback (no BirthMonth, age 66, 2026 start) = %d; want 75", got)
+	}
+}
+
+// F-078: a primary born 1959-12 with StartDate=2026-01 must trigger RMD in
+// calendar year 2032 (year offset 6) — they attain age 73 in Dec 2032,
+// applicable age 73, first RMD year = 1959 + 73 = 2032. Pre-F-078 the
+// projection gate read olderAge=72 in year 6 and slipped RMD to 2033.
+// The trigger-year divisor must use age 73 (UL Table factor 26.5),
+// not the floor'd age 72 (factor 27.4).
+func TestProjection_F078_Born1959_12_TriggersRMDIn2032(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-01"
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
+	}
+	s.ComputeAges()
+	s.PortfolioValue = 1_000_000
+	s.TaxDeferredPercent = 100
+	s.MonthlyLivingExpenses = 0
+	s.InvestmentReturn = 0
+	s.InflationRate = 0
+	s.ProjectionYears = 9
+	s.RMDTiming = models.RMDTimingStartOfYear
+
+	proj := NewCalculator(s).RunProjection()
+	if proj == nil || len(proj.Months) < 7*12 {
+		t.Fatalf("nil/short projection: months=%d", func() int {
+			if proj == nil {
+				return 0
+			}
+			return len(proj.Months)
+		}())
+	}
+
+	// Year offset 5 (calendar 2031, age 72): NO RMD.
+	for m := 5 * 12; m < 6*12; m++ {
+		if proj.Months[m].RMDWithdrawal != 0 {
+			t.Errorf("month %d (year 5, calendar 2031) RMDWithdrawal = %.2f; want 0",
+				m, proj.Months[m].RMDWithdrawal)
+		}
+	}
+
+	// Year offset 6 (calendar 2032, attains 73): RMD must fire.
+	year6Total := 0.0
+	for m := 6 * 12; m < 7*12; m++ {
+		year6Total += proj.Months[m].RMDWithdrawal
+	}
+	if year6Total <= 0 {
+		t.Fatalf("year-6 (calendar 2032) total RMDWithdrawal = %.2f; want > 0 (born 1959-12, attains 73 in 2032)", year6Total)
+	}
+
+	// Divisor must use age 73 (factor 26.5), not 72 (27.4). The projection's
+	// InvestmentReturn=0 sentinel triggers allocation-based blended returns,
+	// so the year-6 starting balance is whatever the projection compounded
+	// to. Use the ratio test: with start-of-year RMD timing the entire
+	// annual RMD is withdrawn in month 72 from a balance very close to
+	// proj.Months[71].TaxDeferredBalance (last month of year 5). If the
+	// gate had used age 72 (factor 27.4) the divisor would yield ~3% less.
+	year5End := proj.Months[71].TaxDeferredBalance
+	if year5End <= 0 {
+		t.Fatalf("year-5 ending tax-deferred balance = %.2f; expected > 0", year5End)
+	}
+	impliedDivisor := year5End / year6Total
+	// age 73 → 26.5, age 72 → 27.4. Allow a small slack for the same-month
+	// growth applied between the start-of-month balance and the trigger.
+	if math.Abs(impliedDivisor-26.5) > 0.2 {
+		t.Errorf("implied RMD divisor = %.3f (year5End=%.2f, RMD=%.2f); want ~26.5 (age 73), not ~27.4 (age 72)",
+			impliedDivisor, year5End, year6Total)
 	}
 }

@@ -1070,8 +1070,6 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		currentYear := m / 12
 		monthInYear := m % 12
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
-		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
-		olderAge := s.GetOlderAge() + currentYear
 		bigTicketExpenseThisMonth := 0.0
 		rothConversionThisMonth := 0.0
 		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
@@ -1107,10 +1105,13 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			// F-074: compute annualRMD once per year on year-start tax-deferred
 			// balance (matches IRS "December 31 prior year" rule). Per-month
 			// monthlyRMD is set inside the month loop based on RMDTiming.
-			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ projections per
-			// SECURE 2.0) so projection matches the BuildRMDAnalysis panel.
-			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
+			// F-078: gate on calendar year vs FirstRMDCalendarYear and pass
+			// age-at-year-end to CalculateRMD so late-year births attain
+			// age 73 (or 75) in the right calendar year and the divisor
+			// reads the correct UL Table row.
+			calendarYear := parseStartYear(s.StartDate) + currentYear
+			if RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
 			} else {
 				annualRMD = 0
 			}

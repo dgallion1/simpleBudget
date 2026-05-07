@@ -200,6 +200,9 @@ func TestRunProjectionDeductsTaxesFromRMDCashFlow(t *testing.T) {
 	s.RothPercent = 0
 	s.StockPercent = 0
 	s.CashPercent = 100
+	// F-078: keep Person.BirthMonth in sync with CurrentAge/StartDate so
+	// the calendar-year RMD gate triggers in projection year 0 as intended.
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	// F-074: pin RMD trigger month to 0 so this test continues to assert
 	// month-0 behavior. Default timing is mid_year (trigger month 6), which
 	// would push the RMD out of month 0 and break the test's premise. The

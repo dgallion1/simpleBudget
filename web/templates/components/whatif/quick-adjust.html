@@ -79,7 +79,7 @@
         </div>
         <select id="quick-adjust-portfolio-range"
             class="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-gray-200 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            onchange="updatePortfolioRange(this.value)">
+            onchange="updatePortfolioRange(this.value, { triggerChange: false })">
             <option value="0,10000,1000" {{if le .Settings.PortfolioValue 10000.0}}selected{{end}}>$0-10K</option>
             <option value="0,50000,1000" {{if and (gt .Settings.PortfolioValue 10000.0) (le .Settings.PortfolioValue 50000.0)}}selected{{end}}>$0-50K</option>
             <option value="0,100000,1000" {{if and (gt .Settings.PortfolioValue 50000.0) (le .Settings.PortfolioValue 100000.0)}}selected{{end}}>$0-100K</option>

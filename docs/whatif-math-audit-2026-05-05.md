@@ -3793,3 +3793,19 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Tests:**
 - 3 new tests in `rmd_start_age_projection_test.go`: `TestProjection_F075_2033StartAge73NoRMD` (regression bar — the failing test before the fix; asserts no RMD for age 73 in 2033), `TestProjection_F075_2033StartAge75DoesRMD` (positive case at the new SECURE 2.0 threshold), and `TestProjection_F075_2026StartAge73DoesRMD` (legacy pre-2033 path still triggers RMD at 73).
 - 2 new tests in `handlers_test.go`: `TestBuildProjectionChartEvents_F075_RMDStartsUsesEffectiveAge` (2033+ start date → "RMD starts" event year is `75 - olderAge`) and `TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73` (pre-2033 start date → year is `73 - olderAge`).
+
+### F-076 — MEDIUM — Portfolio Value range dropdown snaps back to value-derived bucket on selection
+
+**Status:** RESOLVED in PR 4 of `feat/rmd-audit-followup`. Discovered during F-073/F-074/F-075 review (not in the original 2026-05-05 audit; user-reported regression surfaced while QA-ing the RMD audit fixes).
+
+**Location:** `web/templates/components/whatif/portfolio-settings.html:33` (canonical dropdown) and `web/templates/components/whatif/quick-adjust.html:82` (mirror dropdown in the floating Quick Adjust panel).
+
+**Symptom:** With `PortfolioValue=$100,000` the dropdown renders "$0-100K" selected. Picking a wider bucket (e.g. "$0-500K") visibly expanded the slider for a fraction of a second and then the dropdown immediately snapped back to "$0-100K", making it impossible to widen the slider range without first dragging the slider into the new bucket. Reported by the user during PR 4 staging review.
+
+**Cause:** `updatePortfolioRange(this.value, { sourceEvent: event })` updated the slider's `min`/`max`/`step` and then dispatched a synthetic `change` event on the slider (`portfolio-settings.html:106`). The form's `hx-trigger="change delay:500ms"` (line 27) caught that synthetic event and POSTed `/whatif/settings` with the unchanged `portfolio_value`. The server-rendered template then re-derived the dropdown's `selected` attribute from the unchanged value bucket, collapsing the user's range pick. The `quick-adjust.html` mirror dropdown shared the same bug because it also called `updatePortfolioRange(this.value)` without `triggerChange: false`. The JS handler already supported the `triggerChange: false` option (line 81: `shouldTriggerChange = !options || options.triggerChange !== false`; line 105: synthetic dispatch gated on `if (shouldTriggerChange)`); only `initializePortfolioRange` was passing it.
+
+**Fix:** Both dropdowns now pass `{ triggerChange: false }` to `updatePortfolioRange`. Dropdown selection still updates the slider's min/max/step client-side and clamps the current value into range, but no synthetic `change` event fires, so HTMX does not auto-submit. The next real user interaction (dragging the slider) fires a genuine change event that submits the form with the updated value. Cross-render persistence of the dropdown's wider-than-value range is intentionally out of scope for this PR — once the user drags into the new bucket the value-derived `selected` matches what the user picked, and the most common workflow ("widen range, then drag") is now smooth.
+
+**Tests:**
+- No Go test asset added — change is template-only and the bug only manifests through HTMX-triggered form submission. Manual smoke test: load Whatif with a $100K portfolio, change the dropdown to "$0-500K", confirm dropdown stays on "$0-500K" and slider's max becomes 500,000 with no network request fired until the slider is dragged.
+- `go test ./internal/handlers/whatif/ -count=1` exercises the template-rendering path and stayed green, confirming no template syntax regression.

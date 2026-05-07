@@ -534,6 +534,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Delete("/whatif/spending-phases/{index}", handleWhatIfDeletePhase)
 	r.Post("/whatif/spending-phases/reset", handleWhatIfResetPhases)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
+	r.Get("/whatif/chart/projection/no-guardrails", handleWhatIfProjectionChartNoGuardrails)
 	r.Post("/whatif/sync", handleWhatIfSync)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
 	r.Post("/whatif/roth-conversion", handleWhatIfRothConversion)
@@ -633,6 +634,29 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	}
 	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
 	chartData := buildProjectionChartData(settings, analysis.Projection, displayDollars)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(chartData)
+}
+
+func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Build a copy with guardrails forced off; do NOT mutate the saved settings.
+	clone := *settings
+	clone.Guardrails = nil
+
+	calc := retirement.NewCalculator(&clone)
+	projection := calc.RunProjection()
+
+	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
+	chartData := buildProjectionChartData(&clone, projection, displayDollars)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chartData)

@@ -8287,3 +8287,81 @@ func TestHandleWhatIf_EventsPanelShowsDollarDelta(t *testing.T) {
 		t.Errorf("expected data-event-spending-delta marker in events panel, not found")
 	}
 }
+
+func TestHandleWhatIfProjectionChartNoGuardrails(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
+		CeilingRisePct: 500, CeilingRaisePct: 10,
+		MinSpendingPct: 50, MaxSpendingPct: 150,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif/chart/projection/no-guardrails?display_dollars=nominal", nil)
+	handleWhatIfProjectionChartNoGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if data["data"] == nil {
+		t.Fatal("expected chart data array")
+	}
+}
+
+// The no-guardrails projection must be insensitive to the configured guardrail thresholds —
+// both should produce identical balance series when guardrails are disabled in the run.
+func TestHandleWhatIfProjectionChartNoGuardrails_IndependentOfThresholds(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+
+	hashOf := func(cfg *models.GuardrailConfig) string {
+		settings.Guardrails = cfg
+		if err := retirementMgr.Save(settings); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		cache.mu.Lock()
+		cache.hash = ""
+		cache.mu.Unlock()
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/whatif/chart/projection/no-guardrails", nil)
+		handleWhatIfProjectionChartNoGuardrails(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d", w.Code)
+		}
+		return w.Body.String()
+	}
+
+	a := hashOf(&models.GuardrailConfig{Enabled: true, FloorDropPct: 1, FloorCutPct: 50, CeilingRisePct: 1, CeilingRaisePct: 50, MinSpendingPct: 50, MaxSpendingPct: 200})
+	b := hashOf(&models.GuardrailConfig{Enabled: true, FloorDropPct: 30, FloorCutPct: 5, CeilingRisePct: 30, CeilingRaisePct: 5, MinSpendingPct: 80, MaxSpendingPct: 120})
+	if a != b {
+		t.Fatalf("no-guardrails endpoint output should be identical regardless of configured thresholds")
+	}
+}

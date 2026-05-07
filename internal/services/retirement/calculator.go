@@ -1063,6 +1063,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		currentYearSummary.EndingBalance = month.PortfolioBalance
 		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
 		currentYearSummary.CumulativeInflation = month.CumulativeInflation
+		currentYearSummary.GuardrailMultiplier = month.GuardrailMultiplier
 		yearlySummaries = append(yearlySummaries, currentYearSummary)
 	}
 
@@ -1160,10 +1161,12 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 					eventType = "raise"
 				}
 				guardrailEvents = append(guardrailEvents, models.GuardrailEvent{
-					Year:       currentYear,
-					Type:       eventType,
-					Multiplier: newMult,
-					Portfolio:  totalPortfolio,
+					Year:                  currentYear,
+					Type:                  eventType,
+					Multiplier:            newMult,
+					Portfolio:             totalPortfolio,
+					MonthlySpendingBefore: currentLivingExpenses * prevMult,
+					MonthlySpendingAfter:  currentLivingExpenses * newMult,
 				})
 			}
 		}
@@ -1177,6 +1180,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 
 		// Calculate healthcare expenses using multi-person model
 		activeHealthcare := s.GetTotalHealthcareCost(m)
+		plannedTotalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 		totalExpenses := adjustedLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Add expense sources (discretionary sources get phase multiplier when enabled)
@@ -1254,6 +1258,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		cashFlow := monthResult.CashFlow
 		taxesPaid := monthResult.TaxesPaid
 		totalExpenses += monthResult.IRMAAExpense
+		plannedTotalExpenses += monthResult.IRMAAExpense
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 
 		taxState.applyMonth(
@@ -1273,6 +1278,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		currentYearSummary.GrossIncome += grossIncome
 		currentYearSummary.Taxes += taxesPaid
 		currentYearSummary.Expenses += totalExpenses
+		currentYearSummary.PlannedExpenses += plannedTotalExpenses
 		currentYearSummary.Withdrawals += cashFlow.ActualWithdrawal
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableAccount.MarketValue

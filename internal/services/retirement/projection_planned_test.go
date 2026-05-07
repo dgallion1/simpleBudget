@@ -76,3 +76,75 @@ func TestProjection_PlannedFields_WithCut(t *testing.T) {
 		t.Fatalf("expected at least one month with GuardrailMultiplier < 1.0 given hair-trigger cut")
 	}
 }
+
+// YearSummary.PlannedExpenses must equal Expenses when guardrails are disabled.
+// When a cut fires mid-projection, PlannedExpenses must exceed Expenses for that year.
+func TestProjectionYear_PlannedExpenses_NoGuardrails(t *testing.T) {
+	s := defaultSettingsForTest()
+	s.Guardrails = nil
+
+	result := NewCalculator(s).RunFullAnalysis()
+	for i, ys := range result.Projection.YearlySummaries {
+		if !almostEqual(ys.PlannedExpenses, ys.Expenses) {
+			t.Errorf("year %d: PlannedExpenses (%v) != Expenses (%v) when guardrails disabled",
+				i, ys.PlannedExpenses, ys.Expenses)
+		}
+		if ys.GuardrailMultiplier != 1.0 {
+			t.Errorf("year %d: GuardrailMultiplier = %v, want 1.0", i, ys.GuardrailMultiplier)
+		}
+	}
+}
+
+func TestProjectionYear_PlannedExpenses_WithCut(t *testing.T) {
+	s := defaultSettingsForTest()
+	s.InvestmentReturn = 0
+	s.MonthlyLivingExpenses = 8000
+	s.Guardrails = &models.GuardrailConfig{
+		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
+		CeilingRisePct: 500, CeilingRaisePct: 10,
+		MinSpendingPct: 50, MaxSpendingPct: 150,
+	}
+
+	result := NewCalculator(s).RunFullAnalysis()
+	sawCutYear := false
+	for _, ys := range result.Projection.YearlySummaries {
+		if ys.GuardrailMultiplier < 1.0 {
+			sawCutYear = true
+			if ys.PlannedExpenses <= ys.Expenses {
+				t.Errorf("year %d: planned (%v) must exceed adjusted (%v) when multiplier < 1.0",
+					ys.Year, ys.PlannedExpenses, ys.Expenses)
+			}
+		}
+	}
+	if !sawCutYear {
+		t.Fatalf("expected at least one year with GuardrailMultiplier < 1.0")
+	}
+}
+
+// GuardrailEvent.MonthlySpendingBefore/After must be populated and consistent with the multiplier change.
+func TestGuardrailEvent_DollarFields(t *testing.T) {
+	s := defaultSettingsForTest()
+	s.InvestmentReturn = 0
+	s.MonthlyLivingExpenses = 8000
+	s.Guardrails = &models.GuardrailConfig{
+		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
+		CeilingRisePct: 500, CeilingRaisePct: 10,
+		MinSpendingPct: 50, MaxSpendingPct: 150,
+	}
+
+	result := NewCalculator(s).RunFullAnalysis()
+	if len(result.Projection.GuardrailEvents) == 0 {
+		t.Fatalf("expected at least one guardrail event")
+	}
+	for _, e := range result.Projection.GuardrailEvents {
+		if e.MonthlySpendingBefore <= 0 {
+			t.Errorf("year %d: MonthlySpendingBefore = %v, want > 0", e.Year, e.MonthlySpendingBefore)
+		}
+		if e.MonthlySpendingAfter <= 0 {
+			t.Errorf("year %d: MonthlySpendingAfter = %v, want > 0", e.Year, e.MonthlySpendingAfter)
+		}
+		if e.Type == "cut" && e.MonthlySpendingAfter >= e.MonthlySpendingBefore {
+			t.Errorf("year %d: cut should reduce spending, got %v -> %v", e.Year, e.MonthlySpendingBefore, e.MonthlySpendingAfter)
+		}
+	}
+}

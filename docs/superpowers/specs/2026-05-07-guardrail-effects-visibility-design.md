@@ -149,6 +149,8 @@ Behavior:
   ```
   (Caption text is computed in the handler, not the template, so depletion-year math lives in Go.)
 
+  **Status: deferred.** Initial implementation (commits c4993db..12bd66b) ships the dashed overlay only. The caption requires comparing depletion month and final balance between the primary projection and the counterfactual; both numbers are already in the JSON responses, so adding the caption is a small JS addition once a follow-up is scheduled.
+
 ## Error Handling
 
 - New `ProjectionMonth` and `ProjectionYearSummary` fields default to zero-value when guardrails are disabled. Templates must check `.GuardrailMultiplier != 0 && .GuardrailMultiplier != 1.0` before rendering the badge to avoid spurious "×1.00" output and avoid divide-by-zero in delta math.

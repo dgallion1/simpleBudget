@@ -568,7 +568,11 @@ function toggleGuardrailCompareOverlay(card, button) {
             return r.json();
         })
         .then(data => {
-            if (!data || !Array.isArray(data.data) || data.data.length === 0) return;
+            if (!data || !Array.isArray(data.data) || data.data.length === 0) {
+                // Empty payload: revert the optimistic press so the user can retry.
+                setCompareButtonState(button, false);
+                return;
+            }
             const balanceTrace = data.data.find(t => t.name === 'Portfolio Balance') || data.data[0];
             const overlay = {
                 type: 'scatter',

@@ -256,7 +256,10 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 	// Surface depletion year (whole years from start; floor of months/12).
 	if projection.DepletionMonth != nil {
 		dy := *projection.DepletionMonth / 12
-		da := olderAge + dy
+		// F-078: depletion age uses age-at-year-end of the depletion calendar
+		// year so it stays consistent with the per-row Age column and the
+		// projection engine's RMD trigger year for late-year births.
+		da := RMDAgeForCalendarYear(s, startYear+dy)
 		result.DepletionYear = &dy
 		result.DepletionAge = &da
 		if dy <= startsInYears {

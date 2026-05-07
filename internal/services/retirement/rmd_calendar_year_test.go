@@ -154,3 +154,49 @@ func TestBuildRMDAnalysis_F078_StartsInYearsLateYearBirth(t *testing.T) {
 		t.Errorf("first row Year = %d; want 6", first.Year)
 	}
 }
+
+// F-078: BuildRMDAnalysis.DepletionAge must use age-at-year-end of the
+// depletion calendar year, matching the per-row Age column and the
+// projection engine's RMD trigger year for late-year births. Pre-F-078
+// the depletion age was olderAge+dy, which under-reads by one for
+// late-year births where GetOlderAge() floors. This test forces an
+// early depletion (zero portfolio + heavy spend) for a 1959-12 birth
+// + 2026-01 start and asserts DepletionAge = RMDAgeForCalendarYear,
+// not GetOlderAge() + dy.
+func TestBuildRMDAnalysis_F078_DepletionAgeUsesAgeAtYearEnd(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-01"
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
+	}
+	s.ComputeAges()
+	s.PortfolioValue = 50_000
+	s.TaxDeferredPercent = 100
+	s.MonthlyLivingExpenses = 10_000
+	s.InvestmentReturn = 0
+	s.InflationRate = 0
+	s.ProjectionYears = 5
+
+	calc := NewCalculator(s)
+	proj := calc.RunProjection()
+	analysis := calc.BuildRMDAnalysis(proj)
+	if analysis == nil || analysis.DepletionYear == nil || analysis.DepletionAge == nil {
+		t.Fatalf("expected populated DepletionYear + DepletionAge; got %+v", analysis)
+	}
+
+	// For 1959-12 birth, calendar = 2026 + DepletionYear, so
+	// DepletionAge must equal calendarYear - 1959 (age at year end).
+	wantAge := 2026 + *analysis.DepletionYear - 1959
+	if *analysis.DepletionAge != wantAge {
+		t.Errorf("DepletionAge = %d; want %d (age at year end of calendar %d for 1959-12 birth)",
+			*analysis.DepletionAge, wantAge, 2026+*analysis.DepletionYear)
+	}
+
+	// Confirm DepletionAge is NOT the floor'd s.GetOlderAge()+dy answer
+	// (which would be one less for this late-year-birth case).
+	floorAnswer := s.GetOlderAge() + *analysis.DepletionYear
+	if *analysis.DepletionAge == floorAnswer && wantAge != floorAnswer {
+		t.Errorf("DepletionAge regressed to floor'd GetOlderAge()+dy = %d; want %d",
+			floorAnswer, wantAge)
+	}
+}

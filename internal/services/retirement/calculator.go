@@ -1169,10 +1169,11 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		}
 
 		// Apply guardrail spending multiplier
-		adjustedLivingExpenses := currentLivingExpenses
+		activeMultiplier := 1.0
 		if grState != nil {
-			adjustedLivingExpenses *= grState.multiplier()
+			activeMultiplier = grState.multiplier()
 		}
+		adjustedLivingExpenses := currentLivingExpenses * activeMultiplier
 
 		// Calculate healthcare expenses using multi-person model
 		activeHealthcare := s.GetTotalHealthcareCost(m)
@@ -1329,6 +1330,8 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			WithdrawalFromTaxDeferred: cashFlow.WithdrawalFromTaxDeferred,
 			WithdrawalFromTaxable:     cashFlow.WithdrawalFromTaxable,
 			WithdrawalFromRoth:        cashFlow.WithdrawalFromRoth,
+			PlannedLivingExpenses:     currentLivingExpenses,
+			GuardrailMultiplier:       activeMultiplier,
 		})
 
 		if depleted {

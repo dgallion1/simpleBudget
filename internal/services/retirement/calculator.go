@@ -1104,14 +1104,15 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
 			taxableAccount.RealizedGainsYTD = 0
 
-			// Calculate annual RMD at start of each year (age 73+)
+			// F-074: compute annualRMD once per year on year-start tax-deferred
+			// balance (matches IRS "December 31 prior year" rule). Per-month
+			// monthlyRMD is set inside the month loop based on RMDTiming.
 			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
 				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
-				monthlyRMD = annualRMD / 12
 			} else {
 				annualRMD = 0
-				monthlyRMD = 0
 			}
+			monthlyRMD = 0
 
 			// Process Roth conversions (annual, at year boundary)
 			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
@@ -1214,6 +1215,13 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		totalGrowth := 0.0
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+
+		// F-074: apply the full annual RMD only in the trigger month for
+		// the user's selected timing. Other months withdraw 0.
+		monthlyRMD = 0
+		if annualRMD > 0 && monthInYear == rmdTriggerMonth(s.RMDTiming) {
+			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
+		}
 
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
@@ -2335,7 +2343,9 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 	healthShocks := 0
 	lastCrashYear := -999 // Track for recovery boost
 
-	// Annual RMD tracking
+	// Annual RMD tracking (F-074: annualRMD persists across months so the
+	// trigger-month logic can apply the full year's RMD in a single month).
+	var annualRMD float64
 	var monthlyRMD float64
 	var taxState projectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
@@ -2405,13 +2415,14 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 			// Healthcare cost variation (healthcare is more volatile, +/- 2%)
 			healthcareVariation = 1 + (rng.Float64()-0.5)*0.04
 
-			// Calculate annual RMD
+			// F-074: see PR 2 — annualRMD computed once per year, applied
+			// only in the trigger month inside the month loop.
 			if olderAge >= RMDStartAge && taxDeferredBalance > 0 {
-				annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
-				monthlyRMD = annualRMD / 12
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
 			} else {
-				monthlyRMD = 0
+				annualRMD = 0
 			}
+			monthlyRMD = 0
 
 			// Process Roth conversions (annual, at year boundary)
 			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
@@ -2512,6 +2523,13 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		taxableComponents := buildTaxableReturnComponents(taxReturn, s)
 		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
 		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+
+		// F-074: apply the full annual RMD only in the trigger month.
+		monthlyRMD = 0
+		if annualRMD > 0 && m%12 == rmdTriggerMonth(s.RMDTiming) {
+			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
+		}
+
 		monthResult := executeTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,

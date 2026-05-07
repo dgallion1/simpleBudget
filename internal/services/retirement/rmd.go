@@ -23,6 +23,23 @@ func EffectiveRMDStartAge(s *models.WhatIfSettings) int {
 	return 73
 }
 
+// rmdTriggerMonth returns the month-of-year (0-11) at which the full
+// annual RMD is withdrawn for the given timing. F-074: the projection
+// applies the entire year's RMD as a single monthly amount in the trigger
+// month and zero in the others, so user-selected timing actually shapes
+// portfolio growth (early withdrawal = more years lost to growth drag).
+func rmdTriggerMonth(timing models.RMDTiming) int {
+	switch models.NormalizeRMDTiming(timing) {
+	case models.RMDTimingStartOfYear:
+		return 0
+	case models.RMDTimingEndOfYear:
+		return 11
+	default:
+		// RMDTimingMidYear and any unknown value
+		return 6
+	}
+}
+
 // parseStartYear extracts the year from a "YYYY-MM" start date string.
 // Returns the current year if the string is empty or unparseable.
 func parseStartYear(startDate string) int {

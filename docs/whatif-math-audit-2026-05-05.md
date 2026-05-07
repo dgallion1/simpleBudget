@@ -3761,3 +3761,19 @@ if additionalTax > conversionAmount*0.37 { ... } // upper bound only
 **Tests:**
 - 2 new tests in `calculator_rmd_gross_test.go`: `TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross` (pure surplus path) and `TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross` (mixed path where RMD partially covers expenses).
 - 3 existing F-049 tests in `taxable_simulation_test.go` updated to destructure both return values, asserting gross == 10,000 and net == 7,800 (or appropriate clamp-result) on each path.
+
+### F-074 — HIGH — `RMDTiming` setting saved and rendered but never read by the projection engine
+
+**Status:** RESOLVED in PR 2 of `feat/rmd-audit-followup` (extends F-035).
+
+**Location:** `internal/services/retirement/calculator.go:1107-1115` (projection year-boundary), `calculator.go:~1219` (projection month loop), `calculator.go:~2408-2414` (Monte Carlo year-boundary), `calculator.go:~2526` (Monte Carlo month loop), `internal/services/retirement/backtest.go:244-250` (backtest year-boundary), `backtest.go:~329` (backtest month loop), and `internal/services/retirement/rmd.go` (new `rmdTriggerMonth` helper).
+
+**Symptom:** The `RMDTiming` model field (`start_of_year` / `mid_year` / `end_of_year`) was previously persisted in saved scenarios, surfaced in the rate-assumptions UI dropdown, normalised by `NormalizeRMDTiming`, and migrated for legacy scenarios — but the projection engine, Monte Carlo, and historical backtest never read it. All three computed `monthlyRMD = annualRMD / 12` at the year boundary and applied the same monthly amount in every month, so all three timing options produced identical projections, identical month-by-month `RMDWithdrawal`, and identical year-end portfolio balances. The user-facing control was a lie: changing the dropdown re-saved the scenario but did not move a single dollar.
+
+**Cause:** F-035 (commit `1a9452b`) only wired `RMDTiming` into the standalone `CalculateRMDAnalysis` panel via `rmdGrowthFractions`; the actual `RunProjection`/`RunMonteCarlo`/`runHistoricalSequence` cash-flow loops were not updated. The three loops continued to use the legacy uniform-spread arithmetic.
+
+**Fix:** Added `rmdTriggerMonth(timing) int` helper in `rmd.go` returning 0/6/11 for `start_of_year`/`mid_year`/`end_of_year` (and 6 for the empty-string default, matching `NormalizeRMDTiming`). All three engines (projection, Monte Carlo, backtest) now compute `annualRMD` once at the year boundary on the year-start tax-deferred balance (matches the IRS "December 31 prior year" rule) and, immediately before each per-month `executeTaxAwarePortfolioMonth` call, set `monthlyRMD = math.Min(annualRMD, taxDeferredBalance)` only when `monthInYear == rmdTriggerMonth(s.RMDTiming)` and zero otherwise. Annual `RMDWithdrawal` totals match `CalculateRMD` exactly; portfolio growth trajectory now responds to the dropdown — `end_of_year > mid_year > start_of_year` for year-end balance under steady positive returns. Monte Carlo and backtest required hoisting `annualRMD` from a year-scope local declaration to a function-scope `var` so the per-month block can read it.
+
+**Tests:**
+- 3 new tests in `rmd_timing_test.go`: `TestRMDTriggerMonth_F074_AllTimings` (helper unit), `TestProjection_F074_TimingAffectsYearEndBalance` (asserts ordering invariant + same annual total across timings), and `TestProjection_F074_TriggerMonthIsExclusive` (asserts only the trigger month has a non-zero `RMDWithdrawal`).
+- 1 existing test updated in `rmd_tax_test.go`: `TestRunProjectionDeductsTaxesFromRMDCashFlow` now explicitly sets `s.RMDTiming = RMDTimingStartOfYear` so its month-0 assertion remains valid; the test's purpose (tax deduction from RMD cash flow) is unchanged.

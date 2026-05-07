@@ -87,7 +87,7 @@ At `calculator.go:1141-1180` (the monthly projection loop):
 3. When emitting a `GuardrailEvent` (`calculator.go:1162-1167`), compute and attach `MonthlySpendingBefore` (= planned × prevMult) and `MonthlySpendingAfter` (= planned × newMult).
 
 At `calculator.go:1274` (yearly aggregation):
-1. Sum `month.PlannedLivingExpenses` into `currentYearSummary.PlannedExpenses` for each month in the year (parallel to the existing `Expenses` aggregation but using the planned value, plus healthcare/big-ticket/etc. for parity if those don't get the multiplier — confirm during implementation).
+1. Build `currentYearSummary.PlannedExpenses` to be apples-to-apples with the existing `Expenses`: same components (healthcare, big-ticket, expense sources, IRMAA, etc.) but using `PlannedLivingExpenses` instead of the guardrail-adjusted value. The only intentional delta between `PlannedExpenses` and `Expenses` is the guardrail multiplier on the living-expense line.
 2. Set `currentYearSummary.GuardrailMultiplier` to the multiplier value from the last month of the year.
 
 ### New endpoint — `internal/handlers/whatif/handlers.go`
@@ -98,7 +98,9 @@ GET /whatif/chart/projection/no-guardrails?display_dollars=nominal|real
 
 Returns the same JSON shape as the existing `/whatif/chart/projection`, but built from a projection where `s.Guardrails = nil` (or a copy with `Enabled=false`). Used only for the dashed overlay; the primary chart endpoint still reflects whatever the user has configured.
 
-**Caching:** keyed by a hash of the relevant projection-input fields (settings JSON + scenario id), single-entry process-local cache. Re-toggling the overlay during a session is then free; any settings change invalidates. If implementation discovers no clean hash key, ship without caching — Slice C is opt-in and a single re-compute on click is acceptable.
+**Caching (best-effort):** keyed by a hash of the relevant projection-input fields (settings JSON + scenario id), single-entry process-local cache. Re-toggling the overlay during a session is then free; any settings change invalidates. Caching is *not* a hard requirement — if the implementation discovers no clean hash key, ship without caching. Slice C is opt-in and a single re-compute on click is acceptable.
+
+**Display-mode wiring:** the dashed overlay always follows the primary chart's nominal/real mode rather than carrying its own toggle. Switching Nominal ↔ Today's Dollars re-fetches both series in the new mode.
 
 ## UI Changes
 
@@ -181,7 +183,8 @@ Total ≈ 150 LOC + tests. Slice A is pure groundwork (no user-visible change). 
 
 ## Open Questions
 
-- **Planned-expenses scope:** does `PlannedExpenses` in `ProjectionYearSummary` include healthcare and big-ticket items (so it's a full apples-to-apples comparison with `Expenses`) or only the living-expense line that the multiplier touches? Recommendation: include them — they're identical in both worlds — so the only difference between `PlannedExpenses` and `Expenses` is the guardrail effect itself.
-- **Counterfactual chart-toggle granularity:** does the dashed overlay need its own real/nominal toggle wiring, or does it always follow the primary chart's mode? Recommendation: always follow.
+None outstanding at the spec level. Resolved during brainstorming:
 
-These are flagged for resolution during the writing-plans pass; both have an obvious default that the implementer can pick if no further input arrives.
+- Planned-expenses scope: includes healthcare, big-ticket, and other expense components — apples-to-apples with `Expenses`, with the guardrail multiplier as the only intentional delta.
+- Chart-toggle granularity: the dashed overlay follows the primary chart's nominal/real mode; no separate toggle.
+- Slice C caching: best-effort, not blocking.

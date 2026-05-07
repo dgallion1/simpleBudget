@@ -228,7 +228,11 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 	effectiveStartAge := EffectiveRMDStartAge(s)
 	olderAge := s.GetOlderAge()
-	startsInYears := effectiveStartAge - olderAge
+	startYear := parseStartYear(s.StartDate)
+	firstRMDYear := FirstRMDCalendarYear(s)
+	// F-078: startsInYears = calendar gap to first RMD year, not floor'd-age
+	// subtraction. Late-year births differ by one.
+	startsInYears := firstRMDYear - startYear
 	if startsInYears < 0 {
 		startsInYears = 0
 	}
@@ -261,7 +265,8 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 		}
 	}
 
-	// Iterate projection years, emit a row when age >= effectiveStartAge.
+	// Iterate projection years, emit a row once RMDs apply to the older
+	// household member for that calendar year (F-078 calendar-year gate).
 	maxYears := s.ProjectionYears
 	if maxYears > len(projection.Months)/12 {
 		maxYears = len(projection.Months) / 12
@@ -269,10 +274,11 @@ func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *mode
 
 	rmdCount := 0
 	for y := 0; y < maxYears && rmdCount < 20; y++ {
-		age := olderAge + y
-		if age < effectiveStartAge {
+		calendarYear := startYear + y
+		if !RMDApplies(s, calendarYear) {
 			continue
 		}
+		age := RMDAgeForCalendarYear(s, calendarYear)
 		// Stop at depletion year — no further rows.
 		if result.DepletionYear != nil && y >= *result.DepletionYear {
 			break

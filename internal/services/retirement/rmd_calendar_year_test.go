@@ -116,3 +116,41 @@ func TestRMDHelpers_F078_NilSafe(t *testing.T) {
 		t.Errorf("RMDApplies(nil, 9999) = false; want true (nil falls through to default 73 age)")
 	}
 }
+
+// F-078: BuildRMDAnalysis startsInYears must reflect the calendar-year
+// first RMD year, not floor'd-age subtraction. For 1959-12 + 2026-01
+// start, startsInYears = 6 (calendar 2032 - calendar 2026), not 7.
+func TestBuildRMDAnalysis_F078_StartsInYearsLateYearBirth(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-01"
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
+	}
+	s.ComputeAges()
+	s.PortfolioValue = 1_000_000
+	s.TaxDeferredPercent = 100
+	s.ProjectionYears = 10
+
+	calc := NewCalculator(s)
+	proj := calc.RunProjection()
+	analysis := calc.BuildRMDAnalysis(proj)
+	if analysis == nil {
+		t.Fatalf("BuildRMDAnalysis returned nil")
+	}
+	if analysis.StartsInYears != 6 {
+		t.Errorf("StartsInYears = %d; want 6 (born 1959-12, first RMD calendar 2032 = 6 years from 2026)", analysis.StartsInYears)
+	}
+	if analysis.StartAge != 73 {
+		t.Errorf("StartAge = %d; want 73", analysis.StartAge)
+	}
+	if len(analysis.Projections) == 0 {
+		t.Fatalf("no Projections rows emitted")
+	}
+	first := analysis.Projections[0]
+	if first.Age != 73 {
+		t.Errorf("first row Age = %d; want 73", first.Age)
+	}
+	if first.Year != 6 {
+		t.Errorf("first row Year = %d; want 6", first.Year)
+	}
+}

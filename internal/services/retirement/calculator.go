@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"strings"
 	"time"
 
 	"budget2/internal/models"
@@ -130,49 +129,18 @@ func monthlyCompoundFactorFromPercent(annualRatePercent float64) float64 {
 	return monthlyCompoundFactorFromDecimal(annualRatePercent / 100)
 }
 
-func compoundedFactorFromPercent(annualRatePercent float64, months float64) float64 {
-	if annualRatePercent == 0 || months == 0 {
-		return 1.0
-	}
-	return math.Pow(1+annualRatePercent/100, months/12.0)
-}
+// compoundedFactorFromPercent moved to engine.compoundedFactorFromPercent;
+// no retirement-side caller remains after Bundle F. Removed in Task 8.
 
-func calculateLivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64 {
-	years := month / 12
-	phaseAge := s.GetPhaseReferenceAge(years)
-	monthsElapsed := float64(month)
-
-	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-		return s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * compoundedFactorFromPercent(s.InflationRate, monthsElapsed)
-	}
-
-	return s.MonthlyLivingExpenses * compoundedFactorFromPercent(s.InflationRate-s.SpendingDeclineRate, monthsElapsed)
-}
-
-// rebaseLivingExpensesAtTransition anchors currentLivingExpenses to the new
-// chain settings at a scenario boundary.
-//
-// cumulativeInflation    – full-inflation cumulative factor (used for spending
-//
-//	phases, which compound at the full rate).
-//
-// netCumulativeInflation – (InflationRate−SpendingDeclineRate) cumulative factor
-//
-//	(used for the no-phase path, which compounds at the
-//	net rate per month). Passing the correct net factor
-//	prevents the step-up error described in F-065.
-func rebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cumulativeInflation float64, netCumulativeInflation float64) float64 {
-	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-		// Phases compound currentLivingExpenses at full InflationRate each month,
-		// so the rebase anchor must also use full inflation.
-		return s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
-	}
-
-	// No phases: currentLivingExpenses compounds at net rate (InflationRate −
-	// SpendingDeclineRate) each month. Use netCumulativeInflation so the rebase
-	// anchor matches the ongoing per-month trajectory. (F-065)
-	return s.MonthlyLivingExpenses * netCumulativeInflation
-}
+// calculateLivingExpensesAtMonth and rebaseLivingExpensesAtTransition
+// were moved to the engine package. The var-aliases keep existing
+// call sites in this file (RunProjection, RunHistoricalBacktest,
+// RunMonteCarloSimulation) and backtest.go compiling unchanged.
+// Removed in Task 8.
+var (
+	calculateLivingExpensesAtMonth   = engine.LivingExpensesAtMonth
+	rebaseLivingExpensesAtTransition = engine.RebaseLivingExpensesAtTransition
+)
 
 // Phase 4 projection tax policy:
 //   - Taxable-account sales realize average-cost capital gains based on the current
@@ -191,21 +159,22 @@ type (
 	projectedTaxSnapshot     = engine.ProjectedTaxSnapshot
 )
 
-func medicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
-	if s == nil {
-		return 0
-	}
+// medicareEligibleAdultCountAtYear, plannerIRMAAInflationFactorForYear,
+// calculateMonthlyIncomeBreakdown, isSocialSecurityIncomeSource, and
+// rothConversionAmountForYear all moved to the engine package. The
+// var-aliases keep existing call sites (here, in backtest.go,
+// social_security.go, and tests) compiling unchanged. Removed in
+// Task 8.
+var (
+	medicareEligibleAdultCountAtYear   = engine.MedicareEligibleAdultCountAtYear
+	plannerIRMAAInflationFactorForYear = engine.PlannerIRMAAInflationFactorForYear
+	calculateMonthlyIncomeBreakdown    = engine.CalculateMonthlyIncomeBreakdown
+	isSocialSecurityIncomeSource       = engine.IsSocialSecurityIncomeSource
+	rothConversionAmountForYear        = engine.RothConversionAmountForYear
+)
 
-	count := 0
-	if s.PrimaryAgeAt(year) >= 65 {
-		count++
-	}
-	if s.HasSpouse() && s.SpouseAgeAt(year) >= 65 {
-		count++
-	}
-	return count
-}
-
+// plannerInflationFactorForYear is referenced by other retirement-package
+// code (e.g. CalculatePresentValueAnalysis); leave its body in place.
 func plannerInflationFactorForYear(annualInflationRate float64, years float64) float64 {
 	if years <= 0 {
 		return 1
@@ -213,78 +182,11 @@ func plannerInflationFactorForYear(annualInflationRate float64, years float64) f
 	return math.Pow(1+annualInflationRate/100, years)
 }
 
-func plannerIRMAAInflationFactorForYear(annualInflationRate float64, yearsFromTaxBase float64) float64 {
-	yearsFromIRMAABase := yearsFromTaxBase - float64(irmaaBaseYear-taxBaseYear)
-	if yearsFromIRMAABase == 0 {
-		return 1
-	}
-	return math.Pow(1+annualInflationRate/100, yearsFromIRMAABase)
-}
-
-type monthlyIncomeBreakdown struct {
-	OrdinaryIncome       float64
-	SocialSecurityIncome float64
-	TotalIncome          float64
-}
-
-func calculateMonthlyIncomeBreakdown(s *models.WhatIfSettings, month int) monthlyIncomeBreakdown {
-	breakdown := monthlyIncomeBreakdown{}
-	useOptimizerSS := socialSecurityProjectionActive(s)
-
-	for _, source := range s.IncomeSources {
-		amount := source.GetAdjustedAmount(month)
-		if amount <= 0 {
-			continue
-		}
-		if isSocialSecurityIncomeSource(source) {
-			if !useOptimizerSS {
-				breakdown.SocialSecurityIncome += amount
-			}
-			continue
-		}
-		breakdown.OrdinaryIncome += amount
-	}
-
-	if useOptimizerSS {
-		breakdown.SocialSecurityIncome += projectedSocialSecurityIncome(s, month)
-	}
-
-	breakdown.TotalIncome = breakdown.OrdinaryIncome + breakdown.SocialSecurityIncome
-	return breakdown
-}
-
-func isSocialSecurityIncomeSource(source models.IncomeSource) bool {
-	normalizedName := strings.ToLower(strings.ReplaceAll(source.Name, "-", " "))
-	if strings.Contains(normalizedName, "social security") {
-		return true
-	}
-
-	for _, token := range strings.Fields(normalizedName) {
-		if token == "ssi" {
-			return true
-		}
-	}
-
-	return false
-}
-
-// IsSocialSecurityIncomeSource exposes the SS income-source detection rule for
-// use in templates that need to flag manual SS sources excluded by the optimizer.
+// IsSocialSecurityIncomeSource exposes the SS income-source detection
+// rule for use in templates that need to flag manual SS sources
+// excluded by the optimizer. Forwards to the engine implementation.
 func IsSocialSecurityIncomeSource(source models.IncomeSource) bool {
-	return isSocialSecurityIncomeSource(source)
-}
-
-func rothConversionAmountForYear(s *models.WhatIfSettings, currentYear int, availableTaxDeferred float64) float64 {
-	if s.RothConversion == nil || !s.RothConversion.Enabled || availableTaxDeferred <= 0 {
-		return 0
-	}
-	if currentYear < s.RothConversion.StartYear {
-		return 0
-	}
-	if s.RothConversion.EndYear != 0 && currentYear > s.RothConversion.EndYear {
-		return 0
-	}
-	return math.Min(s.RothConversion.AnnualAmount, availableTaxDeferred)
+	return engine.IsSocialSecurityIncomeSource(source)
 }
 
 // Taxable-account state machine + return-decomposition primitives now
@@ -311,301 +213,32 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 	return engine.TotalExpensesForCalculator(c.Settings, month)
 }
 
-type withdrawalBreakdown struct {
-	RemainingNeed             float64
-	ActualWithdrawal          float64
-	RMDWithdrawal             float64
-	WithdrawalFromTaxDeferred float64
-	WithdrawalFromTaxable     float64
-	WithdrawalFromRoth        float64
-	EarlyPenaltyPaid          float64
-}
+// Projection-month state machine moved to the engine package. The
+// var-aliases below keep existing call sites in calculator.go,
+// backtest.go, and tests compiling unchanged. The result/breakdown
+// types are referenced only by inferred types at call sites, so no
+// type-aliases are required. Removed in Task 8.
+var (
+	executeTaxAwarePortfolioMonth            = engine.ExecuteTaxAwarePortfolioMonth
+	executePortfolioCashFlowWithTaxableState = engine.ExecutePortfolioCashFlowWithTaxableState
+	reinvestRequiredRMDToTaxableState        = engine.ReinvestRequiredRMDToTaxableState
+	applyBigTicketExpenseWithTaxableState    = engine.ApplyBigTicketExpenseWithTaxableState
+	withdrawForExpenses                      = engine.WithdrawForExpenses
+)
 
-type portfolioCashFlowResult struct {
-	Shortfall                 float64
-	ActualWithdrawal          float64
-	RMDWithdrawal             float64
-	WithdrawalFromTaxDeferred float64
-	WithdrawalFromTaxable     float64
-	WithdrawalFromRoth        float64
-	TaxableRealizedGain       float64
-}
-
-func (r portfolioCashFlowResult) GrossWithdrawal() float64 {
-	return r.WithdrawalFromTaxDeferred + r.WithdrawalFromTaxable + r.WithdrawalFromRoth
-}
-
-func projectionTimingGrowthFractions(timing models.ProjectionTiming) (before float64, after float64) {
-	switch models.NormalizeProjectionTiming(timing) {
-	case models.ProjectionTimingStartOfMonth:
-		return 0, 1
-	case models.ProjectionTimingMidMonth:
-		return 0.5, 0.5
-	default:
-		return 1, 0
-	}
-}
-
-func fractionalMonthlyReturn(monthlyReturn, fraction float64) float64 {
-	switch {
-	case fraction <= 0:
-		return 0
-	case fraction >= 1:
-		return monthlyReturn
-	default:
-		return math.Pow(1+monthlyReturn, fraction) - 1
-	}
-}
-
-type taxAwarePortfolioMonthResult struct {
-	Shortfall                        float64
-	TaxesPaid                        float64
-	IRMAAExpense                     float64
-	TotalGrowth                      float64
-	TaxableIncomeBeforeCashFlow      float64
-	TaxableQualifiedDividends        float64
-	TaxableNonQualifiedDividends     float64
-	TaxableCapitalGains              float64
-	TaxableCapitalGainsDistributions float64
-	TaxSnapshot                      projectedTaxSnapshot
-	CashFlow                         portfolioCashFlowResult
-}
-
-func executeTaxAwarePortfolioMonth(
-	totalExpenses float64,
-	incomeBreakdown monthlyIncomeBreakdown,
-	monthlyRMD float64,
-	allowTaxDeferredWithdrawal bool,
-	penaltyRate float64,
-	taxDeferredBalance *float64,
-	taxableAccount *taxableAccountState,
-	rothBalance *float64,
-	taxDeferredMonthlyReturn float64,
-	rothMonthlyReturn float64,
-	taxableComponents taxableReturnComponents,
-	timing models.ProjectionTiming,
-	taxState projectionTaxAccumulator,
-	taxCalculator *TaxCalculator,
-	currentYear int,
-	monthInYear int,
-	rothConversionThisMonth float64,
-	completedMAGIHistory []float64,
-	irmaaEligibleAdults int,
-	irmaaInflationFactor float64,
-) taxAwarePortfolioMonthResult {
-	startingTaxDeferred := *taxDeferredBalance
-	startingRoth := *rothBalance
-	startingTaxable := *taxableAccount
-	snapshot := taxState.EstimateMonthlySnapshot(
-		taxCalculator,
-		currentYear,
-		monthInYear,
-		incomeBreakdown.OrdinaryIncome,
-		incomeBreakdown.SocialSecurityIncome,
-		0,
-		0,
-		0,
-		0,
-		rothConversionThisMonth,
-		completedMAGIHistory,
-		nil,
-		irmaaEligibleAdults,
-		irmaaInflationFactor,
-	)
-	taxesPaid := snapshot.MonthlyTax
-	irmaaExpense := snapshot.MonthlyIRMAA
-	// Marginal rate derived from estimated annual MAGI; updated each iteration
-	// alongside taxesPaid/irmaaExpense so the RMD after-tax reinvestment uses a
-	// converged rate. GetMarginalRate returns a percent (e.g. 22.0), so divide by 100.
-	marginalRate := 0.0
-	if taxCalculator != nil {
-		marginalRate = taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear) / 100
-	}
-	finalSnapshot := snapshot
-	result := taxAwarePortfolioMonthResult{}
-	growthBeforeFraction, growthAfterFraction := projectionTimingGrowthFractions(timing)
-
-	for iter := 0; iter < 6; iter++ {
-		trialTaxDeferred := startingTaxDeferred
-		trialRoth := startingRoth
-		trialTaxable := startingTaxable
-
-		tdBeforeGrowth := trialTaxDeferred * fractionalMonthlyReturn(taxDeferredMonthlyReturn, growthBeforeFraction)
-		rothBeforeGrowth := trialRoth * fractionalMonthlyReturn(rothMonthlyReturn, growthBeforeFraction)
-		trialTaxDeferred += tdBeforeGrowth
-		trialRoth += rothBeforeGrowth
-		beforeTaxableGrowth := trialTaxable.ApplyGrowth(taxableComponents, growthBeforeFraction)
-
-		trialNeededFromPortfolio := totalExpenses + irmaaExpense + taxesPaid - incomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
-		trialCashFlow := executePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
-
-		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(taxDeferredMonthlyReturn, growthAfterFraction)
-		rothAfterGrowth := trialRoth * fractionalMonthlyReturn(rothMonthlyReturn, growthAfterFraction)
-		trialTaxDeferred += tdAfterGrowth
-		trialRoth += rothAfterGrowth
-		afterTaxableGrowth := trialTaxable.ApplyGrowth(taxableComponents, growthAfterFraction)
-		trialTaxable.AddCash(afterTaxableGrowth.QualifiedDividends + afterTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.CapitalGainsDistributions)
-
-		trialQualifiedDividends := beforeTaxableGrowth.QualifiedDividends + afterTaxableGrowth.QualifiedDividends
-		trialNonQualifiedDividends := beforeTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.NonQualifiedDividends
-		trialCapitalGains := beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions + trialCashFlow.TaxableRealizedGain
-
-		recalculatedSnapshot := taxState.EstimateMonthlySnapshot(
-			taxCalculator,
-			currentYear,
-			monthInYear,
-			incomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends,
-			incomeBreakdown.SocialSecurityIncome,
-			trialCashFlow.WithdrawalFromTaxDeferred,
-			trialQualifiedDividends,
-			trialCapitalGains,
-			trialNonQualifiedDividends,
-			rothConversionThisMonth,
-			completedMAGIHistory,
-			nil,
-			irmaaEligibleAdults,
-			irmaaInflationFactor,
-		)
-
-		*taxDeferredBalance = trialTaxDeferred
-		*rothBalance = trialRoth
-		*taxableAccount = trialTaxable
-		result.CashFlow = trialCashFlow
-		result.Shortfall = trialCashFlow.Shortfall
-		result.TotalGrowth = tdBeforeGrowth + rothBeforeGrowth + beforeTaxableGrowth.TotalGrowth + tdAfterGrowth + rothAfterGrowth + afterTaxableGrowth.TotalGrowth
-		result.TaxableIncomeBeforeCashFlow = beforeTaxableGrowth.QualifiedDividends + beforeTaxableGrowth.NonQualifiedDividends + beforeTaxableGrowth.CapitalGainsDistributions
-		result.TaxableQualifiedDividends = trialQualifiedDividends
-		result.TaxableNonQualifiedDividends = trialNonQualifiedDividends
-		result.TaxableCapitalGains = trialCapitalGains
-		result.TaxableCapitalGainsDistributions = beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions
-		finalSnapshot = recalculatedSnapshot
-
-		if math.Abs(recalculatedSnapshot.MonthlyTax-taxesPaid) < 0.01 && math.Abs(recalculatedSnapshot.MonthlyIRMAA-irmaaExpense) < 0.01 {
-			taxesPaid = recalculatedSnapshot.MonthlyTax
-			irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
-			break
-		}
-
-		taxesPaid = recalculatedSnapshot.MonthlyTax
-		irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
-		// Update marginal rate from converged MAGI for next iteration's RMD reinvestment
-		if taxCalculator != nil {
-			marginalRate = taxCalculator.GetMarginalRate(recalculatedSnapshot.AnnualMAGI, currentYear) / 100
-		}
-	}
-
-	result.TaxesPaid = taxesPaid
-	result.IRMAAExpense = irmaaExpense
-	result.TaxSnapshot = finalSnapshot
-	return result
-}
-
-// reinvestRequiredRMDToTaxableState moves an RMD from tax-deferred into the
-// taxable account, with the after-tax amount as new basis. The pre-tax
-// amount is decremented from tax-deferred (the gross RMD is the legal
-// distribution); the after-tax portion (gross × (1 - marginalRate)) is
-// added to the taxable account with that net amount as cost basis. Returns
-// (gross, net) — gross is the IRS distribution amount that callers must
-// report as ordinary taxable income; net is the cash actually deposited into
-// the taxable account.
-//
-// F-049: prior implementation used gross as both reinvested amount and
-// basis, which silently understated future LTCG on later withdrawals.
-// F-073: prior implementation returned only the net amount; callers
-// stored that net into RMDWithdrawal and WithdrawalFromTaxDeferred, which
-// understated ordinary income, taxes, MAGI, and RMD-analysis totals by
-// exactly gross × marginalRate every surplus-RMD month.
-func reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState) (gross, net float64) {
-	if monthlyRMD <= 0 || *taxDeferredBalance <= 0 {
-		return 0, 0
-	}
-	if marginalRate < 0 {
-		marginalRate = 0
-	}
-	if marginalRate > 1 {
-		marginalRate = 1
-	}
-
-	gross = math.Min(monthlyRMD, *taxDeferredBalance)
-	*taxDeferredBalance -= gross
-	net = gross * (1 - marginalRate)
-	taxable.AddCash(net)
-	return gross, net
-}
-
-func applyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) float64 {
-	remaining := amount
-
-	if remaining > 0 && taxable.MarketValue > 0 {
-		fromTaxable, _, _ := taxable.Withdraw(remaining)
-		remaining -= fromTaxable
-	}
-
-	if remaining > 0 && *rothBalance > 0 {
-		fromRoth := math.Min(remaining, *rothBalance)
-		*rothBalance -= fromRoth
-		remaining -= fromRoth
-	}
-
-	if allowTaxDeferred && remaining > 0 && *taxDeferredBalance > 0 {
-		effectiveFactor := 1.0 - earlyPenaltyRate
-		grossNeeded := remaining / effectiveFactor
-		fromTaxDeferred := math.Min(grossNeeded, *taxDeferredBalance)
-		*taxDeferredBalance -= fromTaxDeferred
-		remaining -= fromTaxDeferred * effectiveFactor
-	}
-
-	return remaining
-}
-
-func executePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate, marginalRate float64, taxDeferredBalance *float64, taxable *taxableAccountState, rothBalance *float64) portfolioCashFlowResult {
-	result := portfolioCashFlowResult{}
-
-	if neededFromPortfolio > 0 {
-		withdrawal := withdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferred, earlyPenaltyRate, taxDeferredBalance, &taxable.MarketValue, rothBalance)
-		result.Shortfall = withdrawal.RemainingNeed
-		result.ActualWithdrawal = withdrawal.ActualWithdrawal
-		result.RMDWithdrawal = withdrawal.RMDWithdrawal
-		result.WithdrawalFromTaxDeferred = withdrawal.WithdrawalFromTaxDeferred
-		result.WithdrawalFromRoth = withdrawal.WithdrawalFromRoth
-
-		if withdrawal.WithdrawalFromTaxable > 0 {
-			// Undo the legacy taxable withdrawal, then re-apply it with basis tracking.
-			taxable.MarketValue += withdrawal.WithdrawalFromTaxable
-			cash, _, realizedGain := taxable.Withdraw(withdrawal.WithdrawalFromTaxable)
-			result.WithdrawalFromTaxable = cash
-			result.TaxableRealizedGain += math.Max(0, realizedGain)
-		}
-
-		unmetRMD := monthlyRMD - withdrawal.RMDWithdrawal
-		if unmetRMD > 0 {
-			gross, _ := reinvestRequiredRMDToTaxableState(unmetRMD, marginalRate, taxDeferredBalance, taxable)
-			result.RMDWithdrawal += gross
-			result.WithdrawalFromTaxDeferred += gross
-		}
-	} else {
-		if neededFromPortfolio < 0 {
-			taxable.AddCash(math.Abs(neededFromPortfolio))
-		}
-		gross, _ := reinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate, taxDeferredBalance, taxable)
-		result.RMDWithdrawal = gross
-		result.WithdrawalFromTaxDeferred += gross
-	}
-
-	return result
-}
 
 func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
 	return s.TaxDeferredDelayYears > 0 && currentYear < s.TaxDeferredDelayYears
 }
 
-func shortfallIsTemporaryDueToDelay(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool {
-	return shortfall > 0 && !allowTaxDeferredWithdrawal && taxDeferredBalance > 0
-}
-
-func shortfallCausesDepletion(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool {
-	return shortfall > 0 && !shortfallIsTemporaryDueToDelay(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance)
-}
+// shortfallIsTemporaryDueToDelay and shortfallCausesDepletion live in
+// the engine package. The aliases below keep existing call sites in
+// calculator.go and backtest.go compiling unchanged. Removed in
+// Task 8.
+var (
+	shortfallIsTemporaryDueToDelay = engine.ShortfallIsTemporaryDueToDelay
+	shortfallCausesDepletion       = engine.ShortfallCausesDepletion
+)
 
 // earlyWithdrawalPenaltyRate returns the IRS 10% early distribution penalty rate
 // for tax-deferred withdrawals before age 59½. Uses age 60 as the cutoff since
@@ -617,56 +250,12 @@ func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
 	return 0
 }
 
-func withdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance *float64) withdrawalBreakdown {
-	breakdown := withdrawalBreakdown{RemainingNeed: neededFromPortfolio}
-	if neededFromPortfolio <= 0 {
-		return breakdown
-	}
-
-	if monthlyRMD > 0 && *taxDeferredBalance > 0 {
-		rmdUsed := math.Min(monthlyRMD, breakdown.RemainingNeed)
-		rmdUsed = math.Min(rmdUsed, *taxDeferredBalance)
-		*taxDeferredBalance -= rmdUsed
-		breakdown.RemainingNeed -= rmdUsed
-		breakdown.RMDWithdrawal = rmdUsed
-		breakdown.WithdrawalFromTaxDeferred += rmdUsed
-		breakdown.ActualWithdrawal += rmdUsed
-	}
-
-	if breakdown.RemainingNeed > 0 && *taxableBalance > 0 {
-		fromTaxable := math.Min(breakdown.RemainingNeed, *taxableBalance)
-		*taxableBalance -= fromTaxable
-		breakdown.RemainingNeed -= fromTaxable
-		breakdown.WithdrawalFromTaxable += fromTaxable
-		breakdown.ActualWithdrawal += fromTaxable
-	}
-
-	if breakdown.RemainingNeed > 0 && *rothBalance > 0 {
-		fromRoth := math.Min(breakdown.RemainingNeed, *rothBalance)
-		*rothBalance -= fromRoth
-		breakdown.RemainingNeed -= fromRoth
-		breakdown.WithdrawalFromRoth += fromRoth
-		breakdown.ActualWithdrawal += fromRoth
-	}
-
-	if allowTaxDeferred && breakdown.RemainingNeed > 0 && *taxDeferredBalance > 0 {
-		// Early withdrawal penalty: before age 59½, only (1-penalty) of each dollar
-		// withdrawn from tax-deferred is available for spending
-		effectiveFactor := 1.0 - earlyPenaltyRate
-		grossNeeded := breakdown.RemainingNeed / effectiveFactor
-		fromTaxDeferred := math.Min(grossNeeded, *taxDeferredBalance)
-		*taxDeferredBalance -= fromTaxDeferred
-		netSpending := fromTaxDeferred * effectiveFactor
-		penalty := fromTaxDeferred - netSpending
-		breakdown.RemainingNeed -= netSpending
-		breakdown.WithdrawalFromTaxDeferred += fromTaxDeferred
-		breakdown.ActualWithdrawal += fromTaxDeferred
-		breakdown.EarlyPenaltyPaid += penalty
-	}
-
-	return breakdown
-}
-
+// withdrawForExpenses moved to engine.WithdrawForExpenses; the
+// var-alias near the top of this file keeps existing call sites
+// unchanged. The legacy applyBigTicketExpense (which operates on raw
+// *float64 balances rather than the taxable-account state machine)
+// stays in retirement for now — it's no longer used by RunProjection
+// but other helpers may reference it. Removed in Task 8.
 func applyBigTicketExpense(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance *float64) float64 {
 	remaining := amount
 
@@ -846,9 +435,9 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		// Evaluate spending guardrails at year boundaries
 		if grState != nil && m%12 == 0 {
 			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
-			prevMult := grState.multiplier()
-			grState.evaluate(s.Guardrails, totalPortfolio)
-			newMult := grState.multiplier()
+			prevMult := grState.Multiplier()
+			grState.Evaluate(s.Guardrails, totalPortfolio)
+			newMult := grState.Multiplier()
 			if newMult != prevMult {
 				eventType := "cut"
 				if newMult > prevMult {
@@ -868,7 +457,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		// Apply guardrail spending multiplier
 		activeMultiplier := 1.0
 		if grState != nil {
-			activeMultiplier = grState.multiplier()
+			activeMultiplier = grState.Multiplier()
 		}
 		adjustedLivingExpenses := currentLivingExpenses * activeMultiplier
 
@@ -2169,13 +1758,13 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 		// Evaluate guardrails at year boundaries in MC
 		if mcGrState != nil && m%12 == 0 {
 			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
-			mcGrState.evaluate(s.Guardrails, totalPortfolio)
+			mcGrState.Evaluate(s.Guardrails, totalPortfolio)
 		}
 
 		// Apply guardrail spending multiplier in MC
 		mcAdjustedLiving := currentLivingExpenses
 		if mcGrState != nil {
-			mcAdjustedLiving *= mcGrState.multiplier()
+			mcAdjustedLiving *= mcGrState.Multiplier()
 		}
 
 		// Calculate healthcare expenses using multi-person model with variation

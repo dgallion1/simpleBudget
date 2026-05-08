@@ -5,13 +5,9 @@ import (
 	"budget2/internal/services/retirement/engine"
 )
 
-// Tax base years. Duplicated from engine because plannerIRMAAInflationFactorForYear
-// (which lives in calculator.go for now) reads them. Removed in Task 8
-// alongside calculator.go.
-const (
-	taxBaseYear   = 2024
-	irmaaBaseYear = 2026
-)
+// Tax base years previously duplicated from engine for
+// plannerIRMAAInflationFactorForYear; that helper moved to the engine
+// package in Task 1c so the duplicate constants are no longer needed.
 
 // FederalTaxBracket re-exported from engine so existing retirement
 // callers and tests keep compiling during the migration window.

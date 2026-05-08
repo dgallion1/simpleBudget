@@ -286,13 +286,13 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		// Evaluate guardrails at year boundaries
 		if btGrState != nil && m%12 == 0 {
 			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
-			btGrState.evaluate(s.Guardrails, totalPortfolio)
+			btGrState.Evaluate(s.Guardrails, totalPortfolio)
 		}
 
 		// Apply guardrail spending multiplier
 		btAdjustedLiving := currentLivingExpenses
 		if btGrState != nil {
-			btAdjustedLiving *= btGrState.multiplier()
+			btAdjustedLiving *= btGrState.Multiplier()
 		}
 
 		// Calculate expenses

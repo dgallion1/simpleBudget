@@ -25,7 +25,7 @@ func TestGuardrailState_FloorTrigger(t *testing.T) {
 			MaxSpendingPct:  150,
 		}
 
-		mult := g.evaluate(cfg, 750_000) // 25% drop from 1M peak
+		mult := g.Evaluate(cfg, 750_000) // 25% drop from 1M peak
 		if !almostEqual(mult, 0.9) {
 			t.Errorf("expected multiplier 0.9, got %f", mult)
 		}
@@ -45,7 +45,7 @@ func TestGuardrailState_CeilingTrigger(t *testing.T) {
 			MaxSpendingPct:  150,
 		}
 
-		mult := g.evaluate(cfg, 1_300_000) // 30% rise from 1M initial
+		mult := g.Evaluate(cfg, 1_300_000) // 30% rise from 1M initial
 		if !almostEqual(mult, 1.1) {
 			t.Errorf("expected multiplier 1.1, got %f", mult)
 		}
@@ -65,7 +65,7 @@ func TestGuardrailState_NoTrigger(t *testing.T) {
 			MaxSpendingPct:  150,
 		}
 
-		mult := g.evaluate(cfg, 900_000) // 10% drop, below 20% threshold
+		mult := g.Evaluate(cfg, 900_000) // 10% drop, below 20% threshold
 		if !almostEqual(mult, 1.0) {
 			t.Errorf("expected multiplier 1.0, got %f", mult)
 		}
@@ -86,9 +86,9 @@ func TestGuardrailState_MinMaxCap(t *testing.T) {
 		}
 
 		// First trigger: 1M -> 800K (20% drop), mult = 1.0 * 0.6 = 0.6 -> clamped to 0.8
-		g.evaluate(cfg, 800_000)
-		if !almostEqual(g.multiplier(), 0.8) {
-			t.Errorf("expected multiplier clamped to 0.8, got %f", g.multiplier())
+		g.Evaluate(cfg, 800_000)
+		if !almostEqual(g.Multiplier(), 0.8) {
+			t.Errorf("expected multiplier clamped to 0.8, got %f", g.Multiplier())
 		}
 	})
 
@@ -105,9 +105,9 @@ func TestGuardrailState_MinMaxCap(t *testing.T) {
 		}
 
 		// First trigger: 1M -> 1.2M (20% rise), mult = 1.0 * 1.4 = 1.4 -> clamped to 1.2
-		g.evaluate(cfg, 1_200_000)
-		if !almostEqual(g.multiplier(), 1.2) {
-			t.Errorf("expected multiplier clamped to 1.2, got %f", g.multiplier())
+		g.Evaluate(cfg, 1_200_000)
+		if !almostEqual(g.Multiplier(), 1.2) {
+			t.Errorf("expected multiplier clamped to 1.2, got %f", g.Multiplier())
 		}
 	})
 }
@@ -126,13 +126,13 @@ func TestGuardrailState_PeakReset(t *testing.T) {
 		}
 
 		// Evaluate at 1.5M: sets new peak, no floor trigger.
-		mult := g.evaluate(cfg, 1_500_000)
+		mult := g.Evaluate(cfg, 1_500_000)
 		if !almostEqual(mult, 1.0) {
 			t.Errorf("expected multiplier 1.0 after new peak, got %f", mult)
 		}
 
 		// Evaluate at 1.2M: 20% drop from 1.5M peak -> triggers floor.
-		mult = g.evaluate(cfg, 1_200_000)
+		mult = g.Evaluate(cfg, 1_200_000)
 		if !almostEqual(mult, 0.9) {
 			t.Errorf("expected multiplier 0.9 after floor trigger from new peak, got %f", mult)
 		}
@@ -146,7 +146,7 @@ func TestGuardrailState_FloorTakesPriorityOverCeiling(t *testing.T) {
 		// Ceiling: (1.5M - 1M) / 1M * 100 = 50% >= 20% -> would trigger
 		// Floor should win.
 		g := newGuardrailState(1_000_000)
-		g.peakPortfolio = 2_000_000 // simulate a peak at 2M
+		g.PeakPortfolio = 2_000_000 // simulate a peak at 2M
 
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
@@ -158,7 +158,7 @@ func TestGuardrailState_FloorTakesPriorityOverCeiling(t *testing.T) {
 			MaxSpendingPct:  150,
 		}
 
-		mult := g.evaluate(cfg, 1_500_000)
+		mult := g.Evaluate(cfg, 1_500_000)
 		// Floor triggers: mult = 1.0 * 0.9 = 0.9
 		// Ceiling should NOT trigger (would have been 1.0 * 1.1 = 1.1)
 		if !almostEqual(mult, 0.9) {

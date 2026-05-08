@@ -26,8 +26,8 @@ func livingExpensesAtMonth(s *models.WhatIfSettings, month int) float64 {
 	return s.MonthlyLivingExpenses * compoundedFactorFromPercent(s.InflationRate-s.SpendingDeclineRate, monthsElapsed)
 }
 
-// totalExpenses returns total expenses for a specific month.
-func totalExpenses(s *models.WhatIfSettings, month int) float64 {
+// TotalExpenses returns total expenses for a specific month.
+func TotalExpenses(s *models.WhatIfSettings, month int) float64 {
 	years := month / 12
 	phaseAge := s.GetPhaseReferenceAge(years) // Age used for spending phase calculations (may differ for couples)
 
@@ -50,8 +50,8 @@ func totalExpenses(s *models.WhatIfSettings, month int) float64 {
 	return livingExpenses + healthcareExpenses
 }
 
-// expenseBreakdown separates expenses into discretionary and essential.
-func expenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreakdown {
+// CalculateExpenseBreakdown separates expenses into discretionary and essential.
+func CalculateExpenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreakdown {
 	years := month / 12
 	phaseAge := s.GetPhaseReferenceAge(years) // Age used for spending phase calculations (may differ for couples)
 
@@ -85,14 +85,3 @@ func expenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreakdown {
 	}
 }
 
-// TotalExpensesForCalculator is a parity-window export so Calculator's
-// delegator can call into engine. Removed in Task 8.
-func TotalExpensesForCalculator(s *models.WhatIfSettings, month int) float64 {
-	return totalExpenses(s, month)
-}
-
-// ExpenseBreakdownForCalculator is a parity-window export so
-// Calculator's delegator can call into engine. Removed in Task 8.
-func ExpenseBreakdownForCalculator(s *models.WhatIfSettings, month int) ExpenseBreakdown {
-	return expenseBreakdown(s, month)
-}

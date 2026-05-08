@@ -19,9 +19,3 @@ func perturbAndPrepare(modified *models.WhatIfSettings) prepare.PreparedSettings
 	return p
 }
 
-// PerturbAndPrepareForCalculator is a parity-window export shim so any
-// remaining retirement-side caller resolves through the analysis-side
-// implementation. Removed in Task 8.
-func PerturbAndPrepareForCalculator(modified *models.WhatIfSettings) prepare.PreparedSettings {
-	return perturbAndPrepare(modified)
-}

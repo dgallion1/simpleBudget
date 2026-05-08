@@ -11,18 +11,18 @@ import (
 const MonteCarloRuns = 1000
 
 // MonteCarloSeed is the default RNG seed for orchestrator-driven runs.
-// 0 = auto-seed from time, matching Calculator.RunFullAnalysis behavior.
+// 0 = auto-seed from time.
 const MonteCarloSeed int64 = 0
 
 // RunFull executes the full what-if analysis fan-out for in. Returns a
-// fully populated *models.WhatIfAnalysis. Replaces Calculator.RunFullAnalysis.
+// fully populated *models.WhatIfAnalysis.
 func RunFull(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
 	return runFullWithSeed(eng, in, MonteCarloSeed)
 }
 
-// runFullWithSeed is RunFull with an explicit MC seed. Used by
-// Calculator.RunFullAnalysis to thread its parity-window seed override.
-// Inlined back into RunFull and deleted in Task 8.
+// runFullWithSeed is RunFull with an explicit MC seed. Retained as an
+// unexported helper for the retirement-package test helper that pins the
+// MC seed for deterministic comparisons.
 func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.WhatIfAnalysis {
 	proj := eng.Run(in)
 

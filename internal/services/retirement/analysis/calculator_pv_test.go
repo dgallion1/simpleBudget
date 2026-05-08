@@ -140,7 +140,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 			MedicareEligibleAge:   65,
 		}
 
-		got := engine.HealthcarePVForCalculator(person, 5.0, 360)
+		got := engine.HealthcarePV(person, 5.0, 360)
 		// Should equal PVAnnuity with post-Medicare inflation for full period
 		expected := engine.PresentValueAnnuity(459, 5.0, 4.0, 0, 360)
 		if math.Abs(got-expected) > 0.01 {
@@ -163,7 +163,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 		// 10-year projection, person is 40, Medicare at 65 -> 25 years away
 		// Entire projection is pre-Medicare
 		totalMonths := 120
-		got := engine.HealthcarePVForCalculator(person, 5.0, totalMonths)
+		got := engine.HealthcarePV(person, 5.0, totalMonths)
 		expected := engine.PresentValueAnnuity(1100, 5.0, 7.0, 0, totalMonths)
 		if math.Abs(got-expected) > 0.01 {
 			t.Errorf("expected %.2f, got %.2f", expected, got)
@@ -185,7 +185,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 		totalMonths := 360          // 30 years
 		preMedicareMonths := 5 * 12 // 60 months until Medicare
 
-		got := engine.HealthcarePVForCalculator(person, 5.0, totalMonths)
+		got := engine.HealthcarePV(person, 5.0, totalMonths)
 
 		// Phase 1: pre-Medicare
 		phase1 := engine.PresentValueAnnuity(1100, 5.0, 7.0, 0, preMedicareMonths)
@@ -213,7 +213,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 
 		// IsOnMedicare() returns true when age >= MedicareEligibleAge
 		totalMonths := 240
-		got := engine.HealthcarePVForCalculator(person, 5.0, totalMonths)
+		got := engine.HealthcarePV(person, 5.0, totalMonths)
 		expected := engine.PresentValueAnnuity(1100, 5.0, 4.0, 0, totalMonths)
 		if math.Abs(got-expected) > 0.01 {
 			t.Errorf("expected %.2f, got %.2f", expected, got)
@@ -343,7 +343,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 
 		// Expenses should include both living + healthcare
 		livingPV := engine.PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
-		healthcarePV := engine.HealthcarePVForCalculator(settings.HealthcarePersons[0], 5.0, 360)
+		healthcarePV := engine.HealthcarePV(settings.HealthcarePersons[0], 5.0, 360)
 		expectedExpenses := livingPV + healthcarePV
 
 		if math.Abs(result.PVExpenses-expectedExpenses)/expectedExpenses > 0.001 {

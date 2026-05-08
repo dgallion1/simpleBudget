@@ -50,27 +50,25 @@ func FailurePoints(eng *engine.Engine, in engine.Input) *models.FailurePointAnal
 	}
 }
 
-// FindReturnThresholdForCalculator, FindInflationThresholdForCalculator,
-// FindExpensesThresholdForCalculator, and FindPortfolioThresholdForCalculator
-// are parity-window export shims so retirement-side tests can drive a
-// single threshold search without the analysis package importing
-// retirement. Removed in Task 8.
-func FindReturnThresholdForCalculator(eng *engine.Engine, in engine.Input) *models.FailurePoint {
+// FindReturnThreshold, FindInflationThreshold, FindExpensesThreshold,
+// and FindPortfolioThreshold are exported so retirement-package test
+// helpers can drive a single threshold search directly.
+func FindReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint {
 	return findReturnThreshold(eng, in)
 }
 
-// FindInflationThresholdForCalculator forwards to findInflationThreshold.
-func FindInflationThresholdForCalculator(eng *engine.Engine, in engine.Input) *models.FailurePoint {
+// FindInflationThreshold forwards to findInflationThreshold.
+func FindInflationThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint {
 	return findInflationThreshold(eng, in)
 }
 
-// FindExpensesThresholdForCalculator forwards to findExpensesThreshold.
-func FindExpensesThresholdForCalculator(eng *engine.Engine, in engine.Input) *models.FailurePoint {
+// FindExpensesThreshold forwards to findExpensesThreshold.
+func FindExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint {
 	return findExpensesThreshold(eng, in)
 }
 
-// FindPortfolioThresholdForCalculator forwards to findPortfolioThreshold.
-func FindPortfolioThresholdForCalculator(eng *engine.Engine, in engine.Input) *models.FailurePoint {
+// FindPortfolioThreshold forwards to findPortfolioThreshold.
+func FindPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint {
 	return findPortfolioThreshold(eng, in)
 }
 

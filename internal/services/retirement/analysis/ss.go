@@ -602,21 +602,15 @@ func isBetterSSPortfolioOption(candidate, current models.SSPortfolioOption) bool
 	return candidate.ClaimAge < current.ClaimAge
 }
 
-// CloneSettingsWithClaimAgesForCalculator is a parity-window shim used
-// by the retirement-side Calculator delegator. Removed in Task 8.
-func CloneSettingsWithClaimAgesForCalculator(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int) (prepare.PreparedSettings, bool) {
-	return cloneSettingsWithClaimAges(s, primaryClaimAge, spouseClaimAge)
-}
-
-// BestSSPortfolioOptionForCalculator is a parity-window shim used by
-// retirement-side tests. Removed in Task 8.
-func BestSSPortfolioOptionForCalculator(options []models.SSPortfolioOption) (models.SSPortfolioOption, bool) {
+// BestSSPortfolioOption is exported so retirement-package code (and
+// tests) can call the SS portfolio-option ranker directly.
+func BestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfolioOption, bool) {
 	return bestSSPortfolioOption(options)
 }
 
-// CumulativeBenefitForCalculator is a parity-window shim used by
-// retirement-side tests. Removed in Task 8.
-func CumulativeBenefitForCalculator(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64 {
+// CumulativeBenefit is exported so retirement-package code (and tests)
+// can call the cumulative-benefit calculation directly.
+func CumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64 {
 	return cumulativeBenefit(monthlyAtClaim, claimAge, targetAge, colaRate)
 }
 

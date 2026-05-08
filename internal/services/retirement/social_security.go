@@ -26,8 +26,8 @@ var (
 	// lowercase aliases referenced by retirement-side tests for the
 	// underlying primitives (TestCumulativeBenefit,
 	// TestBestSSPortfolioOption, TestNormalizedSSCOLARate_*).
-	cumulativeBenefit     = analysis.CumulativeBenefitForCalculator
-	bestSSPortfolioOption = analysis.BestSSPortfolioOptionForCalculator
+	cumulativeBenefit     = analysis.CumulativeBenefit
+	bestSSPortfolioOption = analysis.BestSSPortfolioOption
 	normalizedSSCOLARate  = analysis.NormalizedSSCOLARate
 )
 

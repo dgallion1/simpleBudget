@@ -34,9 +34,9 @@ func yearsUntilDepletion(result HistoricalSequenceResult) int {
 	return result.DepletionYear - result.StartYear
 }
 
-// YearsUntilDepletionForCalculator is a parity-window export shim used
-// by retirement-side tests. Removed in Task 8.
-func YearsUntilDepletionForCalculator(result HistoricalSequenceResult) int {
+// YearsUntilDepletion exposes yearsUntilDepletion for retirement-package
+// test helpers.
+func YearsUntilDepletion(result HistoricalSequenceResult) int {
 	return yearsUntilDepletion(result)
 }
 
@@ -175,10 +175,9 @@ func HistoricalBacktest(eng *engine.Engine, in engine.Input, data history.Data) 
 	}
 }
 
-// RunSingleHistoricalSequenceForCalculator is a parity-window shim
-// used by retirement-side tests that exercise a single sequence
-// directly. Removed in Task 8.
-func RunSingleHistoricalSequenceForCalculator(_ *engine.Engine, in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
+// RunSingleHistoricalSequence exposes the single-sequence runner for
+// retirement-package test helpers.
+func RunSingleHistoricalSequence(_ *engine.Engine, in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
 	return runSingleHistoricalSequence(in, data, startYear)
 }
 

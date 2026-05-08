@@ -24,7 +24,7 @@ func PresentValue(in engine.Input) *models.PresentValueAnalysis {
 	if len(s.HealthcarePersons) > 0 {
 		// Multi-person model: calculate PV for each person
 		for _, person := range s.HealthcarePersons {
-			pvExpenses += engine.HealthcarePVForCalculator(person, discountRate, months)
+			pvExpenses += engine.HealthcarePV(person, discountRate, months)
 		}
 	} else if s.MonthlyHealthcare > 0 {
 		// Legacy single-value model

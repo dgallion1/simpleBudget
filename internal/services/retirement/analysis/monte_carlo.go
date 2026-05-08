@@ -175,8 +175,8 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 	stats.SequenceRiskImpact = calculateSequenceRiskImpact(results)
 
 	// Calculate detailed sequence risk breakdown with expense context
-	// Use TotalExpensesForCalculator to include all expense sources
-	annualExpenses := engine.TotalExpensesForCalculator(s, 0) * 12
+	// Use TotalExpenses to include all expense sources
+	annualExpenses := engine.TotalExpenses(s, 0) * 12
 	stats.SequenceRisk = calculateSequenceRiskBreakdown(s, results, annualExpenses, s.PortfolioValue)
 
 	// Run adaptive spending simulations if discretionary expenses exist
@@ -234,37 +234,29 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 	}
 }
 
-// RunSingleMonteCarloSimulationForCalculator is a parity-window export
-// shim so retirement-side test helpers can drive a single MC run without
-// the analysis package importing retirement. Removed in Task 8.
-func RunSingleMonteCarloSimulationForCalculator(in engine.Input, rng *rand.Rand, config *MonteCarloConfig) models.MonteCarloResult {
+// RunSingleMonteCarloSimulation drives a single MC run. Exposed so
+// retirement-package test helpers can exercise the simulator directly
+// without going through the full MonteCarlo fan-out.
+func RunSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *MonteCarloConfig) models.MonteCarloResult {
 	return runSingleMonteCarloSimulation(in, rng, config)
 }
 
-// GenerateAssetReturnsForCalculator is a parity-window export shim used
-// by the retirement-side Calculator's test-only helper that wraps the
-// analysis-private generator. Removed in Task 8.
-func GenerateAssetReturnsForCalculator(rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) *AssetReturns {
-	return generateAssetReturns(rng, config, years, timing, lastCrashYear)
-}
-
-// CalculateSequenceRiskImpactForCalculator is a parity-window export
-// shim used by retirement-side tests. Removed in Task 8.
-func CalculateSequenceRiskImpactForCalculator(results []models.MonteCarloResult) float64 {
+// CalculateSequenceRiskImpact exposes the sequence-of-returns risk
+// calculation so retirement-package test helpers can call it directly.
+func CalculateSequenceRiskImpact(results []models.MonteCarloResult) float64 {
 	return calculateSequenceRiskImpact(results)
 }
 
-// CreateDistributionBucketsForCalculator is a parity-window export
-// shim used by retirement-side tests. Removed in Task 8.
-func CreateDistributionBucketsForCalculator(sortedBalances []float64) *models.MonteCarloDistribution {
+// CreateDistributionBuckets exposes the distribution-bucket builder so
+// retirement-package test helpers can call it directly.
+func CreateDistributionBuckets(sortedBalances []float64) *models.MonteCarloDistribution {
 	return createDistributionBuckets(sortedBalances)
 }
 
-// GenerateYearlyReturnsForCalculator blends the per-asset returns by the
-// settings' effective allocation, mirroring the legacy
-// Calculator.generateYearlyReturns behaviour. Parity-window only;
-// removed in Task 8.
-func GenerateYearlyReturnsForCalculator(s *models.WhatIfSettings, rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64 {
+// GenerateYearlyReturns blends the per-asset returns by the settings'
+// effective allocation. Exposed so retirement-package test helpers can
+// drive the generator directly.
+func GenerateYearlyReturns(s *models.WhatIfSettings, rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64 {
 	assetReturns := generateAssetReturns(rng, config, years, timing, lastCrashYear)
 
 	// Get user's asset allocation with defaults applied
@@ -805,7 +797,7 @@ func calculateSequenceRiskBreakdown(s *models.WhatIfSettings, results []models.M
 	}
 
 	// Calculate expense breakdown for adaptive spending analysis
-	expenseBreakdown := engine.ExpenseBreakdownForCalculator(s, 0)
+	expenseBreakdown := engine.CalculateExpenseBreakdown(s, 0)
 	hasDiscretionary := expenseBreakdown.Discretionary > 0
 
 	return &models.SequenceRiskBreakdown{

@@ -41,7 +41,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 	}
 
 	// Calculate first month expenses and income
-	baseMonthlyExpenses := engine.TotalExpensesForCalculator(s, 0)
+	baseMonthlyExpenses := engine.TotalExpenses(s, 0)
 	incomeSummary := engine.CalculateMonthlyIncomeBreakdown(s, 0)
 	monthlyIncome := incomeSummary.TotalIncome
 
@@ -208,7 +208,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 	}
 
 	// Calculate steady-state analysis (when all income sources are active)
-	minSteadyStateMonth := engine.FindSteadyStateMonthForCalculator(s)
+	minSteadyStateMonth := engine.FindSteadyStateMonth(s)
 	minSteadyStateYear := float64(minSteadyStateMonth) / 12
 
 	// Use override year if set and >= minimum, otherwise use auto-calculated
@@ -226,7 +226,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 
 	if steadyStateMonth > 0 {
 		// Calculate expenses and income at steady state
-		baseSteadyStateExpenses := engine.TotalExpensesForCalculator(s, steadyStateMonth)
+		baseSteadyStateExpenses := engine.TotalExpenses(s, steadyStateMonth)
 		result.SteadyStateExpenses = baseSteadyStateExpenses
 		steadyStateIncomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(s, steadyStateMonth)
 		result.SteadyStateIncome = steadyStateIncomeBreakdown.TotalIncome

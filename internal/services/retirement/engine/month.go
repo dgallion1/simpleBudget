@@ -409,11 +409,10 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 	}
 }
 
-// findSteadyStateMonth finds the month when all income sources are
+// FindSteadyStateMonth finds the month when all income sources are
 // active. Returns 0 if all sources start immediately (no delayed
-// income). Engine-side counterpart to the retirement helper of the
-// same name.
-func findSteadyStateMonth(s *models.WhatIfSettings) int {
+// income).
+func FindSteadyStateMonth(s *models.WhatIfSettings) int {
 	maxStartMonth := 0
 
 	for _, source := range s.IncomeSources {
@@ -449,23 +448,16 @@ func findSteadyStateMonth(s *models.WhatIfSettings) int {
 }
 
 // ssValidClaimAge mirrors retirement.validSSClaimAge (62..70 inclusive).
-// Duplicated here to keep findSteadyStateMonth free of an import cycle.
-// Removed in Task 8.
+// Duplicated here to keep FindSteadyStateMonth free of an import cycle.
 func ssValidClaimAge(age int) bool {
 	return age >= 62 && age <= 70
 }
 
 // ssClaimStartMonth mirrors retirement.claimStartMonth: months from the
-// current age to the claim age, clamped to 0. Removed in Task 8.
+// current age to the claim age, clamped to 0.
 func ssClaimStartMonth(currentAge, claimAge int) int {
 	if claimAge <= currentAge {
 		return 0
 	}
 	return (claimAge - currentAge) * 12
-}
-
-// FindSteadyStateMonthForCalculator is a parity-window export so
-// Calculator's delegator can call into engine. Removed in Task 8.
-func FindSteadyStateMonthForCalculator(s *models.WhatIfSettings) int {
-	return findSteadyStateMonth(s)
 }

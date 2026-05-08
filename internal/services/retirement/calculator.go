@@ -111,7 +111,7 @@ func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, 
 // calculateHealthcarePV calculates the present value of healthcare costs for a single person
 // This handles the Medicare transition where costs and inflation rates change at age 65
 func (c *Calculator) calculateHealthcarePV(person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
-	return engine.HealthcarePVForCalculator(c.Settings, person, discountRate, totalMonths)
+	return engine.HealthcarePVForCalculator(person, discountRate, totalMonths)
 }
 
 // CalculateTotalIncome returns total income for a specific month

@@ -7,7 +7,7 @@ import (
 // healthcarePV calculates the present value of healthcare costs for a
 // single person. Handles the Medicare transition where costs and
 // inflation rates change at age 65.
-func healthcarePV(s *models.WhatIfSettings, person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
+func healthcarePV(person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
 	pvTotal := 0.0
 
 	if person.IsOnMedicare() {
@@ -40,6 +40,6 @@ func healthcarePV(s *models.WhatIfSettings, person models.HealthcarePerson, disc
 
 // HealthcarePVForCalculator is a parity-window export so Calculator's
 // delegator can call into engine. Removed in Task 8.
-func HealthcarePVForCalculator(s *models.WhatIfSettings, person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
-	return healthcarePV(s, person, discountRate, totalMonths)
+func HealthcarePVForCalculator(person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
+	return healthcarePV(person, discountRate, totalMonths)
 }

@@ -1,9 +1,11 @@
 package retirement
 
 import (
-	"budget2/internal/models"
 	"sort"
 	"strings"
+
+	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatIfSettings, transitionYear int) *models.WhatIfSettings {
@@ -52,8 +54,8 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 		prepared.HealthcarePersons = persons
 	}
 
-	prepared.NormalizePhaseAgeReference()
-	prepared.ComputeAges()
+	prepare.NormalizePhaseAgeReference(&prepared)
+	prepare.ComputeAges(&prepared)
 
 	return &prepared
 }

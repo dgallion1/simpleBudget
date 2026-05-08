@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func TestCalculateTotalExpenses(t *testing.T) {
@@ -981,7 +982,7 @@ func TestFindSteadyStateMonth_ProjectedSocialSecurity(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "primary", Name: "You", BirthMonth: "1961-04", Role: models.PersonRolePrimary},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.IncomeSources = nil
 	s.SocialSecurity = &models.SocialSecurityConfig{
 		FRABenefit: 3000,

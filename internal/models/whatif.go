@@ -181,7 +181,10 @@ func CurrentLocalMonth() string {
 	return time.Now().In(time.Local).Format(yearMonthLayout)
 }
 
-func parseYearMonth(value string) (time.Time, error) {
+// ParseYearMonth parses a "YYYY-MM" string. Exported so packages outside
+// models (notably the retirement engine's prepare package) can perform
+// equivalent date validation.
+func ParseYearMonth(value string) (time.Time, error) {
 	if strings.TrimSpace(value) == "" {
 		return time.Time{}, fmt.Errorf("month is required")
 	}
@@ -199,19 +202,19 @@ func BirthMonthForAge(startDate string, age int) string {
 	if age < 0 {
 		return ""
 	}
-	start, err := parseYearMonth(startDate)
+	start, err := ParseYearMonth(startDate)
 	if err != nil {
 		return ""
 	}
 	return start.AddDate(-age, 0, 0).Format(yearMonthLayout)
 }
 
-func deriveAgeAtStartDate(startDate, birthMonth string) (int, error) {
-	start, err := parseYearMonth(startDate)
+func DeriveAgeAtStartDate(startDate, birthMonth string) (int, error) {
+	start, err := ParseYearMonth(startDate)
 	if err != nil {
 		return 0, err
 	}
-	birth, err := parseYearMonth(birthMonth)
+	birth, err := ParseYearMonth(birthMonth)
 	if err != nil {
 		return 0, err
 	}
@@ -314,115 +317,19 @@ func (s *WhatIfSettings) PersonAge(personID string) int {
 	if person == nil {
 		return 0
 	}
-	age, err := deriveAgeAtStartDate(s.StartDate, person.BirthMonth)
+	age, err := DeriveAgeAtStartDate(s.StartDate, person.BirthMonth)
 	if err != nil {
 		return 0
 	}
 	return age
 }
 
-func (s *WhatIfSettings) ComputeAges() {
-	if primary := s.GetPrimaryPerson(); primary != nil {
-		if age, err := deriveAgeAtStartDate(s.StartDate, primary.BirthMonth); err == nil {
-			s.CurrentAge = age
-		}
-	}
-
-	s.SpouseAge = 0
-	if spouse := s.GetSpousePerson(); spouse != nil {
-		if age, err := deriveAgeAtStartDate(s.StartDate, spouse.BirthMonth); err == nil {
-			s.SpouseAge = age
-		}
-	}
-
-	for i := range s.HealthcarePersons {
-		if s.HealthcarePersons[i].PersonID == "" {
-			continue
-		}
-		person := s.FindPerson(s.HealthcarePersons[i].PersonID)
-		if person == nil {
-			continue
-		}
-		s.HealthcarePersons[i].Name = person.Name
-		if age, err := deriveAgeAtStartDate(s.StartDate, person.BirthMonth); err == nil {
-			s.HealthcarePersons[i].CurrentAge = age
-		}
-	}
-}
-
-func (s *WhatIfSettings) NormalizePhaseAgeReference() {
-	switch s.PhaseAgeReference {
-	case "younger", "older", "primary":
-		return
-	case "spouse":
-		if s.HasSpouse() {
-			return
-		}
-	}
-	s.PhaseAgeReference = "older"
-}
-
-func (s *WhatIfSettings) ValidatePersons() error {
-	start, err := parseYearMonth(s.StartDate)
-	if err != nil {
-		return fmt.Errorf("start_date: %w", err)
-	}
-	if len(s.Persons) == 0 {
-		return fmt.Errorf("persons: at least one person is required")
-	}
-
-	primaryCount := 0
-	spouseCount := 0
-	ids := make(map[string]struct{}, len(s.Persons))
-	for _, person := range s.Persons {
-		if strings.TrimSpace(person.ID) == "" {
-			return fmt.Errorf("persons: id is required")
-		}
-		if _, exists := ids[person.ID]; exists {
-			return fmt.Errorf("persons: duplicate id %q", person.ID)
-		}
-		ids[person.ID] = struct{}{}
-
-		if strings.TrimSpace(person.Name) == "" {
-			return fmt.Errorf("persons: name is required")
-		}
-		birth, err := parseYearMonth(person.BirthMonth)
-		if err != nil {
-			return fmt.Errorf("persons: invalid birth_month for %q: %w", person.Name, err)
-		}
-		if birth.After(start) {
-			return fmt.Errorf("persons: birth_month %q is after start_date %q", person.BirthMonth, s.StartDate)
-		}
-
-		switch person.Role {
-		case PersonRolePrimary:
-			primaryCount++
-		case PersonRoleSpouse:
-			spouseCount++
-		case PersonRoleOther:
-		default:
-			return fmt.Errorf("persons: invalid role %q", person.Role)
-		}
-	}
-
-	if primaryCount != 1 {
-		return fmt.Errorf("persons: expected exactly one primary person, got %d", primaryCount)
-	}
-	if spouseCount > 1 {
-		return fmt.Errorf("persons: expected at most one spouse person, got %d", spouseCount)
-	}
-
-	for _, hp := range s.HealthcarePersons {
-		if hp.PersonID == "" {
-			continue
-		}
-		if _, ok := ids[hp.PersonID]; !ok {
-			return fmt.Errorf("healthcare_persons: person_id %q not found", hp.PersonID)
-		}
-	}
-
-	return nil
-}
+// Note: ComputeAges, NormalizePhaseAgeReference, and ValidatePersons used to
+// live here as methods on *WhatIfSettings. They were extracted to the
+// retirement engine's prepare package as package-level functions:
+// budget2/internal/services/retirement/prepare. Call them as
+// prepare.ComputeAges(s), prepare.NormalizePhaseAgeReference(s), and
+// prepare.ValidatePersons(s).
 
 // GetYoungerAge returns the younger of primary and spouse ages
 func (s *WhatIfSettings) GetYoungerAge() int {
@@ -506,7 +413,7 @@ func (s *WhatIfSettings) SpendingMultiplierAt(t time.Time) float64 {
 	if config == nil || !config.Enabled || len(config.Phases) == 0 {
 		return 1.0
 	}
-	sd, err := parseYearMonth(s.StartDate)
+	sd, err := ParseYearMonth(s.StartDate)
 	if err != nil {
 		return 1.0
 	}
@@ -845,7 +752,9 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		BigTicketItems:        []BigTicketItem{},
 		RemovedBigTicketItems: []BigTicketItem{},
 	}
-	settings.ComputeAges()
+	// Derived state (CurrentAge/SpouseAge) is populated by prepare.From at the
+	// engine boundary. The CurrentAge field above (65) matches the primary
+	// Person's BirthMonth so the value is consistent until preparation runs.
 	return settings
 }
 

@@ -3051,7 +3051,7 @@ func TestProjectionChartEvents_F078_RMDStartsLabel_LateYearBirth(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.PortfolioValue = 1_000_000
 	s.TaxDeferredPercent = 100
 	s.ProjectionYears = 10
@@ -5428,7 +5428,7 @@ func TestHandleWhatIfSocialSecurity_PopulatesPortfolio(t *testing.T) {
 		{ID: "p1", Name: "You", BirthMonth: "1958-11", Role: models.PersonRolePrimary},
 		{ID: "p2", Name: "Spouse", BirthMonth: "1971-08", Role: models.PersonRoleSpouse},
 	}
-	settings.ComputeAges()
+	prepare.ComputeAges(settings)
 	settings.SocialSecurity = &models.SocialSecurityConfig{
 		FRABenefit:       4100,
 		FRA:              66,

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func intPtr(v int) *int { return &v }
@@ -174,7 +175,7 @@ func TestPrepareChainedSettings(t *testing.T) {
 		{ID: "primary", Name: "You", BirthMonth: "1966-04", Role: models.PersonRolePrimary},
 		{ID: "spouse", Name: "Spouse", BirthMonth: "1968-04", Role: models.PersonRoleSpouse},
 	}
-	primary.ComputeAges()
+	prepare.ComputeAges(primary)
 
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 3000

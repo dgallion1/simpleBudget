@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // F-074: rmdTriggerMonth maps each timing to a single month-of-year.
@@ -54,7 +55,7 @@ func makeRMDTimingTestCalc(t *testing.T, timing models.RMDTiming) *Calculator {
 	if len(s.Persons) > 0 {
 		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 73)
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	return newTestCalc(t, s)
 }
 

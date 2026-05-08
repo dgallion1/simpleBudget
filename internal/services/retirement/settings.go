@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/services/storage"
 
 	"github.com/google/uuid"
@@ -272,8 +273,8 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 
 	// First pass: derive ages so the healthcare migration below can read
 	// settings.CurrentAge to pick ACA vs Medicare coverage.
-	settings.NormalizePhaseAgeReference()
-	settings.ComputeAges()
+	prepare.NormalizePhaseAgeReference(settings)
+	prepare.ComputeAges(settings)
 
 	if len(settings.HealthcarePersons) == 0 && settings.MonthlyHealthcare > 0 {
 		coverage := models.CoverageMedicare
@@ -314,13 +315,13 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 	// Second pass: healthcare link inference above may have changed PersonIDs,
 	// so re-derive ages and re-normalize phase reference for the final state.
 	beforePhase := settings.PhaseAgeReference
-	settings.NormalizePhaseAgeReference()
+	prepare.NormalizePhaseAgeReference(settings)
 	if settings.PhaseAgeReference != beforePhase {
 		changed = true
 	}
-	settings.ComputeAges()
+	prepare.ComputeAges(settings)
 
-	if err := settings.ValidatePersons(); err != nil {
+	if err := prepare.ValidatePersons(settings); err != nil {
 		return changed, err
 	}
 
@@ -500,11 +501,11 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 
 // saveInternal writes settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
-	settings.NormalizePhaseAgeReference()
-	if err := settings.ValidatePersons(); err != nil {
+	prepare.NormalizePhaseAgeReference(settings)
+	if err := prepare.ValidatePersons(settings); err != nil {
 		return err
 	}
-	settings.ComputeAges()
+	prepare.ComputeAges(settings)
 
 	// Validate scenario chain if one is present; invalid chains must be surfaced
 	// back to the caller instead of being silently discarded on save.

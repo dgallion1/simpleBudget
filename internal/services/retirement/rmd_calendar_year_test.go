@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // F-078: helpers that drive calendar-year RMD gating across the projection,
@@ -38,7 +39,7 @@ func TestFirstRMDCalendarYear_F078_BirthMonth(t *testing.T) {
 					ID: "s1", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: c.spouseBirth,
 				})
 			}
-			s.ComputeAges()
+			prepare.ComputeAges(s)
 			if got := FirstRMDCalendarYear(s); got != c.want {
 				t.Errorf("FirstRMDCalendarYear = %d; want %d", got, c.want)
 			}
@@ -65,7 +66,7 @@ func TestRMDApplies_F078(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 
 	if RMDApplies(s, 2031) {
 		t.Errorf("RMDApplies(1959-12, 2031) = true; want false")
@@ -88,7 +89,7 @@ func TestRMDAgeForCalendarYear_F078(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 
 	if got := RMDAgeForCalendarYear(s, 2032); got != 73 {
 		t.Errorf("RMDAgeForCalendarYear(1959-12, 2032) = %d; want 73", got)
@@ -126,7 +127,7 @@ func TestBuildRMDAnalysis_F078_StartsInYearsLateYearBirth(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.PortfolioValue = 1_000_000
 	s.TaxDeferredPercent = 100
 	s.ProjectionYears = 10
@@ -169,7 +170,7 @@ func TestBuildRMDAnalysis_F078_DepletionAgeUsesAgeAtYearEnd(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.PortfolioValue = 50_000
 	s.TaxDeferredPercent = 100
 	s.MonthlyLivingExpenses = 10_000

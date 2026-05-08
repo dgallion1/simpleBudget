@@ -52,11 +52,9 @@ func From(cfg *models.WhatIfSettings) (PreparedSettings, error) {
 	if err != nil {
 		return PreparedSettings{}, fmt.Errorf("prepare.From: deep copy: %w", err)
 	}
-	// Task 3 will move these out of *WhatIfSettings into this package as
-	// functions and these calls become NormalizePhaseAgeReference(clone), etc.
-	clone.NormalizePhaseAgeReference()
-	clone.ComputeAges()
-	if err := clone.ValidatePersons(); err != nil {
+	NormalizePhaseAgeReference(clone)
+	ComputeAges(clone)
+	if err := ValidatePersons(clone); err != nil {
 		return PreparedSettings{}, fmt.Errorf("prepare.From: validate: %w", err)
 	}
 	return PreparedSettings{s: clone}, nil

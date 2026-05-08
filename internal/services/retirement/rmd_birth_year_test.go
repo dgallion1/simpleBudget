@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // F-077: a 2026-start projection with the older spouse aged 65 (born 1961)
@@ -227,7 +228,7 @@ func TestEffectiveRMDStartAge_F077Fixup_BirthMonthBeatsAgeFloor(t *testing.T) {
 					ID: "s1", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: c.spouseBirth,
 				})
 			}
-			s.ComputeAges()
+			prepare.ComputeAges(s)
 
 			got := EffectiveRMDStartAge(s)
 			if got != c.wantApplicable {
@@ -264,7 +265,7 @@ func TestProjection_F078_Born1959_12_TriggersRMDIn2032(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.PortfolioValue = 1_000_000
 	s.TaxDeferredPercent = 100
 	s.MonthlyLivingExpenses = 0

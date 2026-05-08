@@ -92,19 +92,32 @@ No commit on this task.
 
 ---
 
-## Task 1: Engine package + parity scaffolding
+## Task 1 — split into 1a/1b/1c/1d
+
+**Why split:** Initial execution surfaced that the projection loop's helper
+graph fans out across the entire retirement subsystem (~30 free functions
+and ~5 types shared with backtest, MC, BudgetFit, PresentValue). Moving
+RunProjection's body in a single commit would require relocating ~1500-2000
+LOC of helpers in lockstep. The split below pre-extracts shared primitives
+into engine/ across three preparatory commits, leaving Task 1d as a
+mechanical body-move once the helpers are already in place.
+
+End state of all four sub-tasks: identical to what the original Task 1
+described — engine package owns the projection loop and its primitives,
+Calculator's methods are one-line delegators, parity test guards
+correctness.
+
+---
+
+## Task 1a: Engine skeleton + easy helper moves (healthcare, income, expense)
 
 **Files:**
 - Create: `internal/services/retirement/engine/input.go`
 - Create: `internal/services/retirement/engine/engine.go`
-- Create: `internal/services/retirement/engine/month.go`
+- Create: `internal/services/retirement/engine/healthcare.go`
 - Create: `internal/services/retirement/engine/income.go`
 - Create: `internal/services/retirement/engine/expense.go`
-- Create: `internal/services/retirement/engine/healthcare.go`
-- Create: `internal/services/retirement/parity_test.go`
-- Create: `internal/services/retirement/parity_helpers_test.go`
 - Modify: `internal/services/retirement/calculator.go`
-- Modify: `internal/services/retirement/chain.go`
 
 ### Part A — Engine package skeleton
 
@@ -136,6 +149,11 @@ type PreparedChainLink struct {
 
 - [ ] **Step 2: Create `engine/engine.go`.**
 
+In Task 1a, `Engine.Run` is a stub — its real body (`runMonthlyLoop`)
+arrives in Task 1d. The stub panics so any accidental caller fails
+loudly during the migration. Calculator.RunProjection retains its
+original body during 1a/1b/1c.
+
 ```go
 // Package engine runs deterministic retirement projections from prepared
 // settings. It has no caching, no global state, and Run is a pure
@@ -157,8 +175,12 @@ func New() *Engine { return &Engine{} }
 // Run produces a deterministic monthly projection for in. Returns a
 // fully populated *models.ProjectionResult. Never returns nil. Run is a
 // pure function of in.
+//
+// During Task 1a/1b/1c the body is a stub; the real implementation
+// arrives in Task 1d once all helper dependencies have been moved into
+// this package.
 func (e *Engine) Run(in Input) *models.ProjectionResult {
-	return runMonthlyLoop(in)
+	panic("engine.Run: not yet implemented (arrives in Task 1d)")
 }
 ```
 
@@ -282,10 +304,188 @@ Calculator methods become one-line delegators.
 
 - [ ] **Step 10: Verify after expense move.**
 
-Run: `go test ./internal/services/retirement/...`
-Expected: pass.
+Run: `go test ./...`
+Expected: all packages pass. Engine.Run is still a panic stub but no
+caller invokes it yet — Calculator.RunProjection retains its original
+body in Task 1a.
 
-### Part C — Move RunProjection body into engine
+- [ ] **Step 11: Run vet.**
+
+Run: `go vet ./...`
+Expected: clean.
+
+- [ ] **Step 12: Commit Task 1a.**
+
+```bash
+git add internal/services/retirement/engine/ internal/services/retirement/calculator.go
+git commit -m "$(cat <<'EOF'
+feat(retirement): introduce engine package skeleton + healthcare/income/expense
+
+Establishes the engine package with the Engine type, Input, and
+PreparedChainLink (alias-imported back into retirement). Engine.Run is
+a panic stub during the migration; the real body arrives in Task 1d
+once the helper dependencies are fully relocated.
+
+Moves three settings-driven helpers into engine as private functions
+with parity-window export shims so Calculator's methods continue to
+work as one-line delegators:
+- calculateHealthcarePV  → engine.healthcarePV
+- CalculateTotalIncome   → engine.totalIncome
+- CalculateTotalExpenses → engine.totalExpenses
+- CalculateExpenseBreakdown → engine.expenseBreakdown
+
+Tasks 1b/1c relocate the deeply-shared primitives (taxable account,
+projection-tax accumulator, guardrails/RMD helpers used by the loop);
+Task 1d moves the projection body itself and wires up the parity test.
+
+Tracker: docs/superpowers/specs/2026-05-08-architecture-deepening.md
+Spec:    docs/superpowers/specs/2026-05-08-calculator-orchestrator-design.md
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+## Task 1b: Pre-extract taxable account + projection-tax accumulator into engine
+
+**Goal:** Move the two largest shared primitives from
+`internal/services/retirement/calculator.go` and
+`internal/services/retirement/tax.go` into `engine/`, with parity-window
+export shims so retirement-side callers (calculator, backtest, etc.)
+continue to compile during the migration window.
+
+**Files (likely):**
+- Create: `internal/services/retirement/engine/taxable.go`
+  - Symbols moved: `taxableAccountState`, `newTaxableAccountState`,
+    `applyGrowth`, `withdraw`, `addCash`, `syncAssumptions`,
+    `buildTaxableReturnComponents`, `taxableReturnComponents`,
+    `taxableGrowthResult`, plus any private helpers exclusively used by
+    these.
+- Create: `internal/services/retirement/engine/projtax.go`
+  - Symbols moved: `projectionTaxAccumulator`, `projectedTaxSnapshot`,
+    `applyMonth`, `estimateMonthlySnapshot`, `annualizedInputs`,
+    `estimateMonthlyTaxes`.
+- Modify: `internal/services/retirement/calculator.go`,
+  `internal/services/retirement/tax.go`,
+  `internal/services/retirement/backtest.go` — switch every reference
+  from the now-moved symbol to `engine.X` (parity-window exports).
+
+**Concrete steps:** the implementer should enumerate the dependency
+graph for each tier-1 primitive (e.g.,
+`grep -rn "newTaxableAccountState\|taxableAccountState{" internal/`),
+then move the symbols in a single commit. For every moved private
+symbol, add an exported `XForCalculator` (or similar) shim in engine
+so the retirement-side caller compiles.
+
+**Verification:** `go build ./...` and `go test ./...` pass at end of
+task. Engine.Run remains a panic stub.
+
+**Commit message:**
+
+```
+refactor(retirement): pre-extract taxable account + projection-tax accumulator into engine
+
+Moves the two largest shared primitives — the taxable account state
+machine and the projection tax accumulator — into the engine package
+with parity-window export shims. Calculator, tax.go, and backtest.go
+now reach these primitives through engine.X rather than calling the
+now-private engine helpers directly.
+
+Sets the stage for Task 1c (guardrails/RMD/SS helpers used by the
+projection loop) and Task 1d (the projection body itself).
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+```
+
+The implementer for 1b is dispatched after 1a lands, so the actual
+symbol list is finalized against the post-1a tree (some helpers may
+already be in engine).
+
+---
+
+## Task 1c: Pre-extract remaining projection-loop helpers into engine
+
+**Goal:** Move the tier-2 primitives — guardrails state, RMD-day
+helpers, big-ticket apply, monthly income breakdown, expense rebase —
+into `engine/`, again with parity-window exports.
+
+**Files (likely):**
+- Create or extend: `internal/services/retirement/engine/guardrails.go`,
+  `engine/rmdcalc.go`, `engine/bigticket.go`, `engine/incomebreakdown.go`,
+  `engine/expenserebase.go`. Final naming TBD by 1c implementer based
+  on what naturally clusters.
+- Modify: `internal/services/retirement/calculator.go`,
+  `guardrails.go`, `rmd.go`, `tax.go`, `backtest.go` — switch
+  references.
+
+**Notes for 1c implementer:**
+- Free functions in `rmd.go` like `RMDApplies`, `CalculateRMD`,
+  `RMDAgeForCalendarYear`, `rmdTriggerMonth` are used by both the
+  projection loop and `BuildRMDAnalysis`. Move to engine.
+- `FirstRMDCalendarYear` is also called from handler code; keep
+  exported in engine and update any external callers in Task 7.
+- `newGuardrailState` and friends in `guardrails.go` move to engine.
+- `executeTaxAwarePortfolioMonth` in `tax.go` is the meeting point of
+  several primitives; whether it stays in tax.go or moves to engine is
+  implementer's call based on what minimizes shim count. Default:
+  move to engine.
+
+**Verification:** `go build ./...` and `go test ./...` pass. Engine.Run
+remains a panic stub.
+
+**Commit message:**
+
+```
+refactor(retirement): pre-extract guardrails/RMD/loop helpers into engine
+
+Continues the pre-extraction in preparation for moving RunProjection's
+body into engine. Moves the tier-2 shared primitives (guardrails state
+machine, RMD-day helpers, big-ticket apply, monthly income breakdown,
+expense rebase, tax-aware portfolio month) into engine, with parity-
+window export shims for retirement-side callers.
+
+After this commit, Engine.Run's body has every helper it needs sitting
+in the engine package — Task 1d is then the mechanical move of the
+loop body itself.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+```
+
+---
+
+## Task 1d: Move RunProjection body + parity scaffolding
+
+By the time 1d runs, every helper RunProjection needs already lives in
+engine (private names with parity-window exports). 1d's body move
+becomes mechanical.
+
+**Files:**
+- Create: `internal/services/retirement/engine/month.go`
+- Create: `internal/services/retirement/parity_test.go`
+- Create: `internal/services/retirement/parity_helpers_test.go`
+- Create: `internal/services/retirement/parity_fixtures_test.go`
+- Modify: `internal/services/retirement/engine/engine.go` (replace
+  panic stub)
+- Modify: `internal/services/retirement/calculator.go` (RunProjection
+  becomes a one-line delegator; add `Calculator.SetMonteCarloSeedForParity`).
+
+### Part C (was) — Move RunProjection body into engine
+
+- [ ] **Step 10d: Replace Engine.Run's panic stub.**
+
+Update `internal/services/retirement/engine/engine.go` so `Run`
+delegates to `runMonthlyLoop` (which is added in Step 11):
+
+```go
+func (e *Engine) Run(in Input) *models.ProjectionResult {
+	return runMonthlyLoop(in)
+}
+```
+
+This will not compile until Step 11 lands. That is intentional — both
+edits land in the same commit.
 
 - [ ] **Step 11: Move `RunProjection` body to `engine/month.go`.**
 

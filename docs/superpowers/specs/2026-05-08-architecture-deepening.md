@@ -24,9 +24,9 @@ Proposed order: **#2 → #1 → #3 → #4**.
 - #3 follows naturally from #1 (reusable `Run(prepared)` primitive).
 - #4 sits on top of #1+#3 (AnalysisService extracted from handler globals).
 
-**Scheduling note:** plan `2026-05-06-rmd-from-projection.md` touches
-`BuildRMDAnalysis`, which sits in #1's blast radius. Either land it before #1
-starts, or fold its goals into #1's design.
+**Scheduling note:** plan `2026-05-06-rmd-from-projection.md` (F-072) has
+already landed — `BuildRMDAnalysis(projection)` is the live signature and
+F-078 follow-on work has merged on top. No conflict for #1.
 
 ---
 

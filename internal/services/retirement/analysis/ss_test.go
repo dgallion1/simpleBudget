@@ -17,7 +17,7 @@ func TestRunSSAnalysis(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.SocialSecurity = nil
 		in := engineInput(t, s)
-		if result := SSAnalysis(engine.New(), in); result != nil {
+		if result := SSAnalysis(in); result != nil {
 			t.Fatal("expected nil for nil SS config")
 		}
 	})
@@ -26,7 +26,7 @@ func TestRunSSAnalysis(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 0}
 		in := engineInput(t, s)
-		if result := SSAnalysis(engine.New(), in); result != nil {
+		if result := SSAnalysis(in); result != nil {
 			t.Fatal("expected nil for zero FRA benefit")
 		}
 	})
@@ -41,7 +41,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			ClaimAge:   63,
 		}
 		in := engineInput(t, s)
-		result := SSAnalysis(engine.New(), in)
+		result := SSAnalysis(in)
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -69,7 +69,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			SpouseClaimAge:   67,
 		}
 		in := engineInput(t, s)
-		result := SSAnalysis(engine.New(), in)
+		result := SSAnalysis(in)
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -98,7 +98,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			SpouseClaimAge:   63, // <= SpouseAge, already claiming
 		}
 		in := engineInput(t, s)
-		result := SSAnalysis(engine.New(), in)
+		result := SSAnalysis(in)
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -123,7 +123,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			SpouseFRA:        67,
 		}
 		in := engineInput(t, s)
-		result := SSAnalysis(engine.New(), in)
+		result := SSAnalysis(in)
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -162,7 +162,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 
 	t.Run("not eligible returns nil", func(t *testing.T) {
 		in := engineInput(t, base())
-		ssAnalysis := SSAnalysis(engine.New(), in)
+		ssAnalysis := SSAnalysis(in)
 		if result := SSPortfolio(engine.New(), in, ssAnalysis); result != nil {
 			t.Fatal("expected nil when no claim ages are selected")
 		}
@@ -181,7 +181,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
 		in := engineInput(t, s)
-		result := SSPortfolio(engine.New(), in, SSAnalysis(engine.New(), in))
+		result := SSPortfolio(engine.New(), in, SSAnalysis(in))
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -211,7 +211,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 68 // must be > CurrentAge (67)
 		in := engineInput(t, s)
-		result := SSPortfolio(engine.New(), in, SSAnalysis(engine.New(), in))
+		result := SSPortfolio(engine.New(), in, SSAnalysis(in))
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -233,7 +233,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		s.SocialSecurity.ClaimAge = 68 // must be > CurrentAge (67)
 		s.SocialSecurity.SpouseClaimAge = 62
 		in := engineInput(t, s)
-		result := SSPortfolio(engine.New(), in, SSAnalysis(engine.New(), in))
+		result := SSPortfolio(engine.New(), in, SSAnalysis(in))
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -249,7 +249,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
 		in := engineInput(t, s)
-		result := SSPortfolio(engine.New(), in, SSAnalysis(engine.New(), in))
+		result := SSPortfolio(engine.New(), in, SSAnalysis(in))
 		if result == nil {
 			t.Fatal("expected analysis")
 		}
@@ -271,7 +271,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
 		in := engineInput(t, s)
-		ssAnalysis := SSAnalysis(engine.New(), in)
+		ssAnalysis := SSAnalysis(in)
 		if ssAnalysis == nil {
 			t.Fatal("expected SS analysis")
 		}
@@ -379,7 +379,7 @@ func TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA(t *testing.T) {
 		// SpouseClaimAge intentionally zero — spouse not yet claiming
 	}
 	in := engineInput(t, s)
-	result := SSAnalysis(engine.New(), in)
+	result := SSAnalysis(in)
 	if result == nil {
 		t.Fatal("expected non-nil SS analysis")
 	}

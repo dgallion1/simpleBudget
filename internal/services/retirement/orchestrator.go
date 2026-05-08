@@ -34,7 +34,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	failurePoints := analysis.FailurePoints(eng, in)
 	monteCarlo := analysis.MonteCarlo(eng, in, MonteCarloRuns, mcSeed)
 	rmd := analysis.BuildRMD(proj, in)
-	backtest := analysis.HistoricalBacktest(eng, in, history.DefaultData())
+	backtest := analysis.HistoricalBacktest(in, history.DefaultData())
 
 	if backtest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
 		backtest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate
@@ -44,7 +44,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	var ssAnalysis *models.SSComparisonAnalysis
 	settings := in.Prepared.Settings()
 	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
-		ssAnalysis = analysis.SSAnalysis(eng, in)
+		ssAnalysis = analysis.SSAnalysis(in)
 		if ssAnalysis != nil && SSPortfolioEligible(settings) {
 			ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, mcSeed)
 		}

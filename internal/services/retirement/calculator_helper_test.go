@@ -165,7 +165,7 @@ func (c *Calculator) buildProjectionExplainability(projection *models.Projection
 
 // RunSSAnalysis computes the full SS claiming-age comparison.
 func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
-	return analysis.SSAnalysis(engine.New(), c.input())
+	return analysis.SSAnalysis(c.input())
 }
 
 // RunSSPortfolioAnalysis evaluates how eligible claiming ages affect portfolio survival.
@@ -179,11 +179,11 @@ func (c *Calculator) RunSSPortfolioAnalysis(ss *models.SSComparisonAnalysis) *mo
 
 // RunHistoricalBacktest runs the projection against all available historical sequences.
 func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis {
-	return analysis.HistoricalBacktest(engine.New(), c.input(), history.DefaultData())
+	return analysis.HistoricalBacktest(c.input(), history.DefaultData())
 }
 
 func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequenceResult {
-	return analysis.RunSingleHistoricalSequence(engine.New(), c.input(), history.DefaultData(), startYear)
+	return analysis.RunSingleHistoricalSequence(c.input(), history.DefaultData(), startYear)
 }
 
 // HistoricalSequenceResult is re-exported from analysis so existing tests keep compiling.

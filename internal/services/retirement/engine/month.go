@@ -11,31 +11,26 @@ import (
 // reaches into retirement's prepareChainedSettings via this hook. The
 // retirement package's init() wires it. Default returns nil (no
 // transition) so engine is safe in isolation.
-//
-// Removed in Task 8 once chain handling lives inside engine.
 var NextChainTransitionHook = func(currentYear, nextChainIndex int, primarySettings *models.WhatIfSettings, chain []PreparedChainLink) (int, *models.WhatIfSettings) {
 	return nextChainIndex, nil
 }
 
 // taxDeferredDelayActive reports whether the tax-deferred-withdrawal
 // delay window is still in effect for the given calendar year offset.
-// Mirrors retirement.taxDeferredDelayActive during the migration
-// window. Removed in Task 8.
 func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
 	return s.TaxDeferredDelayYears > 0 && currentYear < s.TaxDeferredDelayYears
 }
 
 // TaxDeferredDelayActive is the exported counterpart of
-// taxDeferredDelayActive so analysis-package callers (Monte Carlo) can
-// reuse the rule without redefining it. Removed in Task 8.
+// taxDeferredDelayActive so analysis-package callers (Monte Carlo,
+// historical backtest) can reuse the rule without redefining it.
 func TaxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
 	return taxDeferredDelayActive(s, currentYear)
 }
 
 // earlyWithdrawalPenaltyRate returns the IRS 10% early distribution
 // penalty rate for tax-deferred withdrawals before age 59½. Uses age
-// 60 as the cutoff since the model operates in whole years. Mirrors
-// retirement.earlyWithdrawalPenaltyRate. Removed in Task 8.
+// 60 as the cutoff since the model operates in whole years.
 func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
 	if currentAge+currentYear < 60 {
 		return 0.10
@@ -44,8 +39,8 @@ func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
 }
 
 // EarlyWithdrawalPenaltyRate is the exported counterpart of
-// earlyWithdrawalPenaltyRate so analysis-package callers (Monte Carlo)
-// can reuse the rule. Removed in Task 8.
+// earlyWithdrawalPenaltyRate so analysis-package callers (Monte Carlo,
+// historical backtest) can reuse the rule.
 func EarlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
 	return earlyWithdrawalPenaltyRate(currentAge, currentYear)
 }

@@ -13,9 +13,8 @@ import (
 const irmaaBaseYear = 2026
 
 // LivingExpensesAtMonth returns the inflation- and phase-adjusted
-// living expense for the given month. Promoted from the
-// retirement-package helper to a parity-window export so the
-// projection loop can call into engine. Removed in Task 8.
+// living expense for the given month. Exported so analysis-package
+// callers (historical backtest) can reuse the rule.
 func LivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64 {
 	return livingExpensesAtMonth(s, month)
 }

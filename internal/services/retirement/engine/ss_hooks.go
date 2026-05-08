@@ -16,9 +16,6 @@ import (
 // Defaults are no-ops so the engine package is safe to use in
 // isolation (tests, future engine-only callers) before the retirement
 // init() has run, or when SS isn't relevant.
-//
-// The hooks are removed in Task 8 once SS analysis lands inside the
-// engine package.
 var (
 	// SocialSecurityProjectionActive reports whether the household has
 	// an active SS optimizer projection (i.e. FRA benefit + valid claim
@@ -34,10 +31,7 @@ var (
 )
 
 // IsSocialSecurityIncomeSource reports whether the supplied income
-// source represents a Social Security stream. Source-name detection
-// rule mirrors the one in retirement.IsSocialSecurityIncomeSource;
-// duplicated here so the engine has no import cycle. Removed in Task
-// 8 once SS analysis lives in this package.
+// source represents a Social Security stream.
 func IsSocialSecurityIncomeSource(source models.IncomeSource) bool {
 	normalizedName := strings.ToLower(strings.ReplaceAll(source.Name, "-", " "))
 	if strings.Contains(normalizedName, "social security") {

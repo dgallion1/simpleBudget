@@ -10,8 +10,6 @@ import (
 // (cycle), so the projection-loop helpers in the engine package
 // reach into retirement's SS optimizer through these function-valued
 // vars.
-//
-// Removed in Task 8 once SS analysis lives inside engine.
 func init() {
 	engine.SocialSecurityProjectionActive = socialSecurityProjectionActive
 	engine.ProjectedSocialSecurityIncome = projectedSocialSecurityIncome
@@ -21,7 +19,7 @@ func init() {
 // nextChainTransitionForEngine resolves the next chain transition for
 // engine.runMonthlyLoop. The engine doesn't import retirement, so the
 // chain rebase logic (prepareChainedSettings) reaches in through this
-// hook. Removed in Task 8.
+// hook.
 func nextChainTransitionForEngine(currentYear, nextChainIndex int, primarySettings *models.WhatIfSettings, chain []engine.PreparedChainLink) (int, *models.WhatIfSettings) {
 	if nextChainIndex >= len(chain) {
 		return nextChainIndex, nil

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"budget2/internal/models"
-	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/history"
 )
 
@@ -26,7 +25,7 @@ func TestRunHistoricalBacktest(t *testing.T) {
 	}
 
 	in := engineInput(t, settings)
-	result := HistoricalBacktest(engine.New(), in, history.DefaultData())
+	result := HistoricalBacktest(in, history.DefaultData())
 
 	if result == nil {
 		t.Fatal("Expected backtest result")

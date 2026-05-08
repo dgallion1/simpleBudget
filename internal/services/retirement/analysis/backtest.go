@@ -43,7 +43,7 @@ func YearsUntilDepletion(result HistoricalSequenceResult) int {
 // HistoricalBacktest runs the projection against all available
 // historical sequences in data. Returns an analysis with success rate,
 // best/worst start years, and per-sequence details.
-func HistoricalBacktest(eng *engine.Engine, in engine.Input, data history.Data) *models.HistoricalBacktestAnalysis {
+func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBacktestAnalysis {
 	s := in.Prepared.Settings()
 	if s == nil {
 		return nil
@@ -158,11 +158,6 @@ func HistoricalBacktest(eng *engine.Engine, in engine.Input, data history.Data) 
 		dataEndYear = data[len(data)-1].Year
 	}
 
-	// eng arg currently unused; reserved for future engine-driven
-	// post-processing (and kept in the signature so callers stay
-	// uniform with other analyses).
-	_ = eng
-
 	return &models.HistoricalBacktestAnalysis{
 		TotalSequences:  len(results),
 		SurvivedCount:   successCount,
@@ -177,7 +172,7 @@ func HistoricalBacktest(eng *engine.Engine, in engine.Input, data history.Data) 
 
 // RunSingleHistoricalSequence exposes the single-sequence runner for
 // retirement-package test helpers.
-func RunSingleHistoricalSequence(_ *engine.Engine, in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
+func RunSingleHistoricalSequence(in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
 	return runSingleHistoricalSequence(in, data, startYear)
 }
 

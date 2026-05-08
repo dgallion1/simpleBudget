@@ -4,10 +4,6 @@ import "math"
 
 // monthlyCompoundFactorFromDecimal converts an annual rate (decimal,
 // e.g. 0.07 for 7%) to its monthly compounding factor.
-//
-// Duplicated from internal/services/retirement during the migration
-// window so this package has no import cycle back to retirement. The
-// duplicates are removed in Task 8 when calculator.go is deleted.
 func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
 	if annualRate == 0 {
 		return 1.0
@@ -17,8 +13,8 @@ func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
 
 // MonthlyCompoundFactorFromDecimal is the exported counterpart of
 // monthlyCompoundFactorFromDecimal. Analysis-package callers (Monte
-// Carlo) reach in here so they don't have to redefine the helper.
-// Removed in Task 8.
+// Carlo, historical backtest) reach in here so they don't have to
+// redefine the helper.
 func MonthlyCompoundFactorFromDecimal(annualRate float64) float64 {
 	return monthlyCompoundFactorFromDecimal(annualRate)
 }
@@ -41,9 +37,6 @@ func compoundedFactorFromPercent(annualRatePercent float64, months float64) floa
 // fractionalMonthlyReturn applies a monthly return rate over a
 // fractional portion of the month. Used by mid-month and end-of-month
 // projection timings.
-//
-// Duplicated from internal/services/retirement during the migration
-// window; the duplicate is removed in Task 8.
 func fractionalMonthlyReturn(monthlyReturn, fraction float64) float64 {
 	switch {
 	case fraction <= 0:

@@ -314,7 +314,7 @@ func SSPortfolioEligible(s *models.WhatIfSettings) bool {
 
 // SSAnalysis computes the full SS claiming-age comparison for the
 // configured settings. Returns nil if SS is not configured.
-func SSAnalysis(_ *engine.Engine, in engine.Input) *models.SSComparisonAnalysis {
+func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 	s := in.Prepared.Settings()
 	if s == nil {
 		return nil

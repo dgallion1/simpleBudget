@@ -13,7 +13,10 @@ import (
 // callers and tests keep compiling during the migration window.
 type FederalTaxBracket = engine.FederalTaxBracket
 
-// TaxCalculator re-exported from engine. Removed in Task 8.
+// TaxCalculator re-exported from engine. Kept as a compat alias so the
+// retirement-package test suite (coverage_gaps2_test, tax_test) can keep
+// referring to TaxCalculator/NewTaxCalculator without importing engine
+// directly.
 type TaxCalculator = engine.TaxCalculator
 
 // Bundled tax tables — re-exported as aliased values so test helpers

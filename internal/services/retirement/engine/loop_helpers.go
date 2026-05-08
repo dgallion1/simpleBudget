@@ -149,3 +149,96 @@ func ShortfallIsTemporaryDueToDelay(shortfall float64, allowTaxDeferredWithdrawa
 func ShortfallCausesDepletion(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool {
 	return shortfall > 0 && !ShortfallIsTemporaryDueToDelay(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance)
 }
+
+// AnnualRMDForYear returns the year's required minimum distribution
+// for the given tax-deferred balance, applying the calendar-year gate
+// (F-078) and IRS Uniform Lifetime divisor lookup. Returns 0 when the
+// rule does not yet apply or the tax-deferred bucket is empty.
+//
+// All three projection loops (canonical, Monte Carlo, backtest) compute
+// the annual RMD identically at every year boundary; this helper
+// captures that shared rule.
+func AnnualRMDForYear(s *models.WhatIfSettings, currentYear int, taxDeferredBalance float64) float64 {
+	calendarYear := ParseStartYear(s.StartDate) + currentYear
+	if !RMDApplies(s, calendarYear) || taxDeferredBalance <= 0 {
+		return 0
+	}
+	annualRMD, _ := CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
+	return annualRMD
+}
+
+// MonthlyRMDForMonth returns the monthly RMD withdrawal amount: the
+// full annual RMD (capped to the available tax-deferred balance) on
+// the user's selected trigger month, zero otherwise.
+//
+// All three projection loops apply the same trigger-month rule; this
+// helper captures the shared math.
+func MonthlyRMDForMonth(s *models.WhatIfSettings, monthInYear int, annualRMD, taxDeferredBalance float64) float64 {
+	if annualRMD <= 0 || monthInYear != RMDTriggerMonth(s.RMDTiming) {
+		return 0
+	}
+	if annualRMD > taxDeferredBalance {
+		return taxDeferredBalance
+	}
+	return annualRMD
+}
+
+// ApplyRothConversionAtYear performs the year-boundary Roth conversion:
+// if a conversion is configured and in-window, decrement the tax-
+// deferred balance and increment the Roth balance by the same amount.
+// Returns the conversion amount applied (0 when no conversion ran).
+//
+// All three projection loops perform this mutation identically; this
+// helper captures the shared in-place update so the loops can shrink
+// to a single call per year boundary.
+func ApplyRothConversionAtYear(s *models.WhatIfSettings, currentYear int, taxDeferredBalance, rothBalance *float64) float64 {
+	conversionAmount := RothConversionAmountForYear(s, currentYear, *taxDeferredBalance)
+	if conversionAmount <= 0 {
+		return 0
+	}
+	*taxDeferredBalance -= conversionAmount
+	*rothBalance += conversionAmount
+	return conversionAmount
+}
+
+// ApplyBigTicketItemsForYear processes every big-ticket item scheduled
+// for currentYear: income items add cash to the taxable account, and
+// expense items are funded via the canonical waterfall (taxable →
+// Roth → tax-deferred when allowed). Returns the residual expense that
+// could not be funded — added to the month's expense total by the
+// caller so the depletion path runs when needed.
+//
+// All three projection loops walk s.BigTicketItems with identical
+// semantics; this helper captures the shared loop body.
+func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance *float64) float64 {
+	bigTicketExpenseThisMonth := 0.0
+	for _, item := range s.BigTicketItems {
+		if item.Year != currentYear {
+			continue
+		}
+		if item.Type == models.BigTicketIncome {
+			taxableAccount.AddCash(item.Amount)
+			continue
+		}
+		remaining := ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, taxDeferredBalance, taxableAccount, rothBalance)
+		bigTicketExpenseThisMonth += remaining
+	}
+	return bigTicketExpenseThisMonth
+}
+
+// ApplyTaxStateMonth folds a single month's portfolio result into the
+// running ProjectionTaxAccumulator. Captures the long positional
+// argument list that all three projection loops would otherwise repeat
+// verbatim, so future signature changes touch one place.
+func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64) {
+	taxState.ApplyMonth(
+		incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
+		incomeBreakdown.SocialSecurityIncome,
+		monthResult.CashFlow.WithdrawalFromTaxDeferred,
+		monthResult.TaxableQualifiedDividends,
+		monthResult.TaxableCapitalGains,
+		monthResult.TaxableNonQualifiedDividends,
+		rothConversionThisMonth,
+		monthResult.TaxesPaid,
+	)
+}

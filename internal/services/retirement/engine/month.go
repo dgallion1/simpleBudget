@@ -134,40 +134,15 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
 			taxableAccount.RealizedGainsYTD = 0
 
-			// F-074: compute annualRMD once per year on year-start tax-deferred
-			// balance (matches IRS "December 31 prior year" rule). Per-month
-			// monthlyRMD is set inside the month loop based on RMDTiming.
-			// F-078: gate on calendar year vs FirstRMDCalendarYear and pass
-			// age-at-year-end to CalculateRMD so late-year births attain
-			// age 73 (or 75) in the right calendar year and the divisor
-			// reads the correct UL Table row.
-			calendarYear := ParseStartYear(s.StartDate) + currentYear
-			if RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
-			} else {
-				annualRMD = 0
-			}
+			// F-074/F-078: compute annualRMD once per year on year-start
+			// tax-deferred balance, gated on calendar year vs
+			// FirstRMDCalendarYear with age-at-year-end divisor.
+			annualRMD = AnnualRMDForYear(s, currentYear, taxDeferredBalance)
 			monthlyRMD = 0
 
-			// Process Roth conversions (annual, at year boundary)
-			if conversionAmount := RothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
-				taxDeferredBalance -= conversionAmount
-				rothBalance += conversionAmount
-				rothConversionThisMonth = conversionAmount
-			}
+			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance)
 
-			// Process big ticket items for this year
-			for _, item := range s.BigTicketItems {
-				if item.Year == currentYear {
-					if item.Type == models.BigTicketIncome {
-						// Income adds to taxable balance (e.g., inheritance, home sale)
-						taxableAccount.AddCash(item.Amount)
-					} else {
-						remaining := ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
-						bigTicketExpenseThisMonth += remaining
-					}
-				}
-			}
+			bigTicketExpenseThisMonth += ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 		}
 
 		if m > 0 {
@@ -259,10 +234,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 
 		// F-074: apply the full annual RMD only in the trigger month for
 		// the user's selected timing. Other months withdraw 0.
-		monthlyRMD = 0
-		if annualRMD > 0 && monthInYear == RMDTriggerMonth(s.RMDTiming) {
-			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
-		}
+		monthlyRMD = MonthlyRMDForMonth(s, monthInYear, annualRMD, taxDeferredBalance)
 
 		monthResult := ExecuteTaxAwarePortfolioMonth(PortfolioMonthInput{
 			TotalExpenses:              totalExpensesAcc,
@@ -294,16 +266,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		plannedTotalExpenses += monthResult.IRMAAExpense
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 
-		taxState.ApplyMonth(
-			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
-			incomeBreakdown.SocialSecurityIncome,
-			cashFlow.WithdrawalFromTaxDeferred,
-			monthResult.TaxableQualifiedDividends,
-			monthResult.TaxableCapitalGains,
-			monthResult.TaxableNonQualifiedDividends,
-			rothConversionThisMonth,
-			taxesPaid,
-		)
+		ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 
 		grossIncome := totalIncomeMonth + monthResult.TaxableQualifiedDividends + monthResult.TaxableNonQualifiedDividends + monthResult.TaxableCapitalGainsDistributions + cashFlow.WithdrawalFromTaxDeferred + cashFlow.WithdrawalFromTaxable + cashFlow.WithdrawalFromRoth
 		netIncome := grossIncome - taxesPaid

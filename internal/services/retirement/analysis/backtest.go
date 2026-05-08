@@ -271,35 +271,16 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			yearData := sequence[currentYear]
 			inflationRate = yearData.InflationRate / 100
 
-			// F-074: annualRMD computed once per year, applied only in
-			// the trigger month inside the month loop.
-			// F-078: calendar-year gate + age-at-year-end divisor.
-			calendarYear := engine.ParseStartYear(s.StartDate) + currentYear
-			if engine.RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
-				annualRMD, _ = engine.CalculateRMD(taxDeferredBalance, engine.RMDAgeForCalendarYear(s, calendarYear))
-			} else {
-				annualRMD = 0
-			}
+			// F-074/F-078: annualRMD computed once per year, applied only
+			// in the trigger month inside the month loop. Calendar-year
+			// gate + age-at-year-end divisor so backtest matches the
+			// deterministic projection for late-year births.
+			annualRMD = engine.AnnualRMDForYear(s, currentYear, taxDeferredBalance)
 			monthlyRMD = 0
 
-			// Process Roth conversions
-			if conversionAmount := engine.RothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
-				taxDeferredBalance -= conversionAmount
-				rothBalance += conversionAmount
-				rothConversionThisMonth = conversionAmount
-			}
+			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance)
 
-			// Process big ticket items
-			for _, item := range s.BigTicketItems {
-				if item.Year == currentYear {
-					if item.Type == models.BigTicketIncome {
-						taxableAccount.AddCash(item.Amount)
-					} else {
-						remaining := engine.ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
-						bigTicketExpenseThisMonth += remaining
-					}
-				}
-			}
+			bigTicketExpenseThisMonth += engine.ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 		}
 
 		if m > 0 {
@@ -357,10 +338,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
 
 		// F-074: apply the full annual RMD only in the trigger month.
-		monthlyRMD = 0
-		if annualRMD > 0 && m%12 == engine.RMDTriggerMonth(s.RMDTiming) {
-			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
-		}
+		monthlyRMD = engine.MonthlyRMDForMonth(s, m%12, annualRMD, taxDeferredBalance)
 
 		monthResult := engine.ExecuteTaxAwarePortfolioMonth(engine.PortfolioMonthInput{
 			TotalExpenses:              totalExpenses,
@@ -385,16 +363,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			IRMAAInflationFactor:       irmaaInflationFactor,
 		})
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
-		taxState.ApplyMonth(
-			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
-			incomeBreakdown.SocialSecurityIncome,
-			monthResult.CashFlow.WithdrawalFromTaxDeferred,
-			monthResult.TaxableQualifiedDividends,
-			monthResult.TaxableCapitalGains,
-			monthResult.TaxableNonQualifiedDividends,
-			rothConversionThisMonth,
-			monthResult.TaxesPaid,
-		)
+		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 		totalWithdrawals += monthResult.CashFlow.GrossWithdrawal()
 		shortfall := monthResult.Shortfall
 

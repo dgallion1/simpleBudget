@@ -658,7 +658,7 @@ func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testin
 
 	estimateSnapshot := func(month int, taxableCashFlow taxableGrowthResult, assumedIRMALookbackMAGI *float64) projectedTaxSnapshot {
 		taxState := projectionTaxAccumulator{}
-		return taxState.estimateMonthlySnapshot(
+		return taxState.EstimateMonthlySnapshot(
 			NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
 			month/12,
 			month%12,
@@ -1396,7 +1396,7 @@ func TestTaxableAccountWithdrawUsesAverageCostBasis(t *testing.T) {
 		CostBasis:   100000,
 	}
 
-	cash, basisReduction, realizedGain := account.withdraw(12000)
+	cash, basisReduction, realizedGain := account.Withdraw(12000)
 
 	if math.Abs(cash-12000) > 0.01 {
 		t.Fatalf("cash = %.2f, want 12000", cash)

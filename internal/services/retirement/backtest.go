@@ -230,7 +230,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 					nextChainIdx = newIdx
 
 					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
-					taxableAccount.syncAssumptions(s)
+					taxableAccount.SyncAssumptions(s)
 				}
 			}
 			// Refresh allocation for glide path and chain transitions
@@ -264,7 +264,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			for _, item := range s.BigTicketItems {
 				if item.Year == currentYear {
 					if item.Type == models.BigTicketIncome {
-						taxableAccount.addCash(item.Amount)
+						taxableAccount.AddCash(item.Amount)
 					} else {
 						remaining := applyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 						bigTicketExpenseThisMonth += remaining
@@ -356,7 +356,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			irmaaInflationFactor,
 		)
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
-		taxState.applyMonth(
+		taxState.ApplyMonth(
 			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
 			incomeBreakdown.SocialSecurityIncome,
 			monthResult.CashFlow.WithdrawalFromTaxDeferred,

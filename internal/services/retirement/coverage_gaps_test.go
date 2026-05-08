@@ -97,7 +97,7 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesDisabled(t *testing.T) {
 
 func TestEstimateMonthlyTaxes_NilTaxCalculator(t *testing.T) {
 	acc := projectionTaxAccumulator{}
-	result := acc.estimateMonthlyTaxes(nil, 0, 0, 1000, 0, 0, 0, 0, 0, 0)
+	result := acc.EstimateMonthlyTaxes(nil, 0, 0, 1000, 0, 0, 0, 0, 0, 0)
 	if result != 0 {
 		t.Errorf("expected 0 for nil tax calculator, got %f", result)
 	}
@@ -113,7 +113,7 @@ func TestEstimateMonthlyTaxes_NegativeTaxDue(t *testing.T) {
 	acc := projectionTaxAccumulator{
 		TaxesPaidYTD: 1_000_000, // Massively overpaid
 	}
-	result := acc.estimateMonthlyTaxes(tc, 0, 6, 1000, 0, 0, 0, 0, 0, 0)
+	result := acc.EstimateMonthlyTaxes(tc, 0, 6, 1000, 0, 0, 0, 0, 0, 0)
 	if result != 0 {
 		t.Errorf("expected 0 when taxes overpaid, got %f", result)
 	}
@@ -127,7 +127,7 @@ func TestEstimateMonthlyTaxes_LastMonthOfYear(t *testing.T) {
 
 	acc := projectionTaxAccumulator{}
 	// monthInYear=11 means last month; remainingMonths=1
-	result := acc.estimateMonthlyTaxes(tc, 0, 11, 5000, 0, 0, 0, 0, 0, 0)
+	result := acc.EstimateMonthlyTaxes(tc, 0, 11, 5000, 0, 0, 0, 0, 0, 0)
 	if result < 0 {
 		t.Errorf("expected non-negative result, got %f", result)
 	}
@@ -169,7 +169,7 @@ func TestRothConversionAmountForYear_LimitedByBalance(t *testing.T) {
 
 func TestWithdraw_ZeroMarketValue(t *testing.T) {
 	a := &taxableAccountState{MarketValue: 0, CostBasis: 0}
-	cash, basis, gain := a.withdraw(1000)
+	cash, basis, gain := a.Withdraw(1000)
 	if cash != 0 || basis != 0 || gain != 0 {
 		t.Errorf("expected all zeros, got cash=%f basis=%f gain=%f", cash, basis, gain)
 	}
@@ -177,7 +177,7 @@ func TestWithdraw_ZeroMarketValue(t *testing.T) {
 
 func TestWithdraw_NegativeAmount(t *testing.T) {
 	a := &taxableAccountState{MarketValue: 100000, CostBasis: 50000}
-	cash, basis, gain := a.withdraw(-100)
+	cash, basis, gain := a.Withdraw(-100)
 	if cash != 0 || basis != 0 || gain != 0 {
 		t.Errorf("expected all zeros for negative amount, got cash=%f basis=%f gain=%f", cash, basis, gain)
 	}
@@ -185,7 +185,7 @@ func TestWithdraw_NegativeAmount(t *testing.T) {
 
 func TestWithdraw_FullDepletion(t *testing.T) {
 	a := &taxableAccountState{MarketValue: 5000, CostBasis: 3000}
-	cash, _, _ := a.withdraw(10000) // Withdraw more than available
+	cash, _, _ := a.Withdraw(10000) // Withdraw more than available
 	if cash != 5000 {
 		t.Errorf("expected cash=5000, got %f", cash)
 	}
@@ -205,7 +205,7 @@ func TestApplyGrowth_ZeroMarketValue(t *testing.T) {
 		Appreciation:      0.005,
 		QualifiedDividend: 0.001,
 	}
-	result := a.applyGrowth(components, 1.0)
+	result := a.ApplyGrowth(components, 1.0)
 	if result.TotalGrowth != 0 {
 		t.Errorf("expected 0 growth for zero market value, got %f", result.TotalGrowth)
 	}
@@ -217,7 +217,7 @@ func TestApplyGrowth_NegativeMarketValueClamp(t *testing.T) {
 	components := taxableReturnComponents{
 		Appreciation: -2.0, // extreme negative
 	}
-	a.applyGrowth(components, 1.0)
+	a.ApplyGrowth(components, 1.0)
 	if a.MarketValue < 0 {
 		t.Error("MarketValue should be clamped to 0")
 	}
@@ -2134,7 +2134,7 @@ func TestReadScenarioName_InvalidJSON(t *testing.T) {
 func TestWithdraw_CostBasisNegative(t *testing.T) {
 	// Set up a state where CostBasis is negative (shouldn't normally happen)
 	a := &taxableAccountState{MarketValue: 10000, CostBasis: -100}
-	a.withdraw(5000)
+	a.Withdraw(5000)
 	if a.CostBasis < 0 {
 		t.Error("expected CostBasis clamped to 0")
 	}
@@ -2143,7 +2143,7 @@ func TestWithdraw_CostBasisNegative(t *testing.T) {
 func TestApplyGrowth_CostBasisNegative(t *testing.T) {
 	a := &taxableAccountState{MarketValue: 10000, CostBasis: -50}
 	components := taxableReturnComponents{Appreciation: 0.005}
-	a.applyGrowth(components, 1.0)
+	a.ApplyGrowth(components, 1.0)
 	if a.CostBasis < 0 {
 		t.Error("expected CostBasis clamped to 0")
 	}

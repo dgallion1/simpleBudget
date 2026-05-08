@@ -30,6 +30,23 @@ func compoundedFactorFromPercent(annualRatePercent float64, months float64) floa
 	return math.Pow(1+annualRatePercent/100, months/12.0)
 }
 
+// fractionalMonthlyReturn applies a monthly return rate over a
+// fractional portion of the month. Used by mid-month and end-of-month
+// projection timings.
+//
+// Duplicated from internal/services/retirement during the migration
+// window; the duplicate is removed in Task 8.
+func fractionalMonthlyReturn(monthlyReturn, fraction float64) float64 {
+	switch {
+	case fraction <= 0:
+		return 0
+	case fraction >= 1:
+		return monthlyReturn
+	default:
+		return math.Pow(1+monthlyReturn, fraction) - 1
+	}
+}
+
 // presentValueAnnuity calculates the PV of a series of payments
 // (regular or growing). Lowercase mirror of the retirement-package
 // PresentValueAnnuity used during the migration window.

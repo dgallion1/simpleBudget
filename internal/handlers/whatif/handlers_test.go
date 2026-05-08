@@ -2970,6 +2970,9 @@ func TestBuildProjectionChartData_MultipleEventsAtSameYear(t *testing.T) {
 func TestBuildProjectionChartEvents_RMDNotAdded(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.CurrentAge = 80 // Already past RMD age
+	// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so the
+	// calendar-year RMD gate sees the intended birth year.
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, settings.CurrentAge)
 	settings.ProjectionYears = 15
 
 	projection := sampleProjectionForChart()
@@ -2990,6 +2993,9 @@ func TestBuildProjectionChartEvents_F075_RMDStartsUsesEffectiveAge(t *testing.T)
 	settings.SpouseAge = 0
 	settings.ProjectionYears = 15
 	settings.StartDate = "2033-01" // SECURE 2.0: effective RMD age = 75
+	// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so the
+	// calendar-year RMD gate sees the intended birth year.
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, settings.CurrentAge)
 
 	projection := sampleProjectionForChart()
 	events := buildProjectionChartEvents(settings, projection)
@@ -3032,6 +3038,36 @@ func TestBuildProjectionChartEvents_F075_RMDStartsPre2033Uses73(t *testing.T) {
 	if !found {
 		t.Error("RMD starts event not found in timeline")
 	}
+}
+
+// F-078: the "RMD starts" event-timeline label must use the calendar year
+// of first RMD (FirstRMDCalendarYear), not floor'd-age arithmetic. For a
+// primary born 1959-12 with StartDate=2026-01, RMDs start in calendar
+// year 2032 → 6 years from start, not 7.
+func TestProjectionChartEvents_F078_RMDStartsLabel_LateYearBirth(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-01"
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
+	}
+	s.ComputeAges()
+	s.PortfolioValue = 1_000_000
+	s.TaxDeferredPercent = 100
+	s.ProjectionYears = 10
+
+	calc := retirement.NewCalculator(s)
+	proj := calc.RunProjection()
+	events := buildProjectionChartEvents(s, proj)
+
+	for _, e := range events {
+		if e.Label == "RMD starts" {
+			if e.Year != 6 {
+				t.Errorf("RMD starts event year = %.2f; want 6 (born 1959-12, first RMD calendar 2032)", e.Year)
+			}
+			return
+		}
+	}
+	t.Fatalf("no 'RMD starts' event in %+v", events)
 }
 
 // ── Spending phases with base phase fallback ───────────────────────────────
@@ -8157,5 +8193,190 @@ func TestHandleWhatIfSocialSecurity_F026_ExplicitZeroCOLA(t *testing.T) {
 	}
 	if !loaded.SocialSecurity.COLARateSet {
 		t.Errorf("COLARateSet = false; want true (form submit should set the flag)")
+	}
+}
+
+// ── handleWhatIf breakdown guardrail visibility ─────────────────────────────
+
+// The breakdown table must surface the planned-vs-adjusted spending stack
+// and the guardrail multiplier badge when guardrails are enabled and a cut fires.
+func TestHandleWhatIf_BreakdownShowsGuardrailEffect(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	// PortfolioValue must be nonzero so the guardrail state initialises with a
+	// real peak; InvestmentReturn=0 means no growth, so the portfolio drops each
+	// year from spending, triggering the floor cut after the first year.
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled:         true,
+		FloorDropPct:    1,
+		FloorCutPct:     10,
+		CeilingRisePct:  500,
+		CeilingRaisePct: 10,
+		MinSpendingPct:  50,
+		MaxSpendingPct:  150,
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif", nil)
+	handleWhatIf(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	// Multiplier badge text — "×0.90" produced by `printf "%.2f"` for a 10% cut.
+	if !strings.Contains(body, "×0.90") && !strings.Contains(body, "×0.9") {
+		t.Errorf("expected ×0.90 multiplier badge in breakdown body, not found")
+	}
+	// Planned-spending suffix — relies on the data-planned-spending marker we render.
+	if !strings.Contains(body, "data-planned-spending") {
+		t.Errorf("expected data-planned-spending marker in breakdown body, not found")
+	}
+}
+
+func TestHandleWhatIf_EventsPanelShowsDollarDelta(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled:         true,
+		FloorDropPct:    1,
+		FloorCutPct:     10,
+		CeilingRisePct:  500,
+		CeilingRaisePct: 10,
+		MinSpendingPct:  50,
+		MaxSpendingPct:  150,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif", nil)
+	handleWhatIf(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "data-event-spending-delta") {
+		t.Errorf("expected data-event-spending-delta marker in events panel, not found")
+	}
+}
+
+func TestHandleWhatIfProjectionChartNoGuardrails(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
+		CeilingRisePct: 500, CeilingRaisePct: 10,
+		MinSpendingPct: 50, MaxSpendingPct: 150,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif/chart/projection/no-guardrails?display_dollars=nominal", nil)
+	handleWhatIfProjectionChartNoGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if data["data"] == nil {
+		t.Fatal("expected chart data array")
+	}
+
+	// Sanity: the no-guardrails endpoint must produce a different balance series
+	// than the guardrails-on endpoint with the same settings. If they were equal,
+	// the handler is failing to disable guardrails (e.g., clone.Guardrails = nil
+	// got dropped). With InvestmentReturn=0 and a hair-trigger cut, the two paths
+	// must diverge.
+	wOn := httptest.NewRecorder()
+	reqOn := httptest.NewRequest("GET", "/whatif/chart/projection?display_dollars=nominal", nil)
+	handleWhatIfProjectionChart(wOn, reqOn)
+	if wOn.Code != http.StatusOK {
+		t.Fatalf("guardrails-on status = %d", wOn.Code)
+	}
+	if w.Body.String() == wOn.Body.String() {
+		t.Errorf("no-guardrails response is byte-identical to guardrails-on response; clone.Guardrails = nil may have been dropped")
+	}
+}
+
+// The no-guardrails projection must be insensitive to the configured guardrail thresholds —
+// both should produce identical balance series when guardrails are disabled in the run.
+func TestHandleWhatIfProjectionChartNoGuardrails_IndependentOfThresholds(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+
+	hashOf := func(cfg *models.GuardrailConfig) string {
+		settings.Guardrails = cfg
+		if err := retirementMgr.Save(settings); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		cache.mu.Lock()
+		cache.hash = ""
+		cache.mu.Unlock()
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/whatif/chart/projection/no-guardrails", nil)
+		handleWhatIfProjectionChartNoGuardrails(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d", w.Code)
+		}
+		return w.Body.String()
+	}
+
+	a := hashOf(&models.GuardrailConfig{Enabled: true, FloorDropPct: 1, FloorCutPct: 50, CeilingRisePct: 1, CeilingRaisePct: 50, MinSpendingPct: 50, MaxSpendingPct: 200})
+	b := hashOf(&models.GuardrailConfig{Enabled: true, FloorDropPct: 30, FloorCutPct: 5, CeilingRisePct: 30, CeilingRaisePct: 5, MinSpendingPct: 80, MaxSpendingPct: 120})
+	if a != b {
+		t.Fatalf("no-guardrails endpoint output should be identical regardless of configured thresholds")
 	}
 }

@@ -1063,6 +1063,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		currentYearSummary.EndingBalance = month.PortfolioBalance
 		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
 		currentYearSummary.CumulativeInflation = month.CumulativeInflation
+		currentYearSummary.GuardrailMultiplier = month.GuardrailMultiplier
 		yearlySummaries = append(yearlySummaries, currentYearSummary)
 	}
 
@@ -1070,8 +1071,6 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		currentYear := m / 12
 		monthInYear := m % 12
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
-		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
-		olderAge := s.GetOlderAge() + currentYear
 		bigTicketExpenseThisMonth := 0.0
 		rothConversionThisMonth := 0.0
 		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
@@ -1107,10 +1106,13 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			// F-074: compute annualRMD once per year on year-start tax-deferred
 			// balance (matches IRS "December 31 prior year" rule). Per-month
 			// monthlyRMD is set inside the month loop based on RMDTiming.
-			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ projections per
-			// SECURE 2.0) so projection matches the BuildRMDAnalysis panel.
-			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
+			// F-078: gate on calendar year vs FirstRMDCalendarYear and pass
+			// age-at-year-end to CalculateRMD so late-year births attain
+			// age 73 (or 75) in the right calendar year and the divisor
+			// reads the correct UL Table row.
+			calendarYear := parseStartYear(s.StartDate) + currentYear
+			if RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
 			} else {
 				annualRMD = 0
 			}
@@ -1159,31 +1161,37 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 					eventType = "raise"
 				}
 				guardrailEvents = append(guardrailEvents, models.GuardrailEvent{
-					Year:       currentYear,
-					Type:       eventType,
-					Multiplier: newMult,
-					Portfolio:  totalPortfolio,
+					Year:                  currentYear,
+					Type:                  eventType,
+					Multiplier:            newMult,
+					Portfolio:             totalPortfolio,
+					MonthlySpendingBefore: currentLivingExpenses * prevMult,
+					MonthlySpendingAfter:  currentLivingExpenses * newMult,
 				})
 			}
 		}
 
 		// Apply guardrail spending multiplier
-		adjustedLivingExpenses := currentLivingExpenses
+		activeMultiplier := 1.0
 		if grState != nil {
-			adjustedLivingExpenses *= grState.multiplier()
+			activeMultiplier = grState.multiplier()
 		}
+		adjustedLivingExpenses := currentLivingExpenses * activeMultiplier
 
 		// Calculate healthcare expenses using multi-person model
 		activeHealthcare := s.GetTotalHealthcareCost(m)
+		plannedTotalExpenses := currentLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 		totalExpenses := adjustedLivingExpenses + activeHealthcare + bigTicketExpenseThisMonth
 
 		// Add expense sources (discretionary sources get phase multiplier when enabled)
+		// ExpenseSources are not subject to guardrail cuts — keep planned and adjusted in sync.
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
 				expenseAmount *= s.GetSpendingMultiplier(phaseAge)
 			}
 			totalExpenses += expenseAmount
+			plannedTotalExpenses += expenseAmount
 		}
 
 		// Calculate income using the active settings for this month.
@@ -1252,6 +1260,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		cashFlow := monthResult.CashFlow
 		taxesPaid := monthResult.TaxesPaid
 		totalExpenses += monthResult.IRMAAExpense
+		plannedTotalExpenses += monthResult.IRMAAExpense
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 
 		taxState.applyMonth(
@@ -1271,6 +1280,7 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 		currentYearSummary.GrossIncome += grossIncome
 		currentYearSummary.Taxes += taxesPaid
 		currentYearSummary.Expenses += totalExpenses
+		currentYearSummary.PlannedExpenses += plannedTotalExpenses
 		currentYearSummary.Withdrawals += cashFlow.ActualWithdrawal
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableAccount.MarketValue
@@ -1328,6 +1338,8 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 			WithdrawalFromTaxDeferred: cashFlow.WithdrawalFromTaxDeferred,
 			WithdrawalFromTaxable:     cashFlow.WithdrawalFromTaxable,
 			WithdrawalFromRoth:        cashFlow.WithdrawalFromRoth,
+			PlannedLivingExpenses:     currentLivingExpenses,
+			GuardrailMultiplier:       activeMultiplier,
 		})
 
 		if depleted {
@@ -1462,13 +1474,15 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		})
 	}
 
-	// Calculate RMD if older spouse has reached the effective RMD start age
-	// (73 pre-2033, 75 from 2033 onward per SECURE 2.0 — F-075).
+	// F-078: first-year snapshot gates on calendar year vs FirstRMDCalendarYear
+	// and uses RMDAgeForCalendarYear so a household where the older person
+	// turns 73 later this calendar year still produces a non-zero current
+	// snapshot (and uses the right UL Table row).
 	monthlyRMD := 0.0
-	olderAge := s.GetOlderAge()
-	if olderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
+	currentCalendarYear := parseStartYear(s.StartDate)
+	if RMDApplies(s, currentCalendarYear) && s.TaxDeferredPercent > 0 {
 		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-		annualRMD, _ := CalculateRMD(taxDeferredBalance, olderAge)
+		annualRMD, _ := CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, currentCalendarYear))
 		monthlyRMD = annualRMD / 12
 	}
 
@@ -1579,16 +1593,14 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 		steadyStateTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, steadyStateTaxableBalance, taxableAnnualReturn)
 		result.SteadyStateIncome += steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
 
-		// Calculate RMD at steady state age (uses older person's age).
-		// F-075: gate on EffectiveRMDStartAge so 2033+ projections honor the
-		// SECURE 2.0 age-75 threshold here too.
-		steadyStateOlderAge := s.GetOlderAge() + (steadyStateMonth / 12)
+		// F-078: gate on calendar year + use age-at-year-end for the divisor.
+		steadyStateCalendarYear := parseStartYear(s.StartDate) + (steadyStateMonth / 12)
 		estimatedTaxDeferred := 0.0
-		if steadyStateOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
+		if RMDApplies(s, steadyStateCalendarYear) && s.TaxDeferredPercent > 0 {
 			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
 			estimatedTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 				math.Pow(1+effectiveReturn/100, yearsToSteadyState)
-			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, steadyStateOlderAge)
+			annualRMD, _ := CalculateRMD(estimatedTaxDeferred, RMDAgeForCalendarYear(s, steadyStateCalendarYear))
 			result.SteadyStateRMD = annualRMD / 12
 		}
 
@@ -1600,14 +1612,14 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 			lookbackTaxableBalance := taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToLookback)
 			lookbackTaxableCashFlow := expectedTaxableMonthlyCashFlow(s, lookbackTaxableBalance, taxableAnnualReturn)
 
-			lookbackOlderAge := s.GetOlderAge() + (lookbackMonth / 12)
+			lookbackCalendarYear := parseStartYear(s.StartDate) + (lookbackMonth / 12)
 			lookbackTaxDeferred := 0.0
 			lookbackRMD := 0.0
-			// F-075: gate on EffectiveRMDStartAge for SECURE 2.0 2033+ rule.
-			if lookbackOlderAge >= EffectiveRMDStartAge(s) && s.TaxDeferredPercent > 0 {
+			// F-078: calendar-year gate + age-at-year-end divisor.
+			if RMDApplies(s, lookbackCalendarYear) && s.TaxDeferredPercent > 0 {
 				lookbackTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
 					math.Pow(1+effectiveReturn/100, yearsToLookback)
-				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, lookbackOlderAge)
+				annualRMD, _ := CalculateRMD(lookbackTaxDeferred, RMDAgeForCalendarYear(s, lookbackCalendarYear))
 				lookbackRMD = annualRMD / 12
 			}
 
@@ -2384,8 +2396,6 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 		currentYear := m / 12
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
-		// RMD uses OLDER person's age - whoever hits 73 first triggers RMD
-		olderAge := s.GetOlderAge() + currentYear
 		bigTicketExpenseThisMonth := 0.0
 		rothConversionThisMonth := 0.0
 		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
@@ -2422,9 +2432,11 @@ func (c *Calculator) runSingleMonteCarloSimulation(rng *rand.Rand, config *Monte
 
 			// F-074: see PR 2 — annualRMD computed once per year, applied
 			// only in the trigger month inside the month loop.
-			// F-075: gate on EffectiveRMDStartAge (75 for 2033+ per SECURE 2.0).
-			if olderAge >= EffectiveRMDStartAge(s) && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, olderAge)
+			// F-078: calendar-year gate + age-at-year-end divisor so MC
+			// matches the deterministic projection for late-year births.
+			calendarYear := parseStartYear(s.StartDate) + currentYear
+			if RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
+				annualRMD, _ = CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
 			} else {
 				annualRMD = 0
 			}

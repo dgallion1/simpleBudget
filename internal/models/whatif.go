@@ -657,10 +657,12 @@ type GuardrailConfig struct {
 
 // GuardrailEvent records when a guardrail triggered during projection
 type GuardrailEvent struct {
-	Year       int     `json:"year"`
-	Type       string  `json:"type"`       // "cut" or "raise"
-	Multiplier float64 `json:"multiplier"` // New spending multiplier
-	Portfolio  float64 `json:"portfolio"`  // Portfolio value at time
+	Year                  int     `json:"year"`
+	Type                  string  `json:"type"`       // "cut" or "raise"
+	Multiplier            float64 `json:"multiplier"` // New spending multiplier
+	Portfolio             float64 `json:"portfolio"`  // Portfolio value at time
+	MonthlySpendingBefore float64 `json:"monthly_spending_before,omitempty"`
+	MonthlySpendingAfter  float64 `json:"monthly_spending_after,omitempty"`
 }
 
 // GlidePathConfig defines a linear shift in stock allocation over time
@@ -892,6 +894,10 @@ type ProjectionMonth struct {
 	WithdrawalFromTaxDeferred float64 `json:"withdrawal_tax_deferred,omitempty"`
 	WithdrawalFromTaxable     float64 `json:"withdrawal_taxable,omitempty"`
 	WithdrawalFromRoth        float64 `json:"withdrawal_roth,omitempty"`
+
+	// Guardrail visibility (F-079)
+	PlannedLivingExpenses float64 `json:"planned_living_expenses,omitempty"` // Pre-guardrail-multiplier living expense for the month
+	GuardrailMultiplier   float64 `json:"guardrail_multiplier"`              // Active guardrail spending multiplier (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
 }
 
 // ProjectionResult contains the complete projection with summary metrics
@@ -921,6 +927,10 @@ type ProjectionYearSummary struct {
 	EndingBalance            float64 `json:"ending_balance"`
 	EndingBalanceReal        float64 `json:"ending_balance_real"`
 	CumulativeInflation      float64 `json:"cumulative_inflation"`
+
+	// Guardrail visibility (F-079)
+	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
+	GuardrailMultiplier float64 `json:"guardrail_multiplier"`       // Multiplier in effect at year-end (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
 }
 
 // ProjectionExplainability contains reconciliation data for the projection UI.

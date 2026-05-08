@@ -1336,6 +1336,11 @@ func TestRunSingleHistoricalSequence_SpendingPhasesDetail(t *testing.T) {
 func TestBuildRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.CurrentAge = 80 // Already past 73
+	// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so the
+	// calendar-year RMD helpers (which prefer Persons[0].BirthMonth over
+	// CurrentAge) see the same household timing as the legacy CurrentAge
+	// fallback path used in this test.
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.TaxDeferredPercent = 50
 	s.ProjectionYears = 10
 

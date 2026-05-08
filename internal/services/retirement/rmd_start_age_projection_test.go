@@ -47,6 +47,9 @@ func TestProjection_F075_2033StartAge75DoesRMD(t *testing.T) {
 	s.InflationRate = 0
 	s.ProjectionYears = 1
 	s.StartDate = "2033-01"
+	// F-078: keep Person.BirthMonth in sync with CurrentAge/StartDate so the
+	// calendar-year RMD gate sees a consistent older birth year.
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
 	proj := NewCalculator(s).RunProjection()

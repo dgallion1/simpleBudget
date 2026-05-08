@@ -9,18 +9,25 @@ import (
 	"strings"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
 )
 
 // runFullForParity assembles a *models.WhatIfAnalysis using the engine
-// for projection and Calculator for everything else. As later tasks
-// land, this helper will switch each analysis over to its engine-side
-// counterpart. In Task 1d, only Projection is engine-driven.
+// for projection and the analysis package for the post-projection
+// summaries that have been extracted (RMD, sustainability,
+// explainability). Calculator still produces the analyses scheduled
+// for later tasks (BudgetFit, PV, Sensitivity, FailurePoints, MC,
+// SS, Backtest).
 func runFullForParity(eng *engine.Engine, in engine.Input, mcSeed int64) *models.WhatIfAnalysis {
 	tmp := NewCalculatorWithChain(in.Prepared, in.Chain)
 	tmp.SetMonteCarloSeedForParity(mcSeed)
 	out := tmp.RunFullAnalysis()
-	out.Projection = eng.Run(in)
+	proj := eng.Run(in)
+	out.Projection = proj
+	out.RMD = analysis.BuildRMD(proj, in)
+	out.Sustainability = analysis.Score(proj, out.BudgetFit)
+	out.ProjectionExplainability = analysis.BuildExplainability(proj, in)
 	return out
 }
 

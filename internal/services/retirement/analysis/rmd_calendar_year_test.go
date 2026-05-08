@@ -1,9 +1,10 @@
-package retirement
+package analysis
 
 import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
 
@@ -40,7 +41,7 @@ func TestFirstRMDCalendarYear_F078_BirthMonth(t *testing.T) {
 				})
 			}
 			prepare.ComputeAges(s)
-			if got := FirstRMDCalendarYear(s); got != c.want {
+			if got := engine.FirstRMDCalendarYear(s); got != c.want {
 				t.Errorf("FirstRMDCalendarYear = %d; want %d", got, c.want)
 			}
 		})
@@ -55,7 +56,7 @@ func TestFirstRMDCalendarYear_F078_LegacyFallback(t *testing.T) {
 		StartDate:  "2026-01",
 		CurrentAge: 66, // legacy: birth year derived as 2026-66=1960 → applicable 75 → first RMD 2035
 	}
-	if got := FirstRMDCalendarYear(s); got != 2035 {
+	if got := engine.FirstRMDCalendarYear(s); got != 2035 {
 		t.Errorf("legacy fallback (CurrentAge=66, 2026 start) = %d; want 2035", got)
 	}
 }
@@ -68,13 +69,13 @@ func TestRMDApplies_F078(t *testing.T) {
 	}
 	prepare.ComputeAges(s)
 
-	if RMDApplies(s, 2031) {
+	if engine.RMDApplies(s,2031) {
 		t.Errorf("RMDApplies(1959-12, 2031) = true; want false")
 	}
-	if !RMDApplies(s, 2032) {
+	if !engine.RMDApplies(s,2032) {
 		t.Errorf("RMDApplies(1959-12, 2032) = false; want true (attains 73 in Dec 2032)")
 	}
-	if !RMDApplies(s, 2050) {
+	if !engine.RMDApplies(s,2050) {
 		t.Errorf("RMDApplies(1959-12, 2050) = false; want true")
 	}
 }
@@ -91,10 +92,10 @@ func TestRMDAgeForCalendarYear_F078(t *testing.T) {
 	}
 	prepare.ComputeAges(s)
 
-	if got := RMDAgeForCalendarYear(s, 2032); got != 73 {
+	if got := engine.RMDAgeForCalendarYear(s,2032); got != 73 {
 		t.Errorf("RMDAgeForCalendarYear(1959-12, 2032) = %d; want 73", got)
 	}
-	if got := RMDAgeForCalendarYear(s, 2033); got != 74 {
+	if got := engine.RMDAgeForCalendarYear(s,2033); got != 74 {
 		t.Errorf("RMDAgeForCalendarYear(1959-12, 2033) = %d; want 74", got)
 	}
 }
@@ -104,7 +105,7 @@ func TestRMDAgeForCalendarYear_F078_LegacyFallback(t *testing.T) {
 		StartDate:  "2026-01",
 		CurrentAge: 70, // legacy fallback: birth year 1956
 	}
-	if got := RMDAgeForCalendarYear(s, 2030); got != 74 {
+	if got := engine.RMDAgeForCalendarYear(s,2030); got != 74 {
 		t.Errorf("legacy RMDAgeForCalendarYear(CurrentAge=70, 2030) = %d; want 74", got)
 	}
 }
@@ -113,8 +114,8 @@ func TestRMDAgeForCalendarYear_F078_LegacyFallback(t *testing.T) {
 // EffectiveRMDStartAge behaviour). FirstRMDCalendarYear and friends fall
 // back to the current calendar year + 73.
 func TestRMDHelpers_F078_NilSafe(t *testing.T) {
-	if !RMDApplies(nil, 9999) {
-		t.Errorf("RMDApplies(nil, 9999) = false; want true (nil falls through to default 73 age)")
+	if !engine.RMDApplies(nil,9999) {
+		t.Errorf("engine.RMDApplies(nil,9999) = false; want true (nil falls through to default 73 age)")
 	}
 }
 
@@ -132,22 +133,21 @@ func TestBuildRMDAnalysis_F078_StartsInYearsLateYearBirth(t *testing.T) {
 	s.TaxDeferredPercent = 100
 	s.ProjectionYears = 10
 
-	calc := newTestCalc(t, s)
-	proj := calc.RunProjection()
-	analysis := calc.BuildRMDAnalysis(proj)
-	if analysis == nil {
-		t.Fatalf("BuildRMDAnalysis returned nil")
+	proj, in := runProj(t, s)
+	got := BuildRMD(proj, in)
+	if got == nil {
+		t.Fatalf("BuildRMD returned nil")
 	}
-	if analysis.StartsInYears != 6 {
-		t.Errorf("StartsInYears = %d; want 6 (born 1959-12, first RMD calendar 2032 = 6 years from 2026)", analysis.StartsInYears)
+	if got.StartsInYears != 6 {
+		t.Errorf("StartsInYears = %d; want 6 (born 1959-12, first RMD calendar 2032 = 6 years from 2026)", got.StartsInYears)
 	}
-	if analysis.StartAge != 73 {
-		t.Errorf("StartAge = %d; want 73", analysis.StartAge)
+	if got.StartAge != 73 {
+		t.Errorf("StartAge = %d; want 73", got.StartAge)
 	}
-	if len(analysis.Projections) == 0 {
+	if len(got.Projections) == 0 {
 		t.Fatalf("no Projections rows emitted")
 	}
-	first := analysis.Projections[0]
+	first := got.Projections[0]
 	if first.Age != 73 {
 		t.Errorf("first row Age = %d; want 73", first.Age)
 	}
@@ -178,25 +178,24 @@ func TestBuildRMDAnalysis_F078_DepletionAgeUsesAgeAtYearEnd(t *testing.T) {
 	s.InflationRate = 0
 	s.ProjectionYears = 5
 
-	calc := newTestCalc(t, s)
-	proj := calc.RunProjection()
-	analysis := calc.BuildRMDAnalysis(proj)
-	if analysis == nil || analysis.DepletionYear == nil || analysis.DepletionAge == nil {
-		t.Fatalf("expected populated DepletionYear + DepletionAge; got %+v", analysis)
+	proj, in := runProj(t, s)
+	got := BuildRMD(proj, in)
+	if got == nil || got.DepletionYear == nil || got.DepletionAge == nil {
+		t.Fatalf("expected populated DepletionYear + DepletionAge; got %+v", got)
 	}
 
 	// For 1959-12 birth, calendar = 2026 + DepletionYear, so
 	// DepletionAge must equal calendarYear - 1959 (age at year end).
-	wantAge := 2026 + *analysis.DepletionYear - 1959
-	if *analysis.DepletionAge != wantAge {
+	wantAge := 2026 + *got.DepletionYear - 1959
+	if *got.DepletionAge != wantAge {
 		t.Errorf("DepletionAge = %d; want %d (age at year end of calendar %d for 1959-12 birth)",
-			*analysis.DepletionAge, wantAge, 2026+*analysis.DepletionYear)
+			*got.DepletionAge, wantAge, 2026+*got.DepletionYear)
 	}
 
 	// Confirm DepletionAge is NOT the floor'd s.GetOlderAge()+dy answer
 	// (which would be one less for this late-year-birth case).
-	floorAnswer := s.GetOlderAge() + *analysis.DepletionYear
-	if *analysis.DepletionAge == floorAnswer && wantAge != floorAnswer {
+	floorAnswer := s.GetOlderAge() + *got.DepletionYear
+	if *got.DepletionAge == floorAnswer && wantAge != floorAnswer {
 		t.Errorf("DepletionAge regressed to floor'd GetOlderAge()+dy = %d; want %d",
 			floorAnswer, wantAge)
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
@@ -236,11 +237,10 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 // types are referenced only by inferred types at call sites, so no
 // type-aliases are required. Removed in Task 8.
 var (
-	executeTaxAwarePortfolioMonth            = engine.ExecuteTaxAwarePortfolioMonth
-	executePortfolioCashFlowWithTaxableState = engine.ExecutePortfolioCashFlowWithTaxableState
-	reinvestRequiredRMDToTaxableState        = engine.ReinvestRequiredRMDToTaxableState
-	applyBigTicketExpenseWithTaxableState    = engine.ApplyBigTicketExpenseWithTaxableState
-	withdrawForExpenses                      = engine.WithdrawForExpenses
+	executeTaxAwarePortfolioMonth         = engine.ExecuteTaxAwarePortfolioMonth
+	reinvestRequiredRMDToTaxableState     = engine.ReinvestRequiredRMDToTaxableState
+	applyBigTicketExpenseWithTaxableState = engine.ApplyBigTicketExpenseWithTaxableState
+	withdrawForExpenses                   = engine.WithdrawForExpenses
 )
 
 
@@ -689,8 +689,7 @@ func (c *Calculator) CalculatePresentValueAnalysis() *models.PresentValueAnalysi
 
 // CalculateSustainabilityScore computes the sustainability score
 func (c *Calculator) CalculateSustainabilityScore(projection *models.ProjectionResult) *models.SustainabilityScore {
-	budgetFit := c.CalculateBudgetFit()
-	return models.CalculateSustainabilityScore(budgetFit.RequiredRate, projection.Survives)
+	return analysis.Score(projection, c.CalculateBudgetFit())
 }
 
 // CalculateSensitivity runs sensitivity analysis on key parameters
@@ -1953,76 +1952,10 @@ func mean(a []float64) float64 {
 }
 
 func (c *Calculator) buildProjectionExplainability(projection *models.ProjectionResult) *models.ProjectionExplainability {
-	if projection == nil || len(projection.Months) == 0 {
-		return nil
-	}
-
-	summaries := projection.YearlySummaries
-	if len(summaries) == 0 {
-		summaries = make([]models.ProjectionYearSummary, 0, len(projection.Months)/12+1)
-		startingBalance := c.Settings.PortfolioValue
-		currentYear := projection.Months[0].Month / 12
-		summary := models.ProjectionYearSummary{
-			Year:            currentYear,
-			StartingBalance: startingBalance,
-		}
-
-		finalizeYear := func(month models.ProjectionMonth) {
-			summary.EndingBalance = month.PortfolioBalance
-			summary.EndingBalanceReal = month.PortfolioBalanceReal
-			summary.CumulativeInflation = month.CumulativeInflation
-			summaries = append(summaries, summary)
-		}
-
-		for idx, month := range projection.Months {
-			year := month.Month / 12
-			if year != currentYear {
-				prev := projection.Months[idx-1]
-				finalizeYear(prev)
-				startingBalance = prev.PortfolioBalance
-				currentYear = year
-				summary = models.ProjectionYearSummary{
-					Year:            currentYear,
-					StartingBalance: startingBalance,
-				}
-			}
-
-			summary.Growth += month.PortfolioGrowth
-			summary.GrossIncome += month.GrossIncome
-			summary.Taxes += month.TaxesPaid
-			summary.Expenses += month.TotalExpenses
-			summary.Withdrawals += month.NetWithdrawal
-		}
-
-		finalizeYear(projection.Months[len(projection.Months)-1])
-	}
-
-	totalTaxes := 0.0
-	totalGrossIncome := 0.0
-	for _, summary := range summaries {
-		totalTaxes += summary.Taxes
-		totalGrossIncome += summary.GrossIncome
-	}
-
-	lastMonth := projection.Months[len(projection.Months)-1]
-	taxShare := 0.0
-	if totalGrossIncome > 0 {
-		taxShare = totalTaxes / totalGrossIncome * 100
-	}
-	inflationLossPercent := 0.0
-	if lastMonth.PortfolioBalance > 0 {
-		inflationLossPercent = (1 - (lastMonth.PortfolioBalanceReal / lastMonth.PortfolioBalance)) * 100
-	}
-
-	return &models.ProjectionExplainability{
-		YearlySummaries:         summaries,
-		TotalTaxes:              totalTaxes,
-		TotalGrossIncome:        totalGrossIncome,
-		TaxShareOfGrossCashFlow: taxShare,
-		FinalBalanceReal:        lastMonth.PortfolioBalanceReal,
-		CumulativeInflation:     lastMonth.CumulativeInflation,
-		InflationLossPercent:    inflationLossPercent,
-	}
+	return analysis.BuildExplainability(projection, engine.Input{
+		Prepared: c.Prepared,
+		Chain:    c.ResolvedChain,
+	})
 }
 
 // RunFullAnalysis performs complete what-if analysis

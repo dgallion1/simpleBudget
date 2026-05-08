@@ -1,10 +1,12 @@
-package retirement
+package analysis
 
 import (
 	"math"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // F-032 tests — EffectiveRMDStartAge (updated for F-077 birth-year semantics)
@@ -15,7 +17,7 @@ func TestEffectiveRMDStartAge_F032_Pre2033(t *testing.T) {
 		StartDate:  "2026-01",
 		CurrentAge: 70,
 	}
-	if got := EffectiveRMDStartAge(s); got != 73 {
+	if got := engine.EffectiveRMDStartAge(s); got != 73 {
 		t.Errorf("born 1956, pre-2033 attainment, start age = %d; want 73", got)
 	}
 }
@@ -26,7 +28,7 @@ func TestEffectiveRMDStartAge_F032_PostJan2033(t *testing.T) {
 		StartDate:  "2033-01",
 		CurrentAge: 73,
 	}
-	if got := EffectiveRMDStartAge(s); got != 75 {
+	if got := engine.EffectiveRMDStartAge(s); got != 75 {
 		t.Errorf("born 1960, attains 73 in 2033, start age = %d; want 75", got)
 	}
 }
@@ -37,13 +39,13 @@ func TestEffectiveRMDStartAge_F032_Post2033(t *testing.T) {
 		StartDate:  "2040-06",
 		CurrentAge: 79,
 	}
-	if got := EffectiveRMDStartAge(s); got != 75 {
+	if got := engine.EffectiveRMDStartAge(s); got != 75 {
 		t.Errorf("born 1961, attains 73 in 2034, start age = %d; want 75", got)
 	}
 }
 
 func TestEffectiveRMDStartAge_F032_NilSafe(t *testing.T) {
-	if got := EffectiveRMDStartAge(nil); got != 73 {
+	if got := engine.EffectiveRMDStartAge(nil); got != 73 {
 		t.Errorf("nil settings start age = %d; want 73", got)
 	}
 }
@@ -54,14 +56,14 @@ func TestEffectiveRMDStartAge_F032_ExactBoundary2032(t *testing.T) {
 		StartDate:  "2032-12",
 		CurrentAge: 73,
 	}
-	if got := EffectiveRMDStartAge(s); got != 73 {
+	if got := engine.EffectiveRMDStartAge(s); got != 73 {
 		t.Errorf("born 1959, attains 73 in 2032, start age = %d; want 73", got)
 	}
 }
 
 func TestCalculateStateTax(t *testing.T) {
 	t.Run("zero income returns zero", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
 			StateIncomeTaxRate: 5.0,
 		}, 3.0)
@@ -73,7 +75,7 @@ func TestCalculateStateTax(t *testing.T) {
 	})
 
 	t.Run("negative income returns zero", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
 			StateIncomeTaxRate: 5.0,
 		}, 3.0)
@@ -85,7 +87,7 @@ func TestCalculateStateTax(t *testing.T) {
 	})
 
 	t.Run("zero state rate returns zero", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
 			StateIncomeTaxRate: 0,
 		}, 3.0)
@@ -97,7 +99,7 @@ func TestCalculateStateTax(t *testing.T) {
 	})
 
 	t.Run("normal case", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
 			StateIncomeTaxRate: 5.0,
 		}, 3.0)
@@ -112,7 +114,7 @@ func TestCalculateStateTax(t *testing.T) {
 
 func TestCalculateTotalTax(t *testing.T) {
 	t.Run("normal case with state tax", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
 			StateIncomeTaxRate: 5.0,
 		}, 3.0)
@@ -138,7 +140,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	})
 
 	t.Run("zero income returns all zeros", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingMarriedJoint,
 			StateIncomeTaxRate: 5.0,
 		}, 3.0)
@@ -152,7 +154,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	})
 
 	t.Run("no state tax", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
 			StateIncomeTaxRate: 0,
 		}, 3.0)
@@ -168,7 +170,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	})
 
 	t.Run("with inflation adjustment", func(t *testing.T) {
-		tc := NewTaxCalculator(&models.TaxConfig{
+		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingMarriedJoint,
 			StateIncomeTaxRate: 4.0,
 		}, 3.0)
@@ -210,8 +212,7 @@ func TestRunProjectionDeductsTaxesFromRMDCashFlow(t *testing.T) {
 	// timing semantics; start_of_year preserves the original intent.
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	calc := newTestCalc(t, s)
-	result := calc.RunProjection()
+	result := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if len(result.Months) == 0 {
 		t.Fatal("expected projection months")
 	}

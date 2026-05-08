@@ -13,12 +13,14 @@ import (
 	"budget2/internal/services/retirement/engine"
 )
 
+const parityMonteCarloRuns = 1000
+
 // runFullForParity assembles a *models.WhatIfAnalysis using the engine
 // for projection and the analysis package for the post-projection
 // summaries that have been extracted (RMD, BudgetFit, PresentValue,
-// sustainability, explainability). Calculator still produces the
-// analyses scheduled for later tasks (Sensitivity, FailurePoints, MC,
-// SS, Backtest).
+// sustainability, explainability, Sensitivity, FailurePoints, Monte
+// Carlo). Calculator still produces the analyses scheduled for later
+// tasks (SS, Backtest).
 func runFullForParity(eng *engine.Engine, in engine.Input, mcSeed int64) *models.WhatIfAnalysis {
 	tmp := NewCalculatorWithChain(in.Prepared, in.Chain)
 	tmp.SetMonteCarloSeedForParity(mcSeed)
@@ -30,6 +32,9 @@ func runFullForParity(eng *engine.Engine, in engine.Input, mcSeed int64) *models
 	out.PresentValue = analysis.PresentValue(in)
 	out.Sustainability = analysis.Score(proj, out.BudgetFit)
 	out.ProjectionExplainability = analysis.BuildExplainability(proj, in)
+	out.Sensitivity = analysis.Sensitivity(eng, in)
+	out.FailurePoints = analysis.FailurePoints(eng, in)
+	out.MonteCarlo = analysis.MonteCarlo(eng, in, parityMonteCarloRuns, mcSeed)
 	return out
 }
 

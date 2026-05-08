@@ -15,6 +15,14 @@ func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
 	return math.Pow(1+annualRate, 1.0/12.0)
 }
 
+// MonthlyCompoundFactorFromDecimal is the exported counterpart of
+// monthlyCompoundFactorFromDecimal. Analysis-package callers (Monte
+// Carlo) reach in here so they don't have to redefine the helper.
+// Removed in Task 8.
+func MonthlyCompoundFactorFromDecimal(annualRate float64) float64 {
+	return monthlyCompoundFactorFromDecimal(annualRate)
+}
+
 // monthlyCompoundFactorFromPercent converts an annual rate (percent,
 // e.g. 7.0 for 7%) to its monthly compounding factor.
 func monthlyCompoundFactorFromPercent(annualRatePercent float64) float64 {

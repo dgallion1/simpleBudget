@@ -25,6 +25,13 @@ func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
 	return s.TaxDeferredDelayYears > 0 && currentYear < s.TaxDeferredDelayYears
 }
 
+// TaxDeferredDelayActive is the exported counterpart of
+// taxDeferredDelayActive so analysis-package callers (Monte Carlo) can
+// reuse the rule without redefining it. Removed in Task 8.
+func TaxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
+	return taxDeferredDelayActive(s, currentYear)
+}
+
 // earlyWithdrawalPenaltyRate returns the IRS 10% early distribution
 // penalty rate for tax-deferred withdrawals before age 59½. Uses age
 // 60 as the cutoff since the model operates in whole years. Mirrors
@@ -34,6 +41,13 @@ func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
 		return 0.10
 	}
 	return 0
+}
+
+// EarlyWithdrawalPenaltyRate is the exported counterpart of
+// earlyWithdrawalPenaltyRate so analysis-package callers (Monte Carlo)
+// can reuse the rule. Removed in Task 8.
+func EarlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
+	return earlyWithdrawalPenaltyRate(currentAge, currentYear)
 }
 
 // runMonthlyLoop is the deterministic monthly projection loop. Given

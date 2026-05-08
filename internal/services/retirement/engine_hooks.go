@@ -16,6 +16,7 @@ func init() {
 	engine.SocialSecurityProjectionActive = socialSecurityProjectionActive
 	engine.ProjectedSocialSecurityIncome = projectedSocialSecurityIncome
 	engine.NextChainTransitionHook = nextChainTransitionForEngine
+	engine.HistoricalStatsHook = GetHistoricalStats
 }
 
 // nextChainTransitionForEngine resolves the next chain transition for

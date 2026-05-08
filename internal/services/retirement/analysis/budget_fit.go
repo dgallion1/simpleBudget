@@ -18,7 +18,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 
 	estimateTaxSnapshot := func(targetMonth int, taxableCashFlow engine.TaxableGrowthResult, monthlyRMD float64, rothConversion float64, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
 		targetYear := targetMonth / 12
-		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(s, targetMonth)
+		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, targetMonth)
 		taxState := engine.ProjectionTaxAccumulator{}
 		taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
@@ -42,7 +42,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 
 	// Calculate first month expenses and income
 	baseMonthlyExpenses := engine.TotalExpenses(s, 0)
-	incomeSummary := engine.CalculateMonthlyIncomeBreakdown(s, 0)
+	incomeSummary := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, 0)
 	monthlyIncome := incomeSummary.TotalIncome
 
 	// Build expense breakdown for transparency
@@ -208,7 +208,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 	}
 
 	// Calculate steady-state analysis (when all income sources are active)
-	minSteadyStateMonth := engine.FindSteadyStateMonth(s)
+	minSteadyStateMonth := engine.FindSteadyStateMonth(in.Hooks, s)
 	minSteadyStateYear := float64(minSteadyStateMonth) / 12
 
 	// Use override year if set and >= minimum, otherwise use auto-calculated
@@ -228,7 +228,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		// Calculate expenses and income at steady state
 		baseSteadyStateExpenses := engine.TotalExpenses(s, steadyStateMonth)
 		result.SteadyStateExpenses = baseSteadyStateExpenses
-		steadyStateIncomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(s, steadyStateMonth)
+		steadyStateIncomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, steadyStateMonth)
 		result.SteadyStateIncome = steadyStateIncomeBreakdown.TotalIncome
 
 		// Determine effective annual return (allocation-derived when InvestmentReturn is 0)

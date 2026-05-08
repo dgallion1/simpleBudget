@@ -335,8 +335,8 @@ func TestAssetAllocationDefaults(t *testing.T) {
 
 // TestHistoricalBacktest_ChainTransition lives in the retirement
 // package (see backtest_chain_test.go) because chain transitions
-// require engine.NextChainTransitionHook to be wired by retirement's
-// init(). Analysis-package tests can't trigger that wiring without
-// importing retirement (cycle). The retirement-side test exercises
-// the same path through Calculator.RunHistoricalBacktest, which
-// delegates here.
+// require engine.Input.Hooks.ResolveChainTransition to be populated
+// from retirement.DefaultHooks(). Analysis-package tests can't import
+// retirement (cycle) to call DefaultHooks. The retirement-side test
+// exercises the same path through Calculator.RunHistoricalBacktest,
+// which delegates here.

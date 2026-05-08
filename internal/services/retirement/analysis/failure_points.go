@@ -93,7 +93,7 @@ func findReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 	modSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
 	modSettings.InvestmentReturn = low
-	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		// Survives even at -5%, no meaningful threshold
 		return &models.FailurePoint{
 			ParamName:    "investment_return",
@@ -110,7 +110,7 @@ func findReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.InvestmentReturn = mid
-		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 			high = mid
 		} else {
 			low = mid
@@ -151,7 +151,7 @@ func findInflationThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	modSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
 	modSettings.InflationRate = high
-	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		// Survives even at 15%, very robust
 		return &models.FailurePoint{
 			ParamName:    "inflation_rate",
@@ -168,7 +168,7 @@ func findInflationThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.InflationRate = mid
-		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 			low = mid
 		} else {
 			high = mid
@@ -212,7 +212,7 @@ func findExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailureP
 	modSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
 	modSettings.MonthlyLivingExpenses = high
-	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		// Survives even at 3x expenses
 		margin := ((high / current) - 1) * 100
 		return &models.FailurePoint{
@@ -230,7 +230,7 @@ func findExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailureP
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.MonthlyLivingExpenses = mid
-		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 			low = mid
 		} else {
 			high = mid
@@ -274,7 +274,7 @@ func findPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	modSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
 	modSettings.PortfolioValue = low
-	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		return &models.FailurePoint{
 			ParamName:    "portfolio_value",
 			ParamLabel:   "Portfolio Value",
@@ -290,7 +290,7 @@ func findPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.PortfolioValue = mid
-		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain}).Survives {
+		if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 			high = mid
 		} else {
 			low = mid

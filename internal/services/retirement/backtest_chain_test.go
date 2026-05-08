@@ -9,9 +9,11 @@ import (
 // TestHistoricalBacktest_ChainTransition exercises the chain
 // transition path through the full HistoricalBacktest analysis. It
 // lives in the retirement package because the chain-transition path
-// goes through engine.NextChainTransitionHook, which is wired by
-// retirement's init() — analysis tests in isolation can't trigger
-// that wiring.
+// goes through engine.Input.Hooks.ResolveChainTransition, populated by
+// retirement.DefaultHooks(). Analysis-package tests in isolation can't
+// import retirement (cycle) so they can't supply DefaultHooks; this
+// test reaches the resolver via Calculator.RunHistoricalBacktest, which
+// threads DefaultHooks through Calculator.input().
 func TestHistoricalBacktest_ChainTransition(t *testing.T) {
 	primary := models.DefaultWhatIfSettings()
 	primary.CurrentAge = 60

@@ -17,7 +17,9 @@ func New() *Engine { return &Engine{} }
 
 // Run produces a deterministic monthly projection for in. Returns a
 // fully populated *models.ProjectionResult. Never returns nil. Run is a
-// pure function of in.
+// pure function of in — given identical Input (including Hooks), Run
+// produces identical output. No package-level state, no init-order
+// dependency.
 func (e *Engine) Run(in Input) *models.ProjectionResult {
 	return runMonthlyLoop(in)
 }

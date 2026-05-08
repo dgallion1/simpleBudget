@@ -62,7 +62,7 @@ func Sensitivity(eng *engine.Engine, in engine.Input) []models.SensitivityResult
 		}
 
 		// Run projection with modified settings
-		modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain}
+		modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain, Hooks: in.Hooks}
 		modProjection := eng.Run(modIn)
 		modBudgetFit := BudgetFit(modIn)
 		modScore := Score(modProjection, modBudgetFit)

@@ -359,7 +359,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			taxState = engine.ProjectionTaxAccumulator{}
 			// Check for chain transition
 			if len(chain) > 0 {
-				newIdx, prepared := engine.NextChainTransitionHook(currentYear, nextChainIdx, primarySettings, chain)
+				newIdx, prepared := in.Hooks.ResolveChain(currentYear, nextChainIdx, primarySettings, chain)
 				if prepared != nil {
 					activeSettings = prepared
 					s = activeSettings
@@ -473,7 +473,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			healthShocks++
 		}
 
-		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(s, m)
+		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, m)
 
 		// Apply this year's investment returns (per-account based on allocation)
 		stockReturn := assetReturns.Stock[currentYear]

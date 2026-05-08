@@ -6,15 +6,6 @@ import (
 	"budget2/internal/models"
 )
 
-// NextChainTransitionHook is the chain-transition resolver. The engine
-// package doesn't import retirement (cycle), so the projection loop
-// reaches into retirement's prepareChainedSettings via this hook. The
-// retirement package's init() wires it. Default returns nil (no
-// transition) so engine is safe in isolation.
-var NextChainTransitionHook = func(currentYear, nextChainIndex int, primarySettings *models.WhatIfSettings, chain []PreparedChainLink) (int, *models.WhatIfSettings) {
-	return nextChainIndex, nil
-}
-
 // taxDeferredDelayActive reports whether the tax-deferred-withdrawal
 // delay window is still in effect for the given calendar year offset.
 func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
@@ -130,7 +121,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			taxState = ProjectionTaxAccumulator{}
 			// Check for chain transition
 			if len(chain) > 0 {
-				newIdx, prepared := NextChainTransitionHook(currentYear, nextChainIdx, primarySettings, chain)
+				newIdx, prepared := in.Hooks.ResolveChain(currentYear, nextChainIdx, primarySettings, chain)
 				if prepared != nil {
 					activeSettings = prepared
 					s = activeSettings
@@ -235,7 +226,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		}
 
 		// Calculate income using the active settings for this month.
-		incomeBreakdown := CalculateMonthlyIncomeBreakdown(s, m)
+		incomeBreakdown := CalculateMonthlyIncomeBreakdown(in.Hooks, s, m)
 		totalIncomeMonth := incomeBreakdown.TotalIncome
 
 		// Apply investment growth to each account based on its asset allocation
@@ -406,8 +397,9 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 
 // FindSteadyStateMonth finds the month when all income sources are
 // active. Returns 0 if all sources start immediately (no delayed
-// income).
-func FindSteadyStateMonth(s *models.WhatIfSettings) int {
+// income). hooks supplies the SS-projection-active predicate; passing a
+// zero Hooks value falls back to "no SS optimizer".
+func FindSteadyStateMonth(hooks Hooks, s *models.WhatIfSettings) int {
 	maxStartMonth := 0
 
 	for _, source := range s.IncomeSources {
@@ -419,7 +411,7 @@ func FindSteadyStateMonth(s *models.WhatIfSettings) int {
 		}
 	}
 
-	if SocialSecurityProjectionActive(s) {
+	if hooks.SSActive(s) {
 		ss := s.SocialSecurity
 		if ss != nil && ss.FRABenefit > 0 {
 			if startMonth := ssClaimStartMonth(s.CurrentAge, ss.ClaimAge); startMonth > maxStartMonth {

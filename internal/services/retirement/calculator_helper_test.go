@@ -52,6 +52,7 @@ func (c *Calculator) input() engine.Input {
 	return engine.Input{
 		Prepared: c.Prepared,
 		Chain:    c.ResolvedChain,
+		Hooks:    DefaultHooks(),
 	}
 }
 
@@ -87,7 +88,7 @@ func (c *Calculator) CalculatePresentValueAnalysis() *models.PresentValueAnalysi
 
 // findSteadyStateMonth finds the month when all income sources are active.
 func (c *Calculator) findSteadyStateMonth() int {
-	return engine.FindSteadyStateMonth(c.Settings)
+	return engine.FindSteadyStateMonth(DefaultHooks(), c.Settings)
 }
 
 // CalculateSustainabilityScore computes the sustainability score.

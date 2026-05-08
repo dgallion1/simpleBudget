@@ -252,7 +252,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			taxState = engine.ProjectionTaxAccumulator{}
 			// Check for chain transition
 			if len(chain) > 0 {
-				newIdx, prepared := engine.NextChainTransitionHook(currentYear, nextChainIdx, primarySettings, chain)
+				newIdx, prepared := in.Hooks.ResolveChain(currentYear, nextChainIdx, primarySettings, chain)
 				if prepared != nil {
 					activeSettings = prepared
 					s = activeSettings
@@ -336,7 +336,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			totalExpenses += expenseAmount
 		}
 
-		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(s, m)
+		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, m)
 
 		// Get this year's returns and calculate per-account blended returns
 		yearData := sequence[currentYear]

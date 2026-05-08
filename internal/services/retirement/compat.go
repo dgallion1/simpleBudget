@@ -102,7 +102,6 @@ var (
 	rebaseLivingExpensesAtTransition      = engine.RebaseLivingExpensesAtTransition
 	medicareEligibleAdultCountAtYear      = engine.MedicareEligibleAdultCountAtYear
 	plannerIRMAAInflationFactorForYear    = engine.PlannerIRMAAInflationFactorForYear
-	calculateMonthlyIncomeBreakdown       = engine.CalculateMonthlyIncomeBreakdown
 	isSocialSecurityIncomeSource          = engine.IsSocialSecurityIncomeSource
 	rothConversionAmountForYear           = engine.RothConversionAmountForYear
 	newTaxableAccountState                = engine.NewTaxableAccountState
@@ -111,6 +110,15 @@ var (
 	applyBigTicketExpenseWithTaxableState = engine.ApplyBigTicketExpenseWithTaxableState
 	withdrawForExpenses                   = engine.WithdrawForExpenses
 )
+
+// calculateMonthlyIncomeBreakdown is the retirement-package shim over
+// engine.CalculateMonthlyIncomeBreakdown that auto-supplies DefaultHooks
+// so existing retirement-package tests calling the lowercase form
+// continue to exercise the production SS-optimizer integration without
+// every callsite having to thread Hooks explicitly.
+func calculateMonthlyIncomeBreakdown(s *models.WhatIfSettings, month int) engine.MonthlyIncomeBreakdown {
+	return engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), s, month)
+}
 
 // Engine-side type aliases used by retirement-package tests.
 type (

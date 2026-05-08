@@ -91,9 +91,11 @@ type MonthlyIncomeBreakdown struct {
 // the given month: manual SS sources are pulled into the SS bucket
 // unless the SS optimizer is active (in which case the optimizer's
 // ProjectedSocialSecurityIncome value replaces the manual sources).
-func CalculateMonthlyIncomeBreakdown(s *models.WhatIfSettings, month int) MonthlyIncomeBreakdown {
+// hooks supplies the SS-optimizer integration; passing a zero Hooks
+// value falls back to manual-sources-only.
+func CalculateMonthlyIncomeBreakdown(hooks Hooks, s *models.WhatIfSettings, month int) MonthlyIncomeBreakdown {
 	breakdown := MonthlyIncomeBreakdown{}
-	useOptimizerSS := SocialSecurityProjectionActive(s)
+	useOptimizerSS := hooks.SSActive(s)
 
 	for _, source := range s.IncomeSources {
 		amount := source.GetAdjustedAmount(month)
@@ -110,7 +112,7 @@ func CalculateMonthlyIncomeBreakdown(s *models.WhatIfSettings, month int) Monthl
 	}
 
 	if useOptimizerSS {
-		breakdown.SocialSecurityIncome += ProjectedSocialSecurityIncome(s, month)
+		breakdown.SocialSecurityIncome += hooks.SSIncome(s, month)
 	}
 
 	breakdown.TotalIncome = breakdown.OrdinaryIncome + breakdown.SocialSecurityIncome

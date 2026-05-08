@@ -168,6 +168,6 @@ func rebaseRothConversion(config *models.RothConversionConfig, transitionYear in
 
 // Calculator.nextChainTransition was the chain-transition resolver
 // used by the deprecated retirement-side backtest.go. With backtest's
-// move to analysis (which routes through engine.NextChainTransitionHook),
-// no caller remains. Engine now owns the canonical chain-transition
-// flow via the wired hook in engine_hooks.go.
+// move to analysis (which routes through engine.Input.Hooks), no caller
+// remains. Engine now owns the canonical chain-transition flow via the
+// hook supplied by retirement.DefaultHooks().

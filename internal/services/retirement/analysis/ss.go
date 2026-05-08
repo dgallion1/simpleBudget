@@ -555,7 +555,7 @@ func runSSPortfolioCellMC(eng *engine.Engine, in engine.Input, primaryClaimAge, 
 	if !ok {
 		return nil
 	}
-	cellInput := engine.Input{Prepared: clone, Chain: in.Chain}
+	cellInput := engine.Input{Prepared: clone, Chain: in.Chain, Hooks: in.Hooks}
 	return MonteCarlo(eng, cellInput, ssPortfolioMonteCarloRuns, seed)
 }
 

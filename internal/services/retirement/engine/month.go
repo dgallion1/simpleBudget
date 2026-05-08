@@ -273,28 +273,28 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
 		}
 
-		monthResult := ExecuteTaxAwarePortfolioMonth(
-			totalExpensesAcc,
-			incomeBreakdown,
-			monthlyRMD,
-			allowTaxDeferredWithdrawal,
-			penaltyRate,
-			&taxDeferredBalance,
-			&taxableAccount,
-			&rothBalance,
-			taxDeferredMonthly,
-			rothMonthly,
-			taxableComponents,
-			s.GetProjectionTiming(),
-			taxState,
-			taxCalculator,
-			currentYear,
-			monthInYear,
-			rothConversionThisMonth,
-			completedMAGIHistory,
-			irmaaEligibleAdults,
-			irmaaInflationFactor,
-		)
+		monthResult := ExecuteTaxAwarePortfolioMonth(PortfolioMonthInput{
+			TotalExpenses:              totalExpensesAcc,
+			IncomeBreakdown:            incomeBreakdown,
+			MonthlyRMD:                 monthlyRMD,
+			AllowTaxDeferredWithdrawal: allowTaxDeferredWithdrawal,
+			PenaltyRate:                penaltyRate,
+			TaxDeferredBalance:         &taxDeferredBalance,
+			TaxableAccount:             &taxableAccount,
+			RothBalance:                &rothBalance,
+			TaxDeferredMonthlyReturn:   taxDeferredMonthly,
+			RothMonthlyReturn:          rothMonthly,
+			TaxableComponents:          taxableComponents,
+			Timing:                     s.GetProjectionTiming(),
+			TaxState:                   taxState,
+			TaxCalculator:              taxCalculator,
+			CurrentYear:                currentYear,
+			MonthInYear:                monthInYear,
+			RothConversionThisMonth:    rothConversionThisMonth,
+			CompletedMAGIHistory:       completedMAGIHistory,
+			IRMAAEligibleAdults:        irmaaEligibleAdults,
+			IRMAAInflationFactor:       irmaaInflationFactor,
+		})
 		totalGrowth = monthResult.TotalGrowth
 		shortfall := monthResult.Shortfall
 		cashFlow := monthResult.CashFlow

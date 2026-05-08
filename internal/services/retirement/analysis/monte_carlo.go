@@ -498,28 +498,28 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
 		}
 
-		monthResult := engine.ExecuteTaxAwarePortfolioMonth(
-			totalExpenses,
-			incomeBreakdown,
-			monthlyRMD,
-			allowTaxDeferredWithdrawal,
-			penaltyRate,
-			&taxDeferredBalance,
-			&taxableAccount,
-			&rothBalance,
-			tdMonthly,
-			rothMonthlyRate,
-			taxableComponents,
-			s.GetProjectionTiming(),
-			taxState,
-			taxCalculator,
-			currentYear,
-			m%12,
-			rothConversionThisMonth,
-			completedMAGIHistory,
-			irmaaEligibleAdults,
-			irmaaInflationFactor,
-		)
+		monthResult := engine.ExecuteTaxAwarePortfolioMonth(engine.PortfolioMonthInput{
+			TotalExpenses:              totalExpenses,
+			IncomeBreakdown:            incomeBreakdown,
+			MonthlyRMD:                 monthlyRMD,
+			AllowTaxDeferredWithdrawal: allowTaxDeferredWithdrawal,
+			PenaltyRate:                penaltyRate,
+			TaxDeferredBalance:         &taxDeferredBalance,
+			TaxableAccount:             &taxableAccount,
+			RothBalance:                &rothBalance,
+			TaxDeferredMonthlyReturn:   tdMonthly,
+			RothMonthlyReturn:          rothMonthlyRate,
+			TaxableComponents:          taxableComponents,
+			Timing:                     s.GetProjectionTiming(),
+			TaxState:                   taxState,
+			TaxCalculator:              taxCalculator,
+			CurrentYear:                currentYear,
+			MonthInYear:                m % 12,
+			RothConversionThisMonth:    rothConversionThisMonth,
+			CompletedMAGIHistory:       completedMAGIHistory,
+			IRMAAEligibleAdults:        irmaaEligibleAdults,
+			IRMAAInflationFactor:       irmaaInflationFactor,
+		})
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		taxState.ApplyMonth(
 			incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,

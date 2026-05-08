@@ -232,50 +232,59 @@ type TaxAwarePortfolioMonthResult struct {
 	CashFlow                         PortfolioCashFlowResult
 }
 
+// PortfolioMonthInput bundles the inputs to ExecuteTaxAwarePortfolioMonth.
+// Replaces a 19-positional-arg signature so future parameter additions/
+// renames don't ripple through every call site.
+//
+// The pointer fields (TaxDeferredBalance, TaxableAccount, RothBalance) keep
+// their pointer semantics — ExecuteTaxAwarePortfolioMonth mutates the values
+// they point to, and that contract is preserved.
+type PortfolioMonthInput struct {
+	TotalExpenses              float64
+	IncomeBreakdown            MonthlyIncomeBreakdown
+	MonthlyRMD                 float64
+	AllowTaxDeferredWithdrawal bool
+	PenaltyRate                float64
+	TaxDeferredBalance         *float64
+	TaxableAccount             *TaxableAccountState
+	RothBalance                *float64
+	TaxDeferredMonthlyReturn   float64
+	RothMonthlyReturn          float64
+	TaxableComponents          TaxableReturnComponents
+	Timing                     models.ProjectionTiming
+	TaxState                   ProjectionTaxAccumulator
+	TaxCalculator              *TaxCalculator
+	CurrentYear                int
+	MonthInYear                int
+	RothConversionThisMonth    float64
+	CompletedMAGIHistory       []float64
+	IRMAAEligibleAdults        int
+	IRMAAInflationFactor       float64
+}
+
 // ExecuteTaxAwarePortfolioMonth runs the inner fixed-point iteration
 // that converges a single projection month's tax estimate, marginal
 // rate, cash flow, and growth allocations. Mutates the supplied
 // balances in place.
-func ExecuteTaxAwarePortfolioMonth(
-	totalExpenses float64,
-	incomeBreakdown MonthlyIncomeBreakdown,
-	monthlyRMD float64,
-	allowTaxDeferredWithdrawal bool,
-	penaltyRate float64,
-	taxDeferredBalance *float64,
-	taxableAccount *TaxableAccountState,
-	rothBalance *float64,
-	taxDeferredMonthlyReturn float64,
-	rothMonthlyReturn float64,
-	taxableComponents TaxableReturnComponents,
-	timing models.ProjectionTiming,
-	taxState ProjectionTaxAccumulator,
-	taxCalculator *TaxCalculator,
-	currentYear int,
-	monthInYear int,
-	rothConversionThisMonth float64,
-	completedMAGIHistory []float64,
-	irmaaEligibleAdults int,
-	irmaaInflationFactor float64,
-) TaxAwarePortfolioMonthResult {
-	startingTaxDeferred := *taxDeferredBalance
-	startingRoth := *rothBalance
-	startingTaxable := *taxableAccount
-	snapshot := taxState.EstimateMonthlySnapshot(
-		taxCalculator,
-		currentYear,
-		monthInYear,
-		incomeBreakdown.OrdinaryIncome,
-		incomeBreakdown.SocialSecurityIncome,
+func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMonthResult {
+	startingTaxDeferred := *in.TaxDeferredBalance
+	startingRoth := *in.RothBalance
+	startingTaxable := *in.TaxableAccount
+	snapshot := in.TaxState.EstimateMonthlySnapshot(
+		in.TaxCalculator,
+		in.CurrentYear,
+		in.MonthInYear,
+		in.IncomeBreakdown.OrdinaryIncome,
+		in.IncomeBreakdown.SocialSecurityIncome,
 		0,
 		0,
 		0,
 		0,
-		rothConversionThisMonth,
-		completedMAGIHistory,
+		in.RothConversionThisMonth,
+		in.CompletedMAGIHistory,
 		nil,
-		irmaaEligibleAdults,
-		irmaaInflationFactor,
+		in.IRMAAEligibleAdults,
+		in.IRMAAInflationFactor,
 	)
 	taxesPaid := snapshot.MonthlyTax
 	irmaaExpense := snapshot.MonthlyIRMAA
@@ -283,58 +292,58 @@ func ExecuteTaxAwarePortfolioMonth(
 	// alongside taxesPaid/irmaaExpense so the RMD after-tax reinvestment uses a
 	// converged rate. GetMarginalRate returns a percent (e.g. 22.0), so divide by 100.
 	marginalRate := 0.0
-	if taxCalculator != nil {
-		marginalRate = taxCalculator.GetMarginalRate(snapshot.AnnualMAGI, currentYear) / 100
+	if in.TaxCalculator != nil {
+		marginalRate = in.TaxCalculator.GetMarginalRate(snapshot.AnnualMAGI, in.CurrentYear) / 100
 	}
 	finalSnapshot := snapshot
 	result := TaxAwarePortfolioMonthResult{}
-	growthBeforeFraction, growthAfterFraction := ProjectionTimingGrowthFractions(timing)
+	growthBeforeFraction, growthAfterFraction := ProjectionTimingGrowthFractions(in.Timing)
 
 	for iter := 0; iter < 6; iter++ {
 		trialTaxDeferred := startingTaxDeferred
 		trialRoth := startingRoth
 		trialTaxable := startingTaxable
 
-		tdBeforeGrowth := trialTaxDeferred * fractionalMonthlyReturn(taxDeferredMonthlyReturn, growthBeforeFraction)
-		rothBeforeGrowth := trialRoth * fractionalMonthlyReturn(rothMonthlyReturn, growthBeforeFraction)
+		tdBeforeGrowth := trialTaxDeferred * fractionalMonthlyReturn(in.TaxDeferredMonthlyReturn, growthBeforeFraction)
+		rothBeforeGrowth := trialRoth * fractionalMonthlyReturn(in.RothMonthlyReturn, growthBeforeFraction)
 		trialTaxDeferred += tdBeforeGrowth
 		trialRoth += rothBeforeGrowth
-		beforeTaxableGrowth := trialTaxable.ApplyGrowth(taxableComponents, growthBeforeFraction)
+		beforeTaxableGrowth := trialTaxable.ApplyGrowth(in.TaxableComponents, growthBeforeFraction)
 
-		trialNeededFromPortfolio := totalExpenses + irmaaExpense + taxesPaid - incomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
-		trialCashFlow := ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, monthlyRMD, allowTaxDeferredWithdrawal, penaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
+		trialNeededFromPortfolio := in.TotalExpenses + irmaaExpense + taxesPaid - in.IncomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
+		trialCashFlow := ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, in.MonthlyRMD, in.AllowTaxDeferredWithdrawal, in.PenaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
 
-		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(taxDeferredMonthlyReturn, growthAfterFraction)
-		rothAfterGrowth := trialRoth * fractionalMonthlyReturn(rothMonthlyReturn, growthAfterFraction)
+		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(in.TaxDeferredMonthlyReturn, growthAfterFraction)
+		rothAfterGrowth := trialRoth * fractionalMonthlyReturn(in.RothMonthlyReturn, growthAfterFraction)
 		trialTaxDeferred += tdAfterGrowth
 		trialRoth += rothAfterGrowth
-		afterTaxableGrowth := trialTaxable.ApplyGrowth(taxableComponents, growthAfterFraction)
+		afterTaxableGrowth := trialTaxable.ApplyGrowth(in.TaxableComponents, growthAfterFraction)
 		trialTaxable.AddCash(afterTaxableGrowth.QualifiedDividends + afterTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.CapitalGainsDistributions)
 
 		trialQualifiedDividends := beforeTaxableGrowth.QualifiedDividends + afterTaxableGrowth.QualifiedDividends
 		trialNonQualifiedDividends := beforeTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.NonQualifiedDividends
 		trialCapitalGains := beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions + trialCashFlow.TaxableRealizedGain
 
-		recalculatedSnapshot := taxState.EstimateMonthlySnapshot(
-			taxCalculator,
-			currentYear,
-			monthInYear,
-			incomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends,
-			incomeBreakdown.SocialSecurityIncome,
+		recalculatedSnapshot := in.TaxState.EstimateMonthlySnapshot(
+			in.TaxCalculator,
+			in.CurrentYear,
+			in.MonthInYear,
+			in.IncomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends,
+			in.IncomeBreakdown.SocialSecurityIncome,
 			trialCashFlow.WithdrawalFromTaxDeferred,
 			trialQualifiedDividends,
 			trialCapitalGains,
 			trialNonQualifiedDividends,
-			rothConversionThisMonth,
-			completedMAGIHistory,
+			in.RothConversionThisMonth,
+			in.CompletedMAGIHistory,
 			nil,
-			irmaaEligibleAdults,
-			irmaaInflationFactor,
+			in.IRMAAEligibleAdults,
+			in.IRMAAInflationFactor,
 		)
 
-		*taxDeferredBalance = trialTaxDeferred
-		*rothBalance = trialRoth
-		*taxableAccount = trialTaxable
+		*in.TaxDeferredBalance = trialTaxDeferred
+		*in.RothBalance = trialRoth
+		*in.TaxableAccount = trialTaxable
 		result.CashFlow = trialCashFlow
 		result.Shortfall = trialCashFlow.Shortfall
 		result.TotalGrowth = tdBeforeGrowth + rothBeforeGrowth + beforeTaxableGrowth.TotalGrowth + tdAfterGrowth + rothAfterGrowth + afterTaxableGrowth.TotalGrowth
@@ -354,8 +363,8 @@ func ExecuteTaxAwarePortfolioMonth(
 		taxesPaid = recalculatedSnapshot.MonthlyTax
 		irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
 		// Update marginal rate from converged MAGI for next iteration's RMD reinvestment.
-		if taxCalculator != nil {
-			marginalRate = taxCalculator.GetMarginalRate(recalculatedSnapshot.AnnualMAGI, currentYear) / 100
+		if in.TaxCalculator != nil {
+			marginalRate = in.TaxCalculator.GetMarginalRate(recalculatedSnapshot.AnnualMAGI, in.CurrentYear) / 100
 		}
 	}
 

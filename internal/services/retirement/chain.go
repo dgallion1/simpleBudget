@@ -166,16 +166,8 @@ func rebaseRothConversion(config *models.RothConversionConfig, transitionYear in
 	return &result
 }
 
-func (c *Calculator) nextChainTransition(currentYear int, nextChainIndex int, primarySettings *models.WhatIfSettings) (int, *models.WhatIfSettings) {
-	if nextChainIndex >= len(c.ResolvedChain) {
-		return nextChainIndex, nil
-	}
-	link := c.ResolvedChain[nextChainIndex]
-	currentAge := primarySettings.CurrentAge + currentYear
-	if currentAge >= link.TransitionAge {
-		transitionYear := link.TransitionAge - primarySettings.CurrentAge
-		prepared := prepareChainedSettings(link.Settings.Settings(), primarySettings, transitionYear)
-		return nextChainIndex + 1, prepared
-	}
-	return nextChainIndex, nil
-}
+// Calculator.nextChainTransition was the chain-transition resolver
+// used by the deprecated retirement-side backtest.go. With backtest's
+// move to analysis (which routes through engine.NextChainTransitionHook),
+// no caller remains. Engine now owns the canonical chain-transition
+// flow via the wired hook in engine_hooks.go.

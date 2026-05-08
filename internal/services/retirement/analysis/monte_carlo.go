@@ -8,6 +8,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/history"
 )
 
 // MonteCarloConfig defines parameters for enhanced simulation. Mirrors
@@ -578,8 +579,10 @@ func generateAssetReturns(rng *rand.Rand, config *MonteCarloConfig, years int, t
 	bondReturns := make([]float64, years)
 	cashReturns := make([]float64, years)
 
-	// Get historical statistics for asset classes (wired by retirement init).
-	stockMean, bondMean, cashMean, _, stockStdDev, bondStdDev := engine.HistoricalStatsHook()
+	// Get historical statistics for asset classes (canonical dataset
+	// lives in the history package — pure leaf, safe to import from
+	// analysis).
+	stockMean, bondMean, cashMean, _, stockStdDev, bondStdDev := history.Stats(history.DefaultData())
 
 	for y := 0; y < years; y++ {
 		var stockReturn, bondReturn, cashReturn float64

@@ -31,17 +31,6 @@ var (
 	// monthly amount for the given month, including primary, spouse,
 	// COLA growth, and any spousal top-up.
 	ProjectedSocialSecurityIncome = func(*models.WhatIfSettings, int) float64 { return 0 }
-
-	// HistoricalStatsHook returns summary statistics for the canonical
-	// historical-returns dataset (avgStock, avgBond, avgCash,
-	// avgInflation, stockStdDev, bondStdDev). Wired by the retirement
-	// package so analysis.MonteCarlo can sample without importing the
-	// retirement parent. Default returns all zeros so engine is safe in
-	// isolation. Removed in Task 8 once historical data lives in its
-	// own package.
-	HistoricalStatsHook = func() (avgStock, avgBond, avgCash, avgInflation, stockStdDev, bondStdDev float64) {
-		return 0, 0, 0, 0, 0, 0
-	}
 )
 
 // IsSocialSecurityIncomeSource reports whether the supplied income

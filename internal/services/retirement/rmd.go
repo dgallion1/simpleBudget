@@ -24,13 +24,11 @@ var (
 	GetLifeExpectancyFactor = engine.GetLifeExpectancyFactor
 )
 
-// rmdTriggerMonth and parseStartYear are unexported retirement-side
-// names referenced by calculator.go, backtest.go, and tests. They
-// forward to the exported engine implementations.
-var (
-	rmdTriggerMonth = engine.RMDTriggerMonth
-	parseStartYear  = engine.ParseStartYear
-)
+// The retirement-side rmdTriggerMonth/parseStartYear aliases were
+// retired with backtest.go's move to analysis. Engine still owns the
+// canonical implementations (engine.RMDTriggerMonth,
+// engine.ParseStartYear); analysis-side callers reach for them
+// directly.
 
 // BuildRMDAnalysis (F-072) is a thin delegator over analysis.BuildRMD.
 // The body lived here through Task 1; Task 2 moved the math into the

@@ -1,7 +1,6 @@
 package retirement
 
 import (
-	"math"
 	"testing"
 
 	"budget2/internal/models"
@@ -214,26 +213,9 @@ func TestGetAvailableStartYears_EdgeCases(t *testing.T) {
 	}
 }
 
-// --- sqrt tests ---
-
-func TestSqrt_Negative(t *testing.T) {
-	if result := sqrt(-4.0); result != 0 {
-		t.Errorf("expected 0 for negative input, got %f", result)
-	}
-}
-
-func TestSqrt_Zero(t *testing.T) {
-	if result := sqrt(0); result != 0 {
-		t.Errorf("expected 0 for zero input, got %f", result)
-	}
-}
-
-func TestSqrt_Positive(t *testing.T) {
-	result := sqrt(9.0)
-	if math.Abs(result-3.0) > 1e-6 {
-		t.Errorf("expected ~3.0, got %f", result)
-	}
-}
+// The sqrt helper that previously lived in historical_data.go is
+// gone — math.Sqrt is now used directly inside the history package.
+// The retirement-side sqrt-coverage tests were retired with the move.
 
 // --- Tax calculator tests ---
 

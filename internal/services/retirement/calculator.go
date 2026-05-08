@@ -8,6 +8,7 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/history"
 	"budget2/internal/services/retirement/prepare"
 )
 
@@ -57,11 +58,10 @@ func NewCalculatorWithChain(prepared prepare.PreparedSettings, chain []PreparedC
 	}
 }
 
-// perturbAndPrepare moved to analysis/perturb.go. The var-alias below
-// keeps any retirement-side caller (e.g. SS, backtest in later tasks)
-// resolving without touching imports during the parity window. Removed
-// in Task 8.
-var perturbAndPrepare = analysis.PerturbAndPrepareForCalculator
+// perturbAndPrepare moved to analysis/perturb.go. The retirement-side
+// alias used to live here for SS and backtest, but those analyses now
+// live in the analysis package and call the analysis-internal copy
+// directly — no remaining retirement-side caller. Removed.
 
 // PresentValue calculates the present value of a future cash flow
 // PV = FV / (1 + r)^n
@@ -137,15 +137,12 @@ func monthlyCompoundFactorFromPercent(annualRatePercent float64) float64 {
 // compoundedFactorFromPercent moved to engine.compoundedFactorFromPercent;
 // no retirement-side caller remains after Bundle F. Removed in Task 8.
 
-// calculateLivingExpensesAtMonth and rebaseLivingExpensesAtTransition
-// were moved to the engine package. The var-aliases keep existing
-// call sites in this file (RunProjection, RunHistoricalBacktest,
-// RunMonteCarloSimulation) and backtest.go compiling unchanged.
-// Removed in Task 8.
-var (
-	calculateLivingExpensesAtMonth   = engine.LivingExpensesAtMonth
-	rebaseLivingExpensesAtTransition = engine.RebaseLivingExpensesAtTransition
-)
+// rebaseLivingExpensesAtTransition was moved to the engine package.
+// The var-alias keeps tests in coverage_gaps_test.go (which exercise
+// the helper directly) compiling unchanged. Removed in Task 8. The
+// companion calculateLivingExpensesAtMonth alias was retired with
+// backtest.go's move to the analysis package.
+var rebaseLivingExpensesAtTransition = engine.RebaseLivingExpensesAtTransition
 
 // Phase 4 projection tax policy:
 //   - Taxable-account sales realize average-cost capital gains based on the current
@@ -219,38 +216,21 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 }
 
 // Projection-month state machine moved to the engine package. The
-// var-aliases below keep existing call sites in calculator.go,
-// backtest.go, and tests compiling unchanged. The result/breakdown
-// types are referenced only by inferred types at call sites, so no
-// type-aliases are required. Removed in Task 8.
+// var-aliases below keep tests compiling unchanged. The
+// executeTaxAwarePortfolioMonth alias was retired with backtest.go's
+// move to analysis. Removed in Task 8.
 var (
-	executeTaxAwarePortfolioMonth         = engine.ExecuteTaxAwarePortfolioMonth
 	reinvestRequiredRMDToTaxableState     = engine.ReinvestRequiredRMDToTaxableState
 	applyBigTicketExpenseWithTaxableState = engine.ApplyBigTicketExpenseWithTaxableState
 	withdrawForExpenses                   = engine.WithdrawForExpenses
 )
 
-
-func taxDeferredDelayActive(s *models.WhatIfSettings, currentYear int) bool {
-	return s.TaxDeferredDelayYears > 0 && currentYear < s.TaxDeferredDelayYears
-}
-
-// shortfallCausesDepletion lives in the engine package. The alias
-// keeps existing call sites in calculator.go (RunMonteCarloSimulation)
-// and backtest.go compiling unchanged. The companion
-// shortfallIsTemporaryDueToDelay alias was retired with the move of
-// RunProjection's body into engine.runMonthlyLoop. Removed in Task 8.
-var shortfallCausesDepletion = engine.ShortfallCausesDepletion
-
-// earlyWithdrawalPenaltyRate returns the IRS 10% early distribution penalty rate
-// for tax-deferred withdrawals before age 59½. Uses age 60 as the cutoff since
-// the model operates in whole years.
-func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
-	if currentAge+currentYear < 60 {
-		return 0.10
-	}
-	return 0
-}
+// taxDeferredDelayActive, shortfallCausesDepletion, and
+// earlyWithdrawalPenaltyRate were retirement-side helpers consumed
+// only by backtest.go and the deprecated RunMonteCarloSimulation
+// body. Both have moved to the analysis package; engine still owns
+// the canonical implementations. The retirement-side wrappers were
+// retired with the moves.
 
 // withdrawForExpenses moved to engine.WithdrawForExpenses; the
 // var-alias near the top of this file keeps existing call sites
@@ -498,6 +478,60 @@ func (c *Calculator) buildProjectionExplainability(projection *models.Projection
 		Chain:    c.ResolvedChain,
 	})
 }
+
+// RunSSAnalysis computes the full SS claiming-age comparison.
+// Delegates to analysis.SSAnalysis.
+func (c *Calculator) RunSSAnalysis() *models.SSComparisonAnalysis {
+	return analysis.SSAnalysis(engine.New(), engine.Input{
+		Prepared: c.Prepared,
+		Chain:    c.ResolvedChain,
+	})
+}
+
+// RunSSPortfolioAnalysis evaluates how eligible claiming ages affect
+// portfolio survival. Delegates to analysis.SSPortfolioWithSeed,
+// threading the parity-window MC seed override (if set) so
+// deterministic comparisons stay reproducible.
+func (c *Calculator) RunSSPortfolioAnalysis(ss *models.SSComparisonAnalysis) *models.SSPortfolioAnalysis {
+	seed := int64(0)
+	if c.mcSeedOverride.set {
+		seed = c.mcSeedOverride.seed
+	}
+	return analysis.SSPortfolioWithSeed(engine.New(), engine.Input{
+		Prepared: c.Prepared,
+		Chain:    c.ResolvedChain,
+	}, ss, seed)
+}
+
+// RunHistoricalBacktest runs the projection against all available
+// historical sequences. Delegates to analysis.HistoricalBacktest.
+func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis {
+	return analysis.HistoricalBacktest(engine.New(), engine.Input{
+		Prepared: c.Prepared,
+		Chain:    c.ResolvedChain,
+	}, history.DefaultData())
+}
+
+// runSingleHistoricalSequence forwards to
+// analysis.RunSingleHistoricalSequenceForCalculator. Parity-window
+// only — used by retirement-side tests in coverage_gaps_test.go that
+// exercise a single historical sequence directly. Removed in Task 8.
+func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequenceResult {
+	return analysis.RunSingleHistoricalSequenceForCalculator(engine.New(), engine.Input{
+		Prepared: c.Prepared,
+		Chain:    c.ResolvedChain,
+	}, history.DefaultData(), startYear)
+}
+
+// HistoricalSequenceResult is re-exported from analysis so existing
+// retirement-side callers (tests) keep compiling. Removed in Task 8.
+type HistoricalSequenceResult = analysis.HistoricalSequenceResult
+
+// yearsUntilDepletion forwards to
+// analysis.YearsUntilDepletionForCalculator. Parity-window only —
+// used by retirement-side tests in coverage_gaps_test.go. Removed in
+// Task 8.
+var yearsUntilDepletion = analysis.YearsUntilDepletionForCalculator
 
 // RunFullAnalysis performs complete what-if analysis
 func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {

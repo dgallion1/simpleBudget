@@ -4,11 +4,8 @@ import (
 	"budget2/internal/services/retirement/engine"
 )
 
-// guardrailState is a parity-window alias for engine.GuardrailState so
-// existing retirement-package call sites compile unchanged. The alias
-// (and the var-alias for the constructor) is removed in Task 8 once
-// all guardrail call sites have moved to the engine package.
-type guardrailState = engine.GuardrailState
-
-// newGuardrailState forwards to engine.NewGuardrailState.
+// newGuardrailState forwards to engine.NewGuardrailState. The
+// retirement-side guardrailState type alias was retired with
+// backtest.go's move to analysis; tests still consume the
+// constructor through this alias. Removed in Task 8.
 var newGuardrailState = engine.NewGuardrailState

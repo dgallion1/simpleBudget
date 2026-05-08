@@ -1,13 +1,16 @@
-package retirement
+package analysis
 
 import (
 	"math"
 	"sort"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/history"
 )
 
-// HistoricalSequenceResult represents the outcome of one historical sequence
+// HistoricalSequenceResult represents the outcome of one historical
+// sequence within a backtest.
 type HistoricalSequenceResult struct {
 	StartYear           int     // Year this sequence started
 	Survives            bool    // Did the portfolio survive the full period?
@@ -31,13 +34,23 @@ func yearsUntilDepletion(result HistoricalSequenceResult) int {
 	return result.DepletionYear - result.StartYear
 }
 
-// RunHistoricalBacktest runs the projection against all available historical sequences
-func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis {
-	s := c.Settings
+// YearsUntilDepletionForCalculator is a parity-window export shim used
+// by retirement-side tests. Removed in Task 8.
+func YearsUntilDepletionForCalculator(result HistoricalSequenceResult) int {
+	return yearsUntilDepletion(result)
+}
+
+// HistoricalBacktest runs the projection against all available
+// historical sequences in data. Returns an analysis with success rate,
+// best/worst start years, and per-sequence details.
+func HistoricalBacktest(eng *engine.Engine, in engine.Input, data history.Data) *models.HistoricalBacktestAnalysis {
+	s := in.Prepared.Settings()
+	if s == nil {
+		return nil
+	}
 	projectionYears := s.ProjectionYears
 
-	// Get all available starting years
-	availableYears := GetAvailableStartYears(projectionYears)
+	availableYears := history.AvailableStartYears(data, projectionYears)
 	if len(availableYears) == 0 {
 		return &models.HistoricalBacktestAnalysis{
 			TotalSequences: 0,
@@ -49,7 +62,7 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 	successCount := 0
 
 	for _, startYear := range availableYears {
-		result := c.runSingleHistoricalSequence(startYear)
+		result := runSingleHistoricalSequence(in, data, startYear)
 		results = append(results, result)
 		if result.Survives {
 			successCount++
@@ -69,11 +82,11 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 	sortedByOutcome := make([]HistoricalSequenceResult, len(results))
 	copy(sortedByOutcome, results)
 	sort.Slice(sortedByOutcome, func(i, j int) bool {
-		// Failed sequences are worse than surviving ones
 		if sortedByOutcome[i].Survives != sortedByOutcome[j].Survives {
 			return !sortedByOutcome[i].Survives // Failures first
 		}
-		// Among failures, rank by how quickly they fail relative to their own start year.
+		// Among failures, rank by how quickly they fail relative to
+		// their own start year.
 		if !sortedByOutcome[i].Survives {
 			return yearsUntilDepletion(sortedByOutcome[i]) < yearsUntilDepletion(sortedByOutcome[j])
 		}
@@ -100,11 +113,12 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 	p75 := results[len(results)*3/4].FinalBalance
 	p90 := results[len(results)*9/10].FinalBalance
 
-	// Re-sort for the UI table: failures first (quickest depletion at top),
-	// then survivors ascending by final balance (worst survivor → best
-	// survivor). This puts the rows that drive the failure rate at the top of
-	// the scrollable list so users immediately see why the success rate isn't
-	// 100%, instead of having to scroll past the best survivors to find them.
+	// Re-sort for the UI table: failures first (quickest depletion at
+	// top), then survivors ascending by final balance (worst survivor
+	// → best survivor). This puts the rows that drive the failure
+	// rate at the top of the scrollable list so users immediately see
+	// why the success rate isn't 100%, instead of having to scroll
+	// past the best survivors to find them.
 	sort.Slice(sortedByOutcome, func(i, j int) bool {
 		if sortedByOutcome[i].Survives != sortedByOutcome[j].Survives {
 			return !sortedByOutcome[i].Survives // failures first
@@ -129,13 +143,25 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 		}
 	}
 
-	// The percentiles are calculated but not currently stored in the model
-	// They could be added to the UI later if needed
+	// The percentiles are calculated but not currently stored in the
+	// model. They could be added to the UI later if needed.
 	_ = p10
 	_ = p25
 	_ = p50
 	_ = p75
 	_ = p90
+
+	dataStartYear := 0
+	dataEndYear := 0
+	if len(data) > 0 {
+		dataStartYear = data[0].Year
+		dataEndYear = data[len(data)-1].Year
+	}
+
+	// eng arg currently unused; reserved for future engine-driven
+	// post-processing (and kept in the signature so callers stay
+	// uniform with other analyses).
+	_ = eng
 
 	return &models.HistoricalBacktestAnalysis{
 		TotalSequences:  len(results),
@@ -144,21 +170,30 @@ func (c *Calculator) RunHistoricalBacktest() *models.HistoricalBacktestAnalysis 
 		WorstStartYears: worstYears,
 		BestStartYears:  bestYears,
 		Results:         sequenceDetails,
-		DataStartYear:   HistoricalReturns[0].Year,
-		DataEndYear:     HistoricalReturns[len(HistoricalReturns)-1].Year,
+		DataStartYear:   dataStartYear,
+		DataEndYear:     dataEndYear,
 	}
 }
 
-// runSingleHistoricalSequence runs projection using historical data starting from a specific year
-func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequenceResult {
-	primarySettings := c.Settings
-	activeSettings := c.Settings
+// RunSingleHistoricalSequenceForCalculator is a parity-window shim
+// used by retirement-side tests that exercise a single sequence
+// directly. Removed in Task 8.
+func RunSingleHistoricalSequenceForCalculator(_ *engine.Engine, in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
+	return runSingleHistoricalSequence(in, data, startYear)
+}
+
+// runSingleHistoricalSequence runs the projection using historical
+// market data starting from a specific year.
+func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
+	primarySettings := in.Prepared.Settings()
+	activeSettings := primarySettings
+	chain := in.Chain
 	nextChainIdx := 0
 	s := activeSettings
 	months := s.ProjectionYears * 12
 
 	// Get historical sequence
-	sequence := GetHistoricalSequence(startYear, s.ProjectionYears)
+	sequence := history.Sequence(data, startYear, s.ProjectionYears)
 	if sequence == nil {
 		return HistoricalSequenceResult{StartYear: startYear, Survives: false}
 	}
@@ -166,17 +201,17 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	// Initialize 3-bucket model
 	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
 	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
-	taxableAccount := newTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
+	taxableAccount := engine.NewTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
 
-	currentLivingExpenses := calculateLivingExpensesAtMonth(s, 0)
-	// F-074: annualRMD persists across months so the trigger-month logic
-	// can apply the full year's RMD in a single month.
+	currentLivingExpenses := engine.LivingExpensesAtMonth(s, 0)
+	// F-074: annualRMD persists across months so the trigger-month
+	// logic can apply the full year's RMD in a single month.
 	var annualRMD float64
 	var monthlyRMD float64
-	var taxState projectionTaxAccumulator
-	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	var taxState engine.ProjectionTaxAccumulator
+	taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
-	currentYearTaxSnapshot := projectedTaxSnapshot{}
+	currentYearTaxSnapshot := engine.ProjectedTaxSnapshot{}
 
 	peakBalance := s.PortfolioValue
 	lowestBalance := s.PortfolioValue
@@ -192,9 +227,9 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 	inflationRate := 0.0
 
 	// Spending guardrails for this backtest run
-	var btGrState *guardrailState
+	var btGrState *engine.GuardrailState
 	if s.Guardrails != nil && s.Guardrails.Enabled {
-		btGrState = newGuardrailState(s.PortfolioValue)
+		btGrState = engine.NewGuardrailState(s.PortfolioValue)
 	}
 
 	// Get per-account asset allocations (consistent with main projection and Monte Carlo)
@@ -212,49 +247,49 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
 		bigTicketExpenseThisMonth := 0.0
 		rothConversionThisMonth := 0.0
-		allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
-		penaltyRate := earlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
+		allowTaxDeferredWithdrawal := !engine.TaxDeferredDelayActive(s, currentYear)
+		penaltyRate := engine.EarlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
 
 		// Annual adjustments at year boundaries
 		if m%12 == 0 {
 			if m > 0 {
 				completedMAGIHistory = append(completedMAGIHistory, currentYearTaxSnapshot.AnnualMAGI)
 			}
-			taxState = projectionTaxAccumulator{}
+			taxState = engine.ProjectionTaxAccumulator{}
 			// Check for chain transition
-			if len(c.ResolvedChain) > 0 {
-				newIdx, prepared := c.nextChainTransition(currentYear, nextChainIdx, primarySettings)
+			if len(chain) > 0 {
+				newIdx, prepared := engine.NextChainTransitionHook(currentYear, nextChainIdx, primarySettings, chain)
 				if prepared != nil {
 					activeSettings = prepared
 					s = activeSettings
 					nextChainIdx = newIdx
 
-					currentLivingExpenses = rebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
+					currentLivingExpenses = engine.RebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
 					taxableAccount.SyncAssumptions(s)
 				}
 			}
 			// Refresh allocation for glide path and chain transitions
 			tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash = s.GetAllocationAtYear(currentYear)
-			taxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
+			taxCalculator = engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 			taxableAccount.RealizedGainsYTD = 0
 
 			// Get this year's historical data
 			yearData := sequence[currentYear]
 			inflationRate = yearData.InflationRate / 100
 
-			// F-074: see PR 2 — annualRMD computed once per year, applied
-			// only in the trigger month inside the month loop.
+			// F-074: annualRMD computed once per year, applied only in
+			// the trigger month inside the month loop.
 			// F-078: calendar-year gate + age-at-year-end divisor.
-			calendarYear := parseStartYear(s.StartDate) + currentYear
-			if RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
-				annualRMD, _ = CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
+			calendarYear := engine.ParseStartYear(s.StartDate) + currentYear
+			if engine.RMDApplies(s, calendarYear) && taxDeferredBalance > 0 {
+				annualRMD, _ = engine.CalculateRMD(taxDeferredBalance, engine.RMDAgeForCalendarYear(s, calendarYear))
 			} else {
 				annualRMD = 0
 			}
 			monthlyRMD = 0
 
 			// Process Roth conversions
-			if conversionAmount := rothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
+			if conversionAmount := engine.RothConversionAmountForYear(s, currentYear, taxDeferredBalance); conversionAmount > 0 {
 				taxDeferredBalance -= conversionAmount
 				rothBalance += conversionAmount
 				rothConversionThisMonth = conversionAmount
@@ -266,7 +301,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 					if item.Type == models.BigTicketIncome {
 						taxableAccount.AddCash(item.Amount)
 					} else {
-						remaining := applyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
+						remaining := engine.ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 						bigTicketExpenseThisMonth += remaining
 					}
 				}
@@ -274,12 +309,12 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		}
 
 		if m > 0 {
-			cumulativeInflation *= monthlyCompoundFactorFromDecimal(inflationRate)
-			netCumulativeInflation *= monthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
+			cumulativeInflation *= engine.MonthlyCompoundFactorFromDecimal(inflationRate)
+			netCumulativeInflation *= engine.MonthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
 			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 				currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
 			} else {
-				currentLivingExpenses *= monthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
+				currentLivingExpenses *= engine.MonthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
 			}
 		}
 
@@ -307,7 +342,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 			totalExpenses += expenseAmount
 		}
 
-		incomeBreakdown := calculateMonthlyIncomeBreakdown(s, m)
+		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(s, m)
 
 		// Get this year's returns and calculate per-account blended returns
 		yearData := sequence[currentYear]
@@ -323,17 +358,17 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		// Convert to monthly using geometric formula (not simple division)
 		tdMonthlyReturn := math.Pow(1+tdAnnualReturn, 1.0/12) - 1
 		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
-		taxableComponents := buildTaxableReturnComponents(taxAnnualReturn, s)
-		irmaaEligibleAdults := medicareEligibleAdultCountAtYear(s, currentYear)
-		irmaaInflationFactor := plannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+		taxableComponents := engine.BuildTaxableReturnComponents(taxAnnualReturn, s)
+		irmaaEligibleAdults := engine.MedicareEligibleAdultCountAtYear(s, currentYear)
+		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
 
 		// F-074: apply the full annual RMD only in the trigger month.
 		monthlyRMD = 0
-		if annualRMD > 0 && m%12 == rmdTriggerMonth(s.RMDTiming) {
+		if annualRMD > 0 && m%12 == engine.RMDTriggerMonth(s.RMDTiming) {
 			monthlyRMD = math.Min(annualRMD, taxDeferredBalance)
 		}
 
-		monthResult := executeTaxAwarePortfolioMonth(
+		monthResult := engine.ExecuteTaxAwarePortfolioMonth(
 			totalExpenses,
 			incomeBreakdown,
 			monthlyRMD,
@@ -370,7 +405,7 @@ func (c *Calculator) runSingleHistoricalSequence(startYear int) HistoricalSequen
 		shortfall := monthResult.Shortfall
 
 		totalBalance = taxDeferredBalance + rothBalance + taxableAccount.MarketValue
-		if shortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
+		if engine.ShortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
 			result.Survives = false
 			result.DepletionYear = startYear + currentYear
 			break

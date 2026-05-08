@@ -533,45 +533,17 @@ type HistoricalSequenceResult = analysis.HistoricalSequenceResult
 // Task 8.
 var yearsUntilDepletion = analysis.YearsUntilDepletionForCalculator
 
-// RunFullAnalysis performs complete what-if analysis
+// RunFullAnalysis performs complete what-if analysis. One-line delegator
+// over runFullWithSeed; the body lives in orchestrator.go. Threads the
+// parity-window MC seed override (if set) so deterministic comparisons
+// stay reproducible.
 func (c *Calculator) RunFullAnalysis() *models.WhatIfAnalysis {
-	projection := c.RunProjection()
-	projectionExplainability := c.buildProjectionExplainability(projection)
-	budgetFit := c.CalculateBudgetFit()
-	presentValue := c.CalculatePresentValueAnalysis()
-	sustainability := c.CalculateSustainabilityScore(projection)
-	sensitivity := c.CalculateSensitivity()
-	failurePoints := c.CalculateFailurePoints()
-	monteCarlo := c.RunMonteCarloSimulation(1000)
-	rmd := c.BuildRMDAnalysis(projection)
-	historicalBacktest := c.RunHistoricalBacktest()
-
-	// Add Monte Carlo success rate for comparison
-	if historicalBacktest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
-		historicalBacktest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate
-		historicalBacktest.HistoricalVsMC = historicalBacktest.SuccessRate - monteCarlo.Stats.SuccessRate
+	seed := MonteCarloSeed
+	if c.mcSeedOverride.set {
+		seed = c.mcSeedOverride.seed
 	}
-
-	var ssAnalysis *models.SSComparisonAnalysis
-	if c.Settings.SocialSecurity != nil && c.Settings.SocialSecurity.FRABenefit > 0 {
-		ssAnalysis = c.RunSSAnalysis()
-		if ssAnalysis != nil && SSPortfolioEligible(c.Settings) {
-			ssAnalysis.Portfolio = c.RunSSPortfolioAnalysis(ssAnalysis)
-		}
-	}
-
-	return &models.WhatIfAnalysis{
-		Settings:                 c.Settings,
-		Projection:               projection,
-		ProjectionExplainability: projectionExplainability,
-		BudgetFit:                budgetFit,
-		PresentValue:             presentValue,
-		Sustainability:           sustainability,
-		Sensitivity:              sensitivity,
-		FailurePoints:            failurePoints,
-		MonteCarlo:               monteCarlo,
-		RMD:                      rmd,
-		HistoricalBacktest:       historicalBacktest,
-		SocialSecurity:           ssAnalysis,
-	}
+	return runFullWithSeed(engine.New(), engine.Input{
+		Prepared: c.Prepared,
+		Chain:    c.ResolvedChain,
+	}, seed)
 }

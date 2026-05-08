@@ -9,45 +9,16 @@ import (
 	"strings"
 
 	"budget2/internal/models"
-	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
-	"budget2/internal/services/retirement/history"
 )
 
-const parityMonteCarloRuns = 1000
-
-// runFullForParity assembles a *models.WhatIfAnalysis using the engine
-// for projection and the analysis package for the post-projection
-// summaries that have been extracted (RMD, BudgetFit, PresentValue,
-// sustainability, explainability, Sensitivity, FailurePoints, Monte
-// Carlo, SS, Backtest). Calculator still produces RunFullAnalysis as
-// the orchestrator for Task 6.
+// runFullForParity drives the new-path orchestrator (runFullWithSeed)
+// for parity tests. The test still compares Calculator.RunFullAnalysis
+// (old path through Calculator delegators) vs. runFullWithSeed (new
+// path through the orchestrator). Both routes flow through the same
+// analysis-package functions, so byte-equal output is expected.
 func runFullForParity(eng *engine.Engine, in engine.Input, mcSeed int64) *models.WhatIfAnalysis {
-	tmp := NewCalculatorWithChain(in.Prepared, in.Chain)
-	tmp.SetMonteCarloSeedForParity(mcSeed)
-	out := tmp.RunFullAnalysis()
-	proj := eng.Run(in)
-	out.Projection = proj
-	out.RMD = analysis.BuildRMD(proj, in)
-	out.BudgetFit = analysis.BudgetFit(in)
-	out.PresentValue = analysis.PresentValue(in)
-	out.Sustainability = analysis.Score(proj, out.BudgetFit)
-	out.ProjectionExplainability = analysis.BuildExplainability(proj, in)
-	out.Sensitivity = analysis.Sensitivity(eng, in)
-	out.FailurePoints = analysis.FailurePoints(eng, in)
-	out.MonteCarlo = analysis.MonteCarlo(eng, in, parityMonteCarloRuns, mcSeed)
-
-	out.SocialSecurity = analysis.SSAnalysis(eng, in)
-	if out.SocialSecurity != nil && SSPortfolioEligible(in.Prepared.Settings()) {
-		out.SocialSecurity.Portfolio = analysis.SSPortfolioWithSeed(eng, in, out.SocialSecurity, mcSeed)
-	}
-	out.HistoricalBacktest = analysis.HistoricalBacktest(eng, in, history.DefaultData())
-
-	if out.HistoricalBacktest != nil && out.MonteCarlo != nil && out.MonteCarlo.Stats != nil {
-		out.HistoricalBacktest.MonteCarloSuccessRate = out.MonteCarlo.Stats.SuccessRate
-		out.HistoricalBacktest.HistoricalVsMC = out.HistoricalBacktest.SuccessRate - out.MonteCarlo.Stats.SuccessRate
-	}
-	return out
+	return runFullWithSeed(eng, in, mcSeed)
 }
 
 const floatTol = 1e-9

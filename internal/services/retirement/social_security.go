@@ -45,12 +45,7 @@ func socialSecurityProjectionActive(s *models.WhatIfSettings) bool {
 	return SocialSecurityProjectionActive(s)
 }
 
-// SSPortfolioEligible reports whether at least one person in the
-// household qualifies for SS portfolio analysis. Forwards to the
-// canonical predicate in the analysis package.
-func SSPortfolioEligible(s *models.WhatIfSettings) bool {
-	return analysis.SSPortfolioEligible(s)
-}
+// SSPortfolioEligible moved to eligibility.go in this package.
 
 // HasManualSocialSecurityIncomeSource reports whether the user has a
 // manual Social Security entry in their income sources (separate from

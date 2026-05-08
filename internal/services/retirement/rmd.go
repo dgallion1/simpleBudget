@@ -15,9 +15,9 @@ const RMDStartAge = engine.RMDStartAge
 // keep existing call sites in calculator.go, backtest.go, handler
 // code, and tests compiling unchanged. The aliases (and these
 // declarations) are removed in Task 8.
+// FirstRMDCalendarYear moved to eligibility.go in this package.
 var (
 	EffectiveRMDStartAge   = engine.EffectiveRMDStartAge
-	FirstRMDCalendarYear   = engine.FirstRMDCalendarYear
 	RMDApplies             = engine.RMDApplies
 	RMDAgeForCalendarYear  = engine.RMDAgeForCalendarYear
 	CalculateRMD           = engine.CalculateRMD

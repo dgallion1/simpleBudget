@@ -61,7 +61,10 @@ complexity concentrates, doesn't disperse.
 
 ## Candidate #2 — `WhatIfSettings` conflates config with derived state
 
-**Status:** Planned — see `docs/superpowers/plans/2026-05-08-prepared-settings.md`.
+**Status:** Landed on `feat/prepared-settings` (Tasks 1-3). Three commits:
+`8437552` (introduce prepare package), `ee6582e` (engine takes
+PreparedSettings), `698534e` (move load-time prep out of WhatIfSettings).
+Plan: `docs/superpowers/plans/2026-05-08-prepared-settings.md`.
 **Files:** `internal/models/whatif.go` (1,433 LOC). Normalization callers:
 `settings.go:275/317/503`, `chain.go:55-56`, `whatif.go:848`.
 

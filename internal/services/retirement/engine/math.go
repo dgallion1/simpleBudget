@@ -47,9 +47,16 @@ func fractionalMonthlyReturn(monthlyReturn, fraction float64) float64 {
 	}
 }
 
-// presentValueAnnuity calculates the PV of a series of payments
-// (regular or growing). Lowercase mirror of the retirement-package
-// PresentValueAnnuity used during the migration window.
+// PresentValueAnnuity calculates the PV of a series of payments
+// (regular or growing). The retirement-package PresentValueAnnuity
+// forwards here; analysis-package callers (BudgetFit, PresentValue) use
+// this directly.
+func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64 {
+	return presentValueAnnuity(payment, discountRate, growthRate, startMonth, numPayments)
+}
+
+// presentValueAnnuity is the unexported workhorse used by both the
+// engine internals and PresentValueAnnuity above.
 func presentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64 {
 	if numPayments <= 0 || payment == 0 {
 		return 0

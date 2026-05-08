@@ -149,3 +149,13 @@ func (a *TaxableAccountState) ApplyGrowth(components TaxableReturnComponents, fr
 		CapitalGainsDistributions: capitalGainsDistributions,
 	}
 }
+
+// ExpectedTaxableMonthlyCashFlow returns the monthly dividend / cap-gains
+// distribution decomposition for a taxable account at the given market
+// value and assumed total annual return. Used by analysis-package
+// snapshots (BudgetFit) that estimate first-month and steady-state cash
+// flow without running a full projection.
+func ExpectedTaxableMonthlyCashFlow(s *models.WhatIfSettings, taxableMarketValue, taxableAnnualReturn float64) TaxableGrowthResult {
+	account := NewTaxableAccountState(s, taxableMarketValue)
+	return account.ApplyGrowth(BuildTaxableReturnComponents(taxableAnnualReturn, s), 1.0)
+}

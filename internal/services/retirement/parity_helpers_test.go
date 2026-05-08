@@ -15,9 +15,9 @@ import (
 
 // runFullForParity assembles a *models.WhatIfAnalysis using the engine
 // for projection and the analysis package for the post-projection
-// summaries that have been extracted (RMD, sustainability,
-// explainability). Calculator still produces the analyses scheduled
-// for later tasks (BudgetFit, PV, Sensitivity, FailurePoints, MC,
+// summaries that have been extracted (RMD, BudgetFit, PresentValue,
+// sustainability, explainability). Calculator still produces the
+// analyses scheduled for later tasks (Sensitivity, FailurePoints, MC,
 // SS, Backtest).
 func runFullForParity(eng *engine.Engine, in engine.Input, mcSeed int64) *models.WhatIfAnalysis {
 	tmp := NewCalculatorWithChain(in.Prepared, in.Chain)
@@ -26,6 +26,8 @@ func runFullForParity(eng *engine.Engine, in engine.Input, mcSeed int64) *models
 	proj := eng.Run(in)
 	out.Projection = proj
 	out.RMD = analysis.BuildRMD(proj, in)
+	out.BudgetFit = analysis.BudgetFit(in)
+	out.PresentValue = analysis.PresentValue(in)
 	out.Sustainability = analysis.Score(proj, out.BudgetFit)
 	out.ProjectionExplainability = analysis.BuildExplainability(proj, in)
 	return out

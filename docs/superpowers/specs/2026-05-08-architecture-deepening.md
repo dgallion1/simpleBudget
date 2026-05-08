@@ -32,7 +32,9 @@ F-078 follow-on work has merged on top. No conflict for #1.
 
 ## Candidate #1 — Calculator-as-orchestrator vs. analyses
 
-**Status:** Proposed.
+**Status:** Landed on `feat/projection-engine`. Final cleanup commit:
+`9c9041a`. Plan:
+`docs/superpowers/plans/2026-05-08-projection-engine.md`.
 **Files:** `internal/services/retirement/calculator.go` (3,141 LOC),
 `rmd.go`, `social_security.go`, `backtest.go`, `guardrails.go`.
 Downstream symptom: `internal/handlers/whatif/handlers_test.go` (8,382 LOC).

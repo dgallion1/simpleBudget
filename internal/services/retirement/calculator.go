@@ -8,15 +8,14 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
 
-// PreparedChainLink holds a pre-loaded, prepared chain link for runtime use.
-type PreparedChainLink struct {
-	ScenarioFilename string
-	TransitionAge    int
-	Settings         prepare.PreparedSettings
-}
+// PreparedChainLink is re-exported from the engine package so existing
+// callers (handlers, tests) keep compiling during the migration. The
+// alias is removed in Task 8 alongside Calculator.
+type PreparedChainLink = engine.PreparedChainLink
 
 // Calculator performs retirement projections and analysis
 type Calculator struct {
@@ -112,43 +111,12 @@ func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, 
 // calculateHealthcarePV calculates the present value of healthcare costs for a single person
 // This handles the Medicare transition where costs and inflation rates change at age 65
 func (c *Calculator) calculateHealthcarePV(person models.HealthcarePerson, discountRate float64, totalMonths int) float64 {
-	pvTotal := 0.0
-
-	if person.IsOnMedicare() {
-		// Already on Medicare - simple PV calculation with post-Medicare inflation
-		pvTotal = PresentValueAnnuity(person.CurrentMonthlyCost, discountRate, person.PostMedicareInflation, 0, totalMonths)
-	} else {
-		// Pre-Medicare: calculate in two phases
-		yearsUntilMedicare := person.YearsUntilMedicare()
-		preMedicareMonths := yearsUntilMedicare * 12
-
-		if preMedicareMonths >= totalMonths {
-			// Entire projection is pre-Medicare
-			pvTotal = PresentValueAnnuity(person.CurrentMonthlyCost, discountRate, person.PreMedicareInflation, 0, totalMonths)
-		} else {
-			// Phase 1: Pre-Medicare period
-			if preMedicareMonths > 0 {
-				pvTotal += PresentValueAnnuity(person.CurrentMonthlyCost, discountRate, person.PreMedicareInflation, 0, preMedicareMonths)
-			}
-
-			// Phase 2: Post-Medicare period
-			postMedicareMonths := totalMonths - preMedicareMonths
-			if postMedicareMonths > 0 {
-				pvTotal += PresentValueAnnuity(person.MedicareMonthlyCost, discountRate, person.PostMedicareInflation, preMedicareMonths, postMedicareMonths)
-			}
-		}
-	}
-
-	return pvTotal
+	return engine.HealthcarePVForCalculator(c.Settings, person, discountRate, totalMonths)
 }
 
 // CalculateTotalIncome returns total income for a specific month
 func (c *Calculator) CalculateTotalIncome(month int) float64 {
-	total := 0.0
-	for _, source := range c.Settings.IncomeSources {
-		total += source.GetAdjustedAmount(month)
-	}
-	return total
+	return engine.TotalIncomeForCalculator(c.Settings, month)
 }
 
 func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
@@ -582,27 +550,7 @@ func expectedTaxableMonthlyCashFlow(s *models.WhatIfSettings, taxableMarketValue
 
 // CalculateTotalExpenses returns total expenses for a specific month
 func (c *Calculator) CalculateTotalExpenses(month int) float64 {
-	s := c.Settings
-	years := month / 12
-	phaseAge := s.GetPhaseReferenceAge(years) // Age used for spending phase calculations (may differ for couples)
-
-	// Calculate living expenses based on spending model
-	livingExpenses := calculateLivingExpensesAtMonth(s, month)
-
-	// Calculate healthcare expenses using the settings helper (handles both legacy and multi-person)
-	healthcareExpenses := s.GetTotalHealthcareCost(month)
-
-	// Add expense sources (discretionary sources also get phase multiplier when enabled)
-	for _, source := range s.ExpenseSources {
-		expenseAmount := source.GetAdjustedAmount(month, s.InflationRate)
-		// Apply phase multiplier to discretionary expenses
-		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-			expenseAmount *= s.GetSpendingMultiplier(phaseAge)
-		}
-		livingExpenses += expenseAmount
-	}
-
-	return livingExpenses + healthcareExpenses
+	return engine.TotalExpensesForCalculator(c.Settings, month)
 }
 
 type withdrawalBreakdown struct {
@@ -987,47 +935,14 @@ func applyBigTicketExpense(amount float64, allowTaxDeferred bool, earlyPenaltyRa
 	return remaining
 }
 
-// ExpenseBreakdown holds categorized expenses for adaptive spending analysis
-type ExpenseBreakdown struct {
-	Essential     float64 // Non-discretionary expenses (cannot be reduced)
-	Discretionary float64 // Discretionary expenses (can be reduced during downturns)
-	Total         float64 // Total = Essential + Discretionary
-}
+// ExpenseBreakdown is re-exported from the engine package so existing
+// callers keep compiling during the migration. The alias is removed in
+// Task 8 alongside Calculator.
+type ExpenseBreakdown = engine.ExpenseBreakdown
 
 // CalculateExpenseBreakdown separates expenses into discretionary and essential
 func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
-	s := c.Settings
-	years := month / 12
-	phaseAge := s.GetPhaseReferenceAge(years) // Age used for spending phase calculations (may differ for couples)
-
-	// Base living expenses are treated as essential (conservative approach)
-	livingExpenses := calculateLivingExpensesAtMonth(s, month)
-
-	// Healthcare is always essential
-	healthcareExpenses := s.GetTotalHealthcareCost(month)
-
-	essential := livingExpenses + healthcareExpenses
-	discretionary := 0.0
-
-	// Categorize expense sources
-	for _, source := range s.ExpenseSources {
-		amount := source.GetAdjustedAmount(month, s.InflationRate)
-		// Apply phase multiplier to discretionary expenses
-		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-			amount *= s.GetSpendingMultiplier(phaseAge)
-		}
-		if source.Discretionary {
-			discretionary += amount
-		} else {
-			essential += amount
-		}
-	}
-
-	return ExpenseBreakdown{
-		Essential:     essential,
-		Discretionary: discretionary,
-		Total:         essential + discretionary,
-	}
+	return engine.ExpenseBreakdownForCalculator(c.Settings, month)
 }
 
 // RunProjection runs a full retirement projection with RMD integration

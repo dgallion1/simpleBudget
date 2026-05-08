@@ -1,10 +1,12 @@
-package retirement
+package analysis
 
 import (
 	"math"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // F-077: a 2026-start projection with the older spouse aged 65 (born 1961)
@@ -25,7 +27,7 @@ func TestProjection_F077_BornAfter1959ReachesRMDAt75(t *testing.T) {
 	s.StartDate = "2026-01"
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil || len(proj.Months) < 12*12 {
 		t.Fatalf("nil/short projection: months=%d", func() int {
 			if proj == nil {
@@ -77,7 +79,7 @@ func TestProjection_F077_BornBefore1960ReachesRMDAt73(t *testing.T) {
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil || len(proj.Months) < 7*12 {
 		t.Fatal("nil/short projection")
 	}
@@ -122,7 +124,7 @@ func TestProjection_F077_OlderSpouseDrivesRMDAge(t *testing.T) {
 	})
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil || len(proj.Months) < 4*12 {
 		t.Fatal("nil/short projection")
 	}
@@ -156,7 +158,7 @@ func TestEffectiveRMDStartAge_F077_BirthYearBoundary(t *testing.T) {
 			StartDate:  c.startYear,
 			CurrentAge: c.age,
 		}
-		got := EffectiveRMDStartAge(s)
+		got := engine.EffectiveRMDStartAge(s)
 		if got != c.want {
 			t.Errorf("%s: EffectiveRMDStartAge = %d; want %d", c.name, got, c.want)
 		}
@@ -227,9 +229,9 @@ func TestEffectiveRMDStartAge_F077Fixup_BirthMonthBeatsAgeFloor(t *testing.T) {
 					ID: "s1", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: c.spouseBirth,
 				})
 			}
-			s.ComputeAges()
+			prepare.ComputeAges(s)
 
-			got := EffectiveRMDStartAge(s)
+			got := engine.EffectiveRMDStartAge(s)
 			if got != c.wantApplicable {
 				t.Errorf("EffectiveRMDStartAge = %d; want %d (CurrentAge=%d, SpouseAge=%d)",
 					got, c.wantApplicable, s.CurrentAge, s.SpouseAge)
@@ -247,7 +249,7 @@ func TestEffectiveRMDStartAge_F077Fixup_LegacyFallbackUnchanged(t *testing.T) {
 		StartDate:  "2026-01",
 		CurrentAge: 66, // legacy: no BirthMonth, age implies birth year 1960 → 75
 	}
-	if got := EffectiveRMDStartAge(s); got != 75 {
+	if got := engine.EffectiveRMDStartAge(s); got != 75 {
 		t.Errorf("legacy fallback (no BirthMonth, age 66, 2026 start) = %d; want 75", got)
 	}
 }
@@ -264,7 +266,7 @@ func TestProjection_F078_Born1959_12_TriggersRMDIn2032(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.PortfolioValue = 1_000_000
 	s.TaxDeferredPercent = 100
 	s.MonthlyLivingExpenses = 0
@@ -273,7 +275,7 @@ func TestProjection_F078_Born1959_12_TriggersRMDIn2032(t *testing.T) {
 	s.ProjectionYears = 9
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil || len(proj.Months) < 7*12 {
 		t.Fatalf("nil/short projection: months=%d", func() int {
 			if proj == nil {

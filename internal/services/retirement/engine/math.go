@@ -1,0 +1,99 @@
+package engine
+
+import "math"
+
+// monthlyCompoundFactorFromDecimal converts an annual rate (decimal,
+// e.g. 0.07 for 7%) to its monthly compounding factor.
+func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
+	if annualRate == 0 {
+		return 1.0
+	}
+	return math.Pow(1+annualRate, 1.0/12.0)
+}
+
+// MonthlyCompoundFactorFromDecimal is the exported counterpart of
+// monthlyCompoundFactorFromDecimal. Analysis-package callers (Monte
+// Carlo, historical backtest) reach in here so they don't have to
+// redefine the helper.
+func MonthlyCompoundFactorFromDecimal(annualRate float64) float64 {
+	return monthlyCompoundFactorFromDecimal(annualRate)
+}
+
+// monthlyCompoundFactorFromPercent converts an annual rate (percent,
+// e.g. 7.0 for 7%) to its monthly compounding factor.
+func monthlyCompoundFactorFromPercent(annualRatePercent float64) float64 {
+	return monthlyCompoundFactorFromDecimal(annualRatePercent / 100)
+}
+
+// compoundedFactorFromPercent compounds a percent annual rate over a
+// fractional number of months.
+func compoundedFactorFromPercent(annualRatePercent float64, months float64) float64 {
+	if annualRatePercent == 0 || months == 0 {
+		return 1.0
+	}
+	return math.Pow(1+annualRatePercent/100, months/12.0)
+}
+
+// fractionalMonthlyReturn applies a monthly return rate over a
+// fractional portion of the month. Used by mid-month and end-of-month
+// projection timings.
+func fractionalMonthlyReturn(monthlyReturn, fraction float64) float64 {
+	switch {
+	case fraction <= 0:
+		return 0
+	case fraction >= 1:
+		return monthlyReturn
+	default:
+		return math.Pow(1+monthlyReturn, fraction) - 1
+	}
+}
+
+// PresentValueAnnuity calculates the PV of a series of payments
+// (regular or growing). The retirement-package PresentValueAnnuity
+// forwards here; analysis-package callers (BudgetFit, PresentValue) use
+// this directly.
+func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64 {
+	return presentValueAnnuity(payment, discountRate, growthRate, startMonth, numPayments)
+}
+
+// presentValueAnnuity is the unexported workhorse used by both the
+// engine internals and PresentValueAnnuity above.
+func presentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64 {
+	if numPayments <= 0 || payment == 0 {
+		return 0
+	}
+
+	monthlyRate := monthlyCompoundFactorFromPercent(discountRate) - 1
+	monthlyGrowth := monthlyCompoundFactorFromPercent(growthRate) - 1
+
+	var pvAtStart float64
+
+	if monthlyRate <= 0 {
+		if monthlyGrowth == 0 {
+			pvAtStart = payment * float64(numPayments)
+		} else {
+			total := 0.0
+			for m := 0; m < numPayments; m++ {
+				total += payment * math.Pow(1+monthlyGrowth, float64(m))
+			}
+			pvAtStart = total
+		}
+	} else if math.Abs(monthlyRate-monthlyGrowth) < 1e-10 {
+		// Growth equals discount rate
+		pvAtStart = payment * float64(numPayments)
+	} else if monthlyGrowth != 0 {
+		// Growing annuity formula
+		growthFactor := (1 + monthlyGrowth) / (1 + monthlyRate)
+		pvAtStart = payment * (1 - math.Pow(growthFactor, float64(numPayments))) / (monthlyRate - monthlyGrowth)
+	} else {
+		// Regular annuity formula
+		pvAtStart = payment * (1 - math.Pow(1+monthlyRate, -float64(numPayments))) / monthlyRate
+	}
+
+	// Discount back if payments start in the future
+	if startMonth > 0 && monthlyRate > 0 {
+		return pvAtStart / math.Pow(1+monthlyRate, float64(startMonth))
+	}
+
+	return pvAtStart
+}

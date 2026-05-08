@@ -57,7 +57,7 @@ func TestRunProjection_AnnualReturnCompoundsToAnnualRate(t *testing.T) {
 	settings.ProjectionYears = 1
 	settings.ProjectionTiming = models.ProjectionTimingEndOfMonth
 
-	result := NewCalculator(settings).RunProjection()
+	result := newTestCalc(t, settings).RunProjection()
 	if len(result.Months) != 12 {
 		t.Fatalf("got %d months, want 12", len(result.Months))
 	}
@@ -72,7 +72,7 @@ func TestRunProjection_AnnualReturnCompoundsToAnnualRate(t *testing.T) {
 func TestGenerateYearlyReturns(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.InvestmentReturn = 7.0
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 
 	// Use fixed seed for reproducibility
 	rng := rand.New(rand.NewSource(42))
@@ -180,7 +180,7 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 		settings.MonthlyLivingExpenses = 5000
 		settings.ProjectionYears = 30
 		settings.InvestmentReturn = 6.0
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		rng := rand.New(rand.NewSource(42))
 		config := DefaultMonteCarloConfig()
@@ -202,7 +202,7 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 		settings.MonthlyLivingExpenses = 10000
 		settings.ProjectionYears = 30
 		settings.InvestmentReturn = 6.0
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		rng := rand.New(rand.NewSource(42))
 		config := DefaultMonteCarloConfig()
@@ -222,7 +222,7 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 2000000
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		rng := rand.New(rand.NewSource(42))
 		config := &MonteCarloConfig{
@@ -246,7 +246,7 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 2000000
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		rng := rand.New(rand.NewSource(42))
 		config := &MonteCarloConfig{
@@ -270,7 +270,7 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 2000000
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		rng := rand.New(rand.NewSource(42))
 		config := &MonteCarloConfig{
@@ -294,7 +294,7 @@ func TestRunSingleMonteCarloSimulation(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 2000000
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		config := &MonteCarloConfig{
 			ReturnVolatility:   15.0,
@@ -369,7 +369,7 @@ func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T
 	settings.CurrentAge = 62
 	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
 
-	projection := NewCalculator(settings).RunProjection()
+	projection := newTestCalc(t, settings).RunProjection()
 	if len(projection.Months) != 12 {
 		t.Fatalf("expected a full projection year, got %d months", len(projection.Months))
 	}
@@ -536,7 +536,7 @@ func TestCalculateBudgetFitIncludesNIITAndEstimatedIRMAA(t *testing.T) {
 	settings.SteadyStateOverrideYear = 5
 	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
 
-	fit := NewCalculator(settings).CalculateBudgetFit()
+	fit := newTestCalc(t, settings).CalculateBudgetFit()
 
 	if fit.MonthlyNIIT <= 0 {
 		t.Fatalf("expected NIIT in current budget fit, got %.2f", fit.MonthlyNIIT)
@@ -600,7 +600,7 @@ func TestRunProjectionDelaysIRMAAUntilLookbackYear(t *testing.T) {
 	}
 	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
 
-	projection := NewCalculator(settings).RunProjection()
+	projection := newTestCalc(t, settings).RunProjection()
 	if len(projection.YearlySummaries) < 4 {
 		t.Fatalf("expected 4 yearly summaries, got %d", len(projection.YearlySummaries))
 	}
@@ -640,7 +640,7 @@ func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testin
 	}
 	settings.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	fit := calc.CalculateBudgetFit()
 
 	steadyStateMonth := int(settings.SteadyStateOverrideYear * 12)
@@ -658,7 +658,7 @@ func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testin
 
 	estimateSnapshot := func(month int, taxableCashFlow taxableGrowthResult, assumedIRMALookbackMAGI *float64) projectedTaxSnapshot {
 		taxState := projectionTaxAccumulator{}
-		return taxState.estimateMonthlySnapshot(
+		return taxState.EstimateMonthlySnapshot(
 			NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
 			month/12,
 			month%12,
@@ -706,7 +706,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 	t.Run("uses default 1000 runs when zero specified", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(0)
 
@@ -718,7 +718,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 	t.Run("respects specified run count", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(100)
 
@@ -730,7 +730,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 	t.Run("success rate is between 0 and 100", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(100)
 
@@ -742,7 +742,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 	t.Run("percentiles are ordered correctly", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(100)
 		stats := result.Stats
@@ -771,7 +771,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(200)
 
@@ -788,7 +788,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(200)
 
@@ -804,7 +804,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 	t.Run("creates distribution buckets", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.PortfolioValue = 1000000
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		result := calc.RunMonteCarloSimulation(100)
 
@@ -829,7 +829,7 @@ func TestRunMonteCarloSimulation(t *testing.T) {
 // TestCalculateSequenceRiskImpact tests the sequence risk calculation
 func TestCalculateSequenceRiskImpact(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 
 	t.Run("returns zero with insufficient data", func(t *testing.T) {
 		results := make([]models.MonteCarloResult, 50) // Less than 100
@@ -894,7 +894,7 @@ func TestCalculateSequenceRiskBreakdown(t *testing.T) {
 		settings.MonthlyLivingExpenses = 5000
 		settings.MonthlyHealthcare = 500
 		settings.ProjectionYears = 30
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		// Run enough simulations to get a breakdown
 		result := calc.RunMonteCarloSimulation(500)
@@ -958,7 +958,7 @@ func TestCalculateSequenceRiskBreakdown(t *testing.T) {
 		settingsHighRisk.MonthlyLivingExpenses = 4000
 		settingsHighRisk.MonthlyHealthcare = 500
 		settingsHighRisk.ProjectionYears = 30
-		calcHighRisk := NewCalculator(settingsHighRisk)
+		calcHighRisk := newTestCalc(t, settingsHighRisk)
 		resultHighRisk := calcHighRisk.RunMonteCarloSimulation(500)
 
 		// Lower-risk scenario (high portfolio, low expenses)
@@ -967,7 +967,7 @@ func TestCalculateSequenceRiskBreakdown(t *testing.T) {
 		settingsLowRisk.MonthlyLivingExpenses = 3000
 		settingsLowRisk.MonthlyHealthcare = 500
 		settingsLowRisk.ProjectionYears = 30
-		calcLowRisk := NewCalculator(settingsLowRisk)
+		calcLowRisk := newTestCalc(t, settingsLowRisk)
 		resultLowRisk := calcLowRisk.RunMonteCarloSimulation(500)
 
 		// Both should have valid breakdowns
@@ -994,7 +994,7 @@ func TestMonteCarloWithIncomeAndExpenses(t *testing.T) {
 		settingsNoIncome.MonthlyLivingExpenses = 4000
 		settingsNoIncome.ProjectionYears = 30
 
-		calcNoIncome := NewCalculator(settingsNoIncome)
+		calcNoIncome := newTestCalc(t, settingsNoIncome)
 		resultNoIncome := calcNoIncome.RunMonteCarloSimulation(100)
 
 		// With income (Social Security)
@@ -1011,7 +1011,7 @@ func TestMonteCarloWithIncomeAndExpenses(t *testing.T) {
 			},
 		}
 
-		calcWithIncome := NewCalculator(settingsWithIncome)
+		calcWithIncome := newTestCalc(t, settingsWithIncome)
 		resultWithIncome := calcWithIncome.RunMonteCarloSimulation(100)
 
 		// Success rate should be higher with income
@@ -1027,7 +1027,7 @@ func TestMonteCarloWithIncomeAndExpenses(t *testing.T) {
 func TestMonteCarloReproducibility(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 1000000
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 
 	// Note: The main RunMonteCarloSimulation uses time-based seeding,
 	// so we test the internal function with fixed seed
@@ -1064,7 +1064,7 @@ func TestRunProjectionAfterTaxDepletesSoonerThanPretaxBenchmark(t *testing.T) {
 	settings.StockPercent = 0
 	settings.CashPercent = 100
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.RunProjection()
 
 	if result.DepletionMonth == nil {
@@ -1097,7 +1097,7 @@ func TestCalculateBudgetFitUsesAfterTaxCashFlow(t *testing.T) {
 	settings.TaxDeferredPercent = 0
 	settings.RothPercent = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	fit := calc.CalculateBudgetFit()
 
 	if fit.MonthlyTaxes <= 0 {
@@ -1120,7 +1120,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 		settings.IncomeSources = []models.IncomeSource{
 			{Name: "Pension", Amount: 2000, StartMonth: 0},
 		}
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
 		// HasSteadyState is always true so slider can project into future
@@ -1141,7 +1141,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 			{Name: "Pension", Amount: 1000, StartMonth: 0},
 			{Name: "Social Security", Amount: 2000, StartMonth: 24}, // Starts in 2 years
 		}
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
 		if !result.HasSteadyState {
@@ -1163,7 +1163,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 			{Name: "Pension", Amount: 1000, StartMonth: 0},
 			{Name: "Social Security", Amount: 2000, StartMonth: 24},
 		}
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
 		// Current income should be 1000
@@ -1186,7 +1186,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 			{Name: "Pension", Amount: 1000, StartMonth: 0},
 			{Name: "Social Security", Amount: 2500, StartMonth: 24},
 		}
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
 		// Current gap: 4000 - 1000 = 3000
@@ -1206,7 +1206,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 			{Name: "Social Security", Amount: 2000, StartMonth: 24},
 			{Name: "Pension", Amount: 1500, StartMonth: 60}, // Latest at 5 years
 		}
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
 		if result.SteadyStateMonth != 60 {
@@ -1233,7 +1233,7 @@ func TestSensitivityWithPerAccountAllocation(t *testing.T) {
 		settings.TaxableStockPercent = 60
 		settings.TaxableCashPercent = 0
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		results := calc.CalculateSensitivity()
 
 		// Find the Higher Returns and Lower Returns scenarios
@@ -1278,7 +1278,7 @@ func TestSensitivityWithPerAccountAllocation(t *testing.T) {
 		settings.PortfolioValue = 1000000
 		settings.InvestmentReturn = 0 // allocation mode
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		results := calc.CalculateSensitivity()
 
 		// Find Higher Returns scenario
@@ -1322,7 +1322,7 @@ func TestSensitivityWithPerAccountAllocation(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		baseline := calc.RunProjection()
 		results := calc.CalculateSensitivity()
 
@@ -1366,7 +1366,7 @@ func TestRunProjectionWithSurplusIncome(t *testing.T) {
 		},
 	}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	projection := calc.RunProjection()
 	budgetFit := calc.CalculateBudgetFit()
 
@@ -1396,7 +1396,7 @@ func TestTaxableAccountWithdrawUsesAverageCostBasis(t *testing.T) {
 		CostBasis:   100000,
 	}
 
-	cash, basisReduction, realizedGain := account.withdraw(12000)
+	cash, basisReduction, realizedGain := account.Withdraw(12000)
 
 	if math.Abs(cash-12000) > 0.01 {
 		t.Fatalf("cash = %.2f, want 12000", cash)
@@ -1426,7 +1426,7 @@ func TestRunProjectionTaxableSalesOfBasisRemainUntaxed(t *testing.T) {
 	settings.TaxableDividendYield = 0
 	settings.TaxableCapitalGainsDistributionRate = 0
 
-	result := NewCalculator(settings).RunProjection()
+	result := newTestCalc(t, settings).RunProjection()
 	if len(result.Months) == 0 {
 		t.Fatal("expected projection months")
 	}
@@ -1459,8 +1459,8 @@ func TestHighTaxableDividendYieldReducesFinalBalance(t *testing.T) {
 	highDividend.TaxableDividendYield = 4.0
 	highDividend.TaxableQualifiedDividendPercent = 0
 
-	baseProjection := NewCalculator(base).RunProjection()
-	highDividendProjection := NewCalculator(&highDividend).RunProjection()
+	baseProjection := newTestCalc(t, base).RunProjection()
+	highDividendProjection := newTestCalc(t, &highDividend).RunProjection()
 
 	if highDividendProjection.FinalBalance >= baseProjection.FinalBalance {
 		t.Fatalf("expected high taxable dividend yield to reduce final balance, got base=%.2f high-div=%.2f",
@@ -1498,9 +1498,9 @@ func TestProjectionTimingAffectsDeterministicAndMonteCarloResults(t *testing.T) 
 		endSettings := *base
 		endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
 
-		startProjection := NewCalculator(&startSettings).RunProjection()
-		midProjection := NewCalculator(&midSettings).RunProjection()
-		endProjection := NewCalculator(&endSettings).RunProjection()
+		startProjection := newTestCalc(t, &startSettings).RunProjection()
+		midProjection := newTestCalc(t, &midSettings).RunProjection()
+		endProjection := newTestCalc(t, &endSettings).RunProjection()
 
 		if !(startProjection.FinalBalance < midProjection.FinalBalance && midProjection.FinalBalance < endProjection.FinalBalance) {
 			t.Fatalf("expected start < mid < end final balances, got start=%.2f mid=%.2f end=%.2f",
@@ -1524,8 +1524,8 @@ func TestProjectionTimingAffectsDeterministicAndMonteCarloResults(t *testing.T) 
 		endSettings := *base
 		endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
 
-		startResult := NewCalculator(&startSettings).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
-		endResult := NewCalculator(&endSettings).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+		startResult := newTestCalc(t, &startSettings).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+		endResult := newTestCalc(t, &endSettings).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
 
 		if startResult.FinalBalance >= endResult.FinalBalance {
 			t.Fatalf("expected start-of-month Monte Carlo balance below end-of-month, got start=%.2f end=%.2f",
@@ -1539,7 +1539,7 @@ func BenchmarkMonteCarloSimulation(b *testing.B) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 1000000
 	settings.ProjectionYears = 30
-	calc := NewCalculator(settings)
+	calc := newTestCalc(b, settings)
 
 	b.Run("100_runs", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
@@ -1559,11 +1559,11 @@ func TestNewCalculatorWithChain(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 3000
 
-	chain := []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	chain := []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	}
 
-	calc := NewCalculatorWithChain(primary, chain)
+	calc := newTestCalcWithChain(t, primary, chain)
 	if calc == nil {
 		t.Fatal("expected non-nil calculator")
 	}
@@ -1575,6 +1575,7 @@ func TestNewCalculatorWithChain(t *testing.T) {
 func TestRunProjection_ChainTransition_BalancesCarryOver(t *testing.T) {
 	primary := models.DefaultWhatIfSettings()
 	primary.CurrentAge = 60
+	primary.Persons[0].BirthMonth = models.BirthMonthForAge(primary.StartDate, 60)
 	primary.ProjectionYears = 20
 	primary.PortfolioValue = 1000000
 	primary.TaxDeferredPercent = 50
@@ -1587,14 +1588,14 @@ func TestRunProjection_ChainTransition_BalancesCarryOver(t *testing.T) {
 	linked.MonthlyLivingExpenses = 5000
 	linked.InvestmentReturn = 4.0
 
-	chain := []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	chain := []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	}
 
-	calcNoChain := NewCalculator(primary)
+	calcNoChain := newTestCalc(t, primary)
 	projNoChain := calcNoChain.RunProjection()
 
-	calcChain := NewCalculatorWithChain(primary, chain)
+	calcChain := newTestCalcWithChain(t, primary, chain)
 	projChain := calcChain.RunProjection()
 
 	if len(projChain.Months) < 121 {
@@ -1624,11 +1625,11 @@ func TestRunProjection_ChainTransition_AtCurrentAge(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	chain := []ResolvedScenarioChainLink{
-		{TransitionAge: 60, Settings: linked},
+	chain := []PreparedChainLink{
+		preparedLink(t, "", 60, linked),
 	}
 
-	calc := NewCalculatorWithChain(primary, chain)
+	calc := newTestCalcWithChain(t, primary, chain)
 	proj := calc.RunProjection()
 
 	if proj.Months[0].TotalExpenses < 4500 {
@@ -1650,7 +1651,7 @@ func TestRunProjection_RealDollarFields(t *testing.T) {
 	settings.TaxDeferredPercent = 0
 	settings.RothPercent = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	proj := calc.RunProjection()
 
 	if len(proj.Months) == 0 {
@@ -1690,10 +1691,10 @@ func TestMonteCarloSimulation_ChainTransition(t *testing.T) {
 	linked.MonthlyLivingExpenses = 12000
 	linked.InvestmentReturn = 3.0
 
-	chainCalc := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	chainCalc := newTestCalcWithChain(t, primary, []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	})
-	noChainCalc := NewCalculator(primary)
+	noChainCalc := newTestCalc(t, primary)
 
 	chainMC := chainCalc.RunMonteCarloSimulation(500)
 	noChainMC := noChainCalc.RunMonteCarloSimulation(500)
@@ -1719,7 +1720,7 @@ func TestRunFullAnalysis_F072_DepletedBeforeRMD_NoRMDRows(t *testing.T) {
 	s.ProjectionYears = 30
 	s.SocialSecurity = nil // no income to cushion
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	analysis := calc.RunFullAnalysis()
 
 	if analysis.RMD == nil {
@@ -1753,7 +1754,7 @@ func TestRunFullAnalysis_F072_RMDMatchesProjection(t *testing.T) {
 	s.ProjectionYears = 30
 	s.MonthlyLivingExpenses = 4_000
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	analysis := calc.RunFullAnalysis()
 
 	if analysis.RMD == nil || len(analysis.RMD.Projections) == 0 {

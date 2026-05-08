@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/services/storage"
 )
 
@@ -1484,7 +1485,7 @@ func TestSave_RejectsInvalidChainOnAgeChange(t *testing.T) {
 	settings2.Persons = []models.Person{
 		{ID: "primary", Name: "You", BirthMonth: "1951-04", Role: models.PersonRolePrimary},
 	}
-	settings2.ComputeAges()
+	prepare.ComputeAges(settings2)
 	settings2.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: "whatif_future.json", TransitionAge: 70}, // now invalid
 	}

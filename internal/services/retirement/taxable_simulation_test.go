@@ -49,8 +49,8 @@ func TestHistoricalSequence_HighTaxableDividendYieldReducesFinalBalance(t *testi
 	highDividend := *base
 	highDividend.TaxableDividendYield = 4.0
 
-	baseResult := NewCalculator(base).runSingleHistoricalSequence(1982)
-	highDividendResult := NewCalculator(&highDividend).runSingleHistoricalSequence(1982)
+	baseResult := newTestCalc(t, base).runSingleHistoricalSequence(1982)
+	highDividendResult := newTestCalc(t, &highDividend).runSingleHistoricalSequence(1982)
 
 	if highDividendResult.FinalBalance >= baseResult.FinalBalance {
 		t.Fatalf("expected taxable dividends to reduce historical final balance, got base=%.2f high-div=%.2f",
@@ -80,8 +80,8 @@ func TestMonteCarlo_HighTaxableDividendYieldReducesFinalBalance(t *testing.T) {
 		AdaptationRecoveryYears: 0,
 	}
 
-	baseResult := NewCalculator(base).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
-	highDividendResult := NewCalculator(&highDividend).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+	baseResult := newTestCalc(t, base).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+	highDividendResult := newTestCalc(t, &highDividend).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
 
 	if highDividendResult.FinalBalance >= baseResult.FinalBalance {
 		t.Fatalf("expected taxable dividends to reduce Monte Carlo final balance, got base=%.2f high-div=%.2f",
@@ -93,8 +93,8 @@ func TestHistoricalSequence_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums
 	preMedicare := highIncomeMedicareSimulationSettings(64)
 	medicare := highIncomeMedicareSimulationSettings(65)
 
-	preResult := NewCalculator(preMedicare).runSingleHistoricalSequence(1982)
-	medicareResult := NewCalculator(medicare).runSingleHistoricalSequence(1982)
+	preResult := newTestCalc(t, preMedicare).runSingleHistoricalSequence(1982)
+	medicareResult := newTestCalc(t, medicare).runSingleHistoricalSequence(1982)
 
 	if math.Abs(medicareResult.FinalBalance-preResult.FinalBalance) > 0.01 {
 		t.Fatalf("expected no immediate IRMAA drag without lookback history, got pre=%.2f medicare=%.2f",
@@ -189,8 +189,8 @@ func TestMonteCarlo_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums(t *test
 		AdaptationRecoveryYears: 0,
 	}
 
-	preResult := NewCalculator(preMedicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
-	medicareResult := NewCalculator(medicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+	preResult := newTestCalc(t, preMedicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
+	medicareResult := newTestCalc(t, medicare).runSingleMonteCarloSimulation(rand.New(rand.NewSource(42)), config)
 
 	if math.Abs(medicareResult.FinalBalance-preResult.FinalBalance) > 0.01 {
 		t.Fatalf("expected no immediate IRMAA drag without lookback history, got pre=%.2f medicare=%.2f",

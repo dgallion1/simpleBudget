@@ -1,7 +1,6 @@
 package retirement
 
 import (
-	"math"
 	"testing"
 
 	"budget2/internal/models"
@@ -30,7 +29,7 @@ func TestRunSingleHistoricalSequence_RothConversion(t *testing.T) {
 	s.TaxDeferredPercent = 80
 	s.RothPercent = 10
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 
 	if !result.Survives {
@@ -47,7 +46,7 @@ func TestRunSingleHistoricalSequence_BigTicketItems(t *testing.T) {
 		s.BigTicketItems = []models.BigTicketItem{
 			{ID: "1", Name: "Roof", Amount: 30000, Year: 2, Type: models.BigTicketExpense},
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.runSingleHistoricalSequence(1990)
 
 		if !result.Survives {
@@ -60,7 +59,7 @@ func TestRunSingleHistoricalSequence_BigTicketItems(t *testing.T) {
 		s.BigTicketItems = []models.BigTicketItem{
 			{ID: "2", Name: "Inheritance", Amount: 100000, Year: 3, Type: models.BigTicketIncome},
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.runSingleHistoricalSequence(1990)
 
 		if !result.Survives {
@@ -79,7 +78,7 @@ func TestRunSingleHistoricalSequence_SpendingPhases(t *testing.T) {
 		Phases:  models.DefaultSpendingPhases(),
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 
 	if !result.Survives {
@@ -100,7 +99,7 @@ func TestRunProjection_RothConversion(t *testing.T) {
 		EndYear:      5,
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 
 	if result == nil {
@@ -125,7 +124,7 @@ func TestRunProjection_BigTicketItems(t *testing.T) {
 		{ID: "2", Name: "Home Sale", Amount: 200000, Year: 3, Type: models.BigTicketIncome},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 
 	if result == nil {
@@ -147,7 +146,7 @@ func TestRunProjection_SpendingPhasesWithDiscretionary(t *testing.T) {
 		{ID: "2", Name: "Insurance", Amount: 200, StartYear: 0, EndYear: 0, Inflation: true, Discretionary: false},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 
 	if result == nil {
@@ -214,26 +213,9 @@ func TestGetAvailableStartYears_EdgeCases(t *testing.T) {
 	}
 }
 
-// --- sqrt tests ---
-
-func TestSqrt_Negative(t *testing.T) {
-	if result := sqrt(-4.0); result != 0 {
-		t.Errorf("expected 0 for negative input, got %f", result)
-	}
-}
-
-func TestSqrt_Zero(t *testing.T) {
-	if result := sqrt(0); result != 0 {
-		t.Errorf("expected 0 for zero input, got %f", result)
-	}
-}
-
-func TestSqrt_Positive(t *testing.T) {
-	result := sqrt(9.0)
-	if math.Abs(result-3.0) > 1e-6 {
-		t.Errorf("expected ~3.0, got %f", result)
-	}
-}
+// The sqrt helper that previously lived in historical_data.go is
+// gone — math.Sqrt is now used directly inside the history package.
+// The retirement-side sqrt-coverage tests were retired with the move.
 
 // --- Tax calculator tests ---
 
@@ -290,7 +272,7 @@ func TestFindSteadyStateMonth_MultipleIncomeSources(t *testing.T) {
 		{ID: "3", Name: "Short-term", Amount: 500, StartMonth: 48, EndMonth: &endMonth},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	month := c.findSteadyStateMonth()
 
 	// Should be max of valid start months: 48 (short-term ends at 60 > 48, so valid)
@@ -307,7 +289,7 @@ func TestFindSteadyStateMonth_SourceAlreadyEnded(t *testing.T) {
 		{ID: "2", Name: "Pension", Amount: 2000, StartMonth: 12},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	month := c.findSteadyStateMonth()
 
 	// Source "Temp" starts at 24 but ends at 12 (EndMonth <= StartMonth), so not valid
@@ -324,7 +306,7 @@ func TestFindSteadyStateMonth_BeyondProjection(t *testing.T) {
 		{ID: "1", Name: "SS", Amount: 2000, StartMonth: 120}, // 10 years, beyond 5yr projection
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	month := c.findSteadyStateMonth()
 
 	// Should be capped at projection length (60 months)
@@ -353,7 +335,7 @@ func TestRunSingleHistoricalSequence_Depletion(t *testing.T) {
 	s.InvestmentReturn = 2.0
 	s.ProjectionYears = 10
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 
 	if result.Survives {
@@ -374,7 +356,7 @@ func TestRunSingleHistoricalSequence_WithSurplusIncome(t *testing.T) {
 		{ID: "1", Name: "Pension", Amount: 5000, StartMonth: 0, COLARate: 0.02},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 
 	if !result.Survives {
@@ -394,7 +376,7 @@ func TestRunProjection_MonteCarloWithDiscretionary(t *testing.T) {
 		{ID: "1", Name: "Travel", Amount: 500, Discretionary: true},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunMonteCarloSimulation(50)
 
 	if result == nil || result.Stats == nil {
@@ -420,7 +402,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 	s.CurrentAge = 55 // Young enough to trigger penalty if tax-deferred were used
 
 	t.Run("projection", func(t *testing.T) {
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunProjection()
 
 		if !result.Survives {
@@ -445,7 +427,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 	})
 
 	t.Run("backtest", func(t *testing.T) {
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.runSingleHistoricalSequence(1990)
 
 		if !result.Survives {
@@ -454,7 +436,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 	})
 
 	t.Run("budget_fit", func(t *testing.T) {
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		bf := c.CalculateBudgetFit()
 
 		if bf.MonthlyRMD != 0 {
@@ -463,7 +445,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 	})
 
 	t.Run("monte_carlo", func(t *testing.T) {
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		mc := c.RunMonteCarloSimulation(50)
 
 		if mc == nil || mc.Stats == nil {
@@ -475,7 +457,7 @@ func TestFullyTaxableAccount(t *testing.T) {
 	})
 
 	t.Run("rmd_analysis", func(t *testing.T) {
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		rmd := c.BuildRMDAnalysis(c.RunProjection())
 
 		if rmd.TaxDeferredValue != 0 {

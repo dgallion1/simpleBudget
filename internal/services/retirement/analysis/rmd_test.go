@@ -1,4 +1,4 @@
-package retirement
+package analysis
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 // fixtureProjection builds a *models.ProjectionResult inline for unit tests
-// of BuildRMDAnalysis. Months[i].TaxDeferredBalance is set to taxDeferredFn(i),
+// of BuildRMD. Months[i].TaxDeferredBalance is set to taxDeferredFn(i),
 // Months[i].RMDWithdrawal to rmdFn(i). depletionMonth is honored when non-nil.
 func fixtureProjection(months int, taxDeferredFn func(m int) float64, rmdFn func(m int) float64, depletionMonth *int) *models.ProjectionResult {
 	out := &models.ProjectionResult{
@@ -34,16 +34,26 @@ func fixtureProjection(months int, taxDeferredFn func(m int) float64, rmdFn func
 	return out
 }
 
-func newCalcF072(currentAge, spouseAge int, portfolio, tdPercent float64, projYears int, startDate string) *Calculator {
-	s := &models.WhatIfSettings{
+// settingsF072 builds the WhatIfSettings used by the F-072 test cases.
+func settingsF072(currentAge, spouseAge int, portfolio, tdPercent float64, projYears int, startDate string) *models.WhatIfSettings {
+	persons := []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(startDate, currentAge)},
+	}
+	if spouseAge > 0 {
+		persons = append(persons, models.Person{
+			ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse,
+			BirthMonth: models.BirthMonthForAge(startDate, spouseAge),
+		})
+	}
+	return &models.WhatIfSettings{
 		CurrentAge:         currentAge,
 		SpouseAge:          spouseAge,
 		PortfolioValue:     portfolio,
 		TaxDeferredPercent: tdPercent,
 		ProjectionYears:    projYears,
 		StartDate:          startDate,
+		Persons:            persons,
 	}
-	return NewCalculator(s)
 }
 
 // 1. Depletion before first RMD year → empty Projections, DepletedBeforeRMD true.
@@ -51,29 +61,30 @@ func TestBuildRMDAnalysis_F072_DepletionBeforeRMD(t *testing.T) {
 	// F-077: StartDate=2019-01 with CurrentAge=60 → birth year 1959 → applicable
 	// age 73 (legacy SECURE 2.0 boundary). Preserves the test's original
 	// "startsInYears=13" assertion under birth-year semantics.
-	calc := newCalcF072(60, 0, 100_000, 60, 30, "2019-01")
+	s := settingsF072(60, 0, 100_000, 60, 30, "2019-01")
+	in := engineInput(t, s)
 	depletion := 24 // month 24 = year 2
 	proj := fixtureProjection(360, func(m int) float64 { return 1.0 }, nil, &depletion)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if !analysis.DepletedBeforeRMD {
+	if !a.DepletedBeforeRMD {
 		t.Errorf("DepletedBeforeRMD = false; want true")
 	}
-	if len(analysis.Projections) != 0 {
-		t.Errorf("len(Projections) = %d; want 0", len(analysis.Projections))
+	if len(a.Projections) != 0 {
+		t.Errorf("len(Projections) = %d; want 0", len(a.Projections))
 	}
-	if analysis.TotalRMDsOver10Yr != 0 {
-		t.Errorf("TotalRMDsOver10Yr = %.2f; want 0", analysis.TotalRMDsOver10Yr)
+	if a.TotalRMDsOver10Yr != 0 {
+		t.Errorf("TotalRMDsOver10Yr = %.2f; want 0", a.TotalRMDsOver10Yr)
 	}
-	if analysis.DepletionYear == nil || *analysis.DepletionYear != 2 {
-		t.Errorf("DepletionYear = %v; want 2", analysis.DepletionYear)
+	if a.DepletionYear == nil || *a.DepletionYear != 2 {
+		t.Errorf("DepletionYear = %v; want 2", a.DepletionYear)
 	}
-	if analysis.DepletionAge == nil || *analysis.DepletionAge != 62 {
-		t.Errorf("DepletionAge = %v; want 62", analysis.DepletionAge)
+	if a.DepletionAge == nil || *a.DepletionAge != 62 {
+		t.Errorf("DepletionAge = %v; want 62", a.DepletionAge)
 	}
-	if analysis.StartsInYears != 13 {
-		t.Errorf("StartsInYears = %d; want 13", analysis.StartsInYears)
+	if a.StartsInYears != 13 {
+		t.Errorf("StartsInYears = %d; want 13", a.StartsInYears)
 	}
 }
 
@@ -83,7 +94,8 @@ func TestBuildRMDAnalysis_F072_DepletionDuringRMD(t *testing.T) {
 	// → first RMD year is 13 (age 73); fixture supplies non-zero RMD only in
 	// years 13 and 14 (2 rows); year 15 hits depletion break.
 	// F-077: StartDate=2019-01 → birth 1959 → applicable age 73 preserved.
-	calc := newCalcF072(60, 0, 100_000, 60, 30, "2019-01")
+	s := settingsF072(60, 0, 100_000, 60, 30, "2019-01")
+	in := engineInput(t, s)
 	depletion := 12 * 15
 	proj := fixtureProjection(360,
 		func(m int) float64 { return 60_000 - float64(m)*100 }, // balance trends down
@@ -97,26 +109,26 @@ func TestBuildRMDAnalysis_F072_DepletionDuringRMD(t *testing.T) {
 		},
 		&depletion)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if analysis.DepletedBeforeRMD {
+	if a.DepletedBeforeRMD {
 		t.Errorf("DepletedBeforeRMD = true; want false")
 	}
-	if len(analysis.Projections) != 2 {
-		t.Errorf("len(Projections) = %d; want 2", len(analysis.Projections))
+	if len(a.Projections) != 2 {
+		t.Errorf("len(Projections) = %d; want 2", len(a.Projections))
 	}
-	if analysis.DepletionYear == nil || *analysis.DepletionYear != 15 {
-		t.Errorf("DepletionYear = %v; want 15", analysis.DepletionYear)
+	if a.DepletionYear == nil || *a.DepletionYear != 15 {
+		t.Errorf("DepletionYear = %v; want 15", a.DepletionYear)
 	}
 	wantTotal := 12 * 1000.0 * 2 // 2 years × 12 months × 1000
-	if analysis.TotalRMDsOver10Yr != wantTotal {
-		t.Errorf("TotalRMDsOver10Yr = %.2f; want %.2f", analysis.TotalRMDsOver10Yr, wantTotal)
+	if a.TotalRMDsOver10Yr != wantTotal {
+		t.Errorf("TotalRMDsOver10Yr = %.2f; want %.2f", a.TotalRMDsOver10Yr, wantTotal)
 	}
-	if analysis.Projections[0].Age != 73 {
-		t.Errorf("first row age = %d; want 73", analysis.Projections[0].Age)
+	if a.Projections[0].Age != 73 {
+		t.Errorf("first row age = %d; want 73", a.Projections[0].Age)
 	}
-	if analysis.Projections[1].Age != 74 {
-		t.Errorf("second row age = %d; want 74", analysis.Projections[1].Age)
+	if a.Projections[1].Age != 74 {
+		t.Errorf("second row age = %d; want 74", a.Projections[1].Age)
 	}
 }
 
@@ -124,7 +136,8 @@ func TestBuildRMDAnalysis_F072_DepletionDuringRMD(t *testing.T) {
 func TestBuildRMDAnalysis_F072_FullTenYears_NoDepletion(t *testing.T) {
 	// olderAge=72, startAge=73, projection survives full 30 years.
 	// Year 1..29 are RMD years; expect 20 rows (rmdCount cap), 10 in 10-yr total.
-	calc := newCalcF072(72, 0, 100_000, 60, 30, "2026-01")
+	s := settingsF072(72, 0, 100_000, 60, 30, "2026-01")
+	in := engineInput(t, s)
 	proj := fixtureProjection(360,
 		func(m int) float64 { return 60_000 },
 		func(m int) float64 {
@@ -136,42 +149,43 @@ func TestBuildRMDAnalysis_F072_FullTenYears_NoDepletion(t *testing.T) {
 		},
 		nil)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if analysis.DepletedBeforeRMD {
+	if a.DepletedBeforeRMD {
 		t.Errorf("DepletedBeforeRMD = true; want false")
 	}
 	// Years 1..20 = 20 rows (rmdCount cap).
-	if len(analysis.Projections) != 20 {
-		t.Errorf("len(Projections) = %d; want 20", len(analysis.Projections))
+	if len(a.Projections) != 20 {
+		t.Errorf("len(Projections) = %d; want 20", len(a.Projections))
 	}
 	wantTotal := 2400.0 * 10
-	if analysis.TotalRMDsOver10Yr != wantTotal {
-		t.Errorf("TotalRMDsOver10Yr = %.2f; want %.2f", analysis.TotalRMDsOver10Yr, wantTotal)
+	if a.TotalRMDsOver10Yr != wantTotal {
+		t.Errorf("TotalRMDsOver10Yr = %.2f; want %.2f", a.TotalRMDsOver10Yr, wantTotal)
 	}
-	if analysis.Projections[0].Age != 73 {
-		t.Errorf("first row age = %d; want 73", analysis.Projections[0].Age)
+	if a.Projections[0].Age != 73 {
+		t.Errorf("first row age = %d; want 73", a.Projections[0].Age)
 	}
-	if analysis.Projections[0].RMDAmount != 2400 {
-		t.Errorf("first row RMDAmount = %.2f; want 2400", analysis.Projections[0].RMDAmount)
+	if a.Projections[0].RMDAmount != 2400 {
+		t.Errorf("first row RMDAmount = %.2f; want 2400", a.Projections[0].RMDAmount)
 	}
 }
 
 // 4. TaxDeferredPercent = 0 → empty projections, no panic.
 func TestBuildRMDAnalysis_F072_TaxDeferredPercentZero(t *testing.T) {
-	calc := newCalcF072(72, 0, 100_000, 0, 30, "2026-01")
+	s := settingsF072(72, 0, 100_000, 0, 30, "2026-01")
+	in := engineInput(t, s)
 	proj := fixtureProjection(360, nil, nil, nil)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if analysis.TaxDeferredValue != 0 {
-		t.Errorf("TaxDeferredValue = %.2f; want 0", analysis.TaxDeferredValue)
+	if a.TaxDeferredValue != 0 {
+		t.Errorf("TaxDeferredValue = %.2f; want 0", a.TaxDeferredValue)
 	}
-	if len(analysis.Projections) != 0 {
-		t.Errorf("len(Projections) = %d; want 0 (no tax-deferred bucket)", len(analysis.Projections))
+	if len(a.Projections) != 0 {
+		t.Errorf("len(Projections) = %d; want 0 (no tax-deferred bucket)", len(a.Projections))
 	}
-	if analysis.TotalRMDsOver10Yr != 0 {
-		t.Errorf("TotalRMDsOver10Yr = %.2f; want 0", analysis.TotalRMDsOver10Yr)
+	if a.TotalRMDsOver10Yr != 0 {
+		t.Errorf("TotalRMDsOver10Yr = %.2f; want 0", a.TotalRMDsOver10Yr)
 	}
 }
 
@@ -179,7 +193,8 @@ func TestBuildRMDAnalysis_F072_TaxDeferredPercentZero(t *testing.T) {
 func TestBuildRMDAnalysis_F072_StartAge75_Secure20(t *testing.T) {
 	// olderAge=72, projection start 2034 → effectiveStartAge=75.
 	// Expect first emitted row at age 75 (year 3).
-	calc := newCalcF072(72, 0, 100_000, 60, 30, "2034-01")
+	s := settingsF072(72, 0, 100_000, 60, 30, "2034-01")
+	in := engineInput(t, s)
 	proj := fixtureProjection(360,
 		func(m int) float64 { return 60_000 },
 		func(m int) float64 {
@@ -190,22 +205,23 @@ func TestBuildRMDAnalysis_F072_StartAge75_Secure20(t *testing.T) {
 		},
 		nil)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if analysis.StartAge != 75 {
-		t.Errorf("StartAge = %d; want 75", analysis.StartAge)
+	if a.StartAge != 75 {
+		t.Errorf("StartAge = %d; want 75", a.StartAge)
 	}
-	if len(analysis.Projections) == 0 {
+	if len(a.Projections) == 0 {
 		t.Fatal("expected projections under SECURE 2.0; got none")
 	}
-	if analysis.Projections[0].Age != 75 {
-		t.Errorf("first row age = %d; want 75", analysis.Projections[0].Age)
+	if a.Projections[0].Age != 75 {
+		t.Errorf("first row age = %d; want 75", a.Projections[0].Age)
 	}
 }
 
 // 6. olderAge already at RMD age → first row at year 0 uses Months[0] balance.
 func TestBuildRMDAnalysis_F072_AlreadyAtRMDAge(t *testing.T) {
-	calc := newCalcF072(75, 0, 100_000, 80, 20, "2026-01")
+	s := settingsF072(75, 0, 100_000, 80, 20, "2026-01")
+	in := engineInput(t, s)
 	proj := fixtureProjection(240,
 		func(m int) float64 {
 			if m == 0 {
@@ -221,24 +237,24 @@ func TestBuildRMDAnalysis_F072_AlreadyAtRMDAge(t *testing.T) {
 		},
 		nil)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if analysis.StartsInYears != 0 {
-		t.Errorf("StartsInYears = %d; want 0", analysis.StartsInYears)
+	if a.StartsInYears != 0 {
+		t.Errorf("StartsInYears = %d; want 0", a.StartsInYears)
 	}
-	if len(analysis.Projections) == 0 {
+	if len(a.Projections) == 0 {
 		t.Fatal("expected at least one projection row")
 	}
-	if analysis.Projections[0].Age != 75 {
-		t.Errorf("first row age = %d; want 75", analysis.Projections[0].Age)
+	if a.Projections[0].Age != 75 {
+		t.Errorf("first row age = %d; want 75", a.Projections[0].Age)
 	}
 	// Year 0 should sample Months[0].TaxDeferredBalance == 80000.
-	if analysis.Projections[0].TaxDeferredBal != 80_000 {
-		t.Errorf("year-0 TaxDeferredBal = %.2f; want 80000", analysis.Projections[0].TaxDeferredBal)
+	if a.Projections[0].TaxDeferredBal != 80_000 {
+		t.Errorf("year-0 TaxDeferredBal = %.2f; want 80000", a.Projections[0].TaxDeferredBal)
 	}
 	wantRMD := 12 * 300.0
-	if analysis.Projections[0].RMDAmount != wantRMD {
-		t.Errorf("year-0 RMDAmount = %.2f; want %.2f", analysis.Projections[0].RMDAmount, wantRMD)
+	if a.Projections[0].RMDAmount != wantRMD {
+		t.Errorf("year-0 RMDAmount = %.2f; want %.2f", a.Projections[0].RMDAmount, wantRMD)
 	}
 }
 
@@ -246,7 +262,8 @@ func TestBuildRMDAnalysis_F072_AlreadyAtRMDAge(t *testing.T) {
 func TestBuildRMDAnalysis_F072_RMDPercentIsTableValue(t *testing.T) {
 	// olderAge=73, balance 100k, but actual RMD is only 1000 (well below table %).
 	// Table for age 73 → factor 26.5 → percent = 100/26.5 ≈ 3.7736.
-	calc := newCalcF072(73, 0, 100_000, 60, 5, "2026-01")
+	s := settingsF072(73, 0, 100_000, 60, 5, "2026-01")
+	in := engineInput(t, s)
 	proj := fixtureProjection(60,
 		func(m int) float64 { return 60_000 },
 		func(m int) float64 {
@@ -257,18 +274,18 @@ func TestBuildRMDAnalysis_F072_RMDPercentIsTableValue(t *testing.T) {
 		},
 		nil)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if len(analysis.Projections) == 0 {
+	if len(a.Projections) == 0 {
 		t.Fatal("expected projections")
 	}
 	wantPercent := 100.0 / 26.5
-	if got := analysis.Projections[0].RMDPercent; (got-wantPercent) > 0.001 || (wantPercent-got) > 0.001 {
+	if got := a.Projections[0].RMDPercent; (got-wantPercent) > 0.001 || (wantPercent-got) > 0.001 {
 		t.Errorf("RMDPercent = %.4f; want %.4f (table value, not realized)", got, wantPercent)
 	}
 	// Sanity: realized RMD is much smaller than table% × balance.
-	if analysis.Projections[0].RMDAmount > 1001 {
-		t.Errorf("RMDAmount = %.2f; want ~1000 (the fixture value)", analysis.Projections[0].RMDAmount)
+	if a.Projections[0].RMDAmount > 1001 {
+		t.Errorf("RMDAmount = %.2f; want ~1000 (the fixture value)", a.Projections[0].RMDAmount)
 	}
 }
 
@@ -281,22 +298,23 @@ func TestBuildRMDAnalysis_F072_RMDPercentIsTableValue(t *testing.T) {
 func TestBuildRMDAnalysis_F072_DepletionAtFirstRMDYear(t *testing.T) {
 	// olderAge=65, startAge=73, startsInYears=8
 	// depletion at month 96 → dy=8 (exactly first RMD year)
-	calc := newCalcF072(65, 0, 100_000, 60, 30, "2026-01")
+	s := settingsF072(65, 0, 100_000, 60, 30, "2026-01")
+	in := engineInput(t, s)
 	depletion := 96
 	proj := fixtureProjection(360, func(m int) float64 { return 1.0 }, nil, &depletion)
 
-	analysis := calc.BuildRMDAnalysis(proj)
+	a := BuildRMD(proj, in)
 
-	if !analysis.DepletedBeforeRMD {
+	if !a.DepletedBeforeRMD {
 		t.Errorf("DepletedBeforeRMD = false; want true (depletion at exactly first RMD year)")
 	}
-	if len(analysis.Projections) != 0 {
-		t.Errorf("len(Projections) = %d; want 0", len(analysis.Projections))
+	if len(a.Projections) != 0 {
+		t.Errorf("len(Projections) = %d; want 0", len(a.Projections))
 	}
-	if analysis.DepletionYear == nil || *analysis.DepletionYear != 8 {
-		t.Errorf("DepletionYear = %v; want 8", analysis.DepletionYear)
+	if a.DepletionYear == nil || *a.DepletionYear != 8 {
+		t.Errorf("DepletionYear = %v; want 8", a.DepletionYear)
 	}
-	if analysis.DepletionAge == nil || *analysis.DepletionAge != 73 {
-		t.Errorf("DepletionAge = %v; want 73", analysis.DepletionAge)
+	if a.DepletionAge == nil || *a.DepletionAge != 73 {
+		t.Errorf("DepletionAge = %v; want 73", a.DepletionAge)
 	}
 }

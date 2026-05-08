@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement"
 )
 
 func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
@@ -85,12 +86,12 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-run the full analysis which includes a fresh Monte Carlo simulation
-	calc, _, err := buildCalculator(settings)
+	in, _, err := buildEngineInput(settings)
 	if err != nil {
-		renderError(w, "Failed to build calculator: "+err.Error(), http.StatusInternalServerError)
+		renderError(w, "Failed to build engine input: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis := calc.RunFullAnalysis()
+	analysis := retirement.RunFull(getEngine(), in)
 
 	partialData := map[string]interface{}{
 		"Settings": settings,

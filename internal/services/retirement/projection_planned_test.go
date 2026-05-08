@@ -14,7 +14,7 @@ func TestProjection_PlannedFields_NoGuardrails(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.Guardrails = nil // explicitly disabled
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	result := calc.RunFullAnalysis()
 
 	if result.Projection == nil || len(result.Projection.Months) == 0 {
@@ -61,7 +61,7 @@ func cutTriggeringSettings() *models.WhatIfSettings {
 func TestProjection_PlannedFields_WithCut(t *testing.T) {
 	s := cutTriggeringSettings()
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	result := calc.RunFullAnalysis()
 
 	sawAdjusted := false
@@ -96,7 +96,7 @@ func TestProjectionYear_PlannedExpenses_NoGuardrails(t *testing.T) {
 		{ID: "subs", Name: "Subscriptions", Amount: 500, StartYear: 0, EndYear: 0, Inflation: false},
 	}
 
-	result := NewCalculator(s).RunFullAnalysis()
+	result := newTestCalc(t, s).RunFullAnalysis()
 	for i, ys := range result.Projection.YearlySummaries {
 		if !almostEqual(ys.PlannedExpenses, ys.Expenses) {
 			t.Errorf("year %d: PlannedExpenses (%v) != Expenses (%v) when guardrails disabled",
@@ -111,7 +111,7 @@ func TestProjectionYear_PlannedExpenses_NoGuardrails(t *testing.T) {
 func TestProjectionYear_PlannedExpenses_WithCut(t *testing.T) {
 	s := cutTriggeringSettings()
 
-	result := NewCalculator(s).RunFullAnalysis()
+	result := newTestCalc(t, s).RunFullAnalysis()
 	sawCutYear := false
 	for _, ys := range result.Projection.YearlySummaries {
 		if ys.GuardrailMultiplier < 1.0 {
@@ -131,7 +131,7 @@ func TestProjectionYear_PlannedExpenses_WithCut(t *testing.T) {
 func TestGuardrailEvent_DollarFields(t *testing.T) {
 	s := cutTriggeringSettings()
 
-	result := NewCalculator(s).RunFullAnalysis()
+	result := newTestCalc(t, s).RunFullAnalysis()
 	if len(result.Projection.GuardrailEvents) == 0 {
 		t.Fatalf("expected at least one guardrail event")
 	}

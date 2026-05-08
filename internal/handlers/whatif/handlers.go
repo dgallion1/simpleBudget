@@ -25,8 +25,17 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/templates"
 )
+
+// sharedEngine is the package-level Engine used by what-if handlers.
+// Engine.Run is stateless, so a single shared instance is safe.
+var sharedEngine = engine.New()
+
+// getEngine returns the shared what-if engine instance.
+func getEngine() *engine.Engine { return sharedEngine }
 
 // analysisCache caches expensive analysis results keyed by settings hash
 type analysisCache struct {
@@ -75,40 +84,52 @@ func getSettingsHash(settings *models.WhatIfSettings) string {
 	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter key
 }
 
-// buildCalculator creates a chain-aware calculator from settings.
-func buildCalculator(settings *models.WhatIfSettings) (*retirement.Calculator, string, error) {
+// buildEngineInput resolves prepared settings (and chain, if any) for
+// the given top-level WhatIfSettings, and returns the engine.Input that
+// the orchestrator and engine consume, along with a cache hash.
+func buildEngineInput(settings *models.WhatIfSettings) (engine.Input, string, error) {
 	hashData := getSettingsHash(settings)
 
-	if len(settings.ScenarioChain) == 0 {
-		return retirement.NewCalculator(settings), hashData, nil
+	prepared, err := prepare.From(settings)
+	if err != nil {
+		return engine.Input{}, "", fmt.Errorf("prepare primary settings: %w", err)
 	}
 
-	chain := make([]retirement.ResolvedScenarioChainLink, 0, len(settings.ScenarioChain))
+	if len(settings.ScenarioChain) == 0 {
+		return engine.Input{Prepared: prepared}, hashData, nil
+	}
+
+	chain := make([]engine.PreparedChainLink, 0, len(settings.ScenarioChain))
 	for _, link := range settings.ScenarioChain {
 		linked, err := retirementMgr.LoadScenarioSettings(link.ScenarioFilename)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to load chained scenario %s: %w", link.ScenarioFilename, err)
+			return engine.Input{}, "", fmt.Errorf("failed to load chained scenario %s: %w", link.ScenarioFilename, err)
 		}
 
 		linkedHash := getSettingsHash(linked)
 		hashData += linkedHash
 
-		chain = append(chain, retirement.ResolvedScenarioChainLink{
+		linkedPrepared, err := prepare.From(linked)
+		if err != nil {
+			return engine.Input{}, "", fmt.Errorf("prepare chained scenario %s: %w", link.ScenarioFilename, err)
+		}
+
+		chain = append(chain, engine.PreparedChainLink{
 			ScenarioFilename: link.ScenarioFilename,
 			TransitionAge:    link.TransitionAge,
-			Settings:         linked,
+			Settings:         linkedPrepared,
 		})
 	}
 
 	combined := sha256.Sum256([]byte(hashData))
 	combinedHash := fmt.Sprintf("%x", combined[:8])
 
-	return retirement.NewCalculatorWithChain(settings, chain), combinedHash, nil
+	return engine.Input{Prepared: prepared, Chain: chain}, combinedHash, nil
 }
 
 // runAnalysisWithCache runs full analysis, using cache when available
 func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalysis, error) {
-	calc, depHash, err := buildCalculator(settings)
+	in, depHash, err := buildEngineInput(settings)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +142,7 @@ func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalys
 	}
 	cache.mu.RUnlock()
 
-	analysis := calc.RunFullAnalysis()
+	analysis := retirement.RunFull(getEngine(), in)
 
 	cache.mu.Lock()
 	cache.hash = depHash
@@ -652,8 +673,14 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	clone := *settings
 	clone.Guardrails = nil
 
-	calc := retirement.NewCalculator(&clone)
-	projection := calc.RunProjection()
+	prepared, err := prepare.From(&clone)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	projection := getEngine().Run(engine.Input{Prepared: prepared})
 
 	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
 	chartData := buildProjectionChartData(&clone, projection, displayDollars)

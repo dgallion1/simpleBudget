@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func makeTransaction(desc string, amount float64, date time.Time, txnType models.TransactionType, category string) models.Transaction {
@@ -1049,7 +1050,7 @@ func makePhaseSettings(t *testing.T, monthlyExpenses float64, startMonth string,
 			Phases:  models.DefaultSpendingPhases(),
 		},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	return s
 }
 

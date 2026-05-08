@@ -1,9 +1,11 @@
 package retirement
 
 import (
-	"budget2/internal/models"
 	"sort"
 	"strings"
+
+	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatIfSettings, transitionYear int) *models.WhatIfSettings {
@@ -52,8 +54,8 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 		prepared.HealthcarePersons = persons
 	}
 
-	prepared.NormalizePhaseAgeReference()
-	prepared.ComputeAges()
+	prepare.NormalizePhaseAgeReference(&prepared)
+	prepare.ComputeAges(&prepared)
 
 	return &prepared
 }
@@ -164,16 +166,8 @@ func rebaseRothConversion(config *models.RothConversionConfig, transitionYear in
 	return &result
 }
 
-func (c *Calculator) nextChainTransition(currentYear int, nextChainIndex int, primarySettings *models.WhatIfSettings) (int, *models.WhatIfSettings) {
-	if nextChainIndex >= len(c.ResolvedChain) {
-		return nextChainIndex, nil
-	}
-	link := c.ResolvedChain[nextChainIndex]
-	currentAge := primarySettings.CurrentAge + currentYear
-	if currentAge >= link.TransitionAge {
-		transitionYear := link.TransitionAge - primarySettings.CurrentAge
-		prepared := prepareChainedSettings(link.Settings, primarySettings, transitionYear)
-		return nextChainIndex + 1, prepared
-	}
-	return nextChainIndex, nil
-}
+// Calculator.nextChainTransition was the chain-transition resolver
+// used by the deprecated retirement-side backtest.go. With backtest's
+// move to analysis (which routes through engine.Input.Hooks), no caller
+// remains. Engine now owns the canonical chain-transition flow via the
+// hook supplied by retirement.DefaultHooks().

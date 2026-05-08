@@ -1,113 +1,19 @@
-package retirement
+package analysis
 
 import (
 	"sort"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/history"
 )
-
-func TestHistoricalDataExists(t *testing.T) {
-	data := GetHistoricalReturns()
-
-	if len(data) < 90 {
-		t.Errorf("Expected at least 90 years of data, got %d", len(data))
-	}
-
-	// Check first year
-	if data[0].Year != 1928 {
-		t.Errorf("Expected first year 1928, got %d", data[0].Year)
-	}
-
-	// Check data is sequential
-	for i := 1; i < len(data); i++ {
-		if data[i].Year != data[i-1].Year+1 {
-			t.Errorf("Data not sequential at index %d: %d followed by %d", i-1, data[i-1].Year, data[i].Year)
-		}
-	}
-}
-
-func TestGetHistoricalSequence(t *testing.T) {
-	// Valid sequence
-	seq := GetHistoricalSequence(1950, 30)
-	if seq == nil {
-		t.Fatal("Expected valid sequence for 1950")
-	}
-	if len(seq) != 30 {
-		t.Errorf("Expected 30 years, got %d", len(seq))
-	}
-	if seq[0].Year != 1950 {
-		t.Errorf("Expected first year 1950, got %d", seq[0].Year)
-	}
-
-	// Invalid start year (before data)
-	seq = GetHistoricalSequence(1900, 30)
-	if seq != nil {
-		t.Error("Expected nil for year before data")
-	}
-
-	// Not enough data remaining
-	seq = GetHistoricalSequence(2020, 30)
-	if seq != nil {
-		t.Error("Expected nil when not enough data remaining")
-	}
-}
-
-func TestGetAvailableStartYears(t *testing.T) {
-	years := GetAvailableStartYears(30)
-
-	if len(years) == 0 {
-		t.Fatal("Expected some available years")
-	}
-
-	// First available year should be 1928
-	if years[0] != 1928 {
-		t.Errorf("First year should be 1928, got %d", years[0])
-	}
-
-	// Should not include years that don't have 30 years of remaining data
-	lastYear := years[len(years)-1]
-	if lastYear > GetHistoricalReturns()[len(GetHistoricalReturns())-1].Year-29 {
-		t.Errorf("Last available year %d is too recent", lastYear)
-	}
-}
-
-func TestGetHistoricalStats(t *testing.T) {
-	avgStock, avgBond, avgCash, avgInflation, stockStdDev, bondStdDev := GetHistoricalStats()
-
-	// Stock average should be positive (historically ~10%)
-	if avgStock < 5 || avgStock > 15 {
-		t.Errorf("Stock average %f outside reasonable range [5, 15]", avgStock)
-	}
-
-	// Bond average should be positive (historically ~5%)
-	if avgBond < 1 || avgBond > 10 {
-		t.Errorf("Bond average %f outside reasonable range [1, 10]", avgBond)
-	}
-
-	// Cash average should be positive (historically ~3%)
-	if avgCash < 1 || avgCash > 6 {
-		t.Errorf("Cash average %f outside reasonable range [1, 6]", avgCash)
-	}
-
-	// Inflation average should be positive (historically ~3%)
-	if avgInflation < 1 || avgInflation > 6 {
-		t.Errorf("Inflation average %f outside reasonable range [1, 6]", avgInflation)
-	}
-
-	// Stock standard deviation should be meaningful
-	if stockStdDev < 10 || stockStdDev > 25 {
-		t.Errorf("Stock std dev %f outside reasonable range [10, 25]", stockStdDev)
-	}
-
-	// Bond standard deviation should be meaningful
-	if bondStdDev < 5 || bondStdDev > 15 {
-		t.Errorf("Bond std dev %f outside reasonable range [5, 15]", bondStdDev)
-	}
-}
 
 func TestRunHistoricalBacktest(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3500,
 		CurrentAge:            65,
@@ -118,8 +24,8 @@ func TestRunHistoricalBacktest(t *testing.T) {
 		RothPercent:           10.0,
 	}
 
-	calc := NewCalculator(settings)
-	result := calc.RunHistoricalBacktest()
+	in := engineInput(t, settings)
+	result := HistoricalBacktest(in, history.DefaultData())
 
 	if result == nil {
 		t.Fatal("Expected backtest result")
@@ -220,6 +126,10 @@ func TestHistoricalFailureOrderingUsesRelativeTiming(t *testing.T) {
 
 func TestRunSingleHistoricalSequence(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3000,
 		CurrentAge:            65,
@@ -230,16 +140,17 @@ func TestRunSingleHistoricalSequence(t *testing.T) {
 		RothPercent:           10.0,
 	}
 
-	calc := NewCalculator(settings)
+	in := engineInput(t, settings)
+	data := history.DefaultData()
 
 	// Test a known good period (1982 bull market start)
-	goodResult := calc.runSingleHistoricalSequence(1982)
+	goodResult := runSingleHistoricalSequence(in, data, 1982)
 	if !goodResult.Survives {
 		t.Error("1982 sequence should typically survive with reasonable withdrawal")
 	}
 
 	// Test starting before Great Depression
-	depressionResult := calc.runSingleHistoricalSequence(1929)
+	depressionResult := runSingleHistoricalSequence(in, data, 1929)
 	// We just verify it runs without error - survival depends on withdrawal rate
 	if depressionResult.StartYear != 1929 {
 		t.Errorf("Expected start year 1929, got %d", depressionResult.StartYear)
@@ -270,8 +181,9 @@ func TestHistoricalBacktestHonorsProjectionTiming(t *testing.T) {
 	endSettings := *base
 	endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
 
-	startResult := NewCalculator(&startSettings).runSingleHistoricalSequence(1990)
-	endResult := NewCalculator(&endSettings).runSingleHistoricalSequence(1990)
+	data := history.DefaultData()
+	startResult := runSingleHistoricalSequence(engineInput(t, &startSettings), data, 1990)
+	endResult := runSingleHistoricalSequence(engineInput(t, &endSettings), data, 1990)
 
 	if startResult.FinalBalance >= endResult.FinalBalance {
 		t.Fatalf("expected start-of-month backtest balance below end-of-month, got start=%.2f end=%.2f",
@@ -281,6 +193,10 @@ func TestHistoricalBacktestHonorsProjectionTiming(t *testing.T) {
 
 func TestBacktestWithBigTicketItems(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3000,
 		CurrentAge:            65,
@@ -300,8 +216,7 @@ func TestBacktestWithBigTicketItems(t *testing.T) {
 		},
 	}
 
-	calc := NewCalculator(settings)
-	result := calc.runSingleHistoricalSequence(1990)
+	result := runSingleHistoricalSequence(engineInput(t, settings), history.DefaultData(), 1990)
 
 	// With a big income item, should likely survive
 	if result.StartYear != 1990 {
@@ -312,6 +227,10 @@ func TestBacktestWithBigTicketItems(t *testing.T) {
 
 func TestBacktestWithRothConversion(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3000,
 		CurrentAge:            65,
@@ -328,8 +247,7 @@ func TestBacktestWithRothConversion(t *testing.T) {
 		},
 	}
 
-	calc := NewCalculator(settings)
-	result := calc.runSingleHistoricalSequence(1990)
+	result := runSingleHistoricalSequence(engineInput(t, settings), history.DefaultData(), 1990)
 
 	// Roth conversion should move money but not affect survival
 	if result.StartYear != 1990 {
@@ -340,6 +258,10 @@ func TestBacktestWithRothConversion(t *testing.T) {
 func TestFinalBalanceRealCalculation(t *testing.T) {
 	// Test that FinalBalanceReal = FinalBalance / CumulativeInflation
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 2500, // Low withdrawal to ensure survival
 		CurrentAge:            65,
@@ -352,8 +274,7 @@ func TestFinalBalanceRealCalculation(t *testing.T) {
 		CashPercent:           10.0,
 	}
 
-	calc := NewCalculator(settings)
-	result := calc.runSingleHistoricalSequence(1982) // 1982 was a good starting year
+	result := runSingleHistoricalSequence(engineInput(t, settings), history.DefaultData(), 1982) // 1982 was a good starting year
 
 	// If portfolio survives, verify the real balance calculation
 	if result.Survives && result.FinalBalance > 0 && result.CumulativeInflation > 0 {
@@ -399,9 +320,6 @@ func TestAssetAllocationDefaults(t *testing.T) {
 	}
 
 	// Case 3: 100% bonds (0 stocks, 0 cash but intentionally set)
-	// This is the edge case - user would need to set cash to a tiny value to indicate intent
-	// With current design, if stock=0 and cash=0, we default to 60/40/0
-	// This is documented behavior - users wanting 100% bonds should set cash to 0.01
 	settings3 := &models.WhatIfSettings{
 		StockPercent: 0,
 		CashPercent:  0.01, // Tiny cash value indicates intentional allocation
@@ -415,67 +333,10 @@ func TestAssetAllocationDefaults(t *testing.T) {
 	}
 }
 
-func TestHistoricalBacktest_ChainTransition(t *testing.T) {
-	primary := models.DefaultWhatIfSettings()
-	primary.CurrentAge = 60
-	primary.ProjectionYears = 30
-	primary.PortfolioValue = 500000
-	primary.MonthlyLivingExpenses = 2000
-	primary.TaxDeferredPercent = 50
-	primary.RothPercent = 25
-
-	linked := models.DefaultWhatIfSettings()
-	linked.MonthlyLivingExpenses = 8000
-
-	chainCalc := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
-	})
-	noChainCalc := NewCalculator(primary)
-
-	chainBT := chainCalc.RunHistoricalBacktest()
-	noChainBT := noChainCalc.RunHistoricalBacktest()
-
-	if chainBT == nil || noChainBT == nil {
-		t.Fatal("expected non-nil backtest results")
-	}
-
-	if chainBT.SuccessRate >= noChainBT.SuccessRate {
-		t.Errorf("chained backtest success (%f) should be lower than no-chain (%f)",
-			chainBT.SuccessRate, noChainBT.SuccessRate)
-	}
-}
-
-// F-057: GetAvailableStartYears for a 30-year horizon over 1928-2024
-// (97 years of data) must produce 97 - 30 + 1 = 68 starting years
-// (1928 through 1995 inclusive). Pre-fix produced 67 (excluded 1995).
-func TestGetAvailableStartYears_F057_OffByOne(t *testing.T) {
-	years := GetAvailableStartYears(30)
-	if len(years) != 68 {
-		t.Errorf("30-year horizon: got %d start years, want 68", len(years))
-	}
-	if len(years) > 0 && years[0] != 1928 {
-		t.Errorf("first start year = %d; want 1928", years[0])
-	}
-	if len(years) > 0 && years[len(years)-1] != 1995 {
-		t.Errorf("last start year = %d; want 1995", years[len(years)-1])
-	}
-}
-
-func TestGetAvailableStartYears_F057_FullHistoryHorizon(t *testing.T) {
-	// 97-year horizon over 97 years of data: exactly 1 start year.
-	years := GetAvailableStartYears(97)
-	if len(years) != 1 {
-		t.Errorf("97-year horizon: got %d start years, want 1", len(years))
-	}
-	if len(years) > 0 && years[0] != 1928 {
-		t.Errorf("only start year = %d; want 1928", years[0])
-	}
-}
-
-func TestGetAvailableStartYears_F057_LongerThanHistory(t *testing.T) {
-	// Horizon longer than data: zero start years, no panic.
-	years := GetAvailableStartYears(98)
-	if len(years) != 0 {
-		t.Errorf("98-year horizon: got %d start years, want 0", len(years))
-	}
-}
+// TestHistoricalBacktest_ChainTransition lives in the retirement
+// package (see backtest_chain_test.go) because chain transitions
+// require engine.Input.Hooks.ResolveChainTransition to be populated
+// from retirement.DefaultHooks(). Analysis-package tests can't import
+// retirement (cycle) to call DefaultHooks. The retirement-side test
+// exercises the same path through Calculator.RunHistoricalBacktest,
+// which delegates here.

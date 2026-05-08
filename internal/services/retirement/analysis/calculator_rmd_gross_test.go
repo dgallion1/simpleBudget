@@ -1,10 +1,11 @@
-package retirement
+package analysis
 
 import (
 	"math"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 // F-073: when the RMD is forced but cash is not needed (surplus path),
@@ -14,13 +15,13 @@ import (
 // tax/MAGI math and must remain gross.
 func TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
-	taxable := newTaxableAccountState(s, 0)
+	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 1_000_000.0
 	rothBalance := 0.0
 	monthlyRMD := 5_000.0
 	marginalRate := 0.22
 
-	result := executePortfolioCashFlowWithTaxableState(
+	result := engine.ExecutePortfolioCashFlowWithTaxableState(
 		0.0, // neededFromPortfolio == 0 → surplus path (else-branch at line 853)
 		monthlyRMD,
 		true,        // allowTaxDeferred
@@ -58,7 +59,7 @@ func TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross(t *testing.T) {
 // (cash needed but RMD exceeds what was used to satisfy expenses).
 func TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
-	taxable := newTaxableAccountState(s, 0)
+	taxable := engine.NewTaxableAccountState(s, 0)
 	taxable.MarketValue = 50_000
 	taxable.CostBasis = 50_000
 	taxDeferred := 1_000_000.0
@@ -67,7 +68,7 @@ func TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross(t *t
 	marginalRate := 0.22
 	needed := 1_000.0 // small need; RMD will satisfy it and have surplus
 
-	result := executePortfolioCashFlowWithTaxableState(
+	result := engine.ExecutePortfolioCashFlowWithTaxableState(
 		needed,
 		monthlyRMD,
 		true,

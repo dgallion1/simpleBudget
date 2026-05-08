@@ -1,9 +1,11 @@
-package retirement
+package analysis
 
 import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // F-075: a projection starting in 2033 with the older spouse at age 73
@@ -22,7 +24,7 @@ func TestProjection_F075_2033StartAge73NoRMD(t *testing.T) {
 	s.StartDate = "2033-01"
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil || len(proj.Months) < 12 {
 		t.Fatal("nil/short projection")
 	}
@@ -52,7 +54,7 @@ func TestProjection_F075_2033StartAge75DoesRMD(t *testing.T) {
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil || len(proj.Months) < 12 {
 		t.Fatal("nil/short projection")
 	}
@@ -79,7 +81,7 @@ func TestProjection_F075_2026StartAge73DoesRMD(t *testing.T) {
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := engine.New().Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	if proj == nil {
 		t.Fatal("nil projection")
 	}

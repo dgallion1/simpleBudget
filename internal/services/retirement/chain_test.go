@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func intPtr(v int) *int { return &v }
@@ -90,10 +91,10 @@ func TestSensitivity_ChainPropagated(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	calcChain := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	calcChain := newTestCalcWithChain(t, primary, []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	})
-	calcNoChain := NewCalculator(primary)
+	calcNoChain := newTestCalc(t, primary)
 
 	sensChain := calcChain.CalculateSensitivity()
 	sensNoChain := calcNoChain.CalculateSensitivity()
@@ -128,10 +129,10 @@ func TestFailurePoints_ChainPropagated(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	calcChain := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	calcChain := newTestCalcWithChain(t, primary, []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	})
-	calcNoChain := NewCalculator(primary)
+	calcNoChain := newTestCalc(t, primary)
 
 	fpChain := calcChain.CalculateFailurePoints()
 	fpNoChain := calcNoChain.CalculateFailurePoints()
@@ -174,7 +175,7 @@ func TestPrepareChainedSettings(t *testing.T) {
 		{ID: "primary", Name: "You", BirthMonth: "1966-04", Role: models.PersonRolePrimary},
 		{ID: "spouse", Name: "Spouse", BirthMonth: "1968-04", Role: models.PersonRoleSpouse},
 	}
-	primary.ComputeAges()
+	prepare.ComputeAges(primary)
 
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 3000

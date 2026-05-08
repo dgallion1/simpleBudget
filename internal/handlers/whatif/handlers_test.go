@@ -19,6 +19,8 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/testutil"
@@ -2774,26 +2776,29 @@ func TestHandleWhatIfDeleteChainLink_NegativeIndex(t *testing.T) {
 	}
 }
 
-// ── buildCalculator ─────────────────────────────────────────────────────────
+// ── buildEngineInput ────────────────────────────────────────────────────────
 
-func TestBuildCalculator_NoChain(t *testing.T) {
+func TestBuildEngineInput_NoChain(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	s := models.DefaultWhatIfSettings()
-	calc, hash, err := buildCalculator(s)
+	in, hash, err := buildEngineInput(s)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if calc == nil {
-		t.Fatal("expected non-nil calculator")
+	if in.Prepared.Settings() == nil {
+		t.Fatal("expected non-nil Prepared.Settings()")
+	}
+	if len(in.Chain) != 0 {
+		t.Fatalf("expected empty chain, got %d links", len(in.Chain))
 	}
 	if hash == "" {
 		t.Fatal("expected non-empty hash")
 	}
 }
 
-func TestBuildCalculator_WithChain(t *testing.T) {
+func TestBuildEngineInput_WithChain(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
@@ -2810,19 +2815,22 @@ func TestBuildCalculator_WithChain(t *testing.T) {
 	s.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: targetFile, TransitionAge: 70},
 	}
-	calc, hash, err := buildCalculator(s)
+	in, hash, err := buildEngineInput(s)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if calc == nil {
-		t.Fatal("expected non-nil calculator")
+	if in.Prepared.Settings() == nil {
+		t.Fatal("expected non-nil Prepared.Settings()")
+	}
+	if len(in.Chain) != 1 {
+		t.Fatalf("expected 1 chain link, got %d", len(in.Chain))
 	}
 	if hash == "" {
 		t.Fatal("expected non-empty hash")
 	}
 }
 
-func TestBuildCalculator_ChainBadFile(t *testing.T) {
+func TestBuildEngineInput_ChainBadFile(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
@@ -2830,7 +2838,7 @@ func TestBuildCalculator_ChainBadFile(t *testing.T) {
 	s.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: "nonexistent.json", TransitionAge: 70},
 	}
-	_, _, err := buildCalculator(s)
+	_, _, err := buildEngineInput(s)
 	if err == nil {
 		t.Fatal("expected error for bad chain file")
 	}
@@ -3050,13 +3058,13 @@ func TestProjectionChartEvents_F078_RMDStartsLabel_LateYearBirth(t *testing.T) {
 	s.Persons = []models.Person{
 		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: "1959-12"},
 	}
-	s.ComputeAges()
+	prepare.ComputeAges(s)
 	s.PortfolioValue = 1_000_000
 	s.TaxDeferredPercent = 100
 	s.ProjectionYears = 10
 
-	calc := retirement.NewCalculator(s)
-	proj := calc.RunProjection()
+	eng := engine.New()
+	proj := eng.Run(engine.Input{Prepared: prepare.MustFrom(t, s)})
 	events := buildProjectionChartEvents(s, proj)
 
 	for _, e := range events {
@@ -5427,7 +5435,7 @@ func TestHandleWhatIfSocialSecurity_PopulatesPortfolio(t *testing.T) {
 		{ID: "p1", Name: "You", BirthMonth: "1958-11", Role: models.PersonRolePrimary},
 		{ID: "p2", Name: "Spouse", BirthMonth: "1971-08", Role: models.PersonRoleSpouse},
 	}
-	settings.ComputeAges()
+	prepare.ComputeAges(settings)
 	settings.SocialSecurity = &models.SocialSecurityConfig{
 		FRABenefit:       4100,
 		FRA:              66,

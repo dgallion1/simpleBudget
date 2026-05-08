@@ -200,13 +200,13 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 			t.Fatalf("expected positive federal tax and zero state tax, got federal=%.2f state=%.2f", wantFederal, wantState)
 		}
 
-		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
+		month0Taxes := accumulator.EstimateMonthlyTaxes(tc, 0, 0, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
 		if math.Abs(month0Taxes-wantTotal/12) > 0.01 {
 			t.Fatalf("month 0 taxes = %.2f, want %.2f", month0Taxes, wantTotal/12)
 		}
 
-		accumulator.applyMonth(monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0, month0Taxes)
-		month1Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 1, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
+		accumulator.ApplyMonth(monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0, month0Taxes)
+		month1Taxes := accumulator.EstimateMonthlyTaxes(tc, 0, 1, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
 		if math.Abs(month1Taxes-wantTotal/12) > 0.01 {
 			t.Fatalf("month 1 taxes = %.2f, want %.2f", month1Taxes, wantTotal/12)
 		}
@@ -216,7 +216,7 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 		conversionAmount := 12000.0
 		accumulator := projectionTaxAccumulator{}
 
-		month0Taxes := accumulator.estimateMonthlyTaxes(tc, 0, 0, 0, 0, 0, 0, 0, 0, conversionAmount)
+		month0Taxes := accumulator.EstimateMonthlyTaxes(tc, 0, 0, 0, 0, 0, 0, 0, 0, conversionAmount)
 		_, _, wantTotal, _ := tc.CalculateTotalTax(conversionAmount, 0)
 
 		if math.Abs(month0Taxes-wantTotal/12) > 0.01 {

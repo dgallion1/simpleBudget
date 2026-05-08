@@ -631,6 +631,11 @@ func (c *Calculator) runSSPortfolioCellMC(primaryClaimAge, spouseClaimAge int) *
 		return nil
 	}
 	cellCalc := NewCalculatorWithChain(clone, c.ResolvedChain)
+	// Parity-window: propagate the MC seed override so SS portfolio cells
+	// run deterministically when parity tests pin the seed.
+	if c.mcSeedOverride.set {
+		cellCalc.SetMonteCarloSeedForParity(c.mcSeedOverride.seed)
+	}
 	return cellCalc.RunMonteCarloSimulation(ssPortfolioMonteCarloRuns)
 }
 

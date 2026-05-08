@@ -18,10 +18,6 @@ func New() *Engine { return &Engine{} }
 // Run produces a deterministic monthly projection for in. Returns a
 // fully populated *models.ProjectionResult. Never returns nil. Run is a
 // pure function of in.
-//
-// During Task 1a/1b/1c the body is a stub; the real implementation
-// arrives in Task 1d once all helper dependencies have been moved into
-// this package.
 func (e *Engine) Run(in Input) *models.ProjectionResult {
-	panic("engine.Run: not yet implemented (arrives in Task 1d)")
+	return runMonthlyLoop(in)
 }

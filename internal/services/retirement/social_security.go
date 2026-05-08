@@ -1,8 +1,10 @@
 package retirement
 
 import (
-	"budget2/internal/models"
 	"math"
+
+	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 const defaultSocialSecurityFRA = 67
@@ -624,59 +626,31 @@ func (c *Calculator) buildSSPortfolioOptions(
 }
 
 func (c *Calculator) runSSPortfolioCellMC(primaryClaimAge, spouseClaimAge int) *models.MonteCarloAnalysis {
-	clone := c.cloneSettingsWithClaimAges(primaryClaimAge, spouseClaimAge)
-	if clone == nil {
+	clone, ok := c.cloneSettingsWithClaimAges(primaryClaimAge, spouseClaimAge)
+	if !ok {
 		return nil
 	}
 	cellCalc := NewCalculatorWithChain(clone, c.ResolvedChain)
 	return cellCalc.RunMonteCarloSimulation(ssPortfolioMonteCarloRuns)
 }
 
-func (c *Calculator) cloneSettingsWithClaimAges(primaryClaimAge, spouseClaimAge int) *models.WhatIfSettings {
+// cloneSettingsWithClaimAges produces a prepared snapshot identical to the
+// calculator's settings except for the SS claim ages. The deep-copy in
+// prepare.From handles slice/pointer aliasing, so we only need a shallow
+// struct copy plus a fresh SocialSecurity struct here.
+func (c *Calculator) cloneSettingsWithClaimAges(primaryClaimAge, spouseClaimAge int) (prepare.PreparedSettings, bool) {
 	if c == nil || c.Settings == nil {
-		return nil
+		return prepare.PreparedSettings{}, false
 	}
 
-	clone := *c.Settings
-	clone.ScenarioChain = append([]models.ScenarioChainLink(nil), c.Settings.ScenarioChain...)
-	clone.Persons = append([]models.Person(nil), c.Settings.Persons...)
-	clone.HealthcarePersons = append([]models.HealthcarePerson(nil), c.Settings.HealthcarePersons...)
-	clone.IncomeSources = append([]models.IncomeSource(nil), c.Settings.IncomeSources...)
-	clone.ExpenseSources = append([]models.ExpenseSource(nil), c.Settings.ExpenseSources...)
-	clone.RemovedIncomeSources = append([]models.IncomeSource(nil), c.Settings.RemovedIncomeSources...)
-	clone.RemovedExpenseSources = append([]models.ExpenseSource(nil), c.Settings.RemovedExpenseSources...)
-	clone.BigTicketItems = append([]models.BigTicketItem(nil), c.Settings.BigTicketItems...)
-	clone.RemovedBigTicketItems = append([]models.BigTicketItem(nil), c.Settings.RemovedBigTicketItems...)
-
-	if c.Settings.SpendingPhaseConfig != nil {
-		phaseConfig := *c.Settings.SpendingPhaseConfig
-		phaseConfig.Phases = append([]models.SpendingPhase(nil), c.Settings.SpendingPhaseConfig.Phases...)
-		clone.SpendingPhaseConfig = &phaseConfig
-	}
-	if c.Settings.TaxConfig != nil {
-		taxConfig := *c.Settings.TaxConfig
-		clone.TaxConfig = &taxConfig
-	}
-	if c.Settings.RothConversion != nil {
-		rothConversion := *c.Settings.RothConversion
-		clone.RothConversion = &rothConversion
-	}
-	if c.Settings.GlidePath != nil {
-		glidePath := *c.Settings.GlidePath
-		clone.GlidePath = &glidePath
-	}
-	if c.Settings.Guardrails != nil {
-		guardrails := *c.Settings.Guardrails
-		clone.Guardrails = &guardrails
-	}
+	cfg := *c.Settings
 	if c.Settings.SocialSecurity != nil {
 		ss := *c.Settings.SocialSecurity
 		ss.ClaimAge = primaryClaimAge
 		ss.SpouseClaimAge = spouseClaimAge
-		clone.SocialSecurity = &ss
+		cfg.SocialSecurity = &ss
 	}
-
-	return &clone
+	return perturbAndPrepare(&cfg), true
 }
 
 func bestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfolioOption, bool) {

@@ -34,7 +34,17 @@ func fixtureProjection(months int, taxDeferredFn func(m int) float64, rmdFn func
 	return out
 }
 
-func newCalcF072(currentAge, spouseAge int, portfolio, tdPercent float64, projYears int, startDate string) *Calculator {
+func newCalcF072(t *testing.T, currentAge, spouseAge int, portfolio, tdPercent float64, projYears int, startDate string) *Calculator {
+	t.Helper()
+	persons := []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(startDate, currentAge)},
+	}
+	if spouseAge > 0 {
+		persons = append(persons, models.Person{
+			ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse,
+			BirthMonth: models.BirthMonthForAge(startDate, spouseAge),
+		})
+	}
 	s := &models.WhatIfSettings{
 		CurrentAge:         currentAge,
 		SpouseAge:          spouseAge,
@@ -42,8 +52,9 @@ func newCalcF072(currentAge, spouseAge int, portfolio, tdPercent float64, projYe
 		TaxDeferredPercent: tdPercent,
 		ProjectionYears:    projYears,
 		StartDate:          startDate,
+		Persons:            persons,
 	}
-	return NewCalculator(s)
+	return newTestCalc(t, s)
 }
 
 // 1. Depletion before first RMD year → empty Projections, DepletedBeforeRMD true.
@@ -51,7 +62,7 @@ func TestBuildRMDAnalysis_F072_DepletionBeforeRMD(t *testing.T) {
 	// F-077: StartDate=2019-01 with CurrentAge=60 → birth year 1959 → applicable
 	// age 73 (legacy SECURE 2.0 boundary). Preserves the test's original
 	// "startsInYears=13" assertion under birth-year semantics.
-	calc := newCalcF072(60, 0, 100_000, 60, 30, "2019-01")
+	calc := newCalcF072(t, 60, 0, 100_000, 60, 30, "2019-01")
 	depletion := 24 // month 24 = year 2
 	proj := fixtureProjection(360, func(m int) float64 { return 1.0 }, nil, &depletion)
 
@@ -83,7 +94,7 @@ func TestBuildRMDAnalysis_F072_DepletionDuringRMD(t *testing.T) {
 	// → first RMD year is 13 (age 73); fixture supplies non-zero RMD only in
 	// years 13 and 14 (2 rows); year 15 hits depletion break.
 	// F-077: StartDate=2019-01 → birth 1959 → applicable age 73 preserved.
-	calc := newCalcF072(60, 0, 100_000, 60, 30, "2019-01")
+	calc := newCalcF072(t, 60, 0, 100_000, 60, 30, "2019-01")
 	depletion := 12 * 15
 	proj := fixtureProjection(360,
 		func(m int) float64 { return 60_000 - float64(m)*100 }, // balance trends down
@@ -124,7 +135,7 @@ func TestBuildRMDAnalysis_F072_DepletionDuringRMD(t *testing.T) {
 func TestBuildRMDAnalysis_F072_FullTenYears_NoDepletion(t *testing.T) {
 	// olderAge=72, startAge=73, projection survives full 30 years.
 	// Year 1..29 are RMD years; expect 20 rows (rmdCount cap), 10 in 10-yr total.
-	calc := newCalcF072(72, 0, 100_000, 60, 30, "2026-01")
+	calc := newCalcF072(t, 72, 0, 100_000, 60, 30, "2026-01")
 	proj := fixtureProjection(360,
 		func(m int) float64 { return 60_000 },
 		func(m int) float64 {
@@ -159,7 +170,7 @@ func TestBuildRMDAnalysis_F072_FullTenYears_NoDepletion(t *testing.T) {
 
 // 4. TaxDeferredPercent = 0 → empty projections, no panic.
 func TestBuildRMDAnalysis_F072_TaxDeferredPercentZero(t *testing.T) {
-	calc := newCalcF072(72, 0, 100_000, 0, 30, "2026-01")
+	calc := newCalcF072(t, 72, 0, 100_000, 0, 30, "2026-01")
 	proj := fixtureProjection(360, nil, nil, nil)
 
 	analysis := calc.BuildRMDAnalysis(proj)
@@ -179,7 +190,7 @@ func TestBuildRMDAnalysis_F072_TaxDeferredPercentZero(t *testing.T) {
 func TestBuildRMDAnalysis_F072_StartAge75_Secure20(t *testing.T) {
 	// olderAge=72, projection start 2034 → effectiveStartAge=75.
 	// Expect first emitted row at age 75 (year 3).
-	calc := newCalcF072(72, 0, 100_000, 60, 30, "2034-01")
+	calc := newCalcF072(t, 72, 0, 100_000, 60, 30, "2034-01")
 	proj := fixtureProjection(360,
 		func(m int) float64 { return 60_000 },
 		func(m int) float64 {
@@ -205,7 +216,7 @@ func TestBuildRMDAnalysis_F072_StartAge75_Secure20(t *testing.T) {
 
 // 6. olderAge already at RMD age → first row at year 0 uses Months[0] balance.
 func TestBuildRMDAnalysis_F072_AlreadyAtRMDAge(t *testing.T) {
-	calc := newCalcF072(75, 0, 100_000, 80, 20, "2026-01")
+	calc := newCalcF072(t, 75, 0, 100_000, 80, 20, "2026-01")
 	proj := fixtureProjection(240,
 		func(m int) float64 {
 			if m == 0 {
@@ -246,7 +257,7 @@ func TestBuildRMDAnalysis_F072_AlreadyAtRMDAge(t *testing.T) {
 func TestBuildRMDAnalysis_F072_RMDPercentIsTableValue(t *testing.T) {
 	// olderAge=73, balance 100k, but actual RMD is only 1000 (well below table %).
 	// Table for age 73 → factor 26.5 → percent = 100/26.5 ≈ 3.7736.
-	calc := newCalcF072(73, 0, 100_000, 60, 5, "2026-01")
+	calc := newCalcF072(t, 73, 0, 100_000, 60, 5, "2026-01")
 	proj := fixtureProjection(60,
 		func(m int) float64 { return 60_000 },
 		func(m int) float64 {
@@ -281,7 +292,7 @@ func TestBuildRMDAnalysis_F072_RMDPercentIsTableValue(t *testing.T) {
 func TestBuildRMDAnalysis_F072_DepletionAtFirstRMDYear(t *testing.T) {
 	// olderAge=65, startAge=73, startsInYears=8
 	// depletion at month 96 → dy=8 (exactly first RMD year)
-	calc := newCalcF072(65, 0, 100_000, 60, 30, "2026-01")
+	calc := newCalcF072(t, 65, 0, 100_000, 60, 30, "2026-01")
 	depletion := 96
 	proj := fixtureProjection(360, func(m int) float64 { return 1.0 }, nil, &depletion)
 

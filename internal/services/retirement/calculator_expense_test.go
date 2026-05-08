@@ -19,7 +19,7 @@ func TestCalculateTotalExpenses(t *testing.T) {
 		s.InflationRate = 3.0
 		s.SpendingDeclineRate = 1.0
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 
 		// Month 0: no inflation applied
 		got := calc.CalculateTotalExpenses(0)
@@ -67,7 +67,7 @@ func TestCalculateTotalExpenses(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 
 		// Month 0: pre-Medicare, ACA cost
 		got := calc.CalculateTotalExpenses(0)
@@ -98,7 +98,7 @@ func TestCalculateTotalExpenses(t *testing.T) {
 			{ID: "e2", Name: "Fixed", Amount: 300, StartYear: 0, EndYear: 0, Inflation: false},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 
 		// Month 0: living=2000, inflating=500, fixed=300
 		got := calc.CalculateTotalExpenses(0)
@@ -139,7 +139,7 @@ func TestCalculateTotalExpenses(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 
 		// Month 0: age 65, Go-Go phase, multiplier 1.0
 		got := calc.CalculateTotalExpenses(0)
@@ -174,7 +174,7 @@ func TestCalculateTotalExpenses(t *testing.T) {
 			{ID: "e1", Name: "Insurance", Amount: 400, Discretionary: false},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		got := calc.CalculateTotalExpenses(0)
 		// living=1000*0.5=500, travel=600*0.5=300, insurance=400 (non-discretionary, no phase multiplier)
 		want := 500.0 + 300.0 + 400.0
@@ -199,7 +199,7 @@ func TestCalculateExpenseBreakdown(t *testing.T) {
 			{ID: "e1", Name: "Utilities", Amount: 200, Discretionary: false},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		bd := calc.CalculateExpenseBreakdown(0)
 
 		// Essential = living(3000) + utilities(200)
@@ -235,7 +235,7 @@ func TestCalculateExpenseBreakdown(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		bd := calc.CalculateExpenseBreakdown(0)
 
 		// Healthcare is essential: living(2000) + healthcare(450)
@@ -266,7 +266,7 @@ func TestCalculateExpenseBreakdown(t *testing.T) {
 			{ID: "e1", Name: "Tax", Amount: 500, Discretionary: false},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		bd := calc.CalculateExpenseBreakdown(0)
 
 		// Essential = living(2000*0.5=1000) + tax(500, no phase multiplier on non-discretionary expense source)
@@ -293,7 +293,7 @@ func TestCalculateExpenseBreakdown(t *testing.T) {
 		s.SpendingDeclineRate = 0
 		s.ExpenseSources = nil
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		bd := calc.CalculateExpenseBreakdown(12) // year 1
 
 		// Simple decline: netInflation = (10-0)/100 = 0.10
@@ -320,7 +320,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 		s.RothPercent = 0
 		s.SpendingPhaseConfig = nil
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		if fit.MonthlyExpenses < 4999 {
@@ -356,7 +356,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 			{ID: "ss", Name: "Social Security", Amount: 3500, StartMonth: 0},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		if fit.MonthlyGap >= 0 {
@@ -389,7 +389,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 			{ID: "i1", Name: "Pension", Amount: 1000, StartMonth: 0},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		if len(fit.ExpenseBreakdown) < 2 {
@@ -437,7 +437,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 		s.RothPercent = 0
 		s.SpendingPhaseConfig = nil
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// 10000*12 / 100000 * 100 = 120%
@@ -580,7 +580,7 @@ func TestRunMonteCarloSimulationWithDiscretionary(t *testing.T) {
 			{ID: "e1", Name: "Insurance", Amount: 300, Discretionary: false},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		// Need at least 100 runs for calculateSequenceRiskBreakdown to return non-nil
 		result := calc.RunMonteCarloSimulation(100)
 
@@ -643,7 +643,7 @@ func TestCalculateBudgetFitEmployerCoverage(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Healthcare cost is $0 at month 0 (employer covered), so GetTotalHealthcareCost(0) == 0
@@ -695,7 +695,7 @@ func TestCalculateBudgetFitEmployerCoverage(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		foundHealthcare := false
@@ -734,7 +734,7 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.RothPercent = 10
 		s.SpendingPhaseConfig = nil
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Should have positive MonthlyRMD since age >= 73 and TaxDeferredPercent > 0
@@ -776,7 +776,7 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.RothPercent = 5
 		s.SpendingPhaseConfig = nil
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Large tax-deferred balance at age 75 means big RMD
@@ -822,7 +822,7 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 			{ID: "ss", Name: "Social Security", Amount: 3000, StartMonth: 0},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Income (3000) > Expenses (2000), no gap
@@ -863,7 +863,7 @@ func TestCalculateBudgetFitIncomeStartMonth(t *testing.T) {
 			{ID: "pn", Name: "Pension", Amount: 1500, StartMonth: 0},          // immediate
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Social Security starts at month 36 so GetAdjustedAmount(0) returns 0.
@@ -907,7 +907,7 @@ func TestCalculateBudgetFitIncomeStartMonth(t *testing.T) {
 			{ID: "pn", Name: "Pension", Amount: 2000, StartMonth: 0},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		if len(fit.IncomeBreakdown) != 1 {
@@ -934,7 +934,7 @@ func TestFindSteadyStateMonthMultipleSources(t *testing.T) {
 			{ID: "i4", Name: "Short-term", Amount: 200, StartMonth: 24, EndMonth: &endMonth},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Steady state should be at the max start month of active sources = 60 (Annuity)
@@ -963,7 +963,7 @@ func TestFindSteadyStateMonthMultipleSources(t *testing.T) {
 			{ID: "i2", Name: "Bad Source", Amount: 500, StartMonth: 48, EndMonth: &badEnd},
 		}
 
-		calc := NewCalculator(s)
+		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
 		// Bad Source has EndMonth (10) <= StartMonth (48), so it's ignored
@@ -989,7 +989,7 @@ func TestFindSteadyStateMonth_ProjectedSocialSecurity(t *testing.T) {
 		ClaimAge:   70,
 	}
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	fit := calc.CalculateBudgetFit()
 
 	if fit.SteadyStateMonth != 60 {
@@ -1060,11 +1060,11 @@ func TestSpendingPhaseTransition_F065_DeclineRateRespected(t *testing.T) {
 	linked.TaxDeferredPercent = 0
 	linked.RothPercent = 0
 
-	chain := []ResolvedScenarioChainLink{
-		{TransitionAge: 75, Settings: linked},
+	chain := []PreparedChainLink{
+		preparedLink(t, "", 75, linked),
 	}
 
-	calc := NewCalculatorWithChain(primary, chain)
+	calc := newTestCalcWithChain(t, primary, chain)
 	result := calc.RunProjection()
 
 	if result == nil || len(result.Months) < 122 {

@@ -8,29 +8,50 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
-// ResolvedScenarioChainLink holds a pre-loaded chain link for runtime use
-type ResolvedScenarioChainLink struct {
+// PreparedChainLink holds a pre-loaded, prepared chain link for runtime use.
+type PreparedChainLink struct {
 	ScenarioFilename string
 	TransitionAge    int
-	Settings         *models.WhatIfSettings
+	Settings         prepare.PreparedSettings
 }
 
 // Calculator performs retirement projections and analysis
 type Calculator struct {
+	Prepared      prepare.PreparedSettings
 	Settings      *models.WhatIfSettings
-	ResolvedChain []ResolvedScenarioChainLink
+	ResolvedChain []PreparedChainLink
 }
 
-// NewCalculator creates a new retirement calculator with the given settings
-func NewCalculator(settings *models.WhatIfSettings) *Calculator {
-	return &Calculator{Settings: settings}
+// NewCalculator creates a new retirement calculator from a prepared settings snapshot.
+func NewCalculator(prepared prepare.PreparedSettings) *Calculator {
+	return &Calculator{
+		Prepared: prepared,
+		Settings: prepared.Settings(),
+	}
 }
 
-// NewCalculatorWithChain creates a new retirement calculator with the given settings and scenario chain
-func NewCalculatorWithChain(settings *models.WhatIfSettings, chain []ResolvedScenarioChainLink) *Calculator {
-	return &Calculator{Settings: settings, ResolvedChain: chain}
+// NewCalculatorWithChain creates a new retirement calculator with the given prepared settings and scenario chain.
+func NewCalculatorWithChain(prepared prepare.PreparedSettings, chain []PreparedChainLink) *Calculator {
+	return &Calculator{
+		Prepared:      prepared,
+		Settings:      prepared.Settings(),
+		ResolvedChain: chain,
+	}
+}
+
+// perturbAndPrepare deep-copies and re-prepares a perturbed configuration.
+// Perturbations of an already-prepared snapshot only change scalar parameters
+// (returns, inflation, expenses), so the result must always be valid; an
+// error here indicates a bug.
+func perturbAndPrepare(modified *models.WhatIfSettings) prepare.PreparedSettings {
+	p, err := prepare.From(modified)
+	if err != nil {
+		panic(fmt.Sprintf("retirement: perturbation produced invalid settings: %v", err))
+	}
+	return p
 }
 
 // PresentValue calculates the present value of a future cash flow
@@ -1823,7 +1844,7 @@ func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
 		}
 
 		// Run projection with modified settings
-		modCalc := NewCalculatorWithChain(&modifiedSettings, c.ResolvedChain)
+		modCalc := NewCalculatorWithChain(perturbAndPrepare(&modifiedSettings), c.ResolvedChain)
 		modProjection := modCalc.RunProjection()
 		modScore := modCalc.CalculateSustainabilityScore(modProjection)
 
@@ -1898,7 +1919,7 @@ func (c *Calculator) findReturnThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.InvestmentReturn = low
-	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+	modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		// Survives even at -5%, no meaningful threshold
 		return &models.FailurePoint{
@@ -1916,7 +1937,7 @@ func (c *Calculator) findReturnThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.InvestmentReturn = mid
-		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+		modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			high = mid
 		} else {
@@ -1957,7 +1978,7 @@ func (c *Calculator) findInflationThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.InflationRate = high
-	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+	modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		// Survives even at 15%, very robust
 		return &models.FailurePoint{
@@ -1975,7 +1996,7 @@ func (c *Calculator) findInflationThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.InflationRate = mid
-		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+		modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			low = mid
 		} else {
@@ -2019,7 +2040,7 @@ func (c *Calculator) findExpensesThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.MonthlyLivingExpenses = high
-	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+	modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		// Survives even at 3x expenses
 		margin := ((high / current) - 1) * 100
@@ -2038,7 +2059,7 @@ func (c *Calculator) findExpensesThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.MonthlyLivingExpenses = mid
-		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+		modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			low = mid
 		} else {
@@ -2082,7 +2103,7 @@ func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
 	modSettings.IncomeSources = append([]models.IncomeSource{}, c.Settings.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, c.Settings.ExpenseSources...)
 	modSettings.PortfolioValue = low
-	modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+	modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 	if modCalc.RunProjection().Survives {
 		return &models.FailurePoint{
 			ParamName:    "portfolio_value",
@@ -2099,7 +2120,7 @@ func (c *Calculator) findPortfolioThreshold() *models.FailurePoint {
 	for high-low > precision {
 		mid := (low + high) / 2
 		modSettings.PortfolioValue = mid
-		modCalc := NewCalculatorWithChain(&modSettings, c.ResolvedChain)
+		modCalc := NewCalculatorWithChain(perturbAndPrepare(&modSettings), c.ResolvedChain)
 		if modCalc.RunProjection().Survives {
 			high = mid
 		} else {

@@ -172,7 +172,7 @@ func (c *Calculator) nextChainTransition(currentYear int, nextChainIndex int, pr
 	currentAge := primarySettings.CurrentAge + currentYear
 	if currentAge >= link.TransitionAge {
 		transitionYear := link.TransitionAge - primarySettings.CurrentAge
-		prepared := prepareChainedSettings(link.Settings, primarySettings, transitionYear)
+		prepared := prepareChainedSettings(link.Settings.Settings(), primarySettings, transitionYear)
 		return nextChainIndex + 1, prepared
 	}
 	return nextChainIndex, nil

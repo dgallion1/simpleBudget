@@ -108,6 +108,10 @@ func TestGetHistoricalStats(t *testing.T) {
 
 func TestRunHistoricalBacktest(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3500,
 		CurrentAge:            65,
@@ -118,7 +122,7 @@ func TestRunHistoricalBacktest(t *testing.T) {
 		RothPercent:           10.0,
 	}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.RunHistoricalBacktest()
 
 	if result == nil {
@@ -220,6 +224,10 @@ func TestHistoricalFailureOrderingUsesRelativeTiming(t *testing.T) {
 
 func TestRunSingleHistoricalSequence(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3000,
 		CurrentAge:            65,
@@ -230,7 +238,7 @@ func TestRunSingleHistoricalSequence(t *testing.T) {
 		RothPercent:           10.0,
 	}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 
 	// Test a known good period (1982 bull market start)
 	goodResult := calc.runSingleHistoricalSequence(1982)
@@ -270,8 +278,8 @@ func TestHistoricalBacktestHonorsProjectionTiming(t *testing.T) {
 	endSettings := *base
 	endSettings.ProjectionTiming = models.ProjectionTimingEndOfMonth
 
-	startResult := NewCalculator(&startSettings).runSingleHistoricalSequence(1990)
-	endResult := NewCalculator(&endSettings).runSingleHistoricalSequence(1990)
+	startResult := newTestCalc(t, &startSettings).runSingleHistoricalSequence(1990)
+	endResult := newTestCalc(t, &endSettings).runSingleHistoricalSequence(1990)
 
 	if startResult.FinalBalance >= endResult.FinalBalance {
 		t.Fatalf("expected start-of-month backtest balance below end-of-month, got start=%.2f end=%.2f",
@@ -281,6 +289,10 @@ func TestHistoricalBacktestHonorsProjectionTiming(t *testing.T) {
 
 func TestBacktestWithBigTicketItems(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3000,
 		CurrentAge:            65,
@@ -300,7 +312,7 @@ func TestBacktestWithBigTicketItems(t *testing.T) {
 		},
 	}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.runSingleHistoricalSequence(1990)
 
 	// With a big income item, should likely survive
@@ -312,6 +324,10 @@ func TestBacktestWithBigTicketItems(t *testing.T) {
 
 func TestBacktestWithRothConversion(t *testing.T) {
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 3000,
 		CurrentAge:            65,
@@ -328,7 +344,7 @@ func TestBacktestWithRothConversion(t *testing.T) {
 		},
 	}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.runSingleHistoricalSequence(1990)
 
 	// Roth conversion should move money but not affect survival
@@ -340,6 +356,10 @@ func TestBacktestWithRothConversion(t *testing.T) {
 func TestFinalBalanceRealCalculation(t *testing.T) {
 	// Test that FinalBalanceReal = FinalBalance / CumulativeInflation
 	settings := &models.WhatIfSettings{
+		StartDate: "2026-01",
+		Persons: []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 65)},
+		},
 		PortfolioValue:        1000000,
 		MonthlyLivingExpenses: 2500, // Low withdrawal to ensure survival
 		CurrentAge:            65,
@@ -352,7 +372,7 @@ func TestFinalBalanceRealCalculation(t *testing.T) {
 		CashPercent:           10.0,
 	}
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.runSingleHistoricalSequence(1982) // 1982 was a good starting year
 
 	// If portfolio survives, verify the real balance calculation
@@ -427,10 +447,10 @@ func TestHistoricalBacktest_ChainTransition(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 8000
 
-	chainCalc := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	chainCalc := newTestCalcWithChain(t, primary, []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	})
-	noChainCalc := NewCalculator(primary)
+	noChainCalc := newTestCalc(t, primary)
 
 	chainBT := chainCalc.RunHistoricalBacktest()
 	noChainBT := noChainCalc.RunHistoricalBacktest()

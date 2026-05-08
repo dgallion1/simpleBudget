@@ -21,7 +21,7 @@ func TestRunProjection_TaxDeferredDelayBlocksUntilExpiry(t *testing.T) {
 	settings.InflationRate = 0
 	settings.SpendingDeclineRate = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.RunProjection()
 
 	if !result.Survives {
@@ -60,7 +60,7 @@ func TestRunProjection_ZeroDelayAllowsEarlyTaxDeferred(t *testing.T) {
 	settings.InflationRate = 0
 	settings.SpendingDeclineRate = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.RunProjection()
 
 	earlyWithdrawal := false
@@ -89,7 +89,7 @@ func TestRunProjection_RMDOverridesDelay(t *testing.T) {
 	settings.InflationRate = 0
 	settings.SpendingDeclineRate = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.RunProjection()
 
 	hasRMDWithdrawal := false
@@ -135,10 +135,10 @@ func TestRunSingleHistoricalSequence_RespectsDelay(t *testing.T) {
 	settings.InflationRate = 0
 	settings.SpendingDeclineRate = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	withDelay := calc.runSingleHistoricalSequence(1990)
 	settings.TaxDeferredDelayYears = 0
-	withoutDelay := NewCalculator(settings).runSingleHistoricalSequence(1990)
+	withoutDelay := newTestCalc(t, settings).runSingleHistoricalSequence(1990)
 
 	if !withDelay.Survives {
 		t.Fatal("expected historical backtest to treat delay-period shortfalls as temporary while tax-deferred assets remain")
@@ -163,7 +163,7 @@ func TestRunProjection_TemporaryShortfallDoesNotStopProjection(t *testing.T) {
 	settings.InflationRate = 0
 	settings.SpendingDeclineRate = 0
 
-	calc := NewCalculator(settings)
+	calc := newTestCalc(t, settings)
 	result := calc.RunProjection()
 
 	// Taxable (~$20k) will be exhausted within a few months at $5k/mo.

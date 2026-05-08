@@ -131,7 +131,7 @@ func TestBuildRMDAnalysis_F078_StartsInYearsLateYearBirth(t *testing.T) {
 	s.TaxDeferredPercent = 100
 	s.ProjectionYears = 10
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	proj := calc.RunProjection()
 	analysis := calc.BuildRMDAnalysis(proj)
 	if analysis == nil {
@@ -177,7 +177,7 @@ func TestBuildRMDAnalysis_F078_DepletionAgeUsesAgeAtYearEnd(t *testing.T) {
 	s.InflationRate = 0
 	s.ProjectionYears = 5
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	proj := calc.RunProjection()
 	analysis := calc.BuildRMDAnalysis(proj)
 	if analysis == nil || analysis.DepletionYear == nil || analysis.DepletionAge == nil {

@@ -19,6 +19,7 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/testutil"
@@ -3055,7 +3056,7 @@ func TestProjectionChartEvents_F078_RMDStartsLabel_LateYearBirth(t *testing.T) {
 	s.TaxDeferredPercent = 100
 	s.ProjectionYears = 10
 
-	calc := retirement.NewCalculator(s)
+	calc := retirement.NewCalculator(prepare.MustFrom(t, s))
 	proj := calc.RunProjection()
 	events := buildProjectionChartEvents(s, proj)
 

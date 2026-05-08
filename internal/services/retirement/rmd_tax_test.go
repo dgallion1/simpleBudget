@@ -210,7 +210,7 @@ func TestRunProjectionDeductsTaxesFromRMDCashFlow(t *testing.T) {
 	// timing semantics; start_of_year preserves the original intent.
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	result := calc.RunProjection()
 	if len(result.Months) == 0 {
 		t.Fatal("expected projection months")

@@ -28,7 +28,8 @@ func TestRMDTriggerMonth_F074_AllTimings(t *testing.T) {
 // makeRMDTimingTestCalc builds a minimal-noise 1-year retiree-only projection
 // suitable for asserting RMD-timing effects: $1M tax-deferred, no income, no
 // expenses (incl. healthcare), 7% return, 0% inflation, age 73 (RMD active).
-func makeRMDTimingTestCalc(timing models.RMDTiming) *Calculator {
+func makeRMDTimingTestCalc(t *testing.T, timing models.RMDTiming) *Calculator {
+	t.Helper()
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 73
 	s.SpouseAge = 0
@@ -54,7 +55,7 @@ func makeRMDTimingTestCalc(timing models.RMDTiming) *Calculator {
 		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 73)
 	}
 	s.ComputeAges()
-	return NewCalculator(s)
+	return newTestCalc(t, s)
 }
 
 // F-074: end_of_year timing produces a higher year-end portfolio than
@@ -62,9 +63,9 @@ func makeRMDTimingTestCalc(timing models.RMDTiming) *Calculator {
 // months before the RMD haircut. Run a 1-year projection with no other
 // expenses/income, age 73 (RMD active).
 func TestProjection_F074_TimingAffectsYearEndBalance(t *testing.T) {
-	startProj := makeRMDTimingTestCalc(models.RMDTimingStartOfYear).RunProjection()
-	midProj := makeRMDTimingTestCalc(models.RMDTimingMidYear).RunProjection()
-	endProj := makeRMDTimingTestCalc(models.RMDTimingEndOfYear).RunProjection()
+	startProj := makeRMDTimingTestCalc(t, models.RMDTimingStartOfYear).RunProjection()
+	midProj := makeRMDTimingTestCalc(t, models.RMDTimingMidYear).RunProjection()
+	endProj := makeRMDTimingTestCalc(t, models.RMDTimingEndOfYear).RunProjection()
 
 	if startProj == nil || midProj == nil || endProj == nil {
 		t.Fatal("nil projection")
@@ -111,7 +112,7 @@ func TestProjection_F074_TriggerMonthIsExclusive(t *testing.T) {
 		{models.RMDTimingEndOfYear, 11},
 	}
 	for _, c := range cases {
-		proj := makeRMDTimingTestCalc(c.timing).RunProjection()
+		proj := makeRMDTimingTestCalc(t, c.timing).RunProjection()
 		if proj == nil {
 			t.Fatalf("%s: nil projection", c.timing)
 		}

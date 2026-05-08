@@ -940,7 +940,7 @@ func TestRunSSAnalysis(t *testing.T) {
 	t.Run("nil SS config returns nil", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.SocialSecurity = nil
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if result := c.RunSSAnalysis(); result != nil {
 			t.Fatal("expected nil for nil SS config")
 		}
@@ -949,7 +949,7 @@ func TestRunSSAnalysis(t *testing.T) {
 	t.Run("zero FRA benefit returns nil", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 0}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if result := c.RunSSAnalysis(); result != nil {
 			t.Fatal("expected nil for zero FRA benefit")
 		}
@@ -964,7 +964,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			COLARate:   0.02,
 			ClaimAge:   63,
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSAnalysis()
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -980,8 +980,8 @@ func TestRunSSAnalysis(t *testing.T) {
 		s.CurrentAge = 60
 		s.SpouseAge = 60
 		s.Persons = []models.Person{
-			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
-			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
 		}
 		s.SocialSecurity = &models.SocialSecurityConfig{
 			FRABenefit:       1000,
@@ -992,7 +992,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			SpouseFRA:        67,
 			SpouseClaimAge:   67,
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSAnalysis()
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1010,8 +1010,8 @@ func TestRunSSAnalysis(t *testing.T) {
 		s.CurrentAge = 60
 		s.SpouseAge = 65
 		s.Persons = []models.Person{
-			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
-			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 65)},
 		}
 		s.SocialSecurity = &models.SocialSecurityConfig{
 			FRABenefit:       3000,
@@ -1021,7 +1021,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			SpouseFRA:        67,
 			SpouseClaimAge:   63, // <= SpouseAge, already claiming
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSAnalysis()
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1036,8 +1036,8 @@ func TestRunSSAnalysis(t *testing.T) {
 		s.CurrentAge = 60
 		s.SpouseAge = 0
 		s.Persons = []models.Person{
-			{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
-			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
 		}
 		s.SocialSecurity = &models.SocialSecurityConfig{
 			FRABenefit:       3000,
@@ -1046,7 +1046,7 @@ func TestRunSSAnalysis(t *testing.T) {
 			SpouseFRABenefit: 1000,
 			SpouseFRA:        67,
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSAnalysis()
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1085,7 +1085,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	}
 
 	t.Run("not eligible returns nil", func(t *testing.T) {
-		c := NewCalculator(base())
+		c := newTestCalc(t, base())
 		if result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis()); result != nil {
 			t.Fatal("expected nil when no claim ages are selected")
 		}
@@ -1094,7 +1094,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	t.Run("nil ssAnalysis returns nil", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 68
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if result := c.RunSSPortfolioAnalysis(nil); result != nil {
 			t.Fatal("expected nil for nil ssAnalysis")
 		}
@@ -1103,7 +1103,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	t.Run("spouse only varies spouse ages", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis())
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1133,7 +1133,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	t.Run("primary only varies primary ages", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 68 // must be > CurrentAge (67)
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis())
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1155,7 +1155,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 68 // must be > CurrentAge (67)
 		s.SocialSecurity.SpouseClaimAge = 62
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis())
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1171,7 +1171,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	t.Run("baseline delta is zero for selected age", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		result := c.RunSSPortfolioAnalysis(c.RunSSAnalysis())
 		if result == nil {
 			t.Fatal("expected analysis")
@@ -1193,7 +1193,7 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 	t.Run("monthly benefits match SS comparison table", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		ssAnalysis := c.RunSSAnalysis()
 		if ssAnalysis == nil {
 			t.Fatal("expected SS analysis")
@@ -1216,10 +1216,11 @@ func TestRunSSPortfolioAnalysis(t *testing.T) {
 }
 
 func TestCloneSettingsWithClaimAges(t *testing.T) {
-	t.Run("nil calculator returns nil", func(t *testing.T) {
+	t.Run("nil calculator returns not-ok", func(t *testing.T) {
 		var c *Calculator
-		if got := c.cloneSettingsWithClaimAges(67, 65); got != nil {
-			t.Fatal("expected nil for nil calculator")
+		_, ok := c.cloneSettingsWithClaimAges(67, 65)
+		if ok {
+			t.Fatal("expected ok=false for nil calculator")
 		}
 	})
 
@@ -1237,20 +1238,21 @@ func TestCloneSettingsWithClaimAges(t *testing.T) {
 		s.GlidePath = nil
 		s.Guardrails = nil
 
-		c := NewCalculator(s)
-		clone := c.cloneSettingsWithClaimAges(68, 65)
-		if clone == nil {
-			t.Fatal("expected non-nil clone")
+		c := newTestCalc(t, s)
+		clone, ok := c.cloneSettingsWithClaimAges(68, 65)
+		if !ok {
+			t.Fatal("expected ok=true")
 		}
-		if clone.SocialSecurity.ClaimAge != 68 {
-			t.Fatalf("ClaimAge = %d, want 68", clone.SocialSecurity.ClaimAge)
+		cs := clone.Settings()
+		if cs.SocialSecurity.ClaimAge != 68 {
+			t.Fatalf("ClaimAge = %d, want 68", cs.SocialSecurity.ClaimAge)
 		}
-		if clone.SocialSecurity.SpouseClaimAge != 65 {
-			t.Fatalf("SpouseClaimAge = %d, want 65", clone.SocialSecurity.SpouseClaimAge)
+		if cs.SocialSecurity.SpouseClaimAge != 65 {
+			t.Fatalf("SpouseClaimAge = %d, want 65", cs.SocialSecurity.SpouseClaimAge)
 		}
 	})
 
-	t.Run("full settings clones all sub-configs", func(t *testing.T) {
+	t.Run("full settings deep-copies all sub-configs", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.SocialSecurity = &models.SocialSecurityConfig{
 			FRABenefit: 2000,
@@ -1265,18 +1267,19 @@ func TestCloneSettingsWithClaimAges(t *testing.T) {
 		s.GlidePath = &models.GlidePathConfig{Enabled: true}
 		s.Guardrails = &models.GuardrailConfig{Enabled: true}
 
-		c := NewCalculator(s)
-		clone := c.cloneSettingsWithClaimAges(70, 62)
-		if clone == nil {
-			t.Fatal("expected non-nil clone")
+		c := newTestCalc(t, s)
+		clone, ok := c.cloneSettingsWithClaimAges(70, 62)
+		if !ok {
+			t.Fatal("expected ok=true")
 		}
 
-		// Verify deep copy — mutating clone shouldn't affect original
-		clone.SocialSecurity.FRABenefit = 9999
+		// Verify deep copy via prepare.From — mutating clone must not affect original.
+		cs := clone.Settings()
+		cs.SocialSecurity.FRABenefit = 9999
 		if s.SocialSecurity.FRABenefit == 9999 {
 			t.Fatal("clone shares SocialSecurity pointer with original")
 		}
-		clone.SpendingPhaseConfig.Phases[0].Name = "mutated"
+		cs.SpendingPhaseConfig.Phases[0].Name = "mutated"
 		if s.SpendingPhaseConfig.Phases[0].Name == "mutated" {
 			t.Fatal("clone shares SpendingPhaseConfig.Phases with original")
 		}
@@ -1401,7 +1404,7 @@ func TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA(t *testing.T) {
 		SpouseFRA:        67,
 		// SpouseClaimAge intentionally zero — spouse not yet claiming
 	}
-	calc := NewCalculator(s)
+	calc := newTestCalc(t, s)
 	analysis := calc.RunSSAnalysis()
 	if analysis == nil {
 		t.Fatal("expected non-nil SS analysis")

@@ -25,7 +25,7 @@ func TestProjection_F077_BornAfter1959ReachesRMDAt75(t *testing.T) {
 	s.StartDate = "2026-01"
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil || len(proj.Months) < 12*12 {
 		t.Fatalf("nil/short projection: months=%d", func() int {
 			if proj == nil {
@@ -77,7 +77,7 @@ func TestProjection_F077_BornBefore1960ReachesRMDAt73(t *testing.T) {
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil || len(proj.Months) < 7*12 {
 		t.Fatal("nil/short projection")
 	}
@@ -122,7 +122,7 @@ func TestProjection_F077_OlderSpouseDrivesRMDAge(t *testing.T) {
 	})
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil || len(proj.Months) < 4*12 {
 		t.Fatal("nil/short projection")
 	}
@@ -273,7 +273,7 @@ func TestProjection_F078_Born1959_12_TriggersRMDIn2032(t *testing.T) {
 	s.ProjectionYears = 9
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil || len(proj.Months) < 7*12 {
 		t.Fatalf("nil/short projection: months=%d", func() int {
 			if proj == nil {

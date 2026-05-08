@@ -168,7 +168,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 	t.Run("person already on Medicare", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
 		settings.DiscountRate = 5.0
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		person := models.HealthcarePerson{
 			Name:                  "Retiree",
@@ -190,7 +190,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 
 	t.Run("pre-Medicare person entire projection before Medicare", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		person := models.HealthcarePerson{
 			Name:                  "Young",
@@ -215,7 +215,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 
 	t.Run("pre-Medicare person transitions to Medicare during projection", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		person := models.HealthcarePerson{
 			Name:                  "PreRetiree",
@@ -247,7 +247,7 @@ func TestCalculateHealthcarePV(t *testing.T) {
 
 	t.Run("person exactly at Medicare age", func(t *testing.T) {
 		settings := models.DefaultWhatIfSettings()
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 
 		person := models.HealthcarePerson{
 			Name:                  "JustTurned65",
@@ -284,7 +284,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		settings.SpendingDeclineRate = 1.0
 		settings.ProjectionYears = 30
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculatePresentValueAnalysis()
 
 		// PV of expenses should be positive
@@ -345,7 +345,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		}
 		settings.ExpenseSources = []models.ExpenseSource{}
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculatePresentValueAnalysis()
 
 		if result.PVIncome <= 0 {
@@ -390,7 +390,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculatePresentValueAnalysis()
 
 		// Expenses should include both living + healthcare
@@ -418,7 +418,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		settings.IncomeSources = []models.IncomeSource{}
 		settings.ExpenseSources = []models.ExpenseSource{}
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculatePresentValueAnalysis()
 
 		livingPV := PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
@@ -459,7 +459,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculatePresentValueAnalysis()
 
 		livingPV := PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
@@ -494,7 +494,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 			},
 		}
 
-		calc := NewCalculator(settings)
+		calc := newTestCalc(t, settings)
 		result := calc.CalculatePresentValueAnalysis()
 
 		// Duration = 240 - 24 = 216 months

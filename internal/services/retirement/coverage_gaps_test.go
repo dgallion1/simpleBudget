@@ -17,7 +17,7 @@ func TestCalculateTotalIncome(t *testing.T) {
 	t.Run("no income sources", func(t *testing.T) {
 		s := defaultSettingsForTest()
 		s.IncomeSources = nil
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if got := c.CalculateTotalIncome(0); got != 0 {
 			t.Errorf("expected 0, got %f", got)
 		}
@@ -28,7 +28,7 @@ func TestCalculateTotalIncome(t *testing.T) {
 		s.IncomeSources = []models.IncomeSource{
 			{ID: "1", Name: "Pension", Amount: 2000, StartMonth: 0},
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if got := c.CalculateTotalIncome(0); got != 2000 {
 			t.Errorf("expected 2000, got %f", got)
 		}
@@ -40,7 +40,7 @@ func TestCalculateTotalIncome(t *testing.T) {
 			{ID: "1", Name: "Pension", Amount: 2000, StartMonth: 0},
 			{ID: "2", Name: "SS", Amount: 1500, StartMonth: 0},
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if got := c.CalculateTotalIncome(0); got != 3500 {
 			t.Errorf("expected 3500, got %f", got)
 		}
@@ -51,7 +51,7 @@ func TestCalculateTotalIncome(t *testing.T) {
 		s.IncomeSources = []models.IncomeSource{
 			{ID: "1", Name: "Pension", Amount: 2000, StartMonth: 24},
 		}
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 		if got := c.CalculateTotalIncome(0); got != 0 {
 			t.Errorf("expected 0 before start, got %f", got)
 		}
@@ -437,7 +437,7 @@ func TestGetMarginalRate_MiddleBracket(t *testing.T) {
 
 func TestCreateDistributionBuckets_SmallBalances(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	// All balances under 100k
 	balances := []float64{0, 5000, 10000, 25000, 50000, 75000, 90000}
@@ -449,7 +449,7 @@ func TestCreateDistributionBuckets_SmallBalances(t *testing.T) {
 
 func TestCreateDistributionBuckets_NegativeBalances(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	balances := []float64{-100, -50, 0, 0, 0}
 	dist := c.createDistributionBuckets(balances)
@@ -460,7 +460,7 @@ func TestCreateDistributionBuckets_NegativeBalances(t *testing.T) {
 
 func TestCreateDistributionBuckets_MediumBalances(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	balances := []float64{100000, 200000, 400000, 600000, 800000}
 	dist := c.createDistributionBuckets(balances)
@@ -471,7 +471,7 @@ func TestCreateDistributionBuckets_MediumBalances(t *testing.T) {
 
 func TestCreateDistributionBuckets_LargeBalances(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	balances := []float64{1000000, 2000000, 5000000, 8000000, 15000000}
 	dist := c.createDistributionBuckets(balances)
@@ -482,7 +482,7 @@ func TestCreateDistributionBuckets_LargeBalances(t *testing.T) {
 
 func TestCreateDistributionBuckets_VeryLargeBalances(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	balances := []float64{5000000, 10000000, 15000000, 20000000, 25000000}
 	dist := c.createDistributionBuckets(balances)
@@ -495,7 +495,7 @@ func TestCreateDistributionBuckets_VeryLargeBalances(t *testing.T) {
 
 func TestBuildProjectionExplainability_Nil(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	if result := c.buildProjectionExplainability(nil); result != nil {
 		t.Error("expected nil for nil projection")
 	}
@@ -503,7 +503,7 @@ func TestBuildProjectionExplainability_Nil(t *testing.T) {
 
 func TestBuildProjectionExplainability_EmptyMonths(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	if result := c.buildProjectionExplainability(&models.ProjectionResult{Months: nil}); result != nil {
 		t.Error("expected nil for empty months")
 	}
@@ -525,7 +525,7 @@ func TestCalculateBudgetFit_HealthcarePersonsWithEmployerCoverage(t *testing.T) 
 		},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -559,7 +559,7 @@ func TestCalculateBudgetFit_HealthcarePersonsZeroCostNoEmployer(t *testing.T) {
 		},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -1177,7 +1177,7 @@ func TestRunProjection_TaxDeferredDelay(t *testing.T) {
 	s.TaxDeferredDelayYears = 3
 	s.ProjectionYears = 5
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 
 	if result == nil {
@@ -1198,7 +1198,7 @@ func TestRunProjection_EarlyWithdrawalPenalty(t *testing.T) {
 	s.MonthlyLivingExpenses = 8000
 	s.ProjectionYears = 5
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 
 	if result == nil {
@@ -1219,7 +1219,7 @@ func TestFindReturnThreshold_SafetyLevels(t *testing.T) {
 	s.CurrentAge = 65
 	s.SpendingPhaseConfig = nil
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	if !c.RunProjection().Survives {
 		t.Skip("need surviving baseline")
 	}
@@ -1248,7 +1248,7 @@ func TestFindPortfolioThreshold_IncomeCoversExpenses(t *testing.T) {
 		{ID: "1", Name: "Pension", Amount: 5000, StartMonth: 0},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	fp := c.findPortfolioThreshold()
 
 	if fp == nil {
@@ -1280,7 +1280,7 @@ func TestRunHistoricalBacktest_TooLongProjection(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.ProjectionYears = 999 // No historical data spans this long
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunHistoricalBacktest()
 	if result.TotalSequences != 0 {
 		t.Errorf("expected 0 sequences, got %d", result.TotalSequences)
@@ -1300,8 +1300,8 @@ func TestRunSingleHistoricalSequence_ChainTransition(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	c := NewCalculatorWithChain(primary, []ResolvedScenarioChainLink{
-		{TransitionAge: 70, Settings: linked},
+	c := newTestCalcWithChain(t, primary, []PreparedChainLink{
+		preparedLink(t, "", 70, linked),
 	})
 
 	result := c.runSingleHistoricalSequence(1990)
@@ -1324,7 +1324,7 @@ func TestRunSingleHistoricalSequence_SpendingPhasesDetail(t *testing.T) {
 		},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 	if !result.Survives {
 		t.Error("expected to survive with reduced spending phases")
@@ -1344,7 +1344,7 @@ func TestBuildRMDAnalysis_AlreadyPastRMDAge(t *testing.T) {
 	s.TaxDeferredPercent = 50
 	s.ProjectionYears = 10
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	rmd := c.BuildRMDAnalysis(c.RunProjection())
 
 	if rmd == nil {
@@ -1369,7 +1369,7 @@ func TestRunMonteCarloSimulation_DepletionResults(t *testing.T) {
 	s.CurrentAge = 65
 	s.SpendingPhaseConfig = nil
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunMonteCarloSimulation(20)
 	if result == nil || result.Stats == nil {
 		t.Fatal("expected non-nil Monte Carlo result")
@@ -1551,7 +1551,7 @@ func TestCalculateBudgetFit_TaxableIncome(t *testing.T) {
 	s.TaxableCapitalGainsDistributionRate = 1.0
 	s.InvestmentReturn = 7.0
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -1576,7 +1576,7 @@ func TestCalculateBudgetFit_IncomeStartNote(t *testing.T) {
 	}
 	s.MonthlyLivingExpenses = 3000
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -1592,7 +1592,7 @@ func TestCalculateBudgetFit_SteadyStateOverride(t *testing.T) {
 	}
 	s.SteadyStateOverrideYear = 5 // Override to year 5
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -1620,7 +1620,7 @@ func TestCalculateBudgetFit_SteadyStateRMD(t *testing.T) {
 	}
 	s.InvestmentReturn = 6.0
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -1637,7 +1637,7 @@ func TestCalculateBudgetFit_IncomeWithDelayedStart(t *testing.T) {
 		{ID: "2", Name: "Social Security", Amount: 2000, StartMonth: 36},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -1665,7 +1665,7 @@ func TestRunProjection_DepletionViaShortfall(t *testing.T) {
 	s.TaxDeferredPercent = 0
 	s.RothPercent = 0
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 	if result.Survives {
 		t.Error("expected depletion with severely underfunded portfolio")
@@ -1688,7 +1688,7 @@ func TestRunSingleMonteCarloSimulation_RothConversion(t *testing.T) {
 		EndYear:      5,
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunMonteCarloSimulation(20)
 	if result == nil || result.Stats == nil {
 		t.Fatal("expected non-nil Monte Carlo result")
@@ -1702,7 +1702,7 @@ func TestRunSingleMonteCarloSimulation_BigTicketItems(t *testing.T) {
 		{ID: "2", Name: "Inheritance", Amount: 100000, Year: 3, Type: models.BigTicketIncome},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunMonteCarloSimulation(20)
 	if result == nil || result.Stats == nil {
 		t.Fatal("expected non-nil Monte Carlo result")
@@ -1722,7 +1722,7 @@ func TestRunSingleMonteCarloSimulation_SpendingPhases(t *testing.T) {
 		{ID: "1", Name: "Travel", Amount: 500, Discretionary: true},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunMonteCarloSimulation(20)
 	if result == nil || result.Stats == nil {
 		t.Fatal("expected non-nil Monte Carlo result")
@@ -1761,7 +1761,7 @@ func TestFindReturnThreshold_MarginalAndCritical(t *testing.T) {
 			s.CurrentAge = 65
 			s.SpendingPhaseConfig = nil
 
-			c := NewCalculator(s)
+			c := newTestCalc(t, s)
 			if !c.RunProjection().Survives {
 				t.Skip("baseline doesn't survive")
 			}
@@ -1799,7 +1799,7 @@ func TestFindInflationThreshold_MarginalAndCritical(t *testing.T) {
 			s.CurrentAge = 65
 			s.SpendingPhaseConfig = nil
 
-			c := NewCalculator(s)
+			c := newTestCalc(t, s)
 			if !c.RunProjection().Survives {
 				t.Skip("baseline doesn't survive")
 			}
@@ -1837,7 +1837,7 @@ func TestFindExpensesThreshold_MarginalAndCritical(t *testing.T) {
 			s.CurrentAge = 65
 			s.SpendingPhaseConfig = nil
 
-			c := NewCalculator(s)
+			c := newTestCalc(t, s)
 			if !c.RunProjection().Survives {
 				t.Skip("baseline doesn't survive")
 			}
@@ -1875,7 +1875,7 @@ func TestFindPortfolioThreshold_MarginalAndCritical(t *testing.T) {
 			s.CurrentAge = 65
 			s.SpendingPhaseConfig = nil
 
-			c := NewCalculator(s)
+			c := newTestCalc(t, s)
 			if !c.RunProjection().Survives {
 				t.Skip("baseline doesn't survive")
 			}
@@ -1904,7 +1904,7 @@ func TestWithdrawForExpenses_ZeroNeed(t *testing.T) {
 
 func TestRunMonteCarloSimulation_ZeroRuns(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunMonteCarloSimulation(0) // Should default to 1000
 	if result == nil || result.Stats == nil {
 		t.Fatal("expected non-nil result")
@@ -1923,7 +1923,7 @@ func TestRunSingleHistoricalSequence_TaxDeferredOnly(t *testing.T) {
 	s.ProjectionYears = 10
 	s.CurrentAge = 75 // Will trigger RMDs
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 
 	if result.StartYear != 1990 {
@@ -2088,7 +2088,7 @@ func TestCalculateBudgetFit_IncomeSourceFutureStart(t *testing.T) {
 		{ID: "2", Name: "Social Security", Amount: 2500, StartMonth: 24},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -2161,7 +2161,7 @@ func TestCalculateBudgetFit_IncomeAtMonth0WithStartDelay(t *testing.T) {
 		{ID: "2", Name: "SS", Amount: 2000, StartMonth: 36},
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
 	if bf == nil {
 		t.Fatal("expected non-nil budget fit")
@@ -2324,7 +2324,7 @@ func TestRunProjection_DepletionViaShortfallWithTaxDeferred(t *testing.T) {
 	s.CurrentAge = 65 // Over 59.5, no delay
 	s.TaxDeferredDelayYears = 0
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 	if result.Survives {
 		t.Error("expected depletion with high expenses and small portfolio")
@@ -2350,7 +2350,7 @@ func TestRunProjection_ShortfallCausesDepletion(t *testing.T) {
 	s.ProjectionTiming = models.ProjectionTiming("end_of_month")
 	s.TaxableDividendYield = 50.0 // Huge dividend yield re-invests after withdrawal
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 	// The portfolio should deplete due to expenses exceeding withdrawals
 	if result.Survives {
@@ -2418,7 +2418,7 @@ func TestBuildRMDAnalysis_ZeroInvestmentReturn(t *testing.T) {
 	s.ProjectionYears = 10
 	s.InvestmentReturn = 0 // Should use allocation-based return
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	rmd := c.BuildRMDAnalysis(c.RunProjection())
 	if rmd == nil {
 		t.Fatal("expected non-nil RMD analysis")
@@ -2438,7 +2438,7 @@ func TestRunSingleHistoricalSequence_ExpenseSources(t *testing.T) {
 		Phases:  models.DefaultSpendingPhases(),
 	}
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.runSingleHistoricalSequence(1990)
 	if !result.Survives {
 		t.Error("expected to survive")

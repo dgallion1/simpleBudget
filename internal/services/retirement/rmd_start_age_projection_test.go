@@ -22,7 +22,7 @@ func TestProjection_F075_2033StartAge73NoRMD(t *testing.T) {
 	s.StartDate = "2033-01"
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil || len(proj.Months) < 12 {
 		t.Fatal("nil/short projection")
 	}
@@ -52,7 +52,7 @@ func TestProjection_F075_2033StartAge75DoesRMD(t *testing.T) {
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil || len(proj.Months) < 12 {
 		t.Fatal("nil/short projection")
 	}
@@ -79,7 +79,7 @@ func TestProjection_F075_2026StartAge73DoesRMD(t *testing.T) {
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.RMDTiming = models.RMDTimingStartOfYear
 
-	proj := NewCalculator(s).RunProjection()
+	proj := newTestCalc(t, s).RunProjection()
 	if proj == nil {
 		t.Fatal("nil projection")
 	}

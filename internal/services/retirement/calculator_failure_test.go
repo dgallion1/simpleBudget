@@ -36,7 +36,7 @@ func failingSettings() *models.WhatIfSettings {
 
 func TestCalculateFailurePoints(t *testing.T) {
 	t.Run("healthy portfolio returns failure points for all parameters", func(t *testing.T) {
-		c := NewCalculator(healthySettings())
+		c := newTestCalc(t, healthySettings())
 		result := c.CalculateFailurePoints()
 
 		if result == nil {
@@ -62,7 +62,7 @@ func TestCalculateFailurePoints(t *testing.T) {
 	})
 
 	t.Run("failing portfolio returns empty failure points", func(t *testing.T) {
-		c := NewCalculator(failingSettings())
+		c := newTestCalc(t, failingSettings())
 		result := c.CalculateFailurePoints()
 
 		if result == nil {
@@ -80,7 +80,7 @@ func TestCalculateFailurePoints(t *testing.T) {
 func TestFindExpensesThreshold_ZeroExpenses(t *testing.T) {
 	s := healthySettings()
 	s.MonthlyLivingExpenses = 0
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	fp := c.findExpensesThreshold()
 	if fp != nil {
 		t.Fatalf("expected nil when expenses=0, got %+v", fp)
@@ -90,7 +90,7 @@ func TestFindExpensesThreshold_ZeroExpenses(t *testing.T) {
 func TestFindPortfolioThreshold_ZeroPortfolio(t *testing.T) {
 	s := healthySettings()
 	s.PortfolioValue = 0
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	fp := c.findPortfolioThreshold()
 	if fp != nil {
 		t.Fatalf("expected nil when portfolio=0, got %+v", fp)
@@ -103,7 +103,7 @@ func TestFindReturnThreshold_AllocationMode(t *testing.T) {
 	// meaningless 0%/0%/0pts card, so the threshold must be omitted.
 	s := healthySettings()
 	s.InvestmentReturn = 0
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	fp := c.findReturnThreshold()
 	if fp != nil {
 		t.Fatalf("expected nil when InvestmentReturn=0 (allocation mode), got %+v", fp)
@@ -112,7 +112,7 @@ func TestFindReturnThreshold_AllocationMode(t *testing.T) {
 
 func TestFindReturnThreshold(t *testing.T) {
 	t.Run("returns failure point with correct fields", func(t *testing.T) {
-		c := NewCalculator(healthySettings())
+		c := newTestCalc(t, healthySettings())
 		fp := c.findReturnThreshold()
 		if fp == nil {
 			t.Fatal("expected non-nil failure point")
@@ -134,7 +134,7 @@ func TestFindReturnThreshold(t *testing.T) {
 
 func TestFindInflationThreshold(t *testing.T) {
 	t.Run("returns failure point with correct fields", func(t *testing.T) {
-		c := NewCalculator(healthySettings())
+		c := newTestCalc(t, healthySettings())
 		fp := c.findInflationThreshold()
 		if fp == nil {
 			t.Fatal("expected non-nil failure point")
@@ -158,7 +158,7 @@ func TestFindInflationThreshold(t *testing.T) {
 		s.InvestmentReturn = 5.0
 		s.InflationRate = 3.0
 		s.ProjectionYears = 10
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 
 		if !c.RunProjection().Survives {
 			t.Skip("baseline doesn't survive, adjust settings")
@@ -174,7 +174,7 @@ func TestFindInflationThreshold(t *testing.T) {
 
 func TestFindExpensesThreshold(t *testing.T) {
 	t.Run("returns failure point with correct fields", func(t *testing.T) {
-		c := NewCalculator(healthySettings())
+		c := newTestCalc(t, healthySettings())
 		fp := c.findExpensesThreshold()
 		if fp == nil {
 			t.Fatal("expected non-nil failure point")
@@ -197,7 +197,7 @@ func TestFindExpensesThreshold(t *testing.T) {
 		s.MonthlyLivingExpenses = 3500
 		s.InvestmentReturn = 5.0
 		s.ProjectionYears = 10
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 
 		if !c.RunProjection().Survives {
 			t.Skip("baseline doesn't survive, adjust settings")
@@ -213,7 +213,7 @@ func TestFindExpensesThreshold(t *testing.T) {
 
 func TestFindPortfolioThreshold(t *testing.T) {
 	t.Run("returns failure point with correct fields", func(t *testing.T) {
-		c := NewCalculator(healthySettings())
+		c := newTestCalc(t, healthySettings())
 		fp := c.findPortfolioThreshold()
 		if fp == nil {
 			t.Fatal("expected non-nil failure point")
@@ -238,7 +238,7 @@ func TestFindInflationThreshold_SurvivesAt15Pct(t *testing.T) {
 	s.InvestmentReturn = 7.0
 	s.InflationRate = 3.0
 	s.ProjectionYears = 5
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	fp := c.findInflationThreshold()
 	if fp == nil {
@@ -259,7 +259,7 @@ func TestFindExpensesThreshold_SurvivesAt3x(t *testing.T) {
 	s.MonthlyLivingExpenses = 100
 	s.InvestmentReturn = 7.0
 	s.ProjectionYears = 5
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	fp := c.findExpensesThreshold()
 	if fp == nil {
@@ -281,7 +281,7 @@ func TestFindReturnThreshold_SurvivesAtNegative(t *testing.T) {
 	s.MonthlyLivingExpenses = 100
 	s.InvestmentReturn = 7.0
 	s.ProjectionYears = 5
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	fp := c.findReturnThreshold()
 	if fp == nil {
@@ -305,7 +305,7 @@ func TestFindPortfolioThreshold_SurvivesAtZero(t *testing.T) {
 	s.IncomeSources = []models.IncomeSource{
 		{Name: "Pension", Amount: 5000, StartMonth: 0, COLARate: 0.03},
 	}
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	fp := c.findPortfolioThreshold()
 	if fp == nil {
@@ -327,7 +327,7 @@ func TestSafetyLevels(t *testing.T) {
 		s.MonthlyLivingExpenses = 4000
 		s.PortfolioValue = 500_000
 		s.ProjectionYears = 8
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 
 		// Verify baseline survives first
 		proj := c.RunProjection()
@@ -355,7 +355,7 @@ func TestSafetyLevels(t *testing.T) {
 		s := healthySettings()
 		s.PortfolioValue = 5_000_000
 		s.MonthlyLivingExpenses = 1000
-		c := NewCalculator(s)
+		c := newTestCalc(t, s)
 
 		fp := c.findReturnThreshold()
 		if fp == nil {
@@ -369,7 +369,7 @@ func TestSafetyLevels(t *testing.T) {
 
 func TestRunFullAnalysis(t *testing.T) {
 	s := healthySettings()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunFullAnalysis()
 
 	if result == nil {

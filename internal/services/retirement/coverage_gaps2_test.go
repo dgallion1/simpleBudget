@@ -524,7 +524,7 @@ func TestAnnualizedInputs_RothConversionsNotAnnualized(t *testing.T) {
 func TestBuildProjectionExplainability_WithMonthsNoYearlySummaries(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.ProjectionYears = 2
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	// Create a projection with months spanning 2 years but no yearly summaries
 	months := make([]models.ProjectionMonth, 24)
@@ -568,7 +568,7 @@ func TestBuildProjectionExplainability_WithMonthsNoYearlySummaries(t *testing.T)
 
 func TestBuildProjectionExplainability_WithYearlySummaries(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	months := []models.ProjectionMonth{
 		{
@@ -602,7 +602,7 @@ func TestBuildProjectionExplainability_WithYearlySummaries(t *testing.T) {
 
 func TestBuildProjectionExplainability_ZeroGrossIncome(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	months := []models.ProjectionMonth{
 		{
@@ -633,7 +633,7 @@ func TestBuildProjectionExplainability_ZeroGrossIncome(t *testing.T) {
 
 func TestBuildProjectionExplainability_ZeroPortfolioBalance(t *testing.T) {
 	s := defaultSettingsForTest()
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	months := []models.ProjectionMonth{
 		{
@@ -665,7 +665,7 @@ func TestBuildProjectionExplainability_ZeroPortfolioBalance(t *testing.T) {
 func TestBuildProjectionExplainability_MultiYearNoSummaries(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.PortfolioValue = 500000
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 
 	// 3 years of data (36 months), no pre-built summaries
 	months := make([]models.ProjectionMonth, 36)
@@ -931,7 +931,7 @@ func TestRunProjection_Depletion(t *testing.T) {
 	s.TaxDeferredPercent = 0
 	s.RothPercent = 0
 
-	c := NewCalculator(s)
+	c := newTestCalc(t, s)
 	result := c.RunProjection()
 	if result == nil {
 		t.Fatal("expected non-nil projection")

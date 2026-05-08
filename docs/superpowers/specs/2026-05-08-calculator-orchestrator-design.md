@@ -1,7 +1,7 @@
 # Candidate #1 — Calculator-as-orchestrator → Projection Engine + Analyses
 
 **Created:** 2026-05-08
-**Status:** Spec — pending user review
+**Status:** Spec — reviewed and updated
 **Tracker:** [`docs/superpowers/specs/2026-05-08-architecture-deepening.md`](2026-05-08-architecture-deepening.md) Candidate #1
 **Branch (proposed):** `feat/projection-engine` (off `dev`)
 **Predecessor:** PreparedSettings (Candidate #2, landed)
@@ -35,7 +35,8 @@ units; handlers depend on three small things (`engine.New()`,
    `engine.Input`, or `*engine.Engine` + `engine.Input`).
 3. Replace `Calculator.RunFullAnalysis` with `retirement.RunFull(eng, in)`.
 4. Delete the `Calculator` type and its constructors.
-5. Migrate the 4 external call sites (3 handlers + 1 test fixture).
+5. Migrate the production handler call sites plus the handler test fixtures
+   that directly exercise `buildCalculator` / `NewCalculator`.
 6. Land it in one branch (`feat/projection-engine`) as ~8 reviewable commits,
    each compiling and passing `go test ./...`.
 
@@ -46,7 +47,7 @@ units; handlers depend on three small things (`engine.New()`,
   (Candidate #4).
 - Changes to `prepare/PreparedSettings` (already landed, Candidate #2).
 - Changes to `WhatIfAnalysis` shape, JSON output, templates, or view
-  handlers beyond the 4 call sites listed below.
+  handlers beyond the calculator-to-engine call-site migration listed below.
 - Adding new analyses, removing existing analyses, or changing any analysis's
   numeric output. Parity is byte-equal for ints/bools and within `1e-9` for
   floats.
@@ -79,9 +80,12 @@ internal/services/retirement/
 │   ├── failure_points.go           — FailurePoints(eng, in) *FailurePointAnalysis
 │   ├── monte_carlo.go              — MonteCarlo(eng, in, runs, seed) *MonteCarloAnalysis
 │   ├── ss.go                       — SSAnalysis, SSPortfolio
-│   ├── backtest.go                 — HistoricalBacktest(eng, in, history) *HistoricalBacktestAnalysis
+│   ├── backtest.go                 — HistoricalBacktest(eng, in, data) *HistoricalBacktestAnalysis
 │   ├── perturb.go                  — internal: deep-copy-and-mutate helpers shared by Cat-C
 │   └── *_test.go                   — siblings, migrated from retirement/calculator_*_test.go
+│
+├── history/                        (NEW)
+│   └── data.go                     — HistoricalYear alias/data helpers, DefaultData, Sequence, Stats
 │
 ├── orchestrator.go                 — package retirement; RunFull(eng, in) *WhatIfAnalysis
 ├── eligibility.go                  — package retirement; SSPortfolioEligible, FirstRMDCalendarYear, etc.
@@ -89,7 +93,7 @@ internal/services/retirement/
 ├── chain.go                        (modified — exports []engine.PreparedChainLink)
 ├── settings.go                     (unchanged)
 ├── tax.go                          (unchanged)
-├── historical_data.go              (modified — exports DefaultHistoricalData)
+├── historical_data.go              (deleted or reduced to compatibility wrappers during migration)
 ├── guardrails.go                   (unchanged)
 │
 └── (DELETED in commit 8: calculator.go, rmd.go, social_security.go, backtest.go)
@@ -115,15 +119,35 @@ internal/services/retirement/
 ```
 handlers/whatif → retirement → analysis → engine → prepare
                             ↘ engine ↗
+                            ↘ history ↗
 ```
 
 `engine` depends only on `prepare` and `models`. `analysis` depends on
-`engine`, `prepare`, `models`, and exports types in `models`. The parent
-`retirement` package may import `engine` and `analysis`; the reverse is
-forbidden. `chain.go` produces `[]engine.PreparedChainLink` (canonical type
-lives in `engine`). `historical_data.go` exports `HistoricalData` and
-`DefaultHistoricalData()`; `analysis/backtest.go` accepts a `*HistoricalData`
-parameter — no inverse import.
+`engine`, `prepare`, `models`, and `history`. The parent `retirement` package
+may import `engine`, `analysis`, and `history`; the reverse is forbidden.
+`chain.go` produces `[]engine.PreparedChainLink` (canonical type lives in
+`engine`). Historical market data moves out of the parent package because
+`analysis/backtest.go` cannot import `retirement` while `retirement` imports
+`analysis`.
+
+`history.Data` is intentionally small:
+
+```go
+package history
+
+import "budget2/internal/models"
+
+type Data []models.HistoricalYear
+
+func DefaultData() Data { /* copy of built-in 1928-2024 data */ }
+func Sequence(data Data, startYear, yearsNeeded int) Data
+func AvailableStartYears(data Data, projectionYears int) []int
+func Stats(data Data) (avgStock, avgBond, avgCash, avgInflation, stockStdDev, bondStdDev float64)
+```
+
+During migration, parent-package wrappers such as `GetHistoricalReturns` may
+delegate to `history.DefaultData()` so existing tests compile. By commit 8,
+callers should use `history` directly or go through `analysis.HistoricalBacktest`.
 
 ---
 
@@ -231,7 +255,7 @@ func SSAnalysis(eng *engine.Engine, in engine.Input) *models.SSComparisonAnalysi
 func SSPortfolio(eng *engine.Engine, in engine.Input, ss *models.SSComparisonAnalysis) *models.SSPortfolioAnalysis
 
 // analysis/backtest.go
-func HistoricalBacktest(eng *engine.Engine, in engine.Input, history *retirement.HistoricalData) *models.HistoricalBacktestAnalysis
+func HistoricalBacktest(eng *engine.Engine, in engine.Input, data history.Data) *models.HistoricalBacktestAnalysis
 ```
 
 ### Perturbation pattern
@@ -264,10 +288,9 @@ func Sensitivity(eng *engine.Engine, in engine.Input) []models.SensitivityResult
    tests at near-zero cost. Convention: `seed == 0` means "auto-seed from
    time" (matches today's behavior). `MonteCarloSeed = 0` is the default
    used by `RunFull`.
-2. **`HistoricalBacktest` takes `history` explicitly** instead of reading a
-   package-level `historicalReturns` global. Same testability win. The
-   handler passes `retirement.DefaultHistoricalData()`; tests can pass
-   synthetic history.
+2. **`HistoricalBacktest` takes `history.Data` explicitly** instead of
+   reading a parent-package global. Same testability win. The orchestrator
+   passes `history.DefaultData()`; tests can pass synthetic history.
 
 These are the only behavior changes in the design. Numeric output is
 unchanged on the parity test.
@@ -284,6 +307,7 @@ import (
     "budget2/internal/models"
     "budget2/internal/services/retirement/analysis"
     "budget2/internal/services/retirement/engine"
+    "budget2/internal/services/retirement/history"
 )
 
 const MonteCarloRuns = 1000
@@ -303,7 +327,7 @@ func RunFull(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
     failurePoints  := analysis.FailurePoints(eng, in)
     monteCarlo     := analysis.MonteCarlo(eng, in, MonteCarloRuns, MonteCarloSeed)
     rmd            := analysis.BuildRMD(proj, in)
-    backtest       := analysis.HistoricalBacktest(eng, in, DefaultHistoricalData())
+    backtest       := analysis.HistoricalBacktest(eng, in, history.DefaultData())
 
     if backtest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
         backtest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate
@@ -348,8 +372,11 @@ cache; the handler-side `runAnalysisWithCache` stays put for Candidate #4.
 
 ## Call-site migration
 
-Four files outside `retirement/` reference Calculator. All migrations are
-mechanical.
+Outside the parent `retirement` package, the production migration is
+mechanical: `handlers.go`, `handlers_rates.go`, and one handler test fixture
+stop constructing `Calculator` directly. The `buildCalculator` unit tests are
+updated because the helper now returns `engine.Input` instead of
+`*retirement.Calculator`.
 
 ### `handlers/whatif/handlers.go:80-117` — `buildCalculator` → `buildEngineInput`
 
@@ -370,6 +397,12 @@ func buildEngineInput(settings *models.WhatIfSettings) (engine.Input, string, er
     return engine.Input{Prepared: prepared, Chain: chain}, combinedHash, nil
 }
 ```
+
+The handler tests that currently assert `buildCalculator` behavior
+(`handlers_test.go:2785`, `2814`, `2834`) become `buildEngineInput` tests.
+They continue to assert hash behavior and error mapping, plus the returned
+`engine.Input` shape (`Prepared` is populated, `Chain` length and transition
+ages match).
 
 ### `handlers/whatif/handlers.go:131-135` — `runAnalysisWithCache` body
 
@@ -415,6 +448,16 @@ in  := engine.Input{Prepared: prepare.MustFrom(t, s)}
 // analysis.X(...) calls.
 ```
 
+### Parent-package tests that stay in `retirement/`
+
+Tests that primarily assert orchestration or parent helpers stay in the parent
+package and switch from `newTestCalc(...).RunFullAnalysis()` to
+`RunFull(engine.New(), engine.Input{...})`. Current examples:
+
+- `projection_planned_test.go`
+- `calculator_failure_test.go:370`
+- the F-072 integration tests in `calculator_test.go`
+
 ### Tests inside `retirement/`
 
 Tests migrate alongside the code they exercise. Mapping:
@@ -425,9 +468,10 @@ Tests migrate alongside the code they exercise. Mapping:
 | `social_security_test.go` | `analysis/ss_test.go` |
 | `backtest_test.go` | `analysis/backtest_test.go` |
 | `calculator_pv_test.go` | `analysis/present_value_test.go` |
-| `calculator_failure_test.go` | `analysis/failure_points_test.go` |
-| `calculator_test.go`, `calculator_expense_test.go`, `calculator_delay_test.go`, `calculator_coverage_test.go`, `coverage_gaps*_test.go`, `taxable_simulation_test.go`, `projection_planned_test.go`, `duration_test.go` | `engine/*_test.go` |
-| `chain_test.go`, `helpers_test.go`, `settings_test.go`, `settings_crud_test.go`, `tax_test.go`, `guardrails_test.go` | stay in parent `retirement/` |
+| `calculator_failure_test.go` | split: failure-point assertions to `analysis/failure_points_test.go`; full-orchestration assertion stays in parent |
+| `calculator_test.go`, `calculator_expense_test.go`, `calculator_delay_test.go`, `calculator_coverage_test.go`, `coverage_gaps*_test.go`, `taxable_simulation_test.go`, `duration_test.go` | split by majority: projection-loop assertions to `engine/*_test.go`; extracted-analysis assertions to `analysis/*_test.go`; full-orchestration assertions stay in parent |
+| `projection_planned_test.go` | stay in parent unless the assertions are narrowed to projection-only behavior during migration |
+| `chain_test.go`, `helpers_test.go`, `settings_test.go`, `settings_crud_test.go`, `tax_test.go`, `guardrails_test.go`, orchestration/integration tests that assert full `WhatIfAnalysis` shape | stay in parent `retirement/` |
 
 Test migration happens **incrementally per commit**. When commit 4 introduces
 `analysis/sensitivity.go`, commit 4 also moves the relevant assertions into
@@ -452,7 +496,7 @@ and passing `go test ./...`:
 | 2 | refactor(retirement): extract pure post-projection analyses | New `analysis/rmd.go`, `analysis/sustainability.go`, `analysis/explainability.go` + tests. `Calculator.BuildRMDAnalysis`/etc. become one-line delegators. Test files migrate from `retirement/` to `analysis/`. |
 | 3 | refactor(retirement): extract settings-only analyses | New `analysis/budget_fit.go`, `analysis/present_value.go` + tests. Delegation pattern continues. |
 | 4 | refactor(retirement): extract sensitivity, failure-points, MC | New `analysis/sensitivity.go`, `analysis/failure_points.go`, `analysis/monte_carlo.go`, `analysis/perturb.go` + tests. MC seed wired through `analysis.MonteCarlo(eng, in, runs, seed)`. The temporary parity-only seed override on `Calculator` now routes to `analysis.MonteCarlo` underneath. |
-| 5 | refactor(retirement): extract SS and Backtest | New `analysis/ss.go`, `analysis/backtest.go` + tests. `historical_data.go` exports `DefaultHistoricalData()`. |
+| 5 | refactor(retirement): extract SS and Backtest | New `analysis/ss.go`, `analysis/backtest.go`, `history/data.go` + tests. Historical return helpers move from the parent package to `history`; temporary parent wrappers may remain until commit 8 if needed for incremental compilation. |
 | 6 | feat(retirement): add RunFull orchestrator | New `orchestrator.go` and `eligibility.go`. `Calculator.RunFullAnalysis` becomes a one-line delegator to `RunFull(eng, in)`. Parity test now compares `Calculator.RunFullAnalysis` vs `RunFull` end-to-end. |
 | 7 | refactor(handlers): migrate whatif handlers and test fixture | `buildCalculator` → `buildEngineInput`, `getEngine`, three handler call sites + one test fixture updated. Calculator still exists for backwards compat (parity test still uses it). |
 | 8 | refactor(retirement): delete Calculator | Delete `calculator.go`, `rmd.go`, `social_security.go`, `backtest.go`, `parity_test.go`, plus the temporary `SetMonteCarloSeedForParity` and `runFullForParity` helpers. Remaining engine/analysis tests stand alone. |
@@ -552,19 +596,23 @@ Comparison rules in `compareWhatIfAnalysis`:
    **Mitigation:** file-level placement decision (move to where the majority
    lives); surgical splitting is a follow-on.
 
-4. **Handler test churn.** `handlers_test.go` (8.3k LOC) has exactly one
-   `retirement.NewCalculator(...)` reference (line 3059). **Mitigation:**
-   none needed; one fixture rewrite.
+4. **Handler test churn.** `handlers_test.go` (8.3k LOC) has one direct
+   `retirement.NewCalculator(...)` reference (line 3059) plus three
+   `buildCalculator` helper tests. **Mitigation:** rewrite the direct fixture
+   to use `engine.Input`, and keep the helper tests focused on hash/error
+   behavior plus the returned input shape.
 
 5. **Cycle risk on chain types.** `chain.go` lives in parent package but
    produces engine inputs. **Mitigation:** canonical `PreparedChainLink`
    type lives in `engine`. Parent's `chain.go` outputs
    `[]engine.PreparedChainLink`. Engine never imports parent.
 
-6. **Cycle risk on historical data.** `historical_data.go` lives in parent;
-   `analysis/backtest.go` needs the type. **Mitigation:** `HistoricalData`
-   stays in parent and is passed as a parameter to
-   `analysis.HistoricalBacktest`. No inverse import.
+6. **Cycle risk on historical data.** Backtest needs historical return data,
+   and the parent orchestrator needs to call backtest. If the data type stays
+   in the parent package, `analysis` would have to import `retirement`, while
+   `retirement` imports `analysis`. **Mitigation:** move historical data and
+   helper functions to `retirement/history`; both parent and analysis import
+   that leaf package.
 
 ---
 
@@ -592,7 +640,8 @@ Comparison rules in `compareWhatIfAnalysis`:
 - After commit 8: `grep -r "retirement\.NewCalculator\|retirement\.Calculator\b"
   --include="*.go"` returns no matches.
 - After commit 8: `internal/services/retirement/calculator.go`,
-  `rmd.go`, `social_security.go`, `backtest.go` do not exist.
+  `rmd.go`, `social_security.go`, `backtest.go`, and direct historical data
+  globals in the parent package do not exist.
 - Net LOC change: roughly -1,400 across the retirement subsystem.
 - Tracker `2026-05-08-architecture-deepening.md` Candidate #1 marked
   **Landed** with the merge commit SHA.

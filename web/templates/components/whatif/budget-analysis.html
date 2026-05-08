@@ -201,7 +201,10 @@
                 {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}+{{formatMoney (abs
                 .Analysis.BudgetFit.SteadyStateGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.SteadyStateGap}}{{end}}
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500">{{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500"
+                {{if and (lt .Analysis.BudgetFit.SteadyStateGap 0.0) (gt .Analysis.BudgetFit.SteadyStateRMD 0.0)}}title="Surplus driven by mandatory RMD. The IRS forces a withdrawal larger than you spend at this age. The after-tax excess is automatically reinvested in your taxable brokerage account, where it continues to grow — the projection chart already reflects this longevity benefit."{{end}}>
+                {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else}}Shortfall{{end}}
+            </p>
         </div>
         <div>
             <p class="text-sm text-gray-500 dark:text-gray-300">Required Rate</p>
@@ -215,6 +218,11 @@
     <p class="text-xs text-gray-500 dark:text-gray-300 mt-2 text-center">
         Values shown in nominal dollars at year {{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}}
     </p>
+    {{if and (lt .Analysis.BudgetFit.SteadyStateGap 0.0) (gt .Analysis.BudgetFit.SteadyStateRMD 0.0)}}
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center italic">
+        Surplus is driven by your mandatory RMD exceeding spending. After-tax excess is reinvested into your taxable account, extending portfolio life (already shown in the projection chart).
+    </p>
+    {{end}}
 </div>
 {{end}}
 

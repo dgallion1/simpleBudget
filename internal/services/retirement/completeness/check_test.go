@@ -20,12 +20,20 @@ func TestCheck_StateTaxUnset(t *testing.T) {
 			wantFound: true,
 		},
 		{
-			name: "zero StateIncomeTaxRate emits state_tax_unset",
+			name: "nil StateIncomeTaxRate emits state_tax_unset",
+			settings: &models.WhatIfSettings{
+				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: nil},
+			},
+			wantCode:  codeStateTaxUnset,
+			wantFound: true,
+		},
+		{
+			name: "explicit zero StateIncomeTaxRate (no-tax state) is silent",
 			settings: &models.WhatIfSettings{
 				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: models.FloatPtr(0.0)},
 			},
 			wantCode:  codeStateTaxUnset,
-			wantFound: true,
+			wantFound: false,
 		},
 		{
 			name: "non-zero StateIncomeTaxRate emits no state_tax finding",
@@ -287,7 +295,7 @@ func TestCheck_OrderingErrorsFirst(t *testing.T) {
 	settings := &models.WhatIfSettings{
 		TaxConfig: &models.TaxConfig{
 			FilingStatus:       models.FilingMarriedJoint,
-			StateIncomeTaxRate: models.FloatPtr(0), // triggers Warn (*0 still fires banner since check uses > 0)
+			StateIncomeTaxRate: nil, // unset rate fires state_tax_unset Warn
 		},
 		Persons: []models.Person{
 			{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
@@ -313,5 +321,52 @@ func TestDefaultWhatIfSettings_NoErrorFindings(t *testing.T) {
 		if f.Severity == SeverityError {
 			t.Errorf("DefaultWhatIfSettings should produce no SeverityError findings, got: code=%s title=%q", f.Code, f.Title)
 		}
+	}
+}
+
+func TestCheckStateTaxUnset_NilFires(t *testing.T) {
+	settings := &models.WhatIfSettings{
+		TaxConfig: &models.TaxConfig{
+			FilingStatus:       models.FilingSingle,
+			StateIncomeTaxRate: nil,
+		},
+	}
+	findings := Check(settings)
+	if !hasCode(findings, codeStateTaxUnset) {
+		t.Error("nil rate must fire state_tax_unset")
+	}
+}
+
+func TestCheckStateTaxUnset_ZeroPtrSilent(t *testing.T) {
+	settings := &models.WhatIfSettings{
+		TaxConfig: &models.TaxConfig{
+			FilingStatus:       models.FilingSingle,
+			StateIncomeTaxRate: models.FloatPtr(0),
+		},
+	}
+	findings := Check(settings)
+	if hasCode(findings, codeStateTaxUnset) {
+		t.Error("explicit zero (no-tax state) must NOT fire state_tax_unset")
+	}
+}
+
+func TestCheckStateTaxUnset_NonzeroSilent(t *testing.T) {
+	settings := &models.WhatIfSettings{
+		TaxConfig: &models.TaxConfig{
+			FilingStatus:       models.FilingSingle,
+			StateIncomeTaxRate: models.FloatPtr(9.3),
+		},
+	}
+	findings := Check(settings)
+	if hasCode(findings, codeStateTaxUnset) {
+		t.Error("non-zero rate must NOT fire state_tax_unset")
+	}
+}
+
+func TestCheckStateTaxUnset_NilTaxConfigFires(t *testing.T) {
+	settings := &models.WhatIfSettings{TaxConfig: nil}
+	findings := Check(settings)
+	if !hasCode(findings, codeStateTaxUnset) {
+		t.Error("nil TaxConfig must fire state_tax_unset")
 	}
 }

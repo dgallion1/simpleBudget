@@ -152,6 +152,19 @@
         </div>
 
         <div>
+            <label for="filing-status-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Filing Status</label>
+            <select id="filing-status-select" name="filing_status"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                {{$fs := ""}}{{if .Settings.TaxConfig}}{{$fs = printf "%s" .Settings.TaxConfig.FilingStatus}}{{end}}
+                <option value="single" {{if eq $fs "single"}}selected{{end}}>Single</option>
+                <option value="married_joint" {{if eq $fs "married_joint"}}selected{{end}}>Married Filing Jointly</option>
+                <option value="married_separate" {{if eq $fs "married_separate"}}selected{{end}}>Married Filing Separately</option>
+                <option value="head_of_household" {{if eq $fs "head_of_household"}}selected{{end}}>Head of Household</option>
+            </select>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Used for federal brackets, standard deduction, IRMAA thresholds, and Social Security taxation.</p>
+        </div>
+
+        <div>
             <label for="state-income-tax-rate-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200">State Income Tax Rate %</label>
             <input type="number" id="state-income-tax-rate-input" name="state_income_tax_rate"
                 value="{{if .Settings.TaxConfig}}{{printf "%.2f" .Settings.TaxConfig.StateIncomeTaxRate}}{{else}}0.00{{end}}"

@@ -69,15 +69,15 @@ The select is named `filing_status` and submits via the existing whatif-settings
 Add an apply step in `settings.go` (alongside the existing `state_income_tax_rate` block at line 1003):
 
 ```go
-if v, ok := updates["filing_status"].(models.FilingStatus); ok {
+if v, ok := updates["filing_status"].(string); ok {
     if settings.TaxConfig == nil {
         settings.TaxConfig = defaultTaxConfigForPersons(settings.Persons)
     }
-    settings.TaxConfig.FilingStatus = v
+    settings.TaxConfig.FilingStatus = models.FilingStatus(v)
 }
 ```
 
-(Verify the exact type the existing `fieldEnum` parser produces — likely `string`; coerce with `models.FilingStatus(v)` if so.)
+This mirrors the existing `phase_age_reference` apply step at `settings.go:930` — `fieldEnum` parses to a raw `string`, the apply step coerces.
 
 **Open-question resolution.** Invalid `filing_status` form values produce a 400 with `EnumInvalidMsg`, matching the existing `phase_age_reference` pattern in `form_spec.go:60-62`.
 

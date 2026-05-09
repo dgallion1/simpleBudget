@@ -22,7 +22,7 @@ func TestCheck_StateTaxUnset(t *testing.T) {
 		{
 			name: "zero StateIncomeTaxRate emits state_tax_unset",
 			settings: &models.WhatIfSettings{
-				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: 0.0},
+				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: models.FloatPtr(0.0)},
 			},
 			wantCode:  codeStateTaxUnset,
 			wantFound: true,
@@ -30,7 +30,7 @@ func TestCheck_StateTaxUnset(t *testing.T) {
 		{
 			name: "non-zero StateIncomeTaxRate emits no state_tax finding",
 			settings: &models.WhatIfSettings{
-				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: 5.0},
+				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: models.FloatPtr(5.0)},
 			},
 			wantCode:  codeStateTaxUnset,
 			wantFound: false,
@@ -212,7 +212,7 @@ func TestCheck_MFJNoSpousePerson(t *testing.T) {
 			settings: &models.WhatIfSettings{
 				TaxConfig: &models.TaxConfig{
 					FilingStatus:       models.FilingMarriedJoint,
-					StateIncomeTaxRate: 5.0,
+					StateIncomeTaxRate: models.FloatPtr(5.0),
 				},
 				Persons: []models.Person{
 					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
@@ -225,7 +225,7 @@ func TestCheck_MFJNoSpousePerson(t *testing.T) {
 			settings: &models.WhatIfSettings{
 				TaxConfig: &models.TaxConfig{
 					FilingStatus:       models.FilingMarriedJoint,
-					StateIncomeTaxRate: 5.0,
+					StateIncomeTaxRate: models.FloatPtr(5.0),
 				},
 				Persons: []models.Person{
 					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
@@ -239,7 +239,7 @@ func TestCheck_MFJNoSpousePerson(t *testing.T) {
 			settings: &models.WhatIfSettings{
 				TaxConfig: &models.TaxConfig{
 					FilingStatus:       models.FilingSingle,
-					StateIncomeTaxRate: 5.0,
+					StateIncomeTaxRate: models.FloatPtr(5.0),
 				},
 				Persons: []models.Person{
 					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
@@ -287,7 +287,7 @@ func TestCheck_OrderingErrorsFirst(t *testing.T) {
 	settings := &models.WhatIfSettings{
 		TaxConfig: &models.TaxConfig{
 			FilingStatus:       models.FilingMarriedJoint,
-			StateIncomeTaxRate: 0, // triggers Warn
+			StateIncomeTaxRate: models.FloatPtr(0), // triggers Warn (*0 still fires banner since check uses > 0)
 		},
 		Persons: []models.Person{
 			{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},

@@ -261,7 +261,7 @@ func TestCalculateMonthlyIRMAA_UnknownFilingStatus(t *testing.T) {
 func TestCalculateTaxWithInvestmentIncomeBreakdown_NonQualifiedDividends(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// MAGI must exceed 200K threshold. excessMAGI must be larger than QD+LTCG
@@ -292,7 +292,7 @@ func TestCalculateTaxWithInvestmentIncomeBreakdown_NonQualifiedDividends(t *test
 func TestCalculateTaxWithInvestmentIncomeBreakdown_NIITPresent(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 5.0,
+		StateIncomeTaxRate: models.FloatPtr(5.0),
 	}, 0)
 
 	// MAGI = 250K, well above 200K single threshold
@@ -763,7 +763,7 @@ func TestGetMarginalRate_WithInflation(t *testing.T) {
 func TestEstimateMonthlySnapshot_IRMAALookback(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	acc := projectionTaxAccumulator{}
@@ -798,7 +798,7 @@ func TestEstimateMonthlySnapshot_IRMAALookback(t *testing.T) {
 func TestEstimateMonthlySnapshot_NoIRMAAEligibleAdults(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	acc := projectionTaxAccumulator{}
@@ -820,7 +820,7 @@ func TestEstimateMonthlySnapshot_NoIRMAAEligibleAdults(t *testing.T) {
 func TestEstimateMonthlySnapshot_TwoIRMAAEligibleAdults(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedJoint,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	acc := projectionTaxAccumulator{}
@@ -853,7 +853,7 @@ func TestEstimateMonthlySnapshot_TwoIRMAAEligibleAdults(t *testing.T) {
 func TestEstimateMonthlySnapshot_SocialSecurityTaxablePct(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	acc := projectionTaxAccumulator{}
@@ -881,7 +881,7 @@ func TestEstimateMonthlySnapshot_MonthInYearTwelve(t *testing.T) {
 	// monthInYear=12 makes remainingMonths = 12-12 = 0, which is clamped to 1
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	acc := projectionTaxAccumulator{}

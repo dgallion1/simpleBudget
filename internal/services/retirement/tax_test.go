@@ -10,7 +10,7 @@ import (
 func TestNewTaxCalculator(t *testing.T) {
 	config := &models.TaxConfig{
 		FilingStatus:       models.FilingMarriedJoint,
-		StateIncomeTaxRate: 5.0,
+		StateIncomeTaxRate: models.FloatPtr(5.0),
 	}
 
 	tc := NewTaxCalculator(config, 3.0)
@@ -38,7 +38,7 @@ func TestNewTaxCalculatorWithNilConfig(t *testing.T) {
 func TestCalculateFederalTax(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedJoint,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	tests := []struct {
@@ -188,7 +188,7 @@ func TestGetMarginalRate(t *testing.T) {
 func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	t.Run("allocates recurring annual tax evenly across months", func(t *testing.T) {
@@ -228,7 +228,7 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 func TestCalculateTaxWithInvestmentIncome(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	t.Run("qualified dividends taxed below ordinary income", func(t *testing.T) {

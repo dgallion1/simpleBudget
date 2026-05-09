@@ -996,7 +996,7 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	if v, ok := updates["steady_state_override_year"].(float64); ok {
 		settings.SteadyStateOverrideYear = v
 	}
-	if v, ok := updates["state_income_tax_rate"].(float64); ok {
+	if v, ok := updates["state_income_tax_rate"].(*float64); ok {
 		if settings.TaxConfig == nil {
 			settings.TaxConfig = defaultTaxConfigForPersons(settings.Persons)
 		}

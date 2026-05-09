@@ -12,7 +12,7 @@ func TestCompletenessCheck_StateTaxUnsetSurfaces(t *testing.T) {
 	settings := &models.WhatIfSettings{
 		TaxConfig: &models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 0,
+			StateIncomeTaxRate: models.FloatPtr(0),
 		},
 		Persons: []models.Person{
 			{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},

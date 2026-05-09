@@ -1148,16 +1148,16 @@ const (
 // TaxConfig holds tax modeling settings
 type TaxConfig struct {
 	FilingStatus       FilingStatus `json:"filing_status"`
-	StateIncomeTaxRate float64      `json:"state_income_tax_rate"` // As percentage (e.g., 5.0 for 5%)
-	Age65Count         int          `json:"age_65_count"`          // F-001: number of filers 65 or older (0, 1, or 2 for MFJ).
-	MFSLivedWithSpouse bool         `json:"mfs_lived_with_spouse"` // F-018: 26 USC § 86(c)(2) sub-case; true = lived with spouse → $0/$0 thresholds.
+	StateIncomeTaxRate *float64     `json:"state_income_tax_rate,omitempty"` // nil = unset; *0 = explicit no-tax state; *x = configured rate
+	Age65Count         int          `json:"age_65_count"`                    // F-001: number of filers 65 or older (0, 1, or 2 for MFJ).
+	MFSLivedWithSpouse bool         `json:"mfs_lived_with_spouse"`           // F-018: 26 USC § 86(c)(2) sub-case; true = lived with spouse → $0/$0 thresholds.
 }
 
 // DefaultTaxConfig returns sensible tax defaults
 func DefaultTaxConfig() *TaxConfig {
 	return &TaxConfig{
 		FilingStatus:       FilingSingle,
-		StateIncomeTaxRate: 0.0, // No state tax by default
+		StateIncomeTaxRate: nil, // unset; user must explicitly set (incl. 0 for no-tax states)
 	}
 }
 
@@ -1166,10 +1166,10 @@ func DefaultTaxConfig() *TaxConfig {
 // math boundaries; use direct nil checks at completeness/validation
 // boundaries where "unset" semantics matter.
 func (t *TaxConfig) StateIncomeTaxRateOrZero() float64 {
-	if t == nil {
+	if t == nil || t.StateIncomeTaxRate == nil {
 		return 0
 	}
-	return t.StateIncomeTaxRate
+	return *t.StateIncomeTaxRate
 }
 
 // RothConversionConfig models annual Roth conversions

@@ -107,7 +107,7 @@ func TestEstimateMonthlyTaxes_NegativeTaxDue(t *testing.T) {
 	// Create accumulator where taxes already overpaid
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	acc := projectionTaxAccumulator{
@@ -122,7 +122,7 @@ func TestEstimateMonthlyTaxes_NegativeTaxDue(t *testing.T) {
 func TestEstimateMonthlyTaxes_LastMonthOfYear(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	acc := projectionTaxAccumulator{}
@@ -367,7 +367,7 @@ func TestYearsUntilDepletion(t *testing.T) {
 func TestGetAdjustedBrackets_UnknownFilingStatus(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       "unknown",
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	brackets := tc.GetAdjustedBrackets(0)
@@ -379,7 +379,7 @@ func TestGetAdjustedBrackets_UnknownFilingStatus(t *testing.T) {
 func TestGetAdjustedLTCGBrackets_UnknownFilingStatus(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       "unknown",
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	brackets := tc.GetAdjustedLongTermCapitalGainsBrackets(0)
@@ -391,7 +391,7 @@ func TestGetAdjustedLTCGBrackets_UnknownFilingStatus(t *testing.T) {
 func TestGetAdjustedBrackets_WithInflation(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	base := tc.GetAdjustedBrackets(0)
@@ -409,7 +409,7 @@ func TestGetAdjustedBrackets_WithInflation(t *testing.T) {
 func TestGetAdjustedLTCGBrackets_WithInflation(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	base := tc.GetAdjustedLongTermCapitalGainsBrackets(0)
@@ -423,7 +423,7 @@ func TestGetAdjustedLTCGBrackets_WithInflation(t *testing.T) {
 func TestGetMarginalRate_MiddleBracket(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// Income in 22% bracket range for single filer
@@ -2299,7 +2299,7 @@ func TestRenameScenario_WriteError(t *testing.T) {
 func TestGetMarginalRate_VeryHighIncome(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// Income high enough to go beyond all brackets

@@ -24,7 +24,7 @@ func TestStateTaxRateChangesProjection(t *testing.T) {
 		}
 		s.TaxConfig = &models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: rate,
+			StateIncomeTaxRate: &rate,
 		}
 		s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 2500, ClaimAge: 67}
 

@@ -222,7 +222,7 @@ func TestGetAvailableStartYears_EdgeCases(t *testing.T) {
 func TestGetAdjustedStandardDeduction_MarriedJoint(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedJoint,
-		StateIncomeTaxRate: 5.0,
+		StateIncomeTaxRate: models.FloatPtr(5.0),
 	}, 3.0)
 
 	deduction := tc.GetAdjustedStandardDeduction(0)
@@ -241,7 +241,7 @@ func TestGetAdjustedStandardDeduction_MarriedJoint(t *testing.T) {
 func TestGetMarginalRate_ZeroIncome(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	rate := tc.GetMarginalRate(0, 0)
@@ -253,7 +253,7 @@ func TestGetMarginalRate_ZeroIncome(t *testing.T) {
 func TestGetAdjustedStandardDeduction_UnknownFiling(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       "unknown_status",
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
 	// Should fall back to married_joint deduction
@@ -318,7 +318,7 @@ func TestFindSteadyStateMonth_BeyondProjection(t *testing.T) {
 func TestGetMarginalRate_TopBracket(t *testing.T) {
 	tc := NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
-		StateIncomeTaxRate: 0,
+		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// Very high income should hit top bracket (37%)

@@ -65,7 +65,7 @@ func TestCalculateStateTax(t *testing.T) {
 	t.Run("zero income returns zero", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 5.0,
+			StateIncomeTaxRate: models.FloatPtr(5.0),
 		}, 3.0)
 
 		got := tc.CalculateStateTax(0)
@@ -77,7 +77,7 @@ func TestCalculateStateTax(t *testing.T) {
 	t.Run("negative income returns zero", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 5.0,
+			StateIncomeTaxRate: models.FloatPtr(5.0),
 		}, 3.0)
 
 		got := tc.CalculateStateTax(-10000)
@@ -89,7 +89,7 @@ func TestCalculateStateTax(t *testing.T) {
 	t.Run("zero state rate returns zero", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 0,
+			StateIncomeTaxRate: models.FloatPtr(0),
 		}, 3.0)
 
 		got := tc.CalculateStateTax(50000)
@@ -101,7 +101,7 @@ func TestCalculateStateTax(t *testing.T) {
 	t.Run("normal case", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 5.0,
+			StateIncomeTaxRate: models.FloatPtr(5.0),
 		}, 3.0)
 
 		got := tc.CalculateStateTax(100000)
@@ -116,7 +116,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	t.Run("normal case with state tax", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 5.0,
+			StateIncomeTaxRate: models.FloatPtr(5.0),
 		}, 3.0)
 
 		federalTax, stateTax, totalTax, effectiveRate := tc.CalculateTotalTax(100000, 0)
@@ -142,7 +142,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	t.Run("zero income returns all zeros", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingMarriedJoint,
-			StateIncomeTaxRate: 5.0,
+			StateIncomeTaxRate: models.FloatPtr(5.0),
 		}, 3.0)
 
 		federalTax, stateTax, totalTax, effectiveRate := tc.CalculateTotalTax(0, 0)
@@ -156,7 +156,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	t.Run("no state tax", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingSingle,
-			StateIncomeTaxRate: 0,
+			StateIncomeTaxRate: models.FloatPtr(0),
 		}, 3.0)
 
 		federalTax, stateTax, totalTax, _ := tc.CalculateTotalTax(100000, 0)
@@ -172,7 +172,7 @@ func TestCalculateTotalTax(t *testing.T) {
 	t.Run("with inflation adjustment", func(t *testing.T) {
 		tc := engine.NewTaxCalculator(&models.TaxConfig{
 			FilingStatus:       models.FilingMarriedJoint,
-			StateIncomeTaxRate: 4.0,
+			StateIncomeTaxRate: models.FloatPtr(4.0),
 		}, 3.0)
 
 		// Same income, 10 years from base should produce lower tax due to inflation-adjusted brackets

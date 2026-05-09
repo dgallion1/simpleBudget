@@ -14,7 +14,7 @@ const codeStateTaxUnset = "state_tax_unset"
 // the same outcome (no state tax computed), so the user sees one
 // uniform warning.
 func checkStateTaxUnset(s *models.WhatIfSettings) *Finding {
-	if s.TaxConfig != nil && s.TaxConfig.StateIncomeTaxRate > 0 {
+	if s.TaxConfig.StateIncomeTaxRateOrZero() > 0 {
 		return nil
 	}
 	return &Finding{

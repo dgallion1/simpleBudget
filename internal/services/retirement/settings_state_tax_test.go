@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/completeness"
 )
 
 func TestInitializeLoadedSettings_TaxConfigDefaults(t *testing.T) {
@@ -147,5 +148,31 @@ func TestDefaultTaxConfigForPersons_OtherRoleOnly_StaysSingle(t *testing.T) {
 	cfg := defaultTaxConfigForPersons(persons)
 	if cfg.FilingStatus != models.FilingSingle {
 		t.Errorf("FilingStatus = %q, want Single (PersonRoleOther is not a spouse)", cfg.FilingStatus)
+	}
+}
+
+func TestStateIncomeTaxRate_LegacyJSONRoundTrip(t *testing.T) {
+	const legacyTaxConfigJSON = `{"filing_status":"single","state_income_tax_rate":0.0}`
+
+	var cfg models.TaxConfig
+	if err := json.Unmarshal([]byte(legacyTaxConfigJSON), &cfg); err != nil {
+		t.Fatalf("unmarshal TaxConfig: %v", err)
+	}
+
+	if cfg.StateIncomeTaxRate == nil {
+		t.Fatal("StateIncomeTaxRate is nil — legacy 0.0 should decode as configured")
+	}
+	if got := *cfg.StateIncomeTaxRate; got != 0 {
+		t.Errorf("rate = %v, want 0", got)
+	}
+
+	settings := models.DefaultWhatIfSettings()
+	settings.TaxConfig = &cfg
+
+	findings := completeness.Check(settings)
+	for _, f := range findings {
+		if f.Code == "state_tax_unset" {
+			t.Errorf("legacy explicit-zero scenario must not fire state_tax_unset, got: %+v", f)
+		}
 	}
 }

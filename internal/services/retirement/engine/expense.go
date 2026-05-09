@@ -26,6 +26,17 @@ func livingExpensesAtMonth(s *models.WhatIfSettings, month int) float64 {
 	return s.MonthlyLivingExpenses * compoundedFactorFromPercent(s.InflationRate-s.SpendingDeclineRate, monthsElapsed)
 }
 
+// propertyTaxAtMonth returns the inflation-adjusted property tax for the
+// given month. Property tax has its own inflation rate (default 4% in
+// DefaultWhatIfSettings) that typically runs higher than CPI to reflect
+// assessment growth on top of levy increases.
+func propertyTaxAtMonth(s *models.WhatIfSettings, month int) float64 {
+	if s.MonthlyPropertyTax <= 0 {
+		return 0
+	}
+	return s.MonthlyPropertyTax * compoundedFactorFromPercent(s.PropertyTaxInflation, float64(month))
+}
+
 // TotalExpenses returns total expenses for a specific month.
 func TotalExpenses(s *models.WhatIfSettings, month int) float64 {
 	years := month / 12
@@ -37,6 +48,8 @@ func TotalExpenses(s *models.WhatIfSettings, month int) float64 {
 	// Calculate healthcare expenses using the settings helper (handles both legacy and multi-person)
 	healthcareExpenses := s.GetTotalHealthcareCost(month)
 
+	propertyTax := propertyTaxAtMonth(s, month)
+
 	// Add expense sources (discretionary sources also get phase multiplier when enabled)
 	for _, source := range s.ExpenseSources {
 		expenseAmount := source.GetAdjustedAmount(month, s.InflationRate)
@@ -47,7 +60,7 @@ func TotalExpenses(s *models.WhatIfSettings, month int) float64 {
 		livingExpenses += expenseAmount
 	}
 
-	return livingExpenses + healthcareExpenses
+	return livingExpenses + healthcareExpenses + propertyTax
 }
 
 // CalculateExpenseBreakdown separates expenses into discretionary and essential.
@@ -61,7 +74,9 @@ func CalculateExpenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreak
 	// Healthcare is always essential
 	healthcareExpenses := s.GetTotalHealthcareCost(month)
 
-	essential := livingExpenses + healthcareExpenses
+	propertyTax := propertyTaxAtMonth(s, month)
+
+	essential := livingExpenses + healthcareExpenses + propertyTax
 	discretionary := 0.0
 
 	// Categorize expense sources

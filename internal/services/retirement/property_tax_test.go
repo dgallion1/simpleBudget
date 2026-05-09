@@ -2,9 +2,11 @@ package retirement
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 func TestDefaultWhatIfSettings_PropertyTaxFields(t *testing.T) {
@@ -83,4 +85,65 @@ func TestApplySettingsUpdates_PropertyTax(t *testing.T) {
 			t.Errorf("PropertyTaxInflation = %v, want 5.5", settings.PropertyTaxInflation)
 		}
 	})
+}
+
+func TestTotalExpenses_PropertyTaxIncluded(t *testing.T) {
+	t.Run("MonthlyPropertyTax adds to total expenses with own inflation rate", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.MonthlyPropertyTax = 800
+		s.PropertyTaxInflation = 4.0
+		s.InflationRate = 3.0
+		s.SpendingDeclineRate = 0
+		s.HealthcareInflation = 0
+
+		// Month 0: living=5000, propertyTax=800, total=5800
+		got := engine.TotalExpenses(s, 0)
+		want := 5000.0 + 800.0
+		if math.Abs(got-want) > 0.01 {
+			t.Errorf("month 0 TotalExpenses = %v, want %v", got, want)
+		}
+
+		// Month 12 (1 year): living grows at 3% → 5150, propertyTax grows at 4% → 832, total=5982
+		got12 := engine.TotalExpenses(s, 12)
+		expectedLiving := 5000.0 * math.Pow(1.03, 1)
+		expectedPropertyTax := 800.0 * math.Pow(1.04, 1)
+		want12 := expectedLiving + expectedPropertyTax
+		if math.Abs(got12-want12) > 1.0 {
+			t.Errorf("month 12 TotalExpenses = %v, want ~%v", got12, want12)
+		}
+	})
+
+	t.Run("Zero MonthlyPropertyTax has no effect", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.MonthlyPropertyTax = 0
+		s.HealthcareInflation = 0
+		s.SpendingDeclineRate = 0
+
+		got := engine.TotalExpenses(s, 0)
+		if math.Abs(got-5000) > 0.01 {
+			t.Errorf("month 0 TotalExpenses = %v, want 5000 (no property tax)", got)
+		}
+	})
+}
+
+func TestCalculateExpenseBreakdown_PropertyTaxIsEssential(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.MonthlyLivingExpenses = 5000
+	s.MonthlyHealthcare = 0
+	s.MonthlyPropertyTax = 600
+	s.HealthcareInflation = 0
+	s.SpendingDeclineRate = 0
+
+	bd := engine.CalculateExpenseBreakdown(s, 0)
+	wantEssential := 5600.0 // living + property tax
+	if math.Abs(bd.Essential-wantEssential) > 0.01 {
+		t.Errorf("Essential = %v, want %v (living + property tax)", bd.Essential, wantEssential)
+	}
+	if bd.Discretionary != 0 {
+		t.Errorf("Discretionary = %v, want 0", bd.Discretionary)
+	}
 }

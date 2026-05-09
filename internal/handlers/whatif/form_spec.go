@@ -114,6 +114,9 @@ var settingsFormSpec = []fieldSpec{
 	{Name: "state_income_tax_rate", Kind: fieldFloat, ParseLabel: "state income tax rate",
 		HasBounds: true, Min: 0, Max: 20,
 		BoundsMsg: "State income tax rate must be between 0 and 20%"},
+	{Name: "filing_status", Kind: fieldEnum,
+		EnumVals:       []string{"single", "married_joint", "married_separate", "head_of_household"},
+		EnumInvalidMsg: "Invalid filing status"},
 }
 
 // applyFieldSpec parses a single field according to spec and (on success)

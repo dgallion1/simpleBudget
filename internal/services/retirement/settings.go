@@ -1002,6 +1002,12 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 		}
 		settings.TaxConfig.StateIncomeTaxRate = v
 	}
+	if v, ok := updates["filing_status"].(string); ok {
+		if settings.TaxConfig == nil {
+			settings.TaxConfig = defaultTaxConfigForPersons(settings.Persons)
+		}
+		settings.TaxConfig.FilingStatus = models.FilingStatus(v)
+	}
 
 	if v, ok := updates["current_age"].(int); ok {
 		person := ensurePrimaryPerson(settings)

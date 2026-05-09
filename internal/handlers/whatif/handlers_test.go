@@ -8388,3 +8388,31 @@ func TestHandleWhatIfProjectionChartNoGuardrails_IndependentOfThresholds(t *test
 		t.Fatalf("no-guardrails endpoint output should be identical regardless of configured thresholds")
 	}
 }
+
+func TestHandleWhatIfSettings_FilingStatusRoundTrip(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{}
+	form.Set("filing_status", "married_joint")
+	req := httptest.NewRequest(http.MethodPost, "/whatif/settings", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handleWhatIfSettings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+
+	got, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got.TaxConfig == nil {
+		t.Fatal("TaxConfig is nil after POST")
+	}
+	if got.TaxConfig.FilingStatus != models.FilingMarriedJoint {
+		t.Errorf("FilingStatus = %q, want married_joint", got.TaxConfig.FilingStatus)
+	}
+}

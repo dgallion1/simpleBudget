@@ -22,7 +22,7 @@ func checkStateTaxUnset(s *models.WhatIfSettings) *Finding {
 		Code:       codeStateTaxUnset,
 		Title:      "No state income tax configured",
 		Detail:     "Projections currently model federal tax only. If you live in a state with income tax, your after-tax balances are overstated.",
-		FormAnchor: "rate-assumptions-card",
+		FormAnchor: "whatif-rate-assumptions-card",
 		Action:     "Set state tax rate",
 	}
 }

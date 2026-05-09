@@ -1161,6 +1161,17 @@ func DefaultTaxConfig() *TaxConfig {
 	}
 }
 
+// StateIncomeTaxRateOrZero returns the configured state rate, or 0 if
+// the TaxConfig pointer or rate is nil/zero. Use this at engine and
+// math boundaries; use direct nil checks at completeness/validation
+// boundaries where "unset" semantics matter.
+func (t *TaxConfig) StateIncomeTaxRateOrZero() float64 {
+	if t == nil {
+		return 0
+	}
+	return t.StateIncomeTaxRate
+}
+
 // RothConversionConfig models annual Roth conversions
 type RothConversionConfig struct {
 	Enabled      bool    `json:"enabled"`

@@ -971,3 +971,24 @@ func TestDefaultTaxConfig_FilingStatusIsSingle(t *testing.T) {
 		t.Errorf("FilingStatus = %q, want %q", cfg.FilingStatus, FilingSingle)
 	}
 }
+
+func TestStateIncomeTaxRateOrZero_NilTaxConfig(t *testing.T) {
+	var tc *TaxConfig
+	if got := tc.StateIncomeTaxRateOrZero(); got != 0 {
+		t.Errorf("nil TaxConfig: got %v, want 0", got)
+	}
+}
+
+func TestStateIncomeTaxRateOrZero_ZeroRate(t *testing.T) {
+	tc := &TaxConfig{StateIncomeTaxRate: 0}
+	if got := tc.StateIncomeTaxRateOrZero(); got != 0 {
+		t.Errorf("zero rate: got %v, want 0", got)
+	}
+}
+
+func TestStateIncomeTaxRateOrZero_NonzeroRate(t *testing.T) {
+	tc := &TaxConfig{StateIncomeTaxRate: 9.3}
+	if got := tc.StateIncomeTaxRateOrZero(); got != 9.3 {
+		t.Errorf("non-zero rate: got %v, want 9.3", got)
+	}
+}

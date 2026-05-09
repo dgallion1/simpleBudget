@@ -196,6 +196,10 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 	if settings.RMDTiming == "" {
 		settings.RMDTiming = models.RMDTimingStartOfYear
 	}
+
+	if settings.PropertyTaxInflation == 0 {
+		settings.PropertyTaxInflation = 4.0
+	}
 }
 
 func parseLegacyAges(rawFields map[string]json.RawMessage) legacyAgeFields {

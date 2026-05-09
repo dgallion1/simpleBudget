@@ -85,6 +85,7 @@ type WhatIfSettings struct {
 	MonthlyLivingExpenses float64 `json:"monthly_living_expenses"` // Base monthly expenses
 	MonthlyHealthcare     float64 `json:"monthly_healthcare"`      // Monthly healthcare costs (legacy)
 	HealthcareStartYears  int     `json:"healthcare_start_years"`  // Years until healthcare starts (legacy)
+	MonthlyPropertyTax    float64 `json:"monthly_property_tax"`    // Monthly property tax on primary residence
 
 	// Multi-person healthcare model
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
@@ -115,6 +116,7 @@ type WhatIfSettings struct {
 	// Rates (as percentages, e.g., 4.0 for 4%)
 	InflationRate                       float64 `json:"inflation_rate"`                                // Annual inflation
 	HealthcareInflation                 float64 `json:"healthcare_inflation"`                          // Healthcare inflation (legacy, for single-person model)
+	PropertyTaxInflation                float64 `json:"property_tax_inflation"`                        // Property tax inflation (default 4%; reflects assessment growth above CPI)
 	SpendingDeclineRate                 float64 `json:"spending_decline_rate"`                         // Annual spending reduction (used when phases disabled)
 	InvestmentReturn                    float64 `json:"investment_return"`                             // Expected portfolio return
 	DiscountRate                        float64 `json:"discount_rate"`                                 // For PV calculations
@@ -726,6 +728,7 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		CashPercent:                     0.0,  // Default 0% cash (bonds = 40%)
 		InflationRate:                   3.0,
 		HealthcareInflation:             6.0,
+		PropertyTaxInflation:            4.0,
 		SpendingDeclineRate:             1.0,
 		InvestmentReturn:                0.0, // 0 = use asset allocation to calculate returns
 		DiscountRate:                    5.0,

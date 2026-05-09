@@ -1339,5 +1339,8 @@ type WhatIfPageData struct {
 	ActiveTab string          `json:"active_tab"`
 	Settings  *WhatIfSettings `json:"settings"`
 	Analysis  *WhatIfAnalysis `json:"analysis"`
+	// Findings holds []completeness.Finding but is typed interface{} to avoid
+	// an import cycle (models → completeness → models). When the Finding type
+	// moves to models/ or a shared types package (Phase-2), retype this field.
 	Findings  interface{}     `json:"findings,omitempty"`
 }

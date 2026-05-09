@@ -100,6 +100,7 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -203,6 +204,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -261,6 +263,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -325,6 +328,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -362,6 +366,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {

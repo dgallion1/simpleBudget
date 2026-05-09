@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/completeness"
 )
 
 func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +139,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -305,6 +307,7 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -332,6 +335,7 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {

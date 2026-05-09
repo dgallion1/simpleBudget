@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/completeness"
 )
 
 func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +97,7 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -163,6 +165,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -190,6 +193,7 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -217,6 +221,7 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -307,6 +312,7 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -370,6 +376,7 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -397,6 +404,7 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -424,6 +432,7 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -502,6 +511,7 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -529,6 +539,7 @@ func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -556,6 +567,7 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -584,6 +596,7 @@ func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -612,6 +625,7 @@ func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -640,6 +654,7 @@ func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {

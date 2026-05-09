@@ -632,6 +632,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -721,6 +722,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": completeness.Check(settings),
 	}
 
 	if renderer != nil {

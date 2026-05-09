@@ -1339,4 +1339,5 @@ type WhatIfPageData struct {
 	ActiveTab string          `json:"active_tab"`
 	Settings  *WhatIfSettings `json:"settings"`
 	Analysis  *WhatIfAnalysis `json:"analysis"`
+	Findings  interface{}     `json:"findings,omitempty"`
 }

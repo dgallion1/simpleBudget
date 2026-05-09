@@ -12,6 +12,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/completeness"
 )
 
 func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
@@ -66,9 +67,12 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	findings := completeness.Check(settings)
+
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Findings": findings,
 	}
 
 	if renderer != nil {
@@ -433,6 +437,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		Title:    "What-If Analysis",
 		Settings: settings,
 		Analysis: analysis,
+		Findings: completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -526,6 +531,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		Title:    "What-If Analysis",
 		Settings: settings,
 		Analysis: analysis,
+		Findings: completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -585,6 +591,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		Title:    "What-If Analysis",
 		Settings: settings,
 		Analysis: analysis,
+		Findings: completeness.Check(settings),
 	}
 
 	if renderer != nil {
@@ -660,6 +667,7 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		Title:    "What-If Analysis",
 		Settings: settings,
 		Analysis: analysis,
+		Findings: completeness.Check(settings),
 	}
 
 	if renderer != nil {

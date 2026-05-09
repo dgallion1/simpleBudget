@@ -25,6 +25,7 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/completeness"
 	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/templates"
@@ -593,6 +594,8 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	activeScenario := retirementMgr.ActiveScenario()
 	activeFilename := retirementMgr.ActiveFilename()
 
+	findings := completeness.Check(settings)
+
 	pageData := map[string]interface{}{
 		"Title":          "What-If Analysis",
 		"ActiveTab":      "whatif",
@@ -601,6 +604,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"Scenarios":      scenarios,
 		"ActiveScenario": activeScenario,
 		"ActiveFilename": activeFilename,
+		"Findings":       findings,
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

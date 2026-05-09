@@ -967,9 +967,6 @@ func TestGetMonthlyCostAlreadyPastMedicare(t *testing.T) {
 
 func TestDefaultTaxConfig_FilingStatusIsSingle(t *testing.T) {
 	cfg := DefaultTaxConfig()
-	if cfg == nil {
-		t.Fatal("DefaultTaxConfig returned nil")
-	}
 	if cfg.FilingStatus != FilingSingle {
 		t.Errorf("FilingStatus = %q, want %q", cfg.FilingStatus, FilingSingle)
 	}

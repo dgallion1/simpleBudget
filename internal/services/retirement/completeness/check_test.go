@@ -269,6 +269,20 @@ func TestCheck_MFJNoSpousePerson(t *testing.T) {
 	}
 }
 
+func TestCheck_NilSettings(t *testing.T) {
+	findings := Check(nil)
+	if len(findings) != 1 {
+		t.Fatalf("expected exactly 1 finding for nil settings, got %d", len(findings))
+	}
+	f := findings[0]
+	if f.Code != codeSettingsNil {
+		t.Errorf("Code = %q, want %q", f.Code, codeSettingsNil)
+	}
+	if f.Severity != SeverityError {
+		t.Errorf("Severity = %v, want SeverityError", f.Severity)
+	}
+}
+
 func TestCheck_OrderingErrorsFirst(t *testing.T) {
 	settings := &models.WhatIfSettings{
 		TaxConfig: &models.TaxConfig{

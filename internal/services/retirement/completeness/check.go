@@ -7,6 +7,8 @@ package completeness
 
 import "budget2/internal/models"
 
+const codeSettingsNil = "settings_nil"
+
 // Severity ranks findings from informational to outright inconsistent.
 // SeverityError means the projection is internally inconsistent (e.g.
 // MFJ filing status with no spouse Person — taxes are computed for two,
@@ -46,7 +48,7 @@ func Check(s *models.WhatIfSettings) []Finding {
 	if s == nil {
 		return []Finding{{
 			Severity: SeverityError,
-			Code:     "settings_nil",
+			Code:     codeSettingsNil,
 			Title:    "Scenario could not be loaded",
 			Detail:   "Settings are missing. The projection cannot run.",
 			Action:   "Reload the page",

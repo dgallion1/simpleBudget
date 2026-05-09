@@ -167,6 +167,10 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 		settings.Persons = []models.Person{}
 	}
 
+	if settings.TaxConfig == nil {
+		settings.TaxConfig = defaultTaxConfigForPersons(settings.Persons)
+	}
+
 	if settings.SpendingPhaseConfig == nil {
 		settings.SpendingPhaseConfig = &models.SpendingPhaseConfig{
 			Enabled: false,
@@ -196,6 +200,27 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 	if settings.RMDTiming == "" {
 		settings.RMDTiming = models.RMDTimingStartOfYear
 	}
+}
+
+// defaultTaxConfigForPersons returns a TaxConfig with filing status
+// inferred from the household shape. Single-person scenarios default
+// to single filing; scenarios with a spouse Person default to
+// married-jointly. This avoids the completeness banner producing a
+// false-positive "MFJ but no spouse" error on legacy single-person
+// scenarios that never had a TaxConfig saved.
+func defaultTaxConfigForPersons(persons []models.Person) *models.TaxConfig {
+	cfg := models.DefaultTaxConfig()
+	hasSpouse := false
+	for _, p := range persons {
+		if p.Role == models.PersonRoleSpouse {
+			hasSpouse = true
+			break
+		}
+	}
+	if !hasSpouse {
+		cfg.FilingStatus = models.FilingSingle
+	}
+	return cfg
 }
 
 func parseLegacyAges(rawFields map[string]json.RawMessage) legacyAgeFields {
@@ -974,6 +999,12 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	}
 	if v, ok := updates["steady_state_override_year"].(float64); ok {
 		settings.SteadyStateOverrideYear = v
+	}
+	if v, ok := updates["state_income_tax_rate"].(float64); ok {
+		if settings.TaxConfig == nil {
+			settings.TaxConfig = defaultTaxConfigForPersons(settings.Persons)
+		}
+		settings.TaxConfig.StateIncomeTaxRate = v
 	}
 
 	if v, ok := updates["current_age"].(int); ok {

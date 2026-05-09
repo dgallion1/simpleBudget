@@ -111,6 +111,9 @@ var settingsFormSpec = []fieldSpec{
 		HasBounds: true, Min: 0, Max: 30,
 		BoundsMsg: "Tax-deferred delay must be between 0 and 30 years"},
 	{Name: "steady_state_override_year", Kind: fieldFloat, ParseLabel: "steady state year"},
+	{Name: "state_income_tax_rate", Kind: fieldFloat, ParseLabel: "state income tax rate",
+		HasBounds: true, Min: 0, Max: 20,
+		BoundsMsg: "State income tax rate must be between 0 and 20%"},
 }
 
 // applyFieldSpec parses a single field according to spec and (on success)

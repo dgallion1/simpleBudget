@@ -117,3 +117,35 @@ func TestApplySettingsUpdates_StateIncomeTaxRate(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultTaxConfigForPersons_NoSpouse_StaysSingle(t *testing.T) {
+	persons := []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+	}
+	cfg := defaultTaxConfigForPersons(persons)
+	if cfg.FilingStatus != models.FilingSingle {
+		t.Errorf("FilingStatus = %q, want Single", cfg.FilingStatus)
+	}
+}
+
+func TestDefaultTaxConfigForPersons_WithSpouse_UpgradesToMFJ(t *testing.T) {
+	persons := []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+		{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
+	}
+	cfg := defaultTaxConfigForPersons(persons)
+	if cfg.FilingStatus != models.FilingMarriedJoint {
+		t.Errorf("FilingStatus = %q, want MarriedJoint", cfg.FilingStatus)
+	}
+}
+
+func TestDefaultTaxConfigForPersons_OtherRoleOnly_StaysSingle(t *testing.T) {
+	persons := []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary},
+		{ID: "p2", Name: "Other", Role: models.PersonRoleOther},
+	}
+	cfg := defaultTaxConfigForPersons(persons)
+	if cfg.FilingStatus != models.FilingSingle {
+		t.Errorf("FilingStatus = %q, want Single (PersonRoleOther is not a spouse)", cfg.FilingStatus)
+	}
+}

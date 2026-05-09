@@ -678,14 +678,18 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	clone := *settings
 	clone.Guardrails = nil
 
-	prepared, err := prepare.From(&clone)
+	// Use buildEngineInput + DefaultHooks so SS optimizer income and chain
+	// transitions match the guardrails-on path. The endpoint is "without
+	// guardrails", not "without SS or chain".
+	in, _, err := buildEngineInput(&clone)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	projection := getEngine().Run(engine.Input{Prepared: prepared})
+	in.Hooks = retirement.DefaultHooks()
+	projection := getEngine().Run(in)
 
 	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
 	chartData := buildProjectionChartData(&clone, projection, displayDollars)

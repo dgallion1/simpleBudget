@@ -8389,6 +8389,80 @@ func TestHandleWhatIfProjectionChartNoGuardrails_IndependentOfThresholds(t *test
 	}
 }
 
+// Regression: the no-guardrails endpoint must wire DefaultHooks so SS-optimizer
+// income still flows through the projection. Before the fix it ran the engine
+// with engine.Input{Prepared: prepared} (no hooks), silently dropping SS
+// income from the "Without guardrails" comparison chart and making it
+// misleading for any scenario using the SS optimizer.
+func TestHandleWhatIfProjectionChartNoGuardrails_SSOptimizerHookActive(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 5000
+	settings.CurrentAge = 60
+	settings.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 2400,
+		FRA:        67,
+		ClaimAge:   65,
+		COLARate:   0,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif/chart/projection/no-guardrails?display_dollars=nominal", nil)
+	handleWhatIfProjectionChartNoGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Reproduce the buggy path (no hooks) to prove SS income changes the
+	// projection on this scenario — otherwise the test wouldn't actually
+	// catch the bug.
+	clone := *settings
+	clone.Guardrails = nil
+	prepared, err := prepare.From(&clone)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	noHookProj := getEngine().Run(engine.Input{Prepared: prepared})
+	noHookChart := buildProjectionChartData(&clone, noHookProj, "nominal")
+	noHookJSON, err := json.Marshal(noHookChart)
+	if err != nil {
+		t.Fatalf("marshal noHookChart: %v", err)
+	}
+	if w.Body.String() == string(noHookJSON)+"\n" || w.Body.String() == string(noHookJSON) {
+		t.Fatal("no-guardrails handler output is byte-identical to the no-hooks engine.Run; SS optimizer hook is not wired")
+	}
+
+	// Confirm the handler's output equals the canonical with-hooks path.
+	in, _, err := buildEngineInput(&clone)
+	if err != nil {
+		t.Fatalf("buildEngineInput: %v", err)
+	}
+	in.Hooks = retirement.DefaultHooks()
+	withHookProj := getEngine().Run(in)
+	withHookChart := buildProjectionChartData(&clone, withHookProj, "nominal")
+	withHookJSON, err := json.Marshal(withHookChart)
+	if err != nil {
+		t.Fatalf("marshal withHookChart: %v", err)
+	}
+	got := strings.TrimRight(w.Body.String(), "\n")
+	if got != string(withHookJSON) {
+		t.Errorf("handler output diverged from the canonical with-hooks path; SS optimizer hook may be misconfigured")
+	}
+}
+
 func TestHandleWhatIfSettings_FilingStatusRoundTrip(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()

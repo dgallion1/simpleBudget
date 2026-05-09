@@ -2,6 +2,8 @@ package completeness
 
 import "budget2/internal/models"
 
+const codeStateTaxUnset = "state_tax_unset"
+
 // checkStateTaxUnset flags scenarios where state income tax is silently
 // zero. The engine's tax calculator reads TaxConfig.StateIncomeTaxRate
 // and applies state tax correctly when it is non-zero — the gap is that
@@ -17,7 +19,7 @@ func checkStateTaxUnset(s *models.WhatIfSettings) *Finding {
 	}
 	return &Finding{
 		Severity:   SeverityWarn,
-		Code:       "state_tax_unset",
+		Code:       codeStateTaxUnset,
 		Title:      "No state income tax configured",
 		Detail:     "Projections currently model federal tax only. If you live in a state with income tax, your after-tax balances are overstated.",
 		FormAnchor: "rate-assumptions-card",

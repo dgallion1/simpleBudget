@@ -16,7 +16,7 @@ func TestCheck_StateTaxUnset(t *testing.T) {
 		{
 			name:      "nil TaxConfig emits state_tax_unset",
 			settings:  &models.WhatIfSettings{TaxConfig: nil},
-			wantCode:  "state_tax_unset",
+			wantCode:  codeStateTaxUnset,
 			wantFound: true,
 		},
 		{
@@ -24,7 +24,7 @@ func TestCheck_StateTaxUnset(t *testing.T) {
 			settings: &models.WhatIfSettings{
 				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: 0.0},
 			},
-			wantCode:  "state_tax_unset",
+			wantCode:  codeStateTaxUnset,
 			wantFound: true,
 		},
 		{
@@ -32,7 +32,7 @@ func TestCheck_StateTaxUnset(t *testing.T) {
 			settings: &models.WhatIfSettings{
 				TaxConfig: &models.TaxConfig{StateIncomeTaxRate: 5.0},
 			},
-			wantCode:  "state_tax_unset",
+			wantCode:  codeStateTaxUnset,
 			wantFound: false,
 		},
 	}
@@ -52,7 +52,7 @@ func TestCheck_StateTaxFindingShape(t *testing.T) {
 	settings := &models.WhatIfSettings{TaxConfig: nil}
 	findings := Check(settings)
 
-	f := findByCode(findings, "state_tax_unset")
+	f := findByCode(findings, codeStateTaxUnset)
 	if f == nil {
 		t.Fatal("expected state_tax_unset finding, got none")
 	}

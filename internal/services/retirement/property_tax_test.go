@@ -58,3 +58,29 @@ func TestInitializeLoadedSettings_PropertyTaxInflation(t *testing.T) {
 		}
 	})
 }
+
+func TestApplySettingsUpdates_PropertyTax(t *testing.T) {
+	t.Run("monthly_property_tax writes to settings", func(t *testing.T) {
+		settings := &models.WhatIfSettings{}
+		updates := map[string]interface{}{"monthly_property_tax": 750.0}
+
+		sm := &SettingsManager{}
+		sm.applySettingsUpdates(settings, updates)
+
+		if settings.MonthlyPropertyTax != 750 {
+			t.Errorf("MonthlyPropertyTax = %v, want 750", settings.MonthlyPropertyTax)
+		}
+	})
+
+	t.Run("property_tax_inflation writes to settings", func(t *testing.T) {
+		settings := &models.WhatIfSettings{}
+		updates := map[string]interface{}{"property_tax_inflation": 5.5}
+
+		sm := &SettingsManager{}
+		sm.applySettingsUpdates(settings, updates)
+
+		if settings.PropertyTaxInflation != 5.5 {
+			t.Errorf("PropertyTaxInflation = %v, want 5.5", settings.PropertyTaxInflation)
+		}
+	})
+}

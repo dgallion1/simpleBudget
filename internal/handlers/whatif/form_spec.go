@@ -111,6 +111,12 @@ var settingsFormSpec = []fieldSpec{
 		HasBounds: true, Min: 0, Max: 30,
 		BoundsMsg: "Tax-deferred delay must be between 0 and 30 years"},
 	{Name: "steady_state_override_year", Kind: fieldFloat, ParseLabel: "steady state year"},
+	{Name: "monthly_property_tax", Kind: fieldFloat, ParseLabel: "monthly property tax",
+		HasBounds: true, Min: 0, Max: 50000,
+		BoundsMsg: "Monthly property tax must be between 0 and 50000"},
+	{Name: "property_tax_inflation", Kind: fieldFloat, ParseLabel: "property tax inflation",
+		HasBounds: true, Min: 0, Max: 15,
+		BoundsMsg: "Property tax inflation must be between 0 and 15%"},
 }
 
 // applyFieldSpec parses a single field according to spec and (on success)

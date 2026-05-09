@@ -195,7 +195,7 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 	}
 	return &TaxCalculator{
 		FilingStatus:       config.FilingStatus,
-		StateRate:          config.StateIncomeTaxRate,
+		StateRate:          config.StateIncomeTaxRateOrZero(),
 		InflationRate:      inflationRate,
 		BaseYear:           taxBaseYear,
 		Age65Count:         config.Age65Count,

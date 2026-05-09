@@ -200,6 +200,10 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 	if settings.RMDTiming == "" {
 		settings.RMDTiming = models.RMDTimingStartOfYear
 	}
+
+	if settings.PropertyTaxInflation == 0 {
+		settings.PropertyTaxInflation = 4.0
+	}
 }
 
 // defaultTaxConfigForPersons returns a TaxConfig with filing status
@@ -914,6 +918,9 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	if v, ok := updates["monthly_healthcare"].(float64); ok {
 		settings.MonthlyHealthcare = v
 	}
+	if v, ok := updates["monthly_property_tax"].(float64); ok {
+		settings.MonthlyPropertyTax = v
+	}
 	if v, ok := updates["healthcare_start_years"].(int); ok {
 		settings.HealthcareStartYears = v
 	}
@@ -962,6 +969,9 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	}
 	if v, ok := updates["healthcare_inflation"].(float64); ok {
 		settings.HealthcareInflation = v
+	}
+	if v, ok := updates["property_tax_inflation"].(float64); ok {
+		settings.PropertyTaxInflation = v
 	}
 	if v, ok := updates["spending_decline_rate"].(float64); ok {
 		settings.SpendingDeclineRate = v

@@ -106,6 +106,17 @@ func TestCheck_SSUnconfigured(t *testing.T) {
 			wantFound: false,
 		},
 		{
+			name: "primary age 50 (boundary) emits ss_unconfigured",
+			settings: &models.WhatIfSettings{
+				StartDate: "2026-01",
+				Persons: []models.Person{
+					{Role: models.PersonRolePrimary, BirthMonth: "1976-06"}, // age 50 by year-only arithmetic
+				},
+				SocialSecurity: nil,
+			},
+			wantFound: true,
+		},
+		{
 			name: "configured SocialSecurity does not emit ss_unconfigured",
 			settings: &models.WhatIfSettings{
 				StartDate: "2026-01",

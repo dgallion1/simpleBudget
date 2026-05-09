@@ -1,7 +1,7 @@
 package completeness
 
 import (
-	"time"
+	"errors"
 
 	"budget2/internal/models"
 )
@@ -111,13 +111,19 @@ func personAge(p models.Person, refYear int) int {
 	return refYear - birthYear
 }
 
+// parseStartYear parses the leading 4-digit year from a "YYYY-MM"
+// scenario start date. Returns 0 when the input is missing or malformed
+// — keeping Check pure (no clock dependency). Callers downstream of
+// this function (anyPersonAtLeast → personAge) treat year=0 as
+// "unknown", so legacy scenarios with no start date silently skip
+// age-gated checks rather than firing them based on wall-clock time.
 func parseStartYear(startDate string) int {
 	if len(startDate) < 4 {
-		return time.Now().Year()
+		return 0
 	}
 	y, err := atoiFour(startDate[:4])
 	if err != nil {
-		return time.Now().Year()
+		return 0
 	}
 	return y
 }
@@ -140,8 +146,4 @@ func atoiFour(s string) (int, error) {
 	return n, nil
 }
 
-type completenessError string
-
-func (e completenessError) Error() string { return string(e) }
-
-const errBadYear completenessError = "completeness: year is not four digits"
+var errBadYear = errors.New("completeness: year is not four digits")

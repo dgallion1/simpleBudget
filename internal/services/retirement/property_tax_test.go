@@ -7,6 +7,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 )
 
 func TestDefaultWhatIfSettings_PropertyTaxFields(t *testing.T) {
@@ -145,5 +146,39 @@ func TestCalculateExpenseBreakdown_PropertyTaxIsEssential(t *testing.T) {
 	}
 	if bd.Discretionary != 0 {
 		t.Errorf("Discretionary = %v, want 0", bd.Discretionary)
+	}
+}
+
+func TestPropertyTaxAffectsProjection(t *testing.T) {
+	build := func(monthly float64) *models.WhatIfAnalysis {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5_000
+		s.MonthlyPropertyTax = monthly
+		s.PropertyTaxInflation = 4.0
+		s.StartDate = "2026-01"
+		s.Persons = []models.Person{
+			{ID: "p1", Role: models.PersonRolePrimary, BirthMonth: "1960-01", Name: "You"},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 2500, ClaimAge: 67}
+
+		prepared := prepare.MustFrom(t, s)
+		return RunFull(engine.New(), engine.Input{Prepared: prepared})
+	}
+
+	withPT := build(800)
+	withoutPT := build(0)
+
+	if withPT == nil || withoutPT == nil || withPT.Projection == nil || withoutPT.Projection == nil {
+		t.Fatal("RunFull returned nil projection")
+	}
+
+	// Final-month balance should be lower with property tax.
+	withPTFinal := withPT.Projection.Months[len(withPT.Projection.Months)-1].PortfolioBalance
+	withoutPTFinal := withoutPT.Projection.Months[len(withoutPT.Projection.Months)-1].PortfolioBalance
+
+	if !(withoutPTFinal > withPTFinal) {
+		t.Errorf("expected $800/mo property tax to lower final balance; got with=%v without=%v",
+			withPTFinal, withoutPTFinal)
 	}
 }

@@ -61,6 +61,25 @@
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">In today's dollars. Inflation is applied during projection.</p>
         </div>
 
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label for="monthly-property-tax-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Property Tax</label>
+                <input type="number" id="monthly-property-tax-input" name="monthly_property_tax"
+                    value="{{printf "%.0f" .Settings.MonthlyPropertyTax}}"
+                    min="0" max="50000" step="50"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Annual bill ÷ 12. Leave 0 if you rent or own outright with no tax.</p>
+            </div>
+            <div>
+                <label for="property-tax-inflation-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Property Tax Inflation %</label>
+                <input type="number" id="property-tax-inflation-input" name="property_tax_inflation"
+                    value="{{printf "%.1f" .Settings.PropertyTaxInflation}}"
+                    min="0" max="15" step="0.1"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Annual rate (default 4%). Tracks assessment + levy growth.</p>
+            </div>
+        </div>
+
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
             <input type="range" id="projection-years-slider" name="projection_years" value="{{.Settings.ProjectionYears}}"

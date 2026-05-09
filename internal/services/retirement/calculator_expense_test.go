@@ -734,6 +734,10 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.TaxDeferredPercent = 80
 		s.RothPercent = 10
 		s.SpendingPhaseConfig = nil
+		// Use MFJ so the ~$16k annual RMD is fully absorbed by the MFJ standard
+		// deduction (~$29k), making netRMD == monthlyRMD and keeping the
+		// partial-coverage assertion simple.
+		s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
 
 		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()

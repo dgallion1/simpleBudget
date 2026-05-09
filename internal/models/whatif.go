@@ -1156,7 +1156,7 @@ type TaxConfig struct {
 // DefaultTaxConfig returns sensible tax defaults
 func DefaultTaxConfig() *TaxConfig {
 	return &TaxConfig{
-		FilingStatus:       FilingMarriedJoint,
+		FilingStatus:       FilingSingle,
 		StateIncomeTaxRate: 0.0, // No state tax by default
 	}
 }

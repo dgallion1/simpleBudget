@@ -210,15 +210,11 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 // scenarios that never had a TaxConfig saved.
 func defaultTaxConfigForPersons(persons []models.Person) *models.TaxConfig {
 	cfg := models.DefaultTaxConfig()
-	hasSpouse := false
 	for _, p := range persons {
 		if p.Role == models.PersonRoleSpouse {
-			hasSpouse = true
+			cfg.FilingStatus = models.FilingMarriedJoint
 			break
 		}
-	}
-	if !hasSpouse {
-		cfg.FilingStatus = models.FilingSingle
 	}
 	return cfg
 }

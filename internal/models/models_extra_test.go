@@ -909,8 +909,8 @@ func TestCalculateSustainabilityScore(t *testing.T) {
 
 func TestDefaultTaxConfig(t *testing.T) {
 	tc := DefaultTaxConfig()
-	if tc.FilingStatus != FilingMarriedJoint {
-		t.Errorf("FilingStatus = %q, want married_joint", tc.FilingStatus)
+	if tc.FilingStatus != FilingSingle {
+		t.Errorf("FilingStatus = %q, want single", tc.FilingStatus)
 	}
 	if tc.StateIncomeTaxRate != 0 {
 		t.Errorf("StateIncomeTaxRate = %f, want 0", tc.StateIncomeTaxRate)
@@ -962,5 +962,15 @@ func TestGetMonthlyCostAlreadyPastMedicare(t *testing.T) {
 	want := 500.0
 	if math.Abs(got-want) > 0.01 {
 		t.Errorf("already past medicare: got %f, want %f", got, want)
+	}
+}
+
+func TestDefaultTaxConfig_FilingStatusIsSingle(t *testing.T) {
+	cfg := DefaultTaxConfig()
+	if cfg == nil {
+		t.Fatal("DefaultTaxConfig returned nil")
+	}
+	if cfg.FilingStatus != FilingSingle {
+		t.Errorf("FilingStatus = %q, want %q", cfg.FilingStatus, FilingSingle)
 	}
 }

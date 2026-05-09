@@ -29,9 +29,9 @@ func TestNewTaxCalculator(t *testing.T) {
 func TestNewTaxCalculatorWithNilConfig(t *testing.T) {
 	tc := NewTaxCalculator(nil, 3.0)
 
-	// Should use defaults
-	if tc.FilingStatus != models.FilingMarriedJoint {
-		t.Errorf("Expected default FilingMarriedJoint, got %v", tc.FilingStatus)
+	// Should use defaults (FilingSingle matches default single-person scenario)
+	if tc.FilingStatus != models.FilingSingle {
+		t.Errorf("Expected default FilingSingle, got %v", tc.FilingStatus)
 	}
 }
 

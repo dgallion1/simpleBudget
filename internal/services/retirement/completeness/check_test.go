@@ -200,3 +200,93 @@ func TestCheck_SSPartial(t *testing.T) {
 		})
 	}
 }
+
+func TestCheck_MFJNoSpousePerson(t *testing.T) {
+	cases := []struct {
+		name      string
+		settings  *models.WhatIfSettings
+		wantFound bool
+	}{
+		{
+			name: "MFJ filing with no spouse Person emits mfj_no_spouse_person",
+			settings: &models.WhatIfSettings{
+				TaxConfig: &models.TaxConfig{
+					FilingStatus:       models.FilingMarriedJoint,
+					StateIncomeTaxRate: 5.0,
+				},
+				Persons: []models.Person{
+					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
+				},
+			},
+			wantFound: true,
+		},
+		{
+			name: "MFJ filing with spouse Person does not emit",
+			settings: &models.WhatIfSettings{
+				TaxConfig: &models.TaxConfig{
+					FilingStatus:       models.FilingMarriedJoint,
+					StateIncomeTaxRate: 5.0,
+				},
+				Persons: []models.Person{
+					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
+					{Role: models.PersonRoleSpouse, BirthMonth: "1972-01"},
+				},
+			},
+			wantFound: false,
+		},
+		{
+			name: "Single filing with no spouse Person does not emit",
+			settings: &models.WhatIfSettings{
+				TaxConfig: &models.TaxConfig{
+					FilingStatus:       models.FilingSingle,
+					StateIncomeTaxRate: 5.0,
+				},
+				Persons: []models.Person{
+					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
+				},
+			},
+			wantFound: false,
+		},
+		{
+			name: "nil TaxConfig does not emit (no filing status to compare)",
+			settings: &models.WhatIfSettings{
+				TaxConfig: nil,
+				Persons: []models.Person{
+					{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
+				},
+			},
+			wantFound: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			findings := Check(tc.settings)
+			if got := hasCode(findings, codeMFJNoSpousePerson); got != tc.wantFound {
+				t.Fatalf("mfj_no_spouse_person present = %v, want %v", got, tc.wantFound)
+			}
+		})
+	}
+}
+
+func TestCheck_OrderingErrorsFirst(t *testing.T) {
+	settings := &models.WhatIfSettings{
+		TaxConfig: &models.TaxConfig{
+			FilingStatus:       models.FilingMarriedJoint,
+			StateIncomeTaxRate: 0, // triggers Warn
+		},
+		Persons: []models.Person{
+			{Role: models.PersonRolePrimary, BirthMonth: "1970-01"},
+		},
+	}
+	findings := Check(settings)
+
+	// Both findings should be present.
+	if !hasCode(findings, codeMFJNoSpousePerson) || !hasCode(findings, codeStateTaxUnset) {
+		t.Fatalf("expected both findings, got: %+v", findings)
+	}
+	// Errors must come before warns.
+	if findings[0].Code != codeMFJNoSpousePerson {
+		t.Errorf("expected mfj_no_spouse_person first, got %q", findings[0].Code)
+	}
+}

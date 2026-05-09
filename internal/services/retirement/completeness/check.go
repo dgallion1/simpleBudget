@@ -57,6 +57,7 @@ func Check(s *models.WhatIfSettings) []Finding {
 	findings = appendIfPresent(findings, checkStateTaxUnset(s))
 	findings = appendIfPresent(findings, checkSSUnconfigured(s))
 	findings = appendIfPresent(findings, checkSSPartial(s))
+	findings = appendIfPresent(findings, checkMFJNoSpousePerson(s))
 	return sortBySeverity(findings)
 }
 

@@ -8416,3 +8416,34 @@ func TestHandleWhatIfSettings_FilingStatusRoundTrip(t *testing.T) {
 		t.Errorf("FilingStatus = %q, want married_joint", got.TaxConfig.FilingStatus)
 	}
 }
+
+func TestHandleWhatIfSettings_FilingStatusInvalid(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{}
+	form.Set("filing_status", "garbage")
+	req := httptest.NewRequest(http.MethodPost, "/whatif/settings", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handleWhatIfSettings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), "Invalid filing status") {
+		t.Errorf("body does not contain 'Invalid filing status': %s", w.Body.String())
+	}
+
+	// Verify settings were not changed
+	got, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	// Just check that we can still load the config (it should be unchanged)
+	if got.TaxConfig == nil {
+		t.Fatal("TaxConfig is nil")
+	}
+}

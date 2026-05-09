@@ -33,9 +33,9 @@ func TestCompletenessCheck_StateTaxUnsetSurfaces(t *testing.T) {
 }
 
 func TestCompletenessBanner_RendersFindingTitle(t *testing.T) {
-	if renderer == nil {
-		t.Skip("renderer not initialized in this test environment")
-	}
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
 	findings := []completeness.Finding{
 		{
 			Severity:   completeness.SeverityWarn,
@@ -67,9 +67,9 @@ func TestCompletenessBanner_RendersFindingTitle(t *testing.T) {
 }
 
 func TestCompletenessBanner_EmptyFindingsRendersNothingMeaningful(t *testing.T) {
-	if renderer == nil {
-		t.Skip("renderer not initialized in this test environment")
-	}
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
 	out, err := renderer.RenderToString("whatif-completeness", map[string]interface{}{
 		"Findings": []completeness.Finding{},
 	})

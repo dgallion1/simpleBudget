@@ -417,3 +417,120 @@ func TestApplyRMDTiming_F035(t *testing.T) {
 		}
 	})
 }
+
+func TestApplyFieldSpec_OptionalFloat_EmptyRawIsNil(t *testing.T) {
+	form := url.Values{}
+	form.Set("rate", "")
+	r := httptest.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := map[string]interface{}{}
+	spec := fieldSpec{Name: "rate", Kind: fieldOptionalFloat, ParseLabel: "rate"}
+	included, msg := applyFieldSpec(r, spec, updates)
+	if msg != "" {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+	if !included {
+		t.Fatal("included = false, want true (empty raw still propagates as nil)")
+	}
+	got, ok := updates["rate"].(*float64)
+	if !ok {
+		t.Fatalf("updates[rate] type = %T, want *float64", updates["rate"])
+	}
+	if got != nil {
+		t.Errorf("got %v, want nil", *got)
+	}
+}
+
+func TestApplyFieldSpec_OptionalFloat_ZeroIsConfigured(t *testing.T) {
+	form := url.Values{}
+	form.Set("rate", "0")
+	r := httptest.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := map[string]interface{}{}
+	spec := fieldSpec{Name: "rate", Kind: fieldOptionalFloat, ParseLabel: "rate"}
+	_, msg := applyFieldSpec(r, spec, updates)
+	if msg != "" {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+	got, ok := updates["rate"].(*float64)
+	if !ok || got == nil {
+		t.Fatalf("updates[rate] = %v (%T), want non-nil *float64", updates["rate"], updates["rate"])
+	}
+	if *got != 0 {
+		t.Errorf("got %v, want 0", *got)
+	}
+}
+
+func TestApplyFieldSpec_OptionalFloat_NonzeroIsConfigured(t *testing.T) {
+	form := url.Values{}
+	form.Set("rate", "9.3")
+	r := httptest.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := map[string]interface{}{}
+	spec := fieldSpec{Name: "rate", Kind: fieldOptionalFloat, ParseLabel: "rate"}
+	_, msg := applyFieldSpec(r, spec, updates)
+	if msg != "" {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+	got, ok := updates["rate"].(*float64)
+	if !ok || got == nil {
+		t.Fatalf("updates[rate] = %v (%T), want non-nil *float64", updates["rate"], updates["rate"])
+	}
+	if *got != 9.3 {
+		t.Errorf("got %v, want 9.3", *got)
+	}
+}
+
+func TestApplyFieldSpec_OptionalFloat_BoundsViolation(t *testing.T) {
+	form := url.Values{}
+	form.Set("rate", "999")
+	r := httptest.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := map[string]interface{}{}
+	spec := fieldSpec{Name: "rate", Kind: fieldOptionalFloat, ParseLabel: "rate",
+		HasBounds: true, Min: 0, Max: 20, BoundsMsg: "rate must be 0..20"}
+	_, msg := applyFieldSpec(r, spec, updates)
+	if msg != "rate must be 0..20" {
+		t.Errorf("msg = %q, want %q", msg, "rate must be 0..20")
+	}
+}
+
+func TestApplyFieldSpec_OptionalFloat_AbsentKeyIsNotIncluded(t *testing.T) {
+	// Form has no "rate" key at all. Should NOT be added to updates,
+	// preserving partial-PATCH semantics.
+	form := url.Values{}
+	r := httptest.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := r.ParseForm(); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := map[string]interface{}{}
+	spec := fieldSpec{Name: "rate", Kind: fieldOptionalFloat, ParseLabel: "rate"}
+	included, msg := applyFieldSpec(r, spec, updates)
+	if msg != "" {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+	if included {
+		t.Error("included = true, want false (absent key must not propagate)")
+	}
+	if _, exists := updates["rate"]; exists {
+		t.Error("updates contains rate key, want absent")
+	}
+}

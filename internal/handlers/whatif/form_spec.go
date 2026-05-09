@@ -15,6 +15,7 @@ const (
 	fieldFloat fieldKind = iota
 	fieldInt
 	fieldEnum
+	fieldOptionalFloat // empty-but-present raw → nil; numeric raw (incl. "0") → &v
 )
 
 // fieldSpec declares the parse rules for one /whatif/settings form field.
@@ -170,6 +171,27 @@ func applyFieldSpec(r *http.Request, spec fieldSpec, updates map[string]interfac
 			return false, spec.EnumInvalidMsg
 		}
 		updates[spec.Name] = raw
+	case fieldOptionalFloat:
+		// Distinguish three input states:
+		// - key absent (FormValue returns "" and the form has no key) → don't include
+		// - key present and empty                                       → include as nil
+		// - key present with parseable numeric (incl. "0")              → include as &v
+		if _, present := r.Form[spec.Name]; !present {
+			return false, ""
+		}
+		if raw == "" {
+			updates[spec.Name] = (*float64)(nil)
+			return true, ""
+		}
+		v, parseErr := parseFormFloat(r, spec.Name)
+		if parseErr != nil {
+			return false, fmt.Sprintf("Invalid %s: %s", spec.ParseLabel, parseErr.Error())
+		}
+		if spec.HasBounds && (v < spec.Min || v > spec.Max) {
+			return false, spec.BoundsMsg
+		}
+		ptr := v
+		updates[spec.Name] = &ptr
 	}
 	return true, ""
 }

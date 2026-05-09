@@ -304,3 +304,14 @@ func TestCheck_OrderingErrorsFirst(t *testing.T) {
 		t.Errorf("expected mfj_no_spouse_person first, got %q", findings[0].Code)
 	}
 }
+
+func TestDefaultWhatIfSettings_NoErrorFindings(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	findings := Check(settings)
+
+	for _, f := range findings {
+		if f.Severity == SeverityError {
+			t.Errorf("DefaultWhatIfSettings should produce no SeverityError findings, got: code=%s title=%q", f.Code, f.Title)
+		}
+	}
+}

@@ -48,6 +48,21 @@ func TestInitializeLoadedSettings_PropertyTaxInflation(t *testing.T) {
 		}
 	})
 
+	t.Run("user-saved zero PropertyTaxInflation is preserved when key is present in JSON", func(t *testing.T) {
+		settings := &models.WhatIfSettings{
+			PropertyTaxInflation: 0,
+		}
+		raw := map[string]json.RawMessage{
+			"property_tax_inflation": json.RawMessage("0"),
+		}
+
+		initializeLoadedSettings(settings, raw)
+
+		if settings.PropertyTaxInflation != 0 {
+			t.Errorf("PropertyTaxInflation = %v, want 0 (user explicitly saved 0; key present in raw JSON)", settings.PropertyTaxInflation)
+		}
+	})
+
 	t.Run("MonthlyPropertyTax is preserved verbatim (no defaulting)", func(t *testing.T) {
 		settings := &models.WhatIfSettings{
 			MonthlyPropertyTax: 800,

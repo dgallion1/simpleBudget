@@ -201,7 +201,7 @@ func initializeLoadedSettings(settings *models.WhatIfSettings, rawFields map[str
 		settings.RMDTiming = models.RMDTimingStartOfYear
 	}
 
-	if settings.PropertyTaxInflation == 0 {
+	if rawFields["property_tax_inflation"] == nil && settings.PropertyTaxInflation == 0 {
 		settings.PropertyTaxInflation = 4.0
 	}
 }

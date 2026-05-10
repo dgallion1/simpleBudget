@@ -73,6 +73,12 @@
                 <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyTaxes}}</span>
             </div>
             {{end}}
+            {{if gt .Analysis.BudgetFit.MonthlyStateTax 0.0}}
+            <div class="flex justify-between py-0.5 pl-8">
+                <span class="text-gray-400 dark:text-gray-500">Includes State Tax</span>
+                <span class="text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.MonthlyStateTax}}</span>
+            </div>
+            {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyNIIT 0.0}}
             <div class="flex justify-between py-0.5 pl-8">
                 <span class="text-gray-400 dark:text-gray-500">Includes NIIT</span>
@@ -171,6 +177,12 @@
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Estimated Taxes</span>
             <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateTaxes}}</span>
+        </div>
+        {{end}}
+        {{if gt .Analysis.BudgetFit.SteadyStateStateTax 0.0}}
+        <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700 pl-4">
+            <span class="text-gray-500 dark:text-gray-400">Includes State Tax</span>
+            <span class="font-medium text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.SteadyStateStateTax}}</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateNIIT 0.0}}

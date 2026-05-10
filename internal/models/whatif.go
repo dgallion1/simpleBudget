@@ -870,6 +870,7 @@ type BudgetFitAnalysis struct {
 	GrossIncome              float64 `json:"gross_income,omitempty"`
 	NetIncome                float64 `json:"net_income,omitempty"`
 	MonthlyTaxes             float64 `json:"monthly_taxes,omitempty"`
+	MonthlyStateTax          float64 `json:"monthly_state_tax,omitempty"`
 	MonthlyNIIT              float64 `json:"monthly_niit,omitempty"`
 	MonthlyIRMAA             float64 `json:"monthly_irmaa,omitempty"`
 	TaxableSocialSecurityPct float64 `json:"taxable_social_security_pct,omitempty"`
@@ -896,6 +897,7 @@ type BudgetFitAnalysis struct {
 	SteadyStateGrossIncome              float64 `json:"steady_state_gross_income,omitempty"`
 	SteadyStateNetIncome                float64 `json:"steady_state_net_income,omitempty"`
 	SteadyStateTaxes                    float64 `json:"steady_state_taxes,omitempty"`
+	SteadyStateStateTax                 float64 `json:"steady_state_state_tax,omitempty"`
 	SteadyStateNIIT                     float64 `json:"steady_state_niit,omitempty"`
 	SteadyStateIRMAA                    float64 `json:"steady_state_irmaa,omitempty"`
 	SteadyStateTaxableSocialSecurityPct float64 `json:"steady_state_taxable_social_security_pct,omitempty"`

@@ -74,6 +74,12 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 			Note:   note,
 		})
 	}
+	if s.MonthlyPropertyTax > 0 {
+		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+			Name:   "Property Tax",
+			Amount: s.MonthlyPropertyTax,
+		})
+	}
 	for _, source := range s.ExpenseSources {
 		amt := source.GetAdjustedAmount(0, s.InflationRate)
 		note := ""
@@ -186,6 +192,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		GrossIncome:              grossIncome,
 		NetIncome:                netIncome,
 		MonthlyTaxes:             monthlyTaxes,
+		MonthlyStateTax:          currentSnapshot.MonthlyStateTax,
 		MonthlyNIIT:              currentSnapshot.AnnualNIIT / 12,
 		MonthlyIRMAA:             currentSnapshot.MonthlyIRMAA,
 		TaxableSocialSecurityPct: currentSnapshot.TaxableSocialSecurityPct,
@@ -283,6 +290,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		result.SteadyStateGrossIncome = result.SteadyStateIncome + result.SteadyStateRMD
 		result.SteadyStateNetIncome = result.SteadyStateGrossIncome - steadyStateTaxes
 		result.SteadyStateTaxes = steadyStateTaxes
+		result.SteadyStateStateTax = steadyStateSnapshot.MonthlyStateTax
 		result.SteadyStateNIIT = steadyStateSnapshot.AnnualNIIT / 12
 		result.SteadyStateIRMAA = steadyStateSnapshot.MonthlyIRMAA
 		result.SteadyStateTaxableSocialSecurityPct = steadyStateSnapshot.TaxableSocialSecurityPct

@@ -41,6 +41,7 @@ type ProjectedAnnualTaxInputs struct {
 // EstimateMonthlySnapshot.
 type ProjectedTaxSnapshot struct {
 	MonthlyTax                  float64
+	MonthlyStateTax             float64 // State portion of MonthlyTax (federal = MonthlyTax - MonthlyStateTax)
 	MonthlyIRMAA                float64
 	AnnualMAGI                  float64
 	AnnualTaxableSocialSecurity float64
@@ -116,6 +117,11 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(
 		taxDue = 0
 	}
 
+	monthlyStateTax := 0.0
+	if taxBreakdown.TotalTax > 0 {
+		monthlyStateTax = taxDue * (taxBreakdown.StateTax / taxBreakdown.TotalTax)
+	}
+
 	taxableSocialSecurityPct := 0.0
 	if inputs.SocialSecurityIncome > 0 {
 		taxableSocialSecurityPct = taxableSocialSecurity / inputs.SocialSecurityIncome * 100
@@ -123,6 +129,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(
 
 	return ProjectedTaxSnapshot{
 		MonthlyTax:                  taxDue,
+		MonthlyStateTax:             monthlyStateTax,
 		MonthlyIRMAA:                annualIRMAA / 12,
 		AnnualMAGI:                  taxBreakdown.MAGI,
 		AnnualTaxableSocialSecurity: taxableSocialSecurity,

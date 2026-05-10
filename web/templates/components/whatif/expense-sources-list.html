@@ -12,7 +12,7 @@
 
 {{/* Single Expense Source Item */}}
 {{define "whatif-expense-source-item"}}
-<form hx-put="/whatif/expense/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+<form hx-put="/whatif/expense/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"
     class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
     <div class="flex items-center justify-between mb-2">
         <div>

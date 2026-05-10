@@ -4,7 +4,7 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Rate Assumptions</h3>
 
-    <form hx-post="/whatif/settings" hx-target="#whatif-results" hx-trigger="change delay:500ms"
+    <form hx-post="/whatif/settings" hx-target="#whatif-results" hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"
         class="space-y-3">
 
         <div class="space-y-3">
@@ -98,7 +98,7 @@
                     <label for="tax-deferred-percent-input" class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tax-Deferred</label>
                     <div class="flex items-center">
                         <input type="number" id="tax-deferred-percent-input" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
@@ -109,7 +109,7 @@
                     <label for="roth-percent-input" class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Roth</label>
                     <div class="flex items-center">
                         <input type="number" id="roth-percent-input" name="roth_percent" value="{{printf "%.0f" .Settings.RothPercent}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
@@ -169,7 +169,7 @@
             <input type="number" id="state-income-tax-rate-input" name="state_income_tax_rate"
                 value="{{if and .Settings.TaxConfig .Settings.TaxConfig.StateIncomeTaxRate}}{{printf "%.2f" (deref .Settings.TaxConfig.StateIncomeTaxRate)}}{{end}}"
                 placeholder="e.g. 0 for FL/TX, 9.3 for CA"
-                min="0" max="20" step="0.25"
+                min="0" max="20" step="0.05"
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Flat rate applied to ordinary income. Enter <code>0</code> for no-income-tax states (FL, TX, WA, etc.). Leaving the field blank flags this scenario as unconfigured.</p>
         </div>
@@ -189,7 +189,7 @@
                 <div>
                     <label for="taxable-qualified-dividend-percent-input" class="block text-xs text-gray-500 dark:text-gray-400">Qualified Share %</label>
                     <input type="number" id="taxable-qualified-dividend-percent-input" name="taxable_qualified_dividend_percent" value="{{printf "%.0f" .Settings.GetTaxableQualifiedDividendPercent}}"
-                        min="0" max="100" step="5"
+                        min="0" max="100" step="1"
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
                 <div>
@@ -234,7 +234,7 @@
                         <label for="tax-deferred-stock-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</label>
                         <input type="number" id="tax-deferred-stock-percent-input" name="tax_deferred_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredStockPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
@@ -243,7 +243,7 @@
                         <label for="tax-deferred-cash-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</label>
                         <input type="number" id="tax-deferred-cash-percent-input" name="tax_deferred_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredCashPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
@@ -265,7 +265,7 @@
                         <label for="roth-stock-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</label>
                         <input type="number" id="roth-stock-percent-input" name="roth_stock_percent"
                             value="{{printf "%.0f" .Settings.RothStockPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
@@ -274,7 +274,7 @@
                         <label for="roth-cash-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</label>
                         <input type="number" id="roth-cash-percent-input" name="roth_cash_percent"
                             value="{{printf "%.0f" .Settings.RothCashPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
@@ -296,7 +296,7 @@
                         <label for="taxable-stock-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Stocks</label>
                         <input type="number" id="taxable-stock-percent-input" name="taxable_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxableStockPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
@@ -305,7 +305,7 @@
                         <label for="taxable-cash-percent-input" class="text-xs text-gray-500 dark:text-gray-400 w-12">Cash</label>
                         <input type="number" id="taxable-cash-percent-input" name="taxable_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxableCashPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
@@ -333,13 +333,13 @@
                     <div>
                         <label for="glide-start-stock-pct" class="block text-xs text-gray-500 dark:text-gray-400">Start %</label>
                         <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                     <div>
                         <label for="glide-end-stock-pct" class="block text-xs text-gray-500 dark:text-gray-400">End %</label>
                         <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
-                            min="0" max="100" step="5"
+                            min="0" max="100" step="1"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                     <div>

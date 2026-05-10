@@ -416,7 +416,8 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 
 		// Calculate healthcare expenses using multi-person model with variation
 		activeHealthcare := s.GetTotalHealthcareCost(m) * healthcareVariation
-		totalExpenses := mcAdjustedLiving + activeHealthcare + bigTicketExpenseThisMonth
+		propertyTax := engine.PropertyTaxAtMonth(s, m)
+		totalExpenses := mcAdjustedLiving + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
 
 		// Check if we should enter adaptation mode (crash detected this year via stock returns)
 		// Skip adaptive spending when guardrails are active (guardrails subsume this)

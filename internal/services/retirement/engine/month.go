@@ -186,7 +186,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 
 		// Calculate healthcare expenses using multi-person model
 		activeHealthcare := s.GetTotalHealthcareCost(m)
-		propertyTax := propertyTaxAtMonth(s, m)
+		propertyTax := PropertyTaxAtMonth(s, m)
 		plannedTotalExpenses := currentLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
 		totalExpensesAcc := adjustedLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
 

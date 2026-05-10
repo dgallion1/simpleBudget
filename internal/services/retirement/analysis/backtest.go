@@ -307,7 +307,8 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 
 		// Calculate expenses
 		activeHealthcare := s.GetTotalHealthcareCost(m)
-		totalExpenses := btAdjustedLiving + activeHealthcare + bigTicketExpenseThisMonth
+		propertyTax := engine.PropertyTaxAtMonth(s, m)
+		totalExpenses := btAdjustedLiving + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
 
 		for _, source := range s.ExpenseSources {
 			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)

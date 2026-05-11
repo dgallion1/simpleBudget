@@ -567,11 +567,13 @@ type GuardrailConfig struct {
 // GuardrailEvent records when a guardrail triggered during projection
 type GuardrailEvent struct {
 	Year                  int     `json:"year"`
-	Type                  string  `json:"type"`       // "cut" or "raise"
-	Multiplier            float64 `json:"multiplier"` // New spending multiplier
-	Portfolio             float64 `json:"portfolio"`  // Portfolio value at time
+	Type                  string  `json:"type"`                          // "cut" or "raise"
+	Multiplier            float64 `json:"multiplier"`                    // New (cumulative) spending multiplier
+	PreviousMultiplier    float64 `json:"previous_multiplier,omitempty"` // Multiplier just before this event fired
+	Portfolio             float64 `json:"portfolio"`                     // Portfolio value at time
 	MonthlySpendingBefore float64 `json:"monthly_spending_before,omitempty"`
 	MonthlySpendingAfter  float64 `json:"monthly_spending_after,omitempty"`
+	CumulativeInflation   float64 `json:"cumulative_inflation,omitempty"` // Compounded inflation factor from start to event year (1.0 = no inflation)
 }
 
 // GlidePathConfig defines a linear shift in stock allocation over time
@@ -792,6 +794,7 @@ type ProjectionMonth struct {
 	TotalExpensesReal    float64 `json:"total_expenses_real,omitempty"`
 	TotalIncome          float64 `json:"total_income"`
 	TotalIncomeReal      float64 `json:"total_income_real,omitempty"`
+	SocialSecurityIncome float64 `json:"social_security_income,omitempty"` // SS portion of TotalIncome (manual sources, or SS-optimizer output when active)
 	GrossIncome          float64 `json:"gross_income,omitempty"`
 	NetIncome            float64 `json:"net_income,omitempty"`
 	TaxesPaid            float64 `json:"taxes_paid,omitempty"`

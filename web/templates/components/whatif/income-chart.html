@@ -1,0 +1,65 @@
+{{/* Yearly Income Chart Card */}}
+{{/* Expects: .Analysis.Projection and .Settings */}}
+{{define "whatif-income-chart"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-whatif-income-card
+    data-chart-base-url="/whatif/chart/income">
+    <div class="flex items-start justify-between gap-3 mb-4">
+        <div>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Yearly Income by Source</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-300">Stacked annual cash flow: Social Security, other ordinary income, and portfolio withdrawals.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-gray-600 overflow-hidden" role="group" aria-label="Display dollars mode">
+                <button type="button" data-income-display-dollars="nominal" aria-pressed="true"
+                    class="income-display-toggle px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white">
+                    Nominal
+                </button>
+                <button type="button" data-income-display-dollars="real" aria-pressed="false"
+                    class="income-display-toggle px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200">
+                    Today's Dollars
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="chart-income" class="chart-container" data-chart-url="/whatif/chart/income?display_dollars=nominal">
+        <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+            Loading chart...
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const card = document.querySelector('[data-whatif-income-card]');
+    if (!card) return;
+    const baseUrl = card.dataset.chartBaseUrl || '/whatif/chart/income';
+    const container = card.querySelector('#chart-income');
+    const toggles = card.querySelectorAll('.income-display-toggle');
+
+    function refresh(mode) {
+        const url = baseUrl + '?display_dollars=' + encodeURIComponent(mode);
+        container.dataset.chartUrl = url;
+        if (typeof loadChart === 'function') {
+            loadChart(container);
+        }
+    }
+
+    toggles.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const mode = btn.dataset.incomeDisplayDollars;
+            toggles.forEach(function(other) {
+                const isActive = other === btn;
+                other.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                other.classList.toggle('bg-indigo-600', isActive);
+                other.classList.toggle('text-white', isActive);
+                other.classList.toggle('bg-white', !isActive);
+                other.classList.toggle('dark:bg-gray-700', !isActive);
+                other.classList.toggle('text-gray-600', !isActive);
+                other.classList.toggle('dark:text-gray-200', !isActive);
+            });
+            refresh(mode);
+        });
+    });
+})();
+</script>
+{{end}}

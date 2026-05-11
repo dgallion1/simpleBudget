@@ -85,21 +85,36 @@
 {{define "whatif-guardrail-events"}}
 {{if and .Analysis.Projection .Analysis.Projection.GuardrailEvents}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Guardrail Events</h3>
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">Guardrail Events</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        Each event shows the single-year change and the running multiplier vs. your original plan.
+        Dollar amounts are in that year's nominal dollars; today's-dollar equivalents are in parentheses.
+    </p>
     <div class="space-y-1">
         {{range .Analysis.Projection.GuardrailEvents}}
         <div class="flex flex-wrap items-center justify-between gap-2 text-sm py-1 px-2 rounded {{if eq .Type "cut"}}bg-red-50 dark:bg-red-900/20{{else}}bg-green-50 dark:bg-green-900/20{{end}}">
             <span class="text-gray-700 dark:text-gray-300">
                 Year {{.Year}}:
                 {{if eq .Type "cut"}}
-                <span class="text-red-600 dark:text-red-400">Cut to {{printf "%.0f" (mul .Multiplier 100)}}%</span>
+                <span class="text-red-600 dark:text-red-400">
+                    {{if gt .PreviousMultiplier 0.0}}Cut by {{printf "%.0f" (mul 100.0 (div (sub .PreviousMultiplier .Multiplier) .PreviousMultiplier))}}%{{else}}Cut{{end}}
+                    <span class="text-xs text-red-500 dark:text-red-300">({{printf "%.0f" (mul .Multiplier 100)}}% of plan)</span>
+                </span>
                 {{else}}
-                <span class="text-green-600 dark:text-green-400">Raise to {{printf "%.0f" (mul .Multiplier 100)}}%</span>
+                <span class="text-green-600 dark:text-green-400">
+                    {{if gt .PreviousMultiplier 0.0}}Raise by {{printf "%.0f" (mul 100.0 (div (sub .Multiplier .PreviousMultiplier) .PreviousMultiplier))}}%{{else}}Raise{{end}}
+                    <span class="text-xs text-green-500 dark:text-green-300">({{printf "%.0f" (mul .Multiplier 100)}}% of plan)</span>
+                </span>
                 {{end}}
             </span>
             {{if and (gt .MonthlySpendingBefore 0.0) (gt .MonthlySpendingAfter 0.0)}}
             <span data-event-spending-delta class="text-xs tabular-nums {{if eq .Type "cut"}}text-red-600 dark:text-red-300{{else}}text-green-600 dark:text-green-300{{end}}">
                 {{formatMoney .MonthlySpendingBefore}}/mo → {{formatMoney .MonthlySpendingAfter}}/mo
+                {{if gt .CumulativeInflation 0.0}}
+                <span class="text-gray-500 dark:text-gray-400">
+                    (today: {{formatMoney (div .MonthlySpendingBefore .CumulativeInflation)}} → {{formatMoney (div .MonthlySpendingAfter .CumulativeInflation)}})
+                </span>
+                {{end}}
             </span>
             {{end}}
             <span class="text-xs text-gray-500 dark:text-gray-400">Portfolio: {{formatMoney .Portfolio}}</span>

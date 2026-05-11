@@ -170,9 +170,11 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 					Year:                  currentYear,
 					Type:                  eventType,
 					Multiplier:            newMult,
+					PreviousMultiplier:    prevMult,
 					Portfolio:             totalPortfolio,
 					MonthlySpendingBefore: currentLivingExpenses * prevMult,
 					MonthlySpendingAfter:  currentLivingExpenses * newMult,
+					CumulativeInflation:   cumulativeInflation,
 				})
 			}
 		}
@@ -321,6 +323,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			TotalExpensesReal:         totalExpensesAcc / cumulativeInflation,
 			TotalIncome:               totalIncomeMonth + monthResult.TaxableIncomeBeforeCashFlow,
 			TotalIncomeReal:           (totalIncomeMonth + monthResult.TaxableIncomeBeforeCashFlow) / cumulativeInflation,
+			SocialSecurityIncome:      incomeBreakdown.SocialSecurityIncome,
 			GrossIncome:               grossIncome,
 			NetIncome:                 netIncome,
 			TaxesPaid:                 taxesPaid,

@@ -557,6 +557,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/spending-phases/reset", handleWhatIfResetPhases)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Get("/whatif/chart/projection/no-guardrails", handleWhatIfProjectionChartNoGuardrails)
+	r.Get("/whatif/chart/income", handleWhatIfIncomeChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
 	r.Post("/whatif/roth-conversion", handleWhatIfRothConversion)
@@ -663,6 +664,160 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chartData)
+}
+
+func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
+	chartData := buildIncomeChartData(settings, analysis.Projection, displayDollars)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(chartData)
+}
+
+// buildIncomeChartData aggregates monthly projection rows into yearly
+// income buckets (Social Security, other ordinary income, portfolio
+// withdrawals) and returns a stacked-area Plotly trace set. When
+// displayDollars == "real", values are deflated to today's dollars
+// using each month's cumulative inflation factor.
+func buildIncomeChartData(settings *models.WhatIfSettings, projection *models.ProjectionResult, displayDollars string) map[string]interface{} {
+	displayDollars = normalizeDisplayDollars(displayDollars)
+	if projection == nil {
+		projection = &models.ProjectionResult{}
+	}
+
+	// Accumulate per-year buckets keyed by integer year index.
+	type yearBucket struct {
+		ss          float64
+		other       float64
+		withdrawals float64
+	}
+	yearBuckets := map[int]*yearBucket{}
+	yearOrder := []int{}
+
+	for _, m := range projection.Months {
+		yi := int(m.Year)
+		bucket, ok := yearBuckets[yi]
+		if !ok {
+			bucket = &yearBucket{}
+			yearBuckets[yi] = bucket
+			yearOrder = append(yearOrder, yi)
+		}
+
+		ss := m.SocialSecurityIncome
+		other := m.TotalIncome - m.SocialSecurityIncome
+		if other < 0 {
+			other = 0
+		}
+		withdrawals := m.WithdrawalFromTaxDeferred + m.WithdrawalFromTaxable + m.WithdrawalFromRoth
+
+		if displayDollars == "real" && m.CumulativeInflation > 0 {
+			ss /= m.CumulativeInflation
+			other /= m.CumulativeInflation
+			withdrawals /= m.CumulativeInflation
+		}
+
+		bucket.ss += ss
+		bucket.other += other
+		bucket.withdrawals += withdrawals
+	}
+
+	years := make([]int, 0, len(yearOrder))
+	ssSeries := make([]float64, 0, len(yearOrder))
+	otherSeries := make([]float64, 0, len(yearOrder))
+	withdrawSeries := make([]float64, 0, len(yearOrder))
+	for _, yi := range yearOrder {
+		b := yearBuckets[yi]
+		years = append(years, yi)
+		ssSeries = append(ssSeries, b.ss)
+		otherSeries = append(otherSeries, b.other)
+		withdrawSeries = append(withdrawSeries, b.withdrawals)
+	}
+
+	traces := []map[string]interface{}{
+		{
+			"type":       "scatter",
+			"mode":       "lines",
+			"name":       "Social Security",
+			"x":          years,
+			"y":          ssSeries,
+			"stackgroup": "income",
+			"fillcolor":  "rgba(245, 158, 11, 0.5)",
+			"line":       map[string]interface{}{"color": "#f59e0b", "width": 1},
+			"hovertemplate": "Year %{x}<br>SS: $%{y:,.0f}<extra></extra>",
+		},
+		{
+			"type":       "scatter",
+			"mode":       "lines",
+			"name":       "Other Income",
+			"x":          years,
+			"y":          otherSeries,
+			"stackgroup": "income",
+			"fillcolor":  "rgba(34, 197, 94, 0.5)",
+			"line":       map[string]interface{}{"color": "#22c55e", "width": 1},
+			"hovertemplate": "Year %{x}<br>Other: $%{y:,.0f}<extra></extra>",
+		},
+		{
+			"type":       "scatter",
+			"mode":       "lines",
+			"name":       "Withdrawals",
+			"x":          years,
+			"y":          withdrawSeries,
+			"stackgroup": "income",
+			"fillcolor":  "rgba(59, 130, 246, 0.5)",
+			"line":       map[string]interface{}{"color": "#3b82f6", "width": 1},
+			"hovertemplate": "Year %{x}<br>Withdrawals: $%{y:,.0f}<extra></extra>",
+		},
+	}
+
+	dtick := 5
+	if settings != nil && settings.ProjectionYears <= 12 {
+		dtick = 1
+	} else if settings != nil && settings.ProjectionYears <= 24 {
+		dtick = 2
+	}
+
+	yAxisTitle := "Annual Income ($)"
+	title := "Yearly Income by Source"
+	if displayDollars == "real" {
+		yAxisTitle = "Annual Income (Today's Dollars)"
+		title = "Yearly Income by Source — Today's Dollars"
+	}
+
+	return map[string]interface{}{
+		"data": traces,
+		"layout": map[string]interface{}{
+			"title": title,
+			"xaxis": map[string]interface{}{
+				"title":    "Year",
+				"tickmode": "linear",
+				"tick0":    0,
+				"dtick":    dtick,
+			},
+			"yaxis": map[string]interface{}{
+				"title":      yAxisTitle,
+				"tickformat": "$,.0f",
+			},
+			"hovermode": "x unified",
+			"legend": map[string]interface{}{
+				"orientation": "h",
+			},
+		},
+	}
 }
 
 func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Request) {

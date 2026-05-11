@@ -23,6 +23,95 @@ func sampleProjectionForChart() *models.ProjectionResult {
 	}
 }
 
+func TestBuildIncomeChartData_StacksSSOtherAndWithdrawals(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.ProjectionYears = 2
+
+	months := make([]models.ProjectionMonth, 0, 24)
+	for m := 0; m < 24; m++ {
+		months = append(months, models.ProjectionMonth{
+			Month:                     m,
+			Year:                      float64(m) / 12.0,
+			CumulativeInflation:       1.0 + 0.0025*float64(m), // ~3%/yr
+			SocialSecurityIncome:      2000,
+			TotalIncome:               2500, // SS 2000 + Other 500
+			WithdrawalFromTaxDeferred: 1000,
+			WithdrawalFromTaxable:     500,
+			WithdrawalFromRoth:        0,
+		})
+	}
+	projection := &models.ProjectionResult{Months: months, Survives: true}
+
+	chartData := buildIncomeChartData(settings, projection, "nominal")
+	traces, ok := chartData["data"].([]map[string]interface{})
+	if !ok || len(traces) != 3 {
+		t.Fatalf("expected 3 stacked traces, got %#v", chartData["data"])
+	}
+	for _, tr := range traces {
+		if tr["stackgroup"] != "income" {
+			t.Errorf("trace %q missing stackgroup, got %#v", tr["name"], tr["stackgroup"])
+		}
+	}
+
+	ssTrace := traces[0]
+	if ssTrace["name"] != "Social Security" {
+		t.Fatalf("first trace should be Social Security, got %v", ssTrace["name"])
+	}
+	ssY := ssTrace["y"].([]float64)
+	if len(ssY) != 2 {
+		t.Fatalf("expected 2 yearly buckets, got %d", len(ssY))
+	}
+	// Year 0: 12 months × $2000 SS = $24,000
+	if got, want := ssY[0], 24000.0; got != want {
+		t.Errorf("year 0 SS = %v, want %v", got, want)
+	}
+
+	otherTrace := traces[1]
+	otherY := otherTrace["y"].([]float64)
+	// Year 0: 12 × $500 = $6,000
+	if got, want := otherY[0], 6000.0; got != want {
+		t.Errorf("year 0 Other = %v, want %v", got, want)
+	}
+
+	wTrace := traces[2]
+	wY := wTrace["y"].([]float64)
+	// Year 0: 12 × ($1000 + $500) = $18,000
+	if got, want := wY[0], 18000.0; got != want {
+		t.Errorf("year 0 Withdrawals = %v, want %v", got, want)
+	}
+}
+
+func TestBuildIncomeChartData_DeflatesToTodayDollarsWhenReal(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.ProjectionYears = 1
+
+	months := make([]models.ProjectionMonth, 0, 12)
+	for m := 0; m < 12; m++ {
+		months = append(months, models.ProjectionMonth{
+			Month:                m,
+			Year:                 float64(m) / 12.0,
+			CumulativeInflation:  2.0, // double — today's dollars should be half
+			SocialSecurityIncome: 2000,
+			TotalIncome:          2000,
+		})
+	}
+	projection := &models.ProjectionResult{Months: months, Survives: true}
+
+	chartData := buildIncomeChartData(settings, projection, "real")
+	traces := chartData["data"].([]map[string]interface{})
+	ssY := traces[0]["y"].([]float64)
+	// $2000/mo × 12 / 2.0 inflation = $12,000 in today's dollars
+	if got, want := ssY[0], 12000.0; got != want {
+		t.Errorf("real SS = %v, want %v", got, want)
+	}
+
+	layout := chartData["layout"].(map[string]interface{})
+	yaxis := layout["yaxis"].(map[string]interface{})
+	if got := yaxis["title"]; got != "Annual Income (Today's Dollars)" {
+		t.Errorf("real y-axis title = %v", got)
+	}
+}
+
 func TestBuildProjectionChartData_UsesRealBalancesWhenRequested(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.ProjectionYears = 15

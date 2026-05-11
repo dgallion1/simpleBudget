@@ -3,7 +3,6 @@ package testutil
 import (
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -53,15 +52,6 @@ func (ra *ResponseAssertion) StatusOK() *ResponseAssertion {
 	return ra.Status(http.StatusOK)
 }
 
-// StatusRedirect asserts the response has a redirect status (3xx)
-func (ra *ResponseAssertion) StatusRedirect() *ResponseAssertion {
-	ra.t.Helper()
-	if ra.resp.StatusCode < 300 || ra.resp.StatusCode >= 400 {
-		ra.t.Errorf("Expected redirect status (3xx), got %d", ra.resp.StatusCode)
-	}
-	return ra
-}
-
 // ContentType asserts the response has the expected content type
 func (ra *ResponseAssertion) ContentType(expected string) *ResponseAssertion {
 	ra.t.Helper()
@@ -104,62 +94,6 @@ func (ra *ResponseAssertion) ContainsAll(substrs ...string) *ResponseAssertion {
 		}
 	}
 	return ra
-}
-
-// NotContains asserts the response body does not contain the given string
-func (ra *ResponseAssertion) NotContains(substr string) *ResponseAssertion {
-	ra.t.Helper()
-	body := ra.readBody()
-	if strings.Contains(body, substr) {
-		ra.t.Errorf("Expected body NOT to contain %q, but it did", substr)
-	}
-	return ra
-}
-
-// Matches asserts the response body matches the given regex pattern
-func (ra *ResponseAssertion) Matches(pattern string) *ResponseAssertion {
-	ra.t.Helper()
-	body := ra.readBody()
-	matched, err := regexp.MatchString(pattern, body)
-	if err != nil {
-		ra.t.Fatalf("Invalid regex pattern %q: %v", pattern, err)
-	}
-	if !matched {
-		ra.t.Errorf("Expected body to match pattern %q, but it didn't.\nBody (first 500 chars): %s",
-			pattern, truncate(body, 500))
-	}
-	return ra
-}
-
-// HasElement asserts the response body contains an HTML element with the given ID
-func (ra *ResponseAssertion) HasElement(id string) *ResponseAssertion {
-	ra.t.Helper()
-	body := ra.readBody()
-	// Look for id="elementId" or id='elementId'
-	pattern := `id=["']` + regexp.QuoteMeta(id) + `["']`
-	matched, _ := regexp.MatchString(pattern, body)
-	if !matched {
-		ra.t.Errorf("Expected body to contain element with id=%q, but it didn't", id)
-	}
-	return ra
-}
-
-// HasClass asserts the response body contains an element with the given class
-func (ra *ResponseAssertion) HasClass(class string) *ResponseAssertion {
-	ra.t.Helper()
-	body := ra.readBody()
-	// Look for class containing the class name
-	pattern := `class=["'][^"']*\b` + regexp.QuoteMeta(class) + `\b[^"']*["']`
-	matched, _ := regexp.MatchString(pattern, body)
-	if !matched {
-		ra.t.Errorf("Expected body to contain element with class=%q, but it didn't", class)
-	}
-	return ra
-}
-
-// Body returns the response body as a string
-func (ra *ResponseAssertion) Body() string {
-	return ra.readBody()
 }
 
 // truncate truncates a string to the given length

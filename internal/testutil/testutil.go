@@ -129,17 +129,6 @@ func (ts *TestServer) GETWithQuery(path string, query map[string]string) *http.R
 	return resp
 }
 
-// POST performs a POST request to the given path
-func (ts *TestServer) POST(path string, contentType string, body io.Reader) *http.Response {
-	ts.t.Helper()
-
-	resp, err := http.Post(ts.BaseURL+path, contentType, body)
-	if err != nil {
-		ts.t.Fatalf("POST %s failed: %v", path, err)
-	}
-	return resp
-}
-
 // Close shuts down the test server
 func (ts *TestServer) Close() {
 	ts.Server.Close()

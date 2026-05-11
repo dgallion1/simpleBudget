@@ -151,6 +151,178 @@ func TestResolve_BadPairKey_ReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func TestGetDuplicates_LoaderLoadsFreshData(t *testing.T) {
+	// Hits the loader != nil branch in buildPageData so LoadData runs
+	// and Unresolved/Resolved come back populated from the store.
+	loader, cleanup := newLoaderWithFixture(t)
+	defer cleanup()
+	Initialize(loader, nil)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	req := httptest.NewRequest(http.MethodGet, "/duplicates", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	// The JSON fallback emits the loaded pair keys; we just confirm the
+	// loader path was exercised by checking the body is non-empty JSON
+	// containing the Unresolved key.
+	if !strings.Contains(body, "Unresolved") {
+		t.Errorf("body missing 'Unresolved' key: %s", body)
+	}
+}
+
+// makeBadFormReq builds a POST that fails r.ParseForm() via %ZZ in the body.
+func makeBadFormReq(t *testing.T, path string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path,
+		strings.NewReader("pair_key=abc%ZZ"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return req
+}
+
+func TestResolve_LoaderNil_ReturnsServerError(t *testing.T) {
+	Initialize(nil, nil)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	req := httptest.NewRequest(http.MethodPost, "/duplicates/resolve",
+		strings.NewReader("pair_key=x"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestResolve_ParseFormError_ReturnsBadRequest(t *testing.T) {
+	loader, cleanup := newLoaderWithFixture(t)
+	defer cleanup()
+	Initialize(loader, nil)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, makeBadFormReq(t, "/duplicates/resolve"))
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestResolve_SaveError_ReturnsBadRequest(t *testing.T) {
+	// Invalid outcome value causes validateDuplicateDecision to fail
+	// inside SaveDuplicateDecision; handler maps that to 400.
+	loader, cleanup := newLoaderWithFixture(t)
+	defer cleanup()
+	Initialize(loader, nil)
+	loader.LoadData()
+	pairs := loader.UnresolvedDuplicates()
+
+	form := url.Values{}
+	form.Set("pair_key", pairs[0].Key)
+	form.Set("outcome", "not_a_real_outcome")
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	req := httptest.NewRequest(http.MethodPost, "/duplicates/resolve",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestUndo_LoaderNil_ReturnsServerError(t *testing.T) {
+	Initialize(nil, nil)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	req := httptest.NewRequest(http.MethodPost, "/duplicates/undo",
+		strings.NewReader("pair_key=x"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestUndo_ParseFormError_ReturnsBadRequest(t *testing.T) {
+	loader, cleanup := newLoaderWithFixture(t)
+	defer cleanup()
+	Initialize(loader, nil)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, makeBadFormReq(t, "/duplicates/undo"))
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestUndo_MissingPairKey_ReturnsBadRequest(t *testing.T) {
+	loader, cleanup := newLoaderWithFixture(t)
+	defer cleanup()
+	Initialize(loader, nil)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	req := httptest.NewRequest(http.MethodPost, "/duplicates/undo",
+		strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestUndo_ClearError_ReturnsBadRequest(t *testing.T) {
+	// Corrupt the decisions JSON so LoadDuplicateDecisions returns an
+	// error inside ClearDuplicateDecision; handler maps that to 400.
+	loader, cleanup := newLoaderWithFixture(t)
+	defer cleanup()
+	Initialize(loader, nil)
+	loader.LoadData()
+	pairs := loader.UnresolvedDuplicates()
+
+	// Find the CSV dir from the loader's perspective by writing a
+	// malformed decisions file alongside bank.csv.
+	if err := os.WriteFile(filepath.Join(loader.CSVDirectory,
+		"duplicate_decisions.json"), []byte("{not json"), 0644); err != nil {
+		t.Fatalf("corrupt decisions: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("pair_key", pairs[0].Key)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	req := httptest.NewRequest(http.MethodPost, "/duplicates/undo",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
 func TestUndo_ClearsDecisionAndReflagsOnReload(t *testing.T) {
 	loader, cleanup := newLoaderWithFixture(t)
 	defer cleanup()

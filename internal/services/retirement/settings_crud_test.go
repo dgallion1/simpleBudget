@@ -1335,7 +1335,7 @@ func TestLoad_Concurrent(t *testing.T) {
 // --- ValidateScenarioChain ---
 
 // writeScenarioFile is a test helper that writes a minimal scenario JSON file.
-func writeScenarioFile(t *testing.T, sm *SettingsManager, store *storage.Storage, dir, filename string) {
+func writeScenarioFile(t *testing.T, store *storage.Storage, dir, filename string) {
 	t.Helper()
 	_ = store.MkdirAll(dir, 0755)
 	settings := models.DefaultWhatIfSettings()
@@ -1351,7 +1351,7 @@ func writeScenarioFile(t *testing.T, sm *SettingsManager, store *storage.Storage
 
 func TestValidateScenarioChain_AscendingAges(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
-	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+	writeScenarioFile(t, store, dir, "whatif_a.json")
 
 	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30
 
@@ -1365,7 +1365,7 @@ func TestValidateScenarioChain_AscendingAges(t *testing.T) {
 	}
 
 	// Descending ages
-	writeScenarioFile(t, sm, store, dir, "whatif_b.json")
+	writeScenarioFile(t, store, dir, "whatif_b.json")
 	chain2 := []models.ScenarioChainLink{
 		{ScenarioFilename: "whatif_b.json", TransitionAge: 80},
 		{ScenarioFilename: "whatif_a.json", TransitionAge: 70},
@@ -1377,7 +1377,7 @@ func TestValidateScenarioChain_AscendingAges(t *testing.T) {
 
 func TestValidateScenarioChain_SelfReference(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
-	writeScenarioFile(t, sm, store, dir, "whatif_self.json")
+	writeScenarioFile(t, store, dir, "whatif_self.json")
 
 	settings := models.DefaultWhatIfSettings()
 	chain := []models.ScenarioChainLink{
@@ -1390,7 +1390,7 @@ func TestValidateScenarioChain_SelfReference(t *testing.T) {
 
 func TestValidateScenarioChain_AgeBelowCurrent(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
-	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+	writeScenarioFile(t, store, dir, "whatif_a.json")
 
 	settings := models.DefaultWhatIfSettings() // CurrentAge=65
 	chain := []models.ScenarioChainLink{
@@ -1403,7 +1403,7 @@ func TestValidateScenarioChain_AgeBelowCurrent(t *testing.T) {
 
 func TestValidateScenarioChain_AgeBeyondProjection(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
-	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+	writeScenarioFile(t, store, dir, "whatif_a.json")
 
 	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30 → max valid age = 94
 	chain := []models.ScenarioChainLink{
@@ -1428,7 +1428,7 @@ func TestValidateScenarioChain_MissingFile(t *testing.T) {
 
 func TestValidateScenarioChain_DuplicateFilenames(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
-	writeScenarioFile(t, sm, store, dir, "whatif_a.json")
+	writeScenarioFile(t, store, dir, "whatif_a.json")
 
 	settings := models.DefaultWhatIfSettings()
 	chain := []models.ScenarioChainLink{
@@ -1442,8 +1442,8 @@ func TestValidateScenarioChain_DuplicateFilenames(t *testing.T) {
 
 func TestValidateScenarioChain_ValidChain(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
-	writeScenarioFile(t, sm, store, dir, "whatif_mid.json")
-	writeScenarioFile(t, sm, store, dir, "whatif_late.json")
+	writeScenarioFile(t, store, dir, "whatif_mid.json")
+	writeScenarioFile(t, store, dir, "whatif_late.json")
 
 	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30
 	chain := []models.ScenarioChainLink{
@@ -1459,7 +1459,7 @@ func TestSave_RejectsInvalidChainOnAgeChange(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
 
 	// Create a scenario file that the chain will reference
-	writeScenarioFile(t, sm, store, dir, "whatif_future.json")
+	writeScenarioFile(t, store, dir, "whatif_future.json")
 
 	// Save settings with a valid chain: CurrentAge=65, TransitionAge=70
 	settings := models.DefaultWhatIfSettings() // CurrentAge=65, ProjectionYears=30
@@ -1512,7 +1512,7 @@ func TestDeleteScenario_RejectsReferencedScenario(t *testing.T) {
 	sm, dir, store := newTestSMWithDir(t)
 
 	// Create the "referenced" scenario file
-	writeScenarioFile(t, sm, store, dir, "whatif_referenced.json")
+	writeScenarioFile(t, store, dir, "whatif_referenced.json")
 
 	// Write the default scenario with a chain that references whatif_referenced.json
 	settings := models.DefaultWhatIfSettings()

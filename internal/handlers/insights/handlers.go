@@ -1,3 +1,6 @@
+// Package insights serves the Insights page and exposes pattern-detection
+// helpers (income cadence, recurring expenses, anomaly detection) used by
+// both the dashboard and the what-if defaults pipeline.
 package insights
 
 import (

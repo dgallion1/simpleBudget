@@ -1,3 +1,8 @@
+// Package dashboard serves the main landing page and its HTMX-driven
+// partials: KPI tiles, budget tracking, monthly-variance and healthcare
+// charts, and the income-vs-expense rollups. Reads transactions from the
+// dataloader and renders via the templates package; holds no state of
+// its own beyond the per-request request scope.
 package dashboard
 
 import (

@@ -1,3 +1,8 @@
+// Package backup owns automatic and on-demand snapshots of the data
+// directory. It writes timestamped zip archives, enforces a retention
+// policy, exposes a scheduler goroutine for periodic snapshots, and is
+// safe to call from both the scheduler tick and the shutdown hook — the
+// service degrades to a no-op when a snapshot is already in progress.
 package backup
 
 import (

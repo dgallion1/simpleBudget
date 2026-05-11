@@ -1,3 +1,6 @@
+// Package metrics derives dashboard KPIs and trend sparklines from a
+// TransactionSet — totals, savings rate, monthly buckets, and budget
+// deltas. Pure functions over models with no I/O.
 package metrics
 
 import (

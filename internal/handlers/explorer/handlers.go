@@ -1,3 +1,6 @@
+// Package explorer serves the file-manager and transaction-explorer pages:
+// browsing/enabling CSV files in the data directory, listing transactions
+// with filtering and sorting, and editing per-transaction aliases.
 package explorer
 
 import (

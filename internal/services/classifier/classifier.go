@@ -1,3 +1,7 @@
+// Package classifier infers transaction type (Income vs Outflow vs
+// Transfer) from CSV row text using keyword and category dictionaries.
+// It runs once per row at load time inside the dataloader; classification
+// results are cached on the resulting Transaction.
 package classifier
 
 import (

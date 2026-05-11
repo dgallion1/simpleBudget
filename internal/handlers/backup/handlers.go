@@ -1,3 +1,7 @@
+// Package backup serves the HTTP endpoints behind the Backup admin panel:
+// list snapshots, trigger an on-demand snapshot, restore from a zip,
+// toggle the scheduler, and stream a downloadable archive. Pure HTTP
+// glue around services/backup — no snapshot logic lives here.
 package backup
 
 import (

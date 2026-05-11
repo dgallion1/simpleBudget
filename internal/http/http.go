@@ -1,3 +1,7 @@
+// Package http contains small HTTP utility helpers shared across handler
+// packages: template rendering wrappers, structured error responses, and
+// query-parameter parsing (date ranges, etc.). It is intentionally
+// lightweight — handlers own their own routing and middleware.
 package http
 
 import (

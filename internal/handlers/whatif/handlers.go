@@ -1,3 +1,8 @@
+// Package whatif serves the What-If retirement-projection page and all of
+// its HTMX field handlers (income, expenses, rates, healthcare, taxes,
+// guardrails, etc.). It composes services/retirement, the engine, and the
+// prepare/completeness sub-packages to turn user form input into the
+// projection chart, sustainability score, and scenario chain views.
 package whatif
 
 import (

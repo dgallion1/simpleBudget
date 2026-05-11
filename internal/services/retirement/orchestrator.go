@@ -1,3 +1,10 @@
+// Package retirement is the top-level coordinator for what-if retirement
+// projections. It owns the settings store, scenario chaining, eligibility
+// rules (Medicare, Social Security, RMD), guardrails, the tax calculator,
+// and the engine fan-out (RunFull) that produces a complete WhatIfAnalysis
+// — deterministic projection, Monte Carlo simulation, backtest, and
+// post-projection analyses. The pure projection math lives in the engine
+// sub-package; this package is the orchestrator above it.
 package retirement
 
 import (

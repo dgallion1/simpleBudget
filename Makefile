@@ -105,6 +105,7 @@ help:
 	@echo "  install-go     - Install Go $(GO_VERSION) locally"
 	@echo "  release        - Create and push a release tag (usage: make release v=1.0.0)"
 	@echo "  release-snapshot - Test release locally without pushing"
+	@echo "  docs-api       - Generate Markdown API docs (gomarkdoc) into docs/api/"
 	@echo ""
 	@echo "Go: $(GO)"
 
@@ -205,6 +206,15 @@ endif
 
 lint:
 	golangci-lint run
+
+# Generate per-package Markdown API docs from Go doc comments.
+# Install: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
+docs-api: ## Generate Markdown API docs for all Go packages (docs/api/)
+	@command -v gomarkdoc >/dev/null 2>&1 || { echo "gomarkdoc not installed. Run: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest"; exit 1; }
+	@$(MKDIR) docs/api
+	gomarkdoc -o 'docs/api/{{.ImportPath}}.md' ./cmd/... ./internal/...
+	@./scripts/gen-api-index.sh
+	@echo "API docs written to docs/api/ (start at docs/api/README.md)"
 
 tidy: check-go
 	$(GO) mod tidy

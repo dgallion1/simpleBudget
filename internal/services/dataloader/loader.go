@@ -1,3 +1,8 @@
+// Package dataloader reads the user's bank-export CSVs, normalizes
+// per-bank column layouts into a unified TransactionSet, applies user
+// aliases, near-duplicate decisions, Amazon enrichment, and major-expense
+// name overrides, and persists side files (aliases, duplicate decisions,
+// enrichment maps) back to the encrypted-at-rest storage layer.
 package dataloader
 
 import (

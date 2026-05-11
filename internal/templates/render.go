@@ -1,3 +1,8 @@
+// Package templates loads the html/template files under web/templates,
+// registers shared func-map helpers (currency, dates, JSON-encoding for
+// HTMX attribute payloads, etc.), and exposes Renderer.Render /
+// RenderPartial for the handler packages. Also defines the canonical
+// PageData shape used by full-page templates.
 package templates
 
 import (

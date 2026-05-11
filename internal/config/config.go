@@ -1,3 +1,7 @@
+// Package config loads and persists the application's runtime configuration:
+// listen address, data/settings/uploads/backup directory paths, and feature
+// flags. Defaults follow the XDG base-directory spec for cross-user
+// installs and fall back to repo-relative paths for development.
 package config
 
 import (

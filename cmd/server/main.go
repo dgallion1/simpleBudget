@@ -1,3 +1,8 @@
+// Command server is the SimpleBudget HTTP application. It boots the chi
+// router, wires the dataloader / retirement / backup services into the
+// handler packages, serves the dashboard and what-if UI over HTMX, and
+// installs the graceful-shutdown signal handler that triggers a final
+// backup snapshot before exit.
 package main
 
 import (

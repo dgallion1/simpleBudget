@@ -519,3 +519,50 @@ func TestStrategyYearlyConversions_ZeroAmountLadder(t *testing.T) {
 		t.Errorf("expected nil for zero-amount ladder, got %v", got)
 	}
 }
+
+func TestRothStrategyToConfig_MatchesYearlyConversions(t *testing.T) {
+	// Drift-guard: rothStrategyToConfig and strategyYearlyConversions
+	// must produce identical per-year amounts. This locks the shared-
+	// math invariant — if either path diverges, this test fails.
+	s := eligibleBase()
+	s.CurrentAge = 60
+	s.ProjectionYears = 35
+	s.SocialSecurity.ClaimAge = 67
+	s.SocialSecurity.SpouseClaimAge = 67
+	s.SpouseAge = 58
+
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.24,
+		StartAge:      60,
+		EndAge:        67,
+	}
+
+	cfg := rothStrategyToConfig(s, strat)
+	if cfg == nil || cfg.PerYearOverrides == nil {
+		t.Fatal("expected non-nil PerYearOverrides for bracket-fill")
+	}
+
+	got := strategyYearlyConversions(s, strat)
+	if len(got) == 0 {
+		t.Fatal("expected non-empty YearlyConversions")
+	}
+
+	for _, yc := range got {
+		projYear := yc.Age - s.CurrentAge
+		want, ok := cfg.PerYearOverrides[projYear]
+		if !ok {
+			t.Errorf("projYear %d (age %d) missing from PerYearOverrides", projYear, yc.Age)
+			continue
+		}
+		if yc.Amount != want {
+			t.Errorf("projYear %d (age %d): YearlyConversion=%v, PerYearOverrides=%v",
+				projYear, yc.Age, yc.Amount, want)
+		}
+	}
+
+	// Symmetric check: every override key must have a YearlyConversion.
+	if got, want := len(got), len(cfg.PerYearOverrides); got != want {
+		t.Errorf("entry count mismatch: YearlyConversions=%d, PerYearOverrides=%d", got, want)
+	}
+}

@@ -342,21 +342,13 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 	case models.RothStrategyLadder:
 		cfg.AnnualAmount = strat.AnnualAmount
 	case models.RothStrategyBracketFill:
-		if s.TaxConfig == nil {
+		yearly := strategyYearlyConversions(s, strat)
+		if yearly == nil {
 			return &models.RothConversionConfig{Enabled: false}
 		}
-		ceiling, ok := bracketTopFor(s.TaxConfig.FilingStatus, strat.TargetBracket)
-		if !ok {
-			return &models.RothConversionConfig{Enabled: false}
-		}
-		overrides := make(map[int]float64, endProjYear-startProjYear)
-		for y := startProjYear; y < endProjYear; y++ {
-			other := estimateOtherTaxableIncome(s, y)
-			conv := ceiling - other
-			if conv < 0 {
-				conv = 0
-			}
-			overrides[y] = conv
+		overrides := make(map[int]float64, len(yearly))
+		for _, yc := range yearly {
+			overrides[yc.Age-s.CurrentAge] = yc.Amount
 		}
 		cfg.PerYearOverrides = overrides
 	}

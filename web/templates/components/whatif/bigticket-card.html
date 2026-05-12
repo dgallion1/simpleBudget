@@ -67,7 +67,7 @@
 
 {{/* Removed Big Ticket Items */}}
 {{define "whatif-removed-bigticket"}}
-<div id="removed-bigticket" class="space-y-1 mb-4 {{if not .Settings.RemovedBigTicketItems}}hidden{{end}}">
+<div id="removed-bigticket" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedBigTicketItems}}hidden{{end}}">
     {{if .Settings.RemovedBigTicketItems}}
     <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
     {{range .Settings.RemovedBigTicketItems}}

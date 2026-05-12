@@ -106,7 +106,7 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
 
 {{/* Removed Income Sources List */}}
 {{define "whatif-removed-income-sources"}}
-<div id="removed-income-sources" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
+<div id="removed-income-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
     {{if .Settings.RemovedIncomeSources}}
     <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
     {{range .Settings.RemovedIncomeSources}}

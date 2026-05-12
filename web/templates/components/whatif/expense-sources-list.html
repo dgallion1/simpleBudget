@@ -56,7 +56,7 @@
 
 {{/* Removed Expense Sources List */}}
 {{define "whatif-removed-expense-sources"}}
-<div id="removed-expense-sources" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
+<div id="removed-expense-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
     {{if .Settings.RemovedExpenseSources}}
     <p class="text-xs text-gray-400 dark:text-gray-500 font-medium">Recently Removed</p>
     {{range .Settings.RemovedExpenseSources}}

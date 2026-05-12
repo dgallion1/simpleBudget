@@ -153,6 +153,12 @@ func topKSSPairs(ss *models.SSPortfolioAnalysis, currentPrimary, currentSpouse, 
 		}
 		addPair(ssPair{Primary: pickPrimary(i), Spouse: pickSpouse(i)})
 	}
+	// If we still haven't reached k pairs, fall back to the user's
+	// current settings as the final candidate. The optimizer can score
+	// it and let the user see how their saved scenario compares.
+	if len(out) < k {
+		addPair(ssPair{Primary: currentPrimary, Spouse: currentSpouse})
+	}
 	if len(out) == 0 {
 		out = append(out, ssPair{Primary: currentPrimary, Spouse: currentSpouse})
 	}
@@ -163,7 +169,16 @@ func topKSSPairs(ss *models.SSPortfolioAnalysis, currentPrimary, currentSpouse, 
 // projection. Returns a candidate with the "failed projection"
 // sentinel EndingPortfolioReal == -math.MaxFloat64 for nil/empty/NaN
 // projections so callers can drop the candidate while still counting
-// it. PeakMarginalBracket and TotalRothConverted require explainability
+// it.
+//
+// LifetimeTaxReal includes federal + state + NIIT (the engine's Taxes
+// field) deflated by CumulativeInflation. IRMAA is reported separately
+// as a spending cost in the engine and is therefore NOT included; this
+// is acceptable for Phase 1 since IRMAA variation across candidates
+// also indirectly affects EndingPortfolioReal (the primary ranking
+// metric).
+//
+// PeakMarginalBracket and TotalRothConverted require explainability
 // fields the engine does not expose in Phase 1; both remain zero
 // and the UI renders "—" when zero.
 func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseClaim int, strat models.RothOptimizerStrategy) models.TaxOptimizerCandidate {
@@ -184,7 +199,11 @@ func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseCl
 	}
 	cand.EndingPortfolioReal = ending
 	for _, ys := range proj.YearlySummaries {
-		cand.LifetimeTaxReal += ys.Taxes
+		deflator := ys.CumulativeInflation
+		if deflator <= 0 {
+			deflator = 1 // pre-projection or unset
+		}
+		cand.LifetimeTaxReal += ys.Taxes / deflator
 	}
 	return cand
 }

@@ -309,3 +309,53 @@ func TestTopKSSPairs_EmptyOptionsFallsBack(t *testing.T) {
 		t.Errorf("fallback pair: got (%d, %d), want (67, 62)", pairs[0].Primary, pairs[0].Spouse)
 	}
 }
+
+func TestProjectionToCandidate_LifetimeTaxIsInflationAdjusted(t *testing.T) {
+	// Two-year projection: $10k tax in year 0, $10k tax in year 1.
+	// CumulativeInflation = 1.0 at year 0, 1.05 at year 1 (5% inflation).
+	// Real lifetime tax = 10000/1.0 + 10000/1.05 ≈ 19,524.
+	// If we summed nominal, we'd get 20,000.
+	proj := &models.ProjectionResult{
+		YearlySummaries: []models.ProjectionYearSummary{
+			{Taxes: 10_000, CumulativeInflation: 1.0, EndingBalanceReal: 1_000_000},
+			{Taxes: 10_000, CumulativeInflation: 1.05, EndingBalanceReal: 1_000_000},
+		},
+	}
+	cand := projectionToCandidate(proj, 67, 62, models.RothOptimizerStrategy{})
+	if cand.LifetimeTaxReal < 19_000 || cand.LifetimeTaxReal > 19_700 {
+		t.Errorf("LifetimeTaxReal: got %v, expected ~19,524 (real) not 20,000 (nominal)", cand.LifetimeTaxReal)
+	}
+}
+
+func TestTopKSSPairs_ShortListsStillReachK(t *testing.T) {
+	// Single-option per axis + matching optimum: previously returned only 1 pair
+	// even when k=3, because the zip loop terminated immediately and the
+	// current-settings fallback was unreachable.
+	ss := &models.SSPortfolioAnalysis{
+		PrimaryOptions:    []models.SSPortfolioOption{{ClaimAge: 70, SurvivalRate: 0.90}},
+		SpouseOptions:     []models.SSPortfolioOption{{ClaimAge: 67, SurvivalRate: 0.91}},
+		OptimalPrimaryAge: 70,
+		OptimalSpouseAge:  67,
+	}
+	pairs := topKSSPairs(ss, 67, 62, 3)
+	if len(pairs) < 2 {
+		t.Errorf("expected at least 2 pairs (joint optimum + current fallback) when k=3, got %d", len(pairs))
+	}
+	// The joint optimum must be present.
+	foundOptimum := false
+	foundCurrent := false
+	for _, p := range pairs {
+		if p.Primary == 70 && p.Spouse == 67 {
+			foundOptimum = true
+		}
+		if p.Primary == 67 && p.Spouse == 62 {
+			foundCurrent = true
+		}
+	}
+	if !foundOptimum {
+		t.Error("joint optimum (70, 67) missing")
+	}
+	if !foundCurrent {
+		t.Error("current-settings fallback (67, 62) missing despite k=3")
+	}
+}

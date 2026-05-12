@@ -29,36 +29,43 @@
 
     {{/* Top alternatives table. The MC Median column is the actual sort
          key — marked with a ▼ glyph and a stronger header weight. Each
-         header has a title= tooltip explaining its acronym; a full
-         glossary follows below the table for users who can't hover. */}}
+         header has a CSS hover tooltip (instant, no native delay) AND
+         a title= fallback for screen readers / mobile long-press; a
+         full glossary follows below the table for users who can't hover.
+
+         Tooltips are positioned with bottom-full so they appear ABOVE
+         the header; the table wrapper deliberately does NOT use
+         overflow-x-auto because per CSS spec setting overflow-x:auto
+         forces overflow-y:auto, which would clip tooltips. On narrow
+         viewports the page itself scrolls horizontally instead. */}}
     {{if $to.Top}}
-    <div class="overflow-x-auto">
+    <div>
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b dark:border-gray-600">
                     <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
-                        <abbr title="Roth conversion strategy: which marginal tax bracket to fill with conversions, and over which ages." class="no-underline border-b border-dotted border-gray-400 cursor-help">Strategy</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "Strategy" "Tip" "Roth conversion strategy: which marginal tax bracket to fill with conversions, and over which ages." "Align" "left")}}
                     </th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
-                        <abbr title="Social Security claim ages — Primary / Spouse. Single-filer scenarios show only the primary age." class="no-underline border-b border-dotted border-gray-400 cursor-help">SS (P/S)</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "SS (P/S)" "Tip" "Social Security claim ages — Primary / Spouse. Single-filer scenarios show only the primary age." "Align" "right")}}
                     </th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
-                        <abbr title="Deterministic projection ending balance in today's dollars (real, inflation-adjusted). Uses your expected return — no randomness." class="no-underline border-b border-dotted border-gray-400 cursor-help">End Portfolio</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "End Portfolio" "Tip" "Deterministic projection ending balance in today's dollars (real, inflation-adjusted). Uses your expected return — no randomness." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
                     <th class="text-right py-2 px-2 text-indigo-600 dark:text-indigo-300 font-semibold">
-                        <abbr title="Monte Carlo median ending balance in today's dollars across {{$to.MonteCarloRuns}} random return paths. THIS is the ranking metric — strategies are sorted by this column." class="no-underline border-b border-dotted border-indigo-400 cursor-help">MC Median &#9660;</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "MC Median ▼" "Tip" (printf "Monte Carlo median ending balance in today's dollars across %d random return paths. THIS is the ranking metric — strategies are sorted by this column." $to.MonteCarloRuns) "Align" "right" "Accent" "indigo")}}
                     </th>
                     {{end}}
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
-                        <abbr title="Total federal + state + NIIT taxes paid over the full projection, in today's dollars. IRMAA is reported separately as a cost and not included here." class="no-underline border-b border-dotted border-gray-400 cursor-help">Lifetime Tax</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "Lifetime Tax" "Tip" "Total federal + state + NIIT taxes paid over the full projection, in today's dollars. IRMAA is reported separately as a cost and not included here." "Align" "right")}}
                     </th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
-                        <abbr title="Change in deterministic End Portfolio vs your current saved scenario. Green = improvement, amber = regression." class="no-underline border-b border-dotted border-gray-400 cursor-help">&Delta; vs Baseline</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "Δ vs Baseline" "Tip" "Change in deterministic End Portfolio vs your current saved scenario. Green = improvement, amber = regression." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
-                        <abbr title="Monte Carlo survival rate: percent of {{$to.MonteCarloRuns}} random return paths in which the portfolio lasted the full projection. Not the ranking metric — strategies are ranked by MC Median, not survival." class="no-underline border-b border-dotted border-gray-400 cursor-help">MC Surv%</abbr>
+                        {{template "taxopt-th-tooltip" (dict "Label" "MC Surv%" "Tip" (printf "Monte Carlo survival rate: percent of %d random return paths in which the portfolio lasted the full projection. Not the ranking metric — strategies are ranked by MC Median, not survival." $to.MonteCarloRuns) "Align" "right")}}
                     </th>
                     {{end}}
                 </tr>
@@ -145,4 +152,24 @@
 </div>
 {{end}}
 </div>
+{{end}}
+
+{{/* taxopt-th-tooltip renders a table header label with an instant CSS
+     hover tooltip. Used by the Tax Optimizer panel — avoid changing
+     positioning rules without verifying the table wrapper does NOT
+     have overflow-x:auto (which clips overflow-y via CSS spec). The
+     title= fallback keeps screen readers / mobile long-press working. */}}
+{{define "taxopt-th-tooltip"}}
+<span class="group relative inline-block cursor-help" tabindex="0">
+    <span class="border-b border-dotted {{if eq .Accent "indigo"}}border-indigo-400 dark:border-indigo-500{{else}}border-gray-400 dark:border-gray-500{{end}}" title="{{.Tip}}">{{.Label}}</span>
+    <span role="tooltip"
+          class="pointer-events-none absolute z-30 bottom-full {{if eq .Align "left"}}left-0{{else}}right-0{{end}} mb-2 w-72
+                 px-3 py-2 rounded-md
+                 bg-gray-900 dark:bg-gray-700 text-gray-100
+                 text-xs text-left font-normal normal-case leading-snug
+                 shadow-xl ring-1 ring-black/20
+                 whitespace-normal
+                 opacity-0 group-hover:opacity-100 group-focus:opacity-100
+                 transition-opacity duration-100">{{.Tip}}</span>
+</span>
 {{end}}

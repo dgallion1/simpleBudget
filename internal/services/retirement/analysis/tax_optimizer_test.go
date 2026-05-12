@@ -229,6 +229,68 @@ func TestScoreCandidate_PopulatesFields(t *testing.T) {
 	}
 }
 
+func TestScoreCandidate_PopulatesPerYearConversions(t *testing.T) {
+	// NOTE on age handling: cloneSettingsWithSSAndRoth → perturbAndPrepare →
+	// prepare.From runs ComputeAges, which DERIVES CurrentAge from
+	// StartDate + the primary Person's BirthMonth. This silently overrides
+	// any in-memory s.CurrentAge mutation. Read the post-prep CurrentAge
+	// from prep.Settings() instead of relying on eligibleBase()'s value.
+	s := eligibleBase()
+
+	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{
+		Kind: models.RothStrategyLadder, AnnualAmount: 50_000, StartAge: 67, EndAge: 73,
+	})
+	if !ok {
+		t.Fatal("clone failed")
+	}
+	currentAge := prep.Settings().CurrentAge
+	if currentAge <= 0 {
+		t.Fatalf("prepared CurrentAge unset: %d", currentAge)
+	}
+
+	// 5-year ladder window starting at the post-prep CurrentAge so no
+	// startProjYear clamping occurs.
+	strat := models.RothOptimizerStrategy{
+		Kind:         models.RothStrategyLadder,
+		AnnualAmount: 60_000,
+		StartAge:     currentAge,
+		EndAge:       currentAge + 5, // exclusive — 5 entries
+	}
+
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	cand := scoreCandidate(eng, in, 67, 62, strat)
+
+	if len(cand.PerYearConversions) != 5 {
+		t.Fatalf("PerYearConversions: got %d entries, want 5", len(cand.PerYearConversions))
+	}
+	for i, yc := range cand.PerYearConversions {
+		if want := currentAge + i; yc.Age != want {
+			t.Errorf("entry %d: Age=%d, want %d", i, yc.Age, want)
+		}
+		if yc.Amount != 60_000 {
+			t.Errorf("entry %d: Amount=%v, want 60000", i, yc.Amount)
+		}
+	}
+}
+
+func TestScoreCandidate_NoneStrategyHasEmptyPerYearConversions(t *testing.T) {
+	s := eligibleBase()
+	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+	if !ok {
+		t.Fatal("clone failed")
+	}
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	cand := scoreCandidate(eng, in, 67, 62, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+
+	if cand.PerYearConversions != nil {
+		t.Errorf("expected nil PerYearConversions for none strategy, got %v", cand.PerYearConversions)
+	}
+}
+
 func TestProjectionToCandidate_NilProjection(t *testing.T) {
 	cand := projectionToCandidate(nil, 67, 62, models.RothOptimizerStrategy{
 		Kind: models.RothStrategyLadder, Label: "test",

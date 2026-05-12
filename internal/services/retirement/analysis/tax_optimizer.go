@@ -215,7 +215,8 @@ func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseCl
 // scoreCandidate runs a deterministic projection for the given (SS
 // pair, Roth strategy) override and returns the scored candidate.
 func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseClaim int, strat models.RothOptimizerStrategy) models.TaxOptimizerCandidate {
-	cloned, ok := cloneSettingsWithSSAndRoth(in.Prepared.Settings(), primaryClaim, spouseClaim, strat)
+	settings := in.Prepared.Settings()
+	cloned, ok := cloneSettingsWithSSAndRoth(settings, primaryClaim, spouseClaim, strat)
 	if !ok {
 		return models.TaxOptimizerCandidate{
 			PrimaryClaimAge:     primaryClaim,
@@ -226,7 +227,9 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 	}
 	cellInput := engine.Input{Prepared: cloned, Chain: in.Chain, Hooks: in.Hooks}
 	proj := eng.Run(cellInput)
-	return projectionToCandidate(proj, primaryClaim, spouseClaim, strat)
+	cand := projectionToCandidate(proj, primaryClaim, spouseClaim, strat)
+	cand.PerYearConversions = strategyYearlyConversions(settings, strat)
+	return cand
 }
 
 // TaxOptimizer runs the Tax Optimizer and returns a recommendation.

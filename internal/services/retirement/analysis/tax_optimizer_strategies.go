@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 // Constants tuned per design spec. Single block for easy adjustment.
@@ -163,8 +164,11 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 }
 
 // bracketTopFor returns the top of the given target marginal bracket
-// for the filing status. Returns (ceiling, ok). ok=false signals an
-// unknown filing status; callers should skip the bracket-fill family.
+// for the filing status. Returns (ceiling, ok). ok=false signals
+// either an unknown filing status OR a target rate that is not in
+// the table (e.g., 0.32 — currently unsupported). Callers should
+// treat ok=false as "skip this candidate" or "skip the bracket-fill
+// family" depending on context.
 //
 // Values are 2024 IRS thresholds, in nominal dollars. Acceptable
 // approximation for optimization — the optimizer ranks on the engine's
@@ -201,26 +205,25 @@ func bracketTopFor(status models.FilingStatus, target float64) (float64, bool) {
 	return ceiling, ok
 }
 
-// rmdStartAge is the age at which Required Minimum Distributions begin.
-// Bracket-fill enumeration is only meaningful before this age, since
-// RMDs force distributions and the optimization window closes.
-const rmdStartAge = 73
-
 // enumerateBracketFillStrategies generates bracket-fill candidates:
 // cross-product of target brackets × valid windows. Only windows that
-// end at or before RMD age (73) are considered — bracket-fill is
-// only useful before mandatory distributions begin. Candidates that
-// yield zero conversion for every year of the window are skipped
-// (they duplicate the no-conversion baseline).
+// end at or before RMD age are considered — bracket-fill is only useful
+// before mandatory distributions begin. Uses engine.EffectiveRMDStartAge
+// so it correctly honors SECURE 2.0 (73/75 depending on birth year).
+// Candidates that yield zero conversion for every year of the window
+// are skipped (they duplicate the no-conversion baseline).
 func enumerateBracketFillStrategies(s *models.WhatIfSettings) []models.RothOptimizerStrategy {
 	if s.TaxConfig == nil {
 		return nil
 	}
+	rmdAge := engine.EffectiveRMDStartAge(s)
 	allWindows := strategyWindows(s)
-	// Filter to pre-RMD windows only.
+	// Filter to pre-RMD windows only — bracket-fill is only meaningful
+	// before mandatory distributions begin. Uses EffectiveRMDStartAge
+	// so it correctly honors SECURE 2.0 (73/75 depending on birth year).
 	windows := make([]strategyWindow, 0, len(allWindows))
 	for _, w := range allWindows {
-		if w.EndAge <= rmdStartAge {
+		if w.EndAge <= rmdAge {
 			windows = append(windows, w)
 		}
 	}

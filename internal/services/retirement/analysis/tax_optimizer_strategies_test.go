@@ -335,3 +335,51 @@ func TestRothStrategyToConfig_NoConversionBaseline(t *testing.T) {
 		t.Errorf("no-conversion baseline should be Disabled, got Enabled=true")
 	}
 }
+
+func TestEnumerateBracketFillStrategies_SECURE2_0RMDAge(t *testing.T) {
+	// Age 69. strategyWindows produces:
+	//   - 5yr  (69, 74) — EndAge=74
+	//   - SS   (69, 67) — filtered (67 < 69)
+	//   - IRMAA(69, 65) — filtered (65 < 69)
+	//   - RMD  (69, 73) — EndAge=73
+	//   - mid  (74, 79) — EndAge=79
+	//
+	// With rmdAge=73 (born 1957): keeps only windows where EndAge ≤ 73.
+	//   → RMD (69,73) kept (73 ≤ 73). 5yr (69,74) dropped (74 > 73).
+	// With rmdAge=75 (born 1965): keeps windows where EndAge ≤ 75.
+	//   → RMD (69,73) kept. 5yr (69,74) ALSO kept (74 ≤ 75).
+	//
+	// So the 1965-birth case should produce strictly more bracket-fill
+	// strategies than the 1957-birth case.
+	base := &models.WhatIfSettings{
+		CurrentAge:         69,
+		ProjectionYears:    20,
+		StartDate:          "2026-01",
+		PortfolioValue:     2_000_000,
+		TaxDeferredPercent: 80,
+		SocialSecurity:     &models.SocialSecurityConfig{FRABenefit: 3000, FRA: 67, ClaimAge: 67, COLARate: 0.02, COLARateSet: true},
+		TaxConfig:          &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+
+	// Pre-SECURE 2.0: born 1957 → RMD age 73.
+	s1957 := *base
+	s1957.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", BirthMonth: "1957-01", Role: models.PersonRolePrimary},
+	}
+	n1957 := len(enumerateBracketFillStrategies(&s1957))
+
+	// Post-SECURE 2.0: born 1965 → RMD age 75.
+	s1965 := *base
+	s1965.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", BirthMonth: "1965-01", Role: models.PersonRolePrimary},
+	}
+	n1965 := len(enumerateBracketFillStrategies(&s1965))
+
+	// The 1965-birth scenario admits the extra 5yr (69,74) window, so must
+	// produce strictly more strategies.
+	if n1965 <= n1957 {
+		t.Errorf("expected SECURE 2.0 (birth 1965, RMD age 75) to admit MORE bracket-fill "+
+			"windows than pre-SECURE (birth 1957, RMD age 73), got n1957=%d n1965=%d",
+			n1957, n1965)
+	}
+}

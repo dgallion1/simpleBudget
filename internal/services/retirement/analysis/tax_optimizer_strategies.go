@@ -89,8 +89,5 @@ func enumerateLadderStrategies(s *models.WhatIfSettings) []models.RothOptimizerS
 }
 
 func formatLadderLabel(amount float64, w strategyWindow) string {
-	if amount == 0 {
-		return "No conversion"
-	}
 	return fmt.Sprintf("$%dk/yr %d→%d", int(amount/1000), w.StartAge, w.EndAge)
 }

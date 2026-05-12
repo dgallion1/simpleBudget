@@ -1,7 +1,6 @@
 package analysis
 
 import (
-	"fmt"
 	"testing"
 
 	"budget2/internal/models"
@@ -89,5 +88,29 @@ func TestEnumerateLadderStrategies_LabelsAreStable(t *testing.T) {
 	}
 }
 
-// Compile guard so fmt import is exercised in this file even if no test uses it directly.
-var _ = fmt.Sprintf
+func TestEnumerateLadderStrategies_ExactCountForRepresentativeSettings(t *testing.T) {
+	// currentAge=67, claimAge=67:
+	//   - "5yr"   window (67, 72) valid
+	//   - "SS"    window (67, 67) FILTERED (EndAge == StartAge)
+	//   - "IRMAA" window (67, 65) FILTERED (EndAge < StartAge)
+	//   - "RMD"   window (67, 73) valid
+	//   - "mid"   window (72, 77) valid
+	// → 3 valid windows
+	//
+	// Candidate breakdown:
+	//   1 × "No conversion" baseline
+	//   6 non-zero amounts × 3 windows = 18
+	// → 19 total
+	s := &models.WhatIfSettings{
+		CurrentAge:      67,
+		ProjectionYears: 31,
+		SocialSecurity:  &models.SocialSecurityConfig{ClaimAge: 67},
+	}
+	got := enumerateLadderStrategies(s)
+	if want := 19; len(got) != want {
+		t.Errorf("ladder candidate count: got %d, want %d", len(got), want)
+		for i, st := range got {
+			t.Logf("  [%d] %s (start=%d end=%d amount=%v)", i, st.Label, st.StartAge, st.EndAge, st.AnnualAmount)
+		}
+	}
+}

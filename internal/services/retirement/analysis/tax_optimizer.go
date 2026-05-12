@@ -17,7 +17,12 @@ const (
 	taxOptimizerEligibilityMinProjectionYears = 5
 	taxOptimizerTopSSPairs                    = 3
 	taxOptimizerTopFinalists                  = 5
-	taxOptimizerMonteCarloRuns                = 32
+	// taxOptimizerMonteCarloRuns is intentionally lower than
+	// ssPortfolioMonteCarloRuns (250) because the Tax Optimizer applies
+	// MC to ~5 top finalists × ~135 deterministic candidates. The total
+	// MC budget (5 × 32 = 160 runs) is comparable to a single SS
+	// Portfolio analysis cell.
+	taxOptimizerMonteCarloRuns = 32
 )
 
 // taxOptimizerEligible reports whether the scenario qualifies for the
@@ -59,5 +64,18 @@ func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spous
 		cfg.SocialSecurity = &ssCopy
 	}
 	cfg.RothConversion = rothStrategyToConfig(s, strat)
-	return perturbAndPrepare(&cfg), true
+	prepared := perturbAndPrepare(&cfg)
+
+	// PerYearOverrides is tagged json:"-" so prepare.From's JSON-based
+	// DeepCopy drops it. Re-attach the in-memory map onto the prepared
+	// snapshot. This intentionally mutates Settings() — the same kind
+	// of shallow violation the existing cloneSettingsWithClaimAges
+	// accepts — because the override map is constructed in-memory
+	// on each optimizer run and never persisted.
+	if cfg.RothConversion != nil && cfg.RothConversion.PerYearOverrides != nil {
+		if prepSettings := prepared.Settings(); prepSettings != nil && prepSettings.RothConversion != nil {
+			prepSettings.RothConversion.PerYearOverrides = cfg.RothConversion.PerYearOverrides
+		}
+	}
+	return prepared, true
 }

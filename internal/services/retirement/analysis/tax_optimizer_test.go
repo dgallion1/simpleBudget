@@ -92,6 +92,64 @@ func TestTaxOptimizerEligible_Boundaries(t *testing.T) {
 	}
 }
 
+func TestTaxOptimizerConstants_Sanity(t *testing.T) {
+	// Guard rail: MC budget must be small enough that 5 finalists × runs
+	// stays well below 1000 total MC invocations per optimizer call.
+	const maxAcceptableMCRuns = 200
+	if taxOptimizerMonteCarloRuns > maxAcceptableMCRuns {
+		t.Errorf("taxOptimizerMonteCarloRuns=%d exceeds budget ceiling %d",
+			taxOptimizerMonteCarloRuns, maxAcceptableMCRuns)
+	}
+}
+
+func TestTaxOptimizerEligible_NilSettings(t *testing.T) {
+	ok, reason := taxOptimizerEligible(nil)
+	if ok {
+		t.Error("nil settings should be ineligible")
+	}
+	if reason == "" {
+		t.Error("nil settings should produce a non-empty reason")
+	}
+}
+
+func TestCloneSettingsWithSSAndRoth_PreservesBracketFillOverrides(t *testing.T) {
+	// Regression test: PerYearOverrides has json:"-" tag, and
+	// prepare.From uses JSON DeepCopy. Without manual re-attachment
+	// the map would be dropped, causing bracket-fill candidates to
+	// score identically to the no-conversion baseline.
+	s := eligibleBase()
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 3000, FRA: 67, ClaimAge: 70, SpouseClaimAge: 67,
+	}
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.22,
+		StartAge:      s.CurrentAge,
+		EndAge:        s.CurrentAge + 5,
+	}
+	prepared, ok := cloneSettingsWithSSAndRoth(s, s.SocialSecurity.ClaimAge, s.SocialSecurity.SpouseClaimAge, strat)
+	if !ok {
+		t.Fatal("expected clone to succeed")
+	}
+	cloned := prepared.Settings()
+	if cloned == nil || cloned.RothConversion == nil {
+		t.Fatal("expected non-nil cloned RothConversion")
+	}
+	if cloned.RothConversion.PerYearOverrides == nil {
+		t.Fatal("PerYearOverrides was dropped during clone (json tag bug)")
+	}
+	// 5-year window (currentAge → currentAge+5) → 5 entries (projection years 0..4).
+	if got, want := len(cloned.RothConversion.PerYearOverrides), 5; got != want {
+		t.Errorf("PerYearOverrides entries: got %d, want %d", got, want)
+	}
+	// Each per-year override must be non-negative.
+	for year, amount := range cloned.RothConversion.PerYearOverrides {
+		if amount < 0 {
+			t.Errorf("year %d: negative override %v", year, amount)
+		}
+	}
+}
+
 func TestCloneSettingsWithSSAndRoth_AppliesOverrides(t *testing.T) {
 	s := eligibleBase()
 	s.SpouseAge = 54

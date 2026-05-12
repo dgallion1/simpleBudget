@@ -1293,6 +1293,60 @@ type HistoricalBacktestAnalysis struct {
 	HistoricalVsMC        float64                    `json:"historical_vs_mc"` // Difference in success rates
 }
 
+// RothStrategyKind names a Roth conversion strategy family.
+type RothStrategyKind string
+
+const (
+	RothStrategyNone        RothStrategyKind = "none"
+	RothStrategyLadder      RothStrategyKind = "ladder"
+	RothStrategyBracketFill RothStrategyKind = "bracket_fill"
+)
+
+// RothOptimizerStrategy describes a Roth conversion strategy in a form
+// the Tax Optimizer can apply to the engine without mutating saved
+// settings.
+type RothOptimizerStrategy struct {
+	Kind          RothStrategyKind `json:"kind"`
+	AnnualAmount  float64          `json:"annual_amount,omitempty"`  // ladder only
+	TargetBracket float64          `json:"target_bracket,omitempty"` // bracket_fill only; e.g. 0.22
+	StartAge      int              `json:"start_age"`
+	EndAge        int              `json:"end_age"`
+	Label         string           `json:"label"` // human-readable, e.g. "$100k/yr to RMD age"
+}
+
+// TaxOptimizerCandidate is one (SS pair, Roth strategy) configuration
+// and its scored outcome.
+type TaxOptimizerCandidate struct {
+	PrimaryClaimAge int                   `json:"primary_claim_age"`
+	SpouseClaimAge  int                   `json:"spouse_claim_age,omitempty"`
+	RothStrategy    RothOptimizerStrategy `json:"roth_strategy"`
+
+	// Deterministic projection scores.
+	EndingPortfolioReal float64 `json:"ending_portfolio_real"`
+	LifetimeTaxReal     float64 `json:"lifetime_tax_real"`
+	PeakMarginalBracket float64 `json:"peak_marginal_bracket"`
+	TotalRothConverted  float64 `json:"total_roth_converted"`
+
+	// Monte Carlo refinement; zero-valued for non-top-5 entries.
+	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"`
+	MCMedianEndingReal float64 `json:"mc_median_ending_real,omitempty"`
+}
+
+// TaxOptimizerAnalysis is the per-scenario recommendation produced by
+// analysis.TaxOptimizer. Always non-nil when produced via RunFull;
+// Eligible=false carries IneligibleReason for UI rendering.
+type TaxOptimizerAnalysis struct {
+	Eligible         bool   `json:"eligible"`
+	IneligibleReason string `json:"ineligible_reason,omitempty"`
+
+	Baseline TaxOptimizerCandidate   `json:"baseline"`
+	Best     TaxOptimizerCandidate   `json:"best"`
+	Top      []TaxOptimizerCandidate `json:"top"`
+
+	MonteCarloRuns   int `json:"monte_carlo_runs"`
+	CandidatesScored int `json:"candidates_scored"`
+}
+
 // WhatIfAnalysis is the complete analysis container returned to templates
 type WhatIfAnalysis struct {
 	Settings                 *WhatIfSettings             `json:"settings"`
@@ -1308,6 +1362,10 @@ type WhatIfAnalysis struct {
 	Tax                      *TaxAnalysis                `json:"tax"`
 	HistoricalBacktest       *HistoricalBacktestAnalysis `json:"historical_backtest"`
 	SocialSecurity           *SSComparisonAnalysis       `json:"social_security,omitempty"`
+	// TaxOptimizer holds the Tax Optimizer recommendation. May be nil
+	// when no analysis has been run; carries Eligible=false with a
+	// reason when the scenario doesn't qualify.
+	TaxOptimizer *TaxOptimizerAnalysis `json:"tax_optimizer,omitempty"`
 }
 
 // SSClaimingOption represents the benefit analysis for a specific claiming age

@@ -61,4 +61,12 @@ func TestRunFullAnalysis(t *testing.T) {
 	if result.RMD == nil {
 		t.Error("expected non-nil RMD")
 	}
+	if result.TaxOptimizer == nil {
+		t.Error("expected non-nil TaxOptimizer")
+	}
+	// The smoke fixture (age 65, $1M portfolio, 60% tax-deferred, 10-year horizon)
+	// satisfies all eligibility gates, so Eligible must be true.
+	if result.TaxOptimizer != nil && !result.TaxOptimizer.Eligible {
+		t.Errorf("expected TaxOptimizer.Eligible=true, got false (reason: %s)", result.TaxOptimizer.IneligibleReason)
+	}
 }

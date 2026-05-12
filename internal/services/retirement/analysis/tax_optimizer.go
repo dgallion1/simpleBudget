@@ -313,6 +313,18 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 		finalists = finalists[:taxOptimizerTopFinalists]
 	}
 
+	// Deflate MC nominal median to real (inflation-adjusted) so the
+	// sort metric matches the field name and the column displayed in
+	// the UI. The deflator is constant across all candidates (same
+	// projection horizon and inflation rate), so ordering is preserved
+	// and we can apply it after the MC call rather than threading a
+	// real-aware metric into MonteCarlo.
+	inflRate := settings.InflationRate / 100.0
+	deflator := math.Pow(1+inflRate, float64(settings.ProjectionYears))
+	if deflator <= 0 {
+		deflator = 1
+	}
+
 	// Monte Carlo refinement of top finalists. Reuses the existing
 	// analysis.MonteCarlo entry point with a small budget. Seed=0
 	// means auto-seed (preserves "default = unpredictable" contract);
@@ -332,7 +344,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 			continue
 		}
 		finalists[i].MCSurvivalRate = mc.Stats.SuccessRate
-		finalists[i].MCMedianEndingReal = mc.Stats.MedianBalance
+		finalists[i].MCMedianEndingReal = mc.Stats.MedianBalance / deflator
 	}
 
 	// Re-sort by MC median ending balance (MC tiebreak).

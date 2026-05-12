@@ -42,7 +42,11 @@ func strategyWindows(s *models.WhatIfSettings) []strategyWindow {
 	}
 	out := make([]strategyWindow, 0, len(candidates))
 	for _, w := range candidates {
-		if w.EndAge > w.StartAge {
+		// Require a window of at least 2 years. A 1-year window
+		// (endProjYear=1) translates to RothConversionConfig.EndYear=0,
+		// which the engine treats as "indefinite" — wrecking the candidate
+		// score. See engine/loop_helpers.go:133.
+		if w.EndAge-w.StartAge >= 2 {
 			out = append(out, w)
 		}
 	}

@@ -115,6 +115,24 @@ func TestEnumerateLadderStrategies_ExactCountForRepresentativeSettings(t *testin
 	}
 }
 
+func TestStrategyWindows_FiltersOneYearWindows(t *testing.T) {
+	// With currentAge=66 and SS claim at 67, the "SS" window would be
+	// (66, 67) — a 1-year window that would translate to EndYear=0 in
+	// RothConversionConfig, which the engine treats as "indefinite."
+	// strategyWindows must drop these.
+	s := &models.WhatIfSettings{
+		CurrentAge:      66,
+		ProjectionYears: 30,
+		SocialSecurity:  &models.SocialSecurityConfig{ClaimAge: 67},
+	}
+	windows := strategyWindows(s)
+	for _, w := range windows {
+		if w.EndAge-w.StartAge < 2 {
+			t.Errorf("found 1-year window in output: %+v (would trigger engine EndYear=0 bug)", w)
+		}
+	}
+}
+
 func TestEstimateOtherTaxableIncome_PreSSAndPreRMD(t *testing.T) {
 	s := &models.WhatIfSettings{
 		CurrentAge:         60,

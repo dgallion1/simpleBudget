@@ -539,6 +539,67 @@ func TestTaxOptimizer_MCRefinementPopulatesFields(t *testing.T) {
 	}
 }
 
+func TestTaxOptimizer_MCMedianIsReal(t *testing.T) {
+	// With nonzero inflation, MCMedianEndingReal must be substantially
+	// less than what you'd see with zero inflation (deflator=1). If the
+	// deflator was NOT applied, both runs would return a similar nominal
+	// median and the 3%-inflation run would NOT be ~2.5x smaller.
+	//
+	// We compare two optimizer runs on the same base scenario:
+	//   run0: InflationRate=0  → deflator=1, MCMedianEndingReal ≈ nominal
+	//   run3: InflationRate=3  → deflator≈2.5, MCMedianEndingReal ≈ nominal/2.5
+	//
+	// run3.MCMedianEndingReal must be materially less than run0.MCMedianEndingReal
+	// because the cumulative deflator over 31 years at 3% ≈ 2.5x.
+	base := eligibleBase()
+	base.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 4100, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: 1500, SpouseFRA: 67, SpouseClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+	base.ProjectionYears = 31
+
+	eng := engine.New()
+
+	s0 := *base
+	s0.InflationRate = 0
+	prep0 := perturbAndPrepare(&s0)
+	r0 := TaxOptimizerWithSeed(eng, engine.Input{Prepared: prep0}, nil, 42)
+	if r0 == nil || !r0.Eligible || len(r0.Top) == 0 {
+		t.Fatalf("run0 (inflation=0): expected eligible: %+v", r0)
+	}
+
+	s3 := *base
+	s3.InflationRate = 3
+	prep3 := perturbAndPrepare(&s3)
+	r3 := TaxOptimizerWithSeed(eng, engine.Input{Prepared: prep3}, nil, 42)
+	if r3 == nil || !r3.Eligible || len(r3.Top) == 0 {
+		t.Fatalf("run3 (inflation=3): expected eligible: %+v", r3)
+	}
+
+	// Cumulative deflator over 31 years at 3% ≈ 2.5x.
+	deflator := math.Pow(1.03, float64(base.ProjectionYears))
+	if deflator < 2.0 {
+		t.Fatalf("test setup expects deflator > 2x, got %v", deflator)
+	}
+
+	med0 := r0.Best.MCMedianEndingReal
+	med3 := r3.Best.MCMedianEndingReal
+	if med0 <= 0 || med3 <= 0 {
+		t.Fatalf("MCMedianEndingReal must be positive: run0=%v run3=%v", med0, med3)
+	}
+
+	// If the deflator was NOT applied, med3 ≈ med0 (both would be nominal).
+	// With proper deflation, med3 ≈ med0 / deflator (roughly).
+	// We require med3 < med0 * 0.75 (conservative: any deflation < 1.33x
+	// over 31 years would fail). At 3% for 31 years the real ratio ≈ 0.40.
+	ratio := med3 / med0
+	if ratio >= 0.75 {
+		t.Errorf("MCMedianEndingReal ratio (3%%/0%% inflation) = %v, expected < 0.75 — "+
+			"deflator may not have been applied (run0=%v run3=%v)", ratio, med0, med3)
+	}
+}
+
 func TestTaxOptimizer_MCDeterministicWithSeed(t *testing.T) {
 	s := eligibleBase()
 	s.SocialSecurity = &models.SocialSecurityConfig{

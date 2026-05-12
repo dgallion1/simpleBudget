@@ -16,7 +16,7 @@
         Best: SS {{$best.PrimaryClaimAge}}{{if $best.SpouseClaimAge}}/{{$best.SpouseClaimAge}}{{end}},
         {{$best.RothStrategy.Label}} —
         Ending: {{formatMoney $best.EndingPortfolioReal}} real
-        {{if $best.MCSurvivalRate}}
+        {{if gt $to.MonteCarloRuns 0}}
         · MC: {{printf "%.0f" $best.MCSurvivalRate}}%
         {{end}}
     </div>
@@ -54,14 +54,15 @@
                         {{if gt $delta 0.0}}+{{end}}{{formatMoney $delta}}
                     </td>
                     <td class="py-2 px-2 text-right {{successRateTextClass $c.MCSurvivalRate}}">
-                        {{if $c.MCSurvivalRate}}{{printf "%.0f" $c.MCSurvivalRate}}%{{else}}—{{end}}
+                        {{if gt $to.MonteCarloRuns 0}}{{printf "%.0f" $c.MCSurvivalRate}}%{{else}}—{{end}}
                     </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
     </div>
-    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each{{end}}. Apply recommendations manually.</p>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each{{end}}.</p>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 caveat">Recommendations are read-only — edit your scenario manually to apply. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
     {{end}}
     {{end}}
 </div>

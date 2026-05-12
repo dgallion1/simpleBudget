@@ -8559,6 +8559,11 @@ func TestTaxOptimizerPanel_EligibleRendersStrategyAndTable(t *testing.T) {
 						Kind:  models.RothStrategyLadder,
 						Label: "$80k/yr to RMD age",
 					},
+					PerYearConversions: []models.YearlyConversion{
+						{Age: 67, Amount: 80_000},
+						{Age: 68, Amount: 80_000},
+						{Age: 69, Amount: 80_000},
+					},
 				},
 				{
 					PrimaryClaimAge:     68,
@@ -8568,6 +8573,10 @@ func TestTaxOptimizerPanel_EligibleRendersStrategyAndTable(t *testing.T) {
 					RothStrategy: models.RothOptimizerStrategy{
 						Kind:  models.RothStrategyBracketFill,
 						Label: "Fill to 22% bracket",
+					},
+					PerYearConversions: []models.YearlyConversion{
+						{Age: 67, Amount: 250_000},
+						{Age: 68, Amount: 245_000},
 					},
 				},
 			},
@@ -8586,9 +8595,15 @@ func TestTaxOptimizerPanel_EligibleRendersStrategyAndTable(t *testing.T) {
 		"Tax Optimizer",
 		"$80k/yr to RMD age",
 		"Fill to 22% bracket",
+		"Show conversion amounts", // disclosure summary text
+		">67<",                    // an age cell from PerYearConversions
+		"$80,000",                 // a ladder amount rendered via formatMoney
+		"$250,000",                // a bracket-fill amount
+		"Avg ",                    // summary line opening
+		"Total ",                  // summary line total marker
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("rendered panel missing %q; body snippet: %s", want, out[:min(len(out), 400)])
+			t.Errorf("rendered panel missing %q; body snippet: %s", want, out[:min(len(out), 800)])
 		}
 	}
 }

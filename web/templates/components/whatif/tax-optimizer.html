@@ -97,6 +97,38 @@
                     </td>
                     {{end}}
                 </tr>
+                {{if $c.PerYearConversions}}
+                <tr class="border-b dark:border-gray-700 {{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
+                    <td colspan="{{if gt $to.MonteCarloRuns 0}}7{{else}}5{{end}}" class="px-2 pb-2">
+                        <details class="text-xs text-gray-600 dark:text-gray-300">
+                            <summary class="cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400">
+                                Show conversion amounts
+                            </summary>
+                            <div class="mt-2 pl-4">
+                                <table class="text-xs">
+                                    <thead>
+                                        <tr>
+                                            <th class="text-left pr-4 font-medium">Age</th>
+                                            <th class="text-right font-medium">Conversion</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{range $c.PerYearConversions}}
+                                        <tr>
+                                            <td class="pr-4">{{.Age}}</td>
+                                            <td class="text-right">{{formatMoney .Amount}}</td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                                <p class="mt-2 text-gray-500 dark:text-gray-400">
+                                    {{conversionSummary $c.PerYearConversions}}
+                                </p>
+                            </div>
+                        </details>
+                    </td>
+                </tr>
+                {{end}}
                 {{end}}
             </tbody>
         </table>

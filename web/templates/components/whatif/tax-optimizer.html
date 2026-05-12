@@ -1,0 +1,69 @@
+{{/* Tax Optimizer Results Panel */}}
+{{define "whatif-tax-optimizer-results"}}
+{{if .Analysis.TaxOptimizer}}
+{{$to := .Analysis.TaxOptimizer}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Tax Optimizer</h3>
+
+    {{if not $to.Eligible}}
+    <p class="text-sm text-gray-500 dark:text-gray-400">{{$to.IneligibleReason}}</p>
+    {{else}}
+    {{$best := $to.Best}}
+    {{$baseline := $to.Baseline}}
+
+    {{/* Best strategy headline */}}
+    <div class="text-xs bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-md p-2 mb-3 text-gray-700 dark:text-gray-200">
+        Best: SS {{$best.PrimaryClaimAge}}{{if $best.SpouseClaimAge}}/{{$best.SpouseClaimAge}}{{end}},
+        {{$best.RothStrategy.Label}} —
+        Ending: {{formatMoney $best.EndingPortfolioReal}} real
+        {{if $best.MCSurvivalRate}}
+        · MC: {{printf "%.0f" $best.MCSurvivalRate}}%
+        {{end}}
+    </div>
+
+    {{/* Top alternatives table */}}
+    {{if $to.Top}}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b dark:border-gray-600">
+                    <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Strategy</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">SS (P/S)</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">End Portfolio</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Lifetime Tax</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Δ vs Baseline</th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">MC Surv%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range $i, $c := $to.Top}}
+                {{$delta := sub $c.EndingPortfolioReal $baseline.EndingPortfolioReal}}
+                <tr class="border-b dark:border-gray-700 {{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
+                    <td class="py-2 px-2 text-gray-800 dark:text-gray-200">
+                        {{$c.RothStrategy.Label}}
+                        {{if eq $i 0}}
+                        <span class="text-xs text-green-600 dark:text-green-400">&#9733;</span>
+                        {{end}}
+                    </td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">
+                        {{$c.PrimaryClaimAge}}{{if $c.SpouseClaimAge}}/{{$c.SpouseClaimAge}}{{end}}
+                    </td>
+                    <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">{{formatMoney $c.EndingPortfolioReal}}</td>
+                    <td class="py-2 px-2 text-right text-red-600 dark:text-red-400">{{formatMoney $c.LifetimeTaxReal}}</td>
+                    <td class="py-2 px-2 text-right {{if gt $delta 0.0}}text-green-600 dark:text-green-400{{else if lt $delta 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                        {{if gt $delta 0.0}}+{{end}}{{formatMoney $delta}}
+                    </td>
+                    <td class="py-2 px-2 text-right {{successRateTextClass $c.MCSurvivalRate}}">
+                        {{if $c.MCSurvivalRate}}{{printf "%.0f" $c.MCSurvivalRate}}%{{else}}—{{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each{{end}}. Apply recommendations manually.</p>
+    {{end}}
+    {{end}}
+</div>
+{{end}}
+{{end}}

@@ -8521,3 +8521,125 @@ func TestHandleWhatIfSettings_FilingStatusInvalid(t *testing.T) {
 		t.Fatal("TaxConfig is nil")
 	}
 }
+
+// ── Tax Optimizer template render tests ─────────────────────────────────────
+
+func TestTaxOptimizerPanel_EligibleRendersStrategyAndTable(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := &models.WhatIfAnalysis{
+		Settings: models.DefaultWhatIfSettings(),
+		TaxOptimizer: &models.TaxOptimizerAnalysis{
+			Eligible:         true,
+			CandidatesScored: 45,
+			MonteCarloRuns:   200,
+			Baseline: models.TaxOptimizerCandidate{
+				PrimaryClaimAge:     67,
+				EndingPortfolioReal: 1_000_000,
+				LifetimeTaxReal:     250_000,
+			},
+			Best: models.TaxOptimizerCandidate{
+				PrimaryClaimAge:     70,
+				EndingPortfolioReal: 1_200_000,
+				LifetimeTaxReal:     180_000,
+				MCSurvivalRate:      92.5,
+				RothStrategy: models.RothOptimizerStrategy{
+					Kind:  models.RothStrategyLadder,
+					Label: "$80k/yr to RMD age",
+				},
+			},
+			Top: []models.TaxOptimizerCandidate{
+				{
+					PrimaryClaimAge:     70,
+					EndingPortfolioReal: 1_200_000,
+					LifetimeTaxReal:     180_000,
+					MCSurvivalRate:      92.5,
+					RothStrategy: models.RothOptimizerStrategy{
+						Kind:  models.RothStrategyLadder,
+						Label: "$80k/yr to RMD age",
+					},
+				},
+				{
+					PrimaryClaimAge:     68,
+					EndingPortfolioReal: 1_100_000,
+					LifetimeTaxReal:     210_000,
+					MCSurvivalRate:      89.0,
+					RothStrategy: models.RothOptimizerStrategy{
+						Kind:  models.RothStrategyBracketFill,
+						Label: "Fill to 22% bracket",
+					},
+				},
+			},
+		},
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-optimizer-results", map[string]interface{}{
+		"Analysis": analysis,
+		"Settings": analysis.Settings,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	for _, want := range []string{
+		"Tax Optimizer",
+		"$80k/yr to RMD age",
+		"Fill to 22% bracket",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered panel missing %q; body snippet: %s", want, out[:min(len(out), 400)])
+		}
+	}
+}
+
+func TestTaxOptimizerPanel_IneligibleRendersReason(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	reason := "Tax data is unavailable for this scenario"
+	analysis := &models.WhatIfAnalysis{
+		Settings: models.DefaultWhatIfSettings(),
+		TaxOptimizer: &models.TaxOptimizerAnalysis{
+			Eligible:         false,
+			IneligibleReason: reason,
+		},
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-optimizer-results", map[string]interface{}{
+		"Analysis": analysis,
+		"Settings": analysis.Settings,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if !strings.Contains(out, "Tax Optimizer") {
+		t.Errorf("rendered panel missing 'Tax Optimizer' heading; got: %s", out[:min(len(out), 400)])
+	}
+	if !strings.Contains(out, reason) {
+		t.Errorf("rendered panel missing ineligible reason %q; got: %s", reason, out[:min(len(out), 400)])
+	}
+}
+
+func TestTaxOptimizerPanel_NilOptimizerRendersNothing(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := &models.WhatIfAnalysis{
+		Settings:     models.DefaultWhatIfSettings(),
+		TaxOptimizer: nil,
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-optimizer-results", map[string]interface{}{
+		"Analysis": analysis,
+		"Settings": analysis.Settings,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if strings.Contains(out, "Tax Optimizer") {
+		t.Errorf("expected empty output for nil TaxOptimizer, got: %s", out[:min(len(out), 400)])
+	}
+}

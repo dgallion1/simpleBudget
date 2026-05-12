@@ -1,21 +1,10 @@
 package models
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
-
-func TestTaxOptimizerAnalysis_ZeroValue(t *testing.T) {
-	var a TaxOptimizerAnalysis
-	if a.Eligible {
-		t.Error("zero-value Eligible should be false")
-	}
-	if a.CandidatesScored != 0 {
-		t.Error("zero-value CandidatesScored should be 0")
-	}
-	if a.Top != nil {
-		t.Error("zero-value Top should be nil slice")
-	}
-}
 
 func TestRothStrategyKind_Constants(t *testing.T) {
 	cases := map[RothStrategyKind]string{
@@ -30,9 +19,58 @@ func TestRothStrategyKind_Constants(t *testing.T) {
 	}
 }
 
-func TestWhatIfAnalysis_HasTaxOptimizerField(t *testing.T) {
-	a := WhatIfAnalysis{TaxOptimizer: &TaxOptimizerAnalysis{Eligible: true}}
-	if a.TaxOptimizer == nil || !a.TaxOptimizer.Eligible {
-		t.Error("WhatIfAnalysis.TaxOptimizer should hold a pointer to TaxOptimizerAnalysis")
+func TestTaxOptimizerAnalysis_JSONShape(t *testing.T) {
+	a := TaxOptimizerAnalysis{
+		Eligible:         true,
+		Baseline:         TaxOptimizerCandidate{PrimaryClaimAge: 67, SpouseClaimAge: 62},
+		Best:             TaxOptimizerCandidate{PrimaryClaimAge: 70, RothStrategy: RothOptimizerStrategy{Kind: RothStrategyLadder, Label: "best"}},
+		MonteCarloRuns:   32,
+		CandidatesScored: 135,
+	}
+	raw, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	body := string(raw)
+
+	// Wire-level field names must remain stable for the handler/template.
+	mustContain := []string{
+		`"eligible":true`,
+		`"baseline":{`,
+		`"best":{`,
+		`"monte_carlo_runs":32`,
+		`"candidates_scored":135`,
+		`"primary_claim_age":67`,
+		`"spouse_claim_age":62`,   // present when non-zero
+		`"primary_claim_age":70`,
+		`"kind":"ladder"`,
+		`"label":"best"`,
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected JSON to contain %q; got %s", want, body)
+		}
+	}
+
+	// ineligible_reason omitempty: not present when empty.
+	if strings.Contains(body, "ineligible_reason") {
+		t.Errorf("ineligible_reason should be omitted when empty; got %s", body)
+	}
+
+	// Best candidate's SpouseClaimAge is 0 → omitempty drops it.
+	if strings.Contains(body, `"primary_claim_age":70,"spouse_claim_age"`) {
+		t.Errorf("expected SpouseClaimAge to be omitted when 0; got %s", body)
+	}
+
+	// Round-trip: re-parse and check key fields survived.
+	var back TaxOptimizerAnalysis
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !back.Eligible || back.MonteCarloRuns != 32 || back.CandidatesScored != 135 {
+		t.Errorf("round-trip lost fields: %+v", back)
+	}
+	if back.Best.RothStrategy.Kind != RothStrategyLadder || back.Best.RothStrategy.Label != "best" {
+		t.Errorf("round-trip lost Best.RothStrategy: %+v", back.Best.RothStrategy)
 	}
 }

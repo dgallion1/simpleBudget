@@ -1317,9 +1317,12 @@ type RothOptimizerStrategy struct {
 // TaxOptimizerCandidate is one (SS pair, Roth strategy) configuration
 // and its scored outcome.
 type TaxOptimizerCandidate struct {
-	PrimaryClaimAge int                   `json:"primary_claim_age"`
-	SpouseClaimAge  int                   `json:"spouse_claim_age,omitempty"`
-	RothStrategy    RothOptimizerStrategy `json:"roth_strategy"`
+	PrimaryClaimAge int `json:"primary_claim_age"`
+	// SpouseClaimAge is 0 (and omitted from JSON) for single-filer
+	// scenarios. Template/handler authors should guard on the active
+	// scenario's HasSpouse() rather than on this field's presence.
+	SpouseClaimAge int                   `json:"spouse_claim_age,omitempty"`
+	RothStrategy   RothOptimizerStrategy `json:"roth_strategy"`
 
 	// Deterministic projection scores.
 	EndingPortfolioReal float64 `json:"ending_portfolio_real"`
@@ -1339,12 +1342,12 @@ type TaxOptimizerAnalysis struct {
 	Eligible         bool   `json:"eligible"`
 	IneligibleReason string `json:"ineligible_reason,omitempty"`
 
-	Baseline TaxOptimizerCandidate   `json:"baseline"`
-	Best     TaxOptimizerCandidate   `json:"best"`
-	Top      []TaxOptimizerCandidate `json:"top"`
+	Baseline TaxOptimizerCandidate   `json:"baseline"` // user's saved scenario, scored for delta comparisons
+	Best     TaxOptimizerCandidate   `json:"best"`     // top-ranked finalist after MC tiebreak
+	Top      []TaxOptimizerCandidate `json:"top"`      // up to taxOptimizerTopFinalists entries; Best at index 0
 
-	MonteCarloRuns   int `json:"monte_carlo_runs"`
-	CandidatesScored int `json:"candidates_scored"`
+	MonteCarloRuns   int `json:"monte_carlo_runs"`   // MC budget per top-5 candidate; 0 before refinement
+	CandidatesScored int `json:"candidates_scored"`  // total deterministic projections run
 }
 
 // WhatIfAnalysis is the complete analysis container returned to templates

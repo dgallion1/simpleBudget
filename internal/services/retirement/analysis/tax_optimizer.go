@@ -224,3 +224,91 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 	proj := eng.Run(cellInput)
 	return projectionToCandidate(proj, primaryClaim, spouseClaim, strat)
 }
+
+// TaxOptimizer runs the Tax Optimizer and returns a recommendation.
+// Always synchronous. Eligibility is gated; ineligible scenarios
+// return a non-nil result with Eligible=false and IneligibleReason set.
+// Uses the auto-seed convention (seed=0) for Monte Carlo refinement
+// (Phase 1.5 — MC refinement is added in a later task).
+func TaxOptimizer(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAnalysis) *models.TaxOptimizerAnalysis {
+	return TaxOptimizerWithSeed(eng, in, ss, 0)
+}
+
+// TaxOptimizerWithSeed is TaxOptimizer with an explicit Monte Carlo
+// seed for deterministic tests. seed=0 means auto-seed. Phase 1
+// (this task): deterministic ranking only; MC refinement of top
+// finalists is added in a later task.
+func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAnalysis, seed int64) *models.TaxOptimizerAnalysis {
+	_ = seed // Phase 1: unused; Phase 1.5 MC refinement will consume.
+	settings := in.Prepared.Settings()
+	if ok, reason := taxOptimizerEligible(settings); !ok {
+		return &models.TaxOptimizerAnalysis{
+			Eligible:         false,
+			IneligibleReason: reason,
+		}
+	}
+
+	currentPrimary, currentSpouse := 0, 0
+	var currentRoth models.RothOptimizerStrategy
+	if settings.SocialSecurity != nil {
+		currentPrimary = settings.SocialSecurity.ClaimAge
+		currentSpouse = settings.SocialSecurity.SpouseClaimAge
+	}
+	if settings.RothConversion != nil && settings.RothConversion.Enabled {
+		currentRoth = models.RothOptimizerStrategy{
+			Kind:         models.RothStrategyLadder,
+			AnnualAmount: settings.RothConversion.AnnualAmount,
+			StartAge:     settings.CurrentAge + settings.RothConversion.StartYear,
+			EndAge:       settings.CurrentAge + settings.RothConversion.EndYear,
+			Label:        "Current scenario",
+		}
+		if currentRoth.EndAge <= currentRoth.StartAge {
+			currentRoth.EndAge = settings.CurrentAge + settings.ProjectionYears
+		}
+	} else {
+		currentRoth = models.RothOptimizerStrategy{
+			Kind: models.RothStrategyNone, Label: "Current (no conversions)",
+		}
+	}
+
+	// Baseline: score the user's saved input directly (not through a
+	// reconstructed strategy clone) so its metrics exactly match what
+	// the rest of the page shows for this scenario.
+	baselineProj := eng.Run(in)
+	baseline := projectionToCandidate(baselineProj, currentPrimary, currentSpouse, currentRoth)
+
+	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, taxOptimizerTopSSPairs)
+	strategies := enumerateRothStrategies(settings)
+
+	scored := make([]models.TaxOptimizerCandidate, 0, len(pairs)*len(strategies))
+	for _, p := range pairs {
+		for _, strat := range strategies {
+			cand := scoreCandidate(eng, in, p.Primary, p.Spouse, strat)
+			if cand.EndingPortfolioReal == -math.MaxFloat64 {
+				continue // drop failed projections from Top
+			}
+			scored = append(scored, cand)
+		}
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].EndingPortfolioReal > scored[j].EndingPortfolioReal
+	})
+
+	finalists := scored
+	if len(finalists) > taxOptimizerTopFinalists {
+		finalists = finalists[:taxOptimizerTopFinalists]
+	}
+
+	result := &models.TaxOptimizerAnalysis{
+		Eligible:         true,
+		Baseline:         baseline,
+		Top:              finalists,
+		CandidatesScored: len(pairs) * len(strategies),
+		// MonteCarloRuns is set in the next task when MC refinement lands.
+	}
+	if len(finalists) > 0 {
+		result.Best = finalists[0]
+	}
+	return result
+}

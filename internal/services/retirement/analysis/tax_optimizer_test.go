@@ -359,3 +359,101 @@ func TestTopKSSPairs_ShortListsStillReachK(t *testing.T) {
 		t.Error("current-settings fallback (67, 62) missing despite k=3")
 	}
 }
+
+func TestTaxOptimizer_IneligibleReturnsReason(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 67
+	s.ProjectionYears = 31
+	s.PortfolioValue = 50_000        // 60% tax-deferred → $30k, below $100k threshold
+	s.TaxDeferredPercent = 60        // explicit for clarity
+	s.TaxConfig = nil                // also triggers ineligibility (belt-and-suspenders)
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	result := TaxOptimizerWithSeed(eng, in, nil, 42)
+	if result == nil {
+		t.Fatal("expected non-nil result for ineligible scenario")
+	}
+	if result.Eligible {
+		t.Error("expected Eligible=false")
+	}
+	if result.IneligibleReason == "" {
+		t.Error("expected non-empty IneligibleReason")
+	}
+}
+
+func TestTaxOptimizer_EligibleProducesTop5(t *testing.T) {
+	s := eligibleBase()
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	result := TaxOptimizerWithSeed(eng, in, nil, 42)
+	if result == nil || !result.Eligible {
+		t.Fatalf("expected eligible result, got %+v", result)
+	}
+	if len(result.Top) == 0 {
+		t.Fatal("expected non-empty Top")
+	}
+	if len(result.Top) > taxOptimizerTopFinalists {
+		t.Errorf("Top length %d exceeds finalists cap %d", len(result.Top), taxOptimizerTopFinalists)
+	}
+	// Top sorted desc by EndingPortfolioReal (before MC).
+	for i := 1; i < len(result.Top); i++ {
+		if result.Top[i].EndingPortfolioReal > result.Top[i-1].EndingPortfolioReal {
+			t.Errorf("Top not sorted desc: index %d > %d", i, i-1)
+		}
+	}
+	if result.Best.EndingPortfolioReal != result.Top[0].EndingPortfolioReal {
+		t.Error("Best should match Top[0]")
+	}
+	if result.CandidatesScored == 0 {
+		t.Error("CandidatesScored should be > 0")
+	}
+}
+
+func TestTaxOptimizer_BaselineMatchesCurrent(t *testing.T) {
+	s := eligibleBase()
+	// Give the scenario a SS config so baseline claim-age assertions are meaningful.
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 3000, FRA: 67, ClaimAge: 70, SpouseClaimAge: 67,
+	}
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	result := TaxOptimizerWithSeed(eng, in, nil, 42)
+	if result == nil || !result.Eligible {
+		t.Fatal("expected eligible")
+	}
+	if result.Baseline.PrimaryClaimAge != s.SocialSecurity.ClaimAge {
+		t.Errorf("Baseline.PrimaryClaimAge: got %d, want %d", result.Baseline.PrimaryClaimAge, s.SocialSecurity.ClaimAge)
+	}
+	if result.Baseline.SpouseClaimAge != s.SocialSecurity.SpouseClaimAge {
+		t.Errorf("Baseline.SpouseClaimAge: got %d, want %d", result.Baseline.SpouseClaimAge, s.SocialSecurity.SpouseClaimAge)
+	}
+}
+
+func TestTaxOptimizer_Deterministic(t *testing.T) {
+	s := eligibleBase()
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	r1 := TaxOptimizerWithSeed(eng, in, nil, 42)
+	r2 := TaxOptimizerWithSeed(eng, in, nil, 42)
+	if r1 == nil || r2 == nil {
+		t.Fatal("expected both results non-nil")
+	}
+	if len(r1.Top) != len(r2.Top) {
+		t.Fatalf("top length mismatch: %d vs %d", len(r1.Top), len(r2.Top))
+	}
+	for i := range r1.Top {
+		if r1.Top[i].PrimaryClaimAge != r2.Top[i].PrimaryClaimAge ||
+			r1.Top[i].SpouseClaimAge != r2.Top[i].SpouseClaimAge ||
+			r1.Top[i].RothStrategy.Label != r2.Top[i].RothStrategy.Label {
+			t.Errorf("non-deterministic at index %d: r1=%+v r2=%+v", i, r1.Top[i], r2.Top[i])
+		}
+	}
+}

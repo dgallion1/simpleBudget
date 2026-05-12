@@ -1186,6 +1186,14 @@ type RothConversionConfig struct {
 	AnnualAmount float64 `json:"annual_amount"` // Fixed amount to convert per year
 	StartYear    int     `json:"start_year"`    // Year to begin conversions (0 = now)
 	EndYear      int     `json:"end_year"`      // Year to stop conversions (0 = indefinite)
+
+	// PerYearOverrides is keyed by projection-year offset (same key
+	// semantics as StartYear/EndYear). When non-nil and a key is
+	// present for the current year, the engine uses that override
+	// amount instead of AnnualAmount. Used by the Tax Optimizer to
+	// model variable-amount strategies (e.g. bracket-fill). Never
+	// persisted on user-saved scenarios; constructed in-memory only.
+	PerYearOverrides map[int]float64 `json:"per_year_overrides,omitempty"`
 }
 
 // BigTicketType represents whether an item is income or expense

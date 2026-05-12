@@ -1,9 +1,11 @@
 package analysis
 
 import (
+	"math"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 // eligibleBase returns a fully-valid WhatIfSettings that passes all
@@ -188,5 +190,122 @@ func TestCloneSettingsWithSSAndRoth_AppliesOverrides(t *testing.T) {
 	}
 	if s.RothConversion.AnnualAmount != 50_000 {
 		t.Error("original RothConversion mutated")
+	}
+}
+
+func TestScoreCandidate_PopulatesFields(t *testing.T) {
+	s := eligibleBase()
+	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{
+		Kind: models.RothStrategyLadder, AnnualAmount: 50_000, StartAge: 67, EndAge: 73,
+	})
+	if !ok {
+		t.Fatal("clone failed")
+	}
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	cand := scoreCandidate(eng, in, 67, 62, models.RothOptimizerStrategy{
+		Kind: models.RothStrategyLadder, AnnualAmount: 50_000, StartAge: 67, EndAge: 73,
+	})
+
+	if cand.PrimaryClaimAge != 67 {
+		t.Errorf("PrimaryClaimAge: got %d", cand.PrimaryClaimAge)
+	}
+	if cand.SpouseClaimAge != 62 {
+		t.Errorf("SpouseClaimAge: got %d", cand.SpouseClaimAge)
+	}
+	if cand.EndingPortfolioReal <= 0 {
+		t.Errorf("EndingPortfolioReal not populated: %v", cand.EndingPortfolioReal)
+	}
+	if cand.LifetimeTaxReal < 0 {
+		t.Errorf("LifetimeTaxReal negative: %v", cand.LifetimeTaxReal)
+	}
+}
+
+func TestProjectionToCandidate_NilProjection(t *testing.T) {
+	cand := projectionToCandidate(nil, 67, 62, models.RothOptimizerStrategy{
+		Kind: models.RothStrategyLadder, Label: "test",
+	})
+	if cand.PrimaryClaimAge != 67 {
+		t.Errorf("PrimaryClaimAge not set: got %d", cand.PrimaryClaimAge)
+	}
+	if cand.EndingPortfolioReal != -math.MaxFloat64 {
+		t.Errorf("nil projection should yield sentinel -MaxFloat64, got %v", cand.EndingPortfolioReal)
+	}
+}
+
+func TestProjectionToCandidate_EmptyYearlySummaries(t *testing.T) {
+	proj := &models.ProjectionResult{YearlySummaries: nil}
+	cand := projectionToCandidate(proj, 67, 62, models.RothOptimizerStrategy{})
+	if cand.EndingPortfolioReal != -math.MaxFloat64 {
+		t.Errorf("empty yearly summaries should yield sentinel, got %v", cand.EndingPortfolioReal)
+	}
+}
+
+func TestProjectionToCandidate_NaNCoerced(t *testing.T) {
+	proj := &models.ProjectionResult{
+		YearlySummaries: []models.ProjectionYearSummary{
+			{EndingBalanceReal: math.NaN()},
+		},
+	}
+	cand := projectionToCandidate(proj, 67, 62, models.RothOptimizerStrategy{})
+	if cand.EndingPortfolioReal != -math.MaxFloat64 {
+		t.Errorf("NaN should be coerced to sentinel, got %v", cand.EndingPortfolioReal)
+	}
+}
+
+func TestTopKSSPairs_ExtractsBestPairs(t *testing.T) {
+	ss := &models.SSPortfolioAnalysis{
+		PrimaryOptions: []models.SSPortfolioOption{
+			{ClaimAge: 67, SurvivalRate: 0.85},
+			{ClaimAge: 70, SurvivalRate: 0.90}, // best
+			{ClaimAge: 65, SurvivalRate: 0.80},
+		},
+		SpouseOptions: []models.SSPortfolioOption{
+			{ClaimAge: 62, SurvivalRate: 0.88},
+			{ClaimAge: 67, SurvivalRate: 0.91}, // best
+		},
+		OptimalPrimaryAge: 70,
+		OptimalSpouseAge:  67,
+	}
+	currentPrimary, currentSpouse := 67, 62
+
+	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, 3)
+	if len(pairs) == 0 {
+		t.Fatal("expected at least one pair")
+	}
+	// Joint optimum (70, 67) must appear.
+	foundOptimum := false
+	for _, p := range pairs {
+		if p.Primary == 70 && p.Spouse == 67 {
+			foundOptimum = true
+		}
+	}
+	if !foundOptimum {
+		t.Error("expected (70, 67) joint optimum pair in result")
+	}
+	if len(pairs) > 3 {
+		t.Errorf("expected ≤3 pairs, got %d", len(pairs))
+	}
+}
+
+func TestTopKSSPairs_NilFallsBackToCurrent(t *testing.T) {
+	pairs := topKSSPairs(nil, 67, 62, 3)
+	if len(pairs) != 1 {
+		t.Fatalf("expected single-pair fallback, got %d", len(pairs))
+	}
+	if pairs[0].Primary != 67 || pairs[0].Spouse != 62 {
+		t.Errorf("fallback pair: got (%d, %d), want (67, 62)", pairs[0].Primary, pairs[0].Spouse)
+	}
+}
+
+func TestTopKSSPairs_EmptyOptionsFallsBack(t *testing.T) {
+	ss := &models.SSPortfolioAnalysis{} // no options
+	pairs := topKSSPairs(ss, 67, 62, 3)
+	if len(pairs) != 1 {
+		t.Fatalf("expected single-pair fallback for empty options, got %d", len(pairs))
+	}
+	if pairs[0].Primary != 67 || pairs[0].Spouse != 62 {
+		t.Errorf("fallback pair: got (%d, %d), want (67, 62)", pairs[0].Primary, pairs[0].Spouse)
 	}
 }

@@ -533,8 +533,8 @@ func TestTaxOptimizer_MCRefinementPopulatesFields(t *testing.T) {
 		if cand.MCMedianEndingReal == 0 {
 			t.Errorf("Top[%d].MCMedianEndingReal should be populated after MC refinement", i)
 		}
-		if cand.MCSurvivalRate <= 0 || cand.MCSurvivalRate > 1 {
-			t.Errorf("Top[%d].MCSurvivalRate out of [0,1]: %v", i, cand.MCSurvivalRate)
+		if cand.MCSurvivalRate < 0 || cand.MCSurvivalRate > 100 {
+			t.Errorf("Top[%d].MCSurvivalRate out of [0,100]: %v", i, cand.MCSurvivalRate)
 		}
 	}
 }

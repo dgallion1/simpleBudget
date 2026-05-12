@@ -331,7 +331,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 		if mc == nil || mc.Stats == nil {
 			continue
 		}
-		finalists[i].MCSurvivalRate = mc.Stats.SuccessRate / 100.0
+		finalists[i].MCSurvivalRate = mc.Stats.SuccessRate
 		finalists[i].MCMedianEndingReal = mc.Stats.MedianBalance
 	}
 

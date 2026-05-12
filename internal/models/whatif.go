@@ -1331,7 +1331,7 @@ type TaxOptimizerCandidate struct {
 	TotalRothConverted  float64 `json:"total_roth_converted"`
 
 	// Monte Carlo refinement; zero-valued for non-top-5 entries.
-	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"`
+	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"`   // 0–100 percent (matches MonteCarloAnalysis.Stats.SuccessRate)
 	MCMedianEndingReal float64 `json:"mc_median_ending_real,omitempty"`
 }
 

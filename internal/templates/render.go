@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"budget2/internal/models"
 	"budget2/internal/services/retirement"
 
 	"golang.org/x/text/cases"
@@ -67,6 +68,7 @@ func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error) {
 func getFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"formatMoney":                         formatMoney,
+		"conversionSummary":                   conversionSummary,
 		"formatNumber":                        formatNumber,
 		"formatPercent":                       formatPercent,
 		"formatDate":                          formatDate,
@@ -437,6 +439,97 @@ func formatMoney(v float64) string {
 		return "-$" + result.String()
 	}
 	return "$" + result.String()
+}
+
+// conversionSummary formats a one-line Avg/Min/Max/Total summary for a
+// slice of Roth conversion amounts. Avg/Min/Max use whole-dollar
+// comma-separated formatting (no cents) because conversion amounts are
+// inherently approximate at the dollar level. Total uses M-abbreviation
+// for ≥ $1M (two decimals) and K-abbreviation for ≥ $10K (no decimals);
+// smaller totals use whole-dollar formatting.
+//
+// Returns "" for an empty slice — the template gates the disclosure on
+// the slice being non-empty, so this is a defensive belt-and-suspenders.
+func conversionSummary(items []models.YearlyConversion) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var total float64
+	minA := items[0].Amount
+	maxA := items[0].Amount
+	for _, it := range items {
+		total += it.Amount
+		if it.Amount < minA {
+			minA = it.Amount
+		}
+		if it.Amount > maxA {
+			maxA = it.Amount
+		}
+	}
+	avg := total / float64(len(items))
+
+	yearWord := "years"
+	if len(items) == 1 {
+		yearWord = "year"
+	}
+
+	return fmt.Sprintf("Avg %s  ·  Min %s  ·  Max %s  ·  Total %s over %d %s",
+		formatWholeDollars(avg),
+		formatWholeDollars(minA),
+		formatWholeDollars(maxA),
+		formatAbbreviatedTotal(total),
+		len(items),
+		yearWord,
+	)
+}
+
+// formatWholeDollars renders v as "$X,XXX" with no cents.
+func formatWholeDollars(v float64) string {
+	negative := v < 0
+	if negative {
+		v = -v
+	}
+	whole := int64(v + 0.5) // round half-up
+	formatted := fmt.Sprintf("%d", whole)
+	var result strings.Builder
+	for i, c := range formatted {
+		if i > 0 && (len(formatted)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+	if negative {
+		return "-$" + result.String()
+	}
+	return "$" + result.String()
+}
+
+// formatAbbreviatedTotal renders v as "$X.YYM" for ≥ $1M, "$XK" for
+// ≥ $10K, otherwise "$X,XXX" (no cents). Used only by conversionSummary
+// — keep it scoped tightly; do not promote without considering the
+// existing formatMoney/formatNumber callers.
+func formatAbbreviatedTotal(v float64) string {
+	negative := v < 0
+	if negative {
+		v = -v
+	}
+	var s string
+	switch {
+	case v >= 1_000_000:
+		s = fmt.Sprintf("$%.2fM", v/1_000_000)
+	case v >= 10_000:
+		s = fmt.Sprintf("$%dK", int64(v/1_000+0.5))
+	default:
+		s = formatWholeDollars(v)
+		if negative {
+			return s // already has leading "-$"
+		}
+		return s
+	}
+	if negative {
+		return "-" + s
+	}
+	return s
 }
 
 func formatNumber(v float64) string {

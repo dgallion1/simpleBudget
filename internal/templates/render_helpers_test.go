@@ -10,6 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"budget2/internal/models"
 )
 
 // ============================================================
@@ -35,6 +37,65 @@ func TestFormatMoney(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("formatMoney(%v) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestConversionSummary(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []models.YearlyConversion
+		want string
+	}{
+		{
+			name: "empty returns empty string",
+			in:   nil,
+			want: "",
+		},
+		{
+			name: "single entry, whole-dollar total",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: 5_400},
+			},
+			want: "Avg $5,400  ·  Min $5,400  ·  Max $5,400  ·  Total $5,400 over 1 year",
+		},
+		{
+			name: "multi-entry, K-abbreviated total",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: 50_000},
+				{Age: 68, Amount: 50_000},
+				{Age: 69, Amount: 50_000},
+			},
+			want: "Avg $50,000  ·  Min $50,000  ·  Max $50,000  ·  Total $150K over 3 years",
+		},
+		{
+			name: "multi-entry, M-abbreviated total with varying amounts",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: 320_400},
+				{Age: 68, Amount: 310_200},
+				{Age: 69, Amount: 300_600},
+				{Age: 70, Amount: 291_500},
+				{Age: 71, Amount: 283_000},
+				{Age: 72, Amount: 275_100},
+			},
+			// Sum = 1_780_800 → "$1.78M". Avg = 296_800.
+			want: "Avg $296,800  ·  Min $275,100  ·  Max $320,400  ·  Total $1.78M over 6 years",
+		},
+		{
+			name: "sub-$10K total uses whole-dollar formatting",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: 2_500},
+				{Age: 68, Amount: 4_000},
+			},
+			want: "Avg $3,250  ·  Min $2,500  ·  Max $4,000  ·  Total $6,500 over 2 years",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := conversionSummary(tt.in)
+			if got != tt.want {
+				t.Errorf("conversionSummary:\n got: %q\nwant: %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -336,7 +397,7 @@ func TestIsNonNegative(t *testing.T) {
 func TestGetFuncMap(t *testing.T) {
 	fm := getFuncMap()
 	expectedKeys := []string{
-		"formatMoney", "formatNumber", "formatPercent", "formatDate", "formatDateTime",
+		"formatMoney", "conversionSummary", "formatNumber", "formatPercent", "formatDate", "formatDateTime",
 		"abs", "add", "sub", "mul", "div", "mod", "toFloat", "seq", "dict",
 		"json", "toJSON", "lower", "upper", "title", "contains", "hasPrefix",
 		"hasSuffix", "trimSpace", "split", "join", "safeHTML", "safeJS", "now",

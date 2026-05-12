@@ -88,6 +88,30 @@ func TestConversionSummary(t *testing.T) {
 			},
 			want: "Avg $3,250  ·  Min $2,500  ·  Max $4,000  ·  Total $6,500 over 2 years",
 		},
+		{
+			name: "exactly $10K total uses K abbreviation",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: 5_000},
+				{Age: 68, Amount: 5_000},
+			},
+			want: "Avg $5,000  ·  Min $5,000  ·  Max $5,000  ·  Total $10K over 2 years",
+		},
+		{
+			name: "exactly $1M total uses M abbreviation",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: 500_000},
+				{Age: 68, Amount: 500_000},
+			},
+			want: "Avg $500,000  ·  Min $500,000  ·  Max $500,000  ·  Total $1.00M over 2 years",
+		},
+		{
+			name: "negative total handled in default branch",
+			in: []models.YearlyConversion{
+				{Age: 67, Amount: -2_500},
+				{Age: 68, Amount: -3_000},
+			},
+			want: "Avg -$2,750  ·  Min -$3,000  ·  Max -$2,500  ·  Total -$5,500 over 2 years",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -509,27 +509,27 @@ func formatWholeDollars(v float64) string {
 // — keep it scoped tightly; do not promote without considering the
 // existing formatMoney/formatNumber callers.
 func formatAbbreviatedTotal(v float64) string {
-	negative := v < 0
-	if negative {
-		v = -v
+	abs := v
+	if abs < 0 {
+		abs = -abs
 	}
-	var s string
 	switch {
-	case v >= 1_000_000:
-		s = fmt.Sprintf("$%.2fM", v/1_000_000)
-	case v >= 10_000:
-		s = fmt.Sprintf("$%dK", int64(v/1_000+0.5))
-	default:
-		s = formatWholeDollars(v)
-		if negative {
-			return s // already has leading "-$"
+	case abs >= 1_000_000:
+		s := fmt.Sprintf("$%.2fM", abs/1_000_000)
+		if v < 0 {
+			return "-" + s
 		}
 		return s
+	case abs >= 10_000:
+		s := fmt.Sprintf("$%dK", int64(abs/1_000+0.5))
+		if v < 0 {
+			return "-" + s
+		}
+		return s
+	default:
+		// formatWholeDollars handles its own sign — pass v unchanged.
+		return formatWholeDollars(v)
 	}
-	if negative {
-		return "-" + s
-	}
-	return s
 }
 
 func formatNumber(v float64) string {

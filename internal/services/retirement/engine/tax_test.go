@@ -168,3 +168,26 @@ func TestRothConversionAmountForYear_BackwardsCompat(t *testing.T) {
 		}
 	}
 }
+
+func TestRothConversionAmountForYear_ZeroOverrideSuppresses(t *testing.T) {
+	// A zero entry in PerYearOverrides must suppress the conversion
+	// for that year, even when AnnualAmount is large. Bracket-fill
+	// produces zero amounts in years where other income already fills
+	// the target bracket; the engine must honor that.
+	s := &models.WhatIfSettings{
+		RothConversion: &models.RothConversionConfig{
+			Enabled:          true,
+			AnnualAmount:     50_000,
+			StartYear:        0,
+			EndYear:          10,
+			PerYearOverrides: map[int]float64{3: 0},
+		},
+	}
+	if got := RothConversionAmountForYear(s, 3, 1_000_000); got != 0 {
+		t.Errorf("zero override should suppress conversion: got %v, want 0", got)
+	}
+	// Sanity: years without an override still use AnnualAmount.
+	if got := RothConversionAmountForYear(s, 2, 1_000_000); got != 50_000 {
+		t.Errorf("year without override: got %v, want 50000", got)
+	}
+}

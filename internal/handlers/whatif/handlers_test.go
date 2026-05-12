@@ -8603,9 +8603,38 @@ func TestTaxOptimizerPanel_EligibleRendersStrategyAndTable(t *testing.T) {
 		"Total ",                  // summary line total marker
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("rendered panel missing %q; body snippet: %s", want, out[:min(len(out), 800)])
+			t.Errorf("rendered panel missing %q; body excerpt around expected location:\n%s",
+				want, taxOptimizerPanelExcerpt(out, want))
 		}
 	}
+}
+
+// taxOptimizerPanelExcerpt returns a context window from out useful for
+// diagnosing why a `want` substring is missing. If a known sibling anchor
+// is present, returns the window around it; otherwise returns the full body.
+func taxOptimizerPanelExcerpt(out, want string) string {
+	const window = 400
+	// Try several anchors that should always appear in a successfully
+	// rendered panel — at least one helps locate the area of interest.
+	for _, anchor := range []string{want, "Show conversion amounts", "<tbody>", "Tax Optimizer"} {
+		if anchor == "" {
+			continue
+		}
+		idx := strings.Index(out, anchor)
+		if idx < 0 {
+			continue
+		}
+		start := idx - window
+		if start < 0 {
+			start = 0
+		}
+		end := idx + len(anchor) + window
+		if end > len(out) {
+			end = len(out)
+		}
+		return out[start:end]
+	}
+	return out
 }
 
 func TestTaxOptimizerPanel_IneligibleRendersReason(t *testing.T) {

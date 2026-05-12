@@ -73,7 +73,7 @@
             <tbody>
                 {{range $i, $c := $to.Top}}
                 {{$delta := sub $c.EndingPortfolioReal $baseline.EndingPortfolioReal}}
-                <tr class="border-b dark:border-gray-700 {{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
+                <tr class="{{if not $c.PerYearConversions}}border-b dark:border-gray-700 {{end}}{{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
                     <td class="py-2 px-2 text-gray-800 dark:text-gray-200">
                         {{$c.RothStrategy.Label}}
                         {{if eq $i 0}}

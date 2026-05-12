@@ -436,6 +436,9 @@ func TestTaxOptimizer_BaselineMatchesCurrent(t *testing.T) {
 }
 
 func TestTaxOptimizer_Deterministic(t *testing.T) {
+	// Phase 1: seed is unused, so this test verifies determinism of
+	// the deterministic projection layer only. Becomes the load-bearing
+	// MC reproducibility guard once Task 9 wires the MC refinement.
 	s := eligibleBase()
 	prep := perturbAndPrepare(s)
 	in := engine.Input{Prepared: prep}
@@ -455,5 +458,50 @@ func TestTaxOptimizer_Deterministic(t *testing.T) {
 			r1.Top[i].RothStrategy.Label != r2.Top[i].RothStrategy.Label {
 			t.Errorf("non-deterministic at index %d: r1=%+v r2=%+v", i, r1.Top[i], r2.Top[i])
 		}
+	}
+}
+
+func TestCurrentRothStrategyFor_RoundTripsLadder(t *testing.T) {
+	s := eligibleBase()
+	s.CurrentAge = 67
+	s.RothConversion = &models.RothConversionConfig{
+		Enabled:      true,
+		AnnualAmount: 50_000,
+		StartYear:    0,
+		EndYear:      5, // engine reads inclusive: stops when currentYear > 5
+	}
+	strat := currentRothStrategyFor(s)
+	// Round-trip through rothStrategyToConfig should produce the same
+	// engine EndYear=5.
+	cfg := rothStrategyToConfig(s, strat)
+	if cfg == nil || !cfg.Enabled {
+		t.Fatal("expected enabled round-trip config")
+	}
+	if cfg.StartYear != 0 {
+		t.Errorf("StartYear round-trip: got %d, want 0", cfg.StartYear)
+	}
+	if cfg.EndYear != 5 {
+		t.Errorf("EndYear round-trip: got %d, want 5", cfg.EndYear)
+	}
+	if cfg.AnnualAmount != 50_000 {
+		t.Errorf("AnnualAmount round-trip: got %v, want 50000", cfg.AnnualAmount)
+	}
+}
+
+func TestCurrentRothStrategyFor_NoRoth(t *testing.T) {
+	s := eligibleBase()
+	s.RothConversion = nil
+	strat := currentRothStrategyFor(s)
+	if strat.Kind != models.RothStrategyNone {
+		t.Errorf("expected Kind=None for nil RothConversion, got %q", strat.Kind)
+	}
+}
+
+func TestCurrentRothStrategyFor_Disabled(t *testing.T) {
+	s := eligibleBase()
+	s.RothConversion = &models.RothConversionConfig{Enabled: false, AnnualAmount: 50_000}
+	strat := currentRothStrategyFor(s)
+	if strat.Kind != models.RothStrategyNone {
+		t.Errorf("expected Kind=None for disabled RothConversion, got %q", strat.Kind)
 	}
 }

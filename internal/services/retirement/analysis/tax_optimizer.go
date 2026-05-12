@@ -234,6 +234,33 @@ func TaxOptimizer(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAna
 	return TaxOptimizerWithSeed(eng, in, ss, 0)
 }
 
+// currentRothStrategyFor reconstructs a RothOptimizerStrategy that
+// describes the saved RothConversionConfig as a strategy. Used to
+// populate Baseline.RothStrategy for the delta-column UI. The reverse
+// of rothStrategyToConfig: where the forward direction writes
+// EndYear = endProjYear - 1 (because the engine's EndYear is
+// inclusive), this direction adds the 1 back to recover the exclusive
+// EndAge that RothOptimizerStrategy uses.
+func currentRothStrategyFor(settings *models.WhatIfSettings) models.RothOptimizerStrategy {
+	if settings.RothConversion == nil || !settings.RothConversion.Enabled {
+		return models.RothOptimizerStrategy{
+			Kind:  models.RothStrategyNone,
+			Label: "Current (no conversions)",
+		}
+	}
+	strat := models.RothOptimizerStrategy{
+		Kind:         models.RothStrategyLadder,
+		AnnualAmount: settings.RothConversion.AnnualAmount,
+		StartAge:     settings.CurrentAge + settings.RothConversion.StartYear,
+		EndAge:       settings.CurrentAge + settings.RothConversion.EndYear + 1,
+		Label:        "Current scenario",
+	}
+	if strat.EndAge <= strat.StartAge {
+		strat.EndAge = settings.CurrentAge + settings.ProjectionYears
+	}
+	return strat
+}
+
 // TaxOptimizerWithSeed is TaxOptimizer with an explicit Monte Carlo
 // seed for deterministic tests. seed=0 means auto-seed. Phase 1
 // (this task): deterministic ranking only; MC refinement of top
@@ -249,27 +276,11 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	}
 
 	currentPrimary, currentSpouse := 0, 0
-	var currentRoth models.RothOptimizerStrategy
 	if settings.SocialSecurity != nil {
 		currentPrimary = settings.SocialSecurity.ClaimAge
 		currentSpouse = settings.SocialSecurity.SpouseClaimAge
 	}
-	if settings.RothConversion != nil && settings.RothConversion.Enabled {
-		currentRoth = models.RothOptimizerStrategy{
-			Kind:         models.RothStrategyLadder,
-			AnnualAmount: settings.RothConversion.AnnualAmount,
-			StartAge:     settings.CurrentAge + settings.RothConversion.StartYear,
-			EndAge:       settings.CurrentAge + settings.RothConversion.EndYear,
-			Label:        "Current scenario",
-		}
-		if currentRoth.EndAge <= currentRoth.StartAge {
-			currentRoth.EndAge = settings.CurrentAge + settings.ProjectionYears
-		}
-	} else {
-		currentRoth = models.RothOptimizerStrategy{
-			Kind: models.RothStrategyNone, Label: "Current (no conversions)",
-		}
-	}
+	currentRoth := currentRothStrategyFor(settings)
 
 	// Baseline: score the user's saved input directly (not through a
 	// reconstructed strategy clone) so its metrics exactly match what
@@ -280,6 +291,11 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, taxOptimizerTopSSPairs)
 	strategies := enumerateRothStrategies(settings)
 
+	// If strategies is empty (no valid windows after eligibility checks)
+	// or pairs is empty (cannot happen — topKSSPairs always returns at
+	// least one), scored stays empty and the result has an empty Top
+	// slice. The handler should treat that as "no candidates evaluated"
+	// rather than a failure.
 	scored := make([]models.TaxOptimizerCandidate, 0, len(pairs)*len(strategies))
 	for _, p := range pairs {
 		for _, strat := range strategies {

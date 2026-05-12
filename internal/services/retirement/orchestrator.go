@@ -64,6 +64,15 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		}
 	}
 
+	var taxOptimizer *models.TaxOptimizerAnalysis
+	{
+		var ssPortfolio *models.SSPortfolioAnalysis
+		if ssAnalysis != nil {
+			ssPortfolio = ssAnalysis.Portfolio
+		}
+		taxOptimizer = analysis.TaxOptimizerWithSeed(eng, in, ssPortfolio, mcSeed)
+	}
+
 	return &models.WhatIfAnalysis{
 		Settings:                 settings,
 		Projection:               proj,
@@ -77,5 +86,6 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		RMD:                      rmd,
 		HistoricalBacktest:       backtest,
 		SocialSecurity:           ssAnalysis,
+		TaxOptimizer:             taxOptimizer,
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -329,9 +330,22 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	}
 
 	// Monte Carlo refinement of top finalists. Reuses the existing
-	// analysis.MonteCarlo entry point with a small budget. Seed=0
-	// means auto-seed (preserves "default = unpredictable" contract);
-	// tests pin a fixed seed for reproducibility.
+	// analysis.MonteCarlo entry point with a small budget.
+	//
+	// Pin one effective seed for ALL finalists in this call so each is
+	// scored against the same 32 return paths (apples-to-apples). When
+	// the caller passes seed=0 we derive a one-shot seed from time so
+	// the "default = unpredictable" contract is preserved across calls
+	// while keeping finalists comparable within a call. With only 32
+	// runs, using different seeds per finalist makes the MC-median
+	// ranking dominated by sampling noise.
+	effectiveSeed := seed
+	if effectiveSeed == 0 {
+		effectiveSeed = time.Now().UnixNano()
+		if effectiveSeed == 0 {
+			effectiveSeed = 1 // MonteCarlo treats 0 as auto-seed
+		}
+	}
 	for i := range finalists {
 		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
 			finalists[i].PrimaryClaimAge,
@@ -342,7 +356,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 			continue
 		}
 		mcInput := engine.Input{Prepared: mcCloned, Chain: in.Chain, Hooks: in.Hooks}
-		mc := MonteCarlo(eng, mcInput, taxOptimizerMonteCarloRuns, seed)
+		mc := MonteCarlo(eng, mcInput, taxOptimizerMonteCarloRuns, effectiveSeed)
 		if mc == nil || mc.Stats == nil {
 			continue
 		}

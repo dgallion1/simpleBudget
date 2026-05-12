@@ -114,3 +114,59 @@ func TestEnumerateLadderStrategies_ExactCountForRepresentativeSettings(t *testin
 		}
 	}
 }
+
+func TestEstimateOtherTaxableIncome_PreSSAndPreRMD(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:         60,
+		ProjectionYears:    30,
+		PortfolioValue:     2_000_000,
+		TaxDeferredPercent: 80,
+		SocialSecurity: &models.SocialSecurityConfig{
+			FRABenefit: 3_000,
+			FRA:        67,
+			ClaimAge:   67,
+		},
+	}
+	// Year 0: age 60. No SS yet, no RMD yet, no income sources.
+	got := estimateOtherTaxableIncome(s, 0)
+	if got > 1.0 {
+		t.Errorf("year 0 pre-SS pre-RMD expected ~0, got %v", got)
+	}
+}
+
+func TestEstimateOtherTaxableIncome_PostSS(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:      60,
+		ProjectionYears: 30,
+		SocialSecurity: &models.SocialSecurityConfig{
+			FRABenefit: 3_000,
+			FRA:        67,
+			ClaimAge:   67,
+			COLARate:   0.02,
+		},
+	}
+	// Year 7: age 67, claim age 67. SS benefit ≈ $3,000 × 12 = $36,000
+	// (estimator includes gross for simplicity; taxable portion is engine's job).
+	got := estimateOtherTaxableIncome(s, 7)
+	if got < 20_000 || got > 50_000 {
+		t.Errorf("year 7 (post-SS) expected ~$36k, got %v", got)
+	}
+}
+
+func TestEstimateOtherTaxableIncome_PostRMD(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:         60,
+		ProjectionYears:    30,
+		PortfolioValue:     2_000_000,
+		TaxDeferredPercent: 80,
+		InvestmentReturn:   6,
+		SocialSecurity: &models.SocialSecurityConfig{
+			FRABenefit: 3_000, FRA: 67, ClaimAge: 67, COLARate: 0.02,
+		},
+	}
+	// Year 13: age 73 (first RMD year). Expect SS + meaningful RMD.
+	got := estimateOtherTaxableIncome(s, 13)
+	if got < 60_000 {
+		t.Errorf("year 13 (post-RMD) expected SS+RMD >= $60k, got %v", got)
+	}
+}

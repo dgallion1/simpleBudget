@@ -91,3 +91,74 @@ func enumerateLadderStrategies(s *models.WhatIfSettings) []models.RothOptimizerS
 func formatLadderLabel(amount float64, w strategyWindow) string {
 	return fmt.Sprintf("$%dk/yr %d→%d", int(amount/1000), w.StartAge, w.EndAge)
 }
+
+// estimateOtherTaxableIncome returns a closed-form estimate of taxable
+// income (excluding the Roth conversion itself) at the given
+// projection-year offset. Used by bracket-fill candidate
+// pre-computation. Approximate by design — the optimizer ranks on the
+// engine's actual projection result, not on this estimate.
+//
+// Includes: SS benefit (gross, when claimed) + ordinary fixed-income
+// sources from settings + estimated RMD when age >= 73 + a small
+// taxable-account dividend estimate.
+func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) float64 {
+	if s == nil {
+		return 0
+	}
+	age := s.CurrentAge + projectionYear
+	total := 0.0
+
+	// Social Security.
+	if s.SocialSecurity != nil && s.SocialSecurity.ClaimAge > 0 && age >= s.SocialSecurity.ClaimAge {
+		cola := s.SocialSecurity.COLARate
+		if cola == 0 {
+			cola = 0.02
+		}
+		yearsSinceClaim := age - s.SocialSecurity.ClaimAge
+		monthly := s.SocialSecurity.FRABenefit
+		for i := 0; i < yearsSinceClaim; i++ {
+			monthly *= 1 + cola
+		}
+		total += monthly * 12
+	}
+
+	// Ordinary income sources (fixed-amount monthly). The engine has
+	// richer logic; this estimator only needs to be directionally
+	// correct.
+	for _, src := range s.IncomeSources {
+		if src.Type != models.IncomeFixed {
+			continue
+		}
+		currentMonth := projectionYear * 12
+		if currentMonth < src.StartMonth {
+			continue
+		}
+		if src.EndMonth != nil && currentMonth >= *src.EndMonth {
+			continue
+		}
+		total += src.Amount * 12
+	}
+
+	// RMD: rough estimate. After age 73 use ~4% of estimated tax-deferred
+	// balance (IRS Uniform Lifetime factor at age 73 = 26.5 → ~3.77%).
+	if age >= 73 {
+		taxDeferredNow := s.PortfolioValue * (s.TaxDeferredPercent / 100.0)
+		rate := s.InvestmentReturn / 100.0
+		if rate <= 0 {
+			rate = 0.06
+		}
+		balance := taxDeferredNow
+		for i := 0; i < projectionYear; i++ {
+			balance *= 1 + rate
+		}
+		total += balance * 0.04
+	}
+
+	// Taxable-account qualified dividends.
+	taxableNow := s.PortfolioValue * (1.0 - s.TaxDeferredPercent/100.0 - s.RothPercent/100.0)
+	if s.TaxableDividendYield > 0 {
+		total += taxableNow * (s.TaxableDividendYield / 100.0)
+	}
+
+	return total
+}

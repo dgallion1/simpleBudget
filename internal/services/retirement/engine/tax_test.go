@@ -110,3 +110,84 @@ func TestEstimateRothConversionTaxAndMarginalRate(t *testing.T) {
 	assertClose(t, "nonpositive marginal rate default", tc.GetMarginalRate(0, 0), 10)
 	assertClose(t, "marginal rate", tc.GetMarginalRate(100000, 0), 22)
 }
+
+func TestRothConversionAmountForYear_PerYearOverride(t *testing.T) {
+	s := &models.WhatIfSettings{
+		RothConversion: &models.RothConversionConfig{
+			Enabled:      true,
+			AnnualAmount: 50_000,
+			StartYear:    0,
+			EndYear:      10,
+			PerYearOverrides: map[int]float64{
+				2: 75_000,
+				3: 90_000,
+			},
+		},
+	}
+	// Year 2 → override wins.
+	if got := RothConversionAmountForYear(s, 2, 1_000_000); got != 75_000 {
+		t.Errorf("year 2 override: got %v, want 75000", got)
+	}
+	// Year 3 → override wins.
+	if got := RothConversionAmountForYear(s, 3, 1_000_000); got != 90_000 {
+		t.Errorf("year 3 override: got %v, want 90000", got)
+	}
+	// Year 4 → no override, falls back to AnnualAmount.
+	if got := RothConversionAmountForYear(s, 4, 1_000_000); got != 50_000 {
+		t.Errorf("year 4 fallback: got %v, want 50000", got)
+	}
+	// Override capped to availableTaxDeferred.
+	if got := RothConversionAmountForYear(s, 2, 60_000); got != 60_000 {
+		t.Errorf("override capped to available: got %v, want 60000", got)
+	}
+}
+
+func TestRothConversionAmountForYear_BackwardsCompat(t *testing.T) {
+	// Nil PerYearOverrides → identical to previous behavior.
+	s := &models.WhatIfSettings{
+		RothConversion: &models.RothConversionConfig{
+			Enabled:      true,
+			AnnualAmount: 50_000,
+			StartYear:    1,
+			EndYear:      5,
+		},
+	}
+	cases := []struct {
+		year int
+		want float64
+	}{
+		{0, 0},      // before StartYear
+		{1, 50_000},
+		{3, 50_000},
+		{5, 50_000},
+		{6, 0}, // after EndYear
+	}
+	for _, c := range cases {
+		if got := RothConversionAmountForYear(s, c.year, 1_000_000); got != c.want {
+			t.Errorf("year %v: got %v, want %v", c.year, got, c.want)
+		}
+	}
+}
+
+func TestRothConversionAmountForYear_ZeroOverrideSuppresses(t *testing.T) {
+	// A zero entry in PerYearOverrides must suppress the conversion
+	// for that year, even when AnnualAmount is large. Bracket-fill
+	// produces zero amounts in years where other income already fills
+	// the target bracket; the engine must honor that.
+	s := &models.WhatIfSettings{
+		RothConversion: &models.RothConversionConfig{
+			Enabled:          true,
+			AnnualAmount:     50_000,
+			StartYear:        0,
+			EndYear:          10,
+			PerYearOverrides: map[int]float64{3: 0},
+		},
+	}
+	if got := RothConversionAmountForYear(s, 3, 1_000_000); got != 0 {
+		t.Errorf("zero override should suppress conversion: got %v, want 0", got)
+	}
+	// Sanity: years without an override still use AnnualAmount.
+	if got := RothConversionAmountForYear(s, 2, 1_000_000); got != 50_000 {
+		t.Errorf("year without override: got %v, want 50000", got)
+	}
+}

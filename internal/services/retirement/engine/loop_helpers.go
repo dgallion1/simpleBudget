@@ -133,7 +133,11 @@ func RothConversionAmountForYear(s *models.WhatIfSettings, currentYear int, avai
 	if s.RothConversion.EndYear != 0 && currentYear > s.RothConversion.EndYear {
 		return 0
 	}
-	return math.Min(s.RothConversion.AnnualAmount, availableTaxDeferred)
+	amount := s.RothConversion.AnnualAmount
+	if override, ok := s.RothConversion.PerYearOverrides[currentYear]; ok {
+		amount = override
+	}
+	return math.Min(amount, availableTaxDeferred)
 }
 
 // ShortfallIsTemporaryDueToDelay reports whether a shortfall is

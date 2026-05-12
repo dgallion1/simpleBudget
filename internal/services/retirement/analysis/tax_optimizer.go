@@ -262,11 +262,8 @@ func currentRothStrategyFor(settings *models.WhatIfSettings) models.RothOptimize
 }
 
 // TaxOptimizerWithSeed is TaxOptimizer with an explicit Monte Carlo
-// seed for deterministic tests. seed=0 means auto-seed. Phase 1
-// (this task): deterministic ranking only; MC refinement of top
-// finalists is added in a later task.
+// seed for deterministic tests. seed=0 means auto-seed.
 func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAnalysis, seed int64) *models.TaxOptimizerAnalysis {
-	_ = seed // Phase 1: unused; Phase 1.5 MC refinement will consume.
 	settings := in.Prepared.Settings()
 	if ok, reason := taxOptimizerEligible(settings); !ok {
 		return &models.TaxOptimizerAnalysis{
@@ -316,12 +313,39 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 		finalists = finalists[:taxOptimizerTopFinalists]
 	}
 
+	// Monte Carlo refinement of top finalists. Reuses the existing
+	// analysis.MonteCarlo entry point with a small budget. Seed=0
+	// means auto-seed (preserves "default = unpredictable" contract);
+	// tests pin a fixed seed for reproducibility.
+	for i := range finalists {
+		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
+			finalists[i].PrimaryClaimAge,
+			finalists[i].SpouseClaimAge,
+			finalists[i].RothStrategy,
+		)
+		if !ok {
+			continue
+		}
+		mcInput := engine.Input{Prepared: mcCloned, Chain: in.Chain, Hooks: in.Hooks}
+		mc := MonteCarlo(eng, mcInput, taxOptimizerMonteCarloRuns, seed)
+		if mc == nil || mc.Stats == nil {
+			continue
+		}
+		finalists[i].MCSurvivalRate = mc.Stats.SuccessRate / 100.0
+		finalists[i].MCMedianEndingReal = mc.Stats.MedianBalance
+	}
+
+	// Re-sort by MC median ending balance (MC tiebreak).
+	sort.SliceStable(finalists, func(i, j int) bool {
+		return finalists[i].MCMedianEndingReal > finalists[j].MCMedianEndingReal
+	})
+
 	result := &models.TaxOptimizerAnalysis{
 		Eligible:         true,
 		Baseline:         baseline,
 		Top:              finalists,
 		CandidatesScored: len(pairs) * len(strategies),
-		// MonteCarloRuns is set in the next task when MC refinement lands.
+		MonteCarloRuns:   taxOptimizerMonteCarloRuns,
 	}
 	if len(finalists) > 0 {
 		result.Best = finalists[0]

@@ -399,14 +399,14 @@ func TestTaxOptimizer_EligibleProducesTop5(t *testing.T) {
 	if len(result.Top) > taxOptimizerTopFinalists {
 		t.Errorf("Top length %d exceeds finalists cap %d", len(result.Top), taxOptimizerTopFinalists)
 	}
-	// Top sorted desc by EndingPortfolioReal (before MC).
+	// Top sorted desc by MCMedianEndingReal after MC refinement.
 	for i := 1; i < len(result.Top); i++ {
-		if result.Top[i].EndingPortfolioReal > result.Top[i-1].EndingPortfolioReal {
-			t.Errorf("Top not sorted desc: index %d > %d", i, i-1)
+		if result.Top[i].MCMedianEndingReal > result.Top[i-1].MCMedianEndingReal {
+			t.Errorf("Top not sorted desc by MCMedianEndingReal: index %d > %d", i, i-1)
 		}
 	}
-	if result.Best.EndingPortfolioReal != result.Top[0].EndingPortfolioReal {
-		t.Error("Best should match Top[0]")
+	if result.Best.MCMedianEndingReal != result.Top[0].MCMedianEndingReal {
+		t.Error("Best should match Top[0] by MCMedianEndingReal")
 	}
 	if result.CandidatesScored == 0 {
 		t.Error("CandidatesScored should be > 0")
@@ -503,5 +503,66 @@ func TestCurrentRothStrategyFor_Disabled(t *testing.T) {
 	strat := currentRothStrategyFor(s)
 	if strat.Kind != models.RothStrategyNone {
 		t.Errorf("expected Kind=None for disabled RothConversion, got %q", strat.Kind)
+	}
+}
+
+func TestTaxOptimizer_MCRefinementPopulatesFields(t *testing.T) {
+	s := eligibleBase()
+	// eligibleBase doesn't include SS by default; add one so the
+	// pipeline runs end-to-end without SS-portfolio fallback dominating.
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 4100, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: 1500, SpouseFRA: 67, SpouseClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	result := TaxOptimizerWithSeed(eng, in, nil, 42)
+	if result == nil || !result.Eligible {
+		t.Fatalf("expected eligible: %+v", result)
+	}
+	if result.MonteCarloRuns != taxOptimizerMonteCarloRuns {
+		t.Errorf("MonteCarloRuns should equal %d, got %d", taxOptimizerMonteCarloRuns, result.MonteCarloRuns)
+	}
+	if len(result.Top) == 0 {
+		t.Fatal("expected non-empty Top")
+	}
+	for i, cand := range result.Top {
+		if cand.MCMedianEndingReal == 0 {
+			t.Errorf("Top[%d].MCMedianEndingReal should be populated after MC refinement", i)
+		}
+		if cand.MCSurvivalRate <= 0 || cand.MCSurvivalRate > 1 {
+			t.Errorf("Top[%d].MCSurvivalRate out of [0,1]: %v", i, cand.MCSurvivalRate)
+		}
+	}
+}
+
+func TestTaxOptimizer_MCDeterministicWithSeed(t *testing.T) {
+	s := eligibleBase()
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 4100, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: 1500, SpouseFRA: 67, SpouseClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	r1 := TaxOptimizerWithSeed(eng, in, nil, 42)
+	r2 := TaxOptimizerWithSeed(eng, in, nil, 42)
+	if r1 == nil || r2 == nil || len(r1.Top) != len(r2.Top) {
+		t.Fatalf("expected same length results: r1=%v r2=%v", r1, r2)
+	}
+	for i := range r1.Top {
+		if math.Abs(r1.Top[i].MCMedianEndingReal-r2.Top[i].MCMedianEndingReal) > 1 {
+			t.Errorf("MCMedianEndingReal differs at index %d: %v vs %v",
+				i, r1.Top[i].MCMedianEndingReal, r2.Top[i].MCMedianEndingReal)
+		}
+		if math.Abs(r1.Top[i].MCSurvivalRate-r2.Top[i].MCSurvivalRate) > 0.001 {
+			t.Errorf("MCSurvivalRate differs at index %d: %v vs %v",
+				i, r1.Top[i].MCSurvivalRate, r2.Top[i].MCSurvivalRate)
+		}
 	}
 }

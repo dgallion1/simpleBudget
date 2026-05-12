@@ -9,10 +9,8 @@ import (
 // Constants tuned per design spec. Single block for easy adjustment.
 var (
 	taxOptimizerLadderAmounts = []float64{0, 25_000, 50_000, 75_000, 100_000, 150_000, 200_000}
-	// taxOptimizerBracketFillTargets is used by the bracket-fill family
-	// enumerated in the next task. Declared here to keep all optimizer
-	// constants co-located.
-	//lint:ignore U1000 consumed by Task 4 bracket-fill enumeration
+	// taxOptimizerBracketFillTargets lists the marginal brackets targeted
+	// by the bracket-fill enumeration family.
 	taxOptimizerBracketFillTargets = []float64{0.12, 0.22, 0.24}
 )
 
@@ -162,4 +160,171 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 	}
 
 	return total
+}
+
+// bracketTopFor returns the top of the given target marginal bracket
+// for the filing status. Returns (ceiling, ok). ok=false signals an
+// unknown filing status; callers should skip the bracket-fill family.
+//
+// Values are 2024 IRS thresholds, in nominal dollars. Acceptable
+// approximation for optimization — the optimizer ranks on the engine's
+// actual output, which uses the engine's full tax tables; this table
+// is only used to set per-year conversion targets.
+func bracketTopFor(status models.FilingStatus, target float64) (float64, bool) {
+	table := map[models.FilingStatus]map[float64]float64{
+		models.FilingSingle: {
+			0.12: 47_150,
+			0.22: 100_525,
+			0.24: 191_950,
+		},
+		models.FilingMarriedJoint: {
+			0.12: 94_300,
+			0.22: 201_050,
+			0.24: 383_900,
+		},
+		models.FilingMarriedSeparate: {
+			0.12: 47_150,
+			0.22: 100_525,
+			0.24: 191_950,
+		},
+		models.FilingHeadOfHousehold: {
+			0.12: 63_100,
+			0.22: 100_500,
+			0.24: 191_950,
+		},
+	}
+	rows, ok := table[status]
+	if !ok {
+		return 0, false
+	}
+	ceiling, ok := rows[target]
+	return ceiling, ok
+}
+
+// rmdStartAge is the age at which Required Minimum Distributions begin.
+// Bracket-fill enumeration is only meaningful before this age, since
+// RMDs force distributions and the optimization window closes.
+const rmdStartAge = 73
+
+// enumerateBracketFillStrategies generates bracket-fill candidates:
+// cross-product of target brackets × valid windows. Only windows that
+// end at or before RMD age (73) are considered — bracket-fill is
+// only useful before mandatory distributions begin. Candidates that
+// yield zero conversion for every year of the window are skipped
+// (they duplicate the no-conversion baseline).
+func enumerateBracketFillStrategies(s *models.WhatIfSettings) []models.RothOptimizerStrategy {
+	if s.TaxConfig == nil {
+		return nil
+	}
+	allWindows := strategyWindows(s)
+	// Filter to pre-RMD windows only.
+	windows := make([]strategyWindow, 0, len(allWindows))
+	for _, w := range allWindows {
+		if w.EndAge <= rmdStartAge {
+			windows = append(windows, w)
+		}
+	}
+	if len(windows) == 0 {
+		return nil
+	}
+
+	out := make([]models.RothOptimizerStrategy, 0, len(windows)*len(taxOptimizerBracketFillTargets))
+	for _, target := range taxOptimizerBracketFillTargets {
+		ceiling, ok := bracketTopFor(s.TaxConfig.FilingStatus, target)
+		if !ok {
+			return nil // unknown filing status: skip the entire family
+		}
+		for _, w := range windows {
+			if !bracketFillProducesNonZero(s, w, ceiling) {
+				continue
+			}
+			out = append(out, models.RothOptimizerStrategy{
+				Kind:          models.RothStrategyBracketFill,
+				TargetBracket: target,
+				StartAge:      w.StartAge,
+				EndAge:        w.EndAge,
+				Label:         formatBracketFillLabel(target, w),
+			})
+		}
+	}
+	return out
+}
+
+func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, ceiling float64) bool {
+	startProjYear := w.StartAge - s.CurrentAge
+	endProjYear := w.EndAge - s.CurrentAge
+	if startProjYear < 0 {
+		startProjYear = 0
+	}
+	for y := startProjYear; y < endProjYear; y++ {
+		other := estimateOtherTaxableIncome(s, y)
+		if ceiling-other > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func formatBracketFillLabel(target float64, w strategyWindow) string {
+	return fmt.Sprintf("Fill %.0f%% bracket, %d→%d", target*100, w.StartAge, w.EndAge)
+}
+
+// enumerateRothStrategies returns the full candidate set: ladder family
+// followed by bracket-fill family. Order is stable for test
+// reproducibility.
+func enumerateRothStrategies(s *models.WhatIfSettings) []models.RothOptimizerStrategy {
+	out := enumerateLadderStrategies(s)
+	out = append(out, enumerateBracketFillStrategies(s)...)
+	return out
+}
+
+// rothStrategyToConfig produces the RothConversionConfig that, when
+// substituted into settings, makes the engine apply the strategy.
+// Ladder strategies translate to a fixed AnnualAmount across a window.
+// Bracket-fill strategies translate to a PerYearOverrides map
+// pre-computed via estimateOtherTaxableIncome. A zero-amount ladder
+// (the "No conversion" baseline) returns a disabled config.
+func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) *models.RothConversionConfig {
+	if strat.Kind == models.RothStrategyNone {
+		return &models.RothConversionConfig{Enabled: false}
+	}
+	if strat.Kind == models.RothStrategyLadder && strat.AnnualAmount == 0 {
+		return &models.RothConversionConfig{Enabled: false}
+	}
+
+	startProjYear := strat.StartAge - s.CurrentAge
+	endProjYear := strat.EndAge - s.CurrentAge
+	if startProjYear < 0 {
+		startProjYear = 0
+	}
+
+	cfg := &models.RothConversionConfig{
+		Enabled:   true,
+		StartYear: startProjYear,
+		EndYear:   endProjYear - 1, // inclusive end-year semantics
+	}
+
+	switch strat.Kind {
+	case models.RothStrategyLadder:
+		cfg.AnnualAmount = strat.AnnualAmount
+	case models.RothStrategyBracketFill:
+		if s.TaxConfig == nil {
+			return &models.RothConversionConfig{Enabled: false}
+		}
+		ceiling, ok := bracketTopFor(s.TaxConfig.FilingStatus, strat.TargetBracket)
+		if !ok {
+			return &models.RothConversionConfig{Enabled: false}
+		}
+		overrides := make(map[int]float64, endProjYear-startProjYear)
+		for y := startProjYear; y < endProjYear; y++ {
+			other := estimateOtherTaxableIncome(s, y)
+			conv := ceiling - other
+			if conv < 0 {
+				conv = 0
+			}
+			overrides[y] = conv
+		}
+		cfg.PerYearOverrides = overrides
+	}
+	return cfg
 }

@@ -173,3 +173,165 @@ func TestEstimateOtherTaxableIncome_PostRMD(t *testing.T) {
 		t.Errorf("year 13 (post-RMD) expected $150k–$220k, got %v", got)
 	}
 }
+
+func TestEnumerateBracketFillStrategies_DefaultShape(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:         67,
+		ProjectionYears:    31,
+		PortfolioValue:     2_000_000,
+		TaxDeferredPercent: 80,
+		SocialSecurity:     &models.SocialSecurityConfig{FRABenefit: 3000, FRA: 67, ClaimAge: 67},
+		TaxConfig:          &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+	strategies := enumerateBracketFillStrategies(s)
+
+	for _, st := range strategies {
+		if st.Kind != models.RothStrategyBracketFill {
+			t.Errorf("expected Kind=bracket_fill, got %q", st.Kind)
+		}
+		if st.TargetBracket < 0.10 || st.TargetBracket > 0.40 {
+			t.Errorf("unexpected TargetBracket: %v", st.TargetBracket)
+		}
+		if st.Label == "" {
+			t.Errorf("missing Label: %+v", st)
+		}
+	}
+}
+
+func TestEnumerateBracketFillStrategies_SkipsAllZeroCandidates(t *testing.T) {
+	// Scenario where current age >= all window ends (no valid windows).
+	s := &models.WhatIfSettings{
+		CurrentAge:      80,
+		ProjectionYears: 5,
+		SocialSecurity:  &models.SocialSecurityConfig{ClaimAge: 70},
+		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingSingle},
+	}
+	strategies := enumerateBracketFillStrategies(s)
+	if len(strategies) != 0 {
+		t.Errorf("expected 0 bracket-fill strategies for age-80 scenario, got %d", len(strategies))
+	}
+}
+
+func TestEnumerateRothStrategies_CombinesFamiliesAndBaseline(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:         67,
+		ProjectionYears:    31,
+		PortfolioValue:     2_000_000,
+		TaxDeferredPercent: 80,
+		SocialSecurity:     &models.SocialSecurityConfig{FRABenefit: 3000, FRA: 67, ClaimAge: 67},
+		TaxConfig:          &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+	all := enumerateRothStrategies(s)
+
+	var ladders, brackets, baselines int
+	for _, st := range all {
+		switch st.Kind {
+		case models.RothStrategyLadder:
+			if st.AnnualAmount == 0 {
+				baselines++
+			} else {
+				ladders++
+			}
+		case models.RothStrategyBracketFill:
+			brackets++
+		}
+	}
+	if baselines != 1 {
+		t.Errorf("expected exactly 1 baseline (no-conversion) candidate, got %d", baselines)
+	}
+	if ladders < 1 {
+		t.Error("expected at least one non-zero ladder candidate")
+	}
+	if brackets < 1 {
+		t.Error("expected at least one bracket-fill candidate")
+	}
+}
+
+func TestRothStrategyToConfig_LadderProducesFixedAmount(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:      67,
+		ProjectionYears: 20,
+		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+	strat := models.RothOptimizerStrategy{
+		Kind:         models.RothStrategyLadder,
+		AnnualAmount: 75_000,
+		StartAge:     67,
+		EndAge:       73,
+	}
+	cfg := rothStrategyToConfig(s, strat)
+	if cfg == nil || !cfg.Enabled {
+		t.Fatal("expected enabled config")
+	}
+	if cfg.AnnualAmount != 75_000 {
+		t.Errorf("AnnualAmount: got %v, want 75000", cfg.AnnualAmount)
+	}
+	if cfg.StartYear != 0 {
+		t.Errorf("StartYear: got %v, want 0", cfg.StartYear)
+	}
+	if cfg.EndYear != 5 {
+		t.Errorf("EndYear: got %v, want 5 (inclusive end of 67→73 minus 1)", cfg.EndYear)
+	}
+	if cfg.PerYearOverrides != nil {
+		t.Errorf("ladder strategy should not produce PerYearOverrides, got %+v", cfg.PerYearOverrides)
+	}
+}
+
+func TestRothStrategyToConfig_BracketFillProducesOverrides(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:         67,
+		ProjectionYears:    20,
+		PortfolioValue:     2_000_000,
+		TaxDeferredPercent: 80,
+		SocialSecurity:     &models.SocialSecurityConfig{FRABenefit: 3000, FRA: 67, ClaimAge: 67, COLARate: 0.02, COLARateSet: true},
+		TaxConfig:          &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.22,
+		StartAge:      67,
+		EndAge:        73,
+	}
+	cfg := rothStrategyToConfig(s, strat)
+	if cfg == nil || !cfg.Enabled {
+		t.Fatal("expected enabled config")
+	}
+	if cfg.PerYearOverrides == nil {
+		t.Fatal("bracket-fill should set PerYearOverrides")
+	}
+	// 6 years (67→72 inclusive on projection-year offsets 0..5).
+	if len(cfg.PerYearOverrides) != 6 {
+		t.Errorf("PerYearOverrides should have 6 entries, got %d: %+v", len(cfg.PerYearOverrides), cfg.PerYearOverrides)
+	}
+	// No override exceeds the 22% bracket ceiling for MFJ ($201,050 for 2024).
+	// Conversion = ceiling - other income; should never be negative or > ceiling.
+	for year, amount := range cfg.PerYearOverrides {
+		if amount < 0 {
+			t.Errorf("year %d: negative override %v", year, amount)
+		}
+		if amount > 201_050 {
+			t.Errorf("year %d: override %v exceeds 22%% MFJ ceiling", year, amount)
+		}
+	}
+}
+
+func TestRothStrategyToConfig_NoConversionBaseline(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:      67,
+		ProjectionYears: 20,
+		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+	strat := models.RothOptimizerStrategy{
+		Kind: models.RothStrategyLadder,
+		// AnnualAmount intentionally 0 (the "No conversion" baseline)
+		StartAge: 67,
+		EndAge:   72,
+	}
+	cfg := rothStrategyToConfig(s, strat)
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if cfg.Enabled {
+		t.Errorf("no-conversion baseline should be Disabled, got Enabled=true")
+	}
+}

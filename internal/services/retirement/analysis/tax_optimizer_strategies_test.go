@@ -161,12 +161,15 @@ func TestEstimateOtherTaxableIncome_PostRMD(t *testing.T) {
 		TaxDeferredPercent: 80,
 		InvestmentReturn:   6,
 		SocialSecurity: &models.SocialSecurityConfig{
-			FRABenefit: 3_000, FRA: 67, ClaimAge: 67, COLARate: 0.02,
+			FRABenefit: 3_000, FRA: 67, ClaimAge: 67, COLARate: 0.02, COLARateSet: true,
 		},
 	}
-	// Year 13: age 73 (first RMD year). Expect SS + meaningful RMD.
+	// Year 13: age 73 (first RMD year). With claim at FRA, SS adjustment
+	// is neutral — monthly SS ≈ $3000 grown 6yrs @ 2% COLA ≈ $3,378/mo
+	// → ~$40.5k/yr. RMD ≈ $1.6M × 1.06^13 × 4% ≈ $136.5k. Total ≈ $177k.
+	// Bound: 150k ≤ got ≤ 220k to detect either-term-dropped bugs.
 	got := estimateOtherTaxableIncome(s, 13)
-	if got < 60_000 {
-		t.Errorf("year 13 (post-RMD) expected SS+RMD >= $60k, got %v", got)
+	if got < 150_000 || got > 220_000 {
+		t.Errorf("year 13 (post-RMD) expected $150k–$220k, got %v", got)
 	}
 }

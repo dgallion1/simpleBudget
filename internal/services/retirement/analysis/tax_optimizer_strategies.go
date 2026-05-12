@@ -110,12 +110,13 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 
 	// Social Security.
 	if s.SocialSecurity != nil && s.SocialSecurity.ClaimAge > 0 && age >= s.SocialSecurity.ClaimAge {
-		cola := s.SocialSecurity.COLARate
-		if cola == 0 {
-			cola = 0.02
-		}
+		cola := SSConfigCOLARate(s)
 		yearsSinceClaim := age - s.SocialSecurity.ClaimAge
-		monthly := s.SocialSecurity.FRABenefit
+		monthly := AdjustedSSBenefit(
+			s.SocialSecurity.FRABenefit,
+			NormalizedSSFRA(s.SocialSecurity.FRA),
+			s.SocialSecurity.ClaimAge,
+		)
 		for i := 0; i < yearsSinceClaim; i++ {
 			monthly *= 1 + cola
 		}

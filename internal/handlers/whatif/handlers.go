@@ -580,6 +580,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/social-security", handleWhatIfSocialSecurity)
 	r.Post("/whatif/glide-path", handleWhatIfGlidePath)
 	r.Post("/whatif/guardrails", handleWhatIfGuardrails)
+	r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {

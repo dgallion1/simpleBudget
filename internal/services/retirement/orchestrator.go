@@ -64,15 +64,6 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		}
 	}
 
-	var taxOptimizer *models.TaxOptimizerAnalysis
-	{
-		var ssPortfolio *models.SSPortfolioAnalysis
-		if ssAnalysis != nil {
-			ssPortfolio = ssAnalysis.Portfolio
-		}
-		taxOptimizer = analysis.TaxOptimizerWithSeed(eng, in, ssPortfolio, mcSeed)
-	}
-
 	return &models.WhatIfAnalysis{
 		Settings:                 settings,
 		Projection:               proj,
@@ -86,6 +77,33 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		RMD:                      rmd,
 		HistoricalBacktest:       backtest,
 		SocialSecurity:           ssAnalysis,
-		TaxOptimizer:             taxOptimizer,
 	}
+}
+
+// RunTaxOptimizer runs only the Tax Optimizer analysis (and the
+// upstream SS analyses it depends on). Called by the explicit
+// /api/whatif/tax-optimize endpoint, NOT by RunFull, because the
+// optimizer's cost is too high for the interactive HTMX recalc path.
+// Mirrors RunFull's hooks auto-fill convention.
+func RunTaxOptimizer(eng *engine.Engine, in engine.Input) *models.TaxOptimizerAnalysis {
+	return runTaxOptimizerWithSeed(eng, in, MonteCarloSeed)
+}
+
+func runTaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.TaxOptimizerAnalysis {
+	if in.Hooks.SocialSecurityProjectionActive == nil &&
+		in.Hooks.ProjectedSocialSecurityIncome == nil &&
+		in.Hooks.ResolveChainTransition == nil {
+		in.Hooks = DefaultHooks()
+	}
+	settings := in.Prepared.Settings()
+
+	var ssPortfolio *models.SSPortfolioAnalysis
+	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
+		ssAnalysis := analysis.SSAnalysis(in)
+		if ssAnalysis != nil && SSPortfolioEligible(settings) {
+			ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, mcSeed)
+			ssPortfolio = ssAnalysis.Portfolio
+		}
+	}
+	return analysis.TaxOptimizerWithSeed(eng, in, ssPortfolio, mcSeed)
 }

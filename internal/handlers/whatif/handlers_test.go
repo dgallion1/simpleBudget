@@ -8622,7 +8622,7 @@ func TestTaxOptimizerPanel_IneligibleRendersReason(t *testing.T) {
 	}
 }
 
-func TestTaxOptimizerPanel_NilOptimizerRendersNothing(t *testing.T) {
+func TestTaxOptimizerPanel_NotYetRunShowsButton(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
 
@@ -8639,7 +8639,49 @@ func TestTaxOptimizerPanel_NilOptimizerRendersNothing(t *testing.T) {
 		t.Fatalf("RenderToString: %v", err)
 	}
 
-	if strings.Contains(out, "Tax Optimizer") {
-		t.Errorf("expected empty output for nil TaxOptimizer, got: %s", out[:min(len(out), 400)])
+	if !strings.Contains(out, "Tax Optimizer") {
+		t.Errorf("expected 'Tax Optimizer' heading in not-yet-run state, got: %s", out[:min(len(out), 400)])
+	}
+	if !strings.Contains(out, "Run Tax Optimizer") {
+		t.Errorf("expected 'Run Tax Optimizer' button in not-yet-run state, got: %s", out[:min(len(out), 400)])
+	}
+}
+
+func TestHandleWhatIfTaxOptimize_EligibleReturnsResult(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	// Save an eligible scenario: age 65, $2M portfolio, 80% tax-deferred, SS configured.
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 65
+	s.ProjectionYears = 25
+	s.PortfolioValue = 2_000_000
+	s.TaxDeferredPercent = 80
+	s.InvestmentReturn = 7.0
+	s.InflationRate = 3.0
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 3500, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: 1500, SpouseFRA: 67, SpouseClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+	if err := rm.Save(s); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/tax-optimize", nil)
+	handleWhatIfTaxOptimize(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Tax Optimizer") {
+		t.Errorf("response missing 'Tax Optimizer' heading; body snippet: %s", body[:min(len(body), 400)])
+	}
+	// The eligible scenario should render the strategy table, not the ineligible message.
+	if strings.Contains(body, "Run Tax Optimizer") {
+		t.Errorf("should not show button after running; body snippet: %s", body[:min(len(body), 400)])
 	}
 }

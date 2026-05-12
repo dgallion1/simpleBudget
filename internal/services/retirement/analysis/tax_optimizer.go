@@ -38,6 +38,9 @@ func taxOptimizerEligible(s *models.WhatIfSettings) (bool, string) {
 	if s.TaxConfig == nil || s.TaxConfig.FilingStatus == "" {
 		return false, "Set tax filing status to enable optimization."
 	}
+	if s.SocialSecurity == nil || s.SocialSecurity.ClaimAge == 0 {
+		return false, "Set Social Security claim age to enable optimization."
+	}
 	taxDeferred := s.PortfolioValue * (s.TaxDeferredPercent / 100.0)
 	if taxDeferred < taxOptimizerEligibilityMinTaxDeferred {
 		return false, fmt.Sprintf("Tax-deferred balance too small to optimize ($%.0f).", taxDeferred)

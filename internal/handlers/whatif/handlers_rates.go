@@ -682,3 +682,40 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
+// handleWhatIfTaxOptimize runs the Tax Optimizer on demand. This is an
+// explicit user-triggered endpoint; it is NOT called during the normal
+// HTMX recalc path because the optimizer's cost (~38 ms) is too high
+// for interactive slider drags.
+func handleWhatIfTaxOptimize(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	in, _, err := buildEngineInput(settings)
+	if err != nil {
+		renderError(w, "Failed to build engine input: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	taxOptimizer := retirement.RunTaxOptimizer(getEngine(), in)
+
+	analysis := &models.WhatIfAnalysis{
+		Settings:     settings,
+		TaxOptimizer: taxOptimizer,
+	}
+
+	partialData := map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+	}
+
+	if renderer != nil {
+		renderer.RenderPartial(w, "whatif-tax-optimizer-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(partialData)
+	}
+}

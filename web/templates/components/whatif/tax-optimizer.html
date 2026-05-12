@@ -1,5 +1,6 @@
 {{/* Tax Optimizer Results Panel */}}
 {{define "whatif-tax-optimizer-results"}}
+<div id="tax-optimizer-panel">
 {{if .Analysis.TaxOptimizer}}
 {{$to := .Analysis.TaxOptimizer}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
@@ -66,5 +67,17 @@
     {{end}}
     {{end}}
 </div>
+{{else}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 tax-optimizer-card">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Tax Optimizer</h3>
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Click below to find the SS claim pair + Roth conversion strategy that maximizes your real ending portfolio.</p>
+    <button hx-post="/whatif/tax-optimize"
+            hx-target="#tax-optimizer-panel"
+            hx-swap="innerHTML"
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors">
+        Run Tax Optimizer
+    </button>
+</div>
 {{end}}
+</div>
 {{end}}

@@ -9,7 +9,7 @@ import (
 	"budget2/internal/services/retirement/prepare"
 )
 
-func TestRunFull_AttachesTaxOptimizer(t *testing.T) {
+func TestRunTaxOptimizer_EligibleReturnsResult(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	s.ScenarioName = "test"
 	s.CurrentAge = 67
@@ -35,19 +35,16 @@ func TestRunFull_AttachesTaxOptimizer(t *testing.T) {
 	in := engine.Input{Prepared: prep}
 	eng := engine.New()
 
-	analysis := retirement.RunFull(eng, in)
-	if analysis == nil {
-		t.Fatal("RunFull returned nil")
+	result := retirement.RunTaxOptimizer(eng, in)
+	if result == nil {
+		t.Fatal("RunTaxOptimizer returned nil")
 	}
-	if analysis.TaxOptimizer == nil {
-		t.Fatal("TaxOptimizer not attached to WhatIfAnalysis")
-	}
-	if !analysis.TaxOptimizer.Eligible {
-		t.Errorf("expected eligible; reason=%q", analysis.TaxOptimizer.IneligibleReason)
+	if !result.Eligible {
+		t.Errorf("expected eligible; reason=%q", result.IneligibleReason)
 	}
 }
 
-func TestRunFull_TaxOptimizerIneligibleStillNonNil(t *testing.T) {
+func TestRunTaxOptimizer_IneligibleStillNonNil(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	// Use age 75 (post-RMD) to trigger ineligibility. Must set the primary
 	// person's BirthMonth so prepare.From derives CurrentAge=75; setting
@@ -67,14 +64,14 @@ func TestRunFull_TaxOptimizerIneligibleStillNonNil(t *testing.T) {
 	}
 	in := engine.Input{Prepared: prep}
 
-	analysis := retirement.RunFull(engine.New(), in)
-	if analysis == nil || analysis.TaxOptimizer == nil {
-		t.Fatal("expected non-nil TaxOptimizer even when ineligible")
+	result := retirement.RunTaxOptimizer(engine.New(), in)
+	if result == nil {
+		t.Fatal("expected non-nil result even when ineligible")
 	}
-	if analysis.TaxOptimizer.Eligible {
+	if result.Eligible {
 		t.Error("expected Eligible=false for age 75")
 	}
-	if analysis.TaxOptimizer.IneligibleReason == "" {
+	if result.IneligibleReason == "" {
 		t.Error("expected non-empty IneligibleReason")
 	}
 }

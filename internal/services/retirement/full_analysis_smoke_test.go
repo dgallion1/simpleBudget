@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // healthySettingsForFullAnalysis mirrors the test fixture previously
@@ -61,12 +63,46 @@ func TestRunFullAnalysis(t *testing.T) {
 	if result.RMD == nil {
 		t.Error("expected non-nil RMD")
 	}
-	if result.TaxOptimizer == nil {
-		t.Error("expected non-nil TaxOptimizer")
+	// TaxOptimizer is no longer populated by RunFull; it is wired to the
+	// explicit /api/whatif/tax-optimize endpoint via RunTaxOptimizer.
+	if result.TaxOptimizer != nil {
+		t.Error("RunFull should not populate TaxOptimizer; use RunTaxOptimizer")
 	}
-	// The smoke fixture (age 65, $1M portfolio, 60% tax-deferred, 10-year horizon)
-	// satisfies all eligibility gates, so Eligible must be true.
-	if result.TaxOptimizer != nil && !result.TaxOptimizer.Eligible {
-		t.Errorf("expected TaxOptimizer.Eligible=true, got false (reason: %s)", result.TaxOptimizer.IneligibleReason)
+}
+
+// TestRunTaxOptimizer_EligibleReturnsResult verifies that RunTaxOptimizer
+// returns a non-nil, eligible result for a well-formed scenario.
+func TestRunTaxOptimizer_EligibleReturnsResult(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.PortfolioValue = 2_000_000
+	s.MonthlyLivingExpenses = 5000
+	s.InvestmentReturn = 7.0
+	s.InflationRate = 3.0
+	s.ProjectionYears = 25
+	s.CurrentAge = 65
+	s.TaxDeferredPercent = 80
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 3500, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: 1500, SpouseFRA: 67, SpouseClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+
+	prep, err := prepare.From(s)
+	if err != nil {
+		t.Fatalf("prepare.From: %v", err)
+	}
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	result := RunTaxOptimizer(eng, in)
+	if result == nil {
+		t.Fatal("RunTaxOptimizer returned nil")
+	}
+	if !result.Eligible {
+		t.Errorf("expected Eligible=true, got false (reason: %s)", result.IneligibleReason)
+	}
+	if len(result.Top) == 0 {
+		t.Error("expected non-empty Top candidates")
 	}
 }

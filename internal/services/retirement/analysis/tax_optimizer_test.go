@@ -18,6 +18,11 @@ func eligibleBase() *models.WhatIfSettings {
 	s.PortfolioValue = 2_000_000
 	s.TaxDeferredPercent = 80
 	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingMarriedJoint}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 4100, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: 1500, SpouseFRA: 67, SpouseClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
 	return s
 }
 
@@ -38,6 +43,8 @@ func TestTaxOptimizerEligible_Rejections(t *testing.T) {
 	}{
 		{"no_tax_config", func(s *models.WhatIfSettings) { s.TaxConfig = nil }},
 		{"empty_filing_status", func(s *models.WhatIfSettings) { s.TaxConfig.FilingStatus = "" }},
+		{"no_ss_config", func(s *models.WhatIfSettings) { s.SocialSecurity = nil }},
+		{"ss_claim_age_zero", func(s *models.WhatIfSettings) { s.SocialSecurity.ClaimAge = 0 }},
 		{"tax_deferred_too_small", func(s *models.WhatIfSettings) {
 			s.PortfolioValue = 100_000
 			s.TaxDeferredPercent = 50 // → $50k tax-deferred

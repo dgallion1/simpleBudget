@@ -696,3 +696,61 @@ func TestTaxOptimizer_MCDeterministicWithSeed(t *testing.T) {
 		}
 	}
 }
+
+func TestTaxOptimizerWithSeed_PopulatesBaselinePerYearConversions(t *testing.T) {
+	// When the user's saved scenario has an enabled Roth conversion,
+	// the baseline candidate must surface the per-year amounts so the
+	// UI's "Show conversion amounts" disclosure renders for the
+	// baseline row when (if) we later expose it.
+	//
+	// NOTE: prepare.From → ComputeAges derives CurrentAge from
+	// StartDate + BirthMonth, overriding in-memory mutations. Read the
+	// post-prep CurrentAge from prep.Settings() for assertions.
+	s := eligibleBase()
+	s.RothConversion = &models.RothConversionConfig{
+		Enabled:      true,
+		AnnualAmount: 40_000,
+		StartYear:    0,
+		EndYear:      4, // inclusive — 5 years
+	}
+
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+	preparedCurrentAge := prep.Settings().CurrentAge
+
+	result := TaxOptimizerWithSeed(eng, in, nil, 12345)
+	if result == nil || !result.Eligible {
+		t.Fatalf("expected eligible result, got %+v", result)
+	}
+	if len(result.Baseline.PerYearConversions) != 5 {
+		t.Fatalf("Baseline.PerYearConversions: got %d entries, want 5",
+			len(result.Baseline.PerYearConversions))
+	}
+	for i, yc := range result.Baseline.PerYearConversions {
+		if yc.Amount != 40_000 {
+			t.Errorf("entry %d: Amount=%v, want 40000", i, yc.Amount)
+		}
+		if want := preparedCurrentAge + i; yc.Age != want {
+			t.Errorf("entry %d: Age=%d, want %d", i, yc.Age, want)
+		}
+	}
+}
+
+func TestTaxOptimizerWithSeed_BaselineEmptyForDisabledRoth(t *testing.T) {
+	s := eligibleBase()
+	s.RothConversion = &models.RothConversionConfig{Enabled: false}
+
+	prep := perturbAndPrepare(s)
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	result := TaxOptimizerWithSeed(eng, in, nil, 12345)
+	if result == nil || !result.Eligible {
+		t.Fatalf("expected eligible result, got %+v", result)
+	}
+	if result.Baseline.PerYearConversions != nil {
+		t.Errorf("expected nil baseline PerYearConversions for disabled Roth, got %v",
+			result.Baseline.PerYearConversions)
+	}
+}

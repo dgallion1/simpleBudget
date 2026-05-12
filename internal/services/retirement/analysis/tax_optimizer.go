@@ -291,6 +291,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	// the rest of the page shows for this scenario.
 	baselineProj := eng.Run(in)
 	baseline := projectionToCandidate(baselineProj, currentPrimary, currentSpouse, currentRoth)
+	baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth)
 
 	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, taxOptimizerTopSSPairs)
 	strategies := enumerateRothStrategies(settings)

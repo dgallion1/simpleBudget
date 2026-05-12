@@ -362,3 +362,62 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 	}
 	return cfg
 }
+
+// strategyYearlyConversions returns the per-year conversion amounts
+// implied by strat. Returns nil for the no-conversion baseline (none-kind
+// or a zero-amount ladder). For ladder strategies every entry shares
+// strat.AnnualAmount. For bracket-fill strategies each entry equals
+// the bracket ceiling minus estimateOtherTaxableIncome for that year
+// (clamped to zero). Mirrors the math in rothStrategyToConfig so the
+// displayed amounts match what the engine actually applied.
+func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) []models.YearlyConversion {
+	if strat.Kind == models.RothStrategyNone {
+		return nil
+	}
+	if strat.Kind == models.RothStrategyLadder && strat.AnnualAmount == 0 {
+		return nil
+	}
+
+	startProjYear := strat.StartAge - s.CurrentAge
+	endProjYear := strat.EndAge - s.CurrentAge
+	if startProjYear < 0 {
+		startProjYear = 0
+	}
+	if endProjYear <= startProjYear {
+		return nil
+	}
+
+	out := make([]models.YearlyConversion, 0, endProjYear-startProjYear)
+
+	switch strat.Kind {
+	case models.RothStrategyLadder:
+		for y := startProjYear; y < endProjYear; y++ {
+			out = append(out, models.YearlyConversion{
+				Age:    s.CurrentAge + y,
+				Amount: strat.AnnualAmount,
+			})
+		}
+	case models.RothStrategyBracketFill:
+		if s.TaxConfig == nil {
+			return nil
+		}
+		ceiling, ok := bracketTopFor(s.TaxConfig.FilingStatus, strat.TargetBracket)
+		if !ok {
+			return nil
+		}
+		for y := startProjYear; y < endProjYear; y++ {
+			other := estimateOtherTaxableIncome(s, y)
+			conv := ceiling - other
+			if conv < 0 {
+				conv = 0
+			}
+			out = append(out, models.YearlyConversion{
+				Age:    s.CurrentAge + y,
+				Amount: conv,
+			})
+		}
+	default:
+		return nil
+	}
+	return out
+}

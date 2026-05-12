@@ -1314,6 +1314,14 @@ type RothOptimizerStrategy struct {
 	Label         string           `json:"label"` // human-readable, e.g. "$100k/yr to RMD age"
 }
 
+// YearlyConversion is one year's planned Roth conversion as part of an
+// optimizer strategy. Age is the primary's age in that year; Amount is
+// the dollar amount converted in that year, in nominal dollars.
+type YearlyConversion struct {
+	Age    int     `json:"age"`
+	Amount float64 `json:"amount"`
+}
+
 // TaxOptimizerCandidate is one (SS pair, Roth strategy) configuration
 // and its scored outcome.
 type TaxOptimizerCandidate struct {
@@ -1333,6 +1341,13 @@ type TaxOptimizerCandidate struct {
 	// Monte Carlo refinement; zero-valued for non-top-5 entries.
 	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"`   // 0–100 percent (matches MonteCarloAnalysis.Stats.SuccessRate)
 	MCMedianEndingReal float64 `json:"mc_median_ending_real,omitempty"`
+
+	// PerYearConversions is the year-by-year conversion plan implied by
+	// RothStrategy. Empty when the strategy is the no-conversion baseline.
+	// Ladder strategies produce uniform Amount across the window;
+	// bracket-fill strategies size each year to (bracket ceiling − other
+	// estimated taxable income for that year).
+	PerYearConversions []YearlyConversion `json:"per_year_conversions,omitempty"`
 }
 
 // TaxOptimizerAnalysis is the per-scenario recommendation produced by

@@ -435,3 +435,87 @@ func TestEnumerateBracketFillStrategies_SECURE2_0RMDAge(t *testing.T) {
 			n1957, n1965)
 	}
 }
+
+func TestStrategyYearlyConversions_Ladder(t *testing.T) {
+	s := &models.WhatIfSettings{
+		CurrentAge:      60,
+		ProjectionYears: 35,
+		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+		SocialSecurity:  &models.SocialSecurityConfig{ClaimAge: 67},
+	}
+	strat := models.RothOptimizerStrategy{
+		Kind:         models.RothStrategyLadder,
+		AnnualAmount: 75_000,
+		StartAge:     67,
+		EndAge:       72, // exclusive — 5 years (67..71)
+	}
+	got := strategyYearlyConversions(s, strat)
+
+	if len(got) != 5 {
+		t.Fatalf("len: got %d, want 5", len(got))
+	}
+	for i, yc := range got {
+		wantAge := 67 + i
+		if yc.Age != wantAge {
+			t.Errorf("entry %d: Age=%d, want %d", i, yc.Age, wantAge)
+		}
+		if yc.Amount != 75_000 {
+			t.Errorf("entry %d: Amount=%v, want 75000", i, yc.Amount)
+		}
+	}
+}
+
+func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
+	s := eligibleBase()
+	s.CurrentAge = 60
+	s.ProjectionYears = 35
+	// Push SS out so the estimator sees "no SS yet" for early years.
+	s.SocialSecurity.ClaimAge = 67
+	s.SocialSecurity.SpouseClaimAge = 67
+	s.SpouseAge = 58
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.24,
+		StartAge:      60,
+		EndAge:        63, // 3 years: 60, 61, 62
+	}
+
+	got := strategyYearlyConversions(s, strat)
+	if len(got) != 3 {
+		t.Fatalf("len: got %d, want 3", len(got))
+	}
+
+	ceiling, _ := bracketTopFor(models.FilingMarriedJoint, 0.24)
+	for i, yc := range got {
+		projYear := i // startProjYear=0 because StartAge==CurrentAge
+		other := estimateOtherTaxableIncome(s, projYear)
+		want := ceiling - other
+		if want < 0 {
+			want = 0
+		}
+		if yc.Amount != want {
+			t.Errorf("year %d (age %d): Amount=%v, want %v", projYear, yc.Age, yc.Amount, want)
+		}
+	}
+}
+
+func TestStrategyYearlyConversions_NoConversion(t *testing.T) {
+	s := eligibleBase()
+	got := strategyYearlyConversions(s, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+func TestStrategyYearlyConversions_ZeroAmountLadder(t *testing.T) {
+	s := eligibleBase()
+	got := strategyYearlyConversions(s, models.RothOptimizerStrategy{
+		Kind:         models.RothStrategyLadder,
+		AnnualAmount: 0,
+		StartAge:     67,
+		EndAge:       72,
+	})
+	if got != nil {
+		t.Errorf("expected nil for zero-amount ladder, got %v", got)
+	}
+}

@@ -101,7 +101,8 @@ func formatLadderLabel(amount float64, w strategyWindow) string {
 // pre-computation. Approximate by design — the optimizer ranks on the
 // engine's actual projection result, not on this estimate.
 //
-// Includes: SS benefit (gross, when claimed) + ordinary fixed-income
+// Includes: primary SS benefit (gross, when claimed) + spouse SS
+// benefit when filing MFJ and spouse has claimed + ordinary fixed-income
 // sources from settings + estimated RMD when age >= 73 + a small
 // taxable-account dividend estimate.
 func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) float64 {
@@ -111,7 +112,7 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 	age := s.CurrentAge + projectionYear
 	total := 0.0
 
-	// Social Security.
+	// Social Security — primary.
 	if s.SocialSecurity != nil && s.SocialSecurity.ClaimAge > 0 && age >= s.SocialSecurity.ClaimAge {
 		cola := SSConfigCOLARate(s)
 		yearsSinceClaim := age - s.SocialSecurity.ClaimAge
@@ -124,6 +125,32 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 			monthly *= 1 + cola
 		}
 		total += monthly * 12
+	}
+
+	// Social Security — spouse. Only contributes to non-conversion taxable
+	// income for joint filers; non-MFJ spouses report on a separate return
+	// and don't consume bracket-fill room for this taxpayer. Spouse age
+	// can differ from primary age, so compute it independently rather
+	// than reusing `age`.
+	if s.HasSpouse() &&
+		s.TaxConfig != nil && s.TaxConfig.FilingStatus == models.FilingMarriedJoint &&
+		s.SocialSecurity != nil &&
+		s.SocialSecurity.SpouseClaimAge > 0 &&
+		s.SocialSecurity.SpouseFRABenefit > 0 {
+		spouseAge := s.SpouseAge + projectionYear
+		if spouseAge >= s.SocialSecurity.SpouseClaimAge {
+			cola := SSConfigCOLARate(s)
+			yearsSinceClaim := spouseAge - s.SocialSecurity.SpouseClaimAge
+			monthly := AdjustedSSBenefit(
+				s.SocialSecurity.SpouseFRABenefit,
+				NormalizedSSFRA(s.SocialSecurity.SpouseFRA),
+				s.SocialSecurity.SpouseClaimAge,
+			)
+			for i := 0; i < yearsSinceClaim; i++ {
+				monthly *= 1 + cola
+			}
+			total += monthly * 12
+		}
 	}
 
 	// Ordinary income sources (fixed-amount monthly). The engine has

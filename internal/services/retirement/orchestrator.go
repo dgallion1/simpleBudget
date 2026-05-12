@@ -8,6 +8,8 @@
 package retirement
 
 import (
+	"time"
+
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
@@ -97,13 +99,28 @@ func runTaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) 
 	}
 	settings := in.Prepared.Settings()
 
+	// Pin one effective MC seed for the entire optimizer call so both
+	// the SS-pair pruning pass (SSPortfolioWithSeed) AND the optimizer's
+	// finalist refinement run against the same Monte Carlo paths. If we
+	// pass mcSeed=0 down, each MC cell auto-seeds from time.Now()
+	// independently, so the SS-pair selection feeding the optimizer is
+	// already chosen from non-comparable paths before finalists are
+	// even scored. Tests pin a non-zero seed and bypass derivation.
+	effectiveSeed := mcSeed
+	if effectiveSeed == 0 {
+		effectiveSeed = time.Now().UnixNano()
+		if effectiveSeed == 0 {
+			effectiveSeed = 1 // MonteCarlo treats 0 as auto-seed
+		}
+	}
+
 	var ssPortfolio *models.SSPortfolioAnalysis
 	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
 		ssAnalysis := analysis.SSAnalysis(in)
 		if ssAnalysis != nil && SSPortfolioEligible(settings) {
-			ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, mcSeed)
+			ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, effectiveSeed)
 			ssPortfolio = ssAnalysis.Portfolio
 		}
 	}
-	return analysis.TaxOptimizerWithSeed(eng, in, ssPortfolio, mcSeed)
+	return analysis.TaxOptimizerWithSeed(eng, in, ssPortfolio, effectiveSeed)
 }

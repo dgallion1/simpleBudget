@@ -171,6 +171,40 @@ func TestEstimateOtherTaxableIncome_PostSS(t *testing.T) {
 	}
 }
 
+func TestEstimateOtherTaxableIncome_MFJIncludesSpouseSS(t *testing.T) {
+	// Regression: bracket-fill estimator previously omitted spouse SS,
+	// causing MFJ candidates to over-convert above the target bracket.
+	s := &models.WhatIfSettings{
+		CurrentAge:      60,
+		SpouseAge:       60,
+		ProjectionYears: 30,
+		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+		SocialSecurity: &models.SocialSecurityConfig{
+			FRABenefit:       3_000,
+			FRA:              67,
+			ClaimAge:         67,
+			SpouseFRABenefit: 2_000,
+			SpouseFRA:        67,
+			SpouseClaimAge:   67,
+			COLARate:         0,
+		},
+	}
+	// Year 7: both spouses age 67, both claim at FRA. Primary
+	// $3,000×12 = $36k, spouse $2,000×12 = $24k. Total ≈ $60k.
+	got := estimateOtherTaxableIncome(s, 7)
+	if got < 55_000 || got > 65_000 {
+		t.Errorf("MFJ year 7 expected ~$60k (primary+spouse SS), got %v", got)
+	}
+
+	// Non-MFJ with same data: spouse SS must NOT be added (would belong
+	// on spouse's separate return).
+	s.TaxConfig.FilingStatus = models.FilingMarriedSeparate
+	gotMFS := estimateOtherTaxableIncome(s, 7)
+	if gotMFS < 30_000 || gotMFS > 42_000 {
+		t.Errorf("MFS year 7 expected ~$36k (primary SS only), got %v", gotMFS)
+	}
+}
+
 func TestEstimateOtherTaxableIncome_PostRMD(t *testing.T) {
 	s := &models.WhatIfSettings{
 		CurrentAge:         60,

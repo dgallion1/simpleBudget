@@ -561,6 +561,12 @@ func TestCalculateBudgetFit(t *testing.T) {
 			t.Errorf("Taxable (%.2f) should be cheaper than tax-deferred (%.2f)",
 				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGrossWithdrawalTaxDeferred)
 		}
+		// At year 15 with 5% taxable return, gainFraction = 1 - (1.05)^-15 ≈ 0.519.
+		// LTCG at 15% on 52% gain fraction implies EffectiveRateTaxable ≈ 7-9%.
+		if fit.SteadyStateEffectiveRateTaxable < 3 || fit.SteadyStateEffectiveRateTaxable > 15 {
+			t.Errorf("SteadyStateEffectiveRateTaxable: want in [3, 15] for year 15 / 5%% scenario, got %.2f",
+				fit.SteadyStateEffectiveRateTaxable)
+		}
 	})
 
 	t.Run("expense breakdown items populated", func(t *testing.T) {

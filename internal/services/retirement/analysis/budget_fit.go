@@ -222,22 +222,10 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		result.MarginalRateTaxDeferred = marginal * 100
 		result.GrossWithdrawalTaxDeferred = monthlyGap / (1 - marginal)
 
-		// Taxable: at month 0 cost basis ≈ market value, so simulated gain fraction is 0.
-		// Compute via simulation for consistency with steady-state path; result will be ≈ gap.
-		taxableExtra := taxableCashFlow
-		taxableGainFractionCurrent := 0.0 // basis = market at month 0
-		taxableExtra.CapitalGainsDistributions += monthlyGap * taxableGainFractionCurrent
-		txSnap := estimateTaxSnapshot(0, taxableExtra, monthlyRMD, rothConversionThisMonth, &currentIRMALookbackMAGI)
-		txExtraTax := txSnap.MonthlyTax - currentSnapshot.MonthlyTax
-		txEffective := txExtraTax / monthlyGap
-		if txEffective < 0 {
-			txEffective = 0
-		}
-		if txEffective > 0.95 {
-			txEffective = 0.95
-		}
-		result.EffectiveRateTaxable = txEffective * 100
-		result.GrossWithdrawalTaxable = monthlyGap / (1 - txEffective)
+		// Taxable: at month 0 cost basis ≈ market value (engine initializes
+		// CostBasis = MarketValue), so an additional sale incurs no LTCG.
+		result.EffectiveRateTaxable = 0
+		result.GrossWithdrawalTaxable = monthlyGap
 	}
 	if currentSnapshot.MonthlyIRMAA > 0 {
 		result.ExpenseBreakdown = append(result.ExpenseBreakdown, models.ExpenseBreakdownItem{

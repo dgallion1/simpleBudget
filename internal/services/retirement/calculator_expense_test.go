@@ -477,6 +477,37 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
+	t.Run("taxable gross withdrawal equals gap at year zero", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		// At month 0, cost basis equals market value → gain fraction ~0 → gross ≈ gap.
+		if math.Abs(fit.GrossWithdrawalTaxable-fit.MonthlyGap) > 0.50 {
+			t.Errorf("GrossWithdrawalTaxable at year 0: want ~%.2f (= gap, basis = market), got %.2f",
+				fit.MonthlyGap, fit.GrossWithdrawalTaxable)
+		}
+		if fit.EffectiveRateTaxable > 1.0 {
+			t.Errorf("EffectiveRateTaxable at year 0: want ~0, got %.2f", fit.EffectiveRateTaxable)
+		}
+	})
+
 	t.Run("expense breakdown items populated", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 500_000

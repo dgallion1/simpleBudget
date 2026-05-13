@@ -508,6 +508,61 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
+	t.Run("steady-state gross withdrawal mirrors compute", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = []models.IncomeSource{
+			// Delayed income so steady-state year > 0
+			{ID: "ss", Name: "Social Security", Amount: 2000, StartMonth: 60},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 50
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.InvestmentReturn = 7
+		s.SteadyStateOverrideYear = 20
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if !fit.HasSteadyState {
+			t.Fatalf("precondition: HasSteadyState should be true")
+		}
+		if fit.SteadyStateGap <= 0 {
+			t.Skipf("steady-state surplus scenario (gap=%.2f); skipping gross-up assertions", fit.SteadyStateGap)
+		}
+		// Roth mirror always equals gap.
+		if math.Abs(fit.SteadyStateGrossWithdrawalRoth-fit.SteadyStateGap) > 0.01 {
+			t.Errorf("SteadyStateGrossWithdrawalRoth: want %.2f, got %.2f",
+				fit.SteadyStateGap, fit.SteadyStateGrossWithdrawalRoth)
+		}
+		// Tax-deferred mirror: gross > gap, marginal > 0.
+		if fit.SteadyStateGrossWithdrawalTaxDeferred <= fit.SteadyStateGap {
+			t.Errorf("SteadyStateGrossWithdrawalTaxDeferred (%.2f) must exceed gap (%.2f)",
+				fit.SteadyStateGrossWithdrawalTaxDeferred, fit.SteadyStateGap)
+		}
+		if fit.SteadyStateMarginalRateTaxDeferred <= 0 {
+			t.Errorf("SteadyStateMarginalRateTaxDeferred: want > 0, got %.2f",
+				fit.SteadyStateMarginalRateTaxDeferred)
+		}
+		// Taxable mirror: gross > gap (year 20 has built-up gains).
+		if fit.SteadyStateGrossWithdrawalTaxable <= fit.SteadyStateGap {
+			t.Errorf("SteadyStateGrossWithdrawalTaxable (%.2f) should exceed gap (%.2f) at year 20",
+				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGap)
+		}
+		// Taxable should be cheaper than tax-deferred (LTCG vs. ordinary).
+		if fit.SteadyStateGrossWithdrawalTaxable >= fit.SteadyStateGrossWithdrawalTaxDeferred {
+			t.Errorf("Taxable (%.2f) should be cheaper than tax-deferred (%.2f)",
+				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGrossWithdrawalTaxDeferred)
+		}
+	})
+
 	t.Run("expense breakdown items populated", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 500_000

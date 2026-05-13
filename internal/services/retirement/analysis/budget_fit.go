@@ -331,6 +331,43 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		// Calculate steady state gap
 		result.SteadyStateGap = result.SteadyStateExpenses - result.SteadyStateNetIncome
 
+		// Gross withdrawal mirrors at steady state (only when gap > 0).
+		if result.SteadyStateGap > 0 {
+			result.SteadyStateGrossWithdrawalRoth = result.SteadyStateGap
+
+			// Tax-deferred: simulate extra ordinary withdrawal at steady state.
+			tdSnapSS := estimateTaxSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, result.SteadyStateRMD+result.SteadyStateGap, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
+			extraTaxSS := tdSnapSS.MonthlyTax - steadyStateSnapshot.MonthlyTax
+			marginalSS := extraTaxSS / result.SteadyStateGap
+			if marginalSS < 0 {
+				marginalSS = 0
+			}
+			if marginalSS > 0.95 {
+				marginalSS = 0.95
+			}
+			result.SteadyStateMarginalRateTaxDeferred = marginalSS * 100
+			result.SteadyStateGrossWithdrawalTaxDeferred = result.SteadyStateGap / (1 - marginalSS)
+
+			// Taxable: gain fraction grows with time (smooth approximation 1 - (1+r)^-years).
+			gainFractionSS := 1.0 - math.Pow(1.0+taxableAnnualReturn/100.0, -yearsToSteadyState)
+			if gainFractionSS < 0 {
+				gainFractionSS = 0
+			}
+			taxableExtraSS := steadyStateTaxableCashFlow
+			taxableExtraSS.CapitalGainsDistributions += result.SteadyStateGap * gainFractionSS
+			txSnapSS := estimateTaxSnapshot(steadyStateMonth, taxableExtraSS, result.SteadyStateRMD, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
+			txExtraTaxSS := txSnapSS.MonthlyTax - steadyStateSnapshot.MonthlyTax
+			txEffectiveSS := txExtraTaxSS / result.SteadyStateGap
+			if txEffectiveSS < 0 {
+				txEffectiveSS = 0
+			}
+			if txEffectiveSS > 0.95 {
+				txEffectiveSS = 0.95
+			}
+			result.SteadyStateEffectiveRateTaxable = txEffectiveSS * 100
+			result.SteadyStateGrossWithdrawalTaxable = result.SteadyStateGap / (1 - txEffectiveSS)
+		}
+
 		// Calculate steady state withdrawal rate
 		if s.PortfolioValue > 0 && result.SteadyStateGap > 0 {
 			// Use estimated portfolio value at steady state

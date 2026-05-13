@@ -408,6 +408,32 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
+	t.Run("roth gross withdrawal equals gap", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 100
+		s.SpendingPhaseConfig = nil
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if math.Abs(fit.GrossWithdrawalRoth-fit.MonthlyGap) > 0.01 {
+			t.Errorf("GrossWithdrawalRoth: want %.2f (= gap), got %.2f", fit.MonthlyGap, fit.GrossWithdrawalRoth)
+		}
+	})
+
 	t.Run("expense breakdown items populated", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 500_000

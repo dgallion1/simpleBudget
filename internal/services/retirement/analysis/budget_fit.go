@@ -206,6 +206,9 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		RMDCoverage:              rmdCoverage,
 		ExcessRMD:                excessRMD,
 	}
+	if monthlyGap > 0 {
+		result.GrossWithdrawalRoth = monthlyGap
+	}
 	if currentSnapshot.MonthlyIRMAA > 0 {
 		result.ExpenseBreakdown = append(result.ExpenseBreakdown, models.ExpenseBreakdownItem{
 			Name:   "IRMAA Surcharge",

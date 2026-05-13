@@ -882,13 +882,19 @@ type BudgetFitAnalysis struct {
 	AnnualGap                float64 `json:"annual_gap"`
 	RequiredRate             float64 `json:"required_rate"` // Rate needed to cover gap
 
-	// Gross withdrawal needed to net MonthlyGap by funding source.
-	// All zero when MonthlyGap <= 0.
+	// Suggested withdrawal mix to close MonthlyGap, split proportionally
+	// across the user's portfolio allocation (TaxDeferred / Roth /
+	// Taxable). NetWithdrawal* sum to MonthlyGap. GrossWithdrawal* show
+	// the actual amount to pull from each bucket (>= net for Tax-Deferred
+	// because part is lost to income tax). All zero when MonthlyGap <= 0.
 	GrossWithdrawalTaxDeferred float64 `json:"gross_withdrawal_tax_deferred,omitempty"`
+	NetWithdrawalTaxDeferred   float64 `json:"net_withdrawal_tax_deferred,omitempty"`
 	MarginalRateTaxDeferred    float64 `json:"marginal_rate_tax_deferred,omitempty"` // % 0-100
 	GrossWithdrawalTaxable     float64 `json:"gross_withdrawal_taxable,omitempty"`
+	NetWithdrawalTaxable       float64 `json:"net_withdrawal_taxable,omitempty"`
 	EffectiveRateTaxable       float64 `json:"effective_rate_taxable,omitempty"` // % 0-100
 	GrossWithdrawalRoth        float64 `json:"gross_withdrawal_roth,omitempty"`
+	NetWithdrawalRoth          float64 `json:"net_withdrawal_roth,omitempty"`
 
 	// Breakdowns for transparency
 	ExpenseBreakdown []ExpenseBreakdownItem `json:"expense_breakdown,omitempty"`
@@ -916,13 +922,17 @@ type BudgetFitAnalysis struct {
 	SteadyStateGap                      float64 `json:"steady_state_gap"`  // Gap at steady state
 	SteadyStateRate                     float64 `json:"steady_state_rate"` // Required withdrawal rate at steady state
 
-	// Gross withdrawal needed to net SteadyStateGap by funding source.
-	// All zero when SteadyStateGap <= 0.
+	// Suggested withdrawal mix to close SteadyStateGap, split
+	// proportionally across the user's portfolio allocation. Net* sum to
+	// SteadyStateGap. All zero when SteadyStateGap <= 0.
 	SteadyStateGrossWithdrawalTaxDeferred float64 `json:"steady_state_gross_withdrawal_tax_deferred,omitempty"`
+	SteadyStateNetWithdrawalTaxDeferred   float64 `json:"steady_state_net_withdrawal_tax_deferred,omitempty"`
 	SteadyStateMarginalRateTaxDeferred    float64 `json:"steady_state_marginal_rate_tax_deferred,omitempty"`
 	SteadyStateGrossWithdrawalTaxable     float64 `json:"steady_state_gross_withdrawal_taxable,omitempty"`
+	SteadyStateNetWithdrawalTaxable       float64 `json:"steady_state_net_withdrawal_taxable,omitempty"`
 	SteadyStateEffectiveRateTaxable       float64 `json:"steady_state_effective_rate_taxable,omitempty"`
 	SteadyStateGrossWithdrawalRoth        float64 `json:"steady_state_gross_withdrawal_roth,omitempty"`
+	SteadyStateNetWithdrawalRoth          float64 `json:"steady_state_net_withdrawal_roth,omitempty"`
 
 	HasSteadyState bool `json:"has_steady_state"` // True if steady state differs from current
 }

@@ -408,6 +408,49 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
+	t.Run("withdrawal mix sums to gap (proportional to allocation)", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 60
+		s.RothPercent = 10
+		// Taxable = 30
+		s.SpendingPhaseConfig = nil
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+
+		// Net per bucket matches allocation share.
+		if math.Abs(fit.NetWithdrawalTaxDeferred-fit.MonthlyGap*0.6) > 0.01 {
+			t.Errorf("NetWithdrawalTaxDeferred: want %.2f (60%% of gap), got %.2f",
+				fit.MonthlyGap*0.6, fit.NetWithdrawalTaxDeferred)
+		}
+		if math.Abs(fit.NetWithdrawalTaxable-fit.MonthlyGap*0.3) > 0.01 {
+			t.Errorf("NetWithdrawalTaxable: want %.2f (30%% of gap), got %.2f",
+				fit.MonthlyGap*0.3, fit.NetWithdrawalTaxable)
+		}
+		if math.Abs(fit.NetWithdrawalRoth-fit.MonthlyGap*0.1) > 0.01 {
+			t.Errorf("NetWithdrawalRoth: want %.2f (10%% of gap), got %.2f",
+				fit.MonthlyGap*0.1, fit.NetWithdrawalRoth)
+		}
+		// Net amounts sum to the gap — the property the UI reports as "Total (closes gap)".
+		total := fit.NetWithdrawalTaxDeferred + fit.NetWithdrawalTaxable + fit.NetWithdrawalRoth
+		if math.Abs(total-fit.MonthlyGap) > 0.01 {
+			t.Errorf("net mix total: want %.2f (=gap), got %.2f", fit.MonthlyGap, total)
+		}
+	})
+
 	t.Run("roth gross withdrawal equals gap", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 1_000_000
@@ -508,7 +551,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
-	t.Run("steady-state gross withdrawal mirrors compute", func(t *testing.T) {
+	t.Run("steady-state withdrawal mix sums to gap with tax overhead on TD/TX", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 1_000_000
 		s.MonthlyLivingExpenses = 12000
@@ -522,8 +565,10 @@ func TestCalculateBudgetFit(t *testing.T) {
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
 		s.CurrentAge = 65
+		// Mixed allocation so all three buckets get a share.
 		s.TaxDeferredPercent = 50
-		s.RothPercent = 0
+		s.RothPercent = 25
+		// Taxable = 25
 		s.SpendingPhaseConfig = nil
 		s.InvestmentReturn = 5
 		s.SteadyStateOverrideYear = 15
@@ -537,32 +582,50 @@ func TestCalculateBudgetFit(t *testing.T) {
 		if fit.SteadyStateGap <= 0 {
 			t.Fatalf("precondition: expected positive steady-state gap, got %.2f", fit.SteadyStateGap)
 		}
-		// Roth mirror always equals gap.
-		if math.Abs(fit.SteadyStateGrossWithdrawalRoth-fit.SteadyStateGap) > 0.01 {
-			t.Errorf("SteadyStateGrossWithdrawalRoth: want %.2f, got %.2f",
-				fit.SteadyStateGap, fit.SteadyStateGrossWithdrawalRoth)
+
+		// Net amounts follow allocation: 50% TD, 25% TX, 25% Roth.
+		gap := fit.SteadyStateGap
+		if math.Abs(fit.SteadyStateNetWithdrawalTaxDeferred-gap*0.5) > 0.01 {
+			t.Errorf("SteadyStateNetWithdrawalTaxDeferred: want %.2f, got %.2f", gap*0.5, fit.SteadyStateNetWithdrawalTaxDeferred)
 		}
-		// Tax-deferred mirror: gross > gap, marginal > 0.
-		if fit.SteadyStateGrossWithdrawalTaxDeferred <= fit.SteadyStateGap {
-			t.Errorf("SteadyStateGrossWithdrawalTaxDeferred (%.2f) must exceed gap (%.2f)",
-				fit.SteadyStateGrossWithdrawalTaxDeferred, fit.SteadyStateGap)
+		if math.Abs(fit.SteadyStateNetWithdrawalTaxable-gap*0.25) > 0.01 {
+			t.Errorf("SteadyStateNetWithdrawalTaxable: want %.2f, got %.2f", gap*0.25, fit.SteadyStateNetWithdrawalTaxable)
+		}
+		if math.Abs(fit.SteadyStateNetWithdrawalRoth-gap*0.25) > 0.01 {
+			t.Errorf("SteadyStateNetWithdrawalRoth: want %.2f, got %.2f", gap*0.25, fit.SteadyStateNetWithdrawalRoth)
+		}
+		// Net amounts must sum to the gap.
+		total := fit.SteadyStateNetWithdrawalTaxDeferred + fit.SteadyStateNetWithdrawalTaxable + fit.SteadyStateNetWithdrawalRoth
+		if math.Abs(total-gap) > 0.01 {
+			t.Errorf("net mix total: want %.2f (=gap), got %.2f", gap, total)
+		}
+
+		// Roth: no tax → gross == net.
+		if math.Abs(fit.SteadyStateGrossWithdrawalRoth-fit.SteadyStateNetWithdrawalRoth) > 0.01 {
+			t.Errorf("SteadyStateGrossWithdrawalRoth: want %.2f (=net), got %.2f",
+				fit.SteadyStateNetWithdrawalRoth, fit.SteadyStateGrossWithdrawalRoth)
+		}
+		// Tax-deferred: gross > net (income tax), marginal > 0.
+		if fit.SteadyStateGrossWithdrawalTaxDeferred <= fit.SteadyStateNetWithdrawalTaxDeferred {
+			t.Errorf("SteadyStateGrossWithdrawalTaxDeferred (%.2f) must exceed net (%.2f)",
+				fit.SteadyStateGrossWithdrawalTaxDeferred, fit.SteadyStateNetWithdrawalTaxDeferred)
 		}
 		if fit.SteadyStateMarginalRateTaxDeferred <= 0 {
 			t.Errorf("SteadyStateMarginalRateTaxDeferred: want > 0, got %.2f",
 				fit.SteadyStateMarginalRateTaxDeferred)
 		}
-		// Taxable mirror: gross > gap (built-up gains).
-		if fit.SteadyStateGrossWithdrawalTaxable <= fit.SteadyStateGap {
-			t.Errorf("SteadyStateGrossWithdrawalTaxable (%.2f) should exceed gap (%.2f) at steady state",
-				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGap)
+		// Taxable at steady state: gross > net (LTCG on accrued gains).
+		if fit.SteadyStateGrossWithdrawalTaxable <= fit.SteadyStateNetWithdrawalTaxable {
+			t.Errorf("SteadyStateGrossWithdrawalTaxable (%.2f) should exceed net (%.2f) at steady state",
+				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateNetWithdrawalTaxable)
 		}
-		// Taxable should be cheaper than tax-deferred (LTCG vs. ordinary).
-		if fit.SteadyStateGrossWithdrawalTaxable >= fit.SteadyStateGrossWithdrawalTaxDeferred {
-			t.Errorf("Taxable (%.2f) should be cheaper than tax-deferred (%.2f)",
-				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGrossWithdrawalTaxDeferred)
+		// Per-dollar-net, taxable should be cheaper than tax-deferred (LTCG vs. ordinary).
+		txCostPerNet := (fit.SteadyStateGrossWithdrawalTaxable - fit.SteadyStateNetWithdrawalTaxable) / fit.SteadyStateNetWithdrawalTaxable
+		tdCostPerNet := (fit.SteadyStateGrossWithdrawalTaxDeferred - fit.SteadyStateNetWithdrawalTaxDeferred) / fit.SteadyStateNetWithdrawalTaxDeferred
+		if txCostPerNet >= tdCostPerNet {
+			t.Errorf("taxable tax cost (%.2f%%) should be lower than tax-deferred (%.2f%%)", txCostPerNet*100, tdCostPerNet*100)
 		}
-		// At year 15 with 5% taxable return, gainFraction = 1 - (1.05)^-15 ≈ 0.519.
-		// LTCG at 15% on 52% gain fraction implies EffectiveRateTaxable ≈ 7-9%.
+		// At year 15 with 5% taxable return, LTCG ≈ 7-9% effective.
 		if fit.SteadyStateEffectiveRateTaxable < 3 || fit.SteadyStateEffectiveRateTaxable > 15 {
 			t.Errorf("SteadyStateEffectiveRateTaxable: want in [3, 15] for year 15 / 5%% scenario, got %.2f",
 				fit.SteadyStateEffectiveRateTaxable)
@@ -1065,6 +1128,7 @@ func TestCalculateBudgetFitIncomeStartMonth(t *testing.T) {
 			{ID: "ss", Name: "Social Security", Amount: 2500, StartMonth: 36}, // starts year 3
 			{ID: "pn", Name: "Pension", Amount: 1500, StartMonth: 0},          // immediate
 		}
+		s.SteadyStateOverrideYear = 3 // view at year 3 (when SS kicks in)
 
 		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
@@ -1140,14 +1204,10 @@ func TestFindSteadyStateMonthMultipleSources(t *testing.T) {
 		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
-		// Steady state should be at the max start month of active sources = 60 (Annuity)
-		// Short-term (start=24, end=120) is still active at 24, so it counts
-		// But Annuity starts at 60 which is the latest
-		wantMonth := 60
-		wantYear := float64(wantMonth) / 12 // 5.0
-		if fit.SteadyStateMonth != wantMonth {
-			t.Errorf("SteadyStateMonth: want %d, got %d", wantMonth, fit.SteadyStateMonth)
-		}
+		// Auto-detection: latest active source = Annuity at month 60 (year 5).
+		// Short-term (start=24, end=120) is still active at 24, so it counts,
+		// but Annuity at 60 is the latest.
+		wantYear := 5.0
 		if math.Abs(fit.MinSteadyStateYear-wantYear) > 0.01 {
 			t.Errorf("MinSteadyStateYear: want %.2f, got %.2f", wantYear, fit.MinSteadyStateYear)
 		}
@@ -1169,11 +1229,10 @@ func TestFindSteadyStateMonthMultipleSources(t *testing.T) {
 		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
 
-		// Bad Source has EndMonth (10) <= StartMonth (48), so it's ignored
-		// Steady state should be at Pension's start = 24
-		wantMonth := 24
-		if fit.SteadyStateMonth != wantMonth {
-			t.Errorf("SteadyStateMonth: want %d, got %d", wantMonth, fit.SteadyStateMonth)
+		// Bad Source has EndMonth (10) <= StartMonth (48), so it's ignored.
+		// Auto-detected min steady state should be Pension's start = year 2.
+		if math.Abs(fit.MinSteadyStateYear-2.0) > 0.01 {
+			t.Errorf("MinSteadyStateYear: want 2.0, got %.2f", fit.MinSteadyStateYear)
 		}
 	})
 }
@@ -1195,9 +1254,7 @@ func TestFindSteadyStateMonth_ProjectedSocialSecurity(t *testing.T) {
 	calc := newTestCalc(t, s)
 	fit := calc.CalculateBudgetFit()
 
-	if fit.SteadyStateMonth != 60 {
-		t.Fatalf("SteadyStateMonth: want 60, got %d", fit.SteadyStateMonth)
-	}
+	// Auto-detection of the latest SS claim age should yield year 5 (month 60).
 	if math.Abs(fit.MinSteadyStateYear-5.0) > 0.01 {
 		t.Fatalf("MinSteadyStateYear: want 5.0, got %.2f", fit.MinSteadyStateYear)
 	}

@@ -1,8 +1,9 @@
 # Gross Withdrawal Line on Budget Analysis Panel
 
 **Date:** 2026-05-12
-**Status:** Draft
+**Status:** Shipped, partially superseded
 **Owner:** Darrell
+**Superseded by:** `docs/superpowers/specs/2026-05-13-whatif-slider-and-withdrawal-mix.md` — the three rows were reinterpreted from independent "if from this bucket" alternatives to a proportional split that sums to the gap. Field-level data model still applies; rendering and computation are different.
 
 ## Motivation
 

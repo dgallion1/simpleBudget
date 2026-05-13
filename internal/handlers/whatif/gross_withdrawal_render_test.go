@@ -20,19 +20,22 @@ func TestBudgetAnalysis_GrossWithdrawalRowsRender(t *testing.T) {
 					MonthlyIncome:              1000,
 					MonthlyGap:                 4000,
 					RequiredRate:               4.0,
-					GrossWithdrawalTaxDeferred: 5479.45,
+					NetWithdrawalTaxDeferred:   2400,
+					GrossWithdrawalTaxDeferred: 3287.67,
 					MarginalRateTaxDeferred:    27.0,
-					GrossWithdrawalTaxable:     4160.00,
+					NetWithdrawalTaxable:       1200,
+					GrossWithdrawalTaxable:     1250.00,
 					EffectiveRateTaxable:       4.0,
-					GrossWithdrawalRoth:        4000.00,
+					NetWithdrawalRoth:          400,
+					GrossWithdrawalRoth:        400,
 				},
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if !strings.Contains(out, "Gross Withdrawal Needed to Close Gap") {
-			t.Errorf("expected gross-withdrawal heading; got: %s", truncate(out, 500))
+		if !strings.Contains(out, "Suggested Withdrawal Mix") {
+			t.Errorf("expected withdrawal-mix heading; got: %s", truncate(out, 500))
 		}
 		if !strings.Contains(out, "From Tax-Deferred") {
 			t.Errorf("expected From Tax-Deferred row")
@@ -62,8 +65,8 @@ func TestBudgetAnalysis_GrossWithdrawalRowsRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if strings.Contains(out, "Gross Withdrawal Needed to Close Gap") {
-			t.Errorf("expected no gross-withdrawal heading on surplus; got: %s", truncate(out, 500))
+		if strings.Contains(out, "Suggested Withdrawal Mix") {
+			t.Errorf("expected no withdrawal-mix heading on surplus; got: %s", truncate(out, 500))
 		}
 		if strings.Contains(out, "From Tax-Deferred") {
 			t.Errorf("expected no From Tax-Deferred row on surplus")
@@ -92,19 +95,22 @@ func TestBudgetSteadyState_GrossWithdrawalRowsRender(t *testing.T) {
 					SteadyStateIncome:                     2000,
 					SteadyStateGap:                        5000,
 					SteadyStateRate:                       3.0,
-					SteadyStateGrossWithdrawalTaxDeferred: 6849.31,
+					SteadyStateNetWithdrawalTaxDeferred:   3000,
+					SteadyStateGrossWithdrawalTaxDeferred: 4109.59,
 					SteadyStateMarginalRateTaxDeferred:    27.0,
-					SteadyStateGrossWithdrawalTaxable:     5500.00,
+					SteadyStateNetWithdrawalTaxable:       1500,
+					SteadyStateGrossWithdrawalTaxable:     1648.35,
 					SteadyStateEffectiveRateTaxable:       9.0,
-					SteadyStateGrossWithdrawalRoth:        5000.00,
+					SteadyStateNetWithdrawalRoth:          500,
+					SteadyStateGrossWithdrawalRoth:        500,
 				},
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if !strings.Contains(out, "Gross Withdrawal Needed to Close Gap") {
-			t.Errorf("expected gross-withdrawal heading; got: %s", truncate(out, 500))
+		if !strings.Contains(out, "Suggested Withdrawal Mix") {
+			t.Errorf("expected withdrawal-mix heading; got: %s", truncate(out, 500))
 		}
 		if !strings.Contains(out, "From Tax-Deferred") {
 			t.Errorf("expected From Tax-Deferred row")
@@ -136,8 +142,8 @@ func TestBudgetSteadyState_GrossWithdrawalRowsRender(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if strings.Contains(out, "Gross Withdrawal Needed to Close Gap") {
-			t.Errorf("expected no gross-withdrawal heading on steady-state surplus; got: %s", truncate(out, 500))
+		if strings.Contains(out, "Suggested Withdrawal Mix") {
+			t.Errorf("expected no withdrawal-mix heading on steady-state surplus; got: %s", truncate(out, 500))
 		}
 		if strings.Contains(out, "From Tax-Deferred") {
 			t.Errorf("expected no From Tax-Deferred row on surplus")

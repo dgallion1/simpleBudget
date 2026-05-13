@@ -207,25 +207,37 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		ExcessRMD:                excessRMD,
 	}
 	if monthlyGap > 0 {
-		result.GrossWithdrawalRoth = monthlyGap
+		// Proportional split: each bucket's net contribution to the gap
+		// matches its share of the portfolio allocation. Net amounts sum
+		// to monthlyGap. Gross amounts may exceed net (Tax-Deferred
+		// grosses up for ordinary-income tax).
+		pTD, pTX, pR := withdrawalMixShares(s)
+		result.NetWithdrawalTaxDeferred = monthlyGap * pTD
+		result.NetWithdrawalTaxable = monthlyGap * pTX
+		result.NetWithdrawalRoth = monthlyGap * pR
 
-		// Tax-deferred: simulate adding the gap to RMD (ordinary-income withdrawal).
-		tdSnap := estimateTaxSnapshot(0, taxableCashFlow, monthlyRMD+monthlyGap, rothConversionThisMonth, &currentIRMALookbackMAGI)
-		extraTax := tdSnap.MonthlyTax - currentSnapshot.MonthlyTax
-		marginal := extraTax / monthlyGap
-		if marginal < 0 {
-			marginal = 0
+		// Roth: no tax, gross = net.
+		result.GrossWithdrawalRoth = result.NetWithdrawalRoth
+
+		// Tax-deferred: simulate adding the TD-share to RMD (ordinary-income).
+		if result.NetWithdrawalTaxDeferred > 0 {
+			tdSnap := estimateTaxSnapshot(0, taxableCashFlow, monthlyRMD+result.NetWithdrawalTaxDeferred, rothConversionThisMonth, &currentIRMALookbackMAGI)
+			extraTax := tdSnap.MonthlyTax - currentSnapshot.MonthlyTax
+			marginal := extraTax / result.NetWithdrawalTaxDeferred
+			if marginal < 0 {
+				marginal = 0
+			}
+			if marginal > 0.95 {
+				marginal = 0.95
+			}
+			result.MarginalRateTaxDeferred = marginal * 100
+			result.GrossWithdrawalTaxDeferred = result.NetWithdrawalTaxDeferred / (1 - marginal)
 		}
-		if marginal > 0.95 {
-			marginal = 0.95
-		}
-		result.MarginalRateTaxDeferred = marginal * 100
-		result.GrossWithdrawalTaxDeferred = monthlyGap / (1 - marginal)
 
 		// Taxable: at month 0 cost basis ≈ market value (engine initializes
 		// CostBasis = MarketValue), so an additional sale incurs no LTCG.
 		result.EffectiveRateTaxable = 0
-		result.GrossWithdrawalTaxable = monthlyGap
+		result.GrossWithdrawalTaxable = result.NetWithdrawalTaxable
 	}
 	if currentSnapshot.MonthlyIRMAA > 0 {
 		result.ExpenseBreakdown = append(result.ExpenseBreakdown, models.ExpenseBreakdownItem{
@@ -239,9 +251,12 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 	minSteadyStateMonth := engine.FindSteadyStateMonth(in.Hooks, s)
 	minSteadyStateYear := float64(minSteadyStateMonth) / 12
 
-	// Use override year if set and >= minimum, otherwise use auto-calculated
+	// Override always wins when non-negative. The slider posts its current
+	// value (0..ProjectionYears) and the user expects to view exactly that
+	// year — including year 0 (Current values) and years below the
+	// auto-calculated steady-state when income is still ramping in.
 	steadyStateYear := minSteadyStateYear
-	if s.SteadyStateOverrideYear > 0 && s.SteadyStateOverrideYear >= minSteadyStateYear {
+	if s.SteadyStateOverrideYear >= 0 {
 		steadyStateYear = s.SteadyStateOverrideYear
 	}
 	steadyStateMonth := int(steadyStateYear * 12)
@@ -319,41 +334,52 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		// Calculate steady state gap
 		result.SteadyStateGap = result.SteadyStateExpenses - result.SteadyStateNetIncome
 
-		// Gross withdrawal mirrors at steady state (only when gap > 0).
+		// Suggested withdrawal mix at steady state (only when gap > 0).
+		// Proportional split across allocation; net amounts sum to gap.
 		if result.SteadyStateGap > 0 {
-			result.SteadyStateGrossWithdrawalRoth = result.SteadyStateGap
+			pTDss, pTXss, pRss := withdrawalMixShares(s)
+			result.SteadyStateNetWithdrawalTaxDeferred = result.SteadyStateGap * pTDss
+			result.SteadyStateNetWithdrawalTaxable = result.SteadyStateGap * pTXss
+			result.SteadyStateNetWithdrawalRoth = result.SteadyStateGap * pRss
 
-			// Tax-deferred: simulate extra ordinary withdrawal at steady state.
-			tdSnapSS := estimateTaxSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, result.SteadyStateRMD+result.SteadyStateGap, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
-			extraTaxSS := tdSnapSS.MonthlyTax - steadyStateSnapshot.MonthlyTax
-			marginalSS := extraTaxSS / result.SteadyStateGap
-			if marginalSS < 0 {
-				marginalSS = 0
-			}
-			if marginalSS > 0.95 {
-				marginalSS = 0.95
-			}
-			result.SteadyStateMarginalRateTaxDeferred = marginalSS * 100
-			result.SteadyStateGrossWithdrawalTaxDeferred = result.SteadyStateGap / (1 - marginalSS)
+			// Roth: no tax, gross = net.
+			result.SteadyStateGrossWithdrawalRoth = result.SteadyStateNetWithdrawalRoth
 
-			// Taxable: gain fraction grows with time (smooth approximation 1 - (1+r)^-years).
-			gainFractionSS := 1.0 - math.Pow(1.0+taxableAnnualReturn/100.0, -yearsToSteadyState)
-			if gainFractionSS < 0 {
-				gainFractionSS = 0
+			// Tax-deferred: simulate extra ordinary withdrawal at steady state for the TD share.
+			if result.SteadyStateNetWithdrawalTaxDeferred > 0 {
+				tdSnapSS := estimateTaxSnapshot(steadyStateMonth, steadyStateTaxableCashFlow, result.SteadyStateRMD+result.SteadyStateNetWithdrawalTaxDeferred, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
+				extraTaxSS := tdSnapSS.MonthlyTax - steadyStateSnapshot.MonthlyTax
+				marginalSS := extraTaxSS / result.SteadyStateNetWithdrawalTaxDeferred
+				if marginalSS < 0 {
+					marginalSS = 0
+				}
+				if marginalSS > 0.95 {
+					marginalSS = 0.95
+				}
+				result.SteadyStateMarginalRateTaxDeferred = marginalSS * 100
+				result.SteadyStateGrossWithdrawalTaxDeferred = result.SteadyStateNetWithdrawalTaxDeferred / (1 - marginalSS)
 			}
-			taxableExtraSS := steadyStateTaxableCashFlow
-			taxableExtraSS.CapitalGainsDistributions += result.SteadyStateGap * gainFractionSS
-			txSnapSS := estimateTaxSnapshot(steadyStateMonth, taxableExtraSS, result.SteadyStateRMD, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
-			txExtraTaxSS := txSnapSS.MonthlyTax - steadyStateSnapshot.MonthlyTax
-			txEffectiveSS := txExtraTaxSS / result.SteadyStateGap
-			if txEffectiveSS < 0 {
-				txEffectiveSS = 0
+
+			// Taxable: gain fraction grows with time; gross-up the TX share.
+			if result.SteadyStateNetWithdrawalTaxable > 0 {
+				gainFractionSS := 1.0 - math.Pow(1.0+taxableAnnualReturn/100.0, -yearsToSteadyState)
+				if gainFractionSS < 0 {
+					gainFractionSS = 0
+				}
+				taxableExtraSS := steadyStateTaxableCashFlow
+				taxableExtraSS.CapitalGainsDistributions += result.SteadyStateNetWithdrawalTaxable * gainFractionSS
+				txSnapSS := estimateTaxSnapshot(steadyStateMonth, taxableExtraSS, result.SteadyStateRMD, steadyStateRothConversion, steadyStateIRMALookbackMAGI)
+				txExtraTaxSS := txSnapSS.MonthlyTax - steadyStateSnapshot.MonthlyTax
+				txEffectiveSS := txExtraTaxSS / result.SteadyStateNetWithdrawalTaxable
+				if txEffectiveSS < 0 {
+					txEffectiveSS = 0
+				}
+				if txEffectiveSS > 0.95 {
+					txEffectiveSS = 0.95
+				}
+				result.SteadyStateEffectiveRateTaxable = txEffectiveSS * 100
+				result.SteadyStateGrossWithdrawalTaxable = result.SteadyStateNetWithdrawalTaxable / (1 - txEffectiveSS)
 			}
-			if txEffectiveSS > 0.95 {
-				txEffectiveSS = 0.95
-			}
-			result.SteadyStateEffectiveRateTaxable = txEffectiveSS * 100
-			result.SteadyStateGrossWithdrawalTaxable = result.SteadyStateGap / (1 - txEffectiveSS)
 		}
 
 		// Calculate steady state withdrawal rate
@@ -363,7 +389,46 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 			estimatedPortfolio := s.PortfolioValue * math.Pow(1+effectiveReturn/100, yearsToSteadyState)
 			result.SteadyStateRate = (result.SteadyStateGap * 12 / estimatedPortfolio) * 100
 		}
+	} else {
+		// At year 0 the steady-state panel mirrors the Current (Today)
+		// values so the slider can slide back to 0 and still show real
+		// numbers rather than a column of zeros.
+		result.SteadyStateExpenses = result.MonthlyExpenses
+		result.SteadyStateIncome = result.MonthlyIncome
+		result.SteadyStateGrossIncome = result.GrossIncome
+		result.SteadyStateNetIncome = result.NetIncome
+		result.SteadyStateTaxes = result.MonthlyTaxes
+		result.SteadyStateStateTax = result.MonthlyStateTax
+		result.SteadyStateNIIT = result.MonthlyNIIT
+		result.SteadyStateIRMAA = result.MonthlyIRMAA
+		result.SteadyStateTaxableSocialSecurityPct = result.TaxableSocialSecurityPct
+		result.SteadyStateRMD = result.MonthlyRMD
+		result.SteadyStateGap = result.MonthlyGap
+		result.SteadyStateRate = result.RequiredRate
+		result.SteadyStateGrossWithdrawalTaxDeferred = result.GrossWithdrawalTaxDeferred
+		result.SteadyStateNetWithdrawalTaxDeferred = result.NetWithdrawalTaxDeferred
+		result.SteadyStateMarginalRateTaxDeferred = result.MarginalRateTaxDeferred
+		result.SteadyStateGrossWithdrawalTaxable = result.GrossWithdrawalTaxable
+		result.SteadyStateNetWithdrawalTaxable = result.NetWithdrawalTaxable
+		result.SteadyStateEffectiveRateTaxable = result.EffectiveRateTaxable
+		result.SteadyStateGrossWithdrawalRoth = result.GrossWithdrawalRoth
+		result.SteadyStateNetWithdrawalRoth = result.NetWithdrawalRoth
 	}
 
 	return result
+}
+
+// withdrawalMixShares returns the proportional split of a gap-closing
+// withdrawal across (tax-deferred, taxable, Roth) buckets, derived from
+// the user's portfolio allocation. The three values sum to 1. When the
+// declared allocation totals more than 100% (e.g. mis-configured
+// settings) the taxable share is clamped to zero.
+func withdrawalMixShares(s *models.WhatIfSettings) (pTD, pTX, pR float64) {
+	pTD = s.TaxDeferredPercent / 100
+	pR = s.RothPercent / 100
+	pTX = 1 - pTD - pR
+	if pTX < 0 {
+		pTX = 0
+	}
+	return pTD, pTX, pR
 }

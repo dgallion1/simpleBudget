@@ -1619,6 +1619,7 @@ func TestCalculateBudgetFit_SteadyStateRMD(t *testing.T) {
 		{ID: "1", Name: "SS", Amount: 2000, StartMonth: 96},
 	}
 	s.InvestmentReturn = 6.0
+	s.SteadyStateOverrideYear = 8 // view at year 8 (age 73, when RMD applies)
 
 	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()
@@ -2087,6 +2088,7 @@ func TestCalculateBudgetFit_IncomeSourceFutureStart(t *testing.T) {
 		{ID: "1", Name: "Pension", Amount: 3000, StartMonth: 0},
 		{ID: "2", Name: "Social Security", Amount: 2500, StartMonth: 24},
 	}
+	s.SteadyStateOverrideYear = 2 // view at year 2 (when SS has started)
 
 	c := newTestCalc(t, s)
 	bf := c.CalculateBudgetFit()

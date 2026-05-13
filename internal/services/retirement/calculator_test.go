@@ -1147,11 +1147,11 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 		if !result.HasSteadyState {
 			t.Error("expected HasSteadyState=true with delayed income")
 		}
-		if result.SteadyStateMonth != 24 {
-			t.Errorf("expected SteadyStateMonth=24, got %d", result.SteadyStateMonth)
-		}
-		if result.SteadyStateYear != 2.0 {
-			t.Errorf("expected SteadyStateYear=2.0, got %f", result.SteadyStateYear)
+		// Auto-detection: MinSteadyStateYear reflects the latest income start.
+		// The slider/override now controls SteadyStateYear directly, so we
+		// assert on the auto-detected minimum, not the displayed year.
+		if result.MinSteadyStateYear != 2.0 {
+			t.Errorf("expected MinSteadyStateYear=2.0, got %f", result.MinSteadyStateYear)
 		}
 	})
 
@@ -1163,6 +1163,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 			{Name: "Pension", Amount: 1000, StartMonth: 0},
 			{Name: "Social Security", Amount: 2000, StartMonth: 24},
 		}
+		settings.SteadyStateOverrideYear = 2 // view at year 2 (when SS has started)
 		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
@@ -1186,6 +1187,7 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 			{Name: "Pension", Amount: 1000, StartMonth: 0},
 			{Name: "Social Security", Amount: 2500, StartMonth: 24},
 		}
+		settings.SteadyStateOverrideYear = 2 // view at year 2 (when SS has started)
 		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
@@ -1209,8 +1211,57 @@ func TestSteadyStateBudgetFit(t *testing.T) {
 		calc := newTestCalc(t, settings)
 		result := calc.CalculateBudgetFit()
 
-		if result.SteadyStateMonth != 60 {
-			t.Errorf("expected SteadyStateMonth=60 (latest income start), got %d", result.SteadyStateMonth)
+		// Auto-detection should still pick up month 60 (year 5).
+		if result.MinSteadyStateYear != 5.0 {
+			t.Errorf("expected MinSteadyStateYear=5.0 (latest income start), got %f", result.MinSteadyStateYear)
+		}
+	})
+
+	// At year 0 (override=0 with all income immediate), the steady-state
+	// panel should mirror the Current (Today) values so the slider can
+	// slide back to year 0 and the user sees real numbers there.
+	t.Run("override=0 mirrors current values when min steady state is 0", func(t *testing.T) {
+		settings := models.DefaultWhatIfSettings()
+		settings.PortfolioValue = 1000000
+		settings.MonthlyLivingExpenses = 4000
+		settings.InflationRate = 0
+		settings.IncomeSources = []models.IncomeSource{
+			{Name: "Pension", Amount: 2000, StartMonth: 0},
+		}
+		// User previously slid forward then slid back to year 0.
+		settings.SteadyStateOverrideYear = 0
+
+		calc := newTestCalc(t, settings)
+		result := calc.CalculateBudgetFit()
+
+		if result.MinSteadyStateYear != 0 {
+			t.Fatalf("precondition: expected MinSteadyStateYear=0, got %f", result.MinSteadyStateYear)
+		}
+		if result.SteadyStateMonth != 0 {
+			t.Fatalf("expected SteadyStateMonth=0, got %d", result.SteadyStateMonth)
+		}
+		if result.MonthlyExpenses <= 0 {
+			t.Fatalf("precondition: expected positive current MonthlyExpenses, got %f", result.MonthlyExpenses)
+		}
+
+		if result.SteadyStateExpenses != result.MonthlyExpenses {
+			t.Errorf("SteadyStateExpenses: want %f (mirror MonthlyExpenses), got %f",
+				result.MonthlyExpenses, result.SteadyStateExpenses)
+		}
+		if result.SteadyStateIncome != result.MonthlyIncome {
+			t.Errorf("SteadyStateIncome: want %f, got %f", result.MonthlyIncome, result.SteadyStateIncome)
+		}
+		if result.SteadyStateGap != result.MonthlyGap {
+			t.Errorf("SteadyStateGap: want %f, got %f", result.MonthlyGap, result.SteadyStateGap)
+		}
+		if result.SteadyStateRMD != result.MonthlyRMD {
+			t.Errorf("SteadyStateRMD: want %f, got %f", result.MonthlyRMD, result.SteadyStateRMD)
+		}
+		if result.SteadyStateTaxes != result.MonthlyTaxes {
+			t.Errorf("SteadyStateTaxes: want %f, got %f", result.MonthlyTaxes, result.SteadyStateTaxes)
+		}
+		if result.SteadyStateRate != result.RequiredRate {
+			t.Errorf("SteadyStateRate: want %f, got %f", result.RequiredRate, result.SteadyStateRate)
 		}
 	})
 }

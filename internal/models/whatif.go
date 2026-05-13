@@ -882,6 +882,14 @@ type BudgetFitAnalysis struct {
 	AnnualGap                float64 `json:"annual_gap"`
 	RequiredRate             float64 `json:"required_rate"` // Rate needed to cover gap
 
+	// Gross withdrawal needed to net MonthlyGap by funding source.
+	// All zero when MonthlyGap <= 0.
+	GrossWithdrawalTaxDeferred float64 `json:"gross_withdrawal_tax_deferred,omitempty"`
+	MarginalRateTaxDeferred    float64 `json:"marginal_rate_tax_deferred,omitempty"` // % 0-100
+	GrossWithdrawalTaxable     float64 `json:"gross_withdrawal_taxable,omitempty"`
+	EffectiveRateTaxable       float64 `json:"effective_rate_taxable,omitempty"` // % 0-100
+	GrossWithdrawalRoth        float64 `json:"gross_withdrawal_roth,omitempty"`
+
 	// Breakdowns for transparency
 	ExpenseBreakdown []ExpenseBreakdownItem `json:"expense_breakdown,omitempty"`
 	IncomeBreakdown  []ExpenseBreakdownItem `json:"income_breakdown,omitempty"` // reuses same struct
@@ -907,6 +915,15 @@ type BudgetFitAnalysis struct {
 	SteadyStateRMD                      float64 `json:"steady_state_rmd"`  // RMD at steady state (if applicable)
 	SteadyStateGap                      float64 `json:"steady_state_gap"`  // Gap at steady state
 	SteadyStateRate                     float64 `json:"steady_state_rate"` // Required withdrawal rate at steady state
+
+	// Gross withdrawal needed to net SteadyStateGap by funding source.
+	// All zero when SteadyStateGap <= 0.
+	SteadyStateGrossWithdrawalTaxDeferred float64 `json:"steady_state_gross_withdrawal_tax_deferred,omitempty"`
+	SteadyStateMarginalRateTaxDeferred    float64 `json:"steady_state_marginal_rate_tax_deferred,omitempty"`
+	SteadyStateGrossWithdrawalTaxable     float64 `json:"steady_state_gross_withdrawal_taxable,omitempty"`
+	SteadyStateEffectiveRateTaxable       float64 `json:"steady_state_effective_rate_taxable,omitempty"`
+	SteadyStateGrossWithdrawalRoth        float64 `json:"steady_state_gross_withdrawal_roth,omitempty"`
+
 	HasSteadyState                      bool    `json:"has_steady_state"`  // True if steady state differs from current
 }
 

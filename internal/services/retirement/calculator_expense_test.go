@@ -511,7 +511,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 	t.Run("steady-state gross withdrawal mirrors compute", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 1_000_000
-		s.MonthlyLivingExpenses = 5000
+		s.MonthlyLivingExpenses = 12000
 		s.MonthlyHealthcare = 0
 		s.HealthcarePersons = nil
 		s.ExpenseSources = nil
@@ -525,8 +525,8 @@ func TestCalculateBudgetFit(t *testing.T) {
 		s.TaxDeferredPercent = 50
 		s.RothPercent = 0
 		s.SpendingPhaseConfig = nil
-		s.InvestmentReturn = 7
-		s.SteadyStateOverrideYear = 20
+		s.InvestmentReturn = 5
+		s.SteadyStateOverrideYear = 15
 
 		calc := newTestCalc(t, s)
 		fit := calc.CalculateBudgetFit()
@@ -535,7 +535,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 			t.Fatalf("precondition: HasSteadyState should be true")
 		}
 		if fit.SteadyStateGap <= 0 {
-			t.Skipf("steady-state surplus scenario (gap=%.2f); skipping gross-up assertions", fit.SteadyStateGap)
+			t.Fatalf("precondition: expected positive steady-state gap, got %.2f", fit.SteadyStateGap)
 		}
 		// Roth mirror always equals gap.
 		if math.Abs(fit.SteadyStateGrossWithdrawalRoth-fit.SteadyStateGap) > 0.01 {
@@ -551,9 +551,9 @@ func TestCalculateBudgetFit(t *testing.T) {
 			t.Errorf("SteadyStateMarginalRateTaxDeferred: want > 0, got %.2f",
 				fit.SteadyStateMarginalRateTaxDeferred)
 		}
-		// Taxable mirror: gross > gap (year 20 has built-up gains).
+		// Taxable mirror: gross > gap (built-up gains).
 		if fit.SteadyStateGrossWithdrawalTaxable <= fit.SteadyStateGap {
-			t.Errorf("SteadyStateGrossWithdrawalTaxable (%.2f) should exceed gap (%.2f) at year 20",
+			t.Errorf("SteadyStateGrossWithdrawalTaxable (%.2f) should exceed gap (%.2f) at steady state",
 				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGap)
 		}
 		// Taxable should be cheaper than tax-deferred (LTCG vs. ordinary).

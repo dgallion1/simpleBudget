@@ -371,6 +371,43 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
+	t.Run("gross withdrawal fields zero on surplus", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 3000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "ss", Name: "Social Security", Amount: 4000, StartMonth: 0},
+		}
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap > 0 {
+			t.Fatalf("precondition: expected surplus, got gap %.2f", fit.MonthlyGap)
+		}
+		if fit.GrossWithdrawalTaxDeferred != 0 {
+			t.Errorf("GrossWithdrawalTaxDeferred: want 0 on surplus, got %.2f", fit.GrossWithdrawalTaxDeferred)
+		}
+		if fit.GrossWithdrawalTaxable != 0 {
+			t.Errorf("GrossWithdrawalTaxable: want 0 on surplus, got %.2f", fit.GrossWithdrawalTaxable)
+		}
+		if fit.GrossWithdrawalRoth != 0 {
+			t.Errorf("GrossWithdrawalRoth: want 0 on surplus, got %.2f", fit.GrossWithdrawalRoth)
+		}
+		if fit.MarginalRateTaxDeferred != 0 {
+			t.Errorf("MarginalRateTaxDeferred: want 0 on surplus, got %.2f", fit.MarginalRateTaxDeferred)
+		}
+	})
+
 	t.Run("expense breakdown items populated", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 500_000

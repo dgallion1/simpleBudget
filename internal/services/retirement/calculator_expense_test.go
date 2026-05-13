@@ -371,6 +371,204 @@ func TestCalculateBudgetFit(t *testing.T) {
 		}
 	})
 
+	t.Run("gross withdrawal fields zero on surplus", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 3000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "ss", Name: "Social Security", Amount: 4000, StartMonth: 0},
+		}
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap > 0 {
+			t.Fatalf("precondition: expected surplus, got gap %.2f", fit.MonthlyGap)
+		}
+		if fit.GrossWithdrawalTaxDeferred != 0 {
+			t.Errorf("GrossWithdrawalTaxDeferred: want 0 on surplus, got %.2f", fit.GrossWithdrawalTaxDeferred)
+		}
+		if fit.GrossWithdrawalTaxable != 0 {
+			t.Errorf("GrossWithdrawalTaxable: want 0 on surplus, got %.2f", fit.GrossWithdrawalTaxable)
+		}
+		if fit.GrossWithdrawalRoth != 0 {
+			t.Errorf("GrossWithdrawalRoth: want 0 on surplus, got %.2f", fit.GrossWithdrawalRoth)
+		}
+		if fit.MarginalRateTaxDeferred != 0 {
+			t.Errorf("MarginalRateTaxDeferred: want 0 on surplus, got %.2f", fit.MarginalRateTaxDeferred)
+		}
+	})
+
+	t.Run("roth gross withdrawal equals gap", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 100
+		s.SpendingPhaseConfig = nil
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if math.Abs(fit.GrossWithdrawalRoth-fit.MonthlyGap) > 0.01 {
+			t.Errorf("GrossWithdrawalRoth: want %.2f (= gap), got %.2f", fit.MonthlyGap, fit.GrossWithdrawalRoth)
+		}
+	})
+
+	t.Run("tax-deferred gross withdrawal grosses up by marginal rate", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		// Some baseline ordinary income so simulated extra withdrawal lands
+		// in the 22% federal bracket (single filer, ~$50k-$100k AGI).
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "pension", Name: "Pension", Amount: 4000, StartMonth: 0},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 100
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		if s.TaxConfig == nil {
+			s.TaxConfig = models.DefaultTaxConfig()
+		}
+		s.TaxConfig.FilingStatus = models.FilingSingle
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if fit.MarginalRateTaxDeferred <= 10 || fit.MarginalRateTaxDeferred >= 35 {
+			t.Errorf("MarginalRateTaxDeferred: want between 10%% and 35%%, got %.2f", fit.MarginalRateTaxDeferred)
+		}
+		expectedGross := fit.MonthlyGap / (1 - fit.MarginalRateTaxDeferred/100)
+		if math.Abs(fit.GrossWithdrawalTaxDeferred-expectedGross) > 0.50 {
+			t.Errorf("GrossWithdrawalTaxDeferred: want %.2f (=gap/(1-rate)), got %.2f",
+				expectedGross, fit.GrossWithdrawalTaxDeferred)
+		}
+		if fit.GrossWithdrawalTaxDeferred <= fit.MonthlyGap {
+			t.Errorf("GrossWithdrawalTaxDeferred (%.2f) must exceed gap (%.2f)",
+				fit.GrossWithdrawalTaxDeferred, fit.MonthlyGap)
+		}
+	})
+
+	t.Run("taxable gross withdrawal equals gap at year zero", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 5000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		// At month 0, cost basis equals market value → gain fraction ~0 → gross ≈ gap.
+		if math.Abs(fit.GrossWithdrawalTaxable-fit.MonthlyGap) > 0.50 {
+			t.Errorf("GrossWithdrawalTaxable at year 0: want ~%.2f (= gap, basis = market), got %.2f",
+				fit.MonthlyGap, fit.GrossWithdrawalTaxable)
+		}
+		if fit.EffectiveRateTaxable > 1.0 {
+			t.Errorf("EffectiveRateTaxable at year 0: want ~0, got %.2f", fit.EffectiveRateTaxable)
+		}
+	})
+
+	t.Run("steady-state gross withdrawal mirrors compute", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_000_000
+		s.MonthlyLivingExpenses = 12000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = []models.IncomeSource{
+			// Delayed income so steady-state year > 0
+			{ID: "ss", Name: "Social Security", Amount: 2000, StartMonth: 60},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 50
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.InvestmentReturn = 5
+		s.SteadyStateOverrideYear = 15
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if !fit.HasSteadyState {
+			t.Fatalf("precondition: HasSteadyState should be true")
+		}
+		if fit.SteadyStateGap <= 0 {
+			t.Fatalf("precondition: expected positive steady-state gap, got %.2f", fit.SteadyStateGap)
+		}
+		// Roth mirror always equals gap.
+		if math.Abs(fit.SteadyStateGrossWithdrawalRoth-fit.SteadyStateGap) > 0.01 {
+			t.Errorf("SteadyStateGrossWithdrawalRoth: want %.2f, got %.2f",
+				fit.SteadyStateGap, fit.SteadyStateGrossWithdrawalRoth)
+		}
+		// Tax-deferred mirror: gross > gap, marginal > 0.
+		if fit.SteadyStateGrossWithdrawalTaxDeferred <= fit.SteadyStateGap {
+			t.Errorf("SteadyStateGrossWithdrawalTaxDeferred (%.2f) must exceed gap (%.2f)",
+				fit.SteadyStateGrossWithdrawalTaxDeferred, fit.SteadyStateGap)
+		}
+		if fit.SteadyStateMarginalRateTaxDeferred <= 0 {
+			t.Errorf("SteadyStateMarginalRateTaxDeferred: want > 0, got %.2f",
+				fit.SteadyStateMarginalRateTaxDeferred)
+		}
+		// Taxable mirror: gross > gap (built-up gains).
+		if fit.SteadyStateGrossWithdrawalTaxable <= fit.SteadyStateGap {
+			t.Errorf("SteadyStateGrossWithdrawalTaxable (%.2f) should exceed gap (%.2f) at steady state",
+				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGap)
+		}
+		// Taxable should be cheaper than tax-deferred (LTCG vs. ordinary).
+		if fit.SteadyStateGrossWithdrawalTaxable >= fit.SteadyStateGrossWithdrawalTaxDeferred {
+			t.Errorf("Taxable (%.2f) should be cheaper than tax-deferred (%.2f)",
+				fit.SteadyStateGrossWithdrawalTaxable, fit.SteadyStateGrossWithdrawalTaxDeferred)
+		}
+		// At year 15 with 5% taxable return, gainFraction = 1 - (1.05)^-15 ≈ 0.519.
+		// LTCG at 15% on 52% gain fraction implies EffectiveRateTaxable ≈ 7-9%.
+		if fit.SteadyStateEffectiveRateTaxable < 3 || fit.SteadyStateEffectiveRateTaxable > 15 {
+			t.Errorf("SteadyStateEffectiveRateTaxable: want in [3, 15] for year 15 / 5%% scenario, got %.2f",
+				fit.SteadyStateEffectiveRateTaxable)
+		}
+	})
+
 	t.Run("expense breakdown items populated", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.PortfolioValue = 500_000

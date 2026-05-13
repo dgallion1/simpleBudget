@@ -127,6 +127,37 @@
                 <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
             </div>
         </div>
+            {{if gt .Analysis.BudgetFit.MonthlyGap 0.0}}
+            <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-2">Gross Withdrawal Needed to Close Gap</p>
+                <div class="text-sm space-y-1">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 dark:text-gray-400">From Tax-Deferred</span>
+                        <span>
+                            <span class="text-red-600 dark:text-red-400 font-medium">{{formatMoney .Analysis.BudgetFit.GrossWithdrawalTaxDeferred}}/mo</span>
+                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f%%" .Analysis.BudgetFit.MarginalRateTaxDeferred}} marginal)</span>
+                        </span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 dark:text-gray-400">From Taxable</span>
+                        <span>
+                            <span class="text-amber-600 dark:text-amber-400 font-medium">{{formatMoney .Analysis.BudgetFit.GrossWithdrawalTaxable}}/mo</span>
+                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(~{{printf "%.0f%%" .Analysis.BudgetFit.EffectiveRateTaxable}} LTCG-equiv)</span>
+                        </span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 dark:text-gray-400">From Roth</span>
+                        <span>
+                            <span class="text-green-600 dark:text-green-400 font-medium">{{formatMoney .Analysis.BudgetFit.GrossWithdrawalRoth}}/mo</span>
+                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(no tax)</span>
+                        </span>
+                    </div>
+                </div>
+                <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
+                    Tax-deferred grosses up to cover income tax. Taxable applies LTCG on the gain portion of the sale. Roth is a 1:1 withdrawal. A larger gross withdrawal depletes the account faster than the gap suggests.
+                </p>
+            </div>
+            {{end}}
     </div>
 
     {{if .Analysis.BudgetFit.HasSteadyState}}
@@ -234,6 +265,37 @@
     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center italic">
         Surplus is driven by your mandatory RMD exceeding spending. After-tax excess is reinvested into your taxable account, extending portfolio life (already shown in the projection chart).
     </p>
+    {{end}}
+    {{if gt .Analysis.BudgetFit.SteadyStateGap 0.0}}
+    <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+        <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-2">Gross Withdrawal Needed to Close Gap</p>
+        <div class="text-sm space-y-1">
+            <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">From Tax-Deferred</span>
+                <span>
+                    <span class="text-red-600 dark:text-red-400 font-medium">{{formatMoney .Analysis.BudgetFit.SteadyStateGrossWithdrawalTaxDeferred}}/mo</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateMarginalRateTaxDeferred}} marginal)</span>
+                </span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">From Taxable</span>
+                <span>
+                    <span class="text-amber-600 dark:text-amber-400 font-medium">{{formatMoney .Analysis.BudgetFit.SteadyStateGrossWithdrawalTaxable}}/mo</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(~{{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateEffectiveRateTaxable}} LTCG-equiv)</span>
+                </span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">From Roth</span>
+                <span>
+                    <span class="text-green-600 dark:text-green-400 font-medium">{{formatMoney .Analysis.BudgetFit.SteadyStateGrossWithdrawalRoth}}/mo</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(no tax)</span>
+                </span>
+            </div>
+        </div>
+        <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
+            Tax-deferred grosses up to cover income tax. Taxable applies LTCG on the gain portion of the sale. Roth is a 1:1 withdrawal. A larger gross withdrawal depletes the account faster than the gap suggests.
+        </p>
+    </div>
     {{end}}
 </div>
 {{end}}

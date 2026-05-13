@@ -882,6 +882,14 @@ type BudgetFitAnalysis struct {
 	AnnualGap                float64 `json:"annual_gap"`
 	RequiredRate             float64 `json:"required_rate"` // Rate needed to cover gap
 
+	// Gross withdrawal needed to net MonthlyGap by funding source.
+	// All zero when MonthlyGap <= 0.
+	GrossWithdrawalTaxDeferred float64 `json:"gross_withdrawal_tax_deferred,omitempty"`
+	MarginalRateTaxDeferred    float64 `json:"marginal_rate_tax_deferred,omitempty"` // % 0-100
+	GrossWithdrawalTaxable     float64 `json:"gross_withdrawal_taxable,omitempty"`
+	EffectiveRateTaxable       float64 `json:"effective_rate_taxable,omitempty"` // % 0-100
+	GrossWithdrawalRoth        float64 `json:"gross_withdrawal_roth,omitempty"`
+
 	// Breakdowns for transparency
 	ExpenseBreakdown []ExpenseBreakdownItem `json:"expense_breakdown,omitempty"`
 	IncomeBreakdown  []ExpenseBreakdownItem `json:"income_breakdown,omitempty"` // reuses same struct
@@ -907,7 +915,16 @@ type BudgetFitAnalysis struct {
 	SteadyStateRMD                      float64 `json:"steady_state_rmd"`  // RMD at steady state (if applicable)
 	SteadyStateGap                      float64 `json:"steady_state_gap"`  // Gap at steady state
 	SteadyStateRate                     float64 `json:"steady_state_rate"` // Required withdrawal rate at steady state
-	HasSteadyState                      bool    `json:"has_steady_state"`  // True if steady state differs from current
+
+	// Gross withdrawal needed to net SteadyStateGap by funding source.
+	// All zero when SteadyStateGap <= 0.
+	SteadyStateGrossWithdrawalTaxDeferred float64 `json:"steady_state_gross_withdrawal_tax_deferred,omitempty"`
+	SteadyStateMarginalRateTaxDeferred    float64 `json:"steady_state_marginal_rate_tax_deferred,omitempty"`
+	SteadyStateGrossWithdrawalTaxable     float64 `json:"steady_state_gross_withdrawal_taxable,omitempty"`
+	SteadyStateEffectiveRateTaxable       float64 `json:"steady_state_effective_rate_taxable,omitempty"`
+	SteadyStateGrossWithdrawalRoth        float64 `json:"steady_state_gross_withdrawal_roth,omitempty"`
+
+	HasSteadyState bool `json:"has_steady_state"` // True if steady state differs from current
 }
 
 // RMDProjection represents RMD estimates for a specific year
@@ -930,9 +947,9 @@ type RMDAnalysis struct {
 	TotalRMDsOver10Yr float64         `json:"total_rmds_10yr"`    // Sum of first 10 years of RMDs
 
 	// F-072: depletion context driven by the actual projection.
-	DepletionYear     *int `json:"depletion_year,omitempty"`     // year index of portfolio depletion; nil if survives
-	DepletionAge      *int `json:"depletion_age,omitempty"`      // older-person age at depletion year
-	DepletedBeforeRMD bool `json:"depleted_before_rmd"`          // true when depletion precedes the first RMD year
+	DepletionYear     *int `json:"depletion_year,omitempty"` // year index of portfolio depletion; nil if survives
+	DepletionAge      *int `json:"depletion_age,omitempty"`  // older-person age at depletion year
+	DepletedBeforeRMD bool `json:"depleted_before_rmd"`      // true when depletion precedes the first RMD year
 }
 
 // PresentValueAnalysis shows PV of expenses vs income
@@ -1339,7 +1356,7 @@ type TaxOptimizerCandidate struct {
 	TotalRothConverted  float64 `json:"total_roth_converted"`
 
 	// Monte Carlo refinement; zero-valued for non-top-5 entries.
-	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"`   // 0–100 percent (matches MonteCarloAnalysis.Stats.SuccessRate)
+	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"` // 0–100 percent (matches MonteCarloAnalysis.Stats.SuccessRate)
 	MCMedianEndingReal float64 `json:"mc_median_ending_real,omitempty"`
 
 	// PerYearConversions is the year-by-year conversion plan implied by
@@ -1361,8 +1378,8 @@ type TaxOptimizerAnalysis struct {
 	Best     TaxOptimizerCandidate   `json:"best"`     // top-ranked finalist after MC tiebreak
 	Top      []TaxOptimizerCandidate `json:"top"`      // up to taxOptimizerTopFinalists entries; Best at index 0
 
-	MonteCarloRuns   int `json:"monte_carlo_runs"`   // MC budget per top-5 candidate; 0 before refinement
-	CandidatesScored int `json:"candidates_scored"`  // total deterministic projections run
+	MonteCarloRuns   int `json:"monte_carlo_runs"`  // MC budget per top-5 candidate; 0 before refinement
+	CandidatesScored int `json:"candidates_scored"` // total deterministic projections run
 }
 
 // WhatIfAnalysis is the complete analysis container returned to templates
@@ -1446,5 +1463,5 @@ type WhatIfPageData struct {
 	// Findings holds []completeness.Finding but is typed interface{} to avoid
 	// an import cycle (models → completeness → models). When the Finding type
 	// moves to models/ or a shared types package (Phase-2), retype this field.
-	Findings  interface{}     `json:"findings,omitempty"`
+	Findings interface{} `json:"findings,omitempty"`
 }

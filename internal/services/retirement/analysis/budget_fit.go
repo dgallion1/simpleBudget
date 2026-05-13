@@ -208,6 +208,19 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 	}
 	if monthlyGap > 0 {
 		result.GrossWithdrawalRoth = monthlyGap
+
+		// Tax-deferred: simulate adding the gap to RMD (ordinary-income withdrawal).
+		tdSnap := estimateTaxSnapshot(0, taxableCashFlow, monthlyRMD+monthlyGap, rothConversionThisMonth, &currentIRMALookbackMAGI)
+		extraTax := tdSnap.MonthlyTax - currentSnapshot.MonthlyTax
+		marginal := extraTax / monthlyGap
+		if marginal < 0 {
+			marginal = 0
+		}
+		if marginal > 0.95 {
+			marginal = 0.95
+		}
+		result.MarginalRateTaxDeferred = marginal * 100
+		result.GrossWithdrawalTaxDeferred = monthlyGap / (1 - marginal)
 	}
 	if currentSnapshot.MonthlyIRMAA > 0 {
 		result.ExpenseBreakdown = append(result.ExpenseBreakdown, models.ExpenseBreakdownItem{

@@ -17,7 +17,10 @@ function getThemeColors() {
     return {
         text: dark ? '#e5e7eb' : '#374151',
         gridColor: dark ? '#374151' : '#e5e7eb',
-        backgroundColor: 'transparent'
+        backgroundColor: 'transparent',
+        hoverBg: dark ? '#1f2937' : '#ffffff',
+        hoverBorder: dark ? '#4b5563' : '#d1d5db',
+        hoverText: dark ? '#f3f4f6' : '#111827'
     };
 }
 
@@ -64,6 +67,11 @@ function renderChart(containerId, chartData) {
             orientation: 'h',
             y: -0.15,
             font: { color: colors.text }
+        },
+        hoverlabel: {
+            bgcolor: colors.hoverBg,
+            bordercolor: colors.hoverBorder,
+            font: { color: colors.hoverText, family: 'system-ui, -apple-system, sans-serif' }
         }
     };
 

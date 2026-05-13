@@ -65,6 +65,15 @@ func TestBudgetAnalysis_GrossWithdrawalRowsRender(t *testing.T) {
 		if strings.Contains(out, "Gross Withdrawal Needed to Close Gap") {
 			t.Errorf("expected no gross-withdrawal heading on surplus; got: %s", truncate(out, 500))
 		}
+		if strings.Contains(out, "From Tax-Deferred") {
+			t.Errorf("expected no From Tax-Deferred row on surplus")
+		}
+		if strings.Contains(out, "From Taxable") {
+			t.Errorf("expected no From Taxable row on surplus")
+		}
+		if strings.Contains(out, "From Roth") {
+			t.Errorf("expected no From Roth row on surplus")
+		}
 	})
 }
 

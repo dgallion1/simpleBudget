@@ -254,6 +254,77 @@ func TestBigTicketRothEarnings_FeedTaxState(t *testing.T) {
 	}
 }
 
+// TestBigTicketRothEarnings_NotTaxedWhenClockSatisfied verifies that a
+// big-ticket-funded Roth earnings withdrawal is NOT added to ordinary
+// income when the qualified-distribution clock has matured. Qualified
+// distributions are tax-free regardless of source.
+func TestBigTicketRothEarnings_NotTaxedWhenClockSatisfied(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.RothFirstFundedYear = 2015 // clock matured well before projection start
+	s.TaxDeferredPercent = 0
+	s.RothPercent = 100
+	s.BigTicketItems = append(s.BigTicketItems, models.BigTicketItem{
+		Year:         2,
+		Type:         models.BigTicketExpense,
+		Amount:       200_000,
+		TaxTreatment: models.TaxOrdinary,
+	})
+
+	result := newTestCalc(t, s).RunProjection()
+
+	for _, ys := range result.YearlySummaries {
+		if ys.TaxableRothEarnings != 0 {
+			t.Fatalf("year %d: TaxableRothEarnings=%.2f, want 0 (clock satisfied; qualified distributions tax-free)", ys.Year, ys.TaxableRothEarnings)
+		}
+	}
+}
+
+// TestBigTicketRothEarnings_CountedOnceInYearSummary guards against a
+// regression where the year-boundary big-ticket Roth-earnings amount
+// gets re-folded into ordinary income every month of the year (12×). The
+// year summary's TaxableRothEarnings must equal the actual earnings
+// withdrawn, not a multiple of it.
+//
+// Scenario: $50k Roth, no monthly expenses, no other withdrawals, growth
+// to ~$63.1k by year 4, then a $63k big-ticket pulls all balance —
+// $50k basis + ~$13.1k earnings. The year-4 summary's TaxableRothEarnings
+// must approximate $13.1k, NOT 12× that (~$157k).
+func TestBigTicketRothEarnings_CountedOnceInYearSummary(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.StartDate = "2026-01"
+	s.RothFirstFundedYear = 2026 // clock matures in calendar 2031 (year 5)
+	s.PortfolioValue = 50_000
+	s.TaxDeferredPercent = 0
+	s.RothPercent = 100
+	s.MonthlyLivingExpenses = 0 // no cash-flow withdrawals
+	s.InvestmentReturn = 6.0
+	s.BigTicketItems = []models.BigTicketItem{{
+		Year:         4, // calendar 2030 — clock still unsatisfied
+		Type:         models.BigTicketExpense,
+		Amount:       63_000,
+		TaxTreatment: models.TaxOrdinary,
+	}}
+
+	result := newTestCalc(t, s).RunProjection()
+
+	var year4Earnings float64
+	for _, ys := range result.YearlySummaries {
+		if ys.Year == 4 {
+			year4Earnings = ys.TaxableRothEarnings
+			break
+		}
+	}
+	// Expected ~$13.1k earnings withdrawn ($50k basis + ~$13.1k earnings).
+	// A 12× regression would push this above $100k. Bound generously to allow
+	// monthly compounding nuance; the key is "well below 12×".
+	if year4Earnings <= 0 {
+		t.Fatalf("year 4 TaxableRothEarnings=%.2f, want > 0 (big-ticket forces earnings withdrawal)", year4Earnings)
+	}
+	if year4Earnings > 30_000 {
+		t.Fatalf("year 4 TaxableRothEarnings=%.2f exceeds reasonable bound — big-ticket earnings likely being counted multiple times", year4Earnings)
+	}
+}
+
 // TestRothConversionDoesNotMutateSettings ensures that running a projection
 // with Roth conversion enabled (and a blank RothFirstFundedYear) does not
 // write back to the settings struct. The projection may stamp a local clock

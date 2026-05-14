@@ -274,10 +274,13 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			CalendarYear:                      ParseStartYear(s.StartDate) + currentYear,
 			RothConversionThisMonth:           rothConversionThisMonth,
 			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
+			// (consumed below; reset to 0 so subsequent months in the year
+			// don't re-fold the same big-ticket earnings into ordinary income)
 			CompletedMAGIHistory:              completedMAGIHistory,
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
+		bigTicketRothEarnings = 0
 		totalGrowth = monthResult.TotalGrowth
 		shortfall := monthResult.Shortfall
 		cashFlow := monthResult.CashFlow

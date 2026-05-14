@@ -379,6 +379,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
+		bigTicketRothEarnings = 0
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 		totalWithdrawals += monthResult.CashFlow.GrossWithdrawal()

@@ -615,3 +615,46 @@ func TestFormSpec_RothFirstFundedYear_AppliedToSettings(t *testing.T) {
 		t.Fatalf("RothFirstFundedYear not applied: got %d, want 2026", s.RothFirstFundedYear)
 	}
 }
+
+// TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue verifies that
+// submitting the form with an empty roth_first_funded_year clears a
+// previously-set value (rather than leaving it stale). The UI nudge tells
+// users to leave it blank if they don't know it; that promise requires
+// blank to actually clear the persisted setting.
+func TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// First save a non-zero value.
+	form := url.Values{"roth_first_funded_year": {"2026"}}
+	updates := map[string]interface{}{}
+	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
+		t.Fatalf("first parse error: %s", msg)
+	}
+	s, err := rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("UpdateSettings (set): %v", err)
+	}
+	if s.RothFirstFundedYear != 2026 {
+		t.Fatalf("setup: RothFirstFundedYear=%d, want 2026", s.RothFirstFundedYear)
+	}
+
+	// Now submit blank — the persisted value must be cleared to 0.
+	form = url.Values{"roth_first_funded_year": {""}}
+	updates = map[string]interface{}{}
+	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
+		t.Fatalf("blank parse error: %s", msg)
+	}
+	if v, ok := updates["roth_first_funded_year"]; !ok {
+		t.Fatalf("blank submission did not emit roth_first_funded_year update; updates=%v", updates)
+	} else if iv, _ := v.(int); iv != 0 {
+		t.Fatalf("blank submission emitted %v, want 0", v)
+	}
+	s, err = rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("UpdateSettings (clear): %v", err)
+	}
+	if s.RothFirstFundedYear != 0 {
+		t.Fatalf("blank did not clear: RothFirstFundedYear=%d, want 0", s.RothFirstFundedYear)
+	}
+}

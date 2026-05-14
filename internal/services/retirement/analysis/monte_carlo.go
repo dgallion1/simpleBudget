@@ -514,6 +514,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
+		bigTicketRothEarnings = 0
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 		shortfall := monthResult.Shortfall

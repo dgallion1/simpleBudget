@@ -381,12 +381,13 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		trialNeededFromPortfolio := in.TotalExpenses + irmaaExpense + taxesPaid - in.IncomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
 		trialCashFlow := ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, in.MonthlyRMD, in.AllowTaxDeferredWithdrawal, in.PenaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth, &trialRothBasis)
 
-		// Compute taxable Roth earnings: pre-cash-flow portion from big-ticket
-		// plus cash-flow portion, each only applicable when the 5-year clock
-		// has not been satisfied.
-		trialTaxableRothEarnings := in.TaxableRothEarningsBeforeCashFlow
+		// Compute taxable Roth earnings: pre-cash-flow portion (from this
+		// month's big-ticket events) plus cash-flow portion, both gated by
+		// the qualified-distribution clock. Qualified distributions are
+		// fully tax-free regardless of source.
+		trialTaxableRothEarnings := 0.0
 		if !RothQualifiedDistributionClockSatisfied(in.RothFirstFundedYear, in.CalendarYear) {
-			trialTaxableRothEarnings += trialCashFlow.WithdrawalFromRothEarnings
+			trialTaxableRothEarnings = in.TaxableRothEarningsBeforeCashFlow + trialCashFlow.WithdrawalFromRothEarnings
 		}
 
 		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(in.TaxDeferredMonthlyReturn, growthAfterFraction)

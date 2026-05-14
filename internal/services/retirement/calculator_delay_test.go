@@ -191,8 +191,10 @@ func TestWithdrawForExpenses_TracksSourcesAndShortfall(t *testing.T) {
 	taxDeferred := 300000.0
 	taxable := 100000.0
 	roth := 50000.0
+	// TEMP scaffold: Task 7 replaces with real basis pointer from PortfolioMonthInput.
+	dummyBasis := roth
 
-	withdrawal := withdrawForExpenses(200000, 0, false, 0, &taxDeferred, &taxable, &roth)
+	withdrawal := withdrawForExpenses(200000, 0, false, 0, &taxDeferred, &taxable, &roth, &dummyBasis)
 
 	if math.Abs(withdrawal.WithdrawalFromTaxable-100000) > 0.01 {
 		t.Fatalf("expected taxable withdrawal of 100000, got %.2f", withdrawal.WithdrawalFromTaxable)

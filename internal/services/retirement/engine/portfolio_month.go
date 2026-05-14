@@ -11,13 +11,15 @@ import (
 // it was the legally-required RMD, and how much (if any) of the need
 // could not be met.
 type WithdrawalBreakdown struct {
-	RemainingNeed             float64
-	ActualWithdrawal          float64
-	RMDWithdrawal             float64
-	WithdrawalFromTaxDeferred float64
-	WithdrawalFromTaxable     float64
-	WithdrawalFromRoth        float64
-	EarlyPenaltyPaid          float64
+	RemainingNeed              float64
+	ActualWithdrawal           float64
+	RMDWithdrawal              float64
+	WithdrawalFromTaxDeferred  float64
+	WithdrawalFromTaxable      float64
+	WithdrawalFromRoth         float64
+	WithdrawalFromRothBasis    float64
+	WithdrawalFromRothEarnings float64
+	EarlyPenaltyPaid           float64
 }
 
 // RothWithdrawal splits a single Roth distribution into the basis
@@ -87,11 +89,13 @@ func ProjectionTimingGrowthFractions(timing models.ProjectionTiming) (before flo
 	}
 }
 
-// WithdrawForExpenses pulls cash from the three buckets in priority
-// order (RMD → taxable → Roth → tax-deferred discretionary) to meet
-// the requested needFromPortfolio. Mutates the supplied balances in
-// place; returns a structured breakdown of what came from where.
-func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance *float64) WithdrawalBreakdown {
+// WithdrawForExpenses pulls cash from the buckets in priority order
+// (RMD → taxable → Roth → tax-deferred discretionary) to meet the
+// requested needFromPortfolio. Mutates the supplied balances in place;
+// returns a structured breakdown. Roth withdrawals split by IRS Pub
+// 590-B basis-first ordering so the caller can apply the qualified-
+// distribution earnings tax rule.
+func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance, rothBasis *float64) WithdrawalBreakdown {
 	breakdown := WithdrawalBreakdown{RemainingNeed: neededFromPortfolio}
 	if neededFromPortfolio <= 0 {
 		return breakdown
@@ -116,16 +120,15 @@ func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferr
 	}
 
 	if breakdown.RemainingNeed > 0 && *rothBalance > 0 {
-		fromRoth := math.Min(breakdown.RemainingNeed, *rothBalance)
-		*rothBalance -= fromRoth
-		breakdown.RemainingNeed -= fromRoth
-		breakdown.WithdrawalFromRoth += fromRoth
-		breakdown.ActualWithdrawal += fromRoth
+		rw := WithdrawFromRoth(breakdown.RemainingNeed, rothBalance, rothBasis)
+		breakdown.RemainingNeed -= rw.Total
+		breakdown.WithdrawalFromRoth += rw.Total
+		breakdown.WithdrawalFromRothBasis += rw.Basis
+		breakdown.WithdrawalFromRothEarnings += rw.Earnings
+		breakdown.ActualWithdrawal += rw.Total
 	}
 
 	if allowTaxDeferred && breakdown.RemainingNeed > 0 && *taxDeferredBalance > 0 {
-		// Early withdrawal penalty: before age 59½, only (1-penalty) of each dollar
-		// withdrawn from tax-deferred is available for spending.
 		effectiveFactor := 1.0 - earlyPenaltyRate
 		grossNeeded := breakdown.RemainingNeed / effectiveFactor
 		fromTaxDeferred := math.Min(grossNeeded, *taxDeferredBalance)
@@ -215,7 +218,9 @@ func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 	result := PortfolioCashFlowResult{}
 
 	if neededFromPortfolio > 0 {
-		withdrawal := WithdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferred, earlyPenaltyRate, taxDeferredBalance, &taxable.MarketValue, rothBalance)
+		// TEMP scaffold: Task 7 replaces with real basis pointer from PortfolioMonthInput.
+		dummyBasis := *rothBalance
+		withdrawal := WithdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferred, earlyPenaltyRate, taxDeferredBalance, &taxable.MarketValue, rothBalance, &dummyBasis)
 		result.Shortfall = withdrawal.RemainingNeed
 		result.ActualWithdrawal = withdrawal.ActualWithdrawal
 		result.RMDWithdrawal = withdrawal.RMDWithdrawal

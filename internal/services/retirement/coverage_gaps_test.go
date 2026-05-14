@@ -1895,7 +1895,9 @@ func TestWithdrawForExpenses_ZeroNeed(t *testing.T) {
 	td := 100000.0
 	taxable := 100000.0
 	roth := 50000.0
-	result := withdrawForExpenses(0, 0, true, 0, &td, &taxable, &roth)
+	// TEMP scaffold: Task 7 replaces with real basis pointer from PortfolioMonthInput.
+	dummyBasis := roth
+	result := withdrawForExpenses(0, 0, true, 0, &td, &taxable, &roth, &dummyBasis)
 	if result.RemainingNeed != 0 || result.ActualWithdrawal != 0 {
 		t.Errorf("expected zero withdrawal for zero need, got %+v", result)
 	}

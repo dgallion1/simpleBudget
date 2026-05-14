@@ -85,3 +85,40 @@ func TestWithdrawFromRoth_BasisFirstOrdering(t *testing.T) {
 		}
 	})
 }
+
+func TestWithdrawForExpenses_RothBasisAndEarningsSplit(t *testing.T) {
+	t.Run("Roth withdrawal splits basis/earnings", func(t *testing.T) {
+		td := 0.0
+		taxable := 0.0
+		roth := 100.0
+		rothBasis := 60.0
+
+		got := WithdrawForExpenses(75, 0, false, 0, &td, &taxable, &roth, &rothBasis)
+
+		if got.WithdrawalFromRoth != 75 {
+			t.Fatalf("WithdrawalFromRoth=%v, want 75", got.WithdrawalFromRoth)
+		}
+		if got.WithdrawalFromRothBasis != 60 || got.WithdrawalFromRothEarnings != 15 {
+			t.Fatalf("split: basis=%v earnings=%v, want 60/15", got.WithdrawalFromRothBasis, got.WithdrawalFromRothEarnings)
+		}
+		if roth != 25 || rothBasis != 0 {
+			t.Fatalf("balances: roth=%v basis=%v, want 25/0", roth, rothBasis)
+		}
+	})
+
+	t.Run("non-Roth withdrawal leaves Roth fields at zero", func(t *testing.T) {
+		td := 0.0
+		taxable := 100.0
+		roth := 50.0
+		rothBasis := 50.0
+
+		got := WithdrawForExpenses(80, 0, false, 0, &td, &taxable, &roth, &rothBasis)
+
+		if got.WithdrawalFromTaxable != 80 || got.WithdrawalFromRoth != 0 {
+			t.Fatalf("taxable=%v roth=%v, want 80/0", got.WithdrawalFromTaxable, got.WithdrawalFromRoth)
+		}
+		if got.WithdrawalFromRothBasis != 0 || got.WithdrawalFromRothEarnings != 0 {
+			t.Fatalf("split should be zero: basis=%v earnings=%v", got.WithdrawalFromRothBasis, got.WithdrawalFromRothEarnings)
+		}
+	})
+}

@@ -160,3 +160,19 @@ func TestWithdrawForExpenses_RothBasisAndEarningsSplit(t *testing.T) {
 		}
 	})
 }
+
+func TestExecutePortfolioCashFlowWithTaxableState_RothEarningsSurfaced(t *testing.T) {
+	td := 0.0
+	taxable := &TaxableAccountState{}
+	roth := 100.0
+	rothBasis := 60.0
+
+	result := ExecutePortfolioCashFlowWithTaxableState(75, 0, false, 0, 0, &td, taxable, &roth, &rothBasis)
+
+	if result.WithdrawalFromRoth != 75 {
+		t.Fatalf("WithdrawalFromRoth=%v, want 75", result.WithdrawalFromRoth)
+	}
+	if result.WithdrawalFromRothBasis != 60 || result.WithdrawalFromRothEarnings != 15 {
+		t.Fatalf("split: basis=%v earnings=%v, want 60/15", result.WithdrawalFromRothBasis, result.WithdrawalFromRothEarnings)
+	}
+}

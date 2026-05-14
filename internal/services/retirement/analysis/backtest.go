@@ -197,6 +197,16 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
 	taxableAccount := engine.NewTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
 
+	// Roth basis and 5-year clock state, persisted across months within the sequence.
+	rothBasisLocal := s.PortfolioValue * (s.RothPercent / 100)
+	rothFirstFundedYearLocal := s.RothFirstFundedYear
+	if rothFirstFundedYearLocal == 0 && s.RothPercent > 0 {
+		rothFirstFundedYearLocal = engine.ParseStartYear(s.StartDate)
+	}
+	// bigTicketRothEarnings carries RothEarningsWithdrawal from the annual big-ticket
+	// pass into the monthly PortfolioMonthInput. Reset each year.
+	bigTicketRothEarnings := 0.0
+
 	currentLivingExpenses := engine.LivingExpensesAtMonth(s, 0)
 	// F-074: annualRMD persists across months so the trigger-month
 	// logic can apply the full year's RMD in a single month.
@@ -278,18 +288,11 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			annualRMD = engine.AnnualRMDForYear(s, currentYear, taxDeferredBalance)
 			monthlyRMD = 0
 
-			// TEMP: projection-local Roth basis/clock state; threaded fully in Task 10.
-			rothBasisLocal := s.PortfolioValue * (s.RothPercent / 100)
-			rothFirstFundedYearLocal := s.RothFirstFundedYear
-			if rothFirstFundedYearLocal == 0 && s.RothPercent > 0 {
-				rothFirstFundedYearLocal = engine.ParseStartYear(s.StartDate)
-			}
 			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 
 			bigTicketResult := engine.ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance, &rothBasisLocal)
 			bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
-			// bigTicketResult.RothEarningsWithdrawal will be threaded into the tax snapshot in Task 7+9.
-			_ = bigTicketResult
+			bigTicketRothEarnings = bigTicketResult.RothEarningsWithdrawal
 		}
 
 		if m > 0 {
@@ -351,26 +354,30 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 		monthlyRMD = engine.MonthlyRMDForMonth(s, m%12, annualRMD, taxDeferredBalance)
 
 		monthResult := engine.ExecuteTaxAwarePortfolioMonth(engine.PortfolioMonthInput{
-			TotalExpenses:              totalExpenses,
-			IncomeBreakdown:            incomeBreakdown,
-			MonthlyRMD:                 monthlyRMD,
-			AllowTaxDeferredWithdrawal: allowTaxDeferredWithdrawal,
-			PenaltyRate:                penaltyRate,
-			TaxDeferredBalance:         &taxDeferredBalance,
-			TaxableAccount:             &taxableAccount,
-			RothBalance:                &rothBalance,
-			TaxDeferredMonthlyReturn:   tdMonthlyReturn,
-			RothMonthlyReturn:          rothMonthlyReturn,
-			TaxableComponents:          taxableComponents,
-			Timing:                     s.GetProjectionTiming(),
-			TaxState:                   taxState,
-			TaxCalculator:              taxCalculator,
-			CurrentYear:                currentYear,
-			MonthInYear:                m % 12,
-			RothConversionThisMonth:    rothConversionThisMonth,
-			CompletedMAGIHistory:       completedMAGIHistory,
-			IRMAAEligibleAdults:        irmaaEligibleAdults,
-			IRMAAInflationFactor:       irmaaInflationFactor,
+			TotalExpenses:                     totalExpenses,
+			IncomeBreakdown:                   incomeBreakdown,
+			MonthlyRMD:                        monthlyRMD,
+			AllowTaxDeferredWithdrawal:        allowTaxDeferredWithdrawal,
+			PenaltyRate:                       penaltyRate,
+			TaxDeferredBalance:                &taxDeferredBalance,
+			TaxableAccount:                    &taxableAccount,
+			RothBalance:                       &rothBalance,
+			RothBasis:                         &rothBasisLocal,
+			RothFirstFundedYear:               rothFirstFundedYearLocal,
+			TaxDeferredMonthlyReturn:          tdMonthlyReturn,
+			RothMonthlyReturn:                 rothMonthlyReturn,
+			TaxableComponents:                 taxableComponents,
+			Timing:                            s.GetProjectionTiming(),
+			TaxState:                          taxState,
+			TaxCalculator:                     taxCalculator,
+			CurrentYear:                       currentYear,
+			MonthInYear:                       m % 12,
+			CalendarYear:                      engine.ParseStartYear(s.StartDate) + currentYear,
+			RothConversionThisMonth:           rothConversionThisMonth,
+			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
+			CompletedMAGIHistory:              completedMAGIHistory,
+			IRMAAEligibleAdults:               irmaaEligibleAdults,
+			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
 		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)

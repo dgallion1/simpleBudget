@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"budget2/internal/models"
 )
@@ -111,6 +112,9 @@ var settingsFormSpec = []fieldSpec{
 	{Name: "tax_deferred_delay_years", Kind: fieldInt, ParseLabel: "tax-deferred delay",
 		HasBounds: true, Min: 0, Max: 30,
 		BoundsMsg: "Tax-deferred delay must be between 0 and 30 years"},
+	{Name: "roth_first_funded_year", Kind: fieldInt, ParseLabel: "Roth first funded year",
+		HasBounds: true, Min: 1998, Max: 9999,
+		BoundsMsg: "Year must be 1998 or later"},
 	{Name: "steady_state_override_year", Kind: fieldFloat, ParseLabel: "steady state year"},
 	{Name: "state_income_tax_rate", Kind: fieldOptionalFloat, ParseLabel: "state income tax rate",
 		HasBounds: true, Min: 0, Max: 20,
@@ -209,6 +213,14 @@ func applySettingsFormSpec(r *http.Request, updates map[string]interface{}) stri
 	for _, spec := range settingsFormSpec {
 		if _, msg := applyFieldSpec(r, spec, updates); msg != "" {
 			return msg
+		}
+	}
+	// Runtime upper-bound for roth_first_funded_year: reject years beyond
+	// current year + 50 (the static Max:9999 is only a parse sentinel).
+	if year, ok := updates["roth_first_funded_year"].(int); ok && year != 0 {
+		upper := time.Now().Year() + 50
+		if year > upper {
+			return fmt.Sprintf("Roth first funded year must be %d or earlier", upper)
 		}
 	}
 	return ""

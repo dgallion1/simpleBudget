@@ -939,6 +939,9 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	if v, ok := updates["roth_percent"].(float64); ok {
 		settings.RothPercent = v
 	}
+	if v, ok := updates["roth_first_funded_year"].(int); ok {
+		settings.RothFirstFundedYear = v
+	}
 	if v, ok := updates["stock_percent"].(float64); ok {
 		settings.StockPercent = v
 	}

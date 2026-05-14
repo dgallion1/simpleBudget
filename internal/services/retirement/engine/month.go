@@ -140,7 +140,13 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			annualRMD = AnnualRMDForYear(s, currentYear, taxDeferredBalance)
 			monthlyRMD = 0
 
-			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance)
+			// TEMP: projection-local Roth basis/clock state; threaded fully in Task 9.
+			rothBasisLocal := s.PortfolioValue * (s.RothPercent / 100)
+			rothFirstFundedYearLocal := s.RothFirstFundedYear
+			if rothFirstFundedYearLocal == 0 && s.RothPercent > 0 {
+				rothFirstFundedYearLocal = ParseStartYear(s.StartDate)
+			}
+			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 
 			bigTicketExpenseThisMonth += ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 		}

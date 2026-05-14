@@ -189,19 +189,32 @@ func MonthlyRMDForMonth(s *models.WhatIfSettings, monthInYear int, annualRMD, ta
 
 // ApplyRothConversionAtYear performs the year-boundary Roth conversion:
 // if a conversion is configured and in-window, decrement the tax-
-// deferred balance and increment the Roth balance by the same amount.
-// Returns the conversion amount applied (0 when no conversion ran).
+// deferred balance, increment the Roth balance and basis by the same
+// amount, and stamp rothFirstFundedYear if blank.
+//
+// The rothFirstFundedYear pointer holds projection-local state — the
+// caller seeds it from s.RothFirstFundedYear and DOES NOT write back
+// into s. Persisted settings change only through the settings form.
 //
 // All three projection loops perform this mutation identically; this
 // helper captures the shared in-place update so the loops can shrink
 // to a single call per year boundary.
-func ApplyRothConversionAtYear(s *models.WhatIfSettings, currentYear int, taxDeferredBalance, rothBalance *float64) float64 {
+func ApplyRothConversionAtYear(
+	s *models.WhatIfSettings,
+	currentYear int,
+	taxDeferredBalance, rothBalance, rothBasis *float64,
+	rothFirstFundedYear *int,
+) float64 {
 	conversionAmount := RothConversionAmountForYear(s, currentYear, *taxDeferredBalance)
 	if conversionAmount <= 0 {
 		return 0
 	}
 	*taxDeferredBalance -= conversionAmount
 	*rothBalance += conversionAmount
+	*rothBasis += conversionAmount
+	if *rothFirstFundedYear <= 0 {
+		*rothFirstFundedYear = ParseStartYear(s.StartDate) + currentYear
+	}
 	return conversionAmount
 }
 

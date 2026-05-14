@@ -278,7 +278,13 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			annualRMD = engine.AnnualRMDForYear(s, currentYear, taxDeferredBalance)
 			monthlyRMD = 0
 
-			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance)
+			// TEMP: projection-local Roth basis/clock state; threaded fully in Task 10.
+			rothBasisLocal := s.PortfolioValue * (s.RothPercent / 100)
+			rothFirstFundedYearLocal := s.RothFirstFundedYear
+			if rothFirstFundedYearLocal == 0 && s.RothPercent > 0 {
+				rothFirstFundedYearLocal = engine.ParseStartYear(s.StartDate)
+			}
+			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 
 			bigTicketExpenseThisMonth += engine.ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
 		}

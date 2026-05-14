@@ -152,6 +152,12 @@ type WhatIfSettings struct {
 	// Roth Conversion Strategy
 	RothConversion *RothConversionConfig `json:"roth_conversion,omitempty"`
 
+	// RothFirstFundedYear is the calendar tax year of the user's first
+	// Roth IRA regular contribution or conversion contribution. It drives
+	// the IRS qualified-distribution 5-tax-year rule for earnings.
+	// Zero means unknown/unset, not necessarily "no Roth exists."
+	RothFirstFundedYear int `json:"roth_first_funded_year,omitempty"`
+
 	// Glide Path (time-based allocation shift)
 	GlidePath *GlidePathConfig `json:"glide_path,omitempty"`
 

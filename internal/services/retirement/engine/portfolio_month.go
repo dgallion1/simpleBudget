@@ -20,6 +20,39 @@ type WithdrawalBreakdown struct {
 	EarlyPenaltyPaid          float64
 }
 
+// RothWithdrawal splits a single Roth distribution into the basis
+// portion (regular contributions plus conversion-contribution amounts,
+// always tax-free under IRS Pub 590-B ordering) and the earnings
+// portion (taxable as ordinary income unless the qualified-distribution
+// clock is satisfied).
+type RothWithdrawal struct {
+	Total    float64
+	Basis    float64
+	Earnings float64
+}
+
+// WithdrawFromRoth pulls up to `needed` from the Roth bucket, applying
+// IRS Pub 590-B basis-first ordering. Mutates rothBalance and rothBasis
+// in place. Clamps basis to balance to guard against floating-point
+// drift. Returns the split.
+func WithdrawFromRoth(needed float64, rothBalance, rothBasis *float64) RothWithdrawal {
+	if needed <= 0 || *rothBalance <= 0 {
+		return RothWithdrawal{}
+	}
+	total := math.Min(needed, *rothBalance)
+	basis := math.Min(total, *rothBasis)
+	earnings := total - basis
+	*rothBalance -= total
+	*rothBasis -= basis
+	if *rothBasis > *rothBalance {
+		*rothBasis = *rothBalance
+	}
+	if *rothBasis < 0 {
+		*rothBasis = 0
+	}
+	return RothWithdrawal{Total: total, Basis: basis, Earnings: earnings}
+}
+
 // PortfolioCashFlowResult is the Outer view of a month's
 // portfolio-side cash flow: per-bucket withdrawal amounts plus the
 // realized capital gain on any taxable sale and the amount of need

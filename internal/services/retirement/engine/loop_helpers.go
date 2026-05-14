@@ -218,17 +218,23 @@ func ApplyRothConversionAtYear(
 	return conversionAmount
 }
 
+// BigTicketYearResult aggregates a year's big-ticket draws so the
+// caller can fold the unfunded expense into the month's expense total
+// and route the taxable Roth earnings (if the clock is unsatisfied)
+// into that month's tax snapshot.
+type BigTicketYearResult struct {
+	UnfundedExpense        float64
+	RothBasisWithdrawal    float64
+	RothEarningsWithdrawal float64
+}
+
 // ApplyBigTicketItemsForYear processes every big-ticket item scheduled
-// for currentYear: income items add cash to the taxable account, and
-// expense items are funded via the canonical waterfall (taxable →
-// Roth → tax-deferred when allowed). Returns the residual expense that
-// could not be funded — added to the month's expense total by the
-// caller so the depletion path runs when needed.
-//
-// All three projection loops walk s.BigTicketItems with identical
-// semantics; this helper captures the shared loop body.
-func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance *float64) float64 {
-	bigTicketExpenseThisMonth := 0.0
+// for currentYear: income items add cash to the taxable account,
+// expense items are funded via the canonical waterfall, and the
+// aggregated unfunded-expense plus Roth split are returned so the
+// monthly loop can feed taxable Roth earnings into the tax snapshot.
+func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketYearResult {
+	out := BigTicketYearResult{}
 	for _, item := range s.BigTicketItems {
 		if item.Year != currentYear {
 			continue
@@ -237,10 +243,12 @@ func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allow
 			taxableAccount.AddCash(item.Amount)
 			continue
 		}
-		remaining := ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, taxDeferredBalance, taxableAccount, rothBalance)
-		bigTicketExpenseThisMonth += remaining
+		r := ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, taxDeferredBalance, taxableAccount, rothBalance, rothBasis)
+		out.UnfundedExpense += r.UnfundedExpense
+		out.RothBasisWithdrawal += r.RothBasisWithdrawal
+		out.RothEarningsWithdrawal += r.RothEarningsWithdrawal
 	}
-	return bigTicketExpenseThisMonth
+	return out
 }
 
 // RothQualifiedDistributionClockSatisfied reports whether the Roth IRA

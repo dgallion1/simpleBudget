@@ -86,6 +86,44 @@ func TestWithdrawFromRoth_BasisFirstOrdering(t *testing.T) {
 	})
 }
 
+func TestApplyBigTicketExpense_RothBasisAndEarningsSplit(t *testing.T) {
+	taxable := &TaxableAccountState{}
+	taxable.AddCash(0)
+	td := 0.0
+	roth := 100.0
+	rothBasis := 60.0
+
+	got := ApplyBigTicketExpenseWithTaxableState(75, false, 0, &td, taxable, &roth, &rothBasis)
+
+	if got.UnfundedExpense != 0 {
+		t.Fatalf("UnfundedExpense=%v, want 0", got.UnfundedExpense)
+	}
+	if got.RothBasisWithdrawal != 60 || got.RothEarningsWithdrawal != 15 {
+		t.Fatalf("split: basis=%v earnings=%v, want 60/15", got.RothBasisWithdrawal, got.RothEarningsWithdrawal)
+	}
+	if roth != 25 || rothBasis != 0 {
+		t.Fatalf("balances: roth=%v basis=%v, want 25/0", roth, rothBasis)
+	}
+}
+
+func TestApplyBigTicketExpense_TaxableThenRothOrdering(t *testing.T) {
+	taxable := &TaxableAccountState{}
+	taxable.AddCash(50)
+	td := 0.0
+	roth := 100.0
+	rothBasis := 60.0
+
+	got := ApplyBigTicketExpenseWithTaxableState(120, false, 0, &td, taxable, &roth, &rothBasis)
+
+	// 50 from taxable, 70 from Roth (60 basis + 10 earnings).
+	if got.UnfundedExpense != 0 {
+		t.Fatalf("UnfundedExpense=%v, want 0", got.UnfundedExpense)
+	}
+	if got.RothBasisWithdrawal != 60 || got.RothEarningsWithdrawal != 10 {
+		t.Fatalf("split: basis=%v earnings=%v, want 60/10", got.RothBasisWithdrawal, got.RothEarningsWithdrawal)
+	}
+}
+
 func TestWithdrawForExpenses_RothBasisAndEarningsSplit(t *testing.T) {
 	t.Run("Roth withdrawal splits basis/earnings", func(t *testing.T) {
 		td := 0.0

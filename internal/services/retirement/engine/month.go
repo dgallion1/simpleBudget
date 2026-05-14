@@ -148,7 +148,10 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			}
 			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 
-			bigTicketExpenseThisMonth += ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
+			bigTicketResult := ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance, &rothBasisLocal)
+			bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
+			// bigTicketResult.RothEarningsWithdrawal will be threaded into the tax snapshot in Task 7+9.
+			_ = bigTicketResult
 		}
 
 		if m > 0 {

@@ -22,6 +22,16 @@ type WithdrawalBreakdown struct {
 	EarlyPenaltyPaid           float64
 }
 
+// BigTicketFundingResult is the outcome of funding one big-ticket
+// expense from the portfolio waterfall: any portion that could not be
+// funded plus the Roth basis/earnings split for the basis-first
+// ordering rule.
+type BigTicketFundingResult struct {
+	UnfundedExpense        float64
+	RothBasisWithdrawal    float64
+	RothEarningsWithdrawal float64
+}
+
 // RothWithdrawal splits a single Roth distribution into the basis
 // portion (regular contributions plus conversion-contribution amounts,
 // always tax-free under IRS Pub 590-B ordering) and the earnings
@@ -179,10 +189,12 @@ func ReinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDefe
 }
 
 // ApplyBigTicketExpenseWithTaxableState pulls a one-off big-ticket
-// expense from the portfolio in priority order (taxable → Roth → tax
-// deferred) and returns any unmet remainder. Tax-deferred withdrawals
-// honour the early-withdrawal penalty when active.
-func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance *float64) float64 {
+// expense from the portfolio in priority order (taxable → Roth → tax-
+// deferred) and returns the structured result. Tax-deferred withdrawals
+// honour the early-withdrawal penalty when active. Roth withdrawals
+// split by IRS Pub 590-B basis-first ordering.
+func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketFundingResult {
+	out := BigTicketFundingResult{}
 	remaining := amount
 
 	if remaining > 0 && taxable.MarketValue > 0 {
@@ -191,9 +203,10 @@ func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 	}
 
 	if remaining > 0 && *rothBalance > 0 {
-		fromRoth := math.Min(remaining, *rothBalance)
-		*rothBalance -= fromRoth
-		remaining -= fromRoth
+		rw := WithdrawFromRoth(remaining, rothBalance, rothBasis)
+		remaining -= rw.Total
+		out.RothBasisWithdrawal += rw.Basis
+		out.RothEarningsWithdrawal += rw.Earnings
 	}
 
 	if allowTaxDeferred && remaining > 0 && *taxDeferredBalance > 0 {
@@ -204,7 +217,8 @@ func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 		remaining -= fromTaxDeferred * effectiveFactor
 	}
 
-	return remaining
+	out.UnfundedExpense = remaining
+	return out
 }
 
 // ExecutePortfolioCashFlowWithTaxableState orchestrates a month's

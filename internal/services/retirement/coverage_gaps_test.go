@@ -234,9 +234,10 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 		s := defaultSettingsForTest()
 		taxable := newTaxableAccountState(s, 50000)
 		roth := 30000.0
-		remaining := applyBigTicketExpenseWithTaxableState(10000, true, 0, &taxDeferred, &taxable, &roth)
-		if remaining != 0 {
-			t.Errorf("expected 0 remaining, got %f", remaining)
+		rothBasis := 30000.0
+		r := applyBigTicketExpenseWithTaxableState(10000, true, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		if r.UnfundedExpense != 0 {
+			t.Errorf("expected 0 remaining, got %f", r.UnfundedExpense)
 		}
 	})
 
@@ -245,10 +246,11 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 		s := defaultSettingsForTest()
 		taxable := newTaxableAccountState(s, 5000)
 		roth := 30000.0
-		remaining := applyBigTicketExpenseWithTaxableState(20000, false, 0, &taxDeferred, &taxable, &roth)
+		rothBasis := 30000.0
+		r := applyBigTicketExpenseWithTaxableState(20000, false, 0, &taxDeferred, &taxable, &roth, &rothBasis)
 		// 5000 from taxable, 15000 from Roth, no tax-deferred (allowTaxDeferred=false)
-		if remaining != 0 {
-			t.Errorf("expected 0 remaining, got %f", remaining)
+		if r.UnfundedExpense != 0 {
+			t.Errorf("expected 0 remaining, got %f", r.UnfundedExpense)
 		}
 		if roth != 15000 {
 			t.Errorf("expected Roth=15000, got %f", roth)
@@ -260,11 +262,12 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 		s := defaultSettingsForTest()
 		taxable := newTaxableAccountState(s, 2000)
 		roth := 3000.0
+		rothBasis := 3000.0
 		// 10000 needed, 2000 from taxable, 3000 from roth, 5000 remaining
 		// With 10% penalty: grossNeeded = 5000/0.9 = 5555.56
-		remaining := applyBigTicketExpenseWithTaxableState(10000, true, 0.10, &taxDeferred, &taxable, &roth)
-		if remaining > 0.01 {
-			t.Errorf("expected ~0 remaining, got %f", remaining)
+		r := applyBigTicketExpenseWithTaxableState(10000, true, 0.10, &taxDeferred, &taxable, &roth, &rothBasis)
+		if r.UnfundedExpense > 0.01 {
+			t.Errorf("expected ~0 remaining, got %f", r.UnfundedExpense)
 		}
 		if taxDeferred >= 100000 {
 			t.Error("expected tax-deferred balance to decrease")
@@ -276,8 +279,9 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 		s := defaultSettingsForTest()
 		taxable := newTaxableAccountState(s, 1000)
 		roth := 1000.0
-		remaining := applyBigTicketExpenseWithTaxableState(100000, true, 0, &taxDeferred, &taxable, &roth)
-		if remaining <= 0 {
+		rothBasis := 1000.0
+		r := applyBigTicketExpenseWithTaxableState(100000, true, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		if r.UnfundedExpense <= 0 {
 			t.Error("expected positive remaining when funds insufficient")
 		}
 	})
@@ -287,8 +291,9 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 		s := defaultSettingsForTest()
 		taxable := newTaxableAccountState(s, 1000)
 		roth := 1000.0
-		remaining := applyBigTicketExpenseWithTaxableState(10000, false, 0, &taxDeferred, &taxable, &roth)
-		if remaining <= 0 {
+		rothBasis := 1000.0
+		r := applyBigTicketExpenseWithTaxableState(10000, false, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		if r.UnfundedExpense <= 0 {
 			t.Error("expected remaining when tax-deferred not allowed")
 		}
 		if taxDeferred != 100000 {

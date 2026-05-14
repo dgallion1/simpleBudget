@@ -230,6 +230,19 @@ func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allow
 	return bigTicketExpenseThisMonth
 }
 
+// RothQualifiedDistributionClockSatisfied reports whether the Roth IRA
+// 5-tax-year aging requirement is met for the given calendar year. A
+// firstFundedYear of 0 or less means unset and the clock is considered
+// not satisfied (the conservative projection default). calendarYear is
+// a calendar tax year, not a projection-year offset; callers translate
+// projection year via ParseStartYear(s.StartDate)+projectionYear.
+func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) bool {
+	if firstFundedYear <= 0 {
+		return false
+	}
+	return calendarYear >= firstFundedYear+5
+}
+
 // ApplyTaxStateMonth folds a single month's portfolio result into the
 // running ProjectionTaxAccumulator. Captures the long positional
 // argument list that all three projection loops would otherwise repeat

@@ -171,6 +171,14 @@ func applyFieldSpec(r *http.Request, spec fieldSpec, updates map[string]interfac
 			if !spec.AllowBlankZero {
 				return false, ""
 			}
+			// Distinguish missing key from present-but-blank. A partial
+			// settings form (e.g. budget-analysis.html steady-state slider)
+			// does not carry every spec field; absent keys must NOT be
+			// treated as an explicit clear or unrelated form posts would
+			// silently zero out persisted values.
+			if _, present := r.Form[spec.Name]; !present {
+				return false, ""
+			}
 			// Blank-with-AllowBlankZero: emit zero so the apply-updates
 			// path clears the persisted value. Skip bounds check — zero
 			// is the explicit "unset" sentinel.

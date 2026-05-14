@@ -658,3 +658,99 @@ func TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue(t *testing.T) {
 		t.Fatalf("blank did not clear: RothFirstFundedYear=%d, want 0", s.RothFirstFundedYear)
 	}
 }
+
+// TestApplyFieldSpec_IntAllowBlankZero_AbsentKeySkipped pins the bug fix for
+// AllowBlankZero fields: when the form does NOT carry the key at all (because
+// a different partial settings form was submitted), the field must be skipped
+// — not silently written as zero.
+func TestApplyFieldSpec_IntAllowBlankZero_AbsentKeySkipped(t *testing.T) {
+	spec := fieldSpec{
+		Name: "roth_first_funded_year", Kind: fieldInt, ParseLabel: "Roth first funded year",
+		HasBounds: true, Min: 1998, Max: 9999,
+		BoundsMsg:      "Year must be 1998 or later",
+		AllowBlankZero: true,
+	}
+	updates := map[string]interface{}{}
+	r := formReq(url.Values{"some_other_field": {"42"}})
+	included, msg := applyFieldSpec(r, spec, updates)
+	if msg != "" {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+	if included {
+		t.Error("included = true, want false (absent key must not propagate)")
+	}
+	if _, exists := updates["roth_first_funded_year"]; exists {
+		t.Errorf("updates contains roth_first_funded_year, want absent; got %v", updates)
+	}
+}
+
+// TestApplyFieldSpec_IntAllowBlankZero_PresentBlankIncluded is the companion
+// regression guard: when the key IS submitted with an empty value (user
+// cleared the input), the spec must still emit zero so the persisted value
+// is cleared. Verifies the fix preserves the legitimate clear path.
+func TestApplyFieldSpec_IntAllowBlankZero_PresentBlankIncluded(t *testing.T) {
+	spec := fieldSpec{
+		Name: "roth_first_funded_year", Kind: fieldInt, ParseLabel: "Roth first funded year",
+		HasBounds: true, Min: 1998, Max: 9999,
+		BoundsMsg:      "Year must be 1998 or later",
+		AllowBlankZero: true,
+	}
+	updates := map[string]interface{}{}
+	r := formReq(url.Values{"roth_first_funded_year": {""}})
+	included, msg := applyFieldSpec(r, spec, updates)
+	if msg != "" {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+	if !included {
+		t.Fatal("included = false, want true (present-but-blank is an explicit clear)")
+	}
+	v, ok := updates["roth_first_funded_year"].(int)
+	if !ok {
+		t.Fatalf("updates[roth_first_funded_year] missing or wrong type: %T %v", updates["roth_first_funded_year"], updates["roth_first_funded_year"])
+	}
+	if v != 0 {
+		t.Errorf("present-blank emitted %d, want 0", v)
+	}
+}
+
+// TestFormSpec_RothFirstFundedYear_AbsentFromOtherFormPreservesPersisted is
+// the end-to-end regression for the silent-clobber bug. A previously-saved
+// RothFirstFundedYear must survive a partial /whatif/settings post that
+// changes some other field (e.g. the steady-state slider) and therefore
+// does not carry the roth_first_funded_year key.
+func TestFormSpec_RothFirstFundedYear_AbsentFromOtherFormPreservesPersisted(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Save Roth year via the Roth-bearing form.
+	form := url.Values{"roth_first_funded_year": {"2026"}}
+	updates := map[string]interface{}{}
+	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
+		t.Fatalf("setup parse error: %s", msg)
+	}
+	s, err := rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("setup UpdateSettings: %v", err)
+	}
+	if s.RothFirstFundedYear != 2026 {
+		t.Fatalf("setup failed: RothFirstFundedYear=%d, want 2026", s.RothFirstFundedYear)
+	}
+
+	// Simulate a partial settings post from a form that does NOT include
+	// roth_first_funded_year (e.g. budget-analysis.html steady-state slider).
+	form = url.Values{"steady_state_override_year": {"2055"}}
+	updates = map[string]interface{}{}
+	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
+		t.Fatalf("partial parse error: %s", msg)
+	}
+	if _, included := updates["roth_first_funded_year"]; included {
+		t.Errorf("partial form silently included roth_first_funded_year; updates=%v", updates)
+	}
+	s, err = rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("partial UpdateSettings: %v", err)
+	}
+	if s.RothFirstFundedYear != 2026 {
+		t.Fatalf("RothFirstFundedYear clobbered by unrelated partial post: got %d, want 2026", s.RothFirstFundedYear)
+	}
+}

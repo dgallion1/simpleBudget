@@ -6,6 +6,13 @@ import (
 	"budget2/internal/models"
 )
 
+// buildRothFiveYearScenario is an alias kept for parity with the spec naming.
+// Tests outside this file that reference the spec builder name use this.
+func buildRothFiveYearScenario(t *testing.T) *models.WhatIfSettings {
+	t.Helper()
+	return buildRothEarningsScenario(t)
+}
+
 // buildRothEarningsScenario builds a scenario designed to exercise the
 // 5-year-rule earnings-tax path.
 //
@@ -159,4 +166,237 @@ func TestRunMonthlyLoop_RothEarningsTaxed_WhenClockUnsatisfied(t *testing.T) {
 			taxUnsat, taxSat, taxUnsat-taxSat,
 		)
 	}
+}
+
+// TestRothEarnings_TaxFreeAfterClock confirms that when the Roth 5-year clock
+// is already satisfied before the projection starts, every yearly summary has
+// zero TaxableRothEarnings even though withdrawals draw from earnings once
+// basis is exhausted.
+func TestRothEarnings_TaxFreeAfterClock(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.RothFirstFundedYear = 2015 // matured 2020, well before 2026 projection start
+
+	result := newTestCalc(t, s).RunProjection()
+
+	if len(result.YearlySummaries) == 0 {
+		t.Fatal("projection produced no yearly summaries")
+	}
+	for _, ys := range result.YearlySummaries {
+		if ys.TaxableRothEarnings != 0 {
+			t.Fatalf("year %d: TaxableRothEarnings=%.2f, want 0 (clock satisfied)", ys.Year, ys.TaxableRothEarnings)
+		}
+	}
+}
+
+// TestRothWithdrawal_NoTaxWhenAllBasis verifies that modest withdrawals that
+// stay within the initial Roth basis produce zero taxable Roth earnings even
+// when the 5-year clock is unsatisfied (basis-first ordering applies).
+func TestRothWithdrawal_NoTaxWhenAllBasis(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.RothFirstFundedYear = 2026     // clock unsatisfied throughout years 0–4
+	s.MonthlyLivingExpenses = 500    // tiny — well within $100k initial Roth basis
+	s.MonthlyHealthcare = 0          // eliminate healthcare to keep total expenses minimal
+
+	result := newTestCalc(t, s).RunProjection()
+
+	if len(result.YearlySummaries) < 3 {
+		t.Fatalf("need at least 3 years of projection data; got %d", len(result.YearlySummaries))
+	}
+	// At $500/month even with 6% return, cumulative withdrawals over 3 years
+	// ($18k) are far below the $100k initial basis, so no earnings are touched.
+	for i := 0; i < 3; i++ {
+		ys := result.YearlySummaries[i]
+		if ys.TaxableRothEarnings != 0 {
+			t.Fatalf("year %d: TaxableRothEarnings=%.2f, want 0 (within basis)", ys.Year, ys.TaxableRothEarnings)
+		}
+	}
+}
+
+// TestBigTicketRothEarnings_FeedTaxState verifies that a large big-ticket
+// expense forces the projection to draw Roth earnings, and that year's
+// TaxableRothEarnings is positive when the clock is unsatisfied.
+func TestBigTicketRothEarnings_FeedTaxState(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.RothFirstFundedYear = 2026
+	// Force the portfolio heavily into Roth so the big-ticket expense can
+	// only be funded from Roth after exhausting a thin taxable slice.
+	s.TaxDeferredPercent = 0
+	s.RothPercent = 100
+	// A $200k big-ticket expense in year 2 vastly exceeds the $100k initial
+	// Roth basis (plus any growth), forcing earnings into the withdrawal.
+	s.BigTicketItems = append(s.BigTicketItems, models.BigTicketItem{
+		Year:         2,
+		Type:         models.BigTicketExpense,
+		Amount:       200_000,
+		TaxTreatment: models.TaxOrdinary,
+	})
+
+	result := newTestCalc(t, s).RunProjection()
+
+	if len(result.YearlySummaries) < 3 {
+		t.Fatalf("need at least 3 years of projection data; got %d", len(result.YearlySummaries))
+	}
+	// Find the year-2 summary (YearlySummaries[i].Year == 2).
+	var year2TaxableRothEarnings float64
+	found := false
+	for _, ys := range result.YearlySummaries {
+		if ys.Year == 2 {
+			year2TaxableRothEarnings = ys.TaxableRothEarnings
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("no yearly summary found for year 2")
+	}
+	if year2TaxableRothEarnings <= 0 {
+		t.Fatalf("year 2 TaxableRothEarnings=%.2f, want > 0 (big-ticket forces Roth earnings withdrawal)", year2TaxableRothEarnings)
+	}
+}
+
+// TestRothConversionDoesNotMutateSettings ensures that running a projection
+// with Roth conversion enabled (and a blank RothFirstFundedYear) does not
+// write back to the settings struct. The projection may stamp a local clock
+// derived from the conversion start, but the persisted settings value must
+// remain zero.
+func TestRothConversionDoesNotMutateSettings(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.RothFirstFundedYear = 0
+	s.RothConversion = &models.RothConversionConfig{
+		Enabled:      true,
+		StartYear:    0,
+		EndYear:      0,
+		AnnualAmount: 25_000,
+	}
+
+	_ = newTestCalc(t, s).RunProjection()
+
+	if s.RothFirstFundedYear != 0 {
+		t.Fatalf("persisted settings mutated: RothFirstFundedYear=%d, want 0", s.RothFirstFundedYear)
+	}
+}
+
+// TestExistingRothBlankYear_UsesProjectionStartClock verifies that when an
+// existing Roth balance is present but RothFirstFundedYear is zero, the engine
+// treats the projection start year as the clock start. Year 5+ withdrawals
+// (after the 5-year holding period) must have zero TaxableRothEarnings.
+func TestExistingRothBlankYear_UsesProjectionStartClock(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	s.RothFirstFundedYear = 0 // blank ⇒ clock starts at projection start (2026)
+	// Use a large enough portfolio to survive through year 6 so we can
+	// inspect the post-maturity year.  $500k at $2k/month drains slowly
+	// enough that we get well past year 5.
+	s.PortfolioValue = 500_000
+
+	result := newTestCalc(t, s).RunProjection()
+
+	if len(result.YearlySummaries) <= 5 {
+		t.Fatalf("need at least 6 years of projection data; got %d", len(result.YearlySummaries))
+	}
+	// Year 5 summary: clock started at 2026, matures at 2031. Calendar year
+	// 2026+5 = 2031 is the first satisfied year, so year-index 5 must be clean.
+	var year5 *models.ProjectionYearSummary
+	for i := range result.YearlySummaries {
+		if result.YearlySummaries[i].Year == 5 {
+			year5 = &result.YearlySummaries[i]
+			break
+		}
+	}
+	if year5 == nil {
+		t.Fatal("no yearly summary found for year 5")
+	}
+	if year5.TaxableRothEarnings != 0 {
+		t.Fatalf("year 5: TaxableRothEarnings=%.2f, want 0 (clock satisfied)", year5.TaxableRothEarnings)
+	}
+}
+
+// TestExistingScenario_NoSilentRegression ensures that a scenario where the
+// taxable slice is large enough to cover all expenses shows zero
+// TaxableRothEarnings every year. Roth is never reached in the withdrawal
+// ordering (taxable → Roth → tax-deferred), so no earnings are taxed.
+func TestExistingScenario_NoSilentRegression(t *testing.T) {
+	s := buildRothFiveYearScenario(t)
+	// Allocation: 90% taxable, 10% Roth, 0% tax-deferred.
+	// Withdrawal ordering goes taxable first. With $90k taxable and
+	// $500/mo expenses, taxable covers all 10 projection years (6% growth
+	// keeps the balance healthy). Roth is never touched ⇒ zero taxable earnings.
+	s.TaxDeferredPercent = 0
+	s.RothPercent = 10
+	// Taxable implied = 90%
+	s.MonthlyLivingExpenses = 500
+	s.MonthlyHealthcare = 0
+	s.RothFirstFundedYear = 2026 // worst-case: clock unsatisfied
+
+	result := newTestCalc(t, s).RunProjection()
+
+	if len(result.YearlySummaries) == 0 {
+		t.Fatal("projection produced no yearly summaries")
+	}
+	for _, ys := range result.YearlySummaries {
+		if ys.TaxableRothEarnings != 0 {
+			t.Fatalf("year %d: TaxableRothEarnings=%.2f, want 0 (no Roth withdrawal expected)", ys.Year, ys.TaxableRothEarnings)
+		}
+	}
+}
+
+// TestProjectionLoops_RothStateParity_Deterministic is the deterministic half
+// of the 3-loop parity test. The MC and backtest halves live in the analysis
+// package (roth_five_year_parity_test.go) because they call internal analysis
+// functions that cannot be imported here without a cycle.
+//
+// This test verifies that the deterministic monthly projection loop surfaces
+// nonzero TaxableRothEarnings when the clock is unsatisfied.
+func TestProjectionLoops_RothStateParity_Deterministic(t *testing.T) {
+	s := buildLoopParityScenario()
+
+	result := newTestCalc(t, s).RunProjection()
+
+	hasEarnings := false
+	for _, ys := range result.YearlySummaries {
+		if ys.TaxableRothEarnings > 0 {
+			hasEarnings = true
+			break
+		}
+	}
+	if !hasEarnings {
+		t.Fatalf("deterministic loop: expected nonzero TaxableRothEarnings in some year (clock unsatisfied throughout)")
+	}
+}
+
+// buildLoopParityScenario returns a scenario shared between the deterministic
+// parity test here and the MC/backtest parity tests in the analysis package.
+// It must be kept in sync with the analysis-package copy
+// (buildLoopParityAnalysisScenario).
+//
+// Settings: 100% Roth, $100k, 6% return, $2k/month expenses,
+// clock starts 2026. At ~month 50 the cumulative withdrawals exceed the
+// initial $100k basis, surfacing taxable earnings. The deterministic loop
+// confirms this; MC and backtest loops confirm no panic.
+func buildLoopParityScenario() *models.WhatIfSettings {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2026-01"
+	s.CurrentAge = 65
+	s.Persons = []models.Person{
+		{
+			ID:         "p1",
+			Name:       "You",
+			Role:       models.PersonRolePrimary,
+			BirthMonth: models.BirthMonthForAge("2026-01", 65),
+		},
+	}
+	s.PortfolioValue = 100_000
+	s.TaxDeferredPercent = 0
+	s.RothPercent = 100
+	// Taxable implied = 0%
+	s.MonthlyLivingExpenses = 2_000
+	s.MonthlyHealthcare = 0
+	s.HealthcarePersons = nil
+	s.ExpenseSources = nil
+	s.IncomeSources = nil
+	s.InvestmentReturn = 6.0
+	s.InflationRate = 0
+	s.SpendingDeclineRate = 0
+	s.ProjectionYears = 10
+	s.RothFirstFundedYear = 2026 // clock unsatisfied throughout projection
+	return s
 }

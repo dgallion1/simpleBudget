@@ -130,7 +130,7 @@ type WhatIfSettings struct {
 	// Projection
 	ProjectionYears         int              `json:"projection_years"`            // Number of years to project
 	ProjectionTiming        ProjectionTiming `json:"projection_timing,omitempty"` // When monthly cash flow occurs relative to growth
-	SteadyStateOverrideYear float64          `json:"steady_state_override_year"`  // User-adjustable projection year (0 = auto)
+	SteadyStateOverrideYear float64          `json:"steady_state_override_year"`  // Projection year displayed by steady-state views (0 = year 0; use a negative value to defer to the auto-pick fallback)
 	TaxDeferredDelayYears   int              `json:"tax_deferred_delay_years"`    // Years before tax-deferred withdrawals begin (0 = immediate)
 
 	// RMD timing: when during each projection year the RMD withdrawal is taken.

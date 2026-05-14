@@ -420,15 +420,21 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 
 // withdrawalMixShares returns the proportional split of a gap-closing
 // withdrawal across (tax-deferred, taxable, Roth) buckets, derived from
-// the user's portfolio allocation. The three values sum to 1. When the
-// declared allocation totals more than 100% (e.g. mis-configured
-// settings) the taxable share is clamped to zero.
+// the user's portfolio allocation. The three values always sum to 1.
+// When the declared allocation totals more than 100% (e.g. mis-configured
+// settings imported outside the form) the taxable share is clamped to
+// zero and the tax-deferred / Roth shares are scaled down proportionally
+// so the contract holds.
 func withdrawalMixShares(s *models.WhatIfSettings) (pTD, pTX, pR float64) {
 	pTD = s.TaxDeferredPercent / 100
 	pR = s.RothPercent / 100
 	pTX = 1 - pTD - pR
 	if pTX < 0 {
 		pTX = 0
+		if sum := pTD + pR; sum > 0 {
+			pTD /= sum
+			pR /= sum
+		}
 	}
 	return pTD, pTX, pR
 }

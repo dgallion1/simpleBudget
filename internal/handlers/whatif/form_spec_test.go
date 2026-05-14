@@ -534,3 +534,127 @@ func TestApplyFieldSpec_OptionalFloat_AbsentKeyIsNotIncluded(t *testing.T) {
 		t.Error("updates contains rate key, want absent")
 	}
 }
+
+func TestFormSpec_RothFirstFundedYear_Parse(t *testing.T) {
+	t.Run("blank parses to zero", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		r := formReq(url.Values{"roth_first_funded_year": {""}})
+		msg := applySettingsFormSpec(r, updates)
+		if msg != "" {
+			t.Fatalf("unexpected error: %s", msg)
+		}
+		// Blank should not produce an error; value absent from updates (skipped as zero+empty).
+		if v, ok := updates["roth_first_funded_year"]; ok {
+			switch x := v.(type) {
+			case int:
+				if x != 0 {
+					t.Fatalf("blank should yield zero, got %v", x)
+				}
+			case float64:
+				if x != 0 {
+					t.Fatalf("blank should yield zero, got %v", x)
+				}
+			default:
+				t.Fatalf("unexpected type %T for roth_first_funded_year", v)
+			}
+		}
+	})
+
+	t.Run("valid year parses through", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		r := formReq(url.Values{"roth_first_funded_year": {"2010"}})
+		msg := applySettingsFormSpec(r, updates)
+		if msg != "" {
+			t.Fatalf("unexpected errors: %s", msg)
+		}
+		got := updates["roth_first_funded_year"]
+		if got == nil {
+			t.Fatal("missing parsed value")
+		}
+		if got.(int) != 2010 {
+			t.Fatalf("want 2010, got %v", got)
+		}
+	})
+
+	t.Run("year before 1998 errors", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		r := formReq(url.Values{"roth_first_funded_year": {"1997"}})
+		msg := applySettingsFormSpec(r, updates)
+		if msg == "" {
+			t.Fatalf("expected validation error for year < 1998")
+		}
+	})
+
+	t.Run("far-future year errors", func(t *testing.T) {
+		updates := map[string]interface{}{}
+		r := formReq(url.Values{"roth_first_funded_year": {"3000"}})
+		msg := applySettingsFormSpec(r, updates)
+		if msg == "" {
+			t.Fatalf("expected validation error for year > current+50")
+		}
+	})
+}
+
+func TestFormSpec_RothFirstFundedYear_AppliedToSettings(t *testing.T) {
+	// Build a minimal SettingsManager backed by a temp dir so we can call
+	// UpdateSettings and verify the field is wired through.
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"roth_first_funded_year": {"2026"}}
+	r := formReq(form)
+	updates := map[string]interface{}{}
+	if msg := applySettingsFormSpec(r, updates); msg != "" {
+		t.Fatalf("parse error: %s", msg)
+	}
+	s, err := rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if s.RothFirstFundedYear != 2026 {
+		t.Fatalf("RothFirstFundedYear not applied: got %d, want 2026", s.RothFirstFundedYear)
+	}
+}
+
+// TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue verifies that
+// submitting the form with an empty roth_first_funded_year clears a
+// previously-set value (rather than leaving it stale). The UI nudge tells
+// users to leave it blank if they don't know it; that promise requires
+// blank to actually clear the persisted setting.
+func TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// First save a non-zero value.
+	form := url.Values{"roth_first_funded_year": {"2026"}}
+	updates := map[string]interface{}{}
+	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
+		t.Fatalf("first parse error: %s", msg)
+	}
+	s, err := rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("UpdateSettings (set): %v", err)
+	}
+	if s.RothFirstFundedYear != 2026 {
+		t.Fatalf("setup: RothFirstFundedYear=%d, want 2026", s.RothFirstFundedYear)
+	}
+
+	// Now submit blank — the persisted value must be cleared to 0.
+	form = url.Values{"roth_first_funded_year": {""}}
+	updates = map[string]interface{}{}
+	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
+		t.Fatalf("blank parse error: %s", msg)
+	}
+	if v, ok := updates["roth_first_funded_year"]; !ok {
+		t.Fatalf("blank submission did not emit roth_first_funded_year update; updates=%v", updates)
+	} else if iv, _ := v.(int); iv != 0 {
+		t.Fatalf("blank submission emitted %v, want 0", v)
+	}
+	s, err = rm.UpdateSettings(updates)
+	if err != nil {
+		t.Fatalf("UpdateSettings (clear): %v", err)
+	}
+	if s.RothFirstFundedYear != 0 {
+		t.Fatalf("blank did not clear: RothFirstFundedYear=%d, want 0", s.RothFirstFundedYear)
+	}
+}

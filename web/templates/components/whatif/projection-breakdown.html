@@ -20,6 +20,7 @@
                     <th class="py-2.5 pr-4 whitespace-nowrap">MAGI</th>
                     <th class="py-2.5 pr-4 whitespace-nowrap">Taxes Incl. NIIT</th>
                     <th class="py-2.5 pr-4 whitespace-nowrap">NIIT Portion</th>
+                    <th class="py-2.5 pr-4 whitespace-nowrap" title="Roth earnings withdrawn before the 5-year clock matured — added to ordinary taxable income for this year">Roth 5yr Taxable</th>
                     <th class="py-2.5 pr-4 whitespace-nowrap">IRMAA</th>
                     <th class="py-2.5 pr-4 whitespace-nowrap">Taxable SS</th>
                     <th class="py-2.5 pr-4 whitespace-nowrap">Spending</th>
@@ -47,6 +48,7 @@
                     <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney $ys.MAGI}}</td>
                     <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-600 dark:text-red-400">{{formatMoney $ys.Taxes}}</td>
                     <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-500 dark:text-red-300">{{formatMoney $ys.NIIT}}</td>
+                    <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-red-500 dark:text-red-300">{{if gt $ys.TaxableRothEarnings 0.0}}{{formatMoney $ys.TaxableRothEarnings}}{{else}}&ndash;{{end}}</td>
                     <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{formatMoney $ys.IRMAA}}</td>
                     <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">{{printf "%.0f%%" $ys.TaxableSocialSecurityPct}}</td>
                     <td class="py-2.5 pr-4 whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300">

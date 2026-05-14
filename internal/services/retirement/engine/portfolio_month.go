@@ -11,13 +11,58 @@ import (
 // it was the legally-required RMD, and how much (if any) of the need
 // could not be met.
 type WithdrawalBreakdown struct {
-	RemainingNeed             float64
-	ActualWithdrawal          float64
-	RMDWithdrawal             float64
-	WithdrawalFromTaxDeferred float64
-	WithdrawalFromTaxable     float64
-	WithdrawalFromRoth        float64
-	EarlyPenaltyPaid          float64
+	RemainingNeed              float64
+	ActualWithdrawal           float64
+	RMDWithdrawal              float64
+	WithdrawalFromTaxDeferred  float64
+	WithdrawalFromTaxable      float64
+	WithdrawalFromRoth         float64
+	WithdrawalFromRothBasis    float64
+	WithdrawalFromRothEarnings float64
+	EarlyPenaltyPaid           float64
+}
+
+// BigTicketFundingResult is the outcome of funding one big-ticket
+// expense from the portfolio waterfall: any portion that could not be
+// funded plus the Roth basis/earnings split for the basis-first
+// ordering rule.
+type BigTicketFundingResult struct {
+	UnfundedExpense        float64
+	RothBasisWithdrawal    float64
+	RothEarningsWithdrawal float64
+}
+
+// RothWithdrawal splits a single Roth distribution into the basis
+// portion (regular contributions plus conversion-contribution amounts,
+// always tax-free under IRS Pub 590-B ordering) and the earnings
+// portion (taxable as ordinary income unless the qualified-distribution
+// clock is satisfied).
+type RothWithdrawal struct {
+	Total    float64
+	Basis    float64
+	Earnings float64
+}
+
+// WithdrawFromRoth pulls up to `needed` from the Roth bucket, applying
+// IRS Pub 590-B basis-first ordering. Mutates rothBalance and rothBasis
+// in place. Clamps basis to balance to guard against floating-point
+// drift. Returns the split.
+func WithdrawFromRoth(needed float64, rothBalance, rothBasis *float64) RothWithdrawal {
+	if needed <= 0 || *rothBalance <= 0 {
+		return RothWithdrawal{}
+	}
+	total := math.Min(needed, *rothBalance)
+	basis := math.Min(total, *rothBasis)
+	earnings := total - basis
+	*rothBalance -= total
+	*rothBasis -= basis
+	if *rothBasis > *rothBalance {
+		*rothBasis = *rothBalance
+	}
+	if *rothBasis < 0 {
+		*rothBasis = 0
+	}
+	return RothWithdrawal{Total: total, Basis: basis, Earnings: earnings}
 }
 
 // PortfolioCashFlowResult is the Outer view of a month's
@@ -25,13 +70,15 @@ type WithdrawalBreakdown struct {
 // realized capital gain on any taxable sale and the amount of need
 // left unmet.
 type PortfolioCashFlowResult struct {
-	Shortfall                 float64
-	ActualWithdrawal          float64
-	RMDWithdrawal             float64
-	WithdrawalFromTaxDeferred float64
-	WithdrawalFromTaxable     float64
-	WithdrawalFromRoth        float64
-	TaxableRealizedGain       float64
+	Shortfall                  float64
+	ActualWithdrawal           float64
+	RMDWithdrawal              float64
+	WithdrawalFromTaxDeferred  float64
+	WithdrawalFromTaxable      float64
+	WithdrawalFromRoth         float64
+	WithdrawalFromRothBasis    float64
+	WithdrawalFromRothEarnings float64
+	TaxableRealizedGain        float64
 }
 
 // GrossWithdrawal returns the sum of pre-tax withdrawals across
@@ -54,11 +101,13 @@ func ProjectionTimingGrowthFractions(timing models.ProjectionTiming) (before flo
 	}
 }
 
-// WithdrawForExpenses pulls cash from the three buckets in priority
-// order (RMD → taxable → Roth → tax-deferred discretionary) to meet
-// the requested needFromPortfolio. Mutates the supplied balances in
-// place; returns a structured breakdown of what came from where.
-func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance *float64) WithdrawalBreakdown {
+// WithdrawForExpenses pulls cash from the buckets in priority order
+// (RMD → taxable → Roth → tax-deferred discretionary) to meet the
+// requested needFromPortfolio. Mutates the supplied balances in place;
+// returns a structured breakdown. Roth withdrawals split by IRS Pub
+// 590-B basis-first ordering so the caller can apply the qualified-
+// distribution earnings tax rule.
+func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance, rothBasis *float64) WithdrawalBreakdown {
 	breakdown := WithdrawalBreakdown{RemainingNeed: neededFromPortfolio}
 	if neededFromPortfolio <= 0 {
 		return breakdown
@@ -83,16 +132,15 @@ func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferr
 	}
 
 	if breakdown.RemainingNeed > 0 && *rothBalance > 0 {
-		fromRoth := math.Min(breakdown.RemainingNeed, *rothBalance)
-		*rothBalance -= fromRoth
-		breakdown.RemainingNeed -= fromRoth
-		breakdown.WithdrawalFromRoth += fromRoth
-		breakdown.ActualWithdrawal += fromRoth
+		rw := WithdrawFromRoth(breakdown.RemainingNeed, rothBalance, rothBasis)
+		breakdown.RemainingNeed -= rw.Total
+		breakdown.WithdrawalFromRoth += rw.Total
+		breakdown.WithdrawalFromRothBasis += rw.Basis
+		breakdown.WithdrawalFromRothEarnings += rw.Earnings
+		breakdown.ActualWithdrawal += rw.Total
 	}
 
 	if allowTaxDeferred && breakdown.RemainingNeed > 0 && *taxDeferredBalance > 0 {
-		// Early withdrawal penalty: before age 59½, only (1-penalty) of each dollar
-		// withdrawn from tax-deferred is available for spending.
 		effectiveFactor := 1.0 - earlyPenaltyRate
 		grossNeeded := breakdown.RemainingNeed / effectiveFactor
 		fromTaxDeferred := math.Min(grossNeeded, *taxDeferredBalance)
@@ -143,10 +191,12 @@ func ReinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDefe
 }
 
 // ApplyBigTicketExpenseWithTaxableState pulls a one-off big-ticket
-// expense from the portfolio in priority order (taxable → Roth → tax
-// deferred) and returns any unmet remainder. Tax-deferred withdrawals
-// honour the early-withdrawal penalty when active.
-func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance *float64) float64 {
+// expense from the portfolio in priority order (taxable → Roth → tax-
+// deferred) and returns the structured result. Tax-deferred withdrawals
+// honour the early-withdrawal penalty when active. Roth withdrawals
+// split by IRS Pub 590-B basis-first ordering.
+func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketFundingResult {
+	out := BigTicketFundingResult{}
 	remaining := amount
 
 	if remaining > 0 && taxable.MarketValue > 0 {
@@ -155,9 +205,10 @@ func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 	}
 
 	if remaining > 0 && *rothBalance > 0 {
-		fromRoth := math.Min(remaining, *rothBalance)
-		*rothBalance -= fromRoth
-		remaining -= fromRoth
+		rw := WithdrawFromRoth(remaining, rothBalance, rothBasis)
+		remaining -= rw.Total
+		out.RothBasisWithdrawal += rw.Basis
+		out.RothEarningsWithdrawal += rw.Earnings
 	}
 
 	if allowTaxDeferred && remaining > 0 && *taxDeferredBalance > 0 {
@@ -168,7 +219,8 @@ func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 		remaining -= fromTaxDeferred * effectiveFactor
 	}
 
-	return remaining
+	out.UnfundedExpense = remaining
+	return out
 }
 
 // ExecutePortfolioCashFlowWithTaxableState orchestrates a month's
@@ -178,19 +230,20 @@ func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 // cost-basis-aware realized gains are tracked. Required-but-unmet
 // RMDs are reinvested into the taxable account at the supplied
 // marginal rate.
-func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate, marginalRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance *float64) PortfolioCashFlowResult {
+func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate, marginalRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance, rothBasis *float64) PortfolioCashFlowResult {
 	result := PortfolioCashFlowResult{}
 
 	if neededFromPortfolio > 0 {
-		withdrawal := WithdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferred, earlyPenaltyRate, taxDeferredBalance, &taxable.MarketValue, rothBalance)
+		withdrawal := WithdrawForExpenses(neededFromPortfolio, monthlyRMD, allowTaxDeferred, earlyPenaltyRate, taxDeferredBalance, &taxable.MarketValue, rothBalance, rothBasis)
 		result.Shortfall = withdrawal.RemainingNeed
 		result.ActualWithdrawal = withdrawal.ActualWithdrawal
 		result.RMDWithdrawal = withdrawal.RMDWithdrawal
 		result.WithdrawalFromTaxDeferred = withdrawal.WithdrawalFromTaxDeferred
 		result.WithdrawalFromRoth = withdrawal.WithdrawalFromRoth
+		result.WithdrawalFromRothBasis = withdrawal.WithdrawalFromRothBasis
+		result.WithdrawalFromRothEarnings = withdrawal.WithdrawalFromRothEarnings
 
 		if withdrawal.WithdrawalFromTaxable > 0 {
-			// Undo the legacy taxable withdrawal, then re-apply it with basis tracking.
 			taxable.MarketValue += withdrawal.WithdrawalFromTaxable
 			cash, _, realizedGain := taxable.Withdraw(withdrawal.WithdrawalFromTaxable)
 			result.WithdrawalFromTaxable = cash
@@ -228,6 +281,7 @@ type TaxAwarePortfolioMonthResult struct {
 	TaxableNonQualifiedDividends     float64
 	TaxableCapitalGains              float64
 	TaxableCapitalGainsDistributions float64
+	TaxableRothEarnings              float64
 	TaxSnapshot                      ProjectedTaxSnapshot
 	CashFlow                         PortfolioCashFlowResult
 }
@@ -240,26 +294,30 @@ type TaxAwarePortfolioMonthResult struct {
 // their pointer semantics — ExecuteTaxAwarePortfolioMonth mutates the values
 // they point to, and that contract is preserved.
 type PortfolioMonthInput struct {
-	TotalExpenses              float64
-	IncomeBreakdown            MonthlyIncomeBreakdown
-	MonthlyRMD                 float64
-	AllowTaxDeferredWithdrawal bool
-	PenaltyRate                float64
-	TaxDeferredBalance         *float64
-	TaxableAccount             *TaxableAccountState
-	RothBalance                *float64
-	TaxDeferredMonthlyReturn   float64
-	RothMonthlyReturn          float64
-	TaxableComponents          TaxableReturnComponents
-	Timing                     models.ProjectionTiming
-	TaxState                   ProjectionTaxAccumulator
-	TaxCalculator              *TaxCalculator
-	CurrentYear                int
-	MonthInYear                int
-	RothConversionThisMonth    float64
-	CompletedMAGIHistory       []float64
-	IRMAAEligibleAdults        int
-	IRMAAInflationFactor       float64
+	TotalExpenses                     float64
+	IncomeBreakdown                   MonthlyIncomeBreakdown
+	MonthlyRMD                        float64
+	AllowTaxDeferredWithdrawal        bool
+	PenaltyRate                       float64
+	TaxDeferredBalance                *float64
+	TaxableAccount                    *TaxableAccountState
+	RothBalance                       *float64
+	RothBasis                         *float64
+	RothFirstFundedYear               int
+	TaxDeferredMonthlyReturn          float64
+	RothMonthlyReturn                 float64
+	TaxableComponents                 TaxableReturnComponents
+	Timing                            models.ProjectionTiming
+	TaxState                          ProjectionTaxAccumulator
+	TaxCalculator                     *TaxCalculator
+	CurrentYear                       int
+	MonthInYear                       int
+	CalendarYear                      int
+	RothConversionThisMonth           float64
+	TaxableRothEarningsBeforeCashFlow float64
+	CompletedMAGIHistory              []float64
+	IRMAAEligibleAdults               int
+	IRMAAInflationFactor              float64
 }
 
 // ExecuteTaxAwarePortfolioMonth runs the inner fixed-point iteration
@@ -270,6 +328,15 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 	startingTaxDeferred := *in.TaxDeferredBalance
 	startingRoth := *in.RothBalance
 	startingTaxable := *in.TaxableAccount
+	// Snapshot starting Roth basis so the fixed-point loop can reset it each
+	// iteration, mirroring the trialRoth := startingRoth pattern. Falls back
+	// to full balance when no basis pointer is supplied (zero-value callers).
+	var startingRothBasis float64
+	if in.RothBasis != nil {
+		startingRothBasis = *in.RothBasis
+	} else {
+		startingRothBasis = startingRoth
+	}
 	snapshot := in.TaxState.EstimateMonthlySnapshot(
 		in.TaxCalculator,
 		in.CurrentYear,
@@ -303,6 +370,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		trialTaxDeferred := startingTaxDeferred
 		trialRoth := startingRoth
 		trialTaxable := startingTaxable
+		trialRothBasis := startingRothBasis
 
 		tdBeforeGrowth := trialTaxDeferred * fractionalMonthlyReturn(in.TaxDeferredMonthlyReturn, growthBeforeFraction)
 		rothBeforeGrowth := trialRoth * fractionalMonthlyReturn(in.RothMonthlyReturn, growthBeforeFraction)
@@ -311,7 +379,16 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		beforeTaxableGrowth := trialTaxable.ApplyGrowth(in.TaxableComponents, growthBeforeFraction)
 
 		trialNeededFromPortfolio := in.TotalExpenses + irmaaExpense + taxesPaid - in.IncomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
-		trialCashFlow := ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, in.MonthlyRMD, in.AllowTaxDeferredWithdrawal, in.PenaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth)
+		trialCashFlow := ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, in.MonthlyRMD, in.AllowTaxDeferredWithdrawal, in.PenaltyRate, marginalRate, &trialTaxDeferred, &trialTaxable, &trialRoth, &trialRothBasis)
+
+		// Compute taxable Roth earnings: pre-cash-flow portion (from this
+		// month's big-ticket events) plus cash-flow portion, both gated by
+		// the qualified-distribution clock. Qualified distributions are
+		// fully tax-free regardless of source.
+		trialTaxableRothEarnings := 0.0
+		if !RothQualifiedDistributionClockSatisfied(in.RothFirstFundedYear, in.CalendarYear) {
+			trialTaxableRothEarnings = in.TaxableRothEarningsBeforeCashFlow + trialCashFlow.WithdrawalFromRothEarnings
+		}
 
 		tdAfterGrowth := trialTaxDeferred * fractionalMonthlyReturn(in.TaxDeferredMonthlyReturn, growthAfterFraction)
 		rothAfterGrowth := trialRoth * fractionalMonthlyReturn(in.RothMonthlyReturn, growthAfterFraction)
@@ -328,7 +405,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 			in.TaxCalculator,
 			in.CurrentYear,
 			in.MonthInYear,
-			in.IncomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends,
+			in.IncomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends+trialTaxableRothEarnings,
 			in.IncomeBreakdown.SocialSecurityIncome,
 			trialCashFlow.WithdrawalFromTaxDeferred,
 			trialQualifiedDividends,
@@ -344,6 +421,9 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		*in.TaxDeferredBalance = trialTaxDeferred
 		*in.RothBalance = trialRoth
 		*in.TaxableAccount = trialTaxable
+		if in.RothBasis != nil {
+			*in.RothBasis = trialRothBasis
+		}
 		result.CashFlow = trialCashFlow
 		result.Shortfall = trialCashFlow.Shortfall
 		result.TotalGrowth = tdBeforeGrowth + rothBeforeGrowth + beforeTaxableGrowth.TotalGrowth + tdAfterGrowth + rothAfterGrowth + afterTaxableGrowth.TotalGrowth
@@ -352,6 +432,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		result.TaxableNonQualifiedDividends = trialNonQualifiedDividends
 		result.TaxableCapitalGains = trialCapitalGains
 		result.TaxableCapitalGainsDistributions = beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions
+		result.TaxableRothEarnings = trialTaxableRothEarnings
 		finalSnapshot = recalculatedSnapshot
 
 		if math.Abs(recalculatedSnapshot.MonthlyTax-taxesPaid) < 0.01 && math.Abs(recalculatedSnapshot.MonthlyIRMAA-irmaaExpense) < 0.01 {

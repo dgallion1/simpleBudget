@@ -54,6 +54,13 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
 	taxableAccount := NewTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
 
+	// Roth basis and 5-year clock state, persisted across months within the loop.
+	rothBasisLocal := s.PortfolioValue * (s.RothPercent / 100)
+	rothFirstFundedYearLocal := s.RothFirstFundedYear
+	if rothFirstFundedYearLocal == 0 && s.RothPercent > 0 {
+		rothFirstFundedYearLocal = ParseStartYear(s.StartDate)
+	}
+
 	var depletionMonth *int
 	var longevityYears *float64
 
@@ -98,6 +105,10 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		yearlySummaries = append(yearlySummaries, currentYearSummary)
 	}
 
+	// bigTicketRothEarnings carries the RothEarningsWithdrawal from the annual
+	// big-ticket pass into the monthly PortfolioMonthInput. Reset each year.
+	bigTicketRothEarnings := 0.0
+
 	for m := 0; m < months; m++ {
 		currentYear := m / 12
 		monthInYear := m % 12
@@ -140,9 +151,11 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			annualRMD = AnnualRMDForYear(s, currentYear, taxDeferredBalance)
 			monthlyRMD = 0
 
-			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance)
+			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 
-			bigTicketExpenseThisMonth += ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance)
+			bigTicketResult := ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance, &rothBasisLocal)
+			bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
+			bigTicketRothEarnings = bigTicketResult.RothEarningsWithdrawal
 		}
 
 		if m > 0 {
@@ -240,27 +253,34 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		monthlyRMD = MonthlyRMDForMonth(s, monthInYear, annualRMD, taxDeferredBalance)
 
 		monthResult := ExecuteTaxAwarePortfolioMonth(PortfolioMonthInput{
-			TotalExpenses:              totalExpensesAcc,
-			IncomeBreakdown:            incomeBreakdown,
-			MonthlyRMD:                 monthlyRMD,
-			AllowTaxDeferredWithdrawal: allowTaxDeferredWithdrawal,
-			PenaltyRate:                penaltyRate,
-			TaxDeferredBalance:         &taxDeferredBalance,
-			TaxableAccount:             &taxableAccount,
-			RothBalance:                &rothBalance,
-			TaxDeferredMonthlyReturn:   taxDeferredMonthly,
-			RothMonthlyReturn:          rothMonthly,
-			TaxableComponents:          taxableComponents,
-			Timing:                     s.GetProjectionTiming(),
-			TaxState:                   taxState,
-			TaxCalculator:              taxCalculator,
-			CurrentYear:                currentYear,
-			MonthInYear:                monthInYear,
-			RothConversionThisMonth:    rothConversionThisMonth,
-			CompletedMAGIHistory:       completedMAGIHistory,
-			IRMAAEligibleAdults:        irmaaEligibleAdults,
-			IRMAAInflationFactor:       irmaaInflationFactor,
+			TotalExpenses:                     totalExpensesAcc,
+			IncomeBreakdown:                   incomeBreakdown,
+			MonthlyRMD:                        monthlyRMD,
+			AllowTaxDeferredWithdrawal:        allowTaxDeferredWithdrawal,
+			PenaltyRate:                       penaltyRate,
+			TaxDeferredBalance:                &taxDeferredBalance,
+			TaxableAccount:                    &taxableAccount,
+			RothBalance:                       &rothBalance,
+			RothBasis:                         &rothBasisLocal,
+			RothFirstFundedYear:               rothFirstFundedYearLocal,
+			TaxDeferredMonthlyReturn:          taxDeferredMonthly,
+			RothMonthlyReturn:                 rothMonthly,
+			TaxableComponents:                 taxableComponents,
+			Timing:                            s.GetProjectionTiming(),
+			TaxState:                          taxState,
+			TaxCalculator:                     taxCalculator,
+			CurrentYear:                       currentYear,
+			MonthInYear:                       monthInYear,
+			CalendarYear:                      ParseStartYear(s.StartDate) + currentYear,
+			RothConversionThisMonth:           rothConversionThisMonth,
+			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
+			// (consumed below; reset to 0 so subsequent months in the year
+			// don't re-fold the same big-ticket earnings into ordinary income)
+			CompletedMAGIHistory:              completedMAGIHistory,
+			IRMAAEligibleAdults:               irmaaEligibleAdults,
+			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
+		bigTicketRothEarnings = 0
 		totalGrowth = monthResult.TotalGrowth
 		shortfall := monthResult.Shortfall
 		cashFlow := monthResult.CashFlow
@@ -279,6 +299,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		currentYearSummary.Expenses += totalExpensesAcc
 		currentYearSummary.PlannedExpenses += plannedTotalExpenses
 		currentYearSummary.Withdrawals += cashFlow.ActualWithdrawal
+		currentYearSummary.TaxableRothEarnings += monthResult.TaxableRothEarnings
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableAccount.MarketValue
 		depleted := false

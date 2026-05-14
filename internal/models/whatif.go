@@ -152,6 +152,12 @@ type WhatIfSettings struct {
 	// Roth Conversion Strategy
 	RothConversion *RothConversionConfig `json:"roth_conversion,omitempty"`
 
+	// RothFirstFundedYear is the calendar tax year of the user's first
+	// Roth IRA regular contribution or conversion contribution. It drives
+	// the IRS qualified-distribution 5-tax-year rule for earnings.
+	// Zero means unknown/unset, not necessarily "no Roth exists."
+	RothFirstFundedYear int `json:"roth_first_funded_year,omitempty"`
+
 	// Glide Path (time-based allocation shift)
 	GlidePath *GlidePathConfig `json:"glide_path,omitempty"`
 
@@ -846,6 +852,9 @@ type ProjectionYearSummary struct {
 	// Guardrail visibility (F-079)
 	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
 	GuardrailMultiplier float64 `json:"guardrail_multiplier"`       // Multiplier in effect at year-end (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
+
+	// Roth 5-year rule: taxable Roth earnings withdrawn before the clock matures.
+	TaxableRothEarnings float64 `json:"taxable_roth_earnings,omitempty"`
 }
 
 // ProjectionExplainability contains reconciliation data for the projection UI.

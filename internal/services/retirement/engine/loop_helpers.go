@@ -189,33 +189,52 @@ func MonthlyRMDForMonth(s *models.WhatIfSettings, monthInYear int, annualRMD, ta
 
 // ApplyRothConversionAtYear performs the year-boundary Roth conversion:
 // if a conversion is configured and in-window, decrement the tax-
-// deferred balance and increment the Roth balance by the same amount.
-// Returns the conversion amount applied (0 when no conversion ran).
+// deferred balance, increment the Roth balance and basis by the same
+// amount, and stamp rothFirstFundedYear if blank.
+//
+// The rothFirstFundedYear pointer holds projection-local state — the
+// caller seeds it from s.RothFirstFundedYear and DOES NOT write back
+// into s. Persisted settings change only through the settings form.
 //
 // All three projection loops perform this mutation identically; this
 // helper captures the shared in-place update so the loops can shrink
 // to a single call per year boundary.
-func ApplyRothConversionAtYear(s *models.WhatIfSettings, currentYear int, taxDeferredBalance, rothBalance *float64) float64 {
+func ApplyRothConversionAtYear(
+	s *models.WhatIfSettings,
+	currentYear int,
+	taxDeferredBalance, rothBalance, rothBasis *float64,
+	rothFirstFundedYear *int,
+) float64 {
 	conversionAmount := RothConversionAmountForYear(s, currentYear, *taxDeferredBalance)
 	if conversionAmount <= 0 {
 		return 0
 	}
 	*taxDeferredBalance -= conversionAmount
 	*rothBalance += conversionAmount
+	*rothBasis += conversionAmount
+	if *rothFirstFundedYear <= 0 {
+		*rothFirstFundedYear = ParseStartYear(s.StartDate) + currentYear
+	}
 	return conversionAmount
 }
 
+// BigTicketYearResult aggregates a year's big-ticket draws so the
+// caller can fold the unfunded expense into the month's expense total
+// and route the taxable Roth earnings (if the clock is unsatisfied)
+// into that month's tax snapshot.
+type BigTicketYearResult struct {
+	UnfundedExpense        float64
+	RothBasisWithdrawal    float64
+	RothEarningsWithdrawal float64
+}
+
 // ApplyBigTicketItemsForYear processes every big-ticket item scheduled
-// for currentYear: income items add cash to the taxable account, and
-// expense items are funded via the canonical waterfall (taxable →
-// Roth → tax-deferred when allowed). Returns the residual expense that
-// could not be funded — added to the month's expense total by the
-// caller so the depletion path runs when needed.
-//
-// All three projection loops walk s.BigTicketItems with identical
-// semantics; this helper captures the shared loop body.
-func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance *float64) float64 {
-	bigTicketExpenseThisMonth := 0.0
+// for currentYear: income items add cash to the taxable account,
+// expense items are funded via the canonical waterfall, and the
+// aggregated unfunded-expense plus Roth split are returned so the
+// monthly loop can feed taxable Roth earnings into the tax snapshot.
+func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketYearResult {
+	out := BigTicketYearResult{}
 	for _, item := range s.BigTicketItems {
 		if item.Year != currentYear {
 			continue
@@ -224,19 +243,38 @@ func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allow
 			taxableAccount.AddCash(item.Amount)
 			continue
 		}
-		remaining := ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, taxDeferredBalance, taxableAccount, rothBalance)
-		bigTicketExpenseThisMonth += remaining
+		r := ApplyBigTicketExpenseWithTaxableState(item.Amount, allowTaxDeferredWithdrawal, penaltyRate, taxDeferredBalance, taxableAccount, rothBalance, rothBasis)
+		out.UnfundedExpense += r.UnfundedExpense
+		out.RothBasisWithdrawal += r.RothBasisWithdrawal
+		out.RothEarningsWithdrawal += r.RothEarningsWithdrawal
 	}
-	return bigTicketExpenseThisMonth
+	return out
+}
+
+// RothQualifiedDistributionClockSatisfied reports whether the Roth IRA
+// 5-tax-year aging requirement is met for the given calendar year. A
+// firstFundedYear of 0 or less means unset and the clock is considered
+// not satisfied (the conservative projection default). calendarYear is
+// a calendar tax year, not a projection-year offset; callers translate
+// projection year via ParseStartYear(s.StartDate)+projectionYear.
+func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) bool {
+	if firstFundedYear <= 0 {
+		return false
+	}
+	return calendarYear >= firstFundedYear+5
 }
 
 // ApplyTaxStateMonth folds a single month's portfolio result into the
 // running ProjectionTaxAccumulator. Captures the long positional
 // argument list that all three projection loops would otherwise repeat
 // verbatim, so future signature changes touch one place.
+//
+// TaxableRothEarnings is added to ordinary income so MAGI-sensitive
+// calculations (IRMAA, NIIT thresholds) agree with the converged
+// monthly tax snapshot.
 func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64) {
 	taxState.ApplyMonth(
-		incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
+		incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends+monthResult.TaxableRothEarnings,
 		incomeBreakdown.SocialSecurityIncome,
 		monthResult.CashFlow.WithdrawalFromTaxDeferred,
 		monthResult.TaxableQualifiedDividends,

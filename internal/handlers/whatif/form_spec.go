@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"budget2/internal/models"
 )
@@ -42,6 +43,13 @@ type fieldSpec struct {
 	// EnumInvalidMsg is the full error string returned when an enum value is
 	// not in EnumVals. Required for Enum kind.
 	EnumInvalidMsg string
+
+	// AllowBlankZero, when true on a fieldInt, causes a blank form value to
+	// emit `updates[Name] = 0` rather than being skipped. This is required
+	// for fields where the user must be able to clear a previously-set value
+	// (e.g. roth_first_funded_year). Default false preserves legacy behavior
+	// for fields like spouse_age where blank means "leave alone."
+	AllowBlankZero bool
 }
 
 // settingsFormSpec lists every primitive field handled by handleWhatIfSettings,
@@ -111,6 +119,10 @@ var settingsFormSpec = []fieldSpec{
 	{Name: "tax_deferred_delay_years", Kind: fieldInt, ParseLabel: "tax-deferred delay",
 		HasBounds: true, Min: 0, Max: 30,
 		BoundsMsg: "Tax-deferred delay must be between 0 and 30 years"},
+	{Name: "roth_first_funded_year", Kind: fieldInt, ParseLabel: "Roth first funded year",
+		HasBounds: true, Min: 1998, Max: 9999,
+		BoundsMsg: "Year must be 1998 or later",
+		AllowBlankZero: true},
 	{Name: "steady_state_override_year", Kind: fieldFloat, ParseLabel: "steady state year"},
 	{Name: "state_income_tax_rate", Kind: fieldOptionalFloat, ParseLabel: "state income tax rate",
 		HasBounds: true, Min: 0, Max: 20,
@@ -156,7 +168,14 @@ func applyFieldSpec(r *http.Request, spec fieldSpec, updates map[string]interfac
 			return false, fmt.Sprintf("Invalid %s: %s", spec.ParseLabel, parseErr.Error())
 		}
 		if v == 0 && raw == "" {
-			return false, ""
+			if !spec.AllowBlankZero {
+				return false, ""
+			}
+			// Blank-with-AllowBlankZero: emit zero so the apply-updates
+			// path clears the persisted value. Skip bounds check — zero
+			// is the explicit "unset" sentinel.
+			updates[spec.Name] = v
+			return true, ""
 		}
 		if spec.HasBounds && (float64(v) < spec.Min || float64(v) > spec.Max) {
 			return false, spec.BoundsMsg
@@ -209,6 +228,14 @@ func applySettingsFormSpec(r *http.Request, updates map[string]interface{}) stri
 	for _, spec := range settingsFormSpec {
 		if _, msg := applyFieldSpec(r, spec, updates); msg != "" {
 			return msg
+		}
+	}
+	// Runtime upper-bound for roth_first_funded_year: reject years beyond
+	// current year + 50 (the static Max:9999 is only a parse sentinel).
+	if year, ok := updates["roth_first_funded_year"].(int); ok && year != 0 {
+		upper := time.Now().Year() + 50
+		if year > upper {
+			return fmt.Sprintf("Roth first funded year must be %d or earlier", upper)
 		}
 	}
 	return ""

@@ -21,6 +21,7 @@ func TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross(t *testing.T) {
 	monthlyRMD := 5_000.0
 	marginalRate := 0.22
 
+	rothBasis := 0.0
 	result := engine.ExecutePortfolioCashFlowWithTaxableState(
 		0.0, // neededFromPortfolio == 0 → surplus path (else-branch at line 853)
 		monthlyRMD,
@@ -30,6 +31,7 @@ func TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross(t *testing.T) {
 		&taxDeferred,
 		&taxable,
 		&rothBalance,
+		&rothBasis,
 	)
 
 	if math.Abs(result.RMDWithdrawal-monthlyRMD) > 0.01 {
@@ -68,6 +70,7 @@ func TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross(t *t
 	marginalRate := 0.22
 	needed := 1_000.0 // small need; RMD will satisfy it and have surplus
 
+	rothBasis := 0.0
 	result := engine.ExecutePortfolioCashFlowWithTaxableState(
 		needed,
 		monthlyRMD,
@@ -77,6 +80,7 @@ func TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross(t *t
 		&taxDeferred,
 		&taxable,
 		&rothBalance,
+		&rothBasis,
 	)
 
 	// withdrawForExpenses uses RMD first to satisfy `needed`, so 1,000 of the

@@ -268,9 +268,13 @@ func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) 
 // running ProjectionTaxAccumulator. Captures the long positional
 // argument list that all three projection loops would otherwise repeat
 // verbatim, so future signature changes touch one place.
+//
+// TaxableRothEarnings is added to ordinary income so MAGI-sensitive
+// calculations (IRMAA, NIIT thresholds) agree with the converged
+// monthly tax snapshot.
 func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64) {
 	taxState.ApplyMonth(
-		incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends,
+		incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends+monthResult.TaxableRothEarnings,
 		incomeBreakdown.SocialSecurityIncome,
 		monthResult.CashFlow.WithdrawalFromTaxDeferred,
 		monthResult.TaxableQualifiedDividends,

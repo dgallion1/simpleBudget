@@ -62,3 +62,22 @@ func TestApplyRothConversionAtYear_BasisAndClock(t *testing.T) {
 		}
 	})
 }
+
+func TestApplyTaxStateMonth_IncludesTaxableRothEarnings(t *testing.T) {
+	taxState := &ProjectionTaxAccumulator{}
+	income := MonthlyIncomeBreakdown{OrdinaryIncome: 1000}
+	monthResult := TaxAwarePortfolioMonthResult{
+		TaxableRothEarnings:          200,
+		TaxableNonQualifiedDividends: 0,
+		CashFlow:                     PortfolioCashFlowResult{},
+	}
+	ApplyTaxStateMonth(taxState, income, monthResult, 0)
+
+	// OrdinaryIncomeYTD must include both the base ordinary income and the
+	// taxable Roth earnings (non-qualified distribution from pre-clock Roth).
+	got := taxState.OrdinaryIncomeYTD
+	want := 1000.0 + 200.0
+	if got != want {
+		t.Fatalf("OrdinaryIncomeYTD=%v, want %v", got, want)
+	}
+}

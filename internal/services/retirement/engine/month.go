@@ -296,6 +296,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		currentYearSummary.Expenses += totalExpensesAcc
 		currentYearSummary.PlannedExpenses += plannedTotalExpenses
 		currentYearSummary.Withdrawals += cashFlow.ActualWithdrawal
+		currentYearSummary.TaxableRothEarnings += monthResult.TaxableRothEarnings
 
 		totalBalance := taxDeferredBalance + rothBalance + taxableAccount.MarketValue
 		depleted := false

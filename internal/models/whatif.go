@@ -852,6 +852,9 @@ type ProjectionYearSummary struct {
 	// Guardrail visibility (F-079)
 	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
 	GuardrailMultiplier float64 `json:"guardrail_multiplier"`       // Multiplier in effect at year-end (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
+
+	// Roth 5-year rule: taxable Roth earnings withdrawn before the clock matures.
+	TaxableRothEarnings float64 `json:"taxable_roth_earnings,omitempty"`
 }
 
 // ProjectionExplainability contains reconciliation data for the projection UI.

@@ -282,6 +282,29 @@
                 </div>
             </div>
 
+            <!-- Roth 5-year clock -->
+            {{if gt .Settings.RothPercent 0.0}}
+            <div class="mt-2">
+                <label for="roth-first-funded-year-input" class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Year Roth IRA First Funded</label>
+                <input type="number" id="roth-first-funded-year-input" name="roth_first_funded_year"
+                    value="{{if .Settings.RothFirstFundedYear}}{{.Settings.RothFirstFundedYear}}{{end}}"
+                    min="1998" step="1"
+                    placeholder="e.g. 2010"
+                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">IRS 5-year rule for tax-free Roth earnings. Leave blank if unknown; projections assume the clock started in the projection start year.</p>
+                {{if and (gt .Settings.RothFirstFundedYear 0) (lt (now).Year (add .Settings.RothFirstFundedYear 5))}}
+                <div class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    &#8987; 5-year clock matures in {{add .Settings.RothFirstFundedYear 5}}
+                </div>
+                {{end}}
+                {{if and (gt .Settings.RothPercent 0.0) (eq .Settings.RothFirstFundedYear 0)}}
+                <div class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    You have a Roth balance but have not set the first-funded year. Projections assume the 5-year clock starts in the projection start year.
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+
             <!-- Taxable Account -->
             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-md p-2">
                 <div class="flex items-center justify-between mb-1">

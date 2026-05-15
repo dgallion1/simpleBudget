@@ -55,13 +55,15 @@ func taxOptimizerEligible(s *models.WhatIfSettings) (bool, string) {
 	return true, ""
 }
 
-// cloneSettingsWithSSAndRoth returns a prepared snapshot identical to s
-// except for the SS claim ages and Roth conversion config. The deep
-// copy in prepare.From handles slice/pointer aliasing for the rest of
-// the struct. Pattern mirrors cloneSettingsWithClaimAges in ss.go.
-func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int, strat models.RothOptimizerStrategy) (prepare.PreparedSettings, bool) {
+// candidateSettingsForSS returns a shallow-deep copy of s with the
+// supplied SS claim ages substituted. The returned settings are safe to
+// pass to rothStrategyToConfig / strategyYearlyConversions so that
+// bracket-fill amounts reflect the candidate's SS ages rather than the
+// saved ones — without this, estimateOtherTaxableIncome reads the saved
+// ClaimAge and biases the optimizer's per-candidate conversion sizing.
+func candidateSettingsForSS(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int) *models.WhatIfSettings {
 	if s == nil {
-		return prepare.PreparedSettings{}, false
+		return nil
 	}
 	cfg := *s
 	if s.SocialSecurity != nil {
@@ -70,7 +72,20 @@ func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spous
 		ssCopy.SpouseClaimAge = spouseClaimAge
 		cfg.SocialSecurity = &ssCopy
 	}
-	cfg.RothConversion = rothStrategyToConfig(s, strat)
+	return &cfg
+}
+
+// cloneSettingsWithSSAndRoth returns a prepared snapshot identical to s
+// except for the SS claim ages and Roth conversion config. The deep
+// copy in prepare.From handles slice/pointer aliasing for the rest of
+// the struct. Pattern mirrors cloneSettingsWithClaimAges in ss.go.
+func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int, strat models.RothOptimizerStrategy) (prepare.PreparedSettings, bool) {
+	if s == nil {
+		return prepare.PreparedSettings{}, false
+	}
+	candidate := candidateSettingsForSS(s, primaryClaimAge, spouseClaimAge)
+	cfg := *candidate
+	cfg.RothConversion = rothStrategyToConfig(candidate, strat)
 	prepared := perturbAndPrepare(&cfg)
 
 	// PerYearOverrides is tagged json:"-" so prepare.From's JSON-based
@@ -228,7 +243,12 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 	cellInput := engine.Input{Prepared: cloned, Chain: in.Chain, Hooks: in.Hooks}
 	proj := eng.Run(cellInput)
 	cand := projectionToCandidate(proj, primaryClaim, spouseClaim, strat)
-	cand.PerYearConversions = strategyYearlyConversions(settings, strat)
+	// Disclosure must mirror the engine input: the engine's PerYearOverrides
+	// are derived from candidate-SS-applied settings (see
+	// cloneSettingsWithSSAndRoth), so the displayed per-year amounts use
+	// the same candidate settings.
+	cand.PerYearConversions = strategyYearlyConversions(
+		candidateSettingsForSS(settings, primaryClaim, spouseClaim), strat)
 	return cand
 }
 

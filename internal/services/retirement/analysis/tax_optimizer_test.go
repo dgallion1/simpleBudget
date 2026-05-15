@@ -291,6 +291,159 @@ func TestScoreCandidate_NoneStrategyHasEmptyPerYearConversions(t *testing.T) {
 	}
 }
 
+// TestCloneSettingsWithSSAndRoth_BracketFillUsesCandidateSSAges pins the
+// fix for the cross-binding bug: bracket-fill PerYearOverrides must be
+// computed against the CANDIDATE SS claim ages, not the saved ones.
+// Otherwise the optimizer scores "claim at 70 + fill 22% bracket" using
+// conversion amounts shrunk by SS income from the saved (earlier) claim,
+// biasing ranking.
+func TestCloneSettingsWithSSAndRoth_BracketFillUsesCandidateSSAges(t *testing.T) {
+	s := eligibleBase()
+	// Single filer for a tight test: no spouse SS contribution to compare.
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+	s.SpouseAge = 0
+	// Saved claim age = 62 means SS income is in the bracket-fill years.
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 4000, FRA: 67, ClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.22,
+		StartAge:      s.CurrentAge,
+		EndAge:        s.CurrentAge + 3, // ages 67..69 — all pre-candidate-claim
+	}
+
+	// Expected: amounts derived under candidate SS (claim 70 → no SS in
+	// projection years 0..2 since age 67..69 < 70).
+	candidateSettings := *s
+	ssCopy := *s.SocialSecurity
+	ssCopy.ClaimAge = 70
+	candidateSettings.SocialSecurity = &ssCopy
+	wantCfg := rothStrategyToConfig(&candidateSettings, strat)
+	if wantCfg == nil || wantCfg.PerYearOverrides == nil {
+		t.Fatalf("setup: candidate-SS bracket-fill produced no overrides; cfg=%+v", wantCfg)
+	}
+	want := wantCfg.PerYearOverrides
+
+	// Sanity: under saved SS the overrides MUST differ, otherwise the
+	// test scenario isn't actually exercising the bug surface.
+	savedCfg := rothStrategyToConfig(s, strat)
+	if savedCfg == nil || savedCfg.PerYearOverrides == nil {
+		t.Fatalf("setup: saved-SS bracket-fill produced no overrides; cfg=%+v", savedCfg)
+	}
+	differs := false
+	for y, savedAmt := range savedCfg.PerYearOverrides {
+		if math.Abs(savedAmt-want[y]) > 1 {
+			differs = true
+			break
+		}
+	}
+	if !differs {
+		t.Fatalf("test scenario insufficient: saved and candidate amounts identical (saved=%v want=%v)",
+			savedCfg.PerYearOverrides, want)
+	}
+
+	// Exercise the bug path.
+	prepared, ok := cloneSettingsWithSSAndRoth(s, 70, 0, strat)
+	if !ok {
+		t.Fatal("clone failed")
+	}
+	cloned := prepared.Settings()
+	if cloned == nil || cloned.RothConversion == nil {
+		t.Fatal("cloned settings or RothConversion is nil")
+	}
+	got := cloned.RothConversion.PerYearOverrides
+	if got == nil {
+		t.Fatal("PerYearOverrides was dropped")
+	}
+	if len(got) != len(want) {
+		t.Fatalf("override count: got %d, want %d", len(got), len(want))
+	}
+	for y, wantAmt := range want {
+		gotAmt, ok := got[y]
+		if !ok {
+			t.Errorf("year %d missing from PerYearOverrides; got map=%v", y, got)
+			continue
+		}
+		if math.Abs(gotAmt-wantAmt) > 1 {
+			t.Errorf("year %d: PerYearOverrides=%.2f, want %.2f (saved-SS amount was %.2f — fix not applied)",
+				y, gotAmt, wantAmt, savedCfg.PerYearOverrides[y])
+		}
+	}
+}
+
+// TestScoreCandidate_DisclosureUsesCandidateSSAges verifies that
+// cand.PerYearConversions (the per-year disclosure shown in the UI) is
+// computed from the CANDIDATE SS claim ages, not the saved ones. If
+// scoreCandidate uses the saved settings, users see amounts that don't
+// match what the engine actually applied — and that mismatch is a tell
+// that the engine input is also wrong (twin bug at line 73 of
+// tax_optimizer.go).
+func TestScoreCandidate_DisclosureUsesCandidateSSAges(t *testing.T) {
+	s := eligibleBase()
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+	s.SpouseAge = 0
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 4000, FRA: 67, ClaimAge: 62,
+		COLARate: 0.02, COLARateSet: true,
+	}
+
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.22,
+		StartAge:      s.CurrentAge,
+		EndAge:        s.CurrentAge + 3,
+	}
+
+	// Build the engine.Input around the SAVED settings (this mirrors what
+	// the optimizer does: scoreCandidate is called with the user's input,
+	// not the candidate's).
+	prep, ok := cloneSettingsWithSSAndRoth(s, s.SocialSecurity.ClaimAge, 0, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+	if !ok {
+		t.Fatal("baseline clone failed")
+	}
+	in := engine.Input{Prepared: prep}
+	eng := engine.New()
+
+	cand := scoreCandidate(eng, in, 70, 0, strat)
+	if len(cand.PerYearConversions) == 0 {
+		t.Fatalf("disclosure is empty; cand=%+v", cand)
+	}
+
+	// Compute the expected amounts directly from a candidate-SS-applied
+	// settings. The disclosure must match these — not the saved-SS values.
+	candidateSettings := *prep.Settings()
+	if candidateSettings.SocialSecurity != nil {
+		ssCopy := *candidateSettings.SocialSecurity
+		ssCopy.ClaimAge = 70
+		ssCopy.SpouseClaimAge = 0
+		candidateSettings.SocialSecurity = &ssCopy
+	}
+	wantSeq := strategyYearlyConversions(&candidateSettings, strat)
+	// Saved-SS sequence for the comparison failure message.
+	savedSeq := strategyYearlyConversions(prep.Settings(), strat)
+
+	if len(cand.PerYearConversions) != len(wantSeq) {
+		t.Fatalf("disclosure length: got %d, want %d", len(cand.PerYearConversions), len(wantSeq))
+	}
+	for i, want := range wantSeq {
+		got := cand.PerYearConversions[i]
+		if got.Age != want.Age {
+			t.Errorf("entry %d: Age=%d, want %d", i, got.Age, want.Age)
+		}
+		if math.Abs(got.Amount-want.Amount) > 1 {
+			savedAmt := 0.0
+			if i < len(savedSeq) {
+				savedAmt = savedSeq[i].Amount
+			}
+			t.Errorf("entry %d (Age %d): disclosure Amount=%.2f, want %.2f (saved-SS would be %.2f — fix not applied)",
+				i, got.Age, got.Amount, want.Amount, savedAmt)
+		}
+	}
+}
+
 func TestProjectionToCandidate_NilProjection(t *testing.T) {
 	cand := projectionToCandidate(nil, 67, 62, models.RothOptimizerStrategy{
 		Kind: models.RothStrategyLadder, Label: "test",

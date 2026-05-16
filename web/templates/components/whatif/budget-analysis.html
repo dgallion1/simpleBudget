@@ -28,7 +28,7 @@
                 <span class="text-gray-500 dark:text-gray-400">
                     {{.Name}}{{if .Note}} <span class="text-xs italic">({{.Note}})</span>{{end}}
                 </span>
-                <span class="text-gray-600 dark:text-gray-300">{{formatMoney .Amount}}</span>
+                <span class="text-gray-600 dark:text-gray-300">{{formatMoney .Amount}}/mo</span>
             </div>
             {{end}}
             {{end}}
@@ -44,7 +44,7 @@
                 <span class="text-gray-500 dark:text-gray-400">
                     {{.Name}}{{if .Note}} <span class="text-xs italic">({{.Note}})</span>{{end}}
                 </span>
-                <span class="text-green-600 dark:text-green-400">{{formatMoney .Amount}}</span>
+                <span class="text-green-600 dark:text-green-400">{{formatMoney .Amount}}/mo</span>
             </div>
             {{end}}
             {{end}}
@@ -52,31 +52,31 @@
             {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
             <div class="flex justify-between py-0.5 pl-4">
                 <span class="text-gray-500 dark:text-gray-400">Required RMD</span>
-                <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}</span>
+                <span class="text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.BudgetFit.MonthlyRMD}}/mo</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyTaxes 0.0}}
             <div class="flex justify-between py-0.5 pl-4">
                 <span class="text-gray-500 dark:text-gray-400">Estimated Taxes</span>
-                <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyTaxes}}</span>
+                <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyTaxes}}/mo</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyStateTax 0.0}}
             <div class="flex justify-between py-0.5 pl-8">
                 <span class="text-gray-400 dark:text-gray-500">Includes State Tax</span>
-                <span class="text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.MonthlyStateTax}}</span>
+                <span class="text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.MonthlyStateTax}}/mo</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyNIIT 0.0}}
             <div class="flex justify-between py-0.5 pl-8">
                 <span class="text-gray-400 dark:text-gray-500">Includes NIIT</span>
-                <span class="text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.MonthlyNIIT}}</span>
+                <span class="text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.MonthlyNIIT}}/mo</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyIRMAA 0.0}}
             <div class="flex justify-between py-0.5 pl-4">
                 <span class="text-gray-500 dark:text-gray-400">Estimated IRMAA</span>
-                <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyIRMAA}}</span>
+                <span class="text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.MonthlyIRMAA}}/mo</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.TaxableSocialSecurityPct 0.0}}
@@ -107,43 +107,6 @@
                 <p class="text-xs text-gray-400 dark:text-gray-500">Additional withdrawal</p>
             </div>
         </div>
-            {{if gt .Analysis.BudgetFit.MonthlyGap 0.0}}
-            <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-2">Suggested Withdrawal Mix</p>
-                <div class="text-sm space-y-1">
-                    <div class="flex justify-between">
-                        <span class="text-gray-500 dark:text-gray-400">From Tax-Deferred</span>
-                        <span>
-                            <span class="text-red-600 dark:text-red-400 font-medium">{{formatMoney .Analysis.BudgetFit.NetWithdrawalTaxDeferred}}/mo</span>
-                            {{if gt .Analysis.BudgetFit.GrossWithdrawalTaxDeferred .Analysis.BudgetFit.NetWithdrawalTaxDeferred}}
-                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(withdraw {{formatMoney .Analysis.BudgetFit.GrossWithdrawalTaxDeferred}} at {{printf "%.0f%%" .Analysis.BudgetFit.MarginalRateTaxDeferred}} marginal)</span>
-                            {{end}}
-                        </span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-500 dark:text-gray-400">From Taxable</span>
-                        <span>
-                            <span class="text-amber-600 dark:text-amber-400 font-medium">{{formatMoney .Analysis.BudgetFit.NetWithdrawalTaxable}}/mo</span>
-                            {{if gt .Analysis.BudgetFit.GrossWithdrawalTaxable .Analysis.BudgetFit.NetWithdrawalTaxable}}
-                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(withdraw {{formatMoney .Analysis.BudgetFit.GrossWithdrawalTaxable}} at ~{{printf "%.0f%%" .Analysis.BudgetFit.EffectiveRateTaxable}} LTCG-equiv)</span>
-                            {{else}}
-                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(~{{printf "%.0f%%" .Analysis.BudgetFit.EffectiveRateTaxable}} LTCG-equiv)</span>
-                            {{end}}
-                        </span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-500 dark:text-gray-400">From Roth</span>
-                        <span>
-                            <span class="text-green-600 dark:text-green-400 font-medium">{{formatMoney .Analysis.BudgetFit.NetWithdrawalRoth}}/mo</span>
-                            <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(no tax)</span>
-                        </span>
-                    </div>
-                </div>
-                <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
-                    Each row is the after-tax contribution from that bucket, split proportionally to your portfolio allocation. The three rows sum to the gap. Tax-Deferred shows the gross withdrawal needed because part is lost to income tax; Taxable shows the gross at steady state when capital gains accrue.
-                </p>
-            </div>
-            {{end}}
     </div>
 
     {{if .Analysis.BudgetFit.HasSteadyState}}
@@ -178,40 +141,40 @@
     <div class="mb-4 text-sm">
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Monthly Expenses</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateExpenses}}</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.SteadyStateExpenses}}/mo</span>
         </div>
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Monthly Income</span>
-            <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateIncome}}</span>
+            <span class="font-medium text-green-600 dark:text-green-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateIncome}}/mo</span>
         </div>
         {{if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Estimated RMD</span>
-            <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}</span>
+            <span class="font-medium text-amber-600 dark:text-amber-400">-{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}/mo</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateTaxes 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Estimated Taxes</span>
-            <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateTaxes}}</span>
+            <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateTaxes}}/mo</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateStateTax 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700 pl-4">
             <span class="text-gray-500 dark:text-gray-400">Includes State Tax</span>
-            <span class="font-medium text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.SteadyStateStateTax}}</span>
+            <span class="font-medium text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.SteadyStateStateTax}}/mo</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateNIIT 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700 pl-4">
             <span class="text-gray-500 dark:text-gray-400">Includes NIIT</span>
-            <span class="font-medium text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.SteadyStateNIIT}}</span>
+            <span class="font-medium text-red-500 dark:text-red-300">{{formatMoney .Analysis.BudgetFit.SteadyStateNIIT}}/mo</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateIRMAA 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
             <span class="text-gray-600 dark:text-gray-300">Estimated IRMAA</span>
-            <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateIRMAA}}</span>
+            <span class="font-medium text-red-600 dark:text-red-400">{{formatMoney .Analysis.BudgetFit.SteadyStateIRMAA}}/mo</span>
         </div>
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateTaxableSocialSecurityPct 0.0}}
@@ -252,16 +215,20 @@
         Surplus is driven by your mandatory RMD exceeding spending. After-tax excess is reinvested into your taxable account, extending portfolio life (already shown in the projection chart).
     </p>
     {{end}}
-    {{if gt .Analysis.BudgetFit.SteadyStateGap 0.0}}
     <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
         <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-2">Suggested Withdrawal Mix</p>
         <div class="text-sm space-y-1">
             <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">From Tax-Deferred</span>
                 <span>
+                    {{if and (le .Analysis.BudgetFit.SteadyStateGap 0.0) (gt .Analysis.BudgetFit.SteadyStateRMD 0.0)}}
+                    <span class="text-red-600 dark:text-red-400 font-medium">{{formatMoney .Analysis.BudgetFit.SteadyStateRMD}}/mo</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(mandatory RMD)</span>
+                    {{else}}
                     <span class="text-red-600 dark:text-red-400 font-medium">{{formatMoney .Analysis.BudgetFit.SteadyStateNetWithdrawalTaxDeferred}}/mo</span>
                     {{if gt .Analysis.BudgetFit.SteadyStateGrossWithdrawalTaxDeferred .Analysis.BudgetFit.SteadyStateNetWithdrawalTaxDeferred}}
                     <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(withdraw {{formatMoney .Analysis.BudgetFit.SteadyStateGrossWithdrawalTaxDeferred}} at {{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateMarginalRateTaxDeferred}} marginal)</span>
+                    {{end}}
                     {{end}}
                 </span>
             </div>
@@ -269,10 +236,12 @@
                 <span class="text-gray-500 dark:text-gray-400">From Taxable</span>
                 <span>
                     <span class="text-amber-600 dark:text-amber-400 font-medium">{{formatMoney .Analysis.BudgetFit.SteadyStateNetWithdrawalTaxable}}/mo</span>
+                    {{if gt .Analysis.BudgetFit.SteadyStateNetWithdrawalTaxable 0.0}}
                     {{if gt .Analysis.BudgetFit.SteadyStateGrossWithdrawalTaxable .Analysis.BudgetFit.SteadyStateNetWithdrawalTaxable}}
                     <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(withdraw {{formatMoney .Analysis.BudgetFit.SteadyStateGrossWithdrawalTaxable}} at ~{{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateEffectiveRateTaxable}} LTCG-equiv)</span>
                     {{else}}
                     <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(~{{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateEffectiveRateTaxable}} LTCG-equiv)</span>
+                    {{end}}
                     {{end}}
                 </span>
             </div>
@@ -284,11 +253,20 @@
                 </span>
             </div>
         </div>
+        {{if gt .Analysis.BudgetFit.SteadyStateGap 0.0}}
         <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
             Each row is the after-tax contribution from that bucket, split proportionally to your portfolio allocation. The three rows sum to the gap. Tax-Deferred shows the gross withdrawal needed because part is lost to income tax; Taxable shows the gross because capital gains have accrued.
         </p>
+        {{else if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
+        <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
+            Your mandatory RMD covers spending — the after-tax surplus is reinvested in your taxable account. No discretionary withdrawal from Taxable or Roth is needed.
+        </p>
+        {{else}}
+        <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
+            No withdrawal needed — your projected income already covers spending.
+        </p>
+        {{end}}
     </div>
-    {{end}}
 </div>
 {{end}}
 

@@ -77,8 +77,11 @@ func (c *Calculator) RunProjection() *models.ProjectionResult {
 }
 
 // CalculateBudgetFit analyzes monthly budget gap.
+// Passes nil for the projection — tests that exercise the projection-aware
+// steady-state path should construct the analysis directly with a real
+// ProjectionResult.
 func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
-	return analysis.BudgetFit(c.input())
+	return analysis.BudgetFit(c.input(), nil)
 }
 
 // CalculatePresentValueAnalysis computes PV of expenses and income.

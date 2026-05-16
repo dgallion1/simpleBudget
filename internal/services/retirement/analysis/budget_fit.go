@@ -10,10 +10,13 @@ import (
 
 // BudgetFit analyzes the monthly budget gap (expenses vs. income) at
 // month 0 and at a steady-state month when delayed income sources have
-// activated. Runs no projection of its own — all estimates come from
-// closed-form helpers in the engine package (taxable cash-flow,
-// projection-tax accumulator, RMD math).
-func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
+// activated. If proj is non-nil, the steady-state Tax-Deferred and
+// Taxable balances are read from the projection's per-month state so
+// they reflect actual drawdown (RMD, withdrawals) rather than naïve
+// compound growth — important at far-out years where decades of RMDs
+// would otherwise be ignored. Pass nil to fall back to the closed-form
+// compound-growth estimate.
+func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFitAnalysis {
 	s := in.Prepared.Settings()
 
 	estimateTaxSnapshot := func(targetMonth int, taxableCashFlow engine.TaxableGrowthResult, monthlyRMD float64, rothConversion float64, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
@@ -108,6 +111,16 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 				Note:   note,
 			})
 		}
+	}
+	// Social Security is computed separately from s.IncomeSources (it comes
+	// from the SS-optimizer hook or manual SS-typed sources that are pulled
+	// into the SS bucket by CalculateMonthlyIncomeBreakdown). Surface it as
+	// its own breakdown row so the user sees where their income comes from.
+	if incomeSummary.SocialSecurityIncome > 0 {
+		incomeItems = append(incomeItems, models.ExpenseBreakdownItem{
+			Name:   "Social Security",
+			Amount: incomeSummary.SocialSecurityIncome,
+		})
 	}
 
 	taxableAnnualReturn := s.InvestmentReturn
@@ -279,18 +292,16 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		if effectiveReturn == 0 {
 			effectiveReturn = s.GetExpectedReturnFromAllocation()
 		}
-		yearsToSteadyState := float64(steadyStateMonth) / 12
-		steadyStateTaxableBalance := taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToSteadyState)
+		// Prefer the projection's actual per-month balances (they reflect
+		// drawdown from RMDs and withdrawals); fall back to closed-form
+		// compound growth when no projection was passed.
+		estimatedTaxDeferred, steadyStateTaxableBalance := bucketBalancesAt(proj, steadyStateMonth, s, effectiveReturn, taxableAnnualReturn, taxableMarketValue)
 		steadyStateTaxableCashFlow := engine.ExpectedTaxableMonthlyCashFlow(s, steadyStateTaxableBalance, taxableAnnualReturn)
 		result.SteadyStateIncome += steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
 
 		// F-078: gate on calendar year + use age-at-year-end for the divisor.
 		steadyStateCalendarYear := engine.ParseStartYear(s.StartDate) + (steadyStateMonth / 12)
-		estimatedTaxDeferred := 0.0
 		if engine.RMDApplies(s, steadyStateCalendarYear) && s.TaxDeferredPercent > 0 {
-			// Estimate tax-deferred balance at steady state (simplified: assume growth only)
-			estimatedTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
-				math.Pow(1+effectiveReturn/100, yearsToSteadyState)
 			annualRMD, _ := engine.CalculateRMD(estimatedTaxDeferred, engine.RMDAgeForCalendarYear(s, steadyStateCalendarYear))
 			result.SteadyStateRMD = annualRMD / 12
 		}
@@ -299,17 +310,13 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 		steadyStateIRMALookbackMAGI := (*float64)(nil)
 		if steadyStateMonth >= 24 {
 			lookbackMonth := steadyStateMonth - 24
-			yearsToLookback := float64(lookbackMonth) / 12
-			lookbackTaxableBalance := taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToLookback)
+			lookbackTaxDeferred, lookbackTaxableBalance := bucketBalancesAt(proj, lookbackMonth, s, effectiveReturn, taxableAnnualReturn, taxableMarketValue)
 			lookbackTaxableCashFlow := engine.ExpectedTaxableMonthlyCashFlow(s, lookbackTaxableBalance, taxableAnnualReturn)
 
 			lookbackCalendarYear := engine.ParseStartYear(s.StartDate) + (lookbackMonth / 12)
-			lookbackTaxDeferred := 0.0
 			lookbackRMD := 0.0
 			// F-078: calendar-year gate + age-at-year-end divisor.
 			if engine.RMDApplies(s, lookbackCalendarYear) && s.TaxDeferredPercent > 0 {
-				lookbackTaxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) *
-					math.Pow(1+effectiveReturn/100, yearsToLookback)
 				annualRMD, _ := engine.CalculateRMD(lookbackTaxDeferred, engine.RMDAgeForCalendarYear(s, lookbackCalendarYear))
 				lookbackRMD = annualRMD / 12
 			}
@@ -362,6 +369,7 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 
 			// Taxable: gain fraction grows with time; gross-up the TX share.
 			if result.SteadyStateNetWithdrawalTaxable > 0 {
+				yearsToSteadyState := float64(steadyStateMonth) / 12
 				gainFractionSS := 1.0 - math.Pow(1.0+taxableAnnualReturn/100.0, -yearsToSteadyState)
 				if gainFractionSS < 0 {
 					gainFractionSS = 0
@@ -416,6 +424,38 @@ func BudgetFit(in engine.Input) *models.BudgetFitAnalysis {
 	}
 
 	return result
+}
+
+// bucketBalancesAt returns the tax-deferred and taxable balances at the
+// given month. When proj is non-nil and the month is within the
+// projection's range, the actual simulated balances are used (these
+// reflect drawdown from RMDs, withdrawals, and growth over time).
+// Otherwise the legacy closed-form compound-growth estimate is used,
+// which overstates balances at far-out years because it ignores
+// withdrawals.
+func bucketBalancesAt(
+	proj *models.ProjectionResult,
+	month int,
+	s *models.WhatIfSettings,
+	effectiveReturn, taxableAnnualReturn, taxableMarketValue float64,
+) (taxDeferred, taxable float64) {
+	if proj != nil && len(proj.Months) > 0 && month >= 0 {
+		// The slider's max equals ProjectionYears, which maps to one
+		// month past the end of the simulation. Clamp to the final
+		// projected month so the steady-state view stays consistent
+		// with the projection's last data point instead of silently
+		// falling back to inflated compound-growth values.
+		idx := month
+		if idx >= len(proj.Months) {
+			idx = len(proj.Months) - 1
+		}
+		m := proj.Months[idx]
+		return m.TaxDeferredBalance, m.TaxableBalance
+	}
+	yearsToMonth := float64(month) / 12
+	taxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) * math.Pow(1+effectiveReturn/100, yearsToMonth)
+	taxable = taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToMonth)
+	return taxDeferred, taxable
 }
 
 // withdrawalMixShares returns the proportional split of a gap-closing

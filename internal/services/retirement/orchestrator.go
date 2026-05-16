@@ -43,7 +43,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	proj := eng.Run(in)
 
 	explainability := analysis.BuildExplainability(proj, in)
-	budgetFit := analysis.BudgetFit(in)
+	budgetFit := analysis.BudgetFit(in, proj)
 	presentValue := analysis.PresentValue(in)
 	sustainability := analysis.Score(proj, budgetFit)
 	sensitivity := analysis.Sensitivity(eng, in)

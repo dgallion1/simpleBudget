@@ -7,79 +7,6 @@ import (
 	"budget2/internal/models"
 )
 
-func TestBudgetAnalysis_GrossWithdrawalRowsRender(t *testing.T) {
-	_, cleanup := setupTestEnvWithRenderer(t)
-	defer cleanup()
-
-	t.Run("renders rows when MonthlyGap > 0", func(t *testing.T) {
-		out, err := renderer.RenderToString("whatif-budget-analysis", map[string]any{
-			"Settings": models.DefaultWhatIfSettings(),
-			"Analysis": &models.WhatIfAnalysis{
-				BudgetFit: &models.BudgetFitAnalysis{
-					MonthlyExpenses:            5000,
-					MonthlyIncome:              1000,
-					MonthlyGap:                 4000,
-					RequiredRate:               4.0,
-					NetWithdrawalTaxDeferred:   2400,
-					GrossWithdrawalTaxDeferred: 3287.67,
-					MarginalRateTaxDeferred:    27.0,
-					NetWithdrawalTaxable:       1200,
-					GrossWithdrawalTaxable:     1250.00,
-					EffectiveRateTaxable:       4.0,
-					NetWithdrawalRoth:          400,
-					GrossWithdrawalRoth:        400,
-				},
-			},
-		})
-		if err != nil {
-			t.Fatalf("RenderToString: %v", err)
-		}
-		if !strings.Contains(out, "Suggested Withdrawal Mix") {
-			t.Errorf("expected withdrawal-mix heading; got: %s", truncate(out, 500))
-		}
-		if !strings.Contains(out, "From Tax-Deferred") {
-			t.Errorf("expected From Tax-Deferred row")
-		}
-		if !strings.Contains(out, "From Taxable") {
-			t.Errorf("expected From Taxable row")
-		}
-		if !strings.Contains(out, "From Roth") {
-			t.Errorf("expected From Roth row")
-		}
-		if !strings.Contains(out, "27% marginal") {
-			t.Errorf("expected marginal rate annotation; got: %s", truncate(out, 500))
-		}
-	})
-
-	t.Run("hides rows on surplus", func(t *testing.T) {
-		out, err := renderer.RenderToString("whatif-budget-analysis", map[string]any{
-			"Settings": models.DefaultWhatIfSettings(),
-			"Analysis": &models.WhatIfAnalysis{
-				BudgetFit: &models.BudgetFitAnalysis{
-					MonthlyExpenses: 3000,
-					MonthlyIncome:   5000,
-					MonthlyGap:      -2000, // surplus
-				},
-			},
-		})
-		if err != nil {
-			t.Fatalf("RenderToString: %v", err)
-		}
-		if strings.Contains(out, "Suggested Withdrawal Mix") {
-			t.Errorf("expected no withdrawal-mix heading on surplus; got: %s", truncate(out, 500))
-		}
-		if strings.Contains(out, "From Tax-Deferred") {
-			t.Errorf("expected no From Tax-Deferred row on surplus")
-		}
-		if strings.Contains(out, "From Taxable") {
-			t.Errorf("expected no From Taxable row on surplus")
-		}
-		if strings.Contains(out, "From Roth") {
-			t.Errorf("expected no From Roth row on surplus")
-		}
-	})
-}
-
 func TestBudgetSteadyState_GrossWithdrawalRowsRender(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -126,33 +53,72 @@ func TestBudgetSteadyState_GrossWithdrawalRowsRender(t *testing.T) {
 		}
 	})
 
-	t.Run("hides rows on steady-state surplus", func(t *testing.T) {
+	t.Run("RMD-driven surplus shows RMD as Tax-Deferred withdrawal", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-budget-steady-state", map[string]any{
 			"Settings": models.DefaultWhatIfSettings(),
 			"Analysis": &models.WhatIfAnalysis{
 				BudgetFit: &models.BudgetFitAnalysis{
 					HasSteadyState:      true,
-					SteadyStateYear:     15,
+					SteadyStateYear:     20,
 					SteadyStateExpenses: 3000,
 					SteadyStateIncome:   5000,
 					SteadyStateGap:      -2000, // surplus
+					SteadyStateRMD:      1500,
 				},
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if strings.Contains(out, "Suggested Withdrawal Mix") {
-			t.Errorf("expected no withdrawal-mix heading on steady-state surplus; got: %s", truncate(out, 500))
+		if !strings.Contains(out, "Suggested Withdrawal Mix") {
+			t.Errorf("expected mix heading even on surplus; got: %s", truncate(out, 500))
 		}
-		if strings.Contains(out, "From Tax-Deferred") {
-			t.Errorf("expected no From Tax-Deferred row on surplus")
+		for _, row := range []string{"From Tax-Deferred", "From Taxable", "From Roth"} {
+			if !strings.Contains(out, row) {
+				t.Errorf("expected %q row on surplus", row)
+			}
 		}
-		if strings.Contains(out, "From Taxable") {
-			t.Errorf("expected no From Taxable row on surplus")
+		// Tax-Deferred row must show the RMD amount, not $0.
+		if !strings.Contains(out, "$1,500.00/mo") {
+			t.Errorf("expected RMD ($1,500/mo) shown as Tax-Deferred withdrawal; got: %s", truncate(out, 800))
 		}
-		if strings.Contains(out, "From Roth") {
-			t.Errorf("expected no From Roth row on surplus")
+		if !strings.Contains(out, "(mandatory RMD)") {
+			t.Errorf("expected (mandatory RMD) annotation on Tax-Deferred row")
+		}
+		if !strings.Contains(out, "mandatory RMD covers spending") {
+			t.Errorf("expected RMD-surplus caption; got: %s", truncate(out, 800))
+		}
+		// Shortfall caption must not appear.
+		if strings.Contains(out, "three rows sum to the gap") {
+			t.Errorf("did not expect shortfall caption on surplus")
+		}
+	})
+
+	t.Run("surplus without RMD shows zero rows with no-withdrawal caption", func(t *testing.T) {
+		out, err := renderer.RenderToString("whatif-budget-steady-state", map[string]any{
+			"Settings": models.DefaultWhatIfSettings(),
+			"Analysis": &models.WhatIfAnalysis{
+				BudgetFit: &models.BudgetFitAnalysis{
+					HasSteadyState:      true,
+					SteadyStateYear:     5,
+					SteadyStateExpenses: 3000,
+					SteadyStateIncome:   5000,
+					SteadyStateGap:      -2000, // surplus, no RMD
+					SteadyStateRMD:      0,
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("RenderToString: %v", err)
+		}
+		if !strings.Contains(out, "$0.00/mo") {
+			t.Errorf("expected $0.00/mo in mix rows when no RMD and surplus; got: %s", truncate(out, 800))
+		}
+		if strings.Contains(out, "(mandatory RMD)") {
+			t.Errorf("did not expect (mandatory RMD) annotation when SteadyStateRMD == 0")
+		}
+		if !strings.Contains(out, "No withdrawal needed") {
+			t.Errorf("expected no-withdrawal caption; got: %s", truncate(out, 800))
 		}
 	})
 }

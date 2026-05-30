@@ -99,6 +99,14 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	// Build income breakdown
 	var incomeItems []models.ExpenseBreakdownItem
 	for _, source := range s.IncomeSources {
+		// Social Security sources are surfaced once below via the aggregated
+		// SocialSecurityIncome row (CalculateMonthlyIncomeBreakdown routes them
+		// into the SS bucket). Skip them here so they aren't listed twice when
+		// the optimizer is inactive, nor shown as a phantom row that isn't part
+		// of the income total when the optimizer overrides them.
+		if engine.IsSocialSecurityIncomeSource(source) {
+			continue
+		}
 		amt := source.GetAdjustedAmount(0)
 		if amt > 0 {
 			note := ""

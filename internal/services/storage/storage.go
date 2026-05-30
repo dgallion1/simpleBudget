@@ -25,10 +25,16 @@ const (
 	verifyMagic = `{"magic":"budget2-encryption-verify","version":1}`
 )
 
-// cacheEntry holds cached decrypted file content
+// cacheEntry holds cached decrypted file content. Staleness is keyed on
+// both modTime and size: mtime alone is unreliable on filesystems with
+// coarse or frozen timestamp granularity (e.g. some WSL2 / network mounts),
+// where two rapid rewrites can share an mtime. Size catches any
+// length-changing edit regardless. (mtime+size is the same quick-check
+// rsync and make use.)
 type cacheEntry struct {
 	data    []byte
 	modTime int64
+	size    int64
 }
 
 // Storage provides transparent encrypted/unencrypted file access
@@ -196,10 +202,11 @@ func (s *Storage) ReadFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	modTime := info.ModTime().UnixNano()
+	size := info.Size()
 
 	// Check cache first
 	s.cacheMu.RLock()
-	if entry, ok := s.cache[path]; ok && entry.modTime == modTime {
+	if entry, ok := s.cache[path]; ok && entry.modTime == modTime && entry.size == size {
 		// Cache hit - return copy to prevent mutation
 		data := make([]byte, len(entry.data))
 		copy(data, entry.data)
@@ -235,7 +242,7 @@ func (s *Storage) ReadFile(path string) ([]byte, error) {
 
 	// Store in cache
 	s.cacheMu.Lock()
-	s.cache[path] = &cacheEntry{data: data, modTime: modTime}
+	s.cache[path] = &cacheEntry{data: data, modTime: modTime, size: size}
 	s.cacheMu.Unlock()
 
 	// Return a copy to prevent mutation

@@ -579,7 +579,12 @@ func TestPlannerIRMAAInflationFactorForYear_Rebases2026TableOntoTaxBaseYear(t *t
 	}
 }
 
-func TestRunProjectionDelaysIRMAAUntilLookbackYear(t *testing.T) {
+// A high-MAGI, Medicare-eligible household must incur IRMAA from year 0.
+// The IRMAA two-year MAGI lookback has no in-projection history for years
+// 0-1, so the projection seeds it with the year-0 MAGI estimate (the best
+// proxy for the pre-projection MAGI that drives IRMAA in the first years).
+// Real history takes over from year 2.
+func TestRunProjectionSeedsIRMAALookbackInEarlyYears(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 4_000_000
 	settings.MonthlyLivingExpenses = 1000
@@ -605,14 +610,22 @@ func TestRunProjectionDelaysIRMAAUntilLookbackYear(t *testing.T) {
 		t.Fatalf("expected 4 yearly summaries, got %d", len(projection.YearlySummaries))
 	}
 
-	if projection.YearlySummaries[0].IRMAA != 0 {
-		t.Fatalf("expected no IRMAA in year 0 without lookback history, got %.2f", projection.YearlySummaries[0].IRMAA)
+	// IRMAA applies every year, including the early years seeded from the
+	// year-0 MAGI estimate.
+	for y := range 4 {
+		if projection.YearlySummaries[y].IRMAA <= 0 {
+			t.Fatalf("expected IRMAA in year %d for a high-MAGI Medicare household, got %.2f",
+				y, projection.YearlySummaries[y].IRMAA)
+		}
 	}
-	if projection.YearlySummaries[1].IRMAA != 0 {
-		t.Fatalf("expected no IRMAA in year 1 without lookback history, got %.2f", projection.YearlySummaries[1].IRMAA)
-	}
-	if projection.YearlySummaries[2].IRMAA <= 0 {
-		t.Fatalf("expected IRMAA once two years of lookback history exist, got %.2f", projection.YearlySummaries[2].IRMAA)
+
+	// The seeded early-year IRMAA should agree with the real-history value
+	// once the two-year lookback fills in (MAGI is ~flat here), confirming
+	// the seed is a faithful proxy rather than an arbitrary number.
+	seeded := projection.YearlySummaries[0].IRMAA
+	fromHistory := projection.YearlySummaries[2].IRMAA
+	if math.Abs(seeded-fromHistory) > 0.01*fromHistory+0.01 {
+		t.Errorf("seeded year-0 IRMAA %.2f should match real-history year-2 IRMAA %.2f", seeded, fromHistory)
 	}
 }
 

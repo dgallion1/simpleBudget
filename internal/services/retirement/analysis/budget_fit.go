@@ -409,12 +409,15 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 			}
 		}
 
-		// Calculate steady state withdrawal rate
+		// Calculate steady state withdrawal rate. Divide the gap by the
+		// projection's actual portfolio balance (which reflects drawdown
+		// from withdrawals/RMDs), consistent with the proj-based gap above;
+		// fall back to compound growth only when no projection is available.
 		if s.PortfolioValue > 0 && result.SteadyStateGap > 0 {
-			// Use estimated portfolio value at steady state
-			yearsToSteadyState := float64(steadyStateMonth) / 12
-			estimatedPortfolio := s.PortfolioValue * math.Pow(1+effectiveReturn/100, yearsToSteadyState)
-			result.SteadyStateRate = (result.SteadyStateGap * 12 / estimatedPortfolio) * 100
+			estimatedPortfolio := steadyStatePortfolioBalance(proj, steadyStateMonth, s, effectiveReturn)
+			if estimatedPortfolio > 0 {
+				result.SteadyStateRate = (result.SteadyStateGap * 12 / estimatedPortfolio) * 100
+			}
 		}
 	} else {
 		// At year 0 the steady-state panel mirrors the Current (Today)
@@ -475,6 +478,24 @@ func bucketBalancesAt(
 	taxDeferred = s.PortfolioValue * (s.TaxDeferredPercent / 100) * math.Pow(1+effectiveReturn/100, yearsToMonth)
 	taxable = taxableMarketValue * math.Pow(1+taxableAnnualReturn/100, yearsToMonth)
 	return taxDeferred, taxable
+}
+
+// steadyStatePortfolioBalance returns the total portfolio value at the
+// given month, used as the steady-state withdrawal-rate denominator.
+// Prefers the projection's actual balance (which reflects drawdown from
+// withdrawals/RMDs) and falls back to closed-form compound growth when no
+// projection is available — mirroring bucketBalancesAt's clamp so the rate
+// stays consistent with the gap.
+func steadyStatePortfolioBalance(proj *models.ProjectionResult, month int, s *models.WhatIfSettings, effectiveReturn float64) float64 {
+	if proj != nil && len(proj.Months) > 0 && month >= 0 {
+		idx := month
+		if idx >= len(proj.Months) {
+			idx = len(proj.Months) - 1
+		}
+		return proj.Months[idx].PortfolioBalance
+	}
+	yearsToMonth := float64(month) / 12
+	return s.PortfolioValue * math.Pow(1+effectiveReturn/100, yearsToMonth)
 }
 
 // withdrawalMixShares returns the proportional split of a gap-closing

@@ -316,8 +316,15 @@ type PortfolioMonthInput struct {
 	RothConversionThisMonth           float64
 	TaxableRothEarningsBeforeCashFlow float64
 	CompletedMAGIHistory              []float64
-	IRMAAEligibleAdults               int
-	IRMAAInflationFactor              float64
+	// AssumedIRMALookbackMAGI seeds the IRMAA two-year MAGI lookback for the
+	// first two projection years, when CompletedMAGIHistory has fewer than
+	// two entries. Nil leaves early-year IRMAA at $0 (the lookback can't
+	// resolve). The deterministic projection points this at its own year-0
+	// MAGI estimate so a high-MAGI Medicare-eligible household isn't shown
+	// $0 IRMAA in years 0-1.
+	AssumedIRMALookbackMAGI *float64
+	IRMAAEligibleAdults     int
+	IRMAAInflationFactor    float64
 }
 
 // ExecuteTaxAwarePortfolioMonth runs the inner fixed-point iteration
@@ -349,7 +356,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		0,
 		in.RothConversionThisMonth,
 		in.CompletedMAGIHistory,
-		nil,
+		in.AssumedIRMALookbackMAGI,
 		in.IRMAAEligibleAdults,
 		in.IRMAAInflationFactor,
 	)
@@ -413,7 +420,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 			trialNonQualifiedDividends,
 			in.RothConversionThisMonth,
 			in.CompletedMAGIHistory,
-			nil,
+			in.AssumedIRMALookbackMAGI,
 			in.IRMAAEligibleAdults,
 			in.IRMAAInflationFactor,
 		)

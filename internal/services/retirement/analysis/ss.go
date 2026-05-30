@@ -190,14 +190,24 @@ func ssComparisonTable(pia float64, fra int, currentAge int, colaRate float64, a
 		annual := monthly * 12.0
 		pctOfPIA := monthly / pia * 100.0
 
+		// Cumulative columns are compared across claim ages to pick the
+		// best age, so COLA must compound from a common base year
+		// (currentAge / today), not each option's own claim age — otherwise
+		// a later claim omits the COLA accrued between now and the claim age
+		// and is understated. Pre-scale the monthly benefit by that common-
+		// base COLA; cumulativeBenefit then compounds onward from the claim
+		// age, which is algebraically equivalent to a common base. (age >=
+		// currentAge here, so the exponent is never negative.)
+		cumulativeMonthly := monthly * math.Pow(1+colaRate, float64(age-currentAge))
+
 		opt := models.SSClaimingOption{
 			ClaimAge:       age,
 			MonthlyBenefit: math.Round(monthly*100) / 100,
 			AnnualBenefit:  math.Round(annual*100) / 100,
 			PctOfPIA:       math.Round(pctOfPIA*10) / 10,
-			CumulativeAt80: cumulativeBenefit(monthly, age, 80, colaRate),
-			CumulativeAt85: cumulativeBenefit(monthly, age, 85, colaRate),
-			CumulativeAt90: cumulativeBenefit(monthly, age, 90, colaRate),
+			CumulativeAt80: cumulativeBenefit(cumulativeMonthly, age, 80, colaRate),
+			CumulativeAt85: cumulativeBenefit(cumulativeMonthly, age, 85, colaRate),
+			CumulativeAt90: cumulativeBenefit(cumulativeMonthly, age, 90, colaRate),
 		}
 		options = append(options, opt)
 	}

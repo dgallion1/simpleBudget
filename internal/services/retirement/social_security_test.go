@@ -139,12 +139,17 @@ func TestSSComparisonTable(t *testing.T) {
 				cum90at70, cum90at62)
 		}
 
-		// At age 80, early claiming at 62 should beat late claiming at 70
-		cum80at62 := options[0].CumulativeAt80
-		cum80at70 := options[8].CumulativeAt80
-		if cum80at62 <= cum80at70 {
-			t.Errorf("cumulative at 80: age 62 (%.0f) should exceed age 70 (%.0f)",
-				cum80at62, cum80at70)
+		// Delaying to 70 favors longevity: the age-70 advantage over age-62
+		// grows as the horizon lengthens. (Cumulative columns compound COLA
+		// from a common base year, so with a positive COLA the 62/70
+		// breakeven falls just under 80 and age 70 already leads at 80 — the
+		// meaningful, base-independent invariant is that the delay advantage
+		// keeps growing with longevity.)
+		adv80 := options[8].CumulativeAt80 - options[0].CumulativeAt80
+		adv90 := options[8].CumulativeAt90 - options[0].CumulativeAt90
+		if adv90 <= adv80 {
+			t.Errorf("delay advantage should grow with longevity: advantage@80 (%.0f) should be less than advantage@90 (%.0f)",
+				adv80, adv90)
 		}
 
 		// Cumulative values should increase with age: 80 < 85 < 90

@@ -86,6 +86,13 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 	var taxState ProjectionTaxAccumulator
 	taxCalculator := NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
+	// assumedLookbackMAGI seeds the IRMAA two-year MAGI lookback for years
+	// 0-1, before completedMAGIHistory has two entries. It tracks the year-0
+	// MAGI estimate (the best available proxy for the pre-projection MAGI
+	// that would drive IRMAA in the first years), so a high-MAGI Medicare-
+	// eligible household isn't shown $0 IRMAA early. Real history takes over
+	// from year 2 (resolveIRMAALookbackMAGI prefers it).
+	var assumedLookbackMAGI float64
 	currentYearTaxSnapshot := ProjectedTaxSnapshot{}
 	yearlySummaries := make([]models.ProjectionYearSummary, 0, s.ProjectionYears)
 	currentYearSummary := models.ProjectionYearSummary{
@@ -277,6 +284,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			// (consumed below; reset to 0 so subsequent months in the year
 			// don't re-fold the same big-ticket earnings into ordinary income)
 			CompletedMAGIHistory:              completedMAGIHistory,
+			AssumedIRMALookbackMAGI:           &assumedLookbackMAGI,
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
@@ -288,6 +296,11 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		totalExpensesAcc += monthResult.IRMAAExpense
 		plannedTotalExpenses += monthResult.IRMAAExpense
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
+		// Hold the year-0 MAGI estimate as the IRMAA lookback seed for years
+		// 0-1. Frozen once year 0 ends; real history drives years 2+.
+		if currentYear == 0 {
+			assumedLookbackMAGI = monthResult.TaxSnapshot.AnnualMAGI
+		}
 
 		ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 

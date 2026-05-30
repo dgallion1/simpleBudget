@@ -52,6 +52,33 @@ built-in `LSP` tool (backed by `gopls`). No external index to keep fresh.
 `incomingCalls`/`outgoingCalls` need the cursor on the function *name* (e.g.
 `func BudgetFit(...)` → the `BudgetFit` token), with 1-based line/character.
 
+## Gotchas (this codebase)
+
+Testing:
+- Analysis-package tests build inputs with `runProj(t, s)` / `engineInput(t, s)`
+  (`analysis/helpers_test.go`) via `prepare.MustFrom` — never the retirement
+  `Calculator` (the analysis package must not import its parent).
+- `prepare.From` recomputes `CurrentAge`/`SpouseAge` from each `Person.BirthMonth`
+  + `StartDate`, overriding any `s.CurrentAge` you set. Set age in tests via
+  `s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, age)`; a spouse
+  needs a `PersonRoleSpouse` entry.
+- `PresentValue` / `BudgetFit` read `in.Prepared.Settings()` (deep-copied +
+  normalized), so compute test oracles from the prepared settings, not raw input.
+- This WSL2 sandbox reports a frozen/coarse file `mtime`: `os.WriteFile` doesn't
+  reliably advance it. Tests needing distinct timestamps must set them with
+  `os.Chtimes`.
+
+Retirement math:
+- Tax/IRMAA bracket inflation must key off the plan's calendar year via
+  `engine.YearsFromTaxBase(s, currentYear)`, NOT the raw projection-year offset
+  (`taxBaseYear=2024`, `irmaaBaseYear=2026`).
+- Rate units differ: `engine.PresentValueAnnuity` takes discount/growth as
+  **percent**; `IncomeSource.COLARate` is a **decimal** (0.02 = 2%).
+- Three projection loops build `PortfolioMonthInput` independently —
+  `engine/month.go` (canonical), `analysis/monte_carlo.go`, `analysis/backtest.go`.
+  Per-month tax/IRMAA input changes must be replicated across all three (or
+  centralized in `ExecuteTaxAwarePortfolioMonth`).
+
 ## Architecture pointers
 
 - `internal/services/retirement/engine` — projection simulation loop (Monte

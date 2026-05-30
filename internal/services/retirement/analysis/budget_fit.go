@@ -50,10 +50,16 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 
 	// Build expense breakdown for transparency
 	var breakdown []models.ExpenseBreakdownItem
+	// Phase multiplier at month 0, mirroring engine.TotalExpenses so the
+	// itemized rows reconcile with the MonthlyExpenses header. Returns 1.0
+	// when spending phases are disabled.
+	phaseMultiplier := s.GetSpendingMultiplier(s.GetPhaseReferenceAge(0))
 	if s.MonthlyLivingExpenses > 0 {
 		breakdown = append(breakdown, models.ExpenseBreakdownItem{
-			Name:   "Living Expenses",
-			Amount: s.MonthlyLivingExpenses,
+			Name: "Living Expenses",
+			// Use the engine's phase-/decline-adjusted living expense at
+			// month 0, not the raw setting, so this row matches the total.
+			Amount: engine.LivingExpensesAtMonth(s, 0),
 		})
 	}
 	healthcareCost := s.GetTotalHealthcareCost(0)
@@ -85,6 +91,11 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	}
 	for _, source := range s.ExpenseSources {
 		amt := source.GetAdjustedAmount(0, s.InflationRate)
+		// engine.TotalExpenses applies the phase multiplier to discretionary
+		// sources; match it here so the row reconciles with the total.
+		if source.Discretionary {
+			amt *= phaseMultiplier
+		}
 		note := ""
 		if source.EndYear > 0 {
 			note = fmt.Sprintf("ends year %d", source.EndYear)

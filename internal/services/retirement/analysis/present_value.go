@@ -1,6 +1,8 @@
 package analysis
 
 import (
+	"math"
+
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
 )
@@ -52,9 +54,16 @@ func PresentValue(in engine.Input) *models.PresentValueAnalysis {
 		}
 	}
 
-	// Calculate PV of income sources
+	// Calculate PV of income sources. Mirror CalculateMonthlyIncomeBreakdown
+	// so PV income matches the projection and BudgetFit: when the SS
+	// optimizer is active it replaces manual SS-typed sources with its own
+	// projected stream (added below), so skip those sources here.
+	useOptimizerSS := in.Hooks.SSActive(s)
 	pvIncome := 0.0
 	for _, source := range s.IncomeSources {
+		if useOptimizerSS && engine.IsSocialSecurityIncomeSource(source) {
+			continue
+		}
 		endMonth := months
 		if source.EndMonth != nil {
 			endMonth = min(*source.EndMonth, months)
@@ -63,6 +72,18 @@ func PresentValue(in engine.Input) *models.PresentValueAnalysis {
 		if duration > 0 {
 			pvIncome += engine.PresentValueAnnuity(source.Amount, discountRate, source.COLARate*100, source.StartMonth, duration)
 		}
+	}
+
+	// The SS optimizer supplies Social Security via the projection hook
+	// (manual SS sources were skipped above). Its per-month stream — claim-
+	// age ramp, COLA, two spouses, spousal top-up — doesn't reduce to a
+	// single closed-form annuity, so discount it month by month. Omitting
+	// it (the prior behavior) understated PV income and overstated the gap
+	// on every plan using the optimizer.
+	if useOptimizerSS {
+		pvIncome += presentValueOfMonthlyStream(func(month int) float64 {
+			return in.Hooks.SSIncome(s, month)
+		}, discountRate, months)
 	}
 
 	pvGap := pvExpenses - pvIncome
@@ -79,4 +100,26 @@ func PresentValue(in engine.Input) *models.PresentValueAnalysis {
 		CoverageRatio:  coverageRatio,
 		SurplusDeficit: surplusDeficit,
 	}
+}
+
+// presentValueOfMonthlyStream discounts an arbitrary per-month cash flow
+// back to month 0, with month m discounted by (1+monthlyRate)^m. Used for
+// the SS-optimizer stream, whose amounts vary by month and so don't fit a
+// single closed-form annuity. The monthly rate is derived the same way as
+// PresentValueAnnuity, so the two stay consistent.
+func presentValueOfMonthlyStream(amountAt func(month int) float64, discountRate float64, months int) float64 {
+	monthlyRate := engine.MonthlyCompoundFactorFromDecimal(discountRate/100) - 1
+	pv := 0.0
+	for m := range months {
+		amt := amountAt(m)
+		if amt == 0 {
+			continue
+		}
+		if monthlyRate > 0 {
+			pv += amt / math.Pow(1+monthlyRate, float64(m))
+		} else {
+			pv += amt
+		}
+	}
+	return pv
 }

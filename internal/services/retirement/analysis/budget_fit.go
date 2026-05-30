@@ -21,14 +21,25 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 
 	estimateTaxSnapshot := func(targetMonth int, taxableCashFlow engine.TaxableGrowthResult, monthlyRMD float64, rothConversion float64, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
 		targetYear := targetMonth / 12
+		// Bracket/deduction/IRMAA inflation keys off years from the tax
+		// tables' base year, anchored to the plan's actual calendar year —
+		// not the projection offset — mirroring ExecuteTaxAwarePortfolioMonth
+		// so this snapshot stays consistent with the projection.
+		yearsFromTaxBase := engine.YearsFromTaxBase(s, targetYear)
 		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, targetMonth)
 		taxState := engine.ProjectionTaxAccumulator{}
 		taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
 		return taxState.EstimateMonthlySnapshot(
 			taxCalculator,
-			targetYear,
-			targetMonth%12,
+			yearsFromTaxBase,
+			// Point-in-time estimate: the accumulator carries no YTD, so the
+			// month-of-year must be 0 for AnnualizedInputs to scale a single
+			// month up to a full year (factor 12/(monthInYear+1)) and for the
+			// remaining-months tax divisor to be 12. targetMonth is always
+			// year-aligned today; pinning 0 keeps this correct if a
+			// fractional steady-state month is ever introduced.
+			0,
 			incomeBreakdown.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
 			incomeBreakdown.SocialSecurityIncome,
 			monthlyRMD,
@@ -39,7 +50,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 			nil,
 			assumedIRMALookbackMAGI,
 			engine.MedicareEligibleAdultCountAtYear(s, targetYear),
-			engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(targetMonth)/12),
+			engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
 		)
 	}
 

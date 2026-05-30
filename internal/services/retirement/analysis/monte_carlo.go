@@ -483,7 +483,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 		rothMonthlyRate := math.Pow(1+rothReturnRate/100, 1.0/12) - 1
 		taxableComponents := engine.BuildTaxableReturnComponents(taxReturn, s)
 		irmaaEligibleAdults := engine.MedicareEligibleAdultCountAtYear(s, currentYear)
-		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(engine.YearsFromTaxBase(s, currentYear)))
 
 		// F-074: apply the full annual RMD only in the trigger month.
 		monthlyRMD = engine.MonthlyRMDForMonth(s, m%12, annualRMD, taxDeferredBalance)
@@ -505,7 +505,6 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			Timing:                            s.GetProjectionTiming(),
 			TaxState:                          taxState,
 			TaxCalculator:                     taxCalculator,
-			CurrentYear:                       currentYear,
 			MonthInYear:                       m % 12,
 			CalendarYear:                      engine.ParseStartYear(s.StartDate) + currentYear,
 			RothConversionThisMonth:           rothConversionThisMonth,

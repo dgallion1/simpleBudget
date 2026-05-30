@@ -310,7 +310,6 @@ type PortfolioMonthInput struct {
 	Timing                            models.ProjectionTiming
 	TaxState                          ProjectionTaxAccumulator
 	TaxCalculator                     *TaxCalculator
-	CurrentYear                       int
 	MonthInYear                       int
 	CalendarYear                      int
 	RothConversionThisMonth           float64
@@ -344,9 +343,14 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 	} else {
 		startingRothBasis = startingRoth
 	}
+	// Inflation-adjusted brackets/deduction key off years from the tax
+	// tables' base year, anchored to the plan's actual calendar year — not
+	// the raw projection offset — so an early projection year that lands
+	// after the base year doesn't use stale (un-inflated) brackets.
+	yearsFromTaxBase := in.CalendarYear - taxBaseYear
 	snapshot := in.TaxState.EstimateMonthlySnapshot(
 		in.TaxCalculator,
-		in.CurrentYear,
+		yearsFromTaxBase,
 		in.MonthInYear,
 		in.IncomeBreakdown.OrdinaryIncome,
 		in.IncomeBreakdown.SocialSecurityIncome,
@@ -367,7 +371,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 	// converged rate. GetMarginalRate returns a percent (e.g. 22.0), so divide by 100.
 	marginalRate := 0.0
 	if in.TaxCalculator != nil {
-		marginalRate = in.TaxCalculator.GetMarginalRate(snapshot.AnnualMAGI, in.CurrentYear) / 100
+		marginalRate = in.TaxCalculator.GetMarginalRate(snapshot.AnnualMAGI, yearsFromTaxBase) / 100
 	}
 	finalSnapshot := snapshot
 	result := TaxAwarePortfolioMonthResult{}
@@ -410,7 +414,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 
 		recalculatedSnapshot := in.TaxState.EstimateMonthlySnapshot(
 			in.TaxCalculator,
-			in.CurrentYear,
+			yearsFromTaxBase,
 			in.MonthInYear,
 			in.IncomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends+trialTaxableRothEarnings,
 			in.IncomeBreakdown.SocialSecurityIncome,
@@ -452,7 +456,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
 		// Update marginal rate from converged MAGI for next iteration's RMD reinvestment.
 		if in.TaxCalculator != nil {
-			marginalRate = in.TaxCalculator.GetMarginalRate(recalculatedSnapshot.AnnualMAGI, in.CurrentYear) / 100
+			marginalRate = in.TaxCalculator.GetMarginalRate(recalculatedSnapshot.AnnualMAGI, yearsFromTaxBase) / 100
 		}
 	}
 

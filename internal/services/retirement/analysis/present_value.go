@@ -8,9 +8,16 @@ import (
 )
 
 // PresentValue computes the present value of expenses, income, and the
-// resulting gap / coverage ratio over the projection horizon. Pure
-// closed-form annuity math — runs no projection.
-func PresentValue(in engine.Input) *models.PresentValueAnalysis {
+// resulting gap / coverage ratio over the projection horizon.
+//
+// Expenses and income are closed-form annuity math. Taxes are not: income
+// taxes and IRMAA depend on withdrawal sequencing, SS taxation, and RMDs,
+// which don't reduce to a closed form — so when proj is non-nil the
+// projection's actual per-month taxes and per-year IRMAA are discounted
+// into Total Needs (PVTaxes). This keeps the coverage ratio after-tax and
+// consistent with the Budget Analysis panel. Pass nil for a pre-tax
+// estimate (PVTaxes stays 0).
+func PresentValue(in engine.Input, proj *models.ProjectionResult) *models.PresentValueAnalysis {
 	s := in.Prepared.Settings()
 	months := s.ProjectionYears * 12
 	discountRate := s.DiscountRate
@@ -21,6 +28,13 @@ func PresentValue(in engine.Input) *models.PresentValueAnalysis {
 	// Living expenses with inflation - spending decline
 	netInflation := s.InflationRate - s.SpendingDeclineRate
 	pvExpenses += engine.PresentValueAnnuity(s.MonthlyLivingExpenses, discountRate, netInflation, 0, months)
+
+	// Property tax grows at its own (typically higher) inflation rate,
+	// mirroring engine.PropertyTaxAtMonth. The projection includes it in
+	// expenses, so omitting it here understated Total Needs.
+	if s.MonthlyPropertyTax > 0 {
+		pvExpenses += engine.PresentValueAnnuity(s.MonthlyPropertyTax, discountRate, s.PropertyTaxInflation, 0, months)
+	}
 
 	// Healthcare expenses using multi-person model or legacy
 	if len(s.HealthcarePersons) > 0 {
@@ -86,20 +100,49 @@ func PresentValue(in engine.Input) *models.PresentValueAnalysis {
 		}, discountRate, months)
 	}
 
-	pvGap := pvExpenses - pvIncome
+	// Discount the projection's actual income taxes (per month) and IRMAA
+	// (per year, spread evenly) into present value. The closed-form
+	// expenses above contain neither, so there's no double-count. nil proj
+	// → pre-tax estimate.
+	pvTaxes := presentValueOfTaxes(proj, discountRate, months)
+
+	totalNeeds := pvExpenses + pvTaxes
+	pvGap := totalNeeds - pvIncome
 	coverageRatio := 0.0
-	if pvExpenses > 0 {
-		coverageRatio = (s.PortfolioValue + pvIncome) / pvExpenses
+	if totalNeeds > 0 {
+		coverageRatio = (s.PortfolioValue + pvIncome) / totalNeeds
 	}
-	surplusDeficit := s.PortfolioValue + pvIncome - pvExpenses
+	surplusDeficit := s.PortfolioValue + pvIncome - totalNeeds
 
 	return &models.PresentValueAnalysis{
 		PVExpenses:     pvExpenses,
+		PVTaxes:        pvTaxes,
 		PVIncome:       pvIncome,
 		PVGap:          pvGap,
 		CoverageRatio:  coverageRatio,
 		SurplusDeficit: surplusDeficit,
 	}
+}
+
+// presentValueOfTaxes discounts the projection's tax burden back to month
+// 0: each month's income tax (federal + state + NIIT, already summed into
+// ProjectionMonth.TaxesPaid) plus that year's IRMAA surcharge spread
+// evenly across its 12 months. Returns 0 when no projection is supplied,
+// preserving the pre-tax estimate.
+func presentValueOfTaxes(proj *models.ProjectionResult, discountRate float64, months int) float64 {
+	if proj == nil || len(proj.Months) == 0 {
+		return 0
+	}
+	return presentValueOfMonthlyStream(func(month int) float64 {
+		if month >= len(proj.Months) {
+			return 0
+		}
+		tax := proj.Months[month].TaxesPaid
+		if y := month / 12; y < len(proj.YearlySummaries) {
+			tax += proj.YearlySummaries[y].IRMAA / 12
+		}
+		return tax
+	}, discountRate, months)
 }
 
 // presentValueOfMonthlyStream discounts an arbitrary per-month cash flow

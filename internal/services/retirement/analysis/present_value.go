@@ -25,9 +25,18 @@ func PresentValue(in engine.Input, proj *models.ProjectionResult) *models.Presen
 	// Calculate PV of expenses
 	pvExpenses := 0.0
 
-	// Living expenses with inflation - spending decline
-	netInflation := s.InflationRate - s.SpendingDeclineRate
-	pvExpenses += engine.PresentValueAnnuity(s.MonthlyLivingExpenses, discountRate, netInflation, 0, months)
+	// Living expenses. Spending phases apply an age-stepped multiplier that
+	// a single closed-form annuity can't express, so when enabled discount
+	// the engine's actual per-month living expense (matching the
+	// projection). Otherwise use the closed-form net-inflation annuity.
+	if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
+		pvExpenses += presentValueOfMonthlyStream(func(month int) float64 {
+			return engine.LivingExpensesAtMonth(s, month)
+		}, discountRate, months)
+	} else {
+		netInflation := s.InflationRate - s.SpendingDeclineRate
+		pvExpenses += engine.PresentValueAnnuity(s.MonthlyLivingExpenses, discountRate, netInflation, 0, months)
+	}
 
 	// Property tax grows at its own (typically higher) inflation rate,
 	// mirroring engine.PropertyTaxAtMonth. The projection includes it in

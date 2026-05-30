@@ -235,7 +235,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		settings.SpendingDeclineRate = 1.0
 		settings.ProjectionYears = 30
 
-		result := PresentValue(engineInput(t, settings))
+		result := PresentValue(engineInput(t, settings), nil)
 
 		// PV of expenses should be positive
 		if result.PVExpenses <= 0 {
@@ -295,7 +295,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		}
 		settings.ExpenseSources = []models.ExpenseSource{}
 
-		result := PresentValue(engineInput(t, settings))
+		result := PresentValue(engineInput(t, settings), nil)
 
 		if result.PVIncome <= 0 {
 			t.Errorf("expected positive PVIncome, got %f", result.PVIncome)
@@ -339,7 +339,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 			},
 		}
 
-		result := PresentValue(engineInput(t, settings))
+		result := PresentValue(engineInput(t, settings), nil)
 
 		// Expenses should include both living + healthcare
 		livingPV := engine.PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
@@ -366,7 +366,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 		settings.IncomeSources = []models.IncomeSource{}
 		settings.ExpenseSources = []models.ExpenseSource{}
 
-		result := PresentValue(engineInput(t, settings))
+		result := PresentValue(engineInput(t, settings), nil)
 
 		livingPV := engine.PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
 		healthcarePV := engine.PresentValueAnnuity(500, 5.0, 6.0, 24, 336)
@@ -406,7 +406,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 			},
 		}
 
-		result := PresentValue(engineInput(t, settings))
+		result := PresentValue(engineInput(t, settings), nil)
 
 		livingPV := engine.PresentValueAnnuity(3000, 5.0, 3.0, 0, 360)
 		propTaxPV := engine.PresentValueAnnuity(500, 5.0, 3.0, 0, 360) // inflation-adjusted, perpetual
@@ -440,7 +440,7 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 			},
 		}
 
-		result := PresentValue(engineInput(t, settings))
+		result := PresentValue(engineInput(t, settings), nil)
 
 		// Duration = 240 - 24 = 216 months
 		expectedIncome := engine.PresentValueAnnuity(1500, 5.0, 3.0, 24, 216)

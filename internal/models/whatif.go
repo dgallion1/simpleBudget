@@ -973,11 +973,12 @@ type RMDAnalysis struct {
 
 // PresentValueAnalysis shows PV of expenses vs income
 type PresentValueAnalysis struct {
-	PVExpenses     float64 `json:"pv_expenses"`
+	PVExpenses     float64 `json:"pv_expenses"`         // Living + healthcare + property tax + expense sources
+	PVTaxes        float64 `json:"pv_taxes,omitempty"`  // Discounted income taxes + IRMAA from the projection (0 when no projection is supplied)
 	PVIncome       float64 `json:"pv_income"`
-	PVGap          float64 `json:"pv_gap"`
-	CoverageRatio  float64 `json:"coverage_ratio"`  // (Portfolio + PV Income) / PV Expenses
-	SurplusDeficit float64 `json:"surplus_deficit"` // Portfolio + PV Income - PV Expenses
+	PVGap          float64 `json:"pv_gap"`          // (PV Expenses + PV Taxes) - PV Income
+	CoverageRatio  float64 `json:"coverage_ratio"`  // (Portfolio + PV Income) / (PV Expenses + PV Taxes)
+	SurplusDeficit float64 `json:"surplus_deficit"` // Portfolio + PV Income - PV Expenses - PV Taxes
 }
 
 // SustainabilityScore represents a 0-100 score with visual attributes

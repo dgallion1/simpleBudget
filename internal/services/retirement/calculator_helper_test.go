@@ -86,7 +86,7 @@ func (c *Calculator) CalculateBudgetFit() *models.BudgetFitAnalysis {
 
 // CalculatePresentValueAnalysis computes PV of expenses and income.
 func (c *Calculator) CalculatePresentValueAnalysis() *models.PresentValueAnalysis {
-	return analysis.PresentValue(c.input())
+	return analysis.PresentValue(c.input(), nil)
 }
 
 // findSteadyStateMonth finds the month when all income sources are active.

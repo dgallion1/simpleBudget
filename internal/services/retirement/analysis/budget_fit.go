@@ -21,14 +21,25 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 
 	estimateTaxSnapshot := func(targetMonth int, taxableCashFlow engine.TaxableGrowthResult, monthlyRMD float64, rothConversion float64, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
 		targetYear := targetMonth / 12
+		// Bracket/deduction/IRMAA inflation keys off years from the tax
+		// tables' base year, anchored to the plan's actual calendar year —
+		// not the projection offset — mirroring ExecuteTaxAwarePortfolioMonth
+		// so this snapshot stays consistent with the projection.
+		yearsFromTaxBase := engine.YearsFromTaxBase(s, targetYear)
 		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, targetMonth)
 		taxState := engine.ProjectionTaxAccumulator{}
 		taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
 		return taxState.EstimateMonthlySnapshot(
 			taxCalculator,
-			targetYear,
-			targetMonth%12,
+			yearsFromTaxBase,
+			// Point-in-time estimate: the accumulator carries no YTD, so the
+			// month-of-year must be 0 for AnnualizedInputs to scale a single
+			// month up to a full year (factor 12/(monthInYear+1)) and for the
+			// remaining-months tax divisor to be 12. targetMonth is always
+			// year-aligned today; pinning 0 keeps this correct if a
+			// fractional steady-state month is ever introduced.
+			0,
 			incomeBreakdown.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
 			incomeBreakdown.SocialSecurityIncome,
 			monthlyRMD,
@@ -39,7 +50,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 			nil,
 			assumedIRMALookbackMAGI,
 			engine.MedicareEligibleAdultCountAtYear(s, targetYear),
-			engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(targetMonth)/12),
+			engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
 		)
 	}
 
@@ -173,9 +184,14 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	}
 
 	rothConversionThisMonth := engine.RothConversionAmountForYear(s, 0, s.PortfolioValue*(s.TaxDeferredPercent/100))
-	currentSnapshotBeforeRMD := estimateTaxSnapshot(0, taxableCashFlow, 0, rothConversionThisMonth, nil)
-	currentIRMALookbackMAGI := currentSnapshotBeforeRMD.AnnualMAGI
-	currentSnapshotBeforeRMD = estimateTaxSnapshot(0, taxableCashFlow, 0, rothConversionThisMonth, &currentIRMALookbackMAGI)
+	// IRMAA uses a two-year MAGI lookback. With no real history at month 0,
+	// seed it from a proxy of MAGI ~2 years before the plan starts, which
+	// excludes current-year discrete events — both the RMD and a planned
+	// Roth conversion. Those weren't present two years ago, so they must not
+	// inflate today's surcharge; a conversion's real IRMAA impact lands two
+	// years later, which the projection captures via actual MAGI history. #6
+	currentIRMALookbackMAGI := estimateTaxSnapshot(0, taxableCashFlow, 0, 0, nil).AnnualMAGI
+	currentSnapshotBeforeRMD := estimateTaxSnapshot(0, taxableCashFlow, 0, rothConversionThisMonth, &currentIRMALookbackMAGI)
 	currentSnapshot := estimateTaxSnapshot(0, taxableCashFlow, monthlyRMD, rothConversionThisMonth, &currentIRMALookbackMAGI)
 	monthlyTaxesBeforeRMD := currentSnapshotBeforeRMD.MonthlyTax
 	monthlyTaxes := currentSnapshot.MonthlyTax
@@ -363,7 +379,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		// Suggested withdrawal mix at steady state (only when gap > 0).
 		// Proportional split across allocation; net amounts sum to gap.
 		if result.SteadyStateGap > 0 {
-			pTDss, pTXss, pRss := withdrawalMixShares(s)
+			pTDss, pTXss, pRss := steadyStateWithdrawalMixShares(proj, steadyStateMonth, s)
 			result.SteadyStateNetWithdrawalTaxDeferred = result.SteadyStateGap * pTDss
 			result.SteadyStateNetWithdrawalTaxable = result.SteadyStateGap * pTXss
 			result.SteadyStateNetWithdrawalRoth = result.SteadyStateGap * pRss
@@ -496,6 +512,27 @@ func steadyStatePortfolioBalance(proj *models.ProjectionResult, month int, s *mo
 	}
 	yearsToMonth := float64(month) / 12
 	return s.PortfolioValue * math.Pow(1+effectiveReturn/100, yearsToMonth)
+}
+
+// steadyStateWithdrawalMixShares weights the gap-closing withdrawal by the
+// projection's ACTUAL bucket balances at the steady-state month, so a
+// bucket the projection has already drained isn't assigned a phantom
+// withdrawal. Falls back to the static allocation split when no projection
+// is available or every bucket is empty (the closed-form steady-state
+// path), keeping the sum-to-1 contract. Mirrors bucketBalancesAt's clamp.
+func steadyStateWithdrawalMixShares(proj *models.ProjectionResult, month int, s *models.WhatIfSettings) (pTD, pTX, pR float64) {
+	if proj != nil && len(proj.Months) > 0 && month >= 0 {
+		idx := month
+		if idx >= len(proj.Months) {
+			idx = len(proj.Months) - 1
+		}
+		m := proj.Months[idx]
+		total := m.TaxDeferredBalance + m.TaxableBalance + m.RothBalance
+		if total > 0 {
+			return m.TaxDeferredBalance / total, m.TaxableBalance / total, m.RothBalance / total
+		}
+	}
+	return withdrawalMixShares(s)
 }
 
 // withdrawalMixShares returns the proportional split of a gap-closing

@@ -253,7 +253,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		taxableComponents := BuildTaxableReturnComponents(taxableReturn, s)
 		totalGrowth := 0.0
 		irmaaEligibleAdults := MedicareEligibleAdultCountAtYear(s, currentYear)
-		irmaaInflationFactor := PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+		irmaaInflationFactor := PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(YearsFromTaxBase(s, currentYear)))
 
 		// F-074: apply the full annual RMD only in the trigger month for
 		// the user's selected timing. Other months withdraw 0.
@@ -276,7 +276,6 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			Timing:                            s.GetProjectionTiming(),
 			TaxState:                          taxState,
 			TaxCalculator:                     taxCalculator,
-			CurrentYear:                       currentYear,
 			MonthInYear:                       monthInYear,
 			CalendarYear:                      ParseStartYear(s.StartDate) + currentYear,
 			RothConversionThisMonth:           rothConversionThisMonth,

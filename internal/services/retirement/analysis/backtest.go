@@ -348,7 +348,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
 		taxableComponents := engine.BuildTaxableReturnComponents(taxAnnualReturn, s)
 		irmaaEligibleAdults := engine.MedicareEligibleAdultCountAtYear(s, currentYear)
-		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(currentYear))
+		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(engine.YearsFromTaxBase(s, currentYear)))
 
 		// F-074: apply the full annual RMD only in the trigger month.
 		monthlyRMD = engine.MonthlyRMDForMonth(s, m%12, annualRMD, taxDeferredBalance)
@@ -370,7 +370,6 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			Timing:                            s.GetProjectionTiming(),
 			TaxState:                          taxState,
 			TaxCalculator:                     taxCalculator,
-			CurrentYear:                       currentYear,
 			MonthInYear:                       m % 12,
 			CalendarYear:                      engine.ParseStartYear(s.StartDate) + currentYear,
 			RothConversionThisMonth:           rothConversionThisMonth,

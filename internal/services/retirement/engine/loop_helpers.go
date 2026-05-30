@@ -47,6 +47,19 @@ func RebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cu
 	return s.MonthlyLivingExpenses * netCumulativeInflation
 }
 
+// YearsFromTaxBase converts a projection-year offset into the number of
+// years between the plan's actual calendar year and the bundled federal
+// tax tables' base year (taxBaseYear). The inflation-adjusted bracket,
+// standard-deduction, and IRMAA math must key off this value — not the
+// raw projection offset — so a plan that starts after the base year does
+// not apply stale (un-inflated) brackets in its early years. The result
+// may be negative for plans that start before the base year; the
+// downstream inflation helpers floor non-positive values to "no
+// adjustment".
+func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int {
+	return ParseStartYear(s.StartDate) + currentYear - taxBaseYear
+}
+
 // MedicareEligibleAdultCountAtYear returns the count (0, 1, or 2) of
 // household adults that are 65+ in the given projection year. Used
 // to scale the per-person IRMAA surcharge to a household total.

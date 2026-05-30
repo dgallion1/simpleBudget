@@ -36,7 +36,7 @@ func TestPresentValue_IncludesOptimizerSocialSecurity(t *testing.T) {
 	}
 	in := engine.Input{Prepared: prepare.MustFrom(t, s), Hooks: hooks}
 
-	result := PresentValue(in)
+	result := PresentValue(in, nil)
 
 	months := s.ProjectionYears * 12
 	want := monthlyBenefit * float64(months-claimMonth)
@@ -67,7 +67,7 @@ func TestPresentValue_OptimizerSocialSecurityNotDoubleCounted(t *testing.T) {
 	}
 	in := engine.Input{Prepared: prepare.MustFrom(t, s), Hooks: hooks}
 
-	result := PresentValue(in)
+	result := PresentValue(in, nil)
 
 	months := s.ProjectionYears * 12
 	want := monthlyBenefit * float64(months) // only the optimizer stream

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"filippo.io/age"
 )
@@ -277,26 +278,67 @@ func TestLockWithNilProvider(t *testing.T) {
 }
 
 func TestCacheStaleAfterFileModification(t *testing.T) {
-	dir := t.TempDir()
-	s, _ := New(dir)
+	// Note: timestamps are set explicitly with os.Chtimes rather than relying
+	// on os.WriteFile to advance mtime — some filesystems (e.g. WSL2 9p, the
+	// CI sandbox) have coarse or effectively frozen mtime granularity, so two
+	// rapid rewrites can share an mtime. Setting it deterministically makes
+	// these cases reproducible regardless of the host filesystem.
+	t.Run("re-reads when mtime changes", func(t *testing.T) {
+		dir := t.TempDir()
+		s, _ := New(dir)
+		testFile := filepath.Join(dir, "change.txt")
 
-	testFile := filepath.Join(dir, "change.txt")
-	os.WriteFile(testFile, []byte("original"), 0644)
+		os.WriteFile(testFile, []byte("original"), 0644)
+		old := time.Unix(1_000_000_000, 0)
+		if err := os.Chtimes(testFile, old, old); err != nil {
+			t.Fatalf("chtimes: %v", err)
+		}
 
-	// Read to populate cache
-	data, _ := s.ReadFile(testFile)
-	if string(data) != "original" {
-		t.Fatalf("unexpected: %q", data)
-	}
+		if data, _ := s.ReadFile(testFile); string(data) != "original" {
+			t.Fatalf("unexpected initial read: %q", data)
+		}
 
-	// Modify file directly (bypass WriteFile)
-	os.WriteFile(testFile, []byte("modified"), 0644)
+		// External edit (bypassing WriteFile) with a strictly later mtime.
+		os.WriteFile(testFile, []byte("changed!"), 0644)
+		newer := old.Add(time.Hour)
+		if err := os.Chtimes(testFile, newer, newer); err != nil {
+			t.Fatalf("chtimes: %v", err)
+		}
 
-	// Read again - should detect modification and re-read
-	data2, _ := s.ReadFile(testFile)
-	if string(data2) != "modified" {
-		t.Errorf("expected 'modified', got %q", data2)
-	}
+		if data, _ := s.ReadFile(testFile); string(data) != "changed!" {
+			t.Errorf("expected 'changed!', got %q", data)
+		}
+	})
+
+	// Even when mtime is unchanged (coarse/frozen-granularity filesystem), a
+	// size change must invalidate the cache — mtime alone is not a reliable
+	// staleness signal.
+	t.Run("re-reads when size changes even if mtime is unchanged", func(t *testing.T) {
+		dir := t.TempDir()
+		s, _ := New(dir)
+		testFile := filepath.Join(dir, "change.txt")
+
+		os.WriteFile(testFile, []byte("original"), 0644)
+		frozen := time.Unix(1_000_000_000, 0)
+		if err := os.Chtimes(testFile, frozen, frozen); err != nil {
+			t.Fatalf("chtimes: %v", err)
+		}
+
+		if data, _ := s.ReadFile(testFile); string(data) != "original" {
+			t.Fatalf("unexpected initial read: %q", data)
+		}
+
+		// Different-length content, but pin the SAME mtime to simulate a
+		// filesystem whose timestamp granularity didn't catch the edit.
+		os.WriteFile(testFile, []byte("modified-and-longer"), 0644)
+		if err := os.Chtimes(testFile, frozen, frozen); err != nil {
+			t.Fatalf("chtimes: %v", err)
+		}
+
+		if data, _ := s.ReadFile(testFile); string(data) != "modified-and-longer" {
+			t.Errorf("expected size change to invalidate cache, got %q", data)
+		}
+	})
 }
 
 func TestEncryptDecryptFileWithRecipientIdentity(t *testing.T) {

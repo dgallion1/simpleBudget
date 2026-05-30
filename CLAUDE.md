@@ -1,43 +1,63 @@
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+# simpleBudget — Code Intelligence
 
-This project is indexed by GitNexus as **simpleBudget** (11024 symbols, 29687 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+A pure-Go retirement/budget planner. Use first-party Go semantic analysis to
+understand code, assess impact, and navigate safely — driven through the
+built-in `LSP` tool (backed by `gopls`). No external index to keep fresh.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> Tooling: `gopls` (`~/go/bin/gopls`), `staticcheck`, and the Go 1.26 toolchain
+> are installed and on `PATH`. If the `LSP` tool reports no server, run
+> `go install golang.org/x/tools/gopls@latest`.
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- **Assess impact before editing a symbol.** Before modifying a function,
+  method, or type, run `LSP` `incomingCalls` (and `findReferences` for vars/
+  consts) on it, and report the blast radius — direct callers and the files
+  they live in — to the user. For a wide blast radius, chase callers
+  transitively with repeated `incomingCalls`.
+- **Warn the user** when the blast radius is large or crosses package
+  boundaries (e.g. an exported symbol with many callers, or anything in
+  `internal/services/retirement/engine`) before proceeding.
+- **Verify before committing.** Run `go build ./... && go vet ./... &&
+  go test ./... && staticcheck ./...` and confirm the diff only touches what
+  you intended (`git diff`).
+- When exploring unfamiliar code, prefer `LSP` `workspaceSymbol` to locate a
+  symbol, then `goToDefinition` / `outgoingCalls` to read how it works, instead
+  of blind grepping.
+- For full context on a symbol — its callers, callees, and signature — combine
+  `incomingCalls`, `outgoingCalls`, and `hover`.
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER edit a function, method, or type without first checking its callers
+  (`incomingCalls` / `findReferences`).
+- NEVER rename a symbol with find-and-replace. Use `LSP` `findReferences` to
+  enumerate every use first, then change them all (gopls understands the call
+  graph; text search does not).
+- NEVER commit without a green `go build` + `go test` + `go vet` run.
 
-## Resources
+## LSP tool quick reference
 
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/simpleBudget/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/simpleBudget/clusters` | All functional areas |
-| `gitnexus://repo/simpleBudget/processes` | All execution flows |
-| `gitnexus://repo/simpleBudget/process/{name}` | Step-by-step execution trace |
+| Question | `LSP` operation |
+|----------|-----------------|
+| What breaks if I change X? (blast radius) | `incomingCalls`, `findReferences` |
+| What does X depend on? | `outgoingCalls` |
+| Where is X defined? | `goToDefinition` |
+| Where is X used? | `findReferences` |
+| Find a symbol by name across the repo | `workspaceSymbol` |
+| What implements this interface? | `goToImplementation` |
+| Type / doc of X | `hover` |
+| All symbols in a file | `documentSymbol` |
 
-## CLI
+`incomingCalls`/`outgoingCalls` need the cursor on the function *name* (e.g.
+`func BudgetFit(...)` → the `BudgetFit` token), with 1-based line/character.
 
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+## Architecture pointers
 
-<!-- gitnexus:end -->
+- `internal/services/retirement/engine` — projection simulation loop (Monte
+  Carlo, backtest, canonical). High blast radius; the analysis layer reads from
+  here. Touch with care.
+- `internal/services/retirement/analysis` — derived analyses (budget fit,
+  sensitivity, score, present value) computed from engine output.
+- `internal/handlers/whatif` — HTTP handlers + render tests for the what-if UI.
+- `web/templates/components/whatif` — Go `html/template` views for the planner.

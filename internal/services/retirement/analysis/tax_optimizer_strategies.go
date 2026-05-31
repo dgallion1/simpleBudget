@@ -95,35 +95,31 @@ func formatLadderLabel(amount float64, w strategyWindow) string {
 	return fmt.Sprintf("$%dk/yr %d→%d", int(amount/1000), w.StartAge, w.EndAge)
 }
 
-// estimateOtherTaxableIncome returns a closed-form estimate of the
-// household's taxable ORDINARY income at the given projection-year
-// offset, EXCLUDING any Roth conversion — i.e. the income that already
-// fills the ordinary brackets before a conversion. The result is in that
-// year's nominal dollars and is the correct quantity to subtract from an
-// inflated ordinary-bracket ceiling (also a taxable-income figure); see
-// inflatedBracketTopForYear.
-//
-// Components: ordinary fixed-income sources (Social Security excluded —
-// it is folded in via the §86 taxable-portion calc, not as fixed income,
-// so a SS-typed income source isn't double-counted) + RMD (gated on
-// EffectiveRMDStartAge, using the IRS Uniform Lifetime divisor) + the
-// taxable portion of Social Security (≤85% per 26 USC §86). The
-// (inflated, age-65-aware) standard deduction is then subtracted and the
-// result clamped to ≥ 0. Approximate by design — the optimizer ranks on
-// the engine's actual projection result, not on this estimate — but kept
-// in taxable-income units so the bracket-fill target is meaningful.
-func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) float64 {
-	if s == nil {
-		return 0
-	}
+// bracketFillIncome captures a year's taxable-income components needed to
+// size a bracket-fill Roth conversion. All amounts are in that year's
+// nominal dollars. The standard deduction is the (inflated, age-65-aware)
+// amount, so taxableOrdinaryIncome returns a figure comparable to an
+// inflated bracket ceiling.
+type bracketFillIncome struct {
+	tc                 *engine.TaxCalculator
+	grossSS            float64 // primary + MFJ spouse, COLA-grown
+	ordinary           float64 // ordinary income excluding SS and the conversion
+	qualifiedDividends float64 // preferential-rate; provisional income only
+	standardDeduction  float64
+}
+
+// bracketFillIncomeForYear computes the household's taxable-income
+// components at the given projection-year offset, EXCLUDING any Roth
+// conversion. Social Security is carried gross and folded in via the §86
+// taxable-portion calc (not counted as fixed income, so a SS-typed income
+// source isn't double-counted). RMD is gated on EffectiveRMDStartAge using
+// the IRS Uniform Lifetime divisor.
+func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) bracketFillIncome {
 	age := s.CurrentAge + projectionYear
 
 	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	tc.Age65Count = age65CountForYear(s, projectionYear)
-	yearsFromBase := engine.YearsFromTaxBase(s, projectionYear)
 
-	// Gross Social Security (primary + MFJ spouse), grown by COLA. Fed
-	// into the §86 taxable-portion calc below rather than counted at gross.
 	grossSS := 0.0
 	if s.SocialSecurity != nil && s.SocialSecurity.ClaimAge > 0 && age >= s.SocialSecurity.ClaimAge {
 		cola := SSConfigCOLARate(s)
@@ -205,13 +201,64 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 		qualifiedDividends = taxableNow * (s.TaxableDividendYield / 100.0)
 	}
 
-	// Taxable portion of Social Security (≤85% per §86), then drop to
-	// taxable-income units by subtracting the standard deduction so the
-	// figure is comparable to the bracket ceiling.
-	taxableSS := tc.CalculateTaxableSocialSecurity(grossSS, ordinary, qualifiedDividends, 0)
-	taxable := ordinary + taxableSS - tc.GetAdjustedStandardDeduction(yearsFromBase)
+	return bracketFillIncome{
+		tc:                 tc,
+		grossSS:            grossSS,
+		ordinary:           ordinary,
+		qualifiedDividends: qualifiedDividends,
+		standardDeduction:  tc.GetAdjustedStandardDeduction(engine.YearsFromTaxBase(s, projectionYear)),
+	}
+}
+
+// taxableOrdinaryIncome returns the household's taxable ORDINARY income
+// with an additional Roth conversion folded into provisional income —
+// mirroring the engine, which adds the conversion to other income BEFORE
+// the §86 taxable-SS calc, so a conversion can itself make more SS taxable.
+// Not floored at 0: bracket-fill solves against a positive ceiling, and the
+// raw (possibly negative) value keeps the solve well-defined.
+func (b bracketFillIncome) taxableOrdinaryIncome(conversion float64) float64 {
+	taxableSS := b.tc.CalculateTaxableSocialSecurity(b.grossSS, b.ordinary+conversion, b.qualifiedDividends, 0)
+	return b.ordinary + conversion + taxableSS - b.standardDeduction
+}
+
+// bracketFillConversion solves for the Roth conversion that lifts taxable
+// ordinary income up to `ceiling`, accounting for the conversion's own
+// effect on Social Security taxability. A conversion sized naively as
+// (ceiling − incomeWithoutConversion) overshoots, because the conversion
+// pushes more SS into the taxable range. taxableOrdinaryIncome is
+// non-decreasing in the conversion (slope ≥ 1, since taxable SS only adds),
+// so a binary search converges. Returns 0 when there is no room.
+func (b bracketFillIncome) bracketFillConversion(ceiling float64) float64 {
+	if b.taxableOrdinaryIncome(0) >= ceiling {
+		return 0
+	}
+	// taxableOrdinaryIncome(hi) ≥ ordinary + hi − stdDed = ceiling, so hi is a
+	// valid upper bracket (taxable SS only raises it further).
+	lo, hi := 0.0, ceiling-b.ordinary+b.standardDeduction
+	for i := 0; i < 64 && hi-lo > 0.005; i++ {
+		mid := (lo + hi) / 2
+		if b.taxableOrdinaryIncome(mid) < ceiling {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	return (lo + hi) / 2
+}
+
+// estimateOtherTaxableIncome returns the household's taxable ORDINARY
+// income at the given projection-year offset, EXCLUDING any Roth conversion
+// — the income that already fills the ordinary brackets before a
+// conversion, in that year's nominal dollars and floored at 0. Used by the
+// bracket-fill candidate gate. Approximate by design — the optimizer ranks
+// on the engine's actual projection result, not on this estimate.
+func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) float64 {
+	if s == nil {
+		return 0
+	}
+	taxable := bracketFillIncomeForYear(s, projectionYear).taxableOrdinaryIncome(0)
 	if taxable < 0 {
-		taxable = 0
+		return 0
 	}
 	return taxable
 }
@@ -349,8 +396,7 @@ func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, targ
 		if !ok {
 			return false
 		}
-		other := estimateOtherTaxableIncome(s, y)
-		if ceiling-other > 1 {
+		if bracketFillIncomeForYear(s, y).bracketFillConversion(ceiling) > 1 {
 			return true
 		}
 	}
@@ -374,7 +420,7 @@ func enumerateRothStrategies(s *models.WhatIfSettings) []models.RothOptimizerStr
 // substituted into settings, makes the engine apply the strategy.
 // Ladder strategies translate to a fixed AnnualAmount across a window.
 // Bracket-fill strategies translate to a PerYearOverrides map
-// pre-computed via estimateOtherTaxableIncome. A zero-amount ladder
+// pre-computed via strategyYearlyConversions. A zero-amount ladder
 // (the "No conversion" baseline) returns a disabled config.
 func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) *models.RothConversionConfig {
 	if strat.Kind == models.RothStrategyNone {
@@ -416,10 +462,12 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 // strategyYearlyConversions returns the per-year conversion amounts
 // implied by strat. Returns nil for the no-conversion baseline (none-kind
 // or a zero-amount ladder). For ladder strategies every entry shares
-// strat.AnnualAmount. For bracket-fill strategies each entry equals
-// the bracket ceiling minus estimateOtherTaxableIncome for that year
-// (clamped to zero). Mirrors the math in rothStrategyToConfig so the
-// displayed amounts match what the engine actually applied.
+// strat.AnnualAmount. For bracket-fill strategies each entry is the
+// conversion that lifts taxable ordinary income to the inflated bracket
+// ceiling for that year (see bracketFillConversion — it accounts for the
+// conversion's effect on SS taxability, so it is not a plain ceiling−other).
+// Mirrors the math in rothStrategyToConfig so the displayed amounts match
+// what the engine actually applied.
 func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) []models.YearlyConversion {
 	if strat.Kind == models.RothStrategyNone {
 		return nil
@@ -456,11 +504,10 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 			if !ok {
 				return nil
 			}
-			other := estimateOtherTaxableIncome(s, y)
-			conv := ceiling - other
-			if conv < 0 {
-				conv = 0
-			}
+			// Solve for the conversion that lands taxable ordinary income on
+			// the ceiling, accounting for the conversion's own effect on SS
+			// taxability (a naive ceiling−other overshoots the bracket).
+			conv := bracketFillIncomeForYear(s, y).bracketFillConversion(ceiling)
 			out = append(out, models.YearlyConversion{
 				Age:    s.CurrentAge + y,
 				Amount: conv,

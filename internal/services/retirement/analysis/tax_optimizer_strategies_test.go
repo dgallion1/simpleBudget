@@ -434,14 +434,19 @@ func TestRothStrategyToConfig_BracketFillProducesOverrides(t *testing.T) {
 	if len(cfg.PerYearOverrides) != 6 {
 		t.Errorf("PerYearOverrides should have 6 entries, got %d: %+v", len(cfg.PerYearOverrides), cfg.PerYearOverrides)
 	}
-	// No override exceeds the 22% bracket ceiling for MFJ ($201,050 for 2024).
-	// Conversion = ceiling - other income; should never be negative or > ceiling.
+	// Each override must lift taxable ordinary income to the (inflated) 22%
+	// ceiling — not merely equal the ceiling. The gross conversion can exceed
+	// the taxable-income ceiling because the standard deduction and the
+	// conversion's own effect on SS taxability sit between them.
 	for year, amount := range cfg.PerYearOverrides {
 		if amount < 0 {
 			t.Errorf("year %d: negative override %v", year, amount)
 		}
-		if amount > 201_050 {
-			t.Errorf("year %d: override %v exceeds 22%% MFJ ceiling", year, amount)
+		ceiling, _ := inflatedBracketTopForYear(s, 0.22, year)
+		resulting := bracketFillIncomeForYear(s, year).taxableOrdinaryIncome(amount)
+		if math.Abs(resulting-ceiling) > 1.0 {
+			t.Errorf("year %d: override %v drives taxable ordinary income to %v, want 22%% ceiling %v",
+				year, amount, resulting, ceiling)
 		}
 	}
 }
@@ -570,13 +575,14 @@ func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
 		if !ok {
 			t.Fatalf("year %d: no inflated ceiling for 24%% bracket", projYear)
 		}
-		other := estimateOtherTaxableIncome(s, projYear)
-		want := ceiling - other
-		if want < 0 {
-			want = 0
-		}
-		if yc.Amount != want {
-			t.Errorf("year %d (age %d): Amount=%v, want %v", projYear, yc.Age, yc.Amount, want)
+		// The conversion must lift taxable ordinary income to the ceiling, not
+		// merely equal ceiling−other: the standard-deduction headroom (and any
+		// conversion-driven SS taxability) sit between the gross conversion and
+		// the taxable-income ceiling.
+		resulting := bracketFillIncomeForYear(s, projYear).taxableOrdinaryIncome(yc.Amount)
+		if math.Abs(resulting-ceiling) > 1.0 {
+			t.Errorf("year %d (age %d): conversion %v drives taxable ordinary income to %v, want ceiling %v",
+				projYear, yc.Age, yc.Amount, resulting, ceiling)
 		}
 	}
 }

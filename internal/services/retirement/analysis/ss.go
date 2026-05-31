@@ -457,19 +457,36 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 		}
 	}
 
-	// Survivor benefits: the surviving spouse inherits the larger of the
-	// two benefits, so the higher-PIA worker's record drives the survivor
-	// floor. Inform-only — does not affect BestAge or the cumulative
-	// columns. See docs/superpowers/specs/2026-05-31-ss-survivor-benefits-design.md.
+	// Survivor benefits: the surviving spouse inherits the LARGER of the two
+	// survivor benefits. Which record that is depends on each worker's actual
+	// claim age, not PIA alone: a higher-PIA worker who claims early is floored
+	// by RIB-LIM (82.5% of PIA), while a lower-PIA worker who delays past FRA
+	// earns delayed-retirement credits — so the lower-PIA record can produce
+	// the larger survivor benefit. Compare the survivor benefit each record
+	// yields at its selected claim age (falling back to FRA when unset, which
+	// reduces the comparison to PIA-vs-PIA). Inform-only — does not affect
+	// BestAge or the cumulative columns. See
+	// docs/superpowers/specs/2026-05-31-ss-survivor-benefits-design.md.
 	if s.HasSpouse() && primaryPIA > 0 && spousePIA > 0 && len(spouseOptions) > 0 {
 		result.HasSurvivorAnalysis = true
+
+		primaryClaimForSurvivor := fra
+		if ValidSSClaimAge(ss.ClaimAge) {
+			primaryClaimForSurvivor = ss.ClaimAge
+		}
+		spouseClaimForSurvivor := spouseFRA
+		if ValidSSClaimAge(ss.SpouseClaimAge) {
+			spouseClaimForSurvivor = ss.SpouseClaimAge
+		}
+		primarySurvivor := SurvivorBenefitForClaimAge(primaryPIA, fra, primaryClaimForSurvivor)
+		spouseSurvivor := SurvivorBenefitForClaimAge(spousePIA, spouseFRA, spouseClaimForSurvivor)
 
 		higherPIA := primaryPIA
 		higherFRA := fra
 		selectedClaimAge := ss.ClaimAge
 		higherCurrentAge := s.CurrentAge
 		survivorOptions := result.Options
-		if spousePIA > primaryPIA {
+		if spouseSurvivor > primarySurvivor {
 			result.SurvivorHigherEarnerIsSpouse = true
 			higherPIA = spousePIA
 			higherFRA = spouseFRA

@@ -520,6 +520,49 @@ func TestSSAnalysis_Survivor_SpouseHigher(t *testing.T) {
 	}
 }
 
+// The surviving spouse inherits the LARGER survivor benefit, which depends on
+// each worker's actual claim age — not PIA. A higher-PIA worker who claims
+// early is floored by RIB-LIM (82.5% of PIA), while a lower-PIA worker who
+// delays to 70 earns delayed-retirement credits. When the lower-PIA record
+// produces the larger survivor benefit, the survivor column/callout must
+// attach to that record, not the higher-PIA one.
+func TestSSAnalysis_Survivor_PicksRecordWithLargerSurvivorBenefit(t *testing.T) {
+	s := ssSurvivorSettings(3000, 2200)  // primaryPIA 3000 > spousePIA 2200
+	s.SocialSecurity.ClaimAge = 62       // primary claims early → survivor floored at 0.825×3000 = 2475
+	s.SocialSecurity.SpouseClaimAge = 70 // spouse delays → survivor = 1.24×2200 = 2728
+
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis")
+	}
+
+	primarySurvivor := SurvivorBenefitForClaimAge(3000, 67, 62)
+	spouseSurvivor := SurvivorBenefitForClaimAge(2200, 67, 70)
+	if !(spouseSurvivor > primarySurvivor) {
+		t.Fatalf("scenario invalid: spouseSurvivor %.2f must exceed primarySurvivor %.2f", spouseSurvivor, primarySurvivor)
+	}
+
+	if !res.SurvivorHigherEarnerIsSpouse {
+		t.Errorf("spouse record yields the larger survivor benefit (%.2f > %.2f); SurvivorHigherEarnerIsSpouse should be true",
+			spouseSurvivor, primarySurvivor)
+	}
+	if res.SurvivorSelectedClaimAge != 70 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 70 (spouse's selected age)", res.SurvivorSelectedClaimAge)
+	}
+	if len(res.SpouseOptions) == 0 || res.SpouseOptions[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("expected SurvivorMonthlyBenefit populated on SpouseOptions")
+	}
+	for _, o := range res.Options {
+		if o.SurvivorMonthlyBenefit != 0 {
+			t.Error("primary options must not carry survivor benefit when the spouse record is larger")
+		}
+	}
+	wantAtSelected := math.Round(spouseSurvivor*100) / 100
+	if !ssWithinTolerance(res.SurvivorBenefitAtSelected, wantAtSelected, 0.01) {
+		t.Errorf("SurvivorBenefitAtSelected = %v, want %v (spouse @70)", res.SurvivorBenefitAtSelected, wantAtSelected)
+	}
+}
+
 func TestSSAnalysis_Survivor_SingleFiler(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 60

@@ -399,6 +399,8 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 	var spouseOptions []models.SSClaimingOption
 	var spouseBreakevens []models.SSBreakevenResult
 	spouseBestAge := 0
+	spouseCumBestAge := 0
+	spouseBestCum := 0.0
 	if ss.SpouseFRABenefit > 0 {
 		spouseAge := s.SpouseAge
 		if spouseAge == 0 {
@@ -412,17 +414,20 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 			spouseOptions = SSComparisonTable(spousePIA, spouseFRA, spouseAge, colaRate)
 			spouseBreakevens = SSBreakevenAges(spousePIA, spouseFRA, colaRate)
 		}
+		// Best cumulative is a property of the spouse's own table; compute
+		// it unconditionally so SpouseEarlyClaimGapPct never borrows the
+		// primary table's bestCum (the two share no state).
+		for _, opt := range spouseOptions {
+			if opt.CumulativeAt85 > spouseBestCum {
+				spouseBestCum = opt.CumulativeAt85
+				spouseCumBestAge = opt.ClaimAge
+			}
+		}
 		if ValidSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= spouseAge {
 			// Spouse already claiming — don't suggest a different age
 			spouseBestAge = ss.SpouseClaimAge
 		} else {
-			bestCum = 0
-			for _, opt := range spouseOptions {
-				if opt.CumulativeAt85 > bestCum {
-					bestCum = opt.CumulativeAt85
-					spouseBestAge = opt.ClaimAge
-				}
-			}
+			spouseBestAge = spouseCumBestAge
 		}
 	}
 
@@ -446,9 +451,9 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 		result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > spousePIA
 
 		// Calculate gap between earliest and best cumulative at 85
-		if len(spouseOptions) > 1 && bestCum > 0 {
+		if len(spouseOptions) > 1 && spouseBestCum > 0 {
 			earliestCum := spouseOptions[0].CumulativeAt85
-			result.SpouseEarlyClaimGapPct = (bestCum - earliestCum) / bestCum * 100
+			result.SpouseEarlyClaimGapPct = (spouseBestCum - earliestCum) / spouseBestCum * 100
 		}
 	}
 

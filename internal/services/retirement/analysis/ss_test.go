@@ -397,6 +397,51 @@ func TestSurvivorBenefitForClaimAge(t *testing.T) {
 	}
 }
 
+// SpouseEarlyClaimGapPct must be derived from the spouse's own claiming
+// table. When the spouse is already claiming (so the spouse best-age loop
+// is skipped) but the primary is not, the gap must not be computed against
+// the primary table's best cumulative — the two share no state.
+func TestSSAnalysis_SpouseEarlyClaimGap_SpouseAlreadyClaiming(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 60
+	s.SpouseAge = 65
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+		{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 65)},
+	}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit:       3000, // primary much higher → large primary cumulative
+		FRA:              67,
+		COLARate:         0.02,
+		ClaimAge:         70, // primary NOT yet claiming (> CurrentAge): primary loop sets bestCum
+		SpouseFRABenefit: 1000,
+		SpouseFRA:        67,
+		SpouseClaimAge:   63, // <= SpouseAge: spouse-already-claiming branch (best-age loop skipped)
+	}
+	result := SSAnalysis(engineInput(t, s))
+	if result == nil {
+		t.Fatal("expected analysis")
+	}
+	if len(result.SpouseOptions) < 2 {
+		t.Fatalf("need >1 spouse option to exercise the gap, got %d", len(result.SpouseOptions))
+	}
+
+	// Oracle: the gap is a property of the spouse's own table alone.
+	best := 0.0
+	for _, opt := range result.SpouseOptions {
+		if opt.CumulativeAt85 > best {
+			best = opt.CumulativeAt85
+		}
+	}
+	earliest := result.SpouseOptions[0].CumulativeAt85
+	want := (best - earliest) / best * 100
+
+	if !ssWithinTolerance(result.SpouseEarlyClaimGapPct, want, 1e-6) {
+		t.Fatalf("SpouseEarlyClaimGapPct = %.6f, want %.6f (must derive from the spouse table, not the primary bestCum)",
+			result.SpouseEarlyClaimGapPct, want)
+	}
+}
+
 func ssSurvivorSettings(primaryFRA, spouseFRA float64) *models.WhatIfSettings {
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 60

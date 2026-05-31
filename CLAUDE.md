@@ -78,6 +78,14 @@ Retirement math:
   `engine/month.go` (canonical), `analysis/monte_carlo.go`, `analysis/backtest.go`.
   Per-month tax/IRMAA input changes must be replicated across all three (or
   centralized in `ExecuteTaxAwarePortfolioMonth`).
+- Roth bracket-fill conversion sizing (`analysis/tax_optimizer_strategies.go`)
+  must mirror the engine's tax model: `bracketFillConversion` binary-searches
+  `taxableOrdinaryIncome` for the conversion that hits the inflated bracket
+  ceiling — never `ceiling − other` (the conversion itself raises §86
+  provisional income, making more SS taxable). Ordinary income + RMD +
+  non-qualified dividends fill the bracket; SS taxable portion, qualified
+  dividends, and cap-gains distributions (LTCG) are §86-provisional-only. Add
+  any new taxable component to `bracketFillIncomeForYear` to match the engine.
 
 ## Architecture pointers
 

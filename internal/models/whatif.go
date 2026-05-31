@@ -1078,6 +1078,7 @@ type MonteCarloResult struct {
 	FinalBalance    float64 `json:"final_balance"`
 	DepletionYear   float64 `json:"depletion_year"` // 0 if survives
 	Survives        bool    `json:"survives"`
+	TotalIRMAA      float64 `json:"total_irmaa"`      // Cumulative IRMAA surcharge over the run
 	MarketCrashes   int     `json:"market_crashes"`   // Number of crash years
 	SpendingShocks  int     `json:"spending_shocks"`  // Number of spending shock events
 	HealthShocks    int     `json:"health_shocks"`    // Number of health emergency events

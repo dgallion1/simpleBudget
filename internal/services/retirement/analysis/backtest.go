@@ -22,6 +22,7 @@ type HistoricalSequenceResult struct {
 	LowestBalanceYr     int     // Year of lowest balance
 	WorstDrawdown       float64 // Worst percentage drawdown from peak
 	AvgWithdrawRate     float64 // Average withdrawal rate across the period
+	TotalIRMAA          float64 // Cumulative IRMAA surcharge over the period
 }
 
 func yearsUntilDepletion(result HistoricalSequenceResult) int {
@@ -216,6 +217,11 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
 	currentYearTaxSnapshot := engine.ProjectedTaxSnapshot{}
+	// assumedLookbackMAGI seeds the IRMAA two-year MAGI lookback for years
+	// 0-1, before completedMAGIHistory has two entries — mirroring the
+	// canonical projection loop (engine/month.go) so the backtest doesn't
+	// understate early-year IRMAA for high-MAGI Medicare-eligible households.
+	var assumedLookbackMAGI float64
 
 	peakBalance := s.PortfolioValue
 	lowestBalance := s.PortfolioValue
@@ -375,11 +381,18 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			RothConversionThisMonth:           rothConversionThisMonth,
 			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
 			CompletedMAGIHistory:              completedMAGIHistory,
+			AssumedIRMALookbackMAGI:           &assumedLookbackMAGI,
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
 		bigTicketRothEarnings = 0
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
+		// Hold the year-0 MAGI estimate as the IRMAA lookback seed for years
+		// 0-1; real history drives years 2+ (resolveIRMAALookbackMAGI prefers it).
+		if currentYear == 0 {
+			assumedLookbackMAGI = monthResult.TaxSnapshot.AnnualMAGI
+		}
+		result.TotalIRMAA += monthResult.IRMAAExpense
 		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 		totalWithdrawals += monthResult.CashFlow.GrossWithdrawal()
 		shortfall := monthResult.Shortfall

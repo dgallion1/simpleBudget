@@ -22,6 +22,14 @@ Each item below is verified against the actual code, not the review's framing.
 
 ## FU-1 (#4, Medium) — IRMAA lookback MAGI not seeded in Monte Carlo / backtest loops
 
+> **RESOLVED (2026-05-31)** on `feat/ss-survivor-benefits`. Both loops now seed
+> `AssumedIRMALookbackMAGI` from their own year-0 MAGI, mirroring
+> `engine/month.go`. IRMAA is now observable per run via the new `TotalIRMAA`
+> field on `models.MonteCarloResult` and `HistoricalSequenceResult`; regression
+> tests `TestMonteCarlo_SeedsEarlyYearIRMAA` and `TestBacktest_SeedsEarlyYearIRMAA`
+> (a 2-year high-MAGI Medicare household, where the whole run lives inside the
+> seed window) assert non-zero early-year IRMAA.
+
 **Files:** `internal/services/retirement/analysis/monte_carlo.go` (~line 512),
 `internal/services/retirement/analysis/backtest.go` (~line 377).
 

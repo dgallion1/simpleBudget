@@ -155,10 +155,18 @@ func presentValueOfTaxes(proj *models.ProjectionResult, discountRate float64, mo
 }
 
 // presentValueOfMonthlyStream discounts an arbitrary per-month cash flow
-// back to month 0, with month m discounted by (1+monthlyRate)^m. Used for
-// the SS-optimizer stream, whose amounts vary by month and so don't fit a
-// single closed-form annuity. The monthly rate is derived the same way as
-// PresentValueAnnuity, so the two stay consistent.
+// back to month 0. Used for legs whose amounts vary by month and so don't
+// fit a single closed-form annuity (the SS-optimizer stream, phased living
+// expenses, projected taxes/IRMAA).
+//
+// It uses the ordinary-annuity convention to match PresentValueAnnuity: the
+// month-m payment is discounted by (1+monthlyRate)^(m+1), i.e. the first
+// payment (m=0) falls one month out, exactly as the closed-form
+// payment·(1-(1+r)^-n)/r expands to sum_{k=1..n} payment/(1+r)^k. This keeps
+// stream legs and annuity legs on the same timing, so toggling spending
+// phases or the SS optimizer doesn't shift a leg's PV by a spurious factor of
+// (1+monthlyRate). The monthly rate is derived the same way as
+// PresentValueAnnuity.
 func presentValueOfMonthlyStream(amountAt func(month int) float64, discountRate float64, months int) float64 {
 	monthlyRate := engine.MonthlyCompoundFactorFromDecimal(discountRate/100) - 1
 	pv := 0.0
@@ -168,7 +176,7 @@ func presentValueOfMonthlyStream(amountAt func(month int) float64, discountRate 
 			continue
 		}
 		if monthlyRate > 0 {
-			pv += amt / math.Pow(1+monthlyRate, float64(m))
+			pv += amt / math.Pow(1+monthlyRate, float64(m+1))
 		} else {
 			pv += amt
 		}

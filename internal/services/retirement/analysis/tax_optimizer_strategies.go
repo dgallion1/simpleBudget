@@ -192,13 +192,18 @@ func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) brac
 		}
 	}
 
-	// Taxable-account dividends: preferential-rate income, so they do not
-	// fill the ordinary brackets, but they do count toward provisional
-	// income for Social Security taxability.
+	// Taxable-account dividends, split per GetTaxableQualifiedDividendPercent:
+	// qualified dividends are preferential-rate (they don't fill the ordinary
+	// brackets, but do count toward §86 provisional income), while
+	// non-qualified dividends are taxed as ordinary income — so they fill the
+	// bracket and reduce conversion room, matching the engine.
 	qualifiedDividends := 0.0
 	taxableNow := s.PortfolioValue * (1.0 - s.TaxDeferredPercent/100.0 - s.RothPercent/100.0)
 	if s.TaxableDividendYield > 0 {
-		qualifiedDividends = taxableNow * (s.TaxableDividendYield / 100.0)
+		totalDividends := taxableNow * (s.TaxableDividendYield / 100.0)
+		qualifiedShare := s.GetTaxableQualifiedDividendPercent() / 100.0
+		qualifiedDividends = totalDividends * qualifiedShare
+		ordinary += totalDividends * (1.0 - qualifiedShare) // non-qualified → ordinary
 	}
 
 	return bracketFillIncome{

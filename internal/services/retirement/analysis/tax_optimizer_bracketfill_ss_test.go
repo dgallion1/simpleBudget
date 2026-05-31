@@ -78,3 +78,61 @@ func TestBracketFill_AccountsForConversionDrivenSSTaxation(t *testing.T) {
 		}
 	}
 }
+
+// Bracket-fill sizing must split taxable-account dividends into qualified
+// (preferential rate — outside the ordinary brackets) and non-qualified
+// (taxed as ordinary income, so they fill the bracket and reduce conversion
+// room). Treating the whole TaxableDividendYield as qualified ignores the
+// non-qualified portion the engine adds to ordinary income, so the solver
+// over-converts when TaxableQualifiedDividendPercent < 100.
+func TestBracketFill_SplitsNonQualifiedDividendsIntoOrdinary(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.Persons = s.Persons[:1] // single filer
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 60)
+	s.SpouseAge = 0
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+	s.SocialSecurity = nil // isolate the dividend effect
+	s.MonthlyHealthcare = 0
+	s.HealthcarePersons = nil
+	s.IncomeSources = nil
+	s.PortfolioValue = 2_000_000
+	s.TaxDeferredPercent = 50 // → $1M taxable account
+	s.RothPercent = 0
+	s.TaxableDividendYield = 4.0           // $40k/yr dividends
+	s.TaxableQualifiedDividendPercent = 50 // half qualified, half ordinary
+	s.ProjectionYears = 10
+
+	in := engineInput(t, s)
+	ps := in.Prepared.Settings()
+
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.22,
+		StartAge:      60,
+		EndAge:        63, // years 0,1,2 — pre-SS, pre-RMD
+	}
+	got := strategyYearlyConversions(ps, strat)
+	if len(got) == 0 {
+		t.Fatal("expected bracket-fill conversions")
+	}
+
+	tc := engine.NewTaxCalculator(ps.TaxConfig, ps.InflationRate)
+	taxableNow := ps.PortfolioValue * (1.0 - ps.TaxDeferredPercent/100.0 - ps.RothPercent/100.0)
+	totalDividends := taxableNow * (ps.TaxableDividendYield / 100.0)
+	nonQualified := totalDividends * (1.0 - ps.GetTaxableQualifiedDividendPercent()/100.0)
+	if nonQualified < 1 {
+		t.Fatalf("scenario invalid: expected material non-qualified dividends, got %.2f", nonQualified)
+	}
+
+	for i, yc := range got {
+		ceiling, _ := inflatedBracketTopForYear(ps, 0.22, i)
+		stdDed := tc.GetAdjustedStandardDeduction(engine.YearsFromTaxBase(ps, i))
+		// Engine-equivalent taxable ordinary income: non-qualified dividends
+		// are ordinary; qualified are not. No SS here.
+		resulting := nonQualified + yc.Amount - stdDed
+		if math.Abs(resulting-ceiling) > 1.0 {
+			t.Errorf("year %d: conversion %.0f → taxable ordinary income %.0f, want 22%% ceiling %.0f "+
+				"(non-qualified dividends not counted as ordinary)", i, yc.Amount, resulting, ceiling)
+		}
+	}
+}

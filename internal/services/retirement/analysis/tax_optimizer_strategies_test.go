@@ -485,9 +485,12 @@ func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
 		t.Fatalf("len: got %d, want 3", len(got))
 	}
 
-	ceiling, _ := bracketTopFor(models.FilingMarriedJoint, 0.24)
 	for i, yc := range got {
 		projYear := i // startProjYear=0 because StartAge==CurrentAge
+		// Ceilings inflate to the plan's calendar year (mirrors the engine's
+		// own bracket inflation), so the oracle uses the inflated top, not the
+		// frozen 2024 table value.
+		ceiling, _ := inflatedBracketTop(s, 0.24, projYear)
 		other := estimateOtherTaxableIncome(s, projYear)
 		want := ceiling - other
 		if want < 0 {

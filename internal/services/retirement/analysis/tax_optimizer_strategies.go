@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"math"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -236,6 +237,26 @@ func bracketTopFor(status models.FilingStatus, target float64) (float64, bool) {
 	return ceiling, ok
 }
 
+// inflatedBracketTop returns the bracketTopFor ceiling inflated to the plan's
+// calendar year for the given projection-year offset, mirroring the engine's
+// own bracket inflation (TaxCalculator.InflationFactor keyed on
+// YearsFromTaxBase). Without this the frozen 2024 ceilings systematically
+// undersize bracket-fill conversions in later plan years — the engine inflates
+// its brackets, so an un-inflated ceiling leaves real bracket room unused.
+// Returns (0, false) for unknown filing statuses / unsupported targets, matching
+// bracketTopFor.
+func inflatedBracketTop(s *models.WhatIfSettings, target float64, projectionYear int) (float64, bool) {
+	base, ok := bracketTopFor(s.TaxConfig.FilingStatus, target)
+	if !ok {
+		return 0, false
+	}
+	yfb := engine.YearsFromTaxBase(s, projectionYear)
+	if yfb <= 0 {
+		return base, true
+	}
+	return base * math.Pow(1+s.InflationRate/100, float64(yfb)), true
+}
+
 // enumerateBracketFillStrategies generates bracket-fill candidates:
 // cross-product of target brackets × valid windows. Only windows that
 // end at or before RMD age are considered — bracket-fill is only useful
@@ -264,12 +285,11 @@ func enumerateBracketFillStrategies(s *models.WhatIfSettings) []models.RothOptim
 
 	out := make([]models.RothOptimizerStrategy, 0, len(windows)*len(taxOptimizerBracketFillTargets))
 	for _, target := range taxOptimizerBracketFillTargets {
-		ceiling, ok := bracketTopFor(s.TaxConfig.FilingStatus, target)
-		if !ok {
+		if _, ok := bracketTopFor(s.TaxConfig.FilingStatus, target); !ok {
 			return nil // unknown filing status: skip the entire family
 		}
 		for _, w := range windows {
-			if !bracketFillProducesNonZero(s, w, ceiling) {
+			if !bracketFillProducesNonZero(s, w, target) {
 				continue
 			}
 			out = append(out, models.RothOptimizerStrategy{
@@ -284,13 +304,14 @@ func enumerateBracketFillStrategies(s *models.WhatIfSettings) []models.RothOptim
 	return out
 }
 
-func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, ceiling float64) bool {
+func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, target float64) bool {
 	startProjYear := w.StartAge - s.CurrentAge
 	endProjYear := w.EndAge - s.CurrentAge
 	if startProjYear < 0 {
 		startProjYear = 0
 	}
 	for y := startProjYear; y < endProjYear; y++ {
+		ceiling, _ := inflatedBracketTop(s, target, y)
 		other := estimateOtherTaxableIncome(s, y)
 		if ceiling-other > 1 {
 			return true
@@ -393,11 +414,11 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 		if s.TaxConfig == nil {
 			return nil
 		}
-		ceiling, ok := bracketTopFor(s.TaxConfig.FilingStatus, strat.TargetBracket)
-		if !ok {
+		if _, ok := bracketTopFor(s.TaxConfig.FilingStatus, strat.TargetBracket); !ok {
 			return nil
 		}
 		for y := startProjYear; y < endProjYear; y++ {
+			ceiling, _ := inflatedBracketTop(s, strat.TargetBracket, y)
 			other := estimateOtherTaxableIncome(s, y)
 			conv := ceiling - other
 			if conv < 0 {

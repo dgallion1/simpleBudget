@@ -107,6 +107,56 @@ func TestRunSSAnalysis(t *testing.T) {
 		}
 	})
 
+	t.Run("spouse already claiming: early-claim gap uses spouse cumulative, not primary", func(t *testing.T) {
+		// Regression: when the spouse is already claiming, the suggest-age
+		// loop is skipped. The early-claim gap must still be computed from
+		// the spouse's own cumulative-at-85 — not the primary's (which is
+		// far larger here: primary FRABenefit 3000 vs spouse 1000), which
+		// would otherwise corrupt the percentage.
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 60
+		s.SpouseAge = 65
+		s.Persons = []models.Person{
+			{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 65)},
+		}
+		s.SocialSecurity = &models.SocialSecurityConfig{
+			FRABenefit:       3000,
+			FRA:              67,
+			COLARate:         0.02,
+			SpouseFRABenefit: 1000,
+			SpouseFRA:        67,
+			SpouseClaimAge:   63, // <= SpouseAge, already claiming
+		}
+		in := engineInput(t, s)
+		result := SSAnalysis(in)
+		if result == nil {
+			t.Fatal("expected analysis")
+		}
+		if len(result.SpouseOptions) < 2 {
+			t.Fatalf("expected >=2 spouse options, got %d", len(result.SpouseOptions))
+		}
+
+		// Expected gap derived purely from the spouse's own options.
+		best := 0.0
+		for _, opt := range result.SpouseOptions {
+			if opt.CumulativeAt85 > best {
+				best = opt.CumulativeAt85
+			}
+		}
+		earliest := result.SpouseOptions[0].CumulativeAt85
+		want := (best - earliest) / best * 100
+
+		if !ssWithinTolerance(result.SpouseEarlyClaimGapPct, want, 0.01) {
+			t.Fatalf("SpouseEarlyClaimGapPct = %.4f, want %.4f (must derive from the spouse's own cumulative, not the primary's)",
+				result.SpouseEarlyClaimGapPct, want)
+		}
+		// A gap relative to the spouse's own best option is always in [0,100).
+		if result.SpouseEarlyClaimGapPct < 0 || result.SpouseEarlyClaimGapPct >= 100 {
+			t.Fatalf("SpouseEarlyClaimGapPct = %.2f, out of expected [0,100)", result.SpouseEarlyClaimGapPct)
+		}
+	})
+
 	t.Run("spouse age zero falls back to current age", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
 		s.CurrentAge = 60

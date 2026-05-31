@@ -120,6 +120,18 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Social Security Claiming Comparison</h3>
 
+    {{if .Analysis.SocialSecurity.HasSurvivorCallout}}
+    {{$ss := .Analysis.SocialSecurity}}
+    <div class="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-2 mb-3 text-gray-700 dark:text-gray-200">
+        {{if $ss.SurvivorHigherEarnerIsSpouse}}Your spouse is{{else}}You are{{end}} the higher earner — this benefit becomes the surviving spouse's for life.
+        {{if $ss.HasSurvivorDelayUpside}}
+        Delaying from age {{$ss.SurvivorSelectedClaimAge}} to 70 raises the survivor benefit from ${{formatNumber $ss.SurvivorBenefitAtSelected}} to ${{formatNumber $ss.SurvivorBenefitAt70}}/mo (+{{printf "%.0f" $ss.SurvivorDelayGainPct}}%).
+        {{else}}
+        The surviving spouse's benefit is ${{formatNumber $ss.SurvivorBenefitAtSelected}}/mo.
+        {{end}}
+    </div>
+    {{end}}
+
     {{if .Analysis.SocialSecurity.Options}}
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -127,6 +139,9 @@
                 <tr class="border-b dark:border-gray-600">
                     <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Age</th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Monthly</th>
+                    {{if and .Analysis.SocialSecurity.HasSurvivorAnalysis (not .Analysis.SocialSecurity.SurvivorHigherEarnerIsSpouse)}}
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Survivor</th>
+                    {{end}}
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">% PIA</th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 80</th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 85</th>
@@ -143,6 +158,9 @@
                         {{end}}
                     </td>
                     <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">${{formatNumber .MonthlyBenefit}}</td>
+                    {{if and $.Analysis.SocialSecurity.HasSurvivorAnalysis (not $.Analysis.SocialSecurity.SurvivorHigherEarnerIsSpouse)}}
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">${{formatNumber .SurvivorMonthlyBenefit}}</td>
+                    {{end}}
                     <td class="py-2 px-2 text-right {{if lt .PctOfPIA 100.0}}text-amber-600 dark:text-amber-400{{else if gt .PctOfPIA 100.0}}text-green-600 dark:text-green-400{{else}}text-gray-800 dark:text-gray-200{{end}}">{{printf "%.0f" .PctOfPIA}}%</td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt80}}</td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt85}}</td>
@@ -182,6 +200,9 @@
                     <tr class="border-b dark:border-gray-600">
                         <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Age</th>
                         <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Monthly</th>
+                        {{if and .Analysis.SocialSecurity.HasSurvivorAnalysis .Analysis.SocialSecurity.SurvivorHigherEarnerIsSpouse}}
+                        <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Survivor</th>
+                        {{end}}
                         <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">% PIA</th>
                         <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 80</th>
                         <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">By 85</th>
@@ -198,6 +219,9 @@
                             {{end}}
                         </td>
                         <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">${{formatNumber .MonthlyBenefit}}</td>
+                        {{if and $.Analysis.SocialSecurity.HasSurvivorAnalysis $.Analysis.SocialSecurity.SurvivorHigherEarnerIsSpouse}}
+                        <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">${{formatNumber .SurvivorMonthlyBenefit}}</td>
+                        {{end}}
                         <td class="py-2 px-2 text-right {{if lt .PctOfPIA 100.0}}text-amber-600 dark:text-amber-400{{else if gt .PctOfPIA 100.0}}text-green-600 dark:text-green-400{{else}}text-gray-800 dark:text-gray-200{{end}}">{{printf "%.0f" .PctOfPIA}}%</td>
                         <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt80}}</td>
                         <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .CumulativeAt85}}</td>

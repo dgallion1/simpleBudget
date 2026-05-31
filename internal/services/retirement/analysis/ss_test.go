@@ -371,6 +371,13 @@ func TestSurvivorBenefitForClaimAge(t *testing.T) {
 		t.Errorf("age 62: got %.2f, want RIB-LIM floor %.2f", got, 0.825*pia)
 	}
 
+	// Claim at 64 (36 months early): reduced 20% → $1600, still below the
+	// 82.5%·PIA = $1650 floor, so the floor applies here too (intermediate
+	// floor-active case, independent numeric oracle).
+	if got := SurvivorBenefitForClaimAge(pia, fra, 64); !ssWithinTolerance(got, 1650.0, 0.01) {
+		t.Errorf("age 64: got %.2f, want RIB-LIM floor 1650.00", got)
+	}
+
 	// Claim at 66 (12 months early): reduced 6.667% → $1866.67, above the
 	// floor, so the survivor inherits the (reduced) actual benefit.
 	want66 := AdjustedSSBenefit(pia, fra, 66)

@@ -142,6 +142,9 @@ func AdjustedSpousalBenefit(spousalPIA float64, spouseFRA, claimAge int) float64
 // after FRA the survivor inherits the full benefit, including any
 // delayed-retirement credits. The survivor inherits the larger of their
 // own benefit and this amount; callers apply it to the higher-PIA worker.
+// This is the amount inherited from the worker's record, before any
+// reduction for the survivor's own early survivor-claiming age (which
+// callers apply separately, if at all).
 func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64 {
 	fra = NormalizedSSFRA(fra)
 	adjusted := AdjustedSSBenefit(pia, fra, claimAge)

@@ -302,6 +302,13 @@ func TestCloneSettingsWithSSAndRoth_BracketFillUsesCandidateSSAges(t *testing.T)
 	// Single filer for a tight test: no spouse SS contribution to compare.
 	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
 	s.SpouseAge = 0
+	// A pension lifts provisional income above the §86 threshold so the
+	// presence/absence of SS actually changes TAXABLE income — otherwise
+	// modest SS alone is non-taxable and claim age wouldn't move the
+	// bracket-fill room.
+	s.IncomeSources = []models.IncomeSource{
+		{Type: models.IncomeFixed, Name: "Pension", Amount: 4000, StartMonth: 0},
+	}
 	// Saved claim age = 62 means SS income is in the bracket-fill years.
 	s.SocialSecurity = &models.SocialSecurityConfig{
 		FRABenefit: 4000, FRA: 67, ClaimAge: 62,

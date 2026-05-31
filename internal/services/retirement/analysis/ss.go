@@ -135,6 +135,22 @@ func AdjustedSpousalBenefit(spousalPIA float64, spouseFRA, claimAge int) float64
 	return spousalPIA * (1.0 - reduction)
 }
 
+// SurvivorBenefitForClaimAge returns the monthly Social Security survivor
+// benefit a worker's record produces if claimed at claimAge, in current
+// (claim-date) dollars. Per 20 CFR §404.338, a record claimed before FRA
+// floors the survivor benefit at 82.5% of PIA (RIB-LIM); claimed at or
+// after FRA the survivor inherits the full benefit, including any
+// delayed-retirement credits. The survivor inherits the larger of their
+// own benefit and this amount; callers apply it to the higher-PIA worker.
+func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64 {
+	fra = NormalizedSSFRA(fra)
+	adjusted := AdjustedSSBenefit(pia, fra, claimAge)
+	if claimAge < fra {
+		return math.Max(adjusted, 0.825*pia)
+	}
+	return adjusted
+}
+
 // SpousalTopUp returns the larger of the spouse's own benefit or the
 // spousal benefit derived from the higher earner's PIA.
 func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge int) float64 {

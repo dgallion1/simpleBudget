@@ -361,6 +361,35 @@ func TestCloneSettingsWithClaimAges(t *testing.T) {
 	})
 }
 
+func TestSurvivorBenefitForClaimAge(t *testing.T) {
+	const pia = 2000.0
+	const fra = 67
+
+	// Claim at 62 with FRA 67: own benefit reduced 30% → $1400, which is
+	// below the RIB-LIM survivor floor of 82.5%·PIA = $1650. Floor applies.
+	if got := SurvivorBenefitForClaimAge(pia, fra, 62); !ssWithinTolerance(got, 0.825*pia, 0.01) {
+		t.Errorf("age 62: got %.2f, want RIB-LIM floor %.2f", got, 0.825*pia)
+	}
+
+	// Claim at 66 (12 months early): reduced 6.667% → $1866.67, above the
+	// floor, so the survivor inherits the (reduced) actual benefit.
+	want66 := AdjustedSSBenefit(pia, fra, 66)
+	if got := SurvivorBenefitForClaimAge(pia, fra, 66); !ssWithinTolerance(got, want66, 0.01) {
+		t.Errorf("age 66 (above floor): got %.2f, want adjusted %.2f", got, want66)
+	}
+
+	// Claim at FRA: exactly PIA.
+	if got := SurvivorBenefitForClaimAge(pia, fra, 67); !ssWithinTolerance(got, pia, 0.01) {
+		t.Errorf("FRA: got %.2f, want %.2f", got, pia)
+	}
+
+	// Claim at 70: delayed-retirement credits 8%/yr × 3 = 24% → $2480,
+	// which the survivor inherits.
+	if got := SurvivorBenefitForClaimAge(pia, fra, 70); !ssWithinTolerance(got, pia*1.24, 0.01) {
+		t.Errorf("age 70: got %.2f, want %.2f", got, pia*1.24)
+	}
+}
+
 // F-029: When the primary is already claiming at a non-FRA age, the
 // SpouseUsingSpousalBenefit flag must be derived from the primary PIA
 // (back-derived from FRABenefit + claim age + FRA), not from the raw

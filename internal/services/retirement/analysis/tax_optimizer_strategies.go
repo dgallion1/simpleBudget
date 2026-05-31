@@ -2,7 +2,6 @@ package analysis
 
 import (
 	"fmt"
-	"math"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -96,43 +95,50 @@ func formatLadderLabel(amount float64, w strategyWindow) string {
 	return fmt.Sprintf("$%dk/yr %d→%d", int(amount/1000), w.StartAge, w.EndAge)
 }
 
-// estimateOtherTaxableIncome returns a closed-form estimate of taxable
-// income (excluding the Roth conversion itself) at the given
-// projection-year offset. Used by bracket-fill candidate
-// pre-computation. Approximate by design — the optimizer ranks on the
-// engine's actual projection result, not on this estimate.
+// estimateOtherTaxableIncome returns a closed-form estimate of the
+// household's taxable ORDINARY income at the given projection-year
+// offset, EXCLUDING any Roth conversion — i.e. the income that already
+// fills the ordinary brackets before a conversion. The result is in that
+// year's nominal dollars and is the correct quantity to subtract from an
+// inflated ordinary-bracket ceiling (also a taxable-income figure); see
+// inflatedBracketTopForYear.
 //
-// Includes: primary SS benefit (gross, when claimed) + spouse SS
-// benefit when filing MFJ and spouse has claimed + ordinary fixed-income
-// sources from settings + estimated RMD when age >= 73 + a small
-// taxable-account dividend estimate.
+// Components: ordinary fixed-income sources (Social Security excluded —
+// it is folded in via the §86 taxable-portion calc, not as fixed income,
+// so a SS-typed income source isn't double-counted) + RMD (gated on
+// EffectiveRMDStartAge, using the IRS Uniform Lifetime divisor) + the
+// taxable portion of Social Security (≤85% per 26 USC §86). The
+// (inflated, age-65-aware) standard deduction is then subtracted and the
+// result clamped to ≥ 0. Approximate by design — the optimizer ranks on
+// the engine's actual projection result, not on this estimate — but kept
+// in taxable-income units so the bracket-fill target is meaningful.
 func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) float64 {
 	if s == nil {
 		return 0
 	}
 	age := s.CurrentAge + projectionYear
-	total := 0.0
 
-	// Social Security — primary.
+	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	tc.Age65Count = age65CountForYear(s, projectionYear)
+	yearsFromBase := engine.YearsFromTaxBase(s, projectionYear)
+
+	// Gross Social Security (primary + MFJ spouse), grown by COLA. Fed
+	// into the §86 taxable-portion calc below rather than counted at gross.
+	grossSS := 0.0
 	if s.SocialSecurity != nil && s.SocialSecurity.ClaimAge > 0 && age >= s.SocialSecurity.ClaimAge {
 		cola := SSConfigCOLARate(s)
-		yearsSinceClaim := age - s.SocialSecurity.ClaimAge
 		monthly := AdjustedSSBenefit(
 			s.SocialSecurity.FRABenefit,
 			NormalizedSSFRA(s.SocialSecurity.FRA),
 			s.SocialSecurity.ClaimAge,
 		)
-		for i := 0; i < yearsSinceClaim; i++ {
+		for i := 0; i < age-s.SocialSecurity.ClaimAge; i++ {
 			monthly *= 1 + cola
 		}
-		total += monthly * 12
+		grossSS += monthly * 12
 	}
-
-	// Social Security — spouse. Only contributes to non-conversion taxable
-	// income for joint filers; non-MFJ spouses report on a separate return
-	// and don't consume bracket-fill room for this taxpayer. Spouse age
-	// can differ from primary age, so compute it independently rather
-	// than reusing `age`.
+	// Spouse SS only enters this return for joint filers; non-MFJ spouses
+	// report on a separate return. Spouse age can differ from primary age.
 	if s.HasSpouse() &&
 		s.TaxConfig != nil && s.TaxConfig.FilingStatus == models.FilingMarriedJoint &&
 		s.SocialSecurity != nil &&
@@ -141,25 +147,26 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 		spouseAge := s.SpouseAge + projectionYear
 		if spouseAge >= s.SocialSecurity.SpouseClaimAge {
 			cola := SSConfigCOLARate(s)
-			yearsSinceClaim := spouseAge - s.SocialSecurity.SpouseClaimAge
 			monthly := AdjustedSSBenefit(
 				s.SocialSecurity.SpouseFRABenefit,
 				NormalizedSSFRA(s.SocialSecurity.SpouseFRA),
 				s.SocialSecurity.SpouseClaimAge,
 			)
-			for i := 0; i < yearsSinceClaim; i++ {
+			for i := 0; i < spouseAge-s.SocialSecurity.SpouseClaimAge; i++ {
 				monthly *= 1 + cola
 			}
-			total += monthly * 12
+			grossSS += monthly * 12
 		}
 	}
 
-	// Ordinary income sources (fixed-amount monthly). The engine has
-	// richer logic; this estimator only needs to be directionally
-	// correct.
+	// Ordinary income excluding Social Security (handled via §86 below).
+	ordinary := 0.0
 	for _, src := range s.IncomeSources {
 		if src.Type != models.IncomeFixed {
 			continue
+		}
+		if engine.IsSocialSecurityIncomeSource(src) {
+			continue // counted once via grossSS, not as fixed income
 		}
 		currentMonth := projectionYear * 12
 		if currentMonth < src.StartMonth {
@@ -168,12 +175,13 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 		if src.EndMonth != nil && currentMonth >= *src.EndMonth {
 			continue
 		}
-		total += src.Amount * 12
+		ordinary += src.Amount * 12
 	}
 
-	// RMD: rough estimate. After age 73 use ~4% of estimated tax-deferred
-	// balance (IRS Uniform Lifetime factor at age 73 = 26.5 → ~3.77%).
-	if age >= 73 {
+	// RMD: gated on the SECURE 2.0 start age (73 or 75 by birth year),
+	// using the IRS Uniform Lifetime divisor for the year's age rather
+	// than a flat rate.
+	if age >= engine.EffectiveRMDStartAge(s) {
 		taxDeferredNow := s.PortfolioValue * (s.TaxDeferredPercent / 100.0)
 		rate := s.InvestmentReturn / 100.0
 		if rate <= 0 {
@@ -183,16 +191,62 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 		for i := 0; i < projectionYear; i++ {
 			balance *= 1 + rate
 		}
-		total += balance * 0.04
+		if factor := engine.GetLifeExpectancyFactor(age); factor > 0 {
+			ordinary += balance / factor
+		}
 	}
 
-	// Taxable-account qualified dividends.
+	// Taxable-account dividends: preferential-rate income, so they do not
+	// fill the ordinary brackets, but they do count toward provisional
+	// income for Social Security taxability.
+	qualifiedDividends := 0.0
 	taxableNow := s.PortfolioValue * (1.0 - s.TaxDeferredPercent/100.0 - s.RothPercent/100.0)
 	if s.TaxableDividendYield > 0 {
-		total += taxableNow * (s.TaxableDividendYield / 100.0)
+		qualifiedDividends = taxableNow * (s.TaxableDividendYield / 100.0)
 	}
 
-	return total
+	// Taxable portion of Social Security (≤85% per §86), then drop to
+	// taxable-income units by subtracting the standard deduction so the
+	// figure is comparable to the bracket ceiling.
+	taxableSS := tc.CalculateTaxableSocialSecurity(grossSS, ordinary, qualifiedDividends, 0)
+	taxable := ordinary + taxableSS - tc.GetAdjustedStandardDeduction(yearsFromBase)
+	if taxable < 0 {
+		taxable = 0
+	}
+	return taxable
+}
+
+// age65CountForYear returns the number of filers aged 65 or older in the
+// given projection year (0, 1, or 2), driving the age-65 additional
+// standard deduction. A spouse only counts when filing jointly.
+func age65CountForYear(s *models.WhatIfSettings, projectionYear int) int {
+	count := 0
+	if s.CurrentAge+projectionYear >= 65 {
+		count++
+	}
+	if s.HasSpouse() &&
+		s.TaxConfig != nil && s.TaxConfig.FilingStatus == models.FilingMarriedJoint &&
+		s.SpouseAge+projectionYear >= 65 {
+		count++
+	}
+	return count
+}
+
+// inflatedBracketTopForYear returns the top of the target ordinary
+// bracket (a taxable-income ceiling) inflated to the candidate's calendar
+// year, matching how the engine inflates its brackets off taxBaseYear
+// (2024). Comparing a frozen 2024 ceiling against future-nominal income
+// systematically understates conversion room for plans years out.
+func inflatedBracketTopForYear(s *models.WhatIfSettings, target float64, projectionYear int) (float64, bool) {
+	if s == nil || s.TaxConfig == nil {
+		return 0, false
+	}
+	base, ok := bracketTopFor(s.TaxConfig.FilingStatus, target)
+	if !ok {
+		return 0, false
+	}
+	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	return base * tc.InflationFactor(engine.YearsFromTaxBase(s, projectionYear)), true
 }
 
 // bracketTopFor returns the top of the given target marginal bracket
@@ -235,26 +289,6 @@ func bracketTopFor(status models.FilingStatus, target float64) (float64, bool) {
 	}
 	ceiling, ok := rows[target]
 	return ceiling, ok
-}
-
-// inflatedBracketTop returns the bracketTopFor ceiling inflated to the plan's
-// calendar year for the given projection-year offset, mirroring the engine's
-// own bracket inflation (TaxCalculator.InflationFactor keyed on
-// YearsFromTaxBase). Without this the frozen 2024 ceilings systematically
-// undersize bracket-fill conversions in later plan years — the engine inflates
-// its brackets, so an un-inflated ceiling leaves real bracket room unused.
-// Returns (0, false) for unknown filing statuses / unsupported targets, matching
-// bracketTopFor.
-func inflatedBracketTop(s *models.WhatIfSettings, target float64, projectionYear int) (float64, bool) {
-	base, ok := bracketTopFor(s.TaxConfig.FilingStatus, target)
-	if !ok {
-		return 0, false
-	}
-	yfb := engine.YearsFromTaxBase(s, projectionYear)
-	if yfb <= 0 {
-		return base, true
-	}
-	return base * math.Pow(1+s.InflationRate/100, float64(yfb)), true
 }
 
 // enumerateBracketFillStrategies generates bracket-fill candidates:
@@ -311,7 +345,10 @@ func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, targ
 		startProjYear = 0
 	}
 	for y := startProjYear; y < endProjYear; y++ {
-		ceiling, _ := inflatedBracketTop(s, target, y)
+		ceiling, ok := inflatedBracketTopForYear(s, target, y)
+		if !ok {
+			return false
+		}
 		other := estimateOtherTaxableIncome(s, y)
 		if ceiling-other > 1 {
 			return true
@@ -414,11 +451,11 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 		if s.TaxConfig == nil {
 			return nil
 		}
-		if _, ok := bracketTopFor(s.TaxConfig.FilingStatus, strat.TargetBracket); !ok {
-			return nil
-		}
 		for y := startProjYear; y < endProjYear; y++ {
-			ceiling, _ := inflatedBracketTop(s, strat.TargetBracket, y)
+			ceiling, ok := inflatedBracketTopForYear(s, strat.TargetBracket, y)
+			if !ok {
+				return nil
+			}
 			other := estimateOtherTaxableIncome(s, y)
 			conv := ceiling - other
 			if conv < 0 {

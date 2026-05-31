@@ -1,9 +1,11 @@
 package analysis
 
 import (
+	"math"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 func TestEnumerateLadderStrategies_DefaultShape(t *testing.T) {
@@ -152,77 +154,154 @@ func TestEstimateOtherTaxableIncome_PreSSAndPreRMD(t *testing.T) {
 	}
 }
 
-func TestEstimateOtherTaxableIncome_PostSS(t *testing.T) {
+func TestInflatedBracketTopForYear_GrowsWithCalendarYear(t *testing.T) {
+	// Regression: the bracket-fill ceiling is a future-nominal taxable-
+	// income threshold and must be inflated to the candidate's calendar
+	// year (matching the engine's bracket inflation off taxBaseYear=2024).
+	// A frozen 2024 ceiling understated conversion room for later years.
 	s := &models.WhatIfSettings{
-		CurrentAge:      60,
+		StartDate:     "2024-01",
+		InflationRate: 3.0,
+		TaxConfig:     &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+
+	base, ok := bracketTopFor(models.FilingMarriedJoint, 0.24)
+	if !ok {
+		t.Fatal("bracketTopFor failed for MFJ 24%")
+	}
+
+	// Year 0 == base year 2024: no inflation.
+	y0, ok := inflatedBracketTopForYear(s, 0.24, 0)
+	if !ok {
+		t.Fatal("inflatedBracketTopForYear failed at year 0")
+	}
+	if !ssWithinTolerance(y0, base, 0.01) {
+		t.Errorf("year 0 ceiling = %v, want base %v (no inflation in base year)", y0, base)
+	}
+
+	// Year 10: ceiling must have compounded ~3%/yr above the base.
+	y10, _ := inflatedBracketTopForYear(s, 0.24, 10)
+	wantY10 := base * math.Pow(1.03, 10)
+	if !ssWithinTolerance(y10, wantY10, 1.0) {
+		t.Errorf("year 10 ceiling = %v, want %v (base × 1.03^10)", y10, wantY10)
+	}
+	if y10 <= y0 {
+		t.Errorf("ceiling must grow with calendar year: y0=%v y10=%v", y0, y10)
+	}
+}
+
+func TestEstimateOtherTaxableIncome_TaxableIncomeUnits(t *testing.T) {
+	// estimateOtherTaxableIncome returns TAXABLE ordinary income, so a
+	// household with only modest Social Security has ~0: SS is below the
+	// §86 taxability threshold and the standard deduction covers the rest.
+	s := &models.WhatIfSettings{
+		CurrentAge:      67,
 		ProjectionYears: 30,
+		StartDate:       "2024-01",
+		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingSingle},
 		SocialSecurity: &models.SocialSecurityConfig{
-			FRABenefit: 3_000,
-			FRA:        67,
-			ClaimAge:   67,
-			COLARate:   0.02,
+			FRABenefit: 2_000, FRA: 67, ClaimAge: 67,
 		},
 	}
-	// Year 7: age 67, claim age 67. SS benefit ≈ $3,000 × 12 = $36,000
-	// (estimator includes gross for simplicity; taxable portion is engine's job).
-	got := estimateOtherTaxableIncome(s, 7)
-	if got < 20_000 || got > 50_000 {
-		t.Errorf("year 7 (post-SS) expected ~$36k, got %v", got)
+	if got := estimateOtherTaxableIncome(s, 0); got > 1.0 {
+		t.Errorf("SS-only modest: expected ~0 taxable (SS non-taxable + standard deduction), got %v", got)
+	}
+
+	// Add a $96k pension: SS now exceeds the §86 threshold (taxed up to
+	// 85%) and the result clears the standard deduction.
+	s.IncomeSources = []models.IncomeSource{
+		{Type: models.IncomeFixed, Name: "Pension", Amount: 8_000, StartMonth: 0},
+	}
+	got := estimateOtherTaxableIncome(s, 0)
+	// Lower bound: pension alone less the standard deduction is taxable.
+	if got <= 96_000-30_000 {
+		t.Errorf("with $96k pension, taxable income unexpectedly low: %v", got)
+	}
+	// Upper bound: SS is capped at 85% taxable and the standard deduction
+	// must have been subtracted, so taxable < pension + 85%·SS.
+	if got >= 96_000+0.85*24_000 {
+		t.Errorf("taxable income %v >= pension + 85%%·SS — standard deduction not subtracted?", got)
 	}
 }
 
 func TestEstimateOtherTaxableIncome_MFJIncludesSpouseSS(t *testing.T) {
-	// Regression: bracket-fill estimator previously omitted spouse SS,
-	// causing MFJ candidates to over-convert above the target bracket.
-	s := &models.WhatIfSettings{
-		CurrentAge:      60,
-		SpouseAge:       60,
+	// Regression: bracket-fill estimator previously omitted spouse SS from
+	// the joint return's provisional income. With a pension large enough
+	// that SS is fully taxable, dropping the spouse's benefit must lower
+	// the household's taxable income by the spouse's taxable portion.
+	base := &models.WhatIfSettings{
+		CurrentAge:      67,
+		SpouseAge:       67,
 		ProjectionYears: 30,
+		StartDate:       "2024-01",
 		TaxConfig:       &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+		IncomeSources: []models.IncomeSource{
+			{Type: models.IncomeFixed, Name: "Pension", Amount: 10_000, StartMonth: 0},
+		},
 		SocialSecurity: &models.SocialSecurityConfig{
-			FRABenefit:       3_000,
-			FRA:              67,
-			ClaimAge:         67,
-			SpouseFRABenefit: 2_000,
-			SpouseFRA:        67,
-			SpouseClaimAge:   67,
-			COLARate:         0,
+			FRABenefit: 3_000, FRA: 67, ClaimAge: 67,
+			SpouseFRABenefit: 2_000, SpouseFRA: 67, SpouseClaimAge: 67, COLARate: 0,
 		},
 	}
-	// Year 7: both spouses age 67, both claim at FRA. Primary
-	// $3,000×12 = $36k, spouse $2,000×12 = $24k. Total ≈ $60k.
-	got := estimateOtherTaxableIncome(s, 7)
-	if got < 55_000 || got > 65_000 {
-		t.Errorf("MFJ year 7 expected ~$60k (primary+spouse SS), got %v", got)
+	withSpouse := estimateOtherTaxableIncome(base, 0)
+
+	noSpouse := *base
+	ssNoSpouse := *base.SocialSecurity
+	ssNoSpouse.SpouseFRABenefit = 0
+	noSpouse.SocialSecurity = &ssNoSpouse
+	without := estimateOtherTaxableIncome(&noSpouse, 0)
+
+	diff := withSpouse - without
+	// Spouse SS is $24k/yr; its taxable contribution is positive and capped
+	// at 85%.
+	if diff <= 0 || diff > 0.85*24_000+1 {
+		t.Errorf("spouse SS contribution to joint taxable income = %v, want in (0, 85%%·$24k]; with=%v without=%v",
+			diff, withSpouse, without)
 	}
 
-	// Non-MFJ with same data: spouse SS must NOT be added (would belong
-	// on spouse's separate return).
-	s.TaxConfig.FilingStatus = models.FilingMarriedSeparate
-	gotMFS := estimateOtherTaxableIncome(s, 7)
-	if gotMFS < 30_000 || gotMFS > 42_000 {
-		t.Errorf("MFS year 7 expected ~$36k (primary SS only), got %v", gotMFS)
+	// Non-MFJ: spouse SS belongs on a separate return, so toggling it must
+	// not change this taxpayer's figure.
+	mfs := *base
+	mfsCfg := *base.TaxConfig
+	mfsCfg.FilingStatus = models.FilingMarriedSeparate
+	mfs.TaxConfig = &mfsCfg
+	mfsWith := estimateOtherTaxableIncome(&mfs, 0)
+	mfsNoSpouse := mfs
+	mfsNoSpouse.SocialSecurity = &ssNoSpouse
+	if mfsWithout := estimateOtherTaxableIncome(&mfsNoSpouse, 0); mfsWith != mfsWithout {
+		t.Errorf("non-MFJ must ignore spouse SS: with=%v without=%v", mfsWith, mfsWithout)
 	}
 }
 
 func TestEstimateOtherTaxableIncome_PostRMD(t *testing.T) {
 	s := &models.WhatIfSettings{
-		CurrentAge:         60,
+		CurrentAge:         65,
 		ProjectionYears:    30,
+		StartDate:          "2024-01", // birth ~1959 → SECURE 2.0 RMD age 73
 		PortfolioValue:     2_000_000,
 		TaxDeferredPercent: 80,
 		InvestmentReturn:   6,
+		TaxConfig:          &models.TaxConfig{FilingStatus: models.FilingSingle},
 		SocialSecurity: &models.SocialSecurityConfig{
 			FRABenefit: 3_000, FRA: 67, ClaimAge: 67, COLARate: 0.02, COLARateSet: true,
 		},
 	}
-	// Year 13: age 73 (first RMD year). With claim at FRA, SS adjustment
-	// is neutral — monthly SS ≈ $3000 grown 6yrs @ 2% COLA ≈ $3,378/mo
-	// → ~$40.5k/yr. RMD ≈ $1.6M × 1.06^13 × 4% ≈ $136.5k. Total ≈ $177k.
-	// Bound: 150k ≤ got ≤ 220k to detect either-term-dropped bugs.
-	got := estimateOtherTaxableIncome(s, 13)
-	if got < 150_000 || got > 220_000 {
-		t.Errorf("year 13 (post-RMD) expected $150k–$220k, got %v", got)
+	rmdAge := engine.EffectiveRMDStartAge(s)
+	projYear := rmdAge - s.CurrentAge // first RMD year
+
+	// At the RMD start age the tax-deferred balance (~$1.6M grown ~8yrs
+	// @6%) divided by the IRS Uniform Lifetime factor (~26.5 at 73) yields
+	// ~$96k of RMD, plus the 85%-taxable portion of ~$40k SS, less the
+	// standard deduction. Wide band to detect either term being dropped.
+	got := estimateOtherTaxableIncome(s, projYear)
+	if got < 90_000 || got > 145_000 {
+		t.Errorf("first RMD year (age %d): expected $90k–$145k taxable, got %v", rmdAge, got)
+	}
+
+	// And the RMD must actually be driving it: the year before RMD begins
+	// (SS only) is far lower.
+	if preRMD := estimateOtherTaxableIncome(s, projYear-1); !(got > preRMD+50_000) {
+		t.Errorf("RMD year (%v) should greatly exceed pre-RMD year (%v)", got, preRMD)
 	}
 }
 
@@ -487,10 +566,10 @@ func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
 
 	for i, yc := range got {
 		projYear := i // startProjYear=0 because StartAge==CurrentAge
-		// Ceilings inflate to the plan's calendar year (mirrors the engine's
-		// own bracket inflation), so the oracle uses the inflated top, not the
-		// frozen 2024 table value.
-		ceiling, _ := inflatedBracketTop(s, 0.24, projYear)
+		ceiling, ok := inflatedBracketTopForYear(s, 0.24, projYear)
+		if !ok {
+			t.Fatalf("year %d: no inflated ceiling for 24%% bracket", projYear)
+		}
 		other := estimateOtherTaxableIncome(s, projYear)
 		want := ceiling - other
 		if want < 0 {

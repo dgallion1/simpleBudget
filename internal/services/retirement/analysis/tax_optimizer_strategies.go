@@ -101,11 +101,12 @@ func formatLadderLabel(amount float64, w strategyWindow) string {
 // amount, so taxableOrdinaryIncome returns a figure comparable to an
 // inflated bracket ceiling.
 type bracketFillIncome struct {
-	tc                 *engine.TaxCalculator
-	grossSS            float64 // primary + MFJ spouse, COLA-grown
-	ordinary           float64 // ordinary income excluding SS and the conversion
-	qualifiedDividends float64 // preferential-rate; provisional income only
-	standardDeduction  float64
+	tc                   *engine.TaxCalculator
+	grossSS              float64 // primary + MFJ spouse, COLA-grown
+	ordinary             float64 // ordinary income excluding SS and the conversion
+	qualifiedDividends   float64 // preferential-rate; provisional income only
+	longTermCapitalGains float64 // cap-gains distributions; preferential-rate; provisional income only
+	standardDeduction    float64
 }
 
 // bracketFillIncomeForYear computes the household's taxable-income
@@ -206,12 +207,21 @@ func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) brac
 		ordinary += totalDividends * (1.0 - qualifiedShare) // non-qualified → ordinary
 	}
 
+	// Taxable-account capital-gains distributions: long-term capital gains —
+	// preferential-rate (outside the ordinary brackets) but they raise §86
+	// provisional income, so they push more SS into the taxable range.
+	longTermCapitalGains := 0.0
+	if s.TaxableCapitalGainsDistributionRate > 0 {
+		longTermCapitalGains = taxableNow * (s.TaxableCapitalGainsDistributionRate / 100.0)
+	}
+
 	return bracketFillIncome{
-		tc:                 tc,
-		grossSS:            grossSS,
-		ordinary:           ordinary,
-		qualifiedDividends: qualifiedDividends,
-		standardDeduction:  tc.GetAdjustedStandardDeduction(engine.YearsFromTaxBase(s, projectionYear)),
+		tc:                   tc,
+		grossSS:              grossSS,
+		ordinary:             ordinary,
+		qualifiedDividends:   qualifiedDividends,
+		longTermCapitalGains: longTermCapitalGains,
+		standardDeduction:    tc.GetAdjustedStandardDeduction(engine.YearsFromTaxBase(s, projectionYear)),
 	}
 }
 
@@ -222,7 +232,7 @@ func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) brac
 // Not floored at 0: bracket-fill solves against a positive ceiling, and the
 // raw (possibly negative) value keeps the solve well-defined.
 func (b bracketFillIncome) taxableOrdinaryIncome(conversion float64) float64 {
-	taxableSS := b.tc.CalculateTaxableSocialSecurity(b.grossSS, b.ordinary+conversion, b.qualifiedDividends, 0)
+	taxableSS := b.tc.CalculateTaxableSocialSecurity(b.grossSS, b.ordinary+conversion, b.qualifiedDividends, b.longTermCapitalGains)
 	return b.ordinary + conversion + taxableSS - b.standardDeduction
 }
 

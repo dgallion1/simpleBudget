@@ -136,3 +136,65 @@ func TestBracketFill_SplitsNonQualifiedDividendsIntoOrdinary(t *testing.T) {
 		}
 	}
 }
+
+// Bracket-fill sizing must include taxable capital-gains distributions in §86
+// provisional income. Cap-gains distributions are long-term capital gains —
+// preferential-rate (outside the ordinary brackets) but they raise provisional
+// income, so they can push more Social Security into the taxable range and
+// reduce conversion room. Omitting them (passing LTCG=0 to the taxable-SS
+// calc) over-converts.
+func TestBracketFill_IncludesCapitalGainsInProvisionalIncome(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.Persons = s.Persons[:1] // single filer
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 67)
+	s.SpouseAge = 0
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+	s.MonthlyHealthcare = 0
+	s.HealthcarePersons = nil
+	s.IncomeSources = nil
+	s.PortfolioValue = 2_000_000
+	s.TaxDeferredPercent = 50 // → $1M taxable account
+	s.RothPercent = 0
+	s.TaxableDividendYield = 0                  // isolate the cap-gains effect
+	s.TaxableCapitalGainsDistributionRate = 5.0 // $50k/yr LTCG distributions
+	s.ProjectionYears = 10
+	// $36k/yr SS so taxable-SS is in the phase-in range; cap gains push it up.
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 3000, FRA: 67, ClaimAge: 67, COLARate: 0, COLARateSet: true,
+	}
+
+	in := engineInput(t, s)
+	ps := in.Prepared.Settings()
+
+	strat := models.RothOptimizerStrategy{
+		Kind:          models.RothStrategyBracketFill,
+		TargetBracket: 0.12,
+		StartAge:      67,
+		EndAge:        69, // years 0,1 — pre-RMD, SS claimed
+	}
+	got := strategyYearlyConversions(ps, strat)
+	if len(got) == 0 {
+		t.Fatal("expected bracket-fill conversions")
+	}
+
+	const grossSS = 36_000.0
+	tc := engine.NewTaxCalculator(ps.TaxConfig, ps.InflationRate)
+	tc.Age65Count = 1
+	taxableNow := ps.PortfolioValue * (1.0 - ps.TaxDeferredPercent/100.0 - ps.RothPercent/100.0)
+	ltcg := taxableNow * (ps.TaxableCapitalGainsDistributionRate / 100.0)
+	if ltcg < 1 {
+		t.Fatalf("scenario invalid: expected material cap-gains distributions, got %.2f", ltcg)
+	}
+
+	for i, yc := range got {
+		ceiling, _ := inflatedBracketTopForYear(ps, 0.12, i)
+		stdDed := tc.GetAdjustedStandardDeduction(engine.YearsFromTaxBase(ps, i))
+		// Engine-equivalent: cap-gains distributions enter §86 provisional
+		// income as long-term capital gains (4th arg), raising taxable SS.
+		resulting := yc.Amount + tc.CalculateTaxableSocialSecurity(grossSS, yc.Amount, 0, ltcg) - stdDed
+		if math.Abs(resulting-ceiling) > 1.0 {
+			t.Errorf("year %d: conversion %.0f → taxable ordinary income %.0f, want 12%% ceiling %.0f "+
+				"(cap-gains distributions not in provisional income)", i, yc.Amount, resulting, ceiling)
+		}
+	}
+}

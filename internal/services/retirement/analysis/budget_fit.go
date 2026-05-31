@@ -161,13 +161,23 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	}
 	taxableMarketValue := s.PortfolioValue * math.Max(0, (100-s.TaxDeferredPercent-s.RothPercent)/100)
 	taxableCashFlow := engine.ExpectedTaxableMonthlyCashFlow(s, taxableMarketValue, taxableAnnualReturn)
-	taxableIncome := taxableCashFlow.QualifiedDividends + taxableCashFlow.NonQualifiedDividends + taxableCashFlow.CapitalGainsDistributions
-	if taxableIncome > 0 {
-		monthlyIncome += taxableIncome
+	taxableDistributions := taxableCashFlow.QualifiedDividends + taxableCashFlow.NonQualifiedDividends + taxableCashFlow.CapitalGainsDistributions
+	// Only the distributions realized before the monthly withdrawal offset
+	// the withdrawal need; the rest are reinvested. Mirror the projection's
+	// timing split (engine subtracts beforeTaxableGrowth distributions from
+	// neededFromPortfolio in portfolio_month.go) so the budget gap matches
+	// the engine under every projection timing. Under the default
+	// end-of-month timing this fraction is 1 (full amount spendable). Taxes
+	// below are still computed on the full taxableCashFlow — distributions
+	// are taxable whether or not they're reinvested.
+	beforeGrowthFraction, _ := engine.ProjectionTimingGrowthFractions(s.GetProjectionTiming())
+	spendableDistributions := taxableDistributions * beforeGrowthFraction
+	if spendableDistributions > 0 {
+		monthlyIncome += spendableDistributions
 		incomeItems = append(incomeItems, models.ExpenseBreakdownItem{
 			Name:   "Taxable Distributions",
-			Amount: taxableIncome,
-			Note:   "assumed monthly dividends/gain distributions",
+			Amount: spendableDistributions,
+			Note:   "dividends/gains available to fund spending before withdrawal",
 		})
 	}
 
@@ -332,7 +342,10 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		// compound growth when no projection was passed.
 		estimatedTaxDeferred, steadyStateTaxableBalance := bucketBalancesAt(proj, steadyStateMonth, s, effectiveReturn, taxableAnnualReturn, taxableMarketValue)
 		steadyStateTaxableCashFlow := engine.ExpectedTaxableMonthlyCashFlow(s, steadyStateTaxableBalance, taxableAnnualReturn)
-		result.SteadyStateIncome += steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
+		// Same timing split as the first-month gap above: only distributions
+		// realized before the withdrawal offset the steady-state need.
+		steadyStateDistributions := steadyStateTaxableCashFlow.QualifiedDividends + steadyStateTaxableCashFlow.NonQualifiedDividends + steadyStateTaxableCashFlow.CapitalGainsDistributions
+		result.SteadyStateIncome += steadyStateDistributions * beforeGrowthFraction
 
 		// F-078: gate on calendar year + use age-at-year-end for the divisor.
 		steadyStateCalendarYear := engine.ParseStartYear(s.StartDate) + (steadyStateMonth / 12)

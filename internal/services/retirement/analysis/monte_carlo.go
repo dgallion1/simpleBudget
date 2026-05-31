@@ -328,6 +328,12 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	completedMAGIHistory := make([]float64, 0, projectionYears)
 	currentYearTaxSnapshot := engine.ProjectedTaxSnapshot{}
+	var totalIRMAA float64
+	// assumedLookbackMAGI seeds the IRMAA two-year MAGI lookback for years
+	// 0-1, before completedMAGIHistory has two entries — mirroring the
+	// canonical projection loop (engine/month.go) so MC doesn't understate
+	// early-year IRMAA for high-MAGI Medicare-eligible households.
+	var assumedLookbackMAGI float64
 
 	// Healthcare cost variation multiplier (updated annually)
 	healthcareVariation := 1.0
@@ -510,11 +516,18 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			RothConversionThisMonth:           rothConversionThisMonth,
 			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
 			CompletedMAGIHistory:              completedMAGIHistory,
+			AssumedIRMALookbackMAGI:           &assumedLookbackMAGI,
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
 		bigTicketRothEarnings = 0
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
+		// Hold the year-0 MAGI estimate as the IRMAA lookback seed for years
+		// 0-1; real history drives years 2+ (resolveIRMAALookbackMAGI prefers it).
+		if currentYear == 0 {
+			assumedLookbackMAGI = monthResult.TaxSnapshot.AnnualMAGI
+		}
+		totalIRMAA += monthResult.IRMAAExpense
 		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 		shortfall := monthResult.Shortfall
 
@@ -539,6 +552,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 		FinalBalance:    finalBalance,
 		DepletionYear:   depletionYear,
 		Survives:        !depleted,
+		TotalIRMAA:      totalIRMAA,
 		MarketCrashes:   crashTiming.TotalCrashes,
 		SpendingShocks:  spendingShocks,
 		HealthShocks:    healthShocks,

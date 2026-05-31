@@ -361,6 +361,273 @@ func TestCloneSettingsWithClaimAges(t *testing.T) {
 	})
 }
 
+func TestSurvivorBenefitForClaimAge(t *testing.T) {
+	const pia = 2000.0
+	const fra = 67
+
+	// Claim at 62 with FRA 67: own benefit reduced 30% → $1400, which is
+	// below the RIB-LIM survivor floor of 82.5%·PIA = $1650. Floor applies.
+	if got := SurvivorBenefitForClaimAge(pia, fra, 62); !ssWithinTolerance(got, 0.825*pia, 0.01) {
+		t.Errorf("age 62: got %.2f, want RIB-LIM floor %.2f", got, 0.825*pia)
+	}
+
+	// Claim at 64 (36 months early): reduced 20% → $1600, still below the
+	// 82.5%·PIA = $1650 floor, so the floor applies here too (intermediate
+	// floor-active case, independent numeric oracle).
+	if got := SurvivorBenefitForClaimAge(pia, fra, 64); !ssWithinTolerance(got, 1650.0, 0.01) {
+		t.Errorf("age 64: got %.2f, want RIB-LIM floor 1650.00", got)
+	}
+
+	// Claim at 66 (12 months early): reduced 6.667% → $1866.67, above the
+	// floor, so the survivor inherits the (reduced) actual benefit.
+	want66 := AdjustedSSBenefit(pia, fra, 66)
+	if got := SurvivorBenefitForClaimAge(pia, fra, 66); !ssWithinTolerance(got, want66, 0.01) {
+		t.Errorf("age 66 (above floor): got %.2f, want adjusted %.2f", got, want66)
+	}
+
+	// Claim at FRA: exactly PIA.
+	if got := SurvivorBenefitForClaimAge(pia, fra, 67); !ssWithinTolerance(got, pia, 0.01) {
+		t.Errorf("FRA: got %.2f, want %.2f", got, pia)
+	}
+
+	// Claim at 70: delayed-retirement credits 8%/yr × 3 = 24% → $2480,
+	// which the survivor inherits.
+	if got := SurvivorBenefitForClaimAge(pia, fra, 70); !ssWithinTolerance(got, pia*1.24, 0.01) {
+		t.Errorf("age 70: got %.2f, want %.2f", got, pia*1.24)
+	}
+}
+
+// SpouseEarlyClaimGapPct must be derived from the spouse's own claiming
+// table. When the spouse is already claiming (so the spouse best-age loop
+// is skipped) but the primary is not, the gap must not be computed against
+// the primary table's best cumulative — the two share no state.
+func TestSSAnalysis_SpouseEarlyClaimGap_SpouseAlreadyClaiming(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 60
+	s.SpouseAge = 65
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+		{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 65)},
+	}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit:       3000, // primary much higher → large primary cumulative
+		FRA:              67,
+		COLARate:         0.02,
+		ClaimAge:         70, // primary NOT yet claiming (> CurrentAge): primary loop sets bestCum
+		SpouseFRABenefit: 1000,
+		SpouseFRA:        67,
+		SpouseClaimAge:   63, // <= SpouseAge: spouse-already-claiming branch (best-age loop skipped)
+	}
+	result := SSAnalysis(engineInput(t, s))
+	if result == nil {
+		t.Fatal("expected analysis")
+	}
+	if len(result.SpouseOptions) < 2 {
+		t.Fatalf("need >1 spouse option to exercise the gap, got %d", len(result.SpouseOptions))
+	}
+
+	// Oracle: the gap is a property of the spouse's own table alone.
+	best := 0.0
+	for _, opt := range result.SpouseOptions {
+		if opt.CumulativeAt85 > best {
+			best = opt.CumulativeAt85
+		}
+	}
+	earliest := result.SpouseOptions[0].CumulativeAt85
+	want := (best - earliest) / best * 100
+
+	if !ssWithinTolerance(result.SpouseEarlyClaimGapPct, want, 1e-6) {
+		t.Fatalf("SpouseEarlyClaimGapPct = %.6f, want %.6f (must derive from the spouse table, not the primary bestCum)",
+			result.SpouseEarlyClaimGapPct, want)
+	}
+}
+
+func ssSurvivorSettings(primaryFRA, spouseFRA float64) *models.WhatIfSettings {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 60
+	s.SpouseAge = 60
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+		{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+	}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: primaryFRA, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: spouseFRA, SpouseFRA: 67, SpouseClaimAge: 67,
+		COLARate: 0.02, COLARateSet: true,
+	}
+	return s
+}
+
+func TestSSAnalysis_Survivor_PrimaryHigher(t *testing.T) {
+	res := SSAnalysis(engineInput(t, ssSurvivorSettings(3000, 1500)))
+	if res == nil {
+		t.Fatal("nil analysis")
+	}
+	if !res.HasSurvivorAnalysis {
+		t.Fatal("expected HasSurvivorAnalysis=true")
+	}
+	if res.SurvivorHigherEarnerIsSpouse {
+		t.Error("primary is higher earner; SurvivorHigherEarnerIsSpouse should be false")
+	}
+	if len(res.Options) == 0 || res.Options[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("expected SurvivorMonthlyBenefit populated on primary Options")
+	}
+	for _, o := range res.SpouseOptions {
+		if o.SurvivorMonthlyBenefit != 0 {
+			t.Error("spouse options must not carry survivor benefit when primary is higher")
+		}
+	}
+	if !res.HasSurvivorCallout || !res.HasSurvivorDelayUpside {
+		t.Fatalf("expected callout with delay upside; callout=%v upside=%v", res.HasSurvivorCallout, res.HasSurvivorDelayUpside)
+	}
+	if res.SurvivorSelectedClaimAge != 67 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 67", res.SurvivorSelectedClaimAge)
+	}
+	wantAt70 := SurvivorBenefitForClaimAge(3000, 67, 70)
+	if !ssWithinTolerance(res.SurvivorBenefitAt70, math.Round(wantAt70*100)/100, 0.01) {
+		t.Errorf("SurvivorBenefitAt70 = %v, want %v", res.SurvivorBenefitAt70, wantAt70)
+	}
+	wantAtSelected := SurvivorBenefitForClaimAge(3000, 67, 67)
+	if !ssWithinTolerance(res.SurvivorBenefitAtSelected, math.Round(wantAtSelected*100)/100, 0.01) {
+		t.Errorf("SurvivorBenefitAtSelected = %v, want %v", res.SurvivorBenefitAtSelected, wantAtSelected)
+	}
+	if res.SurvivorDelayGainPct <= 0 {
+		t.Errorf("expected positive SurvivorDelayGainPct, got %v", res.SurvivorDelayGainPct)
+	}
+}
+
+func TestSSAnalysis_Survivor_SpouseHigher(t *testing.T) {
+	res := SSAnalysis(engineInput(t, ssSurvivorSettings(1500, 3000)))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis")
+	}
+	if !res.SurvivorHigherEarnerIsSpouse {
+		t.Error("spouse is higher earner; flag should be true")
+	}
+	if len(res.SpouseOptions) == 0 || res.SpouseOptions[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("expected SurvivorMonthlyBenefit populated on SpouseOptions")
+	}
+	for _, o := range res.Options {
+		if o.SurvivorMonthlyBenefit != 0 {
+			t.Error("primary options must not carry survivor benefit when spouse is higher")
+		}
+	}
+	if !res.HasSurvivorCallout {
+		t.Error("expected callout for spouse-higher path")
+	}
+	if res.SurvivorSelectedClaimAge != 67 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 67", res.SurvivorSelectedClaimAge)
+	}
+}
+
+// The surviving spouse inherits the LARGER survivor benefit, which depends on
+// each worker's actual claim age — not PIA. A higher-PIA worker who claims
+// early is floored by RIB-LIM (82.5% of PIA), while a lower-PIA worker who
+// delays to 70 earns delayed-retirement credits. When the lower-PIA record
+// produces the larger survivor benefit, the survivor column/callout must
+// attach to that record, not the higher-PIA one.
+func TestSSAnalysis_Survivor_PicksRecordWithLargerSurvivorBenefit(t *testing.T) {
+	s := ssSurvivorSettings(3000, 2200)  // primaryPIA 3000 > spousePIA 2200
+	s.SocialSecurity.ClaimAge = 62       // primary claims early → survivor floored at 0.825×3000 = 2475
+	s.SocialSecurity.SpouseClaimAge = 70 // spouse delays → survivor = 1.24×2200 = 2728
+
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis")
+	}
+
+	primarySurvivor := SurvivorBenefitForClaimAge(3000, 67, 62)
+	spouseSurvivor := SurvivorBenefitForClaimAge(2200, 67, 70)
+	if !(spouseSurvivor > primarySurvivor) {
+		t.Fatalf("scenario invalid: spouseSurvivor %.2f must exceed primarySurvivor %.2f", spouseSurvivor, primarySurvivor)
+	}
+
+	if !res.SurvivorHigherEarnerIsSpouse {
+		t.Errorf("spouse record yields the larger survivor benefit (%.2f > %.2f); SurvivorHigherEarnerIsSpouse should be true",
+			spouseSurvivor, primarySurvivor)
+	}
+	if res.SurvivorSelectedClaimAge != 70 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 70 (spouse's selected age)", res.SurvivorSelectedClaimAge)
+	}
+	if len(res.SpouseOptions) == 0 || res.SpouseOptions[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("expected SurvivorMonthlyBenefit populated on SpouseOptions")
+	}
+	for _, o := range res.Options {
+		if o.SurvivorMonthlyBenefit != 0 {
+			t.Error("primary options must not carry survivor benefit when the spouse record is larger")
+		}
+	}
+	wantAtSelected := math.Round(spouseSurvivor*100) / 100
+	if !ssWithinTolerance(res.SurvivorBenefitAtSelected, wantAtSelected, 0.01) {
+		t.Errorf("SurvivorBenefitAtSelected = %v, want %v (spouse @70)", res.SurvivorBenefitAtSelected, wantAtSelected)
+	}
+}
+
+func TestSSAnalysis_Survivor_SingleFiler(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 60
+	s.SpouseAge = 0
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+	}
+	s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 3000, FRA: 67, ClaimAge: 67}
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil {
+		t.Fatal("nil analysis")
+	}
+	if res.HasSurvivorAnalysis {
+		t.Error("single filer must not have survivor analysis")
+	}
+}
+
+func TestSSAnalysis_Survivor_AnalysisOnlyClaimAge(t *testing.T) {
+	s := ssSurvivorSettings(3000, 1500)
+	s.SocialSecurity.ClaimAge = 0 // "Analysis only" — no selected age
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis (column still populated)")
+	}
+	if res.HasSurvivorCallout {
+		t.Error("unset claim age must suppress the callout")
+	}
+	if res.SurvivorSelectedClaimAge != 0 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 0", res.SurvivorSelectedClaimAge)
+	}
+	if len(res.Options) == 0 || res.Options[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("survivor column should still be populated for the higher earner")
+	}
+}
+
+func TestSSAnalysis_Survivor_HigherEarnerAlreadyClaiming(t *testing.T) {
+	// Primary is the higher earner and is already claiming (claim age <=
+	// current age), so the survivor benefit is locked: callout present,
+	// SurvivorSelectedAgeLocked=true, no delay upside, gain 0.
+	s := ssSurvivorSettings(3000, 1500)
+	s.CurrentAge = 68
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 68)
+	s.SocialSecurity.ClaimAge = 65 // already claiming (<= 68)
+
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis")
+	}
+	if !res.HasSurvivorCallout {
+		t.Error("expected callout for a valid (already-claimed) selected age")
+	}
+	if !res.SurvivorSelectedAgeLocked {
+		t.Error("expected SurvivorSelectedAgeLocked=true for already-claiming higher earner")
+	}
+	if res.HasSurvivorDelayUpside {
+		t.Error("locked higher earner must not show delay upside")
+	}
+	if res.SurvivorDelayGainPct != 0 {
+		t.Errorf("locked: SurvivorDelayGainPct should be 0, got %v", res.SurvivorDelayGainPct)
+	}
+	if res.SurvivorBenefitAtSelected <= 0 {
+		t.Error("expected positive SurvivorBenefitAtSelected")
+	}
+}
+
 // F-029: When the primary is already claiming at a non-FRA age, the
 // SpouseUsingSpousalBenefit flag must be derived from the primary PIA
 // (back-derived from FRABenefit + claim age + FRA), not from the raw
@@ -373,7 +640,7 @@ func TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA(t *testing.T) {
 		FRABenefit:       1000.0, // actual benefit at claim 62; PIA ≈ 1428.57
 		FRA:              67,
 		COLARate:         0.02,
-		ClaimAge:         62, // primary already claiming at 62
+		ClaimAge:         62,    // primary already claiming at 62
 		SpouseFRABenefit: 600.0, // spouse own PIA; not yet claiming
 		SpouseFRA:        67,
 		// SpouseClaimAge intentionally zero — spouse not yet claiming

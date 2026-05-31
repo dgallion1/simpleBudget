@@ -135,6 +135,25 @@ func AdjustedSpousalBenefit(spousalPIA float64, spouseFRA, claimAge int) float64
 	return spousalPIA * (1.0 - reduction)
 }
 
+// SurvivorBenefitForClaimAge returns the monthly Social Security survivor
+// benefit a worker's record produces if claimed at claimAge, in current
+// (claim-date) dollars. Per 20 CFR §404.338, a record claimed before FRA
+// floors the survivor benefit at 82.5% of PIA (RIB-LIM); claimed at or
+// after FRA the survivor inherits the full benefit, including any
+// delayed-retirement credits. The survivor inherits the larger of their
+// own benefit and this amount; callers apply it to the higher-PIA worker.
+// This is the amount inherited from the worker's record, before any
+// reduction for the survivor's own early survivor-claiming age (which
+// callers apply separately, if at all).
+func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64 {
+	fra = NormalizedSSFRA(fra)
+	adjusted := AdjustedSSBenefit(pia, fra, claimAge)
+	if claimAge < fra {
+		return math.Max(adjusted, 0.825*pia)
+	}
+	return adjusted
+}
+
 // SpousalTopUp returns the larger of the spouse's own benefit or the
 // spousal benefit derived from the higher earner's PIA.
 func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge int) float64 {
@@ -380,6 +399,8 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 	var spouseOptions []models.SSClaimingOption
 	var spouseBreakevens []models.SSBreakevenResult
 	spouseBestAge := 0
+	spouseCumBestAge := 0
+	spouseBestCum := 0.0
 	if ss.SpouseFRABenefit > 0 {
 		spouseAge := s.SpouseAge
 		if spouseAge == 0 {
@@ -393,17 +414,20 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 			spouseOptions = SSComparisonTable(spousePIA, spouseFRA, spouseAge, colaRate)
 			spouseBreakevens = SSBreakevenAges(spousePIA, spouseFRA, colaRate)
 		}
+		// Best cumulative is a property of the spouse's own table; compute
+		// it unconditionally so SpouseEarlyClaimGapPct never borrows the
+		// primary table's bestCum (the two share no state).
+		for _, opt := range spouseOptions {
+			if opt.CumulativeAt85 > spouseBestCum {
+				spouseBestCum = opt.CumulativeAt85
+				spouseCumBestAge = opt.ClaimAge
+			}
+		}
 		if ValidSSClaimAge(ss.SpouseClaimAge) && ss.SpouseClaimAge <= spouseAge {
 			// Spouse already claiming — don't suggest a different age
 			spouseBestAge = ss.SpouseClaimAge
 		} else {
-			bestCum = 0
-			for _, opt := range spouseOptions {
-				if opt.CumulativeAt85 > bestCum {
-					bestCum = opt.CumulativeAt85
-					spouseBestAge = opt.ClaimAge
-				}
-			}
+			spouseBestAge = spouseCumBestAge
 		}
 	}
 
@@ -427,9 +451,72 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 		result.SpouseUsingSpousalBenefit = primaryPIA*0.5 > spousePIA
 
 		// Calculate gap between earliest and best cumulative at 85
-		if len(spouseOptions) > 1 && bestCum > 0 {
+		if len(spouseOptions) > 1 && spouseBestCum > 0 {
 			earliestCum := spouseOptions[0].CumulativeAt85
-			result.SpouseEarlyClaimGapPct = (bestCum - earliestCum) / bestCum * 100
+			result.SpouseEarlyClaimGapPct = (spouseBestCum - earliestCum) / spouseBestCum * 100
+		}
+	}
+
+	// Survivor benefits: the surviving spouse inherits the LARGER of the two
+	// survivor benefits. Which record that is depends on each worker's actual
+	// claim age, not PIA alone: a higher-PIA worker who claims early is floored
+	// by RIB-LIM (82.5% of PIA), while a lower-PIA worker who delays past FRA
+	// earns delayed-retirement credits — so the lower-PIA record can produce
+	// the larger survivor benefit. Compare the survivor benefit each record
+	// yields at its selected claim age (falling back to FRA when unset, which
+	// reduces the comparison to PIA-vs-PIA). Inform-only — does not affect
+	// BestAge or the cumulative columns. See
+	// docs/superpowers/specs/2026-05-31-ss-survivor-benefits-design.md.
+	if s.HasSpouse() && primaryPIA > 0 && spousePIA > 0 && len(spouseOptions) > 0 {
+		result.HasSurvivorAnalysis = true
+
+		primaryClaimForSurvivor := fra
+		if ValidSSClaimAge(ss.ClaimAge) {
+			primaryClaimForSurvivor = ss.ClaimAge
+		}
+		spouseClaimForSurvivor := spouseFRA
+		if ValidSSClaimAge(ss.SpouseClaimAge) {
+			spouseClaimForSurvivor = ss.SpouseClaimAge
+		}
+		primarySurvivor := SurvivorBenefitForClaimAge(primaryPIA, fra, primaryClaimForSurvivor)
+		spouseSurvivor := SurvivorBenefitForClaimAge(spousePIA, spouseFRA, spouseClaimForSurvivor)
+
+		higherPIA := primaryPIA
+		higherFRA := fra
+		selectedClaimAge := ss.ClaimAge
+		higherCurrentAge := s.CurrentAge
+		survivorOptions := result.Options
+		if spouseSurvivor > primarySurvivor {
+			result.SurvivorHigherEarnerIsSpouse = true
+			higherPIA = spousePIA
+			higherFRA = spouseFRA
+			selectedClaimAge = ss.SpouseClaimAge
+			higherCurrentAge = s.SpouseAge
+			if higherCurrentAge == 0 {
+				higherCurrentAge = s.CurrentAge
+			}
+			survivorOptions = result.SpouseOptions
+		}
+
+		for i := range survivorOptions {
+			benefit := SurvivorBenefitForClaimAge(higherPIA, higherFRA, survivorOptions[i].ClaimAge)
+			survivorOptions[i].SurvivorMonthlyBenefit = math.Round(benefit*100) / 100
+		}
+
+		if ValidSSClaimAge(selectedClaimAge) {
+			result.HasSurvivorCallout = true
+			result.SurvivorSelectedClaimAge = selectedClaimAge
+
+			atSelected := SurvivorBenefitForClaimAge(higherPIA, higherFRA, selectedClaimAge)
+			at70 := SurvivorBenefitForClaimAge(higherPIA, higherFRA, 70)
+			result.SurvivorBenefitAtSelected = math.Round(atSelected*100) / 100
+			result.SurvivorBenefitAt70 = math.Round(at70*100) / 100
+
+			result.SurvivorSelectedAgeLocked = selectedClaimAge <= higherCurrentAge
+			if !result.SurvivorSelectedAgeLocked && selectedClaimAge < 70 && atSelected > 0 {
+				result.HasSurvivorDelayUpside = true
+				result.SurvivorDelayGainPct = math.Round((at70-atSelected)/atSelected*1000) / 10
+			}
 		}
 	}
 
@@ -623,4 +710,3 @@ func BestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfol
 func CumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64 {
 	return cumulativeBenefit(monthlyAtClaim, claimAge, targetAge, colaRate)
 }
-

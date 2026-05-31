@@ -1,7 +1,7 @@
 # Social Security Survivor Benefits — Claiming Comparison
 
 **Date:** 2026-05-31
-**Status:** Approved (design)
+**Status:** Approved (design), reviewed 2026-05-31
 **Scope:** What-if page → Social Security Claiming Comparison card only.
 
 ## Problem
@@ -41,8 +41,8 @@ Two scoping decisions were made during brainstorming:
 
 ## Domain rules modeled
 
-The **survivor benefit** a deceased worker's record produces, by the age
-the deceased had claimed:
+The **survivor record amount** a deceased worker's record produces, by
+the age the deceased had claimed:
 
 - Claimed **at or after FRA**: survivor inherits the actual benefit,
   including any delayed-retirement credits (no cap).
@@ -51,15 +51,24 @@ the deceased had claimed:
   §404.338). This floor is why the survivor column differs from the
   plain "monthly benefit" column at ages ~62–64.
 
-The survivor inherits the **higher** of the household's two benefits, so
-the figure attaches to the **higher earner** (larger PIA). The lower
-earner's claim age does not affect the survivor benefit, so no survivor
-column is shown on the lower earner's table.
+In practice the surviving spouse receives the larger of their own
+retirement benefit and the applicable survivor benefit. This design
+focuses the visible comparison on the **higher-PIA worker's record**
+(ties → primary), because that is the record whose delay most commonly
+raises the survivor floor and is the clearest policy lever in the
+existing claiming comparison. The lower-PIA worker's claim age does not
+raise the higher-PIA survivor record amount, so no survivor column is
+shown on the lower-PIA table.
 
 This is a deterministic, current-dollars-at-claim figure (consistent with
 the existing `MonthlyBenefit` column). COLA growth and lifetime
 accumulation are intentionally not applied — the cumulative columns and
 best-age logic are untouched.
+
+Reviewed limitation: this is the deceased worker record amount before
+any reduction tied to the surviving spouse's own survivor-claiming age.
+The feature does not model death timing or whether the survivor claims a
+widow(er) benefit before their own survivor FRA.
 
 ## Calculation (`internal/services/retirement/analysis/ss.go`)
 
@@ -73,8 +82,9 @@ New pure helper:
 // claimed at/after FRA the survivor inherits the full benefit including
 // delayed-retirement credits.
 func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64 {
+    fra = NormalizedSSFRA(fra)
     adjusted := AdjustedSSBenefit(pia, fra, claimAge)
-    if claimAge < NormalizedSSFRA(fra) {
+    if claimAge < fra {
         return math.Max(adjusted, 0.825*pia)
     }
     return adjusted
@@ -84,15 +94,16 @@ func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64 {
 In `SSAnalysis`, after the existing primary/spouse option tables are
 built:
 
-- Determine the higher earner from the already-computed `primaryPIA` vs
-  `spousePIA` (ties → primary). Only proceed when the household has a
-  spouse and both have a positive benefit.
+- Determine the higher-PIA worker from the already-computed `primaryPIA`
+  vs `spousePIA` (ties → primary). Only proceed when `s.HasSpouse()` is
+  true and both PIAs are positive.
 - Populate `SurvivorMonthlyBenefit` on each option of the **higher
   earner's** option slice via `SurvivorBenefitForClaimAge(higherPIA,
   higherFRA, option.ClaimAge)`.
 - Populate the household survivor summary on `SSComparisonAnalysis`
-  (below). The callout anchors on the higher earner's **currently
-  selected** claim age vs 70:
+  (below) only when the higher-PIA worker has a valid configured claim
+  age. The callout anchors on that worker's **currently selected** claim
+  age vs 70:
   - `SurvivorBenefitAtSelected = SurvivorBenefitForClaimAge(higherPIA, higherFRA, selectedClaimAge)`
   - `SurvivorBenefitAt70 = SurvivorBenefitForClaimAge(higherPIA, higherFRA, 70)`
   - `SurvivorDelayGainPct = (At70 - AtSelected) / AtSelected * 100`, clamped
@@ -100,10 +111,15 @@ built:
   - `HasSurvivorDelayUpside = selected < 70 && not already claiming`.
 
 `selectedClaimAge` is the higher earner's configured claim age
-(`ss.ClaimAge` or `ss.SpouseClaimAge`). When that earner is already
-claiming (claim age ≤ their current age), the benefit is locked: show
-`SurvivorBenefitAtSelected` (their actual) and set
-`HasSurvivorDelayUpside = false`.
+(`ss.ClaimAge` or `ss.SpouseClaimAge`). Treat it as usable only when
+`ValidSSClaimAge(selectedClaimAge)` is true. When it is unset (`0`,
+"Analysis only"), still populate the survivor column but suppress the
+callout by leaving `HasSurvivorCallout=false`.
+
+When that earner is already claiming
+(`ValidSSClaimAge(selectedClaimAge) && selectedClaimAge <= currentAge`),
+the benefit is locked: show `SurvivorBenefitAtSelected` (their actual)
+and set `HasSurvivorDelayUpside=false`.
 
 ## Model additions (`internal/models/whatif.go`)
 
@@ -113,7 +129,10 @@ SurvivorMonthlyBenefit float64 `json:"survivor_monthly_benefit,omitempty"`
 
 // SSComparisonAnalysis gains a survivor summary:
 HasSurvivorAnalysis      bool    `json:"has_survivor_analysis,omitempty"`
+HasSurvivorCallout       bool    `json:"has_survivor_callout,omitempty"`
 SurvivorHigherEarnerIsSpouse bool `json:"survivor_higher_earner_is_spouse,omitempty"`
+SurvivorSelectedClaimAge int     `json:"survivor_selected_claim_age,omitempty"`
+SurvivorSelectedAgeLocked bool   `json:"survivor_selected_age_locked,omitempty"`
 SurvivorBenefitAtSelected float64 `json:"survivor_benefit_at_selected,omitempty"`
 SurvivorBenefitAt70       float64 `json:"survivor_benefit_at_70,omitempty"`
 SurvivorDelayGainPct      float64 `json:"survivor_delay_gain_pct,omitempty"`
@@ -130,7 +149,8 @@ and two benefits):
 
 - A **"Survivor benefit"** column on the higher earner's comparison
   table (primary or spouse table, whichever is the higher earner).
-- A **callout** box near the comparison:
+- A **callout** box near the comparison only when
+  `HasSurvivorCallout` is true:
   - With upside: *"[You / Your spouse] are the higher earner — this
     benefit becomes the surviving spouse's for life. Delaying from age
     {selected} to 70 raises the survivor benefit from ${AtSelected} to
@@ -139,6 +159,15 @@ and two benefits):
     higher earner; the surviving spouse's benefit is ${AtSelected}/mo."*
 
 No form inputs are added.
+
+Template gating:
+
+- Primary table shows the survivor column when
+  `HasSurvivorAnalysis && !SurvivorHigherEarnerIsSpouse`.
+- Spouse table shows the survivor column when
+  `HasSurvivorAnalysis && SurvivorHigherEarnerIsSpouse`.
+- The callout uses `SurvivorSelectedClaimAge` instead of reading raw
+  settings, so unset claim-age selections do not produce age `0` copy.
 
 ## Testing
 
@@ -160,8 +189,29 @@ that package already has SS render tests):
   - `SurvivorDelayGainPct` correct for a selected age < 70 with upside;
     `HasSurvivorDelayUpside=false` and gain=0 when already claiming or
     selected==70.
+  - Unset selected claim age (`0`) still populates the higher-earner
+    survivor column, but `HasSurvivorCallout=false` and
+    `SurvivorSelectedClaimAge=0`.
 - Regression: existing best-age / cumulative assertions unchanged
   (the feature must not move `BestAge`/`SpouseBestAge`).
+
+Template/render tests:
+
+- Primary higher-PIA case renders the survivor column in the primary
+  table only.
+- Spouse higher-PIA case renders the survivor column in the spouse table
+  only.
+- Analysis-only claim age does not render "age 0" survivor callout text.
+
+## Source Checks
+
+- SSA's CFR copy of
+  [20 CFR §404.338](https://www.ssa.gov/OP_Home/cfr20/404/404-0338.htm)
+  documents the early-claim survivor floor as the larger of the
+  worker's reduced amount or 82.5% of PIA.
+- SSA's OASDI program reference states that widow(er) benefits include
+  delayed-retirement credits earned by the deceased worker:
+  <https://www.ssa.gov/policy/docs/statcomps/supplement/2024/oasdi.html>.
 
 ## Files touched
 

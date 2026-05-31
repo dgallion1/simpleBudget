@@ -215,6 +215,10 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	var taxState engine.ProjectionTaxAccumulator
 	taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
+	// Seed the IRMAA two-year MAGI lookback for years 0-1 (before
+	// completedMAGIHistory has two entries), mirroring engine/month.go so a
+	// high-MAGI, Medicare-eligible household isn't charged $0 IRMAA early.
+	var assumedLookbackMAGI float64
 	currentYearTaxSnapshot := engine.ProjectedTaxSnapshot{}
 
 	peakBalance := s.PortfolioValue
@@ -375,11 +379,17 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			RothConversionThisMonth:           rothConversionThisMonth,
 			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
 			CompletedMAGIHistory:              completedMAGIHistory,
+			AssumedIRMALookbackMAGI:           &assumedLookbackMAGI,
 			IRMAAEligibleAdults:               irmaaEligibleAdults,
 			IRMAAInflationFactor:              irmaaInflationFactor,
 		})
 		bigTicketRothEarnings = 0
 		currentYearTaxSnapshot = monthResult.TaxSnapshot
+		// Freeze the year-0 MAGI estimate as the IRMAA lookback seed for
+		// years 0-1; real history drives years 2+.
+		if currentYear == 0 {
+			assumedLookbackMAGI = monthResult.TaxSnapshot.AnnualMAGI
+		}
 		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 		totalWithdrawals += monthResult.CashFlow.GrossWithdrawal()
 		shortfall := monthResult.Shortfall

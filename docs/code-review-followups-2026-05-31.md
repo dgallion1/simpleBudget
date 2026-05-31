@@ -12,9 +12,17 @@
 - **Findings #2/#3/#4 (below)** — the review framed these as regressions from
   "today's diff." **They are not.** All three touch files this branch never
   changed (`git diff master...HEAD` does not list them). They are real-or-debatable
-  *pre-existing* issues on code unrelated to SS survivor benefits, deferred off
-  this branch by decision on 2026-05-31. Captured here so they can be triaged
-  and fixed on their own branches with proper TDD.
+  *pre-existing* issues on code unrelated to SS survivor benefits, originally
+  deferred off this branch on 2026-05-31. Each has since been triaged and fixed
+  with TDD on its own branch (see the per-item resolution notes below).
+
+**Resolution summary (2026-05-31):**
+
+| Item | Status | Branch / PR |
+|------|--------|-------------|
+| FU-1 (#4) IRMAA lookback not seeded in MC/backtest | **Resolved** | `feat/ss-survivor-benefits` (this branch) |
+| FU-2 (#2) Monthly-stream PV annuity-due timing | **Resolved** | `fix/pv-annuity-timing`, PR #12 |
+| FU-3 (#3) Bracket-fill ceilings not inflated | **Partially resolved** (inflation fixed; gross-ish estimator left by decision) | `fix/bracket-fill-inflate-ceilings`, PR #13 |
 
 Each item below is verified against the actual code, not the review's framing.
 
@@ -71,6 +79,15 @@ matching the deterministic projection.
 
 ## FU-2 (#2, High-ish) — Monthly-stream PV uses annuity-due timing; closed-form legs use ordinary-annuity timing
 
+> **RESOLVED (2026-05-31)** on `fix/pv-annuity-timing` (off `master`), PR #12.
+> Decided to standardize on the **ordinary-annuity** convention (align the
+> stream to the closed-form legs, not vice-versa): `presentValueOfMonthlyStream`
+> now discounts the month-*m* payment by `(1+r)^(m+1)`, matching
+> `engine.PresentValueAnnuity` and the end-of-month projection default. This
+> removes the spurious `(1+monthlyRate)` shift that appeared when toggling
+> spending phases or the SS optimizer. Regression tests pin a constant-payment
+> stream (with and without a start offset) to `PresentValueAnnuity`.
+
 **File:** `internal/services/retirement/analysis/present_value.go` (~line 171,
 `presentValueOfMonthlyStream`).
 
@@ -114,6 +131,19 @@ chosen convention. Own branch.
 ---
 
 ## FU-3 (#3, debatable) — Bracket-fill `estimateOtherTaxableIncome` is a gross-ish approximation; bracket tops are not inflated
+
+> **PARTIALLY RESOLVED (2026-05-31)** on `fix/bracket-fill-inflate-ceilings`
+> (off `master`), PR #13. Fixed the **un-inflated bracket tops** only: new
+> `inflatedBracketTop` scales the 2024 ceilings by
+> `(1+InflationRate)^YearsFromTaxBase` (mirroring the engine's own bracket
+> inflation), used in both the candidate gate and per-year sizing. The
+> remaining approximations (gross vs taxable SS, no standard-deduction
+> subtraction, rough 4% RMD) were **deliberately left as-is**: a measurement
+> probe on a representative MFJ plan showed the ladder family beats the best
+> bracket-fill candidate regardless, the optimizer re-ranks on the real engine
+> projection, and those errors are conservative (they under-convert, never
+> over-convert past a bracket). Improving them would duplicate engine tax logic
+> for no change to the reported recommendation.
 
 **File:** `internal/services/retirement/analysis/tax_optimizer_strategies.go`
 (~line 108 `estimateOtherTaxableIncome`, ~line 396 `bracketTopFor` usage).

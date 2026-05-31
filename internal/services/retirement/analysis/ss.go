@@ -452,6 +452,52 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis {
 		}
 	}
 
+	// Survivor benefits: the surviving spouse inherits the larger of the
+	// two benefits, so the higher-PIA worker's record drives the survivor
+	// floor. Inform-only — does not affect BestAge or the cumulative
+	// columns. See docs/superpowers/specs/2026-05-31-ss-survivor-benefits-design.md.
+	if s.HasSpouse() && primaryPIA > 0 && spousePIA > 0 && len(spouseOptions) > 0 {
+		result.HasSurvivorAnalysis = true
+
+		higherPIA := primaryPIA
+		higherFRA := fra
+		selectedClaimAge := ss.ClaimAge
+		higherCurrentAge := s.CurrentAge
+		survivorOptions := result.Options
+		if spousePIA > primaryPIA {
+			result.SurvivorHigherEarnerIsSpouse = true
+			higherPIA = spousePIA
+			higherFRA = spouseFRA
+			selectedClaimAge = ss.SpouseClaimAge
+			higherCurrentAge = s.SpouseAge
+			if higherCurrentAge == 0 {
+				higherCurrentAge = s.CurrentAge
+			}
+			survivorOptions = result.SpouseOptions
+		}
+
+		for i := range survivorOptions {
+			benefit := SurvivorBenefitForClaimAge(higherPIA, higherFRA, survivorOptions[i].ClaimAge)
+			survivorOptions[i].SurvivorMonthlyBenefit = math.Round(benefit*100) / 100
+		}
+
+		if ValidSSClaimAge(selectedClaimAge) {
+			result.HasSurvivorCallout = true
+			result.SurvivorSelectedClaimAge = selectedClaimAge
+
+			atSelected := SurvivorBenefitForClaimAge(higherPIA, higherFRA, selectedClaimAge)
+			at70 := SurvivorBenefitForClaimAge(higherPIA, higherFRA, 70)
+			result.SurvivorBenefitAtSelected = math.Round(atSelected*100) / 100
+			result.SurvivorBenefitAt70 = math.Round(at70*100) / 100
+
+			result.SurvivorSelectedAgeLocked = selectedClaimAge <= higherCurrentAge
+			if !result.SurvivorSelectedAgeLocked && selectedClaimAge < 70 && atSelected > 0 {
+				result.HasSurvivorDelayUpside = true
+				result.SurvivorDelayGainPct = math.Round((at70-atSelected)/atSelected*1000) / 10
+			}
+		}
+	}
+
 	return result
 }
 

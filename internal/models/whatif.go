@@ -1432,6 +1432,7 @@ type SSClaimingOption struct {
 	CumulativeAt80 float64 `json:"cumulative_at_80"`
 	CumulativeAt85 float64 `json:"cumulative_at_85"`
 	CumulativeAt90 float64 `json:"cumulative_at_90"`
+	SurvivorMonthlyBenefit float64 `json:"survivor_monthly_benefit,omitempty"`
 }
 
 // SSBreakevenResult represents the age at which delaying benefits surpasses claiming earlier
@@ -1451,6 +1452,15 @@ type SSComparisonAnalysis struct {
 	SpouseBestAge             int                  `json:"spouse_best_age,omitempty"`
 	SpouseUsingSpousalBenefit bool                 `json:"spouse_using_spousal_benefit,omitempty"`
 	SpouseEarlyClaimGapPct    float64              `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
+	HasSurvivorAnalysis          bool    `json:"has_survivor_analysis,omitempty"`
+	HasSurvivorCallout           bool    `json:"has_survivor_callout,omitempty"`
+	SurvivorHigherEarnerIsSpouse bool    `json:"survivor_higher_earner_is_spouse,omitempty"`
+	SurvivorSelectedClaimAge     int     `json:"survivor_selected_claim_age,omitempty"`
+	SurvivorSelectedAgeLocked    bool    `json:"survivor_selected_age_locked,omitempty"`
+	SurvivorBenefitAtSelected    float64 `json:"survivor_benefit_at_selected,omitempty"`
+	SurvivorBenefitAt70          float64 `json:"survivor_benefit_at_70,omitempty"`
+	SurvivorDelayGainPct         float64 `json:"survivor_delay_gain_pct,omitempty"`
+	HasSurvivorDelayUpside       bool    `json:"has_survivor_delay_upside,omitempty"`
 	Portfolio                 *SSPortfolioAnalysis `json:"portfolio,omitempty"`
 }
 

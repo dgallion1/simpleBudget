@@ -397,6 +397,109 @@ func TestSurvivorBenefitForClaimAge(t *testing.T) {
 	}
 }
 
+func ssSurvivorSettings(primaryFRA, spouseFRA float64) *models.WhatIfSettings {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 60
+	s.SpouseAge = 60
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+		{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+	}
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: primaryFRA, FRA: 67, ClaimAge: 67,
+		SpouseFRABenefit: spouseFRA, SpouseFRA: 67, SpouseClaimAge: 67,
+		COLARate: 0.02, COLARateSet: true,
+	}
+	return s
+}
+
+func TestSSAnalysis_Survivor_PrimaryHigher(t *testing.T) {
+	res := SSAnalysis(engineInput(t, ssSurvivorSettings(3000, 1500)))
+	if res == nil {
+		t.Fatal("nil analysis")
+	}
+	if !res.HasSurvivorAnalysis {
+		t.Fatal("expected HasSurvivorAnalysis=true")
+	}
+	if res.SurvivorHigherEarnerIsSpouse {
+		t.Error("primary is higher earner; SurvivorHigherEarnerIsSpouse should be false")
+	}
+	if len(res.Options) == 0 || res.Options[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("expected SurvivorMonthlyBenefit populated on primary Options")
+	}
+	for _, o := range res.SpouseOptions {
+		if o.SurvivorMonthlyBenefit != 0 {
+			t.Error("spouse options must not carry survivor benefit when primary is higher")
+		}
+	}
+	if !res.HasSurvivorCallout || !res.HasSurvivorDelayUpside {
+		t.Fatalf("expected callout with delay upside; callout=%v upside=%v", res.HasSurvivorCallout, res.HasSurvivorDelayUpside)
+	}
+	if res.SurvivorSelectedClaimAge != 67 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 67", res.SurvivorSelectedClaimAge)
+	}
+	wantAt70 := SurvivorBenefitForClaimAge(3000, 67, 70)
+	if !ssWithinTolerance(res.SurvivorBenefitAt70, math.Round(wantAt70*100)/100, 0.01) {
+		t.Errorf("SurvivorBenefitAt70 = %v, want %v", res.SurvivorBenefitAt70, wantAt70)
+	}
+	if res.SurvivorDelayGainPct <= 0 {
+		t.Errorf("expected positive SurvivorDelayGainPct, got %v", res.SurvivorDelayGainPct)
+	}
+}
+
+func TestSSAnalysis_Survivor_SpouseHigher(t *testing.T) {
+	res := SSAnalysis(engineInput(t, ssSurvivorSettings(1500, 3000)))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis")
+	}
+	if !res.SurvivorHigherEarnerIsSpouse {
+		t.Error("spouse is higher earner; flag should be true")
+	}
+	if len(res.SpouseOptions) == 0 || res.SpouseOptions[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("expected SurvivorMonthlyBenefit populated on SpouseOptions")
+	}
+	for _, o := range res.Options {
+		if o.SurvivorMonthlyBenefit != 0 {
+			t.Error("primary options must not carry survivor benefit when spouse is higher")
+		}
+	}
+}
+
+func TestSSAnalysis_Survivor_SingleFiler(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 60
+	s.SpouseAge = 0
+	s.Persons = []models.Person{
+		{ID: "p1", Name: "You", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge(s.StartDate, 60)},
+	}
+	s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 3000, FRA: 67, ClaimAge: 67}
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil {
+		t.Fatal("nil analysis")
+	}
+	if res.HasSurvivorAnalysis {
+		t.Error("single filer must not have survivor analysis")
+	}
+}
+
+func TestSSAnalysis_Survivor_AnalysisOnlyClaimAge(t *testing.T) {
+	s := ssSurvivorSettings(3000, 1500)
+	s.SocialSecurity.ClaimAge = 0 // "Analysis only" — no selected age
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis (column still populated)")
+	}
+	if res.HasSurvivorCallout {
+		t.Error("unset claim age must suppress the callout")
+	}
+	if res.SurvivorSelectedClaimAge != 0 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 0", res.SurvivorSelectedClaimAge)
+	}
+	if len(res.Options) == 0 || res.Options[0].SurvivorMonthlyBenefit == 0 {
+		t.Error("survivor column should still be populated for the higher earner")
+	}
+}
+
 // F-029: When the primary is already claiming at a non-FRA age, the
 // SpouseUsingSpousalBenefit flag must be derived from the primary PIA
 // (back-derived from FRABenefit + claim age + FRA), not from the raw

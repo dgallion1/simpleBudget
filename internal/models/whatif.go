@@ -973,8 +973,8 @@ type RMDAnalysis struct {
 
 // PresentValueAnalysis shows PV of expenses vs income
 type PresentValueAnalysis struct {
-	PVExpenses     float64 `json:"pv_expenses"`         // Living + healthcare + property tax + expense sources
-	PVTaxes        float64 `json:"pv_taxes,omitempty"`  // Discounted income taxes + IRMAA from the projection (0 when no projection is supplied)
+	PVExpenses     float64 `json:"pv_expenses"`        // Living + healthcare + property tax + expense sources
+	PVTaxes        float64 `json:"pv_taxes,omitempty"` // Discounted income taxes + IRMAA from the projection (0 when no projection is supplied)
 	PVIncome       float64 `json:"pv_income"`
 	PVGap          float64 `json:"pv_gap"`          // (PV Expenses + PV Taxes) - PV Income
 	CoverageRatio  float64 `json:"coverage_ratio"`  // (Portfolio + PV Income) / (PV Expenses + PV Taxes)
@@ -1425,13 +1425,13 @@ type WhatIfAnalysis struct {
 
 // SSClaimingOption represents the benefit analysis for a specific claiming age
 type SSClaimingOption struct {
-	ClaimAge       int     `json:"claim_age"`
-	MonthlyBenefit float64 `json:"monthly_benefit"`
-	AnnualBenefit  float64 `json:"annual_benefit"`
-	PctOfPIA       float64 `json:"pct_of_pia"`
-	CumulativeAt80 float64 `json:"cumulative_at_80"`
-	CumulativeAt85 float64 `json:"cumulative_at_85"`
-	CumulativeAt90 float64 `json:"cumulative_at_90"`
+	ClaimAge               int     `json:"claim_age"`
+	MonthlyBenefit         float64 `json:"monthly_benefit"`
+	AnnualBenefit          float64 `json:"annual_benefit"`
+	PctOfPIA               float64 `json:"pct_of_pia"`
+	CumulativeAt80         float64 `json:"cumulative_at_80"`
+	CumulativeAt85         float64 `json:"cumulative_at_85"`
+	CumulativeAt90         float64 `json:"cumulative_at_90"`
 	SurvivorMonthlyBenefit float64 `json:"survivor_monthly_benefit,omitempty"`
 }
 
@@ -1444,24 +1444,24 @@ type SSBreakevenResult struct {
 
 // SSComparisonAnalysis contains the full claiming age analysis
 type SSComparisonAnalysis struct {
-	Options                   []SSClaimingOption   `json:"options"`
-	Breakevens                []SSBreakevenResult  `json:"breakevens"`
-	BestAge                   int                  `json:"best_age"`
-	SpouseOptions             []SSClaimingOption   `json:"spouse_options,omitempty"`
-	SpouseBreakevens          []SSBreakevenResult  `json:"spouse_breakevens,omitempty"`
-	SpouseBestAge             int                  `json:"spouse_best_age,omitempty"`
-	SpouseUsingSpousalBenefit bool                 `json:"spouse_using_spousal_benefit,omitempty"`
-	SpouseEarlyClaimGapPct    float64              `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
-	HasSurvivorAnalysis          bool    `json:"has_survivor_analysis,omitempty"`
-	HasSurvivorCallout           bool    `json:"has_survivor_callout,omitempty"`
-	SurvivorHigherEarnerIsSpouse bool    `json:"survivor_higher_earner_is_spouse,omitempty"`
-	SurvivorSelectedClaimAge     int     `json:"survivor_selected_claim_age,omitempty"`
-	SurvivorSelectedAgeLocked    bool    `json:"survivor_selected_age_locked,omitempty"`
-	SurvivorBenefitAtSelected    float64 `json:"survivor_benefit_at_selected,omitempty"`
-	SurvivorBenefitAt70          float64 `json:"survivor_benefit_at_70,omitempty"`
-	SurvivorDelayGainPct         float64 `json:"survivor_delay_gain_pct,omitempty"`
-	HasSurvivorDelayUpside       bool    `json:"has_survivor_delay_upside,omitempty"`
-	Portfolio                 *SSPortfolioAnalysis `json:"portfolio,omitempty"`
+	Options                      []SSClaimingOption   `json:"options"`
+	Breakevens                   []SSBreakevenResult  `json:"breakevens"`
+	BestAge                      int                  `json:"best_age"`
+	SpouseOptions                []SSClaimingOption   `json:"spouse_options,omitempty"`
+	SpouseBreakevens             []SSBreakevenResult  `json:"spouse_breakevens,omitempty"`
+	SpouseBestAge                int                  `json:"spouse_best_age,omitempty"`
+	SpouseUsingSpousalBenefit    bool                 `json:"spouse_using_spousal_benefit,omitempty"`
+	SpouseEarlyClaimGapPct       float64              `json:"spouse_early_claim_gap_pct,omitempty"` // % difference between earliest and best cumulative at 85
+	HasSurvivorAnalysis          bool                 `json:"has_survivor_analysis,omitempty"`
+	HasSurvivorCallout           bool                 `json:"has_survivor_callout,omitempty"`
+	SurvivorHigherEarnerIsSpouse bool                 `json:"survivor_higher_earner_is_spouse,omitempty"`
+	SurvivorSelectedClaimAge     int                  `json:"survivor_selected_claim_age,omitempty"`
+	SurvivorSelectedAgeLocked    bool                 `json:"survivor_selected_age_locked,omitempty"`
+	SurvivorBenefitAtSelected    float64              `json:"survivor_benefit_at_selected,omitempty"`
+	SurvivorBenefitAt70          float64              `json:"survivor_benefit_at_70,omitempty"`
+	SurvivorDelayGainPct         float64              `json:"survivor_delay_gain_pct,omitempty"`
+	HasSurvivorDelayUpside       bool                 `json:"has_survivor_delay_upside,omitempty"`
+	Portfolio                    *SSPortfolioAnalysis `json:"portfolio,omitempty"`
 }
 
 type SSPortfolioOption struct {

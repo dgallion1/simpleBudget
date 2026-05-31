@@ -442,6 +442,10 @@ func TestSSAnalysis_Survivor_PrimaryHigher(t *testing.T) {
 	if !ssWithinTolerance(res.SurvivorBenefitAt70, math.Round(wantAt70*100)/100, 0.01) {
 		t.Errorf("SurvivorBenefitAt70 = %v, want %v", res.SurvivorBenefitAt70, wantAt70)
 	}
+	wantAtSelected := SurvivorBenefitForClaimAge(3000, 67, 67)
+	if !ssWithinTolerance(res.SurvivorBenefitAtSelected, math.Round(wantAtSelected*100)/100, 0.01) {
+		t.Errorf("SurvivorBenefitAtSelected = %v, want %v", res.SurvivorBenefitAtSelected, wantAtSelected)
+	}
 	if res.SurvivorDelayGainPct <= 0 {
 		t.Errorf("expected positive SurvivorDelayGainPct, got %v", res.SurvivorDelayGainPct)
 	}
@@ -462,6 +466,12 @@ func TestSSAnalysis_Survivor_SpouseHigher(t *testing.T) {
 		if o.SurvivorMonthlyBenefit != 0 {
 			t.Error("primary options must not carry survivor benefit when spouse is higher")
 		}
+	}
+	if !res.HasSurvivorCallout {
+		t.Error("expected callout for spouse-higher path")
+	}
+	if res.SurvivorSelectedClaimAge != 67 {
+		t.Errorf("SurvivorSelectedClaimAge = %d, want 67", res.SurvivorSelectedClaimAge)
 	}
 }
 
@@ -500,6 +510,36 @@ func TestSSAnalysis_Survivor_AnalysisOnlyClaimAge(t *testing.T) {
 	}
 }
 
+func TestSSAnalysis_Survivor_HigherEarnerAlreadyClaiming(t *testing.T) {
+	// Primary is the higher earner and is already claiming (claim age <=
+	// current age), so the survivor benefit is locked: callout present,
+	// SurvivorSelectedAgeLocked=true, no delay upside, gain 0.
+	s := ssSurvivorSettings(3000, 1500)
+	s.CurrentAge = 68
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 68)
+	s.SocialSecurity.ClaimAge = 65 // already claiming (<= 68)
+
+	res := SSAnalysis(engineInput(t, s))
+	if res == nil || !res.HasSurvivorAnalysis {
+		t.Fatal("expected survivor analysis")
+	}
+	if !res.HasSurvivorCallout {
+		t.Error("expected callout for a valid (already-claimed) selected age")
+	}
+	if !res.SurvivorSelectedAgeLocked {
+		t.Error("expected SurvivorSelectedAgeLocked=true for already-claiming higher earner")
+	}
+	if res.HasSurvivorDelayUpside {
+		t.Error("locked higher earner must not show delay upside")
+	}
+	if res.SurvivorDelayGainPct != 0 {
+		t.Errorf("locked: SurvivorDelayGainPct should be 0, got %v", res.SurvivorDelayGainPct)
+	}
+	if res.SurvivorBenefitAtSelected <= 0 {
+		t.Error("expected positive SurvivorBenefitAtSelected")
+	}
+}
+
 // F-029: When the primary is already claiming at a non-FRA age, the
 // SpouseUsingSpousalBenefit flag must be derived from the primary PIA
 // (back-derived from FRABenefit + claim age + FRA), not from the raw
@@ -512,7 +552,7 @@ func TestRunSSAnalysis_F029_SpousalUsesPrimaryPIA(t *testing.T) {
 		FRABenefit:       1000.0, // actual benefit at claim 62; PIA ≈ 1428.57
 		FRA:              67,
 		COLARate:         0.02,
-		ClaimAge:         62, // primary already claiming at 62
+		ClaimAge:         62,    // primary already claiming at 62
 		SpouseFRABenefit: 600.0, // spouse own PIA; not yet claiming
 		SpouseFRA:        67,
 		// SpouseClaimAge intentionally zero — spouse not yet claiming

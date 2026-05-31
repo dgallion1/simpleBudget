@@ -688,4 +688,3 @@ func BestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfol
 func CumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64 {
 	return cumulativeBenefit(monthlyAtClaim, claimAge, targetAge, colaRate)
 }
-

@@ -53,3 +53,42 @@ func TestBracketFillIncomeForYear_FoldsRothEarningsIntoOrdinary(t *testing.T) {
 		t.Fatalf("conversion should shrink by exactly the earnings; off by %.2f", d)
 	}
 }
+
+func TestHarvestRothEarnings_WindowOnly(t *testing.T) {
+	proj := &models.ProjectionResult{
+		YearlySummaries: []models.ProjectionYearSummary{
+			{TaxableRothEarnings: 100}, // y0 — before window
+			{TaxableRothEarnings: 0},   // y1
+			{TaxableRothEarnings: 250}, // y2 — in window
+			{TaxableRothEarnings: 400}, // y3 — in window
+			{TaxableRothEarnings: 900}, // y4 — after window
+		},
+	}
+	got := harvestRothEarnings(proj, 2, 4) // [2,4)
+	if len(got) != 2 || got[2] != 250 || got[3] != 400 {
+		t.Fatalf("expected {2:250,3:400}, got %v", got)
+	}
+}
+
+func TestMaxAbsFeedbackDelta(t *testing.T) {
+	a := map[int]float64{2: 250, 3: 400}
+	b := map[int]float64{2: 250, 3: 380, 5: 30}
+	if d := maxAbsFeedbackDelta(a, b); math.Abs(d-30) > 1e-9 {
+		t.Fatalf("want 30 (the key-5 difference), got %v", d)
+	}
+	if d := maxAbsFeedbackDelta(nil, nil); d != 0 {
+		t.Fatalf("nil vs nil should be 0, got %v", d)
+	}
+}
+
+func TestRelaxFeedback_DampsTowardObserved(t *testing.T) {
+	prev := map[int]float64{2: 0, 3: 100}
+	observed := map[int]float64{2: 200, 3: 0}
+	got := relaxFeedback(prev, observed, 0.5)
+	if math.Abs(got[2]-100) > 1e-9 { // 0 + 0.5*(200-0)
+		t.Fatalf("key2: want 100, got %v", got[2])
+	}
+	if math.Abs(got[3]-50) > 1e-9 { // 100 + 0.5*(0-100)
+		t.Fatalf("key3: want 50, got %v", got[3])
+	}
+}

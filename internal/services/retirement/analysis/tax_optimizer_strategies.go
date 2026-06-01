@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"math"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -544,6 +545,83 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 		}
 	default:
 		return nil
+	}
+	return out
+}
+
+// Bracket-fill iterative-correction tuning. See
+// docs/superpowers/specs/2026-05-31-bracketfill-roth-earnings-correction-design.md.
+const (
+	bracketFillMaxIterations     = 5    // engine re-runs per bracket-fill candidate
+	bracketFillFeedbackTolerance = 25.0 // dollars; converged when max per-year residual is below this
+	bracketFillFeedbackRelax     = 0.5  // damping factor toward the observed earnings
+)
+
+// bracketFillProjYearWindow returns the [start, end) projection-year offsets the
+// strategy converts over, with start clamped to non-negative. end is returned
+// raw (not clamped to >= start); callers treat end <= start as an empty window.
+// Unlike strategyYearlyConversions it has no early-return guard — an empty or
+// inverted window simply produces no per-year feedback downstream.
+func bracketFillProjYearWindow(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) (int, int) {
+	start := strat.StartAge - s.CurrentAge
+	end := strat.EndAge - s.CurrentAge
+	if start < 0 {
+		start = 0
+	}
+	return start, end
+}
+
+// harvestRothEarnings extracts the engine's per-projection-year taxable Roth
+// earnings within [startProjYear, endProjYear), keyed by projection-year offset.
+// Only nonzero years are recorded.
+func harvestRothEarnings(proj *models.ProjectionResult, startProjYear, endProjYear int) map[int]float64 {
+	out := make(map[int]float64)
+	if proj == nil {
+		return out
+	}
+	for i, ys := range proj.YearlySummaries {
+		if i < startProjYear || i >= endProjYear {
+			continue
+		}
+		if ys.TaxableRothEarnings > 0 {
+			out[i] = ys.TaxableRothEarnings
+		}
+	}
+	return out
+}
+
+// maxAbsFeedbackDelta is the largest per-key absolute difference between two
+// feedback maps (missing keys count as 0).
+func maxAbsFeedbackDelta(a, b map[int]float64) float64 {
+	largest := 0.0
+	for k, v := range a {
+		if d := math.Abs(v - b[k]); d > largest {
+			largest = d
+		}
+	}
+	for k, v := range b {
+		if _, ok := a[k]; ok {
+			continue
+		}
+		if d := math.Abs(v); d > largest {
+			largest = d
+		}
+	}
+	return largest
+}
+
+// relaxFeedback returns a damped update of prev toward observed:
+// out[k] = prev[k] + alpha*(observed[k] - prev[k]) over the union of keys.
+func relaxFeedback(prev, observed map[int]float64, alpha float64) map[int]float64 {
+	out := make(map[int]float64)
+	for k, v := range observed {
+		out[k] = prev[k] + alpha*(v-prev[k])
+	}
+	for k, v := range prev {
+		if _, ok := observed[k]; ok {
+			continue
+		}
+		out[k] = v + alpha*(0-v)
 	}
 	return out
 }

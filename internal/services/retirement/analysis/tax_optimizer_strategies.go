@@ -115,7 +115,13 @@ type bracketFillIncome struct {
 // taxable-portion calc (not counted as fixed income, so a SS-typed income
 // source isn't double-counted). RMD is gated on EffectiveRMDStartAge using
 // the IRS Uniform Lifetime divisor.
-func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) bracketFillIncome {
+//
+// rothEarnings is the taxable portion of non-qualified Roth EARNINGS withdrawn
+// in this projection year (engine's TaxableRothEarnings). It is ordinary income
+// that both fills the bracket and raises §86 provisional income, so it is folded
+// into `ordinary`. Pass 0 when no engine feedback is available (the gate and the
+// pre-engine estimate do this).
+func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int, rothEarnings float64) bracketFillIncome {
 	age := s.CurrentAge + projectionYear
 
 	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
@@ -215,6 +221,9 @@ func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) brac
 		longTermCapitalGains = taxableNow * (s.TaxableCapitalGainsDistributionRate / 100.0)
 	}
 
+	// Non-qualified Roth earnings are ordinary income (engine: loop_helpers.go:290).
+	ordinary += rothEarnings
+
 	return bracketFillIncome{
 		tc:                   tc,
 		grossSS:              grossSS,
@@ -271,7 +280,7 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 	if s == nil {
 		return 0
 	}
-	taxable := bracketFillIncomeForYear(s, projectionYear).taxableOrdinaryIncome(0)
+	taxable := bracketFillIncomeForYear(s, projectionYear, 0).taxableOrdinaryIncome(0)
 	if taxable < 0 {
 		return 0
 	}
@@ -411,7 +420,7 @@ func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, targ
 		if !ok {
 			return false
 		}
-		if bracketFillIncomeForYear(s, y).bracketFillConversion(ceiling) > 1 {
+		if bracketFillIncomeForYear(s, y, 0).bracketFillConversion(ceiling) > 1 {
 			return true
 		}
 	}
@@ -522,7 +531,7 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 			// Solve for the conversion that lands taxable ordinary income on
 			// the ceiling, accounting for the conversion's own effect on SS
 			// taxability (a naive ceiling−other overshoots the bracket).
-			conv := bracketFillIncomeForYear(s, y).bracketFillConversion(ceiling)
+			conv := bracketFillIncomeForYear(s, y, 0).bracketFillConversion(ceiling)
 			out = append(out, models.YearlyConversion{
 				Age:    s.CurrentAge + y,
 				Amount: conv,

@@ -443,7 +443,7 @@ func TestRothStrategyToConfig_BracketFillProducesOverrides(t *testing.T) {
 			t.Errorf("year %d: negative override %v", year, amount)
 		}
 		ceiling, _ := inflatedBracketTopForYear(s, 0.22, year)
-		resulting := bracketFillIncomeForYear(s, year).taxableOrdinaryIncome(amount)
+		resulting := bracketFillIncomeForYear(s, year, 0).taxableOrdinaryIncome(amount)
 		if math.Abs(resulting-ceiling) > 1.0 {
 			t.Errorf("year %d: override %v drives taxable ordinary income to %v, want 22%% ceiling %v",
 				year, amount, resulting, ceiling)
@@ -579,7 +579,7 @@ func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
 		// merely equal ceiling−other: the standard-deduction headroom (and any
 		// conversion-driven SS taxability) sit between the gross conversion and
 		// the taxable-income ceiling.
-		resulting := bracketFillIncomeForYear(s, projYear).taxableOrdinaryIncome(yc.Amount)
+		resulting := bracketFillIncomeForYear(s, projYear, 0).taxableOrdinaryIncome(yc.Amount)
 		if math.Abs(resulting-ceiling) > 1.0 {
 			t.Errorf("year %d (age %d): conversion %v drives taxable ordinary income to %v, want ceiling %v",
 				projYear, yc.Age, yc.Amount, resulting, ceiling)

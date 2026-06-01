@@ -86,6 +86,14 @@ Retirement math:
   non-qualified dividends fill the bracket; SS taxable portion, qualified
   dividends, and cap-gains distributions (LTCG) are §86-provisional-only. Add
   any new taxable component to `bracketFillIncomeForYear` to match the engine.
+  Non-qualified Roth EARNINGS withdrawals (`TaxableRothEarnings`) are also
+  ordinary income, but they depend on the conversions themselves (a conversion
+  adds Roth basis that Pub 590-B basis-first ordering consumes before earnings).
+  So `scoreCandidate` sizes iteratively: size → run engine → fold the per-year
+  `TaxableRothEarnings` back into `bracketFillIncomeForYear` via the `feedback`
+  map → re-size to convergence. This only changes sizing in the corner where a
+  small Roth is drained past basis under 59½ during the conversion window; with
+  no such earnings it converges in one engine run (behavior unchanged).
 
 ## Architecture pointers
 

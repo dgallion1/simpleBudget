@@ -390,7 +390,7 @@ func TestRothStrategyToConfig_LadderProducesFixedAmount(t *testing.T) {
 		StartAge:     67,
 		EndAge:       73,
 	}
-	cfg := rothStrategyToConfig(s, strat)
+	cfg := rothStrategyToConfig(s, strat, nil)
 	if cfg == nil || !cfg.Enabled {
 		t.Fatal("expected enabled config")
 	}
@@ -423,7 +423,7 @@ func TestRothStrategyToConfig_BracketFillProducesOverrides(t *testing.T) {
 		StartAge:      67,
 		EndAge:        73,
 	}
-	cfg := rothStrategyToConfig(s, strat)
+	cfg := rothStrategyToConfig(s, strat, nil)
 	if cfg == nil || !cfg.Enabled {
 		t.Fatal("expected enabled config")
 	}
@@ -463,7 +463,7 @@ func TestRothStrategyToConfig_NoConversionBaseline(t *testing.T) {
 		StartAge: 67,
 		EndAge:   72,
 	}
-	cfg := rothStrategyToConfig(s, strat)
+	cfg := rothStrategyToConfig(s, strat, nil)
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
 	}
@@ -533,7 +533,7 @@ func TestStrategyYearlyConversions_Ladder(t *testing.T) {
 		StartAge:     67,
 		EndAge:       72, // exclusive — 5 years (67..71)
 	}
-	got := strategyYearlyConversions(s, strat)
+	got := strategyYearlyConversions(s, strat, nil)
 
 	if len(got) != 5 {
 		t.Fatalf("len: got %d, want 5", len(got))
@@ -564,7 +564,7 @@ func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
 		EndAge:        63, // 3 years: 60, 61, 62
 	}
 
-	got := strategyYearlyConversions(s, strat)
+	got := strategyYearlyConversions(s, strat, nil)
 	if len(got) != 3 {
 		t.Fatalf("len: got %d, want 3", len(got))
 	}
@@ -589,7 +589,7 @@ func TestStrategyYearlyConversions_BracketFill_MFJ(t *testing.T) {
 
 func TestStrategyYearlyConversions_NoConversion(t *testing.T) {
 	s := eligibleBase()
-	got := strategyYearlyConversions(s, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+	got := strategyYearlyConversions(s, models.RothOptimizerStrategy{Kind: models.RothStrategyNone}, nil)
 	if got != nil {
 		t.Errorf("expected nil, got %v", got)
 	}
@@ -602,7 +602,7 @@ func TestStrategyYearlyConversions_ZeroAmountLadder(t *testing.T) {
 		AnnualAmount: 0,
 		StartAge:     67,
 		EndAge:       72,
-	})
+	}, nil)
 	if got != nil {
 		t.Errorf("expected nil for zero-amount ladder, got %v", got)
 	}
@@ -626,12 +626,12 @@ func TestRothStrategyToConfig_MatchesYearlyConversions(t *testing.T) {
 		EndAge:        67,
 	}
 
-	cfg := rothStrategyToConfig(s, strat)
+	cfg := rothStrategyToConfig(s, strat, nil)
 	if cfg == nil || cfg.PerYearOverrides == nil {
 		t.Fatal("expected non-nil PerYearOverrides for bracket-fill")
 	}
 
-	got := strategyYearlyConversions(s, strat)
+	got := strategyYearlyConversions(s, strat, nil)
 	if len(got) == 0 {
 		t.Fatal("expected non-empty YearlyConversions")
 	}

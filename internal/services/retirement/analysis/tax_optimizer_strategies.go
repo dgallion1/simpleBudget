@@ -446,7 +446,7 @@ func enumerateRothStrategies(s *models.WhatIfSettings) []models.RothOptimizerStr
 // Bracket-fill strategies translate to a PerYearOverrides map
 // pre-computed via strategyYearlyConversions. A zero-amount ladder
 // (the "No conversion" baseline) returns a disabled config.
-func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) *models.RothConversionConfig {
+func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerStrategy, feedback map[int]float64) *models.RothConversionConfig {
 	if strat.Kind == models.RothStrategyNone {
 		return &models.RothConversionConfig{Enabled: false}
 	}
@@ -470,7 +470,7 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 	case models.RothStrategyLadder:
 		cfg.AnnualAmount = strat.AnnualAmount
 	case models.RothStrategyBracketFill:
-		yearly := strategyYearlyConversions(s, strat)
+		yearly := strategyYearlyConversions(s, strat, feedback)
 		if yearly == nil {
 			return &models.RothConversionConfig{Enabled: false}
 		}
@@ -492,7 +492,12 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 // conversion's effect on SS taxability, so it is not a plain ceiling−other).
 // Mirrors the math in rothStrategyToConfig so the displayed amounts match
 // what the engine actually applied.
-func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) []models.YearlyConversion {
+//
+// feedback maps projection-year offset → taxable Roth earnings observed from a
+// prior engine run; it is folded into each year's ordinary income so the solve
+// accounts for earnings that fill the bracket. Pass nil for the uncorrected
+// (pre-engine) sizing.
+func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimizerStrategy, feedback map[int]float64) []models.YearlyConversion {
 	if strat.Kind == models.RothStrategyNone {
 		return nil
 	}
@@ -531,7 +536,7 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 			// Solve for the conversion that lands taxable ordinary income on
 			// the ceiling, accounting for the conversion's own effect on SS
 			// taxability (a naive ceiling−other overshoots the bracket).
-			conv := bracketFillIncomeForYear(s, y, 0).bracketFillConversion(ceiling)
+			conv := bracketFillIncomeForYear(s, y, feedback[y]).bracketFillConversion(ceiling)
 			out = append(out, models.YearlyConversion{
 				Age:    s.CurrentAge + y,
 				Amount: conv,

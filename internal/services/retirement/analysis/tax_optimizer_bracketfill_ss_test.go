@@ -49,7 +49,7 @@ func TestBracketFill_AccountsForConversionDrivenSSTaxation(t *testing.T) {
 		StartAge:      67,
 		EndAge:        69, // years 0,1 — pre-RMD, SS already claimed
 	}
-	got := strategyYearlyConversions(ps, strat)
+	got := strategyYearlyConversions(ps, strat, nil)
 	if len(got) == 0 {
 		t.Fatal("expected bracket-fill conversions")
 	}
@@ -111,7 +111,7 @@ func TestBracketFill_SplitsNonQualifiedDividendsIntoOrdinary(t *testing.T) {
 		StartAge:      60,
 		EndAge:        63, // years 0,1,2 — pre-SS, pre-RMD
 	}
-	got := strategyYearlyConversions(ps, strat)
+	got := strategyYearlyConversions(ps, strat, nil)
 	if len(got) == 0 {
 		t.Fatal("expected bracket-fill conversions")
 	}
@@ -172,7 +172,7 @@ func TestBracketFill_IncludesCapitalGainsInProvisionalIncome(t *testing.T) {
 		StartAge:      67,
 		EndAge:        69, // years 0,1 — pre-RMD, SS claimed
 	}
-	got := strategyYearlyConversions(ps, strat)
+	got := strategyYearlyConversions(ps, strat, nil)
 	if len(got) == 0 {
 		t.Fatal("expected bracket-fill conversions")
 	}

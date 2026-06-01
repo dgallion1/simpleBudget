@@ -79,13 +79,13 @@ func candidateSettingsForSS(s *models.WhatIfSettings, primaryClaimAge, spouseCla
 // except for the SS claim ages and Roth conversion config. The deep
 // copy in prepare.From handles slice/pointer aliasing for the rest of
 // the struct. Pattern mirrors cloneSettingsWithClaimAges in ss.go.
-func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int, strat models.RothOptimizerStrategy) (prepare.PreparedSettings, bool) {
+func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int, strat models.RothOptimizerStrategy, feedback map[int]float64) (prepare.PreparedSettings, bool) {
 	if s == nil {
 		return prepare.PreparedSettings{}, false
 	}
 	candidate := candidateSettingsForSS(s, primaryClaimAge, spouseClaimAge)
 	cfg := *candidate
-	cfg.RothConversion = rothStrategyToConfig(candidate, strat)
+	cfg.RothConversion = rothStrategyToConfig(candidate, strat, feedback)
 	prepared := perturbAndPrepare(&cfg)
 
 	// PerYearOverrides is tagged json:"-" so prepare.From's JSON-based
@@ -231,7 +231,7 @@ func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseCl
 // pair, Roth strategy) override and returns the scored candidate.
 func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseClaim int, strat models.RothOptimizerStrategy) models.TaxOptimizerCandidate {
 	settings := in.Prepared.Settings()
-	cloned, ok := cloneSettingsWithSSAndRoth(settings, primaryClaim, spouseClaim, strat)
+	cloned, ok := cloneSettingsWithSSAndRoth(settings, primaryClaim, spouseClaim, strat, nil)
 	if !ok {
 		return models.TaxOptimizerCandidate{
 			PrimaryClaimAge:     primaryClaim,
@@ -248,7 +248,7 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 	// cloneSettingsWithSSAndRoth), so the displayed per-year amounts use
 	// the same candidate settings.
 	cand.PerYearConversions = strategyYearlyConversions(
-		candidateSettingsForSS(settings, primaryClaim, spouseClaim), strat)
+		candidateSettingsForSS(settings, primaryClaim, spouseClaim), strat, nil)
 	return cand
 }
 
@@ -311,7 +311,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	// the rest of the page shows for this scenario.
 	baselineProj := eng.Run(in)
 	baseline := projectionToCandidate(baselineProj, currentPrimary, currentSpouse, currentRoth)
-	baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth)
+	baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth, nil)
 
 	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, taxOptimizerTopSSPairs)
 	strategies := enumerateRothStrategies(settings)
@@ -375,6 +375,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 			finalists[i].PrimaryClaimAge,
 			finalists[i].SpouseClaimAge,
 			finalists[i].RothStrategy,
+			nil, // TODO(Task 4 Step 5): finalists[i].BracketFillFeedback
 		)
 		if !ok {
 			continue

@@ -282,3 +282,148 @@ func TestMCFinalistCloning_UsesCorrectedFeedback(t *testing.T) {
 		}
 	}
 }
+
+// mcOverlapSurvivingSettings is a sibling of adversarialOverlapSettings tuned so
+// the plan SURVIVES Monte Carlo (nonzero median ending balance) while still
+// reproducing the small-Roth-drained-under-59½ corner that yields nonzero
+// taxable Roth earnings and therefore a nonzero converged BracketFillFeedback on
+// a bracket-fill finalist. adversarialOverlapSettings itself depletes to a $0 MC
+// median (success rate 0), which would make corrected vs uncorrected medians
+// indistinguishable; this variant keeps the corner but with enough headroom that
+// the ~$25k conversion correction visibly moves the MC median.
+func mcOverlapSurvivingSettings(t *testing.T) *models.WhatIfSettings {
+	t.Helper()
+	s := models.DefaultWhatIfSettings()
+	s.Persons = s.Persons[:1]
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 50)
+	s.SpouseAge = 0
+	s.TaxConfig = &models.TaxConfig{FilingStatus: models.FilingSingle}
+	s.PortfolioValue = 800_000
+	s.TaxDeferredPercent = 92
+	s.RothPercent = 8
+	s.TaxableDividendYield = 0
+	s.MonthlyHealthcare = 0
+	s.HealthcarePersons = nil
+	s.IncomeSources = []models.IncomeSource{{Type: models.IncomeFixed, Amount: 2500, StartMonth: 0}}
+	s.MonthlyLivingExpenses = 7000
+	s.TaxDeferredDelayYears = 8
+	s.InvestmentReturn = 7
+	s.ProjectionYears = 20
+	s.SocialSecurity = &models.SocialSecurityConfig{FRABenefit: 2500, FRA: 67, ClaimAge: 70, COLARate: 0, COLARateSet: true}
+	return s
+}
+
+// TestTaxOptimizer_MonteCarloRanksOnCorrectedConversions drives the REAL
+// TaxOptimizerWithSeed Monte Carlo finalist-refinement loop (not just the
+// cloneFinalistForMonteCarlo helper in isolation) and proves the loop ranks
+// bracket-fill finalists on their CORRECTED conversions
+// (finalist.BracketFillFeedback), not an uncorrected (nil-feedback) re-size.
+//
+// A fixed nonzero seed is mandatory: with seed=0 the loop derives a one-shot
+// seed from time.Now(), which is non-deterministic. With a fixed seed the MC
+// medians are reproducible, so we can recompute the finalist's MCMedianEndingReal
+// two ways and assert the loop's stored value matches the corrected recomputation
+// and differs from the uncorrected one.
+//
+// This FAILS if the loop bypasses cloneFinalistForMonteCarlo or passes nil
+// feedback (verified by reverting the loop call to a nil-feedback clone).
+func TestTaxOptimizer_MonteCarloRanksOnCorrectedConversions(t *testing.T) {
+	const seed = int64(12345)
+
+	s := mcOverlapSurvivingSettings(t)
+	in := engineInput(t, s)
+	eng := engine.New()
+	settings := in.Prepared.Settings()
+
+	res := TaxOptimizerWithSeed(eng, in, nil, seed)
+	if res == nil || !res.Eligible {
+		t.Fatalf("expected an eligible optimizer result; got nil=%v eligible=%v reason=%q",
+			res == nil, res != nil && res.Eligible, ineligibleReasonOf(res))
+	}
+
+	// Find a bracket-fill finalist that was actually MC-refined with nonzero
+	// corrected feedback. This is the only kind of finalist whose corrected vs
+	// uncorrected sizing diverges, so it's the one that can guard the loop.
+	var finalist models.TaxOptimizerCandidate
+	found := false
+	for _, f := range res.Top {
+		if f.RothStrategy.Kind == models.RothStrategyBracketFill &&
+			len(f.BracketFillFeedback) > 0 && f.MCMedianEndingReal != 0 {
+			finalist = f
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Skip("no MC-refined bracket-fill finalist with nonzero feedback surfaced in res.Top; cannot guard the loop with this corner")
+	}
+	t.Logf("finalist: strategy=%v primary=%d spouse=%d feedback=%v MCMedianEndingReal=%.2f",
+		finalist.RothStrategy.Kind, finalist.PrimaryClaimAge, finalist.SpouseClaimAge,
+		finalist.BracketFillFeedback, finalist.MCMedianEndingReal)
+
+	// Reproduce the loop's deflator EXACTLY as the production code does
+	// (tax_optimizer.go: inflRate := settings.InflationRate/100; deflator :=
+	// math.Pow(1+inflRate, ProjectionYears)).
+	inflRate := settings.InflationRate / 100.0
+	deflator := math.Pow(1+inflRate, float64(settings.ProjectionYears))
+	if deflator <= 0 {
+		deflator = 1
+	}
+
+	// Corrected recomputation: same clone the loop uses.
+	mcCloned, ok := cloneFinalistForMonteCarlo(settings, finalist)
+	if !ok {
+		t.Fatal("corrected clone failed")
+	}
+	mcCorrected := MonteCarlo(eng, engine.Input{Prepared: mcCloned, Chain: in.Chain, Hooks: in.Hooks}, taxOptimizerMonteCarloRuns, seed)
+	if mcCorrected == nil || mcCorrected.Stats == nil {
+		t.Fatal("corrected MonteCarlo returned no stats")
+	}
+	correctedReal := mcCorrected.Stats.MedianBalance / deflator
+
+	// Uncorrected recomputation: SAME finalist, but nil feedback.
+	uncCloned, ok := cloneSettingsWithSSAndRoth(settings, finalist.PrimaryClaimAge, finalist.SpouseClaimAge, finalist.RothStrategy, nil)
+	if !ok {
+		t.Fatal("uncorrected clone failed")
+	}
+	mcUncorrected := MonteCarlo(eng, engine.Input{Prepared: uncCloned, Chain: in.Chain, Hooks: in.Hooks}, taxOptimizerMonteCarloRuns, seed)
+	if mcUncorrected == nil || mcUncorrected.Stats == nil {
+		t.Fatal("uncorrected MonteCarlo returned no stats")
+	}
+	uncorrectedReal := mcUncorrected.Stats.MedianBalance / deflator
+
+	t.Logf("correctedReal=%.4f uncorrectedReal=%.4f diff=%.4f loopStored=%.4f",
+		correctedReal, uncorrectedReal, correctedReal-uncorrectedReal, finalist.MCMedianEndingReal)
+
+	// The two sizings MUST move the MC median, else this test is tautological
+	// (corrected and uncorrected would be indistinguishable).
+	diff := math.Abs(correctedReal - uncorrectedReal)
+	if diff < 1.0 {
+		t.Fatalf("corrected and uncorrected MC medians are indistinguishable (corrected=%.2f uncorrected=%.2f); "+
+			"the bracket-fill correction does not move the MC median for this finalist, so this test cannot guard the loop",
+			correctedReal, uncorrectedReal)
+	}
+
+	// The loop's stored value must match the corrected recomputation (proves it
+	// used cloneFinalistForMonteCarlo with the corrected feedback).
+	if d := math.Abs(finalist.MCMedianEndingReal - correctedReal); d > 1.0 {
+		t.Fatalf("loop's MCMedianEndingReal=%.4f does not match corrected recomputation=%.4f (off by %.4f); "+
+			"the MC loop is not ranking on the corrected bracket-fill conversions",
+			finalist.MCMedianEndingReal, correctedReal, d)
+	}
+
+	// ...and must NOT match the uncorrected recomputation.
+	if d := math.Abs(finalist.MCMedianEndingReal - uncorrectedReal); d <= diff/2 {
+		t.Fatalf("loop's MCMedianEndingReal=%.4f matches the UNCORRECTED recomputation=%.4f (off by %.4f, diff=%.4f); "+
+			"the MC loop is ranking on uncorrected (nil-feedback) sizing",
+			finalist.MCMedianEndingReal, uncorrectedReal, d, diff)
+	}
+}
+
+// ineligibleReasonOf safely reads the ineligible reason for diagnostics.
+func ineligibleReasonOf(res *models.TaxOptimizerAnalysis) string {
+	if res == nil {
+		return ""
+	}
+	return res.IneligibleReason
+}

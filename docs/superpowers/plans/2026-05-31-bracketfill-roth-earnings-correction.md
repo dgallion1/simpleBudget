@@ -638,6 +638,8 @@ Expected: **build failure** — `cand.BracketFillFeedback undefined` (the field 
 
 - [ ] **Step 3: Add the `BracketFillFeedback` field, then rewrite `scoreCandidate` to iterate**
 
+**Impact analysis first (AGENTS.md/CLAUDE.md mandate — this edits an exported type).** Assess `models.TaxOptimizerCandidate` (`gitnexus_impact({target: "TaxOptimizerCandidate", direction: "upstream"})`, or `LSP findReferences`/grep). Expected blast radius: it is embedded in `TaxOptimizerAnalysis.{Baseline,Best,Top}` (`whatif.go`), constructed via *keyed* struct literals in the analysis package (`projectionToCandidate`, the `fail()` closure), and read by `web/templates/components/whatif/tax-optimizer.html`. Adding a `json:"-"` field is backward-compatible everywhere: keyed literals don't break, JSON omits it, and the template only reads existing fields. Report the blast radius and confirm no consumer requires the new field before proceeding.
+
 First add an in-memory field to `models.TaxOptimizerCandidate` (`internal/models/whatif.go` ~1365). Place it after `PerYearConversions`, tagged `json:"-"` so it never serializes (same convention as `RothConversionConfig.PerYearOverrides`):
 
 ```go
@@ -796,6 +798,68 @@ Run: `go test ./internal/services/retirement/analysis/ -run TestMCFinalistClonin
 
 Prove the guard works: temporarily change `cloneFinalistForMonteCarlo` to pass `nil` instead of `f.BracketFillFeedback`; re-run → the test MUST now FAIL (the corrected override no longer matches). Restore `f.BracketFillFeedback` → PASS.
 
+**Helper-test limitation:** the test above guards `cloneFinalistForMonteCarlo`, so it catches a regression *inside* the helper — but it would still pass if the MC loop bypassed the helper and inlined a `cloneSettingsWithSSAndRoth(..., nil)` call. Step 5b adds a loop-level guard.
+
+- [ ] **Step 5b: Integration guard — MC loop ranks on corrected conversions**
+
+Add a test that drives the real `TaxOptimizerWithSeed` Monte Carlo path and fails if the loop uses nil feedback. Two gotchas, both discovered during implementation:
+- Use a **fixed nonzero seed** — `TaxOptimizerWithSeed` derives the seed from `time.Now()` when the arg is 0 (non-deterministic).
+- `adversarialOverlapSettings` **depletes the MC median to $0** for every finalist (success rate 0), so corrected vs uncorrected medians are both 0 → tautological. Use a *surviving* variant of the same small-Roth-drained-under-59½ corner that still produces nonzero converged feedback. A working point (grid-searched): `$800k` portfolio, `RothPercent: 8`, `TaxDeferredPercent: 84`, `MonthlyLivingExpenses: 7000`, `TaxDeferredDelayYears: 8`, `InvestmentReturn: 7`, single filer age 50, `$2500/mo` fixed income, SS claim 70, 20-yr projection — add it as `mcOverlapSurvivingSettings(t)`.
+
+```go
+func TestTaxOptimizer_MonteCarloRanksOnCorrectedConversions(t *testing.T) {
+	s := mcOverlapSurvivingSettings(t)
+	in := engineInput(t, s)
+	eng := engine.New()
+	settings := in.Prepared.Settings()
+	const seed = int64(12345) // fixed, nonzero: MC is deterministic; 0 => time-based
+
+	res := TaxOptimizerWithSeed(eng, in, nil, seed)
+	if res == nil || !res.Eligible {
+		t.Fatalf("optimizer not eligible: %+v", res)
+	}
+	// Find a bracket-fill finalist that was actually MC-refined with nonzero feedback.
+	var finalist models.TaxOptimizerCandidate
+	found := false
+	for _, f := range res.Top {
+		if f.RothStrategy.Kind == models.RothStrategyBracketFill && len(f.BracketFillFeedback) > 0 && f.MCMedianEndingReal != 0 {
+			finalist, found = f, true
+			break
+		}
+	}
+	if !found {
+		t.Skip("no MC-refined bracket-fill finalist with nonzero feedback in res.Top")
+	}
+
+	// Reproduce the loop's deflator exactly (see tax_optimizer.go ~403).
+	inflRate := settings.InflationRate / 100.0
+	deflator := math.Pow(1+inflRate, float64(settings.ProjectionYears))
+	mcMedianReal := func(feedback map[int]float64) float64 {
+		cloned, ok := cloneSettingsWithSSAndRoth(settings, finalist.PrimaryClaimAge, finalist.SpouseClaimAge, finalist.RothStrategy, feedback)
+		if !ok {
+			t.Fatal("clone failed")
+		}
+		mc := MonteCarlo(eng, engine.Input{Prepared: cloned, Chain: in.Chain, Hooks: in.Hooks}, taxOptimizerMonteCarloRuns, seed)
+		return mc.Stats.MedianBalance / deflator
+	}
+	correctedReal := mcMedianReal(finalist.BracketFillFeedback)
+	uncorrectedReal := mcMedianReal(nil)
+	t.Logf("loop=%.2f corrected=%.2f uncorrected=%.2f", finalist.MCMedianEndingReal, correctedReal, uncorrectedReal)
+
+	if math.Abs(correctedReal-uncorrectedReal) < 1.0 {
+		t.Fatalf("corrected and uncorrected MC medians coincide (%.2f); test cannot guard the loop — pick a corner where the conversion difference moves the median", correctedReal)
+	}
+	if math.Abs(finalist.MCMedianEndingReal-correctedReal) > 1.0 {
+		t.Fatalf("loop MCMedianEndingReal=%.2f != corrected recomputation=%.2f: MC loop is NOT ranking on corrected conversions", finalist.MCMedianEndingReal, correctedReal)
+	}
+	if math.Abs(finalist.MCMedianEndingReal-uncorrectedReal) < math.Abs(correctedReal-uncorrectedReal)/2 {
+		t.Fatalf("loop MCMedianEndingReal=%.2f is closer to the uncorrected recomputation=%.2f than corrected=%.2f", finalist.MCMedianEndingReal, uncorrectedReal, correctedReal)
+	}
+}
+```
+
+Run it → expect PASS (it logs the three medians; corrected and uncorrected must differ measurably). **Prove the guard:** temporarily change the MC loop (`tax_optimizer.go` ~426) to `cloneSettingsWithSSAndRoth(settings, finalists[i].PrimaryClaimAge, finalists[i].SpouseClaimAge, finalists[i].RothStrategy, nil)` → this test MUST FAIL (loop value matches uncorrected). Restore `cloneFinalistForMonteCarlo(settings, finalists[i])` → PASS.
+
 - [ ] **Step 6: Run the whole analysis suite (no regressions)**
 
 Run: `go test ./internal/services/retirement/analysis/`
@@ -867,7 +931,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - **Spec coverage:** Task 1 = solver term; Tasks 1–2 = threading (incl. the Monte Carlo caller at ~374); Task 3 = convergence helpers + safety (min-residual fallback, tolerance, max-iter, damping); Task 4 = the loop + disclosure consistency + Monte Carlo feedback carry + the corner, common-case, and MC-wiring tests; Task 5 = CLAUDE.md + verification.
 - **What the common-case test actually proves:** `TestScoreCandidate_NoChangeWhenNoRothEarnings` asserts (a) identical per-year conversions, (b) empty `BracketFillFeedback`, and (c) the scored `EndingPortfolioReal` equals a single uncorrected (nil-feedback) run. The literal "exactly one engine run" property is not measured by a counter; it follows structurally — empty observed earnings ⇒ `maxAbsFeedbackDelta(nil, {}) == 0 < tolerance` ⇒ break at iteration 0 — and the three assertions are its observable consequences.
-- **Monte Carlo consistency:** without the Task 4 Step 5 wiring, deterministic scoring would use corrected conversions while MC refinement re-sized finalists uncorrected, and the MC re-sort could surface an overshooting plan. `TestMCFinalistCloning_UsesCorrectedFeedback` guards this.
+- **Monte Carlo consistency:** without the Task 4 Step 5 wiring, deterministic scoring would use corrected conversions while MC refinement re-sized finalists uncorrected, and the MC re-sort could surface an overshooting plan. Two complementary guards: `TestMCFinalistCloning_UsesCorrectedFeedback` (Step 5) guards the `cloneFinalistForMonteCarlo` helper, and `TestTaxOptimizer_MonteCarloRanksOnCorrectedConversions` (Step 5b) drives the real `TaxOptimizerWithSeed` loop with a fixed seed and fails if the loop bypasses the helper / passes nil feedback.
 - **Type consistency:** the feedback map is `map[int]float64` everywhere; the candidate field is `BracketFillFeedback`; helper names are exactly `harvestRothEarnings`, `bracketFillProjYearWindow`, `maxAbsFeedbackDelta`, `relaxFeedback`; consts are `bracketFillMaxIterations`, `bracketFillFeedbackTolerance`, `bracketFillFeedbackRelax`.
 - **If impact analysis surfaces an unexpected caller** of any modified function (especially outside `analysis`), stop and report before proceeding — the blast-radius assumption would be wrong. Note specifically that `cloneSettingsWithSSAndRoth` has the easy-to-miss Monte Carlo caller at ~374.
 ```

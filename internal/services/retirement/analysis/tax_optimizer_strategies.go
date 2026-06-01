@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"math"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -115,7 +116,13 @@ type bracketFillIncome struct {
 // taxable-portion calc (not counted as fixed income, so a SS-typed income
 // source isn't double-counted). RMD is gated on EffectiveRMDStartAge using
 // the IRS Uniform Lifetime divisor.
-func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) bracketFillIncome {
+//
+// rothEarnings is the taxable portion of non-qualified Roth EARNINGS withdrawn
+// in this projection year (engine's TaxableRothEarnings). It is ordinary income
+// that both fills the bracket and raises §86 provisional income, so it is folded
+// into `ordinary`. Pass 0 when no engine feedback is available (the gate and the
+// pre-engine estimate do this).
+func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int, rothEarnings float64) bracketFillIncome {
 	age := s.CurrentAge + projectionYear
 
 	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
@@ -215,6 +222,9 @@ func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int) brac
 		longTermCapitalGains = taxableNow * (s.TaxableCapitalGainsDistributionRate / 100.0)
 	}
 
+	// Non-qualified Roth earnings are ordinary income (engine: loop_helpers.go:290).
+	ordinary += rothEarnings
+
 	return bracketFillIncome{
 		tc:                   tc,
 		grossSS:              grossSS,
@@ -271,7 +281,7 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 	if s == nil {
 		return 0
 	}
-	taxable := bracketFillIncomeForYear(s, projectionYear).taxableOrdinaryIncome(0)
+	taxable := bracketFillIncomeForYear(s, projectionYear, 0).taxableOrdinaryIncome(0)
 	if taxable < 0 {
 		return 0
 	}
@@ -411,7 +421,7 @@ func bracketFillProducesNonZero(s *models.WhatIfSettings, w strategyWindow, targ
 		if !ok {
 			return false
 		}
-		if bracketFillIncomeForYear(s, y).bracketFillConversion(ceiling) > 1 {
+		if bracketFillIncomeForYear(s, y, 0).bracketFillConversion(ceiling) > 1 {
 			return true
 		}
 	}
@@ -437,7 +447,7 @@ func enumerateRothStrategies(s *models.WhatIfSettings) []models.RothOptimizerStr
 // Bracket-fill strategies translate to a PerYearOverrides map
 // pre-computed via strategyYearlyConversions. A zero-amount ladder
 // (the "No conversion" baseline) returns a disabled config.
-func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) *models.RothConversionConfig {
+func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerStrategy, feedback map[int]float64) *models.RothConversionConfig {
 	if strat.Kind == models.RothStrategyNone {
 		return &models.RothConversionConfig{Enabled: false}
 	}
@@ -461,7 +471,7 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 	case models.RothStrategyLadder:
 		cfg.AnnualAmount = strat.AnnualAmount
 	case models.RothStrategyBracketFill:
-		yearly := strategyYearlyConversions(s, strat)
+		yearly := strategyYearlyConversions(s, strat, feedback)
 		if yearly == nil {
 			return &models.RothConversionConfig{Enabled: false}
 		}
@@ -483,7 +493,12 @@ func rothStrategyToConfig(s *models.WhatIfSettings, strat models.RothOptimizerSt
 // conversion's effect on SS taxability, so it is not a plain ceiling−other).
 // Mirrors the math in rothStrategyToConfig so the displayed amounts match
 // what the engine actually applied.
-func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) []models.YearlyConversion {
+//
+// feedback maps projection-year offset → taxable Roth earnings observed from a
+// prior engine run; it is folded into each year's ordinary income so the solve
+// accounts for earnings that fill the bracket. Pass nil for the uncorrected
+// (pre-engine) sizing.
+func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimizerStrategy, feedback map[int]float64) []models.YearlyConversion {
 	if strat.Kind == models.RothStrategyNone {
 		return nil
 	}
@@ -522,7 +537,7 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 			// Solve for the conversion that lands taxable ordinary income on
 			// the ceiling, accounting for the conversion's own effect on SS
 			// taxability (a naive ceiling−other overshoots the bracket).
-			conv := bracketFillIncomeForYear(s, y).bracketFillConversion(ceiling)
+			conv := bracketFillIncomeForYear(s, y, feedback[y]).bracketFillConversion(ceiling)
 			out = append(out, models.YearlyConversion{
 				Age:    s.CurrentAge + y,
 				Amount: conv,
@@ -530,6 +545,85 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 		}
 	default:
 		return nil
+	}
+	return out
+}
+
+// Bracket-fill iterative-correction tuning. See
+// docs/superpowers/specs/2026-05-31-bracketfill-roth-earnings-correction-design.md.
+const (
+	bracketFillMaxIterations     = 5    // engine re-runs per bracket-fill candidate
+	bracketFillFeedbackTolerance = 25.0 // dollars; converged when max per-year residual is below this
+	bracketFillFeedbackRelax = 1.0 // feedback update weight toward observed earnings; 1.0 = full replacement (no damping).
+	// Safe: the earnings-vs-conversion coupling has slope in [-1,0] so full replacement cannot diverge,
+	// and scoreCandidate keeps the smallest-residual iterate.
+)
+
+// bracketFillProjYearWindow returns the [start, end) projection-year offsets the
+// strategy converts over, with start clamped to non-negative. end is returned
+// raw (not clamped to >= start); callers treat end <= start as an empty window.
+// Unlike strategyYearlyConversions it has no early-return guard — an empty or
+// inverted window simply produces no per-year feedback downstream.
+func bracketFillProjYearWindow(s *models.WhatIfSettings, strat models.RothOptimizerStrategy) (int, int) {
+	start := strat.StartAge - s.CurrentAge
+	end := strat.EndAge - s.CurrentAge
+	if start < 0 {
+		start = 0
+	}
+	return start, end
+}
+
+// harvestRothEarnings extracts the engine's per-projection-year taxable Roth
+// earnings within [startProjYear, endProjYear), keyed by projection-year offset.
+// Only nonzero years are recorded.
+func harvestRothEarnings(proj *models.ProjectionResult, startProjYear, endProjYear int) map[int]float64 {
+	out := make(map[int]float64)
+	if proj == nil {
+		return out
+	}
+	for i, ys := range proj.YearlySummaries {
+		if i < startProjYear || i >= endProjYear {
+			continue
+		}
+		if ys.TaxableRothEarnings > 0 {
+			out[i] = ys.TaxableRothEarnings
+		}
+	}
+	return out
+}
+
+// maxAbsFeedbackDelta is the largest per-key absolute difference between two
+// feedback maps (missing keys count as 0).
+func maxAbsFeedbackDelta(a, b map[int]float64) float64 {
+	largest := 0.0
+	for k, v := range a {
+		if d := math.Abs(v - b[k]); d > largest {
+			largest = d
+		}
+	}
+	for k, v := range b {
+		if _, ok := a[k]; ok {
+			continue
+		}
+		if d := math.Abs(v); d > largest {
+			largest = d
+		}
+	}
+	return largest
+}
+
+// relaxFeedback returns a damped update of prev toward observed:
+// out[k] = prev[k] + alpha*(observed[k] - prev[k]) over the union of keys.
+func relaxFeedback(prev, observed map[int]float64, alpha float64) map[int]float64 {
+	out := make(map[int]float64)
+	for k, v := range observed {
+		out[k] = prev[k] + alpha*(v-prev[k])
+	}
+	for k, v := range prev {
+		if _, ok := observed[k]; ok {
+			continue
+		}
+		out[k] = v + alpha*(0-v)
 	}
 	return out
 }

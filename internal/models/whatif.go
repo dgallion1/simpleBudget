@@ -1386,6 +1386,13 @@ type TaxOptimizerCandidate struct {
 	// bracket-fill strategies size each year to (bracket ceiling − other
 	// estimated taxable income for that year).
 	PerYearConversions []YearlyConversion `json:"per_year_conversions,omitempty"`
+
+	// BracketFillFeedback is the converged per-projection-year taxable Roth
+	// earnings (proj-year offset → dollars) that scoreCandidate folded into the
+	// bracket-fill sizing. In-memory only; carried so Monte Carlo finalist
+	// refinement re-clones with the same corrected conversions. Nil for ladder /
+	// no-conversion / no-earnings candidates.
+	BracketFillFeedback map[int]float64 `json:"-"`
 }
 
 // TaxOptimizerAnalysis is the per-scenario recommendation produced by

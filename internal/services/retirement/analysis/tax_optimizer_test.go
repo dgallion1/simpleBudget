@@ -136,7 +136,7 @@ func TestCloneSettingsWithSSAndRoth_PreservesBracketFillOverrides(t *testing.T) 
 		StartAge:      s.CurrentAge,
 		EndAge:        s.CurrentAge + 5,
 	}
-	prepared, ok := cloneSettingsWithSSAndRoth(s, s.SocialSecurity.ClaimAge, s.SocialSecurity.SpouseClaimAge, strat)
+	prepared, ok := cloneSettingsWithSSAndRoth(s, s.SocialSecurity.ClaimAge, s.SocialSecurity.SpouseClaimAge, strat, nil)
 	if !ok {
 		t.Fatal("expected clone to succeed")
 	}
@@ -175,7 +175,7 @@ func TestCloneSettingsWithSSAndRoth_AppliesOverrides(t *testing.T) {
 		EndAge:       73,
 	}
 
-	prepared, ok := cloneSettingsWithSSAndRoth(s, 70, 67, strat)
+	prepared, ok := cloneSettingsWithSSAndRoth(s, 70, 67, strat, nil)
 	if !ok {
 		t.Fatal("expected clone to succeed")
 	}
@@ -204,7 +204,7 @@ func TestScoreCandidate_PopulatesFields(t *testing.T) {
 	s := eligibleBase()
 	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{
 		Kind: models.RothStrategyLadder, AnnualAmount: 50_000, StartAge: 67, EndAge: 73,
-	})
+	}, nil)
 	if !ok {
 		t.Fatal("clone failed")
 	}
@@ -239,7 +239,7 @@ func TestScoreCandidate_PopulatesPerYearConversions(t *testing.T) {
 
 	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{
 		Kind: models.RothStrategyLadder, AnnualAmount: 50_000, StartAge: 67, EndAge: 73,
-	})
+	}, nil)
 	if !ok {
 		t.Fatal("clone failed")
 	}
@@ -277,7 +277,7 @@ func TestScoreCandidate_PopulatesPerYearConversions(t *testing.T) {
 
 func TestScoreCandidate_NoneStrategyHasEmptyPerYearConversions(t *testing.T) {
 	s := eligibleBase()
-	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{Kind: models.RothStrategyNone}, nil)
 	if !ok {
 		t.Fatal("clone failed")
 	}
@@ -328,7 +328,7 @@ func TestCloneSettingsWithSSAndRoth_BracketFillUsesCandidateSSAges(t *testing.T)
 	ssCopy := *s.SocialSecurity
 	ssCopy.ClaimAge = 70
 	candidateSettings.SocialSecurity = &ssCopy
-	wantCfg := rothStrategyToConfig(&candidateSettings, strat)
+	wantCfg := rothStrategyToConfig(&candidateSettings, strat, nil)
 	if wantCfg == nil || wantCfg.PerYearOverrides == nil {
 		t.Fatalf("setup: candidate-SS bracket-fill produced no overrides; cfg=%+v", wantCfg)
 	}
@@ -336,7 +336,7 @@ func TestCloneSettingsWithSSAndRoth_BracketFillUsesCandidateSSAges(t *testing.T)
 
 	// Sanity: under saved SS the overrides MUST differ, otherwise the
 	// test scenario isn't actually exercising the bug surface.
-	savedCfg := rothStrategyToConfig(s, strat)
+	savedCfg := rothStrategyToConfig(s, strat, nil)
 	if savedCfg == nil || savedCfg.PerYearOverrides == nil {
 		t.Fatalf("setup: saved-SS bracket-fill produced no overrides; cfg=%+v", savedCfg)
 	}
@@ -353,7 +353,7 @@ func TestCloneSettingsWithSSAndRoth_BracketFillUsesCandidateSSAges(t *testing.T)
 	}
 
 	// Exercise the bug path.
-	prepared, ok := cloneSettingsWithSSAndRoth(s, 70, 0, strat)
+	prepared, ok := cloneSettingsWithSSAndRoth(s, 70, 0, strat, nil)
 	if !ok {
 		t.Fatal("clone failed")
 	}
@@ -407,7 +407,7 @@ func TestScoreCandidate_DisclosureUsesCandidateSSAges(t *testing.T) {
 	// Build the engine.Input around the SAVED settings (this mirrors what
 	// the optimizer does: scoreCandidate is called with the user's input,
 	// not the candidate's).
-	prep, ok := cloneSettingsWithSSAndRoth(s, s.SocialSecurity.ClaimAge, 0, models.RothOptimizerStrategy{Kind: models.RothStrategyNone})
+	prep, ok := cloneSettingsWithSSAndRoth(s, s.SocialSecurity.ClaimAge, 0, models.RothOptimizerStrategy{Kind: models.RothStrategyNone}, nil)
 	if !ok {
 		t.Fatal("baseline clone failed")
 	}
@@ -428,9 +428,9 @@ func TestScoreCandidate_DisclosureUsesCandidateSSAges(t *testing.T) {
 		ssCopy.SpouseClaimAge = 0
 		candidateSettings.SocialSecurity = &ssCopy
 	}
-	wantSeq := strategyYearlyConversions(&candidateSettings, strat)
+	wantSeq := strategyYearlyConversions(&candidateSettings, strat, nil)
 	// Saved-SS sequence for the comparison failure message.
-	savedSeq := strategyYearlyConversions(prep.Settings(), strat)
+	savedSeq := strategyYearlyConversions(prep.Settings(), strat, nil)
 
 	if len(cand.PerYearConversions) != len(wantSeq) {
 		t.Fatalf("disclosure length: got %d, want %d", len(cand.PerYearConversions), len(wantSeq))
@@ -702,7 +702,7 @@ func TestCurrentRothStrategyFor_RoundTripsLadder(t *testing.T) {
 	strat := currentRothStrategyFor(s)
 	// Round-trip through rothStrategyToConfig should produce the same
 	// engine EndYear=5.
-	cfg := rothStrategyToConfig(s, strat)
+	cfg := rothStrategyToConfig(s, strat, nil)
 	if cfg == nil || !cfg.Enabled {
 		t.Fatal("expected enabled round-trip config")
 	}

@@ -79,13 +79,13 @@ func candidateSettingsForSS(s *models.WhatIfSettings, primaryClaimAge, spouseCla
 // except for the SS claim ages and Roth conversion config. The deep
 // copy in prepare.From handles slice/pointer aliasing for the rest of
 // the struct. Pattern mirrors cloneSettingsWithClaimAges in ss.go.
-func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int, strat models.RothOptimizerStrategy) (prepare.PreparedSettings, bool) {
+func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spouseClaimAge int, strat models.RothOptimizerStrategy, feedback map[int]float64) (prepare.PreparedSettings, bool) {
 	if s == nil {
 		return prepare.PreparedSettings{}, false
 	}
 	candidate := candidateSettingsForSS(s, primaryClaimAge, spouseClaimAge)
 	cfg := *candidate
-	cfg.RothConversion = rothStrategyToConfig(candidate, strat)
+	cfg.RothConversion = rothStrategyToConfig(candidate, strat, feedback)
 	prepared := perturbAndPrepare(&cfg)
 
 	// PerYearOverrides is tagged json:"-" so prepare.From's JSON-based
@@ -100,6 +100,14 @@ func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spous
 		}
 	}
 	return prepared, true
+}
+
+// cloneFinalistForMonteCarlo prepares a finalist's settings for Monte Carlo
+// refinement, reusing the SAME corrected bracket-fill conversions scoreCandidate
+// produced (via finalist.BracketFillFeedback) so MC ranks finalists on the
+// corrected sizing, not an uncorrected re-size.
+func cloneFinalistForMonteCarlo(settings *models.WhatIfSettings, f models.TaxOptimizerCandidate) (prepare.PreparedSettings, bool) {
+	return cloneSettingsWithSSAndRoth(settings, f.PrimaryClaimAge, f.SpouseClaimAge, f.RothStrategy, f.BracketFillFeedback)
 }
 
 // ssPair holds one (primary, spouse) claim-age combination.
@@ -231,8 +239,8 @@ func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseCl
 // pair, Roth strategy) override and returns the scored candidate.
 func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseClaim int, strat models.RothOptimizerStrategy) models.TaxOptimizerCandidate {
 	settings := in.Prepared.Settings()
-	cloned, ok := cloneSettingsWithSSAndRoth(settings, primaryClaim, spouseClaim, strat)
-	if !ok {
+
+	fail := func() models.TaxOptimizerCandidate {
 		return models.TaxOptimizerCandidate{
 			PrimaryClaimAge:     primaryClaim,
 			SpouseClaimAge:      spouseClaim,
@@ -240,15 +248,59 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 			EndingPortfolioReal: -math.MaxFloat64,
 		}
 	}
-	cellInput := engine.Input{Prepared: cloned, Chain: in.Chain, Hooks: in.Hooks}
-	proj := eng.Run(cellInput)
-	cand := projectionToCandidate(proj, primaryClaim, spouseClaim, strat)
-	// Disclosure must mirror the engine input: the engine's PerYearOverrides
-	// are derived from candidate-SS-applied settings (see
-	// cloneSettingsWithSSAndRoth), so the displayed per-year amounts use
-	// the same candidate settings.
+
+	maxIter := 1
+	startProjYear, endProjYear := 0, 0
+	if strat.Kind == models.RothStrategyBracketFill {
+		maxIter = bracketFillMaxIterations
+		startProjYear, endProjYear = bracketFillProjYearWindow(settings, strat)
+	}
+
+	var feedback map[int]float64 // pass 0: nil == today's behavior
+	var scoredProj *models.ProjectionResult
+	var usedFeedback map[int]float64
+	bestResidual := math.MaxFloat64
+
+	for iter := 0; iter < maxIter; iter++ {
+		cloned, ok := cloneSettingsWithSSAndRoth(settings, primaryClaim, spouseClaim, strat, feedback)
+		if !ok {
+			return fail()
+		}
+		proj := eng.Run(engine.Input{Prepared: cloned, Chain: in.Chain, Hooks: in.Hooks})
+
+		if strat.Kind != models.RothStrategyBracketFill {
+			scoredProj, usedFeedback = proj, feedback
+			break
+		}
+
+		observed := harvestRothEarnings(proj, startProjYear, endProjYear)
+		residual := maxAbsFeedbackDelta(feedback, observed)
+		// Keep the most self-consistent iterate — smallest residual between the
+		// assumed feedback and the earnings the engine actually produced — as the
+		// fallback if we never fully converge. Iteration 0 (nil feedback) has the
+		// largest residual, so the uncorrected/overshooting sizing is never chosen
+		// once any correction helps.
+		if residual < bestResidual {
+			bestResidual, scoredProj, usedFeedback = residual, proj, feedback
+		}
+		if residual < bracketFillFeedbackTolerance {
+			break // converged: this conversion accounts for the engine's earnings
+		}
+		feedback = relaxFeedback(feedback, observed, bracketFillFeedbackRelax)
+	}
+
+	if scoredProj == nil {
+		return fail()
+	}
+
+	cand := projectionToCandidate(scoredProj, primaryClaim, spouseClaim, strat)
+	// Disclosure must mirror the engine input: size the displayed amounts with the
+	// SAME converged feedback that produced the scored projection.
 	cand.PerYearConversions = strategyYearlyConversions(
-		candidateSettingsForSS(settings, primaryClaim, spouseClaim), strat)
+		candidateSettingsForSS(settings, primaryClaim, spouseClaim), strat, usedFeedback)
+	// Carry the converged feedback so Monte Carlo finalist refinement (~tax_optimizer.go:374)
+	// re-clones with the SAME corrected conversions, not an uncorrected re-size.
+	cand.BracketFillFeedback = usedFeedback
 	return cand
 }
 
@@ -311,7 +363,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	// the rest of the page shows for this scenario.
 	baselineProj := eng.Run(in)
 	baseline := projectionToCandidate(baselineProj, currentPrimary, currentSpouse, currentRoth)
-	baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth)
+	baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth, nil)
 
 	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, taxOptimizerTopSSPairs)
 	strategies := enumerateRothStrategies(settings)
@@ -371,11 +423,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 		}
 	}
 	for i := range finalists {
-		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
-			finalists[i].PrimaryClaimAge,
-			finalists[i].SpouseClaimAge,
-			finalists[i].RothStrategy,
-		)
+		mcCloned, ok := cloneFinalistForMonteCarlo(settings, finalists[i])
 		if !ok {
 			continue
 		}

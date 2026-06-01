@@ -10,7 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-31-bracketfill-roth-earnings-correction-design.md`
 
-**Per CLAUDE.md:** assess blast radius with `LSP incomingCalls` before editing each symbol; finish with a green `go build ./... && go vet ./... && go test ./... && staticcheck ./...`.
+### Impact-analysis tooling (resolve before starting)
+
+This repo ships **two** impact-analysis mandates that disagree on tooling:
+- `AGENTS.md` (GitNexus): *MUST* run `gitnexus_impact({target: "symbolName", direction: "upstream"})` before editing a symbol, and `gitnexus_detect_changes()` before committing.
+- `CLAUDE.md` (LSP): assess blast radius with `LSP incomingCalls` (and `findReferences` for vars/consts).
+
+Where this plan says **"assess impact"**, use the GitNexus tool per `AGENTS.md` if its MCP server is connected; otherwise fall back to `LSP incomingCalls` per `CLAUDE.md`. Likewise, run `gitnexus_detect_changes()` before each commit when available, else review `git diff`. (Note: in the session that authored this plan the GitNexus MCP server was **not** connected, so the LSP fallback was used for the analyses already reported below.) Either way, finish with a green `go build ./... && go vet ./... && go test ./... && staticcheck ./...`.
 
 ---
 
@@ -21,9 +27,12 @@
   - `strategyYearlyConversions` — gains a `feedback map[int]float64` parameter (proj-year → Roth earnings), passes `feedback[y]` per year.
   - `rothStrategyToConfig` — gains a `feedback map[int]float64` parameter, passes it through.
   - New unexported helpers: `harvestRothEarnings`, `bracketFillProjYearWindow`, `maxAbsFeedbackDelta`, `relaxFeedback`, plus tuning consts.
+- **Modify** `internal/models/whatif.go`
+  - `TaxOptimizerCandidate` — add an in-memory `BracketFillFeedback map[int]float64 \`json:"-"\`` field carrying the converged feedback to Monte Carlo refinement.
 - **Modify** `internal/services/retirement/analysis/tax_optimizer.go`
   - `cloneSettingsWithSSAndRoth` — gains a `feedback map[int]float64` parameter, passes it to `rothStrategyToConfig`.
-  - `scoreCandidate` — wraps size+run in the iteration loop; uses the converged feedback for both the scored projection and the disclosed `PerYearConversions`.
+  - `scoreCandidate` — wraps size+run in the iteration loop; uses the converged feedback for the scored projection, the disclosed `PerYearConversions`, and the candidate's `BracketFillFeedback`.
+  - Monte Carlo finalist-refinement loop (~374) — passes `finalists[i].BracketFillFeedback` into `cloneSettingsWithSSAndRoth` so finalists are re-ranked on the corrected conversions.
 - **Create** `internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go`
   - Solver unit test, helper unit tests, integration (corner) test, regression (common-case) test.
 
@@ -35,9 +44,9 @@
 - Modify: `internal/services/retirement/analysis/tax_optimizer_strategies.go` (`bracketFillIncomeForYear` ~line 118; call sites at ~274, ~414, ~525)
 - Test: `internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go` (create)
 
-- [ ] **Step 1: Assess blast radius (CLAUDE.md mandate)**
+- [ ] **Step 1: Assess blast radius (see Impact-analysis tooling note)**
 
-Run `LSP incomingCalls` on `bracketFillIncomeForYear` (cursor on the function name at its definition). Confirm the only callers are `estimateOtherTaxableIncome`, `bracketFillProducesNonZero`, and `strategyYearlyConversions` (all in this file). Report them. If any caller lives outside `analysis`, stop and flag it.
+Assess impact on `bracketFillIncomeForYear` (`gitnexus_impact({target: "bracketFillIncomeForYear", direction: "upstream"})`, or `LSP incomingCalls` with the cursor on the function name at its definition). Confirm the only callers are `estimateOtherTaxableIncome`, `bracketFillProducesNonZero`, and `strategyYearlyConversions` (all in this file). Report them. If any caller lives outside `analysis`, stop and flag it.
 
 - [ ] **Step 2: Write the failing solver test**
 
@@ -176,13 +185,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 This task is a pure plumbing change: add a `feedback map[int]float64` parameter that defaults to `nil` everywhere. With `nil` feedback, `feedback[y]` is `0`, so behavior stays identical. Verified by the existing suite.
 
-- [ ] **Step 1: Assess blast radius (CLAUDE.md mandate)**
+- [ ] **Step 1: Assess blast radius (see Impact-analysis tooling note)**
 
-Run `LSP incomingCalls` on `strategyYearlyConversions`, `rothStrategyToConfig`, and `cloneSettingsWithSSAndRoth`. Confirm callers:
+Assess impact on `strategyYearlyConversions`, `rothStrategyToConfig`, and `cloneSettingsWithSSAndRoth` (GitNexus `gitnexus_impact` upstream, or `LSP incomingCalls`). Confirm callers:
 - `strategyYearlyConversions`: `rothStrategyToConfig` (~464), `tax_optimizer.go` (~250 disclosure, ~314 baseline disclosure).
 - `rothStrategyToConfig`: `cloneSettingsWithSSAndRoth` (~88).
-- `cloneSettingsWithSSAndRoth`: `scoreCandidate` (~234).
-Report them. All should be inside `analysis`. Also check `*_test.go` for direct callers (update them in this task if present).
+- `cloneSettingsWithSSAndRoth`: **two** non-test callers — `scoreCandidate` (~234) **and the Monte Carlo finalist-refinement loop (~374)**. The MC caller is easy to miss and is load-bearing: see Step 5 and Task 4 Step 5.
+- Also check `*_test.go` for direct callers (`tax_optimizer_test.go` has several — lines ~139, ~178, ~205, ~240, ~280, ~356, ~410); update them in this task.
+Report them. All non-test callers are inside `analysis`.
 
 - [ ] **Step 2: Add `feedback` to `strategyYearlyConversions`**
 
@@ -259,7 +269,24 @@ to:
   `baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth)`
   →
   `baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth, nil)`
-- Any `*_test.go` callers found in Step 1: add a trailing `nil` argument.
+- **Monte Carlo finalist refinement (~374)** — pass `nil` for now so it compiles; Task 4 Step 5 replaces this with the converged per-finalist feedback:
+  ```go
+  		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
+  			finalists[i].PrimaryClaimAge,
+  			finalists[i].SpouseClaimAge,
+  			finalists[i].RothStrategy,
+  		)
+  ```
+  →
+  ```go
+  		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
+  			finalists[i].PrimaryClaimAge,
+  			finalists[i].SpouseClaimAge,
+  			finalists[i].RothStrategy,
+  			nil, // TODO(Task 4 Step 5): finalists[i].BracketFillFeedback
+  		)
+  ```
+- Each `*_test.go` caller found in Step 1: add a trailing `, nil` argument.
 
 - [ ] **Step 6: Build and run the full analysis suite (unchanged behavior)**
 
@@ -584,17 +611,45 @@ func TestScoreCandidate_NoChangeWhenNoRothEarnings(t *testing.T) {
 				want[i].Age, cand.PerYearConversions[i].Amount, want[i].Amount)
 		}
 	}
+
+	// No correction should have been applied at all (proves the single-engine-run
+	// fast path: empty observed earnings ⇒ residual 0 ⇒ break at iteration 0).
+	if len(cand.BracketFillFeedback) != 0 {
+		t.Fatalf("expected empty converged feedback in the common case, got %v", cand.BracketFillFeedback)
+	}
+	// Scored-projection identity: the iterative score must equal a single
+	// uncorrected (nil-feedback) run.
+	baseCloned, ok := cloneSettingsWithSSAndRoth(ps, 70, 0, strat, nil)
+	if !ok {
+		t.Fatal("baseline clone failed")
+	}
+	baseCand := projectionToCandidate(engine.New().Run(engine.Input{Prepared: baseCloned}), 70, 0, strat)
+	if math.Abs(cand.EndingPortfolioReal-baseCand.EndingPortfolioReal) > 0.01 {
+		t.Fatalf("scored projection should match a single uncorrected run: iterative=%.2f baseline=%.2f",
+			cand.EndingPortfolioReal, baseCand.EndingPortfolioReal)
+	}
 }
 ```
 
 - [ ] **Step 2: Run the new tests to verify they fail**
 
 Run: `go test ./internal/services/retirement/analysis/ -run 'TestScoreCandidate_EliminatesRothEarningsOvershoot|TestScoreCandidate_NoChangeWhenNoRothEarnings' -v`
-Expected: `TestScoreCandidate_EliminatesRothEarningsOvershoot` FAILS at the final assertion ("overshoot not eliminated") because `scoreCandidate` still sizes once with nil feedback. `TestScoreCandidate_NoChangeWhenNoRothEarnings` PASSES already (no earnings ⇒ nothing to correct) — that is expected and confirms the regression guard.
+Expected: **build failure** — `cand.BracketFillFeedback undefined` (the field is added in Step 3). That compile failure is the red state for both tests. (Once Step 3 adds the field and rewrites `scoreCandidate`, the regression test passes immediately because no earnings ⇒ nothing to correct, and the corner test passes once the iteration is in place.)
 
-- [ ] **Step 3: Rewrite `scoreCandidate` to iterate**
+- [ ] **Step 3: Add the `BracketFillFeedback` field, then rewrite `scoreCandidate` to iterate**
 
-Replace the body of `scoreCandidate` (`tax_optimizer.go` ~232-253) with the iteration. Keep the signature unchanged.
+First add an in-memory field to `models.TaxOptimizerCandidate` (`internal/models/whatif.go` ~1365). Place it after `PerYearConversions`, tagged `json:"-"` so it never serializes (same convention as `RothConversionConfig.PerYearOverrides`):
+
+```go
+	// BracketFillFeedback is the converged per-projection-year taxable Roth
+	// earnings (proj-year offset → dollars) that scoreCandidate folded into the
+	// bracket-fill sizing. In-memory only; carried so Monte Carlo finalist
+	// refinement re-clones with the same corrected conversions. Nil for ladder /
+	// no-conversion / no-earnings candidates.
+	BracketFillFeedback map[int]float64 `json:"-"`
+```
+
+Then replace the body of `scoreCandidate` (`tax_optimizer.go` ~232-253) with the iteration. Keep the signature unchanged.
 
 ```go
 func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseClaim int, strat models.RothOptimizerStrategy) models.TaxOptimizerCandidate {
@@ -655,6 +710,9 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 	// SAME converged feedback that produced the scored projection.
 	cand.PerYearConversions = strategyYearlyConversions(
 		candidateSettingsForSS(settings, primaryClaim, spouseClaim), strat, usedFeedback)
+	// Carry the converged feedback so Monte Carlo finalist refinement (~tax_optimizer.go:374)
+	// re-clones with the SAME corrected conversions, not an uncorrected re-size.
+	cand.BracketFillFeedback = usedFeedback
 	return cand
 }
 ```
@@ -664,22 +722,89 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 Run: `go test ./internal/services/retirement/analysis/ -run 'TestScoreCandidate_EliminatesRothEarningsOvershoot|TestScoreCandidate_NoChangeWhenNoRothEarnings' -v`
 Expected: both PASS. If `TestScoreCandidate_EliminatesRothEarningsOvershoot` still reports a residual overshoot, the iteration is not converging — adjust `bracketFillFeedbackRelax` (try 0.7 then 1.0) and/or raise `bracketFillMaxIterations` (try 8); these constants were explicitly left for TDD tuning. Do NOT loosen `bracketFillFeedbackTolerance` to force a pass.
 
-- [ ] **Step 5: Run the whole analysis suite (no regressions)**
+- [ ] **Step 5: Wire the converged feedback into Monte Carlo finalist refinement**
+
+This is the load-bearing fix the deterministic ranking depends on: the MC loop re-sorts finalists by MC median, so it must re-run them with the SAME corrected conversions `scoreCandidate` produced — not an uncorrected re-size.
+
+First, write the failing wiring test. Append to `tax_optimizer_bracketfill_earnings_test.go`:
+
+```go
+// Monte Carlo finalist refinement re-clones each finalist via
+// cloneSettingsWithSSAndRoth(settings, ages, strat, finalists[i].BracketFillFeedback).
+// That clone must carry the SAME corrected conversions scoreCandidate disclosed,
+// or the MC re-sort would rank finalists on uncorrected (overshooting) sizing.
+func TestMCFinalistCloning_UsesCorrectedFeedback(t *testing.T) {
+	s := adversarialOverlapSettings(t)
+	in := engineInput(t, s)
+	settings := in.Prepared.Settings()
+	strat := models.RothOptimizerStrategy{
+		Kind: models.RothStrategyBracketFill, TargetBracket: 0.12, StartAge: 50, EndAge: 59,
+	}
+
+	cand := scoreCandidate(engine.New(), in, 70, 0, strat)
+	if len(cand.BracketFillFeedback) == 0 {
+		t.Fatal("expected nonzero converged feedback in the overshoot corner")
+	}
+
+	// Reproduce the MC clone call exactly (same args as tax_optimizer.go:~374).
+	cloned, ok := cloneSettingsWithSSAndRoth(settings, 70, 0, strat, cand.BracketFillFeedback)
+	if !ok {
+		t.Fatal("MC clone failed")
+	}
+	got := cloned.Settings().RothConversion.PerYearOverrides
+	for _, yc := range cand.PerYearConversions {
+		k := yc.Age - settings.CurrentAge
+		if math.Abs(got[k]-yc.Amount) > 0.01 {
+			t.Fatalf("MC clone override for proj-year %d = %.2f, want corrected %.2f (MC would rank on uncorrected sizing)",
+				k, got[k], yc.Amount)
+		}
+	}
+}
+```
+
+Run: `go test ./internal/services/retirement/analysis/ -run TestMCFinalistCloning_UsesCorrectedFeedback -v`
+Expected: FAIL — the MC clone currently passes `nil` (the Task 2 Step 5 placeholder), so `got` holds *uncorrected* overrides that differ from the corrected `cand.PerYearConversions`.
+
+Then replace the placeholder in the MC loop (`tax_optimizer.go` ~374):
+```go
+		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
+			finalists[i].PrimaryClaimAge,
+			finalists[i].SpouseClaimAge,
+			finalists[i].RothStrategy,
+			nil, // TODO(Task 4 Step 5): finalists[i].BracketFillFeedback
+		)
+```
+→
+```go
+		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
+			finalists[i].PrimaryClaimAge,
+			finalists[i].SpouseClaimAge,
+			finalists[i].RothStrategy,
+			finalists[i].BracketFillFeedback,
+		)
+```
+
+Run: `go test ./internal/services/retirement/analysis/ -run TestMCFinalistCloning_UsesCorrectedFeedback -v`
+Expected: PASS.
+
+- [ ] **Step 6: Run the whole analysis suite (no regressions)**
 
 Run: `go test ./internal/services/retirement/analysis/`
 Expected: ok — existing optimizer tests unaffected (common-case behavior is unchanged).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add internal/services/retirement/analysis/tax_optimizer.go internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go
+git add internal/models/whatif.go internal/services/retirement/analysis/tax_optimizer.go internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go
 git commit -m "fix(analysis): iterate bracket-fill sizing to account for Roth earnings
 
 scoreCandidate now sizes -> runs the engine -> folds observed TaxableRothEarnings
 back into the solver -> re-sizes, to a self-consistent fixed point. Eliminates the
 bracket overshoot when a small Roth is drained past basis under 59.5 during the
 conversion window. Converges in one engine run (identical behavior) when no Roth
-earnings are withdrawn in conversion years.
+earnings are withdrawn in conversion years. The converged feedback is carried on
+the candidate so Monte Carlo finalist refinement re-ranks on the corrected
+conversions rather than uncorrected re-sizing.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
@@ -706,15 +831,17 @@ In `CLAUDE.md`, at the end of the existing Roth bracket-fill bullet (after "Add 
   no such earnings it converges in one engine run (behavior unchanged).
 ```
 
-- [ ] **Step 2: Full verification suite (CLAUDE.md mandate)**
+- [ ] **Step 2: Full verification suite**
 
 Run: `go build ./... && go vet ./... && go test ./... && staticcheck ./...`
 Expected: all green.
 
-- [ ] **Step 3: Confirm the diff scope**
+- [ ] **Step 3: Confirm the change scope (see Impact-analysis tooling note)**
+
+Run `gitnexus_detect_changes()` per `AGENTS.md` if the GitNexus MCP server is connected and confirm it reports only the expected symbols/flows; otherwise review `git diff --stat master`.
 
 Run: `git diff --stat master`
-Expected: only `internal/services/retirement/analysis/tax_optimizer.go`, `internal/services/retirement/analysis/tax_optimizer_strategies.go`, `internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go`, `CLAUDE.md`, and the two `docs/superpowers/` files. No engine files touched.
+Expected: only `internal/models/whatif.go`, `internal/services/retirement/analysis/tax_optimizer.go`, `internal/services/retirement/analysis/tax_optimizer_strategies.go`, `internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go`, `CLAUDE.md`, and the two `docs/superpowers/` files. No engine files touched (the only `internal/models` change is the in-memory `json:"-"` field).
 
 - [ ] **Step 4: Commit**
 
@@ -729,7 +856,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Self-Review notes (for the implementer)
 
-- **Spec coverage:** Task 1 = solver term; Tasks 1–2 = threading; Task 3 = convergence helpers + safety (min-residual fallback, tolerance, max-iter, damping); Task 4 = the loop + disclosure consistency + both the corner and common-case tests; Task 5 = CLAUDE.md + verification. The "no engine changes" and "byte-identical common case" properties are enforced by `TestScoreCandidate_NoChangeWhenNoRothEarnings` and the Step-3 diff check.
-- **Type consistency:** the feedback map is `map[int]float64` everywhere; helper names are exactly `harvestRothEarnings`, `bracketFillProjYearWindow`, `maxAbsFeedbackDelta`, `relaxFeedback`; consts are `bracketFillMaxIterations`, `bracketFillFeedbackTolerance`, `bracketFillFeedbackRelax`.
-- **If `incomingCalls` surfaces an unexpected caller** of any modified function (especially outside `analysis`), stop and report before proceeding — the blast radius assumption would be wrong.
+- **Spec coverage:** Task 1 = solver term; Tasks 1–2 = threading (incl. the Monte Carlo caller at ~374); Task 3 = convergence helpers + safety (min-residual fallback, tolerance, max-iter, damping); Task 4 = the loop + disclosure consistency + Monte Carlo feedback carry + the corner, common-case, and MC-wiring tests; Task 5 = CLAUDE.md + verification.
+- **What the common-case test actually proves:** `TestScoreCandidate_NoChangeWhenNoRothEarnings` asserts (a) identical per-year conversions, (b) empty `BracketFillFeedback`, and (c) the scored `EndingPortfolioReal` equals a single uncorrected (nil-feedback) run. The literal "exactly one engine run" property is not measured by a counter; it follows structurally — empty observed earnings ⇒ `maxAbsFeedbackDelta(nil, {}) == 0 < tolerance` ⇒ break at iteration 0 — and the three assertions are its observable consequences.
+- **Monte Carlo consistency:** without the Task 4 Step 5 wiring, deterministic scoring would use corrected conversions while MC refinement re-sized finalists uncorrected, and the MC re-sort could surface an overshooting plan. `TestMCFinalistCloning_UsesCorrectedFeedback` guards this.
+- **Type consistency:** the feedback map is `map[int]float64` everywhere; the candidate field is `BracketFillFeedback`; helper names are exactly `harvestRothEarnings`, `bracketFillProjYearWindow`, `maxAbsFeedbackDelta`, `relaxFeedback`; consts are `bracketFillMaxIterations`, `bracketFillFeedbackTolerance`, `bracketFillFeedbackRelax`.
+- **If impact analysis surfaces an unexpected caller** of any modified function (especially outside `analysis`), stop and report before proceeding — the blast-radius assumption would be wrong. Note specifically that `cloneSettingsWithSSAndRoth` has the easy-to-miss Monte Carlo caller at ~374.
 ```

@@ -6,7 +6,7 @@
 
 **Architecture:** Thread the engine's per-year `TaxableRothEarnings` back into the existing closed-form bracket-fill solver as a known ordinary-income term, and iterate size→run→re-size to a self-consistent fixed point inside `scoreCandidate`. In the common case (no Roth earnings in conversion years) the loop terminates after one engine run with byte-identical behavior to today.
 
-**Tech Stack:** Pure Go. All changes in `internal/services/retirement/analysis`. No engine changes — `ProjectionYearSummary.TaxableRothEarnings` already exists and the optimizer already holds the `ProjectionResult`. Tests use the `runProj`/`engineInput` helpers (`analysis/helpers_test.go`).
+**Tech Stack:** Pure Go. Changes are confined to `internal/services/retirement/analysis` plus a single in-memory (`json:"-"`) field on `internal/models/whatif.go`'s `TaxOptimizerCandidate`. No engine changes — `ProjectionYearSummary.TaxableRothEarnings` already exists and the optimizer already holds the `ProjectionResult`. Tests use the `runProj`/`engineInput` helpers (`analysis/helpers_test.go`).
 
 **Spec:** `docs/superpowers/specs/2026-05-31-bracketfill-roth-earnings-correction-design.md`
 
@@ -32,7 +32,7 @@ Where this plan says **"assess impact"**, use the GitNexus tool per `AGENTS.md` 
 - **Modify** `internal/services/retirement/analysis/tax_optimizer.go`
   - `cloneSettingsWithSSAndRoth` — gains a `feedback map[int]float64` parameter, passes it to `rothStrategyToConfig`.
   - `scoreCandidate` — wraps size+run in the iteration loop; uses the converged feedback for the scored projection, the disclosed `PerYearConversions`, and the candidate's `BracketFillFeedback`.
-  - Monte Carlo finalist-refinement loop (~374) — passes `finalists[i].BracketFillFeedback` into `cloneSettingsWithSSAndRoth` so finalists are re-ranked on the corrected conversions.
+  - new `cloneFinalistForMonteCarlo(settings, finalist)` helper — wraps `cloneSettingsWithSSAndRoth(..., finalist.BracketFillFeedback)`; the Monte Carlo finalist-refinement loop (~374) calls it so finalists are re-ranked on the corrected conversions. Extracting the helper is what lets the wiring test guard the loop (a direct `cloneSettingsWithSSAndRoth` call in the test would not).
 - **Create** `internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go`
   - Solver unit test, helper unit tests, integration (corner) test, regression (common-case) test.
 
@@ -726,13 +726,41 @@ Expected: both PASS. If `TestScoreCandidate_EliminatesRothEarningsOvershoot` sti
 
 This is the load-bearing fix the deterministic ranking depends on: the MC loop re-sorts finalists by MC median, so it must re-run them with the SAME corrected conversions `scoreCandidate` produced — not an uncorrected re-size.
 
-First, write the failing wiring test. Append to `tax_optimizer_bracketfill_earnings_test.go`:
+> **Why a helper, not an inline clone + a test that re-calls `cloneSettingsWithSSAndRoth` directly:** a test that calls `cloneSettingsWithSSAndRoth(..., cand.BracketFillFeedback)` itself passes as soon as that function *supports* feedback — it would stay green even if the production MC loop still passed `nil`, so it does NOT guard the wiring. Extract the per-finalist clone into a named helper, point the MC loop at it, and test the helper. Then a regression that drops the feedback argument in the loop changes the helper and the test catches it. (Verified during implementation by reverting the helper to `nil` and confirming the test fails.)
+
+First, extract the helper. In `tax_optimizer.go`, add (place it just above `cloneSettingsWithSSAndRoth` or the function containing the MC loop):
+```go
+// cloneFinalistForMonteCarlo prepares a finalist's settings for Monte Carlo
+// refinement, reusing the SAME corrected bracket-fill conversions scoreCandidate
+// produced (via finalist.BracketFillFeedback) so MC ranks finalists on the
+// corrected sizing, not an uncorrected re-size.
+func cloneFinalistForMonteCarlo(settings *models.WhatIfSettings, f models.TaxOptimizerCandidate) (prepare.PreparedSettings, bool) {
+	return cloneSettingsWithSSAndRoth(settings, f.PrimaryClaimAge, f.SpouseClaimAge, f.RothStrategy, f.BracketFillFeedback)
+}
+```
+
+Replace the MC loop's inline clone (the Task 2 Step 5 placeholder) at `tax_optimizer.go` (~374):
+```go
+		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
+			finalists[i].PrimaryClaimAge,
+			finalists[i].SpouseClaimAge,
+			finalists[i].RothStrategy,
+			nil, // TODO(Task 4 Step 5): finalists[i].BracketFillFeedback
+		)
+```
+→
+```go
+		mcCloned, ok := cloneFinalistForMonteCarlo(settings, finalists[i])
+```
+
+Then write the wiring test against the helper. Append to `tax_optimizer_bracketfill_earnings_test.go`:
 
 ```go
-// Monte Carlo finalist refinement re-clones each finalist via
-// cloneSettingsWithSSAndRoth(settings, ages, strat, finalists[i].BracketFillFeedback).
-// That clone must carry the SAME corrected conversions scoreCandidate disclosed,
-// or the MC re-sort would rank finalists on uncorrected (overshooting) sizing.
+// Monte Carlo finalist refinement clones each finalist via
+// cloneFinalistForMonteCarlo, which must reuse finalist.BracketFillFeedback so MC
+// ranks finalists on the SAME corrected conversions scoreCandidate disclosed.
+// Driving that exact helper (not cloneSettingsWithSSAndRoth directly) is what
+// makes this test catch a regression that drops the feedback in the MC loop.
 func TestMCFinalistCloning_UsesCorrectedFeedback(t *testing.T) {
 	s := adversarialOverlapSettings(t)
 	in := engineInput(t, s)
@@ -741,13 +769,15 @@ func TestMCFinalistCloning_UsesCorrectedFeedback(t *testing.T) {
 		Kind: models.RothStrategyBracketFill, TargetBracket: 0.12, StartAge: 50, EndAge: 59,
 	}
 
+	// cand is a finalist: scoreCandidate sets PrimaryClaimAge/SpouseClaimAge/
+	// RothStrategy/BracketFillFeedback, which is exactly what the helper reads.
 	cand := scoreCandidate(engine.New(), in, 70, 0, strat)
 	if len(cand.BracketFillFeedback) == 0 {
 		t.Fatal("expected nonzero converged feedback in the overshoot corner")
 	}
 
-	// Reproduce the MC clone call exactly (same args as tax_optimizer.go:~374).
-	cloned, ok := cloneSettingsWithSSAndRoth(settings, 70, 0, strat, cand.BracketFillFeedback)
+	// Drive the exact helper the Monte Carlo finalist loop uses.
+	cloned, ok := cloneFinalistForMonteCarlo(settings, cand)
 	if !ok {
 		t.Fatal("MC clone failed")
 	}
@@ -762,30 +792,9 @@ func TestMCFinalistCloning_UsesCorrectedFeedback(t *testing.T) {
 }
 ```
 
-Run: `go test ./internal/services/retirement/analysis/ -run TestMCFinalistCloning_UsesCorrectedFeedback -v`
-Expected: FAIL — the MC clone currently passes `nil` (the Task 2 Step 5 placeholder), so `got` holds *uncorrected* overrides that differ from the corrected `cand.PerYearConversions`.
+Run: `go test ./internal/services/retirement/analysis/ -run TestMCFinalistCloning_UsesCorrectedFeedback -v` → expect PASS.
 
-Then replace the placeholder in the MC loop (`tax_optimizer.go` ~374):
-```go
-		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
-			finalists[i].PrimaryClaimAge,
-			finalists[i].SpouseClaimAge,
-			finalists[i].RothStrategy,
-			nil, // TODO(Task 4 Step 5): finalists[i].BracketFillFeedback
-		)
-```
-→
-```go
-		mcCloned, ok := cloneSettingsWithSSAndRoth(settings,
-			finalists[i].PrimaryClaimAge,
-			finalists[i].SpouseClaimAge,
-			finalists[i].RothStrategy,
-			finalists[i].BracketFillFeedback,
-		)
-```
-
-Run: `go test ./internal/services/retirement/analysis/ -run TestMCFinalistCloning_UsesCorrectedFeedback -v`
-Expected: PASS.
+Prove the guard works: temporarily change `cloneFinalistForMonteCarlo` to pass `nil` instead of `f.BracketFillFeedback`; re-run → the test MUST now FAIL (the corrected override no longer matches). Restore `f.BracketFillFeedback` → PASS.
 
 - [ ] **Step 6: Run the whole analysis suite (no regressions)**
 

@@ -4491,6 +4491,34 @@ func TestHandleWhatIfCalculate_WithRenderer(t *testing.T) {
 	}
 }
 
+// TestHandleWhatIfCalculate_CompletenessWrapperNotOOB guards against the
+// completeness banner being deleted on recalc. The wrapper lives inside
+// #whatif-results, which every recalc handler replaces via an innerHTML swap.
+// If the wrapper carried hx-swap-oob="true", HTMX would strip it from the
+// fragment (swapping the in-place copy), then the innerHTML swap of
+// #whatif-results would wipe it and the new content would lack a wrapper
+// entirely — the banner would vanish. It must render as ordinary body content.
+func TestHandleWhatIfCalculate_CompletenessWrapperNotOOB(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/calculate", nil)
+	handleWhatIfCalculate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	body := w.Body.String()
+
+	if !strings.Contains(body, `<div id="whatif-completeness-wrapper">`) {
+		t.Errorf("completeness wrapper missing from results body (must swap in with #whatif-results); got: %s", body[:min(len(body), 500)])
+	}
+	if strings.Contains(body, `id="whatif-completeness-wrapper" hx-swap-oob`) {
+		t.Error(`completeness wrapper is marked hx-swap-oob; it lives inside #whatif-results and would be deleted by the innerHTML swap on recalc`)
+	}
+}
+
 func TestHandleWhatIfSettings_WithRenderer(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()

@@ -554,7 +554,9 @@ func strategyYearlyConversions(s *models.WhatIfSettings, strat models.RothOptimi
 const (
 	bracketFillMaxIterations     = 5    // engine re-runs per bracket-fill candidate
 	bracketFillFeedbackTolerance = 25.0 // dollars; converged when max per-year residual is below this
-	bracketFillFeedbackRelax     = 0.5  // damping factor toward the observed earnings
+	bracketFillFeedbackRelax = 1.0 // feedback update weight toward observed earnings; 1.0 = full replacement (no damping).
+	// Safe: the earnings-vs-conversion coupling has slope in [-1,0] so full replacement cannot diverge,
+	// and scoreCandidate keeps the smallest-residual iterate.
 )
 
 // bracketFillProjYearWindow returns the [start, end) projection-year offsets the

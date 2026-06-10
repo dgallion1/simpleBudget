@@ -138,6 +138,13 @@ type WhatIfSettings struct {
 	// Settings loading migrates legacy saved scenarios to start_of_year.
 	RMDTiming RMDTiming `json:"rmd_timing,omitempty"`
 
+	// SpouseSoleBeneficiary controls Joint Life Table II eligibility: when the
+	// spouse is the sole IRA beneficiary AND more than 10 years younger, RMDs
+	// use the IRS Joint and Last Survivor Table (larger divisors → smaller
+	// RMDs). Pointer so a legacy settings file with the key absent defaults ON
+	// via IsSpouseSoleBeneficiary — see that accessor.
+	SpouseSoleBeneficiary *bool `json:"spouse_sole_beneficiary,omitempty"`
+
 	// Income and Expense Sources
 	IncomeSources  []IncomeSource  `json:"income_sources"`
 	ExpenseSources []ExpenseSource `json:"expense_sources"`
@@ -291,6 +298,17 @@ func (s *WhatIfSettings) HasSpouse() bool {
 		return true
 	}
 	return s.SpouseAge > 0
+}
+
+// IsSpouseSoleBeneficiary reports whether the spouse is the sole IRA
+// beneficiary for RMD purposes. Defaults to true when unset so legacy settings
+// files (key absent) opt into the more accurate Joint Life Table II treatment;
+// an explicit false opts out.
+func (s *WhatIfSettings) IsSpouseSoleBeneficiary() bool {
+	if s.SpouseSoleBeneficiary == nil {
+		return true
+	}
+	return *s.SpouseSoleBeneficiary
 }
 
 func (s *WhatIfSettings) GetPrimaryPerson() *Person {

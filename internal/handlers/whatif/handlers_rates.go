@@ -44,6 +44,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		renderError(w, msg, http.StatusBadRequest)
 		return
 	}
+	applySpouseSoleBeneficiary(r, updates)
 	if msg := validateSettingsCrossFieldInvariants(r, updates); msg != "" {
 		renderError(w, msg, http.StatusBadRequest)
 		return
@@ -110,6 +111,7 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
 // handleWhatIfSpendingPhases handles updates to spending phase configuration
 func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -214,6 +216,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
 // handleWhatIfAddPhase adds a new spending phase
 func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
@@ -273,6 +276,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
 // handleWhatIfDeletePhase removes a spending phase by index
 func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 	indexStr := chi.URLParam(r, "index")
@@ -338,6 +342,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
 // handleWhatIfResetPhases resets phases to defaults
 func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
@@ -376,6 +381,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(partialData)
 	}
 }
+
 // handleWhatIfRothConversion handles Roth conversion configuration updates
 func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {

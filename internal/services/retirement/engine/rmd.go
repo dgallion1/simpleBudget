@@ -225,3 +225,89 @@ func CalculateRMD(taxDeferredBalance float64, age int) (amount float64, percent 
 	percent = (1.0 / factor) * 100
 	return amount, percent
 }
+
+// latestPersonBirthYear returns the latest (youngest) parseable BirthMonth
+// year across primary and spouse — the mirror of earliestPersonBirthYear. The
+// younger person is the sole-beneficiary spouse for Joint Life Table II.
+func latestPersonBirthYear(s *models.WhatIfSettings) (int, bool) {
+	candidates := []*models.Person{s.GetPrimaryPerson(), s.GetSpousePerson()}
+	latest := 0
+	found := false
+	for _, p := range candidates {
+		if p == nil || p.BirthMonth == "" {
+			continue
+		}
+		t, err := time.Parse("2006-01", p.BirthMonth)
+		if err != nil {
+			continue
+		}
+		y := t.Year()
+		if !found || y > latest {
+			latest = y
+			found = true
+		}
+	}
+	return latest, found
+}
+
+// youngerBirthYear returns the younger household member's birth year, mirroring
+// olderBirthYear. Prefers the latest parseable Person.BirthMonth; falls back to
+// ParseStartYear(StartDate) - GetYoungerAge() for legacy callers that build
+// settings without populating Persons. The younger member is the Joint Life
+// Table II beneficiary spouse.
+func youngerBirthYear(s *models.WhatIfSettings) int {
+	if s == nil {
+		return time.Now().Year() - 73
+	}
+	if y, ok := latestPersonBirthYear(s); ok {
+		return y
+	}
+	return ParseStartYear(s.StartDate) - s.GetYoungerAge()
+}
+
+// UsesJointLifeTable reports whether RMDs for this household use the IRS Joint
+// and Last Survivor Table (Table II) rather than the Uniform Lifetime Table.
+// It applies when the user keeps the spouse-sole-beneficiary setting on
+// (default), the household has a spouse, and the younger member is more than 10
+// years younger than the older (owner) member — a birth-year gap of at least 11
+// per 26 CFR 1.401(a)(9)-9(d). The result is year-independent (the gap and the
+// setting do not vary by year), so the RMD display can surface it directly.
+func UsesJointLifeTable(s *models.WhatIfSettings) bool {
+	if s == nil || !s.IsSpouseSoleBeneficiary() || !s.HasSpouse() {
+		return false
+	}
+	return youngerBirthYear(s)-olderBirthYear(s) >= 11
+}
+
+// RMDLifeFactor returns the RMD life-expectancy divisor for the household's
+// tax-deferred pool in the given calendar year. It uses the Joint and Last
+// Survivor Table (Table II) when UsesJointLifeTable reports the spouse is the
+// sole beneficiary and >10 years younger, and otherwise the Uniform Lifetime
+// Table — in which case the result is bit-for-bit GetLifeExpectancyFactor for
+// the owner's attained age, preserving current behavior. Ages below 72 return
+// 0 (no RMD) under either table, exactly as today.
+func RMDLifeFactor(s *models.WhatIfSettings, calendarYear int) float64 {
+	ownerAge := RMDAgeForCalendarYear(s, calendarYear)
+	if ownerAge < 72 {
+		return 0 // No RMD required (matches GetLifeExpectancyFactor).
+	}
+	if !UsesJointLifeTable(s) {
+		return GetLifeExpectancyFactor(ownerAge)
+	}
+	spouseAge := calendarYear - youngerBirthYear(s)
+	return jointLifeFactor(ownerAge, spouseAge)
+}
+
+// CalculateRMDForYear computes the RMD amount and percentage for the given
+// tax-deferred balance and calendar year, selecting the Joint and Last
+// Survivor Table or the Uniform Lifetime Table via RMDLifeFactor. It is the
+// settings-aware analogue of CalculateRMD.
+func CalculateRMDForYear(s *models.WhatIfSettings, taxDeferredBalance float64, calendarYear int) (amount float64, percent float64) {
+	factor := RMDLifeFactor(s, calendarYear)
+	if factor == 0 {
+		return 0, 0
+	}
+	amount = taxDeferredBalance / factor
+	percent = (1.0 / factor) * 100
+	return amount, percent
+}

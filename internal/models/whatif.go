@@ -987,6 +987,12 @@ type RMDAnalysis struct {
 	DepletionYear     *int `json:"depletion_year,omitempty"` // year index of portfolio depletion; nil if survives
 	DepletionAge      *int `json:"depletion_age,omitempty"`  // older-person age at depletion year
 	DepletedBeforeRMD bool `json:"depleted_before_rmd"`      // true when depletion precedes the first RMD year
+
+	// UsesJointLifeTable is true when these projections use the IRS Joint and
+	// Last Survivor Table (Table II) — the spouse is the sole beneficiary and
+	// more than 10 years younger — rather than the Uniform Lifetime Table. Drives
+	// the RMD schedule caption.
+	UsesJointLifeTable bool `json:"uses_joint_life_table"`
 }
 
 // PresentValueAnalysis shows PV of expenses vs income

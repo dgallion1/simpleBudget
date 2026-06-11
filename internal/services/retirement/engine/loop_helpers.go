@@ -180,7 +180,7 @@ func AnnualRMDForYear(s *models.WhatIfSettings, currentYear int, taxDeferredBala
 	if !RMDApplies(s, calendarYear) || taxDeferredBalance <= 0 {
 		return 0
 	}
-	annualRMD, _ := CalculateRMD(taxDeferredBalance, RMDAgeForCalendarYear(s, calendarYear))
+	annualRMD, _ := CalculateRMDForYear(s, taxDeferredBalance, calendarYear)
 	return annualRMD
 }
 

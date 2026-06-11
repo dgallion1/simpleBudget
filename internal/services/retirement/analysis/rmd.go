@@ -30,11 +30,12 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 	}
 
 	result := &models.RMDAnalysis{
-		StartsInYears:    startsInYears,
-		StartAge:         effectiveStartAge,
-		CurrentAge:       olderAge,
-		TaxDeferredValue: taxDeferredValue,
-		Projections:      []models.RMDProjection{},
+		StartsInYears:      startsInYears,
+		StartAge:           effectiveStartAge,
+		CurrentAge:         olderAge,
+		TaxDeferredValue:   taxDeferredValue,
+		Projections:        []models.RMDProjection{},
+		UsesJointLifeTable: engine.UsesJointLifeTable(s),
 	}
 
 	if taxDeferredValue == 0 {
@@ -100,7 +101,7 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 			rmdAmount += proj.Months[m].RMDWithdrawal
 		}
 
-		factor := engine.GetLifeExpectancyFactor(age)
+		factor := engine.RMDLifeFactor(s, calendarYear)
 		rmdPercent := 0.0
 		if factor > 0 {
 			rmdPercent = 100.0 / factor

@@ -754,3 +754,70 @@ func TestFormSpec_RothFirstFundedYear_AbsentFromOtherFormPreservesPersisted(t *t
 		t.Fatalf("RothFirstFundedYear clobbered by unrelated partial post: got %d, want 2026", s.RothFirstFundedYear)
 	}
 }
+
+// F-036: applySpouseSoleBeneficiary tests (hidden-false + checkbox-true pattern).
+func TestApplySpouseSoleBeneficiary(t *testing.T) {
+	tests := []struct {
+		name      string
+		formVals  []string // nil means key absent
+		wantInMap bool
+		wantValue bool
+	}{
+		{
+			name:      "hidden-false only (unchecked)",
+			formVals:  []string{"false"},
+			wantInMap: true,
+			wantValue: false,
+		},
+		{
+			name:      "hidden-false + checkbox-true (checked)",
+			formVals:  []string{"false", "true"},
+			wantInMap: true,
+			wantValue: true,
+		},
+		{
+			name:      "checkbox-true only",
+			formVals:  []string{"true"},
+			wantInMap: true,
+			wantValue: true,
+		},
+		{
+			name:      "checkbox-on only",
+			formVals:  []string{"on"},
+			wantInMap: true,
+			wantValue: true,
+		},
+		{
+			name:      "key absent: partial-post preservation",
+			formVals:  nil,
+			wantInMap: false,
+			wantValue: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			updates := map[string]interface{}{}
+			var r *http.Request
+			if tc.formVals == nil {
+				r = formReq(url.Values{})
+			} else {
+				r = formReq(url.Values{"spouse_sole_beneficiary": tc.formVals})
+			}
+			applySpouseSoleBeneficiary(r, updates)
+			got, present := updates["spouse_sole_beneficiary"]
+			if present != tc.wantInMap {
+				t.Fatalf("key present=%v, want %v", present, tc.wantInMap)
+			}
+			if tc.wantInMap {
+				bv, ok := got.(bool)
+				if !ok {
+					t.Fatalf("type = %T, want bool", got)
+				}
+				if bv != tc.wantValue {
+					t.Errorf("value = %v, want %v", bv, tc.wantValue)
+				}
+			}
+		})
+	}
+}

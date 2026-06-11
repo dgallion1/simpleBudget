@@ -189,7 +189,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	currentCalendarYear := engine.ParseStartYear(s.StartDate)
 	if engine.RMDApplies(s, currentCalendarYear) && s.TaxDeferredPercent > 0 {
 		taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-		annualRMD, _ := engine.CalculateRMD(taxDeferredBalance, engine.RMDAgeForCalendarYear(s, currentCalendarYear))
+		annualRMD, _ := engine.CalculateRMDForYear(s, taxDeferredBalance, currentCalendarYear)
 		monthlyRMD = annualRMD / 12
 	}
 
@@ -350,7 +350,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		// F-078: gate on calendar year + use age-at-year-end for the divisor.
 		steadyStateCalendarYear := engine.ParseStartYear(s.StartDate) + (steadyStateMonth / 12)
 		if engine.RMDApplies(s, steadyStateCalendarYear) && s.TaxDeferredPercent > 0 {
-			annualRMD, _ := engine.CalculateRMD(estimatedTaxDeferred, engine.RMDAgeForCalendarYear(s, steadyStateCalendarYear))
+			annualRMD, _ := engine.CalculateRMDForYear(s, estimatedTaxDeferred, steadyStateCalendarYear)
 			result.SteadyStateRMD = annualRMD / 12
 		}
 
@@ -365,7 +365,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 			lookbackRMD := 0.0
 			// F-078: calendar-year gate + age-at-year-end divisor.
 			if engine.RMDApplies(s, lookbackCalendarYear) && s.TaxDeferredPercent > 0 {
-				annualRMD, _ := engine.CalculateRMD(lookbackTaxDeferred, engine.RMDAgeForCalendarYear(s, lookbackCalendarYear))
+				annualRMD, _ := engine.CalculateRMDForYear(s, lookbackTaxDeferred, lookbackCalendarYear)
 				lookbackRMD = annualRMD / 12
 			}
 

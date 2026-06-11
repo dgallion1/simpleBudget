@@ -35,6 +35,11 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 		CurrentAge:       olderAge,
 		TaxDeferredValue: taxDeferredValue,
 		Projections:      []models.RMDProjection{},
+		// Eligibility, not necessarily exercised: this reports that the
+		// household qualifies for Table II, which matches every emitted row's
+		// factor. The caption is gated on Projections being non-empty, so it
+		// never claims "Joint table in use" for a scenario with no RMD rows.
+		UsesJointLifeTable: engine.UsesJointLifeTable(s),
 	}
 
 	if taxDeferredValue == 0 {
@@ -100,7 +105,7 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 			rmdAmount += proj.Months[m].RMDWithdrawal
 		}
 
-		factor := engine.GetLifeExpectancyFactor(age)
+		factor := engine.RMDLifeFactor(s, calendarYear)
 		rmdPercent := 0.0
 		if factor > 0 {
 			rmdPercent = 100.0 / factor

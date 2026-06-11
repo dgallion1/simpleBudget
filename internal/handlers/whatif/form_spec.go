@@ -121,7 +121,7 @@ var settingsFormSpec = []fieldSpec{
 		BoundsMsg: "Tax-deferred delay must be between 0 and 30 years"},
 	{Name: "roth_first_funded_year", Kind: fieldInt, ParseLabel: "Roth first funded year",
 		HasBounds: true, Min: 1998, Max: 9999,
-		BoundsMsg: "Year must be 1998 or later",
+		BoundsMsg:      "Year must be 1998 or later",
 		AllowBlankZero: true},
 	{Name: "steady_state_override_year", Kind: fieldFloat, ParseLabel: "steady state year"},
 	{Name: "state_income_tax_rate", Kind: fieldOptionalFloat, ParseLabel: "state income tax rate",
@@ -278,6 +278,24 @@ func applyRMDTiming(r *http.Request, updates map[string]interface{}) string {
 	}
 	updates["rmd_timing"] = timing
 	return ""
+}
+
+// applySpouseSoleBeneficiary parses the spouse_sole_beneficiary checkbox, which
+// uses the hidden-false + checkbox-true pattern: a hidden input value="false"
+// posts before the checkbox value="true". When checked the field carries
+// ["false","true"]; when unchecked just ["false"]; when the form section is
+// absent the key is missing. We read the LAST value so a checked box ("true")
+// overrides the hidden "false". An absent key leaves the persisted value alone
+// (partial posts from other form sections must not clear it).
+func applySpouseSoleBeneficiary(r *http.Request, updates map[string]interface{}) {
+	// Ensure the form is parsed before inspecting r.Form.
+	r.FormValue("spouse_sole_beneficiary")
+	vals, present := r.Form["spouse_sole_beneficiary"]
+	if !present || len(vals) == 0 {
+		return
+	}
+	last := vals[len(vals)-1]
+	updates["spouse_sole_beneficiary"] = last == "true" || last == "on"
 }
 
 // validateSettingsCrossFieldInvariants enforces the two cross-field rules

@@ -1003,6 +1003,9 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	if v, ok := updates["rmd_timing"].(models.RMDTiming); ok {
 		settings.RMDTiming = v
 	}
+	if v, ok := updates["spouse_sole_beneficiary"].(bool); ok {
+		settings.SpouseSoleBeneficiary = &v
+	}
 	if v, ok := updates["tax_deferred_delay_years"].(int); ok {
 		settings.TaxDeferredDelayYears = v
 	}

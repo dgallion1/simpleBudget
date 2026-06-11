@@ -30,11 +30,15 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 	}
 
 	result := &models.RMDAnalysis{
-		StartsInYears:      startsInYears,
-		StartAge:           effectiveStartAge,
-		CurrentAge:         olderAge,
-		TaxDeferredValue:   taxDeferredValue,
-		Projections:        []models.RMDProjection{},
+		StartsInYears:    startsInYears,
+		StartAge:         effectiveStartAge,
+		CurrentAge:       olderAge,
+		TaxDeferredValue: taxDeferredValue,
+		Projections:      []models.RMDProjection{},
+		// Eligibility, not necessarily exercised: this reports that the
+		// household qualifies for Table II, which matches every emitted row's
+		// factor. The caption is gated on Projections being non-empty, so it
+		// never claims "Joint table in use" for a scenario with no RMD rows.
 		UsesJointLifeTable: engine.UsesJointLifeTable(s),
 	}
 

@@ -71,7 +71,11 @@
     </p>
     {{end}}
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-        RMD % is the IRS Uniform Lifetime factor; RMD amount is the projected withdrawal from your scenario.
+        {{if .Analysis.RMD.UsesJointLifeTable}}
+        Life Exp. Factor is the IRS Joint Life and Last Survivor Table II divisor (spouse sole beneficiary, &gt;10 yrs younger); RMD amount is the projected withdrawal from your scenario.
+        {{else}}
+        Life Exp. Factor is the IRS Uniform Lifetime Table divisor; RMD amount is the projected withdrawal from your scenario.
+        {{end}}
     </p>
     {{else}}
     <p class="text-sm text-gray-500 dark:text-gray-300">

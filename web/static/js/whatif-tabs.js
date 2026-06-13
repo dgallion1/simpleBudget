@@ -1,0 +1,105 @@
+// What-If page: tab switching, per-scenario persistence, settings-card
+// collapse, and Plotly resize when a hidden tab becomes visible.
+(function () {
+  'use strict';
+
+  function scenarioKey() {
+    var c = document.getElementById('whatif-tabs');
+    var sc = c ? (c.getAttribute('data-scenario') || 'default') : 'default';
+    return 'whatifActiveTab:' + sc;
+  }
+
+  function resizeChartsIn(panel) {
+    if (!panel || !window.Plotly) return;
+    panel.querySelectorAll('[id^="chart-"]').forEach(function (el) {
+      try { window.Plotly.Plots.resize(el); } catch (e) { /* not yet rendered */ }
+    });
+  }
+
+  function activateTab(name, persist) {
+    var container = document.getElementById('whatif-tabs');
+    if (!container) return;
+    var panels = container.querySelectorAll('[data-wf-panel]');
+    var tabs = container.querySelectorAll('[data-wf-tab]');
+    var matched = false;
+
+    panels.forEach(function (p) {
+      var on = p.getAttribute('data-wf-panel') === name;
+      p.classList.toggle('hidden', !on);
+      if (on) { matched = true; resizeChartsIn(p); }
+    });
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-wf-tab') === name;
+      t.classList.toggle('wf-tab-active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
+    if (!matched) { return activateTab('overview', persist); }
+    if (persist && window.localStorage) {
+      try { window.localStorage.setItem(scenarioKey(), name); } catch (e) {}
+    }
+  }
+
+  function restoreTab() {
+    var name = 'overview';
+    if (window.localStorage) {
+      try { name = window.localStorage.getItem(scenarioKey()) || 'overview'; } catch (e) {}
+    }
+    activateTab(name, false);
+  }
+
+  // Settings-card collapse with persistence.
+  function applyCollapse(card) {
+    var id = card.getAttribute('data-wf-collapse');
+    var body = card.querySelector('[data-wf-collapse-body]');
+    if (!body) return;
+    var collapsed = false;
+    if (window.localStorage) {
+      try { collapsed = window.localStorage.getItem('whatifCollapse:' + id) === '1'; } catch (e) {}
+    }
+    body.classList.toggle('hidden', collapsed);
+    var chevron = card.querySelector('[data-wf-chevron]');
+    if (chevron) chevron.classList.toggle('rotate-180', !collapsed);
+  }
+
+  function toggleCollapse(card) {
+    var id = card.getAttribute('data-wf-collapse');
+    var body = card.querySelector('[data-wf-collapse-body]');
+    if (!body) return;
+    var nowCollapsed = !body.classList.contains('hidden');
+    body.classList.toggle('hidden', nowCollapsed);
+    var chevron = card.querySelector('[data-wf-chevron]');
+    if (chevron) chevron.classList.toggle('rotate-180', !nowCollapsed);
+    if (window.localStorage) {
+      try { window.localStorage.setItem('whatifCollapse:' + id, nowCollapsed ? '1' : '0'); } catch (e) {}
+    }
+  }
+
+  function wire() {
+    var container = document.getElementById('whatif-tabs');
+    if (container && !container.__wfWired) {
+      container.__wfWired = true;
+      container.addEventListener('click', function (e) {
+        var tab = e.target.closest('[data-wf-tab]');
+        if (tab) { e.preventDefault(); activateTab(tab.getAttribute('data-wf-tab'), true); }
+      });
+    }
+    document.querySelectorAll('[data-wf-collapse]').forEach(function (card) {
+      applyCollapse(card);
+      var header = card.querySelector('[data-wf-collapse-toggle]');
+      if (header && !header.__wfWired) {
+        header.__wfWired = true;
+        header.addEventListener('click', function () { toggleCollapse(card); });
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () { wire(); restoreTab(); });
+
+  // After the results partial re-renders, re-wire tabs and re-apply active tab
+  // (charts.js handles chart (re)creation on the same afterSettle event).
+  document.body.addEventListener('htmx:afterSettle', function (evt) {
+    var t = evt.detail && evt.detail.target;
+    if (t && t.id === 'whatif-results') { wire(); restoreTab(); }
+  });
+})();

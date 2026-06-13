@@ -92,7 +92,12 @@ func TestWhatIfOverviewKPIs_Render(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderToString: %v", err)
 	}
-	for _, want := range []string{"Monthly Gap", "Success", "End Balance", `class="num`} {
+	// Gap tile label is "Monthly Gap" today, or "Gap @ Yr N" when a steady-state
+	// year is in view (default settings have one) — accept either.
+	if !strings.Contains(out, "Monthly Gap") && !strings.Contains(out, "Gap @ Yr") {
+		t.Errorf("expected a gap tile (\"Monthly Gap\" or \"Gap @ Yr N\"); got: %s", truncate(out, 800))
+	}
+	for _, want := range []string{"Success", "End Balance", `class="num`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in KPI tiles; got: %s", want, truncate(out, 800))
 		}

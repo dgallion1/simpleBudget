@@ -28,11 +28,17 @@ type VerdictView struct {
 	Headline       string  // e.g. "Funded through 2064" / "Funds run out in 2032"
 	Detail         string  // e.g. "spending covered for all 38 years"
 	YearsCovered   int     // full horizon if survives, else years to depletion
-	MonthlyGap     float64 // BudgetFit.MonthlyGap (>0 = shortfall)
+	MonthlyGap     float64 // gap shown in the bar (>0 = shortfall)
 	GapIsShortfall bool
 	RequiredRate   float64
 	SuccessRate    float64 // 0-100
 	HasMonteCarlo  bool
+
+	// GapAtSteadyState reports whether MonthlyGap/RequiredRate reflect the
+	// steady-state year currently in view (driven by the budget slider)
+	// rather than today's values. GapYear is that year when true.
+	GapAtSteadyState bool
+	GapYear          int
 }
 
 // BuildVerdict derives the verdict bar model from analysis already computed by
@@ -49,9 +55,20 @@ func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictVie
 	}
 
 	if a.BudgetFit != nil {
-		v.MonthlyGap = a.BudgetFit.MonthlyGap
-		v.GapIsShortfall = a.BudgetFit.MonthlyGap > 0
-		v.RequiredRate = a.BudgetFit.RequiredRate
+		// Default to today's gap/rate. When a steady-state year is in view
+		// (the budget slider sets BudgetFit.SteadyStateYear), report that
+		// year's figures instead so the verdict bar tracks the slider.
+		gap := a.BudgetFit.MonthlyGap
+		rate := a.BudgetFit.RequiredRate
+		if a.BudgetFit.HasSteadyState {
+			gap = a.BudgetFit.SteadyStateGap
+			rate = a.BudgetFit.SteadyStateRate
+			v.GapAtSteadyState = true
+			v.GapYear = int(a.BudgetFit.SteadyStateYear)
+		}
+		v.MonthlyGap = gap
+		v.GapIsShortfall = gap > 0
+		v.RequiredRate = rate
 	}
 	if a.MonteCarlo != nil && a.MonteCarlo.Stats != nil {
 		v.HasMonteCarlo = true

@@ -97,4 +97,52 @@ func TestBuildVerdict(t *testing.T) {
 			t.Errorf("Health = %q, want amber for nil inputs (must not silently render red)", v.Health)
 		}
 	})
+
+	t.Run("steady-state in view reports the selected-year gap and rate", func(t *testing.T) {
+		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
+		a := &models.WhatIfAnalysis{
+			Projection: &models.ProjectionResult{Survives: true},
+			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 90}},
+			BudgetFit: &models.BudgetFitAnalysis{
+				MonthlyGap: -200, RequiredRate: 0, // today: surplus
+				HasSteadyState:  true,
+				SteadyStateYear: 12,
+				SteadyStateGap:  3400, // shortfall at year 12
+				SteadyStateRate: 4.2,
+			},
+		}
+		v := BuildVerdict(a, s)
+		if !v.GapAtSteadyState {
+			t.Errorf("GapAtSteadyState = false, want true")
+		}
+		if v.GapYear != 12 {
+			t.Errorf("GapYear = %d, want 12", v.GapYear)
+		}
+		if v.MonthlyGap != 3400 {
+			t.Errorf("MonthlyGap = %v, want 3400 (steady-state gap, not today's -200)", v.MonthlyGap)
+		}
+		if !v.GapIsShortfall {
+			t.Errorf("GapIsShortfall = false, want true (steady-state gap 3400 > 0)")
+		}
+		if v.RequiredRate != 4.2 {
+			t.Errorf("RequiredRate = %v, want 4.2 (steady-state rate)", v.RequiredRate)
+		}
+	})
+
+	t.Run("no steady-state falls back to today's gap and rate", func(t *testing.T) {
+		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
+		a := &models.WhatIfAnalysis{
+			Projection: &models.ProjectionResult{Survives: true},
+			BudgetFit: &models.BudgetFitAnalysis{
+				MonthlyGap: 1500, RequiredRate: 2.5, HasSteadyState: false,
+			},
+		}
+		v := BuildVerdict(a, s)
+		if v.GapAtSteadyState {
+			t.Errorf("GapAtSteadyState = true, want false")
+		}
+		if v.MonthlyGap != 1500 || v.RequiredRate != 2.5 {
+			t.Errorf("gap/rate = (%v,%v), want (1500,2.5) — today's values", v.MonthlyGap, v.RequiredRate)
+		}
+	})
 }

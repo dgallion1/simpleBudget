@@ -608,6 +608,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"ActiveTab":      "whatif",
 		"Settings":       settings,
 		"Analysis":       analysis,
+		"Verdict":        BuildVerdict(analysis, settings),
 		"Scenarios":      scenarios,
 		"ActiveScenario": activeScenario,
 		"ActiveFilename": activeFilename,
@@ -639,6 +640,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Verdict":  BuildVerdict(analysis, settings),
 		"Findings": completeness.Check(settings),
 	}
 
@@ -887,6 +889,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Verdict":  BuildVerdict(analysis, settings),
 		"Findings": completeness.Check(settings),
 	}
 

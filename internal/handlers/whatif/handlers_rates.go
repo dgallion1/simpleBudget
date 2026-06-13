@@ -70,11 +70,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 
 	findings := completeness.Check(settings)
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": findings,
-	}
+	partialData := buildResultsPartialData(settings, analysis, findings)
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -98,11 +94,7 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	}
 	analysis := retirement.RunFull(getEngine(), in)
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -203,11 +195,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -263,11 +251,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -329,11 +313,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -368,11 +348,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -444,12 +420,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := &models.WhatIfPageData{
-		Title:    "What-If Analysis",
-		Settings: settings,
-		Analysis: analysis,
-		Findings: completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -538,12 +509,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := &models.WhatIfPageData{
-		Title:    "What-If Analysis",
-		Settings: settings,
-		Analysis: analysis,
-		Findings: completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -598,12 +564,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := &models.WhatIfPageData{
-		Title:    "What-If Analysis",
-		Settings: settings,
-		Analysis: analysis,
-		Findings: completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -674,12 +635,7 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := &models.WhatIfPageData{
-		Title:    "What-If Analysis",
-		Settings: settings,
-		Analysis: analysis,
-		Findings: completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)

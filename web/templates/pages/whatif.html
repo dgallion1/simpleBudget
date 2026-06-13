@@ -220,18 +220,53 @@
     {{template "whatif-removed-bigticket" .}}
 </template>
 
-{{/* Main Results Content */}}
-{{template "whatif-budget-analysis" .}}
-{{template "whatif-present-value" .}}
-{{template "whatif-projection-chart" .}}
-{{template "whatif-income-chart" .}}
-{{template "whatif-projection-breakdown" .}}
-{{template "whatif-sensitivity" .}}
-{{template "whatif-failure-points" .}}
-{{template "whatif-monte-carlo" .}}
-{{template "whatif-historical-backtest" .}}
-{{template "whatif-rmd" .}}
-{{template "whatif-social-security-results" .}}
-{{template "whatif-tax-optimizer-results" .}}
-{{template "whatif-guardrail-events" .}}
+{{/* Sticky verdict bar — always visible above the tabs */}}
+{{template "whatif-verdict-bar" .}}
+
+{{/* Tabbed results workspace */}}
+<div id="whatif-tabs" data-scenario="{{.ActiveFilename}}">
+    <div role="tablist" class="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700 mb-4">
+        <button type="button" role="tab" data-wf-tab="overview" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Overview</button>
+        <button type="button" role="tab" data-wf-tab="cashflow" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Cash Flow</button>
+        <button type="button" role="tab" data-wf-tab="risk" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Risk</button>
+        <button type="button" role="tab" data-wf-tab="taxes" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Taxes &amp; RMD</button>
+        <button type="button" role="tab" data-wf-tab="strategies" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Strategies</button>
+    </div>
+
+    {{/* Overview */}}
+    <div data-wf-panel="overview" class="space-y-4">
+        {{template "whatif-overview-kpis" .}}
+        {{template "whatif-projection-chart" .}}
+        {{template "whatif-failure-points" .}}
+    </div>
+
+    {{/* Cash Flow */}}
+    <div data-wf-panel="cashflow" class="space-y-4 hidden">
+        {{template "whatif-budget-analysis" .}}
+        {{template "whatif-present-value" .}}
+        {{template "whatif-income-chart" .}}
+        {{template "whatif-projection-breakdown" .}}
+    </div>
+
+    {{/* Risk */}}
+    <div data-wf-panel="risk" class="space-y-4 hidden">
+        {{template "whatif-sensitivity" .}}
+        {{template "whatif-monte-carlo" .}}
+        {{template "whatif-historical-backtest" .}}
+        {{template "whatif-guardrail-events" .}}
+    </div>
+
+    {{/* Taxes & RMD */}}
+    <div data-wf-panel="taxes" class="space-y-4 hidden">
+        {{template "whatif-rmd" .}}
+    </div>
+
+    {{/* Strategies */}}
+    <div data-wf-panel="strategies" class="space-y-4 hidden">
+        {{template "whatif-social-security-results" .}}
+        {{template "whatif-tax-optimizer-results" .}}
+    </div>
+</div>
 {{end}}
+
+{{define "whatif-overview-kpis"}}{{end}}

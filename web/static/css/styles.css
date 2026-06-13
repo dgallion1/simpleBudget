@@ -116,3 +116,10 @@ input:focus, select:focus {
 .major-expenses-pin-check-cell {
     text-align: center;
 }
+
+/* Tabular monospace numerals for aligned financial figures */
+.num {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}

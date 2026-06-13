@@ -67,25 +67,57 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Left Column: Settings -->
     <div class="space-y-4">
-        <div id="whatif-portfolio-settings-card">
-            {{template "whatif-portfolio-settings" .}}
+
+        {{/* Group: Money In / Out */}}
+        <div data-wf-collapse="money" class="bg-white dark:bg-gray-800 rounded-lg shadow">
+            <button type="button" data-wf-collapse-toggle
+                class="w-full flex items-center justify-between px-4 py-3 text-left">
+                <span class="text-xs font-semibold tracking-widest uppercase text-gray-500 dark:text-gray-400">Money In / Out</span>
+                <svg data-wf-chevron class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            <div data-wf-collapse-body class="px-1 pb-2 space-y-4">
+                <div id="whatif-portfolio-settings-card">{{template "whatif-portfolio-settings" .}}</div>
+                {{template "whatif-income-card" .}}
+                {{template "whatif-healthcare-card" .}}
+                {{template "whatif-bigticket-card" .}}
+                {{template "whatif-expense-card" .}}
+            </div>
         </div>
-        {{template "whatif-income-card" .}}
-        {{template "whatif-healthcare-card" .}}
-        <div id="whatif-rate-assumptions-card">
-            {{template "whatif-rate-assumptions" .}}
+
+        {{/* Group: Assumptions */}}
+        <div data-wf-collapse="assumptions" class="bg-white dark:bg-gray-800 rounded-lg shadow">
+            <button type="button" data-wf-collapse-toggle
+                class="w-full flex items-center justify-between px-4 py-3 text-left">
+                <span class="text-xs font-semibold tracking-widest uppercase text-gray-500 dark:text-gray-400">Assumptions</span>
+                <svg data-wf-chevron class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            <div data-wf-collapse-body class="px-1 pb-2 space-y-4">
+                <div id="whatif-rate-assumptions-card">{{template "whatif-rate-assumptions" .}}</div>
+                <div id="whatif-spending-phases-card">{{template "whatif-spending-phases" .}}</div>
+            </div>
         </div>
-        <div id="whatif-spending-phases-card">
-            {{template "whatif-spending-phases" .}}
+
+        {{/* Group: Strategies */}}
+        <div data-wf-collapse="strategies" class="bg-white dark:bg-gray-800 rounded-lg shadow">
+            <button type="button" data-wf-collapse-toggle
+                class="w-full flex items-center justify-between px-4 py-3 text-left">
+                <span class="text-xs font-semibold tracking-widest uppercase text-gray-500 dark:text-gray-400">Strategies</span>
+                <svg data-wf-chevron class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            <div data-wf-collapse-body class="px-1 pb-2 space-y-4">
+                {{template "whatif-guardrails" .}}
+                {{template "whatif-roth-conversion" .}}
+                {{template "whatif-scenario-chain" .}}
+                <div id="whatif-social-security-card">{{template "whatif-social-security-config" .}}</div>
+            </div>
         </div>
-        {{template "whatif-guardrails" .}}
-        {{template "whatif-roth-conversion" .}}
-        {{template "whatif-bigticket-card" .}}
-        {{template "whatif-expense-card" .}}
-        {{template "whatif-scenario-chain" .}}
-        <div id="whatif-social-security-card">
-            {{template "whatif-social-security-config" .}}
-        </div>
+
     </div>
 
     <!-- Right Column: Results -->

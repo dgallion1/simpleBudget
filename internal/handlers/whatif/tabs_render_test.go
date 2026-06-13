@@ -46,3 +46,32 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 		t.Errorf("expected Monte Carlo section to render inside Risk panel")
 	}
 }
+
+func TestWhatIfSettings_Groups(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		t.Fatalf("runAnalysisWithCache: %v", err)
+	}
+	out, err := renderer.RenderToString("whatif-content", map[string]any{
+		"Settings": settings, "Analysis": analysis,
+		"Verdict": BuildVerdict(analysis, settings),
+		"Scenarios": nil, "ActiveFilename": "whatif.json", "Findings": nil,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	for _, label := range []string{"Money In / Out", "Assumptions", "Strategies"} {
+		if !strings.Contains(out, label) {
+			t.Errorf("expected settings group label %q", label)
+		}
+	}
+	for _, attr := range []string{`data-wf-collapse="money"`, `data-wf-collapse="assumptions"`, `data-wf-collapse="strategies"`} {
+		if !strings.Contains(out, attr) {
+			t.Errorf("expected collapsible group %q", attr)
+		}
+	}
+}

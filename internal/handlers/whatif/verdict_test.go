@@ -91,4 +91,10 @@ func TestBuildVerdict(t *testing.T) {
 			t.Errorf("Health = %q, want green (survives, no MC)", v.Health)
 		}
 	})
+
+	t.Run("nil inputs return a defined (non-red) health", func(t *testing.T) {
+		if v := BuildVerdict(nil, nil); v.Health != VerdictAmber {
+			t.Errorf("Health = %q, want amber for nil inputs (must not silently render red)", v.Health)
+		}
+	})
 }

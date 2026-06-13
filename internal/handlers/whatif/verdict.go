@@ -38,7 +38,7 @@ type VerdictView struct {
 // BuildVerdict derives the verdict bar model from analysis already computed by
 // the engine. It performs no projection math of its own.
 func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictView {
-	v := VerdictView{}
+	v := VerdictView{Health: VerdictAmber}
 	if a == nil || s == nil {
 		return v
 	}

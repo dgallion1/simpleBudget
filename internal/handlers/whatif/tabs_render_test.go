@@ -75,3 +75,26 @@ func TestWhatIfSettings_Groups(t *testing.T) {
 		}
 	}
 }
+
+func TestWhatIfOverviewKPIs_Render(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	analysis, err := runAnalysisWithCache(settings)
+	if err != nil {
+		t.Fatalf("runAnalysisWithCache: %v", err)
+	}
+	out, err := renderer.RenderToString("whatif-overview-kpis", map[string]any{
+		"Settings": settings, "Analysis": analysis,
+		"Verdict": BuildVerdict(analysis, settings),
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	for _, want := range []string{"Monthly Gap", "Success", "End Balance", `class="num`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in KPI tiles; got: %s", want, truncate(out, 800))
+		}
+	}
+}

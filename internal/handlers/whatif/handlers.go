@@ -159,6 +159,19 @@ func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalys
 	return analysis, nil
 }
 
+// buildResultsPartialData constructs the standard partial data map for
+// whatif-results rendering. Always includes Verdict so that templates that
+// render the verdict bar (added in the tab-workspace redesign) do not error
+// on a missing field.
+func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, findings interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"Settings": settings,
+		"Analysis": analysis,
+		"Verdict":  BuildVerdict(analysis, settings),
+		"Findings": findings,
+	}
+}
+
 func normalizeDisplayDollars(raw string) string {
 	if raw == "real" {
 		return "real"
@@ -608,6 +621,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"ActiveTab":      "whatif",
 		"Settings":       settings,
 		"Analysis":       analysis,
+		"Verdict":        BuildVerdict(analysis, settings),
 		"Scenarios":      scenarios,
 		"ActiveScenario": activeScenario,
 		"ActiveFilename": activeFilename,
@@ -639,6 +653,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Verdict":  BuildVerdict(analysis, settings),
 		"Findings": completeness.Check(settings),
 	}
 
@@ -887,6 +902,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"Settings": settings,
 		"Analysis": analysis,
+		"Verdict":  BuildVerdict(analysis, settings),
 		"Findings": completeness.Check(settings),
 	}
 

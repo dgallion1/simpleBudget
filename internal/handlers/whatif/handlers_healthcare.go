@@ -136,11 +136,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -304,11 +300,7 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -332,11 +324,7 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)

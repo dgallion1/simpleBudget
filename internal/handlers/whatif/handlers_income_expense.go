@@ -94,11 +94,7 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -162,11 +158,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -190,11 +182,7 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -218,11 +206,7 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -309,11 +293,7 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -373,11 +353,7 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -401,11 +377,7 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -429,11 +401,7 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -508,11 +476,7 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -536,11 +500,7 @@ func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -564,11 +524,7 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -593,11 +549,7 @@ func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -622,11 +574,7 @@ func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)
@@ -651,11 +599,7 @@ func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Findings": completeness.Check(settings),
-	}
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "whatif-results", partialData)

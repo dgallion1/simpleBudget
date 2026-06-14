@@ -153,6 +153,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"Title":            "Dashboard",
 		"ActiveTab":        "dashboard",
 		"Metrics":          metrics,
+		"BudgetVerdict":    BuildBudgetVerdict(metrics),
 		"PeriodComparison": periodComparison,
 		"StartDate":        startDate.Format("2006-01-02"),
 		"EndDate":          endDate.Format("2006-01-02"),
@@ -204,6 +205,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 
 	partialData := map[string]interface{}{
 		"Metrics":          metrics,
+		"BudgetVerdict":    BuildBudgetVerdict(metrics),
 		"PeriodComparison": periodComparison,
 	}
 

@@ -1,0 +1,52 @@
+{{/* Dashboard Verdict Band — budget health for the selected period */}}
+{{/* Expects: .BudgetVerdict (dashboard.BudgetVerdictView) */}}
+{{define "dashboard-verdict-bar"}}
+{{- $v := .BudgetVerdict -}}
+<div id="dashboard-verdict-bar"
+    class="verdict-{{$v.Health}} rounded-xl border px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2
+    {{if eq $v.Health "green"}}bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700
+    {{else if eq $v.Health "amber"}}bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700
+    {{else if eq $v.Health "red"}}bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700
+    {{else}}bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700{{end}}">
+
+    <div class="flex-1 min-w-[14rem]">
+        <div class="text-[10px] font-semibold tracking-widest uppercase
+            {{if eq $v.Health "green"}}text-emerald-700 dark:text-emerald-300
+            {{else if eq $v.Health "amber"}}text-amber-700 dark:text-amber-300
+            {{else if eq $v.Health "red"}}text-rose-700 dark:text-rose-300
+            {{else}}text-gray-500 dark:text-gray-400{{end}}">Budget Status</div>
+        <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
+            {{if not $v.HasTarget}}
+            No budget set
+            <a href="/whatif" class="text-sm font-normal text-indigo-600 dark:text-indigo-400 hover:underline">— set one in What-If →</a>
+            {{else if $v.IsOver}}
+            <span class="num">{{formatMoney (abs $v.Delta)}}</span> over budget
+            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
+            {{else if $v.IsUnder}}
+            <span class="num">{{formatMoney (abs $v.Delta)}}</span> under budget
+            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
+            {{else}}
+            On budget
+            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
+            {{end}}
+        </div>
+    </div>
+
+    <div class="flex items-center gap-6 ml-auto">
+        {{if $v.HasTarget}}
+        <div class="text-center">
+            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Spent</div>
+            <div class="num text-base font-bold {{if $v.IsOver}}text-rose-600 dark:text-rose-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.SpentTotal}}</div>
+        </div>
+        <div class="text-center">
+            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Target</div>
+            <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.TargetTotal}}</div>
+        </div>
+        {{end}}
+        <div class="text-center">
+            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Net Savings</div>
+            <div class="num text-base font-bold {{if ge $v.NetSavings 0.0}}text-emerald-600 dark:text-emerald-400{{else}}text-rose-600 dark:text-rose-400{{end}}">{{formatMoney $v.NetSavings}}</div>
+        </div>
+    </div>
+</div>
+{{end}}

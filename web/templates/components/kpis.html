@@ -11,21 +11,21 @@
                 <p class="num text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{formatMoney .Metrics.TotalIncome}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="num text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="num text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-emerald-500{{else}}text-rose-500{{end}}">
                     {{formatPercent .PeriodComparison.IncomeChange}}%
                 </p>
                 {{end}}
                 {{end}}
             </div>
-            <div class="p-3 bg-green-100 dark:bg-green-900/50 rounded-full">
-                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 bg-emerald-100 dark:bg-emerald-900/50 rounded-full">
+                <svg class="w-6 h-6 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
                     </path>
                 </svg>
             </div>
         </div>
-        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#22c55e"></div>
+        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#10b981"></div>
     </div>
 
     <!-- Total Expenses -->
@@ -33,24 +33,24 @@
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Total Expenses</p>
-                <p class="num text-2xl font-bold text-red-600 dark:text-red-400">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
+                <p class="num text-2xl font-bold text-rose-600 dark:text-rose-400">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="num text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-green-500{{else}}text-red-500{{end}}">
+                <p class="num text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-emerald-500{{else}}text-rose-500{{end}}">
                     {{formatPercent .PeriodComparison.ExpensesChange}}%
                 </p>
                 {{end}}
                 {{end}}
             </div>
-            <div class="p-3 bg-red-100 dark:bg-red-900/50 rounded-full">
-                <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 bg-rose-100 dark:bg-rose-900/50 rounded-full">
+                <svg class="w-6 h-6 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z">
                     </path>
                 </svg>
             </div>
         </div>
-        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#ef4444"></div>
+        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#f43f5e"></div>
     </div>
 
     <!-- Monthly Living Expenses -->
@@ -60,7 +60,7 @@
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Monthly Living Expenses</p>
                 <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.ActualMonthly}}</p>
                 {{if .Metrics.HasBudgetTarget}}
-                <p class="text-sm {{if gt .Metrics.PerMonthDelta 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                <p class="text-sm {{if gt .Metrics.PerMonthDelta 0.0}}text-rose-600 dark:text-rose-400{{else}}text-emerald-600 dark:text-emerald-400{{end}}">
                     Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span> · <span class="num">{{formatMoney (abs .Metrics.PerMonthDelta)}}</span>/mo {{if gt .Metrics.PerMonthDelta 0.0}}over{{else}}under{{end}}
                 </p>
                 {{else}}
@@ -94,7 +94,7 @@
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Monthly Healthcare</p>
                 <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.HealthcareActual}}</p>
                 {{if .Metrics.HasHealthcareTarget}}
-                <p class="text-sm {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                <p class="text-sm {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}text-rose-600 dark:text-rose-400{{else}}text-emerald-600 dark:text-emerald-400{{end}}">
                     Target <span class="num">{{formatMoney .Metrics.HealthcareTarget}}</span> · <span class="num">{{formatMoney (abs .Metrics.HealthcarePerMonthDelta)}}</span>/mo {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}over{{else}}under{{end}}
                 </p>
                 {{else}}
@@ -127,9 +127,9 @@
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Budget</p>
                 {{if .Metrics.HasCombinedTarget}}
                 {{if gt .Metrics.CombinedCumulativeDelta 1.0}}
-                <p class="text-2xl font-bold text-red-600 dark:text-red-400"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> over</p>
+                <p class="text-2xl font-bold text-rose-600 dark:text-rose-400"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> over</p>
                 {{else if lt .Metrics.CombinedCumulativeDelta -1.0}}
-                <p class="text-2xl font-bold text-green-600 dark:text-green-400"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> under</p>
+                <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> under</p>
                 {{else}}
                 <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
                 {{end}}
@@ -139,13 +139,13 @@
                 <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-0.5 leading-snug">
                     <div class="flex justify-between gap-2">
                         <span>Living: <span class="num">{{formatMoney .Metrics.LivingExpensesTotal}}</span> of <span class="num">{{formatMoney .Metrics.LivingTargetTotal}}</span></span>
-                        <span class="{{if gt .Metrics.CumulativeDelta 0.0}}text-red-500 dark:text-red-400{{else}}text-green-500 dark:text-green-400{{end}}">
+                        <span class="{{if gt .Metrics.CumulativeDelta 0.0}}text-rose-500 dark:text-rose-400{{else}}text-emerald-500 dark:text-emerald-400{{end}}">
                             <span class="num">{{formatMoney (abs .Metrics.CumulativeDelta)}}</span> {{if gt .Metrics.CumulativeDelta 0.0}}over{{else}}under{{end}}
                         </span>
                     </div>
                     <div class="flex justify-between gap-2">
                         <span>Health: <span class="num">{{formatMoney .Metrics.HealthcareTotal}}</span> of <span class="num">{{formatMoney .Metrics.HealthcareTargetTotal}}</span></span>
-                        <span class="{{if gt .Metrics.HealthcareCumulativeDelta 0.0}}text-red-500 dark:text-red-400{{else}}text-green-500 dark:text-green-400{{end}}">
+                        <span class="{{if gt .Metrics.HealthcareCumulativeDelta 0.0}}text-rose-500 dark:text-rose-400{{else}}text-emerald-500 dark:text-emerald-400{{end}}">
                             <span class="num">{{formatMoney (abs .Metrics.HealthcareCumulativeDelta)}}</span> {{if gt .Metrics.HealthcareCumulativeDelta 0.0}}over{{else}}under{{end}}
                         </span>
                     </div>
@@ -168,8 +168,8 @@
                      data-mode="balance"></div>
                 {{end}}
             </div>
-            <div class="p-3 {{if $budgetOver}}bg-red-100 dark:bg-red-900/50{{else if $budgetHealthy}}bg-green-100 dark:bg-green-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">
-                <svg class="w-6 h-6 {{if $budgetOver}}text-red-600 dark:text-red-400{{else if $budgetHealthy}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 {{if $budgetOver}}bg-rose-100 dark:bg-rose-900/50{{else if $budgetHealthy}}bg-emerald-100 dark:bg-emerald-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">
+                <svg class="w-6 h-6 {{if $budgetOver}}text-rose-600 dark:text-rose-400{{else if $budgetHealthy}}text-emerald-600 dark:text-emerald-400{{else}}text-gray-500 dark:text-gray-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                 </svg>

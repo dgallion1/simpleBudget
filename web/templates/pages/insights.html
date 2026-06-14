@@ -124,15 +124,15 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Spending</p>
-                    <p class="num text-2xl font-bold {{if lt .BurnRateChange 0.0}}text-green-600 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-600 dark:text-red-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
+                    <p class="num text-2xl font-bold {{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                         {{formatMoney .DailyAverage}}
                     </p>
-                    <p class="num text-xs {{if lt .BurnRateChange 0.0}}text-green-500 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-500 dark:text-red-400{{else}}text-gray-400 dark:text-gray-500{{end}}">
+                    <p class="num text-xs {{if lt .BurnRateChange 0.0}}text-emerald-500 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-500 dark:text-rose-400{{else}}text-gray-400 dark:text-gray-500{{end}}">
                         {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}% vs avg
                     </p>
                 </div>
-                <div class="p-3 {{if lt .BurnRateChange 0.0}}bg-green-100 dark:bg-green-900/50{{else if gt .BurnRateChange 10.0}}bg-red-100 dark:bg-red-900/50{{else}}bg-amber-100 dark:bg-amber-900/50{{end}} rounded-full">
-                    <svg class="w-6 h-6 {{if lt .BurnRateChange 0.0}}text-green-600 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-600 dark:text-red-400{{else}}text-amber-600 dark:text-amber-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="p-3 {{if lt .BurnRateChange 0.0}}bg-emerald-100 dark:bg-emerald-900/50{{else if gt .BurnRateChange 10.0}}bg-rose-100 dark:bg-rose-900/50{{else}}bg-amber-100 dark:bg-amber-900/50{{end}} rounded-full">
+                    <svg class="w-6 h-6 {{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                     </svg>
                 </div>
@@ -220,7 +220,7 @@
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
                                     {{if eq .Frequency "monthly"}}bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300
                                     {{else if eq .Frequency "yearly"}}bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300
-                                    {{else if eq .Frequency "weekly"}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300
+                                    {{else if eq .Frequency "weekly"}}bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300
                                     {{else}}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{{end}}">
                                     {{.Frequency}}
                                 </span>
@@ -297,7 +297,7 @@
                             <td class="p-3 text-center">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                                     {{if eq .Frequency "monthly"}}bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300
-                                    {{else if eq .Frequency "weekly"}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300
+                                    {{else if eq .Frequency "weekly"}}bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300
                                     {{else if eq .Frequency "yearly"}}bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300
                                     {{else if eq .Frequency "biweekly"}}bg-cyan-100 dark:bg-cyan-900/50 text-cyan-800 dark:text-cyan-300
                                     {{else if eq .Frequency "ongoing"}}bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300
@@ -327,7 +327,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
             <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 mr-2 text-emerald-500 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
                     Income Sources
@@ -347,11 +347,11 @@
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {{range .Insights.IncomePatterns}}
-                        <tr class="group hover:bg-green-50 dark:hover:bg-green-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?search={{urlquery .Description}}&type=Income'">
+                        <tr class="group hover:bg-emerald-50 dark:hover:bg-emerald-900/20 cursor-pointer transition-colors" onclick="window.location.href='/explorer?search={{urlquery .Description}}&type=Income'">
                             <td class="p-3">
                                 <div class="flex items-center gap-1">
                                     <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{.Description}}</span>
-                                    <svg class="w-3 h-3 text-green-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg class="w-3 h-3 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                     </svg>
                                 </div>
@@ -360,11 +360,11 @@
                             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .AvgAmount}}</td>
                             <td class="p-3 text-center">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                    {{if .IsRegular}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300{{else}}bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300{{end}}">
+                                    {{if .IsRegular}}bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300{{else}}bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300{{end}}">
                                     {{.Frequency}}
                                 </span>
                             </td>
-                            <td class="p-3 text-sm text-right font-medium text-green-600 dark:text-green-400">{{formatMoney .TotalAmount}}</td>
+                            <td class="p-3 text-sm text-right font-medium text-emerald-600 dark:text-emerald-400">{{formatMoney .TotalAmount}}</td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -440,8 +440,8 @@
                             <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
                             <td class="p-3 text-sm text-right">
                                 <span class="inline-flex items-center
-                                    {{if eq .Direction "up"}}text-red-600 dark:text-red-400
-                                    {{else if eq .Direction "down"}}text-green-600 dark:text-green-400
+                                    {{if eq .Direction "up"}}text-rose-600 dark:text-rose-400
+                                    {{else if eq .Direction "down"}}text-emerald-600 dark:text-emerald-400
                                     {{else}}text-gray-500 dark:text-gray-400{{end}}">
                                     {{if eq .Direction "up"}}
                                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -476,7 +476,7 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div class="text-center">
                 <p class="text-sm text-gray-500 dark:text-gray-400">Current Daily Avg</p>
-                <p class="text-3xl font-bold {{if lt .BurnRateChange 0.0}}text-green-600 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-600 dark:text-red-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
+                <p class="text-3xl font-bold {{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                     {{formatMoney .DailyAverage}}
                 </p>
             </div>
@@ -498,7 +498,7 @@
         <div class="mt-6">
             <div class="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-1">
                 <span>Burn Rate vs Historical</span>
-                <span class="{{if lt .BurnRateChange 0.0}}text-green-600 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-600 dark:text-red-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
+                <span class="{{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                     {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}%
                 </span>
             </div>
@@ -511,11 +511,11 @@
                     {{$width = 50.0}}
                 {{end}}
                 <div class="h-4 rounded-full transition-all duration-500
-                    {{if lt $pct -10.0}}bg-green-500
-                    {{else if lt $pct 0.0}}bg-green-400
+                    {{if lt $pct -10.0}}bg-emerald-500
+                    {{else if lt $pct 0.0}}bg-emerald-400
                     {{else if lt $pct 10.0}}bg-amber-400
                     {{else if lt $pct 20.0}}bg-orange-500
-                    {{else}}bg-red-500{{end}}"
+                    {{else}}bg-rose-500{{end}}"
                     style="width: {{if lt $pct -50.0}}0{{else if gt $pct 50.0}}100{{else}}{{printf "%.0f" (add 50 $pct)}}{{end}}%">
                 </div>
             </div>
@@ -802,7 +802,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                 <td class="p-3 text-center">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                         {{if eq .Frequency "monthly"}}bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300
-                        {{else if eq .Frequency "weekly"}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300
+                        {{else if eq .Frequency "weekly"}}bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300
                         {{else if eq .Frequency "yearly"}}bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300
                         {{else if eq .Frequency "biweekly"}}bg-cyan-100 dark:bg-cyan-900/50 text-cyan-800 dark:text-cyan-300
                         {{else if eq .Frequency "ongoing"}}bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300
@@ -848,7 +848,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
             <td class="p-3 text-sm text-gray-800 dark:text-gray-200">{{.Category}}</td>
             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .CurrentAmount}}</td>
             <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
-            <td class="p-3 text-sm text-right {{if eq .Direction "up"}}text-red-600 dark:text-red-400{{else if eq .Direction "down"}}text-green-600 dark:text-green-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+            <td class="p-3 text-sm text-right {{if eq .Direction "up"}}text-rose-600 dark:text-rose-400{{else if eq .Direction "down"}}text-emerald-600 dark:text-emerald-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
                 {{if gt .ChangePercent 0.0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
             </td>
         </tr>
@@ -900,11 +900,11 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                 <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .AvgAmount}}</td>
                 <td class="p-3 text-center">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                        {{if .IsRegular}}bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300{{else}}bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300{{end}}">
+                        {{if .IsRegular}}bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300{{else}}bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300{{end}}">
                         {{.Frequency}}
                     </span>
                 </td>
-                <td class="p-3 text-sm text-right font-medium text-green-600 dark:text-green-400">{{formatMoney .TotalAmount}}</td>
+                <td class="p-3 text-sm text-right font-medium text-emerald-600 dark:text-emerald-400">{{formatMoney .TotalAmount}}</td>
             </tr>
             {{end}}
         </tbody>

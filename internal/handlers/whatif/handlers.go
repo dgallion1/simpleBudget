@@ -164,11 +164,16 @@ func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalys
 // render the verdict bar (added in the tab-workspace redesign) do not error
 // on a missing field.
 func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, findings interface{}) map[string]interface{} {
+	activeFilename := "whatif.json"
+	if retirementMgr != nil {
+		activeFilename = retirementMgr.ActiveFilename()
+	}
 	return map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Verdict":  BuildVerdict(analysis, settings),
-		"Findings": findings,
+		"Settings":       settings,
+		"Analysis":       analysis,
+		"Verdict":        BuildVerdict(analysis, settings),
+		"ActiveFilename": activeFilename,
+		"Findings":       findings,
 	}
 }
 

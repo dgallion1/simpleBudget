@@ -16,12 +16,8 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runAnalysisWithCache: %v", err)
 	}
-	out, err := renderer.RenderToString("whatif-results", map[string]any{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Verdict":  BuildVerdict(analysis, settings),
-		"Findings": nil,
-	})
+	partialData := buildResultsPartialData(settings, analysis, nil)
+	out, err := renderer.RenderToString("whatif-results", partialData)
 	if err != nil {
 		t.Fatalf("RenderToString: %v", err)
 	}
@@ -31,6 +27,12 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 	}
 	if !strings.Contains(out, `id="whatif-tabs"`) {
 		t.Errorf("expected tab container")
+	}
+	if !strings.Contains(out, `data-scenario="whatif.json"`) {
+		t.Errorf("expected partial render to preserve active scenario in data-scenario; got: %s", truncate(out, 800))
+	}
+	if strings.Contains(out, `data-scenario="<no value>"`) {
+		t.Errorf("partial render emitted missing ActiveFilename sentinel in data-scenario")
 	}
 	for _, tab := range []string{`data-wf-tab="overview"`, `data-wf-tab="cashflow"`, `data-wf-tab="risk"`, `data-wf-tab="taxes"`, `data-wf-tab="strategies"`} {
 		if !strings.Contains(out, tab) {

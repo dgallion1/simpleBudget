@@ -92,4 +92,40 @@ func TestBuildBudgetVerdict(t *testing.T) {
 			t.Errorf("Health = %q, want red", v.Health)
 		}
 	})
+
+	t.Run("over budget with zero target total is red, not amber", func(t *testing.T) {
+		// HasCombinedTarget can be true while the living+healthcare target
+		// total is zero (combined delta spans other categories). A real
+		// overage must not silently downgrade to amber via the missing ratio.
+		m := &models.DashboardMetrics{
+			HasCombinedTarget:       true,
+			CombinedCumulativeDelta: 5000,
+			LivingTargetTotal:       0,
+			HealthcareTargetTotal:   0,
+		}
+		if v := BuildBudgetVerdict(m); v.Health != BudgetRed {
+			t.Errorf("Health = %q, want red (over budget, zero target denominator)", v.Health)
+		}
+	})
+
+	t.Run("exactly at the amber/red ratio boundary is amber", func(t *testing.T) {
+		// Delta/TargetTotal == overAmberPct (10%) → not > → amber (pins > vs >=).
+		m := &models.DashboardMetrics{
+			HasCombinedTarget:       true,
+			CombinedCumulativeDelta: 1000, // exactly 10% of 10000
+			LivingTargetTotal:       10000,
+		}
+		if v := BuildBudgetVerdict(m); v.Health != BudgetAmber {
+			t.Errorf("Health = %q, want amber at exactly 10%%", v.Health)
+		}
+	})
+
+	t.Run("within the on-budget dead-band is green and neither over nor under", func(t *testing.T) {
+		// Delta == onBudgetEps (1.0): not > eps, not < -eps → on budget.
+		m := &models.DashboardMetrics{HasCombinedTarget: true, CombinedCumulativeDelta: 1.0, LivingTargetTotal: 10000}
+		v := BuildBudgetVerdict(m)
+		if v.Health != BudgetGreen || v.IsOver || v.IsUnder {
+			t.Errorf("at eps: health=%q over=%v under=%v, want green/false/false", v.Health, v.IsOver, v.IsUnder)
+		}
+	})
 }

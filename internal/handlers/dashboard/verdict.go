@@ -63,7 +63,10 @@ func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView {
 	switch {
 	case v.Delta > onBudgetEps:
 		v.IsOver = true
-		if v.TargetTotal > 0 && v.Delta/v.TargetTotal > overAmberPct {
+		// Over budget by more than overAmberPct of the target is red. When the
+		// target total is zero/unknown we can't form a ratio, so any real
+		// overage is treated as red rather than silently downgraded to amber.
+		if v.TargetTotal <= 0 || v.Delta/v.TargetTotal > overAmberPct {
 			v.Health = BudgetRed
 		} else {
 			v.Health = BudgetAmber

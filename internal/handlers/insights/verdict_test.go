@@ -61,4 +61,11 @@ func TestBuildPaceVerdict(t *testing.T) {
 			t.Errorf("IsAbove = false, want true")
 		}
 	})
+
+	t.Run("exactly at the red threshold is amber", func(t *testing.T) {
+		// BurnRateChange == paceRedThreshold(10): not > → amber (pins > vs >=).
+		if v := BuildPaceVerdict(&models.SpendingVelocity{BurnRateChange: 10}); v.Health != PaceAmber {
+			t.Errorf("Health = %q, want amber at exactly +10%%", v.Health)
+		}
+	})
 }

@@ -98,6 +98,35 @@ func TestBuildVerdict(t *testing.T) {
 		}
 	})
 
+	t.Run("depletion exactly at the early-depletion boundary is amber", func(t *testing.T) {
+		// 120 months / 12 = 10 years; 10 < earlyDepletionYears(10) is false → amber.
+		// Pins the < vs <= boundary so a future slip can't flip it silently.
+		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
+		a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{Survives: false, DepletionMonth: intPtr(120)}}
+		if v := BuildVerdict(a, s); v.Health != VerdictAmber {
+			t.Errorf("Health = %q, want amber at exactly 10 years", v.Health)
+		}
+		// One month earlier (119 → 9 years) crosses into red.
+		a.Projection.DepletionMonth = intPtr(119)
+		if v := BuildVerdict(a, s); v.Health != VerdictRed {
+			t.Errorf("Health = %q, want red just under 10 years", v.Health)
+		}
+	})
+
+	t.Run("not-survives with nil depletion month falls back to the full horizon", func(t *testing.T) {
+		// Defensive: a non-surviving plan that recorded no depletion month must
+		// not panic; it falls back to ProjectionYears (amber, not red).
+		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
+		a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{Survives: false, DepletionMonth: nil}}
+		v := BuildVerdict(a, s)
+		if v.YearsCovered != 38 {
+			t.Errorf("YearsCovered = %d, want 38 (fallback to horizon)", v.YearsCovered)
+		}
+		if v.Health != VerdictAmber {
+			t.Errorf("Health = %q, want amber (38 >= early-depletion cutoff)", v.Health)
+		}
+	})
+
 	t.Run("steady-state in view reports the selected-year gap and rate", func(t *testing.T) {
 		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
 		a := &models.WhatIfAnalysis{

@@ -78,15 +78,18 @@
         </form>
     </div>
 
+    <!-- Spending Pace Verdict Band -->
+    {{template "insights-verdict-bar" .}}
+
     <!-- KPI Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <!-- Monthly Recurring -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <div class="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Recurring</p>
-                    <p class="text-2xl font-bold text-purple-600 dark:text-purple-400">{{formatMoney .Insights.MonthlyRecurring}}</p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">{{formatMoney .Insights.TotalRecurring}}/year</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">Monthly Recurring</p>
+                    <p class="num text-2xl font-bold text-purple-600 dark:text-purple-400">{{formatMoney .Insights.MonthlyRecurring}}</p>
+                    <p class="num text-xs text-gray-400 dark:text-gray-500">{{formatMoney .Insights.TotalRecurring}}/year</p>
                 </div>
                 <div class="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-full">
                     <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -97,11 +100,11 @@
         </div>
 
         <!-- Subscriptions -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <div class="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Subscriptions</p>
-                    <p class="text-2xl font-bold text-rose-600 dark:text-rose-400">{{formatMoney .Insights.MonthlySubscriptions}}</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Subscriptions</p>
+                    <p class="num text-2xl font-bold text-rose-600 dark:text-rose-400">{{formatMoney .Insights.MonthlySubscriptions}}</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500">{{len .Insights.Subscriptions}} active</p>
                 </div>
                 <div class="p-3 bg-rose-100 dark:bg-rose-900/50 rounded-full">
@@ -113,15 +116,18 @@
         </div>
 
         <!-- Daily Burn Rate -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        {{with .Insights.Velocity}}
+        <div class="rounded-xl border p-4
+            {{if lt .BurnRateChange 0.0}}border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20
+            {{else if gt .BurnRateChange 10.0}}border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20
+            {{else}}border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20{{end}}">
             <div class="flex items-center justify-between">
-                {{with .Insights.Velocity}}
                 <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Daily Spending</p>
-                    <p class="text-2xl font-bold {{if lt .BurnRateChange 0.0}}text-green-600 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-600 dark:text-red-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Spending</p>
+                    <p class="num text-2xl font-bold {{if lt .BurnRateChange 0.0}}text-green-600 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-600 dark:text-red-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                         {{formatMoney .DailyAverage}}
                     </p>
-                    <p class="text-xs {{if lt .BurnRateChange 0.0}}text-green-500 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-500 dark:text-red-400{{else}}text-gray-400 dark:text-gray-500{{end}}">
+                    <p class="num text-xs {{if lt .BurnRateChange 0.0}}text-green-500 dark:text-green-400{{else if gt .BurnRateChange 10.0}}text-red-500 dark:text-red-400{{else}}text-gray-400 dark:text-gray-500{{end}}">
                         {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}% vs avg
                     </p>
                 </div>
@@ -130,10 +136,14 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                     </svg>
                 </div>
-                {{else}}
+            </div>
+        </div>
+        {{else}}
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
+            <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Daily Spending</p>
-                    <p class="text-2xl font-bold text-gray-400 dark:text-gray-500">$0.00</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Spending</p>
+                    <p class="num text-2xl font-bold text-gray-400 dark:text-gray-500">$0.00</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500">No data</p>
                 </div>
                 <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
@@ -141,28 +151,32 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                     </svg>
                 </div>
-                {{end}}
             </div>
         </div>
+        {{end}}
 
         <!-- Month Projection -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        {{with .Insights.Velocity}}
+        <div class="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-4">
             <div class="flex items-center justify-between">
-                {{with .Insights.Velocity}}
                 <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Month Projection</p>
-                    <p class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .MonthProjection}}</p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">{{.DaysRemaining}} days remaining</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Month Projection</p>
+                    <p class="num text-2xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .MonthProjection}}</p>
+                    <p class="num text-xs text-gray-400 dark:text-gray-500">{{.DaysRemaining}} days remaining</p>
                 </div>
                 <div class="p-3 bg-indigo-100 dark:bg-indigo-900/50 rounded-full">
                     <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                 </div>
-                {{else}}
+            </div>
+        </div>
+        {{else}}
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
+            <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Month Projection</p>
-                    <p class="text-2xl font-bold text-gray-400 dark:text-gray-500">$0.00</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Month Projection</p>
+                    <p class="num text-2xl font-bold text-gray-400 dark:text-gray-500">$0.00</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500">No data</p>
                 </div>
                 <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
@@ -170,9 +184,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                 </div>
-                {{end}}
             </div>
         </div>
+        {{end}}
     </div>
 
     <!-- Subscriptions -->

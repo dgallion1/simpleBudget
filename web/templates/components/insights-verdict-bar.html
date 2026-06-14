@@ -1,0 +1,48 @@
+{{/* Insights Verdict Band — spending pace (burn rate vs. historical average) */}}
+{{/* Expects: .PaceVerdict (insights.PaceVerdictView) */}}
+{{define "insights-verdict-bar"}}
+{{- $v := .PaceVerdict -}}
+<div id="insights-verdict-bar"
+    class="verdict-{{$v.Health}} rounded-xl border px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2
+    {{if eq $v.Health "green"}}bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700
+    {{else if eq $v.Health "amber"}}bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700
+    {{else if eq $v.Health "red"}}bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700
+    {{else}}bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700{{end}}">
+
+    <div class="flex-1 min-w-[14rem]">
+        <div class="text-[10px] font-semibold tracking-widest uppercase
+            {{if eq $v.Health "green"}}text-emerald-700 dark:text-emerald-300
+            {{else if eq $v.Health "amber"}}text-amber-700 dark:text-amber-300
+            {{else if eq $v.Health "red"}}text-rose-700 dark:text-rose-300
+            {{else}}text-gray-500 dark:text-gray-400{{end}}">Spending Pace</div>
+        <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
+            {{if not $v.HasData}}
+            No spending data for this range
+            {{else if $v.IsAbove}}
+            <span class="num">{{printf "%.0f" $v.BurnRateChange}}%</span> above your usual pace
+            {{else if $v.IsBelow}}
+            <span class="num">{{printf "%.0f" (abs $v.BurnRateChange)}}%</span> below your usual pace
+            {{else}}
+            On your usual pace
+            {{end}}
+        </div>
+    </div>
+
+    {{if $v.HasData}}
+    <div class="flex items-center gap-6 ml-auto">
+        <div class="text-center">
+            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Avg</div>
+            <div class="num text-base font-bold {{if eq $v.Health "green"}}text-emerald-600 dark:text-emerald-400{{else if eq $v.Health "red"}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">{{formatMoney $v.DailyAverage}}</div>
+        </div>
+        <div class="text-center">
+            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Usual Daily</div>
+            <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.HistoricalDaily}}</div>
+        </div>
+        <div class="text-center">
+            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Month Projection</div>
+            <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.MonthProjection}}</div>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}

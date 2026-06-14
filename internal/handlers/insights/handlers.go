@@ -975,14 +975,15 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 	insights := calculateInsights(active, filtered, startDate, endDate)
 
 	pageData := map[string]interface{}{
-		"Title":     "Insights",
-		"ActiveTab": "insights",
-		"Insights":  insights,
-		"StartDate": startDate.Format("2006-01-02"),
-		"EndDate":   endDate.Format("2006-01-02"),
-		"MinDate":   minDate.Format("2006-01-02"),
-		"MaxDate":   maxDate.Format("2006-01-02"),
-		"Preset":    preset,
+		"Title":       "Insights",
+		"ActiveTab":   "insights",
+		"Insights":    insights,
+		"PaceVerdict": BuildPaceVerdict(insights.Velocity),
+		"StartDate":   startDate.Format("2006-01-02"),
+		"EndDate":     endDate.Format("2006-01-02"),
+		"MinDate":     minDate.Format("2006-01-02"),
+		"MaxDate":     maxDate.Format("2006-01-02"),
+		"Preset":      preset,
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

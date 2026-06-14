@@ -784,24 +784,28 @@
 
 
 {{define "summary-stats"}}
-<div id="summary-stats" class="flex items-center gap-6 text-sm" hx-swap-oob="true">
-    <span class="text-gray-600 dark:text-gray-400">
-        <span class="font-medium text-gray-900 dark:text-gray-100">{{.TotalCount}}</span> transactions
-    </span>
+<div id="summary-stats" class="flex flex-wrap items-center gap-2 text-sm" hx-swap-oob="true">
+    <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
+        <span class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Transactions</span>
+        <span class="num font-bold text-gray-900 dark:text-gray-100 ml-1">{{.TotalCount}}</span>
+    </div>
     {{if isPositive .TotalIncome}}
-    <span class="text-green-600 dark:text-green-400">
-        Income: <span class="font-medium">{{formatMoney .TotalIncome}}</span>
-    </span>
+    <div class="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5">
+        <span class="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Income</span>
+        <span class="num font-bold text-emerald-600 dark:text-emerald-400 ml-1">{{formatMoney .TotalIncome}}</span>
+    </div>
     {{end}}
     {{if isPositive .TotalExpenses}}
-    <span class="text-red-600 dark:text-red-400">
-        Expenses: <span class="font-medium">{{formatMoney .TotalExpenses}}</span>
-    </span>
+    <div class="rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-3 py-1.5">
+        <span class="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300">Expenses</span>
+        <span class="num font-bold text-rose-600 dark:text-rose-400 ml-1">{{formatMoney .TotalExpenses}}</span>
+    </div>
     {{end}}
-    <span class="{{colorClass .NetAmount}}">
-        Net: <span class="font-medium">{{formatMoney .NetAmount}}</span>
-    </span>
-    <span class="text-gray-400 dark:text-gray-500 text-xs italic ml-2">
+    <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
+        <span class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Net</span>
+        <span class="num font-bold {{colorClass .NetAmount}} ml-1">{{formatMoney .NetAmount}}</span>
+    </div>
+    <span class="text-gray-400 dark:text-gray-500 text-xs italic ml-auto">
         Scroll for more
     </span>
 </div>

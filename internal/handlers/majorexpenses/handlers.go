@@ -463,6 +463,7 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 		"TotalDeclared":          totalDeclared,
 		"UnmatchedTotal":         unmatchedTotal,
 		"UnmatchedCount":         len(match.Unmatched),
+		"TrackingVerdict":        BuildTrackingVerdict(totalDeclared, unmatchedTotal, len(match.Unmatched)),
 		"AllUnmatched":           allUnmatched,
 		"Match":                  match,
 		"MatchedHashToExpenseID": matchedHashToExpenseID,

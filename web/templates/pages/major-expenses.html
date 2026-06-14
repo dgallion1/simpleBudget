@@ -916,11 +916,12 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
 {{/* List card content — extracted so it can be re-rendered via OOB swap */}}
 {{define "major-expenses-list-card-content"}}
+{{template "major-expenses-verdict-bar" .}}
 <div class="flex items-center justify-between mb-3 gap-3">
     <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Your Major Expenses</h2>
     <div class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 flex-wrap">
         <span data-total-declared="{{printf "%.2f" .TotalDeclared}}">
-            Total: <span class="font-mono">${{printf "%.0f" .TotalDeclared}}</span>
+            Total: <span class="num">${{printf "%.0f" .TotalDeclared}}</span>
         </span>
         <span class="text-gray-400 dark:text-gray-500">·</span>
         <span class="text-xs text-gray-500 dark:text-gray-400">{{len .Summaries}} declared</span>
@@ -930,7 +931,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
               data-unmatched-total="{{printf "%.2f" .UnmatchedTotal}}"
               class="text-xs text-amber-600 dark:text-amber-400 hover:underline"
               title="Click to jump to the Unmatched bucket. Dashboard total = Declared + Unmatched.">
-            Unmatched: <span class="font-mono">${{printf "%.0f" .UnmatchedTotal}}</span>
+            Unmatched: <span class="num">${{printf "%.0f" .UnmatchedTotal}}</span>
             · {{.UnmatchedCount}} txn{{if ne .UnmatchedCount 1}}s{{end}}
         </a>
         {{end}}

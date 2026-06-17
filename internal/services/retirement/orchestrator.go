@@ -50,6 +50,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	failurePoints := analysis.FailurePoints(eng, in)
 	monteCarlo := analysis.MonteCarlo(eng, in, MonteCarloRuns, mcSeed)
 	rmd := analysis.BuildRMD(proj, in)
+	tax := analysis.BuildTax(proj, in)
 	backtest := analysis.HistoricalBacktest(in, history.DefaultData())
 
 	if backtest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
@@ -77,6 +78,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		FailurePoints:            failurePoints,
 		MonteCarlo:               monteCarlo,
 		RMD:                      rmd,
+		Tax:                      tax,
 		HistoricalBacktest:       backtest,
 		SocialSecurity:           ssAnalysis,
 	}

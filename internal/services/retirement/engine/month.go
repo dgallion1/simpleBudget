@@ -360,6 +360,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			GrossIncome:               grossIncome,
 			NetIncome:                 netIncome,
 			TaxesPaid:                 taxesPaid,
+			StateTaxPaid:              monthResult.TaxSnapshot.MonthlyStateTax,
 			NetWithdrawal:             cashFlow.ActualWithdrawal,
 			RMDWithdrawal:             cashFlow.RMDWithdrawal,
 			TaxableWithdrawals:        cashFlow.WithdrawalFromTaxDeferred,

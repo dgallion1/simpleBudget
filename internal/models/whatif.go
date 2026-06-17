@@ -822,6 +822,7 @@ type ProjectionMonth struct {
 	GrossIncome          float64 `json:"gross_income,omitempty"`
 	NetIncome            float64 `json:"net_income,omitempty"`
 	TaxesPaid            float64 `json:"taxes_paid,omitempty"`
+	StateTaxPaid         float64 `json:"state_tax_paid,omitempty"` // State portion of TaxesPaid (federal = TaxesPaid - StateTaxPaid)
 	NetWithdrawal        float64 `json:"net_withdrawal"`
 	RMDWithdrawal        float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
 	TaxableWithdrawals   float64 `json:"taxable_withdrawals,omitempty"`

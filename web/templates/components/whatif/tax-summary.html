@@ -1,0 +1,66 @@
+{{/* Income Tax Summary Card — federal/state split */}}
+{{/* Expects: .Analysis.Tax */}}
+{{define "whatif-tax-summary"}}
+{{if .Analysis.Tax}}
+{{- $t := .Analysis.Tax -}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Income Taxes</h3>
+    <p class="text-xs text-gray-500 dark:text-gray-300 mb-3">Projected federal and state income tax over the plan. Excludes IRMAA Medicare surcharges (shown separately).</p>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
+            <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">Total Income Tax</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">-{{formatMoney $t.TotalTaxPaid}}</p>
+        </div>
+        <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
+            <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">Federal</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">-{{formatMoney $t.TotalFederalTaxPaid}}</p>
+        </div>
+        <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
+            <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">State</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">-{{formatMoney $t.TotalStateTaxPaid}}</p>
+        </div>
+        <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">Avg Effective Rate</p>
+            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{printf "%.1f" $t.AverageEffectiveRate}}%</p>
+        </div>
+    </div>
+
+    {{if $t.YearlyTaxSummary}}
+    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 dark:text-gray-300 border-b dark:border-gray-600">
+                    <th class="pb-2 font-medium">Age</th>
+                    <th class="pb-2 font-medium text-right">Year</th>
+                    <th class="pb-2 font-medium text-right">Taxable Income</th>
+                    <th class="pb-2 font-medium text-right">Federal</th>
+                    <th class="pb-2 font-medium text-right">State</th>
+                    <th class="pb-2 font-medium text-right">Total Tax</th>
+                    <th class="pb-2 font-medium text-right">Eff. Rate</th>
+                    <th class="pb-2 font-medium text-right">Marginal</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                {{range $t.YearlyTaxSummary}}
+                <tr class="text-gray-700 dark:text-gray-300">
+                    <td class="py-2 font-medium">{{.Age}}</td>
+                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{.Year}}</td>
+                    <td class="py-2 text-right">{{formatMoney .TaxableIncome}}</td>
+                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatMoney .FederalTax}}</td>
+                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatMoney .StateTax}}</td>
+                    <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatMoney .TotalTax}}</td>
+                    <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
+                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalBracket}}%</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is the top federal bracket reached that year. State tax is $0 unless a state rate is configured.
+    </p>
+    {{end}}
+</div>
+{{end}}
+{{end}}

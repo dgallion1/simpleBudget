@@ -1,0 +1,42 @@
+version: "2"
+
+# Explicit, reproducible quality gate. The defaults (errcheck, govet,
+# ineffassign, staticcheck, unused) stay on; gosec and unparam are added so
+# unchecked errors, unused params, and security smells fail the build rather
+# than relying on reviewer vigilance.
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - unparam
+    - gosec
+  exclusions:
+    generated: lax
+    rules:
+      # Test files legitimately ignore fixture write/encode errors, use weak
+      # randomness, relaxed file perms, and table-driven helpers whose unused
+      # params keep signatures uniform.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+      # G404: math/rand is the correct, intentional choice for the Monte Carlo
+      # simulator and other non-cryptographic randomness — not a vulnerability.
+      - linters: [gosec]
+        text: "G404"
+      # G304: this is a file-based app; it reads files at user-configured paths
+      # (data dir, SSH keys, backups) by design.
+      - linters: [gosec]
+        text: "G304"
+      # G306/G301: 0644/0755 perms on user-facing data and backup files are a
+      # deliberate choice (encrypted payloads carry their own protection).
+      - linters: [gosec]
+        text: "G30(6|1)"
+
+formatters:
+  enable:
+    - gofmt

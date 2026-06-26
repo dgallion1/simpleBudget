@@ -40,7 +40,7 @@ func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error {
 	}
 	pins, err := dl.LoadTransactionPins()
 	if err != nil {
-		return err
+		return fmt.Errorf("load transaction pins: %w", err)
 	}
 	if expenseID == "" {
 		delete(pins, hash)

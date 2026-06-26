@@ -83,8 +83,12 @@ func (p *SSHProvider) loadIdentity() error {
 
 	identity, err := agessh.ParseIdentity(keyData)
 	if err != nil {
+		// agessh does not expose a typed error for passphrase-protected keys,
+		// so detecting the condition still requires inspecting the message;
+		// we contain that here and surface our own ErrSSHKeyEncrypted sentinel
+		// so callers can use errors.Is instead of repeating the string match.
 		if strings.Contains(err.Error(), "encrypted") || strings.Contains(err.Error(), "passphrase") {
-			return fmt.Errorf("SSH key is encrypted, passphrase required")
+			return fmt.Errorf("%w: %v", ErrSSHKeyEncrypted, err)
 		}
 		return fmt.Errorf("failed to parse SSH key: %w", err)
 	}

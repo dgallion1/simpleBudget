@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -139,13 +140,13 @@ func (s *Storage) Unlock(credentials string) error {
 	if err != nil {
 		log.Printf("Storage unlock failed: incorrect credentials")
 		provider.Lock()
-		return fmt.Errorf("incorrect credentials")
+		return ErrIncorrectCredentials
 	}
 
 	if string(decrypted) != verifyMagic {
 		log.Printf("Storage unlock failed: verification magic mismatch")
 		provider.Lock()
-		return fmt.Errorf("incorrect credentials (verification failed)")
+		return fmt.Errorf("%w (verification failed)", ErrIncorrectCredentials)
 	}
 
 	// Credentials verified, store provider
@@ -194,8 +195,23 @@ func (s *Storage) Lock() {
 	s.cacheMu.Unlock()
 }
 
-// ReadFile reads and optionally decrypts a file, using cache when possible
+// ReadFile reads and optionally decrypts a file, using cache when possible.
+// It is a context-less convenience wrapper around ReadFileContext for callers
+// not on an HTTP request path (background jobs, CLIs, tests).
 func (s *Storage) ReadFile(path string) ([]byte, error) {
+	return s.ReadFileContext(context.Background(), path)
+}
+
+// ReadFileContext is ReadFile with caller-supplied cancellation. The
+// underlying os.ReadFile + age decryption cannot be interrupted mid-call, so
+// ctx provides fail-fast semantics: if the caller has already cancelled (e.g.
+// the HTTP client disconnected) the read returns ctx.Err() before touching
+// disk rather than doing wasted work.
+func (s *Storage) ReadFileContext(ctx context.Context, path string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Get file modification time
 	info, err := os.Stat(path)
 	if err != nil {
@@ -251,8 +267,20 @@ func (s *Storage) ReadFile(path string) ([]byte, error) {
 	return result, nil
 }
 
-// WriteFile writes and optionally encrypts a file
+// WriteFile writes and optionally encrypts a file. Context-less convenience
+// wrapper around WriteFileContext for non-request callers.
 func (s *Storage) WriteFile(path string, data []byte, perm os.FileMode) error {
+	return s.WriteFileContext(context.Background(), path, data, perm)
+}
+
+// WriteFileContext is WriteFile with caller-supplied cancellation. As with
+// ReadFileContext, encryption + the atomic write cannot be interrupted
+// mid-call, so ctx fails fast before any work when already cancelled.
+func (s *Storage) WriteFileContext(ctx context.Context, path string, data []byte, perm os.FileMode) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -286,9 +314,15 @@ func (s *Storage) WriteFile(path string, data []byte, perm os.FileMode) error {
 	return s.atomicWrite(path, data, perm)
 }
 
-// OpenFile returns a reader for a potentially encrypted file
+// OpenFile returns a reader for a potentially encrypted file. Context-less
+// convenience wrapper around OpenFileContext.
 func (s *Storage) OpenFile(path string) (io.ReadCloser, error) {
-	data, err := s.ReadFile(path)
+	return s.OpenFileContext(context.Background(), path)
+}
+
+// OpenFileContext is OpenFile with caller-supplied cancellation.
+func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadCloser, error) {
+	data, err := s.ReadFileContext(ctx, path)
 	if err != nil {
 		return nil, err
 	}

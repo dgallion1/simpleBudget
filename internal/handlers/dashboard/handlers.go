@@ -120,7 +120,7 @@ func RegisterRoutes(r chi.Router) {
 }
 
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
-	data, err := loader.LoadData()
+	data, err := loader.LoadDataContext(r.Context())
 	if err != nil {
 		log.Printf("Error loading data: %v", err)
 		http.Error(w, "Error loading data: "+err.Error(), http.StatusInternalServerError)
@@ -172,7 +172,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
-	data, err := loader.LoadData()
+	data, err := loader.LoadDataContext(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -211,15 +211,15 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 
 	if renderer != nil {
 		renderer.RenderPartial(w, "kpis", partialData)
-	} else {
-		json.NewEncoder(w).Encode(partialData)
+	} else if err := json.NewEncoder(w).Encode(partialData); err != nil {
+		log.Printf("dashboard: encoding kpis JSON: %v", err)
 	}
 }
 
 func handleChartData(w http.ResponseWriter, r *http.Request) {
 	chartType := chi.URLParam(r, "chartType")
 
-	data, err := loader.LoadData()
+	data, err := loader.LoadDataContext(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -262,7 +262,9 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(chartData)
+	if err := json.NewEncoder(w).Encode(chartData); err != nil {
+		log.Printf("dashboard: encoding chart JSON: %v", err)
+	}
 }
 
 // handleMajorExpenseDrilldown returns the transactions covered by a
@@ -274,7 +276,7 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 
-	data, err := loader.LoadData()
+	data, err := loader.LoadDataContext(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -346,7 +348,7 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	kpiType := chi.URLParam(r, "kpiType")
 
-	data, err := loader.LoadData()
+	data, err := loader.LoadDataContext(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -504,7 +506,7 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 	kpiType := chi.URLParam(r, "kpiType")
 
-	data, err := loader.LoadData()
+	data, err := loader.LoadDataContext(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

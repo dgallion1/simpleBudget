@@ -156,7 +156,6 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			// tax-deferred balance, gated on calendar year vs
 			// FirstRMDCalendarYear with age-at-year-end divisor.
 			annualRMD = AnnualRMDForYear(s, currentYear, taxDeferredBalance)
-			monthlyRMD = 0
 
 			rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 

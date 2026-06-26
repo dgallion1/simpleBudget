@@ -254,8 +254,14 @@ func main() {
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	go backupService.Run(schedCtx, 24*time.Hour)
 
-	// Start HTTP server in background.
-	srv := &http.Server{Addr: addr, Handler: handler}
+	// Start HTTP server in background. ReadHeaderTimeout bounds how long a
+	// client may take to send request headers, closing the door on Slowloris-
+	// style header-dribble connection exhaustion.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("HTTP server error: %v", err)
@@ -272,21 +278,29 @@ func main() {
 	// Stop scheduler.
 	schedCancel()
 
-	// Best-effort shutdown snapshot (bounded to 30 s).
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := backupService.Snapshot(shutdownCtx); err != nil &&
+	// Drain in-flight HTTP requests first so the shutdown snapshot captures a
+	// quiescent data directory (bounded to 30 s).
+	srvCtx, srvCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer srvCancel()
+	if err := srv.Shutdown(srvCtx); err != nil {
+		log.Printf("http: graceful shutdown: %v", err)
+	}
+
+	// Best-effort shutdown snapshot, with its own independent deadline.
+	snapCtx, snapCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer snapCancel()
+	if err := backupService.Snapshot(snapCtx); err != nil &&
 		!errors.Is(err, backupsvc.ErrSnapshotInProgress) {
 		log.Printf("backup: shutdown snapshot: %v", err)
 	}
-
-	_ = srv.Shutdown(shutdownCtx)
 }
 
 // handleVersion returns version information as JSON
 func handleVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(version.Get())
+	if err := json.NewEncoder(w).Encode(version.Get()); err != nil {
+		log.Printf("version: encoding JSON: %v", err)
+	}
 }
 
 // killPreviousInstance attempts to shut down any existing server on the same address

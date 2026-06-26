@@ -1,6 +1,7 @@
 package retirement
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -369,8 +370,20 @@ func (sm *SettingsManager) decodeSettings(data []byte) (*models.WhatIfSettings, 
 	return &settings, changed, nil
 }
 
-// Load reads settings from disk, returning defaults if file doesn't exist
+// Load reads settings from disk, returning defaults if file doesn't exist.
+// Context-less convenience wrapper around LoadContext for non-request callers.
 func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
+	return sm.LoadContext(context.Background())
+}
+
+// LoadContext is Load with caller-supplied cancellation. It fails fast on
+// entry (so an abandoned what-if request stops before any disk read) and
+// threads ctx into the underlying decrypting read.
+func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSettings, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	sm.mu.RLock()
 	// Return cache if available
 	if sm.cache != nil {
@@ -387,7 +400,7 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 		return sm.cache, nil
 	}
 
-	settings, err := sm.loadInternal()
+	settings, err := sm.loadInternalContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -396,8 +409,15 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 	return settings, nil
 }
 
-// loadInternal reads settings without acquiring lock (caller must hold lock)
+// loadInternal reads settings without acquiring lock (caller must hold lock).
+// Context-less wrapper used by the in-package CRUD methods.
 func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
+	return sm.loadInternalContext(context.Background())
+}
+
+// loadInternalContext is loadInternal with caller-supplied cancellation,
+// threaded into the decrypting file read.
+func (sm *SettingsManager) loadInternalContext(ctx context.Context) (*models.WhatIfSettings, error) {
 	// Ensure settings directory exists
 	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
 		return nil, err
@@ -412,7 +432,7 @@ func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 	}
 
 	// Read file (storage handles decryption)
-	data, err := sm.store.ReadFile(path)
+	data, err := sm.store.ReadFileContext(ctx, path)
 	if err != nil {
 		return models.DefaultWhatIfSettings(), err
 	}

@@ -8,6 +8,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -200,12 +201,14 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 		// manual and scheduled backups are byte-identical.
 		file, err := os.Open(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("open %s: %w", path, err)
 		}
 		defer file.Close()
 
-		_, err = io.Copy(f, file)
-		return err
+		if _, err := io.Copy(f, file); err != nil {
+			return fmt.Errorf("copy %s into backup: %w", path, err)
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -549,7 +552,7 @@ func HandleDisableEncryption(w http.ResponseWriter, r *http.Request) {
 	// Disable encryption (this verifies the credentials internally)
 	if err := store.DisableEncryption(credentials); err != nil {
 		log.Printf("Failed to disable encryption: %v", err)
-		if strings.Contains(err.Error(), "incorrect") {
+		if errors.Is(err, storage.ErrIncorrectCredentials) {
 			if config != nil && config.Method == storage.AuthMethodPassword {
 				http.Error(w, "Incorrect password", http.StatusUnauthorized)
 			} else {

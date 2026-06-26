@@ -292,7 +292,6 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			// gate + age-at-year-end divisor so backtest matches the
 			// deterministic projection for late-year births.
 			annualRMD = engine.AnnualRMDForYear(s, currentYear, taxDeferredBalance)
-			monthlyRMD = 0
 
 			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 

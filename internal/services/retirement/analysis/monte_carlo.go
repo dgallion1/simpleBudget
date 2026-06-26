@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
+	"sync"
 	"time"
 
 	"budget2/internal/models"
@@ -89,7 +91,7 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 
 	s := in.Prepared.Settings()
 	config := DefaultMonteCarloConfig()
-	results := make([]models.MonteCarloResult, runs)
+	var results []models.MonteCarloResult
 	successCount := 0
 	totalDepletionYears := 0.0
 	depletionCount := 0
@@ -102,21 +104,21 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 	runsWithSpendingShocks := 0
 	runsWithHealthShocks := 0
 
-	// Create a new random source. seed == 0 means auto-seed (preserve
-	// the legacy "default = unpredictable" contract); any non-zero seed
-	// is used directly so parity tests get a reproducible RNG sequence.
-	var rng *rand.Rand
-	if seed != 0 {
-		rng = rand.New(rand.NewSource(seed))
-	} else {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	// Seed derivation: seed == 0 auto-seeds from the clock (preserve the
+	// legacy "default = unpredictable" contract); any non-zero seed is used
+	// directly so parity tests stay reproducible. The runs execute in
+	// parallel — each with its own RNG derived deterministically from
+	// baseSeed — so the aggregate result is reproducible for a given seed yet
+	// independent of goroutine scheduling.
+	baseSeed := seed
+	if baseSeed == 0 {
+		baseSeed = time.Now().UnixNano()
 	}
 
-	for i := 0; i < runs; i++ {
-		result := runSingleMonteCarloSimulation(in, rng, config)
-		results[i] = result
+	results = runSimulations(in, baseSeed, runs, config)
 
-		// Aggregate statistics
+	// Aggregate statistics over the completed runs.
+	for _, result := range results {
 		if result.Survives {
 			successCount++
 		}
@@ -186,14 +188,10 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 		adaptiveConfig.DiscretionaryCutPercent = 40 // Cut 40% of discretionary during crashes
 		adaptiveConfig.AdaptationRecoveryYears = 3  // Maintain reduced spending for 3 years after crash
 
-		// Run adaptive simulations (smaller sample for performance)
+		// Run adaptive simulations (smaller sample for performance). Fixed
+		// base seed keeps this sub-analysis reproducible.
 		adaptiveRuns := runs / 2
-		adaptiveResults := make([]models.MonteCarloResult, adaptiveRuns)
-		adaptiveRng := rand.New(rand.NewSource(42)) // Fixed seed for reproducibility
-
-		for i := 0; i < adaptiveRuns; i++ {
-			adaptiveResults[i] = runSingleMonteCarloSimulation(in, adaptiveRng, &adaptiveConfig)
-		}
+		adaptiveResults := runSimulations(in, 42, adaptiveRuns, &adaptiveConfig)
 
 		// Calculate adapted early crash survival rate
 		var adaptedEarlySurvived, adaptedEarlyTotal int
@@ -232,6 +230,53 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 		Stats:        stats,
 		Distribution: distribution,
 	}
+}
+
+// runSimulations executes `runs` independent Monte Carlo simulations across a
+// worker pool and returns their results in run order. Each run is seeded from
+// its own *rand.Rand derived from a master sequence keyed on baseSeed, so the
+// returned set is fully reproducible for a given baseSeed and independent of
+// how the runs are scheduled across workers. A per-run RNG is mandatory:
+// math/rand.Rand is not safe for concurrent use.
+func runSimulations(in engine.Input, baseSeed int64, runs int, config *MonteCarloConfig) []models.MonteCarloResult {
+	results := make([]models.MonteCarloResult, runs)
+	if runs <= 0 {
+		return results
+	}
+
+	// Derive per-run seeds from a master RNG so the set is deterministic for a
+	// given baseSeed regardless of worker scheduling.
+	master := rand.New(rand.NewSource(baseSeed))
+	seeds := make([]int64, runs)
+	for i := range seeds {
+		seeds[i] = master.Int63()
+	}
+
+	workers := runtime.NumCPU()
+	if workers > runs {
+		workers = runs
+	}
+
+	idx := make(chan int, runs)
+	for i := range runs {
+		idx <- i
+	}
+	close(idx)
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range idx {
+				rng := rand.New(rand.NewSource(seeds[i]))
+				results[i] = runSingleMonteCarloSimulation(in, rng, config)
+			}
+		}()
+	}
+	wg.Wait()
+
+	return results
 }
 
 // RunSingleMonteCarloSimulation drives a single MC run. Exposed so
@@ -401,7 +446,6 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			// gate + age-at-year-end divisor so MC matches the
 			// deterministic projection for late-year births.
 			annualRMD = engine.AnnualRMDForYear(s, currentYear, taxDeferredBalance)
-			monthlyRMD = 0
 
 			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
 

@@ -7,6 +7,7 @@ package dataloader
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -135,6 +136,18 @@ func (dl *DataLoader) SetEnabledFiles(files []string) {
 
 // LoadData loads and combines data from all CSV files in the directory
 func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
+	return dl.LoadDataContext(context.Background())
+}
+
+// LoadDataContext is LoadData with caller-supplied cancellation. It fails fast
+// on entry and between CSV files if ctx is cancelled (e.g. the HTTP client
+// disconnected), so an abandoned dashboard request stops loading promptly
+// instead of parsing every file to completion.
+func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionSet, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	pattern := filepath.Join(dl.CSVDirectory, "*.csv")
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -151,6 +164,10 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	var allTransactions []models.Transaction
 
 	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		filename := filepath.Base(file)
 
 		// Skip if file list is set and this file is not enabled
@@ -673,7 +690,7 @@ func (dl *DataLoader) LoadAliases() (map[string]string, error) {
 func (dl *DataLoader) SaveAlias(hash, displayName string) error {
 	aliases, err := dl.LoadAliases()
 	if err != nil {
-		return err
+		return fmt.Errorf("load aliases: %w", err)
 	}
 	if displayName == "" {
 		delete(aliases, hash)

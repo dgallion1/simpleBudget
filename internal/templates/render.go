@@ -208,7 +208,7 @@ func (r *Renderer) loadTemplates() error {
 
 	// Validate template references
 	if err := r.validateTemplateReferences(tmpl, templateFiles); err != nil {
-		return err
+		return fmt.Errorf("validating template references: %w", err)
 	}
 
 	r.templates = tmpl

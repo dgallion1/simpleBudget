@@ -43,7 +43,7 @@ func (dl *DataLoader) SaveMajorExpenses(list []models.MajorExpense) error {
 	store := models.MajorExpenseStore{Expenses: list}
 	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal major expenses: %w", err)
 	}
 	return dl.store.WriteFile(dl.majorExpensesPath(), data, 0644)
 }

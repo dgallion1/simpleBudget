@@ -602,7 +602,7 @@ func RegisterRoutes(r chi.Router) {
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		log.Printf("Error loading what-if settings: %v", err)
 		settings = models.DefaultWhatIfSettings()
@@ -643,7 +643,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -670,7 +670,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -693,7 +693,7 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -847,7 +847,7 @@ func buildIncomeChartData(settings *models.WhatIfSettings, projection *models.Pr
 }
 
 func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -880,7 +880,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 }
 
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return

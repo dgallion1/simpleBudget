@@ -48,7 +48,9 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pageData)
+	if err := json.NewEncoder(w).Encode(pageData); err != nil {
+		log.Printf("duplicates: encoding page JSON: %v", err)
+	}
 }
 
 func buildPageData() map[string]interface{} {

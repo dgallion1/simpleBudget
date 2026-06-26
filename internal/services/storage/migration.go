@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,11 +148,11 @@ func (s *Storage) DisableEncryption(credentials string) error {
 
 	decrypted, err := decryptData(encrypted, identity)
 	if err != nil {
-		return fmt.Errorf("incorrect credentials")
+		return ErrIncorrectCredentials
 	}
 
 	if string(decrypted) != verifyMagic {
-		return fmt.Errorf("incorrect credentials")
+		return ErrIncorrectCredentials
 	}
 
 	// Collect files to decrypt
@@ -296,6 +297,8 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 			continue
 		}
 
-		os.WriteFile(path, decrypted, 0644)
+		if err := os.WriteFile(path, decrypted, 0644); err != nil {
+			log.Printf("rollback: failed to restore %s: %v", path, err)
+		}
 	}
 }

@@ -72,16 +72,29 @@ func GenerateAgeIdentity(identityPath string) (*AgeProvider, error) {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Write identity file
+	// Write identity file. A swallowed write/close error here could leave a
+	// corrupt secret-key file that silently fails to decrypt later, so every
+	// step is checked.
 	f, err := os.OpenFile(identityPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create identity file: %w", err)
 	}
-	defer f.Close()
 
-	fmt.Fprintf(f, "# created: %s\n", "budget2 encryption")
-	fmt.Fprintf(f, "# public key: %s\n", identity.Recipient().String())
-	fmt.Fprintln(f, identity.String())
+	if _, err := fmt.Fprintf(f, "# created: %s\n", "budget2 encryption"); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("failed to write identity file header: %w", err)
+	}
+	if _, err := fmt.Fprintf(f, "# public key: %s\n", identity.Recipient().String()); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("failed to write identity file public key: %w", err)
+	}
+	if _, err := fmt.Fprintln(f, identity.String()); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("failed to write identity file key: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close identity file: %w", err)
+	}
 
 	return &AgeProvider{
 		identityPath: identityPath,
@@ -96,7 +109,7 @@ func (p *AgeProvider) loadIdentity() error {
 	if err != nil {
 		return fmt.Errorf("failed to open identity file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	identities, err := age.ParseIdentities(f)
 	if err != nil {
@@ -207,7 +220,7 @@ func DetectAgeIdentities() ([]string, error) {
 					break
 				}
 			}
-			f.Close()
+			_ = f.Close()
 		}
 	}
 

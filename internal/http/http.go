@@ -15,20 +15,20 @@ import (
 // RenderTemplate renders a full page template with data
 func RenderTemplate(w http.ResponseWriter, renderer *templates.Renderer, templateName string, data map[string]interface{}) {
 	if renderer != nil {
-		renderer.Render(w, templateName, data)
+		_ = renderer.Render(w, templateName, data)
 	} else {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<html><body><h1>" + templateName + "</h1><p>Templates not loaded. Check configuration.</p></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>" + templateName + "</h1><p>Templates not loaded. Check configuration.</p></body></html>"))
 	}
 }
 
 // RenderPartial renders a partial template with data
 func RenderPartial(w http.ResponseWriter, renderer *templates.Renderer, partialName string, data map[string]interface{}) {
 	if renderer != nil {
-		renderer.RenderPartial(w, partialName, data)
+		_ = renderer.RenderPartial(w, partialName, data)
 	} else {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<div><!-- Partial " + partialName + " not loaded --></div>"))
+		_, _ = w.Write([]byte("<div><!-- Partial " + partialName + " not loaded --></div>"))
 	}
 }
 

@@ -988,10 +988,10 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 
 	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
-		renderer.Render(w, "base", pageData)
+		_ = renderer.Render(w, "base", pageData)
 	} else {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<html><body><h1>Insights</h1><p>Coming soon...</p></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>Insights</h1><p>Coming soon...</p></body></html>"))
 	}
 }
 
@@ -1016,10 +1016,10 @@ func handleRecurringPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "recurring-payments", partialData)
+		_ = renderer.RenderPartial(w, "recurring-payments", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -1050,10 +1050,10 @@ func handleTrendsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "category-trends", partialData)
+		_ = renderer.RenderPartial(w, "category-trends", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -1120,7 +1120,7 @@ func handleTrendsChartData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(chartData)
+	_ = json.NewEncoder(w).Encode(chartData)
 }
 
 func handleVelocityPartial(w http.ResponseWriter, r *http.Request) {
@@ -1152,10 +1152,10 @@ func handleVelocityPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "spending-velocity", partialData)
+		_ = renderer.RenderPartial(w, "spending-velocity", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -1181,9 +1181,9 @@ func handleIncomePartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "income-patterns", partialData)
+		_ = renderer.RenderPartial(w, "income-patterns", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }

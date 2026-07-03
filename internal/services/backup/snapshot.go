@@ -132,10 +132,13 @@ func (s *Service) buildZip(ctx context.Context, tmpPath string) (int, int64, err
 	if err != nil {
 		return 0, 0, err
 	}
-	defer f.Close()
+	// Data durability is guaranteed by the explicit f.Sync() below; this
+	// deferred close is a backstop whose error is not separately actionable.
+	defer func() { _ = f.Close() }()
 
 	zw := zip.NewWriter(f)
-	defer zw.Close() // double-close is safe; we Close() explicitly below
+	// Safety double-close; the meaningful, error-checked Close() is below.
+	defer func() { _ = zw.Close() }()
 
 	var count int
 	var total int64
@@ -231,7 +234,7 @@ func verifyZip(path string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	// Touch every entry's CRC by reading it.
 	for _, f := range r.File {
 		rc, err := f.Open()
@@ -239,10 +242,10 @@ func verifyZip(path string) error {
 			return err
 		}
 		if _, err := io.Copy(io.Discard, rc); err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return err
 		}
-		rc.Close()
+		_ = rc.Close()
 	}
 	return nil
 }

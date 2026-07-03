@@ -64,15 +64,15 @@ func handleMajorExpensesPage(w http.ResponseWriter, r *http.Request) {
 		// wrapper partial. Returning the full base layout into the
 		// wrapper would nest a complete page inside the results area.
 		if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Target") == "major-expenses-results-wrapper" {
-			renderer.RenderPartial(w, "major-expenses-results-wrapper", data)
+			_ = renderer.RenderPartial(w, "major-expenses-results-wrapper", data)
 			return
 		}
 		templates.AttachDuplicateCount(data, loader)
-		renderer.Render(w, "base", data)
+		_ = renderer.Render(w, "base", data)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	if pinHash := strings.TrimSpace(r.FormValue("pin_hash")); pinHash != "" {
 		if err := loader.SetTransactionPin(pinHash, me.ID); err != nil {
 			log.Printf("major-expenses: create-and-pin failed for hash=%q expense=%q: %v", pinHash, me.ID, err)
-			fmt.Fprintf(w, "<!-- pin_hash %q ignored: %v -->", pinHash, err)
+			_, _ = fmt.Fprintf(w, "<!-- pin_hash %q ignored: %v -->", pinHash, err)
 		}
 	}
 	renderResults(w, r)
@@ -288,11 +288,11 @@ func handleExceptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if renderer != nil {
-		renderer.RenderPartial(w, "major-expenses-exceptions", data)
+		_ = renderer.RenderPartial(w, "major-expenses-exceptions", data)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // renderResults sends the combined dual-column partial used by every
@@ -305,11 +305,11 @@ func renderResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if renderer != nil {
-		renderer.RenderPartial(w, "major-expenses-results", data)
+		_ = renderer.RenderPartial(w, "major-expenses-results", data)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // buildPageData loads expenses + transactions, applies the active date
@@ -656,5 +656,5 @@ func renderError(w http.ResponseWriter, message string, statusCode int) {
 		</div>
 		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
 	</div>`, html.EscapeString(message))
-	w.Write([]byte(body))
+	_, _ = w.Write([]byte(body))
 }

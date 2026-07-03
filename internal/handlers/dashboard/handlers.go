@@ -164,10 +164,10 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
-		renderer.Render(w, "base", pageData)
+		_ = renderer.Render(w, "base", pageData)
 	} else {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<html><body><h1>Dashboard</h1><p>Templates not loaded. Check configuration.</p></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>Dashboard</h1><p>Templates not loaded. Check configuration.</p></body></html>"))
 	}
 }
 
@@ -210,7 +210,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "kpis", partialData)
+		_ = renderer.RenderPartial(w, "kpis", partialData)
 	} else if err := json.NewEncoder(w).Encode(partialData); err != nil {
 		log.Printf("dashboard: encoding kpis JSON: %v", err)
 	}
@@ -338,10 +338,10 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "major-expense-drilldown", partialData)
+		_ = renderer.RenderPartial(w, "major-expense-drilldown", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -496,10 +496,10 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "kpi-detail", partialData)
+		_ = renderer.RenderPartial(w, "kpi-detail", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -553,13 +553,13 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 	// Write header based on type
 	switch kpiType {
 	case "income":
-		writer.Write([]string{"Month", "Income"})
+		_ = writer.Write([]string{"Month", "Income"})
 	case "expenses":
-		writer.Write([]string{"Month", "Expenses"})
+		_ = writer.Write([]string{"Month", "Expenses"})
 	case "savings":
-		writer.Write([]string{"Month", "Income", "Expenses", "Savings"})
+		_ = writer.Write([]string{"Month", "Income", "Expenses", "Savings"})
 	case "savings-rate":
-		writer.Write([]string{"Month", "Income", "Expenses", "Savings", "Savings Rate %"})
+		_ = writer.Write([]string{"Month", "Income", "Expenses", "Savings", "Savings Rate %"})
 	}
 
 	for _, m := range months {
@@ -581,22 +581,27 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 
 		switch kpiType {
 		case "income":
-			writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt)})
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt)})
 		case "expenses":
-			writer.Write([]string{m, fmt.Sprintf("%.2f", expAmt)})
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", expAmt)})
 		case "savings":
-			writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings)})
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings)})
 		case "savings-rate":
-			writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings), fmt.Sprintf("%.1f", rate)})
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings), fmt.Sprintf("%.1f", rate)})
 		}
 	}
 
 	writer.Flush()
+	if err := writer.Error(); err != nil {
+		log.Printf("dashboard: building CSV export: %v", err)
+		http.Error(w, "Failed to build export", http.StatusInternalServerError)
+		return
+	}
 
 	filename := fmt.Sprintf("%s_%s_to_%s.csv", kpiType, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-	w.Write(buf.Bytes())
+	_, _ = w.Write(buf.Bytes())
 }
 
 // Utility Functions

@@ -75,7 +75,7 @@ func (s *Storage) EnableEncryptionWithProvider(provider AuthProvider, config *En
 	})
 	if err != nil {
 		// Cleanup verification file on error
-		os.Remove(verifyPath)
+		_ = os.Remove(verifyPath)
 		return fmt.Errorf("failed to scan files: %w", err)
 	}
 
@@ -84,7 +84,7 @@ func (s *Storage) EnableEncryptionWithProvider(provider AuthProvider, config *En
 		if err := s.encryptFileWithRecipient(path, recipient); err != nil {
 			// Attempt to rollback encrypted files (best effort)
 			s.rollbackEncryptionWithIdentity(filesToEncrypt, identity)
-			os.Remove(verifyPath)
+			_ = os.Remove(verifyPath)
 			return fmt.Errorf("failed to encrypt %s: %w", filepath.Base(path), err)
 		}
 	}
@@ -93,7 +93,7 @@ func (s *Storage) EnableEncryptionWithProvider(provider AuthProvider, config *En
 	if err := saveConfig(s.baseDir, config); err != nil {
 		// Rollback on config save failure
 		s.rollbackEncryptionWithIdentity(filesToEncrypt, identity)
-		os.Remove(verifyPath)
+		_ = os.Remove(verifyPath)
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
@@ -188,10 +188,10 @@ func (s *Storage) DisableEncryption(credentials string) error {
 		}
 	}
 
-	// Remove marker, verification, and config files
-	os.Remove(filepath.Join(s.baseDir, markerFile))
-	os.Remove(verifyPath)
-	removeConfig(s.baseDir)
+	// Remove marker, verification, and config files (best effort)
+	_ = os.Remove(filepath.Join(s.baseDir, markerFile))
+	_ = os.Remove(verifyPath)
+	_ = removeConfig(s.baseDir)
 
 	// Update storage state
 	s.encrypted = false

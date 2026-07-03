@@ -66,15 +66,17 @@ func SetTestEnv(t *testing.T) func() {
 
 	for k, v := range cfg {
 		oldValues[k] = os.Getenv(k)
-		os.Setenv(k, v)
+		if err := os.Setenv(k, v); err != nil {
+			t.Fatalf("SetTestEnv: setenv %s: %v", k, err)
+		}
 	}
 
 	return func() {
 		for k, v := range oldValues {
 			if v == "" {
-				os.Unsetenv(k)
+				_ = os.Unsetenv(k)
 			} else {
-				os.Setenv(k, v)
+				_ = os.Setenv(k, v)
 			}
 		}
 	}
@@ -137,7 +139,7 @@ func (ts *TestServer) Close() {
 // ReadBody reads and returns the response body as a string
 func ReadBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

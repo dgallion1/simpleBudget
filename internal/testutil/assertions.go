@@ -27,7 +27,7 @@ func AssertResponse(t *testing.T, resp *http.Response) *ResponseAssertion {
 // readBody lazily reads the response body
 func (ra *ResponseAssertion) readBody() string {
 	if !ra.bodyRead {
-		defer ra.resp.Body.Close()
+		defer func() { _ = ra.resp.Body.Close() }()
 		body, err := io.ReadAll(ra.resp.Body)
 		if err != nil {
 			ra.t.Fatalf("Failed to read response body: %v", err)

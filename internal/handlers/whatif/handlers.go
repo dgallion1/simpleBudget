@@ -422,7 +422,7 @@ func renderError(w http.ResponseWriter, message string, statusCode int) {
 		</div>
 		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
 	</div>`, html.EscapeString(message))
-	w.Write([]byte(body))
+	_, _ = w.Write([]byte(body))
 }
 
 func renderRetargetedError(w http.ResponseWriter, message string, statusCode int, target string) {
@@ -635,10 +635,10 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 
 	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
-		renderer.Render(w, "base", pageData)
+		_ = renderer.Render(w, "base", pageData)
 	} else {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<html><body><h1>What-If Analysis</h1><p>Templates not loaded.</p></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>What-If Analysis</h1><p>Templates not loaded.</p></body></html>"))
 	}
 }
 
@@ -663,10 +663,10 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
@@ -674,7 +674,7 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -682,14 +682,14 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
 	chartData := buildProjectionChartData(settings, analysis.Projection, displayDollars)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(chartData)
+	_ = json.NewEncoder(w).Encode(chartData)
 }
 
 func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
@@ -697,7 +697,7 @@ func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -705,14 +705,14 @@ func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	displayDollars := normalizeDisplayDollars(r.URL.Query().Get("display_dollars"))
 	chartData := buildIncomeChartData(settings, analysis.Projection, displayDollars)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(chartData)
+	_ = json.NewEncoder(w).Encode(chartData)
 }
 
 // buildIncomeChartData aggregates monthly projection rows into yearly
@@ -851,7 +851,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -866,7 +866,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	in.Hooks = retirement.DefaultHooks()
@@ -876,7 +876,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	chartData := buildProjectionChartData(&clone, projection, displayDollars)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(chartData)
+	_ = json.NewEncoder(w).Encode(chartData)
 }
 
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
@@ -912,10 +912,10 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 

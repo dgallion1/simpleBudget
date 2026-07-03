@@ -319,7 +319,7 @@ func killPreviousInstance(addr string) {
 		// No server running or not reachable - that's fine
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	log.Printf("Sent shutdown signal to previous instance, waiting...")
 
@@ -332,7 +332,7 @@ func killPreviousInstance(addr string) {
 			log.Printf("Previous instance terminated")
 			return
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 	log.Printf("Warning: previous instance may still be running")
 }

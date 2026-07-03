@@ -255,7 +255,7 @@ func DetectYubiKeys() ([]YubiKeyInfo, error) {
 	cmd.Stdout = &stdout
 
 	// Even if this fails, we might have a YubiKey - just no keys configured
-	cmd.Run()
+	_ = cmd.Run()
 
 	// Try to get serial from ykman if available
 	ykmanCmd := exec.Command("ykman", "list", "--serials")

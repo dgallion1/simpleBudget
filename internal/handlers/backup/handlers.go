@@ -131,7 +131,7 @@ func HandleOpenBackupDir(w http.ResponseWriter, r *http.Request) {
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // exitFunc is a package-level variable for testing.
@@ -139,7 +139,7 @@ var exitFunc = os.Exit
 
 func HandleKillServer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte("Server shutting down...\n"))
+	_, _ = w.Write([]byte("Server shutting down...\n"))
 	log.Println("Received /killme request, shutting down")
 	go func() {
 		time.Sleep(100 * time.Millisecond)
@@ -158,7 +158,13 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 
 	// Create zip writer directly to the response writer
 	zw := zip.NewWriter(w)
-	defer zw.Close()
+	// Deferred Close flushes the central directory; a failure means a corrupt
+	// download, which we can only log (headers are already sent).
+	defer func() {
+		if err := zw.Close(); err != nil {
+			log.Printf("backup: closing zip stream: %v", err)
+		}
+	}()
 
 	dataDir := cfg.DataDirectory
 	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, walkErr error) error {
@@ -203,7 +209,7 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return fmt.Errorf("open %s: %w", path, err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if _, err := io.Copy(f, file); err != nil {
 			return fmt.Errorf("copy %s into backup: %w", path, err)
@@ -270,7 +276,11 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	zw := zip.NewWriter(w)
-	defer zw.Close()
+	defer func() {
+		if err := zw.Close(); err != nil {
+			log.Printf("backup: closing plaintext zip stream: %v", err)
+		}
+	}()
 
 	dataDir := cfg.DataDirectory
 	var fileCount int
@@ -309,7 +319,7 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		n, err := io.Copy(f, file)
 		if err != nil {
@@ -378,7 +388,7 @@ func restoreFromZip(content []byte) (int, int, string) {
 			return 0, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
 		}
 		data, err := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			return 0, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
 		}
@@ -421,7 +431,7 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading file", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Validate file extension
 	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
@@ -441,7 +451,7 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("Restore complete: %d files restored", count)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Restored %d files", count)
+	_, _ = fmt.Fprintf(w, "Restored %d files", count)
 }
 
 func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
@@ -457,7 +467,7 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("Test data restore complete: %d files restored", count)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Restored %d test files", count)
+	_, _ = fmt.Fprintf(w, "Restored %d test files", count)
 }
 
 func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
@@ -498,7 +508,7 @@ func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Deleted %d data files", deletedCount)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Deleted %d files", deletedCount)
+	_, _ = fmt.Fprintf(w, "Deleted %d files", deletedCount)
 }
 
 func HandleEnableEncryption(w http.ResponseWriter, r *http.Request) {
@@ -530,7 +540,7 @@ func HandleEnableEncryption(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Encryption enabled successfully")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Encryption enabled")
+	_, _ = fmt.Fprint(w, "Encryption enabled")
 }
 
 func HandleDisableEncryption(w http.ResponseWriter, r *http.Request) {
@@ -566,12 +576,12 @@ func HandleDisableEncryption(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Encryption disabled successfully")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Encryption disabled")
+	_, _ = fmt.Fprint(w, "Encryption disabled")
 }
 
 func HandleEncryptionStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"encrypted": store.IsEncrypted()})
+	_ = json.NewEncoder(w).Encode(map[string]bool{"encrypted": store.IsEncrypted()})
 }
 
 func HandlePlotly(w http.ResponseWriter, r *http.Request) {
@@ -581,7 +591,7 @@ func HandlePlotly(w http.ResponseWriter, r *http.Request) {
 	if data, err := os.ReadFile(cachePath); err == nil {
 		w.Header().Set("Content-Type", "application/javascript")
 		w.Header().Set("Cache-Control", "public, max-age=31536000") // 1 year
-		w.Write(data)
+		_, _ = w.Write(data)
 		return
 	}
 
@@ -592,7 +602,7 @@ func HandlePlotly(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch plotly: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		http.Error(w, "CDN returned status: "+resp.Status, http.StatusBadGateway)
@@ -617,7 +627,7 @@ func HandlePlotly(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 // HandleUnlockPage serves the unlock page for encrypted storage
@@ -663,7 +673,7 @@ func HandleUnlock(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Storage unlocked successfully via web interface")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Unlocked")
+	_, _ = fmt.Fprint(w, "Unlocked")
 }
 
 // IsStorageLocked returns true if the storage is encrypted and not yet unlocked
@@ -713,7 +723,7 @@ func HandleGetAuthMethods(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"current_method":    currentMethod,
 		"available_methods": methods,
 	})
@@ -753,7 +763,7 @@ func HandleDetectKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(keys)
+	_ = json.NewEncoder(w).Encode(keys)
 }
 
 // HandleEnableEncryptionWithMethod enables encryption with a specific auth method
@@ -806,7 +816,7 @@ func handleEnablePasswordEncryption(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Password encryption enabled successfully")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Encryption enabled with password")
+	_, _ = fmt.Fprint(w, "Encryption enabled with password")
 }
 
 func handleEnableAgeEncryption(w http.ResponseWriter, r *http.Request) {
@@ -852,7 +862,7 @@ func handleEnableAgeEncryption(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Age encryption enabled successfully")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":     "ok",
 		"message":    "Encryption enabled with age identity",
 		"public_key": provider.GetPublicKey(),
@@ -893,7 +903,7 @@ func handleEnableSSHEncryption(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("SSH encryption enabled successfully")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Encryption enabled with SSH key")
+	_, _ = fmt.Fprint(w, "Encryption enabled with SSH key")
 }
 
 func handleEnableYubiKeyEncryption(w http.ResponseWriter, r *http.Request) {
@@ -938,7 +948,7 @@ func handleEnableYubiKeyEncryption(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("YubiKey encryption enabled successfully")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Encryption enabled with YubiKey")
+	_, _ = fmt.Fprint(w, "Encryption enabled with YubiKey")
 }
 
 // HandleChangeAuthMethod changes the encryption method (re-encrypts data)
@@ -953,7 +963,7 @@ func HandleGetEncryptionConfig(w http.ResponseWriter, r *http.Request) {
 	config := store.GetConfig()
 	if config == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"encrypted": false,
 		})
 		return
@@ -961,7 +971,7 @@ func HandleGetEncryptionConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Don't expose sensitive paths fully, just method info
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"encrypted": true,
 		"method":    config.Method,
 	})
@@ -988,7 +998,7 @@ func HandleYubiKeyIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"identity":  identity,
 		"recipient": recipient,
 	})
@@ -1043,7 +1053,7 @@ func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"error":         "YubiKey setup requires terminal interaction",
 		"setup_command": setupCmd,
 		"instructions":  "Run the setup command in your terminal, then click 'Refresh' to detect your new identity.",

@@ -262,7 +262,9 @@ func extractLineNumber(errStr string) int {
 	matches := re.FindStringSubmatch(errStr)
 	if len(matches) >= 2 {
 		var lineNum int
-		fmt.Sscanf(matches[1], "%d", &lineNum)
+		// matches[1] is regex-guaranteed digits; on the impossible parse
+		// failure lineNum stays 0, which is the same as the fallback below.
+		_, _ = fmt.Sscanf(matches[1], "%d", &lineNum)
 		return lineNum
 	}
 	return 0

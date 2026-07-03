@@ -44,7 +44,7 @@ func handlePage(w http.ResponseWriter, r *http.Request) {
 	templates.AttachDuplicateCount(pageData, loaderSource)
 
 	if renderer != nil {
-		renderer.Render(w, "base", pageData)
+		_ = renderer.Render(w, "base", pageData)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

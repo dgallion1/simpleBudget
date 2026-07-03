@@ -73,10 +73,10 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, findings)
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
@@ -97,10 +97,10 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -198,10 +198,10 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -254,10 +254,10 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -316,10 +316,10 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -351,10 +351,10 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -423,10 +423,10 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func maxSubmittedSpendingPhaseIndex(form map[string][]string) int {
@@ -512,10 +512,10 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
@@ -567,10 +567,10 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
@@ -638,10 +638,10 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -675,9 +675,9 @@ func handleWhatIfTaxOptimize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-tax-optimizer-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-tax-optimizer-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }

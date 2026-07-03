@@ -97,10 +97,10 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
@@ -161,10 +161,10 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
@@ -185,10 +185,10 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
@@ -209,10 +209,10 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
@@ -296,10 +296,10 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
@@ -356,10 +356,10 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
@@ -380,10 +380,10 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
@@ -404,10 +404,10 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
@@ -479,10 +479,10 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
@@ -503,10 +503,10 @@ func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
@@ -527,10 +527,10 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -552,10 +552,10 @@ func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -577,10 +577,10 @@ func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -602,9 +602,9 @@ func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }

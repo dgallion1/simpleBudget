@@ -139,10 +139,10 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
@@ -303,10 +303,10 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
@@ -327,9 +327,9 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }

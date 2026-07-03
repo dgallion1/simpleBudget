@@ -237,10 +237,10 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 
 	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
-		renderer.Render(w, "base", pageData)
+		_ = renderer.Render(w, "base", pageData)
 	} else {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte("<html><body><h1>Data Explorer</h1><p>Templates not loaded.</p></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>Data Explorer</h1><p>Templates not loaded.</p></body></html>"))
 	}
 }
 
@@ -370,15 +370,15 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 
 	if renderer != nil {
 		if appendRows {
-			renderer.RenderPartial(w, "transaction-rows", partialData)
+			_ = renderer.RenderPartial(w, "transaction-rows", partialData)
 		} else {
-			renderer.RenderPartial(w, "transactions-table", partialData)
+			_ = renderer.RenderPartial(w, "transactions-table", partialData)
 		}
 		// Always render summary stats for OOB update when filters change
-		renderer.RenderPartial(w, "summary-stats", partialData)
+		_ = renderer.RenderPartial(w, "summary-stats", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -394,10 +394,10 @@ func handleFileManager(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "file-manager", partialData)
+		_ = renderer.RenderPartial(w, "file-manager", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -429,7 +429,7 @@ func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templates.AttachDuplicateCount(data, loader)
-	renderer.Render(w, "base", data)
+	_ = renderer.Render(w, "base", data)
 }
 
 func handleFileToggle(w http.ResponseWriter, r *http.Request) {
@@ -470,10 +470,10 @@ func handleFileToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -489,7 +489,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading file", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	filename, err := sanitizeUploadFilename(header.Filename)
 	if err != nil {
@@ -527,10 +527,10 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 
@@ -583,10 +583,10 @@ func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(partialData)
+		_ = json.NewEncoder(w).Encode(partialData)
 	}
 }
 

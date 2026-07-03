@@ -27,6 +27,7 @@ Thumbs.db
 .playwright-mcp/
 .superpowers/
 .worktrees/
+reflection-notes.md
 
 # Screenshots from QA / dogfooding sessions (root-level only;
 # legitimate UI assets live under web/static/img/)

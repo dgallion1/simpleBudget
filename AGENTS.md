@@ -33,6 +33,11 @@ tool backed by `gopls`. No external index is required.
 - NEVER rename a symbol with find-and-replace. Use `LSP` `findReferences` to
   enumerate every use first, then change them all.
 - NEVER commit without a green `go build` + `go test` + `go vet` run.
+- NEVER filter test output through a pipeline like `go test ./... 2>&1 | grep
+  FAIL | head` — the pipe reports the LAST command's exit code, so a red suite
+  reads as exit 0 and failures get re-run for hours (this happened). Run tests
+  bare; if output must be trimmed, prefix `set -o pipefail;` so the test's own
+  exit code survives.
 
 ## LSP Tool Quick Reference
 

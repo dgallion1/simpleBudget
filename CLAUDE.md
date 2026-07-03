@@ -35,6 +35,11 @@ built-in `LSP` tool (backed by `gopls`). No external index to keep fresh.
   enumerate every use first, then change them all (gopls understands the call
   graph; text search does not).
 - NEVER commit without a green `go build` + `go test` + `go vet` run.
+- NEVER filter test output through a pipeline like `go test ./... 2>&1 | grep
+  FAIL | head` — the pipe reports the LAST command's exit code, so a red suite
+  reads as exit 0 and failures get re-run for hours (this happened). Run tests
+  bare; if output must be trimmed, prefix `set -o pipefail;` so the test's own
+  exit code survives.
 
 ## LSP tool quick reference
 

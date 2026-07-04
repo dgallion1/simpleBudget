@@ -59,7 +59,15 @@ func TestTaxOptimizer_WrapperEligibleAutoSeed(t *testing.T) {
 	// Exercises the seed=0 auto-seed path (time-derived seed shared across
 	// finalists). MC medians vary run-to-run, so assertions are structural.
 	s := eligibleBase()
-	in := engine.Input{Prepared: perturbAndPrepare(s)}
+	prep := perturbAndPrepare(s)
+	// Guard against age drift: eligibleBase pins Persons[0].BirthMonth so the
+	// PREPARED age matches CurrentAge=67. If prepare.ComputeAges ever derives
+	// a different age again (e.g. BirthMonth left at the default-65 value),
+	// every eligibleBase-derived engine run silently simulates the wrong age.
+	if gotAge := prep.Settings().CurrentAge; gotAge != 67 {
+		t.Fatalf("prepared CurrentAge = %d; eligibleBase must yield age 67", gotAge)
+	}
+	in := engine.Input{Prepared: prep}
 
 	got := TaxOptimizer(engine.New(), in, nil)
 	if got == nil || !got.Eligible {

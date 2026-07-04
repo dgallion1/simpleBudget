@@ -14,6 +14,11 @@ import (
 func eligibleBase() *models.WhatIfSettings {
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 67
+	// prepare.ComputeAges recomputes CurrentAge from BirthMonth + StartDate,
+	// so pin BirthMonth too — otherwise every test that runs this scenario
+	// through prepare.From (perturbAndPrepare / engine runs) silently
+	// simulates the DefaultWhatIfSettings age of 65 instead of 67.
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.ProjectionYears = 31
 	s.PortfolioValue = 2_000_000
 	s.TaxDeferredPercent = 80
@@ -232,9 +237,11 @@ func TestScoreCandidate_PopulatesFields(t *testing.T) {
 func TestScoreCandidate_PopulatesPerYearConversions(t *testing.T) {
 	// NOTE on age handling: cloneSettingsWithSSAndRoth → perturbAndPrepare →
 	// prepare.From runs ComputeAges, which DERIVES CurrentAge from
-	// StartDate + the primary Person's BirthMonth. This silently overrides
-	// any in-memory s.CurrentAge mutation. Read the post-prep CurrentAge
-	// from prep.Settings() instead of relying on eligibleBase()'s value.
+	// StartDate + the primary Person's BirthMonth, silently overriding any
+	// in-memory s.CurrentAge mutation. eligibleBase() now pins BirthMonth to
+	// match its CurrentAge=67, so the prepared age equals 67 — but any test
+	// that further mutates CurrentAge must also reset BirthMonth. Reading
+	// the post-prep CurrentAge from prep.Settings() stays robust either way.
 	s := eligibleBase()
 
 	prep, ok := cloneSettingsWithSSAndRoth(s, 67, 62, models.RothOptimizerStrategy{
@@ -593,9 +600,9 @@ func TestTaxOptimizer_IneligibleReturnsReason(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 67
 	s.ProjectionYears = 31
-	s.PortfolioValue = 50_000        // 60% tax-deferred → $30k, below $100k threshold
-	s.TaxDeferredPercent = 60        // explicit for clarity
-	s.TaxConfig = nil                // also triggers ineligibility (belt-and-suspenders)
+	s.PortfolioValue = 50_000 // 60% tax-deferred → $30k, below $100k threshold
+	s.TaxDeferredPercent = 60 // explicit for clarity
+	s.TaxConfig = nil         // also triggers ineligibility (belt-and-suspenders)
 	prep := perturbAndPrepare(s)
 	in := engine.Input{Prepared: prep}
 	eng := engine.New()

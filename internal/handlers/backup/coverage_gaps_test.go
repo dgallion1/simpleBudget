@@ -45,6 +45,7 @@ import (
 	"budget2/internal/config"
 	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/storage"
+	"budget2/internal/testutil"
 	"budget2/testdata"
 )
 
@@ -288,9 +289,7 @@ func TestHandleBackupPlaintext_LockedStore(t *testing.T) {
 	dataDir, cleanup := setupTestEnv(t)
 	t.Cleanup(cleanup)
 	writeCSVFile(t, dataDir, "x.csv", "data")
-	if err := store.EnableEncryption("correct-password-1"); err != nil {
-		t.Fatal(err)
-	}
+	enableAgeEncryption(t)
 	// A fresh Storage over the same dir sees the encryption marker but has
 	// no credentials: encrypted + locked.
 	locked, err := storage.New(dataDir)
@@ -300,7 +299,7 @@ func TestHandleBackupPlaintext_LockedStore(t *testing.T) {
 	store = locked
 
 	w := httptest.NewRecorder()
-	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", url.Values{"password": {"correct-password-1"}}.Encode()))
+	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", url.Values{"confirm": {"EXPORT"}}.Encode()))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status %d, want 401: %s", w.Code, w.Body.String())
 	}
@@ -313,12 +312,10 @@ func TestHandleBackupPlaintext_ParseFormError(t *testing.T) {
 	dataDir, cleanup := setupTestEnv(t)
 	t.Cleanup(cleanup)
 	writeCSVFile(t, dataDir, "x.csv", "data")
-	if err := store.EnableEncryption("correct-password-1"); err != nil {
-		t.Fatal(err)
-	}
+	enableAgeEncryption(t)
 
 	w := httptest.NewRecorder()
-	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", "%ZZ"))
+	HandleBackupPlaintext(w, testutil.BadFormRequest(http.MethodPost, "/backup/plaintext"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400: %s", w.Code, w.Body.String())
 	}
@@ -404,9 +401,7 @@ func TestHandleBackupPlaintext_OpenFileErrorAbortsWalk(t *testing.T) {
 	dataDir, cleanup := setupTestEnv(t)
 	t.Cleanup(cleanup)
 	writeCSVFile(t, dataDir, "x.csv", "data")
-	if err := store.EnableEncryption("correct-password-1"); err != nil {
-		t.Fatal(err)
-	}
+	enableAgeEncryption(t)
 	unreadable := filepath.Join(dataDir, "x.csv")
 	if err := os.Chmod(unreadable, 0o000); err != nil {
 		t.Fatal(err)
@@ -414,7 +409,7 @@ func TestHandleBackupPlaintext_OpenFileErrorAbortsWalk(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o644) })
 
 	w := httptest.NewRecorder()
-	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", url.Values{"password": {"correct-password-1"}}.Encode()))
+	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", url.Values{"confirm": {"EXPORT"}}.Encode()))
 	// Headers are already sent when the walk fails; the deferred zip Close
 	// still flushes a central directory, but the unreadable entry must carry
 	// no data (the walk aborted before any bytes were copied).
@@ -435,9 +430,7 @@ func TestHandleBackupPlaintext_WalkDirError(t *testing.T) {
 	dataDir, cleanup := setupTestEnv(t)
 	t.Cleanup(cleanup)
 	writeCSVFile(t, dataDir, "a.csv", "data")
-	if err := store.EnableEncryption("correct-password-1"); err != nil {
-		t.Fatal(err)
-	}
+	enableAgeEncryption(t)
 	// Executable-only directory: Walk can lstat it but not list it, so the
 	// walk callback receives a non-nil walkErr.
 	noList := filepath.Join(dataDir, "zz-nolist")
@@ -453,7 +446,7 @@ func TestHandleBackupPlaintext_WalkDirError(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(noList, 0o755) })
 
 	w := httptest.NewRecorder()
-	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", url.Values{"password": {"correct-password-1"}}.Encode()))
+	HandleBackupPlaintext(w, urlencodedPost("/backup/plaintext", url.Values{"confirm": {"EXPORT"}}.Encode()))
 	// Walk aborts with the error; handler logs and returns after headers.
 	if got := w.Header().Get("Content-Type"); got != "application/zip" {
 		t.Fatalf("Content-Type = %q", got)
@@ -472,12 +465,10 @@ func TestHandleBackupPlaintext_StreamWriteFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataDir, "big.csv"), payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.EnableEncryption("correct-password-1"); err != nil {
-		t.Fatal(err)
-	}
+	enableAgeEncryption(t)
 
 	w := &failingResponseWriter{}
-	r := urlencodedPost("/backup/plaintext", url.Values{"password": {"correct-password-1"}}.Encode())
+	r := urlencodedPost("/backup/plaintext", url.Values{"confirm": {"EXPORT"}}.Encode())
 	HandleBackupPlaintext(w, r)
 	if got := w.Header().Get("Content-Type"); got != "application/zip" {
 		t.Fatalf("Content-Type = %q", got)
@@ -766,7 +757,7 @@ func TestHandleSetAutoBackupEnabled_ParseFormError(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	w := httptest.NewRecorder()
-	HandleSetAutoBackupEnabled(w, urlencodedPost("/backup/auto-enabled", "%ZZ"))
+	HandleSetAutoBackupEnabled(w, testutil.BadFormRequest(http.MethodPost, "/backup/auto-enabled"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400: %s", w.Code, w.Body.String())
 	}

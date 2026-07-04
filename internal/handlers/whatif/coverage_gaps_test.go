@@ -21,9 +21,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
-	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
-	"budget2/internal/services/storage"
 )
 
 // ── parseProjectionStartYear ────────────────────────────────────────────────
@@ -318,27 +316,12 @@ func TestHandleWhatIfProjectionChartNoGuardrails_BuildEngineInputError(t *testin
 func setupSyncEnvWithBadCSVDir(t *testing.T) *retirement.SettingsManager {
 	t.Helper()
 
-	settingsDir := t.TempDir()
 	badCSVDir := filepath.Join(t.TempDir(), "bad[dir")
 	if err := os.MkdirAll(badCSVDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	store, err := storage.New(settingsDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
-	rm := retirement.NewSettingsManager(settingsDir, store)
-	dl := dataloader.New(badCSVDir, store)
-	Initialize(dl, nil, rm)
-
-	cache.mu.Lock()
-	cache.hash = ""
-	cache.analysis = nil
-	cache.cachedAt = time.Time{}
-	cache.mu.Unlock()
-
-	return rm
+	return wireWhatIfEnv(t, t.TempDir(), badCSVDir)
 }
 
 func TestSyncSettingsFromDashboard_LoadDataError(t *testing.T) {
@@ -372,7 +355,6 @@ func TestHandleWhatIfSync_LoadDataError(t *testing.T) {
 func setupSyncEnvWithCSV(t *testing.T, rows []string) {
 	t.Helper()
 
-	settingsDir := t.TempDir()
 	csvDir := t.TempDir()
 
 	lines := append([]string{"Date,Description,Amount,Type,Category"}, rows...)
@@ -380,19 +362,7 @@ func setupSyncEnvWithCSV(t *testing.T, rows []string) {
 		t.Fatalf("write csv: %v", err)
 	}
 
-	store, err := storage.New(settingsDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
-	rm := retirement.NewSettingsManager(settingsDir, store)
-	dl := dataloader.New(csvDir, store)
-	Initialize(dl, nil, rm)
-
-	cache.mu.Lock()
-	cache.hash = ""
-	cache.analysis = nil
-	cache.cachedAt = time.Time{}
-	cache.mu.Unlock()
+	wireWhatIfEnv(t, t.TempDir(), csvDir)
 }
 
 // Weekly deposits must be converted to a monthly amount (×52/12).

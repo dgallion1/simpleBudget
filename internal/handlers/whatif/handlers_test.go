@@ -26,22 +26,11 @@ import (
 	"budget2/internal/testutil"
 )
 
-// setupTestEnv creates temp directories, initializes package-level vars,
-// and returns the SettingsManager plus a cleanup function.
-func setupTestEnv(t *testing.T) (*retirement.SettingsManager, func()) {
+// wireWhatIfEnv wires the package-level test environment against the given
+// directories: storage + SettingsManager on settingsDir, dataloader on csvDir,
+// Initialize with a nil renderer (handlers encode JSON), and a cache reset.
+func wireWhatIfEnv(t *testing.T, settingsDir, csvDir string) *retirement.SettingsManager {
 	t.Helper()
-
-	settingsDir := t.TempDir()
-	csvDir := t.TempDir()
-
-	// Create a minimal CSV so dataloader.LoadData returns data
-	csvPath := filepath.Join(csvDir, "test.csv")
-	csvContent := "Date,Description,Amount,Type,Category\n" +
-		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Salary,5000,Income,Employment\n" +
-		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Rent,-2000,Outflow,Housing\n" +
-		time.Now().AddDate(0, -2, 0).Format("2006-01-02") + ",Salary,5000,Income,Employment\n" +
-		time.Now().AddDate(0, -2, 0).Format("2006-01-02") + ",Groceries,-500,Outflow,Food\n"
-	os.WriteFile(csvPath, []byte(csvContent), 0644)
 
 	store, err := storage.New(settingsDir)
 	if err != nil {
@@ -60,6 +49,28 @@ func setupTestEnv(t *testing.T) (*retirement.SettingsManager, func()) {
 	cache.analysis = nil
 	cache.cachedAt = time.Time{}
 	cache.mu.Unlock()
+
+	return rm
+}
+
+// setupTestEnv creates temp directories, initializes package-level vars,
+// and returns the SettingsManager plus a cleanup function.
+func setupTestEnv(t *testing.T) (*retirement.SettingsManager, func()) {
+	t.Helper()
+
+	settingsDir := t.TempDir()
+	csvDir := t.TempDir()
+
+	// Create a minimal CSV so dataloader.LoadData returns data
+	csvPath := filepath.Join(csvDir, "test.csv")
+	csvContent := "Date,Description,Amount,Type,Category\n" +
+		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Salary,5000,Income,Employment\n" +
+		time.Now().AddDate(0, -1, 0).Format("2006-01-02") + ",Rent,-2000,Outflow,Housing\n" +
+		time.Now().AddDate(0, -2, 0).Format("2006-01-02") + ",Salary,5000,Income,Employment\n" +
+		time.Now().AddDate(0, -2, 0).Format("2006-01-02") + ",Groceries,-500,Outflow,Food\n"
+	os.WriteFile(csvPath, []byte(csvContent), 0644)
+
+	rm := wireWhatIfEnv(t, settingsDir, csvDir)
 
 	cleanup := func() {
 		// Nothing extra needed; t.TempDir auto-cleans
@@ -4182,20 +4193,14 @@ func TestHandleWhatIf_DoesNotAutoSyncEmptyIncomeSources(t *testing.T) {
 	}
 }
 
-// ── ParseForm error tests (multipart with bad boundary triggers error) ─────
-
-func badParseFormRequest(method, path string) *http.Request {
-	req := httptest.NewRequest(method, path, strings.NewReader("bad"))
-	req.Header.Set("Content-Type", "multipart/form-data") // missing boundary
-	return req
-}
+// ── ParseForm error tests (invalid percent-encoding triggers error) ────────
 
 func TestHandleWhatIfAddIncome_ParseFormError(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddIncome(w, badParseFormRequest("POST", "/whatif/income"))
+	handleWhatIfAddIncome(w, testutil.BadFormRequest("POST", "/whatif/income"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -4206,7 +4211,7 @@ func TestHandleWhatIfAddExpense_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddExpense(w, badParseFormRequest("POST", "/whatif/expense"))
+	handleWhatIfAddExpense(w, testutil.BadFormRequest("POST", "/whatif/expense"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -4217,7 +4222,7 @@ func TestHandleWhatIfSettings_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfSettings(w, badParseFormRequest("POST", "/whatif/settings"))
+	handleWhatIfSettings(w, testutil.BadFormRequest("POST", "/whatif/settings"))
 	// ParseForm may or may not error depending on handler; just ensure no panic
 }
 
@@ -4226,7 +4231,7 @@ func TestHandleWhatIfAddHealthcare_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddHealthcare(w, badParseFormRequest("POST", "/whatif/healthcare"))
+	handleWhatIfAddHealthcare(w, testutil.BadFormRequest("POST", "/whatif/healthcare"))
 	// Exercise code path; ParseForm may not error on all Go versions
 }
 
@@ -4235,7 +4240,7 @@ func TestHandleWhatIfUpdateHealthcare_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := badParseFormRequest("PUT", "/whatif/healthcare/x")
+	req := testutil.BadFormRequest("PUT", "/whatif/healthcare/x")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "x")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -4247,7 +4252,7 @@ func TestHandleWhatIfUpdateIncome_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := badParseFormRequest("PUT", "/whatif/income/x")
+	req := testutil.BadFormRequest("PUT", "/whatif/income/x")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "x")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -4259,7 +4264,7 @@ func TestHandleWhatIfUpdateExpense_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := badParseFormRequest("PUT", "/whatif/expense/x")
+	req := testutil.BadFormRequest("PUT", "/whatif/expense/x")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "x")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -4271,7 +4276,7 @@ func TestHandleWhatIfSpendingPhases_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfSpendingPhases(w, badParseFormRequest("POST", "/whatif/spending-phases"))
+	handleWhatIfSpendingPhases(w, testutil.BadFormRequest("POST", "/whatif/spending-phases"))
 }
 
 func TestHandleWhatIfRothConversion_ParseFormError(t *testing.T) {
@@ -4279,7 +4284,7 @@ func TestHandleWhatIfRothConversion_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfRothConversion(w, badParseFormRequest("POST", "/whatif/roth-conversion"))
+	handleWhatIfRothConversion(w, testutil.BadFormRequest("POST", "/whatif/roth-conversion"))
 }
 
 func TestHandleWhatIfAddBigTicket_ParseFormError(t *testing.T) {
@@ -4287,7 +4292,7 @@ func TestHandleWhatIfAddBigTicket_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddBigTicket(w, badParseFormRequest("POST", "/whatif/bigticket"))
+	handleWhatIfAddBigTicket(w, testutil.BadFormRequest("POST", "/whatif/bigticket"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -4298,7 +4303,7 @@ func TestHandleWhatIfUpdateChain_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfUpdateChain(w, badParseFormRequest("POST", "/whatif/chain"))
+	handleWhatIfUpdateChain(w, testutil.BadFormRequest("POST", "/whatif/chain"))
 }
 
 // ── Test handleCreateScenario error (duplicate) ────────────────────────────
@@ -4962,24 +4967,11 @@ func setupBrokenEnv(t *testing.T) {
 	csvPath := filepath.Join(csvDir, "test.csv")
 	os.WriteFile(csvPath, []byte("Date,Description,Amount,Type,Category\n2025-01-15,Salary,5000,Income,Employment\n"), 0644)
 
-	store, err := storage.New(settingsDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
+	wireWhatIfEnv(t, settingsDir, csvDir)
 
-	rm := retirement.NewSettingsManager(settingsDir, store)
-	dl := dataloader.New(csvDir, store)
-	Initialize(dl, nil, rm)
-
-	// Write corrupt settings file so loadInternal fails
+	// Write corrupt settings file so loadInternal fails; the cache is already
+	// clear, so Load() will try to read the corrupt file.
 	os.WriteFile(filepath.Join(settingsDir, "whatif.json"), []byte("{invalid json!!!"), 0644)
-
-	// Clear cache so Load() will try to read the corrupt file
-	cache.mu.Lock()
-	cache.hash = ""
-	cache.analysis = nil
-	cache.cachedAt = time.Time{}
-	cache.mu.Unlock()
 }
 
 func expectError(t *testing.T, w *httptest.ResponseRecorder) {
@@ -5695,22 +5687,12 @@ func TestHandleWhatIfSocialSecurity_SaveError(t *testing.T) {
 	}
 }
 
-// badEncodedRequest creates a request with an x-www-form-urlencoded body
-// containing invalid percent encoding, which makes r.ParseForm() return
-// "invalid URL escape" — unlike multipart/form-data without a boundary,
-// which Go's net/http silently accepts.
-func badEncodedRequest(method, path string) *http.Request {
-	req := httptest.NewRequest(method, path, strings.NewReader("foo=%ZZ"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	return req
-}
-
 func TestHandleWhatIfSocialSecurity_ParseFormError(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfSocialSecurity(w, badEncodedRequest("POST", "/whatif/social-security"))
+	handleWhatIfSocialSecurity(w, testutil.BadFormRequest("POST", "/whatif/social-security"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -5721,7 +5703,7 @@ func TestHandleWhatIfGlidePath_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfGlidePath(w, badEncodedRequest("POST", "/whatif/glide-path"))
+	handleWhatIfGlidePath(w, testutil.BadFormRequest("POST", "/whatif/glide-path"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -5793,7 +5775,7 @@ func TestHandleWhatIfGuardrails_ParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfGuardrails(w, badEncodedRequest("POST", "/whatif/guardrails"))
+	handleWhatIfGuardrails(w, testutil.BadFormRequest("POST", "/whatif/guardrails"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6301,7 +6283,7 @@ func TestHandleWhatIfRothConversion_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfRothConversion(w, badEncodedRequest("POST", "/whatif/roth-conversion"))
+	handleWhatIfRothConversion(w, testutil.BadFormRequest("POST", "/whatif/roth-conversion"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6312,7 +6294,7 @@ func TestHandleWhatIfSettings_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfSettings(w, badEncodedRequest("POST", "/whatif/settings"))
+	handleWhatIfSettings(w, testutil.BadFormRequest("POST", "/whatif/settings"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6323,7 +6305,7 @@ func TestHandleWhatIfSpendingPhases_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfSpendingPhases(w, badEncodedRequest("POST", "/whatif/spending-phases"))
+	handleWhatIfSpendingPhases(w, testutil.BadFormRequest("POST", "/whatif/spending-phases"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6334,7 +6316,7 @@ func TestHandleWhatIfAddIncome_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddIncome(w, badEncodedRequest("POST", "/whatif/income"))
+	handleWhatIfAddIncome(w, testutil.BadFormRequest("POST", "/whatif/income"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6345,7 +6327,7 @@ func TestHandleWhatIfAddExpense_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddExpense(w, badEncodedRequest("POST", "/whatif/expense"))
+	handleWhatIfAddExpense(w, testutil.BadFormRequest("POST", "/whatif/expense"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6356,7 +6338,7 @@ func TestHandleWhatIfAddBigTicket_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddBigTicket(w, badEncodedRequest("POST", "/whatif/bigticket"))
+	handleWhatIfAddBigTicket(w, testutil.BadFormRequest("POST", "/whatif/bigticket"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6367,7 +6349,7 @@ func TestHandleWhatIfUpdateChain_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfUpdateChain(w, badEncodedRequest("POST", "/whatif/chain"))
+	handleWhatIfUpdateChain(w, testutil.BadFormRequest("POST", "/whatif/chain"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6378,7 +6360,7 @@ func TestHandleWhatIfAddHealthcare_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	handleWhatIfAddHealthcare(w, badEncodedRequest("POST", "/whatif/healthcare"))
+	handleWhatIfAddHealthcare(w, testutil.BadFormRequest("POST", "/whatif/healthcare"))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
@@ -6389,7 +6371,7 @@ func TestHandleWhatIfUpdateHealthcare_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := badEncodedRequest("PUT", "/whatif/healthcare/x")
+	req := testutil.BadFormRequest("PUT", "/whatif/healthcare/x")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "x")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -6404,7 +6386,7 @@ func TestHandleWhatIfUpdateIncome_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := badEncodedRequest("PUT", "/whatif/income/x")
+	req := testutil.BadFormRequest("PUT", "/whatif/income/x")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "x")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -6419,7 +6401,7 @@ func TestHandleWhatIfUpdateExpense_RealParseFormError(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	req := badEncodedRequest("PUT", "/whatif/expense/x")
+	req := testutil.BadFormRequest("PUT", "/whatif/expense/x")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "x")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))

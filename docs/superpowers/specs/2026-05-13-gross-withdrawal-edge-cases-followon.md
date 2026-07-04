@@ -1,7 +1,13 @@
 # Gross Withdrawal Edge-Case Test Coverage (Follow-On)
 
 **Date:** 2026-05-13
-**Status:** Tracked / Not Yet Started
+**Status:** Closed 2026-07-04 — all four edge cases covered by sub-tests in
+`TestCalculateBudgetFit` (`internal/services/retirement/calculator_expense_test.go`,
+five sub-tests: NIIT and SS phase-in each got one); IRMAA resolved via the
+documentation option (panel footnote in
+`web/templates/components/whatif/budget-analysis.html` now states that the
+gross-up excludes the year-N+2 IRMAA effect of the withdrawal, and a
+regression sub-test pins the lookback-MAGI semantics)
 **Parent feature:** `docs/superpowers/specs/2026-05-12-gross-withdrawal-line-design.md`
 **Merged on:** 2026-05-13 (`feat/gross-withdrawal-line` → `master`)
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"budget2/internal/models"
 	"budget2/web"
 )
 
@@ -31,7 +32,7 @@ func renderMajorExpensesVerdict(t *testing.T, verdict map[string]any) string {
 func TestRenderMajorExpenses_VerdictBar(t *testing.T) {
 	t.Run("green well-tracked band", func(t *testing.T) {
 		out := renderMajorExpensesVerdict(t, map[string]any{
-			"Health": "green", "HasSpend": true, "TrackedPercent": 90.0,
+			"Health": models.HealthGreen, "HasSpend": true, "TrackedPercent": 90.0,
 			"DeclaredTotal": 9000.0, "UnmatchedTotal": 1000.0, "UnmatchedCount": 3,
 		})
 		for _, want := range []string{"verdict-green", "of spending tracked", "Declared", "Unmatched", `class="num`} {
@@ -43,7 +44,7 @@ func TestRenderMajorExpenses_VerdictBar(t *testing.T) {
 
 	t.Run("red mostly-untracked band", func(t *testing.T) {
 		out := renderMajorExpensesVerdict(t, map[string]any{
-			"Health": "red", "HasSpend": true, "TrackedPercent": 30.0,
+			"Health": models.HealthRed, "HasSpend": true, "TrackedPercent": 30.0,
 			"DeclaredTotal": 3000.0, "UnmatchedTotal": 7000.0, "UnmatchedCount": 25,
 		})
 		if !strings.Contains(out, "verdict-red") {
@@ -52,7 +53,7 @@ func TestRenderMajorExpenses_VerdictBar(t *testing.T) {
 	})
 
 	t.Run("neutral no-spend band", func(t *testing.T) {
-		out := renderMajorExpensesVerdict(t, map[string]any{"Health": "neutral", "HasSpend": false})
+		out := renderMajorExpensesVerdict(t, map[string]any{"Health": models.HealthNeutral, "HasSpend": false})
 		if !strings.Contains(out, "verdict-neutral") {
 			t.Errorf("expected verdict-neutral; got: %s", mtrunc(out, 700))
 		}

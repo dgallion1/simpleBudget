@@ -12,6 +12,11 @@ import (
 
 func renderMajorExpensesContent(t *testing.T, data map[string]any) string {
 	t.Helper()
+	// The verdict band requires a typed Health; tests that don't exercise it
+	// get a neutral no-spend verdict so the page renders.
+	if _, ok := data["TrackingVerdict"]; !ok {
+		data["TrackingVerdict"] = map[string]any{"Health": models.HealthNeutral, "HasSpend": false}
+	}
 	templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
 	if err != nil {
 		t.Fatalf("fs.Sub: %v", err)
@@ -35,11 +40,11 @@ func renderMajorExpensesContent(t *testing.T, data map[string]any) string {
 func TestRenderMajorExpenses_UnmatchedBucketShowsAllRowsWithDimming(t *testing.T) {
 	now := time.Now()
 	html := renderMajorExpensesContent(t, map[string]any{
-		"Title":          "Major Expenses",
-		"ActiveTab":      "major-expenses",
-		"Expenses":       []models.MajorExpense{},
-		"Summaries":      []struct{}{},
-		"Match":          map[string]any{"Exceptions": models.ExceptionsReport{}},
+		"Title":     "Major Expenses",
+		"ActiveTab": "major-expenses",
+		"Expenses":  []models.MajorExpense{},
+		"Summaries": []struct{}{},
+		"Match":     map[string]any{"Exceptions": models.ExceptionsReport{}},
 		"AllUnmatched": []models.Transaction{
 			{Date: now, Amount: -250, Description: "Big Unknown Charge", Hash: "h-big"},
 			{Date: now, Amount: -19.44, Description: "Tiny Coffee", Hash: "h-tiny"},
@@ -755,8 +760,9 @@ func TestRenderMajorExpensesResults_IncludesOOBSwap(t *testing.T) {
 		PinnedHashes map[string]bool
 	}
 	html, err := r.RenderToString("major-expenses-results", map[string]any{
-		"Expenses":  []models.MajorExpense{},
-		"Summaries": []summary{},
+		"TrackingVerdict": map[string]any{"Health": models.HealthNeutral, "HasSpend": false},
+		"Expenses":        []models.MajorExpense{},
+		"Summaries":       []summary{},
 		"Match": struct {
 			Exceptions models.ExceptionsReport
 		}{Exceptions: models.ExceptionsReport{Threshold: 100, NewWindowDays: 30}},

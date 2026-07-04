@@ -725,34 +725,43 @@ func successRateTextClass(v float64) string {
 	}
 }
 
-// verdictBandClass maps a verdict health value (models.Health or plain string:
-// "green"/"amber"/"red", anything else neutral) to the shared Tailwind
+// verdictBandClass maps a models.Health verdict value to the shared Tailwind
 // background/border classes for a verdict band container.
-func verdictBandClass(h any) string {
-	switch fmt.Sprintf("%v", h) {
-	case "green":
+func verdictBandClass(h models.Health) string {
+	switch h {
+	case models.HealthGreen:
 		return "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700"
-	case "amber":
+	case models.HealthAmber:
 		return "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700"
-	case "red":
+	case models.HealthRed:
 		return "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700"
-	default:
+	case models.HealthNeutral:
 		return "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+	default:
+		// Unknown health (zero value or a typo'd constant) renders as red so
+		// a missing/wrong health value is noticed, matching the whatif
+		// verdict bar's old fail-loud template ladder.
+		return "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700"
 	}
 }
 
 // verdictLabelClass maps the same health values to the verdict band's
 // small-caps label text-color classes.
-func verdictLabelClass(h any) string {
-	switch fmt.Sprintf("%v", h) {
-	case "green":
+func verdictLabelClass(h models.Health) string {
+	switch h {
+	case models.HealthGreen:
 		return "text-emerald-700 dark:text-emerald-300"
-	case "amber":
+	case models.HealthAmber:
 		return "text-amber-700 dark:text-amber-300"
-	case "red":
+	case models.HealthRed:
 		return "text-rose-700 dark:text-rose-300"
-	default:
+	case models.HealthNeutral:
 		return "text-gray-500 dark:text-gray-400"
+	default:
+		// Unknown health (zero value or a typo'd constant) renders as red so
+		// a missing/wrong health value is noticed, matching the whatif
+		// verdict bar's old fail-loud template ladder.
+		return "text-rose-700 dark:text-rose-300"
 	}
 }
 

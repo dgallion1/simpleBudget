@@ -21,10 +21,13 @@ func TestRenderInsightsContentAllowsBlankSubscriptionDescriptions(t *testing.T) 
 	}
 
 	html, err := renderer.RenderToString("insights-content", map[string]any{
-		"MinDate":   "2024-01-01",
-		"MaxDate":   "2024-12-31",
-		"StartDate": "2024-01-01",
-		"EndDate":   "2024-12-31",
+		// The verdict band requires a typed Health; this test doesn't
+		// exercise it, so use a neutral no-data verdict.
+		"PaceVerdict": map[string]any{"Health": models.HealthNeutral, "HasData": false},
+		"MinDate":     "2024-01-01",
+		"MaxDate":     "2024-12-31",
+		"StartDate":   "2024-01-01",
+		"EndDate":     "2024-12-31",
 		"Insights": models.InsightsData{
 			Subscriptions: []models.RecurringPayment{
 				{

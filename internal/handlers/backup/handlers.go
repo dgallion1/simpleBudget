@@ -7,6 +7,7 @@ package backup
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,9 +30,9 @@ import (
 )
 
 var (
-	cfg      *config.Config
-	store    *storage.Storage
-	renderer *templates.Renderer
+	cfg       *config.Config
+	store     *storage.Storage
+	renderer  *templates.Renderer
 	backupSvc *backupsvc.Service
 )
 
@@ -337,20 +339,22 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 }
 
 // restoreFromZip extracts every entry of the supplied archive into
-// cfg.DataDirectory using store.WriteFile. It validates the entire
-// archive before writing any files, so a malformed entry rejects the
-// whole operation atomically.
+// cfg.DataDirectory using store.WriteFile, then prunes files that were
+// not present in the archive. It validates the entire archive before
+// snapshotting or writing any files, so a malformed entry rejects the
+// whole operation before disk state changes.
 //
-// Returns (count, http status, error message). On success, status is 200.
-func restoreFromZip(content []byte) (int, int, string) {
+// Returns (restored count, removed count, http status, error message).
+// On success, status is 200.
+func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string) {
 	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
-		return 0, http.StatusBadRequest, "Invalid ZIP file"
+		return 0, 0, http.StatusBadRequest, "Invalid ZIP file"
 	}
 
 	dataAbs, err := filepath.Abs(cfg.DataDirectory)
 	if err != nil {
-		return 0, http.StatusInternalServerError, "Bad data directory"
+		return 0, 0, http.StatusInternalServerError, "Bad data directory"
 	}
 
 	type prepared struct {
@@ -358,6 +362,7 @@ func restoreFromZip(content []byte) (int, int, string) {
 		data []byte
 	}
 	var queue []prepared
+	archiveEntries := make(map[string]struct{})
 
 	for _, zf := range zr.File {
 		if zf.FileInfo().IsDir() {
@@ -366,7 +371,7 @@ func restoreFromZip(content []byte) (int, int, string) {
 		// Sanitize: forbid absolute, forbid ".." segments, must stay under data dir.
 		raw := filepath.ToSlash(zf.Name)
 		if strings.HasPrefix(raw, "/") {
-			return 0, http.StatusBadRequest, fmt.Sprintf("Absolute path in archive: %s", zf.Name)
+			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Absolute path in archive: %s", zf.Name)
 		}
 		clean := filepath.Clean(raw)
 		if clean == "." || clean == "" {
@@ -374,49 +379,149 @@ func restoreFromZip(content []byte) (int, int, string) {
 		}
 		for _, seg := range strings.Split(filepath.ToSlash(clean), "/") {
 			if seg == ".." {
-				return 0, http.StatusBadRequest, fmt.Sprintf("Path traversal in archive: %s", zf.Name)
+				return 0, 0, http.StatusBadRequest, fmt.Sprintf("Path traversal in archive: %s", zf.Name)
 			}
 		}
 		dest := filepath.Join(cfg.DataDirectory, clean)
 		destAbs, err := filepath.Abs(dest)
 		if err != nil || !(destAbs == dataAbs || strings.HasPrefix(destAbs, dataAbs+string(filepath.Separator))) {
-			return 0, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
+			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
 		}
 
 		rc, err := zf.Open()
 		if err != nil {
-			return 0, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
+			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
 		}
 		data, err := io.ReadAll(rc)
 		_ = rc.Close()
 		if err != nil {
-			return 0, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
+			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
 		}
 
-		// Encrypted blob into unencrypted/locked store → reject the whole archive.
+		// Encrypted blob into unencrypted/locked store -> reject the whole archive.
 		if storage.IsAgeEncryptedData(data) && !(store.IsEncrypted() && store.IsUnlocked()) {
-			return 0, http.StatusBadRequest, fmt.Sprintf(
+			return 0, 0, http.StatusBadRequest, fmt.Sprintf(
 				"Archive contains encrypted entry %s but destination store is not encrypted/unlocked",
 				zf.Name,
 			)
 		}
 
 		queue = append(queue, prepared{dest: dest, data: data})
+		archiveEntries[destAbs] = struct{}{}
 	}
 
 	if len(queue) == 0 {
-		return 0, http.StatusBadRequest, "No restorable files in archive"
+		return 0, 0, http.StatusBadRequest, "No restorable files in archive"
+	}
+
+	if backupSvc == nil {
+		return 0, 0, http.StatusInternalServerError, "Backup service not initialized"
+	}
+	if err := backupSvc.Snapshot(ctx); err != nil {
+		if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
+			return 0, 0, http.StatusConflict, "a backup is currently running; retry shortly"
+		}
+		return 0, 0, http.StatusInternalServerError, fmt.Sprintf("safety snapshot failed: %v", err)
 	}
 
 	for _, p := range queue {
 		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
-			return 0, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
+			return 0, 0, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
 		}
 		if err := store.WriteFile(p.dest, p.data, 0644); err != nil {
-			return 0, http.StatusInternalServerError, fmt.Sprintf("write %s: %v", p.dest, err)
+			return 0, 0, http.StatusInternalServerError, fmt.Sprintf("write %s: %v", p.dest, err)
 		}
 	}
-	return len(queue), http.StatusOK, ""
+
+	removed, pruneFailures := pruneRestoreExtras(dataAbs, archiveEntries)
+	if pruneFailures > 0 {
+		log.Printf("restore prune completed with %d failures", pruneFailures)
+	}
+	return len(queue), removed, http.StatusOK, ""
+}
+
+func pruneRestoreExtras(dataAbs string, archiveEntries map[string]struct{}) (int, int) {
+	backupAbs := ""
+	if backupSvc != nil {
+		backupAbs, _ = filepath.Abs(backupSvc.BackupDir())
+	} else if cfg != nil && cfg.BackupDir != "" {
+		backupAbs, _ = filepath.Abs(cfg.BackupDir)
+	}
+
+	isBackupPath := func(pathAbs string) bool {
+		return backupAbs != "" && (pathAbs == backupAbs || strings.HasPrefix(pathAbs, backupAbs+string(filepath.Separator)))
+	}
+
+	var dirs []string
+	removed := 0
+	failures := 0
+	err := filepath.Walk(dataAbs, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			log.Printf("restore prune: walk %s: %v", path, walkErr)
+			failures++
+			if info != nil && info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		pathAbs, err := filepath.Abs(path)
+		if err != nil {
+			log.Printf("restore prune: abs %s: %v", path, err)
+			failures++
+			return nil
+		}
+		if pathAbs == dataAbs {
+			return nil
+		}
+		if isBackupPath(pathAbs) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		base := filepath.Base(path)
+		if info.IsDir() {
+			if base == "cache" {
+				return filepath.SkipDir
+			}
+			dirs = append(dirs, pathAbs)
+			return nil
+		}
+		if strings.HasSuffix(base, ".tmp") || base == ".encrypted" || base == ".encryption-verify" {
+			return nil
+		}
+		if _, ok := archiveEntries[pathAbs]; ok {
+			return nil
+		}
+		if err := store.Remove(pathAbs); err != nil {
+			log.Printf("restore prune: remove stale file %s: %v", pathAbs, err)
+			failures++
+			return nil
+		}
+		removed++
+		return nil
+	})
+	if err != nil {
+		log.Printf("restore prune: walk root %s: %v", dataAbs, err)
+		failures++
+	}
+
+	sort.Slice(dirs, func(i, j int) bool {
+		return len(dirs[i]) > len(dirs[j])
+	})
+	for _, dir := range dirs {
+		if dir == dataAbs || isBackupPath(dir) || filepath.Base(dir) == "cache" {
+			continue
+		}
+		if err := store.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) > 0 {
+				continue
+			}
+			log.Printf("restore prune: remove empty dir %s: %v", dir, err)
+			failures++
+		}
+	}
+	return removed, failures
 }
 
 func HandleRestore(w http.ResponseWriter, r *http.Request) {
@@ -444,14 +549,14 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
-	count, status, msg := restoreFromZip(content)
+	count, removed, status, msg := restoreFromZip(r.Context(), content)
 	if status != http.StatusOK {
 		http.Error(w, msg, status)
 		return
 	}
-	log.Printf("Restore complete: %d files restored", count)
+	log.Printf("Restore complete: %d files restored, %d stale files removed", count, removed)
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "Restored %d files", count)
+	_, _ = fmt.Fprintf(w, "Restored %d files, removed %d stale files", count, removed)
 }
 
 func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
@@ -460,14 +565,14 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Test backup not available", http.StatusInternalServerError)
 		return
 	}
-	count, status, msg := restoreFromZip(content)
+	count, removed, status, msg := restoreFromZip(r.Context(), content)
 	if status != http.StatusOK {
 		http.Error(w, msg, status)
 		return
 	}
-	log.Printf("Test data restore complete: %d files restored", count)
+	log.Printf("Test data restore complete: %d files restored, %d stale files removed", count, removed)
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "Restored %d test files", count)
+	_, _ = fmt.Fprintf(w, "Restored %d test files, removed %d stale files", count, removed)
 }
 
 func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {

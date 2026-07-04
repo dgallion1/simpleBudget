@@ -3,6 +3,7 @@ package backup
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,12 +11,13 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
-	"os/exec"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -43,11 +45,19 @@ func setupTestEnv(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
 
+	backupDir := filepath.Join(tmpDir, "backups")
 	c := &config.Config{
 		DataDirectory: tmpDir,
+		BackupDir:     backupDir,
 	}
 
-	Initialize(c, s, nil, nil)
+	b, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: tmpDir, Store: s})
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatalf("Failed to create backup service: %v", err)
+	}
+
+	Initialize(c, s, nil, b)
 
 	return tmpDir, func() {
 		os.RemoveAll(tmpDir)
@@ -2663,7 +2673,7 @@ func TestHandleRestoreWithDoubleDotBaseName(t *testing.T) {
 
 	// Create zip with a file that has ".." in base name
 	zipBuf := createZipBuffer(t, map[string]string{
-		"..evil.csv":  "bad",
+		"..evil.csv": "bad",
 		"normal.csv": "good",
 	})
 
@@ -2886,17 +2896,263 @@ func TestHandleRestoreWithMixedFiles(t *testing.T) {
 	}
 }
 
+func TestHandleRestore_FullReplacePrunesStaleFiles(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if err := os.WriteFile(filepath.Join(dataDir, "stale.json"), []byte(`{"old":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "old", "nested"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "old", "nested", "stale.csv"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	zipBuf := createZipBuffer(t, map[string]string{
+		"current.csv": "new",
+	})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "removed 2 stale files") {
+		t.Fatalf("restore body missing removed count: %s", rec.Body.String())
+	}
+	mustReadEqual(t, filepath.Join(dataDir, "current.csv"), []byte("new"))
+	for _, name := range []string{"stale.json", filepath.Join("old", "nested", "stale.csv"), filepath.Join("old", "nested"), "old"} {
+		if _, err := os.Stat(filepath.Join(dataDir, name)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%s should have been pruned, err=%v", name, err)
+		}
+	}
+}
+
+func TestHandleRestore_FullReplacePreservesRestoreSkipList(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	backupDir := cfg.BackupDir
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.MkdirAll(filepath.Join(dataDir, "cache"), 0755))
+	must(os.WriteFile(filepath.Join(dataDir, "cache", "plotly.min.js"), []byte("cache"), 0644))
+	must(os.WriteFile(filepath.Join(dataDir, ".encrypted"), []byte("marker"), 0644))
+	must(os.WriteFile(filepath.Join(dataDir, ".encryption-verify"), []byte("verify"), 0644))
+	must(os.WriteFile(filepath.Join(dataDir, "write.csv.tmp"), []byte("tmp"), 0644))
+	must(os.MkdirAll(backupDir, 0700))
+	must(os.WriteFile(filepath.Join(backupDir, "manual.zip"), []byte("backup"), 0600))
+
+	zipBuf := createZipBuffer(t, map[string]string{"current.csv": "new"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, path := range []string{
+		filepath.Join(dataDir, "cache", "plotly.min.js"),
+		filepath.Join(dataDir, ".encrypted"),
+		filepath.Join(dataDir, ".encryption-verify"),
+		filepath.Join(dataDir, "write.csv.tmp"),
+		filepath.Join(backupDir, "manual.zip"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("%s should have been preserved: %v", path, err)
+		}
+	}
+}
+
+func TestHandleRestore_SafetySnapshotRunsWhenAutoBackupDisabled(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if err := os.WriteFile(filepath.Join(dataDir, "before.csv"), []byte("before"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := backupSvc.SetEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+
+	zipBuf := createZipBuffer(t, map[string]string{"after.csv": "after"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	matches, err := filepath.Glob(filepath.Join(cfg.BackupDir, "budget_backup_*.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("expected safety snapshot zip even when auto-backup is disabled")
+	}
+}
+
+func TestHandleRestore_SnapshotFailureAbortsWithoutDataChange(t *testing.T) {
+	dataDir := t.TempDir()
+	originalCfg := cfg
+	originalStore := store
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
+
+	backupDir := filepath.Join(dataDir, "backup-file")
+	if err := os.WriteFile(backupDir, []byte("not a dir"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
+	s, err := storage.New(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store = s
+	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir, Store: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupSvc = svc
+
+	if err := os.WriteFile(filepath.Join(dataDir, "keep.csv"), []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	zipBuf := createZipBuffer(t, map[string]string{"keep.csv": "restored", "new.csv": "new"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected snapshot failure 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mustReadEqual(t, filepath.Join(dataDir, "keep.csv"), []byte("original"))
+	if _, err := os.Stat(filepath.Join(dataDir, "new.csv")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("new.csv should not have been written after snapshot failure, err=%v", err)
+	}
+}
+
+func TestHandleRestore_SnapshotInProgressReturnsConflict(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	fifo := filepath.Join(dataDir, "blocking.fifo")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Skipf("mkfifo unavailable: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- backupSvc.Snapshot(context.Background()) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		matches, _ := filepath.Glob(filepath.Join(cfg.BackupDir, "budget_backup_*.zip.tmp"))
+		if len(matches) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("snapshot did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	zipBuf := createZipBuffer(t, map[string]string{"restore.csv": "restore"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	writerDone := make(chan error, 1)
+	go func() {
+		f, err := os.OpenFile(fifo, os.O_WRONLY, 0600)
+		if err != nil {
+			writerDone <- err
+			return
+		}
+		_, writeErr := f.Write([]byte("unblock"))
+		closeErr := f.Close()
+		if writeErr != nil {
+			writerDone <- writeErr
+			return
+		}
+		writerDone <- closeErr
+	}()
+	if err := <-writerDone; err != nil {
+		t.Fatalf("unblock fifo: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("background snapshot: %v", err)
+	}
+}
+
+func TestHandleRestoreTestDataPrunesStaleFiles(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if err := os.WriteFile(filepath.Join(dataDir, "stale-after-test-data.json"), []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/restore-test-data", nil)
+	HandleRestoreTestData(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "stale-after-test-data.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("test-data restore should prune stale file, err=%v", err)
+	}
+}
+
+func TestHandleRestore_BackupServiceRequired(t *testing.T) {
+	dataDir := t.TempDir()
+	originalCfg := cfg
+	originalStore := store
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
+
+	cfg = &config.Config{DataDirectory: dataDir}
+	s, err := storage.New(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store = s
+	backupSvc = nil
+
+	zipBuf := createZipBuffer(t, map[string]string{"file.csv": "data"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when backup service is unavailable, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "file.csv")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("restore should not write without backup service, err=%v", err)
+	}
+}
+
 // ---------- Task-8 new tests: round-trip, path sanitization, encrypted-blob ----------
 
 func TestHandleRestore_RoundTripsAllFileTypes(t *testing.T) {
 	dataDir := t.TempDir()
 	originalCfg := cfg
 	originalStore := store
-	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
 
-	cfg = &config.Config{DataDirectory: dataDir}
+	backupDir := filepath.Join(dataDir, "backups")
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
 	s, _ := storage.New(dataDir)
 	store = s
+	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir, Store: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupSvc = svc
 
 	// Build an in-memory zip with csv + json + nested settings/.
 	var buf bytes.Buffer
@@ -2923,11 +3179,18 @@ func TestHandleRestore_RejectsPathTraversal(t *testing.T) {
 	dataDir := t.TempDir()
 	originalCfg := cfg
 	originalStore := store
-	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
 
-	cfg = &config.Config{DataDirectory: dataDir}
+	backupDir := filepath.Join(dataDir, "backups")
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
 	s, _ := storage.New(dataDir)
 	store = s
+	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir, Store: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupSvc = svc
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -2953,11 +3216,18 @@ func TestHandleRestore_RejectsAbsolutePathEntries(t *testing.T) {
 	dataDir := t.TempDir()
 	originalCfg := cfg
 	originalStore := store
-	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
 
-	cfg = &config.Config{DataDirectory: dataDir}
+	backupDir := filepath.Join(dataDir, "backups")
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
 	s, _ := storage.New(dataDir)
 	store = s
+	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir, Store: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupSvc = svc
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -2978,11 +3248,18 @@ func TestHandleRestore_RejectsEncryptedBlobsIntoUnencryptedStore(t *testing.T) {
 	dataDir := t.TempDir()
 	originalCfg := cfg
 	originalStore := store
-	t.Cleanup(func() { cfg = originalCfg; store = originalStore })
+	originalSvc := backupSvc
+	t.Cleanup(func() { cfg = originalCfg; store = originalStore; backupSvc = originalSvc })
 
-	cfg = &config.Config{DataDirectory: dataDir}
+	backupDir := filepath.Join(dataDir, "backups")
+	cfg = &config.Config{DataDirectory: dataDir, BackupDir: backupDir}
 	s, _ := storage.New(dataDir)
 	store = s
+	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir, Store: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupSvc = svc
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -3056,7 +3333,9 @@ func mustReadEqual(t *testing.T, path string, want []byte) {
 func TestHandleDeleteAllData_DoesNotTouchBackupDir(t *testing.T) {
 	dataDir := t.TempDir()
 	backupDir := filepath.Join(dataDir, "backups") // worst case: nested
-	if err := os.MkdirAll(backupDir, 0700); err != nil { t.Fatal(err) }
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
+		t.Fatal(err)
+	}
 
 	originalCfg := cfg
 	originalStore := store
@@ -3067,7 +3346,9 @@ func TestHandleDeleteAllData_DoesNotTouchBackupDir(t *testing.T) {
 	store = s
 
 	if err := os.WriteFile(filepath.Join(backupDir, "budget_backup_X.zip"),
-		[]byte("dummy"), 0600); err != nil { t.Fatal(err) }
+		[]byte("dummy"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dataDir, "txns.csv"), []byte("a,b\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -3100,14 +3381,21 @@ func TestHandleBackupStatus_ReturnsMetaAndCount(t *testing.T) {
 	// Seed a successful meta and two backup zips.
 	now := time.Now().UTC()
 	stamp := now.Format("20060102_150405")
-	must := func(err error) { t.Helper(); if err != nil { t.Fatal(err) } }
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	must(os.WriteFile(filepath.Join(backupDir, "last_backup.json"),
 		[]byte(`{"ts":"`+stamp+`","file_count":3,"total_bytes":100,"encrypted":false,"last_error":"","last_attempt_ts":"`+stamp+`"}`), 0600))
 	must(os.WriteFile(filepath.Join(backupDir, "budget_backup_"+stamp+".zip"), []byte("a"), 0600))
 	must(os.WriteFile(filepath.Join(backupDir, "budget_backup_"+now.Add(-24*time.Hour).Format("20060102_150405")+".zip"), []byte("b"), 0600))
 
 	svc, err := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	backupSvc = svc
 
 	rec := httptest.NewRecorder()
@@ -3139,7 +3427,9 @@ func TestHandleSetAutoBackupEnabled_TogglesAndPersists(t *testing.T) {
 	svc, _ := backupsvc.New(backupsvc.Config{BackupDir: backupDir, DataDir: dataDir})
 	backupSvc = svc
 
-	if !svc.Enabled() { t.Fatalf("default Enabled() should be true") }
+	if !svc.Enabled() {
+		t.Fatalf("default Enabled() should be true")
+	}
 
 	rec := httptest.NewRecorder()
 	form := strings.NewReader("enabled=false")

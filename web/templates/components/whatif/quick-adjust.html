@@ -16,15 +16,15 @@
     </button>
 
     <div id="quick-adjust-panel"
-        class="fixed left-6 bottom-20 z-40 hidden w-80 max-w-[calc(100vw-3rem)] max-h-[65vh] flex flex-col overflow-hidden rounded-2xl bg-gray-900 text-white shadow-2xl ring-1 ring-white/10 dark:bg-gray-950">
-        <div class="flex-shrink-0 border-b border-white/10 px-4 py-3">
+        class="fixed left-6 bottom-20 z-40 hidden w-80 max-w-[calc(100vw-3rem)] max-h-[65vh] flex flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl ring-1 ring-gray-900/10 dark:bg-gray-950 dark:text-white dark:ring-white/10">
+        <div class="flex-shrink-0 border-b border-gray-200 px-4 py-3 dark:border-white/10">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm font-semibold text-white">Quick Adjust</p>
-                    <p class="text-xs text-gray-400">Keep results visible while tuning assumptions.</p>
+                    <p class="text-sm font-semibold text-gray-900 dark:text-white">Quick Adjust</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Keep results visible while tuning assumptions.</p>
                 </div>
                 <button type="button"
-                    class="rounded-md p-1 text-gray-400 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    class="rounded-md p-1 text-gray-500 transition hover:bg-gray-900/10 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
                     onclick="toggleQuickAdjustPanel(false)"
                     aria-label="Close quick-adjust panel">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -32,21 +32,21 @@
                     </svg>
                 </button>
             </div>
-            <div class="mt-3 grid grid-cols-4 gap-1 rounded-xl bg-white/5 p-1">
+            <div class="mt-3 grid grid-cols-4 gap-1 rounded-xl bg-gray-900/5 p-1 dark:bg-white/5">
                 <button type="button" data-quick-adjust-tab="portfolio" onclick="showQuickAdjustTab('portfolio')"
-                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-300 transition hover:bg-white/10 hover:text-white">
+                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Portfolio
                 </button>
                 <button type="button" data-quick-adjust-tab="rates" onclick="showQuickAdjustTab('rates')"
-                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-300 transition hover:bg-white/10 hover:text-white">
+                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Rates
                 </button>
                 <button type="button" data-quick-adjust-tab="phases" onclick="showQuickAdjustTab('phases')"
-                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-300 transition hover:bg-white/10 hover:text-white">
+                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Phases
                 </button>
                 <button type="button" data-quick-adjust-tab="healthcare" onclick="showQuickAdjustTab('healthcare')"
-                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-300 transition hover:bg-white/10 hover:text-white">
+                    class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Healthcare
                 </button>
             </div>
@@ -72,13 +72,13 @@
 
 {{define "whatif-quick-adjust-portfolio-content"}}
 <div class="space-y-4">
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Portfolio Value</label>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="portfolio_value" data-quick-adjust-display-format="currency">${{formatNumber .Settings.PortfolioValue}}</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="portfolio_value" data-quick-adjust-display-format="currency">${{formatNumber .Settings.PortfolioValue}}</span>
         </div>
         <select id="quick-adjust-portfolio-range"
-            class="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-gray-200 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            class="w-full rounded-lg border border-gray-900/10 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
             onchange="updatePortfolioRange(this.value, { triggerChange: false })">
             <option value="0,10000,1000" {{if le .Settings.PortfolioValue 10000.0}}selected{{end}}>$0-10K</option>
             <option value="0,50000,1000" {{if and (gt .Settings.PortfolioValue 10000.0) (le .Settings.PortfolioValue 50000.0)}}selected{{end}}>$0-50K</option>
@@ -93,104 +93,104 @@
             min="0" max="20000000" step="100000"
             data-quick-adjust-key="portfolio_value"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Monthly Living Expenses</label>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
         </div>
         <input type="range"
             value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
             min="0" max="20000" step="100"
             data-quick-adjust-key="monthly_living_expenses"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Projection Years</label>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="projection_years" data-quick-adjust-display-format="years">{{.Settings.ProjectionYears}} years</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="projection_years" data-quick-adjust-display-format="years">{{.Settings.ProjectionYears}} years</span>
         </div>
         <input type="range"
             value="{{.Settings.ProjectionYears}}"
             min="5" max="50" step="1"
             data-quick-adjust-key="projection_years"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 </div>
 {{end}}
 
 {{define "whatif-quick-adjust-rates-content"}}
 <div class="space-y-4">
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Inflation Rate</label>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="inflation_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.InflationRate}}%</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Inflation Rate</label>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="inflation_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.InflationRate}}%</span>
         </div>
         <input type="range"
             value="{{printf "%.1f" .Settings.InflationRate}}"
             min="0" max="10" step="0.1"
             data-quick-adjust-key="inflation_rate"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 
     {{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Spending Decline</label>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="spending_decline_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Spending Decline</label>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="spending_decline_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
         </div>
         <input type="range"
             value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
             min="0" max="5" step="0.25"
             data-quick-adjust-key="spending_decline_rate"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
     {{else}}
-    <div class="rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-3 text-xs text-indigo-100">
+    <div class="rounded-xl border border-indigo-300 bg-indigo-50 p-3 text-xs text-indigo-800 dark:border-indigo-400/20 dark:bg-indigo-500/10 dark:text-indigo-100">
         Phase-based spending is enabled. Use the <span class="font-semibold">Phases</span> tab to adjust multipliers.
     </div>
     {{end}}
 
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300">Investment Return Override</label>
-            <span class="text-[10px] uppercase tracking-wide text-gray-400">0% uses allocation</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Investment Return Override</label>
+            <span class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">0% uses allocation</span>
         </div>
         <input type="range"
             value="{{printf "%.1f" .Settings.InvestmentReturn}}"
             min="0" max="15" step="0.5"
             data-quick-adjust-key="investment_return"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
         <div class="text-xs" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return">
             {{if eq .Settings.InvestmentReturn 0.0}}
-            <span class="text-green-400">Using asset allocation</span>
-            <span class="text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>
+            <span class="text-green-600 dark:text-green-400">Using asset allocation</span>
+            <span class="text-gray-500 dark:text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>
             {{else}}
-            <span class="text-gray-200">Fixed {{printf "%.1f" .Settings.InvestmentReturn}}%</span>
-            <span class="text-amber-400 text-[11px]">(overrides allocation)</span>
+            <span class="text-gray-700 dark:text-gray-200">Fixed {{printf "%.1f" .Settings.InvestmentReturn}}%</span>
+            <span class="text-amber-600 dark:text-amber-400 text-[11px]">(overrides allocation)</span>
             {{end}}
         </div>
     </div>
 
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-300" title="Wait N years before touching 401k/IRA. Expenses are covered from income, taxable, and Roth accounts first. RMDs at 73 still apply.">Delay Tax-Deferred Withdrawals</label>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="tax_deferred_delay_years" data-quick-adjust-display-format="delay-years">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300" title="Wait N years before touching 401k/IRA. Expenses are covered from income, taxable, and Roth accounts first. RMDs at 73 still apply.">Delay Tax-Deferred Withdrawals</label>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="tax_deferred_delay_years" data-quick-adjust-display-format="delay-years">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
         </div>
         <input type="range"
             value="{{.Settings.TaxDeferredDelayYears}}"
             min="0" max="30" step="1"
             data-quick-adjust-key="tax_deferred_delay_years"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 </div>
 {{end}}
@@ -199,29 +199,29 @@
 <div class="space-y-3">
     {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled .Settings.SpendingPhaseConfig.Phases}}
     {{range $i, $phase := .Settings.SpendingPhaseConfig.Phases}}
-    <div class="space-y-2 rounded-xl bg-white/5 p-3">
+    <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-start justify-between gap-3">
             <div>
-                <p class="text-xs font-semibold text-white">{{$phase.Name}}</p>
-                <p class="text-[11px] text-gray-400">
+                <p class="text-xs font-semibold text-gray-900 dark:text-white">{{$phase.Name}}</p>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400">
                     {{if eq $i 0}}Retirement start{{else}}Starts at age {{$phase.StartAge}}{{end}}
                 </p>
             </div>
-            <span class="text-xs font-semibold text-white" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
         </div>
         <input type="range"
             value="{{printf "%.2f" $phase.Multiplier}}"
             min="0.30" max="1.20" step="0.05"
             data-quick-adjust-key="phase:{{$i}}:multiplier"
             data-quick-adjust-mirror="true"
-            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
-        <div class="text-right text-[11px] text-gray-400" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">
+            class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
+        <div class="text-right text-[11px] text-gray-500 dark:text-gray-400" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">
             ${{printf "%.0f" (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo
         </div>
     </div>
     {{end}}
     {{else}}
-    <div class="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+    <div class="rounded-xl border border-gray-900/10 bg-gray-900/5 p-4 text-sm text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
         Spending phases are disabled. Enable them from the inline card to use this tab.
     </div>
     {{end}}
@@ -232,16 +232,16 @@
 <div class="space-y-3">
     {{if .Settings.HealthcarePersons}}
     {{range .Settings.HealthcarePersons}}
-    <div class="rounded-xl bg-white/5 p-3">
+    <div class="rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-                <p class="text-xs font-semibold text-white">{{.Name}}</p>
-                <p class="text-[11px] text-gray-400">Age {{.CurrentAge}}</p>
+                <p class="text-xs font-semibold text-gray-900 dark:text-white">{{.Name}}</p>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400">Age {{.CurrentAge}}</p>
             </div>
             <select
                 data-quick-adjust-key="healthcare:{{.ID}}:current_coverage"
                 data-quick-adjust-mirror="true"
-                class="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-gray-100 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                class="rounded-lg border border-gray-900/10 bg-white px-2 py-1 text-xs text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:border-white/10 dark:bg-white/5 dark:text-gray-100">
                 <option value="employer" {{if eq .CurrentCoverage "employer"}}selected{{end}}>Employer</option>
                 <option value="aca" {{if eq .CurrentCoverage "aca"}}selected{{end}}>ACA</option>
                 <option value="medicare" {{if eq .CurrentCoverage "medicare"}}selected{{end}}>Medicare</option>
@@ -251,105 +251,105 @@
         <div class="space-y-3">
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">Monthly Cost</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">Monthly Cost</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
                 <input type="range"
                     value="{{printf "%.0f" .CurrentMonthlyCost}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
 
             {{if eq .CurrentCoverage "employer"}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">Coverage Ends In</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">Coverage Ends In</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
                 </div>
                 <input type="range"
                     value="{{.EmployerCoverageYears}}"
                     min="0" max="20" step="1"
                     data-quick-adjust-key="healthcare:{{.ID}}:employer_coverage_years"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
 
             {{if gt .EmployerCoverageYears 0}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">ACA Cost After Employer</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">ACA Cost After Employer</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
                 <input type="range"
                     value="{{printf "%.0f" .ACACostAfterEmployer}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
 
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">ACA Inflation</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">ACA Inflation</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
                 <input type="range"
                     value="{{printf "%.1f" .PreMedicareInflation}}"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
             {{end}}
             {{else if ne .CurrentCoverage "medicare"}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">Pre-Medicare Inflation</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">Pre-Medicare Inflation</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
                 <input type="range"
                     value="{{printf "%.1f" .PreMedicareInflation}}"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
             {{end}}
 
             {{if ne .CurrentCoverage "medicare"}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">Medicare Cost</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">Medicare Cost</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
                 <input type="range"
                     value="{{printf "%.0f" .MedicareMonthlyCost}}"
                     min="0" max="2000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
             {{end}}
 
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-[11px] font-medium text-gray-300">{{if eq .CurrentCoverage "medicare"}}Medicare Inflation{{else}}Post-Medicare Inflation{{end}}</label>
-                    <span class="text-[11px] font-semibold text-white" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                    <label class="text-[11px] font-medium text-gray-700 dark:text-gray-300">{{if eq .CurrentCoverage "medicare"}}Medicare Inflation{{else}}Post-Medicare Inflation{{end}}</label>
+                    <span class="text-[11px] font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
                 <input type="range"
                     value="{{printf "%.1f" .PostMedicareInflation}}"
                     min="0" max="10" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
                     data-quick-adjust-mirror="true"
-                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-700">
+                    class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
         </div>
     </div>
     {{end}}
     {{else}}
-    <div class="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+    <div class="rounded-xl border border-gray-900/10 bg-gray-900/5 p-4 text-sm text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
         No healthcare costs configured. Use the inline card to add a person.
     </div>
     {{end}}

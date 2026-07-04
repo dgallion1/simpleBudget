@@ -144,10 +144,7 @@ function showQuickAdjustTab(tabName) {
 
     Array.from(document.querySelectorAll('[data-quick-adjust-tab]')).forEach(function(button) {
         const isActive = button.dataset.quickAdjustTab === tabName;
-        button.classList.toggle('bg-white', isActive);
-        button.classList.toggle('text-gray-900', isActive);
-        button.classList.toggle('shadow-sm', isActive);
-        button.classList.toggle('text-gray-300', !isActive);
+        button.classList.toggle('qa-tab-active', isActive);
     });
 
     Array.from(document.querySelectorAll('[data-quick-adjust-tab-panel]')).forEach(function(panel) {

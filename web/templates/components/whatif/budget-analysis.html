@@ -255,7 +255,7 @@
         </div>
         {{if gt .Analysis.BudgetFit.SteadyStateGap 0.0}}
         <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
-            Each row is the after-tax contribution from that bucket, split proportionally to your portfolio allocation. The three rows sum to the gap. Tax-Deferred shows the gross withdrawal needed because part is lost to income tax; Taxable shows the gross because capital gains have accrued.
+            Each row is the after-tax contribution from that bucket, split proportionally to your portfolio allocation. The three rows sum to the gap. Tax-Deferred shows the gross withdrawal needed because part is lost to income tax; Taxable shows the gross because capital gains have accrued. Marginal rates cover this year's income tax only — IRMAA keys off your MAGI from two years prior, so any Medicare surcharge tier this withdrawal triggers arrives two years later and is not included in the gross-up.
         </p>
         {{else if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
         <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">

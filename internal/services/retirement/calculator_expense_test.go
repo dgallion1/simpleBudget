@@ -707,6 +707,237 @@ func TestCalculateBudgetFit(t *testing.T) {
 			t.Errorf("required rate should be very high (>100%%), got %.2f", fit.RequiredRate)
 		}
 	})
+
+	// Edge-case follow-ons from
+	// docs/superpowers/specs/2026-05-13-gross-withdrawal-edge-cases-followon.md:
+	// the gross-up marginal rate under bracket/threshold crossings. All
+	// scenarios pin InflationRate=0 so the bundled 2024 federal tables (and
+	// 2026 IRMAA tiers) apply un-inflated regardless of the plan's StartDate.
+
+	t.Run("federal bracket crossing yields blended 22/24 marginal rate", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_500_000
+		s.MonthlyLivingExpenses = 11000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		// $9,000/mo pension → $108,000/yr ordinary; single taxable income
+		// 108,000 − 14,600 = 93,400 — inside the 22% bracket with $7,125 of
+		// headroom below the $100,525 ceiling. MAGI stays under the $109,000
+		// IRMAA tier-1 threshold so no surcharge muddies the baseline.
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "pension", Name: "Pension", Amount: 9000, StartMonth: 0},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 100
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.TaxConfig.FilingStatus = models.FilingSingle
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if fit.MonthlyIRMAA != 0 {
+			t.Fatalf("precondition: baseline MAGI must sit under IRMAA tier 1, got surcharge %.2f", fit.MonthlyIRMAA)
+		}
+		// The annualized TD withdrawal (~$40k) burns the $7,125 of 22%
+		// headroom and lands the rest in 24% → strictly blended marginal.
+		if fit.MarginalRateTaxDeferred <= 22.2 || fit.MarginalRateTaxDeferred >= 23.9 {
+			t.Errorf("MarginalRateTaxDeferred: want blended rate strictly inside (22.2, 23.9), got %.2f",
+				fit.MarginalRateTaxDeferred)
+		}
+		wantGross := fit.NetWithdrawalTaxDeferred / (1 - fit.MarginalRateTaxDeferred/100)
+		if math.Abs(fit.GrossWithdrawalTaxDeferred-wantGross) > 0.50 {
+			t.Errorf("GrossWithdrawalTaxDeferred: want %.2f (=net/(1-rate)), got %.2f",
+				wantGross, fit.GrossWithdrawalTaxDeferred)
+		}
+	})
+
+	t.Run("IRMAA cliff crossed by withdrawal does not fire within same-year gross-up", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_500_000
+		s.MonthlyLivingExpenses = 12000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		// $8,800/mo pension → MAGI $105,600, just under the single-filer
+		// IRMAA tier-1 threshold ($109,000 in the bundled 2026 table). The
+		// simulated withdrawal (~$53k/yr) pushes MAGI through tiers 1 AND 2.
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "pension", Name: "Pension", Amount: 8800, StartMonth: 0},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 100
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.TaxConfig.FilingStatus = models.FilingSingle
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if fit.MonthlyIRMAA != 0 {
+			t.Fatalf("precondition: baseline MAGI must sit under IRMAA tier 1, got surcharge %.2f", fit.MonthlyIRMAA)
+		}
+		// IRMAA keys off 2-year-lookback MAGI, which the gross-up pins to the
+		// baseline in BOTH snapshots — so the tier crossings the withdrawal
+		// causes for year N+2 must NOT leak into this year's marginal rate.
+		// A fired tier-1 cliff alone would add ~2 points (95.70*12/annualNet);
+		// the rate must stay inside the pure 22/24 income-tax blend.
+		if fit.MarginalRateTaxDeferred <= 22.0 || fit.MarginalRateTaxDeferred >= 24.0 {
+			t.Errorf("MarginalRateTaxDeferred: want pure income-tax blend in (22, 24) — IRMAA cliff must not fire — got %.2f",
+				fit.MarginalRateTaxDeferred)
+		}
+	})
+
+	t.Run("SS taxability phase-in raises marginal rate above ordinary bracket", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 800_000
+		s.MonthlyLivingExpenses = 6000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		// $24k pension + $24k SS → provisional income $36k, past the single
+		// upper threshold ($34k): baseline taxable SS is 4,500 + 0.85*2,000 =
+		// $6,200 of the $24k benefit — squarely mid-phase-in. Baseline
+		// taxable income $15,600 sits in the 12% bracket.
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "pension", Name: "Pension", Amount: 2000, StartMonth: 0},
+			{ID: "ss", Name: "Social Security", Amount: 2000, StartMonth: 0},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 100
+		s.RothPercent = 0
+		s.SpendingPhaseConfig = nil
+		s.TaxConfig.FilingStatus = models.FilingSingle
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if fit.TaxableSocialSecurityPct <= 0 || fit.TaxableSocialSecurityPct >= 85 {
+			t.Fatalf("precondition: baseline taxable-SS%% must be mid-phase-in (0, 85), got %.2f",
+				fit.TaxableSocialSecurityPct)
+		}
+		// Each simulated withdrawal dollar drags up to $0.85 of additional SS
+		// into taxable income until the 85%-of-benefits cap, so the marginal
+		// rate must land far above the 12% ordinary bracket the baseline sits
+		// in — even though the withdrawal itself never leaves 12/22.
+		if fit.MarginalRateTaxDeferred <= 15 || fit.MarginalRateTaxDeferred >= 30 {
+			t.Errorf("MarginalRateTaxDeferred: want SS-phase-in-amplified rate in (15, 30), got %.2f",
+				fit.MarginalRateTaxDeferred)
+		}
+		wantGross := fit.NetWithdrawalTaxDeferred / (1 - fit.MarginalRateTaxDeferred/100)
+		if math.Abs(fit.GrossWithdrawalTaxDeferred-wantGross) > 0.50 {
+			t.Errorf("GrossWithdrawalTaxDeferred: want %.2f (=net/(1-rate)), got %.2f",
+				wantGross, fit.GrossWithdrawalTaxDeferred)
+		}
+	})
+
+	t.Run("NIIT threshold crossing surcharges the marginal rate", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 4_000_000
+		s.MonthlyLivingExpenses = 16000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		// $150k pension + ~$40k qualified dividends from the $2M taxable
+		// bucket (2% yield) → baseline MAGI ≈ $190k, under the $200k single
+		// NIIT threshold. The simulated TD withdrawal crosses it, exposing
+		// the dividends to the 3.8% surcharge on the excess.
+		s.IncomeSources = []models.IncomeSource{
+			{ID: "pension", Name: "Pension", Amount: 12500, StartMonth: 0},
+		}
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		s.TaxDeferredPercent = 50
+		s.RothPercent = 0
+		// Taxable = 50% → $2M
+		s.TaxableDividendYield = 2.0
+		s.TaxableCapitalGainsDistributionRate = 0
+		s.SpendingPhaseConfig = nil
+		s.TaxConfig.FilingStatus = models.FilingSingle
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if fit.MonthlyGap <= 0 {
+			t.Fatalf("precondition: expected positive gap, got %.2f", fit.MonthlyGap)
+		}
+		if fit.MonthlyNIIT != 0 {
+			t.Fatalf("precondition: baseline MAGI must sit under the NIIT threshold, got NIIT %.2f/mo", fit.MonthlyNIIT)
+		}
+		// Ordinary income alone sits flat in the 24% bracket; the NIIT
+		// phase-in on investment income must push the marginal rate
+		// discontinuously above it.
+		if fit.MarginalRateTaxDeferred <= 24.2 || fit.MarginalRateTaxDeferred >= 30 {
+			t.Errorf("MarginalRateTaxDeferred: want NIIT-surcharged rate in (24.2, 30), got %.2f",
+				fit.MarginalRateTaxDeferred)
+		}
+	})
+
+	t.Run("steady-state LTCG 0/15 bracket crossing yields blended effective rate", func(t *testing.T) {
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 1_300_000
+		s.MonthlyLivingExpenses = 8000
+		s.MonthlyHealthcare = 0
+		s.HealthcarePersons = nil
+		s.ExpenseSources = nil
+		s.IncomeSources = nil
+		s.InflationRate = 0
+		s.SpendingDeclineRate = 0
+		s.CurrentAge = 65
+		// All-taxable so the steady-state gap is closed entirely by taxable
+		// sales whose simulated gain crosses the 0% LTCG ceiling ($47,025).
+		s.TaxDeferredPercent = 0
+		s.RothPercent = 0
+		s.TaxableDividendYield = 1.0
+		s.TaxableCapitalGainsDistributionRate = 0.5
+		s.SpendingPhaseConfig = nil
+		s.TaxConfig.FilingStatus = models.FilingSingle
+		s.InvestmentReturn = 5
+		s.SteadyStateOverrideYear = 15
+
+		calc := newTestCalc(t, s)
+		fit := calc.CalculateBudgetFit()
+
+		if !fit.HasSteadyState {
+			t.Fatalf("precondition: HasSteadyState should be true")
+		}
+		if fit.SteadyStateGap <= 0 {
+			t.Fatalf("precondition: expected positive steady-state gap, got %.2f", fit.SteadyStateGap)
+		}
+		if fit.SteadyStateNIIT != 0 {
+			t.Fatalf("precondition: NIIT must stay out of this scenario, got %.2f/mo", fit.SteadyStateNIIT)
+		}
+		// Year-15 gain fraction is 1 − 1.05⁻¹⁵ ≈ 0.519, so an all-0% LTCG
+		// simulation prices the withdrawal at 0% effective and an all-15% one
+		// at ≈7.8%. Baseline distributions leave only partial 0%-bracket
+		// headroom, so the crossing must land strictly between.
+		if fit.SteadyStateEffectiveRateTaxable <= 0.5 || fit.SteadyStateEffectiveRateTaxable >= 7.5 {
+			t.Errorf("SteadyStateEffectiveRateTaxable: want blended 0/15 crossing rate in (0.5, 7.5), got %.2f",
+				fit.SteadyStateEffectiveRateTaxable)
+		}
+		wantGross := fit.SteadyStateNetWithdrawalTaxable / (1 - fit.SteadyStateEffectiveRateTaxable/100)
+		if math.Abs(fit.SteadyStateGrossWithdrawalTaxable-wantGross) > 0.50 {
+			t.Errorf("SteadyStateGrossWithdrawalTaxable: want %.2f (=net/(1-rate)), got %.2f",
+				wantGross, fit.SteadyStateGrossWithdrawalTaxable)
+		}
+	})
 }
 
 func TestApplyBigTicketExpense(t *testing.T) {

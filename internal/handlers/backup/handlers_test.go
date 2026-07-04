@@ -3474,3 +3474,212 @@ func TestHandleSetAutoBackupEnabled_RejectsBadValue(t *testing.T) {
 		t.Fatalf("bad value should 400, got %d", rec.Code)
 	}
 }
+
+// ---------- Review-fix tests: encryption state, dedup count, snapshot ordering ----------
+
+func TestHandleRestore_PreservesEncryptionConfig(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	configPath := filepath.Join(dataDir, ".encryption-config.json")
+	if err := os.WriteFile(configPath, []byte(`{"method":"age"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	zipBuf := createZipBuffer(t, map[string]string{"current.csv": "new"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	mustReadEqual(t, configPath, []byte(`{"method":"age"}`))
+}
+
+func TestHandleRestore_IgnoresEncryptionStateArchiveEntries(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	configPath := filepath.Join(dataDir, ".encryption-config.json")
+	if err := os.WriteFile(configPath, []byte(`{"method":"age"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "current.csv", []byte("new"))
+	mustZip(t, zw, ".encryption-config.json", []byte(`{"method":"password"}`))
+	mustZip(t, zw, ".encrypted", []byte("marker"))
+	mustZip(t, zw, ".encryption-verify", []byte("verify"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	mustReadEqual(t, configPath, []byte(`{"method":"age"}`))
+	for _, name := range []string{".encrypted", ".encryption-verify"} {
+		if _, err := os.Stat(filepath.Join(dataDir, name)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%s should not be written from the archive, err=%v", name, err)
+		}
+	}
+	if !strings.Contains(rec.Body.String(), "Restored 1 files") {
+		t.Fatalf("skipped entries must not count as restored: %s", rec.Body.String())
+	}
+}
+
+func TestHandleRestore_ReportsDedupedRestoredCount(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "dup.csv", []byte("first"))
+	mustZip(t, zw, "dup.csv", []byte("second"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	mustReadEqual(t, filepath.Join(dataDir, "dup.csv"), []byte("second"))
+	if !strings.Contains(rec.Body.String(), "Restored 1 files") {
+		t.Fatalf("duplicate archive entries should count once: %s", rec.Body.String())
+	}
+}
+
+func TestHandleBackup_ExcludesEncryptionStateAndNestedBackupDir(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if err := os.WriteFile(filepath.Join(dataDir, "data.csv"), []byte("a,b\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ".encryption-config.json"), []byte(`{"method":"age"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg.BackupDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BackupDir, "old.zip"), []byte("zip"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/backup", nil)
+	HandleBackup(w, r)
+
+	zr, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+	if err != nil {
+		t.Fatalf("response is not a zip: %v", err)
+	}
+	names := make(map[string]bool)
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	if !names["data.csv"] {
+		t.Fatal("data.csv missing from backup")
+	}
+	for name := range names {
+		if name == ".encryption-config.json" || strings.HasPrefix(name, "backups/") {
+			t.Errorf("backup zip must not contain %s", name)
+		}
+	}
+}
+
+func TestHandleRestore_SafetySnapshotCapturesPreRestoreState(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if err := os.WriteFile(filepath.Join(dataDir, "before.csv"), []byte("pre-restore"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	zipBuf := createZipBuffer(t, map[string]string{"after.csv": "post"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	matches, err := filepath.Glob(filepath.Join(cfg.BackupDir, "budget_backup_*.zip"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("want exactly 1 safety snapshot, got %v (err=%v)", matches, err)
+	}
+	zr, err := zip.OpenReader(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	entries := make(map[string][]byte)
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[f.Name] = data
+	}
+	if got, ok := entries["before.csv"]; !ok || string(got) != "pre-restore" {
+		t.Fatalf("safety snapshot must capture pre-restore before.csv, got %q (ok=%v)", got, ok)
+	}
+	if _, ok := entries["after.csv"]; ok {
+		t.Fatal("safety snapshot must be taken before archive entries are written")
+	}
+	// The restore itself pruned before.csv, so the snapshot is its only copy.
+	if _, err := os.Stat(filepath.Join(dataDir, "before.csv")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("before.csv should have been pruned from the data dir, err=%v", err)
+	}
+}
+
+func TestHandleRestore_PreservesEmptySkipDirsAndTmpOnlyDirs(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	if err := os.MkdirAll(filepath.Join(dataDir, "cache"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg.BackupDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "partial"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "partial", "inflight.csv.tmp"), []byte("tmp"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	zipBuf := createZipBuffer(t, map[string]string{"current.csv": "new"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, dir := range []string{
+		filepath.Join(dataDir, "cache"),
+		cfg.BackupDir,
+		filepath.Join(dataDir, "partial"),
+	} {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			t.Fatalf("%s should survive pruning as a directory: err=%v", dir, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "partial", "inflight.csv.tmp")); err != nil {
+		t.Fatalf("tmp file should survive pruning: %v", err)
+	}
+}

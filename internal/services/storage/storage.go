@@ -346,12 +346,21 @@ func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error 
 	return os.Rename(tmpPath, path)
 }
 
+// IsEncryptionStateFile reports whether base names one of the files that
+// record the store's encryption state (.encrypted, .encryption-verify,
+// .encryption-config.json). These files define how the store unlocks, so
+// they must never be archived into backups, written from restore archives,
+// or pruned during a restore.
+func IsEncryptionStateFile(base string) bool {
+	return base == markerFile || base == verifyFile || base == configFile
+}
+
 // shouldSkipEncryption returns true for files that shouldn't be encrypted
 func (s *Storage) shouldSkipEncryption(path string) bool {
 	base := filepath.Base(path)
 
 	// Skip marker, verify, and config files
-	if base == markerFile || base == verifyFile || base == configFile {
+	if IsEncryptionStateFile(base) {
 		return true
 	}
 

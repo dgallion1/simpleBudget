@@ -202,3 +202,81 @@ func TestSnapshotIfStale_FiresWhenStale(t *testing.T) {
 		t.Fatalf("expected 1 fresh zip, got %d", len(zips))
 	}
 }
+
+func TestSnapshot_ExcludesEncryptionStateFiles(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	seedDataDir(t, dataDir, map[string][]byte{
+		"banking.csv":              []byte("a,b\n"),
+		".encryption-config.json":  []byte(`{"method":"age"}`),
+		".encrypted":               []byte("marker"),
+		".encryption-verify":       []byte("verify"),
+	})
+	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
+	if len(zips) != 1 {
+		t.Fatalf("want 1 zip, got %v", zips)
+	}
+	got := zipEntries(t, zips[0])
+	if _, ok := got["banking.csv"]; !ok {
+		t.Fatal("banking.csv missing from snapshot")
+	}
+	for _, name := range []string{".encryption-config.json", ".encrypted", ".encryption-verify"} {
+		if _, ok := got[name]; ok {
+			t.Errorf("snapshot must not contain encryption-state file %s", name)
+		}
+	}
+}
+
+func TestSnapshotAndHold_SerializesUntilRelease(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	seedDataDir(t, dataDir, map[string][]byte{"banking.csv": []byte("a\n")})
+	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := svc.SnapshotAndHold(context.Background())
+	if err != nil {
+		t.Fatalf("SnapshotAndHold: %v", err)
+	}
+	if err := svc.Snapshot(context.Background()); !errors.Is(err, ErrSnapshotInProgress) {
+		t.Fatalf("Snapshot while lock held: want ErrSnapshotInProgress, got %v", err)
+	}
+	release()
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot after release: %v", err)
+	}
+}
+
+func TestSnapshotAndHold_ReleasesLockOnSnapshotFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	// BackupDir is a file, so MkdirAll inside the snapshot fails.
+	backupDir := filepath.Join(dataDir, "backup-file")
+	if err := os.WriteFile(backupDir, []byte("not a dir"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	seedDataDir(t, dataDir, map[string][]byte{"banking.csv": []byte("a\n")})
+	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.SnapshotAndHold(context.Background()); err == nil {
+		t.Fatal("SnapshotAndHold should fail when BackupDir is a file")
+	}
+	// The lock must not leak: a snapshot attempt reaches the real error,
+	// not ErrSnapshotInProgress.
+	if err := svc.Snapshot(context.Background()); errors.Is(err, ErrSnapshotInProgress) {
+		t.Fatalf("lock leaked after failed SnapshotAndHold: %v", err)
+	}
+}

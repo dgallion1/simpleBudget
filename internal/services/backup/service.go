@@ -35,8 +35,10 @@ type Service struct {
 	// mu serializes Snapshot writes (and the meta updates piggy-backed on
 	// each snapshot). Acquired non-blocking via tryLock so overlapping
 	// scheduler ticks and shutdown hooks degrade to a no-op rather than
-	// queuing. Do NOT use this mutex for unrelated state — enabled has its
-	// own RWMutex below.
+	// queuing. SnapshotAndHold keeps it held across a restore so scheduled
+	// snapshots and concurrent restores cannot observe a half-restored data
+	// dir. Do NOT use this mutex for unrelated state — enabled has its own
+	// RWMutex below.
 	mu    sync.Mutex
 	clock Clock
 

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"budget2/internal/services/storage"
 )
 
 const (
@@ -27,6 +29,23 @@ func (s *Service) Snapshot(ctx context.Context) error {
 	}
 	defer s.unlock()
 	return s.snapshotLocked(ctx)
+}
+
+// SnapshotAndHold runs a snapshot like Snapshot, but on success keeps the
+// snapshot lock held so the caller can finish a restore without a scheduled
+// snapshot observing a half-restored data directory (and without a second
+// restore interleaving). The caller must invoke the returned release
+// function exactly once. On error the lock is released and no release
+// function is returned.
+func (s *Service) SnapshotAndHold(ctx context.Context) (func(), error) {
+	if !s.tryLock() {
+		return nil, ErrSnapshotInProgress
+	}
+	if err := s.snapshotLocked(ctx); err != nil {
+		s.unlock()
+		return nil, err
+	}
+	return s.unlock, nil
 }
 
 // SnapshotIfStale runs a snapshot only when the most recent successful
@@ -203,9 +222,19 @@ func (s *Service) buildZip(ctx context.Context, tmpPath string) (int, int64, err
 // skipPredicate returns a function that decides whether a path under DataDir
 // should be excluded from the snapshot.
 func (s *Service) skipPredicate() func(path string, isDir bool) bool {
+	return SkipPredicate(s.cfg.DataDir, s.cfg.BackupDir)
+}
+
+// SkipPredicate returns the canonical exclusion rules for walking the data
+// directory: the backup directory itself (when nested under dataDir), the
+// cache/ directory, atomicWrite *.tmp leftovers, and the storage layer's
+// encryption-state files. It is the single source of truth shared by
+// snapshot creation, the manual backup downloads, and restore pruning so
+// the rule set cannot drift between them.
+func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool {
 	// Resolve absolute paths once for the recursive-backup guard.
-	absBackup, _ := filepath.Abs(s.cfg.BackupDir)
-	absData, _ := filepath.Abs(s.cfg.DataDir)
+	absBackup, _ := filepath.Abs(backupDir)
+	absData, _ := filepath.Abs(dataDir)
 	return func(path string, isDir bool) bool {
 		base := filepath.Base(path)
 		// Skip the BackupDir itself if nested under DataDir.
@@ -218,14 +247,11 @@ func (s *Service) skipPredicate() func(path string, isDir bool) bool {
 		if isDir {
 			return base == "cache"
 		}
-		// Skip atomicWrite leftovers and encryption markers.
+		// Skip atomicWrite leftovers and encryption-state files.
 		if strings.HasSuffix(base, tmpSuffix) {
 			return true
 		}
-		if base == ".encrypted" || base == ".encryption-verify" {
-			return true
-		}
-		return false
+		return storage.IsEncryptionStateFile(base)
 	}
 }
 

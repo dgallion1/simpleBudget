@@ -149,6 +149,19 @@ func HandleKillServer(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+// resolvedBackupDir returns the backup directory from the service when
+// available, falling back to config. Used to build the shared skip
+// predicate even when the backup service is not initialized.
+func resolvedBackupDir() string {
+	if backupSvc != nil {
+		return backupSvc.BackupDir()
+	}
+	if cfg != nil {
+		return cfg.BackupDir
+	}
+	return ""
+}
+
 func HandleBackup(w http.ResponseWriter, r *http.Request) {
 	// Generate filename with timestamp
 	timestamp := time.Now().Format("20060102_150405")
@@ -169,26 +182,19 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	dataDir := cfg.DataDirectory
+	skip := backupsvc.SkipPredicate(dataDir, resolvedBackupDir())
 	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 
-		base := filepath.Base(path)
-
 		if info.IsDir() {
-			// Skip the cache subdirectory entirely; matches auto-snapshot behavior.
-			if base == "cache" {
+			if skip(path, true) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
-		// Skip atomicWrite leftovers and encryption markers.
-		if strings.HasSuffix(base, ".tmp") {
-			return nil
-		}
-		if base == ".encrypted" || base == ".encryption-verify" {
+		if skip(path, false) {
 			return nil
 		}
 
@@ -285,23 +291,20 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	dataDir := cfg.DataDirectory
+	skip := backupsvc.SkipPredicate(dataDir, resolvedBackupDir())
 	var fileCount int
 	var totalBytes int64
 	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		base := filepath.Base(path)
 		if info.IsDir() {
-			if base == "cache" {
+			if skip(path, true) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if strings.HasSuffix(base, ".tmp") {
-			return nil
-		}
-		if base == ".encrypted" || base == ".encryption-verify" {
+		if skip(path, false) {
 			return nil
 		}
 
@@ -344,6 +347,12 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 // snapshotting or writing any files, so a malformed entry rejects the
 // whole operation before disk state changes.
 //
+// Archive entries that the backup skip list excludes (encryption-state
+// files, *.tmp, anything under the backup dir) are ignored rather than
+// written: they describe local store state, not user data, and a legit
+// backup never contains them (older backups may contain
+// .encryption-config.json).
+//
 // Returns (restored count, removed count, http status, error message).
 // On success, status is 200.
 func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string) {
@@ -356,6 +365,7 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 	if err != nil {
 		return 0, 0, http.StatusInternalServerError, "Bad data directory"
 	}
+	skip := backupsvc.SkipPredicate(cfg.DataDirectory, resolvedBackupDir())
 
 	type prepared struct {
 		dest string
@@ -387,6 +397,9 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 		if err != nil || !(destAbs == dataAbs || strings.HasPrefix(destAbs, dataAbs+string(filepath.Separator))) {
 			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
 		}
+		if skip(dest, false) {
+			continue
+		}
 
 		rc, err := zf.Open()
 		if err != nil {
@@ -417,12 +430,16 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 	if backupSvc == nil {
 		return 0, 0, http.StatusInternalServerError, "Backup service not initialized"
 	}
-	if err := backupSvc.Snapshot(ctx); err != nil {
+	// Hold the snapshot lock for the whole restore so a scheduled snapshot
+	// (or a second restore) cannot capture a half-restored data dir.
+	release, err := backupSvc.SnapshotAndHold(ctx)
+	if err != nil {
 		if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
 			return 0, 0, http.StatusConflict, "a backup is currently running; retry shortly"
 		}
 		return 0, 0, http.StatusInternalServerError, fmt.Sprintf("safety snapshot failed: %v", err)
 	}
+	defer release()
 
 	for _, p := range queue {
 		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
@@ -433,25 +450,20 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 		}
 	}
 
-	removed, pruneFailures := pruneRestoreExtras(dataAbs, archiveEntries)
+	removed, pruneFailures := pruneRestoreExtras(dataAbs, archiveEntries, skip)
 	if pruneFailures > 0 {
 		log.Printf("restore prune completed with %d failures", pruneFailures)
 	}
-	return len(queue), removed, http.StatusOK, ""
+	// archiveEntries (not queue) so duplicate zip entries count once.
+	return len(archiveEntries), removed, http.StatusOK, ""
 }
 
-func pruneRestoreExtras(dataAbs string, archiveEntries map[string]struct{}) (int, int) {
-	backupAbs := ""
-	if backupSvc != nil {
-		backupAbs, _ = filepath.Abs(backupSvc.BackupDir())
-	} else if cfg != nil && cfg.BackupDir != "" {
-		backupAbs, _ = filepath.Abs(cfg.BackupDir)
-	}
-
-	isBackupPath := func(pathAbs string) bool {
-		return backupAbs != "" && (pathAbs == backupAbs || strings.HasPrefix(pathAbs, backupAbs+string(filepath.Separator)))
-	}
-
+// pruneRestoreExtras deletes every file under dataAbs that is neither an
+// archive entry nor excluded by skip (the shared backup skip predicate),
+// then removes directories left empty. Directories that were already empty
+// before the restore are removed too — zip archives cannot represent empty
+// directories, so full replace treats them as stale.
+func pruneRestoreExtras(dataAbs string, archiveEntries map[string]struct{}, skip func(path string, isDir bool) bool) (int, int) {
 	var dirs []string
 	removed := 0
 	failures := 0
@@ -473,21 +485,14 @@ func pruneRestoreExtras(dataAbs string, archiveEntries map[string]struct{}) (int
 		if pathAbs == dataAbs {
 			return nil
 		}
-		if isBackupPath(pathAbs) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		base := filepath.Base(path)
 		if info.IsDir() {
-			if base == "cache" {
+			if skip(pathAbs, true) {
 				return filepath.SkipDir
 			}
 			dirs = append(dirs, pathAbs)
 			return nil
 		}
-		if strings.HasSuffix(base, ".tmp") || base == ".encrypted" || base == ".encryption-verify" {
+		if skip(pathAbs, false) {
 			return nil
 		}
 		if _, ok := archiveEntries[pathAbs]; ok {
@@ -510,7 +515,7 @@ func pruneRestoreExtras(dataAbs string, archiveEntries map[string]struct{}) (int
 		return len(dirs[i]) > len(dirs[j])
 	})
 	for _, dir := range dirs {
-		if dir == dataAbs || isBackupPath(dir) || filepath.Base(dir) == "cache" {
+		if dir == dataAbs || skip(dir, true) {
 			continue
 		}
 		if err := store.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {

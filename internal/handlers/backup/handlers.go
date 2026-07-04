@@ -44,6 +44,24 @@ func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *
 	backupSvc = b
 }
 
+// postRestoreHooks run after every successful restore (upload and bundled
+// test-data paths alike). Registered at wiring time — e.g. to invalidate
+// in-memory caches that mirror on-disk state a restore just rewrote.
+var postRestoreHooks []func()
+
+// RegisterPostRestoreHook adds fn to the callbacks invoked after every
+// successful restore.
+func RegisterPostRestoreHook(fn func()) {
+	postRestoreHooks = append(postRestoreHooks, fn)
+}
+
+// runPostRestoreHooks invokes every registered post-restore hook.
+func runPostRestoreHooks() {
+	for _, fn := range postRestoreHooks {
+		fn()
+	}
+}
+
 type backupStatusResponse struct {
 	TS            string `json:"ts"`
 	FileCount     int    `json:"file_count"`
@@ -348,22 +366,23 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 // whole operation before disk state changes.
 //
 // Archive entries that the backup skip list excludes (encryption-state
-// files, *.tmp, anything under the backup dir) are ignored rather than
-// written: they describe local store state, not user data, and a legit
-// backup never contains them (older backups may contain
-// .encryption-config.json).
+// files, *.tmp, anything under the backup dir or a skip-listed directory
+// like cache/) are ignored rather than written: they describe local store
+// state, not user data, and a legit backup never contains them (older
+// backups may contain .encryption-config.json). Skipped entries are
+// counted in the result so callers can surface them.
 //
-// Returns (restored count, removed count, http status, error message).
-// On success, status is 200.
-func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string) {
+// Returns (result, http status, error message). On success, status is 200.
+func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, string) {
+	var res restoreResult
 	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
-		return 0, 0, http.StatusBadRequest, "Invalid ZIP file"
+		return res, http.StatusBadRequest, "Invalid ZIP file"
 	}
 
 	dataAbs, err := filepath.Abs(cfg.DataDirectory)
 	if err != nil {
-		return 0, 0, http.StatusInternalServerError, "Bad data directory"
+		return res, http.StatusInternalServerError, "Bad data directory"
 	}
 	skip := backupsvc.SkipPredicate(cfg.DataDirectory, resolvedBackupDir())
 
@@ -381,7 +400,7 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 		// Sanitize: forbid absolute, forbid ".." segments, must stay under data dir.
 		raw := filepath.ToSlash(zf.Name)
 		if strings.HasPrefix(raw, "/") {
-			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Absolute path in archive: %s", zf.Name)
+			return res, http.StatusBadRequest, fmt.Sprintf("Absolute path in archive: %s", zf.Name)
 		}
 		clean := filepath.Clean(raw)
 		if clean == "." || clean == "" {
@@ -389,31 +408,32 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 		}
 		for _, seg := range strings.Split(filepath.ToSlash(clean), "/") {
 			if seg == ".." {
-				return 0, 0, http.StatusBadRequest, fmt.Sprintf("Path traversal in archive: %s", zf.Name)
+				return res, http.StatusBadRequest, fmt.Sprintf("Path traversal in archive: %s", zf.Name)
 			}
 		}
 		dest := filepath.Join(cfg.DataDirectory, clean)
 		destAbs, err := filepath.Abs(dest)
 		if err != nil || !(destAbs == dataAbs || strings.HasPrefix(destAbs, dataAbs+string(filepath.Separator))) {
-			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
+			return res, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
 		}
-		if skip(dest, false) {
+		if skipEntry(dataAbs, clean, skip) {
+			res.skippedProtected++
 			continue
 		}
 
 		rc, err := zf.Open()
 		if err != nil {
-			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
+			return res, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
 		}
 		data, err := io.ReadAll(rc)
 		_ = rc.Close()
 		if err != nil {
-			return 0, 0, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
+			return res, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
 		}
 
 		// Encrypted blob into unencrypted/locked store -> reject the whole archive.
 		if storage.IsAgeEncryptedData(data) && !(store.IsEncrypted() && store.IsUnlocked()) {
-			return 0, 0, http.StatusBadRequest, fmt.Sprintf(
+			return res, http.StatusBadRequest, fmt.Sprintf(
 				"Archive contains encrypted entry %s but destination store is not encrypted/unlocked",
 				zf.Name,
 			)
@@ -424,38 +444,79 @@ func restoreFromZip(ctx context.Context, content []byte) (int, int, int, string)
 	}
 
 	if len(queue) == 0 {
-		return 0, 0, http.StatusBadRequest, "No restorable files in archive"
+		return res, http.StatusBadRequest, "No restorable files in archive"
 	}
 
 	if backupSvc == nil {
-		return 0, 0, http.StatusInternalServerError, "Backup service not initialized"
+		return res, http.StatusInternalServerError, "Backup service not initialized"
 	}
 	// Hold the snapshot lock for the whole restore so a scheduled snapshot
 	// (or a second restore) cannot capture a half-restored data dir.
 	release, err := backupSvc.SnapshotAndHold(ctx)
 	if err != nil {
 		if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
-			return 0, 0, http.StatusConflict, "a backup is currently running; retry shortly"
+			return res, http.StatusConflict, "a backup is currently running; retry shortly"
 		}
-		return 0, 0, http.StatusInternalServerError, fmt.Sprintf("safety snapshot failed: %v", err)
+		return res, http.StatusInternalServerError, fmt.Sprintf("safety snapshot failed: %v", err)
 	}
 	defer release()
 
 	for _, p := range queue {
 		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
-			return 0, 0, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
+			return res, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
 		}
 		if err := store.WriteFile(p.dest, p.data, 0644); err != nil {
-			return 0, 0, http.StatusInternalServerError, fmt.Sprintf("write %s: %v", p.dest, err)
+			return res, http.StatusInternalServerError, fmt.Sprintf("write %s: %v", p.dest, err)
 		}
 	}
 
-	removed, pruneFailures := pruneRestoreExtras(dataAbs, archiveEntries, skip)
-	if pruneFailures > 0 {
-		log.Printf("restore prune completed with %d failures", pruneFailures)
+	res.pruned, res.pruneFailures = pruneRestoreExtras(dataAbs, archiveEntries, skip)
+	if res.pruneFailures > 0 {
+		log.Printf("restore prune completed with %d failures", res.pruneFailures)
 	}
 	// archiveEntries (not queue) so duplicate zip entries count once.
-	return len(archiveEntries), removed, http.StatusOK, ""
+	res.restored = len(archiveEntries)
+	return res, http.StatusOK, ""
+}
+
+// restoreResult summarizes a restoreFromZip run: files written, stale files
+// pruned, archive entries dropped by the skip list, and prune removals that
+// failed (details in the server log).
+type restoreResult struct {
+	restored         int
+	pruned           int
+	skippedProtected int
+	pruneFailures    int
+}
+
+// skipEntry reports whether the archive entry at rel (a cleaned path
+// relative to dataAbs) is excluded by the shared skip predicate — either
+// the file itself or any ancestor directory, so cache/plotly.min.js is
+// skipped because cache/ is a skip-listed directory.
+func skipEntry(dataAbs, rel string, skip func(path string, isDir bool) bool) bool {
+	dest := filepath.Join(dataAbs, rel)
+	if skip(dest, false) {
+		return true
+	}
+	for dir := filepath.Dir(dest); dir != dataAbs && len(dir) > len(dataAbs); dir = filepath.Dir(dir) {
+		if skip(dir, true) {
+			return true
+		}
+	}
+	return false
+}
+
+// restoreResponseMessage renders the client-facing summary for a successful
+// restore. noun distinguishes "files" from "test files".
+func restoreResponseMessage(res restoreResult, noun string) string {
+	msg := fmt.Sprintf("Restored %d %s, removed %d stale files", res.restored, noun, res.pruned)
+	if res.skippedProtected > 0 {
+		msg += fmt.Sprintf(", skipped %d protected entries", res.skippedProtected)
+	}
+	if res.pruneFailures > 0 {
+		msg += fmt.Sprintf(", %d stale files could not be removed (see server log)", res.pruneFailures)
+	}
+	return msg
 }
 
 // pruneRestoreExtras deletes every file under dataAbs that is neither an
@@ -554,14 +615,16 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
-	count, removed, status, msg := restoreFromZip(r.Context(), content)
+	res, status, msg := restoreFromZip(r.Context(), content)
 	if status != http.StatusOK {
 		http.Error(w, msg, status)
 		return
 	}
-	log.Printf("Restore complete: %d files restored, %d stale files removed", count, removed)
+	runPostRestoreHooks()
+	log.Printf("Restore complete: %d files restored, %d stale files removed, %d protected entries skipped, %d prune failures",
+		res.restored, res.pruned, res.skippedProtected, res.pruneFailures)
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "Restored %d files, removed %d stale files", count, removed)
+	_, _ = fmt.Fprint(w, restoreResponseMessage(res, "files"))
 }
 
 func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
@@ -570,14 +633,16 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Test backup not available", http.StatusInternalServerError)
 		return
 	}
-	count, removed, status, msg := restoreFromZip(r.Context(), content)
+	res, status, msg := restoreFromZip(r.Context(), content)
 	if status != http.StatusOK {
 		http.Error(w, msg, status)
 		return
 	}
-	log.Printf("Test data restore complete: %d files restored, %d stale files removed", count, removed)
+	runPostRestoreHooks()
+	log.Printf("Test data restore complete: %d files restored, %d stale files removed, %d protected entries skipped, %d prune failures",
+		res.restored, res.pruned, res.skippedProtected, res.pruneFailures)
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "Restored %d test files, removed %d stale files", count, removed)
+	_, _ = fmt.Fprint(w, restoreResponseMessage(res, "test files"))
 }
 
 func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {

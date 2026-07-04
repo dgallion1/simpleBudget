@@ -409,6 +409,15 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	return settings, nil
 }
 
+// InvalidateCache drops the in-memory settings cache so the next Load
+// re-reads from disk. Call it after anything rewrites the settings file
+// behind the manager's back (e.g. a backup restore).
+func (sm *SettingsManager) InvalidateCache() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.cache = nil
+}
+
 // loadInternal reads settings without acquiring lock (caller must hold lock).
 // Context-less wrapper used by the in-package CRUD methods.
 func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {

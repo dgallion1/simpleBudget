@@ -52,6 +52,57 @@ func TestSettingsManager_Cache(t *testing.T) {
 	// A better way is to check the cache field if it was exported, but it's not.
 }
 
+func TestSettingsManager_InvalidateCacheForcesDiskReload(t *testing.T) {
+	root := t.TempDir()
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+	sm := NewSettingsManager(root, store)
+
+	// Prime the cache (no file yet -> defaults).
+	first, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if first.PortfolioValue != 0 {
+		t.Fatalf("expected default portfolio value 0, got %v", first.PortfolioValue)
+	}
+
+	// Rewrite the settings file behind the manager's back (as a backup
+	// restore does). No mtime dependence: Load never checks timestamps,
+	// only the in-memory cache.
+	updated := models.DefaultWhatIfSettings()
+	updated.PortfolioValue = 424242
+	data, err := json.Marshal(updated)
+	if err != nil {
+		t.Fatalf("json.Marshal() error: %v", err)
+	}
+	if err := store.WriteFile(filepath.Join(root, "whatif.json"), data, 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	// The cache still serves the pre-rewrite settings.
+	stale, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if stale.PortfolioValue != 0 {
+		t.Fatalf("expected cached value 0 before invalidation, got %v", stale.PortfolioValue)
+	}
+
+	sm.InvalidateCache()
+
+	fresh, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() after InvalidateCache error: %v", err)
+	}
+	if fresh.PortfolioValue != 424242 {
+		t.Fatalf("expected re-read value 424242 after InvalidateCache, got %v", fresh.PortfolioValue)
+	}
+}
+
 func TestSettingsManager_ConcurrentUpdates(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "settings_concurrent_test")
 	if err != nil {

@@ -600,6 +600,11 @@ function setRestoreButtonState(state) {
 }
 
 function restoreBackup(file) {
+    if (!confirm("Restore replaces ALL current data with this backup's contents — any file not in the backup will be deleted. A safety snapshot is taken first. Continue?")) {
+        document.getElementById('restore-file-input').value = '';
+        return;
+    }
+
     setRestoreButtonState('loading');
 
     const formData = new FormData();
@@ -615,10 +620,12 @@ function restoreBackup(file) {
             }
             return response.text();
         })
-        .then(() => {
-            showToast('Restored successfully!', 'success');
+        .then(message => {
+            showToast(message || 'Restored successfully!', 'success');
             document.getElementById('restore-file-input').value = '';
-            setTimeout(() => window.location.reload(), 1000);
+            // Give the user time to read the server's summary (skipped /
+            // failed counts) before the reload wipes the toast.
+            setTimeout(() => window.location.reload(), 2500);
         })
         .catch(err => {
             setRestoreButtonState('default');

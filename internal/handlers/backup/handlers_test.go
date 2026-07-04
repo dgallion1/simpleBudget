@@ -3683,3 +3683,141 @@ func TestHandleRestore_PreservesEmptySkipDirsAndTmpOnlyDirs(t *testing.T) {
 		t.Fatalf("tmp file should survive pruning: %v", err)
 	}
 }
+
+// ---------- Review-fix tests: skip-dir entries, prune-failure reporting, post-restore hooks ----------
+
+func TestHandleRestore_SkipsEntriesUnderSkipListedDirs(t *testing.T) {
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "normal.csv", []byte("kept"))
+	mustZip(t, zw, "cache/plotly.min.js", []byte("alert('planted')"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	mustReadEqual(t, filepath.Join(dataDir, "normal.csv"), []byte("kept"))
+	if _, err := os.Stat(filepath.Join(dataDir, "cache", "plotly.min.js")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("cache/plotly.min.js must not be planted by restore, err=%v", err)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Restored 1 files") {
+		t.Fatalf("skip-dir entries must not count as restored: %s", body)
+	}
+	if !strings.Contains(body, "skipped 1 protected entries") {
+		t.Fatalf("response must report skipped protected entries: %s", body)
+	}
+}
+
+func TestHandleRestore_ReportsSkippedEncryptionStateEntries(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "current.csv", []byte("new"))
+	mustZip(t, zw, ".encryption-config.json", []byte(`{"method":"password"}`))
+	mustZip(t, zw, ".encrypted", []byte("marker"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "skipped 2 protected entries") {
+		t.Fatalf("response must count skipped encryption-state entries: %s", rec.Body.String())
+	}
+}
+
+func TestHandleRestore_ReportsPruneFailures(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("directory write permissions do not block root")
+	}
+	dataDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// A stale file inside a write-protected directory: prune can see it
+	// (r-x on the dir) but cannot unlink it (no w on the dir).
+	lockedDir := filepath.Join(dataDir, "locked")
+	if err := os.MkdirAll(lockedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lockedDir, "stale.csv"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(lockedDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0755) })
+
+	zipBuf := createZipBuffer(t, map[string]string{"current.csv": "new"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore itself succeeded, want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "1 stale files could not be removed (see server log)") {
+		t.Fatalf("response must surface prune failures: %s", body)
+	}
+	if _, err := os.Stat(filepath.Join(lockedDir, "stale.csv")); err != nil {
+		t.Fatalf("stale.csv should still exist after failed prune: %v", err)
+	}
+}
+
+func TestHandleRestore_FiresPostRestoreHooksOnSuccessOnly(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	orig := postRestoreHooks
+	postRestoreHooks = nil
+	t.Cleanup(func() { postRestoreHooks = orig })
+
+	fired := 0
+	RegisterPostRestoreHook(func() { fired++ })
+
+	// Failed restore (invalid zip) must not fire hooks.
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", []byte("not a zip"))
+	HandleRestore(rec, rec.Request)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("invalid zip should fail, got %d", rec.Code)
+	}
+	if fired != 0 {
+		t.Fatalf("hooks must not fire on failed restore, fired=%d", fired)
+	}
+
+	// Successful upload restore fires hooks once.
+	zipBuf := createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
+	rec = postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if fired != 1 {
+		t.Fatalf("hooks must fire once on successful restore, fired=%d", fired)
+	}
+
+	// Test-data restore fires hooks too.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/restore/test-data", nil)
+	HandleRestoreTestData(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("test-data restore status %d: %s", w.Code, w.Body.String())
+	}
+	if fired != 2 {
+		t.Fatalf("hooks must fire on test-data restore, fired=%d", fired)
+	}
+}

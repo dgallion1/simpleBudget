@@ -31,10 +31,10 @@ import (
 	"budget2/internal/handlers/insights"
 	"budget2/internal/handlers/majorexpenses"
 	"budget2/internal/handlers/whatif"
+	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
-	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/templates"
 	"budget2/internal/version"
 	"budget2/web"
@@ -93,6 +93,10 @@ func SetupDependencies(c *config.Config) error {
 	majorexpenses.Initialize(loader, renderer)
 	duplicates.Initialize(loader, renderer)
 	backup.Initialize(cfg, store, renderer, backupService)
+
+	// A restore rewrites whatif.json on disk behind the settings manager's
+	// back; drop its in-memory cache so post-restore loads re-read from disk.
+	backup.RegisterPostRestoreHook(retirementMgr.InvalidateCache)
 
 	return nil
 }

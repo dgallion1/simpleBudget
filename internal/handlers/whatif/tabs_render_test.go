@@ -1,6 +1,8 @@
 package whatif
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -31,8 +33,8 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 	if !strings.Contains(out, `data-scenario="whatif.json"`) {
 		t.Errorf("expected partial render to preserve active scenario in data-scenario; got: %s", truncate(out, 800))
 	}
-	if strings.Contains(out, `data-scenario="<no value>"`) {
-		t.Errorf("partial render emitted missing ActiveFilename sentinel in data-scenario")
+	if strings.Contains(out, `data-scenario=""`) {
+		t.Errorf("partial render emitted empty data-scenario (missing ActiveFilename); per-scenario tab persistence would fall back to the 'default' key")
 	}
 	for _, tab := range []string{`data-wf-tab="overview"`, `data-wf-tab="cashflow"`, `data-wf-tab="risk"`, `data-wf-tab="taxes"`, `data-wf-tab="strategies"`} {
 		if !strings.Contains(out, tab) {
@@ -49,6 +51,43 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 	}
 }
 
+// TestWhatIfCalculateAndSync_PreserveActiveScenario is a regression test for
+// the calculate/sync handlers omitting ActiveFilename from the partial data:
+// the whatif-results template then rendered data-scenario="" and
+// whatif-tabs.js fell back to the shared 'default' localStorage key, breaking
+// per-scenario tab persistence after every Calculate or Sync.
+func TestWhatIfCalculateAndSync_PreserveActiveScenario(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	cases := []struct {
+		name    string
+		path    string
+		handler http.HandlerFunc
+	}{
+		{"calculate", "/whatif/calculate", handleWhatIfCalculate},
+		{"sync", "/whatif/sync", handleWhatIfSync},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("POST", tc.path, nil)
+			tc.handler(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, truncate(w.Body.String(), 300))
+			}
+			out := w.Body.String()
+			if !strings.Contains(out, `data-scenario="whatif.json"`) {
+				t.Errorf("expected %s response to carry data-scenario=\"whatif.json\"; got: %s", tc.name, truncate(out, 800))
+			}
+			if strings.Contains(out, `data-scenario=""`) {
+				t.Errorf("%s response emitted empty data-scenario (ActiveFilename missing from partial data)", tc.name)
+			}
+		})
+	}
+}
+
 func TestWhatIfSettings_Groups(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -60,7 +99,7 @@ func TestWhatIfSettings_Groups(t *testing.T) {
 	}
 	out, err := renderer.RenderToString("whatif-content", map[string]any{
 		"Settings": settings, "Analysis": analysis,
-		"Verdict": BuildVerdict(analysis, settings),
+		"Verdict":   BuildVerdict(analysis, settings),
 		"Scenarios": nil, "ActiveFilename": "whatif.json", "Findings": nil,
 	})
 	if err != nil {

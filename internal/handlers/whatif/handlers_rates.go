@@ -12,7 +12,6 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement"
-	"budget2/internal/services/retirement/completeness"
 )
 
 func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
@@ -68,16 +67,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	findings := completeness.Check(settings)
-
-	partialData := buildResultsPartialData(settings, analysis, findings)
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
@@ -94,14 +84,7 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	}
 	analysis := retirement.RunFull(getEngine(), in)
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // handleWhatIfSpendingPhases handles updates to spending phase configuration
@@ -195,14 +178,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // handleWhatIfAddPhase adds a new spending phase
@@ -251,14 +227,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // handleWhatIfDeletePhase removes a spending phase by index
@@ -313,14 +282,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // handleWhatIfResetPhases resets phases to defaults
@@ -348,14 +310,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // handleWhatIfRothConversion handles Roth conversion configuration updates
@@ -420,14 +375,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func maxSubmittedSpendingPhaseIndex(form map[string][]string) int {
 	maxIndex := -1
@@ -509,14 +457,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -564,14 +505,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -635,14 +569,7 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // handleWhatIfTaxOptimize runs the Tax Optimizer on demand. This is an

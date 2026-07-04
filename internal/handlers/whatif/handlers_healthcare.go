@@ -1,7 +1,6 @@
 package whatif
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	"budget2/internal/models"
-	"budget2/internal/services/retirement/completeness"
 )
 
 func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
@@ -136,14 +134,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -300,14 +291,7 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -324,12 +308,5 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }

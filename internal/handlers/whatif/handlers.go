@@ -177,6 +177,20 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 	}
 }
 
+// renderWhatIfResults renders the standard whatif-results partial (or its
+// JSON fallback when no renderer is configured) for the given settings and
+// analysis. Completeness findings are computed here so every recalc handler
+// reports them identically.
+func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
+	if renderer != nil {
+		_ = renderer.RenderPartial(w, "whatif-results", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(partialData)
+	}
+}
+
 func normalizeDisplayDollars(raw string) string {
 	if raw == "real" {
 		return "real"
@@ -655,19 +669,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Verdict":  BuildVerdict(analysis, settings),
-		"Findings": completeness.Check(settings),
-	}
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.LoadContext(r.Context())
@@ -776,36 +778,36 @@ func buildIncomeChartData(settings *models.WhatIfSettings, projection *models.Pr
 
 	traces := []map[string]interface{}{
 		{
-			"type":       "scatter",
-			"mode":       "lines",
-			"name":       "Social Security",
-			"x":          years,
-			"y":          ssSeries,
-			"stackgroup": "income",
-			"fillcolor":  "rgba(245, 158, 11, 0.5)",
-			"line":       map[string]interface{}{"color": "#f59e0b", "width": 1},
+			"type":          "scatter",
+			"mode":          "lines",
+			"name":          "Social Security",
+			"x":             years,
+			"y":             ssSeries,
+			"stackgroup":    "income",
+			"fillcolor":     "rgba(245, 158, 11, 0.5)",
+			"line":          map[string]interface{}{"color": "#f59e0b", "width": 1},
 			"hovertemplate": "Year %{x}<br>SS: $%{y:,.0f}<extra></extra>",
 		},
 		{
-			"type":       "scatter",
-			"mode":       "lines",
-			"name":       "Other Income",
-			"x":          years,
-			"y":          otherSeries,
-			"stackgroup": "income",
-			"fillcolor":  "rgba(34, 197, 94, 0.5)",
-			"line":       map[string]interface{}{"color": "#22c55e", "width": 1},
+			"type":          "scatter",
+			"mode":          "lines",
+			"name":          "Other Income",
+			"x":             years,
+			"y":             otherSeries,
+			"stackgroup":    "income",
+			"fillcolor":     "rgba(34, 197, 94, 0.5)",
+			"line":          map[string]interface{}{"color": "#22c55e", "width": 1},
 			"hovertemplate": "Year %{x}<br>Other: $%{y:,.0f}<extra></extra>",
 		},
 		{
-			"type":       "scatter",
-			"mode":       "lines",
-			"name":       "Withdrawals",
-			"x":          years,
-			"y":          withdrawSeries,
-			"stackgroup": "income",
-			"fillcolor":  "rgba(59, 130, 246, 0.5)",
-			"line":       map[string]interface{}{"color": "#3b82f6", "width": 1},
+			"type":          "scatter",
+			"mode":          "lines",
+			"name":          "Withdrawals",
+			"x":             years,
+			"y":             withdrawSeries,
+			"stackgroup":    "income",
+			"fillcolor":     "rgba(59, 130, 246, 0.5)",
+			"line":          map[string]interface{}{"color": "#3b82f6", "width": 1},
 			"hovertemplate": "Year %{x}<br>Withdrawals: $%{y:,.0f}<extra></extra>",
 		},
 	}
@@ -904,19 +906,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	partialData := map[string]interface{}{
-		"Settings": settings,
-		"Analysis": analysis,
-		"Verdict":  BuildVerdict(analysis, settings),
-		"Findings": completeness.Check(settings),
-	}
-
-	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(partialData)
-	}
+	renderWhatIfResults(w, settings, analysis)
 }
 
 // syncSettingsFromDashboard updates settings with values from dashboard data

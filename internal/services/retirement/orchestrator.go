@@ -45,7 +45,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	explainability := analysis.BuildExplainability(proj, in)
 	budgetFit := analysis.BudgetFit(in, proj)
 	presentValue := analysis.PresentValue(in, proj)
-	sustainability := analysis.Score(proj, budgetFit)
+	sustainability := analysis.Score(budgetFit.RequiredRate, proj.Survives)
 	sensitivity := analysis.Sensitivity(eng, in)
 	failurePoints := analysis.FailurePoints(eng, in)
 	monteCarlo := analysis.MonteCarlo(eng, in, MonteCarloRuns, mcSeed)

@@ -16,7 +16,7 @@ func Sensitivity(eng *engine.Engine, in engine.Input) []models.SensitivityResult
 	// Get baseline score
 	baseProjection := eng.Run(in)
 	baseBudgetFit := BudgetFit(in, baseProjection)
-	baseScore := Score(baseProjection, baseBudgetFit)
+	baseScore := Score(baseBudgetFit.RequiredRate, baseProjection.Survives)
 
 	// Get effective baseline return (either explicit or calculated from per-account allocation)
 	// When InvestmentReturn=0, the projection uses per-account asset allocation blended returns
@@ -65,7 +65,7 @@ func Sensitivity(eng *engine.Engine, in engine.Input) []models.SensitivityResult
 		modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain, Hooks: in.Hooks}
 		modProjection := eng.Run(modIn)
 		modBudgetFit := BudgetFit(modIn, modProjection)
-		modScore := Score(modProjection, modBudgetFit)
+		modScore := Score(modBudgetFit.RequiredRate, modProjection.Survives)
 
 		results = append(results, models.SensitivityResult{
 			Scenario:       scenario,

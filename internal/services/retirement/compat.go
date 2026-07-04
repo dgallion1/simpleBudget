@@ -29,59 +29,22 @@ func PresentValue(futureValue, annualRate float64, periods int) float64 {
 }
 
 // PresentValueAnnuity calculates the PV of a series of payments. Handles
-// both regular and growing annuities.
+// both regular and growing annuities. Forwards to the engine's single
+// source of truth for the annuity math.
 func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64 {
-	if numPayments <= 0 || payment == 0 {
-		return 0
-	}
-
-	monthlyRate := monthlyCompoundFactorFromPercent(discountRate) - 1
-	monthlyGrowth := monthlyCompoundFactorFromPercent(growthRate) - 1
-
-	var pvAtStart float64
-
-	if monthlyRate <= 0 {
-		if monthlyGrowth == 0 {
-			pvAtStart = payment * float64(numPayments)
-		} else {
-			total := 0.0
-			for m := 0; m < numPayments; m++ {
-				total += payment * math.Pow(1+monthlyGrowth, float64(m))
-			}
-			pvAtStart = total
-		}
-	} else if math.Abs(monthlyRate-monthlyGrowth) < 1e-10 {
-		// Growth equals discount rate
-		pvAtStart = payment * float64(numPayments)
-	} else if monthlyGrowth != 0 {
-		// Growing annuity formula
-		growthFactor := (1 + monthlyGrowth) / (1 + monthlyRate)
-		pvAtStart = payment * (1 - math.Pow(growthFactor, float64(numPayments))) / (monthlyRate - monthlyGrowth)
-	} else {
-		// Regular annuity formula
-		pvAtStart = payment * (1 - math.Pow(1+monthlyRate, -float64(numPayments))) / monthlyRate
-	}
-
-	if startMonth > 0 && monthlyRate > 0 {
-		return pvAtStart / math.Pow(1+monthlyRate, float64(startMonth))
-	}
-
-	return pvAtStart
+	return engine.PresentValueAnnuity(payment, discountRate, growthRate, startMonth, numPayments)
 }
 
 func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
-	if annualRate == 0 {
-		return 1.0
-	}
-	return math.Pow(1+annualRate, 1.0/12.0)
+	return engine.MonthlyCompoundFactorFromDecimal(annualRate)
 }
 
 func monthlyCompoundFactorFromPercent(annualRatePercent float64) float64 {
-	return monthlyCompoundFactorFromDecimal(annualRatePercent / 100)
+	return engine.MonthlyCompoundFactorFromDecimal(annualRatePercent / 100)
 }
 
-// plannerInflationFactorForYear is referenced by other retirement-package
-// code (e.g. CalculatePresentValueAnalysis).
+// plannerInflationFactorForYear is retained for retirement-package tests
+// that exercise the planner's inflation-factor convention directly.
 func plannerInflationFactorForYear(annualInflationRate float64, years float64) float64 {
 	if years <= 0 {
 		return 1

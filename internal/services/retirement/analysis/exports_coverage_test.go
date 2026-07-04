@@ -10,7 +10,7 @@ import (
 )
 
 func TestExportedAnalysisWrappersAndScore(t *testing.T) {
-	score := Score(&models.ProjectionResult{Survives: true}, &models.BudgetFitAnalysis{RequiredRate: 3})
+	score := Score(3, true)
 	if score.Score != 100 {
 		t.Fatalf("Score=%d, want 100", score.Score)
 	}

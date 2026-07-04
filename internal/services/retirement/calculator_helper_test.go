@@ -96,7 +96,7 @@ func (c *Calculator) findSteadyStateMonth() int {
 
 // CalculateSustainabilityScore computes the sustainability score.
 func (c *Calculator) CalculateSustainabilityScore(projection *models.ProjectionResult) *models.SustainabilityScore {
-	return analysis.Score(projection, c.CalculateBudgetFit())
+	return analysis.Score(c.CalculateBudgetFit().RequiredRate, projection.Survives)
 }
 
 // CalculateSensitivity runs sensitivity analysis on key parameters.

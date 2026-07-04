@@ -117,6 +117,19 @@ input:focus, select:focus {
     text-align: center;
 }
 
+/* What-If tab bar — active tab indicator.
+   whatif-tabs.js toggles .wf-tab-active; the buttons carry Tailwind
+   `text-gray-500 border-transparent` utilities, and the CDN build injects
+   its stylesheet after this one, so !important is required to win. */
+.wf-tab-active {
+    color: rgb(79 70 229) !important;              /* indigo-600 */
+    border-bottom-color: rgb(79 70 229) !important;
+}
+.dark .wf-tab-active {
+    color: rgb(129 140 248) !important;            /* indigo-400 */
+    border-bottom-color: rgb(129 140 248) !important;
+}
+
 /* Tabular monospace numerals for aligned financial figures */
 .num {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;

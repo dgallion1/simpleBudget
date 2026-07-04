@@ -12,6 +12,9 @@ import (
 func retiredTaxableSettings() *models.WhatIfSettings {
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 70
+	// prepare.ComputeAges recomputes CurrentAge from BirthMonth, so the age
+	// must be set via BirthMonth or the scenario silently runs at 65.
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.SocialSecurity = nil
 	s.IncomeSources = nil
 	s.PortfolioValue = 1_500_000
@@ -54,6 +57,11 @@ func TestWhatIfTaxSummary_RendersFederalStateSplit(t *testing.T) {
 	// analysis-package BuildTax tests.
 	if analysis.Tax == nil || analysis.Tax.TotalTaxPaid <= 0 {
 		t.Fatalf("expected a taxable scenario to produce positive total tax")
+	}
+	// The helper must genuinely simulate a 70-year-old (age flows from
+	// Persons[0].BirthMonth, not the raw CurrentAge field).
+	if len(analysis.Tax.YearlyTaxSummary) == 0 || analysis.Tax.YearlyTaxSummary[0].Age != 70 {
+		t.Fatalf("expected first tax-summary row at age 70; got %+v", analysis.Tax.YearlyTaxSummary)
 	}
 	if !strings.Contains(out, "Eff. Rate") {
 		t.Errorf("expected per-year breakdown table to render; got: %s", truncate(out, 1200))

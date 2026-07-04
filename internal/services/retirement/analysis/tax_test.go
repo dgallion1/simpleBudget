@@ -13,6 +13,9 @@ import (
 func taxableScenario() *models.WhatIfSettings {
 	s := models.DefaultWhatIfSettings()
 	s.CurrentAge = 70
+	// prepare.ComputeAges recomputes CurrentAge from BirthMonth, so the age
+	// must be set via BirthMonth or the scenario silently runs at 65.
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 	s.SocialSecurity = nil
 	s.IncomeSources = nil
 	s.PortfolioValue = 1_500_000
@@ -81,6 +84,9 @@ func TestBuildTax_YearlyRowsReconcile(t *testing.T) {
 
 	wantFirstYear := engine.ParseStartYear(prepared.StartDate)
 	wantFirstAge := prepared.GetOlderAge()
+	if wantFirstAge != 70 {
+		t.Fatalf("prepared older age = %d; scenario helper must yield age 70", wantFirstAge)
+	}
 	first := tax.YearlyTaxSummary[0]
 	if first.Year != wantFirstYear {
 		t.Errorf("first row Year = %d; want %d", first.Year, wantFirstYear)

@@ -3,6 +3,8 @@ package whatif
 import (
 	"strings"
 	"testing"
+
+	"budget2/internal/models"
 )
 
 func TestVerdictBar_Render(t *testing.T) {
@@ -12,8 +14,8 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("green funded plan shows headline and figures", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: VerdictGreen, Headline: "Funded through 2064",
-				Detail: "spending covered for all 38 years",
+				Health: models.HealthGreen, Headline: "Funded through 2064",
+				Detail:     "spending covered for all 38 years",
 				MonthlyGap: -200, GapIsShortfall: false,
 				RequiredRate: 0, SuccessRate: 85, HasMonteCarlo: true,
 			},
@@ -31,8 +33,8 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("red plan shows shortfall styling and run-out headline", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: VerdictRed, Headline: "Funds run out in 2032",
-				Detail: "covered for 6 of 38 years",
+				Health: models.HealthRed, Headline: "Funds run out in 2032",
+				Detail:     "covered for 6 of 38 years",
 				MonthlyGap: 1601.38, GapIsShortfall: true,
 				RequiredRate: 3.1, SuccessRate: 12, HasMonteCarlo: true,
 			},
@@ -50,8 +52,8 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("steady-state gap is labeled with the selected year", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: VerdictAmber, Headline: "Funded through 2064",
-				Detail: "spending covered for all 38 years",
+				Health: models.HealthAmber, Headline: "Funded through 2064",
+				Detail:     "spending covered for all 38 years",
 				MonthlyGap: 3400, GapIsShortfall: true, RequiredRate: 4.2,
 				GapAtSteadyState: true, GapYear: 12,
 			},
@@ -67,8 +69,8 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("today's gap keeps the plain label", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: VerdictGreen, Headline: "Funded through 2064",
-				Detail: "spending covered for all 38 years",
+				Health: models.HealthGreen, Headline: "Funded through 2064",
+				Detail:     "spending covered for all 38 years",
 				MonthlyGap: -200, GapIsShortfall: false, GapAtSteadyState: false,
 			},
 		})
@@ -86,7 +88,7 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("no monte carlo hides the MC figure", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: VerdictGreen, Headline: "Funded through 2046",
+				Health: models.HealthGreen, Headline: "Funded through 2046",
 				Detail: "spending covered for all 20 years", HasMonteCarlo: false,
 			},
 		})

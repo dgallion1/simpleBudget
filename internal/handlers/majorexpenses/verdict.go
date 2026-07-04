@@ -1,15 +1,6 @@
 package majorexpenses
 
-// TrackingHealth classifies how much of a period's spending is categorized into
-// declared major expenses, for the verdict band tint.
-type TrackingHealth string
-
-const (
-	TrackingGreen   TrackingHealth = "green"
-	TrackingAmber   TrackingHealth = "amber"
-	TrackingRed     TrackingHealth = "red"
-	TrackingNeutral TrackingHealth = "neutral"
-)
+import "budget2/internal/models"
 
 // Tracking-coverage thresholds (percent of spend matched to declared expenses).
 const (
@@ -20,7 +11,7 @@ const (
 // TrackingVerdictView is the precomputed model the major-expenses verdict band
 // renders. Coverage = declared / (declared + unmatched).
 type TrackingVerdictView struct {
-	Health         TrackingHealth
+	Health         models.Health
 	HasSpend       bool
 	DeclaredTotal  float64
 	UnmatchedTotal float64
@@ -34,7 +25,7 @@ type TrackingVerdictView struct {
 func BuildTrackingVerdict(declared, unmatched float64, unmatchedCount int) TrackingVerdictView {
 	total := declared + unmatched
 	if total <= 0 {
-		return TrackingVerdictView{Health: TrackingNeutral}
+		return TrackingVerdictView{Health: models.HealthNeutral}
 	}
 
 	pct := declared / total * 100
@@ -47,11 +38,11 @@ func BuildTrackingVerdict(declared, unmatched float64, unmatchedCount int) Track
 	}
 	switch {
 	case pct >= trackingGoodPct:
-		v.Health = TrackingGreen
+		v.Health = models.HealthGreen
 	case pct >= trackingOkPct:
-		v.Health = TrackingAmber
+		v.Health = models.HealthAmber
 	default:
-		v.Health = TrackingRed
+		v.Health = models.HealthRed
 	}
 	return v
 }

@@ -2,17 +2,6 @@ package insights
 
 import "budget2/internal/models"
 
-// PaceHealth classifies spending pace (burn rate vs. historical) for the
-// insights verdict band tint.
-type PaceHealth string
-
-const (
-	PaceGreen   PaceHealth = "green"
-	PaceAmber   PaceHealth = "amber"
-	PaceRed     PaceHealth = "red"
-	PaceNeutral PaceHealth = "neutral"
-)
-
 // paceRedThreshold: burn rate more than this many percent above the historical
 // daily average is "red"; at-or-below 0 is "green"; in between is "amber".
 // This mirrors the existing Daily Spending KPI tile semantic exactly.
@@ -20,7 +9,7 @@ const paceRedThreshold = 10.0
 
 // PaceVerdictView is the precomputed model the insights verdict band renders.
 type PaceVerdictView struct {
-	Health          PaceHealth
+	Health          models.Health
 	HasData         bool
 	BurnRateChange  float64 // % vs historical daily average (>0 = faster than usual)
 	IsAbove         bool    // BurnRateChange > 0
@@ -35,7 +24,7 @@ type PaceVerdictView struct {
 // view when velocity is unavailable.
 func BuildPaceVerdict(v *models.SpendingVelocity) PaceVerdictView {
 	if v == nil {
-		return PaceVerdictView{Health: PaceNeutral}
+		return PaceVerdictView{Health: models.HealthNeutral}
 	}
 
 	pv := PaceVerdictView{
@@ -50,11 +39,11 @@ func BuildPaceVerdict(v *models.SpendingVelocity) PaceVerdictView {
 
 	switch {
 	case v.BurnRateChange < 0:
-		pv.Health = PaceGreen
+		pv.Health = models.HealthGreen
 	case v.BurnRateChange > paceRedThreshold:
-		pv.Health = PaceRed
+		pv.Health = models.HealthRed
 	default:
-		pv.Health = PaceAmber
+		pv.Health = models.HealthAmber
 	}
 	return pv
 }

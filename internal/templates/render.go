@@ -102,6 +102,8 @@ func getFuncMap() template.FuncMap {
 		"colorClass":                          colorClass,
 		"successRateTextClass":                successRateTextClass,
 		"successRateBarClass":                 successRateBarClass,
+		"verdictBandClass":                    verdictBandClass,
+		"verdictLabelClass":                   verdictLabelClass,
 		"percentOf":                           percentOf,
 		"percentDiff":                         percentDiff,
 		"deref":                               deref,
@@ -720,6 +722,37 @@ func successRateTextClass(v float64) string {
 		return "text-orange-600 dark:text-orange-400"
 	default:
 		return "text-red-600 dark:text-red-400"
+	}
+}
+
+// verdictBandClass maps a verdict health value (models.Health or plain string:
+// "green"/"amber"/"red", anything else neutral) to the shared Tailwind
+// background/border classes for a verdict band container.
+func verdictBandClass(h any) string {
+	switch fmt.Sprintf("%v", h) {
+	case "green":
+		return "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700"
+	case "amber":
+		return "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700"
+	case "red":
+		return "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700"
+	default:
+		return "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+	}
+}
+
+// verdictLabelClass maps the same health values to the verdict band's
+// small-caps label text-color classes.
+func verdictLabelClass(h any) string {
+	switch fmt.Sprintf("%v", h) {
+	case "green":
+		return "text-emerald-700 dark:text-emerald-300"
+	case "amber":
+		return "text-amber-700 dark:text-amber-300"
+	case "red":
+		return "text-rose-700 dark:text-rose-300"
+	default:
+		return "text-gray-500 dark:text-gray-400"
 	}
 }
 

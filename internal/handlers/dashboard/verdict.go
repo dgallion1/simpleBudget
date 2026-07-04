@@ -2,16 +2,6 @@ package dashboard
 
 import "budget2/internal/models"
 
-// BudgetHealth classifies dashboard budget performance for the verdict band tint.
-type BudgetHealth string
-
-const (
-	BudgetGreen   BudgetHealth = "green"
-	BudgetAmber   BudgetHealth = "amber"
-	BudgetRed     BudgetHealth = "red"
-	BudgetNeutral BudgetHealth = "neutral"
-)
-
 // overAmberPct: over budget by up to this fraction of the target total is amber;
 // beyond it is red.
 const overAmberPct = 0.10
@@ -24,7 +14,7 @@ const onBudgetEps = 1.0
 // Classification lives here (testable); currency formatting stays in the template
 // (reusing formatMoney), so this carries figures and flags, not display strings.
 type BudgetVerdictView struct {
-	Health      BudgetHealth
+	Health      models.Health
 	HasTarget   bool
 	Delta       float64 // CombinedCumulativeDelta (>0 = over budget)
 	IsOver      bool    // Delta > onBudgetEps
@@ -41,7 +31,7 @@ type BudgetVerdictView struct {
 // already computed for the selected date range. It does no money math beyond
 // summing totals the metrics expose.
 func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView {
-	v := BudgetVerdictView{Health: BudgetNeutral}
+	v := BudgetVerdictView{Health: models.HealthNeutral}
 	if m == nil {
 		return v
 	}
@@ -67,16 +57,16 @@ func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView {
 		// target total is zero/unknown we can't form a ratio, so any real
 		// overage is treated as red rather than silently downgraded to amber.
 		if v.TargetTotal <= 0 || v.Delta/v.TargetTotal > overAmberPct {
-			v.Health = BudgetRed
+			v.Health = models.HealthRed
 		} else {
-			v.Health = BudgetAmber
+			v.Health = models.HealthAmber
 		}
 	default:
 		// On budget or under budget — both healthy.
 		if v.Delta < -onBudgetEps {
 			v.IsUnder = true
 		}
-		v.Health = BudgetGreen
+		v.Health = models.HealthGreen
 	}
 	return v
 }

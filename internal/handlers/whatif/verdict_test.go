@@ -17,7 +17,7 @@ func TestBuildVerdict(t *testing.T) {
 			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 85}},
 		}
 		v := BuildVerdict(a, s)
-		if v.Health != VerdictGreen {
+		if v.Health != models.HealthGreen {
 			t.Errorf("Health = %q, want green", v.Health)
 		}
 		if v.Headline != "Funded through 2064" {
@@ -38,7 +38,7 @@ func TestBuildVerdict(t *testing.T) {
 			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: 100},
 			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 55}},
 		}
-		if v := BuildVerdict(a, s); v.Health != VerdictAmber {
+		if v := BuildVerdict(a, s); v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber", v.Health)
 		}
 	})
@@ -51,7 +51,7 @@ func TestBuildVerdict(t *testing.T) {
 			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 12}},
 		}
 		v := BuildVerdict(a, s)
-		if v.Health != VerdictRed {
+		if v.Health != models.HealthRed {
 			t.Errorf("Health = %q, want red", v.Health)
 		}
 		if v.Headline != "Funds run out in 2032" {
@@ -72,7 +72,7 @@ func TestBuildVerdict(t *testing.T) {
 			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: 500},
 			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 60}},
 		}
-		if v := BuildVerdict(a, s); v.Health != VerdictAmber {
+		if v := BuildVerdict(a, s); v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber", v.Health)
 		}
 	})
@@ -87,13 +87,13 @@ func TestBuildVerdict(t *testing.T) {
 		if v.HasMonteCarlo {
 			t.Errorf("HasMonteCarlo = true, want false")
 		}
-		if v.Health != VerdictGreen {
+		if v.Health != models.HealthGreen {
 			t.Errorf("Health = %q, want green (survives, no MC)", v.Health)
 		}
 	})
 
 	t.Run("nil inputs return a defined (non-red) health", func(t *testing.T) {
-		if v := BuildVerdict(nil, nil); v.Health != VerdictAmber {
+		if v := BuildVerdict(nil, nil); v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber for nil inputs (must not silently render red)", v.Health)
 		}
 	})
@@ -103,12 +103,12 @@ func TestBuildVerdict(t *testing.T) {
 		// Pins the < vs <= boundary so a future slip can't flip it silently.
 		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
 		a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{Survives: false, DepletionMonth: intPtr(120)}}
-		if v := BuildVerdict(a, s); v.Health != VerdictAmber {
+		if v := BuildVerdict(a, s); v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber at exactly 10 years", v.Health)
 		}
 		// One month earlier (119 → 9 years) crosses into red.
 		a.Projection.DepletionMonth = intPtr(119)
-		if v := BuildVerdict(a, s); v.Health != VerdictRed {
+		if v := BuildVerdict(a, s); v.Health != models.HealthRed {
 			t.Errorf("Health = %q, want red just under 10 years", v.Health)
 		}
 	})
@@ -122,7 +122,7 @@ func TestBuildVerdict(t *testing.T) {
 		if v.YearsCovered != 38 {
 			t.Errorf("YearsCovered = %d, want 38 (fallback to horizon)", v.YearsCovered)
 		}
-		if v.Health != VerdictAmber {
+		if v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber (38 >= early-depletion cutoff)", v.Health)
 		}
 	})

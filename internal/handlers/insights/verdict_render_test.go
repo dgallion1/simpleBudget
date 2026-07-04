@@ -3,6 +3,8 @@ package insights
 import (
 	"strings"
 	"testing"
+
+	"budget2/internal/models"
 )
 
 func TestInsightsVerdictBar_Render(t *testing.T) {
@@ -12,7 +14,7 @@ func TestInsightsVerdictBar_Render(t *testing.T) {
 	t.Run("above usual pace shows red band", func(t *testing.T) {
 		out, err := renderer.RenderToString("insights-verdict-bar", map[string]any{
 			"PaceVerdict": PaceVerdictView{
-				Health: PaceRed, HasData: true, IsAbove: true, BurnRateChange: 25,
+				Health: models.HealthRed, HasData: true, IsAbove: true, BurnRateChange: 25,
 				DailyAverage: 150, HistoricalDaily: 120, MonthProjection: 4500,
 			},
 		})
@@ -29,7 +31,7 @@ func TestInsightsVerdictBar_Render(t *testing.T) {
 	t.Run("below usual pace shows green band", func(t *testing.T) {
 		out, err := renderer.RenderToString("insights-verdict-bar", map[string]any{
 			"PaceVerdict": PaceVerdictView{
-				Health: PaceGreen, HasData: true, IsBelow: true, BurnRateChange: -20,
+				Health: models.HealthGreen, HasData: true, IsBelow: true, BurnRateChange: -20,
 				DailyAverage: 80, HistoricalDaily: 100, MonthProjection: 2400,
 			},
 		})
@@ -45,7 +47,7 @@ func TestInsightsVerdictBar_Render(t *testing.T) {
 
 	t.Run("no velocity data shows neutral band without a pace headline", func(t *testing.T) {
 		out, err := renderer.RenderToString("insights-verdict-bar", map[string]any{
-			"PaceVerdict": PaceVerdictView{Health: PaceNeutral, HasData: false},
+			"PaceVerdict": PaceVerdictView{Health: models.HealthNeutral, HasData: false},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)

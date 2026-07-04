@@ -3,6 +3,8 @@ package dashboard
 import (
 	"strings"
 	"testing"
+
+	"budget2/internal/models"
 )
 
 func TestDashboardVerdictBar_Render(t *testing.T) {
@@ -12,7 +14,7 @@ func TestDashboardVerdictBar_Render(t *testing.T) {
 	t.Run("over budget shows red band and over-budget headline", func(t *testing.T) {
 		out, err := renderer.RenderToString("dashboard-verdict-bar", map[string]any{
 			"BudgetVerdict": BudgetVerdictView{
-				Health: BudgetRed, HasTarget: true, IsOver: true,
+				Health: models.HealthRed, HasTarget: true, IsOver: true,
 				Delta: 2500, SpentTotal: 12500, TargetTotal: 10000,
 				Months: 3, NetSavings: 2000, SavingsRate: 20, TotalIncome: 10000,
 			},
@@ -30,7 +32,7 @@ func TestDashboardVerdictBar_Render(t *testing.T) {
 	t.Run("under budget shows green band and under-budget headline", func(t *testing.T) {
 		out, err := renderer.RenderToString("dashboard-verdict-bar", map[string]any{
 			"BudgetVerdict": BudgetVerdictView{
-				Health: BudgetGreen, HasTarget: true, IsUnder: true,
+				Health: models.HealthGreen, HasTarget: true, IsUnder: true,
 				Delta: -800, SpentTotal: 9200, TargetTotal: 10000, Months: 3, NetSavings: 1500,
 			},
 		})
@@ -47,7 +49,7 @@ func TestDashboardVerdictBar_Render(t *testing.T) {
 	t.Run("no target shows neutral band and a link to set a budget", func(t *testing.T) {
 		out, err := renderer.RenderToString("dashboard-verdict-bar", map[string]any{
 			"BudgetVerdict": BudgetVerdictView{
-				Health: BudgetNeutral, HasTarget: false, NetSavings: 500,
+				Health: models.HealthNeutral, HasTarget: false, NetSavings: 500,
 			},
 		})
 		if err != nil {

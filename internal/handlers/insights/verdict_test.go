@@ -9,7 +9,7 @@ import (
 func TestBuildPaceVerdict(t *testing.T) {
 	t.Run("nil velocity is neutral with no data", func(t *testing.T) {
 		v := BuildPaceVerdict(nil)
-		if v.Health != PaceNeutral {
+		if v.Health != models.HealthNeutral {
 			t.Errorf("Health = %q, want neutral", v.Health)
 		}
 		if v.HasData {
@@ -21,7 +21,7 @@ func TestBuildPaceVerdict(t *testing.T) {
 		v := BuildPaceVerdict(&models.SpendingVelocity{
 			DailyAverage: 80, HistoricalDaily: 100, MonthProjection: 2400, BurnRateChange: -20,
 		})
-		if v.Health != PaceGreen {
+		if v.Health != models.HealthGreen {
 			t.Errorf("Health = %q, want green", v.Health)
 		}
 		if !v.IsBelow || v.IsAbove {
@@ -34,7 +34,7 @@ func TestBuildPaceVerdict(t *testing.T) {
 
 	t.Run("slightly elevated pace is amber", func(t *testing.T) {
 		v := BuildPaceVerdict(&models.SpendingVelocity{BurnRateChange: 6})
-		if v.Health != PaceAmber {
+		if v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber", v.Health)
 		}
 		if !v.IsAbove {
@@ -44,7 +44,7 @@ func TestBuildPaceVerdict(t *testing.T) {
 
 	t.Run("at-or-on usual pace (zero) is amber, not above or below", func(t *testing.T) {
 		v := BuildPaceVerdict(&models.SpendingVelocity{BurnRateChange: 0})
-		if v.Health != PaceAmber {
+		if v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber (mirrors the Daily Spending tile semantic)", v.Health)
 		}
 		if v.IsAbove || v.IsBelow {
@@ -54,7 +54,7 @@ func TestBuildPaceVerdict(t *testing.T) {
 
 	t.Run("well above usual pace is red", func(t *testing.T) {
 		v := BuildPaceVerdict(&models.SpendingVelocity{BurnRateChange: 25})
-		if v.Health != PaceRed {
+		if v.Health != models.HealthRed {
 			t.Errorf("Health = %q, want red", v.Health)
 		}
 		if !v.IsAbove {
@@ -64,7 +64,7 @@ func TestBuildPaceVerdict(t *testing.T) {
 
 	t.Run("exactly at the red threshold is amber", func(t *testing.T) {
 		// BurnRateChange == paceRedThreshold(10): not > → amber (pins > vs >=).
-		if v := BuildPaceVerdict(&models.SpendingVelocity{BurnRateChange: 10}); v.Health != PaceAmber {
+		if v := BuildPaceVerdict(&models.SpendingVelocity{BurnRateChange: 10}); v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber at exactly +10%%", v.Health)
 		}
 	})

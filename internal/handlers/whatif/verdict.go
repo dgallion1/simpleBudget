@@ -6,15 +6,6 @@ import (
 	"budget2/internal/models"
 )
 
-// VerdictHealth classifies the overall plan outcome for the verdict bar tint.
-type VerdictHealth string
-
-const (
-	VerdictGreen VerdictHealth = "green"
-	VerdictAmber VerdictHealth = "amber"
-	VerdictRed   VerdictHealth = "red"
-)
-
 // mcStrongThreshold is the Monte Carlo success rate (0-100) at or above which a
 // fully-funded plan is considered green rather than amber.
 const mcStrongThreshold = 70.0
@@ -24,7 +15,7 @@ const earlyDepletionYears = 10
 
 // VerdictView is the precomputed model the sticky verdict bar renders.
 type VerdictView struct {
-	Health         VerdictHealth
+	Health         models.Health
 	Headline       string  // e.g. "Funded through 2064" / "Funds run out in 2032"
 	Detail         string  // e.g. "spending covered for all 38 years"
 	YearsCovered   int     // full horizon if survives, else years to depletion
@@ -44,7 +35,7 @@ type VerdictView struct {
 // BuildVerdict derives the verdict bar model from analysis already computed by
 // the engine. It performs no projection math of its own.
 func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictView {
-	v := VerdictView{Health: VerdictAmber}
+	v := VerdictView{Health: models.HealthAmber}
 	if a == nil || s == nil {
 		return v
 	}
@@ -81,9 +72,9 @@ func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictVie
 		v.Headline = fmt.Sprintf("Funded through %d", startYear+s.ProjectionYears)
 		v.Detail = fmt.Sprintf("spending covered for all %d years", s.ProjectionYears)
 		if !v.HasMonteCarlo || v.SuccessRate >= mcStrongThreshold {
-			v.Health = VerdictGreen
+			v.Health = models.HealthGreen
 		} else {
-			v.Health = VerdictAmber
+			v.Health = models.HealthAmber
 		}
 		return v
 	}
@@ -97,9 +88,9 @@ func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictVie
 	v.Headline = fmt.Sprintf("Funds run out in %d", startYear+depletionYears)
 	v.Detail = fmt.Sprintf("covered for %d of %d years", depletionYears, s.ProjectionYears)
 	if depletionYears < earlyDepletionYears {
-		v.Health = VerdictRed
+		v.Health = models.HealthRed
 	} else {
-		v.Health = VerdictAmber
+		v.Health = models.HealthAmber
 	}
 	return v
 }

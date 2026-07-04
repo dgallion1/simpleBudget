@@ -9,7 +9,7 @@ import (
 func TestBuildBudgetVerdict(t *testing.T) {
 	t.Run("nil metrics is neutral with no target", func(t *testing.T) {
 		v := BuildBudgetVerdict(nil)
-		if v.Health != BudgetNeutral {
+		if v.Health != models.HealthNeutral {
 			t.Errorf("Health = %q, want neutral", v.Health)
 		}
 		if v.HasTarget {
@@ -20,7 +20,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 	t.Run("no combined target is neutral", func(t *testing.T) {
 		m := &models.DashboardMetrics{HasCombinedTarget: false, TotalIncome: 5000, NetSavings: 1000}
 		v := BuildBudgetVerdict(m)
-		if v.Health != BudgetNeutral {
+		if v.Health != models.HealthNeutral {
 			t.Errorf("Health = %q, want neutral", v.Health)
 		}
 		if v.HasTarget {
@@ -41,7 +41,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 			MonthsInRange: 3,
 		}
 		v := BuildBudgetVerdict(m)
-		if v.Health != BudgetGreen {
+		if v.Health != models.HealthGreen {
 			t.Errorf("Health = %q, want green", v.Health)
 		}
 		if !v.IsUnder || v.IsOver {
@@ -58,7 +58,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 	t.Run("on budget is green", func(t *testing.T) {
 		m := &models.DashboardMetrics{HasCombinedTarget: true, CombinedCumulativeDelta: 0.5, LivingTargetTotal: 10000}
 		v := BuildBudgetVerdict(m)
-		if v.Health != BudgetGreen {
+		if v.Health != models.HealthGreen {
 			t.Errorf("Health = %q, want green", v.Health)
 		}
 		if v.IsOver || v.IsUnder {
@@ -73,7 +73,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 			LivingTargetTotal:       10000,
 		}
 		v := BuildBudgetVerdict(m)
-		if v.Health != BudgetAmber {
+		if v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber", v.Health)
 		}
 		if !v.IsOver {
@@ -88,7 +88,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 			LivingTargetTotal:       10000,
 		}
 		v := BuildBudgetVerdict(m)
-		if v.Health != BudgetRed {
+		if v.Health != models.HealthRed {
 			t.Errorf("Health = %q, want red", v.Health)
 		}
 	})
@@ -103,7 +103,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 			LivingTargetTotal:       0,
 			HealthcareTargetTotal:   0,
 		}
-		if v := BuildBudgetVerdict(m); v.Health != BudgetRed {
+		if v := BuildBudgetVerdict(m); v.Health != models.HealthRed {
 			t.Errorf("Health = %q, want red (over budget, zero target denominator)", v.Health)
 		}
 	})
@@ -115,7 +115,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 			CombinedCumulativeDelta: 1000, // exactly 10% of 10000
 			LivingTargetTotal:       10000,
 		}
-		if v := BuildBudgetVerdict(m); v.Health != BudgetAmber {
+		if v := BuildBudgetVerdict(m); v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber at exactly 10%%", v.Health)
 		}
 	})
@@ -124,7 +124,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 		// Delta == onBudgetEps (1.0): not > eps, not < -eps → on budget.
 		m := &models.DashboardMetrics{HasCombinedTarget: true, CombinedCumulativeDelta: 1.0, LivingTargetTotal: 10000}
 		v := BuildBudgetVerdict(m)
-		if v.Health != BudgetGreen || v.IsOver || v.IsUnder {
+		if v.Health != models.HealthGreen || v.IsOver || v.IsUnder {
 			t.Errorf("at eps: health=%q over=%v under=%v, want green/false/false", v.Health, v.IsOver, v.IsUnder)
 		}
 	})

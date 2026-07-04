@@ -30,16 +30,24 @@ func seedDataDir(t *testing.T, dir string, files map[string][]byte) {
 func zipEntries(t *testing.T, zipPath string) map[string][]byte {
 	t.Helper()
 	r, err := zip.OpenReader(zipPath)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer r.Close()
 	out := make(map[string][]byte)
 	for _, f := range r.File {
-		if f.FileInfo().IsDir() { continue }
+		if f.FileInfo().IsDir() {
+			continue
+		}
 		rc, err := f.Open()
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		data, err := io.ReadAll(rc)
 		rc.Close()
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		out[f.Name] = data
 	}
 	return out
@@ -49,14 +57,16 @@ func TestSnapshot_RoundTripsAllFileTypes(t *testing.T) {
 	dataDir := t.TempDir()
 	backupDir := t.TempDir()
 	seedDataDir(t, dataDir, map[string][]byte{
-		"banking.csv":             []byte("a,b,c\n1,2,3\n"),
-		"major_expenses.json":     []byte(`{"x":1}`),
-		"transaction_pins.json":   []byte(`{"y":2}`),
-		"settings/auto_backup.json": []byte(`{"enabled":true}`),
+		"banking.csv":                []byte("a,b,c\n1,2,3\n"),
+		"major_expenses.json":        []byte(`{"x":1}`),
+		"transaction_pins.json":      []byte(`{"y":2}`),
+		"settings/auto_backup.json":  []byte(`{"enabled":true}`),
 		"settings/whatif_state.json": []byte(`{"baseline":"foo"}`),
 	})
 	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := svc.Snapshot(context.Background()); err != nil {
 		t.Fatalf("Snapshot: %v", err)
@@ -83,14 +93,16 @@ func TestSnapshot_SkipsCacheAndMarkers(t *testing.T) {
 	dataDir := t.TempDir()
 	backupDir := t.TempDir()
 	seedDataDir(t, dataDir, map[string][]byte{
-		"keep.csv":             []byte("keep"),
-		"cache/plotly.min.js":  []byte("BIG"),
-		".encrypted":           []byte("marker"),
-		".encryption-verify":   []byte("verify"),
-		"foo.tmp":              []byte("partial"),
+		"keep.csv":            []byte("keep"),
+		"cache/plotly.min.js": []byte("BIG"),
+		".encrypted":          []byte("marker"),
+		".encryption-verify":  []byte("verify"),
+		"foo.tmp":             []byte("partial"),
 	})
 	svc, _ := New(Config{BackupDir: backupDir, DataDir: dataDir})
-	if err := svc.Snapshot(context.Background()); err != nil { t.Fatal(err) }
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
 	got := zipEntries(t, zips[0])
 	if _, ok := got["keep.csv"]; !ok {
@@ -106,22 +118,62 @@ func TestSnapshot_SkipsCacheAndMarkers(t *testing.T) {
 	}
 }
 
+func TestSkipPredicate_FilesUnderSkipListedDirs(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	skip := SkipPredicate(dataDir, backupDir)
+
+	cases := []struct {
+		rel   string
+		isDir bool
+		want  bool
+	}{
+		// Files under a cache/ ancestor are skipped even when the predicate
+		// is consulted flat (no directory walk), as restore does.
+		{filepath.Join("cache", "plotly.min.js"), false, true},
+		{filepath.Join("cache", "sub", "x.js"), false, true},
+		// The cache directory itself.
+		{"cache", true, true},
+		{filepath.Join("nested", "cache"), true, true},
+		// No false positives on names merely starting with "cache".
+		{"cachefile.csv", false, false},
+		{filepath.Join("cachedir", "keep.csv"), false, false},
+		// Ordinary files stay included.
+		{"keep.csv", false, false},
+		{filepath.Join("settings", "whatif.json"), false, false},
+	}
+	for _, tc := range cases {
+		path := filepath.Join(dataDir, tc.rel)
+		if got := skip(path, tc.isDir); got != tc.want {
+			t.Errorf("skip(%q, isDir=%v) = %v, want %v", tc.rel, tc.isDir, got, tc.want)
+		}
+	}
+}
+
 func TestSnapshot_RecursiveBackupGuard(t *testing.T) {
 	// BackupDir nested under DataDir must be skipped to avoid recursion.
 	dataDir := t.TempDir()
 	backupDir := filepath.Join(dataDir, "backups")
-	if err := os.MkdirAll(backupDir, 0700); err != nil { t.Fatal(err) }
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	seedDataDir(t, dataDir, map[string][]byte{
 		"keep.csv": []byte("keep"),
 	})
 	// Pre-existing backup file inside backupDir — must NOT be re-zipped.
 	if err := os.WriteFile(filepath.Join(backupDir, "budget_backup_OLD.zip"),
-		[]byte("DUMMY"), 0600); err != nil { t.Fatal(err) }
+		[]byte("DUMMY"), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	svc, _ := New(Config{BackupDir: backupDir, DataDir: dataDir})
-	if err := svc.Snapshot(context.Background()); err != nil { t.Fatal(err) }
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_2*.zip"))
-	if len(zips) != 1 { t.Fatalf("want exactly 1 fresh zip, got %d", len(zips)) }
+	if len(zips) != 1 {
+		t.Fatalf("want exactly 1 fresh zip, got %d", len(zips))
+	}
 	got := zipEntries(t, zips[0])
 	for k := range got {
 		if strings.HasPrefix(k, "backups/") {
@@ -135,13 +187,19 @@ func TestSnapshot_OrphanTmpCleanedUp(t *testing.T) {
 	backupDir := t.TempDir()
 	// Plant an orphan .tmp older than 1 hour.
 	orphan := filepath.Join(backupDir, "budget_backup_OLD.zip.tmp")
-	if err := os.WriteFile(orphan, []byte("orphan"), 0600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(orphan, []byte("orphan"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	old := time.Now().Add(-2 * time.Hour)
-	if err := os.Chtimes(orphan, old, old); err != nil { t.Fatal(err) }
+	if err := os.Chtimes(orphan, old, old); err != nil {
+		t.Fatal(err)
+	}
 
 	seedDataDir(t, dataDir, map[string][]byte{"a.csv": []byte("x")})
 	svc, _ := New(Config{BackupDir: backupDir, DataDir: dataDir})
-	if err := svc.Snapshot(context.Background()); err != nil { t.Fatal(err) }
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(orphan); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("orphan .tmp not cleaned up")
 	}
@@ -152,7 +210,9 @@ func TestSnapshotIfStale_SkipsWhenFresh(t *testing.T) {
 	backupDir := t.TempDir()
 	seedDataDir(t, dataDir, map[string][]byte{"a.csv": []byte("x")})
 	svc, _ := New(Config{BackupDir: backupDir, DataDir: dataDir})
-	if err := svc.Snapshot(context.Background()); err != nil { t.Fatal(err) }
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	before, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
 	if err := svc.SnapshotIfStale(context.Background(), 24*time.Hour); err != nil {
@@ -207,10 +267,10 @@ func TestSnapshot_ExcludesEncryptionStateFiles(t *testing.T) {
 	dataDir := t.TempDir()
 	backupDir := t.TempDir()
 	seedDataDir(t, dataDir, map[string][]byte{
-		"banking.csv":              []byte("a,b\n"),
-		".encryption-config.json":  []byte(`{"method":"age"}`),
-		".encrypted":               []byte("marker"),
-		".encryption-verify":       []byte("verify"),
+		"banking.csv":             []byte("a,b\n"),
+		".encryption-config.json": []byte(`{"method":"age"}`),
+		".encrypted":              []byte("marker"),
+		".encryption-verify":      []byte("verify"),
 	})
 	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
 	if err != nil {

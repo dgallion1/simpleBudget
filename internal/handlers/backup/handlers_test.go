@@ -3760,7 +3760,10 @@ func TestHandleRestore_ReportsPruneFailures(t *testing.T) {
 	if err := os.Chmod(lockedDir, 0555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0755) })
+	// Registered AFTER `defer cleanup()`, so LIFO runs this chmod first and
+	// cleanup's os.RemoveAll can actually delete the temp dir. (t.Cleanup
+	// would run after all defers — i.e. after RemoveAll already failed.)
+	defer os.Chmod(lockedDir, 0755)
 
 	zipBuf := createZipBuffer(t, map[string]string{"current.csv": "new"})
 	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
@@ -3782,9 +3785,9 @@ func TestHandleRestore_FiresPostRestoreHooksOnSuccessOnly(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	orig := postRestoreHooks
-	postRestoreHooks = nil
-	t.Cleanup(func() { postRestoreHooks = orig })
+	// setupTestEnv's Initialize already reset postRestoreHooks to nil;
+	// just make sure this test's hook doesn't leak to later tests.
+	t.Cleanup(func() { postRestoreHooks = nil })
 
 	fired := 0
 	RegisterPostRestoreHook(func() { fired++ })
@@ -3819,5 +3822,39 @@ func TestHandleRestore_FiresPostRestoreHooksOnSuccessOnly(t *testing.T) {
 	}
 	if fired != 2 {
 		t.Fatalf("hooks must fire on test-data restore, fired=%d", fired)
+	}
+}
+
+func TestInitialize_ResetsPostRestoreHooks(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+	t.Cleanup(func() { postRestoreHooks = nil })
+
+	staleFired := 0
+	RegisterPostRestoreHook(func() { staleFired++ })
+
+	// Re-initializing (same deps, as repeated wiring does) must drop
+	// previously registered hooks so they cannot accumulate.
+	Initialize(cfg, store, renderer, backupSvc)
+	if len(postRestoreHooks) != 0 {
+		t.Fatalf("Initialize must reset hooks, got %d", len(postRestoreHooks))
+	}
+	runPostRestoreHooks()
+	if staleFired != 0 {
+		t.Fatalf("stale hook fired %d times after re-Initialize, want 0", staleFired)
+	}
+
+	// A hook registered after the second Initialize fires exactly once per
+	// successful restore.
+	freshFired := 0
+	RegisterPostRestoreHook(func() { freshFired++ })
+	zipBuf := createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if staleFired != 0 || freshFired != 1 {
+		t.Fatalf("want stale=0 fresh=1 after restore, got stale=%d fresh=%d", staleFired, freshFired)
 	}
 }

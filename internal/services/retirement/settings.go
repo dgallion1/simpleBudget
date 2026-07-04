@@ -103,6 +103,10 @@ func (e *ScenarioConflictError) Unwrap() error {
 	return e.Err
 }
 
+// defaultWhatIfFilename is the settings file backing the default
+// "Current Plan" scenario.
+const defaultWhatIfFilename = "whatif.json"
+
 // SettingsManager handles persistence of what-if settings
 type SettingsManager struct {
 	settingsDir string
@@ -116,7 +120,7 @@ type SettingsManager struct {
 func NewSettingsManager(settingsDir string, store *storage.Storage) *SettingsManager {
 	return &SettingsManager{
 		settingsDir: settingsDir,
-		filename:    "whatif.json",
+		filename:    defaultWhatIfFilename,
 		store:       store,
 	}
 }
@@ -416,6 +420,28 @@ func (sm *SettingsManager) InvalidateCache() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.cache = nil
+}
+
+// ReconcileActiveScenario reverts the active scenario to the default
+// whatif.json when the active scenario's file no longer exists on disk.
+// The active filename is pure in-process state (nothing on disk records
+// it), so when something rewrites the settings directory behind the
+// manager's back — e.g. a full-replace backup restore that prunes the
+// active scenario file — the manager would otherwise keep pointing at a
+// missing file, silently serve default settings, and resurrect the pruned
+// file with defaults on the next save. Call it alongside InvalidateCache
+// after any such external rewrite.
+func (sm *SettingsManager) ReconcileActiveScenario() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.filename == defaultWhatIfFilename {
+		return
+	}
+	if _, err := sm.store.Stat(sm.filepath()); os.IsNotExist(err) {
+		sm.filename = defaultWhatIfFilename
+		sm.cache = nil
+	}
 }
 
 // loadInternal reads settings without acquiring lock (caller must hold lock).

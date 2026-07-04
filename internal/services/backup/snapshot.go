@@ -227,8 +227,9 @@ func (s *Service) skipPredicate() func(path string, isDir bool) bool {
 
 // SkipPredicate returns the canonical exclusion rules for walking the data
 // directory: the backup directory itself (when nested under dataDir), the
-// cache/ directory, atomicWrite *.tmp leftovers, and the storage layer's
-// encryption-state files. It is the single source of truth shared by
+// cache/ directory (and, for file paths, anything under a cache/ ancestor),
+// atomicWrite *.tmp leftovers, and the storage layer's encryption-state
+// files. It is the single source of truth shared by
 // snapshot creation, the manual backup downloads, and restore pruning so
 // the rule set cannot drift between them.
 func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool {
@@ -246,6 +247,23 @@ func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool
 		}
 		if isDir {
 			return base == "cache"
+		}
+		// A file under a skip-listed directory (e.g. cache/plotly.min.js) is
+		// skipped too. Walking consumers never reach here for such files —
+		// they SkipDir at the directory itself — so this only affects flat
+		// consumers (e.g. restore, which sees zip entries one by one) and
+		// keeps them on the same rule set without re-implementing ancestor
+		// checks.
+		if absData != "" {
+			if abs, err := filepath.Abs(path); err == nil {
+				if rel, err := filepath.Rel(absData, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					for _, seg := range strings.Split(filepath.Dir(rel), string(filepath.Separator)) {
+						if seg == "cache" {
+							return true
+						}
+					}
+				}
+			}
 		}
 		// Skip atomicWrite leftovers and encryption-state files.
 		if strings.HasSuffix(base, tmpSuffix) {
@@ -275,4 +293,3 @@ func verifyZip(path string) error {
 	}
 	return nil
 }
-

@@ -291,7 +291,7 @@ function handleFileSelect(files) {
     }
 }
 
-function showDropZoneState(state, errorMsg) {
+function showDropZoneState(state, msg) {
     const content = document.getElementById('drop-zone-content');
     const uploading = document.getElementById('drop-zone-uploading');
     const success = document.getElementById('drop-zone-success');
@@ -308,10 +308,11 @@ function showDropZoneState(state, errorMsg) {
             uploading.classList.remove('hidden');
             break;
         case 'success':
+            if (msg) success.querySelector('span').textContent = msg;
             success.classList.remove('hidden');
             break;
         case 'error':
-            errorMsgEl.textContent = errorMsg || 'Upload failed';
+            errorMsgEl.textContent = msg || 'Upload failed';
             error.classList.remove('hidden');
             setTimeout(() => showDropZoneState('default'), 3000);
             break;
@@ -347,6 +348,11 @@ function uploadFile(file) {
 }
 
 function restoreBackup(file) {
+    if (!confirm("Restore replaces ALL current data with this backup's contents — any file not in the backup will be deleted. A safety snapshot is taken first. Continue?")) {
+        document.getElementById('file-input').value = '';
+        return;
+    }
+
     showDropZoneState('uploading');
 
     const formData = new FormData();
@@ -362,12 +368,13 @@ function restoreBackup(file) {
             }
             return response.text();
         })
-        .then(() => {
-            showDropZoneState('success');
+        .then(message => {
+            showDropZoneState('success', message || 'Restore complete! Refreshing...');
             // Reset file input
             document.getElementById('file-input').value = '';
-            // Reload the page after a short delay to show restored data
-            setTimeout(() => window.location.reload(), 1000);
+            // Give the user time to read the server's summary (skipped /
+            // failed counts) before the reload wipes the message.
+            setTimeout(() => window.location.reload(), 2500);
         })
         .catch(err => {
             showDropZoneState('error', err.message);

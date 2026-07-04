@@ -36,12 +36,17 @@ var (
 	backupSvc *backupsvc.Service
 )
 
-// Initialize sets up the backup package with required dependencies
+// Initialize sets up the backup package with required dependencies.
+// It also drops any previously registered post-restore hooks — re-initializing
+// the package starts a fresh wiring, so hooks must be registered (again)
+// after Initialize. This keeps repeated wiring (e.g. per-test setup) from
+// accumulating stale hooks bound to torn-down dependencies.
 func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service) {
 	cfg = c
 	store = s
 	renderer = r
 	backupSvc = b
+	postRestoreHooks = nil
 }
 
 // postRestoreHooks run after every successful restore (upload and bundled
@@ -50,7 +55,8 @@ func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *
 var postRestoreHooks []func()
 
 // RegisterPostRestoreHook adds fn to the callbacks invoked after every
-// successful restore.
+// successful restore. Register after Initialize: re-initializing the
+// package clears the hook list.
 func RegisterPostRestoreHook(fn func()) {
 	postRestoreHooks = append(postRestoreHooks, fn)
 }
@@ -416,7 +422,9 @@ func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, st
 		if err != nil || !(destAbs == dataAbs || strings.HasPrefix(destAbs, dataAbs+string(filepath.Separator))) {
 			return res, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
 		}
-		if skipEntry(dataAbs, clean, skip) {
+		// SkipPredicate is ancestor-aware for file paths, so entries under
+		// skip-listed directories (e.g. cache/plotly.min.js) are dropped too.
+		if skip(dest, false) {
 			res.skippedProtected++
 			continue
 		}
@@ -487,23 +495,6 @@ type restoreResult struct {
 	pruned           int
 	skippedProtected int
 	pruneFailures    int
-}
-
-// skipEntry reports whether the archive entry at rel (a cleaned path
-// relative to dataAbs) is excluded by the shared skip predicate — either
-// the file itself or any ancestor directory, so cache/plotly.min.js is
-// skipped because cache/ is a skip-listed directory.
-func skipEntry(dataAbs, rel string, skip func(path string, isDir bool) bool) bool {
-	dest := filepath.Join(dataAbs, rel)
-	if skip(dest, false) {
-		return true
-	}
-	for dir := filepath.Dir(dest); dir != dataAbs && len(dir) > len(dataAbs); dir = filepath.Dir(dir) {
-		if skip(dir, true) {
-			return true
-		}
-	}
-	return false
 }
 
 // restoreResponseMessage renders the client-facing summary for a successful

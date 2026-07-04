@@ -94,9 +94,15 @@ func SetupDependencies(c *config.Config) error {
 	duplicates.Initialize(loader, renderer)
 	backup.Initialize(cfg, store, renderer, backupService)
 
-	// A restore rewrites whatif.json on disk behind the settings manager's
-	// back; drop its in-memory cache so post-restore loads re-read from disk.
-	backup.RegisterPostRestoreHook(retirementMgr.InvalidateCache)
+	// A restore rewrites the settings files on disk behind the settings
+	// manager's back: drop its in-memory cache so post-restore loads re-read
+	// from disk, and fall back to the default whatif.json if the restore
+	// pruned the active scenario's file. Registered after backup.Initialize —
+	// Initialize clears any previously registered hooks.
+	backup.RegisterPostRestoreHook(func() {
+		retirementMgr.InvalidateCache()
+		retirementMgr.ReconcileActiveScenario()
+	})
 
 	return nil
 }

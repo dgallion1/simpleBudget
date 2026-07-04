@@ -136,6 +136,98 @@ func TestSettingsManager_ConcurrentUpdates(t *testing.T) {
 	}
 }
 
+func TestSettingsManager_ReconcileActiveScenario_RevertsWhenFileMissing(t *testing.T) {
+	root := t.TempDir()
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+	sm := NewSettingsManager(root, store)
+
+	// Persist a recognizable default plan (whatif.json).
+	base, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	base.PortfolioValue = 111111
+	if err := sm.Save(base); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	// Create + switch to a scenario, then prune its file behind the
+	// manager's back (as a full-replace backup restore does).
+	if _, err := sm.CreateScenario("Doomed"); err != nil {
+		t.Fatalf("CreateScenario() error: %v", err)
+	}
+	active := sm.ActiveFilename()
+	if active == "whatif.json" {
+		t.Fatalf("expected non-default active filename after CreateScenario, got %q", active)
+	}
+	if err := os.Remove(filepath.Join(root, active)); err != nil {
+		t.Fatalf("os.Remove() error: %v", err)
+	}
+
+	sm.InvalidateCache()
+	sm.ReconcileActiveScenario()
+
+	if got := sm.ActiveFilename(); got != "whatif.json" {
+		t.Fatalf("expected active filename reverted to whatif.json, got %q", got)
+	}
+	fresh, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() after reconcile error: %v", err)
+	}
+	if fresh.PortfolioValue != 111111 {
+		t.Fatalf("expected Load to serve restored whatif.json (111111), got %v", fresh.PortfolioValue)
+	}
+	// The pruned scenario file must not have been resurrected.
+	if _, err := os.Stat(filepath.Join(root, active)); !os.IsNotExist(err) {
+		t.Fatalf("pruned scenario file should stay gone, stat err=%v", err)
+	}
+}
+
+func TestSettingsManager_ReconcileActiveScenario_NoOpWhenFileExists(t *testing.T) {
+	root := t.TempDir()
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+	sm := NewSettingsManager(root, store)
+
+	settings, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	settings.PortfolioValue = 222222
+	if err := sm.Save(settings); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	if _, err := sm.CreateScenario("Survivor"); err != nil {
+		t.Fatalf("CreateScenario() error: %v", err)
+	}
+	active := sm.ActiveFilename()
+
+	sm.ReconcileActiveScenario()
+
+	if got := sm.ActiveFilename(); got != active {
+		t.Fatalf("expected active filename unchanged (%q), got %q", active, got)
+	}
+	// InvalidateCache still forces a disk re-read of the scenario file.
+	sm.InvalidateCache()
+	loaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.PortfolioValue != 222222 {
+		t.Fatalf("expected scenario settings (222222), got %v", loaded.PortfolioValue)
+	}
+	if loaded.ScenarioName != "Survivor" {
+		t.Fatalf("expected scenario name Survivor, got %q", loaded.ScenarioName)
+	}
+}
+
 func TestSettingsManager_ListScenariosIncludesDefaultWhenMissing(t *testing.T) {
 	root := t.TempDir()
 	settingsDir := filepath.Join(root, "settings")

@@ -73,6 +73,25 @@
     if (window.localStorage) {
       try { window.localStorage.setItem('whatifCollapse:' + id, nowCollapsed ? '1' : '0'); } catch (e) {}
     }
+    syncSettingsRail();
+  }
+
+  // With every settings group collapsed the left column is three thin bars;
+  // narrow it to a 1/6 rail and let the results span the reclaimed width.
+  function syncSettingsRail() {
+    var col = document.getElementById('whatif-settings-col');
+    var results = document.getElementById('whatif-results');
+    if (!col || !results) return;
+    var bodies = document.querySelectorAll('[data-wf-collapse-body]');
+    var allCollapsed = bodies.length > 0;
+    bodies.forEach(function (b) {
+      if (!b.classList.contains('hidden')) allCollapsed = false;
+    });
+    col.classList.toggle('lg:col-span-1', allCollapsed);
+    col.classList.toggle('lg:col-span-2', !allCollapsed);
+    results.classList.toggle('lg:col-span-5', allCollapsed);
+    results.classList.toggle('lg:col-span-4', !allCollapsed);
+    resizeChartsIn(results);
   }
 
   function wire() {
@@ -92,6 +111,7 @@
         header.addEventListener('click', function () { toggleCollapse(card); });
       }
     });
+    syncSettingsRail();
   }
 
   document.addEventListener('DOMContentLoaded', function () { wire(); restoreTab(); });

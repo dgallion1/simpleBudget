@@ -1,6 +1,8 @@
 package analysis
 
 import (
+	"sync"
+
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
 )
@@ -8,14 +10,22 @@ import (
 // Sensitivity runs sensitivity analysis on key parameters by perturbing
 // settings and re-running the projection. Returns a slice of results,
 // one per scenario (e.g. higher returns, lower returns, higher
-// inflation, etc.).
+// inflation, etc.). Computes its own baseline; callers that already ran
+// the baseline projection should use SensitivityWithBaseline instead.
 func Sensitivity(eng *engine.Engine, in engine.Input) []models.SensitivityResult {
-	s := in.Prepared.Settings()
-	results := make([]models.SensitivityResult, 0)
-
-	// Get baseline score
 	baseProjection := eng.Run(in)
-	baseBudgetFit := BudgetFit(in, baseProjection)
+	return SensitivityWithBaseline(eng, in, baseProjection, BudgetFit(in, baseProjection))
+}
+
+// SensitivityWithBaseline is Sensitivity reusing an already-computed
+// baseline projection and budget fit, so orchestrators that just ran
+// the baseline don't pay for a redundant full projection. The scenario
+// projections are independent of one another and run concurrently; each
+// perturbation builds its own PreparedSettings deep copy, and results
+// land in fixed scenario-order slots so the output is identical to the
+// sequential form regardless of scheduling.
+func SensitivityWithBaseline(eng *engine.Engine, in engine.Input, baseProjection *models.ProjectionResult, baseBudgetFit *models.BudgetFitAnalysis) []models.SensitivityResult {
+	s := in.Prepared.Settings()
 	baseScore := Score(baseBudgetFit.RequiredRate, baseProjection.Survives)
 
 	// Get effective baseline return (either explicit or calculated from per-account allocation)
@@ -35,46 +45,54 @@ func Sensitivity(eng *engine.Engine, in engine.Input) []models.SensitivityResult
 		{Name: "Higher Healthcare", ParamName: "monthly_healthcare", ParamValue: s.MonthlyHealthcare * 1.5, Change: "+50%"},
 	}
 
-	for _, scenario := range scenarios {
-		// Clone settings and apply variation
-		modifiedSettings := *s
-		modifiedSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
-		modifiedSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
-		modifiedSettings.HealthcarePersons = append([]models.HealthcarePerson{}, s.HealthcarePersons...)
+	results := make([]models.SensitivityResult, len(scenarios))
+	var wg sync.WaitGroup
+	for i, scenario := range scenarios {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-		switch scenario.ParamName {
-		case "investment_return":
-			modifiedSettings.InvestmentReturn = scenario.ParamValue
-		case "inflation_rate":
-			modifiedSettings.InflationRate = scenario.ParamValue
-		case "monthly_living_expenses":
-			modifiedSettings.MonthlyLivingExpenses = scenario.ParamValue
-		case "monthly_healthcare":
-			if len(modifiedSettings.HealthcarePersons) > 0 {
-				for i := range modifiedSettings.HealthcarePersons {
-					modifiedSettings.HealthcarePersons[i].CurrentMonthlyCost *= 1.5
-					modifiedSettings.HealthcarePersons[i].MedicareMonthlyCost *= 1.5
-					modifiedSettings.HealthcarePersons[i].ACACostAfterEmployer *= 1.5
+			// Clone settings and apply variation
+			modifiedSettings := *s
+			modifiedSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
+			modifiedSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
+			modifiedSettings.HealthcarePersons = append([]models.HealthcarePerson{}, s.HealthcarePersons...)
+
+			switch scenario.ParamName {
+			case "investment_return":
+				modifiedSettings.InvestmentReturn = scenario.ParamValue
+			case "inflation_rate":
+				modifiedSettings.InflationRate = scenario.ParamValue
+			case "monthly_living_expenses":
+				modifiedSettings.MonthlyLivingExpenses = scenario.ParamValue
+			case "monthly_healthcare":
+				if len(modifiedSettings.HealthcarePersons) > 0 {
+					for i := range modifiedSettings.HealthcarePersons {
+						modifiedSettings.HealthcarePersons[i].CurrentMonthlyCost *= 1.5
+						modifiedSettings.HealthcarePersons[i].MedicareMonthlyCost *= 1.5
+						modifiedSettings.HealthcarePersons[i].ACACostAfterEmployer *= 1.5
+					}
+				} else {
+					modifiedSettings.MonthlyHealthcare = scenario.ParamValue
 				}
-			} else {
-				modifiedSettings.MonthlyHealthcare = scenario.ParamValue
 			}
-		}
 
-		// Run projection with modified settings
-		modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain, Hooks: in.Hooks}
-		modProjection := eng.Run(modIn)
-		modBudgetFit := BudgetFit(modIn, modProjection)
-		modScore := Score(modBudgetFit.RequiredRate, modProjection.Survives)
+			// Run projection with modified settings
+			modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain, Hooks: in.Hooks}
+			modProjection := eng.Run(modIn)
+			modBudgetFit := BudgetFit(modIn, modProjection)
+			modScore := Score(modBudgetFit.RequiredRate, modProjection.Survives)
 
-		results = append(results, models.SensitivityResult{
-			Scenario:       scenario,
-			LongevityYears: modProjection.LongevityYears,
-			FinalBalance:   modProjection.FinalBalance,
-			Survives:       modProjection.Survives,
-			ScoreChange:    modScore.Score - baseScore.Score,
-		})
+			results[i] = models.SensitivityResult{
+				Scenario:       scenario,
+				LongevityYears: modProjection.LongevityYears,
+				FinalBalance:   modProjection.FinalBalance,
+				Survives:       modProjection.Survives,
+				ScoreChange:    modScore.Score - baseScore.Score,
+			}
+		}()
 	}
+	wg.Wait()
 
 	return results
 }

@@ -8,6 +8,7 @@
 package retirement
 
 import (
+	"sync"
 	"time"
 
 	"budget2/internal/models"
@@ -42,29 +43,56 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	}
 	proj := eng.Run(in)
 
+	// Cheap post-projection analyses derived from the single baseline run.
 	explainability := analysis.BuildExplainability(proj, in)
 	budgetFit := analysis.BudgetFit(in, proj)
 	presentValue := analysis.PresentValue(in, proj)
 	sustainability := analysis.Score(budgetFit.RequiredRate, proj.Survives)
-	sensitivity := analysis.Sensitivity(eng, in)
-	failurePoints := analysis.FailurePoints(eng, in)
-	monteCarlo := analysis.MonteCarlo(eng, in, MonteCarloRuns, mcSeed)
 	rmd := analysis.BuildRMD(proj, in)
 	tax := analysis.BuildTax(proj, in)
-	backtest := analysis.HistoricalBacktest(in, history.DefaultData())
+
+	// The expensive analyses are independent of one another: sensitivity,
+	// failure points, Monte Carlo, backtest, and the SS comparison each
+	// run their own perturbed projections off the same read-only Input.
+	// Fan them out concurrently (Candidate #3) — engine.Run is a pure
+	// function of its Input and every perturbed run builds its own
+	// PreparedSettings, so results are identical to the sequential form.
+	// Sensitivity and failure points reuse the baseline projection above
+	// instead of re-running it.
+	var (
+		sensitivity   []models.SensitivityResult
+		failurePoints *models.FailurePointAnalysis
+		monteCarlo    *models.MonteCarloAnalysis
+		backtest      *models.HistoricalBacktestAnalysis
+		ssAnalysis    *models.SSComparisonAnalysis
+	)
+	settings := in.Prepared.Settings()
+
+	var wg sync.WaitGroup
+	spawn := func(f func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			f()
+		}()
+	}
+	spawn(func() { sensitivity = analysis.SensitivityWithBaseline(eng, in, proj, budgetFit) })
+	spawn(func() { failurePoints = analysis.FailurePointsWithBaseline(eng, in, proj) })
+	spawn(func() { monteCarlo = analysis.MonteCarlo(eng, in, MonteCarloRuns, mcSeed) })
+	spawn(func() { backtest = analysis.HistoricalBacktest(in, history.DefaultData()) })
+	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
+		spawn(func() {
+			ssAnalysis = analysis.SSAnalysis(in)
+			if ssAnalysis != nil && SSPortfolioEligible(settings) {
+				ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, mcSeed)
+			}
+		})
+	}
+	wg.Wait()
 
 	if backtest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
 		backtest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate
 		backtest.HistoricalVsMC = backtest.SuccessRate - monteCarlo.Stats.SuccessRate
-	}
-
-	var ssAnalysis *models.SSComparisonAnalysis
-	settings := in.Prepared.Settings()
-	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
-		ssAnalysis = analysis.SSAnalysis(in)
-		if ssAnalysis != nil && SSPortfolioEligible(settings) {
-			ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, mcSeed)
-		}
 	}
 
 	return &models.WhatIfAnalysis{

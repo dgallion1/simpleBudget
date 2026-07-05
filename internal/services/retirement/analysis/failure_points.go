@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"math"
+	"sync"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -12,8 +13,20 @@ import (
 // expenses, portfolio value). Returns BaselineSurvives=false (and an
 // empty FailurePoints slice) when the baseline projection itself
 // fails — in that case there's no meaningful failure threshold to find.
+// Computes its own baseline; callers that already ran the baseline
+// projection should use FailurePointsWithBaseline instead.
 func FailurePoints(eng *engine.Engine, in engine.Input) *models.FailurePointAnalysis {
-	baseProjection := eng.Run(in)
+	return FailurePointsWithBaseline(eng, in, eng.Run(in))
+}
+
+// FailurePointsWithBaseline is FailurePoints reusing an already-computed
+// baseline projection, so orchestrators that just ran the baseline don't
+// pay for a redundant full projection. The four binary searches are
+// independent of one another and run concurrently; each perturbed run
+// builds its own PreparedSettings deep copy, and results land in fixed
+// parameter-order slots so the output is identical to the sequential
+// form regardless of scheduling.
+func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjection *models.ProjectionResult) *models.FailurePointAnalysis {
 	failurePoints := make([]models.FailurePoint, 0)
 
 	// If baseline already fails, we can't find "failure thresholds"
@@ -24,24 +37,29 @@ func FailurePoints(eng *engine.Engine, in engine.Input) *models.FailurePointAnal
 		}
 	}
 
-	// Find minimum investment return needed
-	if fp := findReturnThreshold(eng, in); fp != nil {
-		failurePoints = append(failurePoints, *fp)
+	// Minimum return, maximum inflation, maximum expenses, minimum
+	// portfolio — kept in that display order via fixed slots.
+	searches := []func(*engine.Engine, engine.Input) *models.FailurePoint{
+		findReturnThreshold,
+		findInflationThreshold,
+		findExpensesThreshold,
+		findPortfolioThreshold,
 	}
-
-	// Find maximum inflation tolerable
-	if fp := findInflationThreshold(eng, in); fp != nil {
-		failurePoints = append(failurePoints, *fp)
+	slots := make([]*models.FailurePoint, len(searches))
+	var wg sync.WaitGroup
+	for i, search := range searches {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slots[i] = search(eng, in)
+		}()
 	}
+	wg.Wait()
 
-	// Find maximum expenses tolerable
-	if fp := findExpensesThreshold(eng, in); fp != nil {
-		failurePoints = append(failurePoints, *fp)
-	}
-
-	// Find minimum portfolio needed
-	if fp := findPortfolioThreshold(eng, in); fp != nil {
-		failurePoints = append(failurePoints, *fp)
+	for _, fp := range slots {
+		if fp != nil {
+			failurePoints = append(failurePoints, *fp)
+		}
 	}
 
 	return &models.FailurePointAnalysis{

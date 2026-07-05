@@ -519,8 +519,9 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
 window.addEventListener('themechange', function() {
     // Re-render all chart containers
     document.querySelectorAll('[id^="chart-"]').forEach(function(el) {
-        if (el._plotlyData) {
-            // Plotly stores data on the element, re-render with new colors
+        // Plotly marks a rendered chart by attaching _fullLayout to the element
+        // (it never sets _plotlyData — the old guard was always false).
+        if (el._fullLayout) {
             const colors = getThemeColors();
             Plotly.relayout(el.id, {
                 'font.color': colors.text,

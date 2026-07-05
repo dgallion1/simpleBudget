@@ -31,6 +31,28 @@ func TestVerdictBandClass(t *testing.T) {
 	}
 }
 
+func TestVerdictValueClass(t *testing.T) {
+	tests := []struct {
+		name string
+		h    models.Health
+		want string
+	}{
+		{"green", models.HealthGreen, "text-emerald-600 dark:text-emerald-400"},
+		{"amber", models.HealthAmber, "text-amber-600 dark:text-amber-400"},
+		{"red", models.HealthRed, "text-rose-600 dark:text-rose-400"},
+		{"neutral", models.HealthNeutral, "text-gray-700 dark:text-gray-200"},
+		{"zero value fails loud as red", models.Health(""), "text-rose-600 dark:text-rose-400"},
+		{"unknown value fails loud as red", models.Health("chartreuse"), "text-rose-600 dark:text-rose-400"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := verdictValueClass(tt.h); got != tt.want {
+				t.Errorf("verdictValueClass(%q) = %q, want %q", tt.h, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestVerdictLabelClass(t *testing.T) {
 	tests := []struct {
 		name string

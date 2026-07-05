@@ -622,6 +622,10 @@ function restoreBackup(file) {
             return response.text();
         })
         .then(message => {
+            // Reset the button before the reload: if the reload is blocked
+            // (beforeunload, extension), the page must not be left with a
+            // permanently disabled "Restoring..." button.
+            setRestoreButtonState('default');
             showToast(message || 'Restored successfully!', 'success');
             document.getElementById('restore-file-input').value = '';
             // Give the user time to read the server's summary (skipped /

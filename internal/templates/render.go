@@ -104,6 +104,7 @@ func getFuncMap() template.FuncMap {
 		"successRateBarClass":                 successRateBarClass,
 		"verdictBandClass":                    verdictBandClass,
 		"verdictLabelClass":                   verdictLabelClass,
+		"verdictValueClass":                   verdictValueClass,
 		"percentOf":                           percentOf,
 		"percentDiff":                         percentDiff,
 		"deref":                               deref,
@@ -762,6 +763,26 @@ func verdictLabelClass(h models.Health) string {
 		// a missing/wrong health value is noticed, matching the whatif
 		// verdict bar's old fail-loud template ladder.
 		return "text-rose-700 dark:text-rose-300"
+	}
+}
+
+// verdictValueClass maps the same health values to the tint for a
+// health-colored numeric tile value inside a verdict band.
+func verdictValueClass(h models.Health) string {
+	switch h {
+	case models.HealthGreen:
+		return "text-emerald-600 dark:text-emerald-400"
+	case models.HealthAmber:
+		return "text-amber-600 dark:text-amber-400"
+	case models.HealthRed:
+		return "text-rose-600 dark:text-rose-400"
+	case models.HealthNeutral:
+		return "text-gray-700 dark:text-gray-200"
+	default:
+		// Unknown health (zero value or a typo'd constant) renders as red so
+		// a missing/wrong health value is noticed, matching the whatif
+		// verdict bar's old fail-loud template ladder.
+		return "text-rose-600 dark:text-rose-400"
 	}
 }
 

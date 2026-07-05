@@ -398,6 +398,7 @@ func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, st
 	}
 	var queue []prepared
 	archiveEntries := make(map[string]struct{})
+	skippedEntries := make(map[string]struct{})
 
 	for _, zf := range zr.File {
 		if zf.FileInfo().IsDir() {
@@ -424,8 +425,12 @@ func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, st
 		}
 		// SkipPredicate is ancestor-aware for file paths, so entries under
 		// skip-listed directories (e.g. cache/plotly.min.js) are dropped too.
+		// Deduped like restored, so duplicate zip entries count once.
 		if skip(dest, false) {
-			res.skippedProtected++
+			if _, dup := skippedEntries[destAbs]; !dup {
+				skippedEntries[destAbs] = struct{}{}
+				res.skippedProtected++
+			}
 			continue
 		}
 

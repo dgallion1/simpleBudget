@@ -3717,6 +3717,30 @@ func TestHandleRestore_SkipsEntriesUnderSkipListedDirs(t *testing.T) {
 	}
 }
 
+func TestHandleRestore_CountsDuplicateSkippedEntriesOnce(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	mustZip(t, zw, "normal.csv", []byte("kept"))
+	mustZip(t, zw, "cache/plotly.min.js", []byte("first"))
+	mustZip(t, zw, "cache/plotly.min.js", []byte("second"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", buf.Bytes())
+	HandleRestore(rec, rec.Request)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "skipped 1 protected entries") {
+		t.Fatalf("duplicate skipped entries must count once, like restored: %s", rec.Body.String())
+	}
+}
+
 func TestHandleRestore_ReportsSkippedEncryptionStateEntries(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()

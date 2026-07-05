@@ -24,7 +24,7 @@
     <div class="flex items-center gap-6 ml-auto">
         <div class="text-center">
             <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Avg</div>
-            <div class="num text-base font-bold {{if eq $v.Health "green"}}text-emerald-600 dark:text-emerald-400{{else if eq $v.Health "red"}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">{{formatMoney $v.DailyAverage}}</div>
+            <div class="num text-base font-bold {{verdictValueClass $v.Health}}">{{formatMoney $v.DailyAverage}}</div>
         </div>
         <div class="text-center">
             <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Usual Daily</div>

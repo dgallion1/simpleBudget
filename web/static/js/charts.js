@@ -460,12 +460,21 @@ function initWhatIfProjectionCards(root) {
     });
 }
 
-// Reload charts after whatif-results is swapped
+// Reload charts after whatif-results is swapped. afterSettle fires once per
+// settled element (OOB swaps included), so a single results swap raises it
+// many times; coalesce them into one chart reload per frame or every swap
+// re-fetches every chart (measured 17x per slider change).
+let whatifChartsReloadPending = false;
 document.addEventListener('htmx:afterSettle', function(evt) {
     const target = evt.detail.target;
     if (target && target.id === 'whatif-results') {
-        initWhatIfProjectionCards(target);
-        loadAllCharts(target);
+        if (whatifChartsReloadPending) return;
+        whatifChartsReloadPending = true;
+        requestAnimationFrame(function() {
+            whatifChartsReloadPending = false;
+            initWhatIfProjectionCards(target);
+            loadAllCharts(target);
+        });
     }
 });
 

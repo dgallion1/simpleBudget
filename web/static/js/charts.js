@@ -528,7 +528,10 @@ window.addEventListener('themechange', function() {
                 'xaxis.gridcolor': colors.gridColor,
                 'xaxis.tickfont.color': colors.text,
                 'yaxis.gridcolor': colors.gridColor,
-                'yaxis.tickfont.color': colors.text
+                'yaxis.tickfont.color': colors.text,
+                'hoverlabel.bgcolor': colors.hoverBg,
+                'hoverlabel.bordercolor': colors.hoverBorder,
+                'hoverlabel.font.color': colors.hoverText
             });
         }
     });

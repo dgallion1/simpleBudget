@@ -2,7 +2,9 @@ package analysis
 
 import (
 	"math"
+	"runtime"
 	"sort"
+	"sync"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -59,12 +61,32 @@ func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBa
 		}
 	}
 
-	results := make([]HistoricalSequenceResult, 0, len(availableYears))
-	successCount := 0
+	// The sequences are independent deterministic projections, so they
+	// run on a worker pool (same pattern as the Monte Carlo runs). Each
+	// result lands in its start-year-order slot, keeping the output
+	// identical to the sequential form regardless of scheduling.
+	results := make([]HistoricalSequenceResult, len(availableYears))
+	workers := min(runtime.NumCPU(), len(availableYears))
+	idx := make(chan int, len(availableYears))
+	for i := range availableYears {
+		idx <- i
+	}
+	close(idx)
 
-	for _, startYear := range availableYears {
-		result := runSingleHistoricalSequence(in, data, startYear)
-		results = append(results, result)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range idx {
+				results[i] = runSingleHistoricalSequence(in, data, availableYears[i])
+			}
+		}()
+	}
+	wg.Wait()
+
+	successCount := 0
+	for _, result := range results {
 		if result.Survives {
 			successCount++
 		}

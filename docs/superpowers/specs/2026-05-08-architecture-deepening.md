@@ -93,7 +93,19 @@ disappears — concentration, not dispersion.
 
 ## Candidate #3 — Repeated full-projection runs as the only computation primitive
 
-**Status:** Proposed.
+**Status:** Landed 2026-07-04. The reusable `engine.Run(Input)` primitive
+shipped with the 2026-05-08 engine refactor; Monte Carlo gained a
+deterministic worker pool later. The remainder landed together: RunFull
+fans the five expensive analyses out concurrently, Sensitivity and
+FailurePoints reuse the orchestrator's baseline projection
+(`*WithBaseline` variants) instead of re-running it, the four
+failure-point binary searches run concurrently, and the backtest runs
+its historical sequences on a worker pool. Determinism pinned by
+`TestRunFullDeterministicUnderParallelism`; race-detector clean.
+Measured on the `BenchmarkRunFull` fixtures (32 threads): no-SS 71→48ms
+(1.47×), with-SS 120→96ms (1.25×; the SS-portfolio cell chain — each
+cell an internally-parallel MC — is now the critical path and is the
+natural next lever).
 **Files:** `calculator.go:1779-2103` (sensitivity + 4 failure-point binary
 searches), `social_security.go:419+/527+`, `backtest.go`, `handlers.go:642`
 (no-guardrails chart bypass).

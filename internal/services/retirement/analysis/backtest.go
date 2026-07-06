@@ -65,7 +65,7 @@ func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBa
 	// result lands in its start-year-order slot, keeping the output
 	// identical to the sequential form regardless of scheduling.
 	results := make([]HistoricalSequenceResult, len(availableYears))
-	parallelIndexed(len(availableYears), runtime.NumCPU(), func(i int) {
+	ParallelIndexed(len(availableYears), runtime.NumCPU(), func(i int) {
 		results[i] = runSingleHistoricalSequence(in, data, availableYears[i])
 	})
 

@@ -38,7 +38,7 @@ func SensitivityWithBaseline(eng *engine.Engine, in engine.Input, baseProjection
 	}
 
 	results := make([]models.SensitivityResult, len(scenarios))
-	parallelIndexed(len(scenarios), runtime.NumCPU(), func(i int) {
+	ParallelIndexed(len(scenarios), runtime.NumCPU(), func(i int) {
 		scenario := scenarios[i]
 
 		// Clone settings and apply variation

@@ -40,7 +40,7 @@ func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjecti
 		findPortfolioThreshold,
 	}
 	slots := make([]*models.FailurePoint, len(searches))
-	parallelIndexed(len(searches), runtime.NumCPU(), func(i int) {
+	ParallelIndexed(len(searches), runtime.NumCPU(), func(i int) {
 		slots[i] = searches[i](eng, in)
 	})
 

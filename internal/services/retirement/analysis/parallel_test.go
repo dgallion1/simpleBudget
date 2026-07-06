@@ -10,8 +10,6 @@ import (
 func TestParallelIndexedRunsAllSlots(t *testing.T) {
 	const n = 100
 	got := make([]int, n)
-	// Exercise the exported wrapper (the orchestrator's entry point);
-	// it forwards to parallelIndexed.
 	ParallelIndexed(n, 7, func(i int) { got[i] = i * 2 })
 	for i, v := range got {
 		if v != i*2 {
@@ -23,12 +21,12 @@ func TestParallelIndexedRunsAllSlots(t *testing.T) {
 func TestParallelIndexedWorkerBounds(t *testing.T) {
 	// workers > n and workers < 1 must both be tolerated.
 	var calls atomic.Int32
-	parallelIndexed(3, 64, func(int) { calls.Add(1) })
+	ParallelIndexed(3, 64, func(int) { calls.Add(1) })
 	if calls.Load() != 3 {
 		t.Fatalf("workers>n: calls = %d, want 3", calls.Load())
 	}
 	calls.Store(0)
-	parallelIndexed(3, 0, func(int) { calls.Add(1) })
+	ParallelIndexed(3, 0, func(int) { calls.Add(1) })
 	if calls.Load() != 3 {
 		t.Fatalf("workers=0: calls = %d, want 3", calls.Load())
 	}
@@ -36,8 +34,8 @@ func TestParallelIndexedWorkerBounds(t *testing.T) {
 
 func TestParallelIndexedNonPositiveN(t *testing.T) {
 	called := false
-	parallelIndexed(0, 4, func(int) { called = true })
-	parallelIndexed(-5, 4, func(int) { called = true })
+	ParallelIndexed(0, 4, func(int) { called = true })
+	ParallelIndexed(-5, 4, func(int) { called = true })
 	if called {
 		t.Fatal("fn must not be called for n <= 0")
 	}
@@ -66,7 +64,7 @@ func TestParallelIndexedPanicRethrownOnCaller(t *testing.T) {
 		if got := completed.Load(); got != n-1 {
 			t.Fatalf("completed = %d, want %d (all non-panicking work must finish)", got, n-1)
 		}
-		// parallelIndexed only returns after wg.Wait, so no worker may
+		// ParallelIndexed only returns after wg.Wait, so no worker may
 		// outlive the call. Allow a few retries for exiting goroutines to
 		// be reaped by the scheduler.
 		for range 50 {
@@ -80,13 +78,13 @@ func TestParallelIndexedPanicRethrownOnCaller(t *testing.T) {
 		}
 	}()
 
-	parallelIndexed(n, 4, func(i int) {
+	ParallelIndexed(n, 4, func(i int) {
 		if i == panicIdx {
 			panic(sentinel)
 		}
 		completed.Add(1)
 	})
-	t.Fatal("unreachable: parallelIndexed must re-panic on the caller")
+	t.Fatal("unreachable: ParallelIndexed must re-panic on the caller")
 }
 
 // TestParallelIndexedFirstPanicWins: with several panicking indices, the
@@ -111,11 +109,11 @@ func TestParallelIndexedFirstPanicWins(t *testing.T) {
 		}
 	}()
 
-	parallelIndexed(n, 3, func(i int) {
+	ParallelIndexed(n, 3, func(i int) {
 		if panickers[i] {
 			panic("boom-" + string(rune('0'+i)))
 		}
 		completed.Add(1)
 	})
-	t.Fatal("unreachable: parallelIndexed must re-panic on the caller")
+	t.Fatal("unreachable: ParallelIndexed must re-panic on the caller")
 }

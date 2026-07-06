@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"log"
 	"math"
 
 	"budget2/internal/models"
@@ -539,23 +540,23 @@ func SSPortfolio(eng *engine.Engine, in engine.Input, ss *models.SSComparisonAna
 // legacy "default = unpredictable" contract); any non-zero seed is
 // used directly so deterministic comparisons are reproducible.
 func SSPortfolioWithSeed(eng *engine.Engine, in engine.Input, ssAnalysis *models.SSComparisonAnalysis, seed int64) *models.SSPortfolioAnalysis {
-	return ssPortfolioWithSeed(eng, in, ssAnalysis, seed, nil)
+	return SSPortfolioFromMainMC(eng, in, ssAnalysis, seed, MainMCRuns{})
 }
 
 // SSPortfolioFromMainMC is SSPortfolioWithSeed with the baseline cell
 // derived from the main Monte Carlo's per-run results instead of
-// re-simulating it. The baseline cell clones the settings with the
-// CURRENT claim ages — a semantic no-op — so when the main MC was run
-// with the same seed, its first ssPortfolioMonteCarloRuns per-run
-// results are identical to what the baseline cell would simulate
-// (per-run seeds derive from the same master sequence regardless of the
-// total run count). Falls back to re-simulating the cell when fewer
-// than ssPortfolioMonteCarloRuns results are supplied.
-func SSPortfolioFromMainMC(eng *engine.Engine, in engine.Input, ssAnalysis *models.SSComparisonAnalysis, seed int64, mainRuns []models.MonteCarloResult) *models.SSPortfolioAnalysis {
-	return ssPortfolioWithSeed(eng, in, ssAnalysis, seed, mainRuns)
-}
-
-func ssPortfolioWithSeed(eng *engine.Engine, in engine.Input, ssAnalysis *models.SSComparisonAnalysis, seed int64, mainRuns []models.MonteCarloResult) *models.SSPortfolioAnalysis {
+// re-simulating it. The baseline cell holds the CURRENT claim ages, so
+// when the main MC was run with the same seed against the same prepared
+// input, its first ssPortfolioMonteCarloRuns per-run results are
+// identical to what the baseline cell would simulate (per-run seeds
+// derive from the same master sequence regardless of the total run
+// count). main must have been simulated from the SAME in this call
+// receives; the seed half of that contract is enforced — the runs are
+// ignored (and the cell re-simulated) when main.Seed != seed or fewer
+// than ssPortfolioMonteCarloRuns results are supplied, so a mismatched
+// caller degrades to correct-but-slower instead of silently comparing
+// non-common random numbers in every DeltaSurvivalRate.
+func SSPortfolioFromMainMC(eng *engine.Engine, in engine.Input, ssAnalysis *models.SSComparisonAnalysis, seed int64, main MainMCRuns) *models.SSPortfolioAnalysis {
 	s := in.Prepared.Settings()
 	if s == nil || !SSPortfolioEligible(s) {
 		return nil
@@ -566,8 +567,13 @@ func ssPortfolioWithSeed(eng *engine.Engine, in engine.Input, ssAnalysis *models
 
 	ss := s.SocialSecurity
 	var baseline *models.MonteCarloAnalysis
-	if len(mainRuns) >= ssPortfolioMonteCarloRuns {
-		baseline = ssPortfolioBaselineFromRuns(in, ss.ClaimAge, ss.SpouseClaimAge, mainRuns)
+	if len(main.Runs) >= ssPortfolioMonteCarloRuns {
+		if main.Seed == seed {
+			baseline = aggregateMonteCarloStats(main.Runs[:ssPortfolioMonteCarloRuns])
+		} else {
+			log.Printf("analysis: SS portfolio ignoring %d main MC runs: their seed %d != grid seed %d (common random numbers); re-simulating baseline cell",
+				len(main.Runs), main.Seed, seed)
+		}
 	}
 	if baseline == nil {
 		baseline = runSSPortfolioCellMC(eng, in, ss.ClaimAge, ss.SpouseClaimAge, seed)
@@ -670,27 +676,21 @@ func buildSSPortfolioOptions(
 	return options
 }
 
-// ssPortfolioBaselineFromRuns builds the baseline cell's analysis from the
-// first ssPortfolioMonteCarloRuns per-run results of the main Monte Carlo,
-// aggregating them against the same claim-age clone runSSPortfolioCellMC
-// would have simulated so the resulting stats are byte-identical to the
-// re-simulated cell (given a common seed) without paying for the runs again.
-func ssPortfolioBaselineFromRuns(in engine.Input, primaryClaimAge, spouseClaimAge int, mainRuns []models.MonteCarloResult) *models.MonteCarloAnalysis {
-	clone, ok := cloneSettingsWithClaimAges(in.Prepared.Settings(), primaryClaimAge, spouseClaimAge)
-	if !ok {
-		return nil
-	}
-	cellInput := engine.Input{Prepared: clone, Chain: in.Chain, Hooks: in.Hooks}
-	return aggregateMonteCarlo(cellInput, mainRuns[:ssPortfolioMonteCarloRuns])
-}
-
+// runSSPortfolioCellMC simulates one claim-age cell and aggregates it
+// stats-only (aggregateMonteCarloStats): the grid reads just the survival
+// rate and balance percentiles from each cell, and the full aggregation's
+// adaptive-spending sub-run would burn ssPortfolioMonteCarloRuns/2 extra
+// engine simulations per cell on output the grid discards. The baseline
+// reuse path in SSPortfolioFromMainMC uses the same aggregation, so
+// baseline and grid cells stay byte-comparable.
 func runSSPortfolioCellMC(eng *engine.Engine, in engine.Input, primaryClaimAge, spouseClaimAge int, seed int64) *models.MonteCarloAnalysis {
 	clone, ok := cloneSettingsWithClaimAges(in.Prepared.Settings(), primaryClaimAge, spouseClaimAge)
 	if !ok {
 		return nil
 	}
 	cellInput := engine.Input{Prepared: clone, Chain: in.Chain, Hooks: in.Hooks}
-	return MonteCarlo(eng, cellInput, ssPortfolioMonteCarloRuns, seed)
+	results := runSimulations(cellInput, EffectiveSeed(seed), ssPortfolioMonteCarloRuns, DefaultMonteCarloConfig())
+	return aggregateMonteCarloStats(results)
 }
 
 // cloneSettingsWithClaimAges produces a prepared snapshot identical to

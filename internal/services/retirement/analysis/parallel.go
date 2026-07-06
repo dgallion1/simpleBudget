@@ -1,15 +1,27 @@
 package analysis
 
-import "sync"
+import (
+	"log"
+	"runtime/debug"
+	"sync"
+)
 
-// parallelIndexed runs fn(i) for i in [0,n) on at most workers goroutines.
+// ParallelIndexed runs fn(i) for i in [0,n) on at most workers goroutines.
+// It is the single bounded fan-out used by every analysis loop (sensitivity,
+// failure points, Monte Carlo, backtest) and by the retirement orchestrator's
+// branch fan-out.
+//
 // A panic in fn is captured and re-thrown on the CALLING goroutine after all
 // workers finish, so callers' panic semantics match a sequential loop and
 // HTTP middleware (e.g. chi's Recoverer) can recover it instead of the
 // process dying from an unrecovered goroutine panic. Only the first panic
-// value is re-thrown; the remaining indices still complete, so fixed-slot
-// result arrays are fully populated for the survivors.
-func parallelIndexed(n, workers int, fn func(i int)) {
+// value is re-thrown, but EVERY panic — including the worker's stack, which
+// would otherwise be lost in the hop to the calling goroutine — is logged at
+// capture time, so production logs always show the faulting frame and no
+// concurrent secondary panic disappears silently. The remaining indices
+// still complete, so fixed-slot result arrays are fully populated for the
+// survivors.
+func ParallelIndexed(n, workers int, fn func(i int)) {
 	if n <= 0 {
 		return
 	}
@@ -26,10 +38,12 @@ func parallelIndexed(n, workers int, fn func(i int)) {
 	}
 	close(idx)
 
+	// First panic value wins; panicVal != nil is the "panicked" signal
+	// (recover() in the guard below never yields nil: Go converts
+	// panic(nil) to *runtime.PanicNilError).
 	var (
-		panicOnce sync.Once
-		panicked  bool
-		panicVal  any
+		panicMu  sync.Mutex
+		panicVal any
 	)
 	var wg sync.WaitGroup
 	for range workers {
@@ -40,10 +54,12 @@ func parallelIndexed(n, workers int, fn func(i int)) {
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
-							panicOnce.Do(func() {
-								panicked = true
+							log.Printf("analysis: parallel worker panic (index %d): %v\n%s", i, r, debug.Stack())
+							panicMu.Lock()
+							if panicVal == nil {
 								panicVal = r
-							})
+							}
+							panicMu.Unlock()
 						}
 					}()
 					fn(i)
@@ -54,14 +70,8 @@ func parallelIndexed(n, workers int, fn func(i int)) {
 	wg.Wait()
 
 	// wg.Wait() establishes happens-before with every worker, so reading
-	// panicked/panicVal here is race-free.
-	if panicked {
+	// panicVal here is race-free.
+	if panicVal != nil {
 		panic(panicVal)
 	}
-}
-
-// ParallelIndexed exposes parallelIndexed for the retirement orchestrator,
-// which fans out its analysis branches with the same panic-capture contract.
-func ParallelIndexed(n, workers int, fn func(i int)) {
-	parallelIndexed(n, workers, fn)
 }

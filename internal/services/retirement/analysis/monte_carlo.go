@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/rand"
 	"runtime"
-	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -88,11 +87,21 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 	return a
 }
 
+// MainMCRuns pairs Monte Carlo per-run results with the resolved seed they
+// were simulated under, so downstream consumers that reuse them (the SS
+// portfolio baseline cell) can verify common-random-numbers provenance
+// instead of trusting the call site to have threaded the same seed. Seed is
+// never 0: the producer resolves auto-seeding before simulating.
+type MainMCRuns struct {
+	Runs []models.MonteCarloResult
+	Seed int64
+}
+
 // MonteCarloWithResults is MonteCarlo, additionally returning the per-run
-// results slice (in run order). The orchestrator uses it to derive the SS
-// portfolio baseline cell from the main run's first N simulations instead of
-// re-simulating them.
-func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed int64) (*models.MonteCarloAnalysis, []models.MonteCarloResult) {
+// results slice (in run order) together with the seed that produced it. The
+// orchestrator uses it to derive the SS portfolio baseline cell from the
+// main run's first N simulations instead of re-simulating them.
+func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed int64) (*models.MonteCarloAnalysis, MainMCRuns) {
 	if runs <= 0 {
 		runs = 1000
 	}
@@ -103,23 +112,98 @@ func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed i
 	// parallel — each with its own RNG derived deterministically from
 	// baseSeed — so the aggregate result is reproducible for a given seed yet
 	// independent of goroutine scheduling.
-	baseSeed := seed
-	if baseSeed == 0 {
-		baseSeed = time.Now().UnixNano()
-	}
+	baseSeed := EffectiveSeed(seed)
 
 	results := runSimulations(in, baseSeed, runs, DefaultMonteCarloConfig())
-	return aggregateMonteCarlo(in, results), results
+	return aggregateMonteCarlo(in, results), MainMCRuns{Runs: results, Seed: baseSeed}
 }
 
-// aggregateMonteCarlo folds a per-run results slice into the reported
+// aggregateMonteCarloStats folds a per-run results slice into a stats-only
+// analysis: the core statistics and distribution, WITHOUT the sequence-risk
+// breakdown or its adaptive-spending sub-simulation (which alone costs
+// len(results)/2 full engine runs). The SS portfolio grid reads only
+// SuccessRate/MedianBalance/Percentile10/Percentile90 from its cells, so
+// this is the aggregation every SS cell (baseline and grid) uses — paying
+// for the adaptive sub-run per cell would discard its entire output.
+func aggregateMonteCarloStats(results []models.MonteCarloResult) *models.MonteCarloAnalysis {
+	stats, balances := monteCarloCoreStats(results)
+	return &models.MonteCarloAnalysis{
+		Stats:        stats,
+		Distribution: createDistributionBuckets(balances),
+	}
+}
+
+// aggregateMonteCarlo folds a per-run results slice into the fully reported
 // analysis (stats, sequence risk, adaptive-spending sub-run, distribution).
-// Split out of MonteCarlo so a results subset (e.g. the first 250 runs of
-// the main simulation) can be aggregated with byte-identical math.
+// Split out of MonteCarlo so a results subset can be aggregated with
+// byte-identical math.
 func aggregateMonteCarlo(in engine.Input, results []models.MonteCarloResult) *models.MonteCarloAnalysis {
 	runs := len(results)
 	s := in.Prepared.Settings()
 	config := DefaultMonteCarloConfig()
+	stats, balances := monteCarloCoreStats(results)
+
+	// Calculate detailed sequence risk breakdown with expense context.
+	// Use TotalExpenses to include all expense sources.
+	annualExpenses := engine.TotalExpenses(s, 0) * 12
+	stats.SequenceRisk = calculateSequenceRiskBreakdown(s, results, annualExpenses, s.PortfolioValue)
+
+	// Run adaptive spending simulations if discretionary expenses exist
+	if stats.SequenceRisk != nil && stats.SequenceRisk.HasDiscretionary {
+		adaptiveConfig := *config
+		adaptiveConfig.AdaptiveSpending = true
+		adaptiveConfig.DiscretionaryCutPercent = 40 // Cut 40% of discretionary during crashes
+		adaptiveConfig.AdaptationRecoveryYears = 3  // Maintain reduced spending for 3 years after crash
+
+		// Run adaptive simulations (smaller sample for performance). Fixed
+		// base seed keeps this sub-analysis reproducible.
+		adaptiveRuns := runs / 2
+		adaptiveResults := runSimulations(in, 42, adaptiveRuns, &adaptiveConfig)
+
+		// Calculate adapted early crash survival rate
+		var adaptedEarlySurvived, adaptedEarlyTotal int
+		for _, r := range adaptiveResults {
+			if r.EarlyCrashes > 0 {
+				adaptedEarlyTotal++
+				if r.Survives {
+					adaptedEarlySurvived++
+				}
+			}
+		}
+
+		if adaptedEarlyTotal > 0 {
+			adaptedSurvival := float64(adaptedEarlySurvived) / float64(adaptedEarlyTotal) * 100
+			stats.SequenceRisk.EarlyCrashSurvivalAdapted = adaptedSurvival
+			stats.SequenceRisk.AdaptationBoost = adaptedSurvival - stats.SequenceRisk.EarlyCrashSurvival
+			stats.SequenceRisk.DiscretionaryCutPercent = adaptiveConfig.DiscretionaryCutPercent
+
+			// Generate rationale based on improvement
+			if stats.SequenceRisk.AdaptationBoost >= 15 {
+				stats.SequenceRisk.AdaptationRationale = "Significant protection: cutting discretionary spending during crashes substantially improves survival"
+			} else if stats.SequenceRisk.AdaptationBoost >= 5 {
+				stats.SequenceRisk.AdaptationRationale = "Moderate benefit: reducing discretionary expenses during downturns provides meaningful protection"
+			} else if stats.SequenceRisk.AdaptationBoost > 0 {
+				stats.SequenceRisk.AdaptationRationale = "Slight improvement: spending flexibility provides some buffer against early crashes"
+			} else {
+				stats.SequenceRisk.AdaptationRationale = "Limited impact: your plan is resilient even without spending cuts"
+			}
+		}
+	}
+
+	return &models.MonteCarloAnalysis{
+		Stats:        stats,
+		Distribution: createDistributionBuckets(balances),
+	}
+}
+
+// monteCarloCoreStats computes the settings-independent statistics over a
+// per-run results slice: success rate, balance percentiles, shock counts,
+// and the sequence-risk impact. Shared verbatim by aggregateMonteCarlo and
+// aggregateMonteCarloStats so both aggregations stay byte-identical on the
+// fields they have in common. Also returns the sorted balances for
+// distribution bucketing.
+func monteCarloCoreStats(results []models.MonteCarloResult) (*models.MonteCarloStats, []float64) {
+	runs := len(results)
 	successCount := 0
 	totalDepletionYears := 0.0
 	depletionCount := 0
@@ -191,60 +275,7 @@ func aggregateMonteCarlo(in engine.Input, results []models.MonteCarloResult) *mo
 	// Calculate sequence risk impact by comparing early vs late crash outcomes
 	stats.SequenceRiskImpact = calculateSequenceRiskImpact(results)
 
-	// Calculate detailed sequence risk breakdown with expense context
-	// Use TotalExpenses to include all expense sources
-	annualExpenses := engine.TotalExpenses(s, 0) * 12
-	stats.SequenceRisk = calculateSequenceRiskBreakdown(s, results, annualExpenses, s.PortfolioValue)
-
-	// Run adaptive spending simulations if discretionary expenses exist
-	if stats.SequenceRisk != nil && stats.SequenceRisk.HasDiscretionary {
-		adaptiveConfig := *config
-		adaptiveConfig.AdaptiveSpending = true
-		adaptiveConfig.DiscretionaryCutPercent = 40 // Cut 40% of discretionary during crashes
-		adaptiveConfig.AdaptationRecoveryYears = 3  // Maintain reduced spending for 3 years after crash
-
-		// Run adaptive simulations (smaller sample for performance). Fixed
-		// base seed keeps this sub-analysis reproducible.
-		adaptiveRuns := runs / 2
-		adaptiveResults := runSimulations(in, 42, adaptiveRuns, &adaptiveConfig)
-
-		// Calculate adapted early crash survival rate
-		var adaptedEarlySurvived, adaptedEarlyTotal int
-		for _, r := range adaptiveResults {
-			if r.EarlyCrashes > 0 {
-				adaptedEarlyTotal++
-				if r.Survives {
-					adaptedEarlySurvived++
-				}
-			}
-		}
-
-		if adaptedEarlyTotal > 0 {
-			adaptedSurvival := float64(adaptedEarlySurvived) / float64(adaptedEarlyTotal) * 100
-			stats.SequenceRisk.EarlyCrashSurvivalAdapted = adaptedSurvival
-			stats.SequenceRisk.AdaptationBoost = adaptedSurvival - stats.SequenceRisk.EarlyCrashSurvival
-			stats.SequenceRisk.DiscretionaryCutPercent = adaptiveConfig.DiscretionaryCutPercent
-
-			// Generate rationale based on improvement
-			if stats.SequenceRisk.AdaptationBoost >= 15 {
-				stats.SequenceRisk.AdaptationRationale = "Significant protection: cutting discretionary spending during crashes substantially improves survival"
-			} else if stats.SequenceRisk.AdaptationBoost >= 5 {
-				stats.SequenceRisk.AdaptationRationale = "Moderate benefit: reducing discretionary expenses during downturns provides meaningful protection"
-			} else if stats.SequenceRisk.AdaptationBoost > 0 {
-				stats.SequenceRisk.AdaptationRationale = "Slight improvement: spending flexibility provides some buffer against early crashes"
-			} else {
-				stats.SequenceRisk.AdaptationRationale = "Limited impact: your plan is resilient even without spending cuts"
-			}
-		}
-	}
-
-	// Create distribution buckets
-	distribution := createDistributionBuckets(balances)
-
-	return &models.MonteCarloAnalysis{
-		Stats:        stats,
-		Distribution: distribution,
-	}
+	return stats, balances
 }
 
 // runSimulations executes `runs` independent Monte Carlo simulations across a
@@ -267,7 +298,7 @@ func runSimulations(in engine.Input, baseSeed int64, runs int, config *MonteCarl
 		seeds[i] = master.Int63()
 	}
 
-	parallelIndexed(runs, runtime.NumCPU(), func(i int) {
+	ParallelIndexed(runs, runtime.NumCPU(), func(i int) {
 		rng := rand.New(rand.NewSource(seeds[i]))
 		results[i] = runSingleMonteCarloSimulation(in, rng, config)
 	})

@@ -8,7 +8,6 @@
 package retirement
 
 import (
-	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/analysis"
@@ -58,13 +57,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	// non-common random numbers. A single up-front seed gives common
 	// random numbers across the whole analysis while staying random per
 	// request.
-	effectiveSeed := mcSeed
-	if effectiveSeed == 0 {
-		effectiveSeed = time.Now().UnixNano()
-		if effectiveSeed == 0 {
-			effectiveSeed = 1 // MonteCarlo treats 0 as auto-seed
-		}
-	}
+	effectiveSeed := analysis.EffectiveSeed(mcSeed)
 
 	// The expensive analyses are independent of one another: sensitivity,
 	// failure points, Monte Carlo, backtest, and the SS comparison each
@@ -73,46 +66,44 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	// function of its Input and every perturbed run builds its own
 	// PreparedSettings, so results are identical to the sequential form.
 	// Sensitivity and failure points reuse the baseline projection above
-	// instead of re-running it; the SS portfolio baseline cell reuses the
-	// main MC's per-run results (its branch waits on mcReady). The fan-out
-	// runs through analysis.ParallelIndexed so a panic in any branch
-	// (perturb.go panics by design on invalid perturbations) resurfaces on
-	// THIS goroutine after all branches finish — matching sequential panic
-	// semantics so HTTP middleware can recover it instead of the process
-	// dying from an unrecovered goroutine panic.
+	// instead of re-running it. The fan-out runs through
+	// analysis.ParallelIndexed so a panic in any branch (perturb.go panics
+	// by design on invalid perturbations) resurfaces on THIS goroutine
+	// after all branches finish — matching sequential panic semantics so
+	// HTTP middleware can recover it instead of the process dying from an
+	// unrecovered goroutine panic.
 	var (
 		sensitivity   []models.SensitivityResult
 		failurePoints *models.FailurePointAnalysis
 		monteCarlo    *models.MonteCarloAnalysis
-		mcRuns        []models.MonteCarloResult
+		mcMain        analysis.MainMCRuns
 		backtest      *models.HistoricalBacktestAnalysis
 		ssAnalysis    *models.SSComparisonAnalysis
 	)
 	settings := in.Prepared.Settings()
 
-	// mcReady publishes monteCarlo/mcRuns to the SS branch. Closed via
-	// defer so the SS branch never deadlocks even if the MC branch panics
-	// (it then sees nil results and re-simulates its baseline cell).
-	mcReady := make(chan struct{})
 	branches := []func(){
 		func() { sensitivity = analysis.SensitivityWithBaseline(eng, in, proj, budgetFit) },
 		func() { failurePoints = analysis.FailurePointsWithBaseline(eng, in, proj) },
-		func() {
-			defer close(mcReady)
-			monteCarlo, mcRuns = analysis.MonteCarloWithResults(eng, in, MonteCarloRuns, effectiveSeed)
-		},
+		func() { monteCarlo, mcMain = analysis.MonteCarloWithResults(eng, in, MonteCarloRuns, effectiveSeed) },
 		func() { backtest = analysis.HistoricalBacktest(in, history.DefaultData()) },
 	}
 	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
-		branches = append(branches, func() {
-			ssAnalysis = analysis.SSAnalysis(in)
-			if ssAnalysis != nil && SSPortfolioEligible(settings) {
-				<-mcReady
-				ssAnalysis.Portfolio = analysis.SSPortfolioFromMainMC(eng, in, ssAnalysis, effectiveSeed, mcRuns)
-			}
-		})
+		branches = append(branches, func() { ssAnalysis = analysis.SSAnalysis(in) })
 	}
 	analysis.ParallelIndexed(len(branches), len(branches), func(i int) { branches[i]() })
+
+	// SS portfolio join: needs BOTH the SS comparison and the main MC's
+	// per-run results (its baseline cell reuses them), so it runs after the
+	// fan-out rather than as a branch that blocks a pool worker on a
+	// channel — a branch waiting inside the pool would make correctness
+	// depend on branch ordering, and an MC panic would leave it computing a
+	// full grid whose output the re-panic then discards. The grid cells
+	// parallelize internally across NumCPU, so joining here costs no
+	// meaningful wall-clock versus overlapping with straggler branches.
+	if ssAnalysis != nil && SSPortfolioEligible(settings) {
+		ssAnalysis.Portfolio = analysis.SSPortfolioFromMainMC(eng, in, ssAnalysis, effectiveSeed, mcMain)
+	}
 
 	if backtest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
 		backtest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate
@@ -160,13 +151,7 @@ func runTaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) 
 	// independently, so the SS-pair selection feeding the optimizer is
 	// already chosen from non-comparable paths before finalists are
 	// even scored. Tests pin a non-zero seed and bypass derivation.
-	effectiveSeed := mcSeed
-	if effectiveSeed == 0 {
-		effectiveSeed = time.Now().UnixNano()
-		if effectiveSeed == 0 {
-			effectiveSeed = 1 // MonteCarlo treats 0 as auto-seed
-		}
-	}
+	effectiveSeed := analysis.EffectiveSeed(mcSeed)
 
 	var ssPortfolio *models.SSPortfolioAnalysis
 	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {

@@ -673,22 +673,19 @@ func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testin
 
 	estimateSnapshot := func(month int, taxableCashFlow engine.TaxableGrowthResult, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
 		taxState := engine.ProjectionTaxAccumulator{}
-		return taxState.EstimateMonthlySnapshot(
-			engine.NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
-			month/12,
-			month%12,
-			engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, month).OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
-			engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, month).SocialSecurityIncome,
-			0,
-			taxableCashFlow.QualifiedDividends,
-			taxableCashFlow.CapitalGainsDistributions,
-			taxableCashFlow.NonQualifiedDividends,
-			0,
-			nil,
-			assumedIRMALookbackMAGI,
-			engine.MedicareEligibleAdultCountAtYear(settings, month/12),
-			engine.PlannerIRMAAInflationFactorForYear(settings.InflationRate, float64(month)/12),
-		)
+		return taxState.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+			Calculator:              engine.NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
+			YearsFromBase:           month / 12,
+			MonthInYear:             month % 12,
+			OrdinaryIncome:          engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, month).OrdinaryIncome + taxableCashFlow.NonQualifiedDividends,
+			SocialSecurityIncome:    engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, month).SocialSecurityIncome,
+			QualifiedDividends:      taxableCashFlow.QualifiedDividends,
+			LongTermCapitalGains:    taxableCashFlow.CapitalGainsDistributions,
+			NonQualifiedDividends:   taxableCashFlow.NonQualifiedDividends,
+			AssumedIRMALookbackMAGI: assumedIRMALookbackMAGI,
+			IRMAAEligibleAdults:     engine.MedicareEligibleAdultCountAtYear(settings, month/12),
+			IRMAAInflationFactor:    engine.PlannerIRMAAInflationFactorForYear(settings.InflationRate, float64(month)/12),
+		})
 	}
 
 	lookbackSnapshot := estimateSnapshot(lookbackMonth, lookbackTaxableCashFlow, nil)

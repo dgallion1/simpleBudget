@@ -129,22 +129,14 @@ func SetupRouter() chi.Router {
 
 	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 
-	// Unlock routes (always accessible)
-	r.Get("/unlock", backup.HandleUnlockPage)
-	r.Post("/unlock", backup.HandleUnlock)
+	// Backup-owned routes that must stay reachable while storage is locked
+	// (unlock, YubiKey setup, encryption config probe, health, kill switch).
+	backup.RegisterPublicRoutes(r)
 
 	// File manager accessible when locked (has its own unlock UI)
 	r.Get("/filemanager", explorer.HandleFileManagerPage)
-	r.Get("/encryption/config", backup.HandleGetEncryptionConfig)
 
-	// YubiKey routes (accessible when locked for initial setup)
-	r.Get("/encryption/yubikey-identity", backup.HandleYubiKeyIdentity)
-	r.Post("/encryption/yubikey-setup", backup.HandleYubiKeySetup)
-
-	// Health and control endpoints (always accessible)
-	r.Get("/api/health", backup.HandleHealth)
 	r.Get("/api/version", handleVersion)
-	r.Get("/killme", backup.HandleKillServer)
 
 	// Apply lock check middleware to protected routes
 	r.Group(func(r chi.Router) {
@@ -163,26 +155,7 @@ func SetupRouter() chi.Router {
 		majorexpenses.RegisterRoutes(r)
 		duplicates.RegisterRoutes(r)
 
-		// File manager page (also registered outside middleware for unlock access)
-
-		// Backup and restore routes
-		r.Get("/backup", backup.HandleBackup)
-		r.Post("/restore", backup.HandleRestore)
-		r.Post("/restore/test-data", backup.HandleRestoreTestData)
-		r.Delete("/data/all", backup.HandleDeleteAllData)
-		r.Get("/backup/status", backup.HandleBackupStatus)
-		r.Post("/backup/auto-enabled", backup.HandleSetAutoBackupEnabled)
-		r.Post("/backup/open-dir", backup.HandleOpenBackupDir)
-		r.Post("/backup/plaintext", backup.HandleBackupPlaintext)
-
-		// Encryption management routes
-		r.Post("/encryption/enable", backup.HandleEnableEncryptionWithMethod)
-		r.Post("/encryption/disable", backup.HandleDisableEncryption)
-		r.Get("/encryption/status", backup.HandleEncryptionStatus)
-		r.Get("/encryption/methods", backup.HandleGetAuthMethods)
-		r.Get("/encryption/detect-keys", backup.HandleDetectKeys)
-		r.Get("/encryption/config", backup.HandleGetEncryptionConfig)
-		r.Post("/encryption/change-method", backup.HandleChangeAuthMethod)
+		backup.RegisterRoutes(r)
 	})
 
 	return r

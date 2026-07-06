@@ -71,31 +71,46 @@ func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, ordinaryInco
 	}
 }
 
+// MonthlyTaxInputs bundles the arguments to EstimateMonthlySnapshot: the
+// month's income components plus the IRMAA lookback context. Named fields
+// replace what was a 14-argument positional list — the same treatment
+// PortfolioMonthInput gave the cash-flow waterfall.
+type MonthlyTaxInputs struct {
+	Calculator    *TaxCalculator
+	YearsFromBase int
+	MonthInYear   int
+
+	OrdinaryIncome        float64
+	SocialSecurityIncome  float64
+	TaxableWithdrawals    float64
+	QualifiedDividends    float64
+	LongTermCapitalGains  float64
+	NonQualifiedDividends float64
+	RothConversions       float64
+
+	CompletedMAGIHistory    []float64
+	AssumedIRMALookbackMAGI *float64
+	IRMAAEligibleAdults     int
+	IRMAAInflationFactor    float64
+}
+
 // EstimateMonthlySnapshot computes the per-month tax + IRMAA estimate
 // for a given month, given YTD state and the month's income components.
 // The remaining-months division ensures actual taxes paid converge to
 // the annual liability over the year.
-func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(
-	tc *TaxCalculator,
-	yearsFromBase int,
-	monthInYear int,
-	ordinaryIncome float64,
-	socialSecurityIncome float64,
-	taxableWithdrawals float64,
-	qualifiedDividends float64,
-	longTermCapitalGains float64,
-	nonQualifiedDividends float64,
-	rothConversions float64,
-	completedMAGIHistory []float64,
-	assumedIRMALookbackMAGI *float64,
-	irmaaEligibleAdults int,
-	irmaaInflationFactor float64,
-) ProjectedTaxSnapshot {
+func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) ProjectedTaxSnapshot {
+	tc := in.Calculator
+	yearsFromBase := in.YearsFromBase
+	monthInYear := in.MonthInYear
+	completedMAGIHistory := in.CompletedMAGIHistory
+	assumedIRMALookbackMAGI := in.AssumedIRMALookbackMAGI
+	irmaaEligibleAdults := in.IRMAAEligibleAdults
+	irmaaInflationFactor := in.IRMAAInflationFactor
 	if tc == nil {
 		return ProjectedTaxSnapshot{}
 	}
 
-	inputs := a.AnnualizedInputs(monthInYear, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions)
+	inputs := a.AnnualizedInputs(monthInYear, in.OrdinaryIncome, in.SocialSecurityIncome, in.TaxableWithdrawals, in.QualifiedDividends, in.LongTermCapitalGains, in.NonQualifiedDividends, in.RothConversions)
 	otherIncome := inputs.OrdinaryIncome + inputs.TaxableWithdrawals + inputs.RothConversions
 	taxableSocialSecurity := tc.CalculateTaxableSocialSecurity(inputs.SocialSecurityIncome, otherIncome, inputs.QualifiedDividends, inputs.LongTermCapitalGains)
 	estimatedOrdinaryIncome := otherIncome + taxableSocialSecurity
@@ -157,22 +172,19 @@ func resolveIRMAALookbackMAGI(completedMAGIHistory []float64, assumedIRMALookbac
 // for callers that only need the monthly tax figure (no IRMAA, no MAGI
 // breakdown).
 func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64 {
-	return a.EstimateMonthlySnapshot(
-		tc,
-		yearsFromBase,
-		monthInYear,
-		ordinaryIncome,
-		socialSecurityIncome,
-		taxableWithdrawals,
-		qualifiedDividends,
-		longTermCapitalGains,
-		nonQualifiedDividends,
-		rothConversions,
-		nil,
-		nil,
-		0,
-		1,
-	).MonthlyTax
+	return a.EstimateMonthlySnapshot(MonthlyTaxInputs{
+		Calculator:            tc,
+		YearsFromBase:         yearsFromBase,
+		MonthInYear:           monthInYear,
+		OrdinaryIncome:        ordinaryIncome,
+		SocialSecurityIncome:  socialSecurityIncome,
+		TaxableWithdrawals:    taxableWithdrawals,
+		QualifiedDividends:    qualifiedDividends,
+		LongTermCapitalGains:  longTermCapitalGains,
+		NonQualifiedDividends: nonQualifiedDividends,
+		RothConversions:       rothConversions,
+		IRMAAInflationFactor:  1,
+	}).MonthlyTax
 }
 
 // ApplyMonth folds a month's realised income and tax payments into the

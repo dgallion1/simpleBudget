@@ -772,20 +772,16 @@ func TestEstimateMonthlySnapshot_IRMAALookback(t *testing.T) {
 	// Provide completed MAGI history with 2+ years so lookback applies
 	completedMAGI := []float64{200000, 300000} // 2 years ago: 200K
 
-	snapshot := acc.EstimateMonthlySnapshot(
-		tc, 0, 0,
-		5000, // ordinaryIncome
-		2000, // socialSecurityIncome
-		0,    // taxableWithdrawals
-		500,  // qualifiedDividends
-		300,  // longTermCapitalGains
-		0,    // nonQualifiedDividends
-		0,    // rothConversions
-		completedMAGI,
-		nil,
-		1,   // irmaaEligibleAdults
-		1.0, // irmaaInflationFactor
-	)
+	snapshot := acc.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+		Calculator:           tc,
+		OrdinaryIncome:       5000,
+		SocialSecurityIncome: 2000,
+		QualifiedDividends:   500,
+		LongTermCapitalGains: 300,
+		CompletedMAGIHistory: completedMAGI,
+		IRMAAEligibleAdults:  1,
+		IRMAAInflationFactor: 1.0,
+	})
 
 	// IRMAA should be based on lookback MAGI (200K, 2 years ago), not current year
 	if snapshot.AnnualIRMAA <= 0 {
@@ -804,14 +800,12 @@ func TestEstimateMonthlySnapshot_NoIRMAAEligibleAdults(t *testing.T) {
 
 	acc := engine.ProjectionTaxAccumulator{}
 
-	snapshot := acc.EstimateMonthlySnapshot(
-		tc, 0, 0,
-		5000, 0, 0, 0, 0, 0, 0,
-		nil,
-		nil,
-		0, // no eligible adults
-		1.0,
-	)
+	snapshot := acc.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+		Calculator:           tc,
+		OrdinaryIncome:       5000,
+		IRMAAEligibleAdults:  0, // no eligible adults
+		IRMAAInflationFactor: 1.0,
+	})
 
 	if snapshot.AnnualIRMAA != 0 {
 		t.Errorf("expected 0 IRMAA with no eligible adults, got %f", snapshot.AnnualIRMAA)
@@ -827,23 +821,21 @@ func TestEstimateMonthlySnapshot_TwoIRMAAEligibleAdults(t *testing.T) {
 	acc := engine.ProjectionTaxAccumulator{}
 	assumedLookbackMAGI := 300000.0
 
-	snapshot1 := acc.EstimateMonthlySnapshot(
-		tc, 0, 0,
-		20000, 0, 0, 0, 0, 0, 0,
-		nil,
-		&assumedLookbackMAGI,
-		1, // 1 eligible adult
-		1.0,
-	)
+	snapshot1 := acc.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+		Calculator:              tc,
+		OrdinaryIncome:          20000,
+		AssumedIRMALookbackMAGI: &assumedLookbackMAGI,
+		IRMAAEligibleAdults:     1,
+		IRMAAInflationFactor:    1.0,
+	})
 
-	snapshot2 := acc.EstimateMonthlySnapshot(
-		tc, 0, 0,
-		20000, 0, 0, 0, 0, 0, 0,
-		nil,
-		&assumedLookbackMAGI,
-		2, // 2 eligible adults
-		1.0,
-	)
+	snapshot2 := acc.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+		Calculator:              tc,
+		OrdinaryIncome:          20000,
+		AssumedIRMALookbackMAGI: &assumedLookbackMAGI,
+		IRMAAEligibleAdults:     2,
+		IRMAAInflationFactor:    1.0,
+	})
 
 	// With 2 eligible adults, IRMAA should be double
 	if snapshot2.AnnualIRMAA != 2*snapshot1.AnnualIRMAA {
@@ -859,13 +851,12 @@ func TestEstimateMonthlySnapshot_SocialSecurityTaxablePct(t *testing.T) {
 
 	acc := engine.ProjectionTaxAccumulator{}
 
-	snapshot := acc.EstimateMonthlySnapshot(
-		tc, 0, 0,
-		5000, // ordinaryIncome
-		2000, // socialSecurityIncome
-		0, 0, 0, 0, 0,
-		nil, nil, 0, 1.0,
-	)
+	snapshot := acc.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+		Calculator:           tc,
+		OrdinaryIncome:       5000,
+		SocialSecurityIncome: 2000,
+		IRMAAInflationFactor: 1.0,
+	})
 
 	// With enough income, SS should be partially taxable
 	if snapshot.AnnualTaxableSocialSecurity < 0 {
@@ -886,11 +877,12 @@ func TestEstimateMonthlySnapshot_MonthInYearTwelve(t *testing.T) {
 	}, 0)
 
 	acc := engine.ProjectionTaxAccumulator{}
-	snapshot := acc.EstimateMonthlySnapshot(
-		tc, 0, 12,
-		5000, 0, 0, 0, 0, 0, 0,
-		nil, nil, 0, 1.0,
-	)
+	snapshot := acc.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+		Calculator:           tc,
+		MonthInYear:          12,
+		OrdinaryIncome:       5000,
+		IRMAAInflationFactor: 1.0,
+	})
 
 	if snapshot.MonthlyTax < 0 {
 		t.Errorf("expected non-negative monthly tax, got %f", snapshot.MonthlyTax)

@@ -79,10 +79,17 @@ Retirement math:
   (`taxBaseYear=2024`, `irmaaBaseYear=2026`).
 - Rate units differ: `engine.PresentValueAnnuity` takes discount/growth as
   **percent**; `IncomeSource.COLARate` is a **decimal** (0.02 = 2%).
-- Three projection loops build `PortfolioMonthInput` independently —
-  `engine/month.go` (canonical), `analysis/monte_carlo.go`, `analysis/backtest.go`.
-  Per-month tax/IRMAA input changes must be replicated across all three (or
-  centralized in `ExecuteTaxAwarePortfolioMonth`).
+- All three projection loops — `engine/month.go` (canonical),
+  `analysis/monte_carlo.go`, `analysis/backtest.go` — advance through
+  `engine.ProjectionState.StepMonth` (`engine/stepper.go`), which owns the
+  year-boundary pass, expense assembly, and the `PortfolioMonthInput` build.
+  Per-month tax/IRMAA input changes go in the stepper (or
+  `ExecuteTaxAwarePortfolioMonth`), not in the loops. Loops inject only a
+  `MonthReturns`; its units are fixed at the seam: monthly **decimal** rates
+  for tax-deferred/Roth, taxable annual return in **percent**, annual
+  inflation as **decimal**. Monte Carlo must draw all its per-month RNG
+  inside the `returnsFor` callback, in the legacy order, or seeded runs
+  change.
 - Roth bracket-fill conversion sizing (`analysis/tax_optimizer_strategies.go`)
   must mirror the engine's tax model: `bracketFillConversion` binary-searches
   `taxableOrdinaryIncome` for the conversion that hits the inflated bracket

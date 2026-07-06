@@ -30,28 +30,27 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		taxState := engine.ProjectionTaxAccumulator{}
 		taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
-		return taxState.EstimateMonthlySnapshot(
-			taxCalculator,
-			yearsFromTaxBase,
+		return taxState.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
+			Calculator:    taxCalculator,
+			YearsFromBase: yearsFromTaxBase,
 			// Point-in-time estimate: the accumulator carries no YTD, so the
 			// month-of-year must be 0 for AnnualizedInputs to scale a single
 			// month up to a full year (factor 12/(monthInYear+1)) and for the
 			// remaining-months tax divisor to be 12. targetMonth is always
 			// year-aligned today; pinning 0 keeps this correct if a
 			// fractional steady-state month is ever introduced.
-			0,
-			incomeBreakdown.OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
-			incomeBreakdown.SocialSecurityIncome,
-			monthlyRMD,
-			taxableCashFlow.QualifiedDividends,
-			taxableCashFlow.CapitalGainsDistributions,
-			taxableCashFlow.NonQualifiedDividends,
-			rothConversion,
-			nil,
-			assumedIRMALookbackMAGI,
-			engine.MedicareEligibleAdultCountAtYear(s, targetYear),
-			engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
-		)
+			MonthInYear:             0,
+			OrdinaryIncome:          incomeBreakdown.OrdinaryIncome + taxableCashFlow.NonQualifiedDividends,
+			SocialSecurityIncome:    incomeBreakdown.SocialSecurityIncome,
+			TaxableWithdrawals:      monthlyRMD,
+			QualifiedDividends:      taxableCashFlow.QualifiedDividends,
+			LongTermCapitalGains:    taxableCashFlow.CapitalGainsDistributions,
+			NonQualifiedDividends:   taxableCashFlow.NonQualifiedDividends,
+			RothConversions:         rothConversion,
+			AssumedIRMALookbackMAGI: assumedIRMALookbackMAGI,
+			IRMAAEligibleAdults:     engine.MedicareEligibleAdultCountAtYear(s, targetYear),
+			IRMAAInflationFactor:    engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
+		})
 	}
 
 	// Calculate first month expenses and income

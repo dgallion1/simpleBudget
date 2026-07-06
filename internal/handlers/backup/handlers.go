@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"budget2/internal/config"
 	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/storage"
@@ -72,6 +74,41 @@ func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *
 // pruned scenario file or clobber the freshly restored whatif.json with
 // pre-restore data.
 var restoreGate SettingsRewriteGate
+
+// RegisterPublicRoutes registers the endpoints that must stay reachable
+// while storage is locked: unlock, initial YubiKey setup, the encryption
+// config probe, health, and the kill switch. Everything else backup owns
+// goes through RegisterRoutes behind the lock-check middleware.
+func RegisterPublicRoutes(r chi.Router) {
+	r.Get("/unlock", HandleUnlockPage)
+	r.Post("/unlock", HandleUnlock)
+	r.Get("/encryption/config", HandleGetEncryptionConfig)
+	r.Get("/encryption/yubikey-identity", HandleYubiKeyIdentity)
+	r.Post("/encryption/yubikey-setup", HandleYubiKeySetup)
+	r.Get("/api/health", HandleHealth)
+	r.Get("/killme", HandleKillServer)
+}
+
+// RegisterRoutes registers the lock-protected backup, restore, and
+// encryption admin routes, matching the other handler packages.
+func RegisterRoutes(r chi.Router) {
+	r.Get("/backup", HandleBackup)
+	r.Post("/restore", HandleRestore)
+	r.Post("/restore/test-data", HandleRestoreTestData)
+	r.Delete("/data/all", HandleDeleteAllData)
+	r.Get("/backup/status", HandleBackupStatus)
+	r.Post("/backup/auto-enabled", HandleSetAutoBackupEnabled)
+	r.Post("/backup/open-dir", HandleOpenBackupDir)
+	r.Post("/backup/plaintext", HandleBackupPlaintext)
+
+	r.Post("/encryption/enable", HandleEnableEncryptionWithMethod)
+	r.Post("/encryption/disable", HandleDisableEncryption)
+	r.Get("/encryption/status", HandleEncryptionStatus)
+	r.Get("/encryption/methods", HandleGetAuthMethods)
+	r.Get("/encryption/detect-keys", HandleDetectKeys)
+	r.Get("/encryption/config", HandleGetEncryptionConfig)
+	r.Post("/encryption/change-method", HandleChangeAuthMethod)
+}
 
 type backupStatusResponse struct {
 	TS            string `json:"ts"`

@@ -348,22 +348,18 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 	// the raw projection offset — so an early projection year that lands
 	// after the base year doesn't use stale (un-inflated) brackets.
 	yearsFromTaxBase := in.CalendarYear - taxBaseYear
-	snapshot := in.TaxState.EstimateMonthlySnapshot(
-		in.TaxCalculator,
-		yearsFromTaxBase,
-		in.MonthInYear,
-		in.IncomeBreakdown.OrdinaryIncome,
-		in.IncomeBreakdown.SocialSecurityIncome,
-		0,
-		0,
-		0,
-		0,
-		in.RothConversionThisMonth,
-		in.CompletedMAGIHistory,
-		in.AssumedIRMALookbackMAGI,
-		in.IRMAAEligibleAdults,
-		in.IRMAAInflationFactor,
-	)
+	snapshot := in.TaxState.EstimateMonthlySnapshot(MonthlyTaxInputs{
+		Calculator:              in.TaxCalculator,
+		YearsFromBase:           yearsFromTaxBase,
+		MonthInYear:             in.MonthInYear,
+		OrdinaryIncome:          in.IncomeBreakdown.OrdinaryIncome,
+		SocialSecurityIncome:    in.IncomeBreakdown.SocialSecurityIncome,
+		RothConversions:         in.RothConversionThisMonth,
+		CompletedMAGIHistory:    in.CompletedMAGIHistory,
+		AssumedIRMALookbackMAGI: in.AssumedIRMALookbackMAGI,
+		IRMAAEligibleAdults:     in.IRMAAEligibleAdults,
+		IRMAAInflationFactor:    in.IRMAAInflationFactor,
+	})
 	taxesPaid := snapshot.MonthlyTax
 	irmaaExpense := snapshot.MonthlyIRMAA
 	// Marginal rate derived from estimated annual MAGI; updated each iteration
@@ -412,22 +408,22 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		trialNonQualifiedDividends := beforeTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.NonQualifiedDividends
 		trialCapitalGains := beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions + trialCashFlow.TaxableRealizedGain
 
-		recalculatedSnapshot := in.TaxState.EstimateMonthlySnapshot(
-			in.TaxCalculator,
-			yearsFromTaxBase,
-			in.MonthInYear,
-			in.IncomeBreakdown.OrdinaryIncome+trialNonQualifiedDividends+trialTaxableRothEarnings,
-			in.IncomeBreakdown.SocialSecurityIncome,
-			trialCashFlow.WithdrawalFromTaxDeferred,
-			trialQualifiedDividends,
-			trialCapitalGains,
-			trialNonQualifiedDividends,
-			in.RothConversionThisMonth,
-			in.CompletedMAGIHistory,
-			in.AssumedIRMALookbackMAGI,
-			in.IRMAAEligibleAdults,
-			in.IRMAAInflationFactor,
-		)
+		recalculatedSnapshot := in.TaxState.EstimateMonthlySnapshot(MonthlyTaxInputs{
+			Calculator:              in.TaxCalculator,
+			YearsFromBase:           yearsFromTaxBase,
+			MonthInYear:             in.MonthInYear,
+			OrdinaryIncome:          in.IncomeBreakdown.OrdinaryIncome + trialNonQualifiedDividends + trialTaxableRothEarnings,
+			SocialSecurityIncome:    in.IncomeBreakdown.SocialSecurityIncome,
+			TaxableWithdrawals:      trialCashFlow.WithdrawalFromTaxDeferred,
+			QualifiedDividends:      trialQualifiedDividends,
+			LongTermCapitalGains:    trialCapitalGains,
+			NonQualifiedDividends:   trialNonQualifiedDividends,
+			RothConversions:         in.RothConversionThisMonth,
+			CompletedMAGIHistory:    in.CompletedMAGIHistory,
+			AssumedIRMALookbackMAGI: in.AssumedIRMALookbackMAGI,
+			IRMAAEligibleAdults:     in.IRMAAEligibleAdults,
+			IRMAAInflationFactor:    in.IRMAAInflationFactor,
+		})
 
 		*in.TaxDeferredBalance = trialTaxDeferred
 		*in.RothBalance = trialRoth

@@ -3805,80 +3805,87 @@ func TestHandleRestore_ReportsPruneFailures(t *testing.T) {
 	}
 }
 
-func TestHandleRestore_FiresPostRestoreHooksOnSuccessOnly(t *testing.T) {
+func TestHandleRestore_AcquiresRestoreGateOnSuccessOnly(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// setupTestEnv's Initialize already reset postRestoreHooks to nil;
-	// just make sure this test's hook doesn't leak to later tests.
-	t.Cleanup(func() { postRestoreHooks = nil })
+	// setupTestEnv's Initialize already reset restoreGate to nil;
+	// just make sure this test's gate doesn't leak to later tests.
+	t.Cleanup(func() { restoreGate = nil })
 
-	fired := 0
-	RegisterPostRestoreHook(func() { fired++ })
+	acquired, released := 0, 0
+	SetRestoreGate(func() func() {
+		acquired++
+		return func() { released++ }
+	})
 
-	// Failed restore (invalid zip) must not fire hooks.
+	// Failed restore (invalid zip) rejects before any write — the gate
+	// must not be acquired.
 	rec := postMultipartZip(t, "/restore", "file", "backup.zip", []byte("not a zip"))
 	HandleRestore(rec, rec.Request)
 	if rec.Code == http.StatusOK {
 		t.Fatalf("invalid zip should fail, got %d", rec.Code)
 	}
-	if fired != 0 {
-		t.Fatalf("hooks must not fire on failed restore, fired=%d", fired)
+	if acquired != 0 || released != 0 {
+		t.Fatalf("gate must not be touched on failed restore, acquired=%d released=%d", acquired, released)
 	}
 
-	// Successful upload restore fires hooks once.
+	// Successful upload restore acquires + releases exactly once.
 	zipBuf := createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
 	rec = postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
 	HandleRestore(rec, rec.Request)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
-	if fired != 1 {
-		t.Fatalf("hooks must fire once on successful restore, fired=%d", fired)
+	if acquired != 1 || released != 1 {
+		t.Fatalf("gate must be acquired+released once per restore, acquired=%d released=%d", acquired, released)
 	}
 
-	// Test-data restore fires hooks too.
+	// Test-data restore goes through the gate too.
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/restore/test-data", nil)
 	HandleRestoreTestData(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("test-data restore status %d: %s", w.Code, w.Body.String())
 	}
-	if fired != 2 {
-		t.Fatalf("hooks must fire on test-data restore, fired=%d", fired)
+	if acquired != 2 || released != 2 {
+		t.Fatalf("gate must cover test-data restore, acquired=%d released=%d", acquired, released)
 	}
 }
 
-func TestInitialize_ResetsPostRestoreHooks(t *testing.T) {
+func TestInitialize_ResetsRestoreGate(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
-	t.Cleanup(func() { postRestoreHooks = nil })
+	t.Cleanup(func() { restoreGate = nil })
 
-	staleFired := 0
-	RegisterPostRestoreHook(func() { staleFired++ })
+	staleAcquired := 0
+	SetRestoreGate(func() func() {
+		staleAcquired++
+		return func() {}
+	})
 
-	// Re-initializing (same deps, as repeated wiring does) must drop
-	// previously registered hooks so they cannot accumulate.
+	// Re-initializing (same deps, as repeated wiring does) must clear the
+	// previously set gate so it cannot outlive its wiring.
 	Initialize(cfg, store, renderer, backupSvc)
-	if len(postRestoreHooks) != 0 {
-		t.Fatalf("Initialize must reset hooks, got %d", len(postRestoreHooks))
-	}
-	runPostRestoreHooks()
-	if staleFired != 0 {
-		t.Fatalf("stale hook fired %d times after re-Initialize, want 0", staleFired)
+	if restoreGate != nil {
+		t.Fatal("Initialize must reset the restore gate to nil")
 	}
 
-	// A hook registered after the second Initialize fires exactly once per
-	// successful restore.
-	freshFired := 0
-	RegisterPostRestoreHook(func() { freshFired++ })
+	// A gate set after the second Initialize is acquired exactly once per
+	// successful restore; the stale gate never fires.
+	freshAcquired, freshReleased := 0, 0
+	SetRestoreGate(func() func() {
+		freshAcquired++
+		return func() { freshReleased++ }
+	})
 	zipBuf := createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
 	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
 	HandleRestore(rec, rec.Request)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
-	if staleFired != 0 || freshFired != 1 {
-		t.Fatalf("want stale=0 fresh=1 after restore, got stale=%d fresh=%d", staleFired, freshFired)
+	if staleAcquired != 0 || freshAcquired != 1 || freshReleased != 1 {
+		t.Fatalf("want stale=0 fresh acquired=1 released=1 after restore, got stale=%d acquired=%d released=%d",
+			staleAcquired, freshAcquired, freshReleased)
 	}
 }

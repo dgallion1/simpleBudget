@@ -95,14 +95,13 @@ func SetupDependencies(c *config.Config) error {
 	backup.Initialize(cfg, store, renderer, backupService)
 
 	// A restore rewrites the settings files on disk behind the settings
-	// manager's back: drop its in-memory cache so post-restore loads re-read
-	// from disk, and fall back to the default whatif.json if the restore
-	// pruned the active scenario's file. Registered after backup.Initialize —
-	// Initialize clears any previously registered hooks.
-	backup.RegisterPostRestoreHook(func() {
-		retirementMgr.InvalidateCache()
-		retirementMgr.ReconcileActiveScenario()
-	})
+	// manager's back. The gate holds the manager's lock for the restore's
+	// whole write+prune phase — so no in-flight save can interleave with a
+	// half-restored settings dir — and on release drops the in-memory cache
+	// and falls back to the default whatif.json if the restore pruned the
+	// active scenario's file. Registered after backup.Initialize —
+	// Initialize clears any previously set gate.
+	backup.SetRestoreGate(retirementMgr.BeginExternalRewrite)
 
 	return nil
 }

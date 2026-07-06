@@ -1,12 +1,14 @@
 package retirement
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/storage"
@@ -136,7 +138,7 @@ func TestSettingsManager_ConcurrentUpdates(t *testing.T) {
 	}
 }
 
-func TestSettingsManager_ReconcileActiveScenario_RevertsWhenFileMissing(t *testing.T) {
+func TestSettingsManager_LoadSelfHealsWhenActiveScenarioFileMissing(t *testing.T) {
 	root := t.TempDir()
 
 	store, err := storage.New(root)
@@ -156,7 +158,8 @@ func TestSettingsManager_ReconcileActiveScenario_RevertsWhenFileMissing(t *testi
 	}
 
 	// Create + switch to a scenario, then prune its file behind the
-	// manager's back (as a full-replace backup restore does).
+	// manager's back (as a full-replace backup restore does) WITHOUT any
+	// gate or reconcile call — the next cache-miss load must self-heal.
 	if _, err := sm.CreateScenario("Doomed"); err != nil {
 		t.Fatalf("CreateScenario() error: %v", err)
 	}
@@ -169,17 +172,16 @@ func TestSettingsManager_ReconcileActiveScenario_RevertsWhenFileMissing(t *testi
 	}
 
 	sm.InvalidateCache()
-	sm.ReconcileActiveScenario()
 
-	if got := sm.ActiveFilename(); got != "whatif.json" {
-		t.Fatalf("expected active filename reverted to whatif.json, got %q", got)
-	}
-	fresh, err := sm.Load()
+	fresh, err := sm.LoadContext(context.Background())
 	if err != nil {
-		t.Fatalf("Load() after reconcile error: %v", err)
+		t.Fatalf("LoadContext() after prune error: %v", err)
+	}
+	if got := sm.ActiveFilename(); got != "whatif.json" {
+		t.Fatalf("expected Load to self-heal active filename to whatif.json, got %q", got)
 	}
 	if fresh.PortfolioValue != 111111 {
-		t.Fatalf("expected Load to serve restored whatif.json (111111), got %v", fresh.PortfolioValue)
+		t.Fatalf("expected Load to serve default whatif.json (111111), got %v", fresh.PortfolioValue)
 	}
 	// The pruned scenario file must not have been resurrected.
 	if _, err := os.Stat(filepath.Join(root, active)); !os.IsNotExist(err) {
@@ -187,7 +189,7 @@ func TestSettingsManager_ReconcileActiveScenario_RevertsWhenFileMissing(t *testi
 	}
 }
 
-func TestSettingsManager_ReconcileActiveScenario_NoOpWhenFileExists(t *testing.T) {
+func TestSettingsManager_LoadKeepsActiveScenarioWhenFileExists(t *testing.T) {
 	root := t.TempDir()
 
 	store, err := storage.New(root)
@@ -209,22 +211,121 @@ func TestSettingsManager_ReconcileActiveScenario_NoOpWhenFileExists(t *testing.T
 	}
 	active := sm.ActiveFilename()
 
-	sm.ReconcileActiveScenario()
-
+	// A cache-miss load while the scenario file exists must NOT revert.
+	sm.InvalidateCache()
+	loaded, err := sm.LoadContext(context.Background())
+	if err != nil {
+		t.Fatalf("LoadContext() error: %v", err)
+	}
 	if got := sm.ActiveFilename(); got != active {
 		t.Fatalf("expected active filename unchanged (%q), got %q", active, got)
-	}
-	// InvalidateCache still forces a disk re-read of the scenario file.
-	sm.InvalidateCache()
-	loaded, err := sm.Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
 	}
 	if loaded.PortfolioValue != 222222 {
 		t.Fatalf("expected scenario settings (222222), got %v", loaded.PortfolioValue)
 	}
 	if loaded.ScenarioName != "Survivor" {
 		t.Fatalf("expected scenario name Survivor, got %q", loaded.ScenarioName)
+	}
+}
+
+func TestSettingsManager_BeginExternalRewriteBlocksSave(t *testing.T) {
+	root := t.TempDir()
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+	sm := NewSettingsManager(root, store)
+
+	end := sm.BeginExternalRewrite()
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		s := models.DefaultWhatIfSettings()
+		s.PortfolioValue = 777777
+		done <- sm.Save(s)
+	}()
+	<-started
+
+	// The save must not complete while the gate is held.
+	select {
+	case err := <-done:
+		t.Fatalf("Save completed while external rewrite gate held (err=%v)", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	end()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Save() after end() error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Save did not complete after end() released the gate")
+	}
+
+	// end() dropped the cache, so the post-gate save's value is served.
+	loaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.PortfolioValue != 777777 {
+		t.Fatalf("expected post-gate save value 777777, got %v", loaded.PortfolioValue)
+	}
+}
+
+func TestSettingsManager_ExternalRewriteRevertsPrunedActiveScenario(t *testing.T) {
+	root := t.TempDir()
+
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New() error: %v", err)
+	}
+	sm := NewSettingsManager(root, store)
+
+	// Persist a recognizable default plan, then switch to a scenario.
+	base, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	base.PortfolioValue = 333333
+	if err := sm.Save(base); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	if _, err := sm.CreateScenario("Pruned"); err != nil {
+		t.Fatalf("CreateScenario() error: %v", err)
+	}
+	active := sm.ActiveFilename()
+	if active == "whatif.json" {
+		t.Fatalf("expected non-default active filename, got %q", active)
+	}
+
+	// Simulate a full-replace restore pruning the scenario file while the
+	// gate is held. No SettingsManager method may run in this window, so
+	// the resurrection interleaving from the race finding cannot occur.
+	end := sm.BeginExternalRewrite()
+	if err := os.Remove(filepath.Join(root, active)); err != nil {
+		end()
+		t.Fatalf("os.Remove() error: %v", err)
+	}
+	end()
+
+	if got := sm.ActiveFilename(); got != "whatif.json" {
+		t.Fatalf("expected end() to revert active filename to whatif.json, got %q", got)
+	}
+	loaded, err := sm.LoadContext(context.Background())
+	if err != nil {
+		t.Fatalf("LoadContext() error: %v", err)
+	}
+	if loaded.PortfolioValue != 333333 {
+		t.Fatalf("expected default whatif.json contents (333333), got %v", loaded.PortfolioValue)
+	}
+	// The pruned scenario file must not have been resurrected.
+	if _, err := os.Stat(filepath.Join(root, active)); !os.IsNotExist(err) {
+		t.Fatalf("pruned scenario file should stay gone, stat err=%v", err)
 	}
 }
 

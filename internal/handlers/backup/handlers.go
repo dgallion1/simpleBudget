@@ -37,35 +37,33 @@ var (
 )
 
 // Initialize sets up the backup package with required dependencies.
-// It also drops any previously registered post-restore hooks — re-initializing
-// the package starts a fresh wiring, so hooks must be registered (again)
-// after Initialize. This keeps repeated wiring (e.g. per-test setup) from
-// accumulating stale hooks bound to torn-down dependencies.
+// It also clears any previously set restore gate — re-initializing the
+// package starts a fresh wiring, so the gate must be set (again) after
+// Initialize. This keeps repeated wiring (e.g. per-test setup) from
+// keeping a stale gate bound to torn-down dependencies.
 func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service) {
 	cfg = c
 	store = s
 	renderer = r
 	backupSvc = b
-	postRestoreHooks = nil
+	restoreGate = nil
 }
 
-// postRestoreHooks run after every successful restore (upload and bundled
-// test-data paths alike). Registered at wiring time — e.g. to invalidate
-// in-memory caches that mirror on-disk state a restore just rewrote.
-var postRestoreHooks []func()
+// restoreGate, when set, is acquired for the duration of a restore's
+// write+prune phase (upload and bundled test-data paths alike) and released
+// once the on-disk rewrite is complete. It serializes the restore against
+// concurrent settings saves: without it, an in-flight save could re-create
+// a pruned scenario file or clobber the freshly restored whatif.json with
+// pre-restore data. The returned release also carries the post-rewrite
+// bookkeeping (cache invalidation, active-scenario reconciliation) inside
+// the same critical section.
+var restoreGate func() (release func())
 
-// RegisterPostRestoreHook adds fn to the callbacks invoked after every
-// successful restore. Register after Initialize: re-initializing the
-// package clears the hook list.
-func RegisterPostRestoreHook(fn func()) {
-	postRestoreHooks = append(postRestoreHooks, fn)
-}
-
-// runPostRestoreHooks invokes every registered post-restore hook.
-func runPostRestoreHooks() {
-	for _, fn := range postRestoreHooks {
-		fn()
-	}
+// SetRestoreGate installs the gate acquired around every restore's
+// write+prune phase (e.g. retirement.SettingsManager.BeginExternalRewrite).
+// Set after Initialize: re-initializing the package clears the gate.
+func SetRestoreGate(fn func() func()) {
+	restoreGate = fn
 }
 
 type backupStatusResponse struct {
@@ -474,6 +472,18 @@ func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, st
 	}
 	defer release()
 
+	// Serialize the entire write+prune against settings saves. The gate
+	// (when wired) holds the SettingsManager's lock until the deferred
+	// endRewrite runs at function exit — i.e. after pruneRestoreExtras —
+	// so no save can interleave with a half-restored settings directory,
+	// and endRewrite's cache drop + active-scenario reconciliation happen
+	// inside the same critical section. Nothing between here and return
+	// may call a SettingsManager method (that would deadlock).
+	if restoreGate != nil {
+		endRewrite := restoreGate()
+		defer endRewrite()
+	}
+
 	for _, p := range queue {
 		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
 			return res, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
@@ -616,7 +626,6 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	runPostRestoreHooks()
 	log.Printf("Restore complete: %d files restored, %d stale files removed, %d protected entries skipped, %d prune failures",
 		res.restored, res.pruned, res.skippedProtected, res.pruneFailures)
 	w.WriteHeader(http.StatusOK)
@@ -634,7 +643,6 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	runPostRestoreHooks()
 	log.Printf("Test data restore complete: %d files restored, %d stale files removed, %d protected entries skipped, %d prune failures",
 		res.restored, res.pruned, res.skippedProtected, res.pruneFailures)
 	w.WriteHeader(http.StatusOK)

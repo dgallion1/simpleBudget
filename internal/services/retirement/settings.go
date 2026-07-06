@@ -422,25 +422,52 @@ func (sm *SettingsManager) InvalidateCache() {
 	sm.cache = nil
 }
 
-// ReconcileActiveScenario reverts the active scenario to the default
+// reconcileActiveScenarioLocked reverts the active scenario to the default
 // whatif.json when the active scenario's file no longer exists on disk.
 // The active filename is pure in-process state (nothing on disk records
 // it), so when something rewrites the settings directory behind the
 // manager's back — e.g. a full-replace backup restore that prunes the
 // active scenario file — the manager would otherwise keep pointing at a
 // missing file, silently serve default settings, and resurrect the pruned
-// file with defaults on the next save. Call it alongside InvalidateCache
-// after any such external rewrite.
-func (sm *SettingsManager) ReconcileActiveScenario() {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
+// file with defaults on the next save.
+//
+// Caller must hold sm.mu (write). Returns true if it reverted.
+func (sm *SettingsManager) reconcileActiveScenarioLocked() bool {
 	if sm.filename == defaultWhatIfFilename {
-		return
+		return false
 	}
 	if _, err := sm.store.Stat(sm.filepath()); os.IsNotExist(err) {
+		log.Printf("settings: active scenario file %s no longer exists; reverting to %s",
+			sm.filename, defaultWhatIfFilename)
 		sm.filename = defaultWhatIfFilename
 		sm.cache = nil
+		return true
+	}
+	return false
+}
+
+// BeginExternalRewrite serializes an external rewrite of the settings
+// directory (e.g. a full-replace backup restore) against every other
+// SettingsManager operation. It takes the manager's write lock and returns
+// end; the caller performs the on-disk rewrite, then calls end exactly
+// once. end drops the in-memory cache, reverts the active scenario to the
+// default whatif.json if the rewrite removed its file, and releases the
+// lock — all atomically with respect to concurrent saves and loads.
+//
+// Callers MUST NOT invoke any SettingsManager method between
+// BeginExternalRewrite and end: the manager's lock is held for the whole
+// window, so any such call deadlocks.
+//
+// Accepted residual: a save whose contents were computed BEFORE the
+// rewrite but issued AFTER end() still wins last-writer-wins and can
+// overwrite the rewritten data. The gate serializes in-flight operations;
+// it cannot retract a stale caller's intent.
+func (sm *SettingsManager) BeginExternalRewrite() (end func()) {
+	sm.mu.Lock()
+	return func() {
+		sm.cache = nil
+		sm.reconcileActiveScenarioLocked()
+		sm.mu.Unlock()
 	}
 }
 
@@ -458,9 +485,17 @@ func (sm *SettingsManager) loadInternalContext(ctx context.Context) (*models.Wha
 		return nil, err
 	}
 
+	// Self-heal: if the ACTIVE SCENARIO's file vanished behind our back
+	// (e.g. a full-replace backup restore pruned it), revert to the default
+	// whatif.json and load that instead of silently serving defaults for a
+	// phantom file — which a later save would resurrect with stale data.
+	// This runs on every cache-miss load, so it holds even if a future
+	// restore-like path forgets to notify the manager.
+	sm.reconcileActiveScenarioLocked()
+
 	path := sm.filepath()
 
-	// Check if file exists
+	// Check if file exists (a missing DEFAULT file still means defaults)
 	if _, err := sm.store.Stat(path); os.IsNotExist(err) {
 		// Return defaults (caller should save if needed)
 		return models.DefaultWhatIfSettings(), nil

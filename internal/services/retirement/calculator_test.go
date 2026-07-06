@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/analysis"
+	"budget2/internal/services/retirement/engine"
 )
 
 // TestDefaultMonteCarloConfig verifies default configuration values
@@ -346,7 +348,7 @@ func TestIsSocialSecurityIncomeSourceRecognizesSSI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isSocialSecurityIncomeSource(tt.source); got != tt.want {
+			if got := engine.IsSocialSecurityIncomeSource(tt.source); got != tt.want {
 				t.Fatalf("isSocialSecurityIncomeSource(%q) = %v, want %v", tt.source.Name, got, tt.want)
 			}
 		})
@@ -375,7 +377,7 @@ func TestRunProjectionTaxesSocialSecurityBelowFullOrdinaryTreatment(t *testing.T
 	}
 
 	actualMonthlyTaxes := projection.Months[0].TaxesPaid
-	tc := NewTaxCalculator(settings.TaxConfig, 0)
+	tc := engine.NewTaxCalculator(settings.TaxConfig, 0)
 	_, _, fullyTaxedAnnualTotal, _ := tc.CalculateTaxWithInvestmentIncome(4000*12, 0, 0, 0)
 	fullyTaxedMonthly := fullyTaxedAnnualTotal / 12
 
@@ -396,13 +398,13 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 			ClaimAge:   62,
 		}
 
-		beforeClaim := calculateMonthlyIncomeBreakdown(settings, 23)
+		beforeClaim := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 23)
 		if beforeClaim.SocialSecurityIncome != 0 {
 			t.Fatalf("month before claim SocialSecurityIncome = %.2f, want 0", beforeClaim.SocialSecurityIncome)
 		}
 
-		atClaim := calculateMonthlyIncomeBreakdown(settings, 24)
-		want := AdjustedSSBenefit(2000, 67, 62)
+		atClaim := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 24)
+		want := analysis.AdjustedSSBenefit(2000, 67, 62)
 		if math.Abs(atClaim.SocialSecurityIncome-want) > 0.01 {
 			t.Fatalf("claim month SocialSecurityIncome = %.2f, want %.2f", atClaim.SocialSecurityIncome, want)
 		}
@@ -421,7 +423,7 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 			ClaimAge:   67,
 		}
 
-		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		breakdown := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 0)
 		if breakdown.SocialSecurityIncome != 2000 {
 			t.Fatalf("SocialSecurityIncome = %.2f, want synthesized 2000", breakdown.SocialSecurityIncome)
 		}
@@ -441,7 +443,7 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 			FRA:        67,
 		}
 
-		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		breakdown := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 0)
 		if breakdown.SocialSecurityIncome != 1500 {
 			t.Fatalf("SocialSecurityIncome = %.2f, want manual 1500", breakdown.SocialSecurityIncome)
 		}
@@ -459,7 +461,7 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 			ClaimAge:   67,
 		}
 
-		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		breakdown := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 0)
 		if breakdown.OrdinaryIncome != 700 {
 			t.Fatalf("OrdinaryIncome = %.2f, want 700", breakdown.OrdinaryIncome)
 		}
@@ -480,7 +482,7 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 
 		// When already claiming (ClaimAge <= CurrentAge), the entered amount
 		// is treated as the actual benefit, not PIA — no adjustment applied.
-		breakdown := calculateMonthlyIncomeBreakdown(settings, 0)
+		breakdown := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 0)
 		want := 2000.0
 		if math.Abs(breakdown.SocialSecurityIncome-want) > 0.01 {
 			t.Fatalf("SocialSecurityIncome = %.2f, want %.2f", breakdown.SocialSecurityIncome, want)
@@ -500,13 +502,13 @@ func TestCalculateMonthlyIncomeBreakdown_SocialSecurityProjection(t *testing.T) 
 			SpouseFRA:        67,
 		}
 
-		withoutSpouseClaim := calculateMonthlyIncomeBreakdown(settings, 0)
+		withoutSpouseClaim := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 0)
 		if withoutSpouseClaim.SocialSecurityIncome != 3000 {
 			t.Fatalf("SocialSecurityIncome without spouse claim = %.2f, want primary-only 3000", withoutSpouseClaim.SocialSecurityIncome)
 		}
 
 		settings.SocialSecurity.SpouseClaimAge = 67
-		withSpouseClaim := calculateMonthlyIncomeBreakdown(settings, 0)
+		withSpouseClaim := engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, 0)
 		// Both already claiming (ClaimAge <= CurrentAge): entered amounts are
 		// actual benefits, no adjustment or spousal top-up applied (3000 + 1000).
 		if withSpouseClaim.SocialSecurityIncome != 4000 {
@@ -561,9 +563,9 @@ func TestCalculateBudgetFitIncludesNIITAndEstimatedIRMAA(t *testing.T) {
 func TestPlannerIRMAAInflationFactorForYear_Rebases2026TableOntoTaxBaseYear(t *testing.T) {
 	inflationRate := 3.0
 
-	year0Factor := plannerIRMAAInflationFactorForYear(inflationRate, 0)
-	year2Factor := plannerIRMAAInflationFactorForYear(inflationRate, 2)
-	year5Factor := plannerIRMAAInflationFactorForYear(inflationRate, 5)
+	year0Factor := engine.PlannerIRMAAInflationFactorForYear(inflationRate, 0)
+	year2Factor := engine.PlannerIRMAAInflationFactorForYear(inflationRate, 2)
+	year5Factor := engine.PlannerIRMAAInflationFactorForYear(inflationRate, 5)
 
 	wantYear0 := math.Pow(1+inflationRate/100, -2)
 	wantYear5 := math.Pow(1+inflationRate/100, 3)
@@ -669,14 +671,14 @@ func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testin
 	steadyStateTaxableCashFlow := expectedTaxableMonthlyCashFlow(settings, steadyStateTaxableBalance, settings.InvestmentReturn)
 	lookbackTaxableCashFlow := expectedTaxableMonthlyCashFlow(settings, lookbackTaxableBalance, settings.InvestmentReturn)
 
-	estimateSnapshot := func(month int, taxableCashFlow taxableGrowthResult, assumedIRMALookbackMAGI *float64) projectedTaxSnapshot {
-		taxState := projectionTaxAccumulator{}
+	estimateSnapshot := func(month int, taxableCashFlow engine.TaxableGrowthResult, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
+		taxState := engine.ProjectionTaxAccumulator{}
 		return taxState.EstimateMonthlySnapshot(
-			NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
+			engine.NewTaxCalculator(settings.TaxConfig, settings.InflationRate),
 			month/12,
 			month%12,
-			calculateMonthlyIncomeBreakdown(settings, month).OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
-			calculateMonthlyIncomeBreakdown(settings, month).SocialSecurityIncome,
+			engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, month).OrdinaryIncome+taxableCashFlow.NonQualifiedDividends,
+			engine.CalculateMonthlyIncomeBreakdown(DefaultHooks(), settings, month).SocialSecurityIncome,
 			0,
 			taxableCashFlow.QualifiedDividends,
 			taxableCashFlow.CapitalGainsDistributions,
@@ -684,8 +686,8 @@ func TestCalculateBudgetFitSteadyStateIRMAAUsesTwoYearLookbackEstimate(t *testin
 			0,
 			nil,
 			assumedIRMALookbackMAGI,
-			medicareEligibleAdultCountAtYear(settings, month/12),
-			plannerIRMAAInflationFactorForYear(settings.InflationRate, float64(month)/12),
+			engine.MedicareEligibleAdultCountAtYear(settings, month/12),
+			engine.PlannerIRMAAInflationFactorForYear(settings.InflationRate, float64(month)/12),
 		)
 	}
 
@@ -1455,7 +1457,7 @@ func TestRunProjectionWithSurplusIncome(t *testing.T) {
 }
 
 func TestTaxableAccountWithdrawUsesAverageCostBasis(t *testing.T) {
-	account := taxableAccountState{
+	account := engine.TaxableAccountState{
 		MarketValue: 120000,
 		CostBasis:   100000,
 	}
@@ -1623,7 +1625,7 @@ func TestNewCalculatorWithChain(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 3000
 
-	chain := []PreparedChainLink{
+	chain := []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	}
 
@@ -1652,7 +1654,7 @@ func TestRunProjection_ChainTransition_BalancesCarryOver(t *testing.T) {
 	linked.MonthlyLivingExpenses = 5000
 	linked.InvestmentReturn = 4.0
 
-	chain := []PreparedChainLink{
+	chain := []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	}
 
@@ -1689,7 +1691,7 @@ func TestRunProjection_ChainTransition_AtCurrentAge(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	chain := []PreparedChainLink{
+	chain := []engine.PreparedChainLink{
 		preparedLink(t, "", 60, linked),
 	}
 
@@ -1755,7 +1757,7 @@ func TestMonteCarloSimulation_ChainTransition(t *testing.T) {
 	linked.MonthlyLivingExpenses = 12000
 	linked.InvestmentReturn = 3.0
 
-	chainCalc := newTestCalcWithChain(t, primary, []PreparedChainLink{
+	chainCalc := newTestCalcWithChain(t, primary, []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	})
 	noChainCalc := newTestCalc(t, primary)

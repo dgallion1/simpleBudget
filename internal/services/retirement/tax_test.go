@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 func TestNewTaxCalculator(t *testing.T) {
@@ -13,7 +14,7 @@ func TestNewTaxCalculator(t *testing.T) {
 		StateIncomeTaxRate: models.FloatPtr(5.0),
 	}
 
-	tc := NewTaxCalculator(config, 3.0)
+	tc := engine.NewTaxCalculator(config, 3.0)
 
 	if tc.FilingStatus != models.FilingMarriedJoint {
 		t.Errorf("Expected FilingMarriedJoint, got %v", tc.FilingStatus)
@@ -27,7 +28,7 @@ func TestNewTaxCalculator(t *testing.T) {
 }
 
 func TestNewTaxCalculatorWithNilConfig(t *testing.T) {
-	tc := NewTaxCalculator(nil, 3.0)
+	tc := engine.NewTaxCalculator(nil, 3.0)
 
 	// Should use defaults (FilingSingle matches default single-person scenario)
 	if tc.FilingStatus != models.FilingSingle {
@@ -36,7 +37,7 @@ func TestNewTaxCalculatorWithNilConfig(t *testing.T) {
 }
 
 func TestCalculateFederalTax(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedJoint,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
@@ -110,7 +111,7 @@ func TestCalculateFederalTax(t *testing.T) {
 }
 
 func TestInflationAdjustedBrackets(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 3.0) // 3% inflation
 
@@ -133,7 +134,7 @@ func TestInflationAdjustedBrackets(t *testing.T) {
 }
 
 func TestEstimateRothConversionTax(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingMarriedJoint,
 	}, 0)
 
@@ -160,7 +161,7 @@ func TestEstimateRothConversionTax(t *testing.T) {
 }
 
 func TestGetMarginalRate(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 0)
 
@@ -186,14 +187,14 @@ func TestGetMarginalRate(t *testing.T) {
 }
 
 func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	t.Run("allocates recurring annual tax evenly across months", func(t *testing.T) {
 		monthlyOrdinaryIncome := 6000.0
-		accumulator := projectionTaxAccumulator{}
+		accumulator := engine.ProjectionTaxAccumulator{}
 
 		wantFederal, wantState, wantTotal, _ := tc.CalculateTotalTax(monthlyOrdinaryIncome*12, 0)
 		if wantFederal <= 0 || wantState != 0 {
@@ -214,7 +215,7 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 
 	t.Run("treats roth conversions as one-time annual events", func(t *testing.T) {
 		conversionAmount := 12000.0
-		accumulator := projectionTaxAccumulator{}
+		accumulator := engine.ProjectionTaxAccumulator{}
 
 		month0Taxes := accumulator.EstimateMonthlyTaxes(tc, 0, 0, 0, 0, 0, 0, 0, 0, conversionAmount)
 		_, _, wantTotal, _ := tc.CalculateTotalTax(conversionAmount, 0)
@@ -226,7 +227,7 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 }
 
 func TestCalculateTaxWithInvestmentIncome(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
@@ -293,7 +294,7 @@ func TestCalculateTaxableSocialSecurity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status, tt.mfsLivedWithSpouse)
+			got := engine.CalculateTaxableSocialSecurity(tt.ssBenefits, tt.otherIncome, tt.qd, tt.ltcg, tt.status, tt.mfsLivedWithSpouse)
 			if math.Abs(got-tt.want) > 0.01 {
 				t.Fatalf("CalculateTaxableSocialSecurity() = %.2f, want %.2f", got, tt.want)
 			}
@@ -341,7 +342,7 @@ func TestCalculateNIIT(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateNIIT(tt.magi, tt.netInvestmentIncome, tt.status)
+			got := engine.CalculateNIIT(tt.magi, tt.netInvestmentIncome, tt.status)
 			if math.Abs(got-tt.want) > 0.01 {
 				t.Fatalf("CalculateNIIT() = %.2f, want %.2f", got, tt.want)
 			}
@@ -389,7 +390,7 @@ func TestCalculateMonthlyIRMAA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateMonthlyIRMAA(tt.magi, tt.status, tt.inflationFactor)
+			got := engine.CalculateMonthlyIRMAA(tt.magi, tt.status, tt.inflationFactor)
 			if math.Abs(got-tt.want) > 0.01 {
 				t.Fatalf("CalculateMonthlyIRMAA() = %.2f, want %.2f", got, tt.want)
 			}
@@ -400,7 +401,7 @@ func TestCalculateMonthlyIRMAA(t *testing.T) {
 // F-001: age-65+ additional standard deduction tests
 
 func TestGetAdjustedStandardDeduction_F001_Age65Single(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 		Age65Count:   1,
 	}, 0)
@@ -413,7 +414,7 @@ func TestGetAdjustedStandardDeduction_F001_Age65Single(t *testing.T) {
 }
 
 func TestGetAdjustedStandardDeduction_F001_Age65MFJBoth(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingMarriedJoint,
 		Age65Count:   2,
 	}, 0)
@@ -426,7 +427,7 @@ func TestGetAdjustedStandardDeduction_F001_Age65MFJBoth(t *testing.T) {
 }
 
 func TestGetAdjustedStandardDeduction_F001_Age65Zero(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 		Age65Count:   0,
 	}, 0)
@@ -441,7 +442,7 @@ func TestGetAdjustedStandardDeduction_F001_Age65Zero(t *testing.T) {
 // TestCalculateFederalTax_F001_AuditWE1_1_PreservedForUnder65 is the regression guard.
 // Audit WE-1.1: Single under 65, $80K gross → federal tax $9,441 (no age-65 deduction).
 func TestCalculateFederalTax_F001_AuditWE1_1_PreservedForUnder65(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 		Age65Count:   0,
 	}, 0)
@@ -455,7 +456,7 @@ func TestCalculateFederalTax_F001_AuditWE1_1_PreservedForUnder65(t *testing.T) {
 // TestCalculateFederalTax_F001_Age65SingleLowersTax verifies the fix.
 // Single 65+ at $80K: deduction = 14600+1950 = 16550; expected tax $9,012.
 func TestCalculateFederalTax_F001_Age65SingleLowersTax(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 		Age65Count:   1,
 	}, 0)
@@ -469,7 +470,7 @@ func TestCalculateFederalTax_F001_Age65SingleLowersTax(t *testing.T) {
 // F-018: MFS lived-with-spouse — both thresholds $0; full 85% applies above 0.
 // Per 26 USC § 86(c)(2)(B).
 func TestCalculateTaxableSocialSecurity_F018_MFSLivedWithSpouse(t *testing.T) {
-	taxable := CalculateTaxableSocialSecurity(20000, 0, 0, 0, models.FilingMarriedSeparate, true)
+	taxable := engine.CalculateTaxableSocialSecurity(20000, 0, 0, 0, models.FilingMarriedSeparate, true)
 	want := 0.85 * 20000 // $17,000 (85% cap immediately applies because thresholds are 0)
 	if math.Abs(taxable-want) > 0.01 {
 		t.Errorf("MFS-lived-with-spouse: taxable SS = %.2f; want %.2f", taxable, want)
@@ -484,16 +485,16 @@ func TestCalculateTaxableSocialSecurity_F018_MFSLivedApart(t *testing.T) {
 	//   Step 2: 50% × min(($40K - $25K), ($34K - $25K)) = 50% × $9K = $4,500
 	//   Sum: $9,600
 	//   85% cap: 0.85 × $20K = $17,000 → take lesser = $9,600
-	taxable := CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingMarriedSeparate, false)
+	taxable := engine.CalculateTaxableSocialSecurity(20000, 30000, 0, 0, models.FilingMarriedSeparate, false)
 	want := 9600.0
 	if math.Abs(taxable-want) > 0.01 {
 		t.Errorf("MFS-lived-apart: taxable SS = %.2f; want %.2f", taxable, want)
 	}
 }
 
-// F-018: TaxCalculator method-version with TaxConfig.MFSLivedWithSpouse.
+// F-018: engine.TaxCalculator method-version with TaxConfig.MFSLivedWithSpouse.
 func TestTaxCalculator_CalculateTaxableSocialSecurity_F018_MFSLivedWithSpouse(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedSeparate,
 		MFSLivedWithSpouse: true,
 	}, 0)
@@ -505,7 +506,7 @@ func TestTaxCalculator_CalculateTaxableSocialSecurity_F018_MFSLivedWithSpouse(t 
 }
 
 func TestTaxCalculator_CalculateTaxableSocialSecurity_F018_MFSLivedApart(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedSeparate,
 		MFSLivedWithSpouse: false,
 	}, 0)
@@ -519,7 +520,7 @@ func TestTaxCalculator_CalculateTaxableSocialSecurity_F018_MFSLivedApart(t *test
 // F-018 regression: existing non-MFS paths preserved.
 // MFJ at $50K other + $30K SS still produces WE-2.1's $23,850.
 func TestCalculateTaxableSocialSecurity_F018_MFJUnchanged(t *testing.T) {
-	taxable := CalculateTaxableSocialSecurity(30000, 50000, 0, 0, models.FilingMarriedJoint, false)
+	taxable := engine.CalculateTaxableSocialSecurity(30000, 50000, 0, 0, models.FilingMarriedJoint, false)
 	want := 23850.0
 	if math.Abs(taxable-want) > 0.01 {
 		t.Errorf("MFJ regression: taxable SS = %.2f; want %.2f (WE-2.1)", taxable, want)

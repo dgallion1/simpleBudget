@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 func TestRunProjection_TaxDeferredDelayBlocksUntilExpiry(t *testing.T) {
@@ -104,24 +105,6 @@ func TestRunProjection_RMDOverridesDelay(t *testing.T) {
 	}
 }
 
-func TestApplyBigTicketExpense_RespectsDelay(t *testing.T) {
-	taxDeferred := 300000.0
-	taxable := 100000.0
-	roth := 100000.0
-
-	remaining := applyBigTicketExpense(250000, false, 0, &taxDeferred, &taxable, &roth)
-
-	if remaining != 50000 {
-		t.Fatalf("expected 50000 remaining after taxable and Roth are exhausted, got %.2f", remaining)
-	}
-	if taxable != 0 || roth != 0 {
-		t.Fatalf("expected taxable and Roth balances to be exhausted, got taxable %.2f roth %.2f", taxable, roth)
-	}
-	if taxDeferred != 300000 {
-		t.Fatalf("expected tax-deferred balance to remain untouched during delay, got %.2f", taxDeferred)
-	}
-}
-
 func TestRunSingleHistoricalSequence_RespectsDelay(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.PortfolioValue = 500000
@@ -194,7 +177,7 @@ func TestWithdrawForExpenses_TracksSourcesAndShortfall(t *testing.T) {
 	// TEMP scaffold: Task 7 replaces with real basis pointer from PortfolioMonthInput.
 	dummyBasis := roth
 
-	withdrawal := withdrawForExpenses(200000, 0, false, 0, &taxDeferred, &taxable, &roth, &dummyBasis)
+	withdrawal := engine.WithdrawForExpenses(200000, 0, false, 0, &taxDeferred, &taxable, &roth, &dummyBasis)
 
 	if math.Abs(withdrawal.WithdrawalFromTaxable-100000) > 0.01 {
 		t.Fatalf("expected taxable withdrawal of 100000, got %.2f", withdrawal.WithdrawalFromTaxable)

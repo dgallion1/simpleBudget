@@ -18,7 +18,7 @@ import (
 type Calculator struct {
 	Prepared      prepare.PreparedSettings
 	Settings      *models.WhatIfSettings
-	ResolvedChain []PreparedChainLink
+	ResolvedChain []engine.PreparedChainLink
 
 	mcSeed    int64
 	mcSeedSet bool
@@ -40,7 +40,7 @@ func NewCalculator(prepared prepare.PreparedSettings) *Calculator {
 }
 
 // NewCalculatorWithChain creates a new retirement calculator with the given prepared settings and scenario chain.
-func NewCalculatorWithChain(prepared prepare.PreparedSettings, chain []PreparedChainLink) *Calculator {
+func NewCalculatorWithChain(prepared prepare.PreparedSettings, chain []engine.PreparedChainLink) *Calculator {
 	return &Calculator{
 		Prepared:      prepared,
 		Settings:      prepared.Settings(),
@@ -67,7 +67,7 @@ func (c *Calculator) CalculateTotalExpenses(month int) float64 {
 }
 
 // CalculateExpenseBreakdown separates expenses into discretionary and essential.
-func (c *Calculator) CalculateExpenseBreakdown(month int) ExpenseBreakdown {
+func (c *Calculator) CalculateExpenseBreakdown(month int) engine.ExpenseBreakdown {
 	return engine.CalculateExpenseBreakdown(c.Settings, month)
 }
 
@@ -204,6 +204,14 @@ type HistoricalSequenceResult = analysis.HistoricalSequenceResult
 
 // yearsUntilDepletion forwards to analysis.YearsUntilDepletion.
 var yearsUntilDepletion = analysis.YearsUntilDepletion
+
+// expectedTaxableMonthlyCashFlow computes one month of taxable-account
+// growth the way the engine does; tests use it to build oracles for
+// steady-state taxable cash flow.
+func expectedTaxableMonthlyCashFlow(s *models.WhatIfSettings, taxableMarketValue, taxableAnnualReturn float64) engine.TaxableGrowthResult {
+	account := engine.NewTaxableAccountState(s, taxableMarketValue)
+	return account.ApplyGrowth(engine.BuildTaxableReturnComponents(taxableAnnualReturn, s), 1.0)
+}
 
 // BuildRMDAnalysis is a thin delegator over analysis.BuildRMD.
 func (c *Calculator) BuildRMDAnalysis(projection *models.ProjectionResult) *models.RMDAnalysis {

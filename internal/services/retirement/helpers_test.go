@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
 
@@ -17,18 +18,18 @@ func newTestCalc(tb testing.TB, s *models.WhatIfSettings) *Calculator {
 }
 
 // newTestCalcWithChain preps the given primary settings and constructs a
-// chain-aware Calculator. Chain links must already be PreparedChainLink
+// chain-aware Calculator. Chain links must already be engine.PreparedChainLink
 // values (use preparedLink to build them from raw settings).
-func newTestCalcWithChain(tb testing.TB, s *models.WhatIfSettings, chain []PreparedChainLink) *Calculator {
+func newTestCalcWithChain(tb testing.TB, s *models.WhatIfSettings, chain []engine.PreparedChainLink) *Calculator {
 	tb.Helper()
 	return NewCalculatorWithChain(prepare.MustFrom(tb, s), chain)
 }
 
-// preparedLink builds a PreparedChainLink from raw settings, for tests that
+// preparedLink builds a engine.PreparedChainLink from raw settings, for tests that
 // previously constructed ResolvedScenarioChainLink literals.
-func preparedLink(tb testing.TB, filename string, transitionAge int, s *models.WhatIfSettings) PreparedChainLink {
+func preparedLink(tb testing.TB, filename string, transitionAge int, s *models.WhatIfSettings) engine.PreparedChainLink {
 	tb.Helper()
-	return PreparedChainLink{
+	return engine.PreparedChainLink{
 		ScenarioFilename: filename,
 		TransitionAge:    transitionAge,
 		Settings:         prepare.MustFrom(tb, s),

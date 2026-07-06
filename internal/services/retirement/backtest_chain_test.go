@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 // TestHistoricalBacktest_ChainTransition exercises the chain
@@ -26,7 +27,7 @@ func TestHistoricalBacktest_ChainTransition(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 8000
 
-	chainCalc := newTestCalcWithChain(t, primary, []PreparedChainLink{
+	chainCalc := newTestCalcWithChain(t, primary, []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	})
 	noChainCalc := newTestCalc(t, primary)

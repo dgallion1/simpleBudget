@@ -2,6 +2,7 @@ package retirement
 
 import (
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/analysis"
 	"math"
 	"testing"
 )
@@ -63,7 +64,7 @@ func TestAdjustedSSBenefit(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := AdjustedSSBenefit(tc.pia, tc.fra, tc.claimAge)
+			got := analysis.AdjustedSSBenefit(tc.pia, tc.fra, tc.claimAge)
 			if got < tc.wantMin || got > tc.wantMax {
 				t.Errorf("AdjustedSSBenefit(%.0f, %d, %d) = %.2f, want between %.0f and %.0f",
 					tc.pia, tc.fra, tc.claimAge, got, tc.wantMin, tc.wantMax)
@@ -72,16 +73,16 @@ func TestAdjustedSSBenefit(t *testing.T) {
 	}
 
 	t.Run("Edge: claimAge below 62 returns same as 62", func(t *testing.T) {
-		at62 := AdjustedSSBenefit(2000, 67, 62)
-		at60 := AdjustedSSBenefit(2000, 67, 60)
+		at62 := analysis.AdjustedSSBenefit(2000, 67, 62)
+		at60 := analysis.AdjustedSSBenefit(2000, 67, 60)
 		if !withinTolerance(at62, at60, 0.01) {
 			t.Errorf("claimAge 60 = %.2f, claimAge 62 = %.2f; expected same result", at60, at62)
 		}
 	})
 
 	t.Run("Edge: claimAge above 70 returns same as 70", func(t *testing.T) {
-		at70 := AdjustedSSBenefit(2000, 67, 70)
-		at73 := AdjustedSSBenefit(2000, 67, 73)
+		at70 := analysis.AdjustedSSBenefit(2000, 67, 70)
+		at73 := analysis.AdjustedSSBenefit(2000, 67, 73)
 		if !withinTolerance(at70, at73, 0.01) {
 			t.Errorf("claimAge 73 = %.2f, claimAge 70 = %.2f; expected same result", at73, at70)
 		}
@@ -90,7 +91,7 @@ func TestAdjustedSSBenefit(t *testing.T) {
 
 func TestSSComparisonTable(t *testing.T) {
 	t.Run("Standard case: PIA $2000, FRA 67, currentAge 55, COLA 2%", func(t *testing.T) {
-		options := SSComparisonTable(2000, 67, 55, 0.02)
+		options := analysis.SSComparisonTable(2000, 67, 55, 0.02)
 
 		if len(options) != 9 {
 			t.Fatalf("expected 9 options (ages 62-70), got %d", len(options))
@@ -166,7 +167,7 @@ func TestSSComparisonTable(t *testing.T) {
 	})
 
 	t.Run("Current age 65: only returns ages 65-70", func(t *testing.T) {
-		options := SSComparisonTable(2000, 67, 65, 0.02)
+		options := analysis.SSComparisonTable(2000, 67, 65, 0.02)
 
 		if len(options) != 6 {
 			t.Fatalf("expected 6 options (ages 65-70), got %d", len(options))
@@ -180,7 +181,7 @@ func TestSSComparisonTable(t *testing.T) {
 	})
 
 	t.Run("Current age 70: only returns age 70", func(t *testing.T) {
-		options := SSComparisonTable(2000, 67, 70, 0.02)
+		options := analysis.SSComparisonTable(2000, 67, 70, 0.02)
 
 		if len(options) != 1 {
 			t.Fatalf("expected 1 option (age 70), got %d", len(options))
@@ -215,17 +216,17 @@ func TestDerivedPIA(t *testing.T) {
 	t.Run("round trips with AdjustedSSBenefit", func(t *testing.T) {
 		for _, age := range []int{62, 65, 67, 70} {
 			pia := 2000.0
-			benefit := AdjustedSSBenefit(pia, 67, age)
-			derived := DerivedPIA(benefit, 67, age)
+			benefit := analysis.AdjustedSSBenefit(pia, 67, age)
+			derived := analysis.DerivedPIA(benefit, 67, age)
 			if !withinTolerance(derived, pia, 0.01) {
-				t.Errorf("age %d: DerivedPIA(%.2f) = %.2f, want %.2f", age, benefit, derived, pia)
+				t.Errorf("age %d: analysis.DerivedPIA(%.2f) = %.2f, want %.2f", age, benefit, derived, pia)
 			}
 		}
 	})
 
 	t.Run("claimAge clamped above 70", func(t *testing.T) {
-		got := DerivedPIA(2480, 67, 75)
-		want := DerivedPIA(2480, 67, 70)
+		got := analysis.DerivedPIA(2480, 67, 75)
+		want := analysis.DerivedPIA(2480, 67, 70)
 		if !withinTolerance(got, want, 0.01) {
 			t.Fatalf("claimAge 75 = %.2f, claimAge 70 = %.2f; expected same", got, want)
 		}
@@ -330,7 +331,7 @@ func TestAdjustedSpousalBenefit(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := AdjustedSpousalBenefit(tc.spousalPIA, tc.spouseFRA, tc.claimAge)
+			got := analysis.AdjustedSpousalBenefit(tc.spousalPIA, tc.spouseFRA, tc.claimAge)
 			if got < tc.wantMin || got > tc.wantMax {
 				t.Errorf("AdjustedSpousalBenefit(%.0f, %d, %d) = %.2f, want between %.0f and %.0f",
 					tc.spousalPIA, tc.spouseFRA, tc.claimAge, got, tc.wantMin, tc.wantMax)
@@ -339,16 +340,16 @@ func TestAdjustedSpousalBenefit(t *testing.T) {
 	}
 
 	t.Run("spousal early reduction is steeper than worker reduction", func(t *testing.T) {
-		spousal := AdjustedSpousalBenefit(2000, 67, 62)
-		worker := AdjustedSSBenefit(2000, 67, 62)
+		spousal := analysis.AdjustedSpousalBenefit(2000, 67, 62)
+		worker := analysis.AdjustedSSBenefit(2000, 67, 62)
 		if spousal >= worker {
 			t.Errorf("expected spousal (%.2f) < worker (%.2f) at age 62 with FRA 67", spousal, worker)
 		}
 	})
 
 	t.Run("claim below 62 clamped to 62", func(t *testing.T) {
-		at62 := AdjustedSpousalBenefit(2000, 67, 62)
-		at60 := AdjustedSpousalBenefit(2000, 67, 60)
+		at62 := analysis.AdjustedSpousalBenefit(2000, 67, 62)
+		at60 := analysis.AdjustedSpousalBenefit(2000, 67, 60)
 		if !withinTolerance(at62, at60, 0.01) {
 			t.Errorf("claimAge 60 = %.2f, claimAge 62 = %.2f; expected same", at60, at62)
 		}
@@ -357,43 +358,43 @@ func TestAdjustedSpousalBenefit(t *testing.T) {
 
 func TestSpousalTopUp(t *testing.T) {
 	t.Run("own benefit already exceeds half higher PIA", func(t *testing.T) {
-		got := SpousalTopUp(2100, 4000, 67, 67)
+		got := analysis.SpousalTopUp(2100, 4000, 67, 67)
 		if got != 2100 {
 			t.Fatalf("SpousalTopUp = %.2f, want own benefit 2100", got)
 		}
 	})
 
 	t.Run("claim at FRA tops up to half higher PIA", func(t *testing.T) {
-		got := SpousalTopUp(1000, 4000, 67, 67)
+		got := analysis.SpousalTopUp(1000, 4000, 67, 67)
 		if got != 2000 {
 			t.Fatalf("SpousalTopUp = %.2f, want 2000", got)
 		}
 	})
 
 	t.Run("early claim uses spousal reduction (not worker reduction)", func(t *testing.T) {
-		got := SpousalTopUp(500, 4000, 67, 62)
-		want := AdjustedSpousalBenefit(2000, 67, 62)
+		got := analysis.SpousalTopUp(500, 4000, 67, 62)
+		want := analysis.AdjustedSpousalBenefit(2000, 67, 62)
 		if !withinTolerance(got, want, 0.01) {
 			t.Fatalf("SpousalTopUp = %.2f, want %.2f", got, want)
 		}
 	})
 
 	t.Run("32.5%% rule at age 62 with worker PIA $4100", func(t *testing.T) {
-		got := SpousalTopUp(0, 4100, 67, 62)
+		got := analysis.SpousalTopUp(0, 4100, 67, 62)
 		if !withinTolerance(got, 1332.50, 0.5) {
 			t.Fatalf("SpousalTopUp(0, 4100, 67, 62) = %.2f, want ~1332.50", got)
 		}
 	})
 
 	t.Run("delayed claim does not add delayed credits to spousal component", func(t *testing.T) {
-		got := SpousalTopUp(1000, 4000, 67, 70)
+		got := analysis.SpousalTopUp(1000, 4000, 67, 70)
 		if got != 2000 {
 			t.Fatalf("SpousalTopUp delayed claim = %.2f, want capped 2000", got)
 		}
 	})
 
 	t.Run("zero higher PIA returns own benefit", func(t *testing.T) {
-		got := SpousalTopUp(1500, 0, 67, 67)
+		got := analysis.SpousalTopUp(1500, 0, 67, 67)
 		if got != 1500 {
 			t.Fatalf("SpousalTopUp = %.2f, want 1500", got)
 		}
@@ -402,7 +403,7 @@ func TestSpousalTopUp(t *testing.T) {
 
 func TestSSBreakevenAges(t *testing.T) {
 	t.Run("Standard PIA $2000, FRA 67, COLA 2%", func(t *testing.T) {
-		results := SSBreakevenAges(2000, 67, 0.02)
+		results := analysis.SSBreakevenAges(2000, 67, 0.02)
 
 		if len(results) == 0 {
 			t.Fatal("expected at least one breakeven result")
@@ -435,7 +436,7 @@ func TestSSBreakevenAges(t *testing.T) {
 	})
 
 	t.Run("Breakeven 62 vs 63 around 75-80", func(t *testing.T) {
-		results := SSBreakevenAges(2000, 67, 0.02)
+		results := analysis.SSBreakevenAges(2000, 67, 0.02)
 
 		var found bool
 		for _, r := range results {
@@ -453,7 +454,7 @@ func TestSSBreakevenAges(t *testing.T) {
 	})
 
 	t.Run("Breakeven 69 vs 70 around 82-85", func(t *testing.T) {
-		results := SSBreakevenAges(2000, 67, 0.02)
+		results := analysis.SSBreakevenAges(2000, 67, 0.02)
 
 		var found bool
 		for _, r := range results {
@@ -471,7 +472,7 @@ func TestSSBreakevenAges(t *testing.T) {
 	})
 
 	t.Run("All breakeven ages between claim ages and 100", func(t *testing.T) {
-		results := SSBreakevenAges(2000, 67, 0.02)
+		results := analysis.SSBreakevenAges(2000, 67, 0.02)
 
 		for _, r := range results {
 			if r.BreakevenAge < r.LateAge || r.BreakevenAge > 100 {
@@ -497,7 +498,7 @@ func TestSSBreakevenAges(t *testing.T) {
 			{1500, 66, 0.03},
 			{3000, 67, 0.00},
 		} {
-			results := SSBreakevenAges(tc.pia, tc.fra, tc.cola)
+			results := analysis.SSBreakevenAges(tc.pia, tc.fra, tc.cola)
 			for i := 1; i < len(results); i++ {
 				drop := results[i-1].BreakevenAge - results[i].BreakevenAge
 				if drop > 3 {
@@ -525,7 +526,7 @@ func TestSSBreakevenAgesWithSpousalTopUp(t *testing.T) {
 			{1500, 67, 0.02, 3000},
 			{1000, 66, 0.03, 2500},
 		} {
-			results := SSBreakevenAgesWithSpousalTopUp(tc.pia, tc.fra, tc.cola, tc.higherPIA)
+			results := analysis.SSBreakevenAgesWithSpousalTopUp(tc.pia, tc.fra, tc.cola, tc.higherPIA)
 			if len(results) != 8 {
 				t.Fatalf("expected 8 results, got %d", len(results))
 			}
@@ -548,7 +549,7 @@ func TestSSBreakevenAgesWithSpousalTopUp(t *testing.T) {
 	})
 
 	t.Run("All breakeven ages in valid range", func(t *testing.T) {
-		results := SSBreakevenAgesWithSpousalTopUp(1500, 67, 0.02, 3000)
+		results := analysis.SSBreakevenAgesWithSpousalTopUp(1500, 67, 0.02, 3000)
 		for _, r := range results {
 			if r.BreakevenAge != 0 && (r.BreakevenAge < r.LateAge || r.BreakevenAge > 100) {
 				t.Errorf("breakeven age %d out of range [%d, 100] for early=%d late=%d",
@@ -578,7 +579,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 	}
 
 	t.Run("nil settings", func(t *testing.T) {
-		if SSPortfolioEligible(nil) {
+		if analysis.SSPortfolioEligible(nil) {
 			t.Fatal("nil settings should not be eligible")
 		}
 	})
@@ -586,13 +587,13 @@ func TestSSPortfolioEligible(t *testing.T) {
 	t.Run("nil social security config", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity = nil
-		if SSPortfolioEligible(s) {
+		if analysis.SSPortfolioEligible(s) {
 			t.Fatal("nil config should not be eligible")
 		}
 	})
 
 	t.Run("no claim ages set", func(t *testing.T) {
-		if SSPortfolioEligible(base()) {
+		if analysis.SSPortfolioEligible(base()) {
 			t.Fatal("unset claim ages should not be eligible")
 		}
 	})
@@ -600,7 +601,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 	t.Run("primary claim age equals current age", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 67 // same as CurrentAge
-		if SSPortfolioEligible(s) {
+		if analysis.SSPortfolioEligible(s) {
 			t.Fatal("primary claim age equal to current age should be ineligible (already claiming)")
 		}
 	})
@@ -608,7 +609,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 	t.Run("primary claim age in future", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 68
-		if !SSPortfolioEligible(s) {
+		if !analysis.SSPortfolioEligible(s) {
 			t.Fatal("primary claim age in the future should be eligible")
 		}
 	})
@@ -616,7 +617,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 	t.Run("only spouse claim age set", func(t *testing.T) {
 		s := base()
 		s.SocialSecurity.SpouseClaimAge = 62
-		if !SSPortfolioEligible(s) {
+		if !analysis.SSPortfolioEligible(s) {
 			t.Fatal("spouse-only selection should be eligible")
 		}
 	})
@@ -625,7 +626,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 		s := base()
 		s.SocialSecurity.ClaimAge = 68
 		s.SocialSecurity.SpouseClaimAge = 62
-		if !SSPortfolioEligible(s) {
+		if !analysis.SSPortfolioEligible(s) {
 			t.Fatal("dual selection with future ages should be eligible")
 		}
 	})
@@ -634,7 +635,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 		s := base()
 		s.CurrentAge = 70
 		s.SocialSecurity.ClaimAge = 69
-		if SSPortfolioEligible(s) {
+		if analysis.SSPortfolioEligible(s) {
 			t.Fatal("primary claim age below current age should be ineligible")
 		}
 	})
@@ -643,7 +644,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 		s := base()
 		s.SpouseAge = 65
 		s.SocialSecurity.SpouseClaimAge = 62
-		if SSPortfolioEligible(s) {
+		if analysis.SSPortfolioEligible(s) {
 			t.Fatal("spouse claim age below spouse age should be ineligible")
 		}
 	})
@@ -656,7 +657,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 		s.SpouseAge = 0
 		s.SocialSecurity.SpouseFRABenefit = 0
 		s.SocialSecurity.ClaimAge = 68
-		if !SSPortfolioEligible(s) {
+		if !analysis.SSPortfolioEligible(s) {
 			t.Fatal("single primary with future claim age should be eligible")
 		}
 	})
@@ -665,7 +666,7 @@ func TestSSPortfolioEligible(t *testing.T) {
 		s := base()
 		s.SocialSecurity.FRABenefit = 0
 		s.SocialSecurity.ClaimAge = 68
-		if SSPortfolioEligible(s) {
+		if analysis.SSPortfolioEligible(s) {
 			t.Fatal("selected primary with zero FRA benefit should be ineligible")
 		}
 	})
@@ -689,11 +690,11 @@ func TestProjectedSocialSecurityIncome(t *testing.T) {
 			{ID: "p2", Name: "Spouse", Role: models.PersonRoleSpouse},
 		}
 		s.SocialSecurity = &models.SocialSecurityConfig{
-			FRABenefit:       1000,  // lower
+			FRABenefit:       1000, // lower
 			FRA:              67,
 			COLARate:         0.02,
 			ClaimAge:         67,
-			SpouseFRABenefit: 4000,  // higher
+			SpouseFRABenefit: 4000, // higher
 			SpouseFRA:        67,
 			SpouseClaimAge:   67,
 		}
@@ -743,7 +744,7 @@ func TestProjectedSocialSecurityIncome(t *testing.T) {
 		got := projectedSocialSecurityIncome(s, spouseStart)
 		// Primary at month 96: 4100 × 1.02^8 ≈ 4803.95.
 		// Spouse top-up at month 96 (just claimed, no COLA yet):
-		//   0.65 × 0.5 × DerivedPIA(4100, 66, 67) = 0.65 × 0.5 × 3796.30 ≈ 1233.80.
+		//   0.65 × 0.5 × analysis.DerivedPIA(4100, 66, 67) = 0.65 × 0.5 × 3796.30 ≈ 1233.80.
 		want := 4803.95 + 1233.80
 		if !withinTolerance(got, want, 5.0) {
 			t.Errorf("expected ≈ $%.2f (primary $4804 + spouse w/ top-up ≈ $1234), got %.2f", want, got)
@@ -879,7 +880,7 @@ func TestProjectedSSEntries(t *testing.T) {
 			t.Error("expected spousal top-up flag set (own $1500 < spousal ~$1234... actually own > spousal here, recheck)")
 		}
 		// Spouse own at 62 = 1500 × 0.70 = 1050.
-		// Spousal top-up at 62 = 0.65 × 0.5 × DerivedPIA(4100, 66, 67) ≈ 1233.80.
+		// Spousal top-up at 62 = 0.65 × 0.5 × analysis.DerivedPIA(4100, 66, 67) ≈ 1233.80.
 		// Top-up wins → expect ~1234 with flag set.
 		if !withinTolerance(spouse.MonthlyAmount, 1233.80, 5.0) {
 			t.Errorf("spouse amount = %.2f, want ~1234 (spousal top-up)", spouse.MonthlyAmount)
@@ -943,16 +944,16 @@ func TestProjectedSSEntries(t *testing.T) {
 
 func TestCumulativeBenefit(t *testing.T) {
 	t.Run("target at or before claim age returns zero", func(t *testing.T) {
-		if got := cumulativeBenefit(2000, 67, 67, 0.02); got != 0 {
+		if got := analysis.CumulativeBenefit(2000, 67, 67, 0.02); got != 0 {
 			t.Fatalf("same age: got %.2f, want 0", got)
 		}
-		if got := cumulativeBenefit(2000, 67, 60, 0.02); got != 0 {
+		if got := analysis.CumulativeBenefit(2000, 67, 60, 0.02); got != 0 {
 			t.Fatalf("target before claim: got %.2f, want 0", got)
 		}
 	})
 
 	t.Run("positive accumulation", func(t *testing.T) {
-		got := cumulativeBenefit(2000, 65, 67, 0.02)
+		got := analysis.CumulativeBenefit(2000, 65, 67, 0.02)
 		if got <= 0 {
 			t.Fatalf("expected positive cumulative, got %.2f", got)
 		}
@@ -961,7 +962,7 @@ func TestCumulativeBenefit(t *testing.T) {
 
 func TestBestSSPortfolioOption(t *testing.T) {
 	t.Run("empty options returns false", func(t *testing.T) {
-		_, ok := bestSSPortfolioOption(nil)
+		_, ok := analysis.BestSSPortfolioOption(nil)
 		if ok {
 			t.Fatal("expected false for empty options")
 		}
@@ -975,7 +976,7 @@ func TestBestSSPortfolioOption(t *testing.T) {
 			{ClaimAge: 70, SurvivalRate: 91.0, MedianEndingBalance: 475_000},
 		}
 
-		best, ok := bestSSPortfolioOption(options)
+		best, ok := analysis.BestSSPortfolioOption(options)
 		if !ok {
 			t.Fatal("expected best option")
 		}
@@ -989,7 +990,7 @@ func TestBestSSPortfolioOption(t *testing.T) {
 			{ClaimAge: 68, SurvivalRate: 90.0, MedianEndingBalance: 500_000},
 			{ClaimAge: 66, SurvivalRate: 90.0, MedianEndingBalance: 500_000},
 		}
-		best, ok := bestSSPortfolioOption(options)
+		best, ok := analysis.BestSSPortfolioOption(options)
 		if !ok {
 			t.Fatal("expected best option")
 		}
@@ -1002,14 +1003,14 @@ func TestBestSSPortfolioOption(t *testing.T) {
 // F-026: explicit zero COLA must be honored, not silently substituted.
 func TestNormalizedSSCOLARate_F026_ExplicitZero(t *testing.T) {
 	zero := 0.0
-	got := normalizedSSCOLARate(&zero)
+	got := analysis.NormalizedSSCOLARate(&zero)
 	if got != 0.0 {
 		t.Errorf("explicit zero COLA = %.4f; want 0.0", got)
 	}
 }
 
 func TestNormalizedSSCOLARate_F026_UnsetUsesDefault(t *testing.T) {
-	got := normalizedSSCOLARate(nil)
+	got := analysis.NormalizedSSCOLARate(nil)
 	want := 0.02 // 2% default (as decimal) when caller did not supply a value
 	if math.Abs(got-want) > 1e-9 {
 		t.Errorf("unset COLA = %.4f; want %.4f (default)", got, want)
@@ -1018,7 +1019,7 @@ func TestNormalizedSSCOLARate_F026_UnsetUsesDefault(t *testing.T) {
 
 func TestNormalizedSSCOLARate_F026_NegativeClamped(t *testing.T) {
 	neg := -1.0
-	got := normalizedSSCOLARate(&neg)
+	got := analysis.NormalizedSSCOLARate(&neg)
 	if got != 0.0 {
 		t.Errorf("negative COLA = %.4f; want 0.0 (SS COLA never negative)", got)
 	}
@@ -1026,9 +1027,8 @@ func TestNormalizedSSCOLARate_F026_NegativeClamped(t *testing.T) {
 
 func TestNormalizedSSCOLARate_F026_PositiveValuePreserved(t *testing.T) {
 	v := 3.5
-	got := normalizedSSCOLARate(&v)
+	got := analysis.NormalizedSSCOLARate(&v)
 	if math.Abs(got-3.5) > 1e-9 {
 		t.Errorf("positive COLA = %.4f; want 3.5", got)
 	}
 }
-

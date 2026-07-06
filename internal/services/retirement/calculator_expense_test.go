@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
 
@@ -940,119 +941,6 @@ func TestCalculateBudgetFit(t *testing.T) {
 	})
 }
 
-func TestApplyBigTicketExpense(t *testing.T) {
-	t.Run("fully funded from taxable", func(t *testing.T) {
-		taxDeferred := 100000.0
-		taxable := 50000.0
-		roth := 20000.0
-
-		remaining := applyBigTicketExpense(30000, false, 0, &taxDeferred, &taxable, &roth)
-
-		if remaining != 0 {
-			t.Errorf("remaining: want 0, got %.2f", remaining)
-		}
-		if math.Abs(taxable-20000) > 0.01 {
-			t.Errorf("taxable: want 20000, got %.2f", taxable)
-		}
-		if taxDeferred != 100000 {
-			t.Errorf("taxDeferred should be unchanged, got %.2f", taxDeferred)
-		}
-	})
-
-	t.Run("spills from taxable to roth", func(t *testing.T) {
-		taxDeferred := 100000.0
-		taxable := 10000.0
-		roth := 50000.0
-
-		remaining := applyBigTicketExpense(30000, false, 0, &taxDeferred, &taxable, &roth)
-
-		if remaining != 0 {
-			t.Errorf("remaining: want 0, got %.2f", remaining)
-		}
-		if taxable != 0 {
-			t.Errorf("taxable: want 0, got %.2f", taxable)
-		}
-		if math.Abs(roth-30000) > 0.01 {
-			t.Errorf("roth: want 30000, got %.2f", roth)
-		}
-	})
-
-	t.Run("allowTaxDeferred true with no penalty", func(t *testing.T) {
-		taxDeferred := 100000.0
-		taxable := 0.0
-		roth := 0.0
-
-		remaining := applyBigTicketExpense(25000, true, 0.0, &taxDeferred, &taxable, &roth)
-
-		if math.Abs(remaining) > 0.01 {
-			t.Errorf("remaining: want 0, got %.2f", remaining)
-		}
-		if math.Abs(taxDeferred-75000) > 0.01 {
-			t.Errorf("taxDeferred: want 75000, got %.2f", taxDeferred)
-		}
-	})
-
-	t.Run("allowTaxDeferred true with 10% penalty", func(t *testing.T) {
-		taxDeferred := 100000.0
-		taxable := 0.0
-		roth := 0.0
-
-		// Need 20000 in spending. With 10% penalty, effective factor = 0.9
-		// grossNeeded = 20000/0.9 = 22222.22
-		remaining := applyBigTicketExpense(20000, true, 0.10, &taxDeferred, &taxable, &roth)
-
-		if math.Abs(remaining) > 0.01 {
-			t.Errorf("remaining: want ~0, got %.2f", remaining)
-		}
-		// taxDeferred should have been reduced by grossNeeded = 20000/0.9 ≈ 22222.22
-		expectedTD := 100000 - 20000/0.9
-		if math.Abs(taxDeferred-expectedTD) > 0.01 {
-			t.Errorf("taxDeferred: want %.2f, got %.2f", expectedTD, taxDeferred)
-		}
-	})
-
-	t.Run("allowTaxDeferred false leaves remainder", func(t *testing.T) {
-		taxDeferred := 100000.0
-		taxable := 5000.0
-		roth := 5000.0
-
-		remaining := applyBigTicketExpense(20000, false, 0, &taxDeferred, &taxable, &roth)
-
-		if math.Abs(remaining-10000) > 0.01 {
-			t.Errorf("remaining: want 10000, got %.2f", remaining)
-		}
-		if taxable != 0 {
-			t.Errorf("taxable: want 0, got %.2f", taxable)
-		}
-		if roth != 0 {
-			t.Errorf("roth: want 0, got %.2f", roth)
-		}
-		// taxDeferred unchanged since allowTaxDeferred=false
-		if taxDeferred != 100000 {
-			t.Errorf("taxDeferred should be unchanged, got %.2f", taxDeferred)
-		}
-	})
-
-	t.Run("penalty with limited taxDeferred balance", func(t *testing.T) {
-		taxDeferred := 5000.0
-		taxable := 0.0
-		roth := 0.0
-
-		// Need 20000, but only 5000 in tax-deferred with 10% penalty
-		// grossNeeded = 20000/0.9 = 22222.22, capped to 5000
-		// netSpending = 5000 * 0.9 = 4500
-		// remaining = 20000 - 4500 = 15500
-		remaining := applyBigTicketExpense(20000, true, 0.10, &taxDeferred, &taxable, &roth)
-
-		if math.Abs(remaining-15500) > 0.01 {
-			t.Errorf("remaining: want 15500, got %.2f", remaining)
-		}
-		if taxDeferred != 0 {
-			t.Errorf("taxDeferred: want 0, got %.2f", taxDeferred)
-		}
-	})
-}
-
 func TestRunMonteCarloSimulationWithDiscretionary(t *testing.T) {
 	t.Run("triggers adaptive spending path with discretionary expenses", func(t *testing.T) {
 		s := models.DefaultWhatIfSettings()
@@ -1218,9 +1106,9 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.IncomeSources = nil
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
-		s.CurrentAge = 75 // Above RMDStartAge (73)
+		s.CurrentAge = 75 // Above engine.RMDStartAge (73)
 		// F-078: keep Persons[0].BirthMonth in sync with CurrentAge so
-		// RMDApplies/RMDAgeForCalendarYear see a birth year that's actually
+		// engine.RMDApplies/engine.RMDAgeForCalendarYear see a birth year that's actually
 		// >= the SECURE 2.0 RMD age this calendar year.
 		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 		s.TaxDeferredPercent = 80
@@ -1267,7 +1155,7 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
 		s.CurrentAge = 75
-		// F-078: sync BirthMonth so RMDApplies sees the right birth year.
+		// F-078: sync BirthMonth so engine.RMDApplies sees the right birth year.
 		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 		s.TaxDeferredPercent = 90
 		s.RothPercent = 5
@@ -1310,7 +1198,7 @@ func TestCalculateBudgetFitRMD(t *testing.T) {
 		s.InflationRate = 0
 		s.SpendingDeclineRate = 0
 		s.CurrentAge = 75
-		// F-078: sync BirthMonth so RMDApplies sees the right birth year.
+		// F-078: sync BirthMonth so engine.RMDApplies sees the right birth year.
 		s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
 		s.TaxDeferredPercent = 70
 		s.RothPercent = 10
@@ -1491,30 +1379,7 @@ func TestFindSteadyStateMonth_ProjectedSocialSecurity(t *testing.T) {
 	}
 }
 
-func TestMeanEmptySlice(t *testing.T) {
-	t.Run("empty slice returns zero", func(t *testing.T) {
-		result := mean([]float64{})
-		if result != 0 {
-			t.Errorf("mean of empty slice: want 0, got %f", result)
-		}
-	})
-
-	t.Run("single element", func(t *testing.T) {
-		result := mean([]float64{42.5})
-		if math.Abs(result-42.5) > 0.001 {
-			t.Errorf("mean of [42.5]: want 42.5, got %f", result)
-		}
-	})
-
-	t.Run("multiple elements", func(t *testing.T) {
-		result := mean([]float64{10, 20, 30})
-		if math.Abs(result-20) > 0.001 {
-			t.Errorf("mean of [10,20,30]: want 20, got %f", result)
-		}
-	})
-}
-
-// F-065: rebaseLivingExpensesAtTransition must use net inflation
+// F-065: engine.RebaseLivingExpensesAtTransition must use net inflation
 // (InflationRate - SpendingDeclineRate), not full inflation, when computing
 // the value at a chain-scenario phase boundary. Otherwise the post-transition
 // trajectory drifts upward by the decline-rate compounding error.
@@ -1551,7 +1416,7 @@ func TestSpendingPhaseTransition_F065_DeclineRateRespected(t *testing.T) {
 	linked.TaxDeferredPercent = 0
 	linked.RothPercent = 0
 
-	chain := []PreparedChainLink{
+	chain := []engine.PreparedChainLink{
 		preparedLink(t, "", 75, linked),
 	}
 
@@ -1575,8 +1440,8 @@ func TestSpendingPhaseTransition_F065_DeclineRateRespected(t *testing.T) {
 	//   then m>0 applies net month: result ≈ 10000 × (1.03)^(119/12) × (1.02)^(1/12)
 	//   ≈ 13428
 
-	wantNetFactor := math.Pow(1.02, 10)     // (1.02)^10 ≈ 1.21899
-	want := 10000 * wantNetFactor            // ≈ 12189.94
+	wantNetFactor := math.Pow(1.02, 10) // (1.02)^10 ≈ 1.21899
+	want := 10000 * wantNetFactor       // ≈ 12189.94
 	got := result.Months[120].GeneralExpenses
 
 	if math.Abs(got-want) > 5.00 { // ±$5 for rounding

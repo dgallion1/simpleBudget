@@ -386,7 +386,7 @@ func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *mod
 	// right offset. FirstRMDCalendarYear knows about BirthMonth; floor'd
 	// age subtraction does not.
 	startYear := parseProjectionStartYear(settings.StartDate)
-	firstRMDYear := retirement.FirstRMDCalendarYear(settings)
+	firstRMDYear := engine.FirstRMDCalendarYear(settings)
 	if firstRMDYear > startYear {
 		appendEvent(float64(firstRMDYear-startYear), "RMD starts")
 	}

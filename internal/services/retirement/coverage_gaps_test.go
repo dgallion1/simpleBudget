@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/storage"
 )
 
@@ -61,7 +62,7 @@ func TestCalculateTotalIncome(t *testing.T) {
 	})
 }
 
-// --- rebaseLivingExpensesAtTransition (uncovered: spending phases enabled branch) ---
+// --- engine.RebaseLivingExpensesAtTransition (uncovered: spending phases enabled branch) ---
 
 func TestRebaseLivingExpensesAtTransition_SpendingPhasesEnabled(t *testing.T) {
 	s := defaultSettingsForTest()
@@ -73,7 +74,7 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesEnabled(t *testing.T) {
 
 	// With spending phases enabled, should apply multiplier using full cumulativeInflation.
 	// netCumulativeInflation is ignored by the phases path.
-	result := rebaseLivingExpensesAtTransition(s, 65, 1.1, 1.0)
+	result := engine.RebaseLivingExpensesAtTransition(s, 65, 1.1, 1.0)
 	expected := 3000 * s.GetSpendingMultiplier(65) * 1.1
 	if math.Abs(result-expected) > 0.01 {
 		t.Errorf("expected %f, got %f", expected, result)
@@ -86,7 +87,7 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesDisabled(t *testing.T) {
 	s.SpendingPhaseConfig = nil
 
 	// With spending phases disabled, the function uses netCumulativeInflation (4th arg).
-	result := rebaseLivingExpensesAtTransition(s, 65, 1.1, 1.1)
+	result := engine.RebaseLivingExpensesAtTransition(s, 65, 1.1, 1.1)
 	expected := 3000 * 1.1
 	if math.Abs(result-expected) > 0.01 {
 		t.Errorf("expected %f, got %f", expected, result)
@@ -96,7 +97,7 @@ func TestRebaseLivingExpensesAtTransition_SpendingPhasesDisabled(t *testing.T) {
 // --- estimateMonthlyTaxes (uncovered: negative taxDue branch) ---
 
 func TestEstimateMonthlyTaxes_NilTaxCalculator(t *testing.T) {
-	acc := projectionTaxAccumulator{}
+	acc := engine.ProjectionTaxAccumulator{}
 	result := acc.EstimateMonthlyTaxes(nil, 0, 0, 1000, 0, 0, 0, 0, 0, 0)
 	if result != 0 {
 		t.Errorf("expected 0 for nil tax calculator, got %f", result)
@@ -105,12 +106,12 @@ func TestEstimateMonthlyTaxes_NilTaxCalculator(t *testing.T) {
 
 func TestEstimateMonthlyTaxes_NegativeTaxDue(t *testing.T) {
 	// Create accumulator where taxes already overpaid
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
-	acc := projectionTaxAccumulator{
+	acc := engine.ProjectionTaxAccumulator{
 		TaxesPaidYTD: 1_000_000, // Massively overpaid
 	}
 	result := acc.EstimateMonthlyTaxes(tc, 0, 6, 1000, 0, 0, 0, 0, 0, 0)
@@ -120,12 +121,12 @@ func TestEstimateMonthlyTaxes_NegativeTaxDue(t *testing.T) {
 }
 
 func TestEstimateMonthlyTaxes_LastMonthOfYear(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
-	acc := projectionTaxAccumulator{}
+	acc := engine.ProjectionTaxAccumulator{}
 	// monthInYear=11 means last month; remainingMonths=1
 	result := acc.EstimateMonthlyTaxes(tc, 0, 11, 5000, 0, 0, 0, 0, 0, 0)
 	if result < 0 {
@@ -133,7 +134,7 @@ func TestEstimateMonthlyTaxes_LastMonthOfYear(t *testing.T) {
 	}
 }
 
-// --- rothConversionAmountForYear (uncovered: end year check) ---
+// --- engine.RothConversionAmountForYear (uncovered: end year check) ---
 
 func TestRothConversionAmountForYear_PastEndYear(t *testing.T) {
 	s := defaultSettingsForTest()
@@ -144,7 +145,7 @@ func TestRothConversionAmountForYear_PastEndYear(t *testing.T) {
 		EndYear:      5,
 	}
 	// Year 6 is past EndYear 5
-	got := rothConversionAmountForYear(s, 6, 100000)
+	got := engine.RothConversionAmountForYear(s, 6, 100000)
 	if got != 0 {
 		t.Errorf("expected 0 past end year, got %f", got)
 	}
@@ -159,7 +160,7 @@ func TestRothConversionAmountForYear_LimitedByBalance(t *testing.T) {
 		EndYear:      0, // 0 means no end
 	}
 	// Available is less than annual amount
-	got := rothConversionAmountForYear(s, 0, 10000)
+	got := engine.RothConversionAmountForYear(s, 0, 10000)
 	if got != 10000 {
 		t.Errorf("expected 10000 (limited by balance), got %f", got)
 	}
@@ -168,7 +169,7 @@ func TestRothConversionAmountForYear_LimitedByBalance(t *testing.T) {
 // --- withdraw (uncovered: negative basis, zero market value) ---
 
 func TestWithdraw_ZeroMarketValue(t *testing.T) {
-	a := &taxableAccountState{MarketValue: 0, CostBasis: 0}
+	a := &engine.TaxableAccountState{MarketValue: 0, CostBasis: 0}
 	cash, basis, gain := a.Withdraw(1000)
 	if cash != 0 || basis != 0 || gain != 0 {
 		t.Errorf("expected all zeros, got cash=%f basis=%f gain=%f", cash, basis, gain)
@@ -176,7 +177,7 @@ func TestWithdraw_ZeroMarketValue(t *testing.T) {
 }
 
 func TestWithdraw_NegativeAmount(t *testing.T) {
-	a := &taxableAccountState{MarketValue: 100000, CostBasis: 50000}
+	a := &engine.TaxableAccountState{MarketValue: 100000, CostBasis: 50000}
 	cash, basis, gain := a.Withdraw(-100)
 	if cash != 0 || basis != 0 || gain != 0 {
 		t.Errorf("expected all zeros for negative amount, got cash=%f basis=%f gain=%f", cash, basis, gain)
@@ -184,7 +185,7 @@ func TestWithdraw_NegativeAmount(t *testing.T) {
 }
 
 func TestWithdraw_FullDepletion(t *testing.T) {
-	a := &taxableAccountState{MarketValue: 5000, CostBasis: 3000}
+	a := &engine.TaxableAccountState{MarketValue: 5000, CostBasis: 3000}
 	cash, _, _ := a.Withdraw(10000) // Withdraw more than available
 	if cash != 5000 {
 		t.Errorf("expected cash=5000, got %f", cash)
@@ -200,8 +201,8 @@ func TestWithdraw_FullDepletion(t *testing.T) {
 // --- applyGrowth (uncovered: MarketValue<=0 and negative clamping) ---
 
 func TestApplyGrowth_ZeroMarketValue(t *testing.T) {
-	a := &taxableAccountState{MarketValue: 0, CostBasis: 0}
-	components := taxableReturnComponents{
+	a := &engine.TaxableAccountState{MarketValue: 0, CostBasis: 0}
+	components := engine.TaxableReturnComponents{
 		Appreciation:      0.005,
 		QualifiedDividend: 0.001,
 	}
@@ -213,8 +214,8 @@ func TestApplyGrowth_ZeroMarketValue(t *testing.T) {
 
 func TestApplyGrowth_NegativeMarketValueClamp(t *testing.T) {
 	// Market value that will go negative after a large negative return
-	a := &taxableAccountState{MarketValue: 100, CostBasis: 200}
-	components := taxableReturnComponents{
+	a := &engine.TaxableAccountState{MarketValue: 100, CostBasis: 200}
+	components := engine.TaxableReturnComponents{
 		Appreciation: -2.0, // extreme negative
 	}
 	a.ApplyGrowth(components, 1.0)
@@ -226,16 +227,16 @@ func TestApplyGrowth_NegativeMarketValueClamp(t *testing.T) {
 	}
 }
 
-// --- applyBigTicketExpenseWithTaxableState (46.7% covered) ---
+// --- engine.ApplyBigTicketExpenseWithTaxableState (46.7% covered) ---
 
 func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 	t.Run("fully covered by taxable", func(t *testing.T) {
 		taxDeferred := 100000.0
 		s := defaultSettingsForTest()
-		taxable := newTaxableAccountState(s, 50000)
+		taxable := engine.NewTaxableAccountState(s, 50000)
 		roth := 30000.0
 		rothBasis := 30000.0
-		r := applyBigTicketExpenseWithTaxableState(10000, true, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		r := engine.ApplyBigTicketExpenseWithTaxableState(10000, true, 0, &taxDeferred, &taxable, &roth, &rothBasis)
 		if r.UnfundedExpense != 0 {
 			t.Errorf("expected 0 remaining, got %f", r.UnfundedExpense)
 		}
@@ -244,10 +245,10 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 	t.Run("spills from taxable to roth", func(t *testing.T) {
 		taxDeferred := 100000.0
 		s := defaultSettingsForTest()
-		taxable := newTaxableAccountState(s, 5000)
+		taxable := engine.NewTaxableAccountState(s, 5000)
 		roth := 30000.0
 		rothBasis := 30000.0
-		r := applyBigTicketExpenseWithTaxableState(20000, false, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		r := engine.ApplyBigTicketExpenseWithTaxableState(20000, false, 0, &taxDeferred, &taxable, &roth, &rothBasis)
 		// 5000 from taxable, 15000 from Roth, no tax-deferred (allowTaxDeferred=false)
 		if r.UnfundedExpense != 0 {
 			t.Errorf("expected 0 remaining, got %f", r.UnfundedExpense)
@@ -260,12 +261,12 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 	t.Run("spills to tax-deferred with penalty", func(t *testing.T) {
 		taxDeferred := 100000.0
 		s := defaultSettingsForTest()
-		taxable := newTaxableAccountState(s, 2000)
+		taxable := engine.NewTaxableAccountState(s, 2000)
 		roth := 3000.0
 		rothBasis := 3000.0
 		// 10000 needed, 2000 from taxable, 3000 from roth, 5000 remaining
 		// With 10% penalty: grossNeeded = 5000/0.9 = 5555.56
-		r := applyBigTicketExpenseWithTaxableState(10000, true, 0.10, &taxDeferred, &taxable, &roth, &rothBasis)
+		r := engine.ApplyBigTicketExpenseWithTaxableState(10000, true, 0.10, &taxDeferred, &taxable, &roth, &rothBasis)
 		if r.UnfundedExpense > 0.01 {
 			t.Errorf("expected ~0 remaining, got %f", r.UnfundedExpense)
 		}
@@ -277,10 +278,10 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 	t.Run("not enough in any bucket", func(t *testing.T) {
 		taxDeferred := 1000.0
 		s := defaultSettingsForTest()
-		taxable := newTaxableAccountState(s, 1000)
+		taxable := engine.NewTaxableAccountState(s, 1000)
 		roth := 1000.0
 		rothBasis := 1000.0
-		r := applyBigTicketExpenseWithTaxableState(100000, true, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		r := engine.ApplyBigTicketExpenseWithTaxableState(100000, true, 0, &taxDeferred, &taxable, &roth, &rothBasis)
 		if r.UnfundedExpense <= 0 {
 			t.Error("expected positive remaining when funds insufficient")
 		}
@@ -289,10 +290,10 @@ func TestApplyBigTicketExpense_AllBuckets(t *testing.T) {
 	t.Run("tax-deferred not allowed with remaining", func(t *testing.T) {
 		taxDeferred := 100000.0
 		s := defaultSettingsForTest()
-		taxable := newTaxableAccountState(s, 1000)
+		taxable := engine.NewTaxableAccountState(s, 1000)
 		roth := 1000.0
 		rothBasis := 1000.0
-		r := applyBigTicketExpenseWithTaxableState(10000, false, 0, &taxDeferred, &taxable, &roth, &rothBasis)
+		r := engine.ApplyBigTicketExpenseWithTaxableState(10000, false, 0, &taxDeferred, &taxable, &roth, &rothBasis)
 		if r.UnfundedExpense <= 0 {
 			t.Error("expected remaining when tax-deferred not allowed")
 		}
@@ -370,7 +371,7 @@ func TestYearsUntilDepletion(t *testing.T) {
 // --- Tax calculator coverage: unknown filing status fallback ---
 
 func TestGetAdjustedBrackets_UnknownFilingStatus(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       "unknown",
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
@@ -382,7 +383,7 @@ func TestGetAdjustedBrackets_UnknownFilingStatus(t *testing.T) {
 }
 
 func TestGetAdjustedLTCGBrackets_UnknownFilingStatus(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       "unknown",
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
@@ -394,7 +395,7 @@ func TestGetAdjustedLTCGBrackets_UnknownFilingStatus(t *testing.T) {
 }
 
 func TestGetAdjustedBrackets_WithInflation(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
@@ -412,7 +413,7 @@ func TestGetAdjustedBrackets_WithInflation(t *testing.T) {
 }
 
 func TestGetAdjustedLTCGBrackets_WithInflation(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
@@ -426,7 +427,7 @@ func TestGetAdjustedLTCGBrackets_WithInflation(t *testing.T) {
 }
 
 func TestGetMarginalRate_MiddleBracket(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
@@ -1305,7 +1306,7 @@ func TestRunSingleHistoricalSequence_ChainTransition(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	c := newTestCalcWithChain(t, primary, []PreparedChainLink{
+	c := newTestCalcWithChain(t, primary, []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	})
 
@@ -1425,7 +1426,7 @@ func TestRothConversionEndYearZero(t *testing.T) {
 		EndYear:      0, // 0 means no end
 	}
 	// Year 100 should still convert
-	got := rothConversionAmountForYear(s, 100, 100000)
+	got := engine.RothConversionAmountForYear(s, 100, 100000)
 	if got != 30000 {
 		t.Errorf("expected 30000, got %f", got)
 	}
@@ -1439,7 +1440,7 @@ func TestRothConversionDisabled(t *testing.T) {
 		Enabled:      false,
 		AnnualAmount: 30000,
 	}
-	got := rothConversionAmountForYear(s, 0, 100000)
+	got := engine.RothConversionAmountForYear(s, 0, 100000)
 	if got != 0 {
 		t.Errorf("expected 0 when disabled, got %f", got)
 	}
@@ -1450,7 +1451,7 @@ func TestRothConversionDisabled(t *testing.T) {
 func TestRothConversionNil(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.RothConversion = nil
-	got := rothConversionAmountForYear(s, 0, 100000)
+	got := engine.RothConversionAmountForYear(s, 0, 100000)
 	if got != 0 {
 		t.Errorf("expected 0 when nil, got %f", got)
 	}
@@ -1466,31 +1467,13 @@ func TestRothConversionBeforeStartYear(t *testing.T) {
 		StartYear:    5,
 		EndYear:      10,
 	}
-	got := rothConversionAmountForYear(s, 2, 100000)
+	got := engine.RothConversionAmountForYear(s, 2, 100000)
 	if got != 0 {
 		t.Errorf("expected 0 before start year, got %f", got)
 	}
 }
 
 // --- formatBucketLabel ---
-
-func TestFormatBucketLabel(t *testing.T) {
-	tests := []struct {
-		low, high float64
-		expected  string
-	}{
-		{0, 100000, "$0K-$100K"},
-		{250000, 500000, "$250K-$500K"},
-		{1000000, 2000000, "$1.0M-$2.0M"},
-		{5000000, -1, "$5.0M+"},
-	}
-	for _, tt := range tests {
-		got := formatBucketLabel(tt.low, tt.high)
-		if got != tt.expected {
-			t.Errorf("formatBucketLabel(%f, %f) = %q, want %q", tt.low, tt.high, got, tt.expected)
-		}
-	}
-}
 
 // --- UpdateSettings save error ---
 
@@ -1902,7 +1885,7 @@ func TestWithdrawForExpenses_ZeroNeed(t *testing.T) {
 	roth := 50000.0
 	// TEMP scaffold: Task 7 replaces with real basis pointer from PortfolioMonthInput.
 	dummyBasis := roth
-	result := withdrawForExpenses(0, 0, true, 0, &td, &taxable, &roth, &dummyBasis)
+	result := engine.WithdrawForExpenses(0, 0, true, 0, &td, &taxable, &roth, &dummyBasis)
 	if result.RemainingNeed != 0 || result.ActualWithdrawal != 0 {
 		t.Errorf("expected zero withdrawal for zero need, got %+v", result)
 	}
@@ -2142,7 +2125,7 @@ func TestReadScenarioName_InvalidJSON(t *testing.T) {
 
 func TestWithdraw_CostBasisNegative(t *testing.T) {
 	// Set up a state where CostBasis is negative (shouldn't normally happen)
-	a := &taxableAccountState{MarketValue: 10000, CostBasis: -100}
+	a := &engine.TaxableAccountState{MarketValue: 10000, CostBasis: -100}
 	a.Withdraw(5000)
 	if a.CostBasis < 0 {
 		t.Error("expected CostBasis clamped to 0")
@@ -2150,8 +2133,8 @@ func TestWithdraw_CostBasisNegative(t *testing.T) {
 }
 
 func TestApplyGrowth_CostBasisNegative(t *testing.T) {
-	a := &taxableAccountState{MarketValue: 10000, CostBasis: -50}
-	components := taxableReturnComponents{Appreciation: 0.005}
+	a := &engine.TaxableAccountState{MarketValue: 10000, CostBasis: -50}
+	components := engine.TaxableReturnComponents{Appreciation: 0.005}
 	a.ApplyGrowth(components, 1.0)
 	if a.CostBasis < 0 {
 		t.Error("expected CostBasis clamped to 0")
@@ -2306,7 +2289,7 @@ func TestRenameScenario_WriteError(t *testing.T) {
 // --- GetMarginalRate: top bracket ---
 
 func TestGetMarginalRate_VeryHighIncome(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
@@ -2340,7 +2323,7 @@ func TestRunProjection_DepletionViaShortfallWithTaxDeferred(t *testing.T) {
 	}
 }
 
-// --- RunProjection: shortfall depletion via withdrawForExpenses shortfall ---
+// --- RunProjection: shortfall depletion via engine.WithdrawForExpenses shortfall ---
 
 func TestRunProjection_ShortfallCausesDepletion(t *testing.T) {
 	// Test depletion via shortfallCausesDepletion path.

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
 
@@ -91,7 +92,7 @@ func TestSensitivity_ChainPropagated(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	calcChain := newTestCalcWithChain(t, primary, []PreparedChainLink{
+	calcChain := newTestCalcWithChain(t, primary, []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	})
 	calcNoChain := newTestCalc(t, primary)
@@ -129,7 +130,7 @@ func TestFailurePoints_ChainPropagated(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 5000
 
-	calcChain := newTestCalcWithChain(t, primary, []PreparedChainLink{
+	calcChain := newTestCalcWithChain(t, primary, []engine.PreparedChainLink{
 		preparedLink(t, "", 70, linked),
 	})
 	calcNoChain := newTestCalc(t, primary)

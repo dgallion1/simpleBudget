@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 func taxableOnlySimulationSettings() *models.WhatIfSettings {
@@ -102,17 +103,17 @@ func TestHistoricalSequence_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums
 	}
 }
 
-// F-049 + F-073: reinvestRequiredRMDToTaxableState reinvests the after-tax
+// F-049 + F-073: engine.ReinvestRequiredRMDToTaxableState reinvests the after-tax
 // portion as basis (F-049) and returns the gross distribution amount that
 // callers report as taxable income (F-073).
 func TestReinvestRequiredRMD_F049_BasisIsAfterTax(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
-	taxable := newTaxableAccountState(s, 0)
+	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 100000.0
 	rmd := 10000.0
 	marginalRate := 0.22 // 22%
 
-	gross, net := reinvestRequiredRMDToTaxableState(rmd, marginalRate, &taxDeferred, &taxable)
+	gross, net := engine.ReinvestRequiredRMDToTaxableState(rmd, marginalRate, &taxDeferred, &taxable)
 	wantGross := 10000.0
 	wantNet := 7800.0
 
@@ -135,9 +136,9 @@ func TestReinvestRequiredRMD_F049_BasisIsAfterTax(t *testing.T) {
 
 func TestReinvestRequiredRMD_F049_ZeroMarginalRate(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
-	taxable := newTaxableAccountState(s, 0)
+	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 100000.0
-	gross, net := reinvestRequiredRMDToTaxableState(10000, 0.0, &taxDeferred, &taxable)
+	gross, net := engine.ReinvestRequiredRMDToTaxableState(10000, 0.0, &taxDeferred, &taxable)
 	if math.Abs(gross-10000.0) > 0.01 {
 		t.Errorf("zero-marginal gross = %.2f; want 10000", gross)
 	}
@@ -148,9 +149,9 @@ func TestReinvestRequiredRMD_F049_ZeroMarginalRate(t *testing.T) {
 
 func TestReinvestRequiredRMD_F049_MarginalRateClamped(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
-	taxable := newTaxableAccountState(s, 0)
+	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 100000.0
-	gross, net := reinvestRequiredRMDToTaxableState(10000, 1.5, &taxDeferred, &taxable)
+	gross, net := engine.ReinvestRequiredRMDToTaxableState(10000, 1.5, &taxDeferred, &taxable)
 	if math.Abs(gross-10000.0) > 0.01 {
 		t.Errorf("marginal>1 gross = %.2f; want 10000 (gross unchanged by rate clamp)", gross)
 	}
@@ -158,8 +159,8 @@ func TestReinvestRequiredRMD_F049_MarginalRateClamped(t *testing.T) {
 		t.Errorf("marginal>1 net = %.2f; want 0", net)
 	}
 	taxDeferred = 100000.0
-	taxable = newTaxableAccountState(s, 0)
-	gross, net = reinvestRequiredRMDToTaxableState(10000, -0.5, &taxDeferred, &taxable)
+	taxable = engine.NewTaxableAccountState(s, 0)
+	gross, net = engine.ReinvestRequiredRMDToTaxableState(10000, -0.5, &taxDeferred, &taxable)
 	if math.Abs(gross-10000.0) > 0.01 {
 		t.Errorf("marginal<0 gross = %.2f; want 10000", gross)
 	}

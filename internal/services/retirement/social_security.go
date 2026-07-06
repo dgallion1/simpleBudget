@@ -5,31 +5,11 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/analysis"
+	"budget2/internal/services/retirement/engine"
 )
 
-// SS math primitives now live canonically in analysis/ss.go. The
-// exported aliases below keep existing retirement-side callers
-// (templates, primitive-level tests) compiling unchanged. The
-// lowercase forms used to live in this file but were retired with the
-// move — surviving callers use analysis.X directly. Removed in
-// Task 8.
-var (
-	AdjustedSSBenefit                 = analysis.AdjustedSSBenefit
-	DerivedPIA                        = analysis.DerivedPIA
-	AdjustedSpousalBenefit            = analysis.AdjustedSpousalBenefit
-	SpousalTopUp                      = analysis.SpousalTopUp
-	SSComparisonTable                 = analysis.SSComparisonTable
-	SSComparisonTableWithSpousalTopUp = analysis.SSComparisonTableWithSpousalTopUp
-	SSBreakevenAges                   = analysis.SSBreakevenAges
-	SSBreakevenAgesWithSpousalTopUp   = analysis.SSBreakevenAgesWithSpousalTopUp
-
-	// lowercase aliases referenced by retirement-side tests for the
-	// underlying primitives (TestCumulativeBenefit,
-	// TestBestSSPortfolioOption, TestNormalizedSSCOLARate_*).
-	cumulativeBenefit     = analysis.CumulativeBenefit
-	bestSSPortfolioOption = analysis.BestSSPortfolioOption
-	normalizedSSCOLARate  = analysis.NormalizedSSCOLARate
-)
+// SS math primitives live canonically in analysis/ss.go; callers use
+// analysis.X directly.
 
 // SocialSecurityProjectionActive reports whether the household has an
 // active SS optimizer projection (FRA benefit + valid claim age).
@@ -55,7 +35,7 @@ func HasManualSocialSecurityIncomeSource(s *models.WhatIfSettings) bool {
 		return false
 	}
 	for _, source := range s.IncomeSources {
-		if isSocialSecurityIncomeSource(source) {
+		if engine.IsSocialSecurityIncomeSource(source) {
 			return true
 		}
 	}

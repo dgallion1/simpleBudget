@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 )
 
 func defaultSettingsForTest() *models.WhatIfSettings {
@@ -157,32 +158,32 @@ func TestRunProjection_SpendingPhasesWithDiscretionary(t *testing.T) {
 	}
 }
 
-// --- GetLifeExpectancyFactor tests ---
+// --- engine.GetLifeExpectancyFactor tests ---
 
 func TestGetLifeExpectancyFactor(t *testing.T) {
 	t.Run("age below 72", func(t *testing.T) {
-		if f := GetLifeExpectancyFactor(60); f != 0 {
+		if f := engine.GetLifeExpectancyFactor(60); f != 0 {
 			t.Errorf("expected 0 for age 60, got %f", f)
 		}
 	})
 
 	t.Run("age 73", func(t *testing.T) {
-		if f := GetLifeExpectancyFactor(73); f != 26.5 {
+		if f := engine.GetLifeExpectancyFactor(73); f != 26.5 {
 			t.Errorf("expected 26.5 for age 73, got %f", f)
 		}
 	})
 
 	t.Run("age above 120", func(t *testing.T) {
-		if f := GetLifeExpectancyFactor(125); f != 2.0 {
+		if f := engine.GetLifeExpectancyFactor(125); f != 2.0 {
 			t.Errorf("expected 2.0 for age 125, got %f", f)
 		}
 	})
 }
 
-// --- CalculateRMD tests ---
+// --- engine.CalculateRMD tests ---
 
 func TestCalculateRMD_BelowStartAge(t *testing.T) {
-	amount, pct := CalculateRMD(500000, 65)
+	amount, pct := engine.CalculateRMD(500000, 65)
 	if amount != 0 || pct != 0 {
 		t.Errorf("expected (0, 0) for age 65, got (%f, %f)", amount, pct)
 	}
@@ -220,7 +221,7 @@ func TestGetAvailableStartYears_EdgeCases(t *testing.T) {
 // --- Tax calculator tests ---
 
 func TestGetAdjustedStandardDeduction_MarriedJoint(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingMarriedJoint,
 		StateIncomeTaxRate: models.FloatPtr(5.0),
 	}, 3.0)
@@ -239,7 +240,7 @@ func TestGetAdjustedStandardDeduction_MarriedJoint(t *testing.T) {
 }
 
 func TestGetMarginalRate_ZeroIncome(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
@@ -251,7 +252,7 @@ func TestGetMarginalRate_ZeroIncome(t *testing.T) {
 }
 
 func TestGetAdjustedStandardDeduction_UnknownFiling(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       "unknown_status",
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
@@ -316,7 +317,7 @@ func TestFindSteadyStateMonth_BeyondProjection(t *testing.T) {
 }
 
 func TestGetMarginalRate_TopBracket(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
+	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)

@@ -8,7 +8,6 @@
 package retirement
 
 import (
-
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
@@ -101,7 +100,7 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	// full grid whose output the re-panic then discards. The grid cells
 	// parallelize internally across NumCPU, so joining here costs no
 	// meaningful wall-clock versus overlapping with straggler branches.
-	if ssAnalysis != nil && SSPortfolioEligible(settings) {
+	if ssAnalysis != nil && analysis.SSPortfolioEligible(settings) {
 		ssAnalysis.Portfolio = analysis.SSPortfolioFromMainMC(eng, in, ssAnalysis, effectiveSeed, mcMain)
 	}
 
@@ -156,7 +155,7 @@ func runTaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) 
 	var ssPortfolio *models.SSPortfolioAnalysis
 	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
 		ssAnalysis := analysis.SSAnalysis(in)
-		if ssAnalysis != nil && SSPortfolioEligible(settings) {
+		if ssAnalysis != nil && analysis.SSPortfolioEligible(settings) {
 			ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, effectiveSeed)
 			ssPortfolio = ssAnalysis.Portfolio
 		}

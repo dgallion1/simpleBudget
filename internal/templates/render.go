@@ -23,6 +23,8 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/analysis"
+	"budget2/internal/services/retirement/engine"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -110,10 +112,10 @@ func getFuncMap() template.FuncMap {
 		"deref":                               deref,
 		"urlEncode":                           url.PathEscape,
 		"socialSecurityProjectionActive":      retirement.SocialSecurityProjectionActive,
-		"ssPortfolioEligible":                 retirement.SSPortfolioEligible,
+		"ssPortfolioEligible":                 analysis.SSPortfolioEligible,
 		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
 		"projectedSSEntries":                  retirement.ProjectedSSEntries,
-		"isSocialSecurityIncomeSource":        retirement.IsSocialSecurityIncomeSource,
+		"isSocialSecurityIncomeSource":        engine.IsSocialSecurityIncomeSource,
 	}
 }
 

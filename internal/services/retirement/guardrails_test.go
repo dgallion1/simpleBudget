@@ -2,6 +2,7 @@ package retirement
 
 import (
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/engine"
 	"math"
 	"testing"
 )
@@ -14,7 +15,7 @@ func almostEqual(a, b float64) bool {
 
 func TestGuardrailState_FloorTrigger(t *testing.T) {
 	t.Run("25% drop triggers floor cut", func(t *testing.T) {
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
 			FloorDropPct:    20,
@@ -34,7 +35,7 @@ func TestGuardrailState_FloorTrigger(t *testing.T) {
 
 func TestGuardrailState_CeilingTrigger(t *testing.T) {
 	t.Run("30% rise triggers ceiling raise", func(t *testing.T) {
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
 			FloorDropPct:    50, // high enough to not trigger
@@ -54,7 +55,7 @@ func TestGuardrailState_CeilingTrigger(t *testing.T) {
 
 func TestGuardrailState_NoTrigger(t *testing.T) {
 	t.Run("10% drop does not trigger 20% floor", func(t *testing.T) {
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
 			FloorDropPct:    20,
@@ -74,7 +75,7 @@ func TestGuardrailState_NoTrigger(t *testing.T) {
 
 func TestGuardrailState_MinMaxCap(t *testing.T) {
 	t.Run("floor clamped to MinSpendingPct", func(t *testing.T) {
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
 			FloorDropPct:    10,
@@ -93,7 +94,7 @@ func TestGuardrailState_MinMaxCap(t *testing.T) {
 	})
 
 	t.Run("ceiling clamped to MaxSpendingPct", func(t *testing.T) {
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
 			FloorDropPct:    90,
@@ -114,7 +115,7 @@ func TestGuardrailState_MinMaxCap(t *testing.T) {
 
 func TestGuardrailState_PeakReset(t *testing.T) {
 	t.Run("floor triggers based on new peak not initial", func(t *testing.T) {
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		cfg := &models.GuardrailConfig{
 			Enabled:         true,
 			FloorDropPct:    20,
@@ -145,7 +146,7 @@ func TestGuardrailState_FloorTakesPriorityOverCeiling(t *testing.T) {
 		// Floor: (2M - 1.5M) / 2M * 100 = 25% >= 20% -> triggers
 		// Ceiling: (1.5M - 1M) / 1M * 100 = 50% >= 20% -> would trigger
 		// Floor should win.
-		g := newGuardrailState(1_000_000)
+		g := engine.NewGuardrailState(1_000_000)
 		g.PeakPortfolio = 2_000_000 // simulate a peak at 2M
 
 		cfg := &models.GuardrailConfig{

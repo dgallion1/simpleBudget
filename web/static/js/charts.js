@@ -27,26 +27,48 @@ function getThemeColors() {
 const CHART_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
 
 /**
+ * Axis layout keys present on a layout-like object: the primary xaxis/yaxis
+ * pair plus any subplot axes (xaxis2, yaxis2, ...). Works on a server chart
+ * layout at creation time and on a rendered element's _fullLayout at
+ * themechange time, so multi-axis charts (e.g. the dashboard's two-row
+ * cumulative subplot) get every axis themed, not just the primary pair.
+ * @param {object} layout - Plotly layout or el._fullLayout
+ * @returns {string[]} e.g. ['xaxis', 'yaxis', 'xaxis2', 'yaxis2']
+ */
+function layoutAxisKeys(layout) {
+    const keys = { xaxis: true, yaxis: true };
+    Object.keys(layout || {}).forEach(function(k) {
+        if (/^[xy]axis\d*$/.test(k)) {
+            keys[k] = true;
+        }
+    });
+    return Object.keys(keys);
+}
+
+/**
  * Canonical list of theme-dependent layout properties, as flattened Plotly
  * attribute paths. This is the SINGLE source of truth for chart theming:
  * the creation-time default layout is built from it (see buildDefaultLayout)
  * and the themechange handler passes it straight to Plotly.relayout. Add any
  * new themed property here and BOTH paths pick it up automatically.
  * @param {object} colors - Result of getThemeColors()
+ * @param {string[]} [axisKeys] - Axis keys to theme (see layoutAxisKeys);
+ *                                defaults to the primary xaxis/yaxis pair.
  * @returns {object} Flat { 'dot.path': value } relayout update
  */
-function themedLayoutUpdate(colors) {
-    return {
+function themedLayoutUpdate(colors, axisKeys) {
+    const update = {
         'font.color': colors.text,
         'legend.font.color': colors.text,
-        'xaxis.gridcolor': colors.gridColor,
-        'xaxis.tickfont.color': colors.text,
-        'yaxis.gridcolor': colors.gridColor,
-        'yaxis.tickfont.color': colors.text,
         'hoverlabel.bgcolor': colors.hoverBg,
         'hoverlabel.bordercolor': colors.hoverBorder,
         'hoverlabel.font.color': colors.hoverText
     };
+    (axisKeys || ['xaxis', 'yaxis']).forEach(function(axis) {
+        update[axis + '.gridcolor'] = colors.gridColor;
+        update[axis + '.tickfont.color'] = colors.text;
+    });
+    return update;
 }
 
 /**
@@ -69,9 +91,11 @@ function setLayoutPath(obj, path, value) {
  * Build the creation-time default layout: static (theme-independent)
  * properties, with every themed property from themedLayoutUpdate overlaid.
  * @param {object} colors - Result of getThemeColors()
+ * @param {string[]} [axisKeys] - Axis keys to default + theme (see
+ *                                layoutAxisKeys); defaults to xaxis/yaxis.
  * @returns {object} Nested Plotly layout object
  */
-function buildDefaultLayout(colors) {
+function buildDefaultLayout(colors, axisKeys) {
     const layout = {
         margin: { t: 30, r: 20, b: 50, l: 70 },
         paper_bgcolor: 'transparent',
@@ -79,11 +103,12 @@ function buildDefaultLayout(colors) {
         font: { family: CHART_FONT_FAMILY },
         showlegend: true,
         legend: { orientation: 'h', y: -0.15 },
-        hoverlabel: { font: { family: CHART_FONT_FAMILY } },
-        xaxis: { automargin: true },
-        yaxis: { automargin: true }
+        hoverlabel: { font: { family: CHART_FONT_FAMILY } }
     };
-    const themed = themedLayoutUpdate(colors);
+    (axisKeys || ['xaxis', 'yaxis']).forEach(function(axis) {
+        layout[axis] = { automargin: true };
+    });
+    const themed = themedLayoutUpdate(colors, axisKeys);
     Object.keys(themed).forEach(function(path) {
         setLayoutPath(layout, path, themed[path]);
     });
@@ -119,22 +144,22 @@ function renderChart(containerId, chartData) {
     const serverLayout = data.layout || {};
 
     // Default layout options — static defaults with the canonical themed
-    // property set (themedLayoutUpdate) overlaid.
-    const defaultLayout = buildDefaultLayout(getThemeColors());
+    // property set (themedLayoutUpdate) overlaid, covering every axis the
+    // server layout declares (subplot axes included).
+    const axisKeys = layoutAxisKeys(serverLayout);
+    const defaultLayout = buildDefaultLayout(getThemeColors(), axisKeys);
 
     // Deep merge axis properties
     const layout = {
         ...defaultLayout,
-        ...serverLayout,
-        xaxis: {
-            ...defaultLayout.xaxis,
-            ...(serverLayout.xaxis || {})
-        },
-        yaxis: {
-            ...defaultLayout.yaxis,
-            ...(serverLayout.yaxis || {})
-        }
+        ...serverLayout
     };
+    axisKeys.forEach(function(axis) {
+        layout[axis] = {
+            ...defaultLayout[axis],
+            ...(serverLayout[axis] || {})
+        };
+    });
 
     // Plotly config
     const config = {
@@ -576,9 +601,16 @@ window.addEventListener('themechange', function() {
         // (it never sets _plotlyData — the old guard was always false).
         if (el._fullLayout) {
             // Fresh update object per chart: Plotly.relayout may mutate its
-            // input. try/catch so one broken chart cannot stop the rest from
-            // re-theming (matches the whatif-tabs.js precedent).
-            try { Plotly.relayout(el.id, themedLayoutUpdate(colors)); } catch (e) { /* keep re-theming the rest */ }
+            // input. Axis keys come from the rendered layout so subplot axes
+            // re-theme too. try/catch so one broken chart cannot stop the
+            // rest from re-theming (matches the whatif-tabs.js precedent) —
+            // but warn, so a chart silently stuck in the old theme is
+            // diagnosable from the console.
+            try {
+                Plotly.relayout(el.id, themedLayoutUpdate(colors, layoutAxisKeys(el._fullLayout)));
+            } catch (e) {
+                console.warn('Theme relayout failed for chart', el.id, e);
+            }
         }
     });
 });

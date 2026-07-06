@@ -726,65 +726,55 @@ func successRateTextClass(v float64) string {
 	}
 }
 
+// verdictClasses maps each models.Health verdict value to the shared Tailwind
+// classes for the three verdict band surfaces: the band container
+// (background/border), the small-caps label text color, and the tint for a
+// health-colored numeric tile value.
+var verdictClasses = map[models.Health]struct{ band, label, value string }{
+	models.HealthGreen: {
+		band:  "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700",
+		label: "text-emerald-700 dark:text-emerald-300",
+		value: "text-emerald-600 dark:text-emerald-400",
+	},
+	models.HealthAmber: {
+		band:  "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700",
+		label: "text-amber-700 dark:text-amber-300",
+		value: "text-amber-600 dark:text-amber-400",
+	},
+	models.HealthRed: {
+		band:  "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700",
+		label: "text-rose-700 dark:text-rose-300",
+		value: "text-rose-600 dark:text-rose-400",
+	},
+	models.HealthNeutral: {
+		band:  "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700",
+		label: "text-gray-500 dark:text-gray-400",
+		value: "text-gray-700 dark:text-gray-200",
+	},
+}
+
+// verdictClassesFor looks up the verdict classes for a health value. Unknown
+// health (zero value or a typo'd constant) renders as red so a missing/wrong
+// health value is noticed, matching the whatif verdict bar's old fail-loud
+// template ladder.
+func verdictClassesFor(h models.Health) struct{ band, label, value string } {
+	if c, ok := verdictClasses[h]; ok {
+		return c
+	}
+	return verdictClasses[models.HealthRed]
+}
+
 // verdictBandClass maps a models.Health verdict value to the shared Tailwind
 // background/border classes for a verdict band container.
-func verdictBandClass(h models.Health) string {
-	switch h {
-	case models.HealthGreen:
-		return "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700"
-	case models.HealthAmber:
-		return "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700"
-	case models.HealthRed:
-		return "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700"
-	case models.HealthNeutral:
-		return "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-	default:
-		// Unknown health (zero value or a typo'd constant) renders as red so
-		// a missing/wrong health value is noticed, matching the whatif
-		// verdict bar's old fail-loud template ladder.
-		return "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700"
-	}
-}
+func verdictBandClass(h models.Health) string { return verdictClassesFor(h).band }
 
 // verdictLabelClass maps the same health values to the verdict band's
 // small-caps label text-color classes.
-func verdictLabelClass(h models.Health) string {
-	switch h {
-	case models.HealthGreen:
-		return "text-emerald-700 dark:text-emerald-300"
-	case models.HealthAmber:
-		return "text-amber-700 dark:text-amber-300"
-	case models.HealthRed:
-		return "text-rose-700 dark:text-rose-300"
-	case models.HealthNeutral:
-		return "text-gray-500 dark:text-gray-400"
-	default:
-		// Unknown health (zero value or a typo'd constant) renders as red so
-		// a missing/wrong health value is noticed, matching the whatif
-		// verdict bar's old fail-loud template ladder.
-		return "text-rose-700 dark:text-rose-300"
-	}
-}
+func verdictLabelClass(h models.Health) string { return verdictClassesFor(h).label }
 
 // verdictValueClass maps the same health values to the tint for a
 // health-colored numeric tile value inside a verdict band.
-func verdictValueClass(h models.Health) string {
-	switch h {
-	case models.HealthGreen:
-		return "text-emerald-600 dark:text-emerald-400"
-	case models.HealthAmber:
-		return "text-amber-600 dark:text-amber-400"
-	case models.HealthRed:
-		return "text-rose-600 dark:text-rose-400"
-	case models.HealthNeutral:
-		return "text-gray-700 dark:text-gray-200"
-	default:
-		// Unknown health (zero value or a typo'd constant) renders as red so
-		// a missing/wrong health value is noticed, matching the whatif
-		// verdict bar's old fail-loud template ladder.
-		return "text-rose-600 dark:text-rose-400"
-	}
-}
+func verdictValueClass(h models.Health) string { return verdictClassesFor(h).value }
 
 // successRateBarClass returns the Tailwind bg color for a progress bar fill,
 // using the same five-tier mapping as successRateTextClass.

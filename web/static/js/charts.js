@@ -24,6 +24,72 @@ function getThemeColors() {
     };
 }
 
+const CHART_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
+
+/**
+ * Canonical list of theme-dependent layout properties, as flattened Plotly
+ * attribute paths. This is the SINGLE source of truth for chart theming:
+ * the creation-time default layout is built from it (see buildDefaultLayout)
+ * and the themechange handler passes it straight to Plotly.relayout. Add any
+ * new themed property here and BOTH paths pick it up automatically.
+ * @param {object} colors - Result of getThemeColors()
+ * @returns {object} Flat { 'dot.path': value } relayout update
+ */
+function themedLayoutUpdate(colors) {
+    return {
+        'font.color': colors.text,
+        'legend.font.color': colors.text,
+        'xaxis.gridcolor': colors.gridColor,
+        'xaxis.tickfont.color': colors.text,
+        'yaxis.gridcolor': colors.gridColor,
+        'yaxis.tickfont.color': colors.text,
+        'hoverlabel.bgcolor': colors.hoverBg,
+        'hoverlabel.bordercolor': colors.hoverBorder,
+        'hoverlabel.font.color': colors.hoverText
+    };
+}
+
+/**
+ * Set a flattened 'a.b.c' path on a nested object, creating intermediate
+ * objects as needed (existing intermediates are kept, not clobbered).
+ */
+function setLayoutPath(obj, path, value) {
+    const parts = path.split('.');
+    let node = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+        if (typeof node[parts[i]] !== 'object' || node[parts[i]] === null) {
+            node[parts[i]] = {};
+        }
+        node = node[parts[i]];
+    }
+    node[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Build the creation-time default layout: static (theme-independent)
+ * properties, with every themed property from themedLayoutUpdate overlaid.
+ * @param {object} colors - Result of getThemeColors()
+ * @returns {object} Nested Plotly layout object
+ */
+function buildDefaultLayout(colors) {
+    const layout = {
+        margin: { t: 30, r: 20, b: 50, l: 70 },
+        paper_bgcolor: 'transparent',
+        plot_bgcolor: 'transparent',
+        font: { family: CHART_FONT_FAMILY },
+        showlegend: true,
+        legend: { orientation: 'h', y: -0.15 },
+        hoverlabel: { font: { family: CHART_FONT_FAMILY } },
+        xaxis: { automargin: true },
+        yaxis: { automargin: true }
+    };
+    const themed = themedLayoutUpdate(colors);
+    Object.keys(themed).forEach(function(path) {
+        setLayoutPath(layout, path, themed[path]);
+    });
+    return layout;
+}
+
 /**
  * Render a Plotly chart
  * @param {string} containerId - The ID of the container element
@@ -50,45 +116,22 @@ function renderChart(containerId, chartData) {
         }
     }
 
-    const colors = getThemeColors();
     const serverLayout = data.layout || {};
 
-    // Default layout options
-    const defaultLayout = {
-        margin: { t: 30, r: 20, b: 50, l: 70 },
-        paper_bgcolor: 'transparent',
-        plot_bgcolor: 'transparent',
-        font: {
-            family: 'system-ui, -apple-system, sans-serif',
-            color: colors.text
-        },
-        showlegend: true,
-        legend: {
-            orientation: 'h',
-            y: -0.15,
-            font: { color: colors.text }
-        },
-        hoverlabel: {
-            bgcolor: colors.hoverBg,
-            bordercolor: colors.hoverBorder,
-            font: { color: colors.hoverText, family: 'system-ui, -apple-system, sans-serif' }
-        }
-    };
+    // Default layout options — static defaults with the canonical themed
+    // property set (themedLayoutUpdate) overlaid.
+    const defaultLayout = buildDefaultLayout(getThemeColors());
 
     // Deep merge axis properties
     const layout = {
         ...defaultLayout,
         ...serverLayout,
         xaxis: {
-            gridcolor: colors.gridColor,
-            tickfont: { color: colors.text },
-            automargin: true,
+            ...defaultLayout.xaxis,
             ...(serverLayout.xaxis || {})
         },
         yaxis: {
-            gridcolor: colors.gridColor,
-            tickfont: { color: colors.text },
-            automargin: true,
+            ...defaultLayout.yaxis,
             ...(serverLayout.yaxis || {})
         }
     };
@@ -526,23 +569,16 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
 
 // Re-render all charts when theme changes
 window.addEventListener('themechange', function() {
+    const colors = getThemeColors();
     // Re-render all chart containers
     document.querySelectorAll('[id^="chart-"]').forEach(function(el) {
         // Plotly marks a rendered chart by attaching _fullLayout to the element
         // (it never sets _plotlyData — the old guard was always false).
         if (el._fullLayout) {
-            const colors = getThemeColors();
-            Plotly.relayout(el.id, {
-                'font.color': colors.text,
-                'legend.font.color': colors.text,
-                'xaxis.gridcolor': colors.gridColor,
-                'xaxis.tickfont.color': colors.text,
-                'yaxis.gridcolor': colors.gridColor,
-                'yaxis.tickfont.color': colors.text,
-                'hoverlabel.bgcolor': colors.hoverBg,
-                'hoverlabel.bordercolor': colors.hoverBorder,
-                'hoverlabel.font.color': colors.hoverText
-            });
+            // Fresh update object per chart: Plotly.relayout may mutate its
+            // input. try/catch so one broken chart cannot stop the rest from
+            // re-theming (matches the whatif-tabs.js precedent).
+            try { Plotly.relayout(el.id, themedLayoutUpdate(colors)); } catch (e) { /* keep re-theming the rest */ }
         }
     });
 });

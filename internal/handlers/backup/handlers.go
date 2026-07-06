@@ -36,35 +36,42 @@ var (
 	backupSvc *backupsvc.Service
 )
 
-// Initialize sets up the backup package with required dependencies.
-// It also clears any previously set restore gate — re-initializing the
-// package starts a fresh wiring, so the gate must be set (again) after
-// Initialize. This keeps repeated wiring (e.g. per-test setup) from
-// keeping a stale gate bound to torn-down dependencies.
-func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service) {
+// SettingsRewriteGate serializes an external rewrite of the settings files
+// (a restore's write+prune phase) against the settings manager's saves.
+// Acquiring it holds the manager's lock — no in-flight save can interleave
+// with a half-restored settings dir — and the returned end func carries the
+// post-rewrite bookkeeping (cache invalidation, active-scenario
+// reconciliation) inside the same critical section. Implemented by
+// retirement.SettingsManager.
+type SettingsRewriteGate interface {
+	BeginExternalRewrite() (end func())
+}
+
+// RewriteGateFunc adapts a bare acquire function to SettingsRewriteGate.
+type RewriteGateFunc func() (end func())
+
+// BeginExternalRewrite implements SettingsRewriteGate.
+func (f RewriteGateFunc) BeginExternalRewrite() func() { return f() }
+
+// Initialize sets up the backup package with required dependencies. The
+// gate is part of the wiring, not a post-Initialize registration, so it
+// cannot be forgotten or installed in the wrong order; pass nil only when
+// no settings manager exists (isolated tests) — restores then run
+// unserialized, loudly.
+func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service, gate SettingsRewriteGate) {
 	cfg = c
 	store = s
 	renderer = r
 	backupSvc = b
-	restoreGate = nil
+	restoreGate = gate
 }
 
-// restoreGate, when set, is acquired for the duration of a restore's
-// write+prune phase (upload and bundled test-data paths alike) and released
-// once the on-disk rewrite is complete. It serializes the restore against
-// concurrent settings saves: without it, an in-flight save could re-create
-// a pruned scenario file or clobber the freshly restored whatif.json with
-// pre-restore data. The returned release also carries the post-rewrite
-// bookkeeping (cache invalidation, active-scenario reconciliation) inside
-// the same critical section.
-var restoreGate func() (release func())
-
-// SetRestoreGate installs the gate acquired around every restore's
-// write+prune phase (e.g. retirement.SettingsManager.BeginExternalRewrite).
-// Set after Initialize: re-initializing the package clears the gate.
-func SetRestoreGate(fn func() func()) {
-	restoreGate = fn
-}
+// restoreGate is acquired for the duration of a restore's write+prune phase
+// (upload and bundled test-data paths alike) and released once the on-disk
+// rewrite is complete. Without it, an in-flight save could re-create a
+// pruned scenario file or clobber the freshly restored whatif.json with
+// pre-restore data.
+var restoreGate SettingsRewriteGate
 
 type backupStatusResponse struct {
 	TS            string `json:"ts"`
@@ -480,14 +487,14 @@ func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, st
 	// inside the same critical section. Nothing between here and return
 	// may call a SettingsManager method (that would deadlock).
 	if restoreGate != nil {
-		endRewrite := restoreGate()
+		endRewrite := restoreGate.BeginExternalRewrite()
 		defer endRewrite()
 	} else {
-		// A nil gate means SetRestoreGate was never called after the last
-		// Initialize — the restore proceeds UNSERIALIZED against settings
-		// saves (the race the gate exists to prevent). Loud so a wiring
-		// regression is visible instead of silently racy.
-		log.Printf("backup: restore running without a restore gate; concurrent settings saves are not serialized (call SetRestoreGate after Initialize)")
+		// A nil gate means Initialize was wired without a settings manager
+		// — the restore proceeds UNSERIALIZED against settings saves (the
+		// race the gate exists to prevent). Loud so a wiring regression is
+		// visible instead of silently racy.
+		log.Printf("backup: restore running without a restore gate; concurrent settings saves are not serialized (pass a SettingsRewriteGate to Initialize)")
 	}
 
 	for _, p := range queue {

@@ -635,7 +635,7 @@ func TestLockCheckMiddleware_Locked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create renderer: %v", err)
 	}
-	backup.Initialize(c, encStore, renderer, nil)
+	backup.Initialize(c, encStore, renderer, nil, nil)
 
 	// Create a handler wrapped by the middleware
 	innerCalled := false
@@ -662,7 +662,7 @@ func TestLockCheckMiddleware_Locked(t *testing.T) {
 
 	// Restore normal test state so other tests aren't affected
 	normalStore, _ := storage.New(testutil.TestDataDir())
-	backup.Initialize(c, normalStore, renderer, nil)
+	backup.Initialize(c, normalStore, renderer, nil, nil)
 }
 
 // newTestRenderer creates a template renderer for testing

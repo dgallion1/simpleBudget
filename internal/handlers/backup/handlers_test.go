@@ -57,7 +57,7 @@ func setupTestEnv(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create backup service: %v", err)
 	}
 
-	Initialize(c, s, nil, b)
+	Initialize(c, s, nil, b, nil)
 
 	return tmpDir, func() {
 		os.RemoveAll(tmpDir)
@@ -75,7 +75,7 @@ func writeCSVFile(t *testing.T, dir, name, content string) {
 func TestInitialize(t *testing.T) {
 	c := &config.Config{DataDirectory: "/tmp/test"}
 	s := &storage.Storage{}
-	Initialize(c, s, nil, nil)
+	Initialize(c, s, nil, nil, nil)
 	if cfg != c {
 		t.Error("cfg not set")
 	}
@@ -2276,7 +2276,7 @@ func setupTestEnvWithRenderer(t *testing.T) (string, func()) {
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	Initialize(c, s, rend, nil)
+	Initialize(c, s, rend, nil, nil)
 
 	return tmpDir, func() {
 		os.RemoveAll(tmpDir)
@@ -2337,7 +2337,7 @@ func TestHandleUnlockPage_WithRenderer_RenderError(t *testing.T) {
 		t.Fatalf("templates.NewFromFS: %v", err)
 	}
 
-	Initialize(c, s, rend, nil)
+	Initialize(c, s, rend, nil, nil)
 
 	// Enable encryption and lock
 	writeCSVFile(t, tmpDir, "test.csv", "data")
@@ -3809,12 +3809,12 @@ func TestHandleRestore_AcquiresRestoreGateOnSuccessOnly(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// setupTestEnv's Initialize already reset restoreGate to nil;
-	// just make sure this test's gate doesn't leak to later tests.
+	// setupTestEnv's Initialize wired a nil gate; just make sure this
+	// test's gate doesn't leak to later tests.
 	t.Cleanup(func() { restoreGate = nil })
 
 	acquired, released := 0, 0
-	SetRestoreGate(func() func() {
+	restoreGate = RewriteGateFunc(func() func() {
 		acquired++
 		return func() { released++ }
 	})
@@ -3853,31 +3853,31 @@ func TestHandleRestore_AcquiresRestoreGateOnSuccessOnly(t *testing.T) {
 	}
 }
 
-func TestInitialize_ResetsRestoreGate(t *testing.T) {
+func TestInitialize_ReplacesRestoreGate(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 	t.Cleanup(func() { restoreGate = nil })
 
 	staleAcquired := 0
-	SetRestoreGate(func() func() {
+	restoreGate = RewriteGateFunc(func() func() {
 		staleAcquired++
 		return func() {}
 	})
 
-	// Re-initializing (same deps, as repeated wiring does) must clear the
-	// previously set gate so it cannot outlive its wiring.
-	Initialize(cfg, store, renderer, backupSvc)
+	// Re-initializing (as repeated wiring does) must replace the gate so a
+	// stale one cannot outlive its wiring.
+	Initialize(cfg, store, renderer, backupSvc, nil)
 	if restoreGate != nil {
-		t.Fatal("Initialize must reset the restore gate to nil")
+		t.Fatal("Initialize with a nil gate must clear the restore gate")
 	}
 
-	// A gate set after the second Initialize is acquired exactly once per
-	// successful restore; the stale gate never fires.
+	// A gate wired via Initialize is acquired exactly once per successful
+	// restore; the stale gate never fires.
 	freshAcquired, freshReleased := 0, 0
-	SetRestoreGate(func() func() {
+	Initialize(cfg, store, renderer, backupSvc, RewriteGateFunc(func() func() {
 		freshAcquired++
 		return func() { freshReleased++ }
-	})
+	}))
 	zipBuf := createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
 	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
 	HandleRestore(rec, rec.Request)

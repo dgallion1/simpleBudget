@@ -92,16 +92,13 @@ func SetupDependencies(c *config.Config) error {
 	insights.Initialize(loader, renderer)
 	majorexpenses.Initialize(loader, renderer)
 	duplicates.Initialize(loader, renderer)
-	backup.Initialize(cfg, store, renderer, backupService)
-
 	// A restore rewrites the settings files on disk behind the settings
-	// manager's back. The gate holds the manager's lock for the restore's
-	// whole write+prune phase — so no in-flight save can interleave with a
-	// half-restored settings dir — and on release drops the in-memory cache
-	// and falls back to the default whatif.json if the restore pruned the
-	// active scenario's file. Registered after backup.Initialize —
-	// Initialize clears any previously set gate.
-	backup.SetRestoreGate(retirementMgr.BeginExternalRewrite)
+	// manager's back. The manager is the restore gate: it holds its lock
+	// for the restore's whole write+prune phase — so no in-flight save can
+	// interleave with a half-restored settings dir — and on release drops
+	// the in-memory cache and falls back to the default whatif.json if the
+	// restore pruned the active scenario's file.
+	backup.Initialize(cfg, store, renderer, backupService, retirementMgr)
 
 	return nil
 }

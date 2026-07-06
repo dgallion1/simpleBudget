@@ -357,7 +357,11 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 		// Convert to monthly using geometric formula (not simple division)
 		tdMonthlyReturn := math.Pow(1+tdAnnualReturn, 1.0/12) - 1
 		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
-		taxableComponents := engine.BuildTaxableReturnComponents(taxAnnualReturn, s)
+		// taxAnnualReturn is a decimal; BuildTaxableReturnComponents takes
+		// percent (it divides by 100). Passing the decimal here understated
+		// the taxable account's total return ~100x, so taxable appreciation
+		// was near zero in every historical sequence.
+		taxableComponents := engine.BuildTaxableReturnComponents(taxAnnualReturn*100, s)
 		irmaaEligibleAdults := engine.MedicareEligibleAdultCountAtYear(s, currentYear)
 		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(engine.YearsFromTaxBase(s, currentYear)))
 

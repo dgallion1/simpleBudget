@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"budget2/internal/models"
-	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
 )
@@ -23,7 +22,11 @@ func parallelFanOutSettings() *models.WhatIfSettings {
 	s.InvestmentReturn = 6.0
 	s.InflationRate = 3.0
 	s.ProjectionYears = 12
-	s.CurrentAge = 64
+	// SetPrimaryAge pins the primary BirthMonth too — prepare.ComputeAges
+	// recomputes CurrentAge from BirthMonth+StartDate, so a raw
+	// s.CurrentAge assignment would silently run the scenario at the
+	// default person's age instead of 64.
+	s.SetPrimaryAge(64)
 	s.SpendingPhaseConfig = nil
 	s.SocialSecurity = &models.SocialSecurityConfig{
 		FRABenefit: 2400,
@@ -43,6 +46,14 @@ func TestRunFullDeterministicUnderParallelism(t *testing.T) {
 	s := parallelFanOutSettings()
 	in := engine.Input{Prepared: prepare.MustFrom(t, s)}
 	eng := engine.New()
+
+	// Guard the fixture's prepared age: prepare recomputes CurrentAge from
+	// BirthMonth+StartDate, so if SetPrimaryAge ever regresses to a raw
+	// CurrentAge assignment this scenario silently runs at a different age
+	// (third strike for this fixture pattern).
+	if got := in.Prepared.Settings().CurrentAge; got != 64 {
+		t.Fatalf("prepared CurrentAge = %d; fixture must run at 64", got)
+	}
 
 	const seed = 42
 	a := runFullWithSeed(eng, in, seed)
@@ -78,29 +89,6 @@ func TestRunFullDeterministicUnderParallelism(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a.BudgetFit, b.BudgetFit) {
 		t.Error("BudgetFit differs between identical seeded runs")
-	}
-}
-
-// TestSensitivityWithBaselineMatchesSensitivity pins the baseline-reuse
-// refactor: handing Sensitivity/FailurePoints the already-computed
-// baseline must not change their output versus computing it themselves.
-func TestSensitivityWithBaselineMatchesSensitivity(t *testing.T) {
-	s := parallelFanOutSettings()
-	in := engine.Input{Prepared: prepare.MustFrom(t, s), Hooks: DefaultHooks()}
-	eng := engine.New()
-
-	viaSelf := analysis.Sensitivity(eng, in)
-	proj := eng.Run(in)
-	viaBaseline := analysis.SensitivityWithBaseline(eng, in, proj, analysis.BudgetFit(in, proj))
-
-	if !reflect.DeepEqual(viaSelf, viaBaseline) {
-		t.Errorf("SensitivityWithBaseline diverges from Sensitivity:\n%v\nvs\n%v", viaSelf, viaBaseline)
-	}
-
-	fpSelf := analysis.FailurePoints(eng, in)
-	fpBaseline := analysis.FailurePointsWithBaseline(eng, in, proj)
-	if !reflect.DeepEqual(fpSelf, fpBaseline) {
-		t.Errorf("FailurePointsWithBaseline diverges from FailurePoints:\n%v\nvs\n%v", fpSelf, fpBaseline)
 	}
 }
 

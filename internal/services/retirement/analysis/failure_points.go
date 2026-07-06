@@ -2,28 +2,22 @@ package analysis
 
 import (
 	"math"
-	"sync"
+	"runtime"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
 )
 
-// FailurePoints finds exact thresholds where the portfolio fails by
-// running a binary search over each parameter (return, inflation,
-// expenses, portfolio value). Returns BaselineSurvives=false (and an
-// empty FailurePoints slice) when the baseline projection itself
+// FailurePointsWithBaseline finds exact thresholds where the portfolio
+// fails by running a binary search over each parameter (return,
+// inflation, expenses, portfolio value), reusing an already-computed
+// baseline projection so orchestrators that just ran the baseline don't
+// pay for a redundant full projection. Returns BaselineSurvives=false
+// (and an empty FailurePoints slice) when the baseline projection itself
 // fails — in that case there's no meaningful failure threshold to find.
-// Computes its own baseline; callers that already ran the baseline
-// projection should use FailurePointsWithBaseline instead.
-func FailurePoints(eng *engine.Engine, in engine.Input) *models.FailurePointAnalysis {
-	return FailurePointsWithBaseline(eng, in, eng.Run(in))
-}
-
-// FailurePointsWithBaseline is FailurePoints reusing an already-computed
-// baseline projection, so orchestrators that just ran the baseline don't
-// pay for a redundant full projection. The four binary searches are
-// independent of one another and run concurrently; each perturbed run
-// builds its own PreparedSettings deep copy, and results land in fixed
+// The four binary searches are independent of one another and run
+// concurrently (capped at NumCPU workers); each perturbed run builds its
+// own PreparedSettings deep copy, and results land in fixed
 // parameter-order slots so the output is identical to the sequential
 // form regardless of scheduling.
 func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjection *models.ProjectionResult) *models.FailurePointAnalysis {
@@ -46,15 +40,9 @@ func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjecti
 		findPortfolioThreshold,
 	}
 	slots := make([]*models.FailurePoint, len(searches))
-	var wg sync.WaitGroup
-	for i, search := range searches {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			slots[i] = search(eng, in)
-		}()
-	}
-	wg.Wait()
+	parallelIndexed(len(searches), runtime.NumCPU(), func(i int) {
+		slots[i] = searches[i](eng, in)
+	})
 
 	for _, fp := range slots {
 		if fp != nil {

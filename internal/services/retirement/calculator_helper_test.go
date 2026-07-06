@@ -100,13 +100,22 @@ func (c *Calculator) CalculateSustainabilityScore(projection *models.ProjectionR
 }
 
 // CalculateSensitivity runs sensitivity analysis on key parameters.
+// Computes its own baseline projection + budget fit (what the deleted
+// analysis.Sensitivity wrapper did) and hands them to the WithBaseline form.
 func (c *Calculator) CalculateSensitivity() []models.SensitivityResult {
-	return analysis.Sensitivity(engine.New(), c.input())
+	eng := engine.New()
+	in := c.input()
+	proj := eng.Run(in)
+	return analysis.SensitivityWithBaseline(eng, in, proj, analysis.BudgetFit(in, proj))
 }
 
 // CalculateFailurePoints finds exact thresholds where the portfolio fails.
+// Computes its own baseline projection (what the deleted
+// analysis.FailurePoints wrapper did) and hands it to the WithBaseline form.
 func (c *Calculator) CalculateFailurePoints() *models.FailurePointAnalysis {
-	return analysis.FailurePoints(engine.New(), c.input())
+	eng := engine.New()
+	in := c.input()
+	return analysis.FailurePointsWithBaseline(eng, in, eng.Run(in))
 }
 
 func (c *Calculator) findReturnThreshold() *models.FailurePoint {

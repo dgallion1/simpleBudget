@@ -4,7 +4,6 @@ import (
 	"math"
 	"runtime"
 	"sort"
-	"sync"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
@@ -66,24 +65,9 @@ func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBa
 	// result lands in its start-year-order slot, keeping the output
 	// identical to the sequential form regardless of scheduling.
 	results := make([]HistoricalSequenceResult, len(availableYears))
-	workers := min(runtime.NumCPU(), len(availableYears))
-	idx := make(chan int, len(availableYears))
-	for i := range availableYears {
-		idx <- i
-	}
-	close(idx)
-
-	var wg sync.WaitGroup
-	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range idx {
-				results[i] = runSingleHistoricalSequence(in, data, availableYears[i])
-			}
-		}()
-	}
-	wg.Wait()
+	parallelIndexed(len(availableYears), runtime.NumCPU(), func(i int) {
+		results[i] = runSingleHistoricalSequence(in, data, availableYears[i])
+	})
 
 	successCount := 0
 	for _, result := range results {

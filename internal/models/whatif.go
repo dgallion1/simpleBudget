@@ -224,6 +224,20 @@ func BirthMonthForAge(startDate string, age int) string {
 	return start.AddDate(-age, 0, 0).Format(yearMonthLayout)
 }
 
+// SetPrimaryAge sets CurrentAge AND pins the primary person's BirthMonth to
+// match. prepare.ComputeAges recomputes CurrentAge from BirthMonth+StartDate,
+// silently overriding a raw CurrentAge assignment — always use this instead
+// of setting CurrentAge directly when the settings will pass through prepare.
+func (s *WhatIfSettings) SetPrimaryAge(age int) {
+	s.CurrentAge = age
+	for i := range s.Persons {
+		if s.Persons[i].Role == PersonRolePrimary {
+			s.Persons[i].BirthMonth = BirthMonthForAge(s.StartDate, age)
+			return
+		}
+	}
+}
+
 func DeriveAgeAtStartDate(startDate, birthMonth string) (int, error) {
 	start, err := ParseYearMonth(startDate)
 	if err != nil {

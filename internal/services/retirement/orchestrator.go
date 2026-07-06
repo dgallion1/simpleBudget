@@ -8,7 +8,6 @@
 package retirement
 
 import (
-	"sync"
 	"time"
 
 	"budget2/internal/models"
@@ -51,6 +50,22 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	rmd := analysis.BuildRMD(proj, in)
 	tax := analysis.BuildTax(proj, in)
 
+	// Resolve ONE effective MC seed for the whole recalc (same pattern as
+	// runTaxOptimizerWithSeed). If we passed mcSeed=0 down, every Monte
+	// Carlo consumer — the main MC, the SS baseline cell, and each SS grid
+	// cell — would auto-seed from time.Now() independently, so the SS
+	// DeltaSurvivalRate columns would compare success rates across
+	// non-common random numbers. A single up-front seed gives common
+	// random numbers across the whole analysis while staying random per
+	// request.
+	effectiveSeed := mcSeed
+	if effectiveSeed == 0 {
+		effectiveSeed = time.Now().UnixNano()
+		if effectiveSeed == 0 {
+			effectiveSeed = 1 // MonteCarlo treats 0 as auto-seed
+		}
+	}
+
 	// The expensive analyses are independent of one another: sensitivity,
 	// failure points, Monte Carlo, backtest, and the SS comparison each
 	// run their own perturbed projections off the same read-only Input.
@@ -58,37 +73,46 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	// function of its Input and every perturbed run builds its own
 	// PreparedSettings, so results are identical to the sequential form.
 	// Sensitivity and failure points reuse the baseline projection above
-	// instead of re-running it.
+	// instead of re-running it; the SS portfolio baseline cell reuses the
+	// main MC's per-run results (its branch waits on mcReady). The fan-out
+	// runs through analysis.ParallelIndexed so a panic in any branch
+	// (perturb.go panics by design on invalid perturbations) resurfaces on
+	// THIS goroutine after all branches finish — matching sequential panic
+	// semantics so HTTP middleware can recover it instead of the process
+	// dying from an unrecovered goroutine panic.
 	var (
 		sensitivity   []models.SensitivityResult
 		failurePoints *models.FailurePointAnalysis
 		monteCarlo    *models.MonteCarloAnalysis
+		mcRuns        []models.MonteCarloResult
 		backtest      *models.HistoricalBacktestAnalysis
 		ssAnalysis    *models.SSComparisonAnalysis
 	)
 	settings := in.Prepared.Settings()
 
-	var wg sync.WaitGroup
-	spawn := func(f func()) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			f()
-		}()
+	// mcReady publishes monteCarlo/mcRuns to the SS branch. Closed via
+	// defer so the SS branch never deadlocks even if the MC branch panics
+	// (it then sees nil results and re-simulates its baseline cell).
+	mcReady := make(chan struct{})
+	branches := []func(){
+		func() { sensitivity = analysis.SensitivityWithBaseline(eng, in, proj, budgetFit) },
+		func() { failurePoints = analysis.FailurePointsWithBaseline(eng, in, proj) },
+		func() {
+			defer close(mcReady)
+			monteCarlo, mcRuns = analysis.MonteCarloWithResults(eng, in, MonteCarloRuns, effectiveSeed)
+		},
+		func() { backtest = analysis.HistoricalBacktest(in, history.DefaultData()) },
 	}
-	spawn(func() { sensitivity = analysis.SensitivityWithBaseline(eng, in, proj, budgetFit) })
-	spawn(func() { failurePoints = analysis.FailurePointsWithBaseline(eng, in, proj) })
-	spawn(func() { monteCarlo = analysis.MonteCarlo(eng, in, MonteCarloRuns, mcSeed) })
-	spawn(func() { backtest = analysis.HistoricalBacktest(in, history.DefaultData()) })
 	if settings.SocialSecurity != nil && settings.SocialSecurity.FRABenefit > 0 {
-		spawn(func() {
+		branches = append(branches, func() {
 			ssAnalysis = analysis.SSAnalysis(in)
 			if ssAnalysis != nil && SSPortfolioEligible(settings) {
-				ssAnalysis.Portfolio = analysis.SSPortfolioWithSeed(eng, in, ssAnalysis, mcSeed)
+				<-mcReady
+				ssAnalysis.Portfolio = analysis.SSPortfolioFromMainMC(eng, in, ssAnalysis, effectiveSeed, mcRuns)
 			}
 		})
 	}
-	wg.Wait()
+	analysis.ParallelIndexed(len(branches), len(branches), func(i int) { branches[i]() })
 
 	if backtest != nil && monteCarlo != nil && monteCarlo.Stats != nil {
 		backtest.MonteCarloSuccessRate = monteCarlo.Stats.SuccessRate

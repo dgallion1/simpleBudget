@@ -45,7 +45,7 @@ func failureInput(tb testing.TB, s *models.WhatIfSettings) (*engine.Engine, engi
 func TestCalculateFailurePoints(t *testing.T) {
 	t.Run("healthy portfolio returns failure points for all parameters", func(t *testing.T) {
 		eng, in := failureInput(t, healthySettings())
-		result := FailurePoints(eng, in)
+		result := FailurePointsWithBaseline(eng, in, eng.Run(in))
 
 		if result == nil {
 			t.Fatal("expected non-nil result")
@@ -71,7 +71,7 @@ func TestCalculateFailurePoints(t *testing.T) {
 
 	t.Run("failing portfolio returns empty failure points", func(t *testing.T) {
 		eng, in := failureInput(t, failingSettings())
-		result := FailurePoints(eng, in)
+		result := FailurePointsWithBaseline(eng, in, eng.Run(in))
 
 		if result == nil {
 			t.Fatal("expected non-nil result")

@@ -90,7 +90,9 @@ func TestSensitivityAndMonteCarloExportedWrappers(t *testing.T) {
 	s.InvestmentReturn = 5
 
 	in := engine.Input{Prepared: prepare.MustFrom(t, s)}
-	results := Sensitivity(engine.New(), in)
+	eng := engine.New()
+	proj := eng.Run(in)
+	results := SensitivityWithBaseline(eng, in, proj, BudgetFit(in, proj))
 	if got, want := len(results), 6; got != want {
 		t.Fatalf("sensitivity results=%d, want %d", got, want)
 	}

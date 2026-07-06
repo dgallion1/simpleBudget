@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/rand"
 	"runtime"
-	"sync"
 	"time"
 
 	"budget2/internal/models"
@@ -85,24 +84,18 @@ type AssetReturns struct {
 // auto-seed from time.Now(); any non-zero seed is used directly so
 // deterministic parity tests get reproducible RNG sequences.
 func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *models.MonteCarloAnalysis {
+	a, _ := MonteCarloWithResults(eng, in, runs, seed)
+	return a
+}
+
+// MonteCarloWithResults is MonteCarlo, additionally returning the per-run
+// results slice (in run order). The orchestrator uses it to derive the SS
+// portfolio baseline cell from the main run's first N simulations instead of
+// re-simulating them.
+func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed int64) (*models.MonteCarloAnalysis, []models.MonteCarloResult) {
 	if runs <= 0 {
 		runs = 1000
 	}
-
-	s := in.Prepared.Settings()
-	config := DefaultMonteCarloConfig()
-	var results []models.MonteCarloResult
-	successCount := 0
-	totalDepletionYears := 0.0
-	depletionCount := 0
-
-	// Track aggregate shock statistics
-	totalCrashes := 0
-	totalSpendingShocks := 0
-	totalHealthShocks := 0
-	runsWithCrashes := 0
-	runsWithSpendingShocks := 0
-	runsWithHealthShocks := 0
 
 	// Seed derivation: seed == 0 auto-seeds from the clock (preserve the
 	// legacy "default = unpredictable" contract); any non-zero seed is used
@@ -115,7 +108,29 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 		baseSeed = time.Now().UnixNano()
 	}
 
-	results = runSimulations(in, baseSeed, runs, config)
+	results := runSimulations(in, baseSeed, runs, DefaultMonteCarloConfig())
+	return aggregateMonteCarlo(in, results), results
+}
+
+// aggregateMonteCarlo folds a per-run results slice into the reported
+// analysis (stats, sequence risk, adaptive-spending sub-run, distribution).
+// Split out of MonteCarlo so a results subset (e.g. the first 250 runs of
+// the main simulation) can be aggregated with byte-identical math.
+func aggregateMonteCarlo(in engine.Input, results []models.MonteCarloResult) *models.MonteCarloAnalysis {
+	runs := len(results)
+	s := in.Prepared.Settings()
+	config := DefaultMonteCarloConfig()
+	successCount := 0
+	totalDepletionYears := 0.0
+	depletionCount := 0
+
+	// Track aggregate shock statistics
+	totalCrashes := 0
+	totalSpendingShocks := 0
+	totalHealthShocks := 0
+	runsWithCrashes := 0
+	runsWithSpendingShocks := 0
+	runsWithHealthShocks := 0
 
 	// Aggregate statistics over the completed runs.
 	for _, result := range results {
@@ -252,29 +267,10 @@ func runSimulations(in engine.Input, baseSeed int64, runs int, config *MonteCarl
 		seeds[i] = master.Int63()
 	}
 
-	workers := runtime.NumCPU()
-	if workers > runs {
-		workers = runs
-	}
-
-	idx := make(chan int, runs)
-	for i := range runs {
-		idx <- i
-	}
-	close(idx)
-
-	var wg sync.WaitGroup
-	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range idx {
-				rng := rand.New(rand.NewSource(seeds[i]))
-				results[i] = runSingleMonteCarloSimulation(in, rng, config)
-			}
-		}()
-	}
-	wg.Wait()
+	parallelIndexed(runs, runtime.NumCPU(), func(i int) {
+		rng := rand.New(rand.NewSource(seeds[i]))
+		results[i] = runSingleMonteCarloSimulation(in, rng, config)
+	})
 
 	return results
 }

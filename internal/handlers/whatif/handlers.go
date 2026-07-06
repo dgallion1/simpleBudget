@@ -53,6 +53,74 @@ type analysisCache struct {
 
 var cache = &analysisCache{}
 
+// runFullFn indirects retirement.RunFull so tests can count or gate the
+// expensive analysis fan-out. Production never reassigns it.
+var runFullFn = retirement.RunFull
+
+// errAnalysisPanicked is returned to singleflight waiters whose leader
+// panicked mid-computation. The leader's own request re-panics (and is
+// recovered by net/http as today); waiters fail cleanly and the client can
+// simply retry, which recomputes because nothing was cached.
+var errAnalysisPanicked = errors.New("analysis computation failed; please retry")
+
+// inflightCall coalesces concurrent identical analysis computations
+// (singleflight). Waiters block on done, then read analysis/panicked.
+type inflightCall struct {
+	done     chan struct{}
+	analysis *models.WhatIfAnalysis
+	panicked bool
+}
+
+var (
+	inflightMu sync.Mutex
+	inflight   = map[string]*inflightCall{}
+)
+
+// cachedAnalysis returns the cached analysis for depHash if it is still
+// fresh. The returned pointer is shared across requests; handlers treat
+// WhatIfAnalysis as read-only (this matches the pre-existing cache
+// behavior, which also handed the same pointer to every request).
+func cachedAnalysis(depHash string) (*models.WhatIfAnalysis, bool) {
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	if cache.hash == depHash && time.Since(cache.cachedAt) < 5*time.Minute {
+		return cache.analysis, true
+	}
+	return nil, false
+}
+
+// leadAnalysis runs the full analysis as the singleflight leader for
+// depHash, publishes the result to the cache, delivers it to waiters, and
+// unregisters the in-flight call. The singleflight mutex is NOT held while
+// RunFull executes. On panic the call is unregistered and marked panicked
+// before the panic propagates, so future requests recompute instead of
+// wedging and current waiters get errAnalysisPanicked.
+func leadAnalysis(depHash string, in engine.Input, call *inflightCall) *models.WhatIfAnalysis {
+	defer func() {
+		inflightMu.Lock()
+		delete(inflight, depHash)
+		inflightMu.Unlock()
+		close(call.done)
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			call.panicked = true
+			panic(r)
+		}
+	}()
+
+	analysis := runFullFn(getEngine(), in)
+
+	cache.mu.Lock()
+	cache.hash = depHash
+	cache.analysis = analysis
+	cache.cachedAt = time.Now()
+	cache.mu.Unlock()
+
+	call.analysis = analysis
+	return analysis
+}
+
 func statusForWhatIfSaveError(err error) int {
 	var chainErr *retirement.ScenarioChainValidationError
 	if errors.As(err, &chainErr) {
@@ -133,30 +201,42 @@ func buildEngineInput(settings *models.WhatIfSettings) (engine.Input, string, er
 	return engine.Input{Prepared: prepared, Chain: chain}, combinedHash, nil
 }
 
-// runAnalysisWithCache runs full analysis, using cache when available
+// runAnalysisWithCache runs full analysis, using cache when available.
+// Concurrent cache-missing requests with the same settings hash are
+// coalesced (singleflight): one leader executes the RunFull fan-out while
+// the rest wait for its result, so two tabs or a slider drag racing the
+// debounce no longer each spin up ~3x NumCPU goroutines.
 func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalysis, error) {
 	in, depHash, err := buildEngineInput(settings)
 	if err != nil {
 		return nil, err
 	}
 
-	cache.mu.RLock()
-	if cache.hash == depHash && time.Since(cache.cachedAt) < 5*time.Minute {
-		cached := cache.analysis
-		cache.mu.RUnlock()
+	if cached, ok := cachedAnalysis(depHash); ok {
 		return cached, nil
 	}
-	cache.mu.RUnlock()
 
-	analysis := retirement.RunFull(getEngine(), in)
+	inflightMu.Lock()
+	if call, ok := inflight[depHash]; ok {
+		inflightMu.Unlock()
+		<-call.done
+		if call.panicked {
+			return nil, errAnalysisPanicked
+		}
+		return call.analysis, nil
+	}
+	// Re-check the cache under the singleflight lock: a leader may have
+	// completed (cache write happens before unregistration) between our
+	// fast-path cache check and acquiring inflightMu.
+	if cached, ok := cachedAnalysis(depHash); ok {
+		inflightMu.Unlock()
+		return cached, nil
+	}
+	call := &inflightCall{done: make(chan struct{})}
+	inflight[depHash] = call
+	inflightMu.Unlock()
 
-	cache.mu.Lock()
-	cache.hash = depHash
-	cache.analysis = analysis
-	cache.cachedAt = time.Now()
-	cache.mu.Unlock()
-
-	return analysis, nil
+	return leadAnalysis(depHash, in, call), nil
 }
 
 // buildResultsPartialData constructs the standard partial data map for

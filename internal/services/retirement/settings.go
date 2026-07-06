@@ -422,6 +422,14 @@ func (sm *SettingsManager) InvalidateCache() {
 	sm.cache = nil
 }
 
+// scenarioReconcileConfirmDelay is how long the cache-miss self-heal waits
+// before re-checking that the active scenario file is really gone. External
+// tools that replace files non-atomically (editor delete-then-create,
+// Dropbox/rsync sync) open a brief window where Stat reports ENOENT for a
+// file that is about to reappear; reverting on that blip would silently
+// divert the user's subsequent saves to the default whatif.json.
+const scenarioReconcileConfirmDelay = 100 * time.Millisecond
+
 // reconcileActiveScenarioLocked reverts the active scenario to the default
 // whatif.json when the active scenario's file no longer exists on disk.
 // The active filename is pure in-process state (nothing on disk records
@@ -431,19 +439,33 @@ func (sm *SettingsManager) InvalidateCache() {
 // missing file, silently serve default settings, and resurrect the pruned
 // file with defaults on the next save.
 //
-// Caller must hold sm.mu (write). Returns true if it reverted.
-func (sm *SettingsManager) reconcileActiveScenarioLocked() bool {
+// confirmDelay > 0 re-checks after that delay and only reverts if the file
+// is still missing, guarding against transient ENOENT windows (see
+// scenarioReconcileConfirmDelay). Authoritative callers — the post-restore
+// gate, which itself pruned the file — pass 0 to revert immediately.
+//
+// Caller must hold sm.mu (write); the confirm delay sleeps while holding
+// it, which is acceptable because the missing-file path is rare and
+// resolves permanently (revert or reappearance) after one confirmation.
+func (sm *SettingsManager) reconcileActiveScenarioLocked(confirmDelay time.Duration) {
 	if sm.filename == defaultWhatIfFilename {
-		return false
+		return
 	}
-	if _, err := sm.store.Stat(sm.filepath()); os.IsNotExist(err) {
-		log.Printf("settings: active scenario file %s no longer exists; reverting to %s",
-			sm.filename, defaultWhatIfFilename)
-		sm.filename = defaultWhatIfFilename
-		sm.cache = nil
-		return true
+	if _, err := sm.store.Stat(sm.filepath()); !os.IsNotExist(err) {
+		return
 	}
-	return false
+	if confirmDelay > 0 {
+		time.Sleep(confirmDelay)
+		if _, err := sm.store.Stat(sm.filepath()); !os.IsNotExist(err) {
+			log.Printf("settings: active scenario file %s reappeared within %v; keeping it active",
+				sm.filename, confirmDelay)
+			return
+		}
+	}
+	log.Printf("settings: active scenario file %s no longer exists; reverting to %s",
+		sm.filename, defaultWhatIfFilename)
+	sm.filename = defaultWhatIfFilename
+	sm.cache = nil
 }
 
 // BeginExternalRewrite serializes an external rewrite of the settings
@@ -466,7 +488,9 @@ func (sm *SettingsManager) BeginExternalRewrite() (end func()) {
 	sm.mu.Lock()
 	return func() {
 		sm.cache = nil
-		sm.reconcileActiveScenarioLocked()
+		// No confirm delay: the rewrite this gate serialized is the
+		// authoritative source of the file's absence.
+		sm.reconcileActiveScenarioLocked(0)
 		sm.mu.Unlock()
 	}
 }
@@ -490,8 +514,10 @@ func (sm *SettingsManager) loadInternalContext(ctx context.Context) (*models.Wha
 	// whatif.json and load that instead of silently serving defaults for a
 	// phantom file — which a later save would resurrect with stale data.
 	// This runs on every cache-miss load, so it holds even if a future
-	// restore-like path forgets to notify the manager.
-	sm.reconcileActiveScenarioLocked()
+	// restore-like path forgets to notify the manager. The confirm delay
+	// keeps a transient ENOENT (non-atomic external file replace) from
+	// silently switching the user off their scenario.
+	sm.reconcileActiveScenarioLocked(scenarioReconcileConfirmDelay)
 
 	path := sm.filepath()
 

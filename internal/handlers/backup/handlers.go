@@ -482,6 +482,12 @@ func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, st
 	if restoreGate != nil {
 		endRewrite := restoreGate()
 		defer endRewrite()
+	} else {
+		// A nil gate means SetRestoreGate was never called after the last
+		// Initialize — the restore proceeds UNSERIALIZED against settings
+		// saves (the race the gate exists to prevent). Loud so a wiring
+		// regression is visible instead of silently racy.
+		log.Printf("backup: restore running without a restore gate; concurrent settings saves are not serialized (call SetRestoreGate after Initialize)")
 	}
 
 	for _, p := range queue {

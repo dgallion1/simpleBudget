@@ -24,32 +24,8 @@ func PresentValue(futureValue, annualRate float64, periods int) float64 {
 	if annualRate <= 0 {
 		return futureValue
 	}
-	monthlyRate := monthlyCompoundFactorFromPercent(annualRate) - 1
+	monthlyRate := engine.MonthlyCompoundFactorFromDecimal(annualRate/100) - 1
 	return futureValue / math.Pow(1+monthlyRate, float64(periods))
-}
-
-// PresentValueAnnuity calculates the PV of a series of payments. Handles
-// both regular and growing annuities. Forwards to the engine's single
-// source of truth for the annuity math.
-func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64 {
-	return engine.PresentValueAnnuity(payment, discountRate, growthRate, startMonth, numPayments)
-}
-
-func monthlyCompoundFactorFromDecimal(annualRate float64) float64 {
-	return engine.MonthlyCompoundFactorFromDecimal(annualRate)
-}
-
-func monthlyCompoundFactorFromPercent(annualRatePercent float64) float64 {
-	return engine.MonthlyCompoundFactorFromDecimal(annualRatePercent / 100)
-}
-
-// plannerInflationFactorForYear is retained for retirement-package tests
-// that exercise the planner's inflation-factor convention directly.
-func plannerInflationFactorForYear(annualInflationRate float64, years float64) float64 {
-	if years <= 0 {
-		return 1
-	}
-	return math.Pow(1+annualInflationRate/100, years)
 }
 
 // IsSocialSecurityIncomeSource exposes the SS income-source detection

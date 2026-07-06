@@ -896,30 +896,6 @@ func TestEstimateMonthlySnapshot_MonthInYearTwelve(t *testing.T) {
 	}
 }
 
-// --- plannerInflationFactorForYear ---
-
-func TestPlannerInflationFactorForYear(t *testing.T) {
-	tests := []struct {
-		name string
-		rate float64
-		yrs  float64
-		want float64
-	}{
-		{"zero years", 3.0, 0, 1.0},
-		{"negative years", 3.0, -5, 1.0},
-		{"positive years", 3.0, 10, math.Pow(1.03, 10)},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := plannerInflationFactorForYear(tt.rate, tt.yrs)
-			if math.Abs(got-tt.want) > 0.0001 {
-				t.Errorf("plannerInflationFactorForYear(%f, %f) = %f, want %f", tt.rate, tt.yrs, got, tt.want)
-			}
-		})
-	}
-}
-
 // --- RunProjection: depletion path (shortfallCausesDepletion) ---
 
 func TestRunProjection_Depletion(t *testing.T) {

@@ -10,6 +10,7 @@ require (
 	filippo.io/age v1.3.1
 	github.com/google/uuid v1.6.0
 	golang.org/x/crypto v0.52.0
+	golang.org/x/sync v0.21.0
 	golang.org/x/term v0.43.0
 	golang.org/x/text v0.37.0
 )

@@ -1,6 +1,7 @@
 package whatif
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +15,7 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 	defer cleanup()
 
 	settings := models.DefaultWhatIfSettings()
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
 	if err != nil {
 		t.Fatalf("runAnalysisWithCache: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestWhatIfSettings_Groups(t *testing.T) {
 	defer cleanup()
 
 	settings := models.DefaultWhatIfSettings()
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
 	if err != nil {
 		t.Fatalf("runAnalysisWithCache: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestWhatIfOverviewKPIs_Render(t *testing.T) {
 	defer cleanup()
 
 	settings := models.DefaultWhatIfSettings()
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
 	if err != nil {
 		t.Fatalf("runAnalysisWithCache: %v", err)
 	}

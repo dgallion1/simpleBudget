@@ -128,7 +128,7 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -285,7 +285,7 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -302,7 +302,7 @@ func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return

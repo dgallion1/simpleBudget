@@ -1,6 +1,7 @@
 package whatif
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestWhatIfTaxSummary_RendersFederalStateSplit(t *testing.T) {
 	defer cleanup()
 
 	settings := retiredTaxableSettings()
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
 	if err != nil {
 		t.Fatalf("runAnalysisWithCache: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestWhatIfTaxSummary_StateTaxAppearsWhenConfigured(t *testing.T) {
 	defer cleanup()
 
 	render := func(s *models.WhatIfSettings) string {
-		analysis, err := runAnalysisWithCache(s)
+		analysis, err := runAnalysisWithCache(context.Background(), s)
 		if err != nil {
 			t.Fatalf("runAnalysisWithCache: %v", err)
 		}

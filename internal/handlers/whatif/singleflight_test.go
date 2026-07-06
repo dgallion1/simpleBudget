@@ -7,6 +7,7 @@ package whatif
 // and a panicking leader must not wedge future requests.
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -116,7 +117,7 @@ func TestSingleflightErrorResultNotCached(t *testing.T) {
 	bad.ScenarioChain = []models.ScenarioChainLink{
 		{ScenarioFilename: "does-not-exist.json", TransitionAge: 70},
 	}
-	if _, err := runAnalysisWithCache(bad); err == nil {
+	if _, err := runAnalysisWithCache(context.Background(), bad); err == nil {
 		t.Fatal("expected error for missing chained scenario")
 	}
 	if got := atomic.LoadInt32(&calls); got != 0 {
@@ -126,7 +127,7 @@ func TestSingleflightErrorResultNotCached(t *testing.T) {
 	// The failure must not have been cached as a success: a good request
 	// computes, and only then does a repeat request hit the cache.
 	good := models.DefaultWhatIfSettings()
-	analysis, err := runAnalysisWithCache(good)
+	analysis, err := runAnalysisWithCache(context.Background(), good)
 	if err != nil {
 		t.Fatalf("good settings: unexpected error: %v", err)
 	}
@@ -136,7 +137,7 @@ func TestSingleflightErrorResultNotCached(t *testing.T) {
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("RunFull executed %d times for first good request, want 1", got)
 	}
-	if _, err := runAnalysisWithCache(good); err != nil {
+	if _, err := runAnalysisWithCache(context.Background(), good); err != nil {
 		t.Fatalf("cached good settings: unexpected error: %v", err)
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -144,11 +145,13 @@ func TestSingleflightErrorResultNotCached(t *testing.T) {
 	}
 }
 
-// TestSingleflightLeaderPanicUnregistersAndFailsWaiters verifies the panic
-// policy: the leader's panic propagates on its own request, waiters fail
-// cleanly with errAnalysisPanicked, nothing is cached, the in-flight map is
-// cleaned up, and a subsequent request recomputes.
-func TestSingleflightLeaderPanicUnregistersAndFailsWaiters(t *testing.T) {
+// TestSingleflightPanicFailsAllCoalescedRequests verifies the panic
+// policy: a RunFull panic is converted to errAnalysisPanicked for every
+// request coalesced onto the flight (the flight fn must never panic into
+// x/sync singleflight — DoChan would re-raise it on a bare goroutine and
+// crash the process), nothing is cached, and a subsequent request
+// recomputes.
+func TestSingleflightPanicFailsAllCoalescedRequests(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
@@ -166,41 +169,155 @@ func TestSingleflightLeaderPanicUnregistersAndFailsWaiters(t *testing.T) {
 
 	settings := models.DefaultWhatIfSettings()
 
-	leaderPanic := make(chan interface{}, 1)
+	leaderErr := make(chan error, 1)
 	go func() {
-		defer func() { leaderPanic <- recover() }()
-		_, _ = runAnalysisWithCache(settings)
+		_, err := runAnalysisWithCache(context.Background(), settings)
+		leaderErr <- err
 	}()
 	<-entered
 
 	waiterErr := make(chan error, 1)
 	go func() {
-		_, err := runAnalysisWithCache(settings)
+		_, err := runAnalysisWithCache(context.Background(), settings)
 		waiterErr <- err
 	}()
-	time.Sleep(100 * time.Millisecond) // let the waiter queue on the in-flight call
+	time.Sleep(100 * time.Millisecond) // let the waiter queue on the flight
 	close(release)
 
-	if r := <-leaderPanic; r == nil {
-		t.Fatal("leader panic must propagate on the leader's own request")
+	if err := <-leaderErr; err != errAnalysisPanicked {
+		t.Fatalf("leader error = %v, want errAnalysisPanicked", err)
 	}
 	if err := <-waiterErr; err != errAnalysisPanicked {
 		t.Fatalf("waiter error = %v, want errAnalysisPanicked", err)
 	}
 
-	inflightMu.Lock()
-	remaining := len(inflight)
-	inflightMu.Unlock()
-	if remaining != 0 {
-		t.Fatalf("in-flight map has %d entries after panic, want 0", remaining)
-	}
-
 	// Nothing was cached from the panicked run: a fresh request recomputes
 	// and succeeds.
-	if _, err := runAnalysisWithCache(settings); err != nil {
+	if _, err := runAnalysisWithCache(context.Background(), settings); err != nil {
 		t.Fatalf("request after panic: unexpected error: %v", err)
 	}
 	if got := atomic.LoadInt32(&calls); got != 2 {
 		t.Fatalf("RunFull executed %d times, want 2 (panicked run + recompute)", got)
+	}
+}
+
+// TestSingleflightWaiterHonorsContextCancellation: a waiter whose request
+// context is cancelled must return promptly with the context error instead
+// of staying parked until the (possibly wedged) flight finishes; the flight
+// itself keeps running and its result is still cached.
+func TestSingleflightWaiterHonorsContextCancellation(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	var calls int32
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	swapRunFull(t, func(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
+		atomic.AddInt32(&calls, 1)
+		entered <- struct{}{}
+		<-release
+		return retirement.RunFull(eng, in)
+	})
+
+	settings := models.DefaultWhatIfSettings()
+
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, err := runAnalysisWithCache(context.Background(), settings)
+		leaderDone <- err
+	}()
+	<-entered
+
+	ctx, cancel := context.WithCancel(context.Background())
+	waiterErr := make(chan error, 1)
+	go func() {
+		_, err := runAnalysisWithCache(ctx, settings)
+		waiterErr <- err
+	}()
+	time.Sleep(100 * time.Millisecond) // let the waiter queue on the flight
+	cancel()
+
+	select {
+	case err := <-waiterErr:
+		if err != context.Canceled {
+			t.Fatalf("cancelled waiter error = %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled waiter stayed parked on the flight")
+	}
+
+	// The flight was NOT cancelled: it completes and caches, so the next
+	// request is served without recomputing.
+	close(release)
+	if err := <-leaderDone; err != nil {
+		t.Fatalf("leader: unexpected error: %v", err)
+	}
+	if _, err := runAnalysisWithCache(context.Background(), settings); err != nil {
+		t.Fatalf("post-completion request: unexpected error: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("RunFull executed %d times, want 1 (cancellation must not kill or duplicate the flight)", got)
+	}
+}
+
+// TestMonteCarloRerollCoalescesConcurrentRequests: the Monte Carlo re-roll
+// endpoint bypasses the cache by design (fresh seed), but concurrent
+// identical requests must still share ONE RunFull fan-out — and must not
+// be served from (or poison) the settings-hash cache.
+func TestMonteCarloRerollCoalescesConcurrentRequests(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	const n = 6
+	var calls int32
+	entered := make(chan struct{}, n)
+	release := make(chan struct{})
+	swapRunFull(t, func(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
+		atomic.AddInt32(&calls, 1)
+		entered <- struct{}{}
+		<-release
+		return retirement.RunFull(eng, in)
+	})
+
+	statuses := make([]int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("POST", "/whatif/montecarlo", nil)
+			handleWhatIfMonteCarlo(w, req)
+			statuses[i] = w.Code
+		}(i)
+	}
+
+	select {
+	case <-entered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("no request reached RunFull")
+	}
+	time.Sleep(200 * time.Millisecond) // let the rest queue as waiters
+	close(release)
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("RunFull executed %d times for %d concurrent re-roll requests, want 1", got, n)
+	}
+	for i, code := range statuses {
+		if code != http.StatusOK {
+			t.Fatalf("request %d: status = %d, want 200", i, code)
+		}
+	}
+
+	// A re-roll AFTER the flight completes must recompute (no caching):
+	// that is the endpoint's contract.
+	w := httptest.NewRecorder()
+	handleWhatIfMonteCarlo(w, httptest.NewRequest("POST", "/whatif/montecarlo", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("post-completion re-roll: status = %d, want 200", w.Code)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("RunFull executed %d times after sequential re-roll, want 2 (re-rolls must never be cached)", got)
 	}
 }

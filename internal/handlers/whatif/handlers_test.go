@@ -2862,7 +2862,7 @@ func TestRunAnalysisWithCache(t *testing.T) {
 	defer cleanup()
 
 	s := models.DefaultWhatIfSettings()
-	a1, err := runAnalysisWithCache(s)
+	a1, err := runAnalysisWithCache(context.Background(), s)
 	if err != nil {
 		t.Fatalf("first call failed: %v", err)
 	}
@@ -2871,7 +2871,7 @@ func TestRunAnalysisWithCache(t *testing.T) {
 	}
 
 	// Second call should hit cache
-	a2, err := runAnalysisWithCache(s)
+	a2, err := runAnalysisWithCache(context.Background(), s)
 	if err != nil {
 		t.Fatalf("second call failed: %v", err)
 	}
@@ -7029,7 +7029,7 @@ func TestRunAnalysisWithCache_BrokenChain(t *testing.T) {
 		t.Skip("expected dangling chain in settings")
 	}
 
-	_, err = runAnalysisWithCache(settings)
+	_, err = runAnalysisWithCache(context.Background(), settings)
 	if err == nil {
 		t.Fatal("expected runAnalysisWithCache to fail with broken chain")
 	}

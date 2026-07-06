@@ -61,7 +61,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -76,13 +76,20 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-run the full analysis which includes a fresh Monte Carlo simulation
-	in, _, err := buildEngineInput(settings)
+	// Re-run the full analysis, which includes a fresh (auto-seeded) Monte
+	// Carlo simulation. Deliberately uncached — the point is a re-roll —
+	// but still coalesced via runFreshAnalysis so a double-click or two
+	// racing tabs share one fan-out instead of stampeding two.
+	in, depHash, err := buildEngineInput(settings)
 	if err != nil {
 		renderError(w, "Failed to build engine input: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis := retirement.RunFull(getEngine(), in)
+	analysis, err := runFreshAnalysis(r.Context(), depHash, in)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	renderWhatIfResults(w, settings, analysis)
 }
@@ -172,7 +179,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -221,7 +228,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -276,7 +283,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -304,7 +311,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -369,7 +376,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -451,7 +458,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -499,7 +506,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -563,7 +570,7 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
 		return

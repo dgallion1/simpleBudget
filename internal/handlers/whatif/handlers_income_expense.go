@@ -86,7 +86,7 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -143,7 +143,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -160,7 +160,7 @@ func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -177,7 +177,7 @@ func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -257,7 +257,7 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -310,7 +310,7 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -327,7 +327,7 @@ func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -344,7 +344,7 @@ func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -412,7 +412,7 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -429,7 +429,7 @@ func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -446,7 +446,7 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -464,7 +464,7 @@ func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -482,7 +482,7 @@ func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -500,7 +500,7 @@ func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return

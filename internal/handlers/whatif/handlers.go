@@ -6,6 +6,7 @@
 package whatif
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -14,12 +15,14 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -57,24 +60,18 @@ var cache = &analysisCache{}
 // expensive analysis fan-out. Production never reassigns it.
 var runFullFn = retirement.RunFull
 
-// errAnalysisPanicked is returned to singleflight waiters whose leader
-// panicked mid-computation. The leader's own request re-panics (and is
-// recovered by net/http as today); waiters fail cleanly and the client can
+// errAnalysisPanicked is returned to every request coalesced onto an
+// analysis whose RunFull panicked. The panic value and stack are logged in
+// runFullRecovered; all callers fail cleanly with a 500 and the client can
 // simply retry, which recomputes because nothing was cached.
 var errAnalysisPanicked = errors.New("analysis computation failed; please retry")
 
-// inflightCall coalesces concurrent identical analysis computations
-// (singleflight). Waiters block on done, then read analysis/panicked.
-type inflightCall struct {
-	done     chan struct{}
-	analysis *models.WhatIfAnalysis
-	panicked bool
-}
-
-var (
-	inflightMu sync.Mutex
-	inflight   = map[string]*inflightCall{}
-)
+// analysisGroup coalesces concurrent identical analysis computations
+// (x/sync singleflight): one flight executes the RunFull fan-out per key
+// while the rest wait for its result. Keys are the settings dep-hash for
+// cached analyses and "fresh:"+hash for the deliberately uncached Monte
+// Carlo re-roll endpoint.
+var analysisGroup singleflight.Group
 
 // cachedAnalysis returns the cached analysis for depHash if it is still
 // fresh. The returned pointer is shared across requests; handlers treat
@@ -89,36 +86,37 @@ func cachedAnalysis(depHash string) (*models.WhatIfAnalysis, bool) {
 	return nil, false
 }
 
-// leadAnalysis runs the full analysis as the singleflight leader for
-// depHash, publishes the result to the cache, delivers it to waiters, and
-// unregisters the in-flight call. The singleflight mutex is NOT held while
-// RunFull executes. On panic the call is unregistered and marked panicked
-// before the panic propagates, so future requests recompute instead of
-// wedging and current waiters get errAnalysisPanicked.
-func leadAnalysis(depHash string, in engine.Input, call *inflightCall) *models.WhatIfAnalysis {
-	defer func() {
-		inflightMu.Lock()
-		delete(inflight, depHash)
-		inflightMu.Unlock()
-		close(call.done)
-	}()
+// runFullRecovered runs the RunFull fan-out, converting a panic into
+// errAnalysisPanicked. singleflight must never see the flight fn panic:
+// DoChan re-raises a flight panic on a bare goroutine, which would crash
+// the process. The panic value and stack — including the worker frames
+// analysis.ParallelIndexed logs at capture — are logged here, so a failed
+// analysis stays diagnosable without chi's Recoverer in the loop.
+func runFullRecovered(in engine.Input) (analysis *models.WhatIfAnalysis, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			call.panicked = true
-			panic(r)
+			log.Printf("whatif: analysis panicked: %v\n%s", r, debug.Stack())
+			analysis, err = nil, errAnalysisPanicked
 		}
 	}()
+	return runFullFn(getEngine(), in), nil
+}
 
-	analysis := runFullFn(getEngine(), in)
-
-	cache.mu.Lock()
-	cache.hash = depHash
-	cache.analysis = analysis
-	cache.cachedAt = time.Now()
-	cache.mu.Unlock()
-
-	call.analysis = analysis
-	return analysis
+// awaitAnalysis waits for a singleflight result channel, honoring request
+// cancellation: a waiter whose client disconnected (or timed out) returns
+// ctx.Err() immediately instead of staying parked until the flight
+// finishes. The flight itself keeps running to completion so its result
+// still lands in the cache for the next request.
+func awaitAnalysis(ctx context.Context, ch <-chan singleflight.Result) (*models.WhatIfAnalysis, error) {
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		return res.Val.(*models.WhatIfAnalysis), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func statusForWhatIfSaveError(err error) int {
@@ -203,10 +201,12 @@ func buildEngineInput(settings *models.WhatIfSettings) (engine.Input, string, er
 
 // runAnalysisWithCache runs full analysis, using cache when available.
 // Concurrent cache-missing requests with the same settings hash are
-// coalesced (singleflight): one leader executes the RunFull fan-out while
+// coalesced (singleflight): one flight executes the RunFull fan-out while
 // the rest wait for its result, so two tabs or a slider drag racing the
-// debounce no longer each spin up ~3x NumCPU goroutines.
-func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalysis, error) {
+// debounce no longer each spin up ~3x NumCPU goroutines. ctx cancellation
+// releases a waiting request without cancelling the flight (its result is
+// still cached for the next request).
+func runAnalysisWithCache(ctx context.Context, settings *models.WhatIfSettings) (*models.WhatIfAnalysis, error) {
 	in, depHash, err := buildEngineInput(settings)
 	if err != nil {
 		return nil, err
@@ -216,27 +216,41 @@ func runAnalysisWithCache(settings *models.WhatIfSettings) (*models.WhatIfAnalys
 		return cached, nil
 	}
 
-	inflightMu.Lock()
-	if call, ok := inflight[depHash]; ok {
-		inflightMu.Unlock()
-		<-call.done
-		if call.panicked {
-			return nil, errAnalysisPanicked
+	ch := analysisGroup.DoChan(depHash, func() (any, error) {
+		// Re-check the cache inside the flight: a previous flight for the
+		// same hash may have completed and cached between our fast-path
+		// check and this flight starting.
+		if cached, ok := cachedAnalysis(depHash); ok {
+			return cached, nil
 		}
-		return call.analysis, nil
-	}
-	// Re-check the cache under the singleflight lock: a leader may have
-	// completed (cache write happens before unregistration) between our
-	// fast-path cache check and acquiring inflightMu.
-	if cached, ok := cachedAnalysis(depHash); ok {
-		inflightMu.Unlock()
-		return cached, nil
-	}
-	call := &inflightCall{done: make(chan struct{})}
-	inflight[depHash] = call
-	inflightMu.Unlock()
+		analysis, err := runFullRecovered(in)
+		if err != nil {
+			return nil, err
+		}
 
-	return leadAnalysis(depHash, in, call), nil
+		cache.mu.Lock()
+		cache.hash = depHash
+		cache.analysis = analysis
+		cache.cachedAt = time.Now()
+		cache.mu.Unlock()
+
+		return analysis, nil
+	})
+	return awaitAnalysis(ctx, ch)
+}
+
+// runFreshAnalysis runs an UNCACHED RunFull — the Monte Carlo re-roll
+// endpoint, whose whole point is a fresh auto-seeded simulation — while
+// still coalescing concurrent identical requests: a double-click or two
+// racing tabs share one fresh run instead of stampeding two full fan-outs.
+// Deliberately neither reads nor writes the analysis cache, and uses a
+// distinct key namespace so a re-roll never satisfies (or is satisfied by)
+// a cached-analysis flight for the same settings.
+func runFreshAnalysis(ctx context.Context, depHash string, in engine.Input) (*models.WhatIfAnalysis, error) {
+	ch := analysisGroup.DoChan("fresh:"+depHash, func() (any, error) {
+		return runFullRecovered(in)
+	})
+	return awaitAnalysis(ctx, ch)
 }
 
 // buildResultsPartialData constructs the standard partial data map for
@@ -703,7 +717,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run full analysis (with caching)
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -743,7 +757,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -760,7 +774,7 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -783,7 +797,7 @@ func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -980,7 +994,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(settings)
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return

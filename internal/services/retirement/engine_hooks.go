@@ -1,6 +1,8 @@
 package retirement
 
 import (
+	"log"
+
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
 )
@@ -37,8 +39,16 @@ func nextChainTransitionForEngine(currentYear, nextChainIndex int, primarySettin
 	currentAge := primarySettings.CurrentAge + currentYear
 	if currentAge >= link.TransitionAge {
 		transitionYear := link.TransitionAge - primarySettings.CurrentAge
-		prepared := prepareChainedSettings(link.Settings.Settings(), primarySettings, transitionYear)
-		return nextChainIndex + 1, prepared
+		prepared, err := prepareChainedSettings(link.Settings.Settings(), primarySettings, transitionYear)
+		if err != nil {
+			// The chain was validated at save time; failing here means the
+			// stored snapshot or the rebase produced an invalid scenario.
+			// Skip the transition (keep projecting on the current settings)
+			// rather than run the engine on unvalidated input.
+			log.Printf("retirement: chain transition at age %d skipped: %v", link.TransitionAge, err)
+			return nextChainIndex + 1, nil
+		}
+		return nextChainIndex + 1, prepared.Settings()
 	}
 	return nextChainIndex, nil
 }

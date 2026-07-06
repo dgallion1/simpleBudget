@@ -254,7 +254,7 @@ func TestPrepareChainedSettings_HealthcarePersonIDRemappedToPrimary(t *testing.T
 		{ID: "hp1", Name: "Alex", PersonID: "linked-A", CurrentAge: 70},
 	}
 
-	result := prepareChainedSettings(linked, primary, 10)
+	result := mustPrepareChained(t, linked, primary, 10)
 	if len(result.HealthcarePersons) != 1 {
 		t.Fatalf("expected 1 healthcare person, got %d", len(result.HealthcarePersons))
 	}
@@ -285,7 +285,7 @@ func TestPrepareChainedSettings_HealthcarePersonIDClearedWhenLinkedPersonMissing
 		{ID: "hp1", Name: "Ghost", PersonID: "ghost-id", CurrentAge: 70},
 	}
 
-	result := prepareChainedSettings(linked, primary, 10)
+	result := mustPrepareChained(t, linked, primary, 10)
 	if len(result.HealthcarePersons) != 1 {
 		t.Fatalf("expected 1 healthcare person, got %d", len(result.HealthcarePersons))
 	}
@@ -316,7 +316,7 @@ func TestPrepareChainedSettings_HealthcarePersonIDClearedWhenNoMappingFound(t *t
 		{ID: "hp1", Name: "Phantom", PersonID: "linked-B", CurrentAge: 68},
 	}
 
-	result := prepareChainedSettings(linked, primary, 10)
+	result := mustPrepareChained(t, linked, primary, 10)
 	if len(result.HealthcarePersons) != 1 {
 		t.Fatalf("expected 1 healthcare person, got %d", len(result.HealthcarePersons))
 	}
@@ -347,7 +347,7 @@ func TestPrepareChainedSettings_HealthcarePersonIDLeftAloneWhenInPrimary(t *test
 		{ID: "hp1", Name: "Alex", PersonID: "shared-id", CurrentAge: 70},
 	}
 
-	result := prepareChainedSettings(linked, primary, 10)
+	result := mustPrepareChained(t, linked, primary, 10)
 	if len(result.HealthcarePersons) != 1 {
 		t.Fatalf("expected 1 healthcare person, got %d", len(result.HealthcarePersons))
 	}

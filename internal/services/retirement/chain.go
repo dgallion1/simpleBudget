@@ -8,14 +8,21 @@ import (
 	"budget2/internal/services/retirement/prepare"
 )
 
-func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatIfSettings, transitionYear int) *models.WhatIfSettings {
+// prepareChainedSettings builds the settings that take effect at a chain
+// transition: the linked scenario's plan fields with the primary scenario's
+// people and timeline identity, and its income/expense/big-ticket/Roth
+// schedules rebased to the transition year. The result goes through
+// prepare.From — the same deep-copy + normalize + validate pipeline as
+// every other engine input — so chained settings cannot share pointer
+// state with the stored snapshot or skip validation. (CurrentAge/SpouseAge
+// are not copied from the primary: From re-derives them from the copied
+// Persons and StartDate.)
+func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatIfSettings, transitionYear int) (prepare.PreparedSettings, error) {
 	prepared := *linked
 
 	prepared.StartDate = primary.StartDate
 	prepared.Persons = append([]models.Person(nil), primary.Persons...)
 	reconcilePreparedPersons(&prepared, primary)
-	prepared.CurrentAge = primary.CurrentAge
-	prepared.SpouseAge = primary.SpouseAge
 	prepared.PhaseAgeReference = primary.PhaseAgeReference
 	prepared.ProjectionYears = primary.ProjectionYears
 	prepared.TaxDeferredDelayYears = primary.TaxDeferredDelayYears
@@ -54,10 +61,7 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 		prepared.HealthcarePersons = persons
 	}
 
-	prepare.NormalizePhaseAgeReference(&prepared)
-	prepare.ComputeAges(&prepared)
-
-	return &prepared
+	return prepare.From(&prepared)
 }
 
 func findPreparedScenarioPerson(primary *models.WhatIfSettings, linkedPerson *models.Person) *models.Person {

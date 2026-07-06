@@ -316,7 +316,7 @@ func TestPrepareChainedSettings_HealthcarePersons(t *testing.T) {
 		{ID: "hp2", Name: "Bob", CurrentAge: 68},
 	}
 
-	result := prepareChainedSettings(linked, primary, 10)
+	result := mustPrepareChained(t, linked, primary, 10)
 
 	if len(result.HealthcarePersons) != 2 {
 		t.Fatalf("expected 2 healthcare persons, got %d", len(result.HealthcarePersons))
@@ -337,7 +337,7 @@ func TestPrepareChainedSettings_NoHealthcarePersons(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.HealthcarePersons = nil
 
-	result := prepareChainedSettings(linked, primary, 5)
+	result := mustPrepareChained(t, linked, primary, 5)
 	if len(result.HealthcarePersons) != 0 {
 		t.Errorf("expected 0 healthcare persons, got %d", len(result.HealthcarePersons))
 	}

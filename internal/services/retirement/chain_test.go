@@ -181,7 +181,7 @@ func TestPrepareChainedSettings(t *testing.T) {
 	linked := models.DefaultWhatIfSettings()
 	linked.MonthlyLivingExpenses = 3000
 
-	result := prepareChainedSettings(linked, primary, 10)
+	result := mustPrepareChained(t, linked, primary, 10)
 	if result.CurrentAge != 60 {
 		t.Errorf("CurrentAge: expected 60, got %d", result.CurrentAge)
 	}
@@ -191,4 +191,15 @@ func TestPrepareChainedSettings(t *testing.T) {
 	if result.MonthlyLivingExpenses != 3000 {
 		t.Errorf("Expenses: expected 3000, got %f", result.MonthlyLivingExpenses)
 	}
+}
+
+// mustPrepareChained runs prepareChainedSettings and fails the test on a
+// validation error, returning the prepared snapshot.
+func mustPrepareChained(t *testing.T, linked, primary *models.WhatIfSettings, transitionYear int) *models.WhatIfSettings {
+	t.Helper()
+	prepared, err := prepareChainedSettings(linked, primary, transitionYear)
+	if err != nil {
+		t.Fatalf("prepareChainedSettings: %v", err)
+	}
+	return prepared.Settings()
 }

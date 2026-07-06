@@ -186,11 +186,8 @@ func RunSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 // runSingleHistoricalSequence runs the projection using historical
 // market data starting from a specific year.
 func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear int) HistoricalSequenceResult {
-	primarySettings := in.Prepared.Settings()
-	activeSettings := primarySettings
-	chain := in.Chain
-	nextChainIdx := 0
-	s := activeSettings
+	st := engine.NewProjectionState(in)
+	s := st.Settings()
 	months := s.ProjectionYears * 12
 
 	// Get historical sequence
@@ -199,54 +196,12 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 		return HistoricalSequenceResult{StartYear: startYear, Survives: false}
 	}
 
-	// Initialize 3-bucket model
-	taxDeferredBalance := s.PortfolioValue * (s.TaxDeferredPercent / 100)
-	rothBalance := s.PortfolioValue * (s.RothPercent / 100)
-	taxableAccount := engine.NewTaxableAccountState(s, s.PortfolioValue-taxDeferredBalance-rothBalance)
-
-	// Roth basis and 5-year clock state, persisted across months within the sequence.
-	rothBasisLocal := s.PortfolioValue * (s.RothPercent / 100)
-	rothFirstFundedYearLocal := s.RothFirstFundedYear
-	if rothFirstFundedYearLocal == 0 && s.RothPercent > 0 {
-		rothFirstFundedYearLocal = engine.ParseStartYear(s.StartDate)
-	}
-	// bigTicketRothEarnings carries RothEarningsWithdrawal from the annual big-ticket
-	// pass into the monthly PortfolioMonthInput. Reset each year.
-	bigTicketRothEarnings := 0.0
-
-	currentLivingExpenses := engine.LivingExpensesAtMonth(s, 0)
-	// F-074: annualRMD persists across months so the trigger-month
-	// logic can apply the full year's RMD in a single month.
-	var annualRMD float64
-	var monthlyRMD float64
-	var taxState engine.ProjectionTaxAccumulator
-	taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
-	completedMAGIHistory := make([]float64, 0, s.ProjectionYears)
-	currentYearTaxSnapshot := engine.ProjectedTaxSnapshot{}
-	// assumedLookbackMAGI seeds the IRMAA two-year MAGI lookback for years
-	// 0-1, before completedMAGIHistory has two entries — mirroring the
-	// canonical projection loop (engine/month.go) so the backtest doesn't
-	// understate early-year IRMAA for high-MAGI Medicare-eligible households.
-	var assumedLookbackMAGI float64
-
 	peakBalance := s.PortfolioValue
 	lowestBalance := s.PortfolioValue
 	lowestBalanceYear := 0
 	worstDrawdown := 0.0
 	totalWithdrawals := 0.0
 	totalBalance := s.PortfolioValue
-	cumulativeInflation := 1.0 // Track cumulative inflation for real balance calculation
-	// netCumulativeInflation tracks (inflationRate−SpendingDeclineRate) compounding,
-	// mirroring the per-month no-phase expense accumulation. Used by
-	// rebaseLivingExpensesAtTransition to avoid the F-065 step-up error.
-	netCumulativeInflation := 1.0
-	inflationRate := 0.0
-
-	// Spending guardrails for this backtest run
-	var btGrState *engine.GuardrailState
-	if s.Guardrails != nil && s.Guardrails.Enabled {
-		btGrState = engine.NewGuardrailState(s.PortfolioValue)
-	}
 
 	// Get per-account asset allocations (consistent with main projection and Monte Carlo)
 	tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash := s.GetAllocationAtYear(0)
@@ -258,156 +213,51 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 		LowestBalanceYr: 0,
 	}
 
-	for m := 0; m < months; m++ {
+	// btReturns supplies each month's historical returns and inflation.
+	// Invoked by StepMonth after any chain transition, so the year-boundary
+	// allocation refresh sees the active settings.
+	btReturns := func(s *models.WhatIfSettings, m int) engine.MonthReturns {
 		currentYear := m / 12
-		phaseAge := s.GetPhaseReferenceAge(currentYear) // Age used for spending phase calculations (may differ for couples)
-		bigTicketExpenseThisMonth := 0.0
-		rothConversionThisMonth := 0.0
-		allowTaxDeferredWithdrawal := !engine.TaxDeferredDelayActive(s, currentYear)
-		penaltyRate := engine.EarlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
-
-		// Annual adjustments at year boundaries
 		if m%12 == 0 {
-			if m > 0 {
-				completedMAGIHistory = append(completedMAGIHistory, currentYearTaxSnapshot.AnnualMAGI)
-			}
-			taxState = engine.ProjectionTaxAccumulator{}
-			// Check for chain transition
-			if len(chain) > 0 {
-				newIdx, prepared := in.Hooks.ResolveChain(currentYear, nextChainIdx, primarySettings, chain)
-				if prepared != nil {
-					activeSettings = prepared
-					s = activeSettings
-					nextChainIdx = newIdx
-
-					currentLivingExpenses = engine.RebaseLivingExpensesAtTransition(s, phaseAge, cumulativeInflation, netCumulativeInflation)
-					taxableAccount.SyncAssumptions(s)
-				}
-			}
 			// Refresh allocation for glide path and chain transitions
 			tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash = s.GetAllocationAtYear(currentYear)
-			taxCalculator = engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
-			taxableAccount.RealizedGainsYTD = 0
-
-			// Get this year's historical data
-			yearData := sequence[currentYear]
-			inflationRate = yearData.InflationRate / 100
-
-			// F-074/F-078: annualRMD computed once per year, applied only
-			// in the trigger month inside the month loop. Calendar-year
-			// gate + age-at-year-end divisor so backtest matches the
-			// deterministic projection for late-year births.
-			annualRMD = engine.AnnualRMDForYear(s, currentYear, taxDeferredBalance)
-
-			rothConversionThisMonth = engine.ApplyRothConversionAtYear(s, currentYear, &taxDeferredBalance, &rothBalance, &rothBasisLocal, &rothFirstFundedYearLocal)
-
-			bigTicketResult := engine.ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &taxDeferredBalance, &taxableAccount, &rothBalance, &rothBasisLocal)
-			bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
-			bigTicketRothEarnings = bigTicketResult.RothEarningsWithdrawal
 		}
 
-		if m > 0 {
-			cumulativeInflation *= engine.MonthlyCompoundFactorFromDecimal(inflationRate)
-			netCumulativeInflation *= engine.MonthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
-			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
-				currentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * cumulativeInflation
-			} else {
-				currentLivingExpenses *= engine.MonthlyCompoundFactorFromDecimal(inflationRate - s.SpendingDeclineRate/100)
-			}
-		}
-
-		// Evaluate guardrails at year boundaries
-		if btGrState != nil && m%12 == 0 {
-			totalPortfolio := taxDeferredBalance + taxableAccount.MarketValue + rothBalance
-			btGrState.Evaluate(s.Guardrails, totalPortfolio)
-		}
-
-		// Apply guardrail spending multiplier
-		btAdjustedLiving := currentLivingExpenses
-		if btGrState != nil {
-			btAdjustedLiving *= btGrState.Multiplier()
-		}
-
-		// Calculate expenses
-		activeHealthcare := s.GetTotalHealthcareCost(m)
-		propertyTax := engine.PropertyTaxAtMonth(s, m)
-		totalExpenses := btAdjustedLiving + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
-
-		for _, source := range s.ExpenseSources {
-			expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)
-			if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && source.Discretionary {
-				expenseAmount *= s.GetSpendingMultiplier(phaseAge)
-			}
-			totalExpenses += expenseAmount
-		}
-
-		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, m)
-
-		// Get this year's returns and calculate per-account blended returns
+		// This year's historical returns as decimals
 		yearData := sequence[currentYear]
 		stockReturn := yearData.SP500Return / 100
 		bondReturn := yearData.BondReturn / 100
 		cashReturn := yearData.CashReturn / 100
+		inflationRate := yearData.InflationRate / 100
 
-		// Calculate per-account annual returns based on each account's allocation
+		// Per-account annual returns based on each account's allocation
 		tdAnnualReturn := (tdStock/100)*stockReturn + (tdBond/100)*bondReturn + (tdCash/100)*cashReturn
 		rothAnnualReturn := (rothStock/100)*stockReturn + (rothBond/100)*bondReturn + (rothCash/100)*cashReturn
 		taxAnnualReturn := (taxStock/100)*stockReturn + (taxBond/100)*bondReturn + (taxCash/100)*cashReturn
 
-		// Convert to monthly using geometric formula (not simple division)
-		tdMonthlyReturn := math.Pow(1+tdAnnualReturn, 1.0/12) - 1
-		rothMonthlyReturn := math.Pow(1+rothAnnualReturn, 1.0/12) - 1
-		// taxAnnualReturn is a decimal; BuildTaxableReturnComponents takes
-		// percent (it divides by 100). Passing the decimal here understated
-		// the taxable account's total return ~100x, so taxable appreciation
-		// was near zero in every historical sequence.
-		taxableComponents := engine.BuildTaxableReturnComponents(taxAnnualReturn*100, s)
-		irmaaEligibleAdults := engine.MedicareEligibleAdultCountAtYear(s, currentYear)
-		irmaaInflationFactor := engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(engine.YearsFromTaxBase(s, currentYear)))
-
-		// F-074: apply the full annual RMD only in the trigger month.
-		monthlyRMD = engine.MonthlyRMDForMonth(s, m%12, annualRMD, taxDeferredBalance)
-
-		monthResult := engine.ExecuteTaxAwarePortfolioMonth(engine.PortfolioMonthInput{
-			TotalExpenses:                     totalExpenses,
-			IncomeBreakdown:                   incomeBreakdown,
-			MonthlyRMD:                        monthlyRMD,
-			AllowTaxDeferredWithdrawal:        allowTaxDeferredWithdrawal,
-			PenaltyRate:                       penaltyRate,
-			TaxDeferredBalance:                &taxDeferredBalance,
-			TaxableAccount:                    &taxableAccount,
-			RothBalance:                       &rothBalance,
-			RothBasis:                         &rothBasisLocal,
-			RothFirstFundedYear:               rothFirstFundedYearLocal,
-			TaxDeferredMonthlyReturn:          tdMonthlyReturn,
-			RothMonthlyReturn:                 rothMonthlyReturn,
-			TaxableComponents:                 taxableComponents,
-			Timing:                            s.GetProjectionTiming(),
-			TaxState:                          taxState,
-			TaxCalculator:                     taxCalculator,
-			MonthInYear:                       m % 12,
-			CalendarYear:                      engine.ParseStartYear(s.StartDate) + currentYear,
-			RothConversionThisMonth:           rothConversionThisMonth,
-			TaxableRothEarningsBeforeCashFlow: bigTicketRothEarnings,
-			CompletedMAGIHistory:              completedMAGIHistory,
-			AssumedIRMALookbackMAGI:           &assumedLookbackMAGI,
-			IRMAAEligibleAdults:               irmaaEligibleAdults,
-			IRMAAInflationFactor:              irmaaInflationFactor,
-		})
-		bigTicketRothEarnings = 0
-		currentYearTaxSnapshot = monthResult.TaxSnapshot
-		// Hold the year-0 MAGI estimate as the IRMAA lookback seed for years
-		// 0-1; real history drives years 2+ (resolveIRMAALookbackMAGI prefers it).
-		if currentYear == 0 {
-			assumedLookbackMAGI = monthResult.TaxSnapshot.AnnualMAGI
+		return engine.MonthReturns{
+			// Convert to monthly using geometric formula (not simple division)
+			TaxDeferredMonthly: math.Pow(1+tdAnnualReturn, 1.0/12) - 1,
+			RothMonthly:        math.Pow(1+rothAnnualReturn, 1.0/12) - 1,
+			// The seam takes the taxable return in percent; passing the raw
+			// decimal here once understated taxable appreciation ~100x.
+			TaxableAnnualPercent:    taxAnnualReturn * 100,
+			InflationAnnual:         inflationRate,
+			NetInflationAnnual:      inflationRate - s.SpendingDeclineRate/100,
+			HealthcareMultiplier:    1,
+			DiscretionaryMultiplier: 1,
 		}
-		result.TotalIRMAA += monthResult.IRMAAExpense
-		engine.ApplyTaxStateMonth(&taxState, incomeBreakdown, monthResult, rothConversionThisMonth)
-		totalWithdrawals += monthResult.CashFlow.GrossWithdrawal()
-		shortfall := monthResult.Shortfall
+	}
 
-		totalBalance = taxDeferredBalance + rothBalance + taxableAccount.MarketValue
-		if engine.ShortfallCausesDepletion(shortfall, allowTaxDeferredWithdrawal, taxDeferredBalance) {
+	for m := 0; m < months; m++ {
+		currentYear := m / 12
+
+		out := st.StepMonth(m, btReturns)
+		result.TotalIRMAA += out.Result.IRMAAExpense
+		totalWithdrawals += out.Result.CashFlow.GrossWithdrawal()
+
+		totalBalance = out.TotalBalance
+		if engine.ShortfallCausesDepletion(out.Result.Shortfall, out.AllowTaxDeferredWithdrawal, st.TaxDeferredBalance) {
 			result.Survives = false
 			result.DepletionYear = startYear + currentYear
 			break
@@ -441,8 +291,8 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	}
 
 	result.FinalBalance = totalBalance
-	result.FinalBalanceReal = totalBalance / cumulativeInflation // Convert to start-year dollars
-	result.CumulativeInflation = cumulativeInflation
+	result.FinalBalanceReal = totalBalance / st.CumulativeInflation // Convert to start-year dollars
+	result.CumulativeInflation = st.CumulativeInflation
 	result.LowestBalance = lowestBalance
 	result.LowestBalanceYr = lowestBalanceYear
 	result.WorstDrawdown = worstDrawdown

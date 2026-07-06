@@ -146,17 +146,17 @@ func TestProjectionAndSteadyStateHelpers(t *testing.T) {
 		ClaimAge:   68,
 	}
 
-	if TaxDeferredDelayActive(s, 0) {
+	if taxDeferredDelayActive(s, 0) {
 		t.Fatal("tax-deferred delay should be disabled by default")
 	}
 	s.TaxDeferredDelayYears = 2
-	if !TaxDeferredDelayActive(s, 1) || TaxDeferredDelayActive(s, 2) {
+	if !taxDeferredDelayActive(s, 1) || taxDeferredDelayActive(s, 2) {
 		t.Fatal("tax-deferred delay window was not applied")
 	}
-	if got := EarlyWithdrawalPenaltyRate(58, 1); got != 0.10 {
+	if got := earlyWithdrawalPenaltyRate(58, 1); got != 0.10 {
 		t.Fatalf("early penalty=%v, want 0.10", got)
 	}
-	if got := EarlyWithdrawalPenaltyRate(59, 1); got != 0 {
+	if got := earlyWithdrawalPenaltyRate(59, 1); got != 0 {
 		t.Fatalf("age 60 penalty=%v, want 0", got)
 	}
 

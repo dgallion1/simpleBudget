@@ -2,6 +2,7 @@ package whatif
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -335,6 +336,27 @@ func readFloatFromUpdatesOrForm(r *http.Request, updates map[string]interface{},
 		}
 	}
 	return fallback, false
+}
+
+// clampedFloatField declares one form field that is pulled into [Min, Max]
+// rather than rejected — the guardrail and glide-path forms accept whatever
+// the user typed and clamp it. Dst is written whenever the field parses
+// (an absent or blank field parses as 0 and therefore clamps to Min; that
+// is the legacy behavior of those forms and templates always post every
+// field).
+type clampedFloatField struct {
+	Name     string
+	Min, Max float64
+	Dst      *float64
+}
+
+// applyClampedFloatFields applies each clamped field spec against the form.
+func applyClampedFloatFields(r *http.Request, fields []clampedFloatField) {
+	for _, f := range fields {
+		if v, err := parseFormFloat(r, f.Name); err == nil {
+			*f.Dst = math.Max(f.Min, math.Min(f.Max, v))
+		}
+	}
 }
 
 // clampPerAccountAllocations enforces the silent invariant that, for each

@@ -3,7 +3,6 @@ package whatif
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,24 +49,12 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	clampPerAccountAllocations(updates)
 
-	var settings *models.WhatIfSettings
-	if hasPersons {
-		settings, err = retirementMgr.UpdateSettingsWithPersons(updates, startDate, persons)
-	} else {
-		settings, err = retirementMgr.UpdateSettings(updates)
-	}
-	if err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, error) {
+		if hasPersons {
+			return retirementMgr.UpdateSettingsWithPersons(updates, startDate, persons)
+		}
+		return retirementMgr.UpdateSettings(updates)
+	})
 }
 func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
@@ -102,7 +89,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse enabled toggle
-	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+	enabled := checkboxOn(r, "enabled")
 
 	// Load current settings to get existing phases as base
 	currentSettings, err := retirementMgr.Load()
@@ -173,19 +160,9 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		phases = append(phases, phase)
 	}
 
-	settings, err := retirementMgr.UpdateSpendingPhases(enabled, phases)
-	if err != nil {
-		renderError(w, "Failed to save spending phases: "+err.Error(), statusForWhatIfSaveError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to save spending phases", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.UpdateSpendingPhases(enabled, phases)
+	})
 }
 
 // handleWhatIfAddPhase adds a new spending phase
@@ -223,18 +200,7 @@ func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
 
 	settings.SpendingPhaseConfig.Phases = append(settings.SpendingPhaseConfig.Phases, newPhase)
 
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 
 // handleWhatIfDeletePhase removes a spending phase by index
@@ -278,18 +244,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 	// Remove the phase at index
 	settings.SpendingPhaseConfig.Phases = append(phases[:index], phases[index+1:]...)
 
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 
 // handleWhatIfResetPhases resets phases to defaults
@@ -306,18 +261,7 @@ func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
 		Phases:  models.DefaultSpendingPhases(),
 	}
 
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 
 // handleWhatIfRothConversion handles Roth conversion configuration updates
@@ -371,18 +315,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save settings
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), statusForWhatIfSaveError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 func maxSubmittedSpendingPhaseIndex(form map[string][]string) int {
 	maxIndex := -1
@@ -453,18 +386,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		settings.SocialSecurity = nil
 	}
 
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -478,7 +400,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+	enabled := checkboxOn(r, "enabled")
 
 	if enabled {
 		if settings.GlidePath == nil {
@@ -486,12 +408,10 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		}
 		settings.GlidePath.Enabled = true
 
-		if v, err := parseFormFloat(r, "start_stock_pct"); err == nil {
-			settings.GlidePath.StartStockPct = math.Max(0, math.Min(100, v))
-		}
-		if v, err := parseFormFloat(r, "end_stock_pct"); err == nil {
-			settings.GlidePath.EndStockPct = math.Max(0, math.Min(100, v))
-		}
+		applyClampedFloatFields(r, []clampedFloatField{
+			{"start_stock_pct", 0, 100, &settings.GlidePath.StartStockPct},
+			{"end_stock_pct", 0, 100, &settings.GlidePath.EndStockPct},
+		})
 		if v, err := parseFormInt(r, "transition_years"); err == nil {
 			settings.GlidePath.TransitionYears = max(1, min(50, v))
 		}
@@ -501,18 +421,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -526,7 +435,7 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true"
+	enabled := checkboxOn(r, "enabled")
 
 	if enabled {
 		if settings.Guardrails == nil {
@@ -541,42 +450,21 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		}
 		settings.Guardrails.Enabled = true
 
-		if v, err := parseFormFloat(r, "floor_drop_pct"); err == nil {
-			settings.Guardrails.FloorDropPct = math.Max(1, math.Min(50, v))
-		}
-		if v, err := parseFormFloat(r, "floor_cut_pct"); err == nil {
-			settings.Guardrails.FloorCutPct = math.Max(1, math.Min(50, v))
-		}
-		if v, err := parseFormFloat(r, "ceiling_rise_pct"); err == nil {
-			settings.Guardrails.CeilingRisePct = math.Max(1, math.Min(100, v))
-		}
-		if v, err := parseFormFloat(r, "ceiling_raise_pct"); err == nil {
-			settings.Guardrails.CeilingRaisePct = math.Max(1, math.Min(50, v))
-		}
-		if v, err := parseFormFloat(r, "min_spending_pct"); err == nil {
-			settings.Guardrails.MinSpendingPct = math.Max(50, math.Min(100, v))
-		}
-		if v, err := parseFormFloat(r, "max_spending_pct"); err == nil {
-			settings.Guardrails.MaxSpendingPct = math.Max(100, math.Min(200, v))
-		}
+		applyClampedFloatFields(r, []clampedFloatField{
+			{"floor_drop_pct", 1, 50, &settings.Guardrails.FloorDropPct},
+			{"floor_cut_pct", 1, 50, &settings.Guardrails.FloorCutPct},
+			{"ceiling_rise_pct", 1, 100, &settings.Guardrails.CeilingRisePct},
+			{"ceiling_raise_pct", 1, 50, &settings.Guardrails.CeilingRaisePct},
+			{"min_spending_pct", 50, 100, &settings.Guardrails.MinSpendingPct},
+			{"max_spending_pct", 100, 200, &settings.Guardrails.MaxSpendingPct},
+		})
 	} else {
 		if settings.Guardrails != nil {
 			settings.Guardrails.Enabled = false
 		}
 	}
 
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Failed to analyze settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 
 // handleWhatIfTaxOptimize runs the Tax Optimizer on demand. This is an

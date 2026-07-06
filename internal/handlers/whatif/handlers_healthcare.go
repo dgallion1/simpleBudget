@@ -122,19 +122,9 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		MedicareEligibleAge:   65,
 	}
 
-	settings, err := retirementMgr.AddHealthcarePerson(person)
-	if err != nil {
-		renderError(w, "Failed to add healthcare person: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to add healthcare person", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.AddHealthcarePerson(person)
+	})
 }
 func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -279,34 +269,14 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		updates["aca_cost_after_employer"] = f
 	}
 
-	settings, err := retirementMgr.UpdateHealthcarePerson(id, updates)
-	if err != nil {
-		renderError(w, "Failed to update healthcare person: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to update healthcare person", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.UpdateHealthcarePerson(id, updates)
+	})
 }
 func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	settings, err := retirementMgr.RemoveHealthcarePerson(id)
-	if err != nil {
-		renderError(w, "Failed to remove healthcare person: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to remove healthcare person", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RemoveHealthcarePerson(id)
+	})
 }

@@ -7549,18 +7549,18 @@ func TestHandleWhatIfSync_AnalysisError(t *testing.T) {
 	}
 }
 
-// ── statusForWhatIfSaveError direct tests ──────────────────────────────────
+// ── statusForMutationError direct tests ────────────────────────────────────
 
 func TestStatusForWhatIfSaveError_ChainValidation(t *testing.T) {
 	err := &retirement.ScenarioChainValidationError{Err: fmt.Errorf("bad chain")}
-	if got := statusForWhatIfSaveError(err); got != http.StatusBadRequest {
+	if got := statusForMutationError(err); got != http.StatusBadRequest {
 		t.Errorf("expected 400 for chain validation error, got %d", got)
 	}
 }
 
 func TestStatusForWhatIfSaveError_Generic(t *testing.T) {
 	err := fmt.Errorf("generic save error")
-	if got := statusForWhatIfSaveError(err); got != http.StatusInternalServerError {
+	if got := statusForMutationError(err); got != http.StatusInternalServerError {
 		t.Errorf("expected 500 for generic error, got %d", got)
 	}
 }

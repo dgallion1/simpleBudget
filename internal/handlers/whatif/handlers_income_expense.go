@@ -10,57 +10,73 @@ import (
 	"budget2/internal/models"
 )
 
-func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
-		return
-	}
-
-	name := strings.TrimSpace(r.FormValue("name"))
+// parseNamedAmount parses the name + amount fields shared by the Add forms.
+// requiredMsg is the noun-specific "... name is required" message. A
+// non-empty errMsg is the user-facing 400 body.
+func parseNamedAmount(r *http.Request, requiredMsg string) (name string, amount float64, errMsg string) {
+	name = strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		renderRetargetedError(w, "Income source name is required", http.StatusBadRequest, "#whatif-add-income-error")
-		return
+		return "", 0, requiredMsg
 	}
-
 	amount, err := parseRequiredFormFloat(r, "amount")
 	if err != nil {
-		renderRetargetedError(w, err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
-		return
+		return "", 0, err.Error()
 	}
 	if amount < 0 {
-		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, "#whatif-add-income-error")
-		return
+		return "", 0, "Amount cannot be negative"
 	}
+	return name, amount, ""
+}
 
+// parseYearRange parses start_year and the optional end_year with the
+// non-negative and ordering rules shared by the income/expense forms.
+func parseYearRange(r *http.Request) (startYear int, endYear *int, errMsg string) {
 	startYear, err := parseFormInt(r, "start_year")
 	if err != nil {
-		renderRetargetedError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
-		return
+		return 0, nil, "Invalid start year: " + err.Error()
 	}
 	if startYear < 0 {
-		renderRetargetedError(w, "Start year cannot be negative", http.StatusBadRequest, "#whatif-add-income-error")
-		return
+		return 0, nil, "Start year cannot be negative"
 	}
-
-	var endYearPtr *int
 	if r.FormValue("end_year") != "" {
 		ey, err := parseFormInt(r, "end_year")
 		if err != nil {
-			renderRetargetedError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest, "#whatif-add-income-error")
-			return
+			return 0, nil, "Invalid end year: " + err.Error()
 		}
 		if ey < 0 {
-			renderRetargetedError(w, "End year cannot be negative", http.StatusBadRequest, "#whatif-add-income-error")
-			return
+			return 0, nil, "End year cannot be negative"
 		}
 		if ey < startYear {
-			renderRetargetedError(w, "End year cannot be before start year", http.StatusBadRequest, "#whatif-add-income-error")
-			return
+			return 0, nil, "End year cannot be before start year"
 		}
-		endYearPtr = &ey
+		endYear = &ey
 	}
+	return startYear, endYear, ""
+}
 
-	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
+// checkboxOn reports whether a checkbox-style form field is set ("on" from a
+// plain checkbox, "true" from a hidden-input pattern).
+func checkboxOn(r *http.Request, key string) bool {
+	v := r.FormValue(key)
+	return v == "on" || v == "true"
+}
+
+func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
+	const target = "#whatif-add-income-error"
+	if err := r.ParseForm(); err != nil {
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, target)
+		return
+	}
+	name, amount, msg := parseNamedAmount(r, "Income source name is required")
+	if msg != "" {
+		renderRetargetedError(w, msg, http.StatusBadRequest, target)
+		return
+	}
+	startYear, endYear, msg := parseYearRange(r)
+	if msg != "" {
+		renderRetargetedError(w, msg, http.StatusBadRequest, target)
+		return
+	}
 
 	source := models.IncomeSource{
 		ID:         uuid.New().String(),
@@ -70,30 +86,19 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		StartMonth: startYear * 12,
 		COLARate:   0,
 	}
-
-	if cola {
+	if checkboxOn(r, "cola") {
 		source.COLARate = 0.02 // 2% COLA
 	}
-
-	if endYearPtr != nil {
-		endMonth := *endYearPtr * 12
+	if endYear != nil {
+		endMonth := *endYear * 12
 		source.EndMonth = &endMonth
 	}
 
-	settings, err := retirementMgr.AddIncomeSource(source)
-	if err != nil {
-		renderError(w, "Failed to add income source: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to add income source", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.AddIncomeSource(source)
+	})
 }
+
 func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -101,142 +106,52 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	startYear, err := parseFormInt(r, "start_year")
-	if err != nil {
-		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
+	startYear, endYear, msg := parseYearRange(r)
+	if msg != "" {
+		renderError(w, msg, http.StatusBadRequest)
 		return
 	}
-	if startYear < 0 {
-		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
-		return
-	}
-
-	var endYearPtr *int
-	if r.FormValue("end_year") != "" {
-		ey, err := parseFormInt(r, "end_year")
-		if err != nil {
-			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if ey < 0 {
-			renderError(w, "End year cannot be negative", http.StatusBadRequest)
-			return
-		}
-		if ey < startYear {
-			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
-			return
-		}
-		endYearPtr = &ey
-	}
-
-	cola := r.FormValue("cola") == "on" || r.FormValue("cola") == "true"
 
 	colaRate := 0.0
-	if cola {
+	if checkboxOn(r, "cola") {
 		colaRate = 0.02 // 2% COLA
 	}
 
-	settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYearPtr, colaRate)
-	if err != nil {
-		renderError(w, "Failed to update income source: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to update income source", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
+	})
 }
+
 func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.RemoveIncomeSource(id)
-	if err != nil {
-		renderError(w, "Failed to remove income source: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to remove income source", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RemoveIncomeSource(id)
+	})
 }
+
 func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.RestoreIncomeSource(id)
-	if err != nil {
-		renderError(w, "Failed to restore income source: "+err.Error(), statusForScenarioOperationError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to restore income source", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RestoreIncomeSource(id)
+	})
 }
+
 func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
+	const target = "#whatif-add-expense-error"
 	if err := r.ParseForm(); err != nil {
-		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, target)
 		return
 	}
-
-	name := strings.TrimSpace(r.FormValue("name"))
-	if name == "" {
-		renderRetargetedError(w, "Expense name is required", http.StatusBadRequest, "#whatif-add-expense-error")
+	name, amount, msg := parseNamedAmount(r, "Expense name is required")
+	if msg != "" {
+		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
 	}
-
-	amount, err := parseRequiredFormFloat(r, "amount")
-	if err != nil {
-		renderRetargetedError(w, err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
+	startYear, endYear, msg := parseYearRange(r)
+	if msg != "" {
+		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
 	}
-	if amount < 0 {
-		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, "#whatif-add-expense-error")
-		return
-	}
-
-	startYear, err := parseFormInt(r, "start_year")
-	if err != nil {
-		renderRetargetedError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
-		return
-	}
-	if startYear < 0 {
-		renderRetargetedError(w, "Start year cannot be negative", http.StatusBadRequest, "#whatif-add-expense-error")
-		return
-	}
-
-	var endYearPtr *int
-	if r.FormValue("end_year") != "" {
-		ey, err := parseFormInt(r, "end_year")
-		if err != nil {
-			renderRetargetedError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest, "#whatif-add-expense-error")
-			return
-		}
-		if ey < 0 {
-			renderRetargetedError(w, "End year cannot be negative", http.StatusBadRequest, "#whatif-add-expense-error")
-			return
-		}
-		if ey < startYear {
-			renderRetargetedError(w, "End year cannot be before start year", http.StatusBadRequest, "#whatif-add-expense-error")
-			return
-		}
-		endYearPtr = &ey
-	}
-
-	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
-	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
 
 	source := models.ExpenseSource{
 		ID:            uuid.New().String(),
@@ -244,27 +159,18 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		Amount:        amount,
 		StartYear:     startYear,
 		EndYear:       0, // Default to perpetual
-		Inflation:     inflation,
-		Discretionary: discretionary,
+		Inflation:     checkboxOn(r, "inflation"),
+		Discretionary: checkboxOn(r, "discretionary"),
 	}
-	if endYearPtr != nil {
-		source.EndYear = *endYearPtr
-	}
-
-	settings, err := retirementMgr.AddExpenseSource(source)
-	if err != nil {
-		renderError(w, "Failed to add expense: "+err.Error(), http.StatusInternalServerError)
-		return
+	if endYear != nil {
+		source.EndYear = *endYear
 	}
 
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to add expense", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.AddExpenseSource(source)
+	})
 }
+
 func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -272,115 +178,53 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	startYear, err := parseFormInt(r, "start_year")
-	if err != nil {
-		renderError(w, "Invalid start year: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if startYear < 0 {
-		renderError(w, "Start year cannot be negative", http.StatusBadRequest)
+	startYear, endYear, msg := parseYearRange(r)
+	if msg != "" {
+		renderError(w, msg, http.StatusBadRequest)
 		return
 	}
 
-	var endYearPtr *int
-	if r.FormValue("end_year") != "" {
-		ey, err := parseFormInt(r, "end_year")
-		if err != nil {
-			renderError(w, "Invalid end year: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if ey < 0 {
-			renderError(w, "End year cannot be negative", http.StatusBadRequest)
-			return
-		}
-		if ey < startYear {
-			renderError(w, "End year cannot be before start year", http.StatusBadRequest)
-			return
-		}
-		endYearPtr = &ey
-	}
+	inflation := checkboxOn(r, "inflation")
+	discretionary := checkboxOn(r, "discretionary")
 
-	inflation := r.FormValue("inflation") == "on" || r.FormValue("inflation") == "true"
-	discretionary := r.FormValue("discretionary") == "on" || r.FormValue("discretionary") == "true"
-
-	settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYearPtr, inflation, discretionary)
-	if err != nil {
-		renderError(w, "Failed to update expense: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to update expense", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
+	})
 }
+
 func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.RemoveExpenseSource(id)
-	if err != nil {
-		renderError(w, "Failed to remove expense: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to remove expense", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RemoveExpenseSource(id)
+	})
 }
+
 func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.RestoreExpenseSource(id)
-	if err != nil {
-		renderError(w, "Failed to restore expense: "+err.Error(), statusForScenarioOperationError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to restore expense", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RestoreExpenseSource(id)
+	})
 }
+
 func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
+	const target = "#whatif-add-bigticket-error"
 	if err := r.ParseForm(); err != nil {
-		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, "#whatif-add-bigticket-error")
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, target)
 		return
 	}
-
-	name := strings.TrimSpace(r.FormValue("name"))
-	if name == "" {
-		renderRetargetedError(w, "Big ticket item name is required", http.StatusBadRequest, "#whatif-add-bigticket-error")
-		return
-	}
-
-	amount, err := parseRequiredFormFloat(r, "amount")
-	if err != nil {
-		renderRetargetedError(w, err.Error(), http.StatusBadRequest, "#whatif-add-bigticket-error")
-		return
-	}
-	if amount < 0 {
-		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, "#whatif-add-bigticket-error")
+	name, amount, msg := parseNamedAmount(r, "Big ticket item name is required")
+	if msg != "" {
+		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
 	}
 
 	year, err := parseFormInt(r, "year")
 	if err != nil {
-		renderRetargetedError(w, "Invalid year: "+err.Error(), http.StatusBadRequest, "#whatif-add-bigticket-error")
+		renderRetargetedError(w, "Invalid year: "+err.Error(), http.StatusBadRequest, target)
 		return
 	}
 	if year < 0 {
-		renderRetargetedError(w, "Year cannot be negative", http.StatusBadRequest, "#whatif-add-bigticket-error")
+		renderRetargetedError(w, "Year cannot be negative", http.StatusBadRequest, target)
 		return
 	}
 
@@ -394,8 +238,6 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		taxTreatment = models.TaxNone
 	}
 
-	notes := r.FormValue("notes")
-
 	item := models.BigTicketItem{
 		ID:           uuid.New().String(),
 		Name:         name,
@@ -403,108 +245,45 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		Year:         year,
 		Type:         itemType,
 		TaxTreatment: taxTreatment,
-		Notes:        notes,
+		Notes:        r.FormValue("notes"),
 	}
 
-	settings, err := retirementMgr.AddBigTicketItem(item)
-	if err != nil {
-		renderError(w, "Failed to add big ticket item: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to add big ticket item", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.AddBigTicketItem(item)
+	})
 }
+
 func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.RemoveBigTicketItem(id)
-	if err != nil {
-		renderError(w, "Failed to remove big ticket item: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to remove big ticket item", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RemoveBigTicketItem(id)
+	})
 }
+
 func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.RestoreBigTicketItem(id)
-	if err != nil {
-		renderError(w, "Failed to restore big ticket item: "+err.Error(), statusForScenarioOperationError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to restore big ticket item", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.RestoreBigTicketItem(id)
+	})
 }
 
 func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.PurgeRemovedIncomeSource(id)
-	if err != nil {
-		renderError(w, "Failed to purge income source: "+err.Error(), statusForScenarioOperationError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to purge income source", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.PurgeRemovedIncomeSource(id)
+	})
 }
 
 func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.PurgeRemovedExpenseSource(id)
-	if err != nil {
-		renderError(w, "Failed to purge expense source: "+err.Error(), statusForScenarioOperationError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to purge expense source", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.PurgeRemovedExpenseSource(id)
+	})
 }
 
 func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-
-	settings, err := retirementMgr.PurgeRemovedBigTicketItem(id)
-	if err != nil {
-		renderError(w, "Failed to purge big ticket item: "+err.Error(), statusForScenarioOperationError(err))
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	recalcAndRender(w, r, "Failed to purge big ticket item", func() (*models.WhatIfSettings, error) {
+		return retirementMgr.PurgeRemovedBigTicketItem(id)
+	})
 }

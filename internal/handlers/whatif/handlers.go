@@ -119,12 +119,52 @@ func awaitAnalysis(ctx context.Context, ch <-chan singleflight.Result) (*models.
 	}
 }
 
-func statusForWhatIfSaveError(err error) int {
+// statusForMutationError maps a settings-mutation error to its HTTP status.
+// It understands every typed error the SettingsManager returns — chain and
+// scenario validation → 400, unknown scenario/item → 404, restore conflict →
+// 409 — and falls back to 500. One policy for every mutating handler, so the
+// same failure class cannot produce different statuses on different routes.
+func statusForMutationError(err error) int {
 	var chainErr *retirement.ScenarioChainValidationError
 	if errors.As(err, &chainErr) {
 		return http.StatusBadRequest
 	}
-	return http.StatusInternalServerError
+	return statusForScenarioOperationError(err)
+}
+
+// renderRecalc re-runs the (cached) analysis for settings and renders the
+// standard results partial — the render tail every mutating what-if handler
+// shares.
+func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderWhatIfResults(w, settings, analysis)
+}
+
+// recalcAndRender is the shared tail of a mutating what-if handler: apply
+// the mutation, then recalc + render. failMsg prefixes the mutation error;
+// its status comes from statusForMutationError.
+func recalcAndRender(w http.ResponseWriter, r *http.Request, failMsg string, mutate func() (*models.WhatIfSettings, error)) {
+	settings, err := mutate()
+	if err != nil {
+		renderError(w, failMsg+": "+err.Error(), statusForMutationError(err))
+		return
+	}
+	renderRecalc(w, r, settings)
+}
+
+// saveAndRecalc is recalcAndRender for the load-modify-save handlers, which
+// mutate a loaded settings object in place and persist it via Save.
+func saveAndRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
+	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, error) {
+		if err := retirementMgr.Save(settings); err != nil {
+			return nil, err
+		}
+		return settings, nil
+	})
 }
 
 func statusForScenarioOperationError(err error) int {
@@ -757,13 +797,7 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	renderRecalc(w, r, settings)
 }
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.LoadContext(r.Context())
@@ -988,19 +1022,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save the synced settings
-	if err := retirementMgr.Save(settings); err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	renderWhatIfResults(w, settings, analysis)
+	saveAndRecalc(w, r, settings)
 }
 
 // syncSettingsFromDashboard updates settings with values from dashboard data

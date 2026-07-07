@@ -191,3 +191,57 @@ func TestBuildProjectionChartData_AddsKeyEventMarkers(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildProjectionChartData_EventLabelsGetHeadroom(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.CurrentAge = 70
+	settings.ProjectionYears = 15
+	settings.IncomeSources = []models.IncomeSource{{Name: "Social Security", Amount: 2000, StartMonth: 24}}
+	projection := sampleProjectionForChart()
+
+	chartData := buildProjectionChartData(settings, projection, "nominal")
+
+	traces := chartData["data"].([]map[string]interface{})
+	if len(traces) < 2 {
+		t.Fatalf("expected event trace, got %d traces", len(traces))
+	}
+	if clip, ok := traces[1]["cliponaxis"].(bool); !ok || clip {
+		t.Errorf("event trace cliponaxis = %v, want false so labels can render at the top edge", traces[1]["cliponaxis"])
+	}
+
+	layout := chartData["layout"].(map[string]interface{})
+	yaxis := layout["yaxis"].(map[string]interface{})
+	rng, ok := yaxis["range"].([]float64)
+	if !ok || len(rng) != 2 {
+		t.Fatalf("expected explicit y-axis range for headroom, got %#v", yaxis["range"])
+	}
+	maxBalance := 0.0
+	for _, m := range projection.Months {
+		if m.PortfolioBalance > maxBalance {
+			maxBalance = m.PortfolioBalance
+		}
+	}
+	if rng[0] != 0 || rng[1] <= maxBalance {
+		t.Errorf("y range = %v, want [0, >%v] headroom above the peak balance", rng, maxBalance)
+	}
+}
+
+func TestBuildProjectionChartData_NoEventsMeansAutoRange(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.IncomeSources = nil
+	settings.HealthcarePersons = nil
+	settings.ScenarioChain = nil
+	// Past RMD start: CurrentAge alone doesn't drive RMD timing —
+	// FirstRMDCalendarYear reads Persons[0].BirthMonth (see CLAUDE.md
+	// gotcha), so both must move together or the RMD event resurfaces.
+	settings.CurrentAge = 80
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, 80)
+	projection := sampleProjectionForChart()
+
+	chartData := buildProjectionChartData(settings, projection, "nominal")
+	layout := chartData["layout"].(map[string]interface{})
+	yaxis := layout["yaxis"].(map[string]interface{})
+	if _, present := yaxis["range"]; present {
+		t.Errorf("without events the y-axis should keep Plotly auto-range")
+	}
+}

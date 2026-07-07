@@ -518,7 +518,8 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 				"size":   9,
 				"symbol": "diamond",
 			},
-			"hoverinfo": "skip",
+			"hoverinfo":  "skip",
+			"cliponaxis": false,
 		})
 	}
 
@@ -536,6 +537,15 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 		title = "Portfolio Projection In Today's Dollars"
 	}
 
+	yaxis := map[string]interface{}{
+		"title":      yAxisTitle,
+		"tickformat": "$,.0f",
+	}
+	if len(events) > 0 && maxBalance > 0 {
+		// Headroom so top-of-curve event labels don't clip at the plot edge.
+		yaxis["range"] = []float64{0, maxBalance * 1.18}
+	}
+
 	return map[string]interface{}{
 		"data": traces,
 		"layout": map[string]interface{}{
@@ -546,10 +556,7 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 				"tick0":    0,
 				"dtick":    dtick,
 			},
-			"yaxis": map[string]interface{}{
-				"title":      yAxisTitle,
-				"tickformat": "$,.0f",
-			},
+			"yaxis": yaxis,
 			"legend": map[string]interface{}{
 				"orientation": "h",
 			},

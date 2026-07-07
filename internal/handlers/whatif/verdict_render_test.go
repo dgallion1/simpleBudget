@@ -99,4 +99,44 @@ func TestVerdictBar_Render(t *testing.T) {
 			t.Errorf("did not expect Monte Carlo figure when HasMonteCarlo is false; got: %s", truncate(out, 600))
 		}
 	})
+
+	t.Run("strip shows lifetime taxes and end balance in whole dollars", func(t *testing.T) {
+		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
+			"Verdict": VerdictView{
+				Health: models.HealthAmber, Headline: "Funded through 2074",
+				Detail:     "covers the median path — 38% of market simulations fall short",
+				MonthlyGap: 6435.53, GapIsShortfall: true, RequiredRate: 3.1,
+				SuccessRate: 62.2, HasMonteCarlo: true,
+				TotalTaxes: 1624993.75, HasTaxes: true,
+				EndBalance: 342706.42, HasEndBalance: true,
+			},
+		})
+		if err != nil {
+			t.Fatalf("RenderToString: %v", err)
+		}
+		for _, want := range []string{"Est. Taxes", "$1,624,994", "End Balance", "$342,706"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("expected %q in verdict strip; got: %s", want, truncate(out, 900))
+			}
+		}
+		if strings.Contains(out, "1,624,993.75") {
+			t.Errorf("taxes should be whole dollars, found cents: %s", truncate(out, 900))
+		}
+		if strings.Contains(out, "-$1,624,994") {
+			t.Errorf("taxes tile must not carry a minus sign (red + label already encode cost)")
+		}
+	})
+	t.Run("strip omits taxes and end balance when unavailable", func(t *testing.T) {
+		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
+			"Verdict": VerdictView{Health: models.HealthGreen, Headline: "Funded through 2046", Detail: "spending covered for all 20 years"},
+		})
+		if err != nil {
+			t.Fatalf("RenderToString: %v", err)
+		}
+		for _, absent := range []string{"Est. Taxes", "End Balance"} {
+			if strings.Contains(out, absent) {
+				t.Errorf("did not expect %q without data", absent)
+			}
+		}
+	})
 }

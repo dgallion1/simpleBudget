@@ -25,6 +25,13 @@ type VerdictView struct {
 	SuccessRate    float64 // 0-100
 	HasMonteCarlo  bool
 
+	// Strip extras: lifetime income tax and projected end balance shown in
+	// the sticky bar so the Overview tab needs no duplicate KPI row.
+	TotalTaxes    float64
+	HasTaxes      bool
+	EndBalance    float64
+	HasEndBalance bool
+
 	// GapAtSteadyState reports whether MonthlyGap/RequiredRate reflect the
 	// steady-state year currently in view (driven by the budget slider)
 	// rather than today's values. GapYear is that year when true.
@@ -64,6 +71,15 @@ func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictVie
 	if a.MonteCarlo != nil && a.MonteCarlo.Stats != nil {
 		v.HasMonteCarlo = true
 		v.SuccessRate = a.MonteCarlo.Stats.SuccessRate
+	}
+
+	if a.Tax != nil {
+		v.HasTaxes = true
+		v.TotalTaxes = a.Tax.TotalTaxPaid
+	}
+	if a.Projection != nil {
+		v.HasEndBalance = true
+		v.EndBalance = a.Projection.FinalBalance
 	}
 
 	survives := a.Projection != nil && a.Projection.Survives

@@ -184,4 +184,26 @@ func TestBuildVerdict(t *testing.T) {
 			t.Errorf("gap/rate = (%v,%v), want (1500,2.5) — today's values", v.MonthlyGap, v.RequiredRate)
 		}
 	})
+
+	t.Run("carries lifetime taxes and end balance for the summary strip", func(t *testing.T) {
+		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
+		a := &models.WhatIfAnalysis{
+			Projection: &models.ProjectionResult{Survives: true, FinalBalance: 342706.42},
+			Tax:        &models.TaxAnalysis{TotalTaxPaid: 1624993.75},
+		}
+		v := BuildVerdict(a, s)
+		if !v.HasTaxes || v.TotalTaxes != 1624993.75 {
+			t.Errorf("taxes = (%v, %v), want (true, 1624993.75)", v.HasTaxes, v.TotalTaxes)
+		}
+		if !v.HasEndBalance || v.EndBalance != 342706.42 {
+			t.Errorf("end balance = (%v, %v), want (true, 342706.42)", v.HasEndBalance, v.EndBalance)
+		}
+	})
+	t.Run("nil analysis sections leave strip extras unset", func(t *testing.T) {
+		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
+		v := BuildVerdict(&models.WhatIfAnalysis{}, s)
+		if v.HasTaxes || v.HasEndBalance {
+			t.Errorf("expected HasTaxes/HasEndBalance false, got %v/%v", v.HasTaxes, v.HasEndBalance)
+		}
+	})
 }

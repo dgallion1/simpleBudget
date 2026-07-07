@@ -11,6 +11,7 @@ Package backup owns automatic and on\-demand snapshots of the data directory. It
 ## Index
 
 - [Variables](<#variables>)
+- [func SkipPredicate\(dataDir, backupDir string\) func\(path string, isDir bool\) bool](<#SkipPredicate>)
 - [type Clock](<#Clock>)
 - [type Config](<#Config>)
 - [type Meta](<#Meta>)
@@ -22,6 +23,7 @@ Package backup owns automatic and on\-demand snapshots of the data directory. It
   - [func \(s \*Service\) Run\(ctx context.Context, maxAge time.Duration\)](<#Service.Run>)
   - [func \(s \*Service\) SetEnabled\(v bool\) error](<#Service.SetEnabled>)
   - [func \(s \*Service\) Snapshot\(ctx context.Context\) error](<#Service.Snapshot>)
+  - [func \(s \*Service\) SnapshotAndHold\(ctx context.Context\) \(func\(\), error\)](<#Service.SnapshotAndHold>)
   - [func \(s \*Service\) SnapshotIfStale\(ctx context.Context, maxAge time.Duration\) error](<#Service.SnapshotIfStale>)
 
 
@@ -32,6 +34,15 @@ Package backup owns automatic and on\-demand snapshots of the data directory. It
 ```go
 var ErrSnapshotInProgress = errors.New("backup: snapshot already in progress")
 ```
+
+<a name="SkipPredicate"></a>
+## func [SkipPredicate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/snapshot.go#L235>)
+
+```go
+func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool
+```
+
+SkipPredicate returns the canonical exclusion rules for walking the data directory: the backup directory itself \(when nested under dataDir\), the cache/ directory \(and, for file paths, anything under a cache/ ancestor\), atomicWrite \*.tmp leftovers, and the storage layer's encryption\-state files. It is the single source of truth shared by snapshot creation, the manual backup downloads, and restore pruning so the rule set cannot drift between them.
 
 <a name="Clock"></a>
 ## type [Clock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/clock.go#L7-L9>)
@@ -81,7 +92,7 @@ type Meta struct {
 ```
 
 <a name="Service"></a>
-## type [Service](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L33-L45>)
+## type [Service](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L33-L47>)
 
 Service owns automatic backup snapshot, retention, and scheduling.
 
@@ -92,7 +103,7 @@ type Service struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L49>)
+### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L51>)
 
 ```go
 func New(cfg Config) (*Service, error)
@@ -101,7 +112,7 @@ func New(cfg Config) (*Service, error)
 New constructs a Service. It loads the persisted enabled flag from \<DataDir\>/settings/auto\_backup.json \(defaulting to true if absent\).
 
 <a name="Service.BackupDir"></a>
-### func \(\*Service\) [BackupDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L67>)
+### func \(\*Service\) [BackupDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L69>)
 
 ```go
 func (s *Service) BackupDir() string
@@ -110,7 +121,7 @@ func (s *Service) BackupDir() string
 
 
 <a name="Service.DataDir"></a>
-### func \(\*Service\) [DataDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L68>)
+### func \(\*Service\) [DataDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L70>)
 
 ```go
 func (s *Service) DataDir() string
@@ -119,7 +130,7 @@ func (s *Service) DataDir() string
 
 
 <a name="Service.Enabled"></a>
-### func \(\*Service\) [Enabled](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L70>)
+### func \(\*Service\) [Enabled](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L72>)
 
 ```go
 func (s *Service) Enabled() bool
@@ -137,7 +148,7 @@ func (s *Service) Run(ctx context.Context, maxAge time.Duration)
 Run starts the daily\-tick scheduler. It blocks until ctx is cancelled. On entry it runs SnapshotIfStale once, then ticks every hour.
 
 <a name="Service.SetEnabled"></a>
-### func \(\*Service\) [SetEnabled](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L77>)
+### func \(\*Service\) [SetEnabled](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/service.go#L79>)
 
 ```go
 func (s *Service) SetEnabled(v bool) error
@@ -146,7 +157,7 @@ func (s *Service) SetEnabled(v bool) error
 SetEnabled persists the user's auto\-backup toggle.
 
 <a name="Service.Snapshot"></a>
-### func \(\*Service\) [Snapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/snapshot.go#L24>)
+### func \(\*Service\) [Snapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/snapshot.go#L26>)
 
 ```go
 func (s *Service) Snapshot(ctx context.Context) error
@@ -154,8 +165,17 @@ func (s *Service) Snapshot(ctx context.Context) error
 
 Snapshot builds one backup zip in BackupDir, verifies it, then atomically renames it into place. On success, writes meta with success fields. On failure, writes meta preserving the prior successful TS and recording LastError. Returns ErrSnapshotInProgress when another snapshot is in flight.
 
+<a name="Service.SnapshotAndHold"></a>
+### func \(\*Service\) [SnapshotAndHold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/snapshot.go#L40>)
+
+```go
+func (s *Service) SnapshotAndHold(ctx context.Context) (func(), error)
+```
+
+SnapshotAndHold runs a snapshot like Snapshot, but on success keeps the snapshot lock held so the caller can finish a restore without a scheduled snapshot observing a half\-restored data directory \(and without a second restore interleaving\). The caller must invoke the returned release function exactly once. On error the lock is released and no release function is returned.
+
 <a name="Service.SnapshotIfStale"></a>
-### func \(\*Service\) [SnapshotIfStale](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/snapshot.go#L37>)
+### func \(\*Service\) [SnapshotIfStale](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/backup/snapshot.go#L56>)
 
 ```go
 func (s *Service) SnapshotIfStale(ctx context.Context, maxAge time.Duration) error

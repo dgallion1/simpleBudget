@@ -10,6 +10,7 @@ Package testutil provides testing utilities for the budget application.
 
 ## Index
 
+- [func BadFormRequest\(method, path string\) \*http.Request](<#BadFormRequest>)
 - [func ProjectRoot\(\) string](<#ProjectRoot>)
 - [func ReadBody\(t \*testing.T, resp \*http.Response\) string](<#ReadBody>)
 - [func SetTestEnv\(t \*testing.T\) func\(\)](<#SetTestEnv>)
@@ -31,6 +32,15 @@ Package testutil provides testing utilities for the budget application.
   - [func \(ts \*TestServer\) GETWithQuery\(path string, query map\[string\]string\) \*http.Response](<#TestServer.GETWithQuery>)
 
 
+<a name="BadFormRequest"></a>
+## func [BadFormRequest](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/forms.go#L13>)
+
+```go
+func BadFormRequest(method, path string) *http.Request
+```
+
+BadFormRequest builds a request whose body makes r.ParseForm\(\) fail. Only invalid percent\-encoding \("%ZZ"\) triggers the error: a multipart body without a boundary is silently accepted by urlencoded parsing in modern Go, so it does NOT work for this purpose.
+
 <a name="ProjectRoot"></a>
 ## func [ProjectRoot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L23>)
 
@@ -41,7 +51,7 @@ func ProjectRoot() string
 ProjectRoot returns the root directory of the project. It works by finding the go.mod file.
 
 <a name="ReadBody"></a>
-## func [ReadBody](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L138>)
+## func [ReadBody](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L140>)
 
 ```go
 func ReadBody(t *testing.T, resp *http.Response) string
@@ -173,7 +183,7 @@ type TestServer struct {
 ```
 
 <a name="NewTestServer"></a>
-### func [NewTestServer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L85>)
+### func [NewTestServer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L87>)
 
 ```go
 func NewTestServer(t *testing.T, router http.Handler) *TestServer
@@ -182,7 +192,7 @@ func NewTestServer(t *testing.T, router http.Handler) *TestServer
 NewTestServer creates a new test server using the application's router. It sets up the test environment with testdata directory.
 
 <a name="TestServer.Close"></a>
-### func \(\*TestServer\) [Close](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L133>)
+### func \(\*TestServer\) [Close](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L135>)
 
 ```go
 func (ts *TestServer) Close()
@@ -191,7 +201,7 @@ func (ts *TestServer) Close()
 Close shuts down the test server
 
 <a name="TestServer.GET"></a>
-### func \(\*TestServer\) [GET](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L98>)
+### func \(\*TestServer\) [GET](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L100>)
 
 ```go
 func (ts *TestServer) GET(path string) *http.Response
@@ -200,7 +210,7 @@ func (ts *TestServer) GET(path string) *http.Response
 GET performs a GET request to the given path
 
 <a name="TestServer.GETWithQuery"></a>
-### func \(\*TestServer\) [GETWithQuery](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L109>)
+### func \(\*TestServer\) [GETWithQuery](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L111>)
 
 ```go
 func (ts *TestServer) GETWithQuery(path string, query map[string]string) *http.Response

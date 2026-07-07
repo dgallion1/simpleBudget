@@ -24,7 +24,7 @@ func SetupDependencies(c *config.Config) error
 SetupDependencies initializes all global dependencies with the given config. This is exported for testing purposes.
 
 <a name="SetupRouter"></a>
-## func [SetupRouter](<https://github.com/dgallion1/simpleBudget/blob/master/cmd/server/main.go#L102>)
+## func [SetupRouter](<https://github.com/dgallion1/simpleBudget/blob/master/cmd/server/main.go#L108>)
 
 ```go
 func SetupRouter() chi.Router

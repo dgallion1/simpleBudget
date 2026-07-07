@@ -10,10 +10,12 @@ Package storage is the encrypted\-at\-rest persistence layer for user state \(al
 
 ## Index
 
+- [Variables](<#variables>)
 - [func DetectAgeIdentities\(\) \(\[\]string, error\)](<#DetectAgeIdentities>)
 - [func DetectYubiKeyIdentities\(\) \(\[\]string, error\)](<#DetectYubiKeyIdentities>)
 - [func GetYubiKeyIdentityForRecipient\(recipient string\) \(string, error\)](<#GetYubiKeyIdentityForRecipient>)
 - [func IsAgeEncryptedData\(data \[\]byte\) bool](<#IsAgeEncryptedData>)
+- [func IsEncryptionStateFile\(base string\) bool](<#IsEncryptionStateFile>)
 - [func IsSSHKeyEncrypted\(keyPath string\) \(bool, error\)](<#IsSSHKeyEncrypted>)
 - [func IsYubiKeyPluginInstalled\(\) bool](<#IsYubiKeyPluginInstalled>)
 - [type AgeProvider](<#AgeProvider>)
@@ -68,11 +70,14 @@ Package storage is the encrypted\-at\-rest persistence layer for user state \(al
   - [func \(s \*Storage\) Lock\(\)](<#Storage.Lock>)
   - [func \(s \*Storage\) MkdirAll\(path string, perm os.FileMode\) error](<#Storage.MkdirAll>)
   - [func \(s \*Storage\) OpenFile\(path string\) \(io.ReadCloser, error\)](<#Storage.OpenFile>)
+  - [func \(s \*Storage\) OpenFileContext\(ctx context.Context, path string\) \(io.ReadCloser, error\)](<#Storage.OpenFileContext>)
   - [func \(s \*Storage\) ReadFile\(path string\) \(\[\]byte, error\)](<#Storage.ReadFile>)
+  - [func \(s \*Storage\) ReadFileContext\(ctx context.Context, path string\) \(\[\]byte, error\)](<#Storage.ReadFileContext>)
   - [func \(s \*Storage\) Remove\(path string\) error](<#Storage.Remove>)
   - [func \(s \*Storage\) Stat\(path string\) \(os.FileInfo, error\)](<#Storage.Stat>)
   - [func \(s \*Storage\) Unlock\(credentials string\) error](<#Storage.Unlock>)
   - [func \(s \*Storage\) WriteFile\(path string, data \[\]byte, perm os.FileMode\) error](<#Storage.WriteFile>)
+  - [func \(s \*Storage\) WriteFileContext\(ctx context.Context, path string, data \[\]byte, perm os.FileMode\) error](<#Storage.WriteFileContext>)
 - [type YubiKeyInfo](<#YubiKeyInfo>)
   - [func DetectYubiKeys\(\) \(\[\]YubiKeyInfo, error\)](<#DetectYubiKeys>)
 - [type YubiKeyProvider](<#YubiKeyProvider>)
@@ -92,8 +97,22 @@ Package storage is the encrypted\-at\-rest persistence layer for user state \(al
   - [func ListYubiKeySlots\(\) \(\[\]YubiKeySlot, error\)](<#ListYubiKeySlots>)
 
 
+## Variables
+
+<a name="ErrIncorrectCredentials"></a>ErrIncorrectCredentials is returned when an unlock or encryption\-change attempt fails because the supplied credentials cannot decrypt the verification payload. Callers should match it with errors.Is rather than inspecting the error text.
+
+```go
+var ErrIncorrectCredentials = errors.New("incorrect credentials")
+```
+
+<a name="ErrSSHKeyEncrypted"></a>ErrSSHKeyEncrypted is returned when an SSH private key is passphrase\- protected and no passphrase \(or an incorrect one\) was supplied. It wraps the underlying parse failure so callers can detect the condition with errors.Is instead of string\-matching the third\-party error message.
+
+```go
+var ErrSSHKeyEncrypted = errors.New("SSH key is encrypted, passphrase required")
+```
+
 <a name="DetectAgeIdentities"></a>
-## func [DetectAgeIdentities](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L180>)
+## func [DetectAgeIdentities](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L193>)
 
 ```go
 func DetectAgeIdentities() ([]string, error)
@@ -120,7 +139,7 @@ func GetYubiKeyIdentityForRecipient(recipient string) (string, error)
 GetYubiKeyIdentityForRecipient retrieves the identity for a known recipient by running age\-plugin\-yubikey \-\-identity
 
 <a name="IsAgeEncryptedData"></a>
-## func [IsAgeEncryptedData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L329>)
+## func [IsAgeEncryptedData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L379>)
 
 ```go
 func IsAgeEncryptedData(data []byte) bool
@@ -128,8 +147,17 @@ func IsAgeEncryptedData(data []byte) bool
 
 IsAgeEncryptedData reports whether data appears to be an age\-encrypted payload by looking at its magic header. Used by callers \(e.g. the backup restore handler\) that need to detect encrypted blobs before deciding how to write them.
 
+<a name="IsEncryptionStateFile"></a>
+## func [IsEncryptionStateFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L354>)
+
+```go
+func IsEncryptionStateFile(base string) bool
+```
+
+IsEncryptionStateFile reports whether base names one of the files that record the store's encryption state \(.encrypted, .encryption\-verify, .encryption\-config.json\). These files define how the store unlocks, so they must never be archived into backups, written from restore archives, or pruned during a restore.
+
 <a name="IsSSHKeyEncrypted"></a>
-## func [IsSSHKeyEncrypted](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L228>)
+## func [IsSSHKeyEncrypted](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L232>)
 
 ```go
 func IsSSHKeyEncrypted(keyPath string) (bool, error)
@@ -176,7 +204,7 @@ func NewAgeProvider(identityPath string) (*AgeProvider, error)
 NewAgeProvider creates a new Age identity provider
 
 <a name="AgeProvider.DisplayInfo"></a>
-### func \(\*AgeProvider\) [DisplayInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L167>)
+### func \(\*AgeProvider\) [DisplayInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L180>)
 
 ```go
 func (p *AgeProvider) DisplayInfo() string
@@ -185,7 +213,7 @@ func (p *AgeProvider) DisplayInfo() string
 DisplayInfo returns a description of this auth method
 
 <a name="AgeProvider.GetPublicKey"></a>
-### func \(\*AgeProvider\) [GetPublicKey](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L172>)
+### func \(\*AgeProvider\) [GetPublicKey](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L185>)
 
 ```go
 func (p *AgeProvider) GetPublicKey() string
@@ -194,7 +222,7 @@ func (p *AgeProvider) GetPublicKey() string
 GetPublicKey returns the public key string for the identity
 
 <a name="AgeProvider.Identity"></a>
-### func \(\*AgeProvider\) [Identity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L129>)
+### func \(\*AgeProvider\) [Identity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L142>)
 
 ```go
 func (p *AgeProvider) Identity() (age.Identity, error)
@@ -203,7 +231,7 @@ func (p *AgeProvider) Identity() (age.Identity, error)
 Identity returns the age identity for decryption
 
 <a name="AgeProvider.IsUnlocked"></a>
-### func \(\*AgeProvider\) [IsUnlocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L150>)
+### func \(\*AgeProvider\) [IsUnlocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L163>)
 
 ```go
 func (p *AgeProvider) IsUnlocked() bool
@@ -212,7 +240,7 @@ func (p *AgeProvider) IsUnlocked() bool
 IsUnlocked returns true if identity is loaded
 
 <a name="AgeProvider.Lock"></a>
-### func \(\*AgeProvider\) [Lock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L161>)
+### func \(\*AgeProvider\) [Lock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L174>)
 
 ```go
 func (p *AgeProvider) Lock()
@@ -221,7 +249,7 @@ func (p *AgeProvider) Lock()
 Lock clears the identity from memory
 
 <a name="AgeProvider.Method"></a>
-### func \(\*AgeProvider\) [Method](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L124>)
+### func \(\*AgeProvider\) [Method](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L137>)
 
 ```go
 func (p *AgeProvider) Method() AuthMethod
@@ -230,7 +258,7 @@ func (p *AgeProvider) Method() AuthMethod
 Method returns AuthMethodAge
 
 <a name="AgeProvider.NeedsUnlock"></a>
-### func \(\*AgeProvider\) [NeedsUnlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L145>)
+### func \(\*AgeProvider\) [NeedsUnlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L158>)
 
 ```go
 func (p *AgeProvider) NeedsUnlock() bool
@@ -239,7 +267,7 @@ func (p *AgeProvider) NeedsUnlock() bool
 NeedsUnlock returns false \- age identity files don't require unlock
 
 <a name="AgeProvider.Recipient"></a>
-### func \(\*AgeProvider\) [Recipient](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L137>)
+### func \(\*AgeProvider\) [Recipient](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L150>)
 
 ```go
 func (p *AgeProvider) Recipient() (age.Recipient, error)
@@ -248,7 +276,7 @@ func (p *AgeProvider) Recipient() (age.Recipient, error)
 Recipient returns the age recipient for encryption
 
 <a name="AgeProvider.Unlock"></a>
-### func \(\*AgeProvider\) [Unlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L155>)
+### func \(\*AgeProvider\) [Unlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/age_provider.go#L168>)
 
 ```go
 func (p *AgeProvider) Unlock(credentials string) error
@@ -429,7 +457,7 @@ func (p *PasswordProvider) Unlock(password string) error
 Unlock sets the password and creates identity/recipient
 
 <a name="SSHKeyInfo"></a>
-## type [SSHKeyInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L153-L157>)
+## type [SSHKeyInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L157-L161>)
 
 SSHKeyInfo describes a detected SSH key
 
@@ -442,7 +470,7 @@ type SSHKeyInfo struct {
 ```
 
 <a name="DetectSSHKeys"></a>
-### func [DetectSSHKeys](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L160>)
+### func [DetectSSHKeys](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L164>)
 
 ```go
 func DetectSSHKeys() ([]SSHKeyInfo, error)
@@ -471,7 +499,7 @@ func NewSSHProvider(keyPath string) (*SSHProvider, error)
 NewSSHProvider creates a new SSH key provider
 
 <a name="SSHProvider.DisplayInfo"></a>
-### func \(\*SSHProvider\) [DisplayInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L148>)
+### func \(\*SSHProvider\) [DisplayInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L152>)
 
 ```go
 func (p *SSHProvider) DisplayInfo() string
@@ -480,7 +508,7 @@ func (p *SSHProvider) DisplayInfo() string
 DisplayInfo returns a description of this auth method
 
 <a name="SSHProvider.Identity"></a>
-### func \(\*SSHProvider\) [Identity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L110>)
+### func \(\*SSHProvider\) [Identity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L114>)
 
 ```go
 func (p *SSHProvider) Identity() (age.Identity, error)
@@ -489,7 +517,7 @@ func (p *SSHProvider) Identity() (age.Identity, error)
 Identity returns the SSH identity for decryption
 
 <a name="SSHProvider.IsUnlocked"></a>
-### func \(\*SSHProvider\) [IsUnlocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L131>)
+### func \(\*SSHProvider\) [IsUnlocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L135>)
 
 ```go
 func (p *SSHProvider) IsUnlocked() bool
@@ -498,7 +526,7 @@ func (p *SSHProvider) IsUnlocked() bool
 IsUnlocked returns true if identity is loaded
 
 <a name="SSHProvider.Lock"></a>
-### func \(\*SSHProvider\) [Lock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L142>)
+### func \(\*SSHProvider\) [Lock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L146>)
 
 ```go
 func (p *SSHProvider) Lock()
@@ -507,7 +535,7 @@ func (p *SSHProvider) Lock()
 Lock clears the identity from memory
 
 <a name="SSHProvider.Method"></a>
-### func \(\*SSHProvider\) [Method](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L105>)
+### func \(\*SSHProvider\) [Method](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L109>)
 
 ```go
 func (p *SSHProvider) Method() AuthMethod
@@ -516,7 +544,7 @@ func (p *SSHProvider) Method() AuthMethod
 Method returns AuthMethodSSH
 
 <a name="SSHProvider.NeedsUnlock"></a>
-### func \(\*SSHProvider\) [NeedsUnlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L126>)
+### func \(\*SSHProvider\) [NeedsUnlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L130>)
 
 ```go
 func (p *SSHProvider) NeedsUnlock() bool
@@ -525,7 +553,7 @@ func (p *SSHProvider) NeedsUnlock() bool
 NeedsUnlock returns true \- SSH keys may need passphrase
 
 <a name="SSHProvider.Recipient"></a>
-### func \(\*SSHProvider\) [Recipient](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L118>)
+### func \(\*SSHProvider\) [Recipient](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L122>)
 
 ```go
 func (p *SSHProvider) Recipient() (age.Recipient, error)
@@ -534,7 +562,7 @@ func (p *SSHProvider) Recipient() (age.Recipient, error)
 Recipient returns the SSH recipient for encryption
 
 <a name="SSHProvider.Unlock"></a>
-### func \(\*SSHProvider\) [Unlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L136>)
+### func \(\*SSHProvider\) [Unlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/ssh_provider.go#L140>)
 
 ```go
 func (p *SSHProvider) Unlock(passphrase string) error
@@ -543,7 +571,7 @@ func (p *SSHProvider) Unlock(passphrase string) error
 Unlock loads the SSH private key with the given passphrase
 
 <a name="Storage"></a>
-## type [Storage](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L35-L43>)
+## type [Storage](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L42-L50>)
 
 Storage provides transparent encrypted/unencrypted file access
 
@@ -554,7 +582,7 @@ type Storage struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L46>)
+### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L53>)
 
 ```go
 func New(baseDir string) (*Storage, error)
@@ -563,7 +591,7 @@ func New(baseDir string) (*Storage, error)
 New creates a new Storage instance for the given base directory
 
 <a name="Storage.BaseDir"></a>
-### func \(\*Storage\) [BaseDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L74>)
+### func \(\*Storage\) [BaseDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L81>)
 
 ```go
 func (s *Storage) BaseDir() string
@@ -572,7 +600,7 @@ func (s *Storage) BaseDir() string
 BaseDir returns the base directory
 
 <a name="Storage.DisableEncryption"></a>
-### func \(\*Storage\) [DisableEncryption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/migration.go#L114>)
+### func \(\*Storage\) [DisableEncryption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/migration.go#L115>)
 
 ```go
 func (s *Storage) DisableEncryption(credentials string) error
@@ -581,7 +609,7 @@ func (s *Storage) DisableEncryption(credentials string) error
 DisableEncryption decrypts all data files using the current provider's credentials
 
 <a name="Storage.EnableEncryption"></a>
-### func \(\*Storage\) [EnableEncryption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/migration.go#L13>)
+### func \(\*Storage\) [EnableEncryption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/migration.go#L14>)
 
 ```go
 func (s *Storage) EnableEncryption(password string) error
@@ -590,7 +618,7 @@ func (s *Storage) EnableEncryption(password string) error
 EnableEncryption encrypts all data files with the given password \(default method\)
 
 <a name="Storage.EnableEncryptionWithProvider"></a>
-### func \(\*Storage\) [EnableEncryptionWithProvider](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/migration.go#L23>)
+### func \(\*Storage\) [EnableEncryptionWithProvider](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/migration.go#L24>)
 
 ```go
 func (s *Storage) EnableEncryptionWithProvider(provider AuthProvider, config *EncryptionConfig) error
@@ -617,7 +645,7 @@ func (s *Storage) GetConfig() *EncryptionConfig
 GetConfig returns a copy of the current encryption configuration
 
 <a name="Storage.Glob"></a>
-### func \(\*Storage\) [Glob](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L342>)
+### func \(\*Storage\) [Glob](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L392>)
 
 ```go
 func (s *Storage) Glob(pattern string) ([]string, error)
@@ -626,7 +654,7 @@ func (s *Storage) Glob(pattern string) ([]string, error)
 Glob returns files matching a pattern
 
 <a name="Storage.IsEncrypted"></a>
-### func \(\*Storage\) [IsEncrypted](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L79>)
+### func \(\*Storage\) [IsEncrypted](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L86>)
 
 ```go
 func (s *Storage) IsEncrypted() bool
@@ -635,7 +663,7 @@ func (s *Storage) IsEncrypted() bool
 IsEncrypted returns true if the data directory is encrypted
 
 <a name="Storage.IsUnlocked"></a>
-### func \(\*Storage\) [IsUnlocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L86>)
+### func \(\*Storage\) [IsUnlocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L93>)
 
 ```go
 func (s *Storage) IsUnlocked() bool
@@ -644,7 +672,7 @@ func (s *Storage) IsUnlocked() bool
 IsUnlocked returns true if encryption is not enabled or provider is unlocked
 
 <a name="Storage.Lock"></a>
-### func \(\*Storage\) [Lock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L176>)
+### func \(\*Storage\) [Lock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L183>)
 
 ```go
 func (s *Storage) Lock()
@@ -653,7 +681,7 @@ func (s *Storage) Lock()
 Lock clears the encryption key and cached data from memory
 
 <a name="Storage.MkdirAll"></a>
-### func \(\*Storage\) [MkdirAll](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L347>)
+### func \(\*Storage\) [MkdirAll](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L397>)
 
 ```go
 func (s *Storage) MkdirAll(path string, perm os.FileMode) error
@@ -662,25 +690,43 @@ func (s *Storage) MkdirAll(path string, perm os.FileMode) error
 MkdirAll creates a directory and all parents
 
 <a name="Storage.OpenFile"></a>
-### func \(\*Storage\) [OpenFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L283>)
+### func \(\*Storage\) [OpenFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L319>)
 
 ```go
 func (s *Storage) OpenFile(path string) (io.ReadCloser, error)
 ```
 
-OpenFile returns a reader for a potentially encrypted file
+OpenFile returns a reader for a potentially encrypted file. Context\-less convenience wrapper around OpenFileContext.
+
+<a name="Storage.OpenFileContext"></a>
+### func \(\*Storage\) [OpenFileContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L324>)
+
+```go
+func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadCloser, error)
+```
+
+OpenFileContext is OpenFile with caller\-supplied cancellation.
 
 <a name="Storage.ReadFile"></a>
-### func \(\*Storage\) [ReadFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L192>)
+### func \(\*Storage\) [ReadFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L201>)
 
 ```go
 func (s *Storage) ReadFile(path string) ([]byte, error)
 ```
 
-ReadFile reads and optionally decrypts a file, using cache when possible
+ReadFile reads and optionally decrypts a file, using cache when possible. It is a context\-less convenience wrapper around ReadFileContext for callers not on an HTTP request path \(background jobs, CLIs, tests\).
+
+<a name="Storage.ReadFileContext"></a>
+### func \(\*Storage\) [ReadFileContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L210>)
+
+```go
+func (s *Storage) ReadFileContext(ctx context.Context, path string) ([]byte, error)
+```
+
+ReadFileContext is ReadFile with caller\-supplied cancellation. The underlying os.ReadFile \+ age decryption cannot be interrupted mid\-call, so ctx provides fail\-fast semantics: if the caller has already cancelled \(e.g. the HTTP client disconnected\) the read returns ctx.Err\(\) before touching disk rather than doing wasted work.
 
 <a name="Storage.Remove"></a>
-### func \(\*Storage\) [Remove](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L352>)
+### func \(\*Storage\) [Remove](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L402>)
 
 ```go
 func (s *Storage) Remove(path string) error
@@ -689,7 +735,7 @@ func (s *Storage) Remove(path string) error
 Remove removes a file and invalidates its cache entry
 
 <a name="Storage.Stat"></a>
-### func \(\*Storage\) [Stat](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L337>)
+### func \(\*Storage\) [Stat](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L387>)
 
 ```go
 func (s *Storage) Stat(path string) (os.FileInfo, error)
@@ -698,7 +744,7 @@ func (s *Storage) Stat(path string) (os.FileInfo, error)
 Stat returns file info, useful for checking existence
 
 <a name="Storage.Unlock"></a>
-### func \(\*Storage\) [Unlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L96>)
+### func \(\*Storage\) [Unlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L103>)
 
 ```go
 func (s *Storage) Unlock(credentials string) error
@@ -707,13 +753,22 @@ func (s *Storage) Unlock(credentials string) error
 Unlock decrypts the storage with the given credentials For password method, credentials is the password For SSH with passphrase, credentials is the passphrase For age identity and YubiKey, credentials may be empty
 
 <a name="Storage.WriteFile"></a>
-### func \(\*Storage\) [WriteFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L248>)
+### func \(\*Storage\) [WriteFile](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L272>)
 
 ```go
 func (s *Storage) WriteFile(path string, data []byte, perm os.FileMode) error
 ```
 
-WriteFile writes and optionally encrypts a file
+WriteFile writes and optionally encrypts a file. Context\-less convenience wrapper around WriteFileContext for non\-request callers.
+
+<a name="Storage.WriteFileContext"></a>
+### func \(\*Storage\) [WriteFileContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/storage.go#L279>)
+
+```go
+func (s *Storage) WriteFileContext(ctx context.Context, path string, data []byte, perm os.FileMode) error
+```
+
+WriteFileContext is WriteFile with caller\-supplied cancellation. As with ReadFileContext, encryption \+ the atomic write cannot be interrupted mid\-call, so ctx fails fast before any work when already cancelled.
 
 <a name="YubiKeyInfo"></a>
 ## type [YubiKeyInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/storage/yubikey_provider.go#L240-L244>)

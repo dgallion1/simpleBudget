@@ -43,7 +43,7 @@ type DuplicateCountSource interface {
 ```
 
 <a name="Renderer"></a>
-## type [Renderer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L31-L36>)
+## type [Renderer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L34-L39>)
 
 Renderer handles template rendering
 
@@ -54,7 +54,7 @@ type Renderer struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L39>)
+### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L42>)
 
 ```go
 func New(templateDir string, debug bool) (*Renderer, error)
@@ -63,7 +63,7 @@ func New(templateDir string, debug bool) (*Renderer, error)
 New creates a new template renderer using the filesystem
 
 <a name="NewFromFS"></a>
-### func [NewFromFS](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L53>)
+### func [NewFromFS](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L56>)
 
 ```go
 func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error)
@@ -72,7 +72,7 @@ func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error)
 NewFromFS creates a new template renderer using an embedded filesystem
 
 <a name="Renderer.ExecuteTemplate"></a>
-### func \(\*Renderer\) [ExecuteTemplate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L406>)
+### func \(\*Renderer\) [ExecuteTemplate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L416>)
 
 ```go
 func (r *Renderer) ExecuteTemplate(w io.Writer, name string, data interface{}) error
@@ -81,7 +81,7 @@ func (r *Renderer) ExecuteTemplate(w io.Writer, name string, data interface{}) e
 ExecuteTemplate executes a template to a writer
 
 <a name="Renderer.Reload"></a>
-### func \(\*Renderer\) [Reload](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L353>)
+### func \(\*Renderer\) [Reload](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L363>)
 
 ```go
 func (r *Renderer) Reload() error
@@ -90,7 +90,7 @@ func (r *Renderer) Reload() error
 Reload reloads templates \(useful for development\)
 
 <a name="Renderer.Render"></a>
-### func \(\*Renderer\) [Render](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L358>)
+### func \(\*Renderer\) [Render](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L368>)
 
 ```go
 func (r *Renderer) Render(w http.ResponseWriter, name string, data interface{}) error
@@ -99,7 +99,7 @@ func (r *Renderer) Render(w http.ResponseWriter, name string, data interface{}) 
 Render renders a full page with the base layout
 
 <a name="Renderer.RenderPartial"></a>
-### func \(\*Renderer\) [RenderPartial](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L378>)
+### func \(\*Renderer\) [RenderPartial](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L388>)
 
 ```go
 func (r *Renderer) RenderPartial(w http.ResponseWriter, name string, data interface{}) error
@@ -108,7 +108,7 @@ func (r *Renderer) RenderPartial(w http.ResponseWriter, name string, data interf
 RenderPartial renders a partial template \(no base layout\)
 
 <a name="Renderer.RenderToString"></a>
-### func \(\*Renderer\) [RenderToString](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L397>)
+### func \(\*Renderer\) [RenderToString](<https://github.com/dgallion1/simpleBudget/blob/master/internal/templates/render.go#L407>)
 
 ```go
 func (r *Renderer) RenderToString(name string, data interface{}) (string, error)

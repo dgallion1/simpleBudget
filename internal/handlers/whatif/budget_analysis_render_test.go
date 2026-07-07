@@ -77,4 +77,41 @@ func TestBudgetAnalysis_Render(t *testing.T) {
 			t.Errorf("expected today + year-12 gap tiles, got %d", got)
 		}
 	})
+
+	t.Run("slider header names the age alongside the year", func(t *testing.T) {
+		bf := budgetFitFixture()
+		bf.SteadyStateYear = 12
+		s := models.DefaultWhatIfSettings()
+		s.CurrentAge = 67
+		out, err := renderer.RenderToString("whatif-budget-analysis", map[string]any{
+			"Settings": s,
+			"Analysis": &models.WhatIfAnalysis{BudgetFit: bf},
+		})
+		if err != nil {
+			t.Fatalf("RenderToString: %v", err)
+		}
+		for _, want := range []string{`id="steady-state-age-display"`, ">79<", `data-base-age="67"`} {
+			if !strings.Contains(out, want) {
+				t.Errorf("expected %q in slider header; got: %s", want, truncate(out, 1200))
+			}
+		}
+	})
+
+	t.Run("withdrawal-mix explainer is a collapsed disclosure", func(t *testing.T) {
+		bf := budgetFitFixture()
+		bf.SteadyStateYear = 12
+		out, err := renderer.RenderToString("whatif-budget-analysis", map[string]any{
+			"Settings": models.DefaultWhatIfSettings(),
+			"Analysis": &models.WhatIfAnalysis{BudgetFit: bf},
+		})
+		if err != nil {
+			t.Fatalf("RenderToString: %v", err)
+		}
+		if !strings.Contains(out, "How the withdrawal mix is calculated") {
+			t.Errorf("expected disclosure summary; got: %s", truncate(out, 1200))
+		}
+		if !strings.Contains(out, "IRMAA keys off your MAGI") {
+			t.Errorf("explainer body text must be preserved inside the disclosure")
+		}
+	})
 }

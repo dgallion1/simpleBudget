@@ -130,6 +130,7 @@
     <div class="flex items-center justify-between mb-2">
         <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
             At Year <span id="steady-state-year-display">{{printf "%.0f" .Analysis.BudgetFit.SteadyStateYear}}</span>
+            <span class="text-gray-400 dark:text-gray-500 font-normal">· Age <span id="steady-state-age-display">{{printf "%.0f" (add .Settings.CurrentAge .Analysis.BudgetFit.SteadyStateYear)}}</span></span>
         </h4>
         <form hx-post="/whatif/settings" hx-target="#whatif-results" hx-trigger="change delay:300ms" class="flex items-center gap-2">
             <input type="range" name="steady_state_override_year"
@@ -138,8 +139,9 @@
                 min="0"
                 max="{{.Settings.ProjectionYears}}"
                 step="1"
+                data-base-age="{{.Settings.CurrentAge}}"
                 class="w-24 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="document.getElementById('steady-state-year-display').textContent = this.value">
+                oninput="document.getElementById('steady-state-year-display').textContent = this.value; document.getElementById('steady-state-age-display').textContent = Number(this.dataset.baseAge) + Number(this.value);">
             <span class="text-xs text-gray-400 dark:text-gray-500 w-8">/ {{.Settings.ProjectionYears}}</span>
         </form>
     </div>
@@ -263,9 +265,12 @@
             </div>
         </div>
         {{if gt .Analysis.BudgetFit.SteadyStateGap 0.0}}
-        <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
-            Each row is the after-tax contribution from that bucket, split proportionally to your portfolio allocation. The three rows sum to the gap. Tax-Deferred shows the gross withdrawal needed because part is lost to income tax; Taxable shows the gross because capital gains have accrued. Marginal rates cover this year's income tax only — IRMAA keys off your MAGI from two years prior, so any Medicare surcharge tier this withdrawal triggers arrives two years later and is not included in the gross-up.
-        </p>
+        <details class="mt-2">
+            <summary class="text-xs text-gray-400 dark:text-gray-500 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">How the withdrawal mix is calculated</summary>
+            <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
+                Each row is the after-tax contribution from that bucket, split proportionally to your portfolio allocation. The three rows sum to the gap. Tax-Deferred shows the gross withdrawal needed because part is lost to income tax; Taxable shows the gross because capital gains have accrued. Marginal rates cover this year's income tax only — IRMAA keys off your MAGI from two years prior, so any Medicare surcharge tier this withdrawal triggers arrives two years later and is not included in the gross-up.
+            </p>
+        </details>
         {{else if gt .Analysis.BudgetFit.SteadyStateRMD 0.0}}
         <p class="text-xs italic text-gray-500 dark:text-gray-400 mt-2">
             Your mandatory RMD covers spending — the after-tax surplus is reinvested in your taxable account. No discretionary withdrawal from Taxable or Roth is needed.

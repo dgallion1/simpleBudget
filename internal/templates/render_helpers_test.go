@@ -160,6 +160,27 @@ func TestFormatPercent(t *testing.T) {
 	}
 }
 
+func TestFormatDollarsTemplateFunc(t *testing.T) {
+	fn, ok := getFuncMap()["formatDollars"].(func(float64) string)
+	if !ok {
+		t.Fatal("formatDollars not registered in template func map")
+	}
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{1624993.75, "$1,624,994"},
+		{-6435.53, "-$6,436"},
+		{0, "$0"},
+		{342706.4, "$342,706"},
+	}
+	for _, c := range cases {
+		if got := fn(c.in); got != c.want {
+			t.Errorf("formatDollars(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestFormatDate(t *testing.T) {
 	tm := time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)
 	got := formatDate(tm)
@@ -421,7 +442,7 @@ func TestIsNonNegative(t *testing.T) {
 func TestGetFuncMap(t *testing.T) {
 	fm := getFuncMap()
 	expectedKeys := []string{
-		"formatMoney", "conversionSummary", "formatNumber", "formatPercent", "formatDate", "formatDateTime",
+		"formatMoney", "formatDollars", "conversionSummary", "formatNumber", "formatPercent", "formatDate", "formatDateTime",
 		"abs", "add", "sub", "mul", "div", "mod", "toFloat", "seq", "dict",
 		"json", "toJSON", "lower", "upper", "title", "contains", "hasPrefix",
 		"hasSuffix", "trimSpace", "split", "join", "safeHTML", "safeJS", "now",

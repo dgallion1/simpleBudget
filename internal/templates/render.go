@@ -70,6 +70,7 @@ func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error) {
 func getFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"formatMoney":                         formatMoney,
+		"formatDollars":                       formatWholeDollars,
 		"conversionSummary":                   conversionSummary,
 		"formatNumber":                        formatNumber,
 		"formatPercent":                       formatPercent,

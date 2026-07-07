@@ -29,17 +29,27 @@ func TestBuildVerdict(t *testing.T) {
 		if !v.HasMonteCarlo || v.SuccessRate != 85 {
 			t.Errorf("MC = (%v,%v), want (true,85)", v.HasMonteCarlo, v.SuccessRate)
 		}
+		if want := "spending covered for all 38 years"; v.Detail != want {
+			t.Errorf("Detail = %q, want %q (strong MC keeps the plain detail)", v.Detail, want)
+		}
 	})
 
-	t.Run("funded but weak MC is amber", func(t *testing.T) {
+	t.Run("funded but weak MC is amber and says so", func(t *testing.T) {
 		s := &models.WhatIfSettings{ProjectionYears: 30, StartDate: "2026-01"}
 		a := &models.WhatIfAnalysis{
 			Projection: &models.ProjectionResult{Survives: true},
 			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: 100},
 			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 55}},
 		}
-		if v := BuildVerdict(a, s); v.Health != models.HealthAmber {
+		v := BuildVerdict(a, s)
+		if v.Health != models.HealthAmber {
 			t.Errorf("Health = %q, want amber", v.Health)
+		}
+		if want := "covers the median path — 45% of market simulations fall short"; v.Detail != want {
+			t.Errorf("Detail = %q, want %q", v.Detail, want)
+		}
+		if v.Headline != "Funded through 2056" {
+			t.Errorf("Headline = %q, want \"Funded through 2056\"", v.Headline)
 		}
 	})
 

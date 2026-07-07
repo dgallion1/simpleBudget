@@ -74,7 +74,10 @@ func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictVie
 		if !v.HasMonteCarlo || v.SuccessRate >= mcStrongThreshold {
 			v.Health = models.HealthGreen
 		} else {
+			// Median path survives but a material share of simulations fail.
+			// The words must not out-promise the health band.
 			v.Health = models.HealthAmber
+			v.Detail = fmt.Sprintf("covers the median path — %.0f%% of market simulations fall short", 100-v.SuccessRate)
 		}
 		return v
 	}

@@ -10,15 +10,15 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
             <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">Total Income Tax</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">-{{formatMoney $t.TotalTaxPaid}}</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalTaxPaid}}</p>
         </div>
         <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
             <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">Federal</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">-{{formatMoney $t.TotalFederalTaxPaid}}</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalFederalTaxPaid}}</p>
         </div>
         <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
             <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">State</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">-{{formatMoney $t.TotalStateTaxPaid}}</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalStateTaxPaid}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">Avg Effective Rate</p>
@@ -42,14 +42,16 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                {{$rmdStartAge := -1}}
+                {{if $.Analysis.RMD}}{{$rmdStartAge = $.Analysis.RMD.StartAge}}{{end}}
                 {{range $t.YearlyTaxSummary}}
-                <tr class="text-gray-700 dark:text-gray-300">
-                    <td class="py-2 font-medium">{{.Age}}</td>
+                <tr class="text-gray-700 dark:text-gray-300 {{if eq .Age $rmdStartAge}}bg-amber-50 dark:bg-amber-900/20{{end}}">
+                    <td class="py-2 font-medium whitespace-nowrap">{{.Age}}{{if eq .Age $rmdStartAge}}<span class="ml-1.5 inline-block rounded bg-amber-100 dark:bg-amber-800/60 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 align-middle">RMDs begin</span>{{end}}</td>
                     <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{.Year}}</td>
-                    <td class="py-2 text-right">{{formatMoney .TaxableIncome}}</td>
-                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatMoney .FederalTax}}</td>
-                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatMoney .StateTax}}</td>
-                    <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatMoney .TotalTax}}</td>
+                    <td class="py-2 text-right">{{formatDollars .TaxableIncome}}</td>
+                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .FederalTax}}</td>
+                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .StateTax}}</td>
+                    <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatDollars .TotalTax}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
                     <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalBracket}}%</td>
                 </tr>

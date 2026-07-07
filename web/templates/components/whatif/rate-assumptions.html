@@ -12,7 +12,7 @@
                 <label for="projection-start-date" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Start Date</label>
                 <input type="month" name="start_date" id="projection-start-date" value="{{.Settings.StartDate}}"
                     onchange="updatePersonAgePreviews(); togglePhaseReferenceDropdown()"
-                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             </div>
 
             <div class="space-y-2">
@@ -32,13 +32,13 @@
                         <div class="col-span-4">
                             <label for="person-name-{{.ID}}" class="block text-xs text-gray-500 dark:text-gray-400">Name</label>
                             <input type="text" id="person-name-{{.ID}}" name="person_name[]" value="{{.Name}}"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                         </div>
                         <div class="col-span-3">
                             <label for="person-birth-month-{{.ID}}" class="block text-xs text-gray-500 dark:text-gray-400">Birth Month</label>
                             <input type="month" id="person-birth-month-{{.ID}}" name="person_birth_month[]" value="{{.BirthMonth}}"
                                 onchange="updatePersonAgePreviews()"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                         </div>
                         <div class="col-span-2">
                             {{if eq .Role "primary"}}
@@ -49,7 +49,7 @@
                             {{else}}
                             <label for="person-role-{{.ID}}" class="block text-xs text-gray-500 dark:text-gray-400">Role</label>
                             <select id="person-role-{{.ID}}" data-person-role-selector onchange="updatePersonRole(this)"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                                 <option value="spouse" {{if eq .Role "spouse"}}selected{{end}}>Spouse</option>
                                 <option value="other" {{if eq .Role "other"}}selected{{end}}>Other</option>
                             </select>
@@ -79,7 +79,7 @@
         <div id="phase-age-reference-container" class="{{if not (.Settings.GetSpousePerson)}}hidden{{end}}">
             <label for="phase-age-reference-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Phase Based On</label>
             <select name="phase_age_reference" id="phase-age-reference-select"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="younger" {{if eq .Settings.PhaseAgeReference "younger"}}selected{{end}}>Younger Person (conservative)</option>
                 <option value="older" {{if eq .Settings.PhaseAgeReference "older"}}selected{{end}}>Older Person</option>
                 <option value="primary" {{if eq .Settings.PhaseAgeReference "primary"}}selected{{end}}>Your Age Only</option>
@@ -99,7 +99,7 @@
                     <div class="flex items-center">
                         <input type="number" id="tax-deferred-percent-input" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
                             min="0" max="100" step="1"
-                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -110,7 +110,7 @@
                     <div class="flex items-center">
                         <input type="number" id="roth-percent-input" name="roth_percent" value="{{printf "%.0f" .Settings.RothPercent}}"
                             min="0" max="100" step="1"
-                            class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -132,7 +132,7 @@
         <div>
             <label for="projection-timing-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Timing</label>
             <select id="projection-timing-select" name="projection_timing"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="end_of_month" {{if eq .Settings.ProjectionTiming "end_of_month"}}selected{{end}}>End of month</option>
                 <option value="mid_month" {{if eq .Settings.ProjectionTiming "mid_month"}}selected{{end}}>Mid-month</option>
                 <option value="start_of_month" {{if eq .Settings.ProjectionTiming "start_of_month"}}selected{{end}}>Start of month</option>
@@ -143,7 +143,7 @@
         <div>
             <label for="rmd-timing-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">RMD Timing</label>
             <select id="rmd-timing-select" name="rmd_timing"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="start_of_year" {{if eq .Settings.RMDTiming "start_of_year"}}selected{{end}}>Start of year (conservative)</option>
                 <option value="mid_year" {{if eq .Settings.RMDTiming "mid_year"}}selected{{end}}>Mid year (recommended)</option>
                 <option value="end_of_year" {{if eq .Settings.RMDTiming "end_of_year"}}selected{{end}}>End of year</option>
@@ -166,7 +166,7 @@
         <div>
             <label for="filing-status-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Filing Status</label>
             <select id="filing-status-select" name="filing_status"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 {{$fs := ""}}{{if .Settings.TaxConfig}}{{$fs = printf "%s" .Settings.TaxConfig.FilingStatus}}{{end}}
                 <option value="single" {{if eq $fs "single"}}selected{{end}}>Single</option>
                 <option value="married_joint" {{if eq $fs "married_joint"}}selected{{end}}>Married Filing Jointly</option>
@@ -182,7 +182,7 @@
                 value="{{if and .Settings.TaxConfig .Settings.TaxConfig.StateIncomeTaxRate}}{{printf "%.2f" (deref .Settings.TaxConfig.StateIncomeTaxRate)}}{{end}}"
                 placeholder="e.g. 0 for FL/TX, 9.3 for CA"
                 min="0" max="20" step="0.05"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Flat rate applied to ordinary income. Enter <code>0</code> for no-income-tax states (FL, TX, WA, etc.). Leaving the field blank flags this scenario as unconfigured.</p>
         </div>
 
@@ -196,19 +196,19 @@
                     <label for="taxable-dividend-yield-input" class="block text-xs text-gray-500 dark:text-gray-400">Dividend Yield %</label>
                     <input type="number" id="taxable-dividend-yield-input" name="taxable_dividend_yield" value="{{printf "%.1f" .Settings.TaxableDividendYield}}"
                         min="0" max="20" step="0.1"
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
                 <div>
                     <label for="taxable-qualified-dividend-percent-input" class="block text-xs text-gray-500 dark:text-gray-400">Qualified Share %</label>
                     <input type="number" id="taxable-qualified-dividend-percent-input" name="taxable_qualified_dividend_percent" value="{{printf "%.0f" .Settings.GetTaxableQualifiedDividendPercent}}"
                         min="0" max="100" step="1"
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
                 <div>
                     <label for="taxable-cap-gains-distribution-rate-input" class="block text-xs text-gray-500 dark:text-gray-400">Cap Gains Dist. %</label>
                     <input type="number" id="taxable-cap-gains-distribution-rate-input" name="taxable_cap_gains_distribution_rate" value="{{printf "%.1f" .Settings.TaxableCapitalGainsDistributionRate}}"
                         min="0" max="20" step="0.1"
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
             </div>
             <p class="text-xs text-gray-400 dark:text-gray-500">Dividends and capital-gains distributions are treated as taxable cash events and reinvested unless spent.</p>
@@ -247,7 +247,7 @@
                         <input type="number" id="tax-deferred-stock-percent-input" name="tax_deferred_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredStockPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -256,7 +256,7 @@
                         <input type="number" id="tax-deferred-cash-percent-input" name="tax_deferred_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredCashPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -278,7 +278,7 @@
                         <input type="number" id="roth-stock-percent-input" name="roth_stock_percent"
                             value="{{printf "%.0f" .Settings.RothStockPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -287,7 +287,7 @@
                         <input type="number" id="roth-cash-percent-input" name="roth_cash_percent"
                             value="{{printf "%.0f" .Settings.RothCashPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -302,7 +302,7 @@
                     value="{{if .Settings.RothFirstFundedYear}}{{.Settings.RothFirstFundedYear}}{{end}}"
                     min="1998" step="1"
                     placeholder="e.g. 2010"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                 <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">IRS 5-year rule for tax-free Roth earnings. Leave blank if unknown; projections assume the clock started in the projection start year.</p>
                 {{if and (gt .Settings.RothFirstFundedYear 0) (lt (now).Year (add .Settings.RothFirstFundedYear 5))}}
                 <div class="mt-1 text-xs text-amber-600 dark:text-amber-400">
@@ -332,7 +332,7 @@
                         <input type="number" id="taxable-stock-percent-input" name="taxable_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxableStockPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -341,7 +341,7 @@
                         <input type="number" id="taxable-cash-percent-input" name="taxable_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxableCashPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">%</span>
                     </div>
@@ -369,19 +369,19 @@
                         <label for="glide-start-stock-pct" class="block text-xs text-gray-500 dark:text-gray-400">Start %</label>
                         <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
                             min="0" max="100" step="1"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                     <div>
                         <label for="glide-end-stock-pct" class="block text-xs text-gray-500 dark:text-gray-400">End %</label>
                         <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
                             min="0" max="100" step="1"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                     <div>
                         <label for="glide-transition-years" class="block text-xs text-gray-500 dark:text-gray-400">Years</label>
                         <input type="number" id="glide-transition-years" name="transition_years" value="{{.Settings.GlidePath.TransitionYears}}"
                             min="1" max="50" step="1"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
                     </div>
                 </div>
                 <button type="submit"
@@ -554,18 +554,18 @@ function addPersonRow() {
         <div class="col-span-4">
             <span class="block text-xs text-gray-500 dark:text-gray-400">Name</span>
             <input type="text" name="person_name[]" value="" aria-label="Person name"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
         </div>
         <div class="col-span-3">
             <span class="block text-xs text-gray-500 dark:text-gray-400">Birth Month</span>
             <input type="month" name="person_birth_month[]" value="" aria-label="Person birth month"
                 onchange="updatePersonAgePreviews()"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
         </div>
         <div class="col-span-2">
             <span class="block text-xs text-gray-500 dark:text-gray-400">Role</span>
             <select data-person-role-selector onchange="updatePersonRole(this)" aria-label="Person role"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                 <option value="spouse" ${role === 'spouse' ? 'selected' : ''}>Spouse</option>
                 <option value="other" ${role === 'other' ? 'selected' : ''}>Other</option>
             </select>

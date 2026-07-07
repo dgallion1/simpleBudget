@@ -116,4 +116,10 @@ func TestWhatIfSettings_Groups(t *testing.T) {
 			t.Errorf("expected collapsible group %q", attr)
 		}
 	}
+	if !strings.Contains(out, `id="whatif-settings-col" class="order-2 lg:order-none lg:col-span-2 space-y-4"`) {
+		t.Errorf("settings column must order after results on small screens")
+	}
+	if !strings.Contains(out, `class="order-1 lg:order-none lg:col-span-4 space-y-4" id="whatif-results"`) {
+		t.Errorf("results column must order before settings on small screens")
+	}
 }

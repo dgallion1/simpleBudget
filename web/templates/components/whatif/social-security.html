@@ -16,7 +16,7 @@
                 <input type="number" name="fra_benefit" step="1" min="0" max="10000"
                     value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.FRABenefit}}{{end}}"
                     placeholder="e.g. 2500"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             </div>
             {{if $alreadyClaimed}}
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">The amount you currently receive each month</p>
@@ -29,7 +29,7 @@
             <div>
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">FRA</label>
                 <select name="fra"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                     {{$fra := 67}}{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.FRA 0)}}{{$fra = .Settings.SocialSecurity.FRA}}{{end}}
                     <option value="66" {{if eq $fra 66}}selected{{end}}>66</option>
                     <option value="67" {{if eq $fra 67}}selected{{end}}>67</option>
@@ -39,14 +39,14 @@
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">COLA %/yr</label>
                 <input type="number" name="cola_rate" step="0.1" min="0" max="10"
                     value="{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.COLARate 0.0)}}{{printf "%.1f" (mul .Settings.SocialSecurity.COLARate 100)}}{{else}}2.0{{end}}"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             </div>
         </div>
 
         <div>
             <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Claim Age</label>
             <select name="claim_age"
-                class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="" {{if eq $claimAge 0}}selected{{end}}>Analysis only</option>
                 {{range seq 62 70}}
                 <option value="{{.}}" {{if eq . $claimAge}}selected{{end}}>{{.}}</option>
@@ -71,12 +71,12 @@
                 <input type="number" name="spouse_fra_benefit" step="1" min="0" max="10000"
                     value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.SpouseFRABenefit}}{{end}}"
                     placeholder="optional"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             </div>
             <div class="mt-2">
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Spouse FRA</label>
                 <select name="spouse_fra"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                     {{$spouseFRA := 67}}{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.SpouseFRA 0)}}{{$spouseFRA = .Settings.SocialSecurity.SpouseFRA}}{{end}}
                     <option value="66" {{if eq $spouseFRA 66}}selected{{end}}>66</option>
                     <option value="67" {{if eq $spouseFRA 67}}selected{{end}}>67</option>
@@ -85,7 +85,7 @@
             <div class="mt-2">
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Spouse Claim Age</label>
                 <select name="spouse_claim_age"
-                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                     <option value="" {{if eq $spouseClaimAge 0}}selected{{end}}>Analysis only</option>
                     {{range seq 62 70}}
                     <option value="{{.}}" {{if eq . $spouseClaimAge}}selected{{end}}>{{.}}</option>

@@ -114,7 +114,7 @@ func TestVerdictBar_Render(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		for _, want := range []string{"Est. Taxes", "$1,624,994", "End Balance", "$342,706"} {
+		for _, want := range []string{"Est. Taxes", "$1,624,994", "End Balance", "$342,706", `class="flex flex-wrap items-center gap-x-6 gap-y-2 ml-auto"`} {
 			if !strings.Contains(out, want) {
 				t.Errorf("expected %q in verdict strip; got: %s", want, truncate(out, 900))
 			}

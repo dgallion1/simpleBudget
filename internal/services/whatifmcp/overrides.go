@@ -40,8 +40,12 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 		return nil, fmt.Errorf("copy settings: %w", err)
 	}
 	// prepare.DeepCopy round-trips through JSON, so fields tagged json:"-" do
-	// not survive. PerYearOverrides is the known instance; re-attach it, the
-	// same workaround analysis/tax_optimizer.go applies.
+	// not survive. PerYearOverrides is the known instance; re-attach it here
+	// so Apply's own return value is correct. NOTE: this does not survive a
+	// subsequent prepare.From (RunWithOverrides calls it) — that runs its own
+	// DeepCopy and drops the map again. The re-attach that actually matters
+	// for the engine run is the post-boundary one in preparedWithOverrides,
+	// mirroring analysis/tax_optimizer.go:90-100.
 	if base.RothConversion != nil && base.RothConversion.PerYearOverrides != nil && s.RothConversion != nil {
 		s.RothConversion.PerYearOverrides = base.RothConversion.PerYearOverrides
 	}
@@ -123,17 +127,39 @@ func (o Overrides) validate() error {
 	return nil
 }
 
+// preparedWithOverrides applies the overrides and prepares the result for the
+// engine. prepare.From runs its own DeepCopy internally, which drops
+// PerYearOverrides (json:"-") a second time even though Apply already
+// re-attached it once. Re-attach it again onto the prepared snapshot,
+// following the same shape as analysis/tax_optimizer.go's
+// cloneSettingsWithSSAndRoth (lines 90-100): the override map is
+// reconstructed in-memory and never persisted, so this is a deliberate,
+// narrow mutation of the prepared snapshot rather than a violation of the
+// "don't mutate base" rule (base itself is untouched).
+func preparedWithOverrides(base *models.WhatIfSettings, o Overrides) (prepare.PreparedSettings, error) {
+	s, err := Apply(base, o)
+	if err != nil {
+		return prepare.PreparedSettings{}, err
+	}
+	prepared, err := prepare.From(s)
+	if err != nil {
+		return prepare.PreparedSettings{}, fmt.Errorf("prepare settings: %w", err)
+	}
+	if base.RothConversion != nil && base.RothConversion.PerYearOverrides != nil {
+		if prepSettings := prepared.Settings(); prepSettings != nil && prepSettings.RothConversion != nil {
+			prepSettings.RothConversion.PerYearOverrides = base.RothConversion.PerYearOverrides
+		}
+	}
+	return prepared, nil
+}
+
 // RunWithOverrides applies the overrides and runs the full analysis, returning
 // the shaped view. Monte Carlo is excluded: the orchestrator auto-seeds its RNG
 // from the clock, so including it would make two identical runs disagree.
 func RunWithOverrides(base *models.WhatIfSettings, o Overrides) (AnalysisView, error) {
-	s, err := Apply(base, o)
+	prepared, err := preparedWithOverrides(base, o)
 	if err != nil {
 		return AnalysisView{}, err
-	}
-	prepared, err := prepare.From(s)
-	if err != nil {
-		return AnalysisView{}, fmt.Errorf("prepare settings: %w", err)
 	}
 	a := retirement.RunFull(engine.New(), engine.Input{Prepared: prepared})
 	return ShapeAnalysis(a, false), nil

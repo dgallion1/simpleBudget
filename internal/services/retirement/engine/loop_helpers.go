@@ -85,9 +85,11 @@ func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int {
 // matching GetTotalHealthcareCost. Plans on the legacy single-value model
 // carry no coverage detail, so they keep the age-65 rule.
 //
-// Resolution is one year: a person is counted from the projection year in
-// which their Medicare coverage starts, so a mid-year start is billed for the
-// whole year. That matches the annual granularity of the IRMAA calculation.
+// Resolution is one year, and the test below is on the year's FIRST month:
+// a person is counted only from the first projection year that begins at or
+// after their Medicare start. A start part-way through a projection year
+// therefore skips that year's surcharge entirely, understating IRMAA for the
+// transition year rather than overstating it.
 func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
 	if s == nil {
 		return 0

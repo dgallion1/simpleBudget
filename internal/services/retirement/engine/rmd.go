@@ -82,16 +82,21 @@ func effectiveRMDStartAgeForBirthYear(birthYear int) int {
 // birth year — drives the household's RMD timing per SECURE 2.0.
 //
 // MODELLING ASSUMPTION (F-4): tax-deferred savings are a single household
-// pool with no owner attribution, and the older member drives both the first
-// RMD year (here) and the Uniform Lifetime divisor (RMDAgeForCalendarYear).
-// In reality RMDs are per-account and keyed to the account OWNER's age.
+// pool with no owner attribution, and the older member drives the first RMD
+// year (here). In reality RMDs are per-account and keyed to the account
+// OWNER's age.
+//
+// The divisor follows the same age only under the Uniform Lifetime Table
+// (RMDAgeForCalendarYear). It does NOT when the spouse-sole-beneficiary Joint
+// Life Table II applies — see RMDLifeFactor — where the divisor is a function
+// of both ages and is larger, giving smaller RMDs.
 //
 // Where this bites: a household whose tax-deferred money belongs entirely to
 // the YOUNGER spouse. The model starts RMDs from the older spouse's age —
-// potentially close to a decade early — and applies a smaller divisor, so it
-// overstates forced distributions, taxable income, and the resulting IRMAA
-// and tax drag. Plans in that shape read as more RMD-constrained than they
-// are, which biases the Roth-conversion case upward.
+// potentially close to a decade early — so it overstates forced distributions,
+// taxable income, and the resulting IRMAA and tax drag. Plans in that shape
+// read as more RMD-constrained than they are, which biases the
+// Roth-conversion case upward.
 //
 // Households where both spouses hold tax-deferred balances, or where the
 // older spouse holds most of it, are modelled correctly. Fixing the general

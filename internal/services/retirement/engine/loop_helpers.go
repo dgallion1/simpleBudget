@@ -78,6 +78,34 @@ func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
 	return count
 }
 
+// Age65CountForYear returns the number of filers aged 65 or older in the
+// given projection year (0, 1, or 2), which drives the age-65 additional
+// standard deduction in GetAdjustedStandardDeduction. A spouse only counts
+// when filing jointly — a non-MFJ spouse files a separate return.
+//
+// F-3: the count is derived here from the ages and filing status the
+// projection already knows. TaxCalculator.Age65Count used to be read straight
+// off the static TaxConfig.Age65Count JSON field, which has no UI input and
+// ships as 0, so the engine dropped the deduction for every saved plan while
+// the tax optimizer derived and applied it — leaving the optimizer sizing
+// bracket-fill conversions against a larger deduction than the engine then
+// used. TaxConfig.Age65Count remains the fallback for callers outside the
+// projection, which have no ages to derive from.
+func Age65CountForYear(s *models.WhatIfSettings, year int) int {
+	if s == nil {
+		return 0
+	}
+	count := 0
+	if s.PrimaryAgeAt(year) >= 65 {
+		count++
+	}
+	if s.HasSpouse() && s.SpouseAgeAt(year) >= 65 &&
+		s.TaxConfig != nil && NormalizeFilingStatus(s.TaxConfig.FilingStatus) == models.FilingMarriedJoint {
+		count++
+	}
+	return count
+}
+
 // PlannerIRMAAInflationFactorForYear inflates the bundled IRMAA
 // surcharge brackets from their CMS 2026 base year to the projection
 // year. Pure math; the offset (irmaaBaseYear − taxBaseYear) keeps the

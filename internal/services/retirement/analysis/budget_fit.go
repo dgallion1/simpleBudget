@@ -29,6 +29,10 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		incomeBreakdown := engine.CalculateMonthlyIncomeBreakdown(in.Hooks, s, targetMonth)
 		taxState := engine.ProjectionTaxAccumulator{}
 		taxCalculator := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
+		// Derive the age-65 filer count per year exactly as the projection does
+		// (F-3), so the Current column and the projection cannot report
+		// different taxes for the same plan.
+		taxCalculator.Age65Count = engine.Age65CountForYear(s, targetYear)
 
 		return taxState.EstimateMonthlySnapshot(engine.MonthlyTaxInputs{
 			Calculator:    taxCalculator,

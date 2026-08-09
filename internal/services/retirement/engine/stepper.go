@@ -201,6 +201,9 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 			}
 		}
 		st.TaxCalculator = NewTaxCalculator(s.TaxConfig, s.InflationRate)
+		// Derive the age-65 filer count from this year's ages rather than
+		// trusting the static TaxConfig field, which no UI ever populates (F-3).
+		st.TaxCalculator.Age65Count = Age65CountForYear(s, currentYear)
 		st.TaxableAccount.RealizedGainsYTD = 0
 
 		// F-074/F-078: annualRMD computed once per year on year-start

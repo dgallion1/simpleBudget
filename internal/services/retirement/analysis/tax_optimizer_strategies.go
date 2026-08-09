@@ -126,7 +126,9 @@ func bracketFillIncomeForYear(s *models.WhatIfSettings, projectionYear int, roth
 	age := s.CurrentAge + projectionYear
 
 	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
-	tc.Age65Count = age65CountForYear(s, projectionYear)
+	// Shared with the engine's per-year derivation so conversion sizing and the
+	// projection cannot disagree about the standard deduction (F-3).
+	tc.Age65Count = engine.Age65CountForYear(s, projectionYear)
 
 	grossSS := 0.0
 	if s.SocialSecurity != nil && s.SocialSecurity.ClaimAge > 0 && age >= s.SocialSecurity.ClaimAge {
@@ -286,22 +288,6 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 		return 0
 	}
 	return taxable
-}
-
-// age65CountForYear returns the number of filers aged 65 or older in the
-// given projection year (0, 1, or 2), driving the age-65 additional
-// standard deduction. A spouse only counts when filing jointly.
-func age65CountForYear(s *models.WhatIfSettings, projectionYear int) int {
-	count := 0
-	if s.CurrentAge+projectionYear >= 65 {
-		count++
-	}
-	if s.HasSpouse() &&
-		s.TaxConfig != nil && s.TaxConfig.FilingStatus == models.FilingMarriedJoint &&
-		s.SpouseAge+projectionYear >= 65 {
-		count++
-	}
-	return count
 }
 
 // inflatedBracketTopForYear returns the top of the target ordinary

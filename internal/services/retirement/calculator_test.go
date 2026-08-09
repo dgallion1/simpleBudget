@@ -1088,9 +1088,16 @@ func TestRunProjectionAfterTaxDepletesSoonerThanPretaxBenchmark(t *testing.T) {
 		t.Fatalf("expected after-tax depletion before pretax benchmark of %d months, got %d", pretaxMonths, *result.DepletionMonth)
 	}
 
-	lastMonth := result.Months[len(result.Months)-1]
-	if lastMonth.TaxesPaid <= 0 {
-		t.Fatalf("expected taxes to be paid before depletion, got %.2f", lastMonth.TaxesPaid)
+	// Taxes must actually have been charged — that is what pulls depletion in
+	// ahead of the pretax benchmark. Summed over the run rather than read off
+	// the final month: the last month is the depletion stub, where the leftover
+	// balance is a fraction of a month's spending and annualizes to no tax.
+	totalTaxes := 0.0
+	for _, m := range result.Months {
+		totalTaxes += m.TaxesPaid
+	}
+	if totalTaxes <= 0 {
+		t.Fatalf("expected taxes to be paid before depletion, got %.2f", totalTaxes)
 	}
 }
 

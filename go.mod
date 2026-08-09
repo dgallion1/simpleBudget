@@ -2,7 +2,7 @@ module budget2
 
 go 1.26
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require github.com/go-chi/chi/v5 v5.2.3
 
@@ -12,7 +12,7 @@ require (
 	golang.org/x/crypto v0.52.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/term v0.43.0
-	golang.org/x/text v0.37.0
+	golang.org/x/text v0.39.0
 )
 
 require (

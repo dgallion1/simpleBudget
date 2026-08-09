@@ -45,8 +45,10 @@ type ProjectionState struct {
 	CompletedMAGIHistory   []float64
 	CurrentYearTaxSnapshot ProjectedTaxSnapshot
 	// AssumedLookbackMAGI seeds the IRMAA two-year MAGI lookback for years
-	// 0-1, before CompletedMAGIHistory has two entries. It tracks the
-	// year-0 MAGI estimate; real history takes over from year 2.
+	// 0-1, before CompletedMAGIHistory has two entries. Set once from month 0
+	// and excluding the plan's discrete events (Roth conversion, RMD), so it
+	// approximates MAGI from before the plan started; real history takes over
+	// from year 2. See StepMonth for why (F-2).
 	AssumedLookbackMAGI float64
 
 	// AnnualRMD persists across the year so the trigger-month logic can
@@ -316,10 +318,29 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	// same big-ticket earnings into ordinary income.
 	st.BigTicketRothEarnings = 0
 	st.CurrentYearTaxSnapshot = monthResult.TaxSnapshot
-	// Hold the year-0 MAGI estimate as the IRMAA lookback seed for years
-	// 0-1; real history drives years 2+ (resolveIRMAALookbackMAGI prefers it).
-	if currentYear == 0 {
-		st.AssumedLookbackMAGI = monthResult.TaxSnapshot.AnnualMAGI
+	// Seed the IRMAA two-year lookback for years 0-1, once, from month 0.
+	//
+	// The seed stands in for MAGI two years before the plan starts, so it must
+	// exclude this plan's discrete events — the Roth conversion and the RMD.
+	// Neither existed two years ago, and their real IRMAA impact lands two
+	// years out, where CompletedMAGIHistory already delivers it. Seeding with
+	// year 0's full MAGI instead surcharged a year-0 conversion or first RMD
+	// three times: in year 0, again in year 1, and once more in year 2 (F-2).
+	//
+	// Computed at m == 0 so ProjectionTaxAccumulator carries no YTD yet and
+	// cannot smuggle an earlier month's conversion back in, and never
+	// overwritten afterwards. This mirrors the Current-column seed in
+	// analysis/budget_fit.go, which has always stripped both events.
+	if m == 0 {
+		st.AssumedLookbackMAGI = st.TaxState.EstimateMonthlySnapshot(MonthlyTaxInputs{
+			Calculator:           st.TaxCalculator,
+			YearsFromBase:        YearsFromTaxBase(s, currentYear),
+			MonthInYear:          monthInYear,
+			OrdinaryIncome:       incomeBreakdown.OrdinaryIncome + monthResult.TaxableNonQualifiedDividends,
+			SocialSecurityIncome: incomeBreakdown.SocialSecurityIncome,
+			QualifiedDividends:   monthResult.TaxableQualifiedDividends,
+			LongTermCapitalGains: monthResult.TaxableCapitalGainsDistributions,
+		}).AnnualMAGI
 	}
 	ApplyTaxStateMonth(&st.TaxState, incomeBreakdown, monthResult, rothConversionThisMonth)
 

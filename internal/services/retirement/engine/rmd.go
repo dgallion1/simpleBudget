@@ -80,6 +80,23 @@ func effectiveRMDStartAgeForBirthYear(birthYear int) int {
 // GetOlderAge() for legacy callers that build settings without
 // populating Persons. The older person — the one with the earlier
 // birth year — drives the household's RMD timing per SECURE 2.0.
+//
+// MODELLING ASSUMPTION (F-4): tax-deferred savings are a single household
+// pool with no owner attribution, and the older member drives both the first
+// RMD year (here) and the Uniform Lifetime divisor (RMDAgeForCalendarYear).
+// In reality RMDs are per-account and keyed to the account OWNER's age.
+//
+// Where this bites: a household whose tax-deferred money belongs entirely to
+// the YOUNGER spouse. The model starts RMDs from the older spouse's age —
+// potentially close to a decade early — and applies a smaller divisor, so it
+// overstates forced distributions, taxable income, and the resulting IRMAA
+// and tax drag. Plans in that shape read as more RMD-constrained than they
+// are, which biases the Roth-conversion case upward.
+//
+// Households where both spouses hold tax-deferred balances, or where the
+// older spouse holds most of it, are modelled correctly. Fixing the general
+// case needs per-person ownership on tax-deferred balances, which the
+// settings model does not currently carry.
 func olderBirthYear(s *models.WhatIfSettings) int {
 	if s == nil {
 		return time.Now().Year() - 73

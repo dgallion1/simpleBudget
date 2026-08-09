@@ -119,3 +119,45 @@ func TestRenderRMD_CaptionNamesTableInEffect(t *testing.T) {
 		t.Errorf("uniform render must not name the Joint table, got:\n%s", htmlUniform)
 	}
 }
+
+// TestRenderRMD_OwnershipCaveatOnlyForCouples verifies the F-4 modelling
+// caveat — tax-deferred is one pool driven by the older spouse's age, with no
+// account-ownership attribution — is surfaced to households it can affect, and
+// not to single filers, for whom there is no younger spouse to mis-model.
+func TestRenderRMD_OwnershipCaveatOnlyForCouples(t *testing.T) {
+	r := newWhatIfRenderer(t)
+
+	analysis := &models.WhatIfAnalysis{
+		RMD: &models.RMDAnalysis{
+			CurrentAge:       73,
+			StartAge:         73,
+			TaxDeferredValue: 1_000_000,
+			Projections: []models.RMDProjection{
+				{Age: 73, Year: 0, TaxDeferredBal: 1_000_000, LifeExpFactor: 28.6, RMDAmount: 34965, RMDPercent: 3.5},
+			},
+		},
+	}
+
+	const caveat = "modeled as a single household pool"
+
+	single := models.DefaultWhatIfSettings()
+	single.TaxDeferredPercent = 60
+	htmlSingle, err := r.RenderToString("whatif-rmd", map[string]any{"Settings": single, "Analysis": analysis})
+	if err != nil {
+		t.Fatalf("RenderToString(single) error: %v", err)
+	}
+	if strings.Contains(htmlSingle, caveat) {
+		t.Errorf("single filer should not see the spouse ownership caveat, got:\n%s", htmlSingle)
+	}
+
+	couple := models.DefaultWhatIfSettings()
+	couple.TaxDeferredPercent = 60
+	couple.SpouseAge = 68
+	htmlCouple, err := r.RenderToString("whatif-rmd", map[string]any{"Settings": couple, "Analysis": analysis})
+	if err != nil {
+		t.Fatalf("RenderToString(couple) error: %v", err)
+	}
+	if !strings.Contains(htmlCouple, caveat) {
+		t.Errorf("married household should see the ownership caveat, got:\n%s", htmlCouple)
+	}
+}

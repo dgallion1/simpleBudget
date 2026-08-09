@@ -452,3 +452,111 @@ func TestSettingsManager_SaveOmitsDerivedAgeFields(t *testing.T) {
 		t.Fatal("saved settings should persist start_date and persons")
 	}
 }
+
+func TestRevision_BumpsOnSave(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+
+	settings, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	before := sm.Revision()
+	if err := sm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if got := sm.Revision(); got <= before {
+		t.Fatalf("Revision did not advance across Save: %d -> %d", before, got)
+	}
+}
+
+func TestRevision_BumpsOnSwitchAndCreateScenario(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	settings, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Persist the default whatif.json first: Load() on a not-yet-existing file
+	// returns in-memory defaults without writing them, so SwitchScenario back
+	// to "whatif.json" below would otherwise fail with file-not-found. Every
+	// other test in this file that follows Load with CreateScenario does the
+	// same (see TestSettingsManager_LoadSelfHealsWhenActiveScenarioFileMissing).
+	if err := sm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	beforeCreate := sm.Revision()
+	if _, err := sm.CreateScenario("alt"); err != nil {
+		t.Fatalf("CreateScenario: %v", err)
+	}
+	afterCreate := sm.Revision()
+	if afterCreate <= beforeCreate {
+		t.Fatalf("CreateScenario did not bump: %d -> %d", beforeCreate, afterCreate)
+	}
+
+	if err := sm.SwitchScenario("whatif.json"); err != nil {
+		t.Fatalf("SwitchScenario: %v", err)
+	}
+	if got := sm.Revision(); got <= afterCreate {
+		t.Fatalf("SwitchScenario did not bump: %d -> %d", afterCreate, got)
+	}
+}
+
+func TestRevision_DoesNotBumpOnCacheMissLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("first Load: %v", err)
+	}
+	sm.InvalidateCache()
+	afterInvalidate := sm.Revision()
+
+	// A cache-miss load may internally re-save when decode reports a migration.
+	// That is a read, not a change: the page must not re-render for it.
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("second Load: %v", err)
+	}
+	if got := sm.Revision(); got != afterInvalidate {
+		t.Fatalf("a cache-miss load bumped the revision: %d -> %d", afterInvalidate, got)
+	}
+}
+
+func TestRevision_RaceClean(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	settings, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = sm.Save(settings)
+			_ = sm.Revision()
+		}()
+	}
+	wg.Wait()
+	if sm.Revision() < 8 {
+		t.Fatalf("expected at least 8 bumps, got %d", sm.Revision())
+	}
+}

@@ -114,6 +114,13 @@ type SettingsManager struct {
 	store       *storage.Storage
 	mu          sync.RWMutex
 	cache       *models.WhatIfSettings
+
+	// revision advances whenever something changes what the what-if page
+	// should display. It exists so a polling page can detect a change without
+	// recomputing the analysis. In-memory and not persisted: it only has to be
+	// monotonic within one process, because a page load reads the current value
+	// as its baseline.
+	revision int
 }
 
 // NewSettingsManager creates a new settings manager
@@ -420,6 +427,7 @@ func (sm *SettingsManager) InvalidateCache() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.cache = nil
+	sm.bumpLocked()
 }
 
 // scenarioReconcileConfirmDelay is how long the cache-miss self-heal waits
@@ -488,6 +496,7 @@ func (sm *SettingsManager) BeginExternalRewrite() (end func()) {
 	sm.mu.Lock()
 	return func() {
 		sm.cache = nil
+		sm.bumpLocked()
 		// No confirm delay: the rewrite this gate serialized is the
 		// authoritative source of the file's absence.
 		sm.reconcileActiveScenarioLocked(0)
@@ -633,10 +642,34 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		sm.cache = nil
 		return err
 	}
+	return nil
+}
+
+// Revision returns the current display revision.
+func (sm *SettingsManager) Revision() int {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.revision
+}
+
+// bumpLocked advances the revision. Caller must hold the write lock.
+func (sm *SettingsManager) bumpLocked() {
+	sm.revision++
+}
+
+// saveInternalAndBump is saveInternal plus a revision bump. Every mutation path
+// calls this; saveInternal itself is left un-bumping because loadInternalContext
+// calls it on a *read* when decode reports a migration, and a cache-miss load
+// must not make every open page re-render.
+func (sm *SettingsManager) saveInternalAndBump(settings *models.WhatIfSettings) error {
+	if err := sm.saveInternal(settings); err != nil {
+		return err
+	}
+	sm.bumpLocked()
 	return nil
 }
 
@@ -694,7 +727,7 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 
 	settings.IncomeSources = append(settings.IncomeSources, source)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -722,7 +755,7 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 	}
 	settings.IncomeSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -763,7 +796,7 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 	}
 	settings.RemovedIncomeSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -796,7 +829,7 @@ func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSe
 	}
 	settings.RemovedIncomeSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -827,7 +860,7 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear 
 		}
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -846,7 +879,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 
 	settings.ExpenseSources = append(settings.ExpenseSources, source)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -877,7 +910,7 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear
 		}
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -905,7 +938,7 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 	}
 	settings.ExpenseSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -945,7 +978,7 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 	}
 	settings.RemovedExpenseSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -978,7 +1011,7 @@ func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfS
 	}
 	settings.RemovedExpenseSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -997,7 +1030,7 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 
 	sm.applySettingsUpdates(settings, updates)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1017,7 +1050,7 @@ func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interfac
 	settings.StartDate = startDate
 	settings.Persons = persons
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1226,7 +1259,7 @@ func (sm *SettingsManager) UpdateSpendingPhases(enabled bool, phases []models.Sp
 		settings.SpendingPhaseConfig.Phases = phases
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1245,7 +1278,7 @@ func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (
 
 	settings.HealthcarePersons = append(settings.HealthcarePersons, person)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1269,7 +1302,7 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 		}
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1327,7 +1360,7 @@ func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSett
 	}
 	settings.HealthcarePersons = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1346,7 +1379,7 @@ func (sm *SettingsManager) AddBigTicketItem(item models.BigTicketItem) (*models.
 
 	settings.BigTicketItems = append(settings.BigTicketItems, item)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1374,7 +1407,7 @@ func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSetting
 	}
 	settings.BigTicketItems = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1414,7 +1447,7 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 	}
 	settings.RemovedBigTicketItems = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1447,7 +1480,7 @@ func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfS
 	}
 	settings.RemovedBigTicketItems = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1607,6 +1640,7 @@ func (sm *SettingsManager) SwitchScenario(filename string) error {
 
 	sm.filename = filename
 	sm.cache = nil
+	sm.bumpLocked()
 	return nil
 }
 
@@ -1650,7 +1684,7 @@ func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, 
 	// Switch to the new file and save
 	sm.filename = filename
 	sm.cache = nil
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, fmt.Errorf("saving new scenario: %w", err)
 	}
 
@@ -1725,6 +1759,7 @@ func (sm *SettingsManager) DeleteScenario(filename string) error {
 		sm.filename = "whatif.json"
 		sm.cache = nil
 	}
+	sm.bumpLocked()
 
 	log.Printf("Deleted scenario %s", filename)
 	return nil
@@ -1777,6 +1812,7 @@ func (sm *SettingsManager) RenameScenario(filename, newName string) error {
 	if sm.filename == filename {
 		sm.cache = nil
 	}
+	sm.bumpLocked()
 
 	log.Printf("Renamed scenario %s to %q", filename, newName)
 	return nil

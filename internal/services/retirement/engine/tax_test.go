@@ -81,9 +81,9 @@ func TestCalculateNIITThresholds(t *testing.T) {
 }
 
 func TestCalculateMonthlyIRMAAThresholdsAndInflation(t *testing.T) {
-	assertClose(t, "zero magi", CalculateMonthlyIRMAA(0, models.FilingSingle, 1), 0)
-	assertClose(t, "single first surcharge bracket", CalculateMonthlyIRMAA(120000, models.FilingSingle, 1), 81.20+14.50)
-	assertClose(t, "inflated threshold and surcharge", CalculateMonthlyIRMAA(300000, models.FilingSingle, 2), (202.90+37.50)*2)
+	assertClose(t, "zero magi", CalculateMonthlyIRMAA(0, models.FilingSingle, 1, 1), 0)
+	assertClose(t, "single first surcharge bracket", CalculateMonthlyIRMAA(120000, models.FilingSingle, 1, 1), 81.20+14.50)
+	assertClose(t, "inflated threshold and surcharge", CalculateMonthlyIRMAA(300000, models.FilingSingle, 2, 2), (202.90+37.50)*2)
 }
 
 func TestCalculateTaxWithInvestmentIncomeBreakdown(t *testing.T) {

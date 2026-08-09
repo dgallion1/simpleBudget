@@ -216,7 +216,7 @@ func TestCalculateMonthlyIRMAA_MarriedFilingSeparately(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := engine.CalculateMonthlyIRMAA(tt.magi, models.FilingMarriedSeparate, 1.0)
+			got := engine.CalculateMonthlyIRMAA(tt.magi, models.FilingMarriedSeparate, 1.0, 1.0)
 			if math.Abs(got-tt.want) > 0.01 {
 				t.Errorf("CalculateMonthlyIRMAA(MFS, MAGI=%f) = %f, want %f", tt.magi, got, tt.want)
 			}
@@ -225,7 +225,7 @@ func TestCalculateMonthlyIRMAA_MarriedFilingSeparately(t *testing.T) {
 }
 
 func TestCalculateMonthlyIRMAA_NegativeMAGI(t *testing.T) {
-	got := engine.CalculateMonthlyIRMAA(-50000, models.FilingSingle, 1.0)
+	got := engine.CalculateMonthlyIRMAA(-50000, models.FilingSingle, 1.0, 1.0)
 	if got != 0 {
 		t.Errorf("expected 0 for negative MAGI, got %f", got)
 	}
@@ -233,16 +233,16 @@ func TestCalculateMonthlyIRMAA_NegativeMAGI(t *testing.T) {
 
 func TestCalculateMonthlyIRMAA_ZeroInflationFactor(t *testing.T) {
 	// inflationFactor <= 0 should be treated as 1
-	got := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, 0)
-	gotWithOne := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, 1)
+	got := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, 0, 0)
+	gotWithOne := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, 1, 1)
 	if math.Abs(got-gotWithOne) > 0.01 {
 		t.Errorf("inflationFactor=0 should be treated as 1: got=%f, expected=%f", got, gotWithOne)
 	}
 }
 
 func TestCalculateMonthlyIRMAA_NegativeInflationFactor(t *testing.T) {
-	got := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, -1)
-	gotWithOne := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, 1)
+	got := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, -1, -1)
+	gotWithOne := engine.CalculateMonthlyIRMAA(150000, models.FilingSingle, 1, 1)
 	if math.Abs(got-gotWithOne) > 0.01 {
 		t.Errorf("negative inflationFactor should be treated as 1: got=%f, expected=%f", got, gotWithOne)
 	}
@@ -250,8 +250,8 @@ func TestCalculateMonthlyIRMAA_NegativeInflationFactor(t *testing.T) {
 
 func TestCalculateMonthlyIRMAA_UnknownFilingStatus(t *testing.T) {
 	// Unknown filing status should fall back to MFJ
-	got := engine.CalculateMonthlyIRMAA(300000, "unknown_status", 1.0)
-	gotMFJ := engine.CalculateMonthlyIRMAA(300000, models.FilingMarriedJoint, 1.0)
+	got := engine.CalculateMonthlyIRMAA(300000, "unknown_status", 1.0, 1.0)
+	gotMFJ := engine.CalculateMonthlyIRMAA(300000, models.FilingMarriedJoint, 1.0, 1.0)
 	if math.Abs(got-gotMFJ) > 0.01 {
 		t.Errorf("unknown filing status should fall back to MFJ: got=%f, expected=%f", got, gotMFJ)
 	}
@@ -945,7 +945,7 @@ func TestTaxCalculator_CalculateMonthlyIRMAA(t *testing.T) {
 		FilingStatus: models.FilingSingle,
 	}, 0)
 
-	got := tc.CalculateMonthlyIRMAA(150000, 1.0)
+	got := tc.CalculateMonthlyIRMAA(150000, 1.0, 1.0)
 	if got <= 0 {
 		t.Errorf("expected positive IRMAA via engine.TaxCalculator method, got %f", got)
 	}

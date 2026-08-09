@@ -287,6 +287,7 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	taxableComponents := BuildTaxableReturnComponents(p.TaxableAnnualPercent, s)
 	irmaaEligibleAdults := MedicareEligibleAdultCountAtYear(s, currentYear)
 	irmaaInflationFactor := PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(YearsFromTaxBase(s, currentYear)))
+	irmaaSurchargeInflationFactor := PlannerIRMAASurchargeInflationFactorForYear(float64(YearsFromTaxBase(s, currentYear)))
 
 	// F-074: apply the full annual RMD only in the trigger month.
 	monthlyRMD := MonthlyRMDForMonth(s, monthInYear, st.AnnualRMD, st.TaxDeferredBalance)
@@ -316,6 +317,7 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		AssumedIRMALookbackMAGI:           &st.AssumedLookbackMAGI,
 		IRMAAEligibleAdults:               irmaaEligibleAdults,
 		IRMAAInflationFactor:              irmaaInflationFactor,
+		IRMAASurchargeInflationFactor:     irmaaSurchargeInflationFactor,
 	})
 	// Consumed above; reset so later months in the year don't re-fold the
 	// same big-ticket earnings into ordinary income.

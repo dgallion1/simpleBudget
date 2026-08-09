@@ -624,10 +624,19 @@ func TestRunProjectionSeedsIRMAALookbackInEarlyYears(t *testing.T) {
 	// The seeded early-year IRMAA should agree with the real-history value
 	// once the two-year lookback fills in (MAGI is ~flat here), confirming
 	// the seed is a faithful proxy rather than an arbitrary number.
+	//
+	// "Agree" means the same IRMAA tier, not the same dollars: surcharge
+	// amounts are indexed to Medicare per-capita cost growth, not CPI (F-6),
+	// so two years of that growth separate the year-0 and year-2 figures even
+	// at identical MAGI. Scale the seed forward before comparing.
 	seeded := projection.YearlySummaries[0].IRMAA
 	fromHistory := projection.YearlySummaries[2].IRMAA
-	if math.Abs(seeded-fromHistory) > 0.01*fromHistory+0.01 {
-		t.Errorf("seeded year-0 IRMAA %.2f should match real-history year-2 IRMAA %.2f", seeded, fromHistory)
+	surchargeGrowth := engine.PlannerIRMAASurchargeInflationFactorForYear(float64(engine.YearsFromTaxBase(settings, 2))) /
+		engine.PlannerIRMAASurchargeInflationFactorForYear(float64(engine.YearsFromTaxBase(settings, 0)))
+	want := seeded * surchargeGrowth
+	if math.Abs(want-fromHistory) > 0.01*fromHistory+0.01 {
+		t.Errorf("seeded year-0 IRMAA %.2f grown at the Medicare index (x%.4f) = %.2f "+
+			"should match real-history year-2 IRMAA %.2f", seeded, surchargeGrowth, want, fromHistory)
 	}
 }
 

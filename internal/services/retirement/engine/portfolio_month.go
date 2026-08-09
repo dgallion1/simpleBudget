@@ -321,7 +321,11 @@ type PortfolioMonthInput struct {
 	// $0 IRMAA in years 0-1.
 	AssumedIRMALookbackMAGI *float64
 	IRMAAEligibleAdults     int
-	IRMAAInflationFactor    float64
+	// IRMAAInflationFactor indexes the MAGI thresholds (CPI);
+	// IRMAASurchargeInflationFactor indexes the surcharge dollars (Medicare
+	// per-capita cost growth). Separate series — see CalculateMonthlyIRMAA (F-6).
+	IRMAAInflationFactor          float64
+	IRMAASurchargeInflationFactor float64
 }
 
 // ExecuteTaxAwarePortfolioMonth runs the inner fixed-point iteration
@@ -347,16 +351,17 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 	// after the base year doesn't use stale (un-inflated) brackets.
 	yearsFromTaxBase := in.CalendarYear - taxBaseYear
 	snapshot := in.TaxState.EstimateMonthlySnapshot(MonthlyTaxInputs{
-		Calculator:              in.TaxCalculator,
-		YearsFromBase:           yearsFromTaxBase,
-		MonthInYear:             in.MonthInYear,
-		OrdinaryIncome:          in.IncomeBreakdown.OrdinaryIncome,
-		SocialSecurityIncome:    in.IncomeBreakdown.SocialSecurityIncome,
-		RothConversions:         in.RothConversionThisMonth,
-		CompletedMAGIHistory:    in.CompletedMAGIHistory,
-		AssumedIRMALookbackMAGI: in.AssumedIRMALookbackMAGI,
-		IRMAAEligibleAdults:     in.IRMAAEligibleAdults,
-		IRMAAInflationFactor:    in.IRMAAInflationFactor,
+		Calculator:                    in.TaxCalculator,
+		YearsFromBase:                 yearsFromTaxBase,
+		MonthInYear:                   in.MonthInYear,
+		OrdinaryIncome:                in.IncomeBreakdown.OrdinaryIncome,
+		SocialSecurityIncome:          in.IncomeBreakdown.SocialSecurityIncome,
+		RothConversions:               in.RothConversionThisMonth,
+		CompletedMAGIHistory:          in.CompletedMAGIHistory,
+		AssumedIRMALookbackMAGI:       in.AssumedIRMALookbackMAGI,
+		IRMAAEligibleAdults:           in.IRMAAEligibleAdults,
+		IRMAAInflationFactor:          in.IRMAAInflationFactor,
+		IRMAASurchargeInflationFactor: in.IRMAASurchargeInflationFactor,
 	})
 	taxesPaid := snapshot.MonthlyTax
 	irmaaExpense := snapshot.MonthlyIRMAA
@@ -400,20 +405,21 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		trialCapitalGains := beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions + trialCashFlow.TaxableRealizedGain
 
 		recalculatedSnapshot := in.TaxState.EstimateMonthlySnapshot(MonthlyTaxInputs{
-			Calculator:              in.TaxCalculator,
-			YearsFromBase:           yearsFromTaxBase,
-			MonthInYear:             in.MonthInYear,
-			OrdinaryIncome:          in.IncomeBreakdown.OrdinaryIncome + trialNonQualifiedDividends + trialTaxableRothEarnings,
-			SocialSecurityIncome:    in.IncomeBreakdown.SocialSecurityIncome,
-			TaxableWithdrawals:      trialCashFlow.WithdrawalFromTaxDeferred,
-			QualifiedDividends:      trialQualifiedDividends,
-			LongTermCapitalGains:    trialCapitalGains,
-			NonQualifiedDividends:   trialNonQualifiedDividends,
-			RothConversions:         in.RothConversionThisMonth,
-			CompletedMAGIHistory:    in.CompletedMAGIHistory,
-			AssumedIRMALookbackMAGI: in.AssumedIRMALookbackMAGI,
-			IRMAAEligibleAdults:     in.IRMAAEligibleAdults,
-			IRMAAInflationFactor:    in.IRMAAInflationFactor,
+			Calculator:                    in.TaxCalculator,
+			YearsFromBase:                 yearsFromTaxBase,
+			MonthInYear:                   in.MonthInYear,
+			OrdinaryIncome:                in.IncomeBreakdown.OrdinaryIncome + trialNonQualifiedDividends + trialTaxableRothEarnings,
+			SocialSecurityIncome:          in.IncomeBreakdown.SocialSecurityIncome,
+			TaxableWithdrawals:            trialCashFlow.WithdrawalFromTaxDeferred,
+			QualifiedDividends:            trialQualifiedDividends,
+			LongTermCapitalGains:          trialCapitalGains,
+			NonQualifiedDividends:         trialNonQualifiedDividends,
+			RothConversions:               in.RothConversionThisMonth,
+			CompletedMAGIHistory:          in.CompletedMAGIHistory,
+			AssumedIRMALookbackMAGI:       in.AssumedIRMALookbackMAGI,
+			IRMAAEligibleAdults:           in.IRMAAEligibleAdults,
+			IRMAAInflationFactor:          in.IRMAAInflationFactor,
+			IRMAASurchargeInflationFactor: in.IRMAASurchargeInflationFactor,
 		})
 
 		*in.TaxDeferredBalance = trialTaxDeferred

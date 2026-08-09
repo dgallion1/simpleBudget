@@ -362,14 +362,22 @@ func CalculateNIIT(magi, netInvestmentIncome float64, filingStatus models.Filing
 }
 
 // CalculateMonthlyIRMAA returns the monthly IRMAA Part B+D surcharge per
-// person at the supplied MAGI, scaled by the supplied inflation factor
-// applied to the bundled 2026 bracket table.
-func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, inflationFactor float64) float64 {
+// person at the supplied MAGI, inflating the bundled 2026 bracket table.
+//
+// The two factors index different things and must not be collapsed into one
+// (F-6): thresholdFactor moves the MAGI cutoffs, which are statutorily
+// CPI-indexed, while surchargeFactor moves the dollars charged once a cutoff
+// is cleared, which track Medicare per-capita cost growth. Passing the CPI
+// factor for both understated every future surcharge.
+func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, thresholdFactor, surchargeFactor float64) float64 {
 	if magi <= 0 {
 		return 0
 	}
-	if inflationFactor <= 0 {
-		inflationFactor = 1
+	if thresholdFactor <= 0 {
+		thresholdFactor = 1
+	}
+	if surchargeFactor <= 0 {
+		surchargeFactor = 1
 	}
 
 	filingStatus = NormalizeFilingStatus(filingStatus)
@@ -377,10 +385,10 @@ func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, infla
 
 	var surcharge float64
 	for _, bracket := range brackets {
-		surcharge = bracket.Surcharge * inflationFactor
+		surcharge = bracket.Surcharge * surchargeFactor
 		upperMAGI := bracket.UpperMAGI
 		if upperMAGI < math.MaxFloat64 {
-			upperMAGI *= inflationFactor
+			upperMAGI *= thresholdFactor
 		}
 		if magi <= upperMAGI {
 			break
@@ -398,8 +406,8 @@ func (tc *TaxCalculator) CalculateNIIT(magi, netInvestmentIncome float64) float6
 	return CalculateNIIT(magi, netInvestmentIncome, tc.FilingStatus)
 }
 
-func (tc *TaxCalculator) CalculateMonthlyIRMAA(magi, inflationFactor float64) float64 {
-	return CalculateMonthlyIRMAA(magi, tc.FilingStatus, inflationFactor)
+func (tc *TaxCalculator) CalculateMonthlyIRMAA(magi, thresholdFactor, surchargeFactor float64) float64 {
+	return CalculateMonthlyIRMAA(magi, tc.FilingStatus, thresholdFactor, surchargeFactor)
 }
 
 // CalculateFederalTax computes federal tax on taxable income.

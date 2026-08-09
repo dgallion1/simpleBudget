@@ -91,7 +91,13 @@ type MonthlyTaxInputs struct {
 	CompletedMAGIHistory    []float64
 	AssumedIRMALookbackMAGI *float64
 	IRMAAEligibleAdults     int
-	IRMAAInflationFactor    float64
+	// IRMAAInflationFactor indexes the MAGI thresholds (CPI);
+	// IRMAASurchargeInflationFactor indexes the surcharge dollars (Medicare
+	// per-capita cost growth). They are separate series — see
+	// CalculateMonthlyIRMAA (F-6). A zero surcharge factor is treated as 1,
+	// so zero-value callers keep un-inflated surcharges.
+	IRMAAInflationFactor          float64
+	IRMAASurchargeInflationFactor float64
 }
 
 // EstimateMonthlySnapshot computes the per-month tax + IRMAA estimate
@@ -106,6 +112,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 	assumedIRMALookbackMAGI := in.AssumedIRMALookbackMAGI
 	irmaaEligibleAdults := in.IRMAAEligibleAdults
 	irmaaInflationFactor := in.IRMAAInflationFactor
+	irmaaSurchargeInflationFactor := in.IRMAASurchargeInflationFactor
 	if tc == nil {
 		return ProjectedTaxSnapshot{}
 	}
@@ -120,7 +127,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 
 	annualIRMAA := 0.0
 	if irmaaEligibleAdults > 0 && hasIRMALookback {
-		annualIRMAA = tc.CalculateMonthlyIRMAA(lookbackMAGI, irmaaInflationFactor) * float64(irmaaEligibleAdults) * 12
+		annualIRMAA = tc.CalculateMonthlyIRMAA(lookbackMAGI, irmaaInflationFactor, irmaaSurchargeInflationFactor) * float64(irmaaEligibleAdults) * 12
 	}
 	remainingMonths := 12 - monthInYear
 	if remainingMonths <= 0 {

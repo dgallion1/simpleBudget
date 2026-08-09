@@ -390,7 +390,7 @@ func TestCalculateMonthlyIRMAA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := engine.CalculateMonthlyIRMAA(tt.magi, tt.status, tt.inflationFactor)
+			got := engine.CalculateMonthlyIRMAA(tt.magi, tt.status, tt.inflationFactor, tt.inflationFactor)
 			if math.Abs(got-tt.want) > 0.01 {
 				t.Fatalf("CalculateMonthlyIRMAA() = %.2f, want %.2f", got, tt.want)
 			}

@@ -12,6 +12,16 @@ import (
 // forward.
 const irmaaBaseYear = 2026
 
+// medicareCostGrowthRate is the annual percentage growth applied to IRMAA
+// surcharge DOLLARS (not the MAGI thresholds, which are CPI-indexed).
+//
+// IRMAA surcharges are recalculated each year off projected Medicare
+// per-capita costs rather than CPI, and have historically grown around 5-6%
+// a year. 5.5% is the midpoint of that range, chosen the same way the
+// conservative 7/4/3 stock/bond/cash return estimates are: a defensible
+// planning assumption baked into the engine rather than a user input.
+const medicareCostGrowthRate = 5.5
+
 // LivingExpensesAtMonth returns the inflation- and phase-adjusted
 // living expense for the given month. Exported so analysis-package
 // callers (historical backtest) can reuse the rule.
@@ -132,17 +142,42 @@ func Age65CountForYear(s *models.WhatIfSettings, year int) int {
 	return count
 }
 
-// PlannerIRMAAInflationFactorForYear inflates the bundled IRMAA
-// surcharge brackets from their CMS 2026 base year to the projection
-// year. Pure math; the offset (irmaaBaseYear − taxBaseYear) keeps the
-// IRMAA scaling decoupled from the tax-bracket scaling even though
-// callers express both as years-from-tax-base.
+// PlannerIRMAAInflationFactorForYear inflates the bundled IRMAA MAGI
+// thresholds from their CMS 2026 base year to the projection year. The
+// thresholds are statutorily CPI-indexed, so this takes the plan's inflation
+// rate. Pure math; the offset (irmaaBaseYear − taxBaseYear) keeps the IRMAA
+// scaling decoupled from the tax-bracket scaling even though callers express
+// both as years-from-tax-base.
+//
+// Deliberately not floored at zero, unlike GetAdjustedBrackets and
+// InflationFactor: a plan year before irmaaBaseYear deflates the 2026 table
+// backwards, which is what we want. At 3% the 2025 tier-1 cutoff computes to
+// roughly $105.8k/$211.6k against an actual $106k/$212k — closer than pinning
+// it at the 2026 figures would be.
 func PlannerIRMAAInflationFactorForYear(annualInflationRate float64, yearsFromTaxBase float64) float64 {
 	yearsFromIRMAABase := yearsFromTaxBase - float64(irmaaBaseYear-taxBaseYear)
 	if yearsFromIRMAABase == 0 {
 		return 1
 	}
 	return math.Pow(1+annualInflationRate/100, yearsFromIRMAABase)
+}
+
+// PlannerIRMAASurchargeInflationFactorForYear inflates the IRMAA surcharge
+// DOLLARS from the CMS 2026 base year to the projection year.
+//
+// F-6: surcharge amounts are not CPI-indexed. They are recalculated annually
+// from projected Medicare per-capita costs, which have historically grown
+// several points faster than CPI. Applying the threshold's CPI factor to the
+// surcharge as well understated every future surcharge, and compounded: at 30
+// years out the gap is roughly 2x. This deliberately does not take the plan's
+// inflation rate — a household assuming lower CPI does not thereby slow
+// Medicare cost growth.
+func PlannerIRMAASurchargeInflationFactorForYear(yearsFromTaxBase float64) float64 {
+	yearsFromIRMAABase := yearsFromTaxBase - float64(irmaaBaseYear-taxBaseYear)
+	if yearsFromIRMAABase == 0 {
+		return 1
+	}
+	return math.Pow(1+medicareCostGrowthRate/100, yearsFromIRMAABase)
 }
 
 // MonthlyIncomeBreakdown decomposes a month's income into the

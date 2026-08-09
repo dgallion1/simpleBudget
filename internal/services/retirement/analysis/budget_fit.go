@@ -43,17 +43,18 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 			// remaining-months tax divisor to be 12. targetMonth is always
 			// year-aligned today; pinning 0 keeps this correct if a
 			// fractional steady-state month is ever introduced.
-			MonthInYear:             0,
-			OrdinaryIncome:          incomeBreakdown.OrdinaryIncome + taxableCashFlow.NonQualifiedDividends,
-			SocialSecurityIncome:    incomeBreakdown.SocialSecurityIncome,
-			TaxableWithdrawals:      monthlyRMD,
-			QualifiedDividends:      taxableCashFlow.QualifiedDividends,
-			LongTermCapitalGains:    taxableCashFlow.CapitalGainsDistributions,
-			NonQualifiedDividends:   taxableCashFlow.NonQualifiedDividends,
-			RothConversions:         rothConversion,
-			AssumedIRMALookbackMAGI: assumedIRMALookbackMAGI,
-			IRMAAEligibleAdults:     engine.MedicareEligibleAdultCountAtYear(s, targetYear),
-			IRMAAInflationFactor:    engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
+			MonthInYear:                   0,
+			OrdinaryIncome:                incomeBreakdown.OrdinaryIncome + taxableCashFlow.NonQualifiedDividends,
+			SocialSecurityIncome:          incomeBreakdown.SocialSecurityIncome,
+			TaxableWithdrawals:            monthlyRMD,
+			QualifiedDividends:            taxableCashFlow.QualifiedDividends,
+			LongTermCapitalGains:          taxableCashFlow.CapitalGainsDistributions,
+			NonQualifiedDividends:         taxableCashFlow.NonQualifiedDividends,
+			RothConversions:               rothConversion,
+			AssumedIRMALookbackMAGI:       assumedIRMALookbackMAGI,
+			IRMAAEligibleAdults:           engine.MedicareEligibleAdultCountAtYear(s, targetYear),
+			IRMAAInflationFactor:          engine.PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
+			IRMAASurchargeInflationFactor: engine.PlannerIRMAASurchargeInflationFactorForYear(float64(yearsFromTaxBase)),
 		})
 	}
 

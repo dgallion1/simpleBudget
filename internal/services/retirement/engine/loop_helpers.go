@@ -61,11 +61,37 @@ func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int {
 }
 
 // MedicareEligibleAdultCountAtYear returns the count (0, 1, or 2) of
-// household adults that are 65+ in the given projection year. Used
-// to scale the per-person IRMAA surcharge to a household total.
+// household adults actually paying Medicare premiums in the given projection
+// year. Used to scale the per-person IRMAA surcharge to a household total.
+//
+// F-5: this counts enrolment, not age. IRMAA is a surcharge on Part B and
+// Part D premiums, so someone who keeps employer coverage past 65 has nothing
+// to surcharge — and the expense model already bills them an employer premium
+// for those years. Reading age alone made the two models contradict each other
+// for exactly the household EmployerCoverageYears exists to describe, and
+// ignored HealthcarePerson.MedicareEligibleAge by hardcoding 65.
+//
+// When the multi-person healthcare model is populated it is authoritative,
+// matching GetTotalHealthcareCost. Plans on the legacy single-value model
+// carry no coverage detail, so they keep the age-65 rule.
+//
+// Resolution is one year: a person is counted from the projection year in
+// which their Medicare coverage starts, so a mid-year start is billed for the
+// whole year. That matches the annual granularity of the IRMAA calculation.
 func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
 	if s == nil {
 		return 0
+	}
+
+	if len(s.HealthcarePersons) > 0 {
+		count := 0
+		for i := range s.HealthcarePersons {
+			if year*12 >= s.HealthcarePersons[i].MedicareStartMonth(s.StartDate) {
+				count++
+			}
+		}
+		// The surcharge is per filer; a household return covers at most two.
+		return min(count, 2)
 	}
 
 	count := 0

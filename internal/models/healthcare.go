@@ -118,6 +118,31 @@ func (hp *HealthcarePerson) monthsUntilMedicareEligible(startDate string) int {
 	return yearsUntil * 12
 }
 
+// MedicareStartMonth returns the projection month in which this person
+// actually starts paying Medicare premiums. This is the single definition of
+// that transition: GetMonthlyCostAt prices the coverage from it, and the
+// engine decides IRMAA eligibility from it.
+//
+// Reaching 65 is not enough. Someone who keeps employer coverage past their
+// eligible age is not enrolled and pays no Part B or Part D premium, so there
+// is nothing for IRMAA to surcharge until that coverage lapses — which is why
+// the employer branch below wins over the age-based transition (F-5).
+//
+// startDate ("YYYY-MM") enables month-precise arithmetic when BirthMonth is
+// also set (F-067); otherwise the year-based fallback applies.
+func (hp *HealthcarePerson) MedicareStartMonth(startDate string) int {
+	if hp.CurrentCoverage == CoverageMedicare {
+		return 0
+	}
+	monthsUntilMedicare := hp.monthsUntilMedicareEligible(startDate)
+	if hp.CurrentCoverage == CoverageEmployer && hp.EmployerCoverageYears > 0 {
+		if monthsOnEmployer := hp.EmployerCoverageYears * 12; monthsOnEmployer > monthsUntilMedicare {
+			return monthsOnEmployer
+		}
+	}
+	return monthsUntilMedicare
+}
+
 // GetMonthlyCost calculates the healthcare cost for a given month in the projection
 // month 0 = current month, month 12 = 1 year from now, etc.
 //
@@ -151,24 +176,14 @@ func (hp *HealthcarePerson) GetMonthlyCostAt(month int, startDate string) float6
 			return hp.CurrentMonthlyCost // Employer cost doesn't inflate (it's subsidized)
 		}
 
-		// Employer coverage ended - determine what's next
-		monthsAfterEmployer := month - monthsOnEmployer
-
-		// If already Medicare-eligible when employer coverage ends, go straight to Medicare
-		if monthsOnEmployer >= monthsUntilMedicare {
-			return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(monthsAfterEmployer)/12.0)
+		// Employer coverage ended. Medicare picks up at MedicareStartMonth —
+		// immediately if already eligible, otherwise after an ACA gap.
+		medicareStart := hp.MedicareStartMonth(startDate)
+		if month < medicareStart {
+			// ACA bridge between employer coverage and Medicare eligibility.
+			return hp.ACACostAfterEmployer * math.Pow(1+hp.PreMedicareInflation/100, float64(month-monthsOnEmployer)/12.0)
 		}
-
-		// Not yet Medicare-eligible when employer ends - go to ACA first
-		monthsOnACABeforeMedicare := monthsUntilMedicare - monthsOnEmployer
-		if monthsAfterEmployer < monthsOnACABeforeMedicare {
-			// Still on ACA
-			return hp.ACACostAfterEmployer * math.Pow(1+hp.PreMedicareInflation/100, float64(monthsAfterEmployer)/12.0)
-		}
-
-		// Transitioned from ACA to Medicare
-		monthsOnMedicare := monthsAfterEmployer - monthsOnACABeforeMedicare
-		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(monthsOnMedicare)/12.0)
+		return hp.MedicareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(month-medicareStart)/12.0)
 	}
 
 	// Check if person transitions to Medicare in this projection period (ACA or unlimited employer)

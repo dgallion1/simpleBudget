@@ -78,6 +78,25 @@ func TestNewServerRegistersTheFourTools(t *testing.T) {
 	if !foundAssumptions {
 		t.Errorf("resource whatif://assumptions not registered; got %v", resourceURIs(resourcesRes.Resources))
 	}
+
+	// Listing only proves the resource is advertised. Actually read it, the
+	// way a real client would, to prove the handler serves the real document
+	// rather than something empty or stale.
+	readRes, err := clientSession.ReadResource(ctx, &mcp.ReadResourceParams{URI: "whatif://assumptions"})
+	if err != nil {
+		t.Fatalf("ReadResource(whatif://assumptions): %v", err)
+	}
+	if len(readRes.Contents) == 0 {
+		t.Fatal("ReadResource(whatif://assumptions) returned no contents")
+	}
+	served := readRes.Contents[0].Text
+	if served == "" {
+		t.Fatal("ReadResource(whatif://assumptions) returned empty text")
+	}
+	const distinctive = "Joint and Last Survivor Table"
+	if !strings.Contains(served, distinctive) {
+		t.Errorf("served assumptions resource missing %q; got:\n%s", distinctive, served)
+	}
 }
 
 func toolNames(tools []*mcp.Tool) []string {

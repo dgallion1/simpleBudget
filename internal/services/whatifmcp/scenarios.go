@@ -16,6 +16,8 @@ type ScenarioInfo struct {
 	Active          bool    `json:"active"`
 	PortfolioValue  float64 `json:"portfolio_value"`
 	ProjectionYears int     `json:"projection_years"`
+	Unreadable      bool    `json:"unreadable,omitempty"`
+	LoadError       string  `json:"load_error,omitempty"`
 }
 
 // Source reads saved what-if scenarios. Read-only by construction: it exposes
@@ -40,6 +42,13 @@ func (s *Source) List() ([]ScenarioInfo, error) {
 		if settings, err := s.sm.LoadScenarioSettings(sc.Filename); err == nil && settings != nil {
 			info.PortfolioValue = round0(settings.PortfolioValue)
 			info.ProjectionYears = settings.ProjectionYears
+		} else {
+			info.Unreadable = true
+			if err != nil {
+				info.LoadError = err.Error()
+			} else {
+				info.LoadError = "scenario settings unavailable"
+			}
 		}
 		out = append(out, info)
 	}

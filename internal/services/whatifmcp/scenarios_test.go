@@ -57,6 +57,41 @@ func TestSource_ListReportsActiveFlag(t *testing.T) {
 	}
 }
 
+func TestSource_ListFlagsUnreadableScenario(t *testing.T) {
+	s := newTestSourceWithBrokenScenario(t)
+	list, err := s.List()
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+
+	var broken, active *ScenarioInfo
+	for i := range list {
+		switch list[i].Filename {
+		case "whatif_broken.json":
+			broken = &list[i]
+		case "whatif.json":
+			active = &list[i]
+		}
+	}
+
+	if broken == nil {
+		t.Fatal("List() did not include the broken scenario file")
+	}
+	if !broken.Unreadable {
+		t.Error("broken scenario should have Unreadable true")
+	}
+	if broken.LoadError == "" {
+		t.Error("broken scenario should have a non-empty LoadError")
+	}
+
+	if active == nil {
+		t.Fatal("List() did not include whatif.json")
+	}
+	if active.Unreadable {
+		t.Error("whatif.json should have Unreadable false")
+	}
+}
+
 // newTestSource builds a Source over a temp copy of the repo's shipped
 // settings fixtures. Never point a test at the real data/ directory.
 func newTestSource(t *testing.T) *Source {
@@ -78,6 +113,41 @@ func newTestSource(t *testing.T) *Source {
 		if err := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o644); err != nil {
 			t.Fatalf("write %s: %v", e.Name(), err)
 		}
+	}
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	return NewSource(dir, store)
+}
+
+// newTestSourceWithBrokenScenario builds on newTestSource's fixture copy but
+// also drops in a deliberately corrupt whatif_broken.json, so List() has an
+// unreadable entry to report alongside the valid ones. Kept separate from
+// newTestSource so the existing tests' assertions (exact scenario count,
+// exactly one active entry) aren't disturbed by the extra file.
+func newTestSourceWithBrokenScenario(t *testing.T) *Source {
+	t.Helper()
+	dir := t.TempDir()
+	src := filepath.Join("..", "..", "..", "data", "settings")
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatalf("read fixtures: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o644); err != nil {
+			t.Fatalf("write %s: %v", e.Name(), err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "whatif_broken.json"), []byte("{not valid json"), 0o644); err != nil {
+		t.Fatalf("write whatif_broken.json: %v", err)
 	}
 	store, err := storage.New(dir)
 	if err != nil {

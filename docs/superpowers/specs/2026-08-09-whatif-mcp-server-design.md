@@ -69,10 +69,17 @@ Scenario files are read through the existing settings/storage layer rather than
 parsed directly, so the server sees exactly what the web app sees. Engine and
 analysis calls are ordinary in-process function calls.
 
-**Dependency cost:** `go.mod` gains the official MCP Go SDK — 6 direct
-dependencies to 7. The exact import path and API shape must be confirmed
-against the SDK's own documentation during implementation; they are
-deliberately not asserted here.
+**Dependency cost:** `go.mod` gains the official MCP Go SDK
+(`github.com/modelcontextprotocol/go-sdk`, v1.7.0 at time of writing, tracking
+MCP spec 2026-07-28) — 6 direct dependencies to 7.
+
+Server shape: `mcp.NewServer` with an `mcp.Implementation`, `mcp.AddTool` per
+tool, and `server.Run(ctx, &mcp.StdioTransport{})`. Tool handlers are generic
+over typed Go structs —
+`func(ctx, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error)` — so
+**input schemas are inferred from the argument struct** rather than
+hand-written JSON Schema. The tool argument shapes below should therefore be
+defined as Go structs with JSON tags, and the schema follows from them.
 
 ## Response shaping — the central constraint
 
@@ -208,11 +215,9 @@ in `analysis/helpers_test.go`. `make check` stays hermetic.
 
 ## Risks
 
-- **MCP Go SDK maturity.** Import path and API shape are unverified as of this
-  design and must be confirmed before implementation. If the official SDK is
-  unsuitable, the fallback is a hand-rolled stdio JSON-RPC loop — MCP's wire
-  protocol is small — but that is a larger build and should be a deliberate
-  decision, not a silent drift.
+- ~~**MCP Go SDK maturity.**~~ *Resolved 2026-08-09:* the official SDK is
+  published, past 1.0 (v1.7.0), and exposes the server/tool/stdio API this
+  design assumes. No hand-rolled JSON-RPC fallback needed.
 - **Shaped views drift from the analysis structs.** A new field on
   `WhatIfAnalysis` will not appear in the shaped view automatically. Accepted:
   silent omission is the safer failure than unbounded context growth.

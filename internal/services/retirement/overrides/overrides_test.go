@@ -241,6 +241,78 @@ func TestApply_EachFieldChangesOnlyItsDestination(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsAbsurdRates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		o    Overrides
+		want string
+	}{
+		{"inflation too high", Overrides{InflationRate: ptr(500)}, "inflation_rate"},
+		{"inflation too low", Overrides{InflationRate: ptr(-50)}, "inflation_rate"},
+		{"return too high", Overrides{InvestmentReturn: ptr(1000)}, "investment_return"},
+		{"return too low", Overrides{InvestmentReturn: ptr(-99)}, "investment_return"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.o.validate()
+			if err == nil {
+				t.Fatalf("expected an error naming %s, got nil", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not name the field %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidate_AcceptsPlausibleRates(t *testing.T) {
+	o := Overrides{InflationRate: ptr(2.5), InvestmentReturn: ptr(7)}
+	if err := o.validate(); err != nil {
+		t.Fatalf("plausible rates rejected: %v", err)
+	}
+	// Zero must stay legal: investment_return 0 means "use the asset allocation".
+	if err := (Overrides{InvestmentReturn: ptr(0)}).validate(); err != nil {
+		t.Fatalf("investment_return 0 must remain legal: %v", err)
+	}
+}
+
+func TestValidateWritable_RejectsHealthcareInflation(t *testing.T) {
+	err := Overrides{HealthcareInflation: ptr(6)}.ValidateWritable()
+	if err == nil {
+		t.Fatal("expected healthcare_inflation to be rejected on the write path")
+	}
+	if !strings.Contains(err.Error(), "healthcare_inflation") {
+		t.Fatalf("error %q does not name the field", err)
+	}
+}
+
+func TestValidateWritable_AllowsTheTenWritableFields(t *testing.T) {
+	o := Overrides{
+		MonthlyLivingExpenses:  ptr(5000),
+		ProjectionYears:        ptrInt(30),
+		InflationRate:          ptr(2.5),
+		InvestmentReturn:       ptr(7),
+		FilingStatus:           strPtr("married_joint"),
+		RothConversionAmount:   ptr(50000),
+		RothConversionStart:    ptrInt(1),
+		RothConversionEnd:      ptrInt(10),
+		SocialSecurityClaimAge: ptrInt(67),
+		SpouseClaimAge:         ptrInt(65),
+	}
+	if err := o.ValidateWritable(); err != nil {
+		t.Fatalf("the ten writable fields were rejected: %v", err)
+	}
+}
+
+func TestValidateWritable_RejectsRothWindowWithoutAmount(t *testing.T) {
+	err := Overrides{RothConversionStart: ptrInt(1), RothConversionEnd: ptrInt(5)}.ValidateWritable()
+	if err == nil {
+		t.Fatal("expected a Roth window with no amount to be rejected")
+	}
+	if !strings.Contains(err.Error(), "roth_conversion_amount") {
+		t.Fatalf("error %q should name the missing field", err)
+	}
+}
+
 func ptr(f float64) *float64  { return &f }
 func ptrInt(i int) *int       { return &i }
 func strPtr(s string) *string { return &s }

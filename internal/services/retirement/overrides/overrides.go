@@ -102,33 +102,72 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 
 func (o Overrides) validate() error {
 	if o.MonthlyLivingExpenses != nil && *o.MonthlyLivingExpenses < 0 {
-		return fmt.Errorf("monthly_living_expenses must be >= 0, got %v", *o.MonthlyLivingExpenses)
+		return &ValidationError{Err: fmt.Errorf("monthly_living_expenses must be >= 0, got %v", *o.MonthlyLivingExpenses)}
 	}
 	if o.RothConversionAmount != nil && *o.RothConversionAmount < 0 {
-		return fmt.Errorf("roth_conversion_amount must be >= 0, got %v", *o.RothConversionAmount)
+		return &ValidationError{Err: fmt.Errorf("roth_conversion_amount must be >= 0, got %v", *o.RothConversionAmount)}
 	}
 	if o.ProjectionYears != nil && (*o.ProjectionYears < 1 || *o.ProjectionYears > 60) {
-		return fmt.Errorf("projection_years must be between 1 and 60, got %d", *o.ProjectionYears)
+		return &ValidationError{Err: fmt.Errorf("projection_years must be between 1 and 60, got %d", *o.ProjectionYears)}
 	}
 	if o.RothConversionStart != nil && o.RothConversionEnd != nil && *o.RothConversionEnd != 0 &&
 		*o.RothConversionEnd < *o.RothConversionStart {
-		return fmt.Errorf(
+		return &ValidationError{Err: fmt.Errorf(
 			"roth_conversion_end_year (%d) must not be before roth_conversion_start_year (%d): this window would run zero conversions in every year",
-			*o.RothConversionEnd, *o.RothConversionStart)
+			*o.RothConversionEnd, *o.RothConversionStart)}
 	}
 	if a := o.SocialSecurityClaimAge; a != nil && (*a < 62 || *a > 70) {
-		return fmt.Errorf("social_security_claim_age must be between 62 and 70, got %d", *a)
+		return &ValidationError{Err: fmt.Errorf("social_security_claim_age must be between 62 and 70, got %d", *a)}
 	}
 	if a := o.SpouseClaimAge; a != nil && (*a < 62 || *a > 70) {
-		return fmt.Errorf("spouse_claim_age must be between 62 and 70, got %d", *a)
+		return &ValidationError{Err: fmt.Errorf("spouse_claim_age must be between 62 and 70, got %d", *a)}
 	}
 	if f := o.FilingStatus; f != nil {
 		switch models.FilingStatus(*f) {
 		case models.FilingSingle, models.FilingMarriedJoint,
 			models.FilingMarriedSeparate, models.FilingHeadOfHousehold:
 		default:
-			return fmt.Errorf("filing_status %q is not one of single, married_joint, married_separate, head_of_household", *f)
+			return &ValidationError{Err: fmt.Errorf("filing_status %q is not one of single, married_joint, married_separate, head_of_household", *f)}
 		}
+	}
+	// Bounds on the rate fields. These were unbounded while Apply's output was
+	// a discarded preview copy; once it is persisted, a value that produces a
+	// NaN or an engine panic turns every GET /whatif into a 500 via
+	// middleware.Recoverer, with no in-app undo. The range is deliberately wide
+	// — it rejects nonsense, not unusual plans.
+	if r := o.InflationRate; r != nil && (*r < -20 || *r > 50) {
+		return &ValidationError{Err: fmt.Errorf("inflation_rate must be between -20 and 50 percent, got %v", *r)}
+	}
+	if r := o.InvestmentReturn; r != nil && (*r < -20 || *r > 50) {
+		return &ValidationError{Err: fmt.Errorf("investment_return must be between -20 and 50 percent, got %v", *r)}
+	}
+	return nil
+}
+
+// ValidationError marks an override value the caller can fix. Handlers map it
+// to 400; anything else is a server-side failure.
+type ValidationError struct{ Err error }
+
+func (e *ValidationError) Error() string { return e.Err.Error() }
+func (e *ValidationError) Unwrap() error { return e.Err }
+
+// ValidateWritable reports whether this override set may be persisted, as
+// opposed to merely previewed. Apply deliberately does not call it: run_scenario
+// is allowed a wider field set than apply_changes.
+func (o Overrides) ValidateWritable() error {
+	// HealthcareInflation is legacy for the single-person model
+	// (models/whatif.go:118). Once HealthcarePersons is populated — which the
+	// migration in settings.go:309-330 does for any plan with MonthlyHealthcare
+	// > 0 — it is read only by analysis/present_value.go. It has no form control
+	// anywhere in web/templates/, so persisting it would write a value the user
+	// can neither see nor revert, and which does not move the charts.
+	if o.HealthcareInflation != nil {
+		return &ValidationError{Err: fmt.Errorf("healthcare_inflation cannot be saved: it is legacy for the single-person healthcare model, has no control in the UI, and does not affect the projection once healthcare persons are configured; use run_scenario to preview it")}
+	}
+	// A Roth window with no amount is a silent no-op when conversions are
+	// disabled (followups §5). Harmless as a preview, a broken contract as a write.
+	if (o.RothConversionStart != nil || o.RothConversionEnd != nil) && o.RothConversionAmount == nil {
+		return &ValidationError{Err: fmt.Errorf("roth_conversion_start_year/end_year cannot be saved without roth_conversion_amount: the window has no effect unless conversions are enabled by a non-zero amount")}
 	}
 	return nil
 }

@@ -167,7 +167,7 @@ func TestExecutePortfolioCashFlowWithTaxableState_RothEarningsSurfaced(t *testin
 	roth := 100.0
 	rothBasis := 60.0
 
-	result := ExecutePortfolioCashFlowWithTaxableState(75, 0, false, 0, 0, &td, taxable, &roth, &rothBasis)
+	result := ExecutePortfolioCashFlowWithTaxableState(75, 0, false, 0, &td, taxable, &roth, &rothBasis)
 
 	if result.WithdrawalFromRoth != 75 {
 		t.Fatalf("WithdrawalFromRoth=%v, want 75", result.WithdrawalFromRoth)

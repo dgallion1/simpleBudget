@@ -103,69 +103,64 @@ func TestHistoricalSequence_MedicareAgeDoesNotImmediatelyApplyIRMALaggedPremiums
 	}
 }
 
-// F-049 + F-073: engine.ReinvestRequiredRMDToTaxableState reinvests the after-tax
-// portion as basis (F-049) and returns the gross distribution amount that
-// callers report as taxable income (F-073).
-func TestReinvestRequiredRMD_F049_BasisIsAfterTax(t *testing.T) {
+// F-049 + F-073 + F-1: engine.ReinvestRequiredRMDToTaxableState moves the gross
+// distribution into the taxable account with matching cost basis (F-049's goal:
+// basis equals what was deposited, so later LTCG is right), and returns that
+// gross so callers report it as taxable income (F-073). It does not withhold
+// tax — the month's tax model already levies it on the gross and funds it as a
+// separate cash outflow, so withholding here charged it twice (F-1).
+func TestReinvestRequiredRMD_DepositsGrossWithGrossBasis(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 100000.0
 	rmd := 10000.0
-	marginalRate := 0.22 // 22%
 
-	gross, net := engine.ReinvestRequiredRMDToTaxableState(rmd, marginalRate, &taxDeferred, &taxable)
+	gross := engine.ReinvestRequiredRMDToTaxableState(rmd, &taxDeferred, &taxable)
 	wantGross := 10000.0
-	wantNet := 7800.0
 
 	if math.Abs(gross-wantGross) > 0.01 {
 		t.Errorf("gross = %.2f; want %.2f", gross, wantGross)
 	}
-	if math.Abs(net-wantNet) > 0.01 {
-		t.Errorf("net = %.2f; want %.2f", net, wantNet)
+	if math.Abs(taxable.MarketValue-wantGross) > 0.01 {
+		t.Errorf("taxable.MarketValue = %.2f; want %.2f", taxable.MarketValue, wantGross)
 	}
-	if math.Abs(taxable.MarketValue-wantNet) > 0.01 {
-		t.Errorf("taxable.MarketValue = %.2f; want %.2f", taxable.MarketValue, wantNet)
-	}
-	if math.Abs(taxable.CostBasis-wantNet) > 0.01 {
-		t.Errorf("taxable.CostBasis = %.2f; want %.2f", taxable.CostBasis, wantNet)
+	if math.Abs(taxable.CostBasis-wantGross) > 0.01 {
+		t.Errorf("taxable.CostBasis = %.2f; want %.2f", taxable.CostBasis, wantGross)
 	}
 	if math.Abs(taxDeferred-90000.0) > 0.01 {
 		t.Errorf("taxDeferred remaining = %.2f; want 90000", taxDeferred)
 	}
 }
 
-func TestReinvestRequiredRMD_F049_ZeroMarginalRate(t *testing.T) {
+func TestReinvestRequiredRMD_ClampedToAvailableBalance(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	taxable := engine.NewTaxableAccountState(s, 0)
-	taxDeferred := 100000.0
-	gross, net := engine.ReinvestRequiredRMDToTaxableState(10000, 0.0, &taxDeferred, &taxable)
-	if math.Abs(gross-10000.0) > 0.01 {
-		t.Errorf("zero-marginal gross = %.2f; want 10000", gross)
+	taxDeferred := 4000.0
+	gross := engine.ReinvestRequiredRMDToTaxableState(10000, &taxDeferred, &taxable)
+	if math.Abs(gross-4000.0) > 0.01 {
+		t.Errorf("gross = %.2f; want 4000 (clamped to the remaining balance)", gross)
 	}
-	if math.Abs(net-10000.0) > 0.01 {
-		t.Errorf("zero-marginal net = %.2f; want 10000", net)
+	if math.Abs(taxDeferred) > 0.01 {
+		t.Errorf("taxDeferred = %.2f; want 0", taxDeferred)
+	}
+	if math.Abs(taxable.MarketValue-4000.0) > 0.01 {
+		t.Errorf("taxable.MarketValue = %.2f; want 4000", taxable.MarketValue)
 	}
 }
 
-func TestReinvestRequiredRMD_F049_MarginalRateClamped(t *testing.T) {
+func TestReinvestRequiredRMD_NoopWhenNothingToDistribute(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 100000.0
-	gross, net := engine.ReinvestRequiredRMDToTaxableState(10000, 1.5, &taxDeferred, &taxable)
-	if math.Abs(gross-10000.0) > 0.01 {
-		t.Errorf("marginal>1 gross = %.2f; want 10000 (gross unchanged by rate clamp)", gross)
+	if gross := engine.ReinvestRequiredRMDToTaxableState(0, &taxDeferred, &taxable); gross != 0 {
+		t.Errorf("zero-RMD gross = %.2f; want 0", gross)
 	}
-	if math.Abs(net-0.0) > 0.01 {
-		t.Errorf("marginal>1 net = %.2f; want 0", net)
+	empty := 0.0
+	if gross := engine.ReinvestRequiredRMDToTaxableState(10000, &empty, &taxable); gross != 0 {
+		t.Errorf("empty-account gross = %.2f; want 0", gross)
 	}
-	taxDeferred = 100000.0
-	taxable = engine.NewTaxableAccountState(s, 0)
-	gross, net = engine.ReinvestRequiredRMDToTaxableState(10000, -0.5, &taxDeferred, &taxable)
-	if math.Abs(gross-10000.0) > 0.01 {
-		t.Errorf("marginal<0 gross = %.2f; want 10000", gross)
-	}
-	if math.Abs(net-10000.0) > 0.01 {
-		t.Errorf("marginal<0 net = %.2f; want 10000", net)
+	if taxable.MarketValue != 0 {
+		t.Errorf("taxable.MarketValue = %.2f; want 0 (nothing was distributed)", taxable.MarketValue)
 	}
 }
 

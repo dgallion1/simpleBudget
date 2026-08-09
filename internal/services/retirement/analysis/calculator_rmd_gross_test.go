@@ -10,24 +10,23 @@ import (
 
 // F-073: when the RMD is forced but cash is not needed (surplus path),
 // the resulting cashFlow.RMDWithdrawal and cashFlow.WithdrawalFromTaxDeferred
-// must reflect the GROSS distribution. The taxable-account deposit (basis)
-// is correctly net (F-049), but the reported distribution drives downstream
-// tax/MAGI math and must remain gross.
+// must reflect the GROSS distribution, because they drive downstream tax/MAGI
+// math. F-1: the taxable-account deposit is also gross, with gross basis —
+// tax on the distribution is levied once, by the month's tax model, and
+// funded as a separate cash outflow.
 func TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	taxable := engine.NewTaxableAccountState(s, 0)
 	taxDeferred := 1_000_000.0
 	rothBalance := 0.0
 	monthlyRMD := 5_000.0
-	marginalRate := 0.22
 
 	rothBasis := 0.0
 	result := engine.ExecutePortfolioCashFlowWithTaxableState(
 		0.0, // neededFromPortfolio == 0 → surplus path (else-branch at line 853)
 		monthlyRMD,
-		true,        // allowTaxDeferred
-		0.0,         // earlyPenaltyRate
-		marginalRate,
+		true, // allowTaxDeferred
+		0.0,  // earlyPenaltyRate
 		&taxDeferred,
 		&taxable,
 		&rothBalance,
@@ -41,13 +40,13 @@ func TestExecutePortfolioCashFlow_F073_SurplusRMDReportedGross(t *testing.T) {
 		t.Errorf("result.WithdrawalFromTaxDeferred = %.2f; want %.2f (gross)", result.WithdrawalFromTaxDeferred, monthlyRMD)
 	}
 
-	// F-049 contract preserved: taxable account got NET deposit and basis.
-	wantNet := monthlyRMD * (1 - marginalRate) // 3,900
-	if math.Abs(taxable.MarketValue-wantNet) > 0.01 {
-		t.Errorf("taxable.MarketValue = %.2f; want %.2f (net deposit)", taxable.MarketValue, wantNet)
+	// F-1: the surplus lands in taxable intact, and F-049's goal — basis equal
+	// to what was actually deposited, so later LTCG is correct — still holds.
+	if math.Abs(taxable.MarketValue-monthlyRMD) > 0.01 {
+		t.Errorf("taxable.MarketValue = %.2f; want %.2f (gross deposit)", taxable.MarketValue, monthlyRMD)
 	}
-	if math.Abs(taxable.CostBasis-wantNet) > 0.01 {
-		t.Errorf("taxable.CostBasis = %.2f; want %.2f (net basis)", taxable.CostBasis, wantNet)
+	if math.Abs(taxable.CostBasis-monthlyRMD) > 0.01 {
+		t.Errorf("taxable.CostBasis = %.2f; want %.2f (basis == deposit)", taxable.CostBasis, monthlyRMD)
 	}
 
 	// Tax-deferred decremented by GROSS (legal distribution).
@@ -67,7 +66,6 @@ func TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross(t *t
 	taxDeferred := 1_000_000.0
 	rothBalance := 0.0
 	monthlyRMD := 5_000.0
-	marginalRate := 0.22
 	needed := 1_000.0 // small need; RMD will satisfy it and have surplus
 
 	rothBasis := 0.0
@@ -76,7 +74,6 @@ func TestExecutePortfolioCashFlow_F073_PartialShortfallSurplusReportedGross(t *t
 		monthlyRMD,
 		true,
 		0.0,
-		marginalRate,
 		&taxDeferred,
 		&taxable,
 		&rothBalance,

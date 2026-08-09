@@ -53,6 +53,17 @@ type runOutput struct {
 	Stochastic bool         `json:"monte_carlo_omitted"`
 }
 
+// recoverToError converts a panic into an error so a bad scenario fails one
+// tool call instead of terminating the stdio session. The go-sdk dispatches
+// every tool call on its own goroutine with no recover of its own, so this
+// must run via a defer inside each handler closure — a recover in main
+// cannot catch a panic on a goroutine main didn't spawn.
+func recoverToError(tool string, err *error) {
+	if r := recover(); r != nil {
+		*err = fmt.Errorf("%s panicked: %v", tool, r)
+	}
+}
+
 // NewServer builds the MCP server. Every tool is read-only with respect to the
 // data directory: scenarios are loaded and copied, never written.
 func NewServer(src *Source) *mcp.Server {
@@ -62,7 +73,8 @@ func NewServer(src *Source) *mcp.Server {
 		Name: "list_scenarios",
 		Description: "List the saved what-if retirement scenarios with a one-line summary of each. " +
 			"Call this first to find out which plans exist and which one is active.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listInput) (*mcp.CallToolResult, listOutput, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listInput) (res *mcp.CallToolResult, out listOutput, err error) {
+		defer recoverToError("list_scenarios", &err)
 		list, err := src.List()
 		if err != nil {
 			return nil, listOutput{}, err
@@ -76,7 +88,8 @@ func NewServer(src *Source) *mcp.Server {
 			"budget fit, RMD schedule, tax totals and Monte Carlo success rate. Per-year detail only — " +
 			"use get_months for month-by-month figures. Read the whatif://assumptions resource before " +
 			"drawing conclusions; several real-world effects are not modeled.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in analysisInput) (*mcp.CallToolResult, analysisOutput, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in analysisInput) (res *mcp.CallToolResult, out analysisOutput, err error) {
+		defer recoverToError("get_analysis", &err)
 		settings, name, err := src.Load(in.Scenario)
 		if err != nil {
 			return nil, analysisOutput{}, err
@@ -93,7 +106,8 @@ func NewServer(src *Source) *mcp.Server {
 		Name: "get_months",
 		Description: "Get month-by-month projection detail for an inclusive month range, for explaining " +
 			"why a particular year behaves the way it does. At most 120 months per call.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in monthsInput) (*mcp.CallToolResult, monthsOutput, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in monthsInput) (res *mcp.CallToolResult, out monthsOutput, err error) {
+		defer recoverToError("get_months", &err)
 		settings, name, err := src.Load(in.Scenario)
 		if err != nil {
 			return nil, monthsOutput{}, err
@@ -116,7 +130,8 @@ func NewServer(src *Source) *mcp.Server {
 			"without modifying the saved plan. Use this to check a claim before making it. " +
 			"Monte Carlo is omitted from the result because it is stochastic and would make two " +
 			"identical runs disagree; compare the deterministic figures instead.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runInput) (*mcp.CallToolResult, runOutput, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runInput) (res *mcp.CallToolResult, out runOutput, err error) {
+		defer recoverToError("run_scenario", &err)
 		settings, name, err := src.Load(in.Scenario)
 		if err != nil {
 			return nil, runOutput{}, err

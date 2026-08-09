@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "whatif": {
+      "command": "go",
+      "args": ["run", "./cmd/whatif-mcp"]
+    }
+  }
+}

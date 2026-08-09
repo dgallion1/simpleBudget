@@ -309,6 +309,18 @@ make test-coverage
 make help
 ```
 
+## Talking to your plan (MCP)
+
+`cmd/whatif-mcp` serves the what-if planner over MCP on stdio, so you can ask
+questions about a plan in Claude Code — what a number means, why it moved, and
+what happens under a different assumption — and have it re-run the engine to
+check. It reads scenarios and runs projections; it never writes to `data/` and
+makes no network calls.
+
+The repo ships a `.mcp.json`, so Claude Code picks it up from the repo root. Four
+tools: `list_scenarios`, `get_analysis`, `get_months`, `run_scenario`, plus a
+`whatif://assumptions` resource describing what the engine does not model.
+
 ## Project Structure
 
 ```
@@ -317,7 +329,8 @@ budget2/
 │   ├── server/                  # Main server application
 │   │   ├── main.go              # HTTP handlers and routing
 │   │   └── main_test.go         # Integration tests
-│   └── validate/                # CLI validation tool
+│   ├── validate/                # CLI validation tool
+│   └── whatif-mcp/              # MCP server (stdio) for the what-if planner
 ├── internal/
 │   ├── config/                  # Environment configuration
 │   ├── models/                  # Data structures

@@ -1,6 +1,7 @@
 package whatifmcp
 
 import (
+	"encoding/json"
 	"testing"
 
 	"budget2/internal/models"
@@ -66,10 +67,52 @@ func TestShapeAnalysis_OmitsMonteCarloWhenNotRequested(t *testing.T) {
 	}
 }
 
+func TestShapeAnalysis_SustainabilityScoreZeroMarshalsWithKey(t *testing.T) {
+	a := &models.WhatIfAnalysis{
+		Settings:       &models.WhatIfSettings{PortfolioValue: 1_000_000, ProjectionYears: 2},
+		Projection:     &models.ProjectionResult{FinalBalance: 100_000, Survives: false},
+		Sustainability: &models.SustainabilityScore{Score: 0, Label: "Critical"},
+	}
+	v := ShapeAnalysis(a, true)
+	if v.Headline.SustainabilityScore != 0 {
+		t.Errorf("SustainabilityScore = %d, want 0", v.Headline.SustainabilityScore)
+	}
+	if v.Headline.SustainabilityLabel != "Critical" {
+		t.Errorf("SustainabilityLabel = %q, want Critical", v.Headline.SustainabilityLabel)
+	}
+	// Verify the key is present in JSON even with value 0
+	data, err := json.Marshal(v.Headline)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+	if !contains(string(data), "sustainability_score") {
+		t.Errorf("JSON missing sustainability_score key: %s", string(data))
+	}
+}
+
 func TestShapeAnalysis_NilSectionsDoNotPanic(t *testing.T) {
 	a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{}}
 	v := ShapeAnalysis(a, true)
 	if v.Budget != nil || v.RMD != nil || v.Tax != nil || v.MonteCarlo != nil {
 		t.Errorf("expected nil sections for an empty analysis, got %+v", v)
 	}
+
+	// Test with genuinely nil Projection
+	a2 := &models.WhatIfAnalysis{}
+	v2 := ShapeAnalysis(a2, true)
+	if len(v2.Years) != 0 {
+		t.Errorf("Years = %v, want empty when Projection is nil", v2.Years)
+	}
+	if v2.Headline.FinalBalance != 0 {
+		t.Errorf("FinalBalance = %v, want 0 when Projection is nil", v2.Headline.FinalBalance)
+	}
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

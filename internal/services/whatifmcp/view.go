@@ -33,7 +33,7 @@ type HeadlineView struct {
 	Survives            bool    `json:"survives"`
 	DepletionMonth      *int    `json:"depletion_month,omitempty"`
 	ProjectionYears     int     `json:"projection_years"`
-	SustainabilityScore int     `json:"sustainability_score,omitempty"`
+	SustainabilityScore int     `json:"sustainability_score"`
 	SustainabilityLabel string  `json:"sustainability_label,omitempty"`
 }
 

@@ -2,8 +2,14 @@ package whatifmcp
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"budget2/internal/models"
+	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -177,6 +183,131 @@ func TestPanicInToolHandlerSurvivesRealTransport(t *testing.T) {
 	}
 	if len(toolsRes.Tools) != 1 {
 		t.Errorf("session unusable after recovered panic: ListTools = %v", toolsRes.Tools)
+	}
+}
+
+// newTestSourceWithSocialSecurity builds a synthesized Source the same way
+// newTestSource (scenarios_test.go) does, but with a Social Security config
+// added. DefaultHooks' SS-income hook is a no-op when no Social Security is
+// configured, so newTestSource's plain fixture would reconcile identically
+// whether or not get_months is wired to the hooks — it would not actually
+// catch the Critical-1 regression (get_months silently dropping
+// retirement.DefaultHooks()). Adding a Social Security config makes the two
+// tools' outputs provably diverge without the fix.
+func newTestSourceWithSocialSecurity(t *testing.T) *Source {
+	t.Helper()
+	dir := t.TempDir()
+
+	settings := models.DefaultWhatIfSettings()
+	settings.PortfolioValue = 1_500_000
+	settings.ProjectionYears = 3
+	settings.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 2_500,
+		FRA:        67,
+		// ClaimAge == CurrentAge (65): SS income starts at month 0, so the
+		// hooked and unhooked runs diverge from the very first month rather
+		// than only after some future claim age — any yearN this test picks
+		// is guaranteed to exercise the hook.
+		ClaimAge:       65,
+		SpouseClaimAge: 65,
+	}
+	b, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatalf("marshal settings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "whatif.json"), b, 0o644); err != nil {
+		t.Fatalf("write whatif.json: %v", err)
+	}
+
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	return NewSource(dir, store)
+}
+
+// decodeToolResult marshals a CallToolResult's StructuredContent back to
+// JSON and unmarshals it into T. StructuredContent arrives client-side as a
+// generically-decoded `any` (map[string]any for an object), not the
+// server's original typed value or a json.RawMessage, so a direct type
+// assertion to T is not available — round-tripping through json is the
+// portable way to recover the typed value.
+func decodeToolResult[T any](t *testing.T, res *mcp.CallToolResult) T {
+	t.Helper()
+	if res.IsError {
+		t.Fatalf("tool call returned an error result: %+v", res.Content)
+	}
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal StructuredContent: %v", err)
+	}
+	var out T
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal StructuredContent into %T: %v", out, err)
+	}
+	return out
+}
+
+// TestGetMonthsReconcilesWithGetAnalysis guards the Critical-1 seam: both
+// get_analysis and get_months must run the projection through the same
+// engine.Hooks (retirement.DefaultHooks()), or they silently disagree about
+// the same plan — on the real active plan this made get_analysis report
+// survival with a $13.96M final balance while get_months showed depletion
+// at month 417. The invariant checked here: get_months' row for the last
+// month of projection year N must equal get_analysis's years[N].ending_balance
+// (both whole-dollar rounded), driven over the same in-memory MCP transport
+// server_test.go's other tests use, against the synthesized (never real
+// data/) fixture from newTestSourceWithSocialSecurity.
+func TestGetMonthsReconcilesWithGetAnalysis(t *testing.T) {
+	ctx := context.Background()
+
+	srv := NewServer(newTestSourceWithSocialSecurity(t))
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.0"}, nil)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+
+	serverSession, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	defer serverSession.Close()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer clientSession.Close()
+
+	analysisRes, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_analysis",
+		Arguments: analysisInput{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(get_analysis): %v", err)
+	}
+	aOut := decodeToolResult[analysisOutput](t, analysisRes)
+	const yearN = 1
+	if len(aOut.Analysis.Years) <= yearN {
+		t.Fatalf("get_analysis returned %d years, need at least %d", len(aOut.Analysis.Years), yearN+1)
+	}
+	wantEnding := aOut.Analysis.Years[yearN].EndingBalance
+
+	lastMonthOfYearN := yearN*12 + 11
+	monthsRes, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_months",
+		Arguments: monthsInput{FromMonth: lastMonthOfYearN, ToMonth: lastMonthOfYearN},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(get_months): %v", err)
+	}
+	mOut := decodeToolResult[monthsOutput](t, monthsRes)
+	if len(mOut.Months) != 1 {
+		t.Fatalf("get_months returned %d rows, want 1", len(mOut.Months))
+	}
+	gotBalance := mOut.Months[0].PortfolioBalance
+
+	if gotBalance != wantEnding {
+		t.Errorf("get_months month %d portfolio_balance = %v, want get_analysis years[%d].ending_balance = %v "+
+			"(both tools must run the projection with the same hooks)", lastMonthOfYearN, gotBalance, yearN, wantEnding)
 	}
 }
 

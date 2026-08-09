@@ -70,7 +70,6 @@ type TaxView struct {
 	TotalStateTaxPaid    float64 `json:"total_state_tax_paid"`
 	TotalTaxPaid         float64 `json:"total_tax_paid"`
 	AverageEffectiveRate float64 `json:"average_effective_rate"`
-	ConversionTaxPaid    float64 `json:"conversion_tax_paid"`
 }
 
 // MonteCarloView carries stats only, never the full distribution.
@@ -140,7 +139,6 @@ func ShapeAnalysis(a *models.WhatIfAnalysis, includeMonteCarlo bool) AnalysisVie
 			TotalStateTaxPaid:    round0(t.TotalStateTaxPaid),
 			TotalTaxPaid:         round0(t.TotalTaxPaid),
 			AverageEffectiveRate: t.AverageEffectiveRate,
-			ConversionTaxPaid:    round0(t.ConversionTaxPaid),
 		}
 	}
 	if includeMonteCarlo && a.MonteCarlo != nil && a.MonteCarlo.Stats != nil {

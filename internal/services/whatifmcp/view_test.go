@@ -2,6 +2,7 @@ package whatifmcp
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"budget2/internal/models"
@@ -85,7 +86,7 @@ func TestShapeAnalysis_SustainabilityScoreZeroMarshalsWithKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal failed: %v", err)
 	}
-	if !contains(string(data), "sustainability_score") {
+	if !strings.Contains(string(data), "sustainability_score") {
 		t.Errorf("JSON missing sustainability_score key: %s", string(data))
 	}
 }
@@ -106,13 +107,4 @@ func TestShapeAnalysis_NilSectionsDoNotPanic(t *testing.T) {
 	if v2.Headline.FinalBalance != 0 {
 		t.Errorf("FinalBalance = %v, want 0 when Projection is nil", v2.Headline.FinalBalance)
 	}
-}
-
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

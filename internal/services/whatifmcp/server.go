@@ -47,10 +47,10 @@ type runInput struct {
 }
 
 type runOutput struct {
-	Scenario   string       `json:"scenario"`
-	Applied    Overrides    `json:"applied_overrides"`
-	Analysis   AnalysisView `json:"analysis"`
-	Stochastic bool         `json:"monte_carlo_omitted"`
+	Scenario          string       `json:"scenario"`
+	Applied           Overrides    `json:"applied_overrides"`
+	Analysis          AnalysisView `json:"analysis"`
+	MonteCarloOmitted bool         `json:"monte_carlo_omitted"`
 }
 
 // recoverToError converts a panic into an error so a bad scenario fails one
@@ -64,10 +64,22 @@ func recoverToError(tool string, err *error) {
 	}
 }
 
+// serverInstructions is returned to the client on initialize. It is the
+// closest thing this design has to a system prompt for the model consuming
+// these tools, so it names the grounding rule directly rather than leaving it
+// to be inferred from individual tool descriptions.
+const serverInstructions = "These tools read and re-run a personal retirement projection for one " +
+	"household. Ground every answer in the figures the tools actually return — " +
+	"do not estimate or recompute by hand. Before drawing conclusions, read the " +
+	"whatif://assumptions resource: it lists what the projection engine does not " +
+	"model (mortality, market timing, and more), and a figure it never accounted " +
+	"for should not be presented as settled."
+
 // NewServer builds the MCP server. Every tool is read-only with respect to the
 // data directory: scenarios are loaded and copied, never written.
 func NewServer(src *Source) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "whatif", Version: "v0.1.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "whatif", Version: "v0.1.0"},
+		&mcp.ServerOptions{Instructions: serverInstructions})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "list_scenarios",
@@ -85,9 +97,10 @@ func NewServer(src *Source) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "get_analysis",
 		Description: "Get the full analysis for a saved scenario: headline balances, per-year projection, " +
-			"budget fit, RMD schedule, tax totals and Monte Carlo success rate. Per-year detail only — " +
-			"use get_months for month-by-month figures. Read the whatif://assumptions resource before " +
-			"drawing conclusions; several real-world effects are not modeled.",
+			"budget fit, RMD start age/timing/tax-deferred value (not a year-by-year schedule), tax totals " +
+			"and Monte Carlo success rate. Per-year detail only — use get_months for month-by-month figures. " +
+			"Read the whatif://assumptions resource before drawing conclusions; several real-world effects " +
+			"are not modeled.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in analysisInput) (res *mcp.CallToolResult, out analysisOutput, err error) {
 		defer recoverToError("get_analysis", &err)
 		settings, name, err := src.Load(in.Scenario)
@@ -105,7 +118,8 @@ func NewServer(src *Source) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "get_months",
 		Description: "Get month-by-month projection detail for an inclusive month range, for explaining " +
-			"why a particular year behaves the way it does. At most 120 months per call.",
+			"why a particular year behaves the way it does. At most 120 months per call. Read the " +
+			"whatif://assumptions resource before drawing conclusions; several real-world effects are not modeled.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in monthsInput) (res *mcp.CallToolResult, out monthsOutput, err error) {
 		defer recoverToError("get_months", &err)
 		settings, name, err := src.Load(in.Scenario)
@@ -116,7 +130,7 @@ func NewServer(src *Source) *mcp.Server {
 		if err != nil {
 			return nil, monthsOutput{}, fmt.Errorf("prepare %s: %w", name, err)
 		}
-		proj := engine.New().Run(engine.Input{Prepared: prepared})
+		proj := engine.New().Run(engine.Input{Prepared: prepared, Hooks: retirement.DefaultHooks()})
 		rows, err := MonthWindow(proj, in.FromMonth, in.ToMonth)
 		if err != nil {
 			return nil, monthsOutput{}, err
@@ -129,7 +143,8 @@ func NewServer(src *Source) *mcp.Server {
 		Description: "Re-run a saved scenario with changed assumptions and return the resulting analysis, " +
 			"without modifying the saved plan. Use this to check a claim before making it. " +
 			"Monte Carlo is omitted from the result because it is stochastic and would make two " +
-			"identical runs disagree; compare the deterministic figures instead.",
+			"identical runs disagree; compare the deterministic figures instead. Read the " +
+			"whatif://assumptions resource before drawing conclusions; several real-world effects are not modeled.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runInput) (res *mcp.CallToolResult, out runOutput, err error) {
 		defer recoverToError("run_scenario", &err)
 		settings, name, err := src.Load(in.Scenario)
@@ -140,7 +155,7 @@ func NewServer(src *Source) *mcp.Server {
 		if err != nil {
 			return nil, runOutput{}, err
 		}
-		return nil, runOutput{Scenario: name, Applied: in.Overrides, Analysis: view, Stochastic: true}, nil
+		return nil, runOutput{Scenario: name, Applied: in.Overrides, Analysis: view, MonteCarloOmitted: true}, nil
 	})
 
 	s.AddResource(&mcp.Resource{

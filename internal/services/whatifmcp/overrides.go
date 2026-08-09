@@ -110,6 +110,12 @@ func (o Overrides) validate() error {
 	if o.ProjectionYears != nil && (*o.ProjectionYears < 1 || *o.ProjectionYears > 60) {
 		return fmt.Errorf("projection_years must be between 1 and 60, got %d", *o.ProjectionYears)
 	}
+	if o.RothConversionStart != nil && o.RothConversionEnd != nil && *o.RothConversionEnd != 0 &&
+		*o.RothConversionEnd < *o.RothConversionStart {
+		return fmt.Errorf(
+			"roth_conversion_end_year (%d) must not be before roth_conversion_start_year (%d): this window would run zero conversions in every year",
+			*o.RothConversionEnd, *o.RothConversionStart)
+	}
 	if a := o.SocialSecurityClaimAge; a != nil && (*a < 62 || *a > 70) {
 		return fmt.Errorf("social_security_claim_age must be between 62 and 70, got %d", *a)
 	}

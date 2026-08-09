@@ -1,11 +1,13 @@
 package whatifmcp
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"budget2/internal/models"
 	"budget2/internal/services/storage"
 )
 
@@ -32,8 +34,8 @@ func TestSource_LoadEmptyNameResolvesActive(t *testing.T) {
 	if settings == nil {
 		t.Fatal("Load(\"\") returned nil settings")
 	}
-	if name == "" {
-		t.Error("Load(\"\") should report the resolved scenario filename")
+	if name != "whatif.json" {
+		t.Errorf("Load(\"\") resolved filename = %q, want %q", name, "whatif.json")
 	}
 }
 
@@ -92,63 +94,46 @@ func TestSource_ListFlagsUnreadableScenario(t *testing.T) {
 	}
 }
 
-// newTestSource builds a Source over a temp copy of the repo's shipped
-// settings fixtures. Never point a test at the real data/ directory.
+// newTestSource builds a Source over a synthesized settings fixture in a
+// temp directory: one valid whatif.json derived from
+// models.DefaultWhatIfSettings(), which List() reports as the sole active
+// scenario. Never point a test at the real data/ directory — it is
+// gitignored and holds the owner's private financial data, so a test that
+// reads it fails on any machine that doesn't have that directory.
 func newTestSource(t *testing.T) *Source {
 	t.Helper()
-	dir := t.TempDir()
-	src := filepath.Join("..", "..", "..", "data", "settings")
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		t.Fatalf("read fixtures: %v", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(src, e.Name()))
-		if err != nil {
-			t.Fatalf("read %s: %v", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o644); err != nil {
-			t.Fatalf("write %s: %v", e.Name(), err)
-		}
-	}
-	store, err := storage.New(dir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
-	return NewSource(dir, store)
+	return newTestSourceFixture(t, false)
 }
 
-// newTestSourceWithBrokenScenario builds on newTestSource's fixture copy but
-// also drops in a deliberately corrupt whatif_broken.json, so List() has an
-// unreadable entry to report alongside the valid ones. Kept separate from
-// newTestSource so the existing tests' assertions (exact scenario count,
-// exactly one active entry) aren't disturbed by the extra file.
+// newTestSourceWithBrokenScenario builds on newTestSource's fixture but also
+// drops in a deliberately corrupt whatif_broken.json, so List() has an
+// unreadable entry to report alongside the valid one.
 func newTestSourceWithBrokenScenario(t *testing.T) *Source {
 	t.Helper()
+	return newTestSourceFixture(t, true)
+}
+
+// newTestSourceFixture writes a synthesized whatif.json (and, if
+// withBroken, a corrupt whatif_broken.json) into a temp directory and opens
+// a Source over it.
+func newTestSourceFixture(t *testing.T, withBroken bool) *Source {
+	t.Helper()
 	dir := t.TempDir()
-	src := filepath.Join("..", "..", "..", "data", "settings")
-	entries, err := os.ReadDir(src)
+
+	b, err := json.Marshal(models.DefaultWhatIfSettings())
 	if err != nil {
-		t.Fatalf("read fixtures: %v", err)
+		t.Fatalf("marshal default settings: %v", err)
 	}
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(src, e.Name()))
-		if err != nil {
-			t.Fatalf("read %s: %v", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o644); err != nil {
-			t.Fatalf("write %s: %v", e.Name(), err)
+	if err := os.WriteFile(filepath.Join(dir, "whatif.json"), b, 0o644); err != nil {
+		t.Fatalf("write whatif.json: %v", err)
+	}
+
+	if withBroken {
+		if err := os.WriteFile(filepath.Join(dir, "whatif_broken.json"), []byte("{not valid json"), 0o644); err != nil {
+			t.Fatalf("write whatif_broken.json: %v", err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "whatif_broken.json"), []byte("{not valid json"), 0o644); err != nil {
-		t.Fatalf("write whatif_broken.json: %v", err)
-	}
+
 	store, err := storage.New(dir)
 	if err != nil {
 		t.Fatalf("storage.New: %v", err)

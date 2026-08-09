@@ -11,10 +11,13 @@ func projectionWithMonths(n int) *models.ProjectionResult {
 	months := make([]models.ProjectionMonth, n)
 	for i := range months {
 		months[i] = models.ProjectionMonth{
-			Month:            i,
-			PortfolioBalance: 1_000_000 - float64(i)*100.6,
-			TaxesPaid:        10.4,
-			RMDWithdrawal:    5.5,
+			Month:                     i,
+			PortfolioBalance:          1_000_000 - float64(i)*100.6,
+			TaxesPaid:                 10.4,
+			RMDWithdrawal:             5.5,
+			WithdrawalFromTaxDeferred: 20.7,
+			WithdrawalFromTaxable:     8.3,
+			WithdrawalFromRoth:        3.1,
 		}
 	}
 	return &models.ProjectionResult{Months: months}
@@ -33,6 +36,15 @@ func TestMonthWindow_ReturnsInclusiveRange(t *testing.T) {
 	}
 	if rows[0].TaxesPaid != 10 {
 		t.Errorf("TaxesPaid = %v, want 10 (rounded)", rows[0].TaxesPaid)
+	}
+	if rows[0].WithdrawalFromTaxDeferred != 21 {
+		t.Errorf("WithdrawalFromTaxDeferred = %v, want 21 (rounded)", rows[0].WithdrawalFromTaxDeferred)
+	}
+	if rows[0].WithdrawalFromTaxable != 8 {
+		t.Errorf("WithdrawalFromTaxable = %v, want 8 (rounded)", rows[0].WithdrawalFromTaxable)
+	}
+	if rows[0].WithdrawalFromRoth != 3 {
+		t.Errorf("WithdrawalFromRoth = %v, want 3 (rounded)", rows[0].WithdrawalFromRoth)
 	}
 }
 
@@ -56,8 +68,12 @@ func TestMonthWindow_RejectsOutOfRangeStatingValidRange(t *testing.T) {
 	}
 }
 
-func TestMonthWindow_RejectsInvertedRange(t *testing.T) {
-	if _, err := MonthWindow(projectionWithMonths(24), 10, 5); err == nil {
+func TestMonthWindow_RejectsInvertedRangeStatingValidRange(t *testing.T) {
+	_, err := MonthWindow(projectionWithMonths(24), 10, 5)
+	if err == nil {
 		t.Fatal("expected an error when from > to")
+	}
+	if !strings.Contains(err.Error(), "0") || !strings.Contains(err.Error(), "23") {
+		t.Errorf("error should state the valid 0..23 range, got: %v", err)
 	}
 }

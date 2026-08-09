@@ -80,6 +80,7 @@ func TestApply_RejectsInvalidValuesNamingTheField(t *testing.T) {
 		{"claim age too low", Overrides{SocialSecurityClaimAge: ptrInt(61)}, "social_security_claim_age"},
 		{"claim age too high", Overrides{SocialSecurityClaimAge: ptrInt(71)}, "social_security_claim_age"},
 		{"zero projection years", Overrides{ProjectionYears: ptrInt(0)}, "projection_years"},
+		{"inverted roth conversion window", Overrides{RothConversionStart: ptrInt(5), RothConversionEnd: ptrInt(2)}, "roth_conversion_end_year"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := Apply(baseSettings(), tc.o); err == nil {

@@ -129,9 +129,16 @@ Returns the shaped analysis:
   and the per-year RMD schedule.
 - **Tax** — total federal/state/total paid, average effective rate, conversion
   tax paid, per-year tax summary.
-- **Monte Carlo** — stats only, not the full distribution.
-- **Tax optimizer** — eligibility, baseline vs best summary, candidate count.
-  Not the embedded settings.
+- **Monte Carlo** — stats only, not the full distribution. Note that the
+  orchestrator auto-seeds the MC RNG from the clock, so these figures differ
+  slightly between two calls on an unchanged scenario.
+
+**Tax-optimizer output is deliberately absent.** `retirement.RunFull` does not
+populate `WhatIfAnalysis.TaxOptimizer`; the optimizer is a separate
+`RunTaxOptimizer` call kept off the interactive recalc path because it scores
+many candidates and runs Monte Carlo over the finalists. Surfacing it belongs in
+a later `get_tax_optimizer` tool that pays that cost explicitly, not in the
+routine read path.
 
 ### `get_months`
 

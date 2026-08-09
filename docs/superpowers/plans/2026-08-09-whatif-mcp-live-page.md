@@ -2063,7 +2063,7 @@ func (c *Client) EnsureServer(ctx context.Context) (State, bool, error) {
 		return State{}, false, err
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/server")
+	cmd := serverCommand()
 	cmd.Env = append(envWithout("BUDGET_DATA_DIR"), "BUDGET_DATA_DIR="+dataDir)
 	if err := cmd.Start(); err != nil {
 		return State{}, false, fmt.Errorf("starting cmd/server: %w", err)
@@ -2087,7 +2087,31 @@ func (c *Client) EnsureServer(ctx context.Context) (State, bool, error) {
 }
 ```
 
-Add the two small helpers in the same file: `isConnectionRefused(err error) bool` (use `errors.Is(err, syscall.ECONNREFUSED)`, falling back to a `*net.OpError` check) and `envWithout(key string) []string` (copy `os.Environ()` dropping `key=`).
+Add three small helpers in the same file:
+
+- `isConnectionRefused(err error) bool` — `errors.Is(err, syscall.ECONNREFUSED)`, falling back to a `*net.OpError` check.
+- `envWithout(key string) []string` — copy `os.Environ()` dropping `key=`.
+- `serverCommand() *exec.Cmd` — prefer the built binary:
+
+```go
+// serverCommand builds the command that starts cmd/server.
+//
+// The built binary is preferred over `go run`: go run compiles on every cold
+// start and produces a two-level process tree (go run -> server), which makes
+// the deliberately-detached lifetime murky -- killing the parent would leave
+// the server orphaned rather than stopping it. `make build` produces ./budget2
+// from ./cmd/server, so on any working checkout the binary is there. The go run
+// fallback keeps a fresh clone working before the first make build.
+func serverCommand() *exec.Cmd {
+	const built = "./budget2"
+	if info, err := os.Stat(built); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		return exec.Command(built)
+	}
+	return exec.Command("go", "run", "./cmd/server")
+}
+```
+
+Add a test asserting `serverCommand()` picks the binary when an executable `./budget2` is present in the working directory and falls back to `go run` when it is not. Use `t.Chdir` (Go 1.24+) so the test does not leak a working-directory change.
 
 - [ ] **Step 4: Run to verify they pass**
 
@@ -2573,10 +2597,23 @@ The swap mechanism cannot be verified in Go. The sentinel, the `HX-Trigger` base
 
 **Files:**
 - Create: `docs/superpowers/specs/2026-08-09-whatif-mcp-live-page-smoke.md`
-- Create: `scripts/whatif-poll-smoke.js` (Playwright)
 
 **Interfaces:**
 - Consumes: everything above; `scripts/whatif-verify.sh` for a throwaway instance.
+
+**Method — MCP-driven, no committed script.** budget2 has no `package.json` and no
+`node_modules`; it is Go plus shell and python. Adding an npm toolchain for one
+test is not worth it, and this repo already has a precedent:
+`docs/superpowers/specs/2026-05-03-major-expense-checkbox-pinning-smoke.md` was
+executed through the browser-automation MCPs with the results written into the
+smoke doc. Do the same here — drive `mcp__plugin_playwright_playwright__*`
+against the verify instance and record the results table. The committed artifact
+is the smoke document, not a script.
+
+If the browser MCPs are unavailable in the executing environment, follow that
+precedent's fallback exactly: perform the static-render and JS-syntax checks you
+can, record which interactive checks were **not** executed, and say so plainly at
+the top of the document. Do not report an unexecuted check as passing.
 
 - [ ] **Step 1: Write the smoke document**
 
@@ -2591,27 +2628,31 @@ Follow the shape of `docs/superpowers/specs/2026-05-03-major-expense-checkbox-pi
 7. **Focus guard.** Focus the monthly-expenses input and type without blurring. Trigger an external apply. Assert the input's value and focus survive for at least 6s.
 8. **Existing swaps unaffected.** Click "Sync", add an income source, and switch scenarios. Assert no `htmx:targetError` appears in the console for the whole session.
 
-- [ ] **Step 2: Write the Playwright script**
-
-`scripts/whatif-poll-smoke.js`, driving `http://localhost:8099` (the `whatif-verify.sh` port), asserting checks 1-8 and collecting console errors throughout. Fail the run if any `htmx:targetError` or uncaught exception is observed.
-
-- [ ] **Step 3: Run it against a throwaway instance**
+- [ ] **Step 2: Run the checks against a throwaway instance**
 
 ```bash
 scripts/whatif-verify.sh start 8099
-node scripts/whatif-poll-smoke.js
+```
+
+Then drive the browser through the Playwright MCP against `http://localhost:8099/whatif`, working through checks 1-8. Collect console messages for the whole session and fail the run on any `htmx:targetError` or uncaught exception.
+
+Stop it when done:
+
+```bash
 scripts/whatif-verify.sh stop 8099
 ```
 
-Expected: all eight checks pass, no console errors.
-
 `whatif-verify.sh` runs against a **copy** of `data/`, so the smoke test cannot touch the real plan.
+
+- [ ] **Step 3: Record the results in the smoke document**
+
+Fill in the results table with what was actually observed, one row per check. Any check you could not execute is recorded as not executed, with the reason — never as a pass.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-08-09-whatif-mcp-live-page-smoke.md scripts/whatif-poll-smoke.js
-git commit -m "test: browser smoke test for the what-if poll mechanism
+git add docs/superpowers/specs/2026-08-09-whatif-mcp-live-page-smoke.md
+git commit -m "test: browser smoke verification for the what-if poll mechanism
 
 The sentinel, the HX-Trigger baseline, chart reload, and the focus guard have
 no Go-testable surface, and they are the mechanism the whole feature rests on.

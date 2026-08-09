@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -26,14 +27,25 @@ func resolveDataDir(flagValue string) string {
 	return filepath.Join("data", "settings")
 }
 
+// checkSettingsDir verifies the directory exists AND is readable. os.Stat is
+// insufficient: stat(2) only needs search permission on the parents, so a
+// directory with no read permission of its own still stats successfully —
+// the failure would then surface per-call instead of at startup.
+func checkSettingsDir(dir string) error {
+	if _, err := os.ReadDir(dir); err != nil {
+		return fmt.Errorf("settings directory %q is not readable: %w", dir, err)
+	}
+	return nil
+}
+
 func main() {
 	dir := flag.String("data", "", "settings directory (default ./data/settings)")
 	flag.Parse()
 
 	settingsDir := resolveDataDir(*dir)
-	if _, err := os.Stat(settingsDir); err != nil {
+	if err := checkSettingsDir(settingsDir); err != nil {
 		// stdout is the MCP transport — diagnostics must go to stderr.
-		log.Fatalf("settings directory %q is not readable: %v", settingsDir, err)
+		log.Fatal(err)
 	}
 
 	store, err := storage.New(settingsDir)

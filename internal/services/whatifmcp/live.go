@@ -39,6 +39,10 @@ type Client struct {
 	baseURL     string
 	settingsDir string
 	http        *http.Client
+	// newCmd builds the command EnsureServer spawns. It defaults to
+	// serverCommand; tests override it so EnsureServer's spawn-gating logic
+	// can be exercised without launching a real cmd/server.
+	newCmd func() *exec.Cmd
 }
 
 func NewClient(baseURL, settingsDir string) *Client {
@@ -46,6 +50,7 @@ func NewClient(baseURL, settingsDir string) *Client {
 		baseURL:     baseURL,
 		settingsDir: settingsDir,
 		http:        &http.Client{Timeout: 10 * time.Second},
+		newCmd:      serverCommand,
 	}
 }
 
@@ -192,6 +197,30 @@ func envWithout(key string) []string {
 	return out
 }
 
+// crashBufferBytes bounds how much of a spawned server's stderr EnsureServer
+// keeps, so a chatty process cannot balloon memory. The tail is what
+// matters -- a crash message is almost always the last thing written.
+const crashBufferBytes = 4096
+
+// tailWriter is an io.Writer that retains only the last max bytes written to
+// it.
+type tailWriter struct {
+	max int
+	buf []byte
+}
+
+func (w *tailWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	if len(w.buf) > w.max {
+		w.buf = w.buf[len(w.buf)-w.max:]
+	}
+	return len(p), nil
+}
+
+func (w *tailWriter) String() string {
+	return string(w.buf)
+}
+
 // EnsureServer returns the state of a usable server, starting one if nothing is
 // listening. The bool reports whether this call started it.
 //
@@ -211,12 +240,19 @@ func (c *Client) EnsureServer(ctx context.Context) (State, bool, error) {
 		return State{}, false, err
 	}
 
-	cmd := serverCommand()
+	cmd := c.newCmd()
 	cmd.Env = append(envWithout("BUDGET_DATA_DIR"), "BUDGET_DATA_DIR="+dataDir)
+	stderr := &tailWriter{max: crashBufferBytes}
+	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return State{}, false, fmt.Errorf("starting cmd/server: %w", err)
 	}
-	go func() { _ = cmd.Wait() }() // reap; never block the tool call
+
+	// Buffered so the goroutine never blocks on the send, even if we return
+	// from the success path below without ever reading from it -- it still
+	// reaps the process (never leaves a zombie) without blocking this call.
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
 
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
@@ -226,6 +262,17 @@ func (c *Client) EnsureServer(ctx context.Context) (State, bool, error) {
 		select {
 		case <-ctx.Done():
 			return State{}, false, ctx.Err()
+		case waitErr := <-exited:
+			// The process is gone before it ever answered -- report why
+			// instead of waiting out the rest of the 15s and describing a
+			// crash as a slow start.
+			tail := strings.TrimSpace(stderr.String())
+			if tail == "" {
+				tail = "(no output on stderr)"
+			}
+			return State{}, false, fmt.Errorf(
+				"cmd/server exited before it became healthy (%v); stderr:\n%s",
+				waitErr, tail)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}

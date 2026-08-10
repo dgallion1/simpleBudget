@@ -657,6 +657,11 @@ func (sm *SettingsManager) Revision() int {
 	return sm.revision
 }
 
+// SettingsDir returns the directory this manager reads scenarios from.
+func (sm *SettingsManager) SettingsDir() string {
+	return sm.settingsDir
+}
+
 // bumpLocked advances the revision. Caller must hold the write lock.
 func (sm *SettingsManager) bumpLocked() {
 	sm.revision++

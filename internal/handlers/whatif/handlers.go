@@ -748,6 +748,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/scenarios/switch", handleSwitchScenario)
 	r.Delete("/whatif/scenarios/{filename}", handleDeleteScenario)
 	r.Put("/whatif/scenarios/{filename}", handleRenameScenario)
+	r.Get("/whatif/state", handleWhatIfState)
 	r.Post("/whatif/chain", handleWhatIfUpdateChain)
 	r.Delete("/whatif/chain/{index}", handleWhatIfDeleteChainLink)
 	r.Post("/whatif/social-security", handleWhatIfSocialSecurity)

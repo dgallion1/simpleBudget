@@ -1200,12 +1200,20 @@ In `web/templates/pages/whatif.html`, rename the existing `{{define "whatif-resu
      Deliberately NOT part of "whatif-results": the background poll renders
      that one, and must never rewrite a control the user is currently holding. */}}
 <template>
-    ... everything from the old line 145 through the end, verbatim ...
+    ... the two OOB <template> blocks, old lines 144-255, verbatim ...
 </template>
 {{end}}
 ```
 
-Move the entire OOB body — both `<template>` blocks and everything between them, old lines 144-302 — into `whatif-results-with-oob`, unchanged.
+Move **only the two `<template>` blocks** — old lines 144-255 — into `whatif-results-with-oob`, unchanged.
+
+**Do not move old lines 256-302.** They are the sticky verdict bar and the entire tabbed results workspace (`#whatif-tabs`, all five panels, projection chart, Monte Carlo, tax summary, RMD). That is substantive results content, not an OOB resync block, and it must stay inside `whatif-results` — the poll renders that template, and a poll omitting the charts and figures would defeat the feature. `TestWhatIfResults_TabStructure` renders `whatif-results` directly and asserts the verdict bar and tabs are present; it is the guard on this boundary.
+
+Final split:
+- `whatif-results` — old 141-143 (completeness wrapper) **plus** old 256-302 (verdict bar + tabs).
+- `whatif-results-with-oob` — `{{template "whatif-results" .}}` plus old 144-255 (the two OOB `<template>` blocks).
+
+The OOB blocks therefore render *after* the tabs rather than before them. That is safe: their contents sit inside `<template>` elements, which are not displayed, and htmx resolves `hx-swap-oob` by scanning the whole response regardless of position.
 
 Verify the call site at line 126 (`{{template "whatif-results" .}}` inside `<div id="whatif-results">`) still refers to the **results-only** template. On first page load the left column is rendered directly by the page, so it needs no OOB swap.
 

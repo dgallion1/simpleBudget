@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strconv"
 
 	"budget2/internal/services/retirement/overrides"
 )
@@ -91,4 +92,54 @@ func handleWhatIfApply(w http.ResponseWriter, r *http.Request) {
 		Applied:  o,
 		Revision: revision,
 	})
+}
+
+// handleWhatIfPoll is the page's change detector. It returns 204 when nothing
+// has changed since the caller's baseline -- htmx performs no swap on 204, so
+// the common case costs one integer comparison and runs no analysis, which is
+// what makes a 2s poll acceptable.
+//
+// The comparison is inequality, never `revision > since`: the counter is
+// in-memory, so a tab held across a server restart has a baseline above the
+// fresh counter and must still re-render.
+func handleWhatIfPoll(w http.ResponseWriter, r *http.Request) {
+	if retirementMgr == nil {
+		http.Error(w, "settings manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	// An absent or malformed `since` must never equal a real revision, or a
+	// bad parameter would collide with a fresh counter (revision starts at 0
+	// on every server start) and silently suppress a render instead of
+	// showing fresh figures. -1 is not a value Revision() ever returns.
+	since := -1
+	if v, err := strconv.Atoi(r.URL.Query().Get("since")); err == nil {
+		since = v
+	}
+
+	current := retirementMgr.Revision()
+	if since == current {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// The client advances its baseline from this header. It cannot come from
+	// the body: the response swaps into #whatif-results and never touches the
+	// polling element's own attributes.
+	trigger, err := json.Marshal(map[string]int{"whatif:revision": current})
+	if err == nil {
+		w.Header().Set("HX-Trigger", string(trigger))
+	}
+	renderWhatIfResultsOnly(w, settings, analysis)
 }

@@ -3,6 +3,7 @@ package whatif
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -257,5 +258,89 @@ func TestRenderWhatIfResultsOnly_EmitsNoOOBSwaps(t *testing.T) {
 	renderWhatIfResults(w2, settings, analysis)
 	if !strings.Contains(w2.Body.String(), "hx-swap-oob") {
 		t.Error("user-initiated mutations must still resync the left column via OOB")
+	}
+}
+
+func getPoll(t *testing.T, query string) *http.Response {
+	t.Helper()
+	w := httptest.NewRecorder()
+	handleWhatIfPoll(w, httptest.NewRequest("GET", "/whatif/poll"+query, nil))
+	return w.Result()
+}
+
+func TestHandleWhatIfPoll_204WhenUnchanged(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	current := rm.Revision()
+	resp := getPoll(t, fmt.Sprintf("?since=%d", current))
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) != 0 {
+		t.Fatalf("204 must have an empty body, got %d bytes", len(body))
+	}
+}
+
+func TestHandleWhatIfPoll_200AndTriggerWhenStale(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	stale := rm.Revision()
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	resp := getPoll(t, fmt.Sprintf("?since=%d", stale))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	trigger := resp.Header.Get("HX-Trigger")
+	if trigger == "" {
+		t.Fatal("missing HX-Trigger header -- the client cannot advance its baseline without it")
+	}
+	var parsed map[string]int
+	if err := json.Unmarshal([]byte(trigger), &parsed); err != nil {
+		t.Fatalf("HX-Trigger %q is not JSON: %v", trigger, err)
+	}
+	if parsed["whatif:revision"] != rm.Revision() {
+		t.Fatalf("HX-Trigger revision = %d, want %d", parsed["whatif:revision"], rm.Revision())
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), "hx-swap-oob") {
+		t.Error("the poll response must not contain OOB swaps")
+	}
+}
+
+func TestHandleWhatIfPoll_MissingOrMalformedSinceRendersFully(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	for _, q := range []string{"", "?since=", "?since=banana", "?since=-3"} {
+		t.Run("since="+q, func(t *testing.T) {
+			// A bad parameter must show fresh figures, never suppress them.
+			if resp := getPoll(t, q); resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+		})
+	}
+}
+
+func TestHandleWhatIfPoll_RevisionAheadOfCounterStillRenders(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	// A tab held across a server restart has a baseline above the fresh
+	// counter. The comparison must be inequality, not `revision > since`.
+	resp := getPoll(t, fmt.Sprintf("?since=%d", rm.Revision()+500))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 }

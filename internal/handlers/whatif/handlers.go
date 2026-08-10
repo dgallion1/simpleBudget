@@ -311,14 +311,27 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 	}
 }
 
-// renderWhatIfResults renders the standard whatif-results partial (or its
-// JSON fallback when no renderer is configured) for the given settings and
-// analysis. Completeness findings are computed here so every recalc handler
-// reports them identically.
+// renderWhatIfResults renders the results partial plus the out-of-band swaps
+// that resync the left column. Used by every user-initiated mutation.
 func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis)
+}
+
+// renderWhatIfResultsOnly renders the results column alone, with no OOB swaps.
+// The background poll uses this: it must not rewrite a left-column control the
+// user may be typing into or dragging.
+func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+	renderResultsTemplate(w, "whatif-results", settings, analysis)
+}
+
+// renderResultsTemplate computes the shared results partial data (Completeness
+// findings included so every recalc handler reports them identically) and
+// renders it under the given template name, falling back to JSON when no
+// renderer is configured.
+func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, name, partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)

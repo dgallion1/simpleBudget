@@ -1,6 +1,7 @@
 package whatif
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -225,5 +226,36 @@ func TestHandleWhatIfApply_RejectsMalformedJSON(t *testing.T) {
 
 	if resp := postApply(t, `{"monthly_living_expenses":`); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestRenderWhatIfResultsOnly_EmitsNoOOBSwaps(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("analysis: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	renderWhatIfResultsOnly(w, settings, analysis)
+	body := w.Body.String()
+
+	if strings.Contains(body, "hx-swap-oob") {
+		t.Error("the poll's partial must not contain OOB swaps -- it would rewrite left-column controls the user is holding")
+	}
+	if !strings.Contains(body, "whatif-completeness-wrapper") {
+		t.Error("expected the results content to be present")
+	}
+
+	w2 := httptest.NewRecorder()
+	renderWhatIfResults(w2, settings, analysis)
+	if !strings.Contains(w2.Body.String(), "hx-swap-oob") {
+		t.Error("user-initiated mutations must still resync the left column via OOB")
 	}
 }

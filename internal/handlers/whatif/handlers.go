@@ -141,6 +141,11 @@ func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatI
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if retirementMgr != nil {
+		if trigger, err := json.Marshal(map[string]int{"whatif:revision": retirementMgr.Revision()}); err == nil {
+			w.Header().Set("HX-Trigger", string(trigger))
+		}
+	}
 	renderWhatIfResults(w, settings, analysis)
 }
 

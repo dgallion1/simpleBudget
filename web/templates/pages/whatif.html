@@ -125,6 +125,17 @@
     <div class="order-1 lg:order-none lg:col-span-4 space-y-4" id="whatif-results">
         {{template "whatif-results" .}}
     </div>
+
+    {{/* Change detector. A sibling, never itself swapped, so its 2s timer is
+         never disturbed and detail.target stays #whatif-results for the
+         afterSettle listeners in charts.js, base.html, and portfolio-settings. */}}
+    <div id="whatif-poll"
+         hx-get="/whatif/poll"
+         hx-vals='js:{since: window.__whatifRevision || 0}'
+         hx-trigger="every 2s"
+         hx-target="#whatif-results"
+         hx-swap="innerHTML"
+         hx-sync="#whatif-results:drop"></div>
 </div>
 
 {{template "whatif-quick-adjust" .}}
@@ -135,6 +146,7 @@
 {{template "whatif-spending-preview-scripts" .}}
 {{template "whatif-spending-phases-scripts" .}}
 {{template "whatif-quick-adjust-scripts" .}}
+<script src="/static/js/whatif-poll.js"></script>
 {{end}}
 
 {{define "whatif-results"}}

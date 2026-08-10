@@ -314,12 +314,27 @@ make help
 `cmd/whatif-mcp` serves the what-if planner over MCP on stdio, so you can ask
 questions about a plan in Claude Code — what a number means, why it moved, and
 what happens under a different assumption — and have it re-run the engine to
-check. It reads scenarios and runs projections; it never writes to `data/` and
-makes no network calls.
-
-The repo ships a `.mcp.json`, so Claude Code picks it up from the repo root. Four
-tools: `list_scenarios`, `get_analysis`, `get_months`, `run_scenario`, plus a
+check. Four of its six tools are read-only: `list_scenarios`, `get_analysis`,
+`get_months`, and `run_scenario` only load and copy scenarios. `open_page`
+opens the what-if page (starting `cmd/server` if nothing is listening), and
+`apply_changes` **writes to the saved plan** — it saves changed assumptions
+through the running server's `POST /whatif/apply`. There is also a
 `whatif://assumptions` resource describing what the engine does not model.
+
+The MCP server talks HTTP to a `cmd/server` instance on localhost, default
+`http://localhost:8080`, overridable with `BUDGET_SERVER_URL`. If nothing is
+listening there, `open_page` and `apply_changes` start one. It resolves its
+own data directory from the `-data` flag, else `BUDGET_DATA_DIR`, else
+`./data/settings`, and refuses to write if the server it finds is serving a
+different settings directory than the one it reads. Before its first write to
+a scenario in a session, it snapshots that scenario to a `.bak` file outside
+the data directory; there is no in-app undo, so restoring that file by hand is
+the recovery path for an unwanted change.
+
+The repo ships a `.mcp.json`, so Claude Code picks it up from the repo root
+and runs it with `go run ./cmd/whatif-mcp`, which triggers `go mod download`
+on a fresh clone — real network egress at first launch, from the Go toolchain
+rather than from the server itself.
 
 ## Project Structure
 

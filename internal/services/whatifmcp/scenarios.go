@@ -21,8 +21,10 @@ type ScenarioInfo struct {
 	LoadError       string  `json:"load_error,omitempty"`
 }
 
-// Source reads saved what-if scenarios. Read-only by construction: it exposes
-// no method that writes to the settings directory.
+// Source reads saved what-if scenarios. It writes nothing to the settings
+// directory -- it exposes no method that does -- but it is not network-free:
+// when a live Client is attached, resolving the active scenario makes an
+// HTTP call to the running server to ask which one that is.
 type Source struct {
 	sm *retirement.SettingsManager
 

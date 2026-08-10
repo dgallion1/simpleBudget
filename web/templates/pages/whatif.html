@@ -128,8 +128,13 @@
 
     {{/* Change detector. A sibling, never itself swapped, so its 2s timer is
          never disturbed and detail.target stays #whatif-results for the
-         afterSettle listeners in charts.js, base.html, and portfolio-settings. */}}
-    <div id="whatif-poll"
+         afterSettle listeners in charts.js, base.html, and portfolio-settings.
+         class="hidden" (display:none) takes it out of grid flow so it does not
+         claim a cell/gap-6 row in the parent grid -- do not remove this class,
+         it does not affect polling, since htmx's "every 2s" trigger is a timer
+         on the element, not a visibility-driven behavior, and keeps firing as
+         long as the element stays in the DOM, which display:none preserves. */}}
+    <div id="whatif-poll" class="hidden"
          hx-get="/whatif/poll"
          hx-vals='js:{since: window.__whatifRevision || 0}'
          hx-trigger="every 2s"

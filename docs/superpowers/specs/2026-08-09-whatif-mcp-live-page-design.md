@@ -252,6 +252,7 @@ identically.
 
 ```html
 <div id="whatif-poll"
+     class="hidden"
      hx-get="/whatif/poll"
      hx-vals='js:{since: window.__whatifRevision || 0}'
      hx-trigger="every 2s"

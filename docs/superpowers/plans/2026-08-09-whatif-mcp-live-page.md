@@ -1533,6 +1533,7 @@ In `web/templates/pages/whatif.html`, immediately **after** the `<div id="whatif
          never disturbed and detail.target stays #whatif-results for the
          afterSettle listeners in charts.js, base.html, and portfolio-settings. */}}
     <div id="whatif-poll"
+         class="hidden"
          hx-get="/whatif/poll"
          hx-vals='js:{since: window.__whatifRevision || 0}'
          hx-trigger="every 2s"

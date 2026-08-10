@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,6 +134,37 @@ func (c *Client) Apply(ctx context.Context, o Overrides) (ApplyResult, error) {
 		return ApplyResult{}, fmt.Errorf("apply: decoding response: %w", err)
 	}
 	return out, nil
+}
+
+// BaseURL returns the server URL this client talks to, for building a link a
+// user can open in a browser.
+func (c *Client) BaseURL() string { return c.baseURL }
+
+// SwitchScenario changes the server's active scenario. The form field name
+// (filename) matches handleSwitchScenario in
+// internal/handlers/whatif/handlers_scenarios.go exactly -- that handler
+// reads r.FormValue("filename"), not "scenario" or "name".
+func (c *Client) SwitchScenario(ctx context.Context, name string) error {
+	form := url.Values{"filename": {name}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/whatif/scenarios/switch",
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("switch scenario: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		msg := new(bytes.Buffer)
+		_, _ = msg.ReadFrom(resp.Body)
+		return fmt.Errorf("switch scenario %q rejected (%s): %s", name, resp.Status, bytes.TrimSpace(msg.Bytes()))
+	}
+	return nil
 }
 
 // spawnArgs derives the BUDGET_DATA_DIR value for a settings directory.

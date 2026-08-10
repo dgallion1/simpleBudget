@@ -1,7 +1,8 @@
 // Command whatif-mcp serves the what-if retirement planner over MCP on stdio,
 // so a plan can be discussed in Claude Code. It reads saved scenarios and runs
-// the projection engine; it never writes to the data directory and makes no
-// network calls.
+// the projection engine. apply_changes writes to the data directory via the
+// running cmd/server's HTTP API (never directly), snapshotting the target
+// scenario first; every other tool is read-only.
 package main
 
 import (
@@ -35,6 +36,19 @@ func resolveDataDir(flagValue string, env func(string) string) string {
 	return filepath.Join("data", "settings")
 }
 
+// resolveSnapshotDir returns where apply_changes' pre-write backups go,
+// preferring BUDGET2_BACKUP_DIR (matching config.BackupDir's env override) and
+// otherwise a path OUTSIDE the data directory. It must never land inside the
+// data directory: internal/services/backup/snapshot.go's SkipPredicate does
+// not exclude ".bak" files, so a snapshot dir nested under settingsDir would
+// get swept into every backup zip.
+func resolveSnapshotDir(settingsDir string, env func(string) string) string {
+	if d := env("BUDGET2_BACKUP_DIR"); d != "" {
+		return filepath.Join(d, "mcp-snapshots")
+	}
+	return filepath.Clean(filepath.Join(settingsDir, "..", "..", "budget2-mcp-snapshots"))
+}
+
 // checkSettingsDir verifies the directory exists AND is readable. os.Stat is
 // insufficient: stat(2) only needs search permission on the parents, so a
 // directory with no read permission of its own still stats successfully —
@@ -62,7 +76,12 @@ func main() {
 	}
 
 	src := whatifmcp.NewSource(settingsDir, store)
-	if err := whatifmcp.NewServer(src).Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+	baseURL := whatifmcp.ResolveBaseURL(os.Getenv)
+	live := whatifmcp.NewClient(baseURL, settingsDir)
+	snaps := whatifmcp.NewSnapshotter(settingsDir, resolveSnapshotDir(settingsDir, os.Getenv))
+
+	server := whatifmcp.NewServer(src, live, snaps)
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("whatif-mcp: %v", err)
 	}
 }

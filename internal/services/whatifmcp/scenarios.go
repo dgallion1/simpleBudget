@@ -1,6 +1,7 @@
 package whatifmcp
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -24,6 +25,14 @@ type ScenarioInfo struct {
 // no method that writes to the settings directory.
 type Source struct {
 	sm *retirement.SettingsManager
+
+	// live is optional and unset by NewSource; NewServer attaches it (same
+	// package, so the unexported field is reachable directly) when a Client
+	// is available. It lets Load("") resolve the active scenario the running
+	// web server actually reports instead of guessing whatif.json -- the
+	// active filename is in-process state in that server, so a separate
+	// process has no other way to know it.
+	live *Client
 }
 
 func NewSource(settingsDir string, store *storage.Storage) *Source {
@@ -61,7 +70,7 @@ func (s *Source) List() ([]ScenarioInfo, error) {
 // round trip.
 func (s *Source) Load(name string) (*models.WhatIfSettings, string, error) {
 	if name == "" {
-		name = s.sm.ActiveFilename()
+		name = s.resolveActiveFilename()
 	}
 	settings, err := s.sm.LoadScenarioSettings(name)
 	if err != nil {
@@ -69,6 +78,22 @@ func (s *Source) Load(name string) (*models.WhatIfSettings, string, error) {
 			name, err, strings.Join(s.names(), ", "))
 	}
 	return settings, name, nil
+}
+
+// resolveActiveFilename answers "which scenario is active" preferring the
+// running web server's own answer over a local guess: if a scenario was
+// switched through the browser, this process's on-disk view of "active" is
+// stale until it re-reads, but the server's in-memory state is not. State
+// already verifies app identity and settings-dir match, so a mismatched or
+// unreachable server falls through to the local guess rather than erroring
+// -- reads must keep working with the server down.
+func (s *Source) resolveActiveFilename() string {
+	if s.live != nil {
+		if st, err := s.live.State(context.Background()); err == nil {
+			return st.Active
+		}
+	}
+	return s.sm.ActiveFilename()
 }
 
 func (s *Source) names() []string {

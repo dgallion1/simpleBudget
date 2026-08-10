@@ -3,6 +3,8 @@ package whatifmcp
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,16 +27,20 @@ func TestAssumptionsResourceIsEmbeddedAndNonEmpty(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersTheFourTools drives an in-memory client/server
+// TestNewServerRegistersTheSixTools drives an in-memory client/server
 // round trip (the SDK's mcp.NewInMemoryTransports) to actually enumerate
 // what NewServer registered, rather than merely asserting non-nil. This is
 // the SDK's supported way to inspect registrations: *mcp.Server exposes no
 // public lister, but a connected *mcp.ClientSession does via ListTools and
 // ListResources.
-func TestNewServerRegistersTheFourTools(t *testing.T) {
+//
+// live and snaps are passed as nil: none of the tools this test calls
+// (list_scenarios, get_analysis) reach into them, and registration itself
+// never invokes a tool handler.
+func TestNewServerRegistersTheSixTools(t *testing.T) {
 	ctx := context.Background()
 
-	srv := NewServer(newTestSource(t))
+	srv := NewServer(newTestSource(t), nil, nil)
 	if srv == nil {
 		t.Fatal("NewServer returned nil")
 	}
@@ -62,13 +68,15 @@ func TestNewServerRegistersTheFourTools(t *testing.T) {
 	for _, tool := range toolsRes.Tools {
 		gotTools[tool.Name] = true
 	}
-	for _, want := range []string{"list_scenarios", "get_analysis", "get_months", "run_scenario"} {
+	for _, want := range []string{
+		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
+	} {
 		if !gotTools[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(toolsRes.Tools))
 		}
 	}
-	if len(toolsRes.Tools) != 4 {
-		t.Errorf("expected exactly 4 tools, got %d: %v", len(toolsRes.Tools), toolNames(toolsRes.Tools))
+	if len(toolsRes.Tools) != 6 {
+		t.Errorf("expected exactly 6 tools, got %d: %v", len(toolsRes.Tools), toolNames(toolsRes.Tools))
 	}
 
 	resourcesRes, err := clientSession.ListResources(ctx, nil)
@@ -105,6 +113,212 @@ func TestNewServerRegistersTheFourTools(t *testing.T) {
 	}
 }
 
+// TestToolDescriptionsAreMeaningful drives the same in-memory round trip to
+// check every registered tool has a non-empty description, and that
+// apply_changes' description carries the write warning a model consuming
+// these tools relies on to decide when it is safe to write to a real
+// retirement plan.
+func TestToolDescriptionsAreMeaningful(t *testing.T) {
+	ctx := context.Background()
+
+	srv := NewServer(newTestSource(t), nil, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.0"}, nil)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+
+	serverSession, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	defer serverSession.Close()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer clientSession.Close()
+
+	toolsRes, err := clientSession.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	descByName := map[string]string{}
+	for _, tool := range toolsRes.Tools {
+		descByName[tool.Name] = tool.Description
+	}
+
+	for _, name := range []string{
+		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
+	} {
+		t.Run(name, func(t *testing.T) {
+			desc, ok := descByName[name]
+			if !ok {
+				t.Fatalf("tool %q not registered", name)
+			}
+			if desc == "" {
+				t.Fatalf("tool %q has an empty description", name)
+			}
+		})
+	}
+
+	if !strings.Contains(descByName["apply_changes"], "MODIFIES THE SAVED PLAN") {
+		t.Errorf("apply_changes description must warn it writes the saved plan; got: %q", descByName["apply_changes"])
+	}
+}
+
+// newLiveFixture writes a synthesized whatif.json into a fresh temp directory
+// and opens a Source over it, for tests that also need the settings
+// directory path to build a matching Client and Snapshotter.
+func newLiveFixture(t *testing.T) (*Source, string) {
+	t.Helper()
+	dir := t.TempDir()
+	b, err := json.Marshal(models.DefaultWhatIfSettings())
+	if err != nil {
+		t.Fatalf("marshal default settings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "whatif.json"), b, 0o644); err != nil {
+		t.Fatalf("write whatif.json: %v", err)
+	}
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	return NewSource(dir, store), dir
+}
+
+// connectInMemory connects srv and a fresh client over
+// mcp.NewInMemoryTransports and registers cleanup to close both sessions.
+func connectInMemory(t *testing.T, srv *mcp.Server) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.0"}, nil)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+
+	serverSession, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+	return clientSession
+}
+
+// TestApplyChangesTool_SnapshotsBeforePOSTAndSucceeds drives apply_changes
+// against a fake HTTP server that answers /whatif/state and /whatif/apply,
+// and asserts a snapshot file lands on disk -- proving the snapshot actually
+// happens, not just that Ensure would be reachable code.
+func TestApplyChangesTool_SnapshotsBeforePOSTAndSucceeds(t *testing.T) {
+	ctx := context.Background()
+	src, dir := newLiveFixture(t)
+
+	applyCount := 0
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/whatif/state":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: "whatif.json", Revision: 1})
+		case "/whatif/apply":
+			applyCount++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(ApplyResult{Scenario: "whatif.json", Applied: Overrides{}, Revision: 2})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	live := NewClient(fake.URL, dir)
+	snapDir := t.TempDir()
+	snaps := NewSnapshotter(dir, snapDir)
+
+	clientSession := connectInMemory(t, NewServer(src, live, snaps))
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "apply_changes",
+		Arguments: applyChangesInput{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(apply_changes): %v", err)
+	}
+	out := decodeToolResult[applyChangesOutput](t, res)
+
+	if applyCount != 1 {
+		t.Errorf("expected exactly one POST to /whatif/apply, got %d", applyCount)
+	}
+	if out.SnapshotPath == "" {
+		t.Fatal("apply_changes did not report a snapshot path")
+	}
+	if _, err := os.Stat(out.SnapshotPath); err != nil {
+		t.Errorf("reported snapshot path does not exist on disk: %v", err)
+	}
+	entries, err := os.ReadDir(snapDir)
+	if err != nil {
+		t.Fatalf("reading snapshot dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("expected exactly one snapshot file, got %d", len(entries))
+	}
+	if out.RevisionBefore != 1 || out.RevisionAfter != 2 {
+		t.Errorf("revisions = before %d after %d, want 1 and 2", out.RevisionBefore, out.RevisionAfter)
+	}
+}
+
+// TestApplyChangesTool_SnapshotFailureAbortsPOST points the snapshotter at a
+// settings directory with no scenario file, so Ensure fails before any HTTP
+// write happens, and asserts the fake server's /whatif/apply handler was
+// never called -- a failed snapshot must abort the write, not merely be
+// reported alongside it.
+func TestApplyChangesTool_SnapshotFailureAbortsPOST(t *testing.T) {
+	ctx := context.Background()
+
+	// No whatif.json written here: Snapshotter.Ensure will fail to read it.
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	src := NewSource(dir, store)
+
+	applyCount := 0
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/whatif/state":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: "whatif.json", Revision: 1})
+		case "/whatif/apply":
+			applyCount++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(ApplyResult{Scenario: "whatif.json", Applied: Overrides{}, Revision: 2})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	live := NewClient(fake.URL, dir)
+	snaps := NewSnapshotter(dir, t.TempDir())
+
+	clientSession := connectInMemory(t, NewServer(src, live, snaps))
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "apply_changes",
+		Arguments: applyChangesInput{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(apply_changes) returned a transport-level error, want a tool result with IsError set: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("apply_changes should fail when the snapshot cannot be taken")
+	}
+	if applyCount != 0 {
+		t.Errorf("snapshot failure must prevent the POST to /whatif/apply, got %d requests", applyCount)
+	}
+}
+
 // TestRecoverToErrorConvertsPanic is a unit test of the helper in isolation:
 // it proves recoverToError turns a panic into an error, but not that it is
 // wired up correctly at the transport boundary.
@@ -130,7 +344,7 @@ func TestRecoverToErrorConvertsPanic(t *testing.T) {
 // This registers a deliberately panicking tool on a real *mcp.Server, wraps
 // it exactly the way run_scenario etc. are wrapped (named error return +
 // `defer recoverToError`), connects a client over the same
-// mcp.NewInMemoryTransports() pattern TestNewServerRegistersTheFourTools
+// mcp.NewInMemoryTransports() pattern TestNewServerRegistersTheSixTools
 // uses, and calls it. If recoverToError is missing or misplaced, this test
 // process itself crashes instead of reporting a failure — that is the point:
 // surviving to make an assertion at all is the proof.
@@ -261,7 +475,7 @@ func decodeToolResult[T any](t *testing.T, res *mcp.CallToolResult) T {
 func TestGetMonthsReconcilesWithGetAnalysis(t *testing.T) {
 	ctx := context.Background()
 
-	srv := NewServer(newTestSourceWithSocialSecurity(t))
+	srv := NewServer(newTestSourceWithSocialSecurity(t), nil, nil)
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.0"}, nil)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 

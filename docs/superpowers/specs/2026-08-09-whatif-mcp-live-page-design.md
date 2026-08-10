@@ -223,8 +223,12 @@ from anything else on the port.
 **`GET /whatif/poll?since=N`** — `204 No Content` when `revision == N`; otherwise
 the poll partial (below) plus an `HX-Trigger: {"whatif:revision": <new>}` response
 header. HTMX performs no swap on 204, so the unchanged case costs one integer
-comparison and runs no analysis. An absent or malformed `since` is treated as `0`,
-producing a full render — the safe direction.
+comparison and runs no analysis. An absent or malformed `since` becomes `-1` — a
+value the counter never returns — producing a full render. It cannot be `0`: the
+counter also starts at `0` on every server start, so a bad parameter would
+collide with a fresh counter and suppress the very render it was meant to force.
+`-1` preserves the safe direction: a bad parameter shows fresh figures rather
+than hiding them.
 
 ### The swap — sentinel, not `outerHTML`
 

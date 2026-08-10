@@ -1426,10 +1426,14 @@ func handleWhatIfPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// An absent or malformed `since` parses to 0, producing a full render.
-	// That is the safe direction: a bad parameter shows fresh figures rather
-	// than silently suppressing them.
-	since, _ := strconv.Atoi(r.URL.Query().Get("since"))
+	// An absent or malformed `since` must never equal a real revision, or a
+	// bad parameter would collide with a fresh counter (revision starts at 0
+	// on every server start) and silently suppress a render instead of
+	// showing fresh figures. -1 is not a value Revision() ever returns.
+	since := -1
+	if v, err := strconv.Atoi(r.URL.Query().Get("since")); err == nil {
+		since = v
+	}
 
 	current := retirementMgr.Revision()
 	if since == current {

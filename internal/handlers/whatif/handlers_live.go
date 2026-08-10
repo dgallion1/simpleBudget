@@ -2,8 +2,11 @@ package whatif
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
+
+	"budget2/internal/services/retirement/overrides"
 )
 
 // appIdentity is the literal reported by GET /whatif/state. A client compares
@@ -38,5 +41,54 @@ func handleWhatIfState(w http.ResponseWriter, r *http.Request) {
 		SettingsDir: dir,
 		Active:      retirementMgr.ActiveFilename(),
 		Revision:    retirementMgr.Revision(),
+	})
+}
+
+type applyResponse struct {
+	Scenario string              `json:"scenario"`
+	Applied  overrides.Overrides `json:"applied"`
+	Revision int                 `json:"revision"`
+}
+
+// handleWhatIfApply writes a sparse override set to the active scenario.
+//
+// This exists instead of the MCP posting the existing forms because
+// parseFormFloat returns (0, nil) for an absent key, so inside the
+// non-spec-driven handlers "field absent" and "field is zero" are
+// indistinguishable. A partial post to /whatif/roth-conversion disables
+// conversions; one to /whatif/social-security deletes the config outright.
+func handleWhatIfApply(w http.ResponseWriter, r *http.Request) {
+	if retirementMgr == nil {
+		http.Error(w, "settings manager not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	var o overrides.Overrides
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&o); err != nil {
+		http.Error(w, "invalid overrides JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, revision, err := retirementMgr.ApplyOverrides(o)
+	if err != nil {
+		// Validation errors name their field; surface them verbatim. Save-time
+		// failures (ValidatePersons, validateChainInternal) land here too, and
+		// fall through to statusForMutationError's 400/404/409/500 mapping.
+		status := statusForMutationError(err)
+		var ve *overrides.ValidationError
+		if errors.As(err, &ve) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(applyResponse{
+		Scenario: retirementMgr.ActiveFilename(),
+		Applied:  o,
+		Revision: revision,
 	})
 }

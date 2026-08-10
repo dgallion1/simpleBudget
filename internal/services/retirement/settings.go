@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/overrides"
 	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/services/storage"
 
@@ -1035,6 +1036,40 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 	}
 
 	return settings, nil
+}
+
+// ApplyOverrides applies a sparse override set to the active scenario and saves
+// it, returning the saved settings and the revision this write produced.
+//
+// The whole body runs under one write lock. A caller doing Load → Apply → Save
+// would not: Load returns the shared cache pointer and releases the lock, so a
+// concurrent UpdateSettings between the load and the save is silently reverted.
+// Every other mutation on this type loads, modifies, and saves inside one lock;
+// this is no exception.
+//
+// The returned revision is this write's own. Callers must not read Revision()
+// afterwards — under concurrency that can be a different writer's number.
+func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides) (*models.WhatIfSettings, int, error) {
+	if err := o.ValidateWritable(); err != nil {
+		return nil, 0, err
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	current, err := sm.loadInternal()
+	if err != nil {
+		return nil, 0, err
+	}
+	updated, err := overrides.Apply(current, o)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := sm.saveInternalAndBump(updated); err != nil {
+		return nil, 0, err
+	}
+	sm.cache = updated
+	return updated, sm.revision, nil
 }
 
 func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, error) {

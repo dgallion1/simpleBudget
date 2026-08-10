@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/overrides"
 	"budget2/internal/services/storage"
 )
 
@@ -558,5 +559,91 @@ func TestRevision_RaceClean(t *testing.T) {
 	wg.Wait()
 	if sm.Revision() < 8 {
 		t.Fatalf("expected at least 8 bumps, got %d", sm.Revision())
+	}
+}
+
+func TestApplyOverrides_PersistsAndReturnsItsOwnRevision(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	want := 4321.0
+	saved, rev, err := sm.ApplyOverrides(overrides.Overrides{MonthlyLivingExpenses: &want})
+	if err != nil {
+		t.Fatalf("ApplyOverrides: %v", err)
+	}
+	if saved.MonthlyLivingExpenses != want {
+		t.Fatalf("returned settings has %v, want %v", saved.MonthlyLivingExpenses, want)
+	}
+	if rev == 0 {
+		t.Fatal("ApplyOverrides returned revision 0")
+	}
+
+	sm.InvalidateCache()
+	reloaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.MonthlyLivingExpenses != want {
+		t.Fatalf("value did not persist: got %v, want %v", reloaded.MonthlyLivingExpenses, want)
+	}
+}
+
+// The regression this whole design exists to prevent.
+func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			amount := float64(10000 + i)
+			if _, _, err := sm.ApplyOverrides(overrides.Overrides{RothConversionAmount: &amount}); err != nil {
+				t.Errorf("ApplyOverrides: %v", err)
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			if _, err := sm.UpdateSettings(map[string]interface{}{
+				"monthly_living_expenses": float64(3000 + i),
+			}); err != nil {
+				t.Errorf("UpdateSettings: %v", err)
+				return
+			}
+		}
+	}()
+	wg.Wait()
+
+	sm.InvalidateCache()
+	final, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	// Both writers touched disjoint fields. If the apply path did a
+	// read-modify-write outside the lock, one writer's field reverts to its
+	// zero/default value.
+	if final.MonthlyLivingExpenses < 3000 {
+		t.Fatalf("UpdateSettings' field was lost: %v", final.MonthlyLivingExpenses)
+	}
+	if final.RothConversion == nil || final.RothConversion.AnnualAmount < 10000 {
+		t.Fatalf("ApplyOverrides' field was lost: %+v", final.RothConversion)
 	}
 }

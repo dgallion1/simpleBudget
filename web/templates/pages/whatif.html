@@ -140,6 +140,11 @@
          hx-trigger="every 2s"
          hx-target="#whatif-results"
          hx-swap="innerHTML"
+         {{/* Covers poll-vs-poll overlap only: htmx redirects the shared
+              in-flight bucket to this target only for the element that
+              declares hx-sync, i.e. this element, not the ~37 mutating
+              elements elsewhere that target #whatif-results. Poll-vs-mutation
+              exclusion is handled in JS -- see whatif-poll.js. */}}
          hx-sync="#whatif-results:drop"></div>
 </div>
 

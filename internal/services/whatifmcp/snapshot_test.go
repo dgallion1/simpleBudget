@@ -83,8 +83,33 @@ func TestSnapshotter_WritesOutsideTheSettingsDir(t *testing.T) {
 	// backup.SkipPredicate does not exclude .bak, so a snapshot inside the data
 	// directory would be swept into every backup zip from then on.
 	rel, err := filepath.Rel(settingsDir, path)
-	if err == nil && !strings.HasPrefix(rel, "..") {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(rel, "..") {
 		t.Fatalf("snapshot %q is inside the settings dir %q", path, settingsDir)
+	}
+}
+
+func TestSnapshotter_RejectsTraversalInScenarioName(t *testing.T) {
+	for _, name := range []string{"../../etc/passwd", "..", "sub/whatif.json", ""} {
+		t.Run(name, func(t *testing.T) {
+			settingsDir := t.TempDir()
+			snapDir := t.TempDir()
+
+			_, err := NewSnapshotter(settingsDir, snapDir).Ensure(name, time.Now())
+			if err == nil {
+				t.Fatalf("expected an error for scenario name %q", name)
+			}
+
+			entries, rerr := os.ReadDir(snapDir)
+			if rerr != nil {
+				t.Fatal(rerr)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("snapshot dir should still be empty after a rejected scenario name, found: %v", entries)
+			}
+		})
 	}
 }
 

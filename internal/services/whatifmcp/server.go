@@ -224,8 +224,9 @@ func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
 		Description: "Save changed assumptions to the retirement plan and return the resulting analysis. " +
 			"THIS MODIFIES THE SAVED PLAN — use run_scenario to check a claim without writing. " +
 			"An open what-if page picks the change up within about two seconds. A copy of the scenario " +
-			"is saved before the first write of the session; recovering from an unwanted change means " +
-			"restoring that .bak file by hand. Note two behaviors: roth_conversion_amount of 0 DISABLES " +
+			"is saved before this session's first change to that scenario — later changes in the same " +
+			"session are not separately recoverable; recovering from an unwanted change means restoring " +
+			"that .bak file by hand. Note two behaviors: roth_conversion_amount of 0 DISABLES " +
 			"conversions, and healthcare_inflation cannot be saved (preview it with run_scenario). " +
 			"Read the whatif://assumptions resource before drawing conclusions.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in applyChangesInput) (res *mcp.CallToolResult, out applyChangesOutput, err error) {
@@ -253,6 +254,22 @@ func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
 		result, err := live.Apply(ctx, in.Overrides)
 		if err != nil {
 			return nil, applyChangesOutput{}, err
+		}
+
+		// The window between the State read above and this POST is
+		// unsynchronized: a scenario switch in the browser (the exact
+		// workflow open_page sets up) can land between them, so the file the
+		// snapshot covers and the file the server just wrote can differ. That
+		// is the unrecoverable failure this tool exists to prevent, so it
+		// must be reported rather than silently returned as a success --
+		// there is no way to roll the write back from here.
+		if result.Scenario != state.Active {
+			return nil, applyChangesOutput{}, fmt.Errorf(
+				"apply_changes wrote to %q, but the snapshot taken for this call covers %q (snapshot: %s); "+
+					"the active scenario changed between the read and the write, likely a scenario switch in "+
+					"the browser during this call -- the write to %q cannot be undone automatically and is not "+
+					"covered by that snapshot",
+				result.Scenario, state.Active, snapPath, result.Scenario)
 		}
 
 		settings, name, err := src.Load(result.Scenario)

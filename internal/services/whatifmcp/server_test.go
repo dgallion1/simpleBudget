@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"budget2/internal/models"
@@ -215,14 +216,14 @@ func TestApplyChangesTool_SnapshotsBeforePOSTAndSucceeds(t *testing.T) {
 	ctx := context.Background()
 	src, dir := newLiveFixture(t)
 
-	applyCount := 0
+	var applyCount atomic.Int32
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/whatif/state":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: "whatif.json", Revision: 1})
 		case "/whatif/apply":
-			applyCount++
+			applyCount.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(ApplyResult{Scenario: "whatif.json", Applied: Overrides{}, Revision: 2})
 		default:
@@ -246,8 +247,8 @@ func TestApplyChangesTool_SnapshotsBeforePOSTAndSucceeds(t *testing.T) {
 	}
 	out := decodeToolResult[applyChangesOutput](t, res)
 
-	if applyCount != 1 {
-		t.Errorf("expected exactly one POST to /whatif/apply, got %d", applyCount)
+	if got := applyCount.Load(); got != 1 {
+		t.Errorf("expected exactly one POST to /whatif/apply, got %d", got)
 	}
 	if out.SnapshotPath == "" {
 		t.Fatal("apply_changes did not report a snapshot path")
@@ -283,14 +284,14 @@ func TestApplyChangesTool_SnapshotFailureAbortsPOST(t *testing.T) {
 	}
 	src := NewSource(dir, store)
 
-	applyCount := 0
+	var applyCount atomic.Int32
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/whatif/state":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: "whatif.json", Revision: 1})
 		case "/whatif/apply":
-			applyCount++
+			applyCount.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(ApplyResult{Scenario: "whatif.json", Applied: Overrides{}, Revision: 2})
 		default:
@@ -314,8 +315,165 @@ func TestApplyChangesTool_SnapshotFailureAbortsPOST(t *testing.T) {
 	if !res.IsError {
 		t.Fatal("apply_changes should fail when the snapshot cannot be taken")
 	}
-	if applyCount != 0 {
-		t.Errorf("snapshot failure must prevent the POST to /whatif/apply, got %d requests", applyCount)
+	if got := applyCount.Load(); got != 0 {
+		t.Errorf("snapshot failure must prevent the POST to /whatif/apply, got %d requests", got)
+	}
+}
+
+// TestApplyChangesTool_SwitchesScenarioBeforeSnapshotting exercises the
+// switch branch (server.go's "in.Scenario != state.Active" path), which the
+// two tests above never reach because both pass an empty Scenario. The fake
+// /whatif/state answers "whatif.json" until the switch POST lands, then
+// answers "whatif-b.json" -- the same shape the real handler has (in-process
+// state that changes only once SwitchScenario's POST is processed). The
+// property under test: the snapshot taken is of the POST-switch active
+// scenario, not the one active when the call started, which is exactly what
+// the re-fetch-state-after-switch step exists to guarantee. The fake
+// /whatif/apply must answer with the post-switch scenario name too, or the
+// result.Scenario != state.Active guard added for finding 1 would (correctly)
+// reject this call.
+func TestApplyChangesTool_SwitchesScenarioBeforeSnapshotting(t *testing.T) {
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	for _, name := range []string{"whatif.json", "whatif-b.json"} {
+		b, err := json.Marshal(models.DefaultWhatIfSettings())
+		if err != nil {
+			t.Fatalf("marshal default settings: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	src := NewSource(dir, store)
+
+	var switched atomic.Bool
+	var applyCount atomic.Int32
+	var switchCount atomic.Int32
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/whatif/state":
+			active := "whatif.json"
+			if switched.Load() {
+				active = "whatif-b.json"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: active, Revision: 1})
+		case r.URL.Path == "/whatif/scenarios/switch" && r.Method == http.MethodPost:
+			if err := r.ParseForm(); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if got := r.FormValue("filename"); got != "whatif-b.json" {
+				http.Error(w, "unexpected filename "+got, http.StatusBadRequest)
+				return
+			}
+			switchCount.Add(1)
+			switched.Store(true)
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/whatif/apply":
+			applyCount.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(ApplyResult{Scenario: "whatif-b.json", Applied: Overrides{}, Revision: 2})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	live := NewClient(fake.URL, dir)
+	snapDir := t.TempDir()
+	snaps := NewSnapshotter(dir, snapDir)
+
+	clientSession := connectInMemory(t, NewServer(src, live, snaps))
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "apply_changes",
+		Arguments: applyChangesInput{Scenario: "whatif-b.json"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(apply_changes): %v", err)
+	}
+	out := decodeToolResult[applyChangesOutput](t, res)
+
+	if got := switchCount.Load(); got != 1 {
+		t.Errorf("expected exactly one POST to /whatif/scenarios/switch, got %d", got)
+	}
+	if got := applyCount.Load(); got != 1 {
+		t.Errorf("expected exactly one POST to /whatif/apply, got %d", got)
+	}
+	base := filepath.Base(out.SnapshotPath)
+	if !strings.HasPrefix(base, "whatif-b.json.") {
+		t.Errorf("snapshot_path basename = %q, want it to start with %q (the snapshot must follow the switch, "+
+			"not cover the plan that was active before it)", base, "whatif-b.json.")
+	}
+	if out.Scenario != "whatif-b.json" {
+		t.Errorf("reported scenario = %q, want %q", out.Scenario, "whatif-b.json")
+	}
+}
+
+// TestOpenPageTool_ReturnsURLAndPostSwitchState exercises open_page's actual
+// handler, not just its registration: it drives a real tool call over the
+// in-memory transport against a fake HTTP server, requesting a scenario
+// switch, and asserts both the returned URL and that Active reflects the
+// state *after* the switch (i.e. open_page re-fetched state rather than
+// returning the pre-switch snapshot it got from EnsureServer).
+func TestOpenPageTool_ReturnsURLAndPostSwitchState(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	var switched atomic.Bool
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/whatif/state":
+			active := "whatif.json"
+			if switched.Load() {
+				active = "whatif-b.json"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: active, Revision: 5})
+		case r.URL.Path == "/whatif/scenarios/switch" && r.Method == http.MethodPost:
+			if err := r.ParseForm(); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if got := r.FormValue("filename"); got != "whatif-b.json" {
+				http.Error(w, "unexpected filename "+got, http.StatusBadRequest)
+				return
+			}
+			switched.Store(true)
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	live := NewClient(fake.URL, dir)
+	clientSession := connectInMemory(t, NewServer(newTestSource(t), live, nil))
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "open_page",
+		Arguments: openPageInput{Scenario: "whatif-b.json"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(open_page): %v", err)
+	}
+	out := decodeToolResult[openPageOutput](t, res)
+
+	if want := fake.URL + "/whatif"; out.URL != want {
+		t.Errorf("URL = %q, want %q", out.URL, want)
+	}
+	if out.Active != "whatif-b.json" {
+		t.Errorf("Active = %q, want %q (open_page must re-fetch state after switching, not return the pre-switch value)",
+			out.Active, "whatif-b.json")
+	}
+	if out.Started {
+		t.Error("Started = true, want false: the fake server was already reachable")
 	}
 }
 

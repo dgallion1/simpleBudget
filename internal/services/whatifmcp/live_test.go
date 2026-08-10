@@ -313,6 +313,70 @@ func TestIsConnectionRefused(t *testing.T) {
 	}
 }
 
+// TestClientSwitchScenario_PostsExpectedFilenameField asserts the exact form
+// field name SwitchScenario sends matches what handleSwitchScenario
+// (internal/handlers/whatif/handlers_scenarios.go) reads via
+// r.FormValue("filename"). Nothing else in this codebase pins that name down
+// mechanically; a rename on either side would previously go unnoticed until
+// it either 400'd or, worse, silently no-op'd and let a write land on the
+// wrong scenario.
+func TestClientSwitchScenario_PostsExpectedFilenameField(t *testing.T) {
+	dir := t.TempDir()
+
+	gotFilename := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/whatif/scenarios/switch" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "want POST", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		gotFilename <- r.FormValue("filename")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, dir)
+	if err := c.SwitchScenario(context.Background(), "whatif-b.json"); err != nil {
+		t.Fatalf("SwitchScenario: %v", err)
+	}
+
+	select {
+	case got := <-gotFilename:
+		if got != "whatif-b.json" {
+			t.Errorf(`server received form field "filename" = %q, want %q`, got, "whatif-b.json")
+		}
+	default:
+		t.Fatal("the fake server's handler was never invoked")
+	}
+}
+
+// TestClientSwitchScenario_NonOKBecomesError proves a rejected switch (bad
+// filename, server-side error) surfaces as a Go error naming the scenario
+// rather than being swallowed.
+func TestClientSwitchScenario_NonOKBecomesError(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "scenario filename is required", http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, dir)
+	err := c.SwitchScenario(context.Background(), "does-not-exist.json")
+	if err == nil {
+		t.Fatal("expected an error for a non-200 response")
+	}
+	if !strings.Contains(err.Error(), "does-not-exist.json") {
+		t.Errorf("error should name the scenario, got: %v", err)
+	}
+}
+
 func TestEnvWithout_MatchesKeyPrefixOnly(t *testing.T) {
 	t.Setenv("BUDGET_DATA_DIR", "/should/be/removed")
 	t.Setenv("MY_BUDGET_DATA_DIR_EXTRA", "/should/survive")

@@ -607,6 +607,15 @@ func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
+	// Each goroutine records the exact value it last wrote successfully. A
+	// static floor is too weak here: Load() returns the live sm.cache
+	// pointer, so a naive Load->Apply->Save sequence's staleness window is
+	// only microseconds wide, and a revert costs at most the last handful of
+	// the other goroutine's increments -- nowhere near a floor set near the
+	// start of either range. Asserting exact equality against each
+	// goroutine's own last write catches a revert of any size, deterministically.
+	var lastRothAmount, lastMonthlyExpenses float64
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -617,17 +626,20 @@ func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 				t.Errorf("ApplyOverrides: %v", err)
 				return
 			}
+			lastRothAmount = amount
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
+			expense := float64(3000 + i)
 			if _, err := sm.UpdateSettings(map[string]interface{}{
-				"monthly_living_expenses": float64(3000 + i),
+				"monthly_living_expenses": expense,
 			}); err != nil {
 				t.Errorf("UpdateSettings: %v", err)
 				return
 			}
+			lastMonthlyExpenses = expense
 		}
 	}()
 	wg.Wait()
@@ -638,12 +650,12 @@ func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 		t.Fatalf("reload: %v", err)
 	}
 	// Both writers touched disjoint fields. If the apply path did a
-	// read-modify-write outside the lock, one writer's field reverts to its
-	// zero/default value.
-	if final.MonthlyLivingExpenses < 3000 {
-		t.Fatalf("UpdateSettings' field was lost: %v", final.MonthlyLivingExpenses)
+	// read-modify-write outside the lock, one writer's field reverts to
+	// something earlier than its own last successful write.
+	if final.MonthlyLivingExpenses != lastMonthlyExpenses {
+		t.Fatalf("UpdateSettings' field was lost: got %v, want its own last write %v", final.MonthlyLivingExpenses, lastMonthlyExpenses)
 	}
-	if final.RothConversion == nil || final.RothConversion.AnnualAmount < 10000 {
-		t.Fatalf("ApplyOverrides' field was lost: %+v", final.RothConversion)
+	if final.RothConversion == nil || final.RothConversion.AnnualAmount != lastRothAmount {
+		t.Fatalf("ApplyOverrides' field was lost: got %+v, want AnnualAmount %v", final.RothConversion, lastRothAmount)
 	}
 }

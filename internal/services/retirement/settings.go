@@ -1068,7 +1068,6 @@ func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides) (*models.WhatIf
 	if err := sm.saveInternalAndBump(updated); err != nil {
 		return nil, 0, err
 	}
-	sm.cache = updated
 	return updated, sm.revision, nil
 }
 

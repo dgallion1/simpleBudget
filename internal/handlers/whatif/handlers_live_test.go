@@ -221,6 +221,75 @@ func TestHandleWhatIfApply_RejectsUnwritableAndInvalid(t *testing.T) {
 	}
 }
 
+// TestHandleWhatIfApply_MatchingExpectedScenarioIsAccepted proves the new
+// field does not break the normal path: an expectation naming the scenario
+// that really is active must write exactly as before.
+func TestHandleWhatIfApply_MatchingExpectedScenarioIsAccepted(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	active := rm.ActiveFilename()
+	resp := postApply(t, fmt.Sprintf(`{"monthly_living_expenses": 4242, "expected_scenario": %q}`, active))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d (%s), want 200", resp.StatusCode, body)
+	}
+
+	var got struct {
+		Scenario string `json:"scenario"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Scenario != active {
+		t.Fatalf("scenario = %q, want %q", got.Scenario, active)
+	}
+
+	rm.InvalidateCache()
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if settings.MonthlyLivingExpenses != 4242 {
+		t.Fatalf("value did not persist: %v", settings.MonthlyLivingExpenses)
+	}
+}
+
+// TestHandleWhatIfApply_MismatchedExpectedScenarioIs409AndWritesNothing is the
+// guard that makes the MCP write path safe rather than merely audited: the
+// caller snapshotted one scenario, the browser switched to another, and the
+// write must not land. There is no undo, so "detected afterwards" is not a
+// substitute for "did not happen".
+func TestHandleWhatIfApply_MismatchedExpectedScenarioIs409AndWritesNothing(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	before, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantExpenses := before.MonthlyLivingExpenses
+
+	resp := postApply(t, `{"monthly_living_expenses": 9999, "expected_scenario": "whatif_some-other-plan.json"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// The message must name both plans or the user cannot tell what happened.
+	if !strings.Contains(string(body), "whatif_some-other-plan.json") || !strings.Contains(string(body), rm.ActiveFilename()) {
+		t.Fatalf("error %q must name both the expected and the active scenario", body)
+	}
+
+	rm.InvalidateCache()
+	after, err := rm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if after.MonthlyLivingExpenses != wantExpenses {
+		t.Fatalf("a refused apply still wrote: monthly_living_expenses %v -> %v", wantExpenses, after.MonthlyLivingExpenses)
+	}
+}
+
 func TestHandleWhatIfApply_RejectsMalformedJSON(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()

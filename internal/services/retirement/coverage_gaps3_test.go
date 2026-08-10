@@ -574,7 +574,7 @@ func TestUpdateSettingsWithPersons_HappyPath(t *testing.T) {
 		{ID: "spouse-2", Name: "Jordan", BirthMonth: "1964-01", Role: models.PersonRoleSpouse},
 	}
 
-	got, err := sm.UpdateSettingsWithPersons(updates, startDate, persons)
+	got, _, err := sm.UpdateSettingsWithPersons(updates, startDate, persons)
 	if err != nil {
 		t.Fatalf("UpdateSettingsWithPersons: %v", err)
 	}
@@ -615,7 +615,7 @@ func TestUpdateSettingsWithPersons_InvalidPersonsSurfacesError(t *testing.T) {
 	persons := []models.Person{
 		{ID: "p1", Name: "Riley", BirthMonth: "1995-04", Role: models.PersonRoleOther},
 	}
-	if _, err := sm.UpdateSettingsWithPersons(map[string]interface{}{}, "2026-04", persons); err == nil {
+	if _, _, err := sm.UpdateSettingsWithPersons(map[string]interface{}{}, "2026-04", persons); err == nil {
 		t.Fatal("expected error when persons fail validation")
 	}
 }
@@ -869,7 +869,7 @@ func TestUpdateSettings_RemoveSpouseClearsSpousePersons(t *testing.T) {
 		t.Fatalf("Save seed: %v", err)
 	}
 
-	got, err := sm.UpdateSettings(map[string]interface{}{
+	got, _, err := sm.UpdateSettings(map[string]interface{}{
 		"spouse_age": 0, // triggers removeSpousePersons
 	})
 	if err != nil {

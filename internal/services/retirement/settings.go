@@ -475,6 +475,13 @@ func (sm *SettingsManager) reconcileActiveScenarioLocked(confirmDelay time.Durat
 		sm.filename, defaultWhatIfFilename)
 	sm.filename = defaultWhatIfFilename
 	sm.cache = nil
+	// The server now serves a DIFFERENT plan than it did a moment ago, and
+	// every open page still renders the old one and still names the old
+	// scenario. That is exactly what the revision exists to announce, so bump
+	// it here rather than leaving the page confidently displaying a plan the
+	// server no longer has. The caller holds the write lock (see the doc
+	// comment above), so this must be bumpLocked, never Revision().
+	sm.bumpLocked()
 }
 
 // BeginExternalRewrite serializes an external rewrite of the settings
@@ -640,14 +647,28 @@ func (sm *SettingsManager) validateChainInternal(chain []models.ScenarioChainLin
 
 // Save writes settings to disk
 func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
+	_, err := sm.SaveWithRevision(settings)
+	return err
+}
+
+// SaveWithRevision writes settings to disk and returns the revision this write
+// produced, read under the same write lock that performed it.
+//
+// Callers that render the saved state must use this number rather than reading
+// Revision() afterwards: between the save and that read, a concurrent writer
+// (the MCP /whatif/apply path) can bump the counter, and a client told to store
+// that higher number as its baseline would poll with a revision that leads the
+// state it was actually sent — every later poll answers 204 and the page shows
+// pre-change figures forever.
+func (sm *SettingsManager) SaveWithRevision(settings *models.WhatIfSettings) (int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	if err := sm.saveInternalAndBump(settings); err != nil {
 		sm.cache = nil
-		return err
+		return 0, err
 	}
-	return nil
+	return sm.revision, nil
 }
 
 // Revision returns the current display revision.
@@ -1024,27 +1045,31 @@ func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfS
 	return settings, nil
 }
 
-// UpdateSettings updates all settings fields from form data and saves atomically
-func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, error) {
+// UpdateSettings updates all settings fields from form data and saves
+// atomically, returning the saved settings and the revision this write
+// produced (see SaveWithRevision for why the caller must not read Revision()
+// afterwards instead).
+func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	settings, err := sm.loadInternal()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	sm.applySettingsUpdates(settings, updates)
 
 	if err := sm.saveInternalAndBump(settings); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return settings, nil
+	return settings, sm.revision, nil
 }
 
 // ApplyOverrides applies a sparse override set to the active scenario and saves
-// it, returning the saved settings and the revision this write produced.
+// it, returning the saved settings, the scenario filename it wrote to, and the
+// revision this write produced.
 //
 // The whole body runs under one write lock. A caller doing Load → Apply → Save
 // would not: Load returns the shared cache pointer and releases the lock, so a
@@ -1052,37 +1077,67 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 // Every other mutation on this type loads, modifies, and saves inside one lock;
 // this is no exception.
 //
-// The returned revision is this write's own. Callers must not read Revision()
-// afterwards — under concurrency that can be a different writer's number.
-func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides) (*models.WhatIfSettings, int, error) {
+// expectedScenario, when non-empty, is the scenario filename the caller
+// believes is active — typically the one it snapshotted before calling. It is
+// compared against the active filename INSIDE the lock and before any load or
+// write, so a scenario switch that lands between the caller's read and this
+// call cannot divert the write to a plan the caller never backed up. A
+// mismatch writes nothing and returns a *ScenarioConflictError. Empty means
+// "no expectation" and preserves the previous behavior.
+//
+// The returned filename and revision are read under the same lock that
+// performed the write. Callers must not read ActiveFilename() or Revision()
+// afterwards — under concurrency either can describe a different writer's work.
+func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides, expectedScenario string) (*models.WhatIfSettings, string, int, error) {
 	if err := o.ValidateWritable(); err != nil {
-		return nil, 0, err
+		return nil, "", 0, err
 	}
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	// Before the load, and before the write: this is the only point at which
+	// the check is a guarantee rather than an after-the-fact report. There is
+	// no undo for a write that lands on an unbacked-up plan.
+	if expectedScenario != "" && expectedScenario != sm.filename {
+		return nil, "", 0, &ScenarioConflictError{Err: fmt.Errorf(
+			"refusing to write: the active scenario is %s, but this change was prepared for %s "+
+				"(the active scenario changed between the two). Nothing was written",
+			sm.filename, expectedScenario)}
+	}
+
 	current, err := sm.loadInternal()
 	if err != nil {
-		return nil, 0, err
+		return nil, "", 0, err
+	}
+	// The load itself can move the active scenario: reconcileActiveScenarioLocked
+	// reverts to whatif.json when the active file has vanished. Re-check rather
+	// than write to a file the caller never named. Still nothing written.
+	if expectedScenario != "" && expectedScenario != sm.filename {
+		return nil, "", 0, &ScenarioConflictError{Err: fmt.Errorf(
+			"refusing to write: loading %s reverted the active scenario to %s. Nothing was written",
+			expectedScenario, sm.filename)}
 	}
 	updated, err := overrides.Apply(current, o)
 	if err != nil {
-		return nil, 0, err
+		return nil, "", 0, err
 	}
 	if err := sm.saveInternalAndBump(updated); err != nil {
-		return nil, 0, err
+		return nil, "", 0, err
 	}
-	return updated, sm.revision, nil
+	return updated, sm.filename, sm.revision, nil
 }
 
-func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, error) {
+// UpdateSettingsWithPersons is UpdateSettings plus the household fields. It
+// returns the revision this write produced for the same reason UpdateSettings
+// does.
+func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	settings, err := sm.loadInternal()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	sm.applySettingsUpdates(settings, updates)
@@ -1090,10 +1145,10 @@ func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interfac
 	settings.Persons = persons
 
 	if err := sm.saveInternalAndBump(settings); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return settings, nil
+	return settings, sm.revision, nil
 }
 
 func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings, updates map[string]interface{}) {

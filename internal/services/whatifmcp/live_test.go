@@ -235,6 +235,166 @@ func TestEnsureServer_ForeignAppReachableServerReturnsErrorWithoutSpawning(t *te
 	}
 }
 
+// TestEnsureServer_SpawnEnvCarriesPortFromBaseURL pins the one thing that
+// stops a spawn from taking down the user's real server: the child's listen
+// address must come from the URL this client was pointed at, not from an
+// inherited BUDGET_LISTEN_ADDR or config's :8080 default. cmd/server's startup
+// calls killPreviousInstance(cfg.ListenAddr), so a child that inherits :8080
+// while this client talks to :8099 shuts down the real instance and then binds
+// :8080 to a throwaway data directory.
+func TestEnsureServer_SpawnEnvCarriesPortFromBaseURL(t *testing.T) {
+	// An inherited value that must NOT reach the child.
+	t.Setenv("BUDGET_LISTEN_ADDR", ":8080")
+
+	// Nothing is listening here, so EnsureServer proceeds to the spawn.
+	srv := stateServer(t, State{App: "budget2"})
+	baseURL := srv.URL
+	srv.Close()
+
+	settingsDir := filepath.Join(t.TempDir(), "settings")
+	c := NewClient(baseURL, settingsDir)
+
+	var spawned *exec.Cmd
+	c.newCmd = func() *exec.Cmd {
+		spawned = exec.Command("true")
+		return spawned
+	}
+
+	// The spawned "server" exits immediately and never answers, so this
+	// returns the crash error; the environment it was given is what matters.
+	if _, _, err := c.EnsureServer(context.Background()); err == nil {
+		t.Fatal("expected an error: the fake spawned process never becomes healthy")
+	}
+
+	if spawned == nil {
+		t.Fatal("no command was constructed")
+	}
+	wantPort := baseURL[strings.LastIndex(baseURL, ":"):] // ":PORT"
+	wantAddr := "BUDGET_LISTEN_ADDR=" + wantPort
+
+	found := false
+	for _, kv := range spawned.Env {
+		if kv == wantAddr {
+			found = true
+		} else if strings.HasPrefix(kv, "BUDGET_LISTEN_ADDR=") {
+			t.Errorf("child environment carries a second BUDGET_LISTEN_ADDR %q; the inherited value must be stripped", kv)
+		}
+	}
+	if !found {
+		t.Fatalf("child environment does not carry %q (base URL was %s)", wantAddr, baseURL)
+	}
+}
+
+func TestListenAddrFromBaseURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		url     string
+		want    string
+		wantErr bool
+	}{
+		{"localhost with port", "http://localhost:8099", ":8099", false},
+		{"loopback ip with port", "http://127.0.0.1:8080", ":8080", false},
+		{"ipv6 loopback with port", "http://[::1]:8099", ":8099", false},
+		{"no port defaults to the scheme's", "http://localhost", ":80", false},
+		{"https no port", "https://localhost", ":443", false},
+		{"non-loopback host refuses", "http://192.168.1.50:8080", "", true},
+		{"named remote host refuses", "http://budget.example.com:8080", "", true},
+		{"no host refuses", "not-a-url", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := listenAddrFromBaseURL(tc.url)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("listenAddrFromBaseURL(%q) = %q, want an error", tc.url, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("listenAddrFromBaseURL(%q): %v", tc.url, err)
+			}
+			if got != tc.want {
+				t.Errorf("listenAddrFromBaseURL(%q) = %q, want %q", tc.url, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEnsureServer_RefusesToSpawnForNonLoopbackURL proves the refusal reaches
+// EnsureServer: a remote BUDGET_SERVER_URL must not cause a local spawn, which
+// would kill whatever local process holds that port and then serve a plan
+// nobody asked about.
+func TestEnsureServer_RefusesToSpawnForNonLoopbackURL(t *testing.T) {
+	settingsDir := filepath.Join(t.TempDir(), "settings")
+	// 192.0.2.1 is TEST-NET-1 (RFC 5737): guaranteed not to be a real host,
+	// so the State() probe fails without reaching anything.
+	c := NewClient("http://192.0.2.1:8099", settingsDir)
+	c.http = &http.Client{Timeout: 500 * time.Millisecond}
+
+	spawnAttempts := 0
+	c.newCmd = func() *exec.Cmd {
+		spawnAttempts++
+		return exec.Command("true")
+	}
+
+	_, started, err := c.EnsureServer(context.Background())
+	if started {
+		t.Fatal("started should be false when the URL is not loopback")
+	}
+	if err == nil {
+		t.Fatal("expected a refusal for a non-loopback base URL")
+	}
+	if spawnAttempts != 0 {
+		t.Fatalf("a non-loopback URL must not spawn anything, got %d attempts", spawnAttempts)
+	}
+}
+
+// TestEnsureServer_ChildStderrIsARealFile pins the detachment property: os/exec
+// hands the child an fd directly only when Stderr is an *os.File. Any other
+// io.Writer becomes a pipe held by this process, and the "server outlives this
+// session" promise in open_page's description becomes false -- the child dies
+// of SIGPIPE at its next stderr write once the MCP exits.
+func TestEnsureServer_ChildStderrIsARealFile(t *testing.T) {
+	srv := stateServer(t, State{App: "budget2"})
+	baseURL := srv.URL
+	srv.Close()
+
+	settingsDir := filepath.Join(t.TempDir(), "settings")
+	c := NewClient(baseURL, settingsDir)
+
+	var spawned *exec.Cmd
+	c.newCmd = func() *exec.Cmd {
+		spawned = exec.Command("true")
+		return spawned
+	}
+
+	if _, _, err := c.EnsureServer(context.Background()); err == nil {
+		t.Fatal("expected an error: the fake spawned process never becomes healthy")
+	}
+	if spawned == nil {
+		t.Fatal("no command was constructed")
+	}
+	if _, ok := spawned.Stderr.(*os.File); !ok {
+		t.Fatalf("cmd.Stderr = %T, want *os.File so the child gets a real fd and no pipe to this process", spawned.Stderr)
+	}
+}
+
+func TestTailOfFile_ReturnsOnlyTheTail(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "log")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o644); err != nil {
+		t.Fatalf("writing log: %v", err)
+	}
+	if got := tailOfFile(path, 4); got != "6789" {
+		t.Errorf("tailOfFile(max 4) = %q, want %q", got, "6789")
+	}
+	if got := tailOfFile(path, 100); got != "0123456789" {
+		t.Errorf("tailOfFile(max 100) = %q, want the whole file", got)
+	}
+	if got := tailOfFile(filepath.Join(t.TempDir(), "missing"), 100); got != "" {
+		t.Errorf("tailOfFile on a missing file = %q, want \"\"", got)
+	}
+}
+
 func TestEnsureServer_ReportsCrashInsteadOfTimeout(t *testing.T) {
 	// A spawned server that dies immediately (bad data dir, port held by
 	// something that isn't HTTP, permissions) must not be reported as "did

@@ -3,6 +3,7 @@ package retirement
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,7 @@ func TestSettingsManager_ConcurrentUpdates(t *testing.T) {
 			updates := map[string]interface{}{
 				"portfolio_value": float64(val),
 			}
-			_, _ = sm.UpdateSettings(updates)
+			_, _, _ = sm.UpdateSettings(updates)
 		}(i)
 	}
 
@@ -535,6 +536,50 @@ func TestRevision_DoesNotBumpOnCacheMissLoad(t *testing.T) {
 	}
 }
 
+// TestRevision_BumpsWhenTheActiveScenarioIsReverted is the counterpart to the
+// test above: a cache-miss load that merely migrates must not bump, but one
+// that REVERTS the active scenario must. Without the bump the server starts
+// serving a different plan while every open page keeps rendering the old one
+// and keeps displaying the old scenario name — the page states something about
+// the user's plan that is no longer true, with nothing to correct it short of
+// a reload.
+func TestRevision_BumpsWhenTheActiveScenarioIsReverted(t *testing.T) {
+	root := t.TempDir()
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(root, store)
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, err := sm.CreateScenario("Doomed"); err != nil {
+		t.Fatalf("CreateScenario: %v", err)
+	}
+	active := sm.ActiveFilename()
+	if active == "whatif.json" {
+		t.Fatalf("expected a non-default active scenario, got %q", active)
+	}
+	// Prune the active scenario's file behind the manager's back, exactly as
+	// a full-replace backup restore does.
+	if err := os.Remove(filepath.Join(root, active)); err != nil {
+		t.Fatalf("os.Remove: %v", err)
+	}
+
+	sm.InvalidateCache()
+	before := sm.Revision()
+
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("Load after prune: %v", err)
+	}
+	if got := sm.ActiveFilename(); got != "whatif.json" {
+		t.Fatalf("expected the reconcile to revert to whatif.json, got %q", got)
+	}
+	if got := sm.Revision(); got == before {
+		t.Fatalf("reverting the active scenario did not bump the revision (still %d); open pages would keep showing %q", got, active)
+	}
+}
+
 func TestRevision_RaceClean(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := storage.New(tmpDir)
@@ -574,12 +619,15 @@ func TestApplyOverrides_PersistsAndReturnsItsOwnRevision(t *testing.T) {
 	}
 
 	want := 4321.0
-	saved, rev, err := sm.ApplyOverrides(overrides.Overrides{MonthlyLivingExpenses: &want})
+	saved, scenario, rev, err := sm.ApplyOverrides(overrides.Overrides{MonthlyLivingExpenses: &want}, "")
 	if err != nil {
 		t.Fatalf("ApplyOverrides: %v", err)
 	}
 	if saved.MonthlyLivingExpenses != want {
 		t.Fatalf("returned settings has %v, want %v", saved.MonthlyLivingExpenses, want)
+	}
+	if scenario != "whatif.json" {
+		t.Fatalf("returned scenario = %q, want %q", scenario, "whatif.json")
 	}
 	if rev == 0 {
 		t.Fatal("ApplyOverrides returned revision 0")
@@ -592,6 +640,52 @@ func TestApplyOverrides_PersistsAndReturnsItsOwnRevision(t *testing.T) {
 	}
 	if reloaded.MonthlyLivingExpenses != want {
 		t.Fatalf("value did not persist: got %v, want %v", reloaded.MonthlyLivingExpenses, want)
+	}
+}
+
+// TestApplyOverrides_RefusesWhenExpectedScenarioIsNotActive pins the guard
+// that turns the MCP's collision detection into collision PREVENTION. The
+// comparison happens inside the write lock, before the load and before the
+// save, so a scenario switch racing the caller cannot land a write on a plan
+// the caller never snapshotted -- and the error is typed so the HTTP layer
+// answers 409 rather than 500.
+func TestApplyOverrides_RefusesWhenExpectedScenarioIsNotActive(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	if _, err := sm.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	baseline, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantExpenses := baseline.MonthlyLivingExpenses
+
+	value := 9999.0
+	_, scenario, rev, err := sm.ApplyOverrides(
+		overrides.Overrides{MonthlyLivingExpenses: &value}, "whatif_not-the-active-one.json")
+	if err == nil {
+		t.Fatal("expected a refusal when the expected scenario is not the active one")
+	}
+	var conflict *ScenarioConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("error type = %T, want *ScenarioConflictError so the handler answers 409: %v", err, err)
+	}
+	if scenario != "" || rev != 0 {
+		t.Fatalf("a refused apply must report no scenario and no revision, got %q and %d", scenario, rev)
+	}
+
+	sm.InvalidateCache()
+	after, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if after.MonthlyLivingExpenses != wantExpenses {
+		t.Fatalf("a refused apply still wrote: %v -> %v", wantExpenses, after.MonthlyLivingExpenses)
 	}
 }
 
@@ -622,7 +716,7 @@ func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
 			amount := float64(10000 + i)
-			if _, _, err := sm.ApplyOverrides(overrides.Overrides{RothConversionAmount: &amount}); err != nil {
+			if _, _, _, err := sm.ApplyOverrides(overrides.Overrides{RothConversionAmount: &amount}, ""); err != nil {
 				t.Errorf("ApplyOverrides: %v", err)
 				return
 			}
@@ -633,7 +727,7 @@ func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
 			expense := float64(3000 + i)
-			if _, err := sm.UpdateSettings(map[string]interface{}{
+			if _, _, err := sm.UpdateSettings(map[string]interface{}{
 				"monthly_living_expenses": expense,
 			}); err != nil {
 				t.Errorf("UpdateSettings: %v", err)

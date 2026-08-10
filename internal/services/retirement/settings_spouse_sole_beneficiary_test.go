@@ -10,7 +10,7 @@ func TestUpdateSettings_SpouseSoleBeneficiary_RoundTrip(t *testing.T) {
 	sm := newTestSM(t)
 
 	// Explicit false persists and reads back as false.
-	if _, err := sm.UpdateSettings(map[string]interface{}{"spouse_sole_beneficiary": false}); err != nil {
+	if _, _, err := sm.UpdateSettings(map[string]interface{}{"spouse_sole_beneficiary": false}); err != nil {
 		t.Fatalf("UpdateSettings(false): %v", err)
 	}
 	loaded, err := sm.Load()
@@ -25,7 +25,7 @@ func TestUpdateSettings_SpouseSoleBeneficiary_RoundTrip(t *testing.T) {
 	}
 
 	// A partial update that does NOT carry the key must leave false intact.
-	if _, err := sm.UpdateSettings(map[string]interface{}{"portfolio_value": float64(750000)}); err != nil {
+	if _, _, err := sm.UpdateSettings(map[string]interface{}{"portfolio_value": float64(750000)}); err != nil {
 		t.Fatalf("UpdateSettings(partial): %v", err)
 	}
 	loaded, err = sm.Load()
@@ -37,7 +37,7 @@ func TestUpdateSettings_SpouseSoleBeneficiary_RoundTrip(t *testing.T) {
 	}
 
 	// Flipping back to true persists.
-	if _, err := sm.UpdateSettings(map[string]interface{}{"spouse_sole_beneficiary": true}); err != nil {
+	if _, _, err := sm.UpdateSettings(map[string]interface{}{"spouse_sole_beneficiary": true}); err != nil {
 		t.Fatalf("UpdateSettings(true): %v", err)
 	}
 	loaded, err = sm.Load()

@@ -416,6 +416,145 @@ func TestApplyChangesTool_SwitchesScenarioBeforeSnapshotting(t *testing.T) {
 	}
 }
 
+// toolErrorText returns the text of an errored tool result, failing the test
+// if the call did not error.
+func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	if !res.IsError {
+		t.Fatalf("expected an error result, got: %+v", res.StructuredContent)
+	}
+	if len(res.Content) == 0 {
+		t.Fatal("error result has no content describing the failure")
+	}
+	text, ok := res.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("error content = %#v, want text", res.Content[0])
+	}
+	return text.Text
+}
+
+// TestApplyChangesTool_ReportsWriteToADifferentScenarioThanSnapshotted covers
+// the post-hoc collision guard — the branch every other apply_changes test
+// avoids by making the fake answer with the scenario it reported active.
+//
+// It is the last line of defence for this tool's one unrecoverable failure: a
+// write that lands on a plan the snapshot does not cover cannot be undone, so
+// the tool must report it loudly instead of returning success. The fake here
+// plays a server that answers /whatif/state with whatif.json and then writes
+// whatif-b.json anyway — i.e. one that ignores the expected_scenario field the
+// call sends.
+func TestApplyChangesTool_ReportsWriteToADifferentScenarioThanSnapshotted(t *testing.T) {
+	ctx := context.Background()
+	src, dir := newLiveFixture(t)
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/whatif/state":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: "whatif.json", Revision: 1})
+		case "/whatif/apply":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(ApplyResult{Scenario: "whatif-b.json", Applied: Overrides{}, Revision: 2})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	live := NewClient(fake.URL, dir)
+	snaps := NewSnapshotter(dir, t.TempDir())
+
+	clientSession := connectInMemory(t, NewServer(src, live, snaps))
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "apply_changes",
+		Arguments: applyChangesInput{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(apply_changes) returned a transport-level error, want a tool result with IsError set: %v", err)
+	}
+	msg := toolErrorText(t, res)
+
+	// Both filenames, or the user cannot tell which plan took the write and
+	// which one the recoverable copy covers.
+	if !strings.Contains(msg, "whatif-b.json") {
+		t.Errorf("error must name the scenario that was written (whatif-b.json), got: %s", msg)
+	}
+	if !strings.Contains(msg, "whatif.json") {
+		t.Errorf("error must name the snapshotted scenario (whatif.json), got: %s", msg)
+	}
+	// And the snapshot path, which is the only thing a hand recovery can use.
+	if !strings.Contains(msg, "whatif.json.") {
+		t.Errorf("error must name the snapshot path taken for this call, got: %s", msg)
+	}
+}
+
+// TestApplyChangesTool_SendsExpectedScenarioAndSurfacesA409 covers the guard
+// that runs one layer earlier: apply_changes tells the server which scenario
+// it snapshotted, and a server whose active scenario has changed refuses with
+// 409 *without writing*. Detection after the fact cannot undo a write; this is
+// the path where the collision is prevented instead.
+func TestApplyChangesTool_SendsExpectedScenarioAndSurfacesA409(t *testing.T) {
+	ctx := context.Background()
+	src, dir := newLiveFixture(t)
+
+	gotExpected := make(chan string, 1)
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/whatif/state":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(State{App: "budget2", SettingsDir: dir, Active: "whatif.json", Revision: 1})
+		case "/whatif/apply":
+			var body struct {
+				ExpectedScenario string `json:"expected_scenario"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			gotExpected <- body.ExpectedScenario
+			// The browser switched to whatif-b.json between the state read
+			// and this POST: the real handler answers 409 and writes nothing.
+			http.Error(w, "refusing to write: the active scenario is whatif-b.json, but this change was "+
+				"prepared for "+body.ExpectedScenario+" (the active scenario changed between the two). "+
+				"Nothing was written", http.StatusConflict)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	live := NewClient(fake.URL, dir)
+	snaps := NewSnapshotter(dir, t.TempDir())
+
+	clientSession := connectInMemory(t, NewServer(src, live, snaps))
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "apply_changes",
+		Arguments: applyChangesInput{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(apply_changes) returned a transport-level error, want a tool result with IsError set: %v", err)
+	}
+	msg := toolErrorText(t, res)
+
+	select {
+	case got := <-gotExpected:
+		if got != "whatif.json" {
+			t.Errorf(`POST /whatif/apply carried expected_scenario = %q, want %q — without it the server cannot refuse the write`, got, "whatif.json")
+		}
+	default:
+		t.Fatal("the fake server's /whatif/apply handler was never invoked")
+	}
+
+	if !strings.Contains(msg, "409") && !strings.Contains(msg, "Conflict") {
+		t.Errorf("error should surface the 409 refusal, got: %s", msg)
+	}
+	if !strings.Contains(msg, "Nothing was written") {
+		t.Errorf("error should carry the server's explanation verbatim, got: %s", msg)
+	}
+}
+
 // TestOpenPageTool_ReturnsURLAndPostSwitchState exercises open_page's actual
 // handler, not just its registration: it drives a real tool call over the
 // in-memory transport against a fake HTTP server, requesting a scenario

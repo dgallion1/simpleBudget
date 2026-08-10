@@ -80,7 +80,15 @@ document.body.addEventListener('htmx:confirm', function (evt) {
         return;
     }
     var interactive = active.matches('input, select, textarea, [contenteditable="true"]');
-    if (interactive) {
+    // Containment matters as much as interactivity. The poll renders
+    // #whatif-results with no out-of-band blocks, so it cannot touch anything
+    // outside that element -- and document.activeElement does not reset when
+    // the window loses focus, so an unscoped guard suppresses polling for as
+    // long as a field anywhere on the page happens to hold focus. That breaks
+    // the feature's primary workflow: drag a slider, alt-tab away, apply a
+    // change from the MCP, come back to a page that never updates.
+    var results = document.getElementById('whatif-results');
+    if (interactive && results && results.contains(active)) {
         // Skip this tick; the next one is 2s away and the baseline is unchanged.
         evt.preventDefault();
     }

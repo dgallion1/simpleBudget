@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -105,9 +106,23 @@ func (c *Client) State(ctx context.Context) (State, error) {
 	return s, nil
 }
 
+// applyRequest is the POST /whatif/apply body. It mirrors applyRequest in
+// internal/handlers/whatif/handlers_live.go: the override fields inline, plus
+// the optional scenario expectation.
+type applyRequest struct {
+	Overrides
+	ExpectedScenario string `json:"expected_scenario,omitempty"`
+}
+
 // Apply posts a sparse override set.
-func (c *Client) Apply(ctx context.Context, o Overrides) (ApplyResult, error) {
-	body, err := json.Marshal(o)
+//
+// expectedScenario is the scenario filename the caller snapshotted. The server
+// compares it against the active scenario inside the lock that performs the
+// write and refuses with 409 if they differ, so a scenario switch racing this
+// call cannot land a write on a plan with no backup. Pass "" for no
+// expectation.
+func (c *Client) Apply(ctx context.Context, o Overrides, expectedScenario string) (ApplyResult, error) {
+	body, err := json.Marshal(applyRequest{Overrides: o, ExpectedScenario: expectedScenario})
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -187,6 +202,51 @@ func spawnArgs(settingsDir string) (string, error) {
 	return filepath.Dir(abs), nil
 }
 
+// listenAddrFromBaseURL derives the BUDGET_LISTEN_ADDR value for a spawned
+// server from the URL this client talks to.
+//
+// Without it the child's listen address comes from an inherited
+// BUDGET_LISTEN_ADDR or config's :8080 default, which has nothing to do with
+// c.baseURL. cmd/server's startup calls killPreviousInstance(cfg.ListenAddr)
+// (cmd/server/main.go), so a spawn for a server on :8099 would shut down the
+// budget2 the user is actually using on :8080 and then bind :8080 itself --
+// serving whatever data directory this spawn chose. Deriving the port from the
+// base URL means the process we start is the process we were about to talk to.
+//
+// Only a loopback host may be started: a non-loopback BUDGET_SERVER_URL names a
+// machine this process cannot start anything on, so binding the port locally
+// would produce a local server that answers nothing the caller asked for while
+// still killing whatever holds that port here.
+func listenAddrFromBaseURL(baseURL string) (string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("cannot start a server for %q: unparseable URL: %w", baseURL, err)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("cannot start a server for %q: no host in the URL", baseURL)
+	}
+	if host != "localhost" {
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			return "", fmt.Errorf(
+				"refusing to start a server for %s: only a loopback address (localhost or 127.0.0.1) can be "+
+					"started from here. Start cmd/server on %s yourself, or point BUDGET_SERVER_URL at a local instance",
+				baseURL, host)
+		}
+	}
+	port := u.Port()
+	if port == "" {
+		switch u.Scheme {
+		case "https":
+			port = "443"
+		default:
+			port = "80"
+		}
+	}
+	return ":" + port, nil
+}
+
 // serverCommand builds the command that starts cmd/server.
 //
 // The built binary is preferred over `go run`: go run compiles on every cold
@@ -217,8 +277,13 @@ func isConnectionRefused(err error) bool {
 
 // envWithout copies os.Environ() dropping any entry for key.
 func envWithout(key string) []string {
+	return envWithoutIn(os.Environ(), key)
+}
+
+// envWithoutIn copies env dropping any entry for key. The prefix includes the
+// "=" so a variable whose name merely contains key survives.
+func envWithoutIn(env []string, key string) []string {
 	prefix := key + "="
-	env := os.Environ()
 	out := make([]string, 0, len(env))
 	for _, kv := range env {
 		if strings.HasPrefix(kv, prefix) {
@@ -229,28 +294,54 @@ func envWithout(key string) []string {
 	return out
 }
 
-// crashBufferBytes bounds how much of a spawned server's stderr EnsureServer
-// keeps, so a chatty process cannot balloon memory. The tail is what
-// matters -- a crash message is almost always the last thing written.
-const crashBufferBytes = 4096
+// crashTailBytes bounds how much of a spawned server's stderr log EnsureServer
+// reads back for a crash diagnostic, so a chatty process cannot balloon the
+// error message. The tail is what matters -- a crash message is almost always
+// the last thing written.
+const crashTailBytes = 4096
 
-// tailWriter is an io.Writer that retains only the last max bytes written to
-// it.
-type tailWriter struct {
-	max int
-	buf []byte
-}
-
-func (w *tailWriter) Write(p []byte) (int, error) {
-	w.buf = append(w.buf, p...)
-	if len(w.buf) > w.max {
-		w.buf = w.buf[len(w.buf)-w.max:]
+// tailOfFile returns the last max bytes of the file at path, or "" if it cannot
+// be read. Only the tail is read, so the file's size does not bound memory.
+func tailOfFile(path string, max int) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
 	}
-	return len(p), nil
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	size := info.Size()
+	if size > int64(max) {
+		if _, err := f.Seek(size-int64(max), io.SeekStart); err != nil {
+			return ""
+		}
+		size = int64(max)
+	}
+	buf := make([]byte, size)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return ""
+	}
+	return string(buf[:n])
 }
 
-func (w *tailWriter) String() string {
-	return string(w.buf)
+// stderrLogFile creates the file a spawned server's stderr is redirected to.
+//
+// It must be a real *os.File: os/exec only passes an fd straight through when
+// Stderr is one. Any other io.Writer gets a pipe whose read end this process
+// holds, so the "detached, outlives this session" property open_page advertises
+// would be false -- when the MCP exits, that read end closes and the server
+// dies of SIGPIPE at its next stderr write.
+//
+// The file is deliberately left on disk: the child keeps writing to it for its
+// whole life, and it is the only record of why a spawn that failed later did
+// so. Spawns happen only when nothing is already listening, so these do not
+// accumulate per tool call.
+func stderrLogFile() (*os.File, error) {
+	return os.CreateTemp("", "budget2-server-*.log")
 }
 
 // EnsureServer returns the state of a usable server, starting one if nothing is
@@ -271,11 +362,29 @@ func (c *Client) EnsureServer(ctx context.Context) (State, bool, error) {
 	if err != nil {
 		return State{}, false, err
 	}
+	listenAddr, err := listenAddrFromBaseURL(c.baseURL)
+	if err != nil {
+		return State{}, false, err
+	}
 
 	cmd := c.newCmd()
-	cmd.Env = append(envWithout("BUDGET_DATA_DIR"), "BUDGET_DATA_DIR="+dataDir)
-	stderr := &tailWriter{max: crashBufferBytes}
-	cmd.Stderr = stderr
+	// Both variables are stripped from the inherited environment first: an
+	// inherited value would otherwise silently win over the one derived here
+	// and put the child on a different port or a different plan than the one
+	// this client verified.
+	env := envWithout("BUDGET_DATA_DIR")
+	env = envWithoutIn(env, "BUDGET_LISTEN_ADDR")
+	cmd.Env = append(env, "BUDGET_DATA_DIR="+dataDir, "BUDGET_LISTEN_ADDR="+listenAddr)
+
+	logFile, err := stderrLogFile()
+	if err != nil {
+		return State{}, false, fmt.Errorf("creating a log file for cmd/server: %w", err)
+	}
+	logPath := logFile.Name()
+	// This process's handle is closed as soon as the child has its own copy;
+	// the child's fd keeps the file open for as long as it runs.
+	defer func() { _ = logFile.Close() }()
+	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		return State{}, false, fmt.Errorf("starting cmd/server: %w", err)
 	}
@@ -298,13 +407,13 @@ func (c *Client) EnsureServer(ctx context.Context) (State, bool, error) {
 			// The process is gone before it ever answered -- report why
 			// instead of waiting out the rest of the 15s and describing a
 			// crash as a slow start.
-			tail := strings.TrimSpace(stderr.String())
+			tail := strings.TrimSpace(tailOfFile(logPath, crashTailBytes))
 			if tail == "" {
 				tail = "(no output on stderr)"
 			}
 			return State{}, false, fmt.Errorf(
-				"cmd/server exited before it became healthy (%v); stderr:\n%s",
-				waitErr, tail)
+				"cmd/server exited before it became healthy (%v); stderr (%s):\n%s",
+				waitErr, logPath, tail)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}

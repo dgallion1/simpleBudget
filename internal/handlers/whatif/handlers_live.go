@@ -51,6 +51,20 @@ type applyResponse struct {
 	Revision int                 `json:"revision"`
 }
 
+// applyRequest is the POST /whatif/apply body: the override set, plus an
+// optional expectation about which scenario is being written.
+//
+// expected_scenario is what makes the write safe rather than merely audited. A
+// client snapshots the scenario the server reports active, then POSTs; if the
+// browser switches scenario in between, the write would otherwise land on a
+// plan that was never backed up, and there is no undo. Sending the expectation
+// moves the comparison inside the manager's write lock, where it can still
+// prevent the write. Omitting it preserves the previous behavior.
+type applyRequest struct {
+	overrides.Overrides
+	ExpectedScenario string `json:"expected_scenario,omitempty"`
+}
+
 // handleWhatIfApply writes a sparse override set to the active scenario.
 //
 // This exists instead of the MCP posting the existing forms because
@@ -64,19 +78,21 @@ func handleWhatIfApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var o overrides.Overrides
+	var req applyRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&o); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		http.Error(w, "invalid overrides JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	_, revision, err := retirementMgr.ApplyOverrides(o)
+	_, scenario, revision, err := retirementMgr.ApplyOverrides(req.Overrides, req.ExpectedScenario)
 	if err != nil {
 		// Validation errors name their field; surface them verbatim. Save-time
 		// failures (ValidatePersons, validateChainInternal) land here too, and
-		// fall through to statusForMutationError's 400/404/409/500 mapping.
+		// fall through to statusForMutationError's 400/404/409/500 mapping --
+		// which is also what turns an expected_scenario mismatch
+		// (*ScenarioConflictError) into 409 Conflict.
 		status := statusForMutationError(err)
 		var ve *overrides.ValidationError
 		if errors.As(err, &ve) {
@@ -87,9 +103,14 @@ func handleWhatIfApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	// scenario comes from ApplyOverrides, read under the lock that wrote it.
+	// Reading ActiveFilename() here instead would name whatever is active
+	// *now*, which a concurrent switch can make a different file than the one
+	// just written -- and a client comparing the two would raise a collision
+	// alarm about a write that was in fact fine.
 	_ = json.NewEncoder(w).Encode(applyResponse{
-		Scenario: retirementMgr.ActiveFilename(),
-		Applied:  o,
+		Scenario: scenario,
+		Applied:  req.Overrides,
 		Revision: revision,
 	})
 }

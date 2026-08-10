@@ -122,8 +122,9 @@ func handleWhatIfAddHealthcare(w http.ResponseWriter, r *http.Request) {
 		MedicareEligibleAge:   65,
 	}
 
-	recalcAndRender(w, r, "Failed to add healthcare person", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.AddHealthcarePerson(person)
+	recalcAndRender(w, r, "Failed to add healthcare person", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.AddHealthcarePerson(person)
+		return settings, revisionUnreported, err
 	})
 }
 func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
@@ -269,14 +270,16 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		updates["aca_cost_after_employer"] = f
 	}
 
-	recalcAndRender(w, r, "Failed to update healthcare person", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.UpdateHealthcarePerson(id, updates)
+	recalcAndRender(w, r, "Failed to update healthcare person", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.UpdateHealthcarePerson(id, updates)
+		return settings, revisionUnreported, err
 	})
 }
 func handleWhatIfDeleteHealthcare(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	recalcAndRender(w, r, "Failed to remove healthcare person", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RemoveHealthcarePerson(id)
+	recalcAndRender(w, r, "Failed to remove healthcare person", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RemoveHealthcarePerson(id)
+		return settings, revisionUnreported, err
 	})
 }

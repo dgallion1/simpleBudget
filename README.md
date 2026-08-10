@@ -323,7 +323,10 @@ through the running server's `POST /whatif/apply`. There is also a
 
 The MCP server talks HTTP to a `cmd/server` instance on localhost, default
 `http://localhost:8080`, overridable with `BUDGET_SERVER_URL`. If nothing is
-listening there, `open_page` and `apply_changes` start one. It resolves its
+listening there, `open_page` and `apply_changes` start one — on the port that
+URL names, and only when it is a loopback address; a non-loopback
+`BUDGET_SERVER_URL` names a machine this process cannot start anything on, so
+it refuses instead. It resolves its
 own data directory from the `-data` flag, else `BUDGET_DATA_DIR`, else
 `./data/settings`, and refuses to write if the server it finds is serving a
 different settings directory than the one it reads. Before its first write to

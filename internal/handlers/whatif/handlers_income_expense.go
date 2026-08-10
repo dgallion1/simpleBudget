@@ -94,8 +94,9 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		source.EndMonth = &endMonth
 	}
 
-	recalcAndRender(w, r, "Failed to add income source", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.AddIncomeSource(source)
+	recalcAndRender(w, r, "Failed to add income source", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.AddIncomeSource(source)
+		return settings, revisionUnreported, err
 	})
 }
 
@@ -117,22 +118,25 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		colaRate = 0.02 // 2% COLA
 	}
 
-	recalcAndRender(w, r, "Failed to update income source", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
+	recalcAndRender(w, r, "Failed to update income source", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to remove income source", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RemoveIncomeSource(id)
+	recalcAndRender(w, r, "Failed to remove income source", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RemoveIncomeSource(id)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to restore income source", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RestoreIncomeSource(id)
+	recalcAndRender(w, r, "Failed to restore income source", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RestoreIncomeSource(id)
+		return settings, revisionUnreported, err
 	})
 }
 
@@ -166,8 +170,9 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		source.EndYear = *endYear
 	}
 
-	recalcAndRender(w, r, "Failed to add expense", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.AddExpenseSource(source)
+	recalcAndRender(w, r, "Failed to add expense", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.AddExpenseSource(source)
+		return settings, revisionUnreported, err
 	})
 }
 
@@ -187,22 +192,25 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	inflation := checkboxOn(r, "inflation")
 	discretionary := checkboxOn(r, "discretionary")
 
-	recalcAndRender(w, r, "Failed to update expense", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
+	recalcAndRender(w, r, "Failed to update expense", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfDeleteExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to remove expense", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RemoveExpenseSource(id)
+	recalcAndRender(w, r, "Failed to remove expense", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RemoveExpenseSource(id)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfRestoreExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to restore expense", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RestoreExpenseSource(id)
+	recalcAndRender(w, r, "Failed to restore expense", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RestoreExpenseSource(id)
+		return settings, revisionUnreported, err
 	})
 }
 
@@ -248,42 +256,48 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		Notes:        r.FormValue("notes"),
 	}
 
-	recalcAndRender(w, r, "Failed to add big ticket item", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.AddBigTicketItem(item)
+	recalcAndRender(w, r, "Failed to add big ticket item", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.AddBigTicketItem(item)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfDeleteBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to remove big ticket item", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RemoveBigTicketItem(id)
+	recalcAndRender(w, r, "Failed to remove big ticket item", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RemoveBigTicketItem(id)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to restore big ticket item", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.RestoreBigTicketItem(id)
+	recalcAndRender(w, r, "Failed to restore big ticket item", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RestoreBigTicketItem(id)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfPurgeIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to purge income source", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.PurgeRemovedIncomeSource(id)
+	recalcAndRender(w, r, "Failed to purge income source", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.PurgeRemovedIncomeSource(id)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfPurgeExpense(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to purge expense source", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.PurgeRemovedExpenseSource(id)
+	recalcAndRender(w, r, "Failed to purge expense source", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.PurgeRemovedExpenseSource(id)
+		return settings, revisionUnreported, err
 	})
 }
 
 func handleWhatIfPurgeBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to purge big ticket item", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.PurgeRemovedBigTicketItem(id)
+	recalcAndRender(w, r, "Failed to purge big ticket item", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.PurgeRemovedBigTicketItem(id)
+		return settings, revisionUnreported, err
 	})
 }

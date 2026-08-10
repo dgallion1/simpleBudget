@@ -251,18 +251,20 @@ func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
 			return nil, applyChangesOutput{}, err
 		}
 
-		result, err := live.Apply(ctx, in.Overrides)
+		// state.Active is the scenario the snapshot above covers. Sending it
+		// as the expectation moves the read-vs-write comparison inside the
+		// server's write lock, where a mismatch can still PREVENT the write
+		// (409) instead of merely reporting it afterwards.
+		result, err := live.Apply(ctx, in.Overrides, state.Active)
 		if err != nil {
 			return nil, applyChangesOutput{}, err
 		}
 
-		// The window between the State read above and this POST is
-		// unsynchronized: a scenario switch in the browser (the exact
-		// workflow open_page sets up) can land between them, so the file the
-		// snapshot covers and the file the server just wrote can differ. That
-		// is the unrecoverable failure this tool exists to prevent, so it
-		// must be reported rather than silently returned as a success --
-		// there is no way to roll the write back from here.
+		// Defence in depth behind the expectation sent above. If a future
+		// server ignores expected_scenario, or answers with a different file
+		// than it was asked to write, the snapshot this call took no longer
+		// covers the write -- and there is no way to roll it back from here,
+		// so it must be reported rather than returned as a success.
 		if result.Scenario != state.Active {
 			return nil, applyChangesOutput{}, fmt.Errorf(
 				"apply_changes wrote to %q, but the snapshot taken for this call covers %q (snapshot: %s); "+

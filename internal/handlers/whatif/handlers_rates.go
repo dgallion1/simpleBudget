@@ -49,7 +49,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	clampPerAccountAllocations(updates)
 
-	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, error) {
+	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, int, error) {
 		if hasPersons {
 			return retirementMgr.UpdateSettingsWithPersons(updates, startDate, persons)
 		}
@@ -160,8 +160,9 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 		phases = append(phases, phase)
 	}
 
-	recalcAndRender(w, r, "Failed to save spending phases", func() (*models.WhatIfSettings, error) {
-		return retirementMgr.UpdateSpendingPhases(enabled, phases)
+	recalcAndRender(w, r, "Failed to save spending phases", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.UpdateSpendingPhases(enabled, phases)
+		return settings, revisionUnreported, err
 	})
 }
 

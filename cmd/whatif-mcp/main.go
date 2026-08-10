@@ -18,11 +18,19 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// resolveDataDir returns the settings directory: the flag when set, otherwise
-// ./data/settings relative to the working directory.
-func resolveDataDir(flagValue string) string {
+// resolveDataDir returns the settings directory, resolving it the way
+// cmd/server does: an explicit flag wins, then BUDGET_DATA_DIR (to which
+// config.Load appends "settings"), then ./data/settings.
+//
+// Taking env as a parameter keeps this testable without mutating process
+// state. Honoring BUDGET_DATA_DIR closes followups §3: with a custom data dir
+// and a stale ./data/settings, this server would answer about the wrong plan.
+func resolveDataDir(flagValue string, env func(string) string) string {
 	if flagValue != "" {
 		return flagValue
+	}
+	if dataDir := env("BUDGET_DATA_DIR"); dataDir != "" {
+		return filepath.Join(dataDir, "settings")
 	}
 	return filepath.Join("data", "settings")
 }
@@ -42,7 +50,7 @@ func main() {
 	dir := flag.String("data", "", "settings directory (default ./data/settings)")
 	flag.Parse()
 
-	settingsDir := resolveDataDir(*dir)
+	settingsDir := resolveDataDir(*dir, os.Getenv)
 	if err := checkSettingsDir(settingsDir); err != nil {
 		// stdout is the MCP transport — diagnostics must go to stderr.
 		log.Fatal(err)

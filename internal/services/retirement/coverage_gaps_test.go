@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"budget2/internal/models"
@@ -814,9 +815,21 @@ func TestLoad_CacheHitOnSecondCall(t *testing.T) {
 		t.Fatalf("second Load: %v", err)
 	}
 
-	// Should return same pointer (cache hit)
-	if s1 != s2 {
-		t.Error("expected same pointer from cache")
+	// Equal value, not the same pointer: the cache hit is real, but Load
+	// copies on the way out so the cached object never escapes. The distinct
+	// pointer is asserted directly in TestLoadReturnsAPrivateCopy.
+	//
+	// Despite the name, DeepEqual here would also hold if Load re-read from
+	// disk every call; the real caching guard is
+	// TestSettingsManager_InvalidateCacheForcesDiskReload in settings_test.go.
+	// The comparison also relies on both operands being prepare.Clone results,
+	// which agree on turning empty omitempty slices into nil (see Clone's doc
+	// comment) — it is not a claim that a Clone equals its source.
+	if !reflect.DeepEqual(s1, s2) {
+		t.Errorf("expected an equal object from cache:\ns1 = %+v\ns2 = %+v", s1, s2)
+	}
+	if s1 == s2 {
+		t.Error("cache hit returned the cached pointer instead of a copy")
 	}
 }
 

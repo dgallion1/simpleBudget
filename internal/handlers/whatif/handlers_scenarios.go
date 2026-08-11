@@ -145,11 +145,11 @@ func handleWhatIfUpdateChain(w http.ResponseWriter, r *http.Request) {
 		return chain[i].TransitionAge < chain[j].TransitionAge
 	})
 
-	// LoadForUpdate, not Load: ValidateScenarioChain below reads
-	// settings.CurrentAge, so the copy must carry the json:"-" fields that a
-	// bare prepare.DeepCopy would drop — a zeroed CurrentAge would silently
-	// change which transition ages this endpoint accepts.
-	settings, err := retirementMgr.LoadForUpdate()
+	// ValidateScenarioChain below reads settings.CurrentAge, so Load's copy
+	// must carry the json:"-" fields that a bare prepare.DeepCopy would drop —
+	// a zeroed CurrentAge would silently change which transition ages this
+	// endpoint accepts. Load uses prepare.Clone for exactly this reason.
+	settings, err := retirementMgr.Load()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -179,7 +179,7 @@ func handleWhatIfDeleteChainLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.LoadForUpdate()
+	settings, err := retirementMgr.Load()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return

@@ -184,11 +184,12 @@ func recalcAndRender(w http.ResponseWriter, r *http.Request, failMsg string, mut
 // saveAndRecalc is recalcAndRender for the load-modify-save handlers, which
 // mutate a loaded settings object in place and persist it via Save.
 //
-// The object they mutate MUST come from LoadForUpdate, never Load: Load
-// returns the pointer the manager caches and hands to every concurrent
-// reader, and the /whatif/poll path marshals that pointer without holding a
-// lock. Mutating it in place is a data race, and the mutations that publish a
-// slice header (spending phases) or a fresh pointer can be read torn.
+// Mutating it in place is safe because Load hands every caller a private copy;
+// the manager's cached object, which the /whatif/poll path marshals without
+// holding a lock, is never the one a handler holds. Anything that reintroduces
+// a shared-pointer accessor reintroduces the race these handlers used to
+// carry: a slice-header mutation (spending phases) or a fresh pointer could be
+// read torn, not merely stale.
 func saveAndRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
 	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, int, error) {
 		revision, err := retirementMgr.SaveWithRevision(settings)
@@ -1042,7 +1043,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Build a copy with guardrails forced off; do NOT mutate the saved settings.
+	// Build a copy with guardrails forced off.
 	clone := *settings
 	clone.Guardrails = nil
 
@@ -1067,7 +1068,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 }
 
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.LoadForUpdateContext(r.Context())
+	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return

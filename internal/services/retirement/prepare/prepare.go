@@ -91,3 +91,51 @@ func DeepCopy(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error) {
 	}
 	return out, nil
 }
+
+// Clone returns a deep copy of cfg that is lossless: unlike DeepCopy it also
+// carries the fields tagged json:"-", which the JSON round-trip silently
+// drops.
+//
+// Use Clone (not DeepCopy) whenever the copy is handed to a caller that will
+// read those fields WITHOUT first going through From. DeepCopy is only safe
+// when From re-derives them: From runs ComputeAges, so CurrentAge/SpouseAge
+// come back, but nothing re-derives RothConversion.PerYearOverrides — see the
+// re-attach overrides.Apply has to perform by hand after its own DeepCopy.
+//
+// The set of carried fields is enforced by TestCloneCarriesEveryJSONOmittedField,
+// which reflects over models.WhatIfSettings rather than hard-coding a list, so
+// a newly added json:"-" field fails the test instead of being dropped.
+func Clone(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("nil settings")
+	}
+	out, err := DeepCopy(cfg)
+	if err != nil {
+		return nil, err
+	}
+	carryJSONOmittedFields(cfg, out)
+	return out, nil
+}
+
+// carryJSONOmittedFields copies src's json:"-" fields onto dst. Reference
+// types are copied, not aliased: the whole point of Clone is that mutating
+// one settings object cannot be observed through another.
+//
+// Keep this in sync with the json:"-" fields reachable from
+// models.WhatIfSettings; TestCloneCarriesEveryJSONOmittedField enumerates them
+// by reflection and fails if one is missed.
+func carryJSONOmittedFields(src, dst *models.WhatIfSettings) {
+	dst.CurrentAge = src.CurrentAge
+	dst.SpouseAge = src.SpouseAge
+
+	if src.RothConversion != nil && src.RothConversion.PerYearOverrides != nil {
+		if dst.RothConversion == nil {
+			dst.RothConversion = &models.RothConversionConfig{}
+		}
+		overrides := make(map[int]float64, len(src.RothConversion.PerYearOverrides))
+		for year, amount := range src.RothConversion.PerYearOverrides {
+			overrides[year] = amount
+		}
+		dst.RothConversion.PerYearOverrides = overrides
+	}
+}

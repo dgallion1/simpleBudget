@@ -818,6 +818,13 @@ func TestLoadInternal_LegacySpouseAgeMigration(t *testing.T) {
 // a second call returns an equal object through a different pointer. Pointer
 // identity across Loads is asserted to be ABSENT in
 // TestLoadReturnsAPrivateCopy.
+//
+// Despite the name, DeepEqual here would also hold if Load re-read from disk
+// every call; the real caching guard is
+// TestSettingsManager_InvalidateCacheForcesDiskReload in settings_test.go.
+// The comparison also relies on both operands being prepare.Clone results,
+// which agree on turning empty omitempty slices into nil (see Clone's doc
+// comment) — it is not a claim that a Clone equals its source.
 
 func TestSettingsManager_LoadReturnsCacheOnSubsequentCalls(t *testing.T) {
 	sm := newTestSM(t)

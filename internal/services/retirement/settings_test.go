@@ -702,12 +702,12 @@ func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 	}
 
 	// Each goroutine records the exact value it last wrote successfully. A
-	// static floor is too weak here: Load() returns the live sm.cache
-	// pointer, so a naive Load->Apply->Save sequence's staleness window is
-	// only microseconds wide, and a revert costs at most the last handful of
-	// the other goroutine's increments -- nowhere near a floor set near the
-	// start of either range. Asserting exact equality against each
-	// goroutine's own last write catches a revert of any size, deterministically.
+	// static floor is too weak here: a naive Load->Apply->Save sequence's
+	// staleness window is only microseconds wide, and a revert costs at most
+	// the last handful of the other goroutine's increments -- nowhere near a
+	// floor set near the start of either range. Asserting exact equality
+	// against each goroutine's own last write catches a revert of any size,
+	// deterministically.
 	var lastRothAmount, lastMonthlyExpenses float64
 
 	var wg sync.WaitGroup

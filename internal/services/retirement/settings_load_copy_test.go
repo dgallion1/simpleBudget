@@ -92,6 +92,47 @@ func TestLoadResultMutationIsNotVisibleToTheNextLoad(t *testing.T) {
 	}
 }
 
+// TestLoadFromDiskReturnsAPrivateCopy covers the cache-MISS return point
+// specifically, which no other test in this file reaches: they all seed
+// through Save, which populates sm.cache, so they enter Load through the
+// cache-hit branch and would keep passing if the fresh-decode branch
+// published and returned the same object. InvalidateCache forces the decode.
+//
+// The guard has to be mutation visibility, not pointer distinctness. If the
+// cache-miss branch returned the object it published, that object and the
+// NEXT Load's copy would still be different pointers — so a pointer
+// comparison sees nothing wrong. What gives it away is that mutating the
+// first result is then visible to the second.
+func TestLoadFromDiskReturnsAPrivateCopy(t *testing.T) {
+	sm := newAgedManager(t)
+	sm.InvalidateCache()
+
+	fromDisk, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load after InvalidateCache: %v", err)
+	}
+	beforePhases := len(fromDisk.SpendingPhaseConfig.Phases)
+	beforePortfolio := fromDisk.PortfolioValue
+
+	fromDisk.PortfolioValue = 1234567
+	fromDisk.SpendingPhaseConfig.Phases = append(fromDisk.SpendingPhaseConfig.Phases, models.SpendingPhase{
+		Name: "Extra", StartAge: 95, Multiplier: 0.5,
+	})
+
+	next, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if next.PortfolioValue != beforePortfolio {
+		t.Fatalf("the cache-miss branch published the object it returned: PortfolioValue %v, want %v",
+			next.PortfolioValue, beforePortfolio)
+	}
+	if got := len(next.SpendingPhaseConfig.Phases); got != beforePhases {
+		t.Fatalf("the cache-miss branch published the object it returned: %d phases, want %d",
+			got, beforePhases)
+	}
+}
+
 // TestLoadDoesNotReturnTheObjectSavePublished closes the other door into the
 // cache: Save stores the very object it is handed, so a Load that returned the
 // cache would hand the saver's own pointer straight back to every other

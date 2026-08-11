@@ -1043,7 +1043,7 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Build a copy with guardrails forced off; do NOT mutate the saved settings.
+	// Build a copy with guardrails forced off.
 	clone := *settings
 	clone.Guardrails = nil
 

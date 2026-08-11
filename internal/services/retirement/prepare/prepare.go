@@ -105,6 +105,22 @@ func DeepCopy(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error) {
 // The set of carried fields is enforced by TestCloneCarriesEveryJSONOmittedField,
 // which reflects over models.WhatIfSettings rather than hard-coding a list, so
 // a newly added json:"-" field fails the test instead of being dropped.
+//
+// NOT value-faithful for empty slices. Clone inherits DeepCopy's JSON round
+// trip, so an omitempty field holding a non-nil empty slice is omitted on
+// marshal and comes back nil: RemovedIncomeSources, RemovedExpenseSources,
+// BigTicketItems and RemovedBigTicketItems all make that trip on a default
+// plan. Benign for every current caller — append, len and range treat nil and
+// empty alike, templates render both as nothing, and omitempty emits the same
+// bytes for either, so nothing reaches disk differently — but it is a real
+// change of value, so reflect.DeepEqual(cfg, clone) is FALSE even when every
+// field prints identically. Two tests in the retirement package
+// (TestLoad_CacheHitOnSecondCall,
+// TestSettingsManager_LoadReturnsCacheOnSubsequentCalls) compare two Load
+// results with DeepEqual and only pass because BOTH operands are Clones and
+// so share the nil-ing; making this value-faithful is safe, but check them
+// first. The one place that re-fills the nils is initializeLoadedSettings, on
+// the disk-decode path, which Clone does not go through.
 func Clone(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("nil settings")

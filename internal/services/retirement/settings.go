@@ -449,7 +449,11 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Double-check cache after acquiring write lock
+	// Double-check cache after acquiring write lock. Reachable only when
+	// another goroutine populated the cache in the window between the
+	// read-unlock above and this write-lock acquisition, so it has no
+	// deterministic test: the private-copy guards cover the other two return
+	// points and this one is the same one-line copy.
 	if sm.cache != nil {
 		return prepare.Clone(sm.cache)
 	}

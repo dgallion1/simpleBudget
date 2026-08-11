@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"time"
 
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/engine"
@@ -53,6 +54,31 @@ type runOutput struct {
 	MonteCarloOmitted bool         `json:"monte_carlo_omitted"`
 }
 
+type openPageInput struct {
+	Scenario string `json:"scenario,omitempty" jsonschema:"saved scenario filename to switch to first; omit to use the active one"`
+}
+
+type openPageOutput struct {
+	URL      string `json:"url"`
+	Started  bool   `json:"started"`
+	Active   string `json:"active"`
+	Revision int    `json:"revision"`
+}
+
+type applyChangesInput struct {
+	Scenario  string    `json:"scenario,omitempty" jsonschema:"saved scenario filename; omit for the active one"`
+	Overrides Overrides `json:"overrides" jsonschema:"settings to change and save; omitted fields keep their current value"`
+}
+
+type applyChangesOutput struct {
+	Scenario       string       `json:"scenario"`
+	Applied        Overrides    `json:"applied"`
+	RevisionBefore int          `json:"revision_before"`
+	RevisionAfter  int          `json:"revision_after"`
+	SnapshotPath   string       `json:"snapshot_path"`
+	Analysis       AnalysisView `json:"analysis"`
+}
+
 // recoverToError converts a panic into an error so a bad scenario fails one
 // tool call instead of terminating the stdio session. The go-sdk dispatches
 // every tool call on its own goroutine with no recover of its own, so this
@@ -73,11 +99,18 @@ const serverInstructions = "These tools read and re-run a personal retirement pr
 	"do not estimate or recompute by hand. Before drawing conclusions, read the " +
 	"whatif://assumptions resource: it lists what the projection engine does not " +
 	"model (mortality, market timing, and more), and a figure it never accounted " +
-	"for should not be presented as settled."
+	"for should not be presented as settled. apply_changes writes to the saved " +
+	"plan; run_scenario does not. Prefer run_scenario while exploring, and " +
+	"apply_changes only when the user has settled on a change."
 
-// NewServer builds the MCP server. Every tool is read-only with respect to the
-// data directory: scenarios are loaded and copied, never written.
-func NewServer(src *Source) *mcp.Server {
+// NewServer builds the MCP server. list_scenarios, get_analysis, get_months
+// and run_scenario are read-only with respect to the data directory:
+// scenarios are loaded and copied, never written. open_page and
+// apply_changes are the exception -- apply_changes saves changed assumptions
+// to the running server's active scenario file.
+func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
+	src.live = live
+
 	s := mcp.NewServer(&mcp.Implementation{Name: "whatif", Version: "v0.1.0"},
 		&mcp.ServerOptions{Instructions: serverInstructions})
 
@@ -156,6 +189,109 @@ func NewServer(src *Source) *mcp.Server {
 			return nil, runOutput{}, err
 		}
 		return nil, runOutput{Scenario: name, Applied: in.Overrides, Analysis: view, MonteCarloOmitted: true}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "open_page",
+		Description: "Return the URL of the what-if page, starting the budget2 web server first if " +
+			"nothing is running. Call this before apply_changes. The page updates itself, so a tab " +
+			"opened from this URL will show later changes without being reloaded.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in openPageInput) (res *mcp.CallToolResult, out openPageOutput, err error) {
+		defer recoverToError("open_page", &err)
+
+		state, started, err := live.EnsureServer(ctx)
+		if err != nil {
+			return nil, openPageOutput{}, err
+		}
+		if in.Scenario != "" && in.Scenario != state.Active {
+			if err := live.SwitchScenario(ctx, in.Scenario); err != nil {
+				return nil, openPageOutput{}, err
+			}
+			if state, err = live.State(ctx); err != nil {
+				return nil, openPageOutput{}, err
+			}
+		}
+		return nil, openPageOutput{
+			URL:      live.BaseURL() + "/whatif",
+			Started:  started,
+			Active:   state.Active,
+			Revision: state.Revision,
+		}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "apply_changes",
+		Description: "Save changed assumptions to the retirement plan and return the resulting analysis. " +
+			"THIS MODIFIES THE SAVED PLAN — use run_scenario to check a claim without writing. " +
+			"An open what-if page picks the change up within about two seconds. A copy of the scenario " +
+			"is saved before this session's first change to that scenario — later changes in the same " +
+			"session are not separately recoverable; recovering from an unwanted change means restoring " +
+			"that .bak file by hand. Note two behaviors: roth_conversion_amount of 0 DISABLES " +
+			"conversions, and healthcare_inflation cannot be saved (preview it with run_scenario). " +
+			"Read the whatif://assumptions resource before drawing conclusions.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in applyChangesInput) (res *mcp.CallToolResult, out applyChangesOutput, err error) {
+		defer recoverToError("apply_changes", &err)
+
+		state, _, err := live.EnsureServer(ctx)
+		if err != nil {
+			return nil, applyChangesOutput{}, err
+		}
+		if in.Scenario != "" && in.Scenario != state.Active {
+			if err := live.SwitchScenario(ctx, in.Scenario); err != nil {
+				return nil, applyChangesOutput{}, err
+			}
+			if state, err = live.State(ctx); err != nil {
+				return nil, applyChangesOutput{}, err
+			}
+		}
+
+		// Before the POST, never after: a failed snapshot must abort the write.
+		snapPath, err := snaps.Ensure(state.Active, time.Now())
+		if err != nil {
+			return nil, applyChangesOutput{}, err
+		}
+
+		// state.Active is the scenario the snapshot above covers. Sending it
+		// as the expectation moves the read-vs-write comparison inside the
+		// server's write lock, where a mismatch can still PREVENT the write
+		// (409) instead of merely reporting it afterwards.
+		result, err := live.Apply(ctx, in.Overrides, state.Active)
+		if err != nil {
+			return nil, applyChangesOutput{}, err
+		}
+
+		// Defence in depth behind the expectation sent above. If a future
+		// server ignores expected_scenario, or answers with a different file
+		// than it was asked to write, the snapshot this call took no longer
+		// covers the write -- and there is no way to roll it back from here,
+		// so it must be reported rather than returned as a success.
+		if result.Scenario != state.Active {
+			return nil, applyChangesOutput{}, fmt.Errorf(
+				"apply_changes wrote to %q, but the snapshot taken for this call covers %q (snapshot: %s); "+
+					"the active scenario changed between the read and the write, likely a scenario switch in "+
+					"the browser during this call -- the write to %q cannot be undone automatically and is not "+
+					"covered by that snapshot",
+				result.Scenario, state.Active, snapPath, result.Scenario)
+		}
+
+		settings, name, err := src.Load(result.Scenario)
+		if err != nil {
+			return nil, applyChangesOutput{}, err
+		}
+		prepared, err := prepare.From(settings)
+		if err != nil {
+			return nil, applyChangesOutput{}, fmt.Errorf("prepare %s: %w", name, err)
+		}
+		a := retirement.RunFull(engine.New(), engine.Input{Prepared: prepared})
+
+		return nil, applyChangesOutput{
+			Scenario:       result.Scenario,
+			Applied:        result.Applied,
+			RevisionBefore: state.Revision,
+			RevisionAfter:  result.Revision,
+			SnapshotPath:   snapPath,
+			Analysis:       ShapeAnalysis(a, true),
+		}, nil
 	})
 
 	s.AddResource(&mcp.Resource{

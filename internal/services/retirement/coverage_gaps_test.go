@@ -857,7 +857,7 @@ func TestUpdateSettings_AllFields(t *testing.T) {
 		"steady_state_override_year":          float64(5),
 	}
 
-	s, err := sm.UpdateSettings(updates)
+	s, _, err := sm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -1495,7 +1495,7 @@ func TestUpdateSettings_SaveError(t *testing.T) {
 	os.Chmod(settingsDir, 0555)
 	defer os.Chmod(settingsDir, 0755)
 
-	_, err = sm.UpdateSettings(map[string]interface{}{
+	_, _, err = sm.UpdateSettings(map[string]interface{}{
 		"portfolio_value": float64(500000),
 	})
 	if err == nil {

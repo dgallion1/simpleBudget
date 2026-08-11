@@ -7,11 +7,34 @@ import (
 	"testing"
 )
 
-func TestResolveDataDir_PrefersFlagOverDefault(t *testing.T) {
-	if got := resolveDataDir("/tmp/custom"); got != "/tmp/custom" {
-		t.Errorf("resolveDataDir(\"/tmp/custom\") = %q, want /tmp/custom", got)
+func TestResolveDataDir_Precedence(t *testing.T) {
+	noEnv := func(string) string { return "" }
+	withEnv := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "BUDGET_DATA_DIR" {
+				return v
+			}
+			return ""
+		}
 	}
-	if got := resolveDataDir(""); !strings.Contains(got, "data") {
+
+	if got := resolveDataDir("/explicit/flag", withEnv("/from/env")); got != "/explicit/flag" {
+		t.Errorf("flag must win: got %q", got)
+	}
+	if got, want := resolveDataDir("", withEnv("/from/env")), filepath.Join("/from/env", "settings"); got != want {
+		t.Errorf("env: got %q, want %q", got, want)
+	}
+	if got, want := resolveDataDir("", noEnv), filepath.Join("data", "settings"); got != want {
+		t.Errorf("default: got %q, want %q", got, want)
+	}
+}
+
+func TestResolveDataDir_PrefersFlagOverDefault(t *testing.T) {
+	noEnv := func(string) string { return "" }
+	if got := resolveDataDir("/tmp/custom", noEnv); got != "/tmp/custom" {
+		t.Errorf("resolveDataDir(\"/tmp/custom\", noEnv) = %q, want /tmp/custom", got)
+	}
+	if got := resolveDataDir("", noEnv); !strings.Contains(got, "data") {
 		t.Errorf("default data dir = %q, want it to contain \"data\"", got)
 	}
 }

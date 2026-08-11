@@ -132,14 +132,36 @@ func statusForMutationError(err error) int {
 	return statusForScenarioOperationError(err)
 }
 
+// revisionUnreported is the revision a caller passes to renderRecalc when it
+// cannot say which revision its own write produced — either because it wrote
+// nothing (a pure recalc) or because the mutation method it called does not
+// report one.
+//
+// It makes renderRecalc omit the HX-Trigger, so the client keeps its older
+// baseline and picks the change up on its next poll: one redundant render.
+// The alternative — reading Revision() after the analysis fan-out — can hand
+// the client a baseline that LEADS the state it was just sent, because a
+// concurrent MCP write can bump the counter in between. That baseline makes
+// every later poll answer 204 and freezes the page on pre-change figures with
+// no recovery short of a reload, which is far worse than one extra render.
+const revisionUnreported = 0
+
 // renderRecalc re-runs the (cached) analysis for settings and renders the
 // standard results partial — the render tail every mutating what-if handler
 // shares.
-func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
+//
+// revision must be the revision the caller's own write produced (see
+// SettingsManager.SaveWithRevision), or revisionUnreported.
+func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, revision int) {
 	analysis, err := runAnalysisWithCache(r.Context(), settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if revision != revisionUnreported {
+		if trigger, err := json.Marshal(map[string]int{"whatif:revision": revision}); err == nil {
+			w.Header().Set("HX-Trigger", string(trigger))
+		}
 	}
 	renderWhatIfResults(w, settings, analysis)
 }
@@ -147,23 +169,27 @@ func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatI
 // recalcAndRender is the shared tail of a mutating what-if handler: apply
 // the mutation, then recalc + render. failMsg prefixes the mutation error;
 // its status comes from statusForMutationError.
-func recalcAndRender(w http.ResponseWriter, r *http.Request, failMsg string, mutate func() (*models.WhatIfSettings, error)) {
-	settings, err := mutate()
+//
+// mutate returns the revision its own write produced, or revisionUnreported if
+// the SettingsManager method it calls does not report one.
+func recalcAndRender(w http.ResponseWriter, r *http.Request, failMsg string, mutate func() (*models.WhatIfSettings, int, error)) {
+	settings, revision, err := mutate()
 	if err != nil {
 		renderError(w, failMsg+": "+err.Error(), statusForMutationError(err))
 		return
 	}
-	renderRecalc(w, r, settings)
+	renderRecalc(w, r, settings, revision)
 }
 
 // saveAndRecalc is recalcAndRender for the load-modify-save handlers, which
 // mutate a loaded settings object in place and persist it via Save.
 func saveAndRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
-	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, error) {
-		if err := retirementMgr.Save(settings); err != nil {
-			return nil, err
+	recalcAndRender(w, r, "Failed to save settings", func() (*models.WhatIfSettings, int, error) {
+		revision, err := retirementMgr.SaveWithRevision(settings)
+		if err != nil {
+			return nil, 0, err
 		}
-		return settings, nil
+		return settings, revision, nil
 	})
 }
 
@@ -311,14 +337,27 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 	}
 }
 
-// renderWhatIfResults renders the standard whatif-results partial (or its
-// JSON fallback when no renderer is configured) for the given settings and
-// analysis. Completeness findings are computed here so every recalc handler
-// reports them identically.
+// renderWhatIfResults renders the results partial plus the out-of-band swaps
+// that resync the left column. Used by every user-initiated mutation.
 func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis)
+}
+
+// renderWhatIfResultsOnly renders the results column alone, with no OOB swaps.
+// The background poll uses this: it must not rewrite a left-column control the
+// user may be typing into or dragging.
+func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+	renderResultsTemplate(w, "whatif-results", settings, analysis)
+}
+
+// renderResultsTemplate computes the shared results partial data (Completeness
+// findings included so every recalc handler reports them identically) and
+// renders it under the given template name, falling back to JSON when no
+// renderer is configured.
+func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-results", partialData)
+		_ = renderer.RenderPartial(w, name, partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -748,6 +787,9 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/scenarios/switch", handleSwitchScenario)
 	r.Delete("/whatif/scenarios/{filename}", handleDeleteScenario)
 	r.Put("/whatif/scenarios/{filename}", handleRenameScenario)
+	r.Get("/whatif/state", handleWhatIfState)
+	r.Post("/whatif/apply", handleWhatIfApply)
+	r.Get("/whatif/poll", handleWhatIfPoll)
 	r.Post("/whatif/chain", handleWhatIfUpdateChain)
 	r.Delete("/whatif/chain/{index}", handleWhatIfDeleteChainLink)
 	r.Post("/whatif/social-security", handleWhatIfSocialSecurity)
@@ -804,7 +846,9 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderRecalc(w, r, settings)
+	// A pure recalculation: nothing was written, so there is no revision of
+	// this request's own to hand the client as a baseline.
+	renderRecalc(w, r, settings, revisionUnreported)
 }
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.LoadContext(r.Context())

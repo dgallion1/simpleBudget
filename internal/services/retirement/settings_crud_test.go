@@ -1059,7 +1059,7 @@ func TestUpdateSettings_FieldTypes(t *testing.T) {
 		"steady_state_override_year": float64(15),
 	}
 
-	s, err := sm.UpdateSettings(updates)
+	s, _, err := sm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -1693,7 +1693,7 @@ func TestUpdateSettings_AllFieldTypes(t *testing.T) {
 		"steady_state_override_year": 3.0,
 	}
 
-	result, err := sm.UpdateSettings(updates)
+	result, _, err := sm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1791,7 +1791,7 @@ func TestUpdateSettings_MoreFields(t *testing.T) {
 		"tax_deferred_percent":    55.0,
 	}
 
-	result, err := sm.UpdateSettings(updates)
+	result, _, err := sm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatal(err)
 	}

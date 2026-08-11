@@ -109,7 +109,18 @@ func SetupRouter() chi.Router {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.Logger)
+	// middleware.Logger, except for the what-if poll: at one request per tab
+	// every 2s it would bury every other line in the log.
+	r.Use(func(next http.Handler) http.Handler {
+		logged := middleware.Logger(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/whatif/poll" {
+				next.ServeHTTP(w, req)
+				return
+			}
+			logged.ServeHTTP(w, req)
+		})
+	})
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
 

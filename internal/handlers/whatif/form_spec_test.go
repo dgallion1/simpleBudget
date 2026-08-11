@@ -607,7 +607,7 @@ func TestFormSpec_RothFirstFundedYear_AppliedToSettings(t *testing.T) {
 	if msg := applySettingsFormSpec(r, updates); msg != "" {
 		t.Fatalf("parse error: %s", msg)
 	}
-	s, err := rm.UpdateSettings(updates)
+	s, _, err := rm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -631,7 +631,7 @@ func TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue(t *testing.T) {
 	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
 		t.Fatalf("first parse error: %s", msg)
 	}
-	s, err := rm.UpdateSettings(updates)
+	s, _, err := rm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("UpdateSettings (set): %v", err)
 	}
@@ -650,7 +650,7 @@ func TestFormSpec_RothFirstFundedYear_BlankClearsPersistedValue(t *testing.T) {
 	} else if iv, _ := v.(int); iv != 0 {
 		t.Fatalf("blank submission emitted %v, want 0", v)
 	}
-	s, err = rm.UpdateSettings(updates)
+	s, _, err = rm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("UpdateSettings (clear): %v", err)
 	}
@@ -728,7 +728,7 @@ func TestFormSpec_RothFirstFundedYear_AbsentFromOtherFormPreservesPersisted(t *t
 	if msg := applySettingsFormSpec(formReq(form), updates); msg != "" {
 		t.Fatalf("setup parse error: %s", msg)
 	}
-	s, err := rm.UpdateSettings(updates)
+	s, _, err := rm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("setup UpdateSettings: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestFormSpec_RothFirstFundedYear_AbsentFromOtherFormPreservesPersisted(t *t
 	if _, included := updates["roth_first_funded_year"]; included {
 		t.Errorf("partial form silently included roth_first_funded_year; updates=%v", updates)
 	}
-	s, err = rm.UpdateSettings(updates)
+	s, _, err = rm.UpdateSettings(updates)
 	if err != nil {
 		t.Fatalf("partial UpdateSettings: %v", err)
 	}

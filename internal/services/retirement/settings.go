@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/overrides"
 	"budget2/internal/services/retirement/prepare"
 	"budget2/internal/services/storage"
 
@@ -114,6 +115,13 @@ type SettingsManager struct {
 	store       *storage.Storage
 	mu          sync.RWMutex
 	cache       *models.WhatIfSettings
+
+	// revision advances whenever something changes what the what-if page
+	// should display. It exists so a polling page can detect a change without
+	// recomputing the analysis. In-memory and not persisted: it only has to be
+	// monotonic within one process, because a page load reads the current value
+	// as its baseline.
+	revision int
 }
 
 // NewSettingsManager creates a new settings manager
@@ -420,6 +428,7 @@ func (sm *SettingsManager) InvalidateCache() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.cache = nil
+	sm.bumpLocked()
 }
 
 // scenarioReconcileConfirmDelay is how long the cache-miss self-heal waits
@@ -466,6 +475,13 @@ func (sm *SettingsManager) reconcileActiveScenarioLocked(confirmDelay time.Durat
 		sm.filename, defaultWhatIfFilename)
 	sm.filename = defaultWhatIfFilename
 	sm.cache = nil
+	// The server now serves a DIFFERENT plan than it did a moment ago, and
+	// every open page still renders the old one and still names the old
+	// scenario. That is exactly what the revision exists to announce, so bump
+	// it here rather than leaving the page confidently displaying a plan the
+	// server no longer has. The caller holds the write lock (see the doc
+	// comment above), so this must be bumpLocked, never Revision().
+	sm.bumpLocked()
 }
 
 // BeginExternalRewrite serializes an external rewrite of the settings
@@ -488,6 +504,7 @@ func (sm *SettingsManager) BeginExternalRewrite() (end func()) {
 	sm.mu.Lock()
 	return func() {
 		sm.cache = nil
+		sm.bumpLocked()
 		// No confirm delay: the rewrite this gate serialized is the
 		// authoritative source of the file's absence.
 		sm.reconcileActiveScenarioLocked(0)
@@ -630,13 +647,56 @@ func (sm *SettingsManager) validateChainInternal(chain []models.ScenarioChainLin
 
 // Save writes settings to disk
 func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
+	_, err := sm.SaveWithRevision(settings)
+	return err
+}
+
+// SaveWithRevision writes settings to disk and returns the revision this write
+// produced, read under the same write lock that performed it.
+//
+// Callers that render the saved state must use this number rather than reading
+// Revision() afterwards: between the save and that read, a concurrent writer
+// (the MCP /whatif/apply path) can bump the counter, and a client told to store
+// that higher number as its baseline would poll with a revision that leads the
+// state it was actually sent — every later poll answers 204 and the page shows
+// pre-change figures forever.
+func (sm *SettingsManager) SaveWithRevision(settings *models.WhatIfSettings) (int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		sm.cache = nil
+		return 0, err
+	}
+	return sm.revision, nil
+}
+
+// Revision returns the current display revision.
+func (sm *SettingsManager) Revision() int {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.revision
+}
+
+// SettingsDir returns the directory this manager reads scenarios from.
+func (sm *SettingsManager) SettingsDir() string {
+	return sm.settingsDir
+}
+
+// bumpLocked advances the revision. Caller must hold the write lock.
+func (sm *SettingsManager) bumpLocked() {
+	sm.revision++
+}
+
+// saveInternalAndBump is saveInternal plus a revision bump. Every mutation path
+// calls this; saveInternal itself is left un-bumping because loadInternalContext
+// calls it on a *read* when decode reports a migration, and a cache-miss load
+// must not make every open page re-render.
+func (sm *SettingsManager) saveInternalAndBump(settings *models.WhatIfSettings) error {
+	if err := sm.saveInternal(settings); err != nil {
 		return err
 	}
+	sm.bumpLocked()
 	return nil
 }
 
@@ -694,7 +754,7 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 
 	settings.IncomeSources = append(settings.IncomeSources, source)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -722,7 +782,7 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 	}
 	settings.IncomeSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -763,7 +823,7 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 	}
 	settings.RemovedIncomeSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -796,7 +856,7 @@ func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSe
 	}
 	settings.RemovedIncomeSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -827,7 +887,7 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear 
 		}
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -846,7 +906,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 
 	settings.ExpenseSources = append(settings.ExpenseSources, source)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -877,7 +937,7 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear
 		}
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -905,7 +965,7 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 	}
 	settings.ExpenseSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -945,7 +1005,7 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 	}
 	settings.RemovedExpenseSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -978,50 +1038,117 @@ func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfS
 	}
 	settings.RemovedExpenseSources = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
 	return settings, nil
 }
 
-// UpdateSettings updates all settings fields from form data and saves atomically
-func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, error) {
+// UpdateSettings updates all settings fields from form data and saves
+// atomically, returning the saved settings and the revision this write
+// produced (see SaveWithRevision for why the caller must not read Revision()
+// afterwards instead).
+func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	settings, err := sm.loadInternal()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	sm.applySettingsUpdates(settings, updates)
 
-	if err := sm.saveInternal(settings); err != nil {
-		return nil, err
+	if err := sm.saveInternalAndBump(settings); err != nil {
+		return nil, 0, err
 	}
 
-	return settings, nil
+	return settings, sm.revision, nil
 }
 
-func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, error) {
+// ApplyOverrides applies a sparse override set to the active scenario and saves
+// it, returning the saved settings, the scenario filename it wrote to, and the
+// revision this write produced.
+//
+// The whole body runs under one write lock. A caller doing Load → Apply → Save
+// would not: Load returns the shared cache pointer and releases the lock, so a
+// concurrent UpdateSettings between the load and the save is silently reverted.
+// Every other mutation on this type loads, modifies, and saves inside one lock;
+// this is no exception.
+//
+// expectedScenario, when non-empty, is the scenario filename the caller
+// believes is active — typically the one it snapshotted before calling. It is
+// compared against the active filename INSIDE the lock and before any load or
+// write, so a scenario switch that lands between the caller's read and this
+// call cannot divert the write to a plan the caller never backed up. A
+// mismatch writes nothing and returns a *ScenarioConflictError. Empty means
+// "no expectation" and preserves the previous behavior.
+//
+// The returned filename and revision are read under the same lock that
+// performed the write. Callers must not read ActiveFilename() or Revision()
+// afterwards — under concurrency either can describe a different writer's work.
+func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides, expectedScenario string) (*models.WhatIfSettings, string, int, error) {
+	if err := o.ValidateWritable(); err != nil {
+		return nil, "", 0, err
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Before the load, and before the write: this is the only point at which
+	// the check is a guarantee rather than an after-the-fact report. There is
+	// no undo for a write that lands on an unbacked-up plan.
+	if expectedScenario != "" && expectedScenario != sm.filename {
+		return nil, "", 0, &ScenarioConflictError{Err: fmt.Errorf(
+			"refusing to write: the active scenario is %s, but this change was prepared for %s "+
+				"(the active scenario changed between the two). Nothing was written",
+			sm.filename, expectedScenario)}
+	}
+
+	current, err := sm.loadInternal()
+	if err != nil {
+		return nil, "", 0, err
+	}
+	// The load itself can move the active scenario: reconcileActiveScenarioLocked
+	// reverts to whatif.json when the active file has vanished. Re-check rather
+	// than write to a file the caller never named. Still nothing written.
+	if expectedScenario != "" && expectedScenario != sm.filename {
+		return nil, "", 0, &ScenarioConflictError{Err: fmt.Errorf(
+			"refusing to write: loading %s reverted the active scenario to %s. Nothing was written",
+			expectedScenario, sm.filename)}
+	}
+	updated, err := overrides.Apply(current, o)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	if err := sm.saveInternalAndBump(updated); err != nil {
+		return nil, "", 0, err
+	}
+	return updated, sm.filename, sm.revision, nil
+}
+
+// UpdateSettingsWithPersons is UpdateSettings plus the household fields. It
+// returns the revision this write produced for the same reason UpdateSettings
+// does.
+func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	settings, err := sm.loadInternal()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	sm.applySettingsUpdates(settings, updates)
 	settings.StartDate = startDate
 	settings.Persons = persons
 
-	if err := sm.saveInternal(settings); err != nil {
-		return nil, err
+	if err := sm.saveInternalAndBump(settings); err != nil {
+		return nil, 0, err
 	}
 
-	return settings, nil
+	return settings, sm.revision, nil
 }
 
 func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings, updates map[string]interface{}) {
@@ -1226,7 +1353,7 @@ func (sm *SettingsManager) UpdateSpendingPhases(enabled bool, phases []models.Sp
 		settings.SpendingPhaseConfig.Phases = phases
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1245,7 +1372,7 @@ func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (
 
 	settings.HealthcarePersons = append(settings.HealthcarePersons, person)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1269,7 +1396,7 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 		}
 	}
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1327,7 +1454,7 @@ func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSett
 	}
 	settings.HealthcarePersons = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1346,7 +1473,7 @@ func (sm *SettingsManager) AddBigTicketItem(item models.BigTicketItem) (*models.
 
 	settings.BigTicketItems = append(settings.BigTicketItems, item)
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1374,7 +1501,7 @@ func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSetting
 	}
 	settings.BigTicketItems = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1414,7 +1541,7 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 	}
 	settings.RemovedBigTicketItems = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1447,7 +1574,7 @@ func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfS
 	}
 	settings.RemovedBigTicketItems = filtered
 
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, err
 	}
 
@@ -1607,6 +1734,7 @@ func (sm *SettingsManager) SwitchScenario(filename string) error {
 
 	sm.filename = filename
 	sm.cache = nil
+	sm.bumpLocked()
 	return nil
 }
 
@@ -1650,7 +1778,7 @@ func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, 
 	// Switch to the new file and save
 	sm.filename = filename
 	sm.cache = nil
-	if err := sm.saveInternal(settings); err != nil {
+	if err := sm.saveInternalAndBump(settings); err != nil {
 		return nil, fmt.Errorf("saving new scenario: %w", err)
 	}
 
@@ -1725,6 +1853,7 @@ func (sm *SettingsManager) DeleteScenario(filename string) error {
 		sm.filename = "whatif.json"
 		sm.cache = nil
 	}
+	sm.bumpLocked()
 
 	log.Printf("Deleted scenario %s", filename)
 	return nil
@@ -1777,6 +1906,7 @@ func (sm *SettingsManager) RenameScenario(filename, newName string) error {
 	if sm.filename == filename {
 		sm.cache = nil
 	}
+	sm.bumpLocked()
 
 	log.Printf("Renamed scenario %s to %q", filename, newName)
 	return nil

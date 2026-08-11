@@ -8739,3 +8739,30 @@ func TestHandleWhatIfTaxOptimize_EligibleReturnsResult(t *testing.T) {
 		t.Errorf("should not show button after running; body snippet: %s", body[:min(len(body), 400)])
 	}
 }
+
+func TestRenderRecalc_CarriesRevisionHeader(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{"monthly_living_expenses": {"5100"}}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/whatif/settings", formBody(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handleWhatIfSettings(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	trigger := resp.Header.Get("HX-Trigger")
+	if trigger == "" {
+		t.Fatal("a user-initiated mutation must advance the client baseline too, or the poll re-renders redundantly 2s later")
+	}
+	var parsed map[string]int
+	if err := json.Unmarshal([]byte(trigger), &parsed); err != nil {
+		t.Fatalf("HX-Trigger %q is not JSON: %v", trigger, err)
+	}
+	if parsed["whatif:revision"] != rm.Revision() {
+		t.Fatalf("header revision = %d, want %d", parsed["whatif:revision"], rm.Revision())
+	}
+}

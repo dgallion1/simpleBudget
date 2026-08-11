@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"budget2/internal/models"
@@ -809,12 +810,14 @@ func TestLoadInternal_LegacySpouseAgeMigration(t *testing.T) {
 	}
 }
 
-// --- Load cache double-check (settings.go:351-353) ---
+// --- Load cache double-check ---
 //
-// The double-locked check returns the cache directly if another goroutine
+// The double-locked check serves from the cache if another goroutine
 // populated it between the read-lock release and write-lock acquisition.
-// We can simulate that by populating cache directly while holding the
-// write lock, then triggering a parallel Load.
+// The cache is observable only by value: Load copies it on the way out, so
+// a second call returns an equal object through a different pointer. Pointer
+// identity across Loads is asserted to be ABSENT in
+// TestLoadReturnsAPrivateCopy.
 
 func TestSettingsManager_LoadReturnsCacheOnSubsequentCalls(t *testing.T) {
 	sm := newTestSM(t)
@@ -827,8 +830,8 @@ func TestSettingsManager_LoadReturnsCacheOnSubsequentCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load (cached): %v", err)
 	}
-	if first != second {
-		t.Error("expected second Load to return the cached pointer")
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("expected second Load to serve an equal object from cache:\nfirst  = %+v\nsecond = %+v", first, second)
 	}
 }
 

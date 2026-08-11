@@ -385,62 +385,54 @@ func (sm *SettingsManager) decodeSettings(data []byte) (*models.WhatIfSettings, 
 // Load reads settings from disk, returning defaults if file doesn't exist.
 // Context-less convenience wrapper around LoadContext for non-request callers.
 //
-// The returned pointer is SHARED with every other caller and with the
-// manager's cache. Callers MUST treat it as read-only. To modify settings,
-// use LoadForUpdate (or one of the manager's own mutator methods), never
-// Load-then-mutate: mutating the shared object writes to state that
-// concurrent readers are marshaling without a lock, and the mutations that
-// publish a slice header or a fresh pointer (spending phases, scenario
-// chain) can be observed torn.
-func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
-	return sm.LoadContext(context.Background())
-}
-
-// LoadForUpdate returns a PRIVATE deep copy of the current settings, safe to
-// mutate and hand back to Save/SaveWithRevision.
+// The returned pointer is a PRIVATE deep copy. Every call allocates a fresh
+// object; the manager's cached object never escapes through Load. Callers may
+// mutate what they get and hand it back to Save/SaveWithRevision, and nothing
+// else — no concurrent reader, no later Load — observes the mutation until
+// Save publishes it.
 //
-// This is what makes a published settings object effectively immutable: once
+// That is what makes a published settings object effectively immutable: once
 // saveInternal stores a pointer in sm.cache, nothing mutates that object
-// again, so a reader holding it from a previous Load always sees a stable
-// value even though it holds no lock while marshaling.
+// again, so a reader holding it from an earlier Load always sees a stable
+// value even though it holds no lock while marshaling. This used to be a
+// contract stated only in this comment, which made the wrong thing the easy
+// thing: a handler written from the Load-then-mutate pattern wrote to state
+// the 2s /whatif/poll path was marshaling, and a slice-header mutation
+// (spending phases, scenario chain) could be read torn rather than merely
+// stale. Copying here removes the escape hatch instead of documenting it.
 //
 // The copy goes through prepare.Clone, not prepare.DeepCopy, because
 // DeepCopy's JSON round-trip drops every json:"-" field — including
-// CurrentAge/SpouseAge, which validateChainInternal reads between the load
-// and the save.
+// CurrentAge/SpouseAge, which validateChainInternal reads between a load and
+// the save that follows it.
 //
-// Concurrency caveat — the semantics here are NARROWER than the in-place
-// mutation they replace, not equal to it. Two overlapping edits now resolve
-// whole-object last-writer-wins: each holds an independent snapshot, so a
-// handler that snapshotted before another's save and saves after it writes
-// back the whole pre-save object and reverts the other's field. The
-// shared-pointer version merged such edits at field level instead — both
-// handlers mutated one struct, so both fields survived whichever save landed
-// last. That merge was accidental and was itself the data race (it could tear
-// a slice header), so trading it for a short, well-defined last-writer-wins
-// window is the point of this change; but it is a trade, not a wash.
+// Concurrency caveat for load-modify-save callers — the semantics are
+// NARROWER than the in-place mutation they replace, not equal to it. Two
+// overlapping edits resolve whole-object last-writer-wins: each holds an
+// independent snapshot, so a handler that loaded before another's save and
+// saves after it writes back the whole pre-save object and reverts the other's
+// field. The shared-pointer version merged such edits at field level instead —
+// both handlers mutated one struct, so both fields survived whichever save
+// landed last. That merge was accidental and was itself the data race (it
+// could tear a slice header), so trading it for a short, well-defined
+// last-writer-wins window is the point; but it is a trade, not a wash.
 //
-// The fix for the lost update is to move these handlers behind manager
-// methods that hold the write lock across load and save, as AddIncomeSource
-// and friends already do. That is not this change.
-func (sm *SettingsManager) LoadForUpdate() (*models.WhatIfSettings, error) {
-	return sm.LoadForUpdateContext(context.Background())
-}
-
-// LoadForUpdateContext is LoadForUpdate with caller-supplied cancellation.
-func (sm *SettingsManager) LoadForUpdateContext(ctx context.Context) (*models.WhatIfSettings, error) {
-	shared, err := sm.LoadContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return prepare.Clone(shared)
+// The fix for that lost update is to move such handlers behind manager methods
+// that hold the write lock across load and save, as AddIncomeSource and
+// friends already do. That is not this change.
+//
+// Cost: one marshal/unmarshal per call, microseconds. It lands only where a
+// projection or a render follows immediately anyway — the /whatif/poll 204
+// branch never calls Load.
+func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
+	return sm.LoadContext(context.Background())
 }
 
 // LoadContext is Load with caller-supplied cancellation. It fails fast on
 // entry (so an abandoned what-if request stops before any disk read) and
 // threads ctx into the underlying decrypting read.
 //
-// Like Load, the returned pointer is shared; see Load's contract.
+// Like Load, the returned pointer is a private copy; see Load's contract.
 func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSettings, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -450,7 +442,7 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	// Return cache if available
 	if sm.cache != nil {
 		defer sm.mu.RUnlock()
-		return sm.cache, nil
+		return prepare.Clone(sm.cache)
 	}
 	sm.mu.RUnlock()
 
@@ -459,7 +451,7 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 
 	// Double-check cache after acquiring write lock
 	if sm.cache != nil {
-		return sm.cache, nil
+		return prepare.Clone(sm.cache)
 	}
 
 	settings, err := sm.loadInternalContext(ctx)
@@ -467,8 +459,11 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 		return nil, err
 	}
 
+	// Publish the freshly decoded object, then hand out a copy of it: the
+	// cached object is the one nothing may mutate, so it must not be the one
+	// the caller receives.
 	sm.cache = settings
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // InvalidateCache drops the in-memory settings cache so the next Load
@@ -564,12 +559,20 @@ func (sm *SettingsManager) BeginExternalRewrite() (end func()) {
 
 // loadInternal reads settings without acquiring lock (caller must hold lock).
 // Context-less wrapper used by the in-package CRUD methods.
+//
+// Unlike Load, this returns the RAW object, not a copy — deliberately. It is
+// the manager's own path: its callers hold the write lock, mutate what they
+// get, and pass it to saveInternal, which publishes that same object as
+// sm.cache. Copying here would be pure waste, and copying between the load and
+// the save would break the invariant that the object saveInternal publishes is
+// the one the mutation was applied to.
 func (sm *SettingsManager) loadInternal() (*models.WhatIfSettings, error) {
 	return sm.loadInternalContext(context.Background())
 }
 
 // loadInternalContext is loadInternal with caller-supplied cancellation,
-// threaded into the decrypting file read.
+// threaded into the decrypting file read. It too returns the raw object; see
+// loadInternal.
 func (sm *SettingsManager) loadInternalContext(ctx context.Context) (*models.WhatIfSettings, error) {
 	// Ensure settings directory exists
 	if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil {
@@ -1122,10 +1125,10 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 // revision this write produced.
 //
 // The whole body runs under one write lock. A caller doing Load → Apply → Save
-// would not: Load returns the shared cache pointer and releases the lock, so a
-// concurrent UpdateSettings between the load and the save is silently reverted.
-// Every other mutation on this type loads, modifies, and saves inside one lock;
-// this is no exception.
+// would not: Load releases the lock and hands back a private snapshot, so a
+// concurrent UpdateSettings between the load and the save is silently reverted
+// when the snapshot is written back whole. Every other mutation on this type
+// loads, modifies, and saves inside one lock; this is no exception.
 //
 // expectedScenario, when non-empty, is the scenario filename the caller
 // believes is active — typically the one it snapshotted before calling. It is

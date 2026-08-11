@@ -87,8 +87,15 @@ document.body.addEventListener('htmx:confirm', function (evt) {
     // long as a field anywhere on the page happens to hold focus. That breaks
     // the feature's primary workflow: drag a slider, alt-tab away, apply a
     // change from the MCP, come back to a page that never updates.
+    //
+    // document.hasFocus() closes that gap: focus left on a control inside
+    // #whatif-results, followed by alt-tabbing away, must not suppress polling
+    // for the rest of the session -- only while the document actually has
+    // focus is the user plausibly still interacting with that control. Do not
+    // drop this clause: without it, blur alone (no click elsewhere) restores
+    // the indefinite-suppression bug this comment describes.
     var results = document.getElementById('whatif-results');
-    if (interactive && results && results.contains(active)) {
+    if (interactive && results && results.contains(active) && document.hasFocus()) {
         // Skip this tick; the next one is 2s away and the baseline is unchanged.
         evt.preventDefault();
     }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -324,11 +325,34 @@ func TestListenAddrFromBaseURL(t *testing.T) {
 // EnsureServer: a remote BUDGET_SERVER_URL must not cause a local spawn, which
 // would kill whatever local process holds that port and then serve a plan
 // nobody asked about.
+//
+// The base URL must make State()'s probe fail with a genuine ECONNREFUSED --
+// not a timeout or EHOSTUNREACH -- because EnsureServer only proceeds past
+// isConnectionRefused(err) on refusal; anything else returns early, before
+// listenAddrFromBaseURL is ever called, and the test would pass even with the
+// loopback check deleted. A blackholed address (e.g. TEST-NET-1) times out
+// instead of refusing, so it cannot be used here.
+//
+// 0.0.0.0 gets a real ECONNREFUSED from the kernel when nothing listens on the
+// port (dialing 0.0.0.0 is treated as dialing localhost on Linux), while still
+// failing net.ParseIP(...).IsLoopback() -- 0.0.0.0 is the unspecified address,
+// not a loopback one -- so listenAddrFromBaseURL genuinely refuses it. That
+// makes this the one address that exercises both halves of the guard.
 func TestEnsureServer_RefusesToSpawnForNonLoopbackURL(t *testing.T) {
+	// Reserve a port, then release it: EnsureServer's spawn path must never
+	// occupy it, only probe and refuse.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserving a closed port: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	if err := l.Close(); err != nil {
+		t.Fatalf("closing the probe listener: %v", err)
+	}
+
 	settingsDir := filepath.Join(t.TempDir(), "settings")
-	// 192.0.2.1 is TEST-NET-1 (RFC 5737): guaranteed not to be a real host,
-	// so the State() probe fails without reaching anything.
-	c := NewClient("http://192.0.2.1:8099", settingsDir)
+	baseURL := fmt.Sprintf("http://0.0.0.0:%d", port)
+	c := NewClient(baseURL, settingsDir)
 	c.http = &http.Client{Timeout: 500 * time.Millisecond}
 
 	spawnAttempts := 0
@@ -343,6 +367,10 @@ func TestEnsureServer_RefusesToSpawnForNonLoopbackURL(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected a refusal for a non-loopback base URL")
+	}
+	const wantSubstring = "only a loopback address (localhost or 127.0.0.1) can be started from here"
+	if !strings.Contains(err.Error(), wantSubstring) {
+		t.Fatalf("expected the loopback-refusal error, got: %v", err)
 	}
 	if spawnAttempts != 0 {
 		t.Fatalf("a non-loopback URL must not spawn anything, got %d attempts", spawnAttempts)

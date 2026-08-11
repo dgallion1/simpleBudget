@@ -145,7 +145,11 @@ func handleWhatIfUpdateChain(w http.ResponseWriter, r *http.Request) {
 		return chain[i].TransitionAge < chain[j].TransitionAge
 	})
 
-	settings, err := retirementMgr.Load()
+	// LoadForUpdate, not Load: ValidateScenarioChain below reads
+	// settings.CurrentAge, so the copy must carry the json:"-" fields that a
+	// bare prepare.DeepCopy would drop — a zeroed CurrentAge would silently
+	// change which transition ages this endpoint accepts.
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -175,7 +179,7 @@ func handleWhatIfDeleteChainLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return

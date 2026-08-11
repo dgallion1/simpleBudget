@@ -384,13 +384,63 @@ func (sm *SettingsManager) decodeSettings(data []byte) (*models.WhatIfSettings, 
 
 // Load reads settings from disk, returning defaults if file doesn't exist.
 // Context-less convenience wrapper around LoadContext for non-request callers.
+//
+// The returned pointer is SHARED with every other caller and with the
+// manager's cache. Callers MUST treat it as read-only. To modify settings,
+// use LoadForUpdate (or one of the manager's own mutator methods), never
+// Load-then-mutate: mutating the shared object writes to state that
+// concurrent readers are marshaling without a lock, and the mutations that
+// publish a slice header or a fresh pointer (spending phases, scenario
+// chain) can be observed torn.
 func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 	return sm.LoadContext(context.Background())
+}
+
+// LoadForUpdate returns a PRIVATE deep copy of the current settings, safe to
+// mutate and hand back to Save/SaveWithRevision.
+//
+// This is what makes a published settings object effectively immutable: once
+// saveInternal stores a pointer in sm.cache, nothing mutates that object
+// again, so a reader holding it from a previous Load always sees a stable
+// value even though it holds no lock while marshaling.
+//
+// The copy goes through prepare.Clone, not prepare.DeepCopy, because
+// DeepCopy's JSON round-trip drops every json:"-" field — including
+// CurrentAge/SpouseAge, which validateChainInternal reads between the load
+// and the save.
+//
+// Concurrency caveat — the semantics here are NARROWER than the in-place
+// mutation they replace, not equal to it. Two overlapping edits now resolve
+// whole-object last-writer-wins: each holds an independent snapshot, so a
+// handler that snapshotted before another's save and saves after it writes
+// back the whole pre-save object and reverts the other's field. The
+// shared-pointer version merged such edits at field level instead — both
+// handlers mutated one struct, so both fields survived whichever save landed
+// last. That merge was accidental and was itself the data race (it could tear
+// a slice header), so trading it for a short, well-defined last-writer-wins
+// window is the point of this change; but it is a trade, not a wash.
+//
+// The fix for the lost update is to move these handlers behind manager
+// methods that hold the write lock across load and save, as AddIncomeSource
+// and friends already do. That is not this change.
+func (sm *SettingsManager) LoadForUpdate() (*models.WhatIfSettings, error) {
+	return sm.LoadForUpdateContext(context.Background())
+}
+
+// LoadForUpdateContext is LoadForUpdate with caller-supplied cancellation.
+func (sm *SettingsManager) LoadForUpdateContext(ctx context.Context) (*models.WhatIfSettings, error) {
+	shared, err := sm.LoadContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return prepare.Clone(shared)
 }
 
 // LoadContext is Load with caller-supplied cancellation. It fails fast on
 // entry (so an abandoned what-if request stops before any disk read) and
 // threads ctx into the underlying decrypting read.
+//
+// Like Load, the returned pointer is shared; see Load's contract.
 func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSettings, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

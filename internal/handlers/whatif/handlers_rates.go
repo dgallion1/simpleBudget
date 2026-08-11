@@ -168,7 +168,7 @@ func handleWhatIfSpendingPhases(w http.ResponseWriter, r *http.Request) {
 
 // handleWhatIfAddPhase adds a new spending phase
 func handleWhatIfAddPhase(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -213,7 +213,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -250,7 +250,7 @@ func handleWhatIfDeletePhase(w http.ResponseWriter, r *http.Request) {
 
 // handleWhatIfResetPhases resets phases to defaults
 func handleWhatIfResetPhases(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -272,7 +272,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -345,7 +345,7 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -395,7 +395,7 @@ func handleWhatIfGlidePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -430,7 +430,7 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := retirementMgr.Load()
+	settings, err := retirementMgr.LoadForUpdate()
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return

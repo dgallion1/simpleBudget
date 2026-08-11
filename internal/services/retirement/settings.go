@@ -409,10 +409,20 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error) {
 // CurrentAge/SpouseAge, which validateChainInternal reads between the load
 // and the save.
 //
-// Note this is a read-modify-write with no lock held across it, exactly as
-// the Load-then-Save it replaces was: last writer wins. It closes the data
-// race, not the lost-update window; the manager's own mutator methods (which
-// hold the write lock across load and save) remain the way to avoid that.
+// Concurrency caveat — the semantics here are NARROWER than the in-place
+// mutation they replace, not equal to it. Two overlapping edits now resolve
+// whole-object last-writer-wins: each holds an independent snapshot, so a
+// handler that snapshotted before another's save and saves after it writes
+// back the whole pre-save object and reverts the other's field. The
+// shared-pointer version merged such edits at field level instead — both
+// handlers mutated one struct, so both fields survived whichever save landed
+// last. That merge was accidental and was itself the data race (it could tear
+// a slice header), so trading it for a short, well-defined last-writer-wins
+// window is the point of this change; but it is a trade, not a wash.
+//
+// The fix for the lost update is to move these handlers behind manager
+// methods that hold the write lock across load and save, as AddIncomeSource
+// and friends already do. That is not this change.
 func (sm *SettingsManager) LoadForUpdate() (*models.WhatIfSettings, error) {
 	return sm.LoadForUpdateContext(context.Background())
 }

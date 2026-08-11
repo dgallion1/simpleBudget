@@ -97,6 +97,15 @@ func TestLoadForUpdatePreservesAgesAcrossRoundTrip(t *testing.T) {
 
 	// ...and the ages survive the save the handler performs next, so the
 	// object the manager republishes is not age-zeroed either.
+	//
+	// NOTE: the post-save age assertion below is documentation, NOT the guard.
+	// saveInternal calls prepare.ComputeAges, which re-derives
+	// CurrentAge/SpouseAge from Persons + StartDate on every save, so it holds
+	// whether or not Clone carries the ages. The check that actually catches a
+	// dropped field is the pre-save one above, at the point a handler reads the
+	// ages between LoadForUpdate and Save (validateChainInternal does exactly
+	// that). Do not delete the pre-save check on the grounds that this one
+	// covers it.
 	mine.PortfolioValue = 900000
 	if err := sm.Save(mine); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -121,14 +130,34 @@ func TestLoadForUpdatePreservesAgesAcrossRoundTrip(t *testing.T) {
 func TestLoadForUpdatePreservesPerYearOverrides(t *testing.T) {
 	sm := newAgedManager(t)
 
+	// Seed through Save rather than by mutating what Load returned: Load's
+	// contract is that its result is read-only, and a test that violated it
+	// would be silently coupled to Load returning the shared pointer.
+	//
+	// Save works even though PerYearOverrides is json:"-" and so never reaches
+	// disk: saveInternal publishes the very object it was handed as sm.cache,
+	// and the map is still attached to it in memory. That is the same
+	// in-memory-only lifetime the Tax Optimizer relies on.
+	seed := models.DefaultWhatIfSettings()
+	seed.StartDate = "2026-01"
+	seed.Persons = []models.Person{
+		{ID: "p1", Name: "Primary", Role: models.PersonRolePrimary, BirthMonth: models.BirthMonthForAge("2026-01", 61)},
+	}
+	seed.RothConversion = &models.RothConversionConfig{
+		Enabled:          true,
+		AnnualAmount:     50000,
+		PerYearOverrides: map[int]float64{3: 12000},
+	}
+	if err := sm.Save(seed); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
 	shared, err := sm.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	shared.RothConversion = &models.RothConversionConfig{
-		Enabled:          true,
-		AnnualAmount:     50000,
-		PerYearOverrides: map[int]float64{3: 12000},
+	if shared.RothConversion == nil || shared.RothConversion.PerYearOverrides[3] != 12000 {
+		t.Fatalf("seed did not take: %+v", shared.RothConversion)
 	}
 
 	mine, err := sm.LoadForUpdate()

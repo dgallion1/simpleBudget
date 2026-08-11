@@ -14,16 +14,22 @@ import (
 // prepare.DeepCopy round-trips through JSON, so every field tagged json:"-"
 // is silently dropped. Clone exists to carry them across. This test does NOT
 // hard-code the list of such fields: it reflects over the
-// models.WhatIfSettings type graph, finds every json:"-" field, sets a
-// distinctive non-zero value at that field, clones, and asserts the value
-// survived. Adding a new json:"-" field anywhere reachable from
+// models.WhatIfSettings type graph, finds every EXPORTED json:"-" field, sets
+// a distinctive non-zero value at that field, clones, and asserts the value
+// survived. Adding a new exported json:"-" field anywhere reachable from
 // WhatIfSettings without teaching carryJSONOmittedFields about it fails here.
+//
+// The exported qualifier is load-bearing: reflection cannot read or set an
+// unexported field, so the walk cannot check one. DeepCopy drops unexported
+// fields too (marshal ignores them), so an unexported field would be a real
+// hole in Clone that this test could not see. There are none in the graph
+// today and TestWhatIfSettingsGraphHasNoUnexportedFields keeps it that way.
 //
 // If the walk reaches a json:"-" field behind a hop this test cannot navigate
 // (a map value, an interface), it fails loudly asking for the test to be
 // extended, rather than skipping the field.
 func TestCloneCarriesEveryJSONOmittedField(t *testing.T) {
-	paths := findJSONOmittedFields(t, reflect.TypeOf(models.WhatIfSettings{}))
+	paths, _ := findJSONOmittedFields(t, reflect.TypeOf(models.WhatIfSettings{}))
 
 	// Lower-bound sanity check on the WALK itself, not on Clone: if the
 	// reflection ever silently stops descending, the per-field assertions
@@ -85,14 +91,25 @@ func TestCloneCarriesEveryJSONOmittedField(t *testing.T) {
 					t.Fatalf("Clone aliased the slice backing array at %s instead of copying it",
 						strings.Join(path, "."))
 				}
+			case reflect.Pointer:
+				// The DeepEqual above compares pointees, so a carry written as
+				// dst.X = src.X would pass it while aliasing the pointee —
+				// exactly the hole this check exists to close.
+				if !got.IsNil() && got.Pointer() == leaf.Pointer() {
+					t.Fatalf("Clone aliased the pointee at %s instead of copying it", strings.Join(path, "."))
+				}
 			}
 		})
 	}
 }
 
-// TestCloneMatchesDeepCopyForJSONVisibleFields pins the other half of Clone's
-// contract: it is DeepCopy plus the omitted fields, never DeepCopy minus
-// something.
+// TestCloneMatchesDeepCopyForJSONVisibleFields checks that Clone leaves the
+// JSON-visible state identical and returns a distinct pointer.
+//
+// It says nothing about the json:"-" fields — comparing marshaled output is
+// blind to precisely those, and this test would pass unchanged if Clone were
+// literally `return DeepCopy(cfg)`. TestCloneCarriesEveryJSONOmittedField is
+// the guard for those.
 func TestCloneMatchesDeepCopyForJSONVisibleFields(t *testing.T) {
 	src := models.DefaultWhatIfSettings()
 	src.CurrentAge = 61
@@ -126,13 +143,41 @@ func TestCloneRejectsNil(t *testing.T) {
 	}
 }
 
-// findJSONOmittedFields walks t and returns the dotted field path of every
-// field tagged exactly `json:"-"` (which is what makes encoding/json skip it;
-// `json:"-,"` names a field "-" and is NOT skipped).
-func findJSONOmittedFields(t *testing.T, root reflect.Type) [][]string {
+// TestWhatIfSettingsGraphHasNoUnexportedFields backs the "exported" qualifier
+// in TestCloneCarriesEveryJSONOmittedField's contract.
+//
+// Reflection cannot read or set an unexported field, so the walk skips them
+// and cannot verify Clone carries one. Marshal ignores them too, so DeepCopy
+// drops every unexported field regardless of its tag — an unexported field
+// added to this graph would be a silent hole in Clone that no reflection test
+// can close. Asserting there are none keeps the anti-rot guarantee total: as
+// long as this passes, "every exported json:\"-\" field" and "every json:\"-\"
+// field" are the same set.
+//
+// If this ever fails, the new field needs a hand-written carry in
+// carryJSONOmittedFields and a hand-written assertion here.
+func TestWhatIfSettingsGraphHasNoUnexportedFields(t *testing.T) {
+	_, unexported := findJSONOmittedFields(t, reflect.TypeOf(models.WhatIfSettings{}))
+	if len(unexported) != 0 {
+		t.Fatalf("models.WhatIfSettings now reaches unexported fields %v.\n"+
+			"prepare.DeepCopy drops them and reflection cannot check them, so "+
+			"TestCloneCarriesEveryJSONOmittedField no longer covers the whole struct. "+
+			"Carry each one explicitly in carryJSONOmittedFields and assert it by hand.",
+			joinPaths(unexported))
+	}
+}
+
+// findJSONOmittedFields walks root and returns two path sets: the dotted field
+// path of every EXPORTED field tagged exactly `json:"-"` (which is what makes
+// encoding/json skip it; `json:"-,"` names a field "-" and is NOT skipped),
+// and the path of every unexported field it encountered.
+//
+// Unexported fields are returned rather than silently skipped because they are
+// invisible to both reflection and encoding/json; see
+// TestWhatIfSettingsGraphHasNoUnexportedFields.
+func findJSONOmittedFields(t *testing.T, root reflect.Type) (omitted, unexported [][]string) {
 	t.Helper()
 
-	var found [][]string
 	inProgress := map[reflect.Type]bool{}
 
 	var walk func(typ reflect.Type, prefix []string)
@@ -149,12 +194,13 @@ func findJSONOmittedFields(t *testing.T, root reflect.Type) [][]string {
 
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
+			path := append(append([]string{}, prefix...), field.Name)
 			if !field.IsExported() {
+				unexported = append(unexported, path)
 				continue
 			}
-			path := append(append([]string{}, prefix...), field.Name)
 			if field.Tag.Get("json") == "-" {
-				found = append(found, path)
+				omitted = append(omitted, path)
 				continue
 			}
 			walk(field.Type, path)
@@ -162,7 +208,7 @@ func findJSONOmittedFields(t *testing.T, root reflect.Type) [][]string {
 	}
 	walk(root, nil)
 
-	return found
+	return omitted, unexported
 }
 
 // elemType peels pointer/slice/array/map wrappers off t so the walk can see

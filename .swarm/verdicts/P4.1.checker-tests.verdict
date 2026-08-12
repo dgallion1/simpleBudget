@@ -1,0 +1,41 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P4
+ATTEMPT: 1
+---
+EVIDENCE:
+
+1. MANIFEST & FILE OWNERSHIP: manifest exists ✓; P4-owned files only ✓; whatif template untouched (pre-existing changes via git log, no P4 commits to that file) ✓. NOTE: P4 created three supporting service packages (internal/services/{anomalies,pricecreep,merchants}/) that are not listed in the manifest but are necessary for P4's functionality and imported by P4's handlers; these are P4-owned infrastructure but the manifest documentation is incomplete.
+
+2. MAKE CHECK: all checks passed ✓ (go vet, govulncheck, tests). No govulncheck substitution rule used.
+
+3. TESTS (go test ./internal/handlers/insights/... -count=1 -v): 131 tests passed ✓. All required scenarios present and passing:
+   - TestAnomalyMethodLabel: method-label mapping (mad_category→"Category outlier", mad_merchant→"Merchant outlier", new_merchant→"New merchant") ✓
+   - TestAnomaliesForPeriod_WindowFiltersDisplayOnly: window-filter-only regression (display window filters anomalies.Detect results, does not scope detection itself) ✓
+   - TestAnomaliesForPeriod_FullHistoryFirstOccurrence: full-history no-false-new-merchant regression (old merchant's large charge never flagged "new merchant" when merchant's true first-occurrence predates the window; fixture confirms window-scoping would reproduce the bug) ✓
+   - TestPriceCreepForDisplay_CapsAtTenWithTotal: price-creep 10-row cap (11 merchants planted; 10 displayed; total=11 reported separately) ✓
+   - TestHandleInsights_AnomaliesAndPriceCreepSections_PlantedData: planted-data render (in-window anomaly "Widget Splurge" shows as "Category outlier"; out-of-window same-shape anomaly excluded; price-creep row from 2023 still shown despite falling entirely outside query window) ✓
+   - TestHandleInsights_AnomaliesAndPriceCreepSections_EmptyStates: empty states ("No anomalies in this period." and "No price increases detected." render verbatim) ✓
+
+4. CODE REVIEW (handlers.go):
+   - anomaliesForPeriod (line 214-228): calls anomalies.Detect(*allData) on FULL active set ✓, then filters by display date window on lines 222-224 ✓
+   - priceCreepForDisplay (line 240-250): calls pricecreep.Detect(*allData) on full history ✓, capped at maxPriceCreepRows=10 on lines 246-248 ✓, returns both capped rows and total count ✓
+   - anomalyMethodLabel (line 190-195): maps lowercase method strings to plain-English labels; canonical keys never rendered ✓
+   - Rulings compliance: comment on line 197-210 correctly documents P2 finding (new_merchant must compute first-occurrence against full history, not window) ✓
+
+5. TEMPLATE REVIEW:
+   - anomalies-section.html: h3 heading with icon ✓; table with th scope="col" headers ✓; .MethodLabel used (plain text labels, never .Method or canonical keys) ✓; severity conveyed by text ("High"/"Medium") + color badge (rose-100/amber-100 classes, inherits existing palette) ✓; empty state text ✓
+   - pricecreep-section.html: h3 heading with icon ✓; table with th scope="col" headers ✓; .Merchant rendered (DisplayLabel-like format, lowercase) not canonical keys ✓; percentages displayed as text only ✓; "Showing top 10 of X" message when total > 10 ✓; empty state text ✓
+   - insights.html: both sections included via {{template}} includes on lines 468, 471 ✓
+
+6. LIVE RENDER & WCAG 2.2 AA (server booted, curl /insights?start=2025-01-01&end=2025-12-31):
+   - Anomalies section rendered: 43 detected; table headers scope="col" ✓; MethodLabel "Merchant outlier", "Category outlier" rendered as text (not method machine names) ✓; severity badges contain text ("High"/"Medium") with rose-100/rose-800 color classes ✓; rows iterate properly; empty state verified in static template ✓
+   - Price Creep section rendered: 13 detected; table headers scope="col" ✓; merchant names rendered (lowercase normalized) ✓; percentages shown as text (&#43;700.0% = "+700.0%") ✓; capped at 10 rows with "Showing top 10 of 13 merchants with price creep" message ✓; empty state verified in static template ✓
+   - No color-contrast regression: both sections reuse existing Tailwind color palette (amber, rose) from prior sections; no new hardcoded colors ✓
+   - Headings: h3 consistent with page's other section headings ✓
+   - Empty-state strings are plain text in template alternate branches ✓
+
+7. GIT STATUS: only P4-owned files modified ✓; whatif template shows pre-existing diff unrelated to P4; no unexpected files changed.
+
+Summary: All checks pass. P4 correctly implements anomalies and price-creep detection with proper a11y markup (table scopes, text+color severity, plain-English labels), display-side window filtering for anomalies with full-history baseline computation (P2 ruling enforced), price-creep capped at 10 rows with total count reported, and proper empty states. Spec-mandated accessibility standards met. No regressions to other code. Manifest documentation incomplete (three supporting service packages created but not listed) but work is complete and correct.

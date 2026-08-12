@@ -1,0 +1,78 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P2
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Check 1 — Manifest inventory:
+.swarm/manifests/P2.1.files contains exactly 3 files:
+  internal/services/anomalies/anomalies.go
+  internal/services/anomalies/anomalies_test.go
+  internal/services/anomalies/fixture_test.go
+✓ PASS
+
+Check 2 — Build and test scenarios:
+go build ./... succeeded.
+go test ./internal/services/anomalies/... -count=1 -v: 27 total tests, 19 top-level tests PASS (including subtests).
+All mandated scenarios present and passing:
+  ✓ TestDetect_PlantedFixture_FlagsFiveWithAtMostOneFalsePositive (5/5 planted, ≤1 FP)
+  ✓ TestDetect_PlantedFixture_DominantConstantChargeDoesNotCollapseCategoryMAD (rule a: recurring group exclusion)
+  ✓ TestDetect_SmallGroup_ImmaterialWobbleNotFlagged (rule b: materiality floor)
+  ✓ TestDetect_SmallGroup_MaterialOutlierFlagged (rule b: material outlier)
+  ✓ TestDetect_LowSideOutlier_NotFlagged (rule c: high-side only)
+  ✓ TestDetect_IncomeNeverFlagged (income exclusion)
+  ✓ TestDetect_SuppressedNeverFlagged (suppressed exclusion)
+  ✓ TestDetect_ExpenseFilter_ExcludesNonOutflowOrPositiveAmount (filter: TransactionType==Outflow && Amount<0)
+  ✓ TestDetect_NewMerchant_FirstSeenAbovePercentileFlagged (new merchant detection)
+  ✓ TestDetect_Dedupe_HigherScoreMethodWins (deduplication)
+  ✓ TestDetect_Determinism (deterministic output)
+  ✓ TestDetect_EmptySet_NoPanic (empty-set resilience)
+✓ PASS — All mandated scenarios present and passing
+
+Check 3 — make check:
+go test with vet, staticcheck, govulncheck across all packages.
+Result: ✓ all checks passed
+Network substitution in govulncheck is allowed (no action needed).
+✓ PASS
+
+Check 4 — Code review (anomalies.go) vs ruled standard:
+  (a) Category baseline excludes qualifying merchant groups (n≥4): Line 171-178 filters groups by size. ✓
+  (b) Materiality floor max(0.5×median, $10) on BOTH MAD paths: isMaterial (line 292-298) applied at line 276 (MAD normal) and 285 (MAD==0). ✓
+  (c) High-side only (x > median): Line 270-272 enforces return false when x <= med. ✓
+  MAD constant 1.4826: Line 94 madConstant. ✓
+  z threshold 3.5: Line 95 madZThreshold. ✓
+  Category min 6: Line 97 minCategoryRows. ✓
+  Merchant min 4: Line 98 minMerchantGroupRows. ✓
+  New merchant first-occurrence AND >p95: Line 229-239 computes p95, finds earliest (line 391-399), flags if amt > p95. ✓
+  Dedupe keeps highest score: Line 193-195 compares existing score. ✓
+  Severity high >6: Line 244-248 sets "high" if Score > severityHighThreshold (6.0). ✓
+  Results sorted score desc with Hash tie-break: Line 252-256 sorts Score desc then Hash asc. ✓
+  Expense filter (TransactionType==Outflow && Amount<0): Line 161. ✓
+  Active() applied: Line 157 calls ts.Active(). ✓
+✓ PASS — All ruled standards met
+
+Check 5 — Independent Planted fixture spot-probe:
+go test ./internal/services/anomalies/ -run 'Planted' -v -count=1: 2 tests PASS
+Fixture truth table (fixture_test.go lines 57-107, 219-255):
+  Exactly 5 planted anomalies documented:
+    - 2025-03-10 Groceries $550.00 (5.5x baseline median $100)
+    - 2025-06-14 Dining $330.00 (5.5x baseline median $60)
+    - 2025-09-02 Utilities $825.00 (5.5x baseline median $150)
+    - 2025-12-20 Shopping $440.00 (5.5x baseline median $80)
+    - 2026-04-05 Healthcare $1100.00 (5.5x baseline median $200)
+  Fixture comment table (buildPlantedFixture) matches test expectations (buildPlantedFixture returns plantedHashes line 243-254; assertions in TestDetect_PlantedFixture_FlagsFiveWithAtMostOneFalsePositive line 21-50).
+✓ PASS
+
+Check 6 — git status:
+P2-owned files (internal/services/anomalies/*): present, untracked as expected.
+Other tracked changes attributed correctly:
+  M internal/handlers/insights/handlers.go (P3, confirmed in task context)
+  M web/templates/components/whatif/rate-assumptions.html (pre-existing)
+  ?? internal/services/pricecreep/ (P3 new package, confirmed)
+  ?? ANALYTICS_PORT_SPEC.md (project spec, not P2's responsibility)
+  ?? .swarm/ (verification infrastructure)
+✓ PASS — P2 isolation correct
+
+All six checks PASS. P2 meets acceptance criteria per ANALYTICS_PORT_SPEC.md §5 P2: 5/5 planted flagged with ≤1 FP, all rule regressions pass, make check green.

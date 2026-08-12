@@ -1,0 +1,143 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P1
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Executed: `go test ./internal/services/merchants/... -v` (all 24 subtests pass),
+`go test ./internal/services/merchants/... -race` (pass), `go vet
+./internal/services/merchants/...` (clean), `staticcheck
+./internal/services/merchants/...` (clean, no findings).
+Read: ANALYTICS_PORT_SPEC.md §2 + §5 P1 row; merchants.go (full);
+merchants_test.go (full); internal/handlers/insights/handlers.go lines
+166-420 (mergeSimilarGroups, detectRecurringPaymentsAt call site); models/
+transaction.go (Transaction struct, Label(), Active()).
+
+1. Union-find correctness (merchants.go:114-180).
+   `shouldMerge` is evaluated pairwise on the *original* per-key token sets
+   (tokens[i], tokens[j] captured once before the O(n^2) loop), never on
+   merged-group state, so union order cannot change the resulting
+   partition — this is a static edge-set fed to union-find, not an
+   incremental/online merge. `find` uses path-halving
+   (parent[i]=parent[parent[i]]); `union` has no rank/size heuristic but
+   correctness doesn't depend on it here. Canonical-key selection
+   (line 162-173) is a max-reduce over (tokenCount, then reverse-lex)
+   applied via a plain index loop (not map range), so it is
+   order-independent by construction. TestGroupKeys_StableAcrossInputOrder
+   confirms both the partition and canonical assignment are identical
+   forward vs. reversed input (verified via reflect.DeepEqual — correct
+   choice since map value-equality, not iteration order, is what's being
+   asserted).
+
+   Three-key diamond case (A={ACME,COFFEE}, B={ACME,STORE},
+   C={ACME,COFFEE,STORE}): traced by hand against shouldMerge — A⊆C and
+   B⊆C both hold with smaller-side size 2 (≥2, guard satisfied), so A, B,
+   C union into one group even though A⊄B and B⊄A. This matches the
+   ruled subset rule as a pairwise relation extended by transitive
+   union-find (the spec's own guard language — "must not bridge groups
+   under transitive union-find" for *degenerate* keys — implies
+   transitivity via non-degenerate keys is the intended mechanism, and
+   the package doc's chain example already relies on the same
+   transitive-closure behavior for the linear case). Implementation
+   matches the ruled rule. Coverage gap: no test pins this specific
+   non-nested-pair-bridged-via-common-superset case — only the linear
+   chain (A⊂B⊂C) is tested (merchants_test.go:67-77). Recommend adding it,
+   but behavior is correct per spec — nit, not a defect.
+
+2. Tokenization edge cases (merchants.go:56-67, 84-91).
+   Normalize splits only on whitespace (strings.Fields) after uppercasing;
+   punctuation is never split out, so "SQ *COFFEE SHOP" tokenizes to
+   {SQ, *COFFEE, SHOP} — the asterisk stays glued to the following word
+   as one token, matching the real Square descriptor format the task
+   description itself gives ("SQ *NAME", no space). tokenSet dedupes to a
+   true set (merchants.go:84-91) and `sizes[i] = len(tokenSet(k))` is
+   computed from the deduped set, so a key like "ACME ACME COFFEE"
+   correctly sizes as 2 for guard purposes, not 3 — token SET semantics
+   are honored throughout, not token LIST. Two normalized strings that
+   differ (e.g. differing whitespace already collapsed by Normalize, so
+   this doesn't actually arise post-Normalize) would produce identical
+   token sets and thus identical merge behavior via isSubset, consistent
+   with spec intent.
+
+3. Guard bypass hunting — the "SQ *" case.
+   Traced by hand: a raw description literally "SQ *COFFEE SHOP A" tokenizes
+   to {SQ, *COFFEE, SHOP, A} (4 tokens) — "*" is never a standalone token
+   here because there is no whitespace between "*" and "COFFEE". The bare
+   "SQ" key (1 token) only matches degenerate exact-equality per the
+   smaller<2 branch (merchants.go:189-197), confirmed by
+   TestGroupKeys_MergeNegatives/bare_SQ_does_not_bridge_unrelated_merchants.
+   The two 4-token SQ-prefixed keys share only the "SQ" token, not a
+   subset relation, so they stay separate — confirmed by
+   TestGroupKeys_MergeNegatives/SQ_prefixed_distinct_merchants_stay_separate.
+
+   Latent (not currently exploitable) gap: if a raw description ever put a
+   space between "*" and the merchant name (e.g. "SQ * NETFLIX" instead
+   of "SQ *NETFLIX"), Normalize would produce "*" as its own token, making
+   a bare "SQ *" description a 2-token *non-degenerate* key — the guard
+   only fires below 2 tokens, so {SQ,*} ⊆ {SQ,*,NETFLIX} would merge, and
+   transitively bridge every "SQ * <merchant>" group sharing that exact
+   space-separated format, reopening exactly the class of bug the guard
+   exists to prevent. This does not fire against the documented/tested
+   format ("SQ *NAME", no space, per the task's own stated real-world
+   pattern and the existing test fixtures) and no current test or fixture
+   produces it. Flagging as a nit / hardening recommendation (add a
+   regression test for space-separated processor prefixes, e.g. "SQ * X"
+   vs "SQ * Y"), not a material defect against plausible current bank
+   data.
+
+4. Determinism.
+   No group-membership or canonical-key computation depends on Go map
+   iteration order: `unique` is built from the input slice in first-seen
+   order (not map range), the O(n^2) merge loop iterates by index, and
+   canonical selection folds over indices 0..n-1, not map range
+   (merchants.go:118-125, 154-173). The only map ranges are the initial
+   `seen` dedup check (order-irrelevant, only used as a membership test)
+   and final result-map construction (order doesn't affect map contents).
+   Ran with `-race`: clean. TestGroupKeys_StableAcrossInputOrder is the
+   correct end-to-end check for this claim.
+
+5. GroupTransactions (merchants.go:215-237).
+   DisplayName fallback is `if raw == "" { raw = t.Description }` — an
+   exact-empty check, not TrimSpace-aware. A whitespace-only DisplayName
+   (e.g. " ") does NOT fall back to Description and normalizes to the
+   empty key, landing in the degenerate empty-key bucket alongside
+   all-digit-description rows rather than using the real Description.
+   This diverges from Transaction.Label() (models/transaction.go:93-104)
+   which has the same precedence order but is also an exact-empty check,
+   so this is at least internally consistent with the codebase's existing
+   convention — not a new inconsistency introduced by this package. Low
+   materiality (requires a whitespace-only user-set alias) — nit, not
+   blocking.
+   Duplicate transactions: not deduped by ID/Hash, both retained — correct
+   per the package's stated contract ("does not filter or skip any input
+   transaction"); dedup is explicitly the caller's job.
+   Nil/empty input: explicit early return of `map[string][]models.Transaction{}`
+   for len(ts)==0, confirmed by TestGroupTransactions_EmptyInput.
+
+P3 call-site sufficiency (internal/handlers/insights/handlers.go:214-291,
+340-397).
+   Today, detectRecurringPaymentsAt builds `groups` by hand
+   (`strings.ToLower(strings.TrimSpace(t.Description))`, handlers.go:284)
+   from `outflows.Transactions` ([]models.Transaction), then calls
+   mergeSimilarGroups on it (handlers.go:291); the resulting map key
+   (`desc`) is later written directly into `RecurringPayment.Description`
+   (handlers.go:388) as the user-facing name. merchants.GroupTransactions
+   takes exactly []models.Transaction and returns exactly
+   map[string][]models.Transaction — a drop-in type match for `outflows.
+   Transactions` in and `groups` out; no adapter needed. One integration
+   consequence for P3 to account for (not a P1 defect): the canonical key
+   text changes from lowercase raw Description to the uppercase,
+   digit-stripped normalized merchant key, so the display string users see
+   in RecurringPayment.Description will change format (e.g. "netflix.com
+   123" → "NETFLIX.COM"). This looks like a strict improvement
+   (canonical name vs. one arbitrary raw occurrence) but P3 should
+   confirm the display casing is acceptable or add a display-name
+   projection.
+
+Overall: no material defect found — no plausible-bank-data mis-merge, no
+non-determinism, and the API is sufficient for the P3 call site. Two
+non-blocking hardening nits noted above (diamond-case test coverage;
+space-separated-prefix regression test) plus one low-materiality edge case
+(whitespace-only DisplayName).

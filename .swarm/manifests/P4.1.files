@@ -1,0 +1,5 @@
+internal/handlers/insights/handlers.go
+internal/handlers/insights/handlers_test.go
+web/templates/pages/insights.html
+web/templates/components/anomalies-section.html
+web/templates/components/pricecreep-section.html

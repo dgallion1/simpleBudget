@@ -1,0 +1,25 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P3
+ATTEMPT: 1
+---
+EVIDENCE:
+Check 1 (manifest): PASS — .swarm/manifests/P3.1.files exists, lists only P3 paths: internal/handlers/insights/handlers.go, internal/services/pricecreep/{pricecreep.go,pricecreep_test.go}, internal/services/merchants/merchants_test.go. No critical paths.
+
+Check 2 (build & tests): PASS — go build ./... succeeds; all targeted test packages pass:
+  - pricecreep: TestDetect_StepDrift, TestDetect_FlatMerchantAbsent, TestDetect_SingleOutlierAmongLastThreeNotReported, TestDetect_GenuineStepAtMinimumOccurrences (20% step), TestDetect_FiveOccurrencesExcluded, TestDetect_DecreaseAbsent, TestDetect_Deterministic all PASS.
+  - merchants: TestGroupKeys_DiamondSubsetMergesIntoOneGroup (diamond non-chain), TestGroupKeys_SpacedAsteriskCurrentBehavior (2-key spaced-asterisk, documents ruled gap for P5) both PASS; TestGroupTransactions_SuppressedNotSkipped PASS.
+  - insights: TestDetectRecurringPayments_FuzzyMergedVendor and full suite (TestHandleInsights_Success, recurring/trends/velocity/income partials, renderers, trends charts, velocity calculations, income patterns) all PASS.
+
+Check 3 (make check): PASS — Full project check with govulncheck substitution: ✓ all checks passed. No vulnerabilities in user code (5 transitive, 1 in requires, none called).
+
+Check 4 (code review):
+  - pricecreep.go: Groups via merchants.GroupTransactions (line 85) ✓; minOccurrences = 6 with enforcement at line 89 ✓; true medians of first 3 vs last 3 via median() helper (lines 99–100, 153–165) ✓; >5% threshold enforced at line 109 (creepThresholdPct = 5.0) ✓; Merchant field populated by groupDisplayLabel() which selects most-frequent RAW description (lines 115, 179–205) NOT uppercase key ✓; sorted by PctChange desc with deterministic tie-break: Occurrences desc, GroupKey asc (lines 126–134) ✓.
+  - handlers.go: merchants.GroupTransactions now primary grouping (line 330: canonGroups := merchants.GroupTransactions) ✓; groupDisplayLabel() invoked on each group (line 333: label := groupDisplayLabel(txns)) keeps display text raw, not canonical key ✓; canonical key never surfaces in groups map (re-keyed to label, line 334) ✓; comments clearly flag the ruled hybrid: merchants.GroupTransactions + mergeSimilarGroups (lines 322–346) ✓.
+
+Check 5 (git diff scope): PASS — git diff internal/handlers/insights/handlers.go scoped to recurring-detection region: merchants import added (line 19), groupDisplayLabel() helper added (lines 270–307), detectRecurringPaymentsAt() grouping refactored (lines 313–346) to use canonGroups + display labels. No unrelated edits; git diff handlers_test.go produces no output (no test assertions modified).
+
+Check 6 (git status sanity): PASS — M internal/handlers/insights/handlers.go (P3 scope); untracked pricecreep/ and merchants_test.go appended tests (P3 scope); known pre-existing: .swarm/, ANALYTICS_PORT_SPEC.md (spec), anomalies/ (P2), whatif template + render test (user's), internal/templates/render_spending_preview_test.go (user's).
+
+All 6 checks pass. Hybrid architecture (ruled via adjudication) confirmed intact: merchants.GroupTransactions + mergeSimilarGroups + groupDisplayLabel ensure canonical (uppercase) keys drive matching only; all user-visible strings use raw display labels. Outflow-alignment fix (Amount < 0 → deferred to P5 per ruling) and spaced-asterisk 3-key bridge (known gap, P5) both noted in test comments; neither blocks acceptance.

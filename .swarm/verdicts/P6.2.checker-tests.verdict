@@ -1,0 +1,15 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P6
+ATTEMPT: 2
+---
+EVIDENCE:
+1. Manifest P6.2.files exists; whatifmcp files only. ✓ (verified: all 7 files in internal/services/whatifmcp/)
+2. make check passes. ✓ (all checks passed: go vet ./..., staticcheck ./..., govulncheck .../...)
+3. Required tests exist and pass: NonSettingsBasenameIsAClearError ✓ PASS, StandardSettingsShapeStillWorks ✓ PASS, NonSettingsDirIsAClearErrorNotZeroCount (tool-level) ✓ PASS, TestSpawnArgs_DerivesDataDirFromSettingsDir ✓ PASS, TestSpawnArgs_RefusesUnreachableSettingsDir ✓ PASS. All attempt-1 suite tests passing: planted anomaly, window filtering, creep, empty-data, invalid-date, wiring, 8-tool registration. ✓
+4. Code review dataDirFromSettingsDir (live.go lines 197-206): validates absolute path + basename=="settings" check returning error on mismatch. ✓ Transactions() (insights.go lines 56-60) calls it before dataloader construction and wraps error with offending value. ✓ spawnArgs (live.go lines 216-220) uses same helper, no duplicated logic. ✓ No unused imports detected (go vet clean). ✓
+5. Regression test stable: go test -count=2 -race ./internal/services/whatifmcp/... passes (3.104s). ✓
+6. git status --porcelain: only whatifmcp files modified/added for P6. Known files excluded (.swarm/, spec, ledger). ✓
+
+All checks PASS. The fix correctly factors dataDirFromSettingsDir as a single shared validation point enforcing the config shape (<data-dir>/settings basename constraint), used by both spawnArgs and Transactions(), addressing the attempt-1 failure where a misconfigured -data flag silently returned count:0 instead of a clear error.

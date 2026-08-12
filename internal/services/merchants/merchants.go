@@ -1,0 +1,303 @@
+// Package merchants provides pure, side-effect-free functions for
+// normalizing transaction descriptions into merchant keys and grouping
+// those keys (and the transactions that carry them) into merchant
+// groups. It has no I/O and no package-level mutable state; every
+// function is deterministic given its inputs.
+//
+// # Normalization
+//
+// Normalize uppercases a description, drops tokens that consist
+// entirely of digits (these are almost always processor-generated
+// order/terminal numbers, not part of the merchant's identity) and
+// tokens that consist entirely of punctuation with no letter or digit
+// characters (e.g. a standalone "*"; Ruling 2026-08-12 — otherwise such
+// a token combines with a bare processor prefix like "SQ" to form a
+// 2-token degenerate key that can bridge unrelated merchants), collapses
+// whitespace, and trims the result.
+//
+// # Merge rule and the degenerate-key guard
+//
+// Two normalized keys are considered the same merchant when one key's
+// token set is a subset of the other's, provided the smaller of the two
+// token sets has at least two tokens. This "token-subset" rule lets
+// "ACME COFFEE" merge with "ACME COFFEE STORE" and "ACME COFFEE STORE
+// #12", capturing the common pattern where point-of-sale systems append
+// store numbers, city names, or channel markers to a stable merchant
+// name.
+//
+// Without a floor on the smaller set's size, the rule collapses under
+// transitive union-find: a single-token key like "SQ" (a common Square
+// payment-processor prefix) or an empty key (produced by an all-digit
+// description that normalizes to "") is a subset of practically every
+// other key, so it would silently bridge together every merchant that
+// happens to share that processor, merging otherwise-unrelated vendors
+// into one group. This was observed and ruled against in the b2
+// analytics build: "SQ *COFFEE SHOP A" and "SQ *COFFEE SHOP B" must stay
+// separate merchants, and a bare "SQ" row must not drag every
+// Square-processed merchant into one group.
+//
+// The guard: keys with zero or one token (degenerate keys) only merge
+// with other keys that are EXACTLY equal. A rich key (two or more
+// tokens) can still absorb a degenerate key's transactions only via
+// exact string equality, never via subset containment. This keeps
+// bare-prefix and empty keys isolated to their own group unless another
+// transaction shares that exact degenerate key.
+package merchants
+
+import (
+	"strings"
+	"unicode"
+
+	"budget2/internal/models"
+)
+
+// Normalize converts a raw transaction description into a normalized
+// merchant key: uppercase, standalone all-digit tokens removed (a token
+// consisting only of ASCII digits, e.g. an order number or terminal
+// ID), standalone punctuation-only tokens removed (a token with no
+// letter or digit characters at all, e.g. "*", "-", "#" — Ruling
+// 2026-08-12, closes the {SQ,*} degenerate-key bridge described below),
+// whitespace collapsed to single spaces, and the result trimmed. Digits
+// embedded in an alphanumeric token (e.g. "7-ELEVEN") are left alone
+// since they are part of the token, not a standalone numeric token; the
+// same goes for punctuation embedded in an alphanumeric token.
+func Normalize(description string) string {
+	upper := strings.ToUpper(description)
+	fields := strings.Fields(upper)
+	kept := make([]string, 0, len(fields))
+	for _, tok := range fields {
+		if isAllDigits(tok) || isPunctuationOnly(tok) {
+			continue
+		}
+		kept = append(kept, tok)
+	}
+	return strings.Join(kept, " ")
+}
+
+// isAllDigits reports whether s is non-empty and consists solely of
+// ASCII digit characters.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isPunctuationOnly reports whether s is non-empty and contains no
+// letter or digit characters (e.g. "*", "-", "#", "**"). Such tokens
+// carry no merchant-identifying information on their own; without
+// dropping them, a punctuation-only token like a spaced asterisk in "SQ
+// * COFFEE SHOP" combines with a bare processor prefix to form a
+// 2-token degenerate key ({SQ, *}) that is not caught by the single-
+// token guard and can bridge unrelated merchants under the token-subset
+// merge rule (Ruling 2026-08-12).
+func isPunctuationOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// tokenSet returns the distinct tokens of a normalized key as a set.
+func tokenSet(key string) map[string]struct{} {
+	fields := strings.Fields(key)
+	set := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		set[f] = struct{}{}
+	}
+	return set
+}
+
+// isSubset reports whether every token in a is present in b.
+func isSubset(a, b map[string]struct{}) bool {
+	for tok := range a {
+		if _, ok := b[tok]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// GroupKeys clusters normalized merchant keys into groups using the
+// token-subset merge rule with the degenerate-key guard documented in
+// the package comment, implemented via union-find over the distinct
+// input keys. It returns a map from every input key (duplicates
+// included, each mapping to the same value) to its group's canonical
+// key.
+//
+// The canonical key for a group is chosen deterministically: the member
+// with the most tokens wins; ties are broken lexicographically
+// (smallest string wins) so the result does not depend on map iteration
+// or input ordering.
+func GroupKeys(keys []string) map[string]string {
+	// Distinct keys, in first-seen order (order does not affect the
+	// resulting grouping, only affects nothing observable since the
+	// algorithm considers every pair regardless of order).
+	seen := make(map[string]bool)
+	unique := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if !seen[k] {
+			seen[k] = true
+			unique = append(unique, k)
+		}
+	}
+
+	n := len(unique)
+	parent := make([]int, n)
+	for i := range parent {
+		parent[i] = i
+	}
+	find := func(i int) int {
+		for parent[i] != i {
+			parent[i] = parent[parent[i]]
+			i = parent[i]
+		}
+		return i
+	}
+	union := func(i, j int) {
+		ri, rj := find(i), find(j)
+		if ri != rj {
+			parent[ri] = rj
+		}
+	}
+
+	tokens := make([]map[string]struct{}, n)
+	sizes := make([]int, n)
+	for i, k := range unique {
+		ts := tokenSet(k)
+		tokens[i] = ts
+		sizes[i] = len(ts)
+	}
+
+	for i := 0; i < n; i++ {
+		for j := i + 1; j < n; j++ {
+			if shouldMerge(unique[i], unique[j], tokens[i], tokens[j], sizes[i], sizes[j]) {
+				union(i, j)
+			}
+		}
+	}
+
+	// Determine canonical key per root: most tokens wins, ties broken
+	// lexicographically.
+	canonByRoot := make(map[int]string)
+	sizeByRoot := make(map[int]int)
+	for i := 0; i < n; i++ {
+		r := find(i)
+		cur, ok := canonByRoot[r]
+		if !ok || sizes[i] > sizeByRoot[r] || (sizes[i] == sizeByRoot[r] && unique[i] < cur) {
+			canonByRoot[r] = unique[i]
+			sizeByRoot[r] = sizes[i]
+		}
+	}
+
+	result := make(map[string]string, len(unique))
+	for i, k := range unique {
+		result[k] = canonByRoot[find(i)]
+	}
+	return result
+}
+
+// shouldMerge applies the token-subset rule with the degenerate-key
+// guard to decide whether keys a and b belong to the same merchant
+// group.
+func shouldMerge(a, b string, tokensA, tokensB map[string]struct{}, sizeA, sizeB int) bool {
+	if a == b {
+		return true
+	}
+	smaller := sizeA
+	if sizeB < smaller {
+		smaller = sizeB
+	}
+	if smaller < 2 {
+		// Degenerate key on the smaller side: exact equality only,
+		// already checked above and failed, so no merge.
+		return false
+	}
+	if sizeA <= sizeB {
+		return isSubset(tokensA, tokensB)
+	}
+	return isSubset(tokensB, tokensA)
+}
+
+// DisplayLabel picks a human-readable label for a merchant group: the
+// most frequent raw DisplayName-or-Description among its transactions
+// (mirroring GroupTransactions' own key precedence), lowercased and
+// trimmed. Ties are broken by first occurrence in group so the result is
+// deterministic regardless of map iteration order.
+//
+// This MUST be used instead of a group's canonical normalized key
+// (from GroupKeys/GroupTransactions) wherever a group's identity is
+// shown to a user: that canonical key is uppercase-normalized purely
+// for matching and would look like a bug if surfaced directly.
+func DisplayLabel(group []models.Transaction) string {
+	counts := make(map[string]int, len(group))
+	firstSeen := make(map[string]int, len(group))
+	for i, t := range group {
+		raw := t.DisplayName
+		if raw == "" {
+			raw = t.Description
+		}
+		if _, ok := firstSeen[raw]; !ok {
+			firstSeen[raw] = i
+		}
+		counts[raw]++
+	}
+
+	best := ""
+	bestCount := -1
+	bestSeen := -1
+	for raw, c := range counts {
+		seen := firstSeen[raw]
+		if c > bestCount || (c == bestCount && seen < bestSeen) {
+			best = raw
+			bestCount = c
+			bestSeen = seen
+		}
+	}
+	return strings.ToLower(strings.TrimSpace(best))
+}
+
+// GroupTransactions groups transactions into merchant groups. The raw
+// merchant key for each transaction is its DisplayName if non-empty,
+// otherwise its Description; the key is normalized via Normalize and
+// then clustered via GroupKeys. Transactions are returned under their
+// group's canonical normalized key, preserving input order within each
+// group.
+//
+// GroupTransactions does not filter or skip any input transaction
+// (including Suppressed ones) — callers that need to exclude suppressed
+// transactions from aggregation should call TransactionSet.Active()
+// before passing transactions in.
+func GroupTransactions(ts []models.Transaction) map[string][]models.Transaction {
+	if len(ts) == 0 {
+		return map[string][]models.Transaction{}
+	}
+
+	rawKeys := make([]string, len(ts))
+	for i, t := range ts {
+		raw := t.DisplayName
+		if raw == "" {
+			raw = t.Description
+		}
+		rawKeys[i] = Normalize(raw)
+	}
+
+	canon := GroupKeys(rawKeys)
+
+	result := make(map[string][]models.Transaction)
+	for i, t := range ts {
+		key := canon[rawKeys[i]]
+		result[key] = append(result[key], t)
+	}
+	return result
+}

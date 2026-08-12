@@ -1,0 +1,58 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P8
+ATTEMPT: 1
+---
+EVIDENCE:
+
+1. Manifest (.swarm/manifests/P8.1.files): ✓ Exists, lists README.md only.
+
+2. Diff scope: ✓ Changes confined to exactly three regions:
+   - Line 12: Insights feature bullet (anomaly and price-creep detection details added)
+   - Line 197: Usage item 3 (Anomalies and Price Creep sections noted)
+   - Lines 314-340+: MCP section (expanded tool count, descriptions, and new tool details)
+   Nothing deleted except lines being replaced.
+
+3. Tool inventory (server.go): ✓ Eight tools via mcp.AddTool():
+   1. list_scenarios (read-only)
+   2. get_analysis (read-only)
+   3. get_months (read-only)
+   4. run_scenario (read-only)
+   5. open_page (not read-only—starts server)
+   6. apply_changes (not read-only—writes to plan)
+   7. get_anomalies (read-only)
+   8. get_price_creep (read-only)
+   README claim "Six of its eight tools are read-only" PASS.
+
+4. Parameter names (insights.go anomaliesInput struct):
+   - start_date (line 85) ✓
+   - end_date (line 86) ✓
+   Both match README documentation exactly. Format YYYY-MM-DD confirmed.
+
+5. Anomaly detection algorithm (anomalies.go):
+   - "mad_merchant, mad_category using robust z-score against absolute amounts" (lines 27-32) ✓
+   - "high-side only" (lines 59-60, madFlag line 270) ✓
+   - "new_merchant flags for large first-time charges" (lines 34-40, percentile test) ✓
+   - "full-history baselines" with "date filter scoping display only" (insights.go lines 184-189) ✓
+   - "outflows only, TransactionType == Outflow AND Amount < 0" (anomalies.go line 161) ✓
+   - Amount returned as "signed, negative for expenses" (insights.go mapping at line 201) ✓
+
+6. Price-creep algorithm (pricecreep.go):
+   - "At least 6 occurrences" (minOccurrences = 6, line 50) ✓
+   - "median of first 3 vs last 3" (lines 111-112) ✓
+   - ">5% threshold" (creepThresholdPct = 5.0, line 55; line 121 checks pct <= threshold) ✓
+   - "decreases never report" (lines 121-123) ✓
+   - "outflows only" (lines 80-82) ✓
+
+7. Error handling (insights.go Transactions method):
+   - "Locked or encrypted storage...surface as clear errors" (lines 51-53: "storage is encrypted and locked") ✓
+   - "misconfigured data directories...surface as clear errors" (lines 56-60: "not shaped <data-dir>/settings") ✓
+
+8. Build status (make check): ✓ All checks passed (tail shows "✓ all checks passed").
+
+9. Git status: ✓ README.md modified + expected .swarm/* files present; no other project files changed by P8.
+
+Documentation completeness note: README lists anomaly row fields (date, description, category, amount, method, severity, score) and omits peer_group (present in anomalyRow struct, line 98 insights.go). All listed fields are accurate and present; this is a documentation incompleteness, not an inaccuracy. Every documented claim is supported by code.
+
+All verifications PASS. Documentation is factually accurate and algorithmically correct across both new tools.

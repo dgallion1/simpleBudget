@@ -28,7 +28,7 @@ func TestAssumptionsResourceIsEmbeddedAndNonEmpty(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersTheSixTools drives an in-memory client/server
+// TestNewServerRegistersTheEightTools drives an in-memory client/server
 // round trip (the SDK's mcp.NewInMemoryTransports) to actually enumerate
 // what NewServer registered, rather than merely asserting non-nil. This is
 // the SDK's supported way to inspect registrations: *mcp.Server exposes no
@@ -38,7 +38,7 @@ func TestAssumptionsResourceIsEmbeddedAndNonEmpty(t *testing.T) {
 // live and snaps are passed as nil: none of the tools this test calls
 // (list_scenarios, get_analysis) reach into them, and registration itself
 // never invokes a tool handler.
-func TestNewServerRegistersTheSixTools(t *testing.T) {
+func TestNewServerRegistersTheEightTools(t *testing.T) {
 	ctx := context.Background()
 
 	srv := NewServer(newTestSource(t), nil, nil)
@@ -71,13 +71,14 @@ func TestNewServerRegistersTheSixTools(t *testing.T) {
 	}
 	for _, want := range []string{
 		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
+		"get_anomalies", "get_price_creep",
 	} {
 		if !gotTools[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(toolsRes.Tools))
 		}
 	}
-	if len(toolsRes.Tools) != 6 {
-		t.Errorf("expected exactly 6 tools, got %d: %v", len(toolsRes.Tools), toolNames(toolsRes.Tools))
+	if len(toolsRes.Tools) != 8 {
+		t.Errorf("expected exactly 8 tools, got %d: %v", len(toolsRes.Tools), toolNames(toolsRes.Tools))
 	}
 
 	resourcesRes, err := clientSession.ListResources(ctx, nil)
@@ -149,6 +150,7 @@ func TestToolDescriptionsAreMeaningful(t *testing.T) {
 
 	for _, name := range []string{
 		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
+		"get_anomalies", "get_price_creep",
 	} {
 		t.Run(name, func(t *testing.T) {
 			desc, ok := descByName[name]

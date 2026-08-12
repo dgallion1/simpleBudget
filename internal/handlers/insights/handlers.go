@@ -14,8 +14,11 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"budget2/internal/models"
+	"budget2/internal/services/anomalies"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/majorexpenses"
+	"budget2/internal/services/merchants"
+	"budget2/internal/services/pricecreep"
 	"budget2/internal/templates"
 )
 
@@ -163,6 +166,89 @@ func annotateRecurringWithMajorExpense(payments []models.RecurringPayment) []mod
 	return majorexpenses.AnnotateRecurringPayments(payments, expenses, pins)
 }
 
+// AnomalyView adds a plain-language method label to an anomalies.Anomaly
+// for display on the Insights page. Embedding preserves direct template
+// access to all of anomalies.Anomaly's fields (Date, Description,
+// Category, Amount, Severity, ...).
+type AnomalyView struct {
+	anomalies.Anomaly
+	MethodLabel string
+}
+
+// anomalyMethodLabels maps anomalies.Anomaly.Method values to the
+// plain-language labels shown in the Insights "Method" column.
+var anomalyMethodLabels = map[string]string{
+	"mad_category": "Category outlier",
+	"mad_merchant": "Merchant outlier",
+	"new_merchant": "New merchant",
+}
+
+// anomalyMethodLabel returns the plain-language label for an
+// anomalies.Anomaly.Method value, falling back to the raw method string
+// for any value not in anomalyMethodLabels (defensive; every method the
+// anomalies package currently produces is mapped).
+func anomalyMethodLabel(method string) string {
+	if label, ok := anomalyMethodLabels[method]; ok {
+		return label
+	}
+	return method
+}
+
+// anomaliesForPeriod runs anomalies.Detect over the FULL transaction
+// history (allData — not the period-filtered set) and returns only the
+// flags whose Date falls within [startDate, endDate] for display.
+//
+// Detecting first against the full history and window-filtering only for
+// display is a ruled design requirement (ANALYTICS_PORT_SPEC.md Rulings,
+// P2 finding carried forward to P4): peer baselines (mad_category /
+// mad_merchant) and each merchant group's first-ever occurrence
+// (new_merchant) must be computed against the complete transaction
+// history, or a narrow display window would chronically re-flag a large,
+// long-standing recurring bill as "new" merely because its true first
+// occurrence predates the window. The selected period only scopes which
+// already-detected flags are shown; it never changes what counts as a
+// merchant's first occurrence or a peer group's typical amount.
+//
+// Returns the display-filtered views (never nil) and the total number of
+// anomalies detected across the full history, regardless of window.
+func anomaliesForPeriod(allData *models.TransactionSet, startDate, endDate time.Time) ([]AnomalyView, int) {
+	if allData == nil {
+		return []AnomalyView{}, 0
+	}
+	detected := anomalies.Detect(*allData)
+
+	views := make([]AnomalyView, 0, len(detected))
+	for _, a := range detected {
+		if a.Date.Before(startDate) || a.Date.After(endDate) {
+			continue
+		}
+		views = append(views, AnomalyView{Anomaly: a, MethodLabel: anomalyMethodLabel(a.Method)})
+	}
+	return views, len(detected)
+}
+
+// maxPriceCreepRows caps the number of price-creep rows shown on the
+// Insights page; priceCreepForDisplay reports the full detected count
+// separately so the template can show a "showing top N of M" line.
+const maxPriceCreepRows = 10
+
+// priceCreepForDisplay runs pricecreep.Detect over the FULL transaction
+// history (allData). Price creep needs the long series — it compares the
+// median of a merchant's first 3 occurrences to its last 3 — so unlike
+// anomalies it is never scoped by the page's date filter. Returns the
+// (possibly capped) rows to display and the total number detected.
+func priceCreepForDisplay(allData *models.TransactionSet) ([]pricecreep.Creep, int) {
+	if allData == nil {
+		return nil, 0
+	}
+	creeps := pricecreep.Detect(*allData)
+	total := len(creeps)
+	if len(creeps) > maxPriceCreepRows {
+		creeps = creeps[:maxPriceCreepRows]
+	}
+	return creeps, total
+}
+
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
 	// Detect recurring patterns against all data so short date ranges still find them
 	recurring := annotateRecurringWithMajorExpense(detectRecurringPaymentsAt(allData, endDate))
@@ -279,15 +365,30 @@ func detectRecurringPaymentsAt(ts *models.TransactionSet, referenceDate time.Tim
 		return recurring
 	}
 
-	groups := make(map[string][]models.Transaction)
-	for _, t := range outflows.Transactions {
-		key := strings.ToLower(strings.TrimSpace(t.Description))
-		groups[key] = append(groups[key], t)
+	// Group transactions into merchant clusters via the shared merchants
+	// package (token-subset merge rule with the degenerate-key guard,
+	// ported from the ruled b2 algorithm standard) instead of the old
+	// hand-rolled per-transaction lowercase-description key. Each
+	// cluster is then re-keyed under a human-readable display label
+	// (merchants.DisplayLabel) — the merchants canonical key itself is
+	// UPPERCASE-normalized purely for matching and must never leak into
+	// RecurringPayment.Description or any other user-visible string.
+	canonGroups := merchants.GroupTransactions(outflows.Transactions)
+	groups := make(map[string][]models.Transaction, len(canonGroups))
+	for _, txns := range canonGroups {
+		label := merchants.DisplayLabel(txns)
+		groups[label] = append(groups[label], txns...)
 	}
 
-	// Merge groups with fuzzy matching: if one description contains another,
-	// combine them under the shorter (canonical) name. This handles cases like
-	// "lucid" and "lucidmotors.com" referring to the same vendor.
+	// The ruled token-subset rule intentionally does NOT merge two
+	// single-token keys unless they are exactly equal (the degenerate-key
+	// guard that stops bare processor prefixes like "SQ" from bridging
+	// unrelated merchants) — so it does not, on its own, merge e.g.
+	// "lucid" and "lucidmotors.com" (both single-token: "LUCID" and
+	// "LUCIDMOTORS.COM"). mergeSimilarGroups is layered on top of the
+	// canonical clusters to preserve that pre-existing domain-suffix
+	// consolidation, which is orthogonal to (and not prohibited by) the
+	// ruled standard. See the P3 report for this flagged discrepancy.
 	groups = mergeSimilarGroups(groups)
 
 	// Track which descriptions matched strict criteria
@@ -974,16 +1075,27 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 
 	insights := calculateInsights(active, filtered, startDate, endDate)
 
+	// Anomalies and price creep both run against the full active history
+	// (not `filtered`) — see anomaliesForPeriod / priceCreepForDisplay doc
+	// comments for why. anomaliesForPeriod then window-filters its result
+	// for display only; priceCreepForDisplay is never window-filtered.
+	anomalyViews, anomalyTotal := anomaliesForPeriod(active, startDate, endDate)
+	creepRows, creepTotal := priceCreepForDisplay(active)
+
 	pageData := map[string]interface{}{
-		"Title":       "Insights",
-		"ActiveTab":   "insights",
-		"Insights":    insights,
-		"PaceVerdict": BuildPaceVerdict(insights.Velocity),
-		"StartDate":   startDate.Format("2006-01-02"),
-		"EndDate":     endDate.Format("2006-01-02"),
-		"MinDate":     minDate.Format("2006-01-02"),
-		"MaxDate":     maxDate.Format("2006-01-02"),
-		"Preset":      preset,
+		"Title":           "Insights",
+		"ActiveTab":       "insights",
+		"Insights":        insights,
+		"PaceVerdict":     BuildPaceVerdict(insights.Velocity),
+		"StartDate":       startDate.Format("2006-01-02"),
+		"EndDate":         endDate.Format("2006-01-02"),
+		"MinDate":         minDate.Format("2006-01-02"),
+		"MaxDate":         maxDate.Format("2006-01-02"),
+		"Preset":          preset,
+		"Anomalies":       anomalyViews,
+		"AnomalyTotal":    anomalyTotal,
+		"PriceCreep":      creepRows,
+		"PriceCreepTotal": creepTotal,
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

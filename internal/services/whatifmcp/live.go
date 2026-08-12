@@ -182,6 +182,29 @@ func (c *Client) SwitchScenario(ctx context.Context, name string) error {
 	return nil
 }
 
+// dataDirFromSettingsDir validates that settingsDir has the shape
+// <dataDir>/settings -- config.Load always sets SettingsDirectory =
+// filepath.Join(DataDirectory, "settings"), so that is the only shape any
+// real deployment produces -- and returns the parent (dataDir) on success.
+//
+// Every caller of this package's own settingsDir needs the same guard:
+// guessing a parent for a settingsDir NOT shaped this way would silently
+// point at an unrelated directory (wrong sibling CSVs, wrong spawned
+// server) instead of refusing. spawnArgs and Source.Transactions
+// (insights.go) both call this and wrap the returned error in their own
+// context-specific message; the shape check itself lives in exactly one
+// place so it cannot drift between them.
+func dataDirFromSettingsDir(settingsDir string) (string, error) {
+	abs, err := filepath.Abs(settingsDir)
+	if err != nil {
+		return "", err
+	}
+	if filepath.Base(abs) != "settings" {
+		return "", fmt.Errorf("%s does not end in %csettings", abs, filepath.Separator)
+	}
+	return filepath.Dir(abs), nil
+}
+
 // spawnArgs derives the BUDGET_DATA_DIR value for a settings directory.
 //
 // config.Load does SettingsDirectory = filepath.Join(dataDir, "settings"), so
@@ -190,16 +213,13 @@ func (c *Client) SwitchScenario(ctx context.Context, name string) error {
 // identity check this same client performs -- a refusal caused entirely by the
 // spawn.
 func spawnArgs(settingsDir string) (string, error) {
-	abs, err := filepath.Abs(settingsDir)
+	dataDir, err := dataDirFromSettingsDir(settingsDir)
 	if err != nil {
-		return "", err
-	}
-	if filepath.Base(abs) != "settings" {
 		return "", fmt.Errorf(
-			"cannot start a server for %s: BUDGET_DATA_DIR always resolves to <dir>/settings, "+
-				"so no value produces this path. Start cmd/server yourself and set BUDGET_SERVER_URL", abs)
+			"cannot start a server for %q: BUDGET_DATA_DIR always resolves to <dir>/settings, so no value "+
+				"produces this path (%w). Start cmd/server yourself and set BUDGET_SERVER_URL", settingsDir, err)
 	}
-	return filepath.Dir(abs), nil
+	return dataDir, nil
 }
 
 // listenAddrFromBaseURL derives the BUDGET_LISTEN_ADDR value for a spawned

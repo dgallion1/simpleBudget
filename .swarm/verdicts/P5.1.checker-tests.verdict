@@ -1,0 +1,45 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P5
+ATTEMPT: 1
+---
+EVIDENCE:
+Check 1 (manifest): PASS — .swarm/manifests/P5.1.files exists, lists exactly 5 files (no critical paths): internal/services/merchants/{merchants.go,merchants_test.go}, internal/services/pricecreep/{pricecreep.go,pricecreep_test.go}, internal/handlers/insights/handlers.go.
+
+Check 2 (build & make check): PASS — go build ./... succeeds; make check returns ✓ all checks passed (govulncheck: no vulnerabilities in user code). Full test suite green (ok in all 37 packages).
+
+Check 3 (targeted -v test runs):
+  Merchants — Normalize fix (punctuation-only guard):
+    - TestNormalize/standalone_asterisk_token_dropped PASS
+    - TestNormalize/standalone_hash_token_dropped PASS
+    - TestNormalize/mixed_punctuation-only_tokens_dropped PASS
+    - TestNormalize_SameKeyForOrderNumberVariants PASS (prior regression: all-digit case)
+  Merchants — SpacedAsterik bridge fix:
+    - TestGroupKeys_SpacedAsteriskNoLongerBridges/two_spaced-asterisk_keys_stay_separate PASS
+    - TestGroupKeys_SpacedAsteriskNoLongerBridges/bare_SQ_from_spaced_asterisk_does_not_bridge_the_two_rich_keys PASS
+    - TestGroupKeys_DiamondSubsetMergesIntoOneGroup PASS (prior regressions: diamond, ACME chain)
+  Pricecreep — Outflow + Amount filter & determinism:
+    - TestDetect_OutflowPositiveAmountExcluded PASS (Amount<0 filter confirms positive outflows excluded)
+    - TestDetect_MistaggedIncomeExcluded PASS (Type==Outflow ensures mistagged income excluded)
+    - TestDetect_SameDayTieBrokenByHash/forward PASS
+    - TestDetect_SameDayTieBrokenByHash/shuffled PASS
+    - TestDetect_SameDayTieBrokenByHash/reverse PASS (all three variants identical results)
+    - All prior creep tests green (20 creep tests in full suite)
+  Insights:
+    - TestDetectRecurringPayments_FuzzyMergedVendor PASS
+    - Full insights suite green (45+ tests, renderers, velocity, trends, income patterns)
+  Ripple check:
+    - All anomalies tests green (20+ tests, DisplayName fallback, determinism, score sorting)
+
+Check 4 (code review):
+  - isPunctuationOnly (merchants.go line 99–109): unicode-aware (uses unicode.IsLetter, unicode.IsDigit), non-empty check, returns true only if no letter AND no digit runes. Logic: no letter AND no digit → punctuation-only. PASS.
+  - pricecreep filter (pricecreep.go line 81): TransactionType==models.Outflow AND Amount<0 (composite check on both fields). PASS.
+  - date sort (pricecreep.go line 99–109): SliceStable with composite less: Date first, Hash secondary (line 108: Hash < as tie-break). Deterministic. PASS.
+  - merchants.DisplayLabel (merchants.go line 242): Exported (capital D), called from pricecreep.go line 127 and handlers.go. grep groupDisplayLabel returns zero definitions (old helper removed). PASS.
+
+Check 5 (git diff scope): PASS — internal/handlers/insights/handlers.go diff shows ONLY helper-swap: merchants import added (line +19), groupDisplayLabel() removed, calls redirected to merchants.DisplayLabel (line +15 label := merchants.DisplayLabel(txns), line +12 merchants.GroupTransactions). No behavioral edits beyond the swap. Handlers_test.go: no diff.
+
+Check 6 (git status sanity): PASS — M internal/handlers/insights/handlers.go (P5 scope only); untracked ?? internal/services/{merchants,pricecreep}/ (P5 implementation); known pre-existing: .swarm/ (manifests/verdicts), ANALYTICS_PORT_SPEC.md (spec), internal/services/anomalies/ (P2), web/templates/whatif/rate-assumptions.html (user), internal/templates/render_spending_preview_test.go (user). No critical paths leaked.
+
+All 6 checks PASS. Task P5 verified complete: isPunctuationOnly drops {SQ,*} 2-token degenerate-key bridge; Outflow+Amount filter correctly isolates expenses; date sort is deterministic via composite Hash tie-break; merchants.DisplayLabel exported with old helper fully removed; insights helper-swap confirms P5's integration.

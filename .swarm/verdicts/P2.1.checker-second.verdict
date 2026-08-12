@@ -1,0 +1,202 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P2
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Executed (read-only, no repo files added/modified):
+  go vet ./internal/services/anomalies/... ./internal/services/merchants/...  -> clean
+  go test ./internal/services/anomalies/... -race -count=2 -v  -> ok, all 27 subtests PASS twice, no race
+  go test ./internal/services/merchants/... -race -count=1     -> ok
+Read: internal/services/anomalies/{anomalies.go,anomalies_test.go,fixture_test.go},
+internal/services/merchants/merchants.go, internal/models/transaction.go,
+ANALYTICS_PORT_SPEC.md (§2, Rulings), ~/work/b2/ANALYTICS_SPEC.md (Rulings),
+.swarm/verdicts/P2.1.checker-tests.verdict, .swarm/manifests/P2.1.files.
+
+## 1. Rule-(a) exclusion correctness
+
+anomalies.go:169-178. `groups := merchants.GroupTransactions(expenses)` where
+`expenses` is already Active()-filtered and Outflow/Amount<0-filtered
+(anomalies.go:157-167) — groups can only ever contain qualifying rows, so a
+group cannot "qualify" via mixed-sign or suppressed rows sneaking in; the
+filter is airtight (also directly regression-tested by
+TestDetect_ExpenseFilter_ExcludesNonOutflowOrPositiveAmount, which plants a
+positive-amount Outflow row and a negative-amount Income row inside an
+otherwise-qualifying merchant group and asserts neither the rows themselves
+nor the group's baseline members get flagged).
+
+`categoryPool` (line 173-178) is built by taking only groups with
+`len(group) < minMerchantGroupRows`; qualifying groups (n>=4) are excluded
+from the category median/MAD population entirely — not just from category
+scoring, from the pool itself. Meanwhile the `mad_merchant` loop (line
+213-226) iterates the FULL `groups` map (not `categoryPool`), so a
+qualifying group's own outliers are still tested — "judged within that
+group only," exactly as specced. Confirmed by
+TestDetect_PlantedFixture_DominantConstantChargeDoesNotCollapseCategoryMAD
+(SPOTIFY n=78 / NETFLIX n=18 excluded from Subscriptions baseline, 8 noise
+rows correctly unflagged) and TestDetect_SmallGroup_MaterialOutlierFlagged
+(n=4 group's own $200 outlier correctly flagged via mad_merchant).
+
+## 2. Percentile/median/MAD correctness
+
+median() (line 338-350): standard even-length averaging, odd-length middle
+element, 0 for empty — unit-tested (TestMedian) including the even case.
+percentile() (line 365-383): numpy "linear" interpolation, matches
+TestPercentile's hand-computed 95.5 for a 10-element vector. MAD is
+median(|v-med|) (line 353-359), correctly a single median call, not
+recomputed sort-of-abs-values incorrectly.
+
+Division-by-zero / MAD=0-and-median=0: the expense filter is
+TransactionType==Outflow AND Amount<0 (line 161), so every value entering
+absAmounts/median/MAD is strictly positive; median of a set of strictly
+positive numbers is always >0, so the "MAD==0 AND median==0" case is
+provably unreachable, not just empirically so — confirmed by re-reading the
+filter (line 161) and the fact that Detect never calls median/MAD/percentile
+on anything except `absAmounts` of `expenses`-derived slices. The comment at
+line 282-284 admits this ("kept explicit for safety") — accurate
+self-assessment, not overclaiming. Filter is airtight; no seam I could find
+lets a zero or non-Outflow row into a baseline (also directly
+regression-tested by TestDetect_ExpenseFilter_ExcludesNonOutflowOrPositiveAmount).
+
+Single-element MAD (used only via the standalone unit-testable functions,
+never in Detect's live path since minMerchantGroupRows=4 and
+minCategoryRows=6 gate both MAD call sites) has no special-cased panic risk
+— median() on len-1 returns the element, MAD then reduces to 0, handled by
+the MAD==0 fallback branch.
+
+## 3. new_merchant semantics on this data model
+
+Confirmed: p95 is computed on the SAME `expenses` slice the groups are
+derived from (line 229: `percentile(absAmounts(expenses), ...)`) — same
+window, no skew between the group population and the percentile population.
+new_merchant runs over "every merchant group (any size)" (line 230,
+explicitly documented at line 34) — a group needs only >=1 occurrence, no
+minimum-n gate, unlike the two MAD methods. A transaction CAN be both its
+group's first occurrence and a mad_category candidate simultaneously (e.g. a
+singleton merchant's amount also clears its category's z-threshold);
+dedupe's `candidates` map keyed by Hash with `score > existing.Score`
+(line 193) correctly keeps only the higher-scoring method's Anomaly — this
+exact scenario (dual mad_merchant + new_merchant hit on one transaction) is
+directly regression-tested by TestDetect_Dedupe_HigherScoreMethodWins.
+
+The "narrow window makes everything new" consequence IS documented — package
+doc lines 13-16 state Detect "has no notion of 'recent' or 'this month'"
+and the caller controls the window entirely via pre-filtering (e.g.
+FilterByDateRange, confirmed present at internal/models/transaction.go:133).
+This matches the b2 v1 Ruling that accepted the behavior as
+consistent/documented rather than parameterizing it away.
+
+FP-rate quantification (FINDING, not a failure — see §4 below): by
+construction, whatever the window, exactly the top (100-95)=5% of expense
+rows by absolute amount clear the p95 gate. The material question is what
+fraction of THAT top-5% is also "first occurrence of its merchant group in
+the window" — the intersection is not fixed by the algorithm and depends
+entirely on the real merchant-frequency distribution the caller feeds in.
+Two distinct real-data risk patterns, both worth flagging for P4 (handler
+design), neither a P2 defect since P2 correctly implements the ruled,
+documented, window-relative definition:
+  (i) Long-tail one-off big-ticket purchases (auto repair, one-time medical
+      bills, appliances, travel) are disproportionately represented in the
+      amount tail AND are frequently genuine one-time merchants within any
+      realistic window — so a non-trivial share of the 5% p95-tail will
+      also be first-occurrence, independent of window width. This is the
+      "expected" new_merchant use case and is benign.
+  (ii) The sharper risk: for a NARROW window (e.g. a 1-month insights page),
+      any bill that recurs only once per window by its own cadence (rent,
+      mortgage, an annual/semi-annual insurance premium sliced into a
+      1-month view) is, by definition, its own group's sole/first member in
+      that window — with no n>=4 gate protecting it (unlike the MAD
+      methods). If that bill is also one of the largest line items in the
+      month (common for rent/mortgage), it clears p95 essentially every
+      month, producing a CHRONIC repeat false positive on the user's
+      best-known, least-anomalous expense — worse than a one-off tail FP
+      because it repeats indefinitely rather than being a rare event. The
+      current test suite does not exercise this scenario (the long-standing-
+      group test, TestDetect_NewMerchant_LongStandingGroupNeverFlagged, uses
+      an 18-month unfiltered set where NETFLIX's first occurrence sits at
+      the very start and is small-amount, so it never probes a monthly
+      once-per-window recurring bill against a p95 computed on ONLY that
+      month). Recommend P4 either compute new_merchant's first-occurrence
+      test against a materially wider lookback than the display window, or
+      add a minimum-occurrences-ever guard to new_merchant specifically.
+      Ruled-parameter consequence per the task's framing, so it does not
+      fail P2, but severity is HIGH for UX impact and should be carried
+      forward explicitly to P4/handler design, not left implicit.
+
+## 4. Fixture honesty judgment
+
+fixture_test.go:226-241 documents, in its own comments, that the 5
+category-anomaly baselines were deliberately split into merchant groups of
+size 3/3/2/2 with ascending dates chosen so each group's EARLIEST (hence
+new_merchant-candidate) member is always its lowest-jitter (at-or-below-
+median) row — explicitly to guarantee "no baseline row's amount is ever a
+new_merchant candidate, regardless of where the global 95th percentile
+happens to fall."
+
+Judgment: this is LEGITIMATE fixture design, not a fixture that hides a
+real defect. The stated purpose of buildPlantedFixture is to isolate and
+verify the mad_category/mad_merchant/rule-(a)/rule-(b)/rule-(c) machinery
+with a known, hand-computed ground truth (5 exact planted anomalies, 5.5x
+median, tight baselines) — cross-contaminating that fixture with incidental
+new_merchant noise would make the FlagsFiveWithAtMostOneFalsePositive
+assertion untestable (an accidental new_merchant hit on a baseline row would
+either eat the 1-FP budget for an unrelated reason or force loosening the
+bound), without adding any coverage of new_merchant itself, which is
+separately and adequately covered by
+TestDetect_NewMerchant_FirstSeenAbovePercentileFlagged and
+TestDetect_NewMerchant_LongStandingGroupNeverFlagged. Planted truths remain
+honest: the comment is explicit and correct about what was engineered and
+why, nothing is misrepresented, and no assertion in the test suite claims
+to bound real-world new_merchant FP rates — the ≤1 FP bound is scoped to
+this fixture only. The gap is that no test in this suite quantifies or
+bounds new_merchant's FP rate under a realistic merchant-frequency
+distribution (see §3(ii) above) — that is a coverage gap worth carrying to
+P4, not a dishonesty problem in this fixture.
+
+## 5. Determinism and sorting
+
+Final sort (line 252-257): Score descending, ties broken by Hash ascending
+— fully deterministic regardless of any map iteration order upstream.
+Verified via TestDetect_Determinism (two Detect() calls compared with
+reflect.DeepEqual) and TestDetect_ResultsSortedByScoreDescending, both
+passing under -race -count=2 (fresh map instantiation each run, so Go's
+per-map iteration randomization is actually exercised across the two runs,
+not just theoretically possible).
+
+One narrow, low-severity latent seam: the dedupe step's per-Hash winner
+(line 193, `score > existing.Score`, strict inequality) resolves an EXACT
+score tie between two different methods on the SAME transaction by "whichever
+was considered first," which does depend on `groups` map iteration order
+(mad_merchant and new_merchant both range over the same `groups` map,
+built fresh each Detect() call). This cannot affect final ordering between
+different transactions (Hash tie-break in the sort is order-independent),
+only which Method/PeerGroup/MadZ is reported for a transaction whose two
+methods happen to produce bit-identical float scores. This is
+astronomically unlikely with real dollar amounts (a MAD z-score and a
+percentile ratio matching to full float64 precision) and none of the
+existing tests hit it. Not a material defect on plausible data; noting for
+completeness per the task's explicit ask to check map-order dependence.
+
+## Overall
+
+The Go port faithfully realizes the ruled §2 standard: rule (a)/(b)/(c),
+the MAD==0 fallback, minima, materiality floor, high-side-only, dedupe,
+severity, and sort/tie-break all match the spec text and are each covered
+by a targeted regression test tracing to a specific b2-build Ruling
+(dominant-constant-charge, immaterial wobble, low-side outlier). The
+expense filter (Outflow AND Amount<0) is airtight and correctly makes the
+MAD=0-and-median=0 degenerate case unreachable. merchants.GroupTransactions
+is used correctly (DisplayName-then-Description precedence matches
+anomalies.go's own displayNameOrDescription helper) and its already-accepted
+subset-merge/degenerate-guard logic (P1) is not re-litigated here. No
+material defect found on plausible data. The one thing I'd escalate as a
+FINDING (not a FAIL) for the lead going into P4: new_merchant has no
+minimum-occurrence gate and is window-relative by design, which is a ruled
+and documented consequence, but on narrow windows it can chronically
+re-flag large once-per-window recurring bills (rent/mortgage-class
+expenses) — a UX severity concern the current fixture, by deliberate and
+honestly-documented design, does not exercise or quantify.
+
+PASS.

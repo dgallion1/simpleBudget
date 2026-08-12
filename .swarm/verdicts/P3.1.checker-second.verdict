@@ -1,0 +1,186 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P3
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: ANALYTICS_PORT_SPEC.md §2 (amended, normalization drops punctuation-only
+tokens too) + Rulings block (P3 hybrid accepted; spaced-asterisk gap deferred
+to P5, documented not fixed; expense-filter Outflow&&Amount<0 vs literal
+Amount<0 deferred to P5). Read internal/services/pricecreep/{pricecreep,
+pricecreep_test}.go, internal/services/merchants/{merchants,merchants_test}.go,
+internal/services/anomalies/anomalies.go (filter only), internal/models/
+insights.go, and `git diff HEAD -- internal/handlers/insights/handlers.go`
+(64 ins / 9 del: adds groupDisplayLabel + swaps the per-transaction
+lowercase-description key for merchants.GroupTransactions re-keyed by
+display label, mergeSimilarGroups left layered on top unchanged).
+
+## 1. Behavioral-delta enumeration (old lowercase-trimmed-Description exact
+key vs new normalize+subset-merge, re-keyed by groupDisplayLabel)
+
+Verified with a throwaway `go run` harness calling merchants.Normalize +
+GroupKeys directly (not part of the diff, discarded after use):
+
+- "PAYPAL INST XFER 0612" vs "PAYPAL INST XFER 0712" -> both normalize to
+  "PAYPAL INST XFER" (digit token dropped) -> MERGE under new, stayed split
+  under old (exact full-string match). This is a genuine delta and an
+  intended improvement: exactly the class of case Normalize's digit-drop
+  rule exists for (ANALYTICS_PORT_SPEC.md §2). Not a regression.
+- "AMZN MKTP US*1A2B3C" vs "AMZN MKTP US*4D5E6F" -> order ID is fused into
+  one alnum token (not all-digit), survives Normalize -> stays SPLIT under
+  new, exactly as it would have under old (old also matched full description
+  strings exactly, so these were never merged before either). No delta —
+  confirmed empirically, not just reasoned.
+- handlers.go:326 (`merchants.GroupTransactions(outflows.Transactions)`) now
+  keys off DisplayName-first-then-Description, whereas the old code
+  (`strings.ToLower(strings.TrimSpace(t.Description))`, removed in this
+  diff) used Description only. This is the single largest delta in the
+  change and is spec-mandated (ANALYTICS_PORT_SPEC.md §3: "key merchants off
+  DisplayName falling back to Description"), not an accidental side effect —
+  flagging so the lead is aware it's real and load-bearing, not incidental.
+- Multi-token near-duplicates (store-number/city suffixes, "ACME COFFEE" /
+  "ACME COFFEE STORE #12") now merge via the ruled subset rule where old
+  relied only on exact-match + mergeSimilarGroups' narrow domain-suffix
+  heuristic. Intended improvement per the ruled P1 standard, pinned by
+  merchants_test.go's diamond test (TestGroupKeys_DiamondSubsetMergesIntoOneGroup,
+  merchants_test.go:318).
+- Degenerate single-token descriptions (bare "SQ", any bare one-word
+  merchant) still require exact string equality to merge — unchanged,
+  conservative, no regression.
+
+Net: every delta found either (a) reproduces old behavior exactly (AMZN
+case) or (b) is a documented, spec-ruled improvement (digit-drop,
+subset-merge, DisplayName-first). No accidental split-what-old-merged or
+merge-what-old-split case found.
+
+## 2. mergeSimilarGroups re-keying / display-label collision
+
+Proved (not just spot-checked) that two DIFFERENT canonical groups cannot
+produce an identical groupDisplayLabel: groupDisplayLabel(raw) =
+ToLower(TrimSpace(raw)); two raw strings equal after that transform differ
+only in case and/or leading/trailing whitespace. merchants.Normalize also
+uppercases and trims (Fields/Join), so any two raw strings that are
+lower-trim-equal are *also* Normalize-equal, meaning they'd already collapse
+to the same normalized key inside GroupTransactions (rawKeys[i] =
+Normalize(raw), unioned via the literal-equality branch of shouldMerge
+before any subset logic even runs) — i.e. they were never two different
+canonical groups to begin with. Label collision across genuinely distinct
+canonical clusters is structurally impossible here (mod exotic Unicode
+case-folding asymmetries, not realistic for bank-export ASCII descriptions).
+
+Real (but pre-existing, not introduced by this diff) permissiveness:
+mergeSimilarGroups' HasPrefix-after-domain-strip heuristic
+(handlers.go:243-266, unchanged) can still merge a canonical cluster whose
+label is e.g. "starbucks store 12345" with a *separate*, degenerate-guard-
+protected cluster labeled "starbucks" (HasPrefix("starbucks store
+12345","starbucks") == true). This looks alarming in isolation but is NOT
+new: under the old per-description-exact-key scheme the same two strings
+would have been separate buckets subjected to the exact same prefix test
+with the exact same outcome. Confirmed this is inherited, not introduced,
+by inspection of the pre-diff grouping (one bucket per distinct
+lower-trimmed Description, same mergeSimilarGroups call). This is exactly
+what the 2026-08-12 ruling calls "orthogonal, preserves existing behavior."
+
+One second-order case the ruling's language doesn't fully cover: because
+canonical clustering now runs *before* mergeSimilarGroups and represents an
+entire cluster by only its majority-raw label, a minority raw-description
+variant inside a multi-token cluster (one absorbed into the cluster via the
+subset rule, e.g. "RIDE CO EXPRESS" folded into a "RIDE CO"-labeled cluster)
+loses its own identity as a standalone key for mergeSimilarGroups' pairwise
+prefix test. In a contrived case where that specific minority variant (not
+the majority label) is the string that would prefix-match some other
+cluster's label, old would merge and new would not — a narrow, real
+possibility, no regression test covers it, and it can only ever cause a
+*missed* merge (fail toward separation), which is the safer failure
+direction for recurring-detection quality. Flagging as a finding, not a
+defect: no evidence it manifests in the existing 99-test fixture set or the
+Lucid regression test, and erring toward under-merging is consistent with
+the guard's own stated purpose (avoid bridging unrelated merchants).
+
+## 3. pricecreep correctness
+
+- pricecreep.go:99-100: firstMedian/lastMedian computed via sort.Slice by
+  Date.Before, then hard slices [:3] and [len-3:]. Median-of-exactly-3
+  resolves to the middle element (pricecreep.go:161-163), correct.
+- PctChange formula (pricecreep.go:108): `(lastMedian-firstMedian)/
+  firstMedian*100` — denominator is the *first*-window median (the
+  historical baseline), consistent with "price crept up from X" framing.
+  Correct and matches the doc comment.
+- Threshold (pricecreep.go:109): `if pct <= creepThresholdPct { continue }`
+  — strictly greater than 5% required to report, matching spec's "increases
+  > 5%" exactly (not >=). Verified by TestDetect_GenuineStepAtMinimumOccurrences
+  and there's no boundary-exactly-5% test, but the strict-`<=` skip is
+  unambiguous from the source.
+- Zero-baseline guard (pricecreep.go:102-106): skips rather than divides by
+  zero — correct, no test exercises firstMedian==0 but the code path is
+  simple and obviously correct by inspection.
+- Same-day tie-break (pricecreep.go:95-97): `sort.Slice` (NOT
+  `sort.SliceStable`), no secondary sort key. For a group with same-day
+  duplicate transactions (e.g. split charges), which rows land in "first 3"
+  vs the middle vs "last 3" is not guaranteed by Go's sort.Slice contract —
+  it happens to be deterministic for a fixed Go toolchain and fixed input
+  order (GroupTransactions preserves original transaction-set order, itself
+  presumably file/load order), but this is unspecified behavior relied on
+  implicitly rather than an explicit, documented tie-break like the outer
+  creeps-level sort has (pricecreep.go:126-134, which explicitly documents
+  its tie-break chain). TestDetect_Deterministic (pricecreep_test.go:210)
+  only proves repeat-call determinism on one fixed input, not tie-break
+  correctness under same-day duplicates — no test constructs that case.
+  Worth a follow-up (sort.SliceStable, or an explicit secondary key such as
+  transaction ID) but not a material defect: it doesn't misreport creep
+  direction or magnitude, only which of several same-day rows anchors a
+  window boundary in a rare input shape.
+
+## 4. Cross-package filter consistency (P2 vs P3)
+
+anomalies.go:161 filters `t.TransactionType == models.Outflow && t.Amount <
+0`; pricecreep.go:77 filters `t.Amount < 0` only (no TransactionType check),
+confirmed by TestDetect_ExpensesOnly (pricecreep_test.go:242) which only
+proves positive-Amount Income rows are excluded, not that a negative-Amount
+non-Outflow row would be. This is the exact inconsistency the 2026-08-12
+ruling names explicitly ("(3) expense filter ruled... applies to anomalies
+(P2) and pricecreep (P5 fix)") and defers to P5. Per the task instructions,
+ruled/deferred items are findings, not blockers — logged, not re-litigated.
+User-visible impact in the interim: a hypothetical negative-Amount
+transaction tagged something other than Outflow (e.g. a mis-typed refund)
+could be picked up by pricecreep's creep math but excluded from anomalies'
+peer baseline — low practical likelihood given app-native data conventions,
+worth confirming at P5 time.
+
+## 5. Appended merchants tests — diamond + spaced-asterisk
+
+merchants_test.go:318 (TestGroupKeys_DiamondSubsetMergesIntoOneGroup) pins
+the intended transitive-closure ("diamond") semantics from the P1 review
+nit. merchants_test.go:359 (TestGroupKeys_SpacedAsteriskCurrentBehavior)
+asserts only the narrow 2-key case (no merge) and its comment block
+explicitly documents — without asserting — that adding a bare "SQ *"
+(2-token, non-degenerate) third key DOES bridge two otherwise-unrelated
+Square merchants, framing it as "a real gap, not a resolved case" for P5.
+This matches the ruling's requirement to document, not silently bless, the
+gap.
+
+## 6. Test execution
+
+`go test ./internal/services/pricecreep/... ./internal/services/merchants/...
+./internal/services/anomalies/... ./internal/handlers/insights/... -race
+-count=2` — all four packages PASS, no race reports.
+`go build ./...` — succeeds.
+`go test ./...` (full repo) — all packages PASS (existing 99-ish insights
+tests including TestDetectRecurringPayments_FuzzyMergedVendor (Lucid),
+TestDetectRecurringPayments_AmountBasedGrouping, and all the frequency/
+freshness tests) — no regressions.
+`go vet` and `staticcheck` on the four touched/added packages — clean.
+
+## Summary
+
+No material defect: no silent recurring-detection regression beyond the
+ruled/deferred items, no display-label collision bug (proved structurally
+impossible), no creep-math error. Findings logged above (non-blocking):
+unspecified same-day tie-break in pricecreep's date sort, a narrow
+theoretical missed-merge case from majority-label re-keying feeding
+mergeSimilarGroups, and the two already-ruled/deferred P5 items
+(spaced-asterisk bridge, cross-package expense-filter mismatch) reconfirmed
+present exactly as described in the Rulings and correctly NOT silently
+fixed or hidden.

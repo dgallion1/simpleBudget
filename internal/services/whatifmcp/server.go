@@ -103,11 +103,12 @@ const serverInstructions = "These tools read and re-run a personal retirement pr
 	"plan; run_scenario does not. Prefer run_scenario while exploring, and " +
 	"apply_changes only when the user has settled on a change."
 
-// NewServer builds the MCP server. list_scenarios, get_analysis, get_months
-// and run_scenario are read-only with respect to the data directory:
-// scenarios are loaded and copied, never written. open_page and
-// apply_changes are the exception -- apply_changes saves changed assumptions
-// to the running server's active scenario file.
+// NewServer builds the MCP server. list_scenarios, get_analysis, get_months,
+// run_scenario, get_anomalies and get_price_creep are read-only with respect
+// to the data directory: scenarios and transaction history are loaded and
+// copied, never written. open_page and apply_changes are the exception --
+// apply_changes saves changed assumptions to the running server's active
+// scenario file.
 func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
 	src.live = live
 
@@ -292,6 +293,62 @@ func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
 			SnapshotPath:   snapPath,
 			Analysis:       ShapeAnalysis(a, true),
 		}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "get_anomalies",
+		Description: "Flag unusual expense transactions: amounts far outside a merchant's or category's " +
+			"typical range (mad_merchant, mad_category), or an outsized first-ever charge from a brand-new " +
+			"merchant (new_merchant). Detection ALWAYS runs over the COMPLETE transaction history -- peer-group " +
+			"baselines and each merchant's first-ever occurrence never change with the window -- start_date and " +
+			"end_date only filter which already-detected flags are RETURNED, so a narrow window will not " +
+			"chronically re-flag a long-standing recurring bill as \"new\" merely because its true first " +
+			"occurrence predates the window. Only expenses are considered (outflows: TransactionType == Outflow " +
+			"AND Amount < 0); the returned amount is the transaction's signed amount, so expenses are negative. " +
+			"Both date params are optional, inclusive, YYYY-MM-DD; an invalid date is a tool error.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in anomaliesInput) (res *mcp.CallToolResult, out anomaliesOutput, err error) {
+		defer recoverToError("get_anomalies", &err)
+
+		start, err := parseWindowDate("start_date", in.StartDate)
+		if err != nil {
+			return nil, anomaliesOutput{}, err
+		}
+		end, err := parseWindowDate("end_date", in.EndDate)
+		if err != nil {
+			return nil, anomaliesOutput{}, err
+		}
+
+		ts, err := src.Transactions()
+		if err != nil {
+			return nil, anomaliesOutput{}, err
+		}
+
+		rows := anomalyRows(ts, start, end)
+		return nil, anomaliesOutput{
+			Count:     len(rows),
+			Window:    anomaliesWindow{Start: nilableString(in.StartDate), End: nilableString(in.EndDate)},
+			Anomalies: rows,
+		}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "get_price_creep",
+		Description: "Find recurring merchant charges whose amount has drifted upward over their full history: " +
+			"for each merchant with at least 6 occurrences, compares the median of its first 3 charges to the " +
+			"median of its last 3 and reports it when the increase exceeds 5%. Always runs over the COMPLETE " +
+			"transaction history -- there is no window parameter, because the whole point is a merchant's amount " +
+			"across its full lifetime, not one period. Only expenses are considered (outflows: TransactionType " +
+			"== Outflow AND Amount < 0); the returned amounts are absolute (positive) dollar figures.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ priceCreepInput) (res *mcp.CallToolResult, out priceCreepOutput, err error) {
+		defer recoverToError("get_price_creep", &err)
+
+		ts, err := src.Transactions()
+		if err != nil {
+			return nil, priceCreepOutput{}, err
+		}
+
+		rows := priceCreepRows(ts)
+		return nil, priceCreepOutput{Count: len(rows), Items: rows}, nil
 	})
 
 	s.AddResource(&mcp.Resource{

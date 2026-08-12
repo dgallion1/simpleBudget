@@ -788,8 +788,11 @@ function toggleSpendingPreview() {
 }
 
 function updateSpendingPreview() {
+    // The panel and #spending-decline-slider only render when phase-based
+    // spending is off. The inflation and monthly-living-expenses sliders call
+    // this on every input event either way, so a missing panel is expected.
     const panel = document.getElementById('spending-preview-panel');
-    if (panel.classList.contains('hidden')) return;
+    if (!panel || panel.classList.contains('hidden')) return;
 
     const inflationSlider = document.getElementById('inflation-rate-slider');
     const declineSlider = document.getElementById('spending-decline-slider');

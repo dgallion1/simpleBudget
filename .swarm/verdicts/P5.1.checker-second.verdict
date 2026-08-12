@@ -1,0 +1,247 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P5
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: ANALYTICS_PORT_SPEC.md §2 (as amended) + Rulings block (P5 scope: drop
+punctuation-only tokens closing {SQ,*}, factor groupDisplayLabel into
+merchants, align pricecreep's expense filter to Outflow&&Amount<0);
+internal/services/merchants/merchants.go (full, incl. Normalize/
+isPunctuationOnly/DisplayLabel/GroupTransactions), merchants_test.go (full);
+internal/services/pricecreep/pricecreep.go (full), pricecreep_test.go
+(TestDetect_SameDayTieBrokenByHash and surrounding tests, full);
+internal/handlers/insights/handlers.go detectRecurringPaymentsAt (lines
+274-320) and its inline comments; internal/services/anomalies/anomalies.go
+(unmodified by P5, read to trace the merchants.GroupTransactions ripple);
+prior verdicts .swarm/verdicts/P1.1.checker-second.verdict and
+P3.1.checker-second.verdict for baseline/pre-P5 behavior (no git diff exists
+against these files — every services/{merchants,pricecreep,anomalies} file
+and ANALYTICS_PORT_SPEC.md is untracked in git, `git diff HEAD` returns
+nothing; reconstructed the pre-P5 baseline from the P1/P3 verdicts' quoted
+reasoning and code excerpts instead).
+
+## 1. isPunctuationOnly / new-bridge hunt
+
+isPunctuationOnly (merchants.go:99-109) uses unicode.IsLetter/IsDigit, so it
+is correctly Unicode-aware, not ASCII-only — confirmed by direct execution
+(throwaway `go test -run` scratch file in the merchants package, deleted
+after use; not part of the diff):
+
+  "H & M"                -> "H M"          (was "H & M" pre-fix, 3 tokens)
+  "H & M 45TH ST"         -> "H M 45TH ST"  (rich, safe)
+  "7 - ELEVEN"            -> "ELEVEN"       (was "- ELEVEN" pre-fix; now
+                                              degenerate/1-token, SAFER)
+  "7-ELEVEN 4821 MAIN ST" -> "7-ELEVEN MAIN ST" (embedded hyphen untouched)
+  "A & W RESTAURANT #123" -> "A W RESTAURANT" (rich, safe)
+  "CASH $ WITHDRAWAL"     -> "CASH WITHDRAWAL"
+  "ACME — COFFEE" / "ACME – COFFEE" / "ACME • COFFEE" -> "ACME COFFEE"
+    (em-dash/en-dash/bullet all correctly classified as punctuation-only
+    via Unicode categories, same as ASCII "-"/"*"/"#")
+  "COFFEE €5"             -> "COFFEE €5"    (digit embedded in the token,
+                                              survives — analogous to the
+                                              existing AMZN order-ID case
+                                              already logged in the P3
+                                              verdict; can only cause a
+                                              missed merge, not a bridge)
+
+Confirmed a genuine NEW bridge class, not present pre-fix: dropping
+standalone "&" shrinks ampersand-joined two-letter brand names ("H&M",
+"A&W" when a bank/manual entry spaces them as "H & M") from a 3-token key
+(old: {H,&,M}, guarded because old code never dropped "&" as a token) down
+to a bare 2-token key of generic single-letter fragments ({H,M}) that IS
+non-degenerate (size 2, passes the guard) and subset-merges into any
+unrelated key containing both letters as standalone tokens. Reproduced
+empirically:
+
+  GroupKeys([Normalize("H & M"), Normalize("H M SUPERSTORE DOWNTOWN")])
+    -> both map to "H M SUPERSTORE DOWNTOWN" (merged)
+  GroupKeys([Normalize("A & W"), Normalize("A W ELECTRONICS DOWNTOWN")])
+    -> both map to "A W ELECTRONICS DOWNTOWN" (merged)
+
+Materiality assessment (judged honestly, not dismissed): this requires (a)
+a raw description that is JUST the two-letter-ampersand name with no other
+qualifier (store #, city, channel marker) — most real bank exports for
+brands like H&M/A&W include a store number or city and land in the safe
+4-token form shown above, but budget2 also carries user-editable
+DisplayName, so a manually-typed "H & M" is plausible — AND (b) a second,
+genuinely unrelated transaction elsewhere in the same user's data whose
+normalized key independently contains BOTH bare single-letter tokens (e.g.
+from address abbreviations "STE H"/"UNIT M"/compass "W"). Both conditions
+co-occurring is a real but narrow coincidence, not a systemic bridge like
+the {SQ,*} bug this task fixed (which affected every Square-processed
+merchant sharing that exact processor format). No planted fixture, no
+existing regression test, and no code path in this diff manufactures
+condition (b) from condition (a) alone. This is the same class of risk the
+2-token-floor subset-merge design already accepts by construction (P1,
+already PASSED: "ACME COFFEE" (2 meaningful-word tokens) merging into any
+superset containing both words is the intended behavior) — punctuation-drop
+just extends the token-shrinking effect to single-letter fragments, which
+have a higher (but still low in practice) coincidence probability than
+whole words. No test in merchants_test.go exercises ampersand-joined names
+at all (grep confirms zero "&" cases). Judgment: real, worth a fast
+follow-up (e.g. also excluding single-character alpha tokens from
+counting toward the subset-merge "≥2 tokens" floor, mirroring how P1's
+spaced-asterisk nit became this very P5 fix) — but NOT a regression against
+P5's stated acceptance criteria (SQ-bridge closed; verified below), and not
+exploitable by any current fixture/test data. Flagging as a material,
+non-blocking finding, not a defect that fails this task.
+
+{SQ,*} fix itself verified correct: TestGroupKeys_SpacedAsteriskNoLongerBridges
+(merchants_test.go:356-397) — traced by hand and matches Normalize output;
+"SQ * COFFEE SHOP"/"SQ * PIZZA PLACE" -> {SQ,COFFEE,SHOP}/{SQ,PIZZA,PLACE}
+(no merge), and the bare "SQ *" row -> "SQ" (1 token, degenerate, exact-
+equality only) no longer bridges. Confirms the specific bug named in the
+Ruling is closed.
+
+## 2. Downstream ripple on anomalies (P2)
+
+anomalies.go is untouched by P5 (not in .swarm/manifests/P5.1.files) but
+consumes merchants.GroupTransactions transitively, so its qualifying-group
+(n>=4) status for rule (a) exclusion can shift purely from Normalize's new
+behavior. Two opposing effects reasoned through: (i) closing {SQ,*}-style
+over-merging can only SHRINK previously-inflated groups (fewer false n>=4
+qualifications, correcting toward truth); (ii) the ampersand-shrinkage
+effect from §1 could in principle GROW a group across n=4, pulling those
+transactions out of the category baseline and into merchant-only scoring —
+an intended consequence of using the shared, ruled Normalize, not a bug,
+since rule (a) is explicit by design.
+
+Ran the full anomalies suite against the new merchants package:
+`go test ./internal/services/anomalies/... -race -count=2` -> PASS, no
+race reports. TestDetect_PlantedFixture_FlagsFiveWithAtMostOneFalsePositive
+(the P2 acceptance gate: 5/5 planted anomalies flagged, <=1 FP) still
+passes, confirming the planted fixture's merchant grouping was not
+disrupted by the P5 Normalize change. No planted fixture data contains
+punctuation-only or ampersand-joined tokens, so this is direct evidence for
+the fixture only; real-data risk is the same narrow ampersand-shrinkage
+case from §1, carried here as "could flip a merchant group's n>=4 status
+and reroute its transactions from category-baseline to merchant-only MAD
+scoring" — plausible but requires the same narrow real-world coincidence,
+not something this diff's own tests can or need to pin.
+
+## 3. DisplayLabel factoring — behavior identity and collision safety
+
+merchants.DisplayLabel(group []models.Transaction) (merchants.go:232-268)
+picks the most-frequent raw DisplayName-or-Description among the group
+(ties broken by first occurrence), then lowercases+trims. Godoc present
+and explicit about why this must be used instead of the canonical
+uppercase-normalized key (merchants.go:238-241).
+
+Could not git-diff against the pre-factoring handlers.go helper (untracked,
+no history), so verified two ways instead:
+  a) All pre-existing insights recurring-detection tests that assert exact
+     `.Description`/label strings (TestDetectRecurringPayments_
+     FuzzyMergedVendor "Lucid", _AmountBasedGrouping, _ExactMatchStillWorks,
+     _LongHistoryPattern, etc. — handlers_test.go) still pass under
+     `-race -count=2`, which is strong behavioral-identity evidence for
+     real fixture inputs since these tests were written and passing
+     against the pre-factoring implementation per the P3 verdict.
+  b) Re-derived the P3 checker's collision-impossibility proof ("two
+     different canonical groups cannot produce an identical display
+     label") against the NEW, more complex mode-based DisplayLabel, since
+     that proof was written for a simpler `ToLower(TrimSpace(raw))` helper
+     and the richer majority-vote logic is not obviously covered by it.
+     DisplayLabel always returns a label copied verbatim from one member
+     transaction's own raw field (never synthesized). If two DIFFERENT
+     (unmerged) canonical clusters produced lower-trim-equal winning
+     labels, their two owning raw strings would be lower-trim-equal to
+     each other, and Normalize-equality is coarser than (implied by)
+     lower-trim-equality (Normalize also uppercases, collapses internal
+     whitespace, and drops digit/punctuation tokens — a superset of
+     lower+trim). So those two raw strings would already produce identical
+     GroupTransactions rawKeys, forcing them into ONE shared canonical
+     cluster via the unconditional a==b branch in shouldMerge
+     (merchants.go:214-216) before DisplayLabel is ever computed —
+     contradicting the premise that they were separate clusters. Collision
+     across genuinely distinct clusters remains structurally impossible
+     under the factored implementation, not just the original simpler one.
+
+Nit (test hygiene, non-blocking): no direct unit test for DisplayLabel
+exists in merchants_test.go (grep confirms zero matches) — its tie-break
+logic (majority count, first-seen tie-break) is only exercised indirectly
+through pricecreep/handlers integration tests, all of which pass, but a
+focused table test (e.g. a 2-way count tie resolved by first occurrence)
+would pin the contract directly rather than through call-site behavior.
+
+Carried-forward, not new: DisplayLabel's `if raw == ""` fallback (not
+TrimSpace-aware) — already flagged as a low-materiality nit in the P1
+verdict for the pre-factoring GroupTransactions code; unchanged by the
+factoring, still low materiality (requires a whitespace-only DisplayName).
+
+## 4. Same-day tie-break
+
+pricecreep.go:97-109 sorts with `sort.SliceStable` and an explicit
+secondary key: `sorted[i].Hash < sorted[j].Hash` when dates are equal —
+confirmed by direct read, not inferred. TestDetect_SameDayTieBrokenByHash
+(pricecreep_test.go:330-380) plants a 6-row group where rows at sorted
+indices 2 and 3 (exactly the first-3/last-3 boundary at the minimum
+occurrence count) share one date, and asserts identical FirstAmount/
+CurrentAmount across three input orderings (forward/shuffled/reverse) —
+this does genuinely straddle the boundary, not an interior tie that
+wouldn't affect the windows.
+
+Empirically flipped the comparator to reproduce the OLD (pre-fix,
+Date-only, no Hash key) behavior via a throwaway scratch test file in the
+pricecreep package (not part of the diff; created, run 5x, then deleted —
+did not modify pricecreep.go itself, which is out of scope for this
+checker to edit). Result: the old comparator IS order-dependent on this
+exact fixture, reproducibly across 5 runs:
+  forward:            firstMedian=60,  lastMedian=500
+  shuffled / reverse:  firstMedian=100, lastMedian=500
+confirming (1) the pre-fix tie-break bug was real and would have made this
+new test flaky/order-dependent under the old sort, and (2) the new
+Hash-ascending secondary key is both present and load-bearing — it is not
+a no-op fix.
+
+## 5. Cross-package filter alignment (Ruling item 3)
+
+pricecreep.go:59-64,80-84 now filters `t.TransactionType == models.Outflow
+&& t.Amount < 0`, matching anomalies.go:161's filter exactly (both
+verified by direct read). TestDetect_ExpensesOnly, _OutflowPositiveAmount
+Excluded, and _MistaggedIncomeExcluded (pricecreep_test.go:242-314) pin
+this. The P3-flagged inconsistency (pricecreep previously used a bare
+`Amount < 0`) is closed.
+
+## 6. Test execution
+
+`go build ./...` — clean.
+`go vet ./...` (whole repo) — clean.
+`staticcheck ./...` (whole repo) — clean.
+`govulncheck ./...` — 0 vulnerabilities in this module's own code (5 in
+imported packages / 1 in a required module, none reachable by budget2's
+code — pre-existing, unrelated to this diff).
+`go test ./internal/services/merchants/... ./internal/services/pricecreep/...
+./internal/services/anomalies/... ./internal/handlers/insights/...
+-race -count=2` — all four packages PASS, no race reports.
+`go test ./...` (full repo, all packages) — PASS, no regressions.
+
+## Summary
+
+No material defect against P5's stated acceptance criteria: the {SQ,*}
+bridge is closed and verified by hand-traced test plus direct execution;
+the anomalies ripple was checked both by running its full suite (green,
+5/5 planted anomalies + <=1 FP intact) and by reasoning through the
+real-data risk; DisplayLabel factoring is behavior-identical on every
+existing assertion and its collision-safety proof was independently
+re-derived (not just assumed carried-over) for the richer implementation;
+the same-day tie-break is real, present, and empirically shown to fix a
+genuine order-dependence bug, on a test that actually straddles the
+window boundary; the pricecreep/anomalies filter mismatch is closed.
+
+One material-but-narrow finding surfaced by directly hunting the attack
+surface the task asked about: dropping standalone punctuation tokens
+(specifically "&") can shrink ampersand-joined two-letter brand names into
+a bare, generic 2-token key capable of bridging into unrelated data that
+happens to contain both single letters as standalone tokens (reproduced
+empirically for "H & M" and "A & W"). This is real and not covered by any
+current test, but is low-probability in practice, requires two independent
+coincidences neither of which any current fixture or plausible common bank
+export format produces, and is an extension of an already-accepted design
+tradeoff (the 2-token subset-merge floor) rather than a regression against
+P5's own acceptance criteria. Recommend a fast follow-up ruling (e.g.
+exclude single-character alpha tokens from the subset-merge token count,
+the same pattern by which this task itself originated from a P3 nit) but
+it does not block P5 acceptance.

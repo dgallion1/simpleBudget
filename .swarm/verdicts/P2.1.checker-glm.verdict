@@ -1,0 +1,113 @@
+VERDICT: PASS
+CHECKER: checker-glm
+FAMILY: glm
+TASK: P2
+ATTEMPT: 1
+---
+EVIDENCE:
+Adjudicated by model checker-glm via local gateway; driver collected evidence and transcribed only.
+=== GLM RESPONSE (verbatim) ===
+VERDICT: PASS
+
+The implementation in `internal/services/anomalies/anomalies.go` correctly implements the ruled algorithm standard and satisfies all acceptance criteria for Task P2:
+
+1. **Expense Filter**: Correctly filters to `TransactionType == Outflow && Amount < 0` and performs all math on absolute values (`absAmounts`).
+2. **MAD Robust Z-Score**: Implements `|x - median| / (1.4826 * MAD) > 3.5` for per-category (`n >= 6`) and per-merchant-group (`n >= 4`). The `MAD=0` fallback correctly checks `x > 3 * median`.
+3. **Hardening Rules**:
+   - **(a) Recurring-group exclusion**: Transactions in qualifying merchant groups (`n >= 4`) are excluded from the category baseline (`categoryPool` only receives groups `< minMerchantGroupRows`). They are only judged via `mad_merchant`.
+   - **(b) Materiality floor**: `isMaterial` checks `|x - median| >= max(0.5 * median, $10)`.
+   - **(c) High-side only**: `madFlag` early-exits with `false` if `x <= med`.
+4. **New Merchant Flag**: Checks `earliest` (first occurrence) transaction in every merchant group. Flags it if `|amount| > p95` of all window expenses. 
+5. **Dedupe & Severity**: Dedupes by `t.Hash` keeping the candidate with the highest `Score`. Severity is set to `"high"` when `Score > 6.0`, otherwise `"medium"`.
+6. **Tests & Acceptance**: The verbatim test output shows the planted fixture test passing (5/5 flagged, ≤1 FP), alongside passing regressions for all rules (a/b/c), MAD fallbacks, expense filtering, dedupe, determinism, and edge cases. The P1 dependency relying on the pre-P5 normalization state does not invalidate P2, as P5 explicitly schedules the punctuation-only drop fix.
+=== DOSSIER SUMMARY ===
+--- go test ./internal/services/anomalies/... -count=1 -v (verbatim) ---
+=== RUN   TestDetect_PlantedFixture_FlagsFiveWithAtMostOneFalsePositive
+--- PASS: TestDetect_PlantedFixture_FlagsFiveWithAtMostOneFalsePositive (0.00s)
+=== RUN   TestDetect_PlantedFixture_DominantConstantChargeDoesNotCollapseCategoryMAD
+--- PASS: TestDetect_PlantedFixture_DominantConstantChargeDoesNotCollapseCategoryMAD (0.00s)
+=== RUN   TestDetect_SmallGroup_ImmaterialWobbleNotFlagged
+--- PASS: TestDetect_SmallGroup_ImmaterialWobbleNotFlagged (0.00s)
+=== RUN   TestDetect_SmallGroup_MaterialOutlierFlagged
+--- PASS: TestDetect_SmallGroup_MaterialOutlierFlagged (0.00s)
+=== RUN   TestDetect_LowSideOutlier_NotFlagged
+--- PASS: TestDetect_LowSideOutlier_NotFlagged (0.00s)
+=== RUN   TestDetect_IncomeNeverFlagged
+--- PASS: TestDetect_IncomeNeverFlagged (0.00s)
+=== RUN   TestDetect_SuppressedNeverFlagged
+--- PASS: TestDetect_SuppressedNeverFlagged (0.00s)
+=== RUN   TestDetect_ExpenseFilter_ExcludesNonOutflowOrPositiveAmount
+--- PASS: TestDetect_ExpenseFilter_ExcludesNonOutflowOrPositiveAmount (0.00s)
+=== RUN   TestDetect_EmptySet_NoPanic
+--- PASS: TestDetect_EmptySet_NoPanic (0.00s)
+=== RUN   TestDetect_SingleTransactionCategories_NoPanic
+    anomalies_test.go:215: result (no panic is the assertion): [{Hash:3da0a93df9bc119f Date:2025-01-02 00:00:00 +0000 UTC Description:ANOTHER LONE MERCHANT Amount:-75 Category:AlsoOnlyOne Method:new_merchant Score:1.0169491525423728 MadZ:0 PeerGroup:ANOTHER LONE MERCHANT Severity:medium}]
+--- PASS: TestDetect_SingleTransactionCategories_NoPanic (0.00s)
+=== RUN   TestDetect_NewMerchant_FirstSeenAbovePercentileFlagged
+--- PASS: TestDetect_NewMerchant_FirstSeenAbovePercentileFlagged (0.00s)
+=== RUN   TestDetect_NewMerchant_LongStandingGroupNeverFlagged
+--- PASS: TestDetect_NewMerchant_LongStandingGroupNeverFlagged (0.00s)
+=== RUN   TestDetect_Dedupe_HigherScoreMethodWins
+--- PASS: TestDetect_Dedupe_HigherScoreMethodWins (0.00s)
+=== RUN   TestDetect_Determinism
+--- PASS: TestDetect_Determinism (0.00s)
+=== RUN   TestDetect_ResultsSortedByScoreDescending
+--- PASS: TestDetect_ResultsSortedByScoreDescending (0.00s)
+=== RUN   TestDetect_DisplayNameFallbackPrecedence
+--- PASS: TestDetect_DisplayNameFallbackPrecedence (0.00s)
+=== RUN   TestMedian
+=== RUN   TestMedian/empty
+=== RUN   TestMedian/single
+=== RUN   TestMedian/odd
+=== RUN   TestMedian/even
+--- PASS: TestMedian (0.00s)
+    --- PASS: TestMedian/empty (0.00s)
+    --- PASS: TestMedian/single (0.00s)
+    --- PASS: TestMedian/odd (0.00s)
+    --- PASS: TestMedian/even (0.00s)
+=== RUN   TestPercentile
+--- PASS: TestPercentile (0.00s)
+=== RUN   TestIsMaterial
+=== RUN   TestIsMaterial/below_dollar_floor_and_ratio_floor
+=== RUN   TestIsMaterial/clears_dollar_floor
+=== RUN   TestIsMaterial/clears_ratio_floor_on_large_median
+=== RUN   TestIsMaterial/below_ratio_floor_on_large_median
+--- PASS: TestIsMaterial (0.00s)
+    --- PASS: TestIsMaterial/below_dollar_floor_and_ratio_floor (0.00s)
+    --- PASS: TestIsMaterial/clears_dollar_floor (0.00s)
+    --- PASS: TestIsMaterial/clears_ratio_floor_on_large_median (0.00s)
+    --- PASS: TestIsMaterial/below_ratio_floor_on_large_median (0.00s)
+PASS
+ok  	budget2/internal/services/anomalies	0.008s
+
+--- Planted-truth table (fixture_test.go comments) ---
+
+Planted-truth table (fixture_test.go buildPlantedFixture doc comment):
+- Monthly NETFLIX, 1st of month, 18 occurrences, category Subscriptions, stepped +20% drift
+  ($15.00 Jan-Jun'25, $18.00 Jul-Dec'25, $21.60 Jan-Jun'26). Legitimate recurring increase,
+  never flagged by Detect (also the P3 price-creep fixture input).
+- Twice-monthly ACME PAYROLL income, 1st & 15th, 36 occurrences, +$2500.00, TransactionType
+  Income, category Income. Never considered (Detect only looks at Amount < 0).
+- Weekly SPOTIFY, every 7 days from 2025-01-05, 78 occurrences, constant -$10.99, category
+  Subscriptions. Combined with NETFLIX dominates Subscriptions by row count (96/104 rows) —
+  the dominant-constant-charge regression: rule (a) must exclude both qualifying groups
+  (n=18, n=78) from the category baseline.
+- 8 one-off Subscriptions background-noise rows (HULU $45, GYM PLUS $52, ICLOUD STORAGE $38,
+  AUDIBLE $60, DISNEY PLUS $41, YOUTUBE PREMIUM $55, APPLE MUSIC $48, PARAMOUNT PLUS $50).
+  Median $49, MAD $5 -> none clear z>3.5. Without rule (a), category median would collapse to
+  SPOTIFY's constant 10.99 (MAD=0), false-flagging all 8 via the MAD==0 fallback (x>32.97).
+- ~10 categories total: Subscriptions (above), Groceries, Dining, Utilities, Shopping,
+  Healthcare (each: baseline noise + exactly one planted anomaly), plus HomeImprovement,
+  Insurance, Transportation, Entertainment (pure background noise, no anomalies, ~8 rows each).
+- EXACTLY 5 planted high-side anomalies, each >=5x category median, one per category:
+    2025-03-10 Groceries  "WHOLESALE CLUB BULK ORDER"     $550.00  (median $100, 5.5x)
+    2025-06-14 Dining     "STEAKHOUSE BLOWOUT DINNER"      $330.00  (median $60,  5.5x)
+    2025-09-02 Utilities  "EMERGENCY HVAC REPAIR BILL"     $825.00  (median $150, 5.5x)
+    2025-12-20 Shopping   "HOLIDAY ELECTRONICS SPLURGE"    $440.00  (median $80,  5.5x)
+    2026-04-05 Healthcare "SPECIALIST PROCEDURE COPAY"    $1100.00  (median $200, 5.5x)
+  Each baseline is a tight cluster (10 rows/category) so MAD stays small and z clears 3.5
+  by a wide margin; materiality floor and direction rule trivially cleared.
+- A Suppressed transaction (-$999.00 Groceries) that would otherwise be flagged, to confirm
+  Active() filtering excludes it.
+Acceptance (spec P2 row): 5/5 planted flagged, <=1 FP; rule regressions pass; make check green.
+

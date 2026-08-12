@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -2459,4 +2460,308 @@ func keysOf(m map[string]models.CategoryTrend) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// --- P4: Anomalies / Price-creep Insights sections ---
+
+// anomalyTxn builds an expense Transaction (Outflow, negative Amount) with
+// Hash and derived fields populated the way the real loader stamps them —
+// required for anomalies.Detect's Hash-keyed dedupe to behave like it does
+// against production data.
+func anomalyTxn(desc, category string, absAmount float64, on time.Time) models.Transaction {
+	t := models.Transaction{
+		Description:     desc,
+		Amount:          -absAmount,
+		Category:        category,
+		Date:            on,
+		TransactionType: models.Outflow,
+	}
+	t.Hash = t.ComputeHash()
+	t.ComputeDerivedFields()
+	return t
+}
+
+func date(y int, m time.Month, d int) time.Time {
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+func TestAnomalyMethodLabel(t *testing.T) {
+	tests := []struct {
+		method string
+		want   string
+	}{
+		{"mad_category", "Category outlier"},
+		{"mad_merchant", "Merchant outlier"},
+		{"new_merchant", "New merchant"},
+		{"something_unmapped", "something_unmapped"}, // defensive fallback
+	}
+	for _, tt := range tests {
+		if got := anomalyMethodLabel(tt.method); got != tt.want {
+			t.Errorf("anomalyMethodLabel(%q) = %q, want %q", tt.method, got, tt.want)
+		}
+	}
+}
+
+func TestAnomaliesForPeriod_NilTransactionSet(t *testing.T) {
+	views, total := anomaliesForPeriod(nil, time.Time{}, time.Time{})
+	if views == nil {
+		t.Error("expected non-nil (empty) slice for nil input")
+	}
+	if len(views) != 0 || total != 0 {
+		t.Errorf("expected empty result for nil input, got views=%v total=%d", views, total)
+	}
+}
+
+func TestPriceCreepForDisplay_NilTransactionSet(t *testing.T) {
+	rows, total := priceCreepForDisplay(nil)
+	if rows != nil || total != 0 {
+		t.Errorf("expected nil/0 for nil input, got rows=%v total=%d", rows, total)
+	}
+}
+
+// TestAnomaliesForPeriod_WindowFiltersDisplayOnly plants one mad_category
+// anomaly inside the selected display window and one outside it (same
+// shape, different dates) and asserts the window only controls what is
+// shown, not what anomalies.Detect finds.
+func TestAnomaliesForPeriod_WindowFiltersDisplayOnly(t *testing.T) {
+	windowStart := date(2025, 3, 1)
+	windowEnd := date(2025, 3, 31)
+
+	var txns []models.Transaction
+	// Baseline: 6 uniform $20 rows, unique letter-word descriptions
+	// (singleton merchant groups) so the category pool sees all of them.
+	// Digit suffixes deliberately avoided: merchants.Normalize drops
+	// standalone all-digit tokens, which would collapse "Widget 0".."Widget
+	// 5" into a single merged "WIDGET" merchant group instead of 6 distinct
+	// singletons.
+	baselineNames := []string{"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"}
+	for i, name := range baselineNames {
+		txns = append(txns, anomalyTxn("Widget "+name, "Widgets", 20, date(2025, 1, 1+i)))
+	}
+	inWindow := anomalyTxn("Widget Splurge In Window", "Widgets", 200, date(2025, 3, 15))
+	outsideWindow := anomalyTxn("Widget Splurge Outside Window", "Widgets", 200, date(2025, 6, 15))
+	txns = append(txns, inWindow, outsideWindow)
+
+	full := &models.TransactionSet{Transactions: txns}
+
+	views, total := anomaliesForPeriod(full, windowStart, windowEnd)
+
+	if total < 2 {
+		t.Fatalf("expected both planted anomalies detected across full history, got total=%d", total)
+	}
+
+	var sawIn, sawOutside bool
+	for _, v := range views {
+		if v.Hash == inWindow.Hash {
+			sawIn = true
+			if v.Method != "mad_category" || v.MethodLabel != "Category outlier" {
+				t.Errorf("in-window anomaly: method=%q label=%q, want mad_category/Category outlier", v.Method, v.MethodLabel)
+			}
+		}
+		if v.Hash == outsideWindow.Hash {
+			sawOutside = true
+		}
+	}
+	if !sawIn {
+		t.Errorf("expected the in-window planted anomaly to be displayed, got views=%+v", views)
+	}
+	if sawOutside {
+		t.Errorf("expected the outside-window planted anomaly to be excluded from display, got views=%+v", views)
+	}
+}
+
+// TestAnomaliesForPeriod_FullHistoryFirstOccurrence is the P2-finding
+// regression carried into P4 (ANALYTICS_PORT_SPEC.md Rulings): a
+// merchant's first-ever occurrence must be computed against the FULL
+// transaction history, not the display window, so a large charge from a
+// long-standing merchant is never mislabeled "new merchant" just because
+// the selected window happens to start after that merchant's true first
+// appearance.
+func TestAnomaliesForPeriod_FullHistoryFirstOccurrence(t *testing.T) {
+	windowStart := date(2025, 4, 1)
+	windowEnd := date(2025, 4, 30)
+
+	// OldReliable's true first-ever charge predates the window by five
+	// years; a much larger charge from the same merchant lands inside the
+	// window. Category "Misc" is kept under minCategoryRows (6) and the
+	// merchant group under minMerchantGroupRows (4) so neither mad_category
+	// nor mad_merchant can independently flag it — isolating new_merchant.
+	oldFirst := anomalyTxn("OldReliable", "Misc", 30, date(2020, 1, 1))
+	oldRecentBig := anomalyTxn("OldReliable", "Misc", 900, date(2025, 4, 15))
+
+	// BrandNewCo has no history at all before the window — a genuine
+	// first-ever large purchase, which SHOULD flag as "new merchant".
+	brandNew := anomalyTxn("BrandNewCo", "Startup", 200, date(2025, 4, 20))
+
+	// Baseline noise (outside the window) so the p95 threshold used by
+	// new_merchant isn't trivially dominated by the two planted rows.
+	var txns []models.Transaction
+	for i := 0; i < 20; i++ {
+		txns = append(txns, anomalyTxn(fmt.Sprintf("Noise Item %d", i), "Baseline Noise", 10, date(2019, 6, 1)))
+	}
+	txns = append(txns, oldFirst, oldRecentBig, brandNew)
+	full := &models.TransactionSet{Transactions: txns}
+
+	views, _ := anomaliesForPeriod(full, windowStart, windowEnd)
+
+	for _, v := range views {
+		if v.Hash == oldRecentBig.Hash && v.Method == "new_merchant" {
+			t.Errorf("OldReliable's in-window charge must never be flagged new_merchant merely because its true first occurrence (2020) predates the window: %+v", v)
+		}
+	}
+
+	var foundBrandNew bool
+	for _, v := range views {
+		if v.Hash == brandNew.Hash {
+			foundBrandNew = true
+			if v.Method != "new_merchant" || v.MethodLabel != "New merchant" {
+				t.Errorf("expected BrandNewCo flagged new_merchant, got method=%q label=%q", v.Method, v.MethodLabel)
+			}
+		}
+	}
+	if !foundBrandNew {
+		t.Fatalf("expected BrandNewCo (genuinely new, in-window) to be flagged as a new-merchant anomaly, got views=%+v", views)
+	}
+
+	// Regression guard: prove this fixture would actually reproduce the
+	// bug if detection were (incorrectly) scoped to the window-filtered
+	// set instead of the full history, so the assertions above aren't
+	// vacuously true.
+	windowOnly := full.FilterByDateRange(windowStart, windowEnd)
+	wrongViews, _ := anomaliesForPeriod(windowOnly, windowStart, windowEnd)
+	var wronglyFlagged bool
+	for _, v := range wrongViews {
+		if v.Hash == oldRecentBig.Hash && v.Method == "new_merchant" {
+			wronglyFlagged = true
+		}
+	}
+	if !wronglyFlagged {
+		t.Fatalf("fixture did not reproduce the window-scoping bug when detection is (wrongly) run on window-only data; strengthen the fixture")
+	}
+}
+
+// TestPriceCreepForDisplay_CapsAtTenWithTotal plants 11 qualifying
+// price-creep merchant groups and asserts the display list is capped at
+// maxPriceCreepRows while the total reflects all of them.
+func TestPriceCreepForDisplay_CapsAtTenWithTotal(t *testing.T) {
+	var txns []models.Transaction
+	for g := 0; g < 11; g++ {
+		merchant := fmt.Sprintf("Streamer%d", g)
+		amounts := []float64{10, 10, 10, 12, 13, 13}
+		for i, amt := range amounts {
+			txns = append(txns, anomalyTxn(merchant, "Subscriptions", amt, date(2023, time.Month(i+1), 10)))
+		}
+	}
+	full := &models.TransactionSet{Transactions: txns}
+
+	rows, total := priceCreepForDisplay(full)
+	if total != 11 {
+		t.Errorf("total = %d, want 11", total)
+	}
+	if len(rows) != maxPriceCreepRows {
+		t.Errorf("len(rows) = %d, want %d", len(rows), maxPriceCreepRows)
+	}
+}
+
+// plantedAnalyticsCSV plants:
+//   - a mad_category anomaly ("Widget Splurge") inside the query window
+//   - a same-shape anomaly ("Gadget Splurge Old") dated outside the query
+//     window used by the render test below, to prove display filtering
+//   - a 6-occurrence price-creep series ("StreamPlus", +30% first-3 vs
+//     last-3 median) — price creep is never window-filtered.
+func plantedAnalyticsCSV() string {
+	return `Date,Description,Amount,Category
+2025-01-05,Widget A,-20.00,Widgets
+2025-01-12,Widget B,-20.00,Widgets
+2025-02-05,Widget C,-20.00,Widgets
+2025-02-12,Widget D,-20.00,Widgets
+2025-03-05,Widget E,-20.00,Widgets
+2025-03-12,Widget F,-20.00,Widgets
+2025-03-15,Widget Splurge,-200.00,Widgets
+2022-01-05,Gadget A,-15.00,Gadgets
+2022-02-05,Gadget B,-15.00,Gadgets
+2022-03-05,Gadget C,-15.00,Gadgets
+2022-04-05,Gadget D,-15.00,Gadgets
+2022-05-05,Gadget E,-15.00,Gadgets
+2022-06-05,Gadget F,-15.00,Gadgets
+2022-01-15,Gadget Splurge Old,-150.00,Gadgets
+2023-01-10,StreamPlus,-10.00,Subscriptions
+2023-02-10,StreamPlus,-10.00,Subscriptions
+2023-03-10,StreamPlus,-10.00,Subscriptions
+2023-04-10,StreamPlus,-12.00,Subscriptions
+2023-05-10,StreamPlus,-13.00,Subscriptions
+2023-06-10,StreamPlus,-13.00,Subscriptions
+`
+}
+
+// TestHandleInsights_AnomaliesAndPriceCreepSections_PlantedData renders the
+// full Insights page (real renderer) over plantedAnalyticsCSV with the
+// query window restricted to 2025-01-01..2025-06-30 and asserts: both new
+// sections render with plain-language method labels, the in-window
+// anomaly is shown, the out-of-window same-shape anomaly is not shown, and
+// the price-creep row (which spans 2023, entirely outside the query
+// window) is still shown because price creep is never window-filtered.
+func TestHandleInsights_AnomaliesAndPriceCreepSections_PlantedData(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, plantedAnalyticsCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights?start=2025-01-01&end=2025-06-30", nil)
+	w := httptest.NewRecorder()
+
+	handleInsights(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := w.Body.String()
+
+	for _, want := range []string{
+		"Anomalies",
+		"Price Creep",
+		"Widget Splurge",
+		"Category outlier",
+		"streamplus", // merchants.DisplayLabel lowercases its output by design
+		"30.0%",      // formatPercent(30.0); html/template escapes the leading "+" to "&#43;"
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected body to contain %q, it did not", want)
+		}
+	}
+
+	if strings.Contains(body, "Gadget Splurge Old") {
+		t.Error("expected the out-of-window planted anomaly to be absent from the rendered page")
+	}
+}
+
+// TestHandleInsights_AnomaliesAndPriceCreepSections_EmptyStates reuses the
+// existing testCSV() fixture, which is deliberately too thin (max group
+// size 4, max category size 4) to trigger any of the three anomaly
+// methods or the 6-occurrence price-creep threshold, and asserts both
+// empty-state strings render verbatim.
+func TestHandleInsights_AnomaliesAndPriceCreepSections_EmptyStates(t *testing.T) {
+	cleanup := setupTestLoaderWithRenderer(t, testCSV())
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/insights?start=2025-01-01&end=2025-04-30", nil)
+	w := httptest.NewRecorder()
+
+	handleInsights(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := w.Body.String()
+
+	for _, want := range []string{
+		"Anomalies",
+		"Price Creep",
+		"No anomalies in this period.",
+		"No price increases detected.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected body to contain %q, it did not", want)
+		}
+	}
 }

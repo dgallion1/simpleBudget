@@ -35,10 +35,28 @@ type Source struct {
 	// active filename is in-process state in that server, so a separate
 	// process has no other way to know it.
 	live *Client
+
+	// settingsDir and store are the same values NewSource was given. They
+	// are kept so Transactions (insights.go) can build a *dataloader.DataLoader
+	// on demand for get_anomalies/get_price_creep, without NewServer's
+	// signature having to grow a fourth parameter.
+	settingsDir string
+	store       *storage.Storage
+
+	// txSource is nil in production, where Transactions builds a
+	// *dataloader.DataLoader lazily from settingsDir/store. Tests in this
+	// package set it directly (unexported field, same package -- the same
+	// pattern TestSource_LoadEmptyNameFallsBackWhenLiveStateFails uses for
+	// live) to inject a canned models.TransactionSet without CSV parsing.
+	txSource TransactionSource
 }
 
 func NewSource(settingsDir string, store *storage.Storage) *Source {
-	return &Source{sm: retirement.NewSettingsManager(settingsDir, store)}
+	return &Source{
+		sm:          retirement.NewSettingsManager(settingsDir, store),
+		settingsDir: settingsDir,
+		store:       store,
+	}
 }
 
 // List returns every saved scenario with a one-line summary.

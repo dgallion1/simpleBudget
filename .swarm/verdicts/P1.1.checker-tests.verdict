@@ -1,0 +1,64 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P1
+ATTEMPT: 1
+---
+EVIDENCE:
+
+CHECK 1 — Manifest: PASS
+  .swarm/manifests/P1.1.files contains exactly 2 lines, both P1 files:
+    internal/services/merchants/merchants.go
+    internal/services/merchants/merchants_test.go
+  No prohibited storage/, dataloader/, or retirement/engine/ paths present.
+
+CHECK 2 — Build and tests: PASS
+  go build ./... && go test ./internal/services/merchants/... -count=1
+  Output: ok  budget2/internal/services/merchants  0.002s
+
+CHECK 3 — make check: PASS
+  Full suite output (tail):
+    go vet ./...
+    staticcheck ./...
+    govulncheck ./... (no vulnerabilities in target code)
+    go test ./... (all packages cached/PASS)
+    ✓ all checks passed
+
+CHECK 4 — Behavioral regression cases (all PASS):
+  - TestGroupKeys_MergePositives/chain_A_subset_B_subset_C_merges_transitively
+    (ACME chain merge: 3-token cascade into 1 group)
+  - TestGroupKeys_MergeNegatives/bare_SQ_does_not_bridge_unrelated_merchants
+    (SQ-triple: 3 SQ variants stay separate)
+  - TestGroupKeys_MergeNegatives/all-digit_key_stays_isolated_among_rich_keys
+    (all-digit isolation: empty key + ACME cluster + WIDGET = 3 groups)
+  - TestGroupKeys_MergeNegatives/two_bare_SQ_keys_merge_on_exact_equality
+    (SQ-vs-SQ exact merge: identical bare keys → 1 group)
+  - TestGroupKeys_StableAcrossInputOrder
+    (order stability: GroupKeys deterministic across input permutations)
+
+CHECK 5 — Guard code review: PASS
+  merchants.go shouldMerge() and GroupKeys():
+  (a) Subset test requires min(tokenset sizes) ≥ 2 — lines 189-192 ✓
+      smaller := min(sizeA, sizeB); if smaller < 2 { return false }
+  (b) 0/1-token keys use exact equality only — lines 186-197 ✓
+      Degenerate keys rejected unless a == b (line 186)
+  (c) Canonical selection deterministic — lines 164-173 ✓
+      Most tokens wins (sizes[i] > sizeByRoot[r]), ties broken lexicographically
+      (unique[i] < cur) — deterministic string comparison
+  (d) No I/O, no globals, no randomness — all functions pure ✓
+  (e) GroupTransactions uses DisplayName fallback Description — lines 222-225 ✓
+      raw := t.DisplayName; if raw == "" { raw = t.Description }
+      Suppressed/Active() contract documented lines 210-214,
+      verified by TestGroupTransactions_SuppressedNotSkipped ✓
+
+CHECK 6 — git status: PASS
+  P1 added only: internal/services/merchants/ (two files)
+  Pre-existing dirty files confirmed (not P1's responsibility):
+    M web/templates/components/whatif/rate-assumptions.html
+    ?? .swarm/
+    ?? ANALYTICS_PORT_SPEC.md
+    ?? internal/templates/render_spending_preview_test.go
+
+RESULT: All six checks passed. P1 implementation is complete and correct.
+Task owns exactly its two package files, all regression cases verified and
+passing, guard logic correct and deterministic, no side effects.

@@ -18,6 +18,23 @@ mid-run, never down.
 The folder import is split so that only P15 — the code path that calls
 `os.Remove` — carries Tier 3's blind N-version cost. P14 is read-only.
 
+**Ordering constraint: P14 must land before P15 is set up.** P15 builds on the
+`ImportDirectory` config field and the scan endpoint, and `tier3-setup.sh` cuts
+its two blind worktrees from whatever `HEAD` points at. Running the setup before
+P14 merges would hand both workers a tree missing the foundation they need, and
+the oracle's scan check would fail in both worktrees for a reason unrelated to
+either implementation. P12 and P13 are independent and may land in any order.
+
+The P15 oracle is written and lives at `.swarm/tier3/P15/accept.sh`. It asserts
+on filesystem effects and HTTP status codes rather than response-body structure,
+because two independent implementations will render their per-file outcome lists
+differently and that difference is not a behavioral divergence — it would
+otherwise show up as noise in `tier3-compare.sh`'s diff. Every check that
+asserts a safety property ("the source survived") also requires a non-404
+status, so that an unimplemented endpoint cannot satisfy it vacuously. Verified
+against the current tree: 3 of 13 pass (build, unit tests, server boot — all
+genuinely true today), 10 fail, and output is byte-identical across runs.
+
 No task modifies a path in `.swarm/critical.globs`
 (`internal/services/storage/**`, `internal/services/dataloader/**`,
 `internal/services/retirement/engine/**`); P14 and P15 call storage without
@@ -103,6 +120,18 @@ flag set when the data dir already holds that name. Entries with `exists` render
 pre-unticked and disabled.
 
 ### `POST /explorer/import`
+
+Wire format, pinned so that independent implementations agree: the request is
+form-encoded (`application/x-www-form-urlencoded`), with the field `name`
+repeated once per selected file and an optional `delete_source` field whose
+value is `true` to enable deletion. Any other value, or the field's absence,
+means do not delete. Names are bare filenames as returned by the scan; a name
+containing a path separator is rejected without touching the filesystem.
+
+The handler returns 200 for a processed batch even when individual files were
+skipped or rejected — per-file outcomes travel in the body, matching P12's
+batch-upload behavior. A malformed request (no `name` fields at all) returns
+400.
 
 Takes the ticked names plus a `delete_source` flag. Per file:
 

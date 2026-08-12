@@ -1,0 +1,225 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P12
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Check 1 (Manifest fidelity):
+`.swarm/manifests/P12.1.files` contains exactly:
+  internal/handlers/explorer/handlers.go
+  internal/handlers/explorer/handlers_test.go
+  web/templates/pages/filemanager.html
+
+`git status --porcelain`:
+ M .swarm/ledger.tsv
+ M internal/handlers/explorer/handlers.go
+ M internal/handlers/explorer/handlers_test.go
+ M web/templates/pages/filemanager.html
+?? .swarm/manifests/P12.1.files
+?? docs/superpowers/specs/2026-08-12-file-manager-import-design.md
+
+`git diff --name-only` matches the modified set above. The two extra entries
+(.swarm/ledger.tsv modified, and the new spec doc) are the lead's own edits per
+the task brief and are legitimately absent from the manifest. No other
+discrepancy.
+✓ PASS
+
+Check 2 (build/vet/test/staticcheck), run from /home/darrell/bin/ai/budget2:
+
+$ go build ./...
+(exit 0, no output)
+
+$ go vet ./...
+(exit 0, no output)
+
+$ go test ./... 	(all 34 packages, real run confirmed separately with -count=1 -v
+on the changed package — see below; full-repo run below used build cache for
+untouched packages)
+ok  	budget2/cmd/enrich-amazon	(cached)
+ok  	budget2/cmd/server	(cached)
+ok  	budget2/cmd/validate	(cached)
+ok  	budget2/cmd/whatif-mcp	(cached)
+ok  	budget2/internal/config	(cached)
+ok  	budget2/internal/handlers/backup	(cached)
+ok  	budget2/internal/handlers/dashboard	(cached)
+ok  	budget2/internal/handlers/duplicates	(cached)
+ok  	budget2/internal/handlers/explorer	(cached)
+ok  	budget2/internal/handlers/insights	(cached)
+ok  	budget2/internal/handlers/majorexpenses	(cached)
+ok  	budget2/internal/handlers/whatif	(cached)
+ok  	budget2/internal/http	(cached)
+ok  	budget2/internal/models	(cached)
+ok  	budget2/internal/services/amazon	(cached)
+ok  	budget2/internal/services/anomalies	(cached)
+ok  	budget2/internal/services/backup	(cached)
+ok  	budget2/internal/services/classifier	(cached)
+ok  	budget2/internal/services/dataloader	(cached)
+ok  	budget2/internal/services/majorexpenses	(cached)
+ok  	budget2/internal/services/merchants	(cached)
+ok  	budget2/internal/services/metrics	(cached)
+ok  	budget2/internal/services/pricecreep	(cached)
+ok  	budget2/internal/services/retirement	(cached)
+ok  	budget2/internal/services/retirement/analysis	(cached)
+ok  	budget2/internal/services/retirement/completeness	(cached)
+ok  	budget2/internal/services/retirement/engine	(cached)
+ok  	budget2/internal/services/retirement/history	(cached)
+ok  	budget2/internal/services/retirement/overrides	(cached)
+ok  	budget2/internal/services/retirement/prepare	(cached)
+ok  	budget2/internal/services/storage	(cached)
+ok  	budget2/internal/services/whatifmcp	(cached)
+ok  	budget2/internal/templates	(cached)
+ok  	budget2/internal/testutil	(cached)
+ok  	budget2/internal/version	(cached)
+?   	budget2/web	[no test files]
+
+`go test -count=1 -v ./internal/handlers/explorer/...` (forced, non-cached) —
+144 test cases run, all PASS, including every new/changed upload test:
+TestHandleFileUpload_CollisionSkips, TestHandleFileUpload_NonCSV,
+TestHandleFileUpload_NoFile, TestHandleFileUpload_MissingFormFile,
+TestHandleFileUpload_InvalidFilename, TestHandleFileUpload_PathTraversal,
+TestHandleFileUpload_MixedBatch, TestHandleFileUpload_SingleFileRegression,
+TestHandleFileUpload_BatchTraversalNamesDoNotEscapeOrAbort,
+TestHandleFileUpload_WithRenderer, TestHandleFileUpload_WriteError — all PASS,
+package result: "ok budget2/internal/handlers/explorer 0.235s".
+
+$ staticcheck ./...
+(exit 0, no output — clean)
+✓ PASS
+
+Check 3 (tests actually test the claim):
+Read internal/handlers/explorer/handlers_test.go in full for the upload
+section (lines 478-786, plus helpers 1798-1864). Findings:
+
+- TestHandleFileUpload_MixedBatch (required test 1) does not stop at the HTTP
+  200 / outcome-status assertions — it separately calls
+  `store.ReadFile(filepath.Join(dataDir, "valid.csv"))` and compares byte
+  content against the uploaded payload, and separately re-reads the colliding
+  file to assert it was NOT overwritten. This genuinely proves the file landed
+  on disk with correct content, not just that the handler returned 200.
+- TestHandleFileUpload_SingleFileRegression (required test 2) likewise reads
+  the file back off disk via store.ReadFile and compares content.
+- TestHandleFileUpload_BatchTraversalNamesDoNotEscapeOrAbort (required test 3)
+  uses os.Stat on the *parent* directory of dataDir to affirmatively check the
+  traversal-shaped names did NOT escape, plus os.Stat inside dataDir to confirm
+  they landed at their normalized base name, plus confirms the untouched
+  sibling.csv landed on disk — this is a real disk-based assertion, not merely
+  a status-code check.
+- Would these tests still pass if the batch loop silently dropped files after
+  the first? No: TestHandleFileUpload_MixedBatch asserts `len(payload.Results)
+  != 3` and separately asserts valid.csv (position 1), notes.txt (position 2),
+  and existing.csv (position 3, last) all appear with correct status.
+  TestHandleFileUpload_BatchTraversalNamesDoNotEscapeOrAbort asserts
+  `len(payload.Results) != 5` and checks the *last* item (sibling.csv, 5th of
+  5) actually saved to disk. A loop that dropped everything after the first
+  file would fail both the count assertion and the disk-presence assertion for
+  later files. No weaker-than-it-looks test found in this batch.
+✓ PASS
+
+Check 4 (pre-existing tests modified — via git diff on handlers_test.go):
+- TestHandleFileUploadReplacesExistingCSV → TestHandleFileUpload_CollisionSkips:
+  previously asserted the uploaded content REPLACED the existing file
+  (overwrite semantics); now asserts the existing file is byte-identical to
+  its pre-upload content (no overwrite) and the outcome is
+  status=skipped/reason="already exists". This is the correct and necessary
+  flip given the spec's "collisions skip, no overwrite" requirement — not a
+  weakening, it inverts the asserted behavior to match the new (opposite)
+  contract, and the new assertion is at least as strong (checks both content
+  AND outcome fields, where the old test only checked content).
+- TestHandleFileUpload_NonCSV: previously asserted HTTP 400. Now asserts HTTP
+  200 plus outcome.Status == "rejected" for the specific named entry. This is
+  forced by "one bad file must not abort the batch" — a single-file batch with
+  one bad file must still return 200 with a rejected outcome, per spec. Not
+  weaker: old test only checked a status code; new test checks status code AND
+  a specific structured outcome.
+- TestHandleFileUpload_InvalidFilename: same pattern (400 → 200 + rejected
+  outcome for name ".."), same justification, same "not weaker" analysis.
+- TestHandleFileUpload_WriteError: same pattern (500 → 200 + rejected outcome
+  for the specific file). Forced by the same per-file-outcome contract change
+  (a write failure is now a per-file outcome, not a request-level abort).
+No test was deleted or had assertions removed/loosened to force a pass; every
+change replaces one concrete assertion with an equally or more specific one
+that reflects the new documented contract.
+✓ PASS
+
+Check 5 (regression risk — sanitizeUploadFilename / handleFileDelete):
+`git diff internal/handlers/explorer/handlers.go` shows the diff hunk set
+touches only: the import block (adds "mime/multipart"), the
+maxUploadBatchBytes const + uploadOutcome type (new), handleFileUpload body,
+and the new uploadOneFile function. `sanitizeUploadFilename` (lines 580-586 in
+the current file) and `handleFileDelete` (lines 588-634) appear in neither the
+diff's added nor removed lines — confirmed byte-for-byte unchanged. No
+behavior change leaks into the delete path.
+✓ PASS
+
+Check 6 (MaxBytesReader correctness):
+Code order in handleFileUpload: `r.Body = http.MaxBytesReader(w, r.Body,
+maxUploadBatchBytes)` runs BEFORE `r.ParseMultipartForm(10 << 20)`, so the cap
+applies to everything ParseMultipartForm reads, including temp-file spillover.
+Built a standalone repro (not committed to the target repo — written to
+/tmp scratchpad, run via `go run`) that reproduces the exact wrap-then-parse
+sequence used in handleFileUpload with a multipart body 1MB over the 50MB cap:
+
+  ParseMultipartForm error (expected, non-panic): http: request body too large
+
+No panic; ParseMultipartForm returns a plain error, which handleFileUpload's
+existing `if err != nil { http.Error(w, "File too large",
+http.StatusBadRequest); return }` already catches. The comment on the
+ParseMultipartForm(10<<20) call is corrected in the diff to clarify it's only
+the memory-spill threshold, not a request-size cap — matches the spec's
+"previously-fictional 10MB comment becomes a real cap" language.
+✓ PASS
+
+---
+KNOWN FLAGGED DISCREPANCY — ruling on the security property:
+
+sanitizeUploadFilename (unchanged) is:
+  filename = filepath.Base(strings.ReplaceAll(filename, `\`, "/"))
+  if filename == "." || filename == "" || strings.Contains(filename, "..") {
+      return "", os.ErrInvalid
+  }
+
+filepath.Base always returns the final path element with no separator
+character remaining in the result — by construction, everything before the
+last "/" is discarded, and backslashes are normalized to "/" first, so
+mixed-separator inputs (e.g. "..\..\evil3.csv") are covered too. A string with
+zero "/" characters cannot function as a multi-segment relative path, so
+"filename" containing the two literal characters ".." (if it survives, e.g.
+"..evil.csv") cannot resolve as a parent-directory reference when passed to
+filepath.Join(cfg.DataDirectory, filename) — Join/Clean only interprets ".."
+as a parent reference when it is a distinct path segment (bounded by
+separators), and there are none left. The one case where the base name IS
+exactly ".." (a bare ".." upload) is caught explicitly by the
+strings.Contains(filename, "..") check before any join happens.
+
+I independently verified this rather than taking the worker's word: read the
+sanitizer, traced filepath.Base's guarantee (no separator survives in its
+return value), and confirmed via
+TestHandleFileUpload_BatchTraversalNamesDoNotEscapeOrAbort — which the worker
+added specifically for this — that "../evil.csv", "/etc/evil2.csv", and
+"..\..\evil3.csv" all land inside dataDir at their base name and are absent
+from dataDir's parent, and a bare ".." is rejected outright. This is a
+positive (constructive) proof from the sanitizer's own logic, not merely
+"the test says so."
+
+RULING: the security property — no write escapes DataDirectory — is upheld by
+the code as written. This is unrelated to whether the spec's test-#3 wording
+("rejected") was honored verbatim; that wording question is explicitly a lead
+decision per the task brief, not scored here.
+
+---
+SUMMARY: All six mechanical checks pass. Manifest is exact modulo the two
+lead-only files called out in the task brief. Build/vet/test/staticcheck are
+all clean, with the explorer package's new tests re-run forced (non-cached,
+verbose) to confirm real execution. The three required tests genuinely assert
+on-disk state, not just HTTP status codes, and would fail if the batch loop
+silently dropped files after the first. Every pre-existing test that changed
+did so because the spec's contract genuinely flipped (overwrite→skip,
+request-abort→per-file-outcome), and each new assertion is as strong or
+stronger than what it replaced — no weakening found. sanitizeUploadFilename
+and handleFileDelete are byte-for-byte untouched. MaxBytesReader is wrapped
+before ParseMultipartForm and independently confirmed (via an out-of-repo
+repro of the same code sequence) to produce a clean, non-panicking error when
+the cap is exceeded. The flagged security property (no write escapes
+DataDirectory) is upheld by the code as written, verified independently.

@@ -9,3 +9,7 @@ P8	1	tests	accepted	1	worker-coder-haiku	gate-ok-attempt-1
 P9	1	tests,second	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
 P10	1	tests,second	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
 P11	1	tests,second	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
+P12	1	tests	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
+P13	2	tests,second	pending	1	-	-
+P14	2	tests,second	pending	1	-	-
+P15	3	tests,second	pending	1	-	-

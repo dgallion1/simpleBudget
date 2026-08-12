@@ -477,7 +477,35 @@ func TestHandleFileToggle_MultipleFiles(t *testing.T) {
 
 // ---- handleFileUpload tests ----
 
-func TestHandleFileUploadReplacesExistingCSV(t *testing.T) {
+// uploadResponsePayload mirrors the JSON fallback body (renderer == nil).
+type uploadResponsePayload struct {
+	Files   []any           `json:"Files"`
+	Results []uploadOutcome `json:"Results"`
+}
+
+func decodeUploadResponse(t *testing.T, rec *httptest.ResponseRecorder) uploadResponsePayload {
+	t.Helper()
+	var payload uploadResponsePayload
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON error: %v (body: %s)", err, rec.Body.String())
+	}
+	return payload
+}
+
+func outcomeFor(t *testing.T, payload uploadResponsePayload, name string) uploadOutcome {
+	t.Helper()
+	for _, o := range payload.Results {
+		if o.Name == name {
+			return o
+		}
+	}
+	t.Fatalf("no outcome for %q in %+v", name, payload.Results)
+	return uploadOutcome{}
+}
+
+// Collisions skip: an upload naming an existing file must not overwrite it,
+// and the response reports "skipped: already exists" for that entry.
+func TestHandleFileUpload_CollisionSkips(t *testing.T) {
 	dataDir := setupTestEnv(t)
 
 	existingPath := filepath.Join(dataDir, "transactions.csv")
@@ -499,15 +527,17 @@ func TestHandleFileUploadReplacesExistingCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
 	}
-	if string(saved) != string(uploaded) {
-		t.Fatalf("expected uploaded content to replace existing file\n got: %q\nwant: %q", string(saved), string(uploaded))
+	if string(saved) != string(existing) {
+		t.Fatalf("expected existing file to be left untouched (no overwrite)\n got: %q\nwant: %q", string(saved), string(existing))
 	}
 
-	var payload struct {
-		Files []any `json:"Files"`
+	payload := decodeUploadResponse(t, rec)
+	outcome := outcomeFor(t, payload, "transactions.csv")
+	if outcome.Status != "skipped" {
+		t.Fatalf("expected status skipped, got %+v", outcome)
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("response JSON error: %v", err)
+	if outcome.Reason != "already exists" {
+		t.Fatalf("expected reason 'already exists', got %+v", outcome)
 	}
 }
 
@@ -519,8 +549,15 @@ func TestHandleFileUpload_NonCSV(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handleFileUpload(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-CSV, got %d", rec.Code)
+	// A bad file does not abort the (single-file) batch; it's reported as a
+	// rejected outcome rather than an HTTP error.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for non-CSV (reported as rejected), got %d", rec.Code)
+	}
+	payload := decodeUploadResponse(t, rec)
+	outcome := outcomeFor(t, payload, "data.txt")
+	if outcome.Status != "rejected" {
+		t.Fatalf("expected status rejected, got %+v", outcome)
 	}
 }
 
@@ -566,13 +603,18 @@ func TestHandleFileUpload_InvalidFilename(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handleFileUpload(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid filename, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invalid filename (reported as rejected), got %d", rec.Code)
+	}
+	payload := decodeUploadResponse(t, rec)
+	outcome := outcomeFor(t, payload, "..")
+	if outcome.Status != "rejected" {
+		t.Fatalf("expected status rejected, got %+v", outcome)
 	}
 }
 
 func TestHandleFileUpload_PathTraversal(t *testing.T) {
-	setupTestEnv(t)
+	dataDir := setupTestEnv(t)
 
 	uploaded := []byte("Date,Description,Amount\n2024-01-01,Test,10.00\n")
 	req := newUploadRequest(t, "../../etc/passwd.csv", uploaded)
@@ -582,6 +624,164 @@ func TestHandleFileUpload_PathTraversal(t *testing.T) {
 	// sanitizeUploadFilename should strip path, resulting in passwd.csv
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 (path stripped to base), got %d", rec.Code)
+	}
+	payload := decodeUploadResponse(t, rec)
+	outcome := outcomeFor(t, payload, "passwd.csv")
+	if outcome.Status != "saved" {
+		t.Fatalf("expected status saved, got %+v", outcome)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "passwd.csv")); err != nil {
+		t.Fatalf("expected passwd.csv on disk: %v", err)
+	}
+}
+
+// Required test 1: a batch mixing a valid CSV, a .txt file, and a name that
+// already exists yields saved / rejected / skipped respectively, and the
+// valid file actually lands on disk.
+func TestHandleFileUpload_MixedBatch(t *testing.T) {
+	dataDir := setupTestEnv(t)
+
+	existingPath := filepath.Join(dataDir, "existing.csv")
+	existingContent := []byte("Date,Description,Amount\n2024-01-01,Old,1.00\n")
+	if err := store.WriteFile(existingPath, existingContent, 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	validContent := []byte("Date,Description,Amount\n2024-03-01,New,2.00\n")
+	req := newMultiUploadRequest(t, []uploadFile{
+		{name: "valid.csv", content: validContent},
+		{name: "notes.txt", content: []byte("not a csv")},
+		{name: "existing.csv", content: []byte("Date,Description,Amount\n2024-04-01,Ignored,3.00\n")},
+	})
+	rec := httptest.NewRecorder()
+	handleFileUpload(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeUploadResponse(t, rec)
+	if len(payload.Results) != 3 {
+		t.Fatalf("expected 3 outcomes, got %d: %+v", len(payload.Results), payload.Results)
+	}
+
+	valid := outcomeFor(t, payload, "valid.csv")
+	if valid.Status != "saved" {
+		t.Fatalf("expected valid.csv saved, got %+v", valid)
+	}
+	notes := outcomeFor(t, payload, "notes.txt")
+	if notes.Status != "rejected" {
+		t.Fatalf("expected notes.txt rejected, got %+v", notes)
+	}
+	existing := outcomeFor(t, payload, "existing.csv")
+	if existing.Status != "skipped" || existing.Reason != "already exists" {
+		t.Fatalf("expected existing.csv skipped: already exists, got %+v", existing)
+	}
+
+	// The valid file actually landed on disk.
+	saved, err := store.ReadFile(filepath.Join(dataDir, "valid.csv"))
+	if err != nil {
+		t.Fatalf("ReadFile(valid.csv) error: %v", err)
+	}
+	if string(saved) != string(validContent) {
+		t.Fatalf("valid.csv content mismatch\n got: %q\nwant: %q", saved, validContent)
+	}
+
+	// The collision must not have overwritten the existing file.
+	untouched, err := store.ReadFile(existingPath)
+	if err != nil {
+		t.Fatalf("ReadFile(existing.csv) error: %v", err)
+	}
+	if string(untouched) != string(existingContent) {
+		t.Fatalf("existing.csv was overwritten\n got: %q\nwant: %q", untouched, existingContent)
+	}
+}
+
+// Required test 2: a single-file upload still works — regression coverage
+// for the existing form that posts exactly one "file" part.
+func TestHandleFileUpload_SingleFileRegression(t *testing.T) {
+	dataDir := setupTestEnv(t)
+
+	content := []byte("Date,Description,Amount\n2024-05-01,Solo,4.00\n")
+	req := newUploadRequest(t, "solo.csv", content)
+	rec := httptest.NewRecorder()
+	handleFileUpload(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeUploadResponse(t, rec)
+	if len(payload.Results) != 1 {
+		t.Fatalf("expected exactly 1 outcome, got %d: %+v", len(payload.Results), payload.Results)
+	}
+	outcome := outcomeFor(t, payload, "solo.csv")
+	if outcome.Status != "saved" {
+		t.Fatalf("expected saved, got %+v", outcome)
+	}
+
+	saved, err := store.ReadFile(filepath.Join(dataDir, "solo.csv"))
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(saved) != string(content) {
+		t.Fatalf("content mismatch\n got: %q\nwant: %q", saved, content)
+	}
+}
+
+// Required test 3: path-traversal-shaped names in a batch don't abort the
+// rest of the batch, and — per the unchanged sanitizeUploadFilename contract
+// (filepath.Base strips directory components before the ".." substring
+// check) — they resolve to their base filename inside DataDirectory rather
+// than escaping it. A name that is *only* ".." still hits the explicit
+// reject path. See judgment call in the task write-up.
+func TestHandleFileUpload_BatchTraversalNamesDoNotEscapeOrAbort(t *testing.T) {
+	dataDir := setupTestEnv(t)
+
+	req := newMultiUploadRequest(t, []uploadFile{
+		{name: "../evil.csv", content: []byte("Date,Description,Amount\n2024-06-01,A,1.00\n")},
+		{name: "/etc/evil2.csv", content: []byte("Date,Description,Amount\n2024-06-02,B,2.00\n")},
+		{name: `..\..\evil3.csv`, content: []byte("Date,Description,Amount\n2024-06-03,C,3.00\n")},
+		{name: "..", content: []byte("Date,Description,Amount\n2024-06-04,D,4.00\n")},
+		{name: "sibling.csv", content: []byte("Date,Description,Amount\n2024-06-05,E,5.00\n")},
+	})
+	rec := httptest.NewRecorder()
+	handleFileUpload(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeUploadResponse(t, rec)
+	if len(payload.Results) != 5 {
+		t.Fatalf("expected 5 outcomes, got %d: %+v", len(payload.Results), payload.Results)
+	}
+
+	// None of the traversal-shaped names may write outside dataDir, and the
+	// batch must still process the unrelated valid file.
+	sibling := outcomeFor(t, payload, "sibling.csv")
+	if sibling.Status != "saved" {
+		t.Fatalf("expected sibling.csv saved (batch not aborted), got %+v", sibling)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "sibling.csv")); err != nil {
+		t.Fatalf("expected sibling.csv on disk: %v", err)
+	}
+
+	// Bare ".." is explicitly rejected by sanitizeUploadFilename.
+	dotdot := outcomeFor(t, payload, "..")
+	if dotdot.Status != "rejected" {
+		t.Fatalf("expected \"..\" rejected, got %+v", dotdot)
+	}
+
+	// The rest normalize to their base name and land inside dataDir — never
+	// above/outside it — confirming no traversal occurs.
+	for _, base := range []string{"evil.csv", "evil2.csv", "evil3.csv"} {
+		if _, err := os.Stat(filepath.Join(dataDir, base)); err != nil {
+			t.Fatalf("expected %s inside dataDir (normalized, not escaped): %v", base, err)
+		}
+	}
+	parentDir := filepath.Dir(dataDir)
+	for _, escaped := range []string{"evil.csv", "evil2.csv", "evil3.csv"} {
+		if _, err := os.Stat(filepath.Join(parentDir, escaped)); err == nil {
+			t.Fatalf("%s must not exist outside dataDir", escaped)
+		}
 	}
 }
 
@@ -1553,8 +1753,15 @@ func TestHandleFileUpload_WriteError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handleFileUpload(rec, req)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for write error, got %d", rec.Code)
+	// A per-file write failure does not abort/fail the batch request; it is
+	// reported as a rejected outcome instead.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for write error (reported as rejected), got %d", rec.Code)
+	}
+	payload := decodeUploadResponse(t, rec)
+	outcome := outcomeFor(t, payload, "test.csv")
+	if outcome.Status != "rejected" {
+		t.Fatalf("expected status rejected, got %+v", outcome)
 	}
 }
 
@@ -1602,6 +1809,39 @@ func newUploadRequest(t *testing.T, filename string, content []byte) *http.Reque
 	}
 	if _, err := part.Write(content); err != nil {
 		t.Fatalf("part.Write() error: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/explorer/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("HX-Request", "true")
+	return req
+}
+
+// uploadFile is one part of a simulated multi-file <input multiple> submission.
+type uploadFile struct {
+	name    string
+	content []byte
+}
+
+// newMultiUploadRequest builds a single multipart request carrying several
+// "file" parts, matching what a browser sends for <input type="file" multiple>.
+func newMultiUploadRequest(t *testing.T, files []uploadFile) *http.Request {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	for _, f := range files {
+		part, err := writer.CreateFormFile("file", f.name)
+		if err != nil {
+			t.Fatalf("CreateFormFile() error: %v", err)
+		}
+		if _, err := part.Write(f.content); err != nil {
+			t.Fatalf("part.Write() error: %v", err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("writer.Close() error: %v", err)

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -477,53 +478,53 @@ func handleFileToggle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// maxUploadBatchBytes caps the total size of a multipart upload request body.
+// Bank-export CSVs are small (typically well under a megabyte each); 50MB
+// comfortably covers a large batch (dozens of files) while still bounding
+// the resources a single request can consume. Before this cap was added,
+// ParseMultipartForm's maxMemory argument only limited how much of the body
+// was buffered in memory before spilling to temp files on disk — it did not
+// limit the total request size at all.
+const maxUploadBatchBytes = 50 << 20
+
+// uploadOutcome is the per-file result of a batch upload, surfaced to the
+// caller alongside the refreshed file list.
+type uploadOutcome struct {
+	Name   string `json:"name"`
+	Status string `json:"status"` // "saved", "skipped", or "rejected"
+	Reason string `json:"reason,omitempty"`
+}
+
 func handleFileUpload(w http.ResponseWriter, r *http.Request) {
-	// Parse multipart form (max 10MB)
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBatchBytes)
+
+	// Parse multipart form. The 10MB argument only sets the in-memory spill
+	// threshold (larger parts are buffered to temp files); the real size
+	// limit is the MaxBytesReader wrap above.
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "File too large", http.StatusBadRequest)
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
+	var headers []*multipart.FileHeader
+	if r.MultipartForm != nil {
+		headers = r.MultipartForm.File["file"]
+	}
+	if len(headers) == 0 {
 		http.Error(w, "Error reading file", http.StatusBadRequest)
 		return
 	}
-	defer func() { _ = file.Close() }()
 
-	filename, err := sanitizeUploadFilename(header.Filename)
-	if err != nil {
-		http.Error(w, "Invalid filename", http.StatusBadRequest)
-		return
+	outcomes := make([]uploadOutcome, 0, len(headers))
+	for _, header := range headers {
+		outcomes = append(outcomes, uploadOneFile(header))
 	}
 
-	// Validate file extension
-	if !strings.HasSuffix(strings.ToLower(filename), ".csv") {
-		http.Error(w, "Only CSV files are allowed", http.StatusBadRequest)
-		return
-	}
-
-	// Read uploaded file content
-	data, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "Error reading file", http.StatusInternalServerError)
-		return
-	}
-
-	destPath := filepath.Join(cfg.DataDirectory, filename)
-
-	// Write via storage (handles encryption if enabled)
-	if err := store.WriteFile(destPath, data, 0644); err != nil {
-		http.Error(w, "Error saving file", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("Uploaded file: %s", filename)
-
-	// Return updated file list
+	// Return updated file list plus the per-file outcomes of this batch.
 	files, _ := loader.GetFileInfo()
 	partialData := map[string]interface{}{
-		"Files": files,
+		"Files":   files,
+		"Results": outcomes,
 	}
 
 	if renderer != nil {
@@ -532,6 +533,48 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
 	}
+}
+
+// uploadOneFile validates and saves a single file from a batch. It never
+// aborts the caller's loop: any failure is reported as part of the returned
+// outcome rather than an HTTP error.
+func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
+	rawName := header.Filename
+
+	filename, err := sanitizeUploadFilename(rawName)
+	if err != nil {
+		return uploadOutcome{Name: rawName, Status: "rejected", Reason: "invalid filename"}
+	}
+
+	if !strings.HasSuffix(strings.ToLower(filename), ".csv") {
+		return uploadOutcome{Name: filename, Status: "rejected", Reason: "only CSV files are allowed"}
+	}
+
+	destPath := filepath.Join(cfg.DataDirectory, filename)
+
+	// Collisions skip: never overwrite, never auto-rename.
+	if _, err := store.Stat(destPath); err == nil {
+		return uploadOutcome{Name: filename, Status: "skipped", Reason: "already exists"}
+	}
+
+	file, err := header.Open()
+	if err != nil {
+		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
+	}
+	defer func() { _ = file.Close() }()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
+	}
+
+	// Write via storage (handles encryption if enabled)
+	if err := store.WriteFile(destPath, data, 0644); err != nil {
+		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error saving file"}
+	}
+
+	log.Printf("Uploaded file: %s", filename)
+	return uploadOutcome{Name: filename, Status: "saved"}
 }
 
 func sanitizeUploadFilename(filename string) (string, error) {

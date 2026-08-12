@@ -12,7 +12,7 @@
         <form hx-post="/explorer/upload" hx-target="#file-list" hx-swap="innerHTML"
             hx-encoding="multipart/form-data" hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
             class="flex items-center gap-2">
-            <input type="file" name="file" accept=".csv"
+            <input type="file" name="file" accept=".csv" multiple
                 class="text-sm text-gray-500 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600">
             <button type="submit"
                 class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">

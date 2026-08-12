@@ -1,0 +1,94 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P9
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: ANALYTICS_PORT_SPEC.md §2 + Rulings (2026-08-12b entry), the diff of
+merchants.go/merchants_test.go (isAllDigits+isPunctuationOnly collapsed into
+single hasNoLetters predicate over unicode.IsLetter), and downstream
+consumers anomalies.go, pricecreep.go, insights/handlers.go
+(detectRecurringPaymentsAt). Manifest .swarm/manifests/P9.1.files confirms
+only merchants.go + merchants_test.go changed; git diff --stat confirms no
+other package touched.
+
+1. Newly-dropped token classes / chain-level unification. Empirically
+   verified (ad hoc probe test, run and deleted — repo left clean per
+   `git status --porcelain`):
+   - Normalize("WALMART #1234")=="WALMART", Normalize("WALMART #5678")=="WALMART"
+     → both now merge to one chain-level group. This is NOT a new
+     inconsistency: Normalize("WALMART 1234") already collapsed to "WALMART"
+     under the pre-existing (pre-P9) all-digit-drop rule, so P9 only extends
+     already-accepted chain-level grouping to hash-prefixed store numbers,
+     matching the spec's stated intent.
+   - Package-doc invariant intact: Normalize("ACME COFFEE")=="ACME COFFEE",
+     Normalize("ACME COFFEE STORE #12")=="ACME COFFEE STORE", and
+     {ACME,COFFEE} still merges into the 3→2-token group (the dropped token
+     was never part of the smaller set's anchor).
+   - Constructed regression candidate: Normalize("COSTCO #445")=="COSTCO"
+     (degenerate 1-token) vs Normalize("COSTCO WHOLESALE #445")=="COSTCO
+     WHOLESALE" (2-token) — these now SPLIT (previously merged only because
+     the literal "#445" token was retained in both keys, letting the
+     2-token smaller key subset-match). Verified this split is NOT
+     introduced by P9: Normalize("COSTCO 445") / Normalize("COSTCO
+     WHOLESALE 445") (plain space-separated digits) already split under the
+     original all-digit-drop rule shipped in P1, long before this task.
+     P9 merely extends an already-accepted trade-off (noise-token anchors
+     can be lost) to a new token shape; it introduces no new class of
+     defect and no test pins the old coincidental-anchor merge as an
+     invariant.
+
+2. Degenerate-key inflation: confirmed real (more letterless tokens dropped
+   → more 1-token/empty keys → exact-equality-only), but the only concrete
+   instance found (COSTCO case above) reduces to the pre-existing P1-era
+   all-digit characteristic, not a new hole. No case found where inflation
+   causes a wrongful MERGE (the guard still requires exact equality below
+   2 tokens); only wrongful non-merge (fragmentation), which is the safer
+   failure direction and unchanged in kind from pre-P9 behavior.
+
+3. CHECK group math, verified against real bank data (not synthetic):
+   `grep -inE "check *#" data/*.csv` across the live CSV snapshots yields
+   12 distinct check numbers: 8 at $626.00, 4 at $1580.43 (close to but not
+   identical to the task brief's "9/3" estimate — conclusion is the same).
+   Sorted-12 median = $626 (6th/7th values both 626); MAD = median(|x-626|)
+   = 0 (8 of 12 deviations are 0) → MAD==0 fallback path, threshold
+   3×626=$1878; $1580.43 < $1878 → not flagged, and $626 fails the
+   high-side-only rule (c) outright (x <= med). Ran an anomalies.Detect
+   probe (ad hoc test, executed then deleted) reproducing this exact
+   8×626/4×1580.43 shape: **0 anomalies** from the CHECK group — no
+   pathological partial-flag pattern. This corroborates checker-tests'
+   independent live-server spot-check (exactly one "Check #" row in the
+   anomalies table, i.e. at most a single new_merchant flag for the whole
+   group vs. up to 12 before P9).
+
+4. Unicode: confirmed by reading the code — hasNoLetters (merchants.go
+   L86-96) loops `for _, r := range s { if unicode.IsLetter(r) { return
+   false } }`, i.e. unicode.IsLetter, not an ASCII [a-zA-Z] test. Verified
+   with probe cases: Normalize("МАГАЗИН №445") == "МАГАЗИН" (Cyrillic
+   letters preserved, digit/symbol token dropped) and Normalize("café
+   #12") == "CAFÉ" (accented Latin preserved through strings.ToUpper +
+   unicode.IsLetter).
+
+5. Executed: `go test -race -count=2` on
+   ./internal/services/merchants/..., ./internal/services/anomalies/...,
+   ./internal/services/pricecreep/..., ./internal/handlers/insights/... —
+   all four packages `ok`, no race reports. `go build ./...` clean.
+   Reviewed (not executed as new tests) pricecreep.go and
+   detectRecurringPaymentsAt in insights/handlers.go: the CHECK group's
+   mixed $626/$1580.43 amounts fail insights' own 10%-amount-consistency
+   gate (avg≈$864.60, both values >27% off avg), so the merged CHECK group
+   cannot spuriously surface as a false "recurring payment" card; unaffected
+   by this change either way since that gate predates P9.
+
+Overall: the letterless generalization behaves as the ruling intended
+(paper checks collapse to one judged-as-a-group merchant, checks stop
+individually flooding new_merchant). The one realistic split I could
+construct (COSTCO-style store-number anchor loss) is a pre-existing
+characteristic of the token-drop+subset-merge design dating to P1, not a
+defect newly introduced by generalizing digit-drop to letterless-drop, and
+no shipped test or spec invariant depends on the old coincidental-merge
+behavior. No wrongful merchant collapse found on any realistic input.
+
+PASS.

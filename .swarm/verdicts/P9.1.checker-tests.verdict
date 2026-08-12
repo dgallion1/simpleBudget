@@ -1,0 +1,68 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P9
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Check 1 (Manifest): .swarm/manifests/P9.1.files contains exactly two lines:
+  - internal/services/merchants/merchants.go
+  - internal/services/merchants/merchants_test.go
+✓ PASS
+
+Check 2 (make check): All tests green, no fixture edits.
+  Output: ok budget2/internal/services/merchants (cached)
+  govulncheck: 0 vulnerabilities in code
+  go test ./...: ✓ all checks passed
+  git diff merchants_test.go: only test additions, no fixture removals/mods
+✓ PASS
+
+Check 3 (go test ./internal/services/merchants/... -v):
+  Confirmed from output: 44 tests passed
+  Key paper-check regression: TestGroupTransactions_PaperChecksCollapseToOneGroup ✓ PASS
+    - "Check #996581", "Check #996577", "CHECK #996562" all normalize to "CHECK" (1 token)
+    - All three merge into one group via exact-equality rule (degenerate key)
+    - "Check Cashing Store" stays separate (2 tokens, guard prevents subset merging of degenerate key)
+  Spaced-asterisk bridge test: TestGroupKeys_SpacedAsteriskNoLongerBridges ✓ PASS
+    - "SQ * COFFEE SHOP" normalizes to "SQ COFFEE SHOP" (asterisk dropped)
+    - "SQ * PIZZA PLACE" normalizes to "SQ PIZZA PLACE"
+    - Bare "SQ *" normalizes to "SQ" (1 token, degenerate, no bridging)
+  All-digit/punct cases: Normalize table ✓ PASS
+    - NETFLIX 123 → NETFLIX (digit token dropped)
+    - all-digit → "" (empty key)
+    - 7-ELEVEN → 7-ELEVEN (embedded digit survives)
+    - SQ * → SQ (spaced asterisk dropped)
+    - #996581 → "" (digit/punct mix dropped)
+    - AMZN *12-34 → AMZN (embedded tokens survive)
+    - Prior regressions (SQ-triple, diamond, all-digit isolation): all green
+✓ PASS
+
+Check 4 (Code review):
+  Single predicate hasNoLetters (lines 86-96, merchants.go) replaces isAllDigits + isPunctuationOnly:
+    - Condition: if s == "" return false (non-empty requirement met)
+    - Loop: for _, r := range s { if unicode.IsLetter(r) return false }
+    - Logic: returns true only if no rune satisfies unicode.IsLetter
+    - Drops all-digit, all-punct, and digit/punct mixes uniformly
+  Documentation (lines 56-65, 79-85):
+    - Cites Ruling 2026-08-12b (amended normalization rule)
+    - Explains drop behavior: "any standalone token that contains no letters at all"
+    - Notes examples: all-digit "123", punctuation "#", digit/punct mix "#996581"
+    - References the check-number collapse and SQ * bridge closure rationale
+✓ PASS
+
+Check 5 (Live spot-check):
+  Server booted read-only: BUDGET_LISTEN_ADDR=:18938 BUDGET_DATA_DIR=./data ./budget2
+  Curl /insights endpoint
+  Grep for "Check #" in anomalies table: count = 1 (exactly one genuine paper-check group)
+✓ PASS
+
+Check 6 (git status --porcelain):
+  Only P9 files modified:
+    - internal/services/merchants/merchants.go
+    - internal/services/merchants/merchants_test.go
+  Known allowlisted changes (.swarm/, spec, manifest) present
+  No untracked files in project root besides .swarm/
+✓ PASS
+
+SUMMARY: All six checks pass. Implementation correctly replaces two predicates (isAllDigits, isPunctuationOnly) with single hasNoLetters predicate that drops tokens with zero unicode.IsLetter runes, implementing Ruling 2026-08-12b (letterless-token normalization). Paper-check grouping regression confirmed: "CHECK #996581" variants collapse to one "CHECK" group while "CHECK CASHING STORE" stays separate via degenerate-key guard. All 44 unit tests green; make check suite green; live server spot-check confirms single "Check #" row in anomalies table.

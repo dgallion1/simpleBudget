@@ -26,6 +26,11 @@ func TestNormalize(t *testing.T) {
 		{"punctuation-only description", "*", ""},
 		{"mixed punctuation-only tokens dropped", "-- ** ##", ""},
 		{"empty string", "", ""},
+		{"check number token dropped (digit/punct mix)", "CHECK #996581", "CHECK"},
+		{"check number alone", "#996581", ""},
+		{"asterisk-joined digit-punct token dropped", "AMZN *12-34", "AMZN"},
+		{"alphanumeric token with embedded digits survives", "7-ELEVEN", "7-ELEVEN"},
+		{"digit/punctuation mix token dropped", "ACME 12-34#", "ACME"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -394,6 +399,67 @@ func TestGroupKeys_SpacedAsteriskNoLongerBridges(t *testing.T) {
 			t.Errorf("bare SQ merged into a rich group: %#v", got)
 		}
 	})
+}
+
+// TestGroupTransactions_PaperChecksCollapseToOneGroup pins Ruling
+// 2026-08-12b (ANALYTICS_PORT_SPEC.md §2, P9): check-number tokens like
+// "#996581" are digit/punctuation mixes with no letters, so Normalize
+// now drops them like any other letterless token. "Check #996581",
+// "Check #996577", and "CHECK #996562" all normalize to the single
+// degenerate 1-token key "CHECK" and must land in exactly one group
+// (exact-equality merge — no subset reasoning is needed or available at
+// 1 token). That group must NOT absorb "CHECK CASHING STORE": as a
+// 2-token key, {CHECK} would need to satisfy the subset rule against
+// {CHECK} being the *smaller* set at only 1 token, which the
+// degenerate-key guard forbids (smaller side must have >= 2 tokens for
+// subset merging) — so the two stay separate, and the guard is verified
+// from the "CHECK" side too, not just the classic "SQ" example.
+func TestGroupTransactions_PaperChecksCollapseToOneGroup(t *testing.T) {
+	ts := []models.Transaction{
+		{ID: "1", Description: "Check #996581"},
+		{ID: "2", Description: "Check #996577"},
+		{ID: "3", Description: "CHECK #996562"},
+		{ID: "4", Description: "Check Cashing Store"},
+	}
+	got := GroupTransactions(ts)
+
+	checkKey := Normalize("Check #996581")
+	if want := "CHECK"; checkKey != want {
+		t.Fatalf("Normalize(%q) = %q, want %q", "Check #996581", checkKey, want)
+	}
+	cashingKey := Normalize("Check Cashing Store")
+	if want := "CHECK CASHING STORE"; cashingKey != want {
+		t.Fatalf("Normalize(%q) = %q, want %q", "Check Cashing Store", cashingKey, want)
+	}
+
+	checkGroup, ok := got[checkKey]
+	if !ok {
+		t.Fatalf("expected a %q group, got %#v", checkKey, got)
+	}
+	if len(checkGroup) != 3 {
+		t.Fatalf("expected the three paper checks in one %q group, got %d: %#v", checkKey, len(checkGroup), checkGroup)
+	}
+	gotIDs := make(map[string]bool, 3)
+	for _, tx := range checkGroup {
+		gotIDs[tx.ID] = true
+	}
+	for _, id := range []string{"1", "2", "3"} {
+		if !gotIDs[id] {
+			t.Errorf("expected transaction %q in the %q group, got %#v", id, checkKey, checkGroup)
+		}
+	}
+
+	cashingGroup, ok := got[cashingKey]
+	if !ok {
+		t.Fatalf("expected a %q group, got %#v", cashingKey, got)
+	}
+	if len(cashingGroup) != 1 || cashingGroup[0].ID != "4" {
+		t.Fatalf("expected only transaction 4 in %q group, got %#v", cashingKey, cashingGroup)
+	}
+
+	if n := groupCount(t, GroupKeys([]string{checkKey, cashingKey})); n != 2 {
+		t.Errorf("expected CHECK and CHECK CASHING STORE to stay separate (degenerate 1-token key, exact-only merge), got %d groups", n)
+	}
 }
 
 func TestGroupTransactions_SuppressedNotSkipped(t *testing.T) {

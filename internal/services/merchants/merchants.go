@@ -6,13 +6,15 @@
 //
 // # Normalization
 //
-// Normalize uppercases a description, drops tokens that consist
-// entirely of digits (these are almost always processor-generated
-// order/terminal numbers, not part of the merchant's identity) and
-// tokens that consist entirely of punctuation with no letter or digit
-// characters (e.g. a standalone "*"; Ruling 2026-08-12 — otherwise such
-// a token combines with a bare processor prefix like "SQ" to form a
-// 2-token degenerate key that can bridge unrelated merchants), collapses
+// Normalize uppercases a description and drops any standalone token
+// that contains no letters at all — all-digit tokens (order/terminal
+// numbers), punctuation-only tokens (e.g. a standalone "*"), and
+// digit/punctuation mixes such as a check number like "#996581" (Ruling
+// 2026-08-12b: generalizes the two earlier drop rules into one letter
+// test; without it, paper-check rows like "CHECK #996581" each keep a
+// unique trailing token and never group together, and a bare processor
+// marker like "SQ *" could combine with a punctuation-only token to form
+// a 2-token degenerate key that bridges unrelated merchants) — collapses
 // whitespace, and trims the result.
 //
 // # Merge rule and the degenerate-key guard
@@ -52,21 +54,21 @@ import (
 )
 
 // Normalize converts a raw transaction description into a normalized
-// merchant key: uppercase, standalone all-digit tokens removed (a token
-// consisting only of ASCII digits, e.g. an order number or terminal
-// ID), standalone punctuation-only tokens removed (a token with no
-// letter or digit characters at all, e.g. "*", "-", "#" — Ruling
-// 2026-08-12, closes the {SQ,*} degenerate-key bridge described below),
-// whitespace collapsed to single spaces, and the result trimmed. Digits
-// embedded in an alphanumeric token (e.g. "7-ELEVEN") are left alone
-// since they are part of the token, not a standalone numeric token; the
-// same goes for punctuation embedded in an alphanumeric token.
+// merchant key: uppercase, standalone letterless tokens removed (any
+// token containing no letter at all — all-digit order/terminal numbers
+// like "123", punctuation-only tokens like "*" or "#", and
+// digit/punctuation mixes like a check number "#996581" — Ruling
+// 2026-08-12b), whitespace collapsed to single spaces, and the result
+// trimmed. Digits and punctuation embedded in an alphanumeric token
+// (e.g. "7-ELEVEN", "AMZN *12-34" -> "AMZN") are left alone since the
+// token as a whole carries a letter and is not standalone numeric or
+// punctuation noise.
 func Normalize(description string) string {
 	upper := strings.ToUpper(description)
 	fields := strings.Fields(upper)
 	kept := make([]string, 0, len(fields))
 	for _, tok := range fields {
-		if isAllDigits(tok) || isPunctuationOnly(tok) {
+		if hasNoLetters(tok) {
 			continue
 		}
 		kept = append(kept, tok)
@@ -74,34 +76,19 @@ func Normalize(description string) string {
 	return strings.Join(kept, " ")
 }
 
-// isAllDigits reports whether s is non-empty and consists solely of
-// ASCII digit characters.
-func isAllDigits(s string) bool {
+// hasNoLetters reports whether s is non-empty and contains no
+// unicode.IsLetter rune. Such a token — whether all-digit ("123"),
+// punctuation-only ("*", "#"), or a digit/punctuation mix ("#996581")
+// — carries no merchant-identifying information on its own and is
+// dropped by Normalize (Ruling 2026-08-12b, generalizes the earlier
+// separate all-digit and punctuation-only checks into one rule so that
+// tokens like paper-check numbers collapse the same way).
+func hasNoLetters(s string) bool {
 	if s == "" {
 		return false
 	}
 	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-// isPunctuationOnly reports whether s is non-empty and contains no
-// letter or digit characters (e.g. "*", "-", "#", "**"). Such tokens
-// carry no merchant-identifying information on their own; without
-// dropping them, a punctuation-only token like a spaced asterisk in "SQ
-// * COFFEE SHOP" combines with a bare processor prefix to form a
-// 2-token degenerate key ({SQ, *}) that is not caught by the single-
-// token guard and can bridge unrelated merchants under the token-subset
-// merge rule (Ruling 2026-08-12).
-func isPunctuationOnly(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		if unicode.IsLetter(r) {
 			return false
 		}
 	}

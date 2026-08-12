@@ -25,9 +25,11 @@ it), heatmaps/trends (exist), any storage or whatif changes.
 These parameters survived three adversarial verification rounds; port
 them exactly:
 
-- **Merchant normalization**: uppercase, drop standalone all-digit tokens
-  AND standalone punctuation-only tokens (no letter/digit chars — Ruling
-  2026-08-12, closes the {SQ,*} bridge), collapse whitespace.
+- **Merchant normalization**: uppercase, drop any standalone token that
+  contains NO LETTERS (all-digit, punctuation-only, and digit/punctuation
+  mixes like `#996581` — Ruling 2026-08-12b, generalizes the two earlier
+  drop rules and collapses paper checks to one `CHECK` merchant group),
+  collapse whitespace.
 - **Merchant merge — token-subset rule with degenerate-key guard**: two
   normalized keys merge only when one token set ⊆ the other AND the
   smaller set has ≥ 2 tokens; 0/1-token keys merge on exact equality
@@ -104,3 +106,4 @@ gateway-driver verdict on P2 (the algorithm-heaviest task).
 - 2026-08-12: P2 accepted (3/3: tests, second, glm). HIGH finding carried to P4 design: new_merchant must compute first-occurrence against FULL history (not the display window) so narrow windows do not chronically re-flag large recurring bills; display window only scopes which flags are shown.
 - 2026-08-12: P5 accepted (dual PASS). Residual accepted risk logged by checker-second: ampersand-joined two-letter brands ("H & M" -> {H,M}) form generic 2-token keys that can subset-merge into unrelated token sets containing both letters — low probability (two coincidences required, no fixture triggers), inherent to the 2-token subset design; punch-listed for a future guard rather than fixed now.
 - 2026-08-12: P6 attempt-1 FAIL adjudicated (checker-second, demonstrated): Transactions() derives the data dir from settingsDir without the basename=="settings" validation its sibling live.go spawnArgs enforces — a misconfigured -data flag silently yields count:0 instead of an error. UPHELD; returned to worker as attempt 2 (validate + clear error + regression test).
+- 2026-08-12: P9 ruled from live-data observation: check-number tokens ("#996581" — digits+punctuation, no letters) survived normalization, making every paper check its own new_merchant flag (~12 of 65 live anomalies). Normalization rule generalized: drop any letterless standalone token. Checks now merge into one CHECK group (exact-equality, degenerate key) and are judged by mad_merchant like any recurring group.

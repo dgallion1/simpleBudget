@@ -1,0 +1,32 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P6
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Executed: `go build ./...` (clean); `go test ./internal/services/whatifmcp/... -race -count=2 -v` (all subtests pass, no races), then again after removing my probe file to confirm the shipped suite alone is green; a throwaway `zz_probe_test.go` written into the package to exercise dataDirFromSettingsDir's unexported edge cases directly (via `rtk proxy go test -run TestZZ... -v` to get unfiltered -v output), then deleted — `git status --short internal/services/whatifmcp/` confirmed only the task's own modified/untracked files remain afterward. Read: live.go (full), insights.go (full), transactions_test.go (full), insights_test.go (relevant sections), live_test.go (spawnArgs tests), server.go (get_anomalies/get_price_creep handlers), cmd/whatif-mcp/main.go (full -data flag flow).
+
+1. Attempt-1 kill scenario, re-run exactly (non-"settings" basename, parent exists, parent holds an unrelated CSV):
+   - `TestSource_Transactions_NonSettingsBasenameIsAClearError` (transactions_test.go:87, unit-level, calls Source.Transactions() directly) — PASS, errors naming the offending settingsDir and the expected "settings" shape.
+   - `TestGetAnomaliesAndGetPriceCreepTools_NonSettingsDirIsAClearErrorNotZeroCount` (insights_test.go) — PASS, exercises BOTH MCP tools end-to-end through the real (non-mocked, txSource==nil) production wiring, plants the exact unrelated-CSV-in-parent trap from my attempt-1 finding, and asserts `IsError` with the settingsDir named in the message for both get_anomalies and get_price_creep. This is the strongest evidence: it is the tool-level surface I originally broke, not just the internal helper.
+   - Reasoned about other paths into Transactions(): grepped `dataloader.New(`, `.LoadData(`, `txSource` across the package (excluding tests) — the only production call site is insights.go:66, reached only through Source.Transactions(), gated by dataDirFromSettingsDir at insights.go:56. grepped `Transactions()` call sites in server.go — exactly two (get_anomalies:321, get_price_creep:345), both going through the same Source. No bypass exists.
+
+2. Helper edge cases (probed directly via temporary test, values below are actual executed output, not inferred):
+   | case | result | loud/soft |
+   |---|---|---|
+   | bare relative `"settings"` (no dir component) | resolves to process cwd, no error | correct, not soft — matches ordinary Unix relative-path semantics (relative to cwd), not a wrong-dir guess |
+   | `"./settings"` | same as above, resolves to cwd | correct |
+   | trailing slash `".../settings/"` | resolves basename/parent correctly (filepath.Abs cleans it) | correct |
+   | symlinked settings dir (symlink named `settings` -> real target elsewhere) | returns the SYMLINK's own parent, not the resolved target's parent (filepath.Abs does not resolve symlinks) | consistent, not a NEW soft path — spawnArgs already had this identical unresolved-symlink behavior before this attempt (same helper, same Abs call); cmd/whatif-mcp/main.go never calls EvalSymlinks on `-data` either, so both consumers and the flag source agree. Not introduced or worsened by this fix. |
+   | case mismatch `"Settings"` (capital S) | errors: `does not end in /settings` | loud |
+   Checked whether any of these are reachable with a *silently wrong* outcome from cmd/whatif-mcp's actual `-data` flow (main.go:29-37, `resolveDataDir`): the flag value is used verbatim with no normalization (no EvalSymlinks, no case-folding, no trailing-slash trim) before being passed to both `storage.New` and `whatifmcp.NewSource`, so whatever a user types is exactly what dataDirFromSettingsDir sees — no separate resolution step could introduce a mismatch between what the helper validates and what actually gets used. None of the five cases produce a plausible silent-wrong-dir result; the only "soft" ones (bare relative, trailing slash) are soft in the sense of "no error" but are also *correct*, not wrong.
+
+3. spawnArgs refactor: `TestSpawnArgs_DerivesDataDirFromSettingsDir` and `TestSpawnArgs_RefusesUnreachableSettingsDir` (live_test.go:96,109) — both attempt-1-era tests still pass unmodified; spawnArgs' error message still wraps `dataDirFromSettingsDir`'s error inside its own "cannot start a server for %q: BUDGET_DATA_DIR always resolves to <dir>/settings..." text (live.go:216-221), byte-identical semantics to before. `TestEnsureServer_*` tests that depend on spawnArgs' happy path (SpawnEnvCarriesPortFromBaseURL, etc.) also pass.
+
+4. Exactly two consumers, zero remaining bare derivations: `grep -rn "dataDirFromSettingsDir" internal/services/whatifmcp/*.go` → definition (live.go:197) + two call sites (live.go:216 spawnArgs, insights.go:56 Transactions). `grep -rn "filepath.Dir" internal/services/whatifmcp/*.go` → only live.go:205, which is the one line inside the helper itself; the only other hits are comments in transactions_test.go/insights_test.go describing the pre-fix bug. No other bare `filepath.Dir(settingsDir)` exists anywhere in the package (snapshot.go uses `s.settingsDir` directly for a scenario-file join, unrelated to parent-dir derivation).
+
+5. `go test ./internal/services/whatifmcp/... -race -count=2` — exit 0, `ok`, no race reports, run twice both before and after removing my probe file.
+
+MATERIALITY JUDGMENT: The attempt-1 defect (silent count:0 from a documented `-data` flag whose basename isn't "settings") no longer reproduces at either the unit or tool-call level — verified with the exact adversarial layout from my prior FAIL, now asserted end-to-end through both MCP tools. The fix is a single shared, well-commented helper reused verbatim (not reimplemented) by both consumers, closing the drift risk I flagged. Edge-case probing found no new soft-failure path of comparable severity: the two "no error" cases are correct-not-wrong, and the symlink behavior is inherited/consistent rather than newly introduced. Nits (non-blocking): the shared helper doesn't resolve symlinks before comparing basenames, which is a pre-existing characteristic of spawnArgs carried into Transactions() rather than a regression — worth a comment if anyone ever expects settingsDir to be symlink-transparent, but out of scope for this task.

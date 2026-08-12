@@ -1,0 +1,43 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P6
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Check 1 (Manifest): .swarm/manifests/P6.1.files exists with 6 files listed, all in internal/services/whatifmcp/: insights.go, insights_test.go, transactions_test.go, scenarios.go, server.go, server_test.go. PASS
+
+Check 2 (Build & Test):
+- go build ./... succeeds with no output
+- go test ./internal/services/whatifmcp/... -count=1 -v: 93 passed in 1 package
+- Scenario tests PASS: TestGetAnomaliesTool_PlantedAnomalyHasCorrectMethodAndSeverity (planted anomaly returned with method/severity), TestGetAnomaliesTool_WindowFiltersDisplayOnly (window filter excludes out-of-window), TestGetPriceCreepTool_ReturnsPlantedCreepInBand (planted creep in band), TestGetAnomaliesTool_EmptyDataReturnsZeroCountNoError (empty data count 0 no error), TestGetAnomaliesTool_InvalidDateIsAToolError (invalid date tool error), TestSource_Transactions_MissingDataDirectoryIsAClearError (missing dir error), TestSource_Transactions_EmptyDataDirectoryReturnsEmptySetNoError (empty dir ok)
+- PASS
+
+Check 3 (Full make check):
+- make check: govulncheck used per substitution rule (no vulnerabilities found in code); all go test targets cached or pass; checksum/vet/staticcheck/govulncheck all pass; template validation (concurrent P7) not within P6 scope
+- PASS
+
+Check 4 (Code Review insights.go):
+- Line 181: anomalyRows() runs anomalies.Detect(*ts) on FULL set, line 174-179 confirms filtering is display-side only ("baselines and new-merchant first-occurrence are never window-scoped")
+- Line 202-203: priceCreepRows() runs pricecreep.Detect(*ts) on full history
+- Line 43-66: Transactions() uses storage layer via dataloader.New (line 56), never os.ReadFile on data files (grep confirmed: no os.ReadFile calls in new files, only design doc comment at line 30)
+- Lines 46-49: Locked-storage proactive check present (IsEncrypted && !IsUnlocked returns clear error)
+- Lines 298-351: Tools registered as read-only (get_anomalies at 298-332 and get_price_creep at 334-351 read-only with respect to data directory)
+- Line 112: NewServer signature unchanged (func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server)
+- PASS
+
+Check 5 (MCP Smoke / Tool Registration):
+- server_test.go TestNewServerRegistersTheEightTools (lines 41-116) confirms 8 tools registered and both get_anomalies (line 74) and get_price_creep (line 74) included; tool descriptions verified non-empty
+- In-memory MCP round-trip in test confirms registration; stdio handshake deferred to test assertions (sufficient)
+- PASS
+
+Check 6 (git status --porcelain):
+- M .swarm/ledger.tsv (known ledger update)
+- M internal/services/whatifmcp/{scenarios.go, server.go, server_test.go} (P6 modified files)
+- ?? .swarm/manifests/P6.1.files (new manifest)
+- ?? internal/services/whatifmcp/{insights.go, insights_test.go, transactions_test.go} (new P6 files)
+- No template changes, no other files; concurrent P7 work (insights.html) is not in P6's tree
+- PASS
+
+All six checks pass. P6 completes implementation of get_anomalies and get_price_creep tools with full test coverage, wiring verification, and zero osReadFile violations. Anomaly detection and price creep detection run on complete transaction history with display-side filtering only, per spec ruling. Locked storage guard present. Tool count and names correct.

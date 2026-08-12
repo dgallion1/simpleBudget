@@ -1,0 +1,7 @@
+internal/services/whatifmcp/insights.go
+internal/services/whatifmcp/insights_test.go
+internal/services/whatifmcp/transactions_test.go
+internal/services/whatifmcp/scenarios.go
+internal/services/whatifmcp/server.go
+internal/services/whatifmcp/server_test.go
+internal/services/whatifmcp/live.go

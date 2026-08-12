@@ -9,7 +9,7 @@ A personal finance dashboard and retirement planning tool built with Go, HTMX, a
 - **Dashboard** - KPIs with sparklines, spending trend, category breakdown, top spending, cumulative balance, and category drilldowns
 - **Data Explorer** - Transaction search, filtering, pagination, date range stepping, transaction renaming, and CSV file management
 - **What-If Planner** - Retirement projections with Monte Carlo simulation, historical backtesting, per-account asset allocation, Roth conversions, tax-aware cash flow with LTCG preferential rates, Social Security taxation and optimizer-driven claiming-age projection, NIIT, delayed IRMAA lookback modeling, budget-fit tax/IRMAA breakdowns, taxable account modeling with cost-basis tracking and dividend/cap-gains distribution tax drag, configurable projection timing, canonical household people anchored to a projection start month, linked healthcare person modeling, real vs nominal dollar views, year-by-year projection explainability, named scenarios, scenario chaining for multi-phase retirement plans, and tax-deferred withdrawal delays that treat locked balances as temporary shortfalls instead of immediate depletion
-- **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, income pattern analysis, and recency filtering anchored to the selected data window without leaking in transactions after that window
+- **Insights** - Recurring payment detection with fuzzy vendor matching, subscription tracking, spending trends, income pattern analysis, recency filtering anchored to the selected data window without leaking in transactions after that window, anomaly detection (robust MAD statistics per category and merchant group, high-side only, with new-merchant flags for large first-time charges; full-history baselines with date filter scoping display only), and price-creep detection (recurring charges whose amounts drifted up — median of first 3 vs last 3 occurrences, ≥6 occurrences, >5% threshold)
 - **Major Expenses** - User-curated list of declared expenses (rent, mortgage, fixed-amount checks, Amazon sub-buckets, etc.) with four matching modes (keyword, amount-only, keyword + amount AND filter, pin-only manual targets), an "internal transfer" mode that drops matches at load time so brokerage/savings transfers don't show as spending (Schwab MoneyLink, Fidelity, Vanguard, E*TRADE, Coinbase, Robinhood, Interactive Brokers filtered out of the box), automatic exception flagging across three buckets (unmatched over threshold, matched-but-anomalous-amount, new merchants), full-text/amount/date search across the exceptions panel, single- and bulk-pin (one click pins every filtered exception to a chosen expense), and cross-page surfacing on Explorer (column + filter), Insights (recurring badge), and Dashboard (Spending by Major Expense pie chart)
 - **File Manager** - Data backup, restore, and file management
 - **Amazon Order Enrichment** - Optional CLI (`cmd/enrich-amazon`) that reads your Amazon order export (`Order History.csv` retail + `Digital Content Orders.csv` digital), matches each shipment to the corresponding bank charge by amount within a ±5-day window (with multi-shipment-per-Order-ID and Order-ID-in-description fallbacks), and writes `data/amazon_enrichment.json` so every page that displays transactions shows "Amazon: <product> +N more" instead of opaque `AMZN MKTP US` rows. Per-transaction product labels override the major-expense bucket name in display only — grouping/aggregation under your "Amazon" major expense is unchanged. See [CHANGELOG.md](CHANGELOG.md) for the matching strategy and limits.
@@ -194,7 +194,7 @@ You should see the dashboard with:
 
 1. **Dashboard** - Your main overview with income, expenses, and savings rate
 2. **Explorer** - Search and filter individual transactions, double-click any description to assign a custom name (e.g., rename "Check #996574" to "Plumber repair"), step through date ranges with arrow buttons, and filter state persists across tab changes
-3. **Insights** - View current recurring payments, subscriptions, and spending patterns using full-history detection with recency-aware filtering tied to the selected end date and excluding future transactions outside that window
+3. **Insights** - View current recurring payments, subscriptions, and spending patterns using full-history detection with recency-aware filtering tied to the selected end date and excluding future transactions outside that window; the page also surfaces Anomalies and Price Creep sections with their detection semantics
 4. **What-If** - Run retirement projections with per-account allocations, a projection start month, canonical people with birth months, linked healthcare rows, Monte Carlo, and historical backtesting, including tax-deferred withdrawal delays that treat locked balances as temporary shortfalls rather than immediate depletion and worst-year ranking based on how quickly each sequence fails, including same-year failures
 5. **File Manager** - Manage data files, create backups
 
@@ -311,11 +311,11 @@ make help
 
 ## Talking to your plan (MCP)
 
-`cmd/whatif-mcp` serves the what-if planner over MCP on stdio, so you can ask
+`cmd/whatif-mcp` serves the what-if planner and financial analytics over MCP on stdio, so you can ask
 questions about a plan in Claude Code — what a number means, why it moved, and
 what happens under a different assumption — and have it re-run the engine to
-check. Four of its six tools are read-only: `list_scenarios`, `get_analysis`,
-`get_months`, and `run_scenario` only load and copy scenarios. `open_page`
+check. Six of its eight tools are read-only: `list_scenarios`, `get_analysis`,
+`get_months`, `run_scenario`, `get_anomalies`, and `get_price_creep` only load and copy scenarios and transaction history. `open_page`
 opens the what-if page (starting `cmd/server` if nothing is listening), and
 `apply_changes` **writes to the saved plan** — it saves changed assumptions
 through the running server's `POST /whatif/apply`. There is also a
@@ -329,10 +329,14 @@ URL names, and only when it is a loopback address; a non-loopback
 it refuses instead. It resolves its
 own data directory from the `-data` flag, else `BUDGET_DATA_DIR`, else
 `./data/settings`, and refuses to write if the server it finds is serving a
-different settings directory than the one it reads. Before its first write to
+different settings directory than the one it reads. Locked or encrypted storage and misconfigured data directories (not shaped `<data-dir>/settings`) surface as clear errors. Before its first write to
 a scenario in a session, it snapshots that scenario to a `.bak` file outside
 the data directory; there is no in-app undo, so restoring that file by hand is
 the recovery path for an unwanted change.
+
+`get_anomalies` flags unusual expense transactions (outflows only, TransactionType == Outflow AND Amount < 0) by three methods: amounts far outside a merchant's or category's typical range (mad_merchant, mad_category using robust z-score against absolute amounts), or an outsized first-ever charge from a brand-new merchant (new_merchant). Detection always runs over the complete transaction history — peer-group baselines and each merchant's first-ever occurrence never change with the window — and accepts optional `start_date` and `end_date` (YYYY-MM-DD) to filter which already-detected flags are returned. Returns count and anomaly rows with date, description, category, amount (signed, negative for expenses), method, severity (high when score > 6), and score.
+
+`get_price_creep` finds recurring merchant charges whose amounts have drifted upward (outflows only). For each merchant with at least 6 occurrences, it compares the median of the first 3 charges to the median of the last 3 and reports when the increase exceeds 5%; decreases and single outliers never report. Returns count and rows with merchant name, first amount, current amount, percent change, first and last dates, and occurrence count.
 
 The repo ships a `.mcp.json`, so Claude Code picks it up from the repo root
 and runs it with `go run ./cmd/whatif-mcp`, which triggers `go mod download`

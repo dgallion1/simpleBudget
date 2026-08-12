@@ -1,0 +1,35 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P7
+ATTEMPT: 1
+---
+EVIDENCE:
+Check 1 (Manifest): PASS - .swarm/manifests/P7.1.files exists and contains only "web/templates/pages/insights.html"
+
+Check 2 (Make check): PASS - make check output: all checks passed (vet, staticcheck, govulncheck, all test packages green)
+
+Check 3a (Gray text on colored backgrounds): PASS - grep audit found zero co-occurrences of text-gray-* on saturated colored backgrounds (bg-purple, bg-rose, bg-indigo, bg-emerald, bg-amber, bg-blue excluding gray/white contexts)
+
+Check 3b (Re-accented stat values to emerald): PASS
+  - Monthly Recurring value (line 133): text-emerald-700 dark:text-emerald-300 ✓
+  - Month Projection KPI card (line 206): text-emerald-800 dark:text-emerald-200 ✓
+  - Month Projection Velocity gauge (line 537): text-emerald-800 dark:text-emerald-200 ✓
+  - Month Projection final (line 920): text-emerald-800 dark:text-emerald-200 ✓
+  - No text-purple-600 or text-indigo-600 remains on these four stat values ✓
+
+Check 4 (Spot contrast ratios): PASS
+  - purple-700 (#7e22ce) on purple-50 (#faf5ff): 6.51:1 ✓
+  - emerald-700 (#047857) on purple-50 (#faf5ff): 5.11:1 ✓
+  - amber-700 (#b45309) on amber-50 (#fffbeb): 4.84:1 ✓
+  - emerald-800 (#065f46) on indigo-50 (#eef2ff): 6.87:1 ✓
+
+Check 5 (Boot check): PASS
+  - Server started on :18934 with BUDGET_DATA_DIR=./data
+  - curl /insights returned HTTP 200
+  - Exactly 6 preset buttons rendered: 1m, 2m, 3m, 6m, 12m, all (one per preset, no duplicates)
+  - Preset button restructuring complete: conditional ternary operators split into separate {{if}} blocks creating distinct button elements for active (bg-indigo-600 text-white) and inactive (bg-gray-100 dark:bg-gray-700 text-gray-700) states
+
+Check 6 (Git scope): PASS - P7 owned file insights.html is modified; concurrent P6 changes in internal/services/whatifmcp/ are outside P7 scope; ledger/analytics changes are coordin system files
+
+Summary: All six checks green. P7 successfully fixed two design-finding classes: (A) preset button conditional logic restructured from inline ternary to separate button elements eliminating gray-on-color contrast issues across 6 preset buttons; (B) four stat values re-accented from purple/indigo to emerald (Monthly Recurring + three Month Projection figures), with related stat subtexts hue-matched to card backgrounds. All contrast ratios exceed WCAG AA 4.5:1 threshold.

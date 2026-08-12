@@ -1,0 +1,133 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P11
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: ANALYTICS_PORT_SPEC.md §2 in full incl. Ruling 2026-08-12d entry
+(lettered-neighbor fusion guard, closes the H&123/double-& nits recorded
+in the P10 verdict); my own .swarm/verdicts/P10.1.checker-second.verdict
+(source of both nits under test here); `git diff` of
+internal/services/merchants/{merchants.go,merchants_test.go} against HEAD
+(37 lines changed in merchants.go: package/Normalize/fuseAmpersands
+godoc updates + the single functional hunk adding
+`&& !hasNoLetters(out[len(out)-1]) && !hasNoLetters(fields[i+1])` to the
+fusion `if`; merchants_test.go: 5 new Normalize cases, purely additive —
+confirmed via grep that no existing `-` lines exist in that file's diff);
+full current merchants.go (all functions: Normalize, fuseAmpersands,
+hasNoLetters, tokenSet, isSubset, GroupKeys, shouldMerge — shouldMerge/
+GroupKeys untouched by this diff); .swarm/manifests/P11.1.files (scope:
+only these two files); `git log --oneline -- internal/services/merchants/`
+confirming P11 lands on top of the accepted P10 commit.
+
+Executed: throwaway in-package probe (zzprobe_test.go, added, `go test
+-run TestZZProbeP11 -v`, then `rm`'d — `git status --short` shown above
+confirms clean, no probe artifacts left) covering all requested
+constructions plus idempotence and cross-consistency assertions
+in-process, plus the full existing suite and a race sweep.
+
+## 1. Adversarial constructions (all executed, not just traced)
+
+- "H & 123" -> "H", "H 123" -> "H" — IDENTICAL. Nit #1 dead: fusion's
+  new right-neighbor letter check (`!hasNoLetters(fields[i+1])`) blocks
+  fusion when the right neighbor is letterless, so "&" stays standalone
+  and is dropped by the existing letterless rule, same as if it had never
+  been there.
+- "A & & B" -> "A B", "A && B" -> "A B" — IDENTICAL. Nit #2 dead: at the
+  first "&" (i=1) the right-neighbor check reads fields[2]="&", which is
+  letterless, so fusion is blocked; the second "&" (i=2) then fails the
+  new LEFT-neighbor check (`!hasNoLetters(out[len(out)-1])`) since
+  out[-1] is the unfused "&" itself. Both "&" tokens stay standalone and
+  are dropped. "A && B" tokenizes as a single "&&" token (strings.Fields
+  never splits on internal chars), which was already letterless-dropped
+  pre- and post-P11. Both now "A B".
+- "& & &" -> "". First "&" fails the `len(out)>0` guard (nothing to fuse
+  left of it), second and third each fail the new left-neighbor letter
+  check (left neighbor is itself an unfused "&"). All three tokens
+  letterless-dropped. Self-consistent (nothing to be consistent WITH —
+  no letters anywhere), idempotent, no panic.
+- "H & 123 & M" -> "H M"; "H 123 M" -> "H M" — IDENTICAL, and this is
+  the deeper form of nit #1 the task flagged (a chain, not just a pair).
+  Traced AND executed under the OLD (P10) fusion rule for comparison:
+  pre-P11, "H & 123 & M" fused straight through to the single degenerate
+  token "H&123&M" (no letter gate), which does NOT match "H 123 M" ->
+  "H M" (a 2-token key) — that was the live inconsistency. Post-P11: at
+  i=1 the "&" fails the right-neighbor check (fields[2]="123" is
+  letterless) so it's left standalone; "123" becomes its own token; at
+  i=3 the "&" fails the LEFT-neighbor check (out[-1] is now "123",
+  letterless) so it's also left standalone. Both "&"s and "123" are
+  letterless-dropped, leaving "H M" — matching "H 123 M" exactly. The
+  letterless middle token correctly blocks fusion from bridging across
+  it in both directions.
+- "12 & 34" -> "". Both tokens letterless, "&"'s left-neighbor check
+  fails immediately (out[-1]="12" is letterless), all three dropped.
+  Confirmed identical to pre-P11 result (pre-P11 this fused to "12&34",
+  itself letterless, also dropped to "") — no behavior change on
+  both-letterless inputs, consistent with the P10 verdict's finding that
+  this case was already safe.
+- "Á & B" -> "Á&B". Go's `unicode.IsLetter` recognizes combining/accented
+  Latin letters (category L*), so hasNoLetters("Á") is false and fusion
+  proceeds normally — confirms the letter gate isn't ASCII-only and
+  doesn't introduce a Unicode-specific hole.
+- Pinned-behavior spot checks executed alongside: "H & M" -> "H&M" (the
+  original P10 two-letter-brand fix, unaffected since both neighbors are
+  lettered), "AT&T STORE 44 & 45" -> "AT&T STORE", "STORE 44 & 45" ->
+  "STORE" (both-letterless case from the P10 verdict, unchanged).
+
+## 2. No new merge path; P10 behavior pinned
+
+The functional diff is exactly one `if` condition gaining two additional
+`&&`-ed conjuncts (`!hasNoLetters(out[len(out)-1])`,
+`!hasNoLetters(fields[i+1])`) on the SAME branch that performs fusion.
+Boolean narrowing: new-condition ⇒ old-condition always holds (A&&B&&C
+implies A), so fuseAmpersands fires on a subset of the inputs it fired on
+before — it can only leave MORE "&" tokens standalone (which the
+pre-existing, untouched letterless-drop step then removes), never fuse a
+pair it didn't already fuse. Fusion is the only token-merging mechanism
+in this package; GroupKeys/shouldMerge/tokenSet/isSubset (the actual
+merge-decision code) have zero diff lines. Since fusion strictly
+shrinks, the set of possible fused-token outputs strictly shrinks too,
+so no NEW subset-mergeable key shape can appear that didn't already
+exist under P10 — narrowing a token-*producing* step cannot manufacture
+a new *merge* opportunity in the downstream token-subset rule. The test
+diff (merchants_test.go) is purely additive per `git diff` — grepped for
+`-` lines matching existing test entries and found none; all prior
+Normalize/GroupKeys/GroupTransactions cases, including the P10
+brand-fusion pins ("H & M" -> "H&M" etc.), are unchanged text and pass
+under this run.
+
+## 3. Idempotence
+
+Normalize(Normalize(x)) == Normalize(x) asserted programmatically for
+every construction above (all pass fully-fused or fully-dropped states
+that are stable under re-normalization — a fused token like "H&123&M"
+never arises post-P11 for these inputs, and even where it would, e.g.
+"H & M" -> "H&M", re-running Normalize on "H&M" hits no "&" as a
+standalone token so it passes through unchanged). Zero violations.
+
+## 4. Race + downstream
+
+Import-grepped for `budget2/internal/services/merchants` across
+internal/services and internal/handlers to identify true downstream
+consumers (not just files containing the string "merchants."): exactly
+three — internal/services/anomalies, internal/services/pricecreep,
+internal/handlers/insights (matches the task's "three downstream
+packages"; two other grep hits, majorexpenses and amazon, do not import
+this package and were false positives on an unrelated identifier).
+
+  go test -race -count=2 ./internal/services/merchants/... \
+    ./internal/services/anomalies/... ./internal/services/pricecreep/... \
+    ./internal/handlers/insights/...
+
+All four packages: ok, no race detector output, no failures.
+
+## Conclusion
+
+Both P10 nits (H-plus-letterless-neighbor inconsistency, spaced-vs-
+unspaced double-ampersand inconsistency) are dead under every
+construction tried, including chained/letterless-middle and Unicode
+variants beyond the original two. The change is a pure narrowing of an
+existing gate with no new merge path and full P10 regression coverage
+intact. PASS.

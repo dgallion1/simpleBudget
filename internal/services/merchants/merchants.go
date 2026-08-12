@@ -21,11 +21,14 @@
 // Fusion of standalone "&" tokens with neighbors on both sides runs
 // before the letterless drop (Ruling 2026-08-12c): "H & M" becomes the
 // single token "H&M", matching the no-spaces spelling of the same
-// brand. This closes a two-letter brand bridge — without fusion, "H &
-// M" would normalize (via the letterless drop alone) to the 2-token key
-// {H, M}, which could subset-merge into any unrelated key containing
-// both a standalone "H" token and a standalone "M" token elsewhere. See
-// fuseAmpersands for the token-level algorithm.
+// brand. Fusion additionally requires both neighbor tokens to contain a
+// letter (Ruling 2026-08-12d), so "H & 123" normalizes like its "H 123"
+// sibling and spaced/unspaced double-ampersands ("A & & B" / "A && B")
+// normalize identically. This closes a two-letter brand bridge —
+// without fusion, "H & M" would normalize (via the letterless drop
+// alone) to the 2-token key {H, M}, which could subset-merge into any
+// unrelated key containing both a standalone "H" token and a standalone
+// "M" token elsewhere. See fuseAmpersands for the token-level algorithm.
 //
 // # Merge rule and the degenerate-key guard
 //
@@ -64,9 +67,9 @@ import (
 )
 
 // Normalize converts a raw transaction description into a normalized
-// merchant key: uppercase, standalone "&" tokens with a neighbor on
-// both sides fused into one token (e.g. "H & M" -> "H&M" — Ruling
-// 2026-08-12c, see fuseAmpersands), standalone letterless tokens
+// merchant key: uppercase, standalone "&" tokens with a lettered
+// neighbor on both sides fused into one token (e.g. "H & M" -> "H&M" —
+// Ruling 2026-08-12c/d, see fuseAmpersands), standalone letterless tokens
 // removed (any token containing no letter at all — all-digit
 // order/terminal numbers like "123", punctuation-only tokens like "*"
 // or "#" (including an unfused "&"), and digit/punctuation mixes like a
@@ -91,12 +94,15 @@ func Normalize(description string) string {
 
 // fuseAmpersands scans tokens left to right and fuses every standalone
 // "&" token that has a neighbor token on both sides into one token:
-// left + "&" + right, with no spaces (Ruling 2026-08-12c). Fusion runs
-// BEFORE the letterless-token drop so the fused token — which contains
-// letters from its neighbors — survives that later step, while a "&"
-// missing a neighbor on either side (leading, trailing, or otherwise
-// unpaired) is left alone here and removed by the letterless drop like
-// any other punctuation-only token.
+// left + "&" + right, with no spaces (Ruling 2026-08-12c) — but ONLY
+// when BOTH the preceding output token and the following raw token
+// contain at least one letter (Ruling 2026-08-12d). A "&" that fails
+// this condition (either neighbor is letterless, e.g. "H & 123" or
+// "A & & B") is left standalone here and removed by the later
+// letterless drop like any other punctuation-only token. This keeps
+// "H & 123" consistent with its "H 123" sibling spelling (both reduce
+// to "H") and makes spaced ("A & & B") and unspaced ("A && B") runs of
+// ampersands normalize identically (both reduce to "A B").
 //
 // Processing is strictly left to right and each fusion consumes its
 // right-hand neighbor, so a run like "A & B & C" fuses in two steps —
@@ -115,7 +121,8 @@ func fuseAmpersands(fields []string) []string {
 	out := make([]string, 0, len(fields))
 	for i := 0; i < len(fields); i++ {
 		tok := fields[i]
-		if tok == "&" && len(out) > 0 && i+1 < len(fields) {
+		if tok == "&" && len(out) > 0 && i+1 < len(fields) &&
+			!hasNoLetters(out[len(out)-1]) && !hasNoLetters(fields[i+1]) {
 			out[len(out)-1] = out[len(out)-1] + "&" + fields[i+1]
 			i++ // right neighbor consumed into the fused token
 			continue

@@ -1,0 +1,24 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P11
+ATTEMPT: 1
+---
+EVIDENCE:
+Check 1 (manifest): PASS — internal/services/merchants/ contains only merchants.go and merchants_test.go (61 bytes manifest, git status verified).
+
+Check 2 (make check): PASS — all checks pass: govulncheck reports 0 vulnerabilities in code, vet and staticcheck green, full test suite 25 packages all (cached), no downstream edits to anomalies/pricecreep/insights test files.
+
+Check 3 (test cases): PASS — all required cases present and passing:
+  • "H & 123"→"H" (ampersand_does_not_fuse_with_letterless_left_neighbor)
+  • "123 & H"→"H" (ampersand_does_not_fuse_with_letterless_right_neighbor)
+  • "A & & B"→"A B" (spaced_double_ampersand_blocked_by_letterless_neighbor)
+  • "A && B"→"A B" (unspaced_double_ampersand_equivalent)
+  • "A & B & 12"→"A&B" (lettered_chain_stops_fusing_at_letterless_neighbor)
+All P10 fusion cases unchanged ("H & M"→"H&M", etc.). All regression tests PASS (diamond, bridge, checks-collapse, SQ-triple).
+
+Check 4 (code review): PASS — fusion condition now includes `!hasNoLetters(out[len(out)-1]) && !hasNoLetters(fields[i+1])` (lines 124-125), enforcing letter requirement on BOTH neighbors before fusion. Only doc comments updated; no other code changes in package. Existing hasNoLetters(s string) bool helper already defined at line 142.
+
+Check 5 (stray files): PASS — git status --porcelain shows only merchants.go and merchants_test.go modified; no zz* or probe files exist in internal/services/merchants/.
+
+Summary: P11 implementation correctly restricts ampersand fusion to cases where both neighbors contain a letter, per Ruling 2026-08-12d. All required test cases pass, all prior regressions remain green, code changes are minimal and surgical, no stray artifacts.

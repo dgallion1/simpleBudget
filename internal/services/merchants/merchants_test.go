@@ -40,6 +40,11 @@ func TestNormalize(t *testing.T) {
 		{"leading ampersand has no left neighbor, dropped", "& STORE", "STORE"},
 		{"trailing ampersand has no right neighbor, dropped", "STORE &", "STORE"},
 		{"chained ampersands fuse left to right", "A & B & C", "A&B&C"},
+		{"ampersand does not fuse with letterless left neighbor", "H & 123", "H"},
+		{"ampersand does not fuse with letterless right neighbor", "123 & H", "H"},
+		{"spaced double ampersand blocked by letterless neighbor", "A & & B", "A B"},
+		{"unspaced double ampersand equivalent", "A && B", "A B"},
+		{"lettered chain stops fusing at letterless neighbor", "A & B & 12", "A&B"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

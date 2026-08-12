@@ -32,8 +32,11 @@ them exactly:
   collapse whitespace. Ampersand fusion (Ruling 2026-08-12c): BEFORE the
   letterless drop, a standalone `&` with neighbors on both sides fuses
   them into one token (`H & M` → `H&M`, matching the no-spaces spelling;
-  `PROCTER & GAMBLE` → `PROCTER&GAMBLE`); a `&` lacking a neighbor on
-  either side is dropped by the letterless rule. Closes the two-letter
+  `PROCTER & GAMBLE` → `PROCTER&GAMBLE`); fusion requires BOTH neighbor
+  tokens to contain at least one letter (Ruling 2026-08-12d — keeps
+  `H & 123` consistent with its `H 123` sibling spelling and makes
+  spaced/unspaced double-ampersands normalize identically); a `&` that
+  does not fuse is dropped by the letterless rule. Closes the two-letter
   brand bridge ({H,M} subset-merging into unrelated sets).
 - **Merchant merge — token-subset rule with degenerate-key guard**: two
   normalized keys merge only when one token set ⊆ the other AND the
@@ -113,3 +116,4 @@ gateway-driver verdict on P2 (the algorithm-heaviest task).
 - 2026-08-12: P6 attempt-1 FAIL adjudicated (checker-second, demonstrated): Transactions() derives the data dir from settingsDir without the basename=="settings" validation its sibling live.go spawnArgs enforces — a misconfigured -data flag silently yields count:0 instead of an error. UPHELD; returned to worker as attempt 2 (validate + clear error + regression test).
 - 2026-08-12: P9 ruled from live-data observation: check-number tokens ("#996581" — digits+punctuation, no letters) survived normalization, making every paper check its own new_merchant flag (~12 of 65 live anomalies). Normalization rule generalized: drop any letterless standalone token. Checks now merge into one CHECK group (exact-equality, degenerate key) and are judged by mad_merchant like any recurring group.
 - 2026-08-12: P10 ruled (closes the P5-era accepted residual): ampersand fusion in normalization — "&" joins its neighbor tokens into one ("H & M" -> "H&M") instead of being dropped, eliminating the generic {H,M} 2-token bridge AND unifying spaced/unspaced brand spellings. Only "&" gets joiner semantics; other punctuation unchanged.
+- 2026-08-12: P11 ruled (retires both P10 residual nits with one refinement): ampersand fusion requires both neighbors to contain a letter. "H & 123" -> {H} (matches "H 123"); "A & & B" -> {A,B} (matches "A && B"). Brand fusions unaffected.

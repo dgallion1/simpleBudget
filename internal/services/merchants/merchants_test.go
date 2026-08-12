@@ -31,6 +31,15 @@ func TestNormalize(t *testing.T) {
 		{"asterisk-joined digit-punct token dropped", "AMZN *12-34", "AMZN"},
 		{"alphanumeric token with embedded digits survives", "7-ELEVEN", "7-ELEVEN"},
 		{"digit/punctuation mix token dropped", "ACME 12-34#", "ACME"},
+		{"ampersand fusion, two-letter brand", "H & M", "H&M"},
+		{"ampersand already unspaced passthrough", "H&M", "H&M"},
+		{"ampersand fusion mid-phrase", "A & W ROOT BEER", "A&W ROOT BEER"},
+		{"ampersand fusion two words", "PROCTER & GAMBLE", "PROCTER&GAMBLE"},
+		{"ampersand fusion second token pair", "BED BATH & BEYOND", "BED BATH&BEYOND"},
+		{"ampersand fusion survives trailing letterless drop", "BED BATH & BEYOND #123", "BED BATH&BEYOND"},
+		{"leading ampersand has no left neighbor, dropped", "& STORE", "STORE"},
+		{"trailing ampersand has no right neighbor, dropped", "STORE &", "STORE"},
+		{"chained ampersands fuse left to right", "A & B & C", "A&B&C"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -459,6 +468,94 @@ func TestGroupTransactions_PaperChecksCollapseToOneGroup(t *testing.T) {
 
 	if n := groupCount(t, GroupKeys([]string{checkKey, cashingKey})); n != 2 {
 		t.Errorf("expected CHECK and CHECK CASHING STORE to stay separate (degenerate 1-token key, exact-only merge), got %d groups", n)
+	}
+}
+
+// TestGroupKeys_AmpersandFusionClosesTwoLetterBrandBridge pins Ruling
+// 2026-08-12c (ANALYTICS_PORT_SPEC.md §2, P10): before fusion, "H & M"
+// normalized via the letterless drop alone to the 2-token key {H, M},
+// which — being a rich key under the degenerate-key guard (>= 2 tokens)
+// — could subset-merge into any unrelated key that happened to contain
+// both a standalone "H" token and a standalone "M" token elsewhere,
+// silently bridging unrelated merchants. This is the exact reviewer
+// case from the P5-era bridge: construct a multi-token key containing
+// both "H" and "M" as separate tokens alongside other tokens, and assert
+// "H & M" does NOT merge into it now that fusion collapses "H & M" to
+// the single fused token "H&M" (a 1-token degenerate key, exact-equality
+// merge only).
+func TestGroupKeys_AmpersandFusionClosesTwoLetterBrandBridge(t *testing.T) {
+	hAndM := Normalize("H & M")
+	if want := "H&M"; hAndM != want {
+		t.Fatalf("Normalize(%q) = %q, want %q", "H & M", hAndM, want)
+	}
+
+	bridgeKey := Normalize("H STORE M")
+	if want := "H STORE M"; bridgeKey != want {
+		t.Fatalf("Normalize(%q) = %q, want %q", "H STORE M", bridgeKey, want)
+	}
+
+	got := GroupKeys([]string{hAndM, bridgeKey})
+	if got[hAndM] == got[bridgeKey] {
+		t.Errorf("H & M bridged into an unrelated key containing standalone H and M tokens: %#v", got)
+	}
+	if n := groupCount(t, got); n != 2 {
+		t.Errorf("expected 2 groups (bridge closed), got %d: %#v", n, got)
+	}
+}
+
+// TestGroupKeys_AmpersandFusedKeysDistinctAndExactOnly sanity-checks
+// that two different fused two-letter-brand keys ("A&W" and "H&M") stay
+// distinct groups (they are different strings, not related by subset —
+// and both are 1-token degenerate keys so only exact equality could ever
+// merge them).
+func TestGroupKeys_AmpersandFusedKeysDistinctAndExactOnly(t *testing.T) {
+	aAndW := Normalize("A & W")
+	hAndM := Normalize("H & M")
+	if aAndW == hAndM {
+		t.Fatalf("expected distinct fused keys, got both %q", aAndW)
+	}
+
+	got := GroupKeys([]string{aAndW, hAndM})
+	if got[aAndW] == got[hAndM] {
+		t.Errorf("expected A&W and H&M to stay separate groups, got merged: %#v", got)
+	}
+	if n := groupCount(t, got); n != 2 {
+		t.Errorf("expected 2 groups, got %d: %#v", n, got)
+	}
+}
+
+// TestGroupTransactions_AmpersandSpacedAndUnspacedMerge exercises the
+// fusion end to end through GroupTransactions: a spaced "H & M" row and
+// an already-unspaced "H&M" row must normalize to the exact same
+// 1-token key and land in one group together.
+func TestGroupTransactions_AmpersandSpacedAndUnspacedMerge(t *testing.T) {
+	ts := []models.Transaction{
+		{ID: "1", Description: "H & M"},
+		{ID: "2", Description: "H&M 4821"},
+	}
+	got := GroupTransactions(ts)
+
+	if n := len(got); n != 1 {
+		t.Fatalf("expected 1 group, got %d: %#v", n, got)
+	}
+	var group []models.Transaction
+	var canonKey string
+	for k, v := range got {
+		canonKey = k
+		group = v
+	}
+	if want := "H&M"; canonKey != want {
+		t.Errorf("expected canonical key %q, got %q", want, canonKey)
+	}
+	if len(group) != 2 {
+		t.Fatalf("expected both transactions in the merged group, got %d: %#v", len(group), group)
+	}
+	gotIDs := make(map[string]bool, 2)
+	for _, tx := range group {
+		gotIDs[tx.ID] = true
+	}
+	if !gotIDs["1"] || !gotIDs["2"] {
+		t.Errorf("expected transactions 1 and 2 both present, got %#v", group)
 	}
 }
 

@@ -1,0 +1,173 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P10
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: ANALYTICS_PORT_SPEC.md full, §2 (ruled algorithm standard, ampersand
+fusion paragraph) + Rulings block (2026-08-12a through 2026-08-12c, incl.
+P5's accepted-residual entry P10 exists to close); git diff of
+internal/services/merchants/merchants.go (fuseAmpersands + Normalize +
+package/func godoc) and merchants_test.go (9 new Normalize cases + 3 new
+GroupKeys/GroupTransactions tests) against HEAD; full merchants.go (all
+339 lines, not just the diff, incl. shouldMerge/GroupKeys/tokenSet);
+.swarm/manifests/P10.1.files (confirms only these two files touched, no
+scope creep); .swarm/verdicts/P5.1.checker-second.verdict (the accepted
+residual this task closes — reconstructed the reviewer's exact "H & M"/
+"A & W" bridge scenario from it). Downstream consumers: grepped all
+non-test callers of the merchants package (internal/handlers/insights/
+handlers.go:376,379 GroupTransactions/DisplayLabel; internal/services/
+anomalies/anomalies.go:169 GroupTransactions; internal/services/
+pricecreep/pricecreep.go:89,127 GroupTransactions/DisplayLabel) — all call
+through the same unchanged signatures, none inspect token internals
+directly, confirmed unchanged.
+
+Executed: throwaway in-package probe test (zzprobe_test.go, added, run,
+then `rm`'d — git status confirmed clean before writing this verdict, no
+probe artifacts left behind) exercising Normalize/fuseAmpersands directly
+on ~20 hand-picked adversarial cases, plus full existing suites.
+
+## 1. Fusion ordering vs the letterless drop — letter+letterless fusion
+
+Traced the implementation (merchants.go:114-126) and confirmed empirically:
+a standalone "&" fuses with ANY neighbor pair regardless of whether either
+side is letterless — the letterless test only runs after fusion, on the
+already-fused token.
+
+- Both-letterless case (SAFE, matches pre-fusion behavior): "STORE 44 & 45"
+  -> fuseAmpersands produces "44&45" (letterless) -> dropped whole ->
+  Normalize = "STORE". Verified this is IDENTICAL to pre-P10 behavior
+  (44, &, 45 would each have been dropped individually too) — no
+  regression, confirms the design note in the fuseAmpersands godoc.
+  "AT&T STORE 44 & 45" -> "AT&T STORE" (same reasoning, cross-checked).
+
+- Letter+letterless case (REAL, narrow edge case, not a regression against
+  P10's stated goal but worth recording): "H & 123" -> "H&123" (survives,
+  has letter H) vs "H 123" -> "H" (123 dropped alone). Pre-P10 these both
+  normalized to "H" and merged; post-P10 they produce different keys and
+  no longer merge. Constructed the realistic variant with a fixed
+  cross-street name and a varying leading numeric token: "STORE 44 & MAIN
+  ST" -> "STORE 44&MAIN ST" vs "STORE 89 & MAIN ST" -> "STORE 89&MAIN
+  ST" — these are two DIFFERENT rich keys (4 tokens each, neither a
+  subset of the other since 44&MAIN != 89&MAIN), so two descriptions that
+  pre-P10 both collapsed to "STORE MAIN ST" (and merged) now stay split.
+  Judged materiality: this requires a letterless token (store/reference
+  number) sitting directly to the LEFT of a "&" that is itself followed by
+  a stable name/address token, in a source description where that same
+  merchant is ALSO written without the leading number+ampersand. This is
+  a real but narrow formatting pattern (typical bank descriptors put "&"
+  between two name words, e.g. "PROCTER & GAMBLE", "5TH & MAIN", or between
+  two reference numbers, e.g. store-number ranges — both of which are
+  handled correctly, per above); a bare number immediately before "&
+  <name>" is uncommon. No live-data evidence (unlike P9's check-number
+  finding, which came from an actual anomaly sweep) and no existing
+  fixture triggers it. Non-blocking nit, same tier as the P5 residual this
+  task was scoped to close (a real, low-probability coincidence
+  requirement, not a systemic bridge).
+
+## 2. Multiple consecutive ampersands
+
+`strings.Fields` never splits "&&" into two tokens (no internal
+whitespace), so "A && B" tokenizes as [A, &&, B] — "&&" is a single
+letterless token, untouched by fuseAmpersands (exact match on "&" only),
+dropped whole -> Normalize("A && B") = "A B". Confirmed empirically.
+
+Genuinely separate ampersands with spaces DO exercise the loop's neighbor
+logic: "A & & B" tokenizes as [A, &, &, B]. Traced the loop: at the first
+"&" (i=1), the right neighbor check `fields[i+1]` reads fields[2], which
+is itself "&" — no special-case, so it fuses literally: out becomes
+["A&&"], i is advanced past index 2, and "B" is appended separately.
+Result: fuseAmpersands([A,&,&,B]) = [A&&, B] -> Normalize = "A&& B" (not
+"A B" like the double-ampersand-joined-token case above). This is a minor
+inconsistency (spacing of double ampersands changes the result) but not a
+new bridge: "A&&" retains the letter A and both ampersands verbatim, is
+just as specific a token as "A" alone would have been, and does not
+create any subset-merge opening beyond what "A" already had. No panic or
+index-out-of-range: the `i+1 < len(fields)` guard is checked before every
+access, and I probed length-1 and trailing/leading unpaired "&" runs
+(`[A,&]`, `[&,B]`, `[&]`, `[A,&,&]`, `[&,&,B]`) directly via
+fuseAmpersands — all returned cleanly, no panic, in every case.
+
+## 3. Idempotence
+
+Normalize(Normalize(x)) == Normalize(x) checked programmatically across
+all ~20 probe cases (including the fused, already-fused-passthrough,
+double-ampersand, and edge cases above) — zero violations. Specifically
+confirmed the "&" INSIDE a pre-fused token case per the task's own
+hypothesis: "BATH & BODY WORKS" -> "BATH&BODY WORKS", and the
+already-unspaced "BATH&BODY WORKS" -> "BATH&BODY WORKS" unchanged
+(passthrough) — both converge to the identical fixed point, and
+fuseAmpersands only ever matches a token that is EXACTLY "&", so an
+embedded "&" inside a larger token (e.g. "BATH&BODY") is never touched by
+a second pass. Idempotence holds.
+
+## 4. Determinism / no order-dependence
+
+`go test ./internal/services/merchants/... -race -count=2 -v` — all tests
+pass including the pre-existing TestGroupKeys_StableAcrossInputOrder (not
+touched by this diff, exercises the union-find canonical-selection
+determinism independent of input order, still green under the new
+Normalize). Ran the full repo suite: `go build ./...` clean, `go vet
+./...` clean, `go test ./... -race -count=2` — every package OK, 0
+failures, 0 race reports (full output captured, 35 packages incl.
+anomalies, pricecreep, insights, storage, retirement/*). Also ran the
+narrower downstream set directly: `go test ./internal/services/anomalies/...
+./internal/services/pricecreep/... ./internal/handlers/insights/...
+-race -count=2` — PASS. Grepped every non-merchants test file in the repo
+for ampersand-bearing fixtures that exercise Normalize/GroupTransactions/
+GroupKeys (handlers_test.go, whatif handlers_test.go, etc.) — the one "&"
+hit in insights/handlers_test.go is an HTML-escaped "+" in a percent
+string, unrelated to merchant normalization; no downstream fixture
+currently depends on ampersand handling, so no hidden behavior change
+elsewhere.
+
+## 5. P5 bridge confirmed dead
+
+Reconstructed the exact reviewer scenario from
+.swarm/verdicts/P5.1.checker-second.verdict: "H & M" and "A & W" each used
+to normalize (via the letterless drop alone, pre-P10) to a 2-token key
+({H,M} / {A,W}) that could subset-merge into any unrelated key containing
+both bare letters as standalone tokens — reproduced there via
+`GroupKeys([Normalize("H & M"), Normalize("H M SUPERSTORE DOWNTOWN")])`
+merging. Post-P10: Normalize("H & M") = "H&M" (1 token). The worker's own
+TestGroupKeys_AmpersandFusionClosesTwoLetterBrandBridge pins this exact
+case against a "H STORE M" bridge candidate and asserts no merge + 2
+groups — I re-verified by hand-tracing shouldMerge: "H&M" is a 1-token
+(degenerate) key, and the guard (merchants.go:257-261) forces degenerate
+keys to merge only on EXACT string equality, never subset containment, so
+"H&M" cannot merge into "H STORE M" (3-token) or any other key regardless
+of its contents. Also re-verified TestGroupKeys_AmpersandFusedKeysDistinct
+AndExactOnly ("A&W" vs "H&M" stay separate) and the end-to-end
+TestGroupTransactions_AmpersandSpacedAndUnspacedMerge (spaced "H & M" and
+unspaced "H&M 4821" land in one group under canonical key "H&M") — all
+pass. The P5 bridge is genuinely closed, not just reduced.
+
+## What was executed vs read
+
+Executed: `go build ./...`, `go vet ./...`, `go test ./... -race -count=2`
+(full repo, 0 failures); `go test ./internal/services/merchants/...
+-race -count=2 -v` (all 20+ existing + new tests pass); `go test
+./internal/services/anomalies/... ./internal/services/pricecreep/...
+./internal/handlers/insights/... -race -count=2`; a throwaway probe test
+in the merchants package (added, run, `rm`'d, git status verified clean).
+Read: ANALYTICS_PORT_SPEC.md (full + Rulings), merchants.go (full, pre-
+and post-diff via git diff), merchants_test.go (full diff), P5's
+checker-second verdict (full), P10's manifest, and every non-test caller
+of the merchants package for downstream-consumer verification.
+
+## Judgment
+
+No material regression on realistic data. The letter+letterless fusion
+edge case (§1) and the spaced-double-ampersand inconsistency (§2) are
+real, honestly-hunted findings but both require narrow, uncommon
+description patterns with no live-data or fixture evidence behind them —
+the same evidentiary bar the P5 residual itself was held to before being
+accepted and scheduled as this very task. The P10 ruling's stated goal
+(close the P5 {H,M}-style two-letter-brand bridge, unify spaced/unspaced
+spellings) is achieved and verified by hand-trace plus direct execution;
+no panic/index issues; idempotent; deterministic under race+repeat; full
+repo green. PASS, with the two edge cases logged as non-blocking nits for
+a future punch-list ruling (same pattern P5 -> P10 already used
+successfully).

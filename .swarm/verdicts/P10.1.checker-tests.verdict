@@ -1,0 +1,53 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P10
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Check 1 (Manifest): PASS
+  - .swarm/manifests/P10.1.files exists
+  - Contains exactly two files: internal/services/merchants/{merchants.go,merchants_test.go}
+
+Check 2 (make check green; full suite green; zero downstream edits): PASS
+  - `make check` exits 0: govulncheck found 0 code vulnerabilities (5 in imports, 1 in required modules not called)
+  - Full test suite (32 packages): all cached or PASS
+  - Verified git diff of anomalies, pricecreep, insights test files: empty (zero downstream edits)
+
+Check 3 (Specific behaviors tested and passing): PASS
+  - Ampersand fusion, two-letter brand (H & M → H&M): PASS
+  - Ampersand already unspaced passthrough (H&M): PASS
+  - Ampersand fusion mid-phrase (A & W ROOT BEER): PASS
+  - Ampersand fusion two words (PROCTER & GAMBLE): PASS
+  - Ampersand fusion second token pair (BED BATH & BEYOND): PASS
+  - Ampersand fusion survives trailing letterless drop (BED BATH & BEYOND #123): PASS
+  - Leading ampersand has no left neighbor, dropped (& STORE): PASS
+  - Trailing ampersand has no right neighbor, dropped (STORE &): PASS
+  - Chained ampersands fuse left to right (A & B & C → A&B&C): PASS
+  - TestGroupKeys_AmpersandFusionClosesTwoLetterBrandBridge (H & M doesn't merge with H STORE M): PASS
+  - TestGroupKeys_AmpersandFusedKeysDistinctAndExactOnly (A&W vs H&M distinct): PASS
+  - TestGroupTransactions_AmpersandSpacedAndUnspacedMerge (spaced and unspaced merge): PASS
+  - All prior regressions (checks-collapse, SQ-triple, diamond, all-digit, spaced-asterisk, paper-checks): PASS (56 tests total)
+
+Check 4 (Code review - fusion after tokenization, before letterless drop, left-to-right, consumed-neighbor advance): PASS
+  - merchants.go line 79-80: Uppercase, then Fields() tokenization
+  - merchants.go line 81: fuseAmpersands() called BEFORE letterless loop
+  - merchants.go lines 83-88: hasNoLetters() loop runs AFTER fusion
+  - fuseAmpersands() line 116: for i := 0 (left-to-right iteration)
+  - fuseAmpersands() line 118: only fuses when len(out) > 0 && i+1 < len(fields) (neighbors on both sides)
+  - fuseAmpersands() line 120: i++ immediately after consuming right neighbor
+  - hasNoLetters(), GroupKeys(), DisplayLabel() signatures unchanged
+
+Check 5 (Independent probe with -race -count=2): PASS
+  - `go test ./internal/services/merchants/... -race -count=2`: runs 56 tests twice, all pass, no race detector violations
+
+Check 6 (git status --porcelain): PASS
+  - M .swarm/ledger.tsv (expected metadata)
+  - M ANALYTICS_PORT_SPEC.md (expected spec)
+  - M internal/services/merchants/merchants.go (P10 file)
+  - M internal/services/merchants/merchants_test.go (P10 file)
+  - ?? .swarm/manifests/P10.1.files (expected manifest)
+  - No other untracked files beyond known .claude/launch.json and .swarm/ spec
+
+Summary: P10 ampersand fusion implementation is complete and verified. The fuseAmpersands function correctly joins standalone "&" tokens with both neighbors into single tokens (e.g., "H & M" → "H&M") BEFORE letterless-token drop runs, closing the two-letter brand subset-merge bridge while unifying spaced/unspaced brand spellings. Left-to-right processing with consumed-neighbor advance produces correct results for chained ampersands. All 56 tests pass including the nine ampersand-specific cases, the bridge-closure regression test, the distinctness test, the end-to-end merge test, and all prior regression tests. Race condition testing (count=2, -race) confirms stability. No downstream edits to other packages. Code is clean and governed by ANALYTICS_PORT_SPEC.md §2 Ruling 2026-08-12c.

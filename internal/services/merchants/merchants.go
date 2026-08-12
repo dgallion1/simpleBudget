@@ -6,16 +6,26 @@
 //
 // # Normalization
 //
-// Normalize uppercases a description and drops any standalone token
-// that contains no letters at all — all-digit tokens (order/terminal
-// numbers), punctuation-only tokens (e.g. a standalone "*"), and
-// digit/punctuation mixes such as a check number like "#996581" (Ruling
-// 2026-08-12b: generalizes the two earlier drop rules into one letter
-// test; without it, paper-check rows like "CHECK #996581" each keep a
-// unique trailing token and never group together, and a bare processor
-// marker like "SQ *" could combine with a punctuation-only token to form
-// a 2-token degenerate key that bridges unrelated merchants) — collapses
-// whitespace, and trims the result.
+// Normalize uppercases a description, fuses standalone "&" tokens with
+// their neighbors (Ruling 2026-08-12c, see fuseAmpersands), drops any
+// standalone token that contains no letters at all — all-digit tokens
+// (order/terminal numbers), punctuation-only tokens (e.g. a standalone
+// "*"), and digit/punctuation mixes such as a check number like
+// "#996581" (Ruling 2026-08-12b: generalizes the two earlier drop rules
+// into one letter test; without it, paper-check rows like "CHECK
+// #996581" each keep a unique trailing token and never group together,
+// and a bare processor marker like "SQ *" could combine with a
+// punctuation-only token to form a 2-token degenerate key that bridges
+// unrelated merchants) — collapses whitespace, and trims the result.
+//
+// Fusion of standalone "&" tokens with neighbors on both sides runs
+// before the letterless drop (Ruling 2026-08-12c): "H & M" becomes the
+// single token "H&M", matching the no-spaces spelling of the same
+// brand. This closes a two-letter brand bridge — without fusion, "H &
+// M" would normalize (via the letterless drop alone) to the 2-token key
+// {H, M}, which could subset-merge into any unrelated key containing
+// both a standalone "H" token and a standalone "M" token elsewhere. See
+// fuseAmpersands for the token-level algorithm.
 //
 // # Merge rule and the degenerate-key guard
 //
@@ -54,18 +64,21 @@ import (
 )
 
 // Normalize converts a raw transaction description into a normalized
-// merchant key: uppercase, standalone letterless tokens removed (any
-// token containing no letter at all — all-digit order/terminal numbers
-// like "123", punctuation-only tokens like "*" or "#", and
-// digit/punctuation mixes like a check number "#996581" — Ruling
-// 2026-08-12b), whitespace collapsed to single spaces, and the result
-// trimmed. Digits and punctuation embedded in an alphanumeric token
-// (e.g. "7-ELEVEN", "AMZN *12-34" -> "AMZN") are left alone since the
-// token as a whole carries a letter and is not standalone numeric or
-// punctuation noise.
+// merchant key: uppercase, standalone "&" tokens with a neighbor on
+// both sides fused into one token (e.g. "H & M" -> "H&M" — Ruling
+// 2026-08-12c, see fuseAmpersands), standalone letterless tokens
+// removed (any token containing no letter at all — all-digit
+// order/terminal numbers like "123", punctuation-only tokens like "*"
+// or "#" (including an unfused "&"), and digit/punctuation mixes like a
+// check number "#996581" — Ruling 2026-08-12b), whitespace collapsed to
+// single spaces, and the result trimmed. Digits and punctuation
+// embedded in an alphanumeric token (e.g. "7-ELEVEN", "AMZN *12-34" ->
+// "AMZN") are left alone since the token as a whole carries a letter
+// and is not standalone numeric or punctuation noise.
 func Normalize(description string) string {
 	upper := strings.ToUpper(description)
 	fields := strings.Fields(upper)
+	fields = fuseAmpersands(fields)
 	kept := make([]string, 0, len(fields))
 	for _, tok := range fields {
 		if hasNoLetters(tok) {
@@ -74,6 +87,42 @@ func Normalize(description string) string {
 		kept = append(kept, tok)
 	}
 	return strings.Join(kept, " ")
+}
+
+// fuseAmpersands scans tokens left to right and fuses every standalone
+// "&" token that has a neighbor token on both sides into one token:
+// left + "&" + right, with no spaces (Ruling 2026-08-12c). Fusion runs
+// BEFORE the letterless-token drop so the fused token — which contains
+// letters from its neighbors — survives that later step, while a "&"
+// missing a neighbor on either side (leading, trailing, or otherwise
+// unpaired) is left alone here and removed by the letterless drop like
+// any other punctuation-only token.
+//
+// Processing is strictly left to right and each fusion consumes its
+// right-hand neighbor, so a run like "A & B & C" fuses in two steps —
+// "A&B" then "A&B&C" — into a single token, matching the no-spaces
+// spelling "A&B&C" a source system might use for the same merchant.
+//
+// This closes the two-letter brand bridge from the pre-fusion behavior:
+// "H & M" used to normalize (via the letterless drop alone) to the
+// 2-token key {H, M}, which could subset-merge into any unrelated key
+// that happened to contain both a standalone "H" token and a standalone
+// "M" token. Fusing "H & M" into the single token "H&M" makes it a
+// 1-token degenerate key, which the merge guard in shouldMerge only
+// merges on exact equality — never via subset containment — closing the
+// bridge.
+func fuseAmpersands(fields []string) []string {
+	out := make([]string, 0, len(fields))
+	for i := 0; i < len(fields); i++ {
+		tok := fields[i]
+		if tok == "&" && len(out) > 0 && i+1 < len(fields) {
+			out[len(out)-1] = out[len(out)-1] + "&" + fields[i+1]
+			i++ // right neighbor consumed into the fused token
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
 }
 
 // hasNoLetters reports whether s is non-empty and contains no

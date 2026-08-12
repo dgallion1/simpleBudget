@@ -37,30 +37,72 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                     </svg>
                 </button>
+                {{if eq .Preset "1m"}}
                 <button type="button" onclick="setInsightPreset('1m')" data-preset="1m"
-                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "1m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-indigo-600 text-white">
                     1M
                 </button>
+                {{else}}
+                <button type="button" onclick="setInsightPreset('1m')" data-preset="1m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                    1M
+                </button>
+                {{end}}
+                {{if eq .Preset "2m"}}
                 <button type="button" onclick="setInsightPreset('2m')" data-preset="2m"
-                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "2m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-indigo-600 text-white">
                     2M
                 </button>
+                {{else}}
+                <button type="button" onclick="setInsightPreset('2m')" data-preset="2m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                    2M
+                </button>
+                {{end}}
+                {{if eq .Preset "3m"}}
                 <button type="button" onclick="setInsightPreset('3m')" data-preset="3m"
-                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "3m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-indigo-600 text-white">
                     3M
                 </button>
+                {{else}}
+                <button type="button" onclick="setInsightPreset('3m')" data-preset="3m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                    3M
+                </button>
+                {{end}}
+                {{if eq .Preset "6m"}}
                 <button type="button" onclick="setInsightPreset('6m')" data-preset="6m"
-                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "6m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-indigo-600 text-white">
                     6M
                 </button>
+                {{else}}
+                <button type="button" onclick="setInsightPreset('6m')" data-preset="6m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                    6M
+                </button>
+                {{end}}
+                {{if eq .Preset "12m"}}
                 <button type="button" onclick="setInsightPreset('12m')" data-preset="12m"
-                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "12m"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-indigo-600 text-white">
                     12M
                 </button>
+                {{else}}
+                <button type="button" onclick="setInsightPreset('12m')" data-preset="12m"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                    12M
+                </button>
+                {{end}}
+                {{if eq .Preset "all"}}
                 <button type="button" onclick="setInsightPreset('all')" data-preset="all"
-                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors {{if eq .Preset "all"}}bg-indigo-600 text-white{{else}}bg-gray-100 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600{{end}}">
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-indigo-600 text-white">
                     All
                 </button>
+                {{else}}
+                <button type="button" onclick="setInsightPreset('all')" data-preset="all"
+                        class="insight-preset-btn px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                    All
+                </button>
+                {{end}}
                 <button type="button" onclick="shiftInsightWindow(1)" title="Shift window forward" aria-label="Shift window forward"
                         class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -88,8 +130,8 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-[10px] font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">Monthly Recurring</p>
-                    <p class="num text-2xl font-bold text-purple-600 dark:text-purple-400">{{formatMoney .Insights.MonthlyRecurring}}</p>
-                    <p class="num text-xs text-gray-400 dark:text-gray-500">{{formatMoney .Insights.TotalRecurring}}/year</p>
+                    <p class="num text-2xl font-bold text-emerald-700 dark:text-emerald-300">{{formatMoney .Insights.MonthlyRecurring}}</p>
+                    <p class="num text-xs text-purple-700 dark:text-purple-300">{{formatMoney .Insights.TotalRecurring}}/year</p>
                 </div>
                 <div class="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-full">
                     <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,7 +147,7 @@
                 <div>
                     <p class="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Subscriptions</p>
                     <p class="num text-2xl font-bold text-rose-600 dark:text-rose-400">{{formatMoney .Insights.MonthlySubscriptions}}</p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">{{len .Insights.Subscriptions}} active</p>
+                    <p class="text-xs text-rose-700 dark:text-rose-300">{{len .Insights.Subscriptions}} active</p>
                 </div>
                 <div class="p-3 bg-rose-100 dark:bg-rose-900/50 rounded-full">
                     <svg class="w-6 h-6 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,11 +165,11 @@
             {{else}}border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20{{end}}">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Spending</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide {{if lt .BurnRateChange 0.0}}text-emerald-700 dark:text-emerald-300{{else if gt .BurnRateChange 10.0}}text-rose-700 dark:text-rose-300{{else}}text-amber-700 dark:text-amber-300{{end}}">Daily Spending</p>
                     <p class="num text-2xl font-bold {{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                         {{formatMoney .DailyAverage}}
                     </p>
-                    <p class="num text-xs {{if lt .BurnRateChange 0.0}}text-emerald-500 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-500 dark:text-rose-400{{else}}text-gray-400 dark:text-gray-500{{end}}">
+                    <p class="num text-xs {{if lt .BurnRateChange 0.0}}text-emerald-500 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-500 dark:text-rose-400{{else}}text-amber-700 dark:text-amber-300{{end}}">
                         {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}% vs avg
                     </p>
                 </div>
@@ -161,8 +203,8 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Month Projection</p>
-                    <p class="num text-2xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .MonthProjection}}</p>
-                    <p class="num text-xs text-gray-400 dark:text-gray-500">{{.DaysRemaining}} days remaining</p>
+                    <p class="num text-2xl font-bold text-emerald-800 dark:text-emerald-200">{{formatMoney .MonthProjection}}</p>
+                    <p class="num text-xs text-indigo-700 dark:text-indigo-300">{{.DaysRemaining}} days remaining</p>
                 </div>
                 <div class="p-3 bg-indigo-100 dark:bg-indigo-900/50 rounded-full">
                     <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -492,7 +534,7 @@
             </div>
             <div class="text-center">
                 <p class="text-sm text-gray-500 dark:text-gray-400">Month Projection</p>
-                <p class="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .MonthProjection}}</p>
+                <p class="text-3xl font-bold text-emerald-800 dark:text-emerald-200">{{formatMoney .MonthProjection}}</p>
             </div>
             <div class="text-center">
                 <p class="text-sm text-gray-500 dark:text-gray-400">Days Remaining</p>
@@ -875,7 +917,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
     </div>
     <div class="text-center">
         <p class="text-sm text-gray-500 dark:text-gray-400">Month Projection</p>
-        <p class="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .Velocity.MonthProjection}}</p>
+        <p class="text-3xl font-bold text-emerald-800 dark:text-emerald-200">{{formatMoney .Velocity.MonthProjection}}</p>
     </div>
     <div class="text-center">
         <p class="text-sm text-gray-500 dark:text-gray-400">Days Remaining</p>

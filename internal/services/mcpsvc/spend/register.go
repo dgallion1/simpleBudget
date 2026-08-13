@@ -68,4 +68,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerPriceCreep(s, deps)
 	registerSummary(s, deps)
 	registerRecurring(s, deps)
+	registerTrends(s, deps)
 }

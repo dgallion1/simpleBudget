@@ -74,6 +74,19 @@ type runOutput struct {
 	MonteCarloOmitted bool         `json:"monte_carlo_omitted"`
 }
 
+type openPageInput struct {
+	Scenario string `json:"scenario,omitempty" jsonschema:"saved scenario filename to switch to first; omit to use the active one"`
+}
+
+// openPageOutput drops the "started" field the standalone MCP process
+// reported: the server answering this call is the server being linked to, so
+// there is never anything to start.
+type openPageOutput struct {
+	URL      string `json:"url"`
+	Active   string `json:"active"`
+	Revision int    `json:"revision"`
+}
+
 // Register adds the planner tools and the assumptions resource to s.
 func Register(s *mcp.Server, deps Deps) {
 	src := NewSource(deps.Settings)
@@ -153,6 +166,25 @@ func Register(s *mcp.Server, deps Deps) {
 			return nil, runOutput{}, err
 		}
 		return nil, runOutput{Scenario: name, Applied: in.Overrides, Analysis: view, MonteCarloOmitted: true}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "open_page",
+		Description: "Return the URL of the what-if page. Call this before apply_changes. The page " +
+			"updates itself, so a tab opened from this URL will show later changes without being reloaded.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in openPageInput) (res *mcp.CallToolResult, out openPageOutput, err error) {
+		defer recoverToError("open_page", &err)
+
+		if in.Scenario != "" && in.Scenario != deps.Settings.ActiveFilename() {
+			if err := deps.Settings.SwitchScenario(in.Scenario); err != nil {
+				return nil, openPageOutput{}, fmt.Errorf("switching to scenario %q: %w", in.Scenario, err)
+			}
+		}
+		return nil, openPageOutput{
+			URL:      deps.BaseURL + "/whatif",
+			Active:   deps.Settings.ActiveFilename(),
+			Revision: deps.Settings.Revision(),
+		}, nil
 	})
 
 	s.AddResource(&mcp.Resource{

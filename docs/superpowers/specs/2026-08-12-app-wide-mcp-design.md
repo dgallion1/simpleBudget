@@ -78,8 +78,10 @@ preserving today's auto-spawn would mean hand-writing a transport pump (session
 IDs, SSE framing). Not worth it on speculation. Revisit only if launch friction
 proves real in practice.
 
-`GET /whatif/state`, `POST /whatif/apply`, and `GET /whatif/poll` remain — the
-what-if page's own polling uses them.
+`GET /whatif/state`, `POST /whatif/apply`, and `GET /whatif/poll` remain, but
+only `/whatif/poll` still has a consumer — the what-if page's own polling uses
+it. `/whatif/state` and `/whatif/apply` are retained without a consumer
+pending a decision on their fate; they are not deleted by this change.
 
 **Fate of `internal/services/whatifmcp`.** Its tool registrations, shaped views
 (`view.go`, `months.go`, `overrides.go`, `scenarios.go`, `insights.go`) and

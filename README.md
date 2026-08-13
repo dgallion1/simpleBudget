@@ -342,10 +342,13 @@ the first 3 charges to the median of the last 3 and reports when the increase
 exceeds 5%; decreases and single outliers never report.
 
 Locked or encrypted storage surfaces as a clear error from the tool rather than
-a parse failure — unlock via `/unlock` in the web UI first. The endpoint is
-reachable only from this machine: requests arriving at a localhost address with
-a non-localhost `Host` header are rejected, and cross-site browser requests are
-refused.
+a parse failure — unlock via `/unlock` in the web UI first. Cross-site browser
+requests are refused (403), and a request arriving over a loopback connection
+with a spoofed non-localhost `Host` header is rejected (403) too — but the
+default listen address (`:8080`, all interfaces) is not restricted to this
+machine, so anyone who can reach it can use these tools exactly as they can
+already use the web UI. Bind to a loopback address (`BUDGET_LISTEN_ADDR`) if
+that matters to you.
 
 ## Project Structure
 

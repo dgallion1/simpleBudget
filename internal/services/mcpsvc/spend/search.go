@@ -83,7 +83,10 @@ func registerSearch(s *mcp.Server, deps Deps) {
 			"than zero\"). Amounts in the result are SIGNED -- expenses are negative. Results are newest-first " +
 			"and paginated: `total` is the full number of matching rows, not the number returned, so check it " +
 			"against the rows you received before concluding you have seen everything. Default 50 rows per " +
-			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page.",
+			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page. " +
+			"Transactions the user has already marked as a resolved duplicate are excluded, matching every " +
+			"other aggregate in the app (the dashboard, get_anomalies, get_price_creep, summarize_spending) " +
+			"so sums here agree with those tools for the same window.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in searchInput) (res *mcp.CallToolResult, out searchOutput, err error) {
 		defer recoverToError("search_transactions", &err)
 
@@ -100,6 +103,14 @@ func registerSearch(s *mcp.Server, deps Deps) {
 		if err != nil {
 			return nil, searchOutput{}, err
 		}
+		// Suppressed rows are near-duplicates the user has already resolved
+		// (dataloader's duplicate-resolution flow); every other aggregate in
+		// the app -- the dashboard, get_anomalies, get_price_creep,
+		// summarize_spending -- excludes them, so a search sum that included
+		// them would silently disagree with all of those for the same
+		// window. Excluded here for the same reason, not filtered later, so
+		// MinDate/MaxDate fallbacks below are also active-only.
+		ts = ts.Active()
 
 		if start != nil || end != nil {
 			from, to := start, end

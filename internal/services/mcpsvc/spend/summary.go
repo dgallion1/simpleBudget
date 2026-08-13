@@ -38,7 +38,12 @@ type budgetView struct {
 	HealthcareActual float64 `json:"healthcare_monthly_actual"`
 	HealthcareDelta  float64 `json:"healthcare_monthly_delta"`
 	MonthsInRange    float64 `json:"months_in_range"`
-	CumulativeDelta  float64 `json:"cumulative_delta"`
+	// CombinedCumulativeDelta is the net living+healthcare variance over the
+	// whole window (actual minus target, summed across both categories) --
+	// unlike LivingDelta/HealthcareDelta above, which are per-category
+	// monthly averages, this is the combined total-dollar figure. Positive
+	// means over budget.
+	CombinedCumulativeDelta float64 `json:"combined_cumulative_delta"`
 }
 
 type summaryOutput struct {
@@ -78,9 +83,10 @@ func byCategoryRows(ts *models.TransactionSet, topN int) []namedAmount {
 
 // byMonthRows returns expense totals by month over ts (already
 // window-filtered), sorted chronologically, never truncated. MonthlyTotals
-// sums the signed amount (expenses negative), so the result is negated to
-// report a positive dollar figure, matching search_transactions' convention
-// that this tool's figures are always positive for expenses.
+// sums the signed amount (expenses negative), so math.Abs is applied to
+// report a positive dollar figure -- this tool's OWN contract (see the
+// registerSummary description below), which differs from
+// search_transactions' signed amounts.
 func byMonthRows(ts *models.TransactionSet) []namedAmount {
 	totals := ts.FilterByType(models.Outflow).MonthlyTotals()
 	months := make([]string, 0, len(totals))
@@ -130,15 +136,25 @@ func byMerchantRows(ts *models.TransactionSet, topN int) []namedAmount {
 func registerSummary(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "summarize_spending",
-		Description: "Totals for the transaction history over an optional date window: income, expenses, " +
-			"net savings and savings rate, plus breakdowns by category, by merchant, and by month. Expense " +
-			"figures here are POSITIVE dollar amounts (unlike search_transactions, which returns signed " +
-			"amounts). Merchants are grouped by the same fuzzy matching used by get_anomalies, so " +
-			"\"SAFEWAY #123\" and \"SAFEWAY #456\" count as one merchant. by_category and by_merchant are " +
-			"limited to top_n entries (default 10) sorted by amount; by_month is always complete. The budget " +
-			"block appears only when a retirement plan with a spending target is configured, and compares " +
-			"actual monthly spending against that plan's target for this window, with healthcare tracked " +
-			"separately from living expenses.",
+		Description: "Totals for the transaction history over an optional date window (default: the full " +
+			"ledger, i.e. its earliest through latest transaction): total_income, total_expenses, net_savings, " +
+			"and savings_rate (a PERCENTAGE, 0-100, not a fraction -- 47 means 47%, not 4700%), plus " +
+			"breakdowns by category, by merchant, and by month. by_category, by_merchant, and by_month are " +
+			"expenses only -- income is not broken out by category/merchant/month, only in the top-level " +
+			"total_income. All amounts in every breakdown, and total_expenses, are POSITIVE dollar figures " +
+			"(unlike search_transactions, which returns signed amounts, expenses negative). Transactions the " +
+			"user has already marked as a resolved duplicate are excluded, matching the dashboard and " +
+			"get_anomalies/get_price_creep/search_transactions. Merchants are grouped by the same fuzzy " +
+			"matching used by get_anomalies, so \"SAFEWAY #123\" and \"SAFEWAY #456\" count as one merchant; " +
+			"the merchant name returned is lower-cased and may not match any single transaction's description " +
+			"verbatim. count (number of transactions folded in) is populated for by_merchant only, not " +
+			"by_category or by_month. by_category and by_merchant are limited to top_n entries (default 10) " +
+			"sorted by amount descending; by_month is always complete, sorted chronologically. The budget " +
+			"block appears only when a retirement plan with a nonzero living or healthcare spending target is " +
+			"configured -- it is omitted entirely, not zeroed, otherwise -- and compares actual monthly " +
+			"spending against that plan's target for this window, with healthcare tracked separately from " +
+			"living expenses; combined_cumulative_delta is the two categories' net dollar variance over the " +
+			"whole window (positive = over budget).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in summaryInput) (res *mcp.CallToolResult, out summaryOutput, err error) {
 		defer recoverToError("summarize_spending", &err)
 
@@ -155,6 +171,14 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		if err != nil {
 			return nil, summaryOutput{}, err
 		}
+		// Suppressed rows are near-duplicates the user has already resolved
+		// (dataloader's duplicate-resolution flow); this tool wraps the same
+		// metrics.Calculate the dashboard uses, so leaving them in would
+		// make this tool's totals, savings rate, and budget verdict
+		// contradict the dashboard screen for the same window. Excluding
+		// them here (before MinDate/MaxDate) also keeps the default window
+		// itself active-only, consistent with search_transactions.
+		ts = ts.Active()
 
 		from, to := start, end
 		if from == nil {
@@ -204,14 +228,14 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		// positive before the block is populated at all.
 		if m.HasBudgetTarget || m.HasHealthcareTarget {
 			out.Budget = &budgetView{
-				LivingTarget:     round2(m.BudgetTarget),
-				LivingActual:     round2(m.ActualMonthly),
-				LivingDelta:      round2(m.PerMonthDelta),
-				HealthcareTarget: round2(m.HealthcareTarget),
-				HealthcareActual: round2(m.HealthcareActual),
-				HealthcareDelta:  round2(m.HealthcarePerMonthDelta),
-				MonthsInRange:    round2(m.MonthsInRange),
-				CumulativeDelta:  round2(m.CombinedCumulativeDelta),
+				LivingTarget:            round2(m.BudgetTarget),
+				LivingActual:            round2(m.ActualMonthly),
+				LivingDelta:             round2(m.PerMonthDelta),
+				HealthcareTarget:        round2(m.HealthcareTarget),
+				HealthcareActual:        round2(m.HealthcareActual),
+				HealthcareDelta:         round2(m.HealthcarePerMonthDelta),
+				MonthsInRange:           round2(m.MonthsInRange),
+				CombinedCumulativeDelta: round2(m.CombinedCumulativeDelta),
 			}
 		}
 

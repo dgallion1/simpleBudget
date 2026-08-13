@@ -263,3 +263,43 @@ func TestSearchTransactionsSumAmountCoversAllMatchesNotJustThePage(t *testing.T)
 		t.Errorf("sum_amount = %v, want %v (the signed sum over all 4 matches, not just the 2 returned rows)", out.SumAmount, wantFullSum)
 	}
 }
+
+// TestSearchTransactionsExcludesSuppressedTransactions guards the fix for a
+// review finding: every other aggregate in the app (dashboard,
+// get_anomalies, get_price_creep, summarize_spending) excludes rows the user
+// has already marked as a resolved duplicate, so search_transactions must
+// too -- otherwise a model summing search results would silently disagree
+// with summarize_spending's totals for the same window.
+func TestSearchTransactionsExcludesSuppressedTransactions(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		{Date: day("2026-01-05"), Description: "NETFLIX", Category: "Entertainment", Amount: -15.99, TransactionType: models.Outflow},
+		{Date: day("2026-01-05"), Description: "NETFLIX", Category: "Entertainment", Amount: -15.99, TransactionType: models.Outflow, Suppressed: true},
+	})
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_transactions",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("search_transactions returned an error: %+v", res.Content)
+	}
+
+	var out searchOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Total != 1 {
+		t.Fatalf("total = %d, want 1 (the suppressed duplicate must be excluded)", out.Total)
+	}
+}

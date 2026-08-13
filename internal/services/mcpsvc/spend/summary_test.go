@@ -108,7 +108,21 @@ func TestSummarizeSpendingTotalsByCategoryAndMonth(t *testing.T) {
 		t.Errorf("Entertainment = %v, want 31.98", byCat["Entertainment"])
 	}
 	if len(out.ByMonth) != 2 {
-		t.Errorf("by_month has %d entries, want 2: %+v", len(out.ByMonth), out.ByMonth)
+		t.Fatalf("by_month has %d entries, want 2: %+v", len(out.ByMonth), out.ByMonth)
+	}
+	// Pins the sign: MonthlyTotals sums the signed amount (expenses
+	// negative), so byMonthRows must math.Abs it. Without that, this would
+	// assert -15.99 and still pass -- the length check alone can't catch a
+	// deleted Abs.
+	byMonth := map[string]float64{}
+	for _, m := range out.ByMonth {
+		byMonth[m.Month] = m.Amount
+	}
+	if byMonth["2026-01"] != 220.09 { // Netflix 15.99 + Safeway 204.10
+		t.Errorf("by_month[2026-01] = %v, want 220.09 (positive)", byMonth["2026-01"])
+	}
+	if byMonth["2026-02"] != 15.99 { // Netflix only; the Feb paycheck is income, not counted here
+		t.Errorf("by_month[2026-02] = %v, want 15.99 (positive)", byMonth["2026-02"])
 	}
 }
 
@@ -277,5 +291,76 @@ func TestSummarizeSpendingReportsALoadFailureAsAToolError(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatal("summarize_spending should have reported the load failure as a tool error")
+	}
+}
+
+// TestSummarizeSpendingOmitsBudgetWhenTargetsAreZero is the case the brief
+// called out explicitly: a settings manager IS wired and loads successfully,
+// but the scenario has no living or healthcare target configured (both 0).
+// This exercises the HasBudgetTarget||HasHealthcareTarget gate directly,
+// distinct from TestSummarizeSpendingOmitsBudgetWhenNoSettingsAreWired above
+// (which exercises deps.Settings == nil, a different code path).
+func TestSummarizeSpendingOmitsBudgetWhenTargetsAreZero(t *testing.T) {
+	sm := newSummaryTestManager(t, 0, 0)
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: searchFixture()}, Settings: sm})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Budget != nil {
+		t.Errorf("budget = %+v, want nil when both targets are 0 (unset, not a real $0 target)", out.Budget)
+	}
+}
+
+// TestSummarizeSpendingExcludesSuppressedTransactions guards the fix for a
+// review finding: this tool wraps metrics.Calculate, the same function the
+// dashboard uses, so a resolved duplicate left in would make this tool's
+// totals contradict the dashboard screen for the same window.
+func TestSummarizeSpendingExcludesSuppressedTransactions(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		{Date: day("2026-01-05"), Description: "NETFLIX", Category: "Entertainment", Amount: -15.99, TransactionType: models.Outflow},
+		{Date: day("2026-01-05"), Description: "NETFLIX", Category: "Entertainment", Amount: -15.99, TransactionType: models.Outflow, Suppressed: true},
+	})
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.TotalExpenses != 15.99 {
+		t.Errorf("total_expenses = %v, want 15.99 (the suppressed duplicate must be excluded)", out.TotalExpenses)
+	}
+	if len(out.ByMerchant) != 1 || out.ByMerchant[0].Count != 1 {
+		t.Errorf("by_merchant = %+v, want one merchant with count 1", out.ByMerchant)
 	}
 }

@@ -288,10 +288,14 @@ func TestGetRecurringSkipsAnnotationWhenMajorExpensesLoadFails(t *testing.T) {
 	}
 }
 
-// TestGetRecurringSkipsAnnotationWhenTransactionPinsLoadFails mirrors the
-// above for the second load: a pins-load failure also degrades to
-// unannotated payments rather than failing the call.
-func TestGetRecurringSkipsAnnotationWhenTransactionPinsLoadFails(t *testing.T) {
+// TestGetRecurringStillAnnotatesFromDefinitionsWhenTransactionPinsLoadFails
+// mirrors the handler's own annotateRecurringWithMajorExpense, which
+// ignores a LoadTransactionPins error as long as major-expense definitions
+// loaded (owner ruling: match the app -- a pins failure should not cost the
+// definition-derived label, since AnnotateRecurringPayments accepts a nil
+// pins map and pins are only an override on top of keyword/amount
+// matching). A pins-load failure alone must not degrade to unannotated.
+func TestGetRecurringStillAnnotatesFromDefinitionsWhenTransactionPinsLoadFails(t *testing.T) {
 	cs := connect(t, Deps{
 		Transactions: stubTransactions{ts: recurringFixture()},
 		MajorExpenses: stubMajorExpenses{
@@ -315,9 +319,17 @@ func TestGetRecurringSkipsAnnotationWhenTransactionPinsLoadFails(t *testing.T) {
 	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
 		t.Fatalf("decode structured content: %v", err)
 	}
+	found := false
 	for _, p := range out.Payments {
-		if p.Description == "netflix" && p.MajorExpenseName != "" {
-			t.Errorf("major_expense_name should be empty when pins failed to load, got %q", p.MajorExpenseName)
+		if p.Description == "netflix" {
+			found = true
+			if p.MajorExpenseName != "Streaming Services" {
+				t.Errorf("major_expense_name = %q, want %q (a pins-load failure should not cost the definition-derived label)",
+					p.MajorExpenseName, "Streaming Services")
+			}
 		}
+	}
+	if !found {
+		t.Fatalf("netflix not found in %+v", out.Payments)
 	}
 }

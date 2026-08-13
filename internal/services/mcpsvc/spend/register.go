@@ -32,10 +32,12 @@ type MajorExpenseSource interface {
 // Deps is what the spending tools need. Store is optional and used only to
 // turn a locked store into a clear message instead of a parse failure.
 // Settings is also optional: when nil, summarize_spending omits the budget
-// comparison instead of failing. MajorExpenses is also optional: when nil
-// (or either of its loads fails), get_recurring returns payments
+// comparison instead of failing. MajorExpenses is also optional: when nil,
+// or its major-expenses load fails, get_recurring returns payments
 // unannotated instead of failing the call -- the major-expense label is a
-// convenience, not the answer.
+// convenience, not the answer. A pins-load failure alone is tolerated;
+// annotation still proceeds from definitions, matching the handler's own
+// annotateRecurringWithMajorExpense.
 type Deps struct {
 	Transactions  TransactionSource
 	Store         *storage.Storage

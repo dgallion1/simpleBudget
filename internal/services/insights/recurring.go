@@ -101,6 +101,10 @@ func recurringPaymentIsActive(lastDate time.Time, intervalDays float64, now time
 	return daysSinceLastPayment <= recurringFreshnessWindow(intervalDays)
 }
 
+// ReferenceDate resolves the "as of" date DetectRecurringAt uses for both
+// truncating the ledger and judging freshness: referenceDate itself when
+// non-zero, otherwise ts's latest transaction date, otherwise (a nil or
+// empty ts) the wall clock.
 func ReferenceDate(ts *models.TransactionSet, referenceDate time.Time) time.Time {
 	if !referenceDate.IsZero() {
 		return referenceDate
@@ -113,6 +117,13 @@ func ReferenceDate(ts *models.TransactionSet, referenceDate time.Time) time.Time
 	return time.Now()
 }
 
+// TransactionSetForRecurring truncates ts to transactions on or before
+// referenceDate (a zero referenceDate is a no-op, returning ts unchanged).
+// This is the historical-cutoff half of DetectRecurringAt's referenceDate
+// parameter: transactions after referenceDate are dropped before detection
+// runs, not merely filtered from the display afterward, so occurrence
+// counts, averages, and annual costs for a past referenceDate reflect only
+// what the ledger looked like up to that date.
 func TransactionSetForRecurring(ts *models.TransactionSet, referenceDate time.Time) *models.TransactionSet {
 	if ts == nil || referenceDate.IsZero() {
 		return ts
@@ -179,10 +190,31 @@ func mergeSimilarGroups(groups map[string][]models.Transaction) map[string][]mod
 	return merged
 }
 
+// DetectRecurring detects recurring payments over the whole of ts, using
+// ts's own latest transaction date (or, if ts is empty, the wall clock) as
+// the reference date -- equivalent to DetectRecurringAt(ts, time.Time{}).
 func DetectRecurring(ts *models.TransactionSet) []models.RecurringPayment {
 	return DetectRecurringAt(ts, time.Time{})
 }
 
+// DetectRecurringAt clusters ts's outflows into merchant groups and reports
+// each group whose amounts and intervals are consistent enough to call
+// recurring (weekly/biweekly/monthly/quarterly/yearly by fixed interval, or
+// "ongoing" for a variable-amount relationship such as metered billing).
+//
+// referenceDate does two distinct jobs, both resolved via ReferenceDate
+// when zero (falling back to ts's own MaxDate, then the wall clock):
+//
+//  1. It is a historical truncation, applied first via
+//     TransactionSetForRecurring: transactions after referenceDate are
+//     dropped before detection runs, so a past referenceDate changes what
+//     data detection even sees, not just what gets displayed.
+//  2. Against that truncated history, it is also the freshness "now" each
+//     candidate series is checked against (recurringPaymentIsActive) --
+//     a series whose last occurrence (within the truncated history) is too
+//     old relative to its own interval is excluded as no longer active.
+//
+// Results are capped at the 20 highest AnnualCost payments.
 func DetectRecurringAt(ts *models.TransactionSet, referenceDate time.Time) []models.RecurringPayment {
 	var recurring []models.RecurringPayment
 

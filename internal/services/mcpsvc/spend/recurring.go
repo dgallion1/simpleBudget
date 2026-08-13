@@ -39,9 +39,14 @@ type recurringOutput struct {
 
 // annotateMajorExpenses fills MajorExpenseName on each payment via
 // majorexpenses.AnnotateRecurringPayments, when deps.MajorExpenses is wired
-// and both of its loads succeed. Otherwise it returns payments unannotated
-// -- the label is a convenience, not the answer, so a missing dependency or
-// a load failure must not fail the tool call.
+// and its definitions load succeeds. A pins-load failure is tolerated --
+// annotation proceeds from definitions alone (nil pins), matching the
+// handler's own annotateRecurringWithMajorExpense, which likewise ignores a
+// LoadTransactionPins error as long as major-expense definitions loaded
+// (internal/handlers/insights/handlers.go). AnnotateRecurringPayments
+// accepts a nil pins map. A missing MajorExpenses dependency or a
+// definitions-load failure returns payments unannotated instead of failing
+// the call -- the label is a convenience, not the answer.
 func (d Deps) annotateMajorExpenses(payments []models.RecurringPayment) []models.RecurringPayment {
 	if d.MajorExpenses == nil {
 		return payments
@@ -50,10 +55,7 @@ func (d Deps) annotateMajorExpenses(payments []models.RecurringPayment) []models
 	if err != nil {
 		return payments
 	}
-	pins, err := d.MajorExpenses.LoadTransactionPins()
-	if err != nil {
-		return payments
-	}
+	pins, _ := d.MajorExpenses.LoadTransactionPins()
 	return majorexpenses.AnnotateRecurringPayments(payments, defs, pins)
 }
 
@@ -95,21 +97,30 @@ func registerRecurring(s *mcp.Server, deps Deps) {
 		Description: "Detect recurring payments (subscriptions, bills, and other repeating charges) by " +
 			"clustering outflows into merchant groups and looking for consistent amounts at consistent " +
 			"intervals -- weekly, biweekly, monthly, quarterly, yearly, or a variable-amount \"ongoing\" " +
-			"relationship (e.g. metered/usage-based billing). Detection ALWAYS runs over the COMPLETE " +
-			"transaction history; reference_date only controls the FRESHNESS CUTOFF -- a detected series is " +
-			"reported only if its most recent occurrence is recent enough for its own interval as of that " +
-			"date (a monthly charge stays \"active\" for a shorter gap than a yearly one), so a series that " +
-			"stopped well before reference_date is correctly omitted as no longer active. reference_date " +
-			"defaults to the ledger's latest transaction date, matching the Insights page. Suppressed " +
-			"transactions (rows the user has already marked as a resolved duplicate) are excluded before " +
-			"detection, matching every other spend tool. is_subscription is a HEURISTIC over the payment's " +
-			"frequency and its merchant description (retail stores and utility/bill keywords are excluded), " +
-			"not a fact about the merchant -- treat it as a hint, not ground truth. Set subscriptions_only to " +
-			"return only rows flagged that way. major_expense_name is populated only when the payment matches " +
-			"one of the user's declared major expenses (via pin or keyword/amount match) and is omitted " +
-			"otherwise. amount and annual_cost are POSITIVE dollar figures (unlike search_transactions, which " +
-			"returns signed amounts). frequency is lower-case as stored (\"monthly\", \"yearly\", ...), not " +
-			"title-cased. Results are capped at the 20 highest annual_cost series.",
+			"relationship (e.g. metered/usage-based billing). Detection runs over the WHOLE transaction " +
+			"history UP TO reference_date -- this is a historical truncation, not a recent display window: " +
+			"transactions after reference_date are excluded from detection entirely, so occurrence counts, " +
+			"averages, and annual_cost are all computed only from what happened on or before that date. A " +
+			"past reference_date therefore answers \"what did this look like as of that point in the " +
+			"ledger,\" not \"what does it look like now, shown as of an earlier date.\" reference_date does " +
+			"a SECOND job on top of that truncation: it is also the freshness cutoff a detected series must " +
+			"still be current against -- a series is reported only if its most recent occurrence (within the " +
+			"truncated history) is recent enough for its own interval as of that date (a monthly charge " +
+			"stays \"active\" for a shorter gap than a yearly one), so a series that stopped well before " +
+			"reference_date is correctly omitted as no longer active. reference_date defaults to the " +
+			"ledger's latest transaction date, matching the Insights page (i.e. by default nothing is " +
+			"truncated). Suppressed transactions (rows the user has already marked as a resolved duplicate) " +
+			"are excluded before detection, matching every other spend tool. is_subscription is a HEURISTIC " +
+			"over the payment's frequency and its merchant description (retail stores and utility/bill " +
+			"keywords are excluded), not a fact about the merchant -- treat it as a hint, not ground truth. " +
+			"Set subscriptions_only to return only rows flagged that way -- NOTE this filter is applied " +
+			"AFTER detection caps results at the 20 highest-annual_cost series, so if 20+ higher-cost bills " +
+			"crowd out lower-cost subscriptions, subscriptions_only can return an incomplete list rather " +
+			"than every subscription in the ledger. major_expense_name is populated only when the payment " +
+			"matches one of the user's declared major expenses (via pin or keyword/amount match) and is " +
+			"omitted otherwise. amount and annual_cost are POSITIVE dollar figures (unlike " +
+			"search_transactions, which returns signed amounts). frequency is lower-case as stored " +
+			"(\"monthly\", \"yearly\", ...), not title-cased.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in recurringInput) (res *mcp.CallToolResult, out recurringOutput, err error) {
 		defer recoverToError("get_recurring", &err)
 

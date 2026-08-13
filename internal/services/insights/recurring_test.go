@@ -129,7 +129,8 @@ func TestMergeSimlarGroups_SingleGroup(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_FuzzyMergedVendor(t *testing.T) {
-
+	// Simulate the Lucid scenario: different description variants that should merge
+	// and meet the 3-transaction minimum
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("Lucid", 1580, 5),
@@ -160,7 +161,7 @@ func TestDetectRecurringPayments_FuzzyMergedVendor(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_ExactMatchStillWorks(t *testing.T) {
-
+	// Standard case: all descriptions match exactly
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("netflix", 15.99, 5),
@@ -211,7 +212,7 @@ func TestIsSubscription(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_AmountBasedGrouping(t *testing.T) {
-
+	// Simulate the Lucid check-to-billpay scenario: same amount, different descriptions
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("Lucid", 1580.43, 5),
@@ -231,7 +232,7 @@ func TestDetectRecurringPayments_AmountBasedGrouping(t *testing.T) {
 			if r.Frequency != "monthly" {
 				t.Errorf("expected monthly frequency, got %q", r.Frequency)
 			}
-
+			// Most recent description should be used as the label
 			if r.Description != "lucid" {
 				t.Errorf("expected description 'lucid' (most recent), got %q", r.Description)
 			}
@@ -246,7 +247,7 @@ func TestDetectRecurringPayments_AmountBasedGrouping(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_AmountBasedSkipsTinyAmounts(t *testing.T) {
-
+	// Small amounts under $5 should not trigger amount-based matching
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("coffee shop a", 3.50, 5),
@@ -264,7 +265,7 @@ func TestDetectRecurringPayments_AmountBasedSkipsTinyAmounts(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_AmountBasedNoFalsePositivesDifferentAmounts(t *testing.T) {
-
+	// Transactions with different amounts should not be grouped
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("vendor a", 100.00, 5),
@@ -283,7 +284,8 @@ func TestDetectRecurringPayments_AmountBasedNoFalsePositivesDifferentAmounts(t *
 }
 
 func TestDetectRecurringPayments_AmountBasedSkipsAlreadyMatched(t *testing.T) {
-
+	// If transactions are already matched by description (pass 1), they shouldn't
+	// also appear via amount-based matching
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("netflix", 15.99, 5),
@@ -306,12 +308,12 @@ func TestDetectRecurringPayments_AmountBasedSkipsAlreadyMatched(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_AmountBasedIrregularIntervals(t *testing.T) {
-
+	// Same amount but irregular intervals should not match
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("payment a", 500.00, 5),
-			txn("payment b", 500.00, 10),
-			txn("payment c", 500.00, 60),
+			txn("payment b", 500.00, 10), // 5 days later
+			txn("payment c", 500.00, 60), // 50 days later
 		},
 	}
 	recurring := DetectRecurring(ts)
@@ -324,7 +326,9 @@ func TestDetectRecurringPayments_AmountBasedIrregularIntervals(t *testing.T) {
 }
 
 func TestDetectRecurringPayments_LongHistoryPattern(t *testing.T) {
-
+	// 12 months of insurance payments spread across a full year.
+	// Even though a short date filter would only see a couple of these,
+	// detectRecurringPayments should find the pattern when given the full history.
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			txn("insurance", 200, 30),
@@ -527,18 +531,18 @@ func TestRecurringFreshnessWindow(t *testing.T) {
 		intervalDays float64
 		expected     float64
 	}{
-		{-1, 90},
-		{0, 90},
-		{7, 21},
-		{9, 21},
-		{14, 45},
-		{16, 45},
-		{30, 90},
-		{35, 90},
-		{90, 180},
-		{95, 180},
-		{365, 455},
-		{500, 455},
+		{-1, 90},   // <= 0
+		{0, 90},    // <= 0
+		{7, 21},    // <= 9
+		{9, 21},    // <= 9
+		{14, 45},   // <= 16
+		{16, 45},   // <= 16
+		{30, 90},   // <= 35
+		{35, 90},   // <= 35
+		{90, 180},  // <= 95
+		{95, 180},  // <= 95
+		{365, 455}, // default
+		{500, 455}, // default
 	}
 	for _, tt := range tests {
 		got := recurringFreshnessWindow(tt.intervalDays)
@@ -551,7 +555,7 @@ func TestRecurringFreshnessWindow(t *testing.T) {
 // TestRecurringReferenceDate covers the time.Now() fallback
 func TestRecurringReferenceDate_NilTSZeroRef(t *testing.T) {
 	result := ReferenceDate(nil, time.Time{})
-
+	// Should return something close to now
 	if time.Since(result) > time.Second {
 		t.Errorf("expected time close to now, got %v", result)
 	}
@@ -572,7 +576,7 @@ func TestRecurringReferenceDate_ZeroRefUsesMaxDate(t *testing.T) {
 func TestRecurringReferenceDate_ZeroRefEmptyTS(t *testing.T) {
 	ts := &models.TransactionSet{}
 	result := ReferenceDate(ts, time.Time{})
-
+	// MaxDate returns zero, so should fall through to time.Now()
 	if time.Since(result) > time.Second {
 		t.Errorf("expected time close to now, got %v", result)
 	}
@@ -758,7 +762,7 @@ func TestDetectRecurringPaymentsAt_InconsistentAmountsSkipped(t *testing.T) {
 // TestDetectRecurringPaymentsAt_UnmatchedIntervalSkipped covers the default continue in frequency switch
 func TestDetectRecurringPaymentsAt_UnmatchedIntervalSkipped(t *testing.T) {
 	now := time.Now()
-
+	// Interval of ~45 days doesn't match any frequency bucket
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			{Description: "odd interval", Amount: -100, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
@@ -776,7 +780,9 @@ func TestDetectRecurringPaymentsAt_UnmatchedIntervalSkipped(t *testing.T) {
 
 // TestDetectRecurringPaymentsAt_LowConfidenceSkipped covers confidence < 0.5
 func TestDetectRecurringPaymentsAt_LowConfidence(t *testing.T) {
-
+	// Create transactions with high stdDev relative to median to get low confidence
+	// but not high enough to be filtered by the stdDev > 7 check
+	// This is hard to construct, so just verify the function doesn't crash
 	now := time.Now()
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
@@ -786,7 +792,7 @@ func TestDetectRecurringPaymentsAt_LowConfidence(t *testing.T) {
 			{Description: "noisy", Amount: -100, Date: now.AddDate(0, 0, -90), TransactionType: models.Outflow},
 		},
 	}
-	_ = DetectRecurring(ts)
+	_ = DetectRecurring(ts) // Should not panic
 }
 
 // TestDetectRecurringPaymentsAt_WeeklyNeedsFourOccurrences covers the len(txns) < 4 check for weekly
@@ -828,7 +834,7 @@ func TestDetectRecurringPaymentsAt_BiweeklyNeedsFourOccurrences(t *testing.T) {
 // TestDetectRecurringPaymentsAt_OngoingPayment covers the second pass (ongoing detection)
 func TestDetectRecurringPaymentsAt_OngoingPaymentRecentActivity(t *testing.T) {
 	now := time.Now()
-
+	// Variable amounts, spans > 60 days, recent activity
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			{Description: "cloud service", Amount: -15, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
@@ -853,9 +859,9 @@ func TestDetectRecurringPaymentsAt_OngoingPaymentRecentActivity(t *testing.T) {
 
 // TestDetectRecurringPaymentsAt_OngoingOlderActivity covers confidence 0.8 tier
 func TestDetectRecurringPaymentsAt_OngoingOlderActivity(t *testing.T) {
-
+	// Use a fixed reference date so we control the "now" used for confidence
 	refDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-
+	// Last payment 45 days before refDate (confidence 0.8 tier: 30-60 days)
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			{Description: "api billing", Amount: -30, Date: refDate.AddDate(0, 0, -45), TransactionType: models.Outflow},
@@ -878,7 +884,7 @@ func TestDetectRecurringPaymentsAt_OngoingOlderActivity(t *testing.T) {
 // TestDetectRecurringPaymentsAt_OngoingDefaultConfidence covers confidence 0.7 tier (>60 days)
 func TestDetectRecurringPaymentsAt_OngoingDefaultConfidence(t *testing.T) {
 	refDate := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-
+	// Last payment 65 days before refDate (confidence 0.7 tier: >60 days)
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			{Description: "old service", Amount: -50, Date: refDate.AddDate(0, 0, -65), TransactionType: models.Outflow},
@@ -945,7 +951,7 @@ func TestDetectRecurringPaymentsAt_OngoingStaleActivitySkipped(t *testing.T) {
 func TestDetectRecurringPaymentsAt_Max20Results(t *testing.T) {
 	now := time.Now()
 	var txns []models.Transaction
-
+	// Create 25 distinct monthly recurring vendors
 	for v := 0; v < 25; v++ {
 		desc := fmt.Sprintf("vendor-%02d", v)
 		for i := 0; i < 4; i++ {
@@ -1017,7 +1023,7 @@ func TestDetectByAmount_YearlyFrequency(t *testing.T) {
 // TestDetectByAmount_LowConfidenceSkipped covers confidence < 0.4 in detectByAmount
 func TestDetectByAmount_DefaultCaseSkipped(t *testing.T) {
 	now := time.Now()
-
+	// Interval ~60 days doesn't match monthly/quarterly/yearly
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			{Description: "odd-a", Amount: -800, Date: now.AddDate(0, 0, -5), TransactionType: models.Outflow},
@@ -1036,7 +1042,20 @@ func TestDetectByAmount_DefaultCaseSkipped(t *testing.T) {
 // TestMergeSimilarGroups_ShorterCanonicalReplacement covers the re-mapping branch
 // where a new key's stripped name is shorter than an existing canonical.
 func TestMergeSimilarGroups_ShorterCanonicalReplacement(t *testing.T) {
-
+	// Keys are sorted by length, so "abcdef" comes before "abc".
+	// Wait, shorter comes first. So we need to construct a case where:
+	// - A longer key is processed first and becomes canonical
+	// - Then a shorter key whose stripped form is a prefix triggers re-mapping
+	// Since keys are sorted by length (shorter first), we need the stripped version
+	// to differ. E.g., "abc.com" (len=7) strips to "abc" (len=3),
+	// then "abcxyz" (len=6) strips to "abcxyz" (len=6).
+	// But "abc" is a prefix of "abcxyz" so they'd merge.
+	// Actually we need len(stripped) < len(canon). The first key processed is shorter.
+	// So "ab.com" (len=6, stripped="ab") is first. Then "abc" (len=3, stripped="abc").
+	// Wait no, "abc" has len 3 which is < 6, so it comes first.
+	// "abc" -> stripped="abc", canonical["abc"]="abc"
+	// "ab.com" -> stripped="ab", check: is "ab" prefix of "abc"? Yes!
+	// So it merges into "abc". Then len("ab") < len("abc"), so re-mapping happens.
 	groups := map[string][]models.Transaction{
 		"abc":    {txn("abc", 10, 30)},
 		"ab.com": {txn("ab.com", 10, 60)},
@@ -1046,13 +1065,13 @@ func TestMergeSimilarGroups_ShorterCanonicalReplacement(t *testing.T) {
 	if len(merged) != 1 {
 		t.Fatalf("expected 1 group, got %d: %v", len(merged), keys(merged))
 	}
-
+	// The shorter stripped name "ab" should cause re-mapping to "ab.com"
 	if txns, ok := merged["ab.com"]; ok {
 		if len(txns) != 2 {
 			t.Errorf("expected 2 transactions, got %d", len(txns))
 		}
 	} else if txns, ok := merged["abc"]; ok {
-
+		// Either key is fine — the point is they merged
 		if len(txns) != 2 {
 			t.Errorf("expected 2 transactions, got %d", len(txns))
 		}
@@ -1065,7 +1084,18 @@ func TestMergeSimilarGroups_ShorterCanonicalReplacement(t *testing.T) {
 // For weekly (medianInterval ~7), confidence = 1 - (stdDev/7). With stdDev=5, confidence=0.29 < 0.5.
 func TestDetectRecurringPaymentsAt_LowConfidenceFiltered(t *testing.T) {
 	now := time.Now()
-
+	// Create weekly-ish payments with high variance (stdDev around 5, median ~7)
+	// intervals: 3, 7, 12, 3 => sorted: 3, 3, 7, 12 => median=3 (or 7 depending on count)
+	// Actually need precise control. Let me use 5 txns with intervals: 7, 7, 7, 12 for 4 intervals
+	// sorted: 7, 7, 7, 12 => median = 7
+	// stdDev = sqrt(((0+0+0+25)/4)) = sqrt(6.25) = 2.5 => confidence = 1-2.5/7 = 0.64 (too high)
+	// Need intervals like 2, 12, 2, 12 => sorted: 2, 2, 12, 12 => median = 2 (index 2 of 4 = 12 no, index 2 is 2)
+	// Actually median for len=4 is sortedIntervals[4/2] = sortedIntervals[2] = 12
+	// Hmm, let me recalculate. sorted: [2, 2, 12, 12], median = sorted[2] = 12. Not in weekly range.
+	//
+	// Try: 5 txns, intervals: [7, 7, 2, 13] => sorted: [2, 7, 7, 13], median = sorted[2] = 7
+	// diff from 7: [-5, 0, 0, 6], sumSq = 25+0+0+36 = 61, stdDev = sqrt(61/4) = 3.9
+	// confidence = 1 - 3.9/7 = 0.44 < 0.5 -- AND stdDev=3.9 < 7. This works!
 	ts := &models.TransactionSet{
 		Transactions: []models.Transaction{
 			{Description: "lowconf svc", Amount: -20, Date: now.AddDate(0, 0, 0), TransactionType: models.Outflow},

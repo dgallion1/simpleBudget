@@ -39,8 +39,12 @@ const serverInstructions = "These tools read and re-run a personal retirement pr
 	"plan; run_scenario does not. Prefer run_scenario while exploring, and " +
 	"apply_changes only when the user has settled on a change."
 
-// NewServer builds the MCP server. A nil field in deps disables only the tools
-// that need it; registration itself never touches a dependency.
+// NewServer builds the MCP server. A nil Loader disables spend's tools;
+// registration itself never touches a dependency. Other nil fields are not
+// load-bearing at registration time but will fail individual tool calls that
+// need them -- notably a nil SettingsDir/SnapshotDir still registers
+// apply_changes (via an always-constructed Snapshotter), which then fails at
+// call time rather than being absent from the tool list.
 func NewServer(deps Deps) *mcp.Server {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "budget2", Version: "v0.2.0"},

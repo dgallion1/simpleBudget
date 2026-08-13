@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -113,10 +114,25 @@ func SetupDependencies(c *config.Config) error {
 		Store:       store,
 		SettingsDir: settingsDir,
 		SnapshotDir: filepath.Join(cfg.BackupDir, "mcp-snapshots"),
-		BaseURL:     "http://localhost" + cfg.ListenAddr,
+		BaseURL:     mcpBaseURL(cfg.ListenAddr),
 	})
 
 	return nil
+}
+
+// mcpBaseURL turns a listen address (":8080", "0.0.0.0:8080", "127.0.0.1:8080")
+// into a URL this same process can reach itself at, always substituting
+// "localhost" for the host part: the configured host may be unroutable from
+// the process itself (0.0.0.0) or absent entirely (":8080"), but the server
+// this call builds a URL for is always reachable via localhost.
+func mcpBaseURL(listenAddr string) string {
+	_, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		// Not a valid host:port pair; fall back to the previous behavior
+		// rather than producing a malformed URL.
+		return "http://localhost" + listenAddr
+	}
+	return "http://" + net.JoinHostPort("localhost", port)
 }
 
 // SetupRouter creates and configures the HTTP router.

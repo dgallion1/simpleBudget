@@ -197,26 +197,38 @@ func Register(s *mcp.Server, deps Deps) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in applyChangesInput) (res *mcp.CallToolResult, out applyChangesOutput, err error) {
 		defer recoverToError("apply_changes", &err)
 
+		// expected is the caller's own scenario name when it named one, not a
+		// re-read of ActiveFilename() after the switch below: a second
+		// scenario switch racing this call between that switch and a re-read
+		// could otherwise snapshot and write a plan the caller never named.
+		// Using the caller's own intent instead means such a race makes
+		// ApplyOverrides refuse the write below, rather than silently
+		// retargeting it.
+		expected := in.Scenario
+		if expected == "" {
+			expected = deps.Settings.ActiveFilename()
+		}
+
 		if in.Scenario != "" && in.Scenario != deps.Settings.ActiveFilename() {
 			if err := deps.Settings.SwitchScenario(in.Scenario); err != nil {
 				return nil, applyChangesOutput{}, fmt.Errorf("switching to scenario %q: %w", in.Scenario, err)
 			}
 		}
 
-		active := deps.Settings.ActiveFilename()
 		revisionBefore := deps.Settings.Revision()
 
 		// Before the write, never after: a failed snapshot must abort it.
-		snapPath, err := deps.Snapshots.Ensure(active, time.Now())
+		snapPath, err := deps.Snapshots.Ensure(expected, time.Now())
 		if err != nil {
 			return nil, applyChangesOutput{}, err
 		}
 
-		// active is the scenario the snapshot above covers. Passing it as the
-		// expectation moves the read-vs-write comparison inside the manager's
-		// write lock, where a browser-driven scenario switch racing this call
-		// can still PREVENT the write instead of being reported after it.
-		settings, written, revisionAfter, err := deps.Settings.ApplyOverrides(in.Overrides, active)
+		// expected is also the scenario the snapshot above covers. Passing it
+		// as the expectation moves the read-vs-write comparison inside the
+		// manager's write lock, where a browser-driven scenario switch racing
+		// this call can still PREVENT the write instead of being reported
+		// after it.
+		settings, written, revisionAfter, err := deps.Settings.ApplyOverrides(in.Overrides, expected)
 		if err != nil {
 			return nil, applyChangesOutput{}, err
 		}

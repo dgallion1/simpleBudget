@@ -56,7 +56,12 @@ func NewServer(deps Deps) *mcp.Server {
 		BaseURL:   deps.BaseURL,
 	})
 	if deps.Loader != nil {
-		spend.Register(s, spend.Deps{Transactions: deps.Loader, Store: deps.Store, Settings: deps.Settings})
+		spend.Register(s, spend.Deps{
+			Transactions:  deps.Loader,
+			Store:         deps.Store,
+			Settings:      deps.Settings,
+			MajorExpenses: deps.Loader,
+		})
 	}
 	return s
 }

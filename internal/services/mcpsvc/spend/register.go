@@ -22,14 +22,25 @@ type TransactionSource interface {
 	LoadData() (*models.TransactionSet, error)
 }
 
+// MajorExpenseSource supplies the declared major expenses and manual pins
+// used to label recurring payments. *dataloader.DataLoader satisfies it.
+type MajorExpenseSource interface {
+	LoadMajorExpenses() ([]models.MajorExpense, error)
+	LoadTransactionPins() (map[string]string, error)
+}
+
 // Deps is what the spending tools need. Store is optional and used only to
 // turn a locked store into a clear message instead of a parse failure.
 // Settings is also optional: when nil, summarize_spending omits the budget
-// comparison instead of failing.
+// comparison instead of failing. MajorExpenses is also optional: when nil
+// (or either of its loads fails), get_recurring returns payments
+// unannotated instead of failing the call -- the major-expense label is a
+// convenience, not the answer.
 type Deps struct {
-	Transactions TransactionSource
-	Store        *storage.Storage
-	Settings     *retirement.SettingsManager
+	Transactions  TransactionSource
+	Store         *storage.Storage
+	Settings      *retirement.SettingsManager
+	MajorExpenses MajorExpenseSource
 }
 
 func recoverToError(tool string, err *error) {
@@ -54,4 +65,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerAnomalies(s, deps)
 	registerPriceCreep(s, deps)
 	registerSummary(s, deps)
+	registerRecurring(s, deps)
 }

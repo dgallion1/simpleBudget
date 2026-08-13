@@ -889,7 +889,11 @@ Move from `internal/handlers/insights/handlers.go`:
 | `AnalyzeIncomePatterns` (line 901) | `IncomePatterns` |
 | `calculateSpendingVelocity` (line 991) | `SpendingVelocity` |
 
-`AnalyzeIncomePatterns` is already exported from the handler package — run `LSP` `findReferences` on it before moving, and update every caller.
+`AnalyzeIncomePatterns` is already exported from the handler package and **has a caller in another handler package**: `internal/handlers/whatif/handlers.go:1113` calls `insights.AnalyzeIncomePatterns(filtered)`, importing `budget2/internal/handlers/insights` at line 32 for that one function and nothing else.
+
+So this move deletes `whatif`'s only reason to import the insights *handler* package. After the move, that import becomes `budget2/internal/services/insights` — same local name, so the call site needs no rename, but confirm with `LSP` `findReferences` that line 1113 is genuinely the only use before swapping the import path. If any other `insights.` reference appears in `whatif`, both imports are needed and the new one must be aliased.
+
+This is a small but real improvement to the dependency graph: a handler package importing another handler package is the kind of edge that spreads. Note the removal explicitly in your report — the `whatif` handlers are high-value code in this project and a reviewer will want to see that call site verified rather than assumed.
 
 - [ ] **Step 2: Point the handler at the service and move the tests**
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,9 +24,12 @@ type TransactionSource interface {
 
 // Deps is what the spending tools need. Store is optional and used only to
 // turn a locked store into a clear message instead of a parse failure.
+// Settings is also optional: when nil, summarize_spending omits the budget
+// comparison instead of failing.
 type Deps struct {
 	Transactions TransactionSource
 	Store        *storage.Storage
+	Settings     *retirement.SettingsManager
 }
 
 func recoverToError(tool string, err *error) {
@@ -49,4 +53,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerSearch(s, deps)
 	registerAnomalies(s, deps)
 	registerPriceCreep(s, deps)
+	registerSummary(s, deps)
 }

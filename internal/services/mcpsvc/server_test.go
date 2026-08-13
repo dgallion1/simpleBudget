@@ -52,7 +52,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersAllNineTools drives an in-memory client/server round
+// TestNewServerRegistersAllTenTools drives an in-memory client/server round
 // trip to enumerate what NewServer actually registered, rather than merely
 // asserting deps.Loader != nil is checked somewhere. Deps{} (a zero value) is
 // deliberately NOT used here: with a nil Loader, NewServer's own "if
@@ -60,7 +60,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 // only ever constructs NewServer(Deps{}) would stay green even if
 // spend.Register were deleted from NewServer outright. A non-nil Loader (and
 // the Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
-func TestNewServerRegistersAllNineTools(t *testing.T) {
+func TestNewServerRegistersAllTenTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -89,14 +89,14 @@ func TestNewServerRegistersAllNineTools(t *testing.T) {
 	}
 	for _, want := range []string{
 		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
-		"get_anomalies", "get_price_creep", "search_transactions",
+		"get_anomalies", "get_price_creep", "search_transactions", "summarize_spending",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 9 {
-		t.Errorf("expected exactly 9 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 10 {
+		t.Errorf("expected exactly 10 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 

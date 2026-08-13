@@ -19,10 +19,10 @@ type searchInput struct {
 	StartDate string  `json:"start_date,omitempty" jsonschema:"earliest date to include, inclusive, YYYY-MM-DD"`
 	EndDate   string  `json:"end_date,omitempty" jsonschema:"latest date to include, inclusive, YYYY-MM-DD"`
 	Category  string  `json:"category,omitempty" jsonschema:"exact category name; omit for all categories"`
-	Search    string  `json:"search,omitempty" jsonschema:"case-insensitive substring matched against the description"`
-	Type      string  `json:"type,omitempty" jsonschema:"income or outflow; omit for both"`
-	MinAmount float64 `json:"min_amount,omitempty" jsonschema:"smallest absolute dollar amount to include"`
-	MaxAmount float64 `json:"max_amount,omitempty" jsonschema:"largest absolute dollar amount to include"`
+	Search    string  `json:"search,omitempty" jsonschema:"case-insensitive substring matched against the transaction's description, display name, major-expense name, or enriched description; the returned description field may differ from whichever of these matched"`
+	Type      string  `json:"type,omitempty" jsonschema:"income or outflow (expense is accepted as an alias for outflow); omit for both"`
+	MinAmount float64 `json:"min_amount,omitempty" jsonschema:"smallest absolute dollar amount to include; 0 means unset, not \"greater than zero\""`
+	MaxAmount float64 `json:"max_amount,omitempty" jsonschema:"largest absolute dollar amount to include; 0 means unset"`
 	Page      int     `json:"page,omitempty" jsonschema:"1-based page number; defaults to 1"`
 	PerPage   int     `json:"per_page,omitempty" jsonschema:"rows per page, default 50, maximum 200"`
 }
@@ -74,12 +74,16 @@ func registerSearch(s *mcp.Server, deps Deps) {
 		Name: "search_transactions",
 		Description: "Search the transaction history. Every filter is optional and they combine with AND: " +
 			"start_date/end_date (inclusive, YYYY-MM-DD), category (exact), search (case-insensitive substring " +
-			"of the description), type (income or outflow), and min_amount/max_amount (compared against the " +
-			"ABSOLUTE dollar amount, so min_amount 100 matches a -150.00 expense). Amounts in the result are " +
-			"SIGNED -- expenses are negative. Results are newest-first and paginated: `total` is the full number " +
-			"of matching rows, not the number returned, so check it against the rows you received before " +
-			"concluding you have seen everything. Default 50 rows per page, maximum 200. sum_amount is the " +
-			"signed sum over ALL matches, not just this page.",
+			"matched against the transaction's description, its user-assigned display name, its major-expense " +
+			"name, or any enriched description -- NOT against the `description` field in the results below, " +
+			"which is the display label shown in the app and may differ from whichever field actually " +
+			"matched), type (income or outflow; \"expense\" is also accepted as an alias for outflow), and " +
+			"min_amount/max_amount (compared against the ABSOLUTE dollar amount, so min_amount 100 matches a " +
+			"-150.00 expense; 0 means the bound is unset, so there is no way to express \"strictly greater " +
+			"than zero\"). Amounts in the result are SIGNED -- expenses are negative. Results are newest-first " +
+			"and paginated: `total` is the full number of matching rows, not the number returned, so check it " +
+			"against the rows you received before concluding you have seen everything. Default 50 rows per " +
+			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in searchInput) (res *mcp.CallToolResult, out searchOutput, err error) {
 		defer recoverToError("search_transactions", &err)
 

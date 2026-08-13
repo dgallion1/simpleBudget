@@ -45,6 +45,10 @@ func NewServer(deps Deps) *mcp.Server {
 		&mcp.Implementation{Name: "budget2", Version: "v0.2.0"},
 		&mcp.ServerOptions{Instructions: serverInstructions},
 	)
-	plan.Register(s, plan.Deps{Settings: deps.Settings, BaseURL: deps.BaseURL})
+	plan.Register(s, plan.Deps{
+		Settings:  deps.Settings,
+		Snapshots: plan.NewSnapshotter(deps.SettingsDir, deps.SnapshotDir),
+		BaseURL:   deps.BaseURL,
+	})
 	return s
 }

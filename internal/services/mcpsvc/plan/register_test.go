@@ -169,6 +169,92 @@ func TestOpenPageSwitchesToTheRequestedScenario(t *testing.T) {
 	}
 }
 
+func TestApplyChangesWritesSnapshotsAndReportsBothRevisions(t *testing.T) {
+	sm := newTestManager(t)
+	snapDir := t.TempDir()
+	deps := Deps{
+		Settings:  sm,
+		Snapshots: NewSnapshotter(sm.SettingsDir(), snapDir),
+		BaseURL:   "http://localhost:8080",
+	}
+	before := sm.Revision()
+
+	cs := connect(t, deps)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "apply_changes",
+		Arguments: map[string]any{
+			"overrides": map[string]any{"projection_years": 35},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("apply_changes returned an error: %+v", res.Content)
+	}
+
+	var out applyChangesOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Scenario != "whatif.json" {
+		t.Errorf("scenario = %q, want whatif.json", out.Scenario)
+	}
+	if out.RevisionBefore != before {
+		t.Errorf("revision_before = %d, want %d", out.RevisionBefore, before)
+	}
+	if out.RevisionAfter <= out.RevisionBefore {
+		t.Errorf("revision_after = %d, want greater than %d", out.RevisionAfter, out.RevisionBefore)
+	}
+	if _, err := os.Stat(out.SnapshotPath); err != nil {
+		t.Errorf("snapshot %q not written: %v", out.SnapshotPath, err)
+	}
+
+	saved, err := sm.LoadScenarioSettings("whatif.json")
+	if err != nil {
+		t.Fatalf("LoadScenarioSettings: %v", err)
+	}
+	if saved.ProjectionYears != 35 {
+		t.Errorf("projection_years = %d, want 35 — the override was not persisted", saved.ProjectionYears)
+	}
+}
+
+// A failed snapshot must abort the write. Pointing the snapshot directory at
+// a path that cannot be created is the cheapest way to force that failure.
+func TestApplyChangesDoesNotWriteWhenTheSnapshotFails(t *testing.T) {
+	sm := newTestManager(t)
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	deps := Deps{
+		Settings:  sm,
+		Snapshots: NewSnapshotter(sm.SettingsDir(), filepath.Join(blocker, "snapshots")),
+	}
+
+	cs := connect(t, deps)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "apply_changes",
+		Arguments: map[string]any{
+			"overrides": map[string]any{"projection_years": 35},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("apply_changes should have failed when the snapshot could not be written")
+	}
+
+	saved, err := sm.LoadScenarioSettings("whatif.json")
+	if err != nil {
+		t.Fatalf("LoadScenarioSettings: %v", err)
+	}
+	if saved.ProjectionYears == 35 {
+		t.Error("the scenario was written despite the snapshot failing")
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)

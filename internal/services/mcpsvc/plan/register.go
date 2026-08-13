@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"context"
 	"fmt"
+	"time"
 
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/engine"
@@ -22,8 +23,9 @@ var assumptionsMD string
 // own instance, not a second one opened on the same directory: it owns the
 // active-scenario selection, the settings cache, and the write lock.
 type Deps struct {
-	Settings *retirement.SettingsManager
-	BaseURL  string
+	Settings  *retirement.SettingsManager
+	Snapshots *Snapshotter
+	BaseURL   string
 }
 
 // recoverToError converts a panic into an error so a bad scenario fails one
@@ -72,6 +74,20 @@ type runOutput struct {
 	Applied           Overrides    `json:"applied_overrides"`
 	Analysis          AnalysisView `json:"analysis"`
 	MonteCarloOmitted bool         `json:"monte_carlo_omitted"`
+}
+
+type applyChangesInput struct {
+	Scenario  string    `json:"scenario,omitempty" jsonschema:"saved scenario filename; omit for the active one"`
+	Overrides Overrides `json:"overrides" jsonschema:"settings to change and save; omitted fields keep their current value"`
+}
+
+type applyChangesOutput struct {
+	Scenario       string       `json:"scenario"`
+	Applied        Overrides    `json:"applied"`
+	RevisionBefore int          `json:"revision_before"`
+	RevisionAfter  int          `json:"revision_after"`
+	SnapshotPath   string       `json:"snapshot_path"`
+	Analysis       AnalysisView `json:"analysis"`
 }
 
 type openPageInput struct {
@@ -166,6 +182,59 @@ func Register(s *mcp.Server, deps Deps) {
 			return nil, runOutput{}, err
 		}
 		return nil, runOutput{Scenario: name, Applied: in.Overrides, Analysis: view, MonteCarloOmitted: true}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "apply_changes",
+		Description: "Save changed assumptions to the retirement plan and return the resulting analysis. " +
+			"THIS MODIFIES THE SAVED PLAN — use run_scenario to check a claim without writing. " +
+			"An open what-if page picks the change up within about two seconds. A copy of the scenario " +
+			"is saved before this session's first change to that scenario — later changes in the same " +
+			"session are not separately recoverable; recovering from an unwanted change means restoring " +
+			"that .bak file by hand. Note two behaviors: roth_conversion_amount of 0 DISABLES " +
+			"conversions, and healthcare_inflation cannot be saved (preview it with run_scenario). " +
+			"Read the whatif://assumptions resource before drawing conclusions.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in applyChangesInput) (res *mcp.CallToolResult, out applyChangesOutput, err error) {
+		defer recoverToError("apply_changes", &err)
+
+		if in.Scenario != "" && in.Scenario != deps.Settings.ActiveFilename() {
+			if err := deps.Settings.SwitchScenario(in.Scenario); err != nil {
+				return nil, applyChangesOutput{}, fmt.Errorf("switching to scenario %q: %w", in.Scenario, err)
+			}
+		}
+
+		active := deps.Settings.ActiveFilename()
+		revisionBefore := deps.Settings.Revision()
+
+		// Before the write, never after: a failed snapshot must abort it.
+		snapPath, err := deps.Snapshots.Ensure(active, time.Now())
+		if err != nil {
+			return nil, applyChangesOutput{}, err
+		}
+
+		// active is the scenario the snapshot above covers. Passing it as the
+		// expectation moves the read-vs-write comparison inside the manager's
+		// write lock, where a browser-driven scenario switch racing this call
+		// can still PREVENT the write instead of being reported after it.
+		settings, written, revisionAfter, err := deps.Settings.ApplyOverrides(in.Overrides, active)
+		if err != nil {
+			return nil, applyChangesOutput{}, err
+		}
+
+		prepared, err := prepare.From(settings)
+		if err != nil {
+			return nil, applyChangesOutput{}, fmt.Errorf("prepare %s: %w", written, err)
+		}
+		a := retirement.RunFull(engine.New(), engine.Input{Prepared: prepared})
+
+		return nil, applyChangesOutput{
+			Scenario:       written,
+			Applied:        in.Overrides,
+			RevisionBefore: revisionBefore,
+			RevisionAfter:  revisionAfter,
+			SnapshotPath:   snapPath,
+			Analysis:       ShapeAnalysis(a, true),
+		}, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

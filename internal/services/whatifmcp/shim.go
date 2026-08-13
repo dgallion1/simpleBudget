@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/retirement/overrides"
 	"budget2/internal/services/storage"
 
@@ -57,8 +58,9 @@ func recoverToError(tool string, err *error) {
 // only ones insights_test.go still exercises through this package. live and
 // snaps are accepted (insights_test.go passes nil, nil) but unused; the
 // planner tools they backed moved to mcpsvc/plan and are not reconstructed
-// here.
-func NewServer(src *Source, live *Client, snaps *Snapshotter) *mcp.Server {
+// here. snaps is typed as *plan.Snapshotter because Task 4 moved Snapshotter
+// itself to that package -- this parameter is otherwise vestigial.
+func NewServer(src *Source, live *Client, snaps *plan.Snapshotter) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "whatif", Version: "v0.1.0"}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{

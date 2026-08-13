@@ -12,18 +12,26 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// trendsFixture covers two adjacent equal-length windows: January (prior) and
-// February (current). Dining doubles between them; Groceries is flat. A
-// monthly paycheck runs through both.
+// trendsFixture covers two adjacent equal-length windows: January (prior)
+// and February (current). Dining doubles between them; Groceries is flat. A
+// monthly paycheck runs through both. It also plants a December 2025 Dining
+// charge that predates the ACTUAL previous window CategoryTrends compares
+// against -- for a Feb 1-28 (28-day) current window, that window is Jan
+// 4-31, not the whole of January or "everything before February" -- so a
+// window-honest comparison must exclude it from previous_amount, while a
+// bug that compared the current window against ALL prior history would
+// wrongly fold it in. Its description deliberately avoids "bistro" so it
+// never matches the major-expense keyword tests below.
 func trendsFixture() *models.TransactionSet {
-	day := func(m, d int) time.Time { return time.Date(2026, time.Month(m), d, 0, 0, 0, 0, time.UTC) }
+	day := func(y, m, d int) time.Time { return time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC) }
 	return models.NewTransactionSet([]models.Transaction{
-		{Date: day(1, 10), Description: "BISTRO", Category: "Dining", Amount: -100, TransactionType: models.Outflow},
-		{Date: day(2, 10), Description: "BISTRO", Category: "Dining", Amount: -200, TransactionType: models.Outflow},
-		{Date: day(1, 12), Description: "SAFEWAY", Category: "Groceries", Amount: -400, TransactionType: models.Outflow},
-		{Date: day(2, 12), Description: "SAFEWAY", Category: "Groceries", Amount: -400, TransactionType: models.Outflow},
-		{Date: day(1, 1), Description: "PAYCHECK", Category: "Income", Amount: 5000, TransactionType: models.Income},
-		{Date: day(2, 1), Description: "PAYCHECK", Category: "Income", Amount: 5000, TransactionType: models.Income},
+		{Date: day(2025, 12, 15), Description: "OLD STEAKHOUSE", Category: "Dining", Amount: -900, TransactionType: models.Outflow},
+		{Date: day(2026, 1, 10), Description: "BISTRO", Category: "Dining", Amount: -100, TransactionType: models.Outflow},
+		{Date: day(2026, 2, 10), Description: "BISTRO", Category: "Dining", Amount: -200, TransactionType: models.Outflow},
+		{Date: day(2026, 1, 12), Description: "SAFEWAY", Category: "Groceries", Amount: -400, TransactionType: models.Outflow},
+		{Date: day(2026, 2, 12), Description: "SAFEWAY", Category: "Groceries", Amount: -400, TransactionType: models.Outflow},
+		{Date: day(2026, 1, 1), Description: "PAYCHECK", Category: "Income", Amount: 5000, TransactionType: models.Income},
+		{Date: day(2026, 2, 1), Description: "PAYCHECK", Category: "Income", Amount: 5000, TransactionType: models.Income},
 	})
 }
 
@@ -49,6 +57,19 @@ func TestGetTrendsComparesTheWindowAgainstThePrecedingOne(t *testing.T) {
 		t.Fatalf("decode structured content: %v", err)
 	}
 
+	// Pins the actual comparison window, not just the totals it produces:
+	// for a 28-day current window (Feb 1-28 inclusive), CategoryTrends'
+	// own "immediately preceding window of equal length" math is Jan 4-31
+	// (duration = 27 days; prevStart = currentStart - duration - 1 day),
+	// NOT the whole of January and NOT "everything before February". A
+	// test that only checked the resulting totals could pass even if the
+	// tool secretly compared against all prior history, since (absent the
+	// December plant in trendsFixture) there is nothing before Jan 10
+	// either way -- see trendsFixture's doc comment.
+	if out.PreviousStart != "2026-01-04" || out.PreviousEnd != "2026-01-31" {
+		t.Errorf("previous window = [%s, %s], want [2026-01-04, 2026-01-31]", out.PreviousStart, out.PreviousEnd)
+	}
+
 	byCat := map[string]categoryTrendRow{}
 	for _, c := range out.CategoryTrends {
 		byCat[c.Category] = c
@@ -57,6 +78,10 @@ func TestGetTrendsComparesTheWindowAgainstThePrecedingOne(t *testing.T) {
 	if !ok {
 		t.Fatalf("Dining missing from category_trends: %+v", out.CategoryTrends)
 	}
+	// previous_amount must be 100 (the Jan 10 BISTRO charge only) and NOT
+	// 1000 (100 + the Dec 15 OLD STEAKHOUSE plant) -- the December charge
+	// falls before Jan 4, outside the actual previous window, so an
+	// all-prior-history comparison would fail this exact assertion.
 	if dining.CurrentAmount != 200 || dining.PreviousAmount != 100 {
 		t.Errorf("Dining current/previous = %v/%v, want 200/100", dining.CurrentAmount, dining.PreviousAmount)
 	}
@@ -98,6 +123,19 @@ func TestGetTrendsSurfacesTheMonthlyPaycheck(t *testing.T) {
 		// "PAYCHECK" comes back as "paycheck".
 		if p.Description == "paycheck" {
 			found = true
+			// A test that only checked for the row's presence would still
+			// pass if the cadence classifier mis-called every source
+			// "irregular" -- assert the cadence fields the row actually
+			// carries, not just that a row with this name exists.
+			if p.Frequency != "monthly" {
+				t.Errorf("paycheck frequency = %q, want monthly", p.Frequency)
+			}
+			if !p.IsRegular {
+				t.Error("paycheck should be flagged is_regular for two evenly-monthly occurrences")
+			}
+			if p.Occurrences != 2 {
+				t.Errorf("paycheck occurrences = %d, want 2", p.Occurrences)
+			}
 		}
 	}
 	if !found {
@@ -260,6 +298,45 @@ func TestGetTrendsReportsALoadFailureAsAToolError(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatal("get_trends should have reported the load failure as a tool error")
+	}
+}
+
+// TestGetTrendsRejectsDefaultingAnEmptyLedger confirms an empty ledger (no
+// transactions after suppression) produces a clear tool error rather than
+// lastFullMonth silently wrapping the zero time into a nonsensical window
+// like "0000-12-01" -- the true answer is "there is nothing to default
+// from," not a fabricated date.
+func TestGetTrendsRejectsDefaultingAnEmptyLedger(t *testing.T) {
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: &models.TransactionSet{}}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "get_trends",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("get_trends should have reported an empty ledger as a tool error when defaulting the window")
+	}
+}
+
+// TestGetTrendsRejectsAStartAfterTheDefaultedEnd confirms that supplying
+// only start_date, later than the ledger's last full month, is a tool
+// error rather than silently computing a negative-duration window (end
+// before start) and a "previous" window that sits after the current one.
+func TestGetTrendsRejectsAStartAfterTheDefaultedEnd(t *testing.T) {
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: trendsFixture()}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "get_trends",
+		Arguments: map[string]any{"start_date": "2026-06-01"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("get_trends should have reported start_date after the defaulted end_date as a tool error")
 	}
 }
 

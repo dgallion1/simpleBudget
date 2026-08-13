@@ -1,6 +1,13 @@
-// Package insights serves the Insights page and exposes pattern-detection
-// helpers (income cadence, recurring expenses, anomaly detection) used by
-// both the dashboard and the what-if defaults pipeline.
+// Package insights serves the Insights page: HTTP handlers that load
+// transaction data, run the pattern-detection analyses now living in
+// internal/services/insights (and the sibling anomalies/pricecreep/
+// majorexpenses packages), and render the page and its partials. It also
+// holds small presentation-only helpers that belong to this page rather
+// than to any analysis package -- anomaly method labels (AnomalyView) and
+// the spending-pace verdict banding (verdict.go's PaceVerdictView /
+// BuildPaceVerdict). Nothing here is imported by other handler packages;
+// internal/handlers/whatif switched to internal/services/insights directly
+// once its one dependency (income-pattern detection) was extracted there.
 package insights
 
 import (

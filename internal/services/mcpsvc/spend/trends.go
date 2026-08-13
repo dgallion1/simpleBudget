@@ -2,6 +2,7 @@ package spend
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"budget2/internal/models"
@@ -42,13 +43,28 @@ type incomePatternRow struct {
 	TotalAmount float64 `json:"total_amount"`
 }
 
-// velocityRow mirrors models.SpendingVelocity.
+// velocityRow is a window-scoped spending-pace summary derived from
+// models.SpendingVelocity. It deliberately omits MonthProjection and
+// DaysRemaining: both are computed by insights.SpendingVelocity against the
+// real-world CURRENT calendar month (time.Now()), which has no relationship
+// to this tool's requested window -- the default window is the last FULL
+// past month in the ledger, which by construction is never the current
+// month, so a "days remaining this month" / "projected month total" pair
+// would silently describe a different month than the one being reported on,
+// with no way for a caller to detect it. daily_average and burn_rate_change
+// stay because both are honest about the SELECTED window.
 type velocityRow struct {
-	DailyAverage    float64 `json:"daily_average"`
+	// DailyAverage is average spend per day WITHIN THE SELECTED WINDOW
+	// (start/end), in dollars.
+	DailyAverage float64 `json:"daily_average"`
+	// HistoricalDaily is average spend per day over the WHOLE active
+	// ledger (not the selected window) -- the baseline burn_rate_change
+	// compares the window against.
 	HistoricalDaily float64 `json:"historical_daily"`
-	MonthProjection float64 `json:"month_projection"`
-	DaysRemaining   int     `json:"days_remaining"`
-	BurnRateChange  float64 `json:"burn_rate_change"`
+	// BurnRateChange is the percent difference between DailyAverage and
+	// HistoricalDaily ((window - history) / history * 100); positive means
+	// the selected window is spending faster than the ledger's own history.
+	BurnRateChange float64 `json:"burn_rate_change"`
 }
 
 type trendsOutput struct {
@@ -97,14 +113,13 @@ func incomePatternRows(patterns []models.IncomePattern) []incomePatternRow {
 }
 
 // velocityRowFrom converts SpendingVelocity's *models.SpendingVelocity into
-// a row, rounding dollar figures. v is never nil (SpendingVelocity always
-// returns a pointer, possibly to a zero value).
+// a row, rounding dollar figures and dropping MonthProjection/DaysRemaining
+// (see velocityRow's doc comment for why). v is never nil (SpendingVelocity
+// always returns a pointer, possibly to a zero value).
 func velocityRowFrom(v *models.SpendingVelocity) velocityRow {
 	return velocityRow{
 		DailyAverage:    round2(v.DailyAverage),
 		HistoricalDaily: round2(v.HistoricalDaily),
-		MonthProjection: round2(v.MonthProjection),
-		DaysRemaining:   v.DaysRemaining,
 		BurnRateChange:  round2(v.BurnRateChange),
 	}
 }
@@ -156,25 +171,32 @@ func registerTrends(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "get_trends",
 		Description: "Category spending trends, income patterns, and spending velocity (burn rate) over an " +
-			"optional date window (default: the last full calendar month present in the ledger). " +
+			"optional date window (default: the last full calendar month present in the ledger; start_date and " +
+			"end_date, whether given or defaulted, must resolve to start <= end or the call is a tool error). " +
 			"category_trends and major_expense_trends compare the selected window's spending against the " +
 			"IMMEDIATELY PRECEDING window of equal length (echoed back as previous_start/previous_end) -- " +
 			"NOT a long-run average -- so a category can show as \"up\" or \"down\" relative to just the one " +
-			"prior period, which may itself have been unusual. major_expense_trends groups outflows by the " +
+			"prior period, which may itself have been unusual. Within each row, current_amount and " +
+			"previous_amount are POSITIVE dollar figures, but change_amount (current_amount - previous_amount) " +
+			"and change_percent are SIGNED -- negative means spending FELL versus the prior window, positive " +
+			"means it rose; do not read either as a magnitude. major_expense_trends groups outflows by the " +
 			"user's declared major expenses (via pin or keyword/amount match) instead of raw category, " +
 			"dropping unmatched transactions; it is OMITTED from the response entirely (not present, not an " +
-			"empty list) when no major-expense source is configured or its definitions fail to load. " +
-			"income_patterns detects recurring income sources (paycheck, freelance, etc.) over the WHOLE " +
-			"ledger, not just the selected window -- a source needs at least 2 occurrences to appear at all, " +
-			"so a single-window slice would chronically miss regular income whose next occurrence falls " +
-			"outside it. velocity.daily_average and month_projection describe PACE -- spend per day so far in " +
-			"the selected window, and a naive projection of that pace through the rest of the current " +
-			"calendar month -- NOT a forecast that accounts for known future changes (e.g. a bill dropping " +
-			"off). Suppressed transactions (rows the user has already marked as a resolved duplicate) are " +
-			"excluded before analysis, matching every other spend tool. All dollar amounts are POSITIVE for " +
-			"spending and category_trends/major_expense_trends (unlike search_transactions, which returns " +
-			"signed amounts); income_patterns amounts are positive as recorded (income is a positive amount " +
-			"in the ledger).",
+			"empty list) when no major-expense source is configured, its definitions fail to load, OR no " +
+			"transaction in either window matched a declared major expense -- omission is not evidence the " +
+			"user has none declared. income_patterns detects recurring income sources (paycheck, freelance, " +
+			"etc.) over the WHOLE ledger, not just the selected window -- a source needs at least 2 " +
+			"occurrences to appear at all, so a single-window slice would chronically miss regular income " +
+			"whose next occurrence falls outside it. velocity is a PACE summary, not a forecast: " +
+			"daily_average is spend per day WITHIN THE SELECTED WINDOW; historical_daily is spend per day " +
+			"over the WHOLE ledger, independent of the window, as a baseline; burn_rate_change is the percent " +
+			"difference between the two (positive = the window is running hotter than the ledger's own " +
+			"history). There is no month-remaining projection field: the tool's default window is the last " +
+			"FULL past month, never the current one, so a projection tied to today's calendar would " +
+			"silently describe a different month than the one being reported on. Suppressed transactions " +
+			"(rows the user has already marked as a resolved duplicate) are excluded before analysis, " +
+			"matching every other spend tool. income_patterns amounts are positive as recorded (income is a " +
+			"positive amount in the ledger).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in trendsInput) (res *mcp.CallToolResult, out trendsOutput, err error) {
 		defer recoverToError("get_trends", &err)
 
@@ -197,6 +219,19 @@ func registerTrends(s *mcp.Server, deps Deps) {
 
 		from, to := start, end
 		if from == nil || to == nil {
+			// lastFullMonth needs a real MaxDate to anchor on; an empty
+			// ledger (after suppression) has none (ts.MaxDate() is the zero
+			// time), and defaulting from it would silently emit a
+			// nonsensical window (year 0/1) instead of the true answer,
+			// which is "there is nothing to default from". Only the
+			// defaulting path needs this guard -- two fully explicit dates
+			// are a legitimate (if empty) request even against an empty
+			// ledger.
+			if ts.MaxDate().IsZero() {
+				return nil, trendsOutput{}, fmt.Errorf(
+					"cannot default the trends window: the ledger has no transactions (after excluding " +
+						"suppressed rows); pass start_date and end_date explicitly")
+			}
 			defaultStart, defaultEnd := lastFullMonth(ts.MaxDate())
 			if from == nil {
 				from = &defaultStart
@@ -204,6 +239,10 @@ func registerTrends(s *mcp.Server, deps Deps) {
 			if to == nil {
 				to = &defaultEnd
 			}
+		}
+		if to.Before(*from) {
+			return nil, trendsOutput{}, fmt.Errorf(
+				"end_date %s is before start_date %s", to.Format("2006-01-02"), from.Format("2006-01-02"))
 		}
 
 		// Mirrors CategoryTrends'/MajorExpenseTrends' own internal previous-

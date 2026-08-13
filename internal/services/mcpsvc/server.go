@@ -7,6 +7,7 @@ package mcpsvc
 import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/mcpsvc/plan"
+	"budget2/internal/services/mcpsvc/spend"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 
@@ -50,5 +51,8 @@ func NewServer(deps Deps) *mcp.Server {
 		Snapshots: plan.NewSnapshotter(deps.SettingsDir, deps.SnapshotDir),
 		BaseURL:   deps.BaseURL,
 	})
+	if deps.Loader != nil {
+		spend.Register(s, spend.Deps{Transactions: deps.Loader, Store: deps.Store})
+	}
 	return s
 }

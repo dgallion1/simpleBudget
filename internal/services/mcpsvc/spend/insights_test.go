@@ -1,33 +1,15 @@
-package whatifmcp
+package spend
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"budget2/internal/models"
-	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// fakeTxSource is a TransactionSource test double that returns a canned
-// models.TransactionSet (or an error) without any CSV parsing, so tests can
-// plant exact transactions -- including exact Hash/Category/Amount/Date
-// combinations the ruled anomaly and price-creep algorithms key off of --
-// without going through the real dataloader pipeline (internal-transfer
-// filtering, classification, dedup) that would obscure them.
-type fakeTxSource struct {
-	ts  *models.TransactionSet
-	err error
-}
-
-func (f fakeTxSource) LoadData() (*models.TransactionSet, error) {
-	return f.ts, f.err
-}
 
 // insightsTxn builds a Transaction with Hash and derived fields populated,
 // matching how the real loader stamps transactions (internal/services/
@@ -78,20 +60,17 @@ func priceCreepSeries() []models.Transaction {
 	return rows
 }
 
-// newInsightsSource builds a Source with a real (but otherwise-unused)
-// settings fixture and the given fixture transactions installed as its
-// txSource, so tool calls never touch a real dataloader/CSV directory.
-func newInsightsSource(t *testing.T, txns []models.Transaction) *Source {
-	t.Helper()
-	src := newTestSource(t)
-	src.txSource = fakeTxSource{ts: models.NewTransactionSet(txns)}
-	return src
+// newInsightsDeps builds a Deps with the given fixture transactions
+// installed as its Transactions source, so tool calls never touch a real
+// dataloader/CSV directory.
+func newInsightsDeps(txns []models.Transaction) Deps {
+	return Deps{Transactions: stubTransactions{ts: models.NewTransactionSet(txns)}}
 }
 
-func callInsightsTool[T any](t *testing.T, src *Source, name string, args any) (T, *mcp.CallToolResult) {
+func callInsightsTool[T any](t *testing.T, deps Deps, name string, args any) (T, *mcp.CallToolResult) {
 	t.Helper()
 	ctx := context.Background()
-	clientSession := connectInMemory(t, NewServer(src, nil, nil))
+	clientSession := connect(t, deps)
 	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
 		t.Fatalf("CallTool(%s) returned a transport-level error, want a tool result: %v", name, err)
@@ -110,9 +89,9 @@ func callInsightsTool[T any](t *testing.T, src *Source, name string, args any) (
 func TestGetAnomaliesTool_PlantedAnomalyHasCorrectMethodAndSeverity(t *testing.T) {
 	anomalyDate := insightsDate(2024, 3, 15)
 	txns := categoryBaseline("Groceries", -400, anomalyDate)
-	src := newInsightsSource(t, txns)
+	deps := newInsightsDeps(txns)
 
-	out, res := callInsightsTool[anomaliesOutput](t, src, "get_anomalies", anomaliesInput{})
+	out, res := callInsightsTool[anomaliesOutput](t, deps, "get_anomalies", anomaliesInput{})
 	if res.IsError {
 		t.Fatalf("get_anomalies returned an error: %+v", res.Content)
 	}
@@ -151,10 +130,10 @@ func TestGetAnomaliesTool_WindowFiltersDisplayOnly(t *testing.T) {
 	var txns []models.Transaction
 	txns = append(txns, categoryBaseline("Inside Category", -400, insideDate)...)
 	txns = append(txns, categoryBaseline("Outside Category", -400, outsideDate)...)
-	src := newInsightsSource(t, txns)
+	deps := newInsightsDeps(txns)
 
 	// Sanity: an unwindowed call must detect both.
-	full, res := callInsightsTool[anomaliesOutput](t, src, "get_anomalies", anomaliesInput{})
+	full, res := callInsightsTool[anomaliesOutput](t, deps, "get_anomalies", anomaliesInput{})
 	if res.IsError {
 		t.Fatalf("unwindowed get_anomalies returned an error: %+v", res.Content)
 	}
@@ -162,7 +141,7 @@ func TestGetAnomaliesTool_WindowFiltersDisplayOnly(t *testing.T) {
 		t.Fatalf("unwindowed Count = %d, want 2 (both planted anomalies); got %+v", full.Count, full.Anomalies)
 	}
 
-	windowed, res := callInsightsTool[anomaliesOutput](t, src, "get_anomalies", anomaliesInput{
+	windowed, res := callInsightsTool[anomaliesOutput](t, deps, "get_anomalies", anomaliesInput{
 		StartDate: "2024-03-01",
 		EndDate:   "2024-03-31",
 	})
@@ -187,8 +166,8 @@ func TestGetAnomaliesTool_WindowFiltersDisplayOnly(t *testing.T) {
 // TestGetAnomaliesTool_NoWindowReportsNullBounds asserts window.start/end
 // are null (not empty strings) when the caller supplies neither param.
 func TestGetAnomaliesTool_NoWindowReportsNullBounds(t *testing.T) {
-	src := newInsightsSource(t, nil)
-	out, res := callInsightsTool[anomaliesOutput](t, src, "get_anomalies", anomaliesInput{})
+	deps := newInsightsDeps(nil)
+	out, res := callInsightsTool[anomaliesOutput](t, deps, "get_anomalies", anomaliesInput{})
 	if res.IsError {
 		t.Fatalf("get_anomalies returned an error: %+v", res.Content)
 	}
@@ -204,9 +183,9 @@ func TestGetAnomaliesTool_NoWindowReportsNullBounds(t *testing.T) {
 // start_date surfaces as a tool error (IsError), not a panic or a silently
 // ignored parameter.
 func TestGetAnomaliesTool_InvalidDateIsAToolError(t *testing.T) {
-	src := newInsightsSource(t, nil)
+	deps := newInsightsDeps(nil)
 	ctx := context.Background()
-	clientSession := connectInMemory(t, NewServer(src, nil, nil))
+	clientSession := connect(t, deps)
 
 	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "get_anomalies",
@@ -224,8 +203,8 @@ func TestGetAnomaliesTool_InvalidDateIsAToolError(t *testing.T) {
 // TestGetAnomaliesTool_EmptyDataReturnsZeroCountNoError asserts an empty
 // transaction history is not an error condition: count 0, empty slice.
 func TestGetAnomaliesTool_EmptyDataReturnsZeroCountNoError(t *testing.T) {
-	src := newInsightsSource(t, nil)
-	out, res := callInsightsTool[anomaliesOutput](t, src, "get_anomalies", anomaliesInput{})
+	deps := newInsightsDeps(nil)
+	out, res := callInsightsTool[anomaliesOutput](t, deps, "get_anomalies", anomaliesInput{})
 	if res.IsError {
 		t.Fatalf("get_anomalies returned an error on empty data: %+v", res.Content)
 	}
@@ -248,11 +227,10 @@ type staticError struct{ msg string }
 func (e *staticError) Error() string { return e.msg }
 
 func TestGetAnomaliesTool_LoadFailureIsAToolError(t *testing.T) {
-	src := newTestSource(t)
-	src.txSource = fakeTxSource{err: errBoom}
+	deps := Deps{Transactions: stubTransactions{err: errBoom}}
 
 	ctx := context.Background()
-	clientSession := connectInMemory(t, NewServer(src, nil, nil))
+	clientSession := connect(t, deps)
 	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "get_anomalies", Arguments: anomaliesInput{}})
 	if err != nil {
 		t.Fatalf("CallTool(get_anomalies) returned a transport-level error, want a tool result with IsError set: %v", err)
@@ -263,69 +241,14 @@ func TestGetAnomaliesTool_LoadFailureIsAToolError(t *testing.T) {
 	}
 }
 
-// TestGetAnomaliesAndGetPriceCreepTools_NonSettingsDirIsAClearErrorNotZeroCount
-// is the tool-level regression case for the demonstrated defect: both tools,
-// wired to the real (production, txSource == nil) path with a settingsDir
-// whose basename is not "settings" (its parent DOES exist, which is exactly
-// what made the original bug silent), must return a tool error -- never a
-// confidently-wrong count: 0 -- because open_page/apply_changes in the same
-// server already refuse this identical misconfiguration loudly and these two
-// tools must not be the quiet exception.
-func TestGetAnomaliesAndGetPriceCreepTools_NonSettingsDirIsAClearErrorNotZeroCount(t *testing.T) {
-	root := t.TempDir()
-	settingsDir := filepath.Join(root, "notsettings")
-	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
-		t.Fatalf("mkdir settingsDir: %v", err)
-	}
-	// Parent has an unrelated CSV: a pre-fix filepath.Dir guess would find it
-	// and "succeed" (or at least not error), rather than obviously breaking.
-	if err := os.WriteFile(filepath.Join(root, "unrelated.csv"), []byte("Date,Description,Amount\n2024-01-01,X,-1\n"), 0o644); err != nil {
-		t.Fatalf("write unrelated csv: %v", err)
-	}
-	store, err := storage.New(settingsDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
-	src := NewSource(settingsDir, store) // no txSource override -- exercises the real dataloader wiring
-
-	ctx := context.Background()
-	clientSession := connectInMemory(t, NewServer(src, nil, nil))
-
-	anomaliesRes, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "get_anomalies", Arguments: anomaliesInput{}})
-	if err != nil {
-		t.Fatalf("CallTool(get_anomalies) returned a transport-level error, want a tool result with IsError set: %v", err)
-	}
-	if !anomaliesRes.IsError {
-		out := decodeToolResult[anomaliesOutput](t, anomaliesRes)
-		t.Fatalf("get_anomalies with a non-\"settings\" settingsDir should error, got a result: %+v", out)
-	}
-	msg := toolErrorText(t, anomaliesRes)
-	if !strings.Contains(msg, settingsDir) {
-		t.Errorf("get_anomalies error should name the offending settings dir %q, got: %s", settingsDir, msg)
-	}
-
-	creepRes, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "get_price_creep", Arguments: priceCreepInput{}})
-	if err != nil {
-		t.Fatalf("CallTool(get_price_creep) returned a transport-level error, want a tool result with IsError set: %v", err)
-	}
-	if !creepRes.IsError {
-		out := decodeToolResult[priceCreepOutput](t, creepRes)
-		t.Fatalf("get_price_creep with a non-\"settings\" settingsDir should error, got a result: %+v", out)
-	}
-	msg = toolErrorText(t, creepRes)
-	if !strings.Contains(msg, settingsDir) {
-		t.Errorf("get_price_creep error should name the offending settings dir %q, got: %s", settingsDir, msg)
-	}
-}
-
 // TestGetPriceCreepTool_ReturnsPlantedCreepInBand plants a 6-occurrence
 // stepped series (median of last 3 = 30% above median of first 3) and
 // asserts get_price_creep reports it with the right band and occurrence
 // count.
 func TestGetPriceCreepTool_ReturnsPlantedCreepInBand(t *testing.T) {
-	src := newInsightsSource(t, priceCreepSeries())
+	deps := newInsightsDeps(priceCreepSeries())
 
-	out, res := callInsightsTool[priceCreepOutput](t, src, "get_price_creep", priceCreepInput{})
+	out, res := callInsightsTool[priceCreepOutput](t, deps, "get_price_creep", priceCreepInput{})
 	if res.IsError {
 		t.Fatalf("get_price_creep returned an error: %+v", res.Content)
 	}
@@ -356,8 +279,8 @@ func TestGetPriceCreepTool_ReturnsPlantedCreepInBand(t *testing.T) {
 // TestGetPriceCreepTool_EmptyDataReturnsZeroCountNoError mirrors the
 // anomalies empty-data case for price-creep.
 func TestGetPriceCreepTool_EmptyDataReturnsZeroCountNoError(t *testing.T) {
-	src := newInsightsSource(t, nil)
-	out, res := callInsightsTool[priceCreepOutput](t, src, "get_price_creep", priceCreepInput{})
+	deps := newInsightsDeps(nil)
+	out, res := callInsightsTool[priceCreepOutput](t, deps, "get_price_creep", priceCreepInput{})
 	if res.IsError {
 		t.Fatalf("get_price_creep returned an error on empty data: %+v", res.Content)
 	}

@@ -1,80 +1,19 @@
-package whatifmcp
+package spend
 
 import (
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/anomalies"
-	"budget2/internal/services/dataloader"
 	"budget2/internal/services/pricecreep"
 )
 
-// TransactionSource loads the full transaction history for the insight
-// tools (get_anomalies, get_price_creep). *dataloader.DataLoader satisfies
-// it via its existing LoadData method, so no adapter is needed in
-// production. The interface exists so tests can substitute a canned
-// models.TransactionSet directly -- constructing exact peer groups and
-// planted anomalies through real CSV parsing, classification, and
-// near-duplicate detection would be indirect and brittle.
-type TransactionSource interface {
-	LoadData() (*models.TransactionSet, error)
-}
-
-// Transactions loads the full transaction history for tools that read
-// across the whole ledger rather than a single saved scenario (currently
-// get_anomalies and get_price_creep). It goes through the storage layer
-// NewSource was given -- never os.ReadFile on a data file directly -- so a
-// locked/encrypted store or a missing data directory surfaces as a plain
-// error a tool call can report, the same way Source.Load already does for
-// an unreadable scenario file, instead of a panic or a silently-empty
-// result.
-//
-// txSource is nil in production; NewServer never sets it. This then builds
-// a *dataloader.DataLoader rooted at the settings directory's PARENT --
-// cmd/server's own DataLoader is rooted at cfg.DataDirectory, and
-// settingsDir is always cfg.DataDirectory + "/settings" (see
-// cmd/whatif-mcp/main.go's resolveDataDir). dataDirFromSettingsDir
-// (live.go) enforces that shape and REFUSES anything else -- the same
-// guard spawnArgs already applies to settingsDir for a different purpose
-// (deriving BUDGET_DATA_DIR). Without it, a settingsDir not named
-// ".../settings" (e.g. a custom -data flag value) would silently resolve
-// to some unrelated parent directory: dataloader.LoadData finds no CSVs
-// there, and get_anomalies/get_price_creep would report a confident
-// "count: 0" instead of the misconfiguration that produced it. Tests set
-// txSource directly to skip all of this.
-func (s *Source) Transactions() (*models.TransactionSet, error) {
-	src := s.txSource
-	if src == nil {
-		if s.store != nil && s.store.IsEncrypted() && !s.store.IsUnlocked() {
-			return nil, fmt.Errorf(
-				"cannot load transaction history: storage is encrypted and locked; unlock it via the budget2 web UI (/unlock) first")
-		}
-
-		dataDir, err := dataDirFromSettingsDir(s.settingsDir)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"cannot load transaction history: settings directory %q is not shaped <data-dir>/settings, "+
-					"so the transaction data directory cannot be derived from it (%w)", s.settingsDir, err)
-		}
-		if _, err := os.Stat(dataDir); err != nil {
-			return nil, fmt.Errorf("data directory %q is not readable: %w", dataDir, err)
-		}
-
-		src = dataloader.New(dataDir, s.store)
-	}
-
-	ts, err := src.LoadData()
-	if err != nil {
-		return nil, fmt.Errorf("load transaction history: %w", err)
-	}
-	if ts == nil {
-		ts = models.NewTransactionSet(nil)
-	}
-	return ts, nil
-}
+// round0 rounds a currency amount to whole dollars. Duplicated from
+// plan/view.go rather than exported across packages -- it is one line, and
+// cross-package coupling for math.Round is not worth it.
+func round0(v float64) float64 { return math.Round(v) }
 
 // anomaliesInput is get_anomalies' parameters. Both dates are optional,
 // inclusive, YYYY-MM-DD, and -- per the tool description -- narrow only

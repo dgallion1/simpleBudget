@@ -1,68 +1,52 @@
-package whatifmcp
+// Package spend serves spending analysis over MCP: what the ledger says, as
+// opposed to what the retirement projection assumes.
+package spend
 
 import (
 	"context"
 	"fmt"
-	"math"
 
-	"budget2/internal/services/mcpsvc/plan"
-	"budget2/internal/services/retirement/overrides"
+	"budget2/internal/models"
 	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Overrides, round0, Source and NewSource are a temporary compiling shim.
-// view.go, months.go, overrides.go and scenarios.go moved to
-// internal/services/mcpsvc/plan in Task 2 of the app-wide-mcp-phase-1 plan,
-// but live.go, insights.go and their tests stay in this package until Tasks
-// 4 and 5 take what they need -- and those files still reference the types
-// that moved. This file exists only to keep them compiling in the meantime;
-// it is deleted (not migrated) once Task 5 removes insights.go's use of
-// Source and Task 4/5 remove live.go.
-
-// Overrides is the shared sparse settings vocabulary, aliased the same way
-// overrides.go (now mcpsvc/plan/overrides.go) aliased it.
-type Overrides = overrides.Overrides
-
-// round0 rounds a currency amount to whole dollars. See view.go (now
-// mcpsvc/plan/view.go) for the original.
-func round0(v float64) float64 { return math.Round(v) }
-
-// Source is a trimmed stand-in for the type that used to live in
-// scenarios.go (now mcpsvc/plan/scenarios.go, rebuilt there onto the
-// server's shared *retirement.SettingsManager). Only the fields
-// insights.go's Transactions method still reads survive here; List, Load
-// and the settings-manager-backed lookups are plan.Source's job now.
-type Source struct {
-	settingsDir string
-	store       *storage.Storage
-	txSource    TransactionSource
+// TransactionSource loads the full transaction history. *dataloader.DataLoader
+// satisfies it via its existing LoadData method, so no adapter is needed in
+// production. The interface exists so tests can substitute a canned
+// models.TransactionSet directly -- constructing exact peer groups and
+// planted anomalies through real CSV parsing, classification, and near-duplicate
+// detection would be indirect and brittle.
+type TransactionSource interface {
+	LoadData() (*models.TransactionSet, error)
 }
 
-func NewSource(settingsDir string, store *storage.Storage) *Source {
-	return &Source{settingsDir: settingsDir, store: store}
+// Deps is what the spending tools need. Store is optional and used only to
+// turn a locked store into a clear message instead of a parse failure.
+type Deps struct {
+	Transactions TransactionSource
+	Store        *storage.Storage
 }
 
-// recoverToError converts a panic into an error so a bad scenario fails one
-// tool call instead of terminating the session. Copied from the deleted
-// server.go for the same reason as the rest of this file.
 func recoverToError(tool string, err *error) {
 	if r := recover(); r != nil {
 		*err = fmt.Errorf("%s panicked: %v", tool, r)
 	}
 }
 
-// NewServer registers only the two insight tools server.go used to serve
-// alongside the planner tools -- get_anomalies and get_price_creep are the
-// only ones insights_test.go still exercises through this package. live and
-// snaps are accepted (insights_test.go passes nil, nil) but unused; the
-// planner tools they backed moved to mcpsvc/plan and are not reconstructed
-// here. snaps is typed as *plan.Snapshotter because Task 4 moved Snapshotter
-// itself to that package -- this parameter is otherwise vestigial.
-func NewServer(src *Source, live *Client, snaps *plan.Snapshotter) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "whatif", Version: "v0.1.0"}, nil)
+// load returns the full ledger, reporting a locked store as such rather than
+// letting ciphertext surface as a parse error.
+func (d Deps) load() (*models.TransactionSet, error) {
+	if d.Store != nil && d.Store.IsEncrypted() && !d.Store.IsUnlocked() {
+		return nil, fmt.Errorf(
+			"cannot load transaction history: storage is encrypted and locked; unlock it via the budget2 web UI (/unlock) first")
+	}
+	return d.Transactions.LoadData()
+}
 
+// Register adds the spending tools to s.
+func Register(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "get_anomalies",
 		Description: "Flag unusual expense transactions: amounts far outside a merchant's or category's " +
@@ -86,7 +70,7 @@ func NewServer(src *Source, live *Client, snaps *plan.Snapshotter) *mcp.Server {
 			return nil, anomaliesOutput{}, err
 		}
 
-		ts, err := src.Transactions()
+		ts, err := deps.load()
 		if err != nil {
 			return nil, anomaliesOutput{}, err
 		}
@@ -110,7 +94,7 @@ func NewServer(src *Source, live *Client, snaps *plan.Snapshotter) *mcp.Server {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ priceCreepInput) (res *mcp.CallToolResult, out priceCreepOutput, err error) {
 		defer recoverToError("get_price_creep", &err)
 
-		ts, err := src.Transactions()
+		ts, err := deps.load()
 		if err != nil {
 			return nil, priceCreepOutput{}, err
 		}
@@ -118,6 +102,4 @@ func NewServer(src *Source, live *Client, snaps *plan.Snapshotter) *mcp.Server {
 		rows := priceCreepRows(ts)
 		return nil, priceCreepOutput{Count: len(rows), Items: rows}, nil
 	})
-
-	return s
 }

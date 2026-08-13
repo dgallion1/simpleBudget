@@ -15,8 +15,8 @@ import (
 // TransactionSource loads the full transaction history. *dataloader.DataLoader
 // satisfies it via its existing LoadData method, so no adapter is needed in
 // production. The interface exists so tests can substitute a canned
-// models.TransactionSet directly -- constructing exact peer groups and
-// planted anomalies through real CSV parsing, classification, and near-duplicate
+// models.TransactionSet directly -- constructing exact peer groups and planted
+// anomalies through real CSV parsing, classification, and near-duplicate
 // detection would be indirect and brittle.
 type TransactionSource interface {
 	LoadData() (*models.TransactionSet, error)

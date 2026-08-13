@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -80,6 +82,41 @@ func TestGetAnomaliesReportsALoadFailureAsAToolError(t *testing.T) {
 	}
 }
 
+// TestDepsLoadReportsALockedStoreAsToolError exercises Deps.load's locked-
+// store branch with a real *storage.Storage, rather than stubbing it out --
+// the branch's whole job is to translate storage's own locked state into a
+// clear message ("...unlock it via the budget2 web UI (/unlock) first")
+// instead of letting ciphertext surface as a parse failure, so it must be
+// driven by a store that is actually encrypted and actually locked. Mirrors
+// the pattern in cmd/server/mcp_mount_test.go's newLockedMCPRouter.
+func TestDepsLoadReportsALockedStoreAsToolError(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	if err := store.EnableEncryption("mcpsvc-spend-test-password"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+	store.Lock()
+
+	// Transactions is a live stub that would otherwise succeed: the point of
+	// this test is that Deps.load must refuse before ever reaching it.
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: &models.TransactionSet{}}, Store: store})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "get_anomalies",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	msg := toolErrorText(t, res)
+	if !strings.Contains(msg, "/unlock") {
+		t.Errorf("locked-store error must name /unlock as the recovery path, got: %s", msg)
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -91,7 +128,7 @@ func mustJSON(t *testing.T, v any) []byte {
 
 // decodeToolResult marshals a CallToolResult's StructuredContent back to
 // JSON and unmarshals it into T. Copied from the deleted whatifmcp/
-// shim_test.go for the same reason as connect above.
+// server_test.go for the same reason as connect above.
 func decodeToolResult[T any](t *testing.T, res *mcp.CallToolResult) T {
 	t.Helper()
 	if res.IsError {
@@ -109,7 +146,7 @@ func decodeToolResult[T any](t *testing.T, res *mcp.CallToolResult) T {
 }
 
 // toolErrorText extracts the error message text from a tool result with
-// IsError set. Copied from the deleted whatifmcp/shim_test.go for the same
+// IsError set. Copied from the deleted whatifmcp/server_test.go for the same
 // reason as connect above.
 func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {
 	t.Helper()

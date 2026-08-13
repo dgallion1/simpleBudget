@@ -2,8 +2,13 @@ package mcpsvc
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"budget2/internal/services/dataloader"
+	"budget2/internal/services/retirement"
+	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -45,4 +50,60 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 	if !strings.Contains(res.Contents[0].Text, "No mortality modeling") {
 		t.Errorf("assumptions resource does not look like assumptions.md: %.80q", res.Contents[0].Text)
 	}
+}
+
+// TestNewServerRegistersAllEightTools drives an in-memory client/server round
+// trip to enumerate what NewServer actually registered, rather than merely
+// asserting deps.Loader != nil is checked somewhere. Deps{} (a zero value) is
+// deliberately NOT used here: with a nil Loader, NewServer's own "if
+// deps.Loader != nil" guard skips spend.Register entirely, so a suite that
+// only ever constructs NewServer(Deps{}) would stay green even if
+// spend.Register were deleted from NewServer outright. A non-nil Loader (and
+// the Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
+func TestNewServerRegistersAllEightTools(t *testing.T) {
+	dir := t.TempDir()
+	settingsDir := filepath.Join(dir, "settings")
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := retirement.NewSettingsManager(settingsDir, store)
+	loader := dataloader.New(dir, store)
+
+	cs := connect(t, NewServer(Deps{
+		Settings:    sm,
+		Loader:      loader,
+		Store:       store,
+		SettingsDir: settingsDir,
+		SnapshotDir: filepath.Join(dir, "mcp-snapshots"),
+		BaseURL:     "http://localhost:8080",
+	}))
+
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	got := map[string]bool{}
+	for _, tool := range res.Tools {
+		got[tool.Name] = true
+	}
+	for _, want := range []string{
+		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
+		"get_anomalies", "get_price_creep",
+	} {
+		if !got[want] {
+			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
+		}
+	}
+	if len(res.Tools) != 8 {
+		t.Errorf("expected exactly 8 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	}
+}
+
+func toolNames(tools []*mcp.Tool) []string {
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name
+	}
+	return names
 }

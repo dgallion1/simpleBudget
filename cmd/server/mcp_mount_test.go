@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -157,7 +158,45 @@ func TestMCPEndpointRejectsCrossOriginRequests(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	if rec.Code == http.StatusOK {
-		t.Error("a cross-site POST to /mcp was accepted")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("a cross-site POST to /mcp got status %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+// TestMCPEndpointRejectsSpoofedHostOnLoopbackConnection exercises the SDK's
+// DNS-rebinding guard end to end. httptest.NewRecorder (used by the tests
+// above) never populates http.LocalAddrContextKey, so the guard in
+// mcp.StreamableHTTPHandler.ServeHTTP never even reaches its check -- those
+// tests would stay green even if DisableLocalhostProtection were set, or if
+// the SDK's default flipped (the option is slated for removal in v1.8.0).
+// httptest.NewServer runs a real net/http server on 127.0.0.1, which DOES
+// populate LocalAddrContextKey with the accepted connection's local address,
+// so a request over it actually exercises the guard.
+func TestMCPEndpointRejectsSpoofedHostOnLoopbackConnection(t *testing.T) {
+	r := newMCPRouter(t)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", strings.NewReader(initializeBody))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	// The connection itself is loopback (httptest.NewServer listens on
+	// 127.0.0.1); only the Host header is spoofed, the way a DNS-rebinding
+	// attack would present it.
+	req.Host = "evil.example"
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("got status %d, want %d (a spoofed Host on a loopback connection must be rejected); body: %s",
+			resp.StatusCode, http.StatusForbidden, body)
 	}
 }

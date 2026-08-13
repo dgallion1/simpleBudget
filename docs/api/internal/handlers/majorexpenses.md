@@ -18,7 +18,7 @@ Package majorexpenses serves the user\-managed list of declared major expenses a
 
 
 <a name="Initialize"></a>
-## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/majorexpenses/handlers.go#L37>)
+## func Initialize
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
@@ -27,7 +27,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
 Initialize sets up the package with required dependencies.
 
 <a name="RegisterRoutes"></a>
-## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/majorexpenses/handlers.go#L43>)
+## func RegisterRoutes
 
 ```go
 func RegisterRoutes(r chi.Router)
@@ -36,7 +36,7 @@ func RegisterRoutes(r chi.Router)
 RegisterRoutes registers all major\-expenses routes.
 
 <a name="ExpenseOption"></a>
-## type [ExpenseOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/majorexpenses/handlers.go#L485-L488>)
+## type ExpenseOption
 
 ExpenseOption is the label model used by the "Pin to…" picker. Labels are disambiguated by appending the first keyword only when the name collides with another entry, so unique names stay short.
 
@@ -48,7 +48,7 @@ type ExpenseOption struct {
 ```
 
 <a name="TrackingVerdictView"></a>
-## type [TrackingVerdictView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/majorexpenses/verdict.go#L13-L20>)
+## type TrackingVerdictView
 
 TrackingVerdictView is the precomputed model the major\-expenses verdict band renders. Coverage = declared / \(declared \+ unmatched\).
 
@@ -64,7 +64,7 @@ type TrackingVerdictView struct {
 ```
 
 <a name="BuildTrackingVerdict"></a>
-### func [BuildTrackingVerdict](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/majorexpenses/verdict.go#L25>)
+### func BuildTrackingVerdict
 
 ```go
 func BuildTrackingVerdict(declared, unmatched float64, unmatchedCount int) TrackingVerdictView

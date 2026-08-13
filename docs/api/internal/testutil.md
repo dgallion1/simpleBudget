@@ -33,7 +33,7 @@ Package testutil provides testing utilities for the budget application.
 
 
 <a name="BadFormRequest"></a>
-## func [BadFormRequest](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/forms.go#L13>)
+## func BadFormRequest
 
 ```go
 func BadFormRequest(method, path string) *http.Request
@@ -42,7 +42,7 @@ func BadFormRequest(method, path string) *http.Request
 BadFormRequest builds a request whose body makes r.ParseForm\(\) fail. Only invalid percent\-encoding \("%ZZ"\) triggers the error: a multipart body without a boundary is silently accepted by urlencoded parsing in modern Go, so it does NOT work for this purpose.
 
 <a name="ProjectRoot"></a>
-## func [ProjectRoot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L23>)
+## func ProjectRoot
 
 ```go
 func ProjectRoot() string
@@ -51,7 +51,7 @@ func ProjectRoot() string
 ProjectRoot returns the root directory of the project. It works by finding the go.mod file.
 
 <a name="ReadBody"></a>
-## func [ReadBody](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L140>)
+## func ReadBody
 
 ```go
 func ReadBody(t *testing.T, resp *http.Response) string
@@ -60,7 +60,7 @@ func ReadBody(t *testing.T, resp *http.Response) string
 ReadBody reads and returns the response body as a string
 
 <a name="SetTestEnv"></a>
-## func [SetTestEnv](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L61>)
+## func SetTestEnv
 
 ```go
 func SetTestEnv(t *testing.T) func()
@@ -69,7 +69,7 @@ func SetTestEnv(t *testing.T) func()
 SetTestEnv sets environment variables for testing and returns a cleanup function
 
 <a name="TestConfig"></a>
-## func [TestConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L49>)
+## func TestConfig
 
 ```go
 func TestConfig() map[string]string
@@ -78,7 +78,7 @@ func TestConfig() map[string]string
 TestConfig returns a config suitable for testing
 
 <a name="TestDataDir"></a>
-## func [TestDataDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L44>)
+## func TestDataDir
 
 ```go
 func TestDataDir() string
@@ -87,7 +87,7 @@ func TestDataDir() string
 TestDataDir returns the path to the testdata directory
 
 <a name="ResponseAssertion"></a>
-## type [ResponseAssertion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L11-L16>)
+## type ResponseAssertion
 
 ResponseAssertion provides fluent assertions for HTTP responses
 
@@ -98,7 +98,7 @@ type ResponseAssertion struct {
 ```
 
 <a name="AssertResponse"></a>
-### func [AssertResponse](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L19>)
+### func AssertResponse
 
 ```go
 func AssertResponse(t *testing.T, resp *http.Response) *ResponseAssertion
@@ -107,7 +107,7 @@ func AssertResponse(t *testing.T, resp *http.Response) *ResponseAssertion
 AssertResponse creates a new ResponseAssertion for the given response
 
 <a name="ResponseAssertion.Contains"></a>
-### func \(\*ResponseAssertion\) [Contains](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L76>)
+### func \(\*ResponseAssertion\) Contains
 
 ```go
 func (ra *ResponseAssertion) Contains(substr string) *ResponseAssertion
@@ -116,7 +116,7 @@ func (ra *ResponseAssertion) Contains(substr string) *ResponseAssertion
 Contains asserts the response body contains the given string
 
 <a name="ResponseAssertion.ContainsAll"></a>
-### func \(\*ResponseAssertion\) [ContainsAll](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L87>)
+### func \(\*ResponseAssertion\) ContainsAll
 
 ```go
 func (ra *ResponseAssertion) ContainsAll(substrs ...string) *ResponseAssertion
@@ -125,7 +125,7 @@ func (ra *ResponseAssertion) ContainsAll(substrs ...string) *ResponseAssertion
 ContainsAll asserts the response body contains all the given strings
 
 <a name="ResponseAssertion.ContentType"></a>
-### func \(\*ResponseAssertion\) [ContentType](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L56>)
+### func \(\*ResponseAssertion\) ContentType
 
 ```go
 func (ra *ResponseAssertion) ContentType(expected string) *ResponseAssertion
@@ -134,7 +134,7 @@ func (ra *ResponseAssertion) ContentType(expected string) *ResponseAssertion
 ContentType asserts the response has the expected content type
 
 <a name="ResponseAssertion.ContentTypeHTML"></a>
-### func \(\*ResponseAssertion\) [ContentTypeHTML](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L66>)
+### func \(\*ResponseAssertion\) ContentTypeHTML
 
 ```go
 func (ra *ResponseAssertion) ContentTypeHTML() *ResponseAssertion
@@ -143,7 +143,7 @@ func (ra *ResponseAssertion) ContentTypeHTML() *ResponseAssertion
 ContentTypeHTML asserts the response is HTML
 
 <a name="ResponseAssertion.ContentTypeJSON"></a>
-### func \(\*ResponseAssertion\) [ContentTypeJSON](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L71>)
+### func \(\*ResponseAssertion\) ContentTypeJSON
 
 ```go
 func (ra *ResponseAssertion) ContentTypeJSON() *ResponseAssertion
@@ -152,7 +152,7 @@ func (ra *ResponseAssertion) ContentTypeJSON() *ResponseAssertion
 ContentTypeJSON asserts the response is JSON
 
 <a name="ResponseAssertion.Status"></a>
-### func \(\*ResponseAssertion\) [Status](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L42>)
+### func \(\*ResponseAssertion\) Status
 
 ```go
 func (ra *ResponseAssertion) Status(code int) *ResponseAssertion
@@ -161,7 +161,7 @@ func (ra *ResponseAssertion) Status(code int) *ResponseAssertion
 Status asserts the response has the expected status code
 
 <a name="ResponseAssertion.StatusOK"></a>
-### func \(\*ResponseAssertion\) [StatusOK](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/assertions.go#L51>)
+### func \(\*ResponseAssertion\) StatusOK
 
 ```go
 func (ra *ResponseAssertion) StatusOK() *ResponseAssertion
@@ -170,7 +170,7 @@ func (ra *ResponseAssertion) StatusOK() *ResponseAssertion
 StatusOK asserts the response has status 200
 
 <a name="TestServer"></a>
-## type [TestServer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L15-L19>)
+## type TestServer
 
 TestServer wraps httptest.Server with convenience methods
 
@@ -183,7 +183,7 @@ type TestServer struct {
 ```
 
 <a name="NewTestServer"></a>
-### func [NewTestServer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L87>)
+### func NewTestServer
 
 ```go
 func NewTestServer(t *testing.T, router http.Handler) *TestServer
@@ -192,7 +192,7 @@ func NewTestServer(t *testing.T, router http.Handler) *TestServer
 NewTestServer creates a new test server using the application's router. It sets up the test environment with testdata directory.
 
 <a name="TestServer.Close"></a>
-### func \(\*TestServer\) [Close](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L135>)
+### func \(\*TestServer\) Close
 
 ```go
 func (ts *TestServer) Close()
@@ -201,7 +201,7 @@ func (ts *TestServer) Close()
 Close shuts down the test server
 
 <a name="TestServer.GET"></a>
-### func \(\*TestServer\) [GET](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L100>)
+### func \(\*TestServer\) GET
 
 ```go
 func (ts *TestServer) GET(path string) *http.Response
@@ -210,7 +210,7 @@ func (ts *TestServer) GET(path string) *http.Response
 GET performs a GET request to the given path
 
 <a name="TestServer.GETWithQuery"></a>
-### func \(\*TestServer\) [GETWithQuery](<https://github.com/dgallion1/simpleBudget/blob/master/internal/testutil/testutil.go#L111>)
+### func \(\*TestServer\) GETWithQuery
 
 ```go
 func (ts *TestServer) GETWithQuery(path string, query map[string]string) *http.Response

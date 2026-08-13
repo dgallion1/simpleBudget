@@ -18,7 +18,7 @@ Package history exposes historical market data used by backtest analyses. It is 
 
 
 <a name="AvailableStartYears"></a>
-## func [AvailableStartYears](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/history/data.go#L42>)
+## func AvailableStartYears
 
 ```go
 func AvailableStartYears(data Data, projectionYears int) []int
@@ -27,7 +27,7 @@ func AvailableStartYears(data Data, projectionYears int) []int
 AvailableStartYears returns every starting year from which a sequence of projectionYears length is available. F\-057: inclusive upper bound — for an N\-year horizon the last viable start year is \(lastYear \- N \+ 1\).
 
 <a name="Stats"></a>
-## func [Stats](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/history/data.go#L57>)
+## func Stats
 
 ```go
 func Stats(data Data) (avgStock, avgBond, avgCash, avgInflation, stockStdDev, bondStdDev float64)
@@ -36,7 +36,7 @@ func Stats(data Data) (avgStock, avgBond, avgCash, avgInflation, stockStdDev, bo
 Stats computes aggregate statistics across the dataset \(means and standard deviations for stocks and bonds\).
 
 <a name="Data"></a>
-## type [Data](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/history/data.go#L12>)
+## type Data
 
 Data is a sequence of annual market data points.
 
@@ -45,7 +45,7 @@ type Data []models.HistoricalYear
 ```
 
 <a name="DefaultData"></a>
-### func [DefaultData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/history/data.go#L15>)
+### func DefaultData
 
 ```go
 func DefaultData() Data
@@ -54,7 +54,7 @@ func DefaultData() Data
 DefaultData returns the canonical historical dataset.
 
 <a name="Sequence"></a>
-### func [Sequence](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/history/data.go#L22>)
+### func Sequence
 
 ```go
 func Sequence(data Data, startYear, yearsNeeded int) Data

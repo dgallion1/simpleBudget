@@ -17,7 +17,7 @@ Package dashboard serves the main landing page and its HTMX\-driven partials: KP
 
 
 <a name="Initialize"></a>
-## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/dashboard/handlers.go#L35>)
+## func Initialize
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.SettingsManager)
@@ -26,7 +26,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.
 Initialize sets up the dashboard package with required dependencies.
 
 <a name="RegisterRoutes"></a>
-## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/dashboard/handlers.go#L113>)
+## func RegisterRoutes
 
 ```go
 func RegisterRoutes(r chi.Router)
@@ -35,7 +35,7 @@ func RegisterRoutes(r chi.Router)
 RegisterRoutes registers all dashboard routes
 
 <a name="BudgetVerdictView"></a>
-## type [BudgetVerdictView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/dashboard/verdict.go#L16-L28>)
+## type BudgetVerdictView
 
 BudgetVerdictView is the precomputed model the dashboard verdict band renders. Classification lives here \(testable\); currency formatting stays in the template \(reusing formatMoney\), so this carries figures and flags, not display strings.
 
@@ -56,7 +56,7 @@ type BudgetVerdictView struct {
 ```
 
 <a name="BuildBudgetVerdict"></a>
-### func [BuildBudgetVerdict](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/dashboard/verdict.go#L33>)
+### func BuildBudgetVerdict
 
 ```go
 func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView

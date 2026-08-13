@@ -16,7 +16,7 @@ Package explorer serves the file\-manager and transaction\-explorer pages: brows
 
 
 <a name="HandleFileManagerPage"></a>
-## func [HandleFileManagerPage](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/explorer/handlers.go#L404>)
+## func HandleFileManagerPage
 
 ```go
 func HandleFileManagerPage(w http.ResponseWriter, r *http.Request)
@@ -25,7 +25,7 @@ func HandleFileManagerPage(w http.ResponseWriter, r *http.Request)
 
 
 <a name="Initialize"></a>
-## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/explorer/handlers.go#L38>)
+## func Initialize
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer, c *config.Config, s *storage.Storage)
@@ -34,7 +34,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer, c *config.Confi
 Initialize sets up the explorer package with required dependencies
 
 <a name="RegisterRoutes"></a>
-## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/explorer/handlers.go#L98>)
+## func RegisterRoutes
 
 ```go
 func RegisterRoutes(r chi.Router)

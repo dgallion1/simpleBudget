@@ -216,6 +216,42 @@ func TestGetAnomaliesTool_EmptyDataReturnsZeroCountNoError(t *testing.T) {
 	}
 }
 
+// TestGetAnomaliesTool_MadMerchantPeerGroupIsLowerCased plants a 5-row
+// same-merchant group (mirroring internal/services/anomalies's own
+// TestDetect_SmallGroup_MaterialOutlierFlagged fixture) whose 5th charge is
+// a material outlier, routing it through mad_merchant. anomalies.Anomaly's
+// own PeerGroup for this method is the merchants package's canonical
+// uppercase-normalized matching key ("CORNER DELI MATERIAL"), which
+// merchants.DisplayLabel's doc comment warns "would look like a bug if
+// surfaced directly" -- this pins that get_anomalies instead reports the
+// lower-cased display label every other spend tool uses for a merchant.
+func TestGetAnomaliesTool_MadMerchantPeerGroupIsLowerCased(t *testing.T) {
+	txns := []models.Transaction{
+		insightsTxn("CORNER DELI MATERIAL", insightsDate(2024, 1, 1), -21.00, "Dining"),
+		insightsTxn("CORNER DELI MATERIAL", insightsDate(2024, 1, 8), -22.00, "Dining"),
+		insightsTxn("CORNER DELI MATERIAL", insightsDate(2024, 1, 15), -22.00, "Dining"),
+		insightsTxn("CORNER DELI MATERIAL", insightsDate(2024, 1, 22), -23.00, "Dining"),
+		insightsTxn("CORNER DELI MATERIAL", insightsDate(2024, 1, 29), -200.00, "Dining"),
+	}
+	deps := newInsightsDeps(txns)
+
+	out, res := callInsightsTool[anomaliesOutput](t, deps, "get_anomalies", anomaliesInput{})
+	if res.IsError {
+		t.Fatalf("get_anomalies returned an error: %+v", res.Content)
+	}
+	if out.Count != 1 {
+		t.Fatalf("Count = %d, want 1; anomalies: %+v", out.Count, out.Anomalies)
+	}
+	got := out.Anomalies[0]
+	if got.Method != "mad_merchant" {
+		t.Fatalf("Method = %q, want %q (fixture must route through mad_merchant to exercise the fix)", got.Method, "mad_merchant")
+	}
+	if got.PeerGroup != "corner deli material" {
+		t.Errorf("PeerGroup = %q, want %q (lower-cased, matching every other spend tool's merchant label -- NOT the raw uppercase-normalized matching key)",
+			got.PeerGroup, "corner deli material")
+	}
+}
+
 // errBoom stands in for a data-access failure -- locked/encrypted storage or
 // a missing data directory -- so TestGetAnomaliesTool_LoadFailureIsAToolError
 // can assert the tool surfaces it clearly instead of panicking or reporting

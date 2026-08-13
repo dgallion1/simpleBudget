@@ -101,6 +101,37 @@ func TestNewServerRegistersAllTwelveTools(t *testing.T) {
 	}
 }
 
+// TestServerInstructionsCarryLoadBearingClaims pins the presence of every
+// claim serverInstructions makes about tool behavior -- it is the model's
+// closest thing to a system prompt, read on every connection, and nothing
+// else catches it drifting out of sync with what the tools actually do (this
+// is how the peer_group casing claim went stale in the first place). This is
+// not a wording freeze: reword freely. The point is that an edit to a tool's
+// actual behavior which invalidates one of these claims fails a test instead
+// of silently misleading the model.
+func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
+	for _, want := range []string{
+		// apply_changes writes; run_scenario doesn't.
+		"apply_changes writes to the saved plan",
+		"run_scenario does not",
+		// The three tools whose sign convention differs, by name.
+		"search_transactions (expenses negative)",
+		"positive in summarize_spending",
+		"mixed in get_trends",
+		// Duplicate exclusion.
+		"already resolved as duplicates",
+		// Merchant-label rule: fuzzy grouping, lower-cased.
+		"fuzzy grouping",
+		"lower-cased",
+	} {
+		if !strings.Contains(serverInstructions, want) {
+			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+
+				"underneath a claim this text makes to the model; update serverInstructions (and this "+
+				"test) to match", want)
+		}
+	}
+}
+
 func toolNames(tools []*mcp.Tool) []string {
 	names := make([]string, len(tools))
 	for i, tool := range tools {

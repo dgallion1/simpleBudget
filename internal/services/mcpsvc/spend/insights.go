@@ -7,6 +7,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/anomalies"
+	"budget2/internal/services/merchants"
 	"budget2/internal/services/pricecreep"
 )
 
@@ -34,7 +35,12 @@ type anomalyRow struct {
 	Method      string  `json:"method"`
 	Severity    string  `json:"severity"`
 	Score       float64 `json:"score"`
-	PeerGroup   string  `json:"peer_group"`
+	// PeerGroup is a category name (mad_category) or a merchant label
+	// (mad_merchant, new_merchant). Merchant labels are lower-cased, matching
+	// every other spend tool's merchant field -- NOT anomalies.Anomaly's own
+	// PeerGroup, which for those two methods is the merchants package's
+	// canonical uppercase-normalized matching key; see peerGroupLabel.
+	PeerGroup string `json:"peer_group"`
 }
 
 // anomaliesWindow echoes back the requested display window. A field is null
@@ -120,6 +126,43 @@ func inWindow(d time.Time, start, end *time.Time) bool {
 	return true
 }
 
+// anomalyExpenses returns the same expense set anomalies.Detect scores
+// against, internally: active (non-suppressed) transactions that are
+// outflows with a negative amount. anomalies.Detect does not expose the
+// merchant groups it builds from this set (its canonical key is an internal
+// matching key), so peerGroupLabel recomputes the identical, deterministic
+// grouping to translate mad_merchant/new_merchant's PeerGroup into a display
+// label without reaching into the anomalies package's internals.
+func anomalyExpenses(ts *models.TransactionSet) []models.Transaction {
+	active := ts.Active().Transactions
+	expenses := make([]models.Transaction, 0, len(active))
+	for _, t := range active {
+		if t.TransactionType == models.Outflow && t.Amount < 0 {
+			expenses = append(expenses, t)
+		}
+	}
+	return expenses
+}
+
+// peerGroupLabel maps mad_merchant/new_merchant's PeerGroup -- the merchants
+// package's canonical uppercase-normalized key -- to the lower-cased display
+// label every other spend tool uses for a merchant (merchants.DisplayLabel).
+// mad_category's PeerGroup is already a human-readable category name and is
+// returned unchanged. groups is keyed by the same canonical key, built by
+// merchants.GroupTransactions over the identical expense set anomalies.Detect
+// used, so a mad_merchant/new_merchant PeerGroup always has a matching entry;
+// a lookup miss (method mismatch or a future anomalies.go change) falls back
+// to the raw key rather than losing the row.
+func peerGroupLabel(a anomalies.Anomaly, groups map[string][]models.Transaction) string {
+	if a.Method != "mad_merchant" && a.Method != "new_merchant" {
+		return a.PeerGroup
+	}
+	if g, ok := groups[a.PeerGroup]; ok {
+		return merchants.DisplayLabel(g)
+	}
+	return a.PeerGroup
+}
+
 // anomalyRows runs anomalies.Detect over the FULL history in ts (baselines
 // and new-merchant first-occurrence are never window-scoped, per
 // ANALYTICS_PORT_SPEC.md Rulings) and returns only the flags whose Date
@@ -128,6 +171,7 @@ func inWindow(d time.Time, start, end *time.Time) bool {
 // reorder.
 func anomalyRows(ts *models.TransactionSet, start, end *time.Time) []anomalyRow {
 	detected := anomalies.Detect(*ts)
+	groups := merchants.GroupTransactions(anomalyExpenses(ts))
 	rows := make([]anomalyRow, 0, len(detected))
 	for _, a := range detected {
 		if !inWindow(a.Date, start, end) {
@@ -141,7 +185,7 @@ func anomalyRows(ts *models.TransactionSet, start, end *time.Time) []anomalyRow 
 			Method:      a.Method,
 			Severity:    a.Severity,
 			Score:       round2(a.Score),
-			PeerGroup:   a.PeerGroup,
+			PeerGroup:   peerGroupLabel(a, groups),
 		})
 	}
 	return rows

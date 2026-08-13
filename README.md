@@ -327,7 +327,7 @@ the saved plan**. Before its first write to a scenario in a session,
 hand is the recovery path for an unwanted change. A `whatif://assumptions`
 resource describes what the engine does not model.
 
-Two spending tools read the transaction history rather than a scenario.
+Six spending tools read the transaction history rather than a scenario.
 `get_anomalies` flags unusual expense transactions (outflows only,
 TransactionType == Outflow AND Amount < 0) by three methods: amounts far outside
 a merchant's or category's typical range (mad_merchant, mad_category, using a
@@ -339,7 +339,18 @@ occurrence never change with the window — and accepts optional `start_date` an
 `get_price_creep` finds recurring merchant charges whose amounts have drifted
 upward: for each merchant with at least 6 occurrences it compares the median of
 the first 3 charges to the median of the last 3 and reports when the increase
-exceeds 5%; decreases and single outliers never report.
+exceeds 5%; decreases and single outliers never report. `search_transactions`
+searches the ledger by date range, category, free-text, type, and amount bounds,
+paginated, with signed amounts (expenses negative). `summarize_spending` totals
+income, expenses, savings, and category/merchant/month breakdowns over a date
+window, with positive dollar amounts throughout and an optional budget-vs-target
+comparison when a plan is configured. `get_recurring` detects recurring
+payments — subscriptions, bills, and other repeating charges — by clustering
+outflows into merchant groups with consistent amounts at consistent intervals.
+`get_trends` compares category and major-expense spending, income patterns, and
+spending velocity (burn rate) against the immediately preceding window of equal
+length. All six exclude transactions the user has already marked as a resolved
+duplicate.
 
 Locked or encrypted storage surfaces as a clear error from the tool rather than
 a parse failure — unlock via `/unlock` in the web UI first. Cross-site browser

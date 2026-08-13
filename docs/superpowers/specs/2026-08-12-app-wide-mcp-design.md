@@ -156,27 +156,40 @@ separate work, deliberately out of scope here.
 
 ## Where the logic lives
 
-`majorexpenses`, `anomalies`, `pricecreep`, `merchants`, and `retirement` are
-already services and are callable as-is. Insights and dashboard are not: the
-analysis lives unexported inside the handler packages.
+`majorexpenses`, `anomalies`, `pricecreep`, `merchants`, and `retirement` were
+already services and callable as-is. Insights and dashboard were not: the
+analysis lived unexported inside the handler packages. Phase 2 extracted the
+part each `spend` tool needed and left the rest.
 
-- `internal/handlers/insights/handlers.go` — `detectRecurringPaymentsAt`,
-  `detectByAmount`, `mergeSimilarGroups`, `analyzeCategoryTrends`,
-  `analyzeMajorExpenseTrends`, `AnalyzeIncomePatterns`,
-  `calculateSpendingVelocity`, `isSubscription`,
-  `annotateRecurringWithMajorExpense` — roughly 1,000 lines under 2,767 lines of
-  tests.
-- `internal/handlers/dashboard/handlers.go` — `calculateMetrics`,
-  `calculateComparison`, `bucketMajorExpenses`, the chart builders.
+**Moved**, now exported services with no dependency on any `handlers` package:
 
-This extraction, not the transport work, is the bulk of the effort.
+- `internal/services/insights` (from `internal/handlers/insights/handlers.go`)
+  — recurring-payment detection (`DetectRecurring`, `DetectRecurringAt`,
+  `mergeSimilarGroups`, `detectByAmount`, `IsSubscription`), category and
+  major-expense trends (`CategoryTrends`, `MajorExpenseTrends`), income
+  patterns (`IncomePatterns`), and spending velocity (`SpendingVelocity`).
+- `internal/services/metrics` (from `internal/handlers/dashboard/handlers.go`)
+  — the live KPI/budget math: `Calculate`, `Comparison`, `BudgetTargets`,
+  `PercentChange`, `MonthsBetween`.
 
-**Strategy: incremental, per tool.** Each `spend` tool moves only the logic it
-needs into `internal/services/insights` or `internal/services/dashboard`; the
-handler then delegates to the service, and the logic's existing tests move with
-it. The suite stays green at every step and no single diff spans thousands of
-test lines. Extracted functions keep their behavior exactly — this is a move,
-not a rewrite.
+**Stayed** in the handler packages — they shape data for templates and Plotly,
+or are thin per-request glue, not analysis an MCP tool needs:
+`annotateRecurringWithMajorExpense` and `calculateInsights`
+(`internal/handlers/insights/handlers.go`); `currentBudgetSettings` and the
+chart builders (`buildSpendingTrendChartData`, `buildMerchantsChartData`,
+`buildCumulativeChartData`, `buildBudgetVsActualChartData`,
+`buildMajorExpenseChartData`) in `internal/handlers/dashboard/handlers.go`.
+`loadAndAnalyzeTrends` also stayed handler-side, as a thin wrapper that calls
+the now-extracted `insights.CategoryTrends`.
+
+This extraction, not the transport work, was the bulk of the effort.
+
+**Strategy: incremental, per tool.** Each `spend` tool moved only the logic it
+needed into `internal/services/insights` or `internal/services/metrics`; the
+handler then delegates to the service, and the logic's existing tests moved
+with it. The suite stayed green at every step and no single diff spanned
+thousands of test lines. Extracted functions kept their behavior exactly —
+this was a move, not a rewrite.
 
 `search_transactions` needs no extraction: `models.TransactionSet` already has
 composable `FilterByDateRange` / `FilterByCategory` / `FilterBySearch` /
@@ -208,9 +221,14 @@ composable `FilterByDateRange` / `FilterByCategory` / `FilterBySearch` /
 Each phase gets its own implementation plan.
 
 1. **Transport.** `mcpsvc` skeleton, `/mcp` mount, `plan` tools migrated,
-   `.mcp.json` updated, `cmd/whatif-mcp` retired, README note.
+   `.mcp.json` updated, `cmd/whatif-mcp` retired, README note. **Implemented.**
 2. **`spend`.** Read tools, with insights/dashboard extraction as each tool
-   requires it.
+   requires it. **Implemented.** All six tools (`search_transactions`,
+   `summarize_spending`, `get_recurring`, `get_trends`, `get_anomalies`,
+   `get_price_creep`) are registered; recurring detection, trends, income
+   patterns, and velocity moved to `internal/services/insights`, and the live
+   KPI/budget math moved to `internal/services/metrics` — see "Where the logic
+   lives" below for what moved and what stayed.
 3. **`curate`.** Major-expense reads and writes.
 4. **`admin`.** Housekeeping, then the three guarded operations last.
 

@@ -1,4 +1,4 @@
-package whatifmcp
+package plan
 
 import (
 	"testing"

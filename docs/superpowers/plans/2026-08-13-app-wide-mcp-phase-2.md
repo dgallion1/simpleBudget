@@ -1078,7 +1078,11 @@ The `## Talking to your plan (MCP)` section lists eight tools. Add the four new 
 
 In `docs/superpowers/specs/2026-08-12-app-wide-mcp-design.md`, update the Phases section to record Phase 2 as implemented, and update the "Where the logic lives" section: it says the insights and dashboard analysis is unexported inside the handler packages, which after this phase is only partly true. Name what moved and what stayed (`annotateRecurringWithMajorExpense`, `currentBudgetSettings`, `calculateInsights`, and the chart builders remain handler-side).
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Regenerate the API docs**
+
+The extractions falsified the generated package docs: `docs/api/internal/handlers/insights.md` still documents `AnalyzeIncomePatterns` as living in the handler package, and there is no page for `internal/services/insights` at all. Run `make docs-api` and commit whatever it produces. Do not hand-edit generated files — if the output looks wrong, report it rather than patching it.
+
+- [ ] **Step 5: Verify and commit**
 
 Run: `go build ./... && go vet ./... && go test ./... && staticcheck ./...`
 

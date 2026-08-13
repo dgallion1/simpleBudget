@@ -33,11 +33,14 @@ import (
 	"budget2/internal/handlers/whatif"
 	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/mcpsvc"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/version"
 	"budget2/web"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var (
@@ -47,6 +50,7 @@ var (
 	renderer      *templates.Renderer
 	retirementMgr *retirement.SettingsManager
 	backupService *backupsvc.Service
+	mcpServer     *mcp.Server
 )
 
 // SetupDependencies initializes all global dependencies with the given config.
@@ -100,6 +104,18 @@ func SetupDependencies(c *config.Config) error {
 	// restore pruned the active scenario's file.
 	backup.Initialize(cfg, store, renderer, backupService, retirementMgr)
 
+	// The MCP server shares these exact instances -- not a second manager or
+	// loader on the same directory -- so a tool call and a page request cannot
+	// report different figures for the same plan.
+	mcpServer = mcpsvc.NewServer(mcpsvc.Deps{
+		Settings:    retirementMgr,
+		Loader:      loader,
+		Store:       store,
+		SettingsDir: settingsDir,
+		SnapshotDir: filepath.Join(cfg.BackupDir, "mcp-snapshots"),
+		BaseURL:     "http://localhost" + cfg.ListenAddr,
+	})
+
 	return nil
 }
 
@@ -148,6 +164,17 @@ func SetupRouter() chi.Router {
 	r.Get("/filemanager", explorer.HandleFileManagerPage)
 
 	r.Get("/api/version", handleVersion)
+
+	// MCP endpoint. Deliberately outside the lock-check group below: that
+	// middleware answers 307 -> /unlock, which a JSON-RPC client cannot
+	// follow. A locked store is reported by the tools themselves.
+	if mcpServer != nil {
+		mcpHandler := mcp.NewStreamableHTTPHandler(
+			func(*http.Request) *mcp.Server { return mcpServer },
+			&mcp.StreamableHTTPOptions{SessionTimeout: 30 * time.Minute},
+		)
+		r.Handle("/mcp", http.NewCrossOriginProtection().Handler(mcpHandler))
+	}
 
 	// Apply lock check middleware to protected routes
 	r.Group(func(r chi.Router) {

@@ -282,8 +282,24 @@ func TestPinTransactionsSucceedsOnAFreshInstallWithNoPinsFileYet(t *testing.T) {
 }
 
 // TestPinTransactionsAbortsWhenAnExistingPinsFileCannotBeBackedUp covers the
-// fix's other half: a non-not-found Ensure failure (permission denied here)
-// must still abort the write, unlike a genuinely missing file.
+// fix's other half: a non-not-found Ensure failure must still abort the
+// write, unlike a genuinely missing file.
+//
+// The failure is engineered at the SNAPSHOT DESTINATION, not the data file:
+// a regular file is planted where Ensure needs to create the snapshot
+// directory, so os.MkdirAll fails with "not a directory" (never
+// fs.ErrNotExist, on any OS) while transaction_pins.json itself stays fully
+// readable and writable throughout. That is deliberate. An earlier version
+// of this test instead chmod'd the DATA file unreadable to fail the
+// snapshot, but the subsequent write path (deps.Pins.SetTransactionPins)
+// reads that very same file before it writes, so it failed on its own even
+// with the abort branch disabled -- the test passed whether or not the
+// abort actually ran, because both the correct and the broken build wrote
+// nothing, for different reasons. Blocking only the snapshot side makes the
+// two builds diverge: correct code sees the Ensure failure, is not
+// fs.ErrNotExist, and aborts before writing; broken code ignores that
+// failure and calls SetTransactionPins, which succeeds normally because the
+// data file was never touched.
 //
 // The pins file is seeded by calling deps.Pins.SetTransactionPins directly,
 // not by routing a pin through pin_transactions or upsert_major_expense's
@@ -291,9 +307,9 @@ func TestPinTransactionsSucceedsOnAFreshInstallWithNoPinsFileYet(t *testing.T) {
 // Snapshots.Ensure(transactionPinsFile, ...) itself and the Snapshotter
 // remembers a successful backup for the life of the process, short-circuiting
 // a later Ensure of the same name without touching the file again -- so the
-// chmod below would go unnoticed and this test would pass vacuously against
-// the CACHED snapshot path from the seeding call rather than genuinely
-// re-reading the now-unreadable file.
+// blocker planted below would go unnoticed and this test would pass
+// vacuously against the CACHED snapshot path from the seeding call rather
+// than genuinely re-attempting the now-blocked snapshot.
 func TestPinTransactionsAbortsWhenAnExistingPinsFileCannotBeBackedUp(t *testing.T) {
 	deps, dir := newDeps(t, ledger())
 	mortgageExpense(t, deps)
@@ -307,24 +323,30 @@ func TestPinTransactionsAbortsWhenAnExistingPinsFileCannotBeBackedUp(t *testing.
 	if err != nil {
 		t.Fatalf("read pins before: %v", err)
 	}
-	if err := os.Chmod(pinsPath, 0o000); err != nil {
-		t.Fatalf("chmod: %v", err)
+
+	// newDeps points this Deps' Snapshotter at filepath.Join(dir,
+	// "snapshots"). Plant a plain file there so Ensure's os.MkdirAll of that
+	// same path fails with ENOTDIR -- a non-fs.ErrNotExist error -- without
+	// touching transaction_pins.json at all.
+	snapshotDirPath := filepath.Join(dir, "snapshots")
+	if err := os.WriteFile(snapshotDirPath, []byte("blocking the snapshot directory"), 0o644); err != nil {
+		t.Fatalf("plant snapshot-dir blocker: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(pinsPath, 0o644) })
 
 	roof := models.Transaction{Date: day(2026, 2, 14), Description: "ACME ROOFING", Amount: -4500}
 	res := call(t, cs, "pin_transactions", map[string]any{
 		"expense_id": "me-mortgage",
 		"hashes":     []any{roof.ComputeHash()},
 	})
-	if err := os.Chmod(pinsPath, 0o644); err != nil {
-		t.Fatalf("chmod restore: %v", err)
-	}
 	msg := toolErrorText(t, res)
-	if !strings.Contains(msg, transactionPinsFile) {
-		t.Errorf("expected the refusal to name %s, got: %s", transactionPinsFile, msg)
+	if !strings.Contains(msg, "snapshot") {
+		t.Errorf("expected the refusal to mention the failed snapshot, got: %s", msg)
 	}
 
+	// The discriminating assertion: the data file's bytes must be BYTE-FOR-
+	// BYTE unchanged. "The tool returned an error" alone does not prove the
+	// abort fired -- that was exactly the shape of the vacuous version of
+	// this test.
 	after, err := os.ReadFile(pinsPath)
 	if err != nil {
 		t.Fatalf("read pins after: %v", err)
@@ -332,7 +354,10 @@ func TestPinTransactionsAbortsWhenAnExistingPinsFileCannotBeBackedUp(t *testing.
 	if string(after) != string(before) {
 		t.Error("transaction_pins.json changed despite the backup failing")
 	}
-	pins, _ := deps.Pins.LoadTransactionPins()
+	pins, err := deps.Pins.LoadTransactionPins()
+	if err != nil {
+		t.Fatalf("LoadTransactionPins: %v", err)
+	}
 	if pins[roof.ComputeHash()] != "" {
 		t.Errorf("pin must not have been written: %+v", pins)
 	}

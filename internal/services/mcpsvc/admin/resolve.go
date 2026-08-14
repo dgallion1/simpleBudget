@@ -83,8 +83,10 @@ func registerResolve(s *mcp.Server, deps Deps) {
 			"refused, not written. kept_both ignores the hashes. A pair_key that is not currently awaiting " +
 			"review is refused with the list of keys that are, so do not guess one: call list_duplicates first. " +
 			"undo_resolve reverses this exactly. duplicate_decisions.json is copied to a .bak before this " +
-			"session's first change to it. An already-open Duplicates page does NOT refresh itself -- it shows " +
-			"stale data until reloaded.",
+			"session's first change to it when there is prior data on disk to protect; on a fresh install with " +
+			"no decisions file yet there is nothing to back up, so none is taken and snapshot_paths comes back " +
+			"empty. Later changes in the same session are not separately recoverable. An already-open " +
+			"Duplicates page does NOT refresh itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in resolveInput) (res *mcp.CallToolResult, out resolveOutput, err error) {
 		defer recoverToError("resolve_duplicates", &err)
 
@@ -160,7 +162,17 @@ func registerResolve(s *mcp.Server, deps Deps) {
 			Note:           note,
 		}
 		// Re-load so the reported remainder reflects the decision just made.
-		if _, err := deps.load(); err == nil {
+		// A failed reload must NOT leave UnresolvedRemaining at its zero
+		// value silently: a model reading that as "nothing left to resolve"
+		// would stop looping early when the truth is just "unknown".
+		if _, err := deps.load(); err != nil {
+			reloadNote := "unresolved_remaining could not be recomputed after the write: " + err.Error()
+			if out.Note == "" {
+				out.Note = reloadNote
+			} else {
+				out.Note += "; " + reloadNote
+			}
+		} else {
 			out.UnresolvedRemaining = deps.Duplicates.UnresolvedDuplicateCount()
 		}
 		return nil, out, nil

@@ -281,6 +281,39 @@ also need a crash-consistent write order beyond today's
 archive → active → pins (which fails toward a recoverable duplicate rather
 than data loss) is worth settling at the same time.
 
+## Carried out of phase 3
+
+Reviewed, judged not worth widening phase 3's branch for, and deliberately not
+forgotten. None of these are known to lose data today.
+
+- **`upsert_major_expense`'s `pin_hash` does not validate its hash.**
+  `pin_transactions` learned to intersect named hashes against the pinnable
+  outflow set — so an income row or a hallucinated hash is reported back rather
+  than written — but the create-and-pin shortcut in `upsert` never got the same
+  check and can still write a dead key. The two tools disagree about what is
+  pinnable; they should not.
+- **`upsert_major_expense` swallows a `SetTransactionPins` error silently.** The
+  create is deliberately not rolled back when the pin fails, which is right, but
+  the caller is told nothing. It should carry a note the way the snapshot-skip
+  path now does.
+- **Named-hash pinning now needs the ledger.** Validating hashes means
+  `pin_transactions` loads transactions on a path that previously did not, so it
+  now fails on a locked encrypted store where it once succeeded. Correct, but a
+  behavior change worth confirming against how the other tools report a locked
+  store.
+- **`delete_major_expense`'s "all three snapshots failed" backstop is
+  unreachable** given the per-file not-found tolerance in front of it. Harmless,
+  but it reads as live defense.
+- **Two abort tests inject failure with `chmod`,** which a root-run suite would
+  defeat. `pin_transactions`' equivalent test was rewritten to block the
+  snapshot destination instead, which is root-safe; the `upsert` and `delete`
+  ones could not reuse that technique because they need one `Ensure` against a
+  shared snapshot directory to succeed while another fails.
+
+The last two exist because phase 3's write tools were built one per task, each
+reviewed against its own brief. Cross-tool consistency only became visible at
+the whole-branch review, which is where all five of these were found.
+
 ## Constraints learned in phases 1 and 2
 
 Carry these into the Phase 3 and 4 plans as Global Constraints. Each cost a fix

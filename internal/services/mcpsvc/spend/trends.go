@@ -52,18 +52,36 @@ type incomePatternRow struct {
 // month, so a "days remaining this month" / "projected month total" pair
 // would silently describe a different month than the one being reported on,
 // with no way for a caller to detect it. daily_average and burn_rate_change
-// stay because both are honest about the SELECTED window.
+// stay, but see DailyAverage's own doc below: it is NOT simply window spend
+// over the window's calendar length, and is not as "honest about the
+// SELECTED window" as its name suggests.
 type velocityRow struct {
-	// DailyAverage is average spend per day WITHIN THE SELECTED WINDOW
-	// (start/end), in dollars.
+	// DailyAverage is insights.SpendingVelocity's DailyAverage, UNCHANGED --
+	// see Finding 3 in the Phase 2 review. It is NOT window spend divided by
+	// the window's calendar length (end - start); it is window spend
+	// divided by the number of days BETWEEN THE EARLIEST AND LATEST
+	// TRANSACTION PRESENT IN THE WINDOW (which may be an income row, not
+	// just an outflow), a span that is shorter than the requested window
+	// whenever the window has gaps -- e.g. a 31-day window whose
+	// transactions cluster on the 10th-12th divides by 3, not 31, inflating
+	// this figure roughly tenfold. Do not multiply it by the window's
+	// length to project a total; use MonthProjection-style math elsewhere
+	// if that's needed. When the window has zero outflows, this is 0.
 	DailyAverage float64 `json:"daily_average"`
-	// HistoricalDaily is average spend per day over the WHOLE active
-	// ledger (not the selected window) -- the baseline burn_rate_change
-	// compares the window against.
+	// HistoricalDaily is the same computation as DailyAverage (see its doc
+	// above) but over the WHOLE active ledger (not the selected window) --
+	// the baseline burn_rate_change compares the window against. It shares
+	// DailyAverage's same span-vs-length caveat over the ledger's own
+	// transaction dates. When the selected window has zero outflows,
+	// SpendingVelocity returns a fully zeroed struct, so this reads as 0
+	// too -- even when the ledger has years of spending history; that zero
+	// means "the window was empty," not "there is no history."
 	HistoricalDaily float64 `json:"historical_daily"`
 	// BurnRateChange is the percent difference between DailyAverage and
 	// HistoricalDaily ((window - history) / history * 100); positive means
 	// the selected window is spending faster than the ledger's own history.
+	// It inherits DailyAverage's inflation risk, since both inputs share
+	// the same span-vs-length caveat.
 	BurnRateChange float64 `json:"burn_rate_change"`
 }
 
@@ -179,7 +197,15 @@ func registerTrends(s *mcp.Server, deps Deps) {
 			"prior period, which may itself have been unusual. Within each row, current_amount and " +
 			"previous_amount are POSITIVE dollar figures, but change_amount (current_amount - previous_amount) " +
 			"and change_percent are SIGNED -- negative means spending FELL versus the prior window, positive " +
-			"means it rose; do not read either as a magnitude. major_expense_trends groups outflows by the " +
+			"means it rose; do not read either as a magnitude. category_trends, major_expense_trends, and " +
+			"income_patterns are each SILENTLY CAPPED and will not list every category/expense/income source " +
+			"when the household has more than the cap: category_trends and major_expense_trends each keep only " +
+			"the 10 rows with the largest |change_amount| (biggest movers, not biggest spenders -- a large, " +
+			"stable category can be dropped in favor of a small one that moved a lot), and income_patterns " +
+			"keeps only the 10 rows with the largest total_amount. A household with more than 10 categories, " +
+			"major expenses, or income sources will have some silently missing from these lists -- there is no " +
+			"count/total field here to detect this against, unlike search_transactions' total or " +
+			"get_recurring's 20-row cap. major_expense_trends groups outflows by the " +
 			"user's declared major expenses (via pin or keyword/amount match) instead of raw category, " +
 			"dropping unmatched transactions; it is OMITTED from the response entirely (not present, not an " +
 			"empty list) when no major-expense source is configured, its definitions fail to load, OR no " +
@@ -188,10 +214,18 @@ func registerTrends(s *mcp.Server, deps Deps) {
 			"etc.) over the WHOLE ledger, not just the selected window -- a source needs at least 2 " +
 			"occurrences to appear at all, so a single-window slice would chronically miss regular income " +
 			"whose next occurrence falls outside it. velocity is a PACE summary, not a forecast: " +
-			"daily_average is spend per day WITHIN THE SELECTED WINDOW; historical_daily is spend per day " +
-			"over the WHOLE ledger, independent of the window, as a baseline; burn_rate_change is the percent " +
-			"difference between the two (positive = the window is running hotter than the ledger's own " +
-			"history). There is no month-remaining projection field: the tool's default window is the last " +
+			"daily_average is NOT simply window spend divided by the window's calendar length -- it is spend " +
+			"within the selected window divided by the number of days BETWEEN THE WINDOW'S OWN EARLIEST AND " +
+			"LATEST TRANSACTION (which may be income rows, not just outflows), so a window whose transactions " +
+			"cluster in a few days -- leaving gaps elsewhere in the window -- reports a daily_average inflated " +
+			"well above the window's true per-calendar-day pace; do not multiply it by the window's length to " +
+			"project a total. historical_daily is computed the same way but over the WHOLE ledger, independent " +
+			"of the window, as a baseline -- and burn_rate_change, being the percent difference between the " +
+			"two, inherits daily_average's inflation risk. When the selected window has no outflows at all, the " +
+			"entire velocity block reads as zero -- including historical_daily -- even if the ledger has years " +
+			"of spending history; a zero historical_daily in that case means \"this window was empty,\" not " +
+			"\"this household has no spending history.\" There is no month-remaining projection field: " +
+			"the tool's default window is the last " +
 			"FULL past month, never the current one, so a projection tied to today's calendar would " +
 			"silently describe a different month than the one being reported on. Suppressed transactions " +
 			"(rows the user has already marked as a resolved duplicate) are excluded before analysis, " +

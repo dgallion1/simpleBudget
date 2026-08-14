@@ -114,10 +114,15 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// apply_changes writes; run_scenario doesn't.
 		"apply_changes writes to the saved plan",
 		"run_scenario does not",
-		// The three tools whose sign convention differs, by name.
+		// All six spend tools' sign conventions, by name -- the list is
+		// claimed COMPLETE, so a seventh spend tool or a changed convention
+		// must update this text (and this test) too.
 		"search_transactions (expenses negative)",
-		"positive in summarize_spending",
+		"get_anomalies (expenses negative)",
+		"positive in summarize_spending, get_price_creep, and",
+		"get_recurring",
 		"mixed in get_trends",
+		"COMPLETE list of all six",
 		// Duplicate exclusion.
 		"already resolved as duplicates",
 		// Merchant-label rule: fuzzy grouping, lower-cased.

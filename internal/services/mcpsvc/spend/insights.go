@@ -181,7 +181,7 @@ func anomalyRows(ts *models.TransactionSet, start, end *time.Time) []anomalyRow 
 			Date:        a.Date.Format("2006-01-02"),
 			Description: a.Description,
 			Category:    a.Category,
-			Amount:      round0(a.Amount),
+			Amount:      round2(a.Amount),
 			Method:      a.Method,
 			Severity:    a.Severity,
 			Score:       round2(a.Score),
@@ -198,8 +198,8 @@ func priceCreepRows(ts *models.TransactionSet) []creepRow {
 	for _, c := range creeps {
 		rows = append(rows, creepRow{
 			Merchant:      c.Merchant,
-			FirstAmount:   round0(c.FirstAmount),
-			CurrentAmount: round0(c.CurrentAmount),
+			FirstAmount:   round2(c.FirstAmount),
+			CurrentAmount: round2(c.CurrentAmount),
 			PctChange:     round2(c.PctChange),
 			FirstDate:     c.FirstDate.Format("2006-01-02"),
 			LastDate:      c.LastDate.Format("2006-01-02"),

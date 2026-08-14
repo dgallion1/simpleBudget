@@ -17,8 +17,10 @@ func registerAnomalies(s *mcp.Server, deps Deps) {
 			"end_date only filter which already-detected flags are RETURNED, so a narrow window will not " +
 			"chronically re-flag a long-standing recurring bill as \"new\" merely because its true first " +
 			"occurrence predates the window. Only expenses are considered (outflows: TransactionType == Outflow " +
-			"AND Amount < 0); the returned amount is the transaction's signed amount, so expenses are negative. " +
-			"Both date params are optional, inclusive, YYYY-MM-DD; an invalid date is a tool error.",
+			"AND Amount < 0); the returned amount is the transaction's signed amount, rounded to the nearest " +
+			"cent (so expenses are negative and comparable cent-for-cent against search_transactions' amounts " +
+			"for the same transaction). Both date params are optional, inclusive, YYYY-MM-DD; an invalid date " +
+			"is a tool error.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in anomaliesInput) (res *mcp.CallToolResult, out anomaliesOutput, err error) {
 		defer recoverToError("get_anomalies", &err)
 
@@ -54,7 +56,8 @@ func registerPriceCreep(s *mcp.Server, deps Deps) {
 			"median of its last 3 and reports it when the increase exceeds 5%. Always runs over the COMPLETE " +
 			"transaction history -- there is no window parameter, because the whole point is a merchant's amount " +
 			"across its full lifetime, not one period. Only expenses are considered (outflows: TransactionType " +
-			"== Outflow AND Amount < 0); the returned amounts are absolute (positive) dollar figures.",
+			"== Outflow AND Amount < 0); the returned amounts are absolute (positive) dollar figures, rounded " +
+			"to the nearest cent (matching every other spend tool's precision).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ priceCreepInput) (res *mcp.CallToolResult, out priceCreepOutput, err error) {
 		defer recoverToError("get_price_creep", &err)
 

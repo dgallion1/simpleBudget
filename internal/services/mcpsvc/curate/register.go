@@ -1,6 +1,6 @@
 // Package curate serves the Major Expenses page's data and edits over MCP:
 // which declared expenses exist, which transactions matched them, what fell
-// through as an exception, and the four writes that change any of that.
+// through as an exception, and the writes that change any of that.
 //
 // It calls the same *dataloader.DataLoader methods the /major-expenses
 // handlers call and recomputes the page's view with the page's own
@@ -30,12 +30,10 @@ const (
 
 // File names in the data directory that the write tools snapshot before
 // changing. They mirror the unexported constants in
-// internal/services/dataloader. Unused until the write tools (upsert/delete
-// major expense, pin/unpin transactions) land in later tasks.
+// internal/services/dataloader.
 const (
-	majorExpensesFile   = "major_expenses.json"
-	transactionPinsFile = "transaction_pins.json"
-	//lint:ignore U1000 consumed by delete/restore-major-expense in a later task
+	majorExpensesFile        = "major_expenses.json"
+	transactionPinsFile      = "transaction_pins.json"
 	deletedMajorExpensesFile = "deleted_major_expenses.json"
 )
 
@@ -234,4 +232,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerListExceptions(s, deps)
 	registerPin(s, deps)
 	registerUpsert(s, deps)
+	registerDelete(s, deps)
 }

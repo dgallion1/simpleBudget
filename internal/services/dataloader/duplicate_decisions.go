@@ -48,6 +48,14 @@ func (dl *DataLoader) duplicateDecisionsPath() string {
 // that fail to parse. Callers can rely on a non-error result always
 // being a usable map.
 func (dl *DataLoader) LoadDuplicateDecisions() (map[string]DuplicateDecision, error) {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	return dl.loadDuplicateDecisionsLocked()
+}
+
+// loadDuplicateDecisionsLocked is LoadDuplicateDecisions' body. Caller
+// holds writeMu.
+func (dl *DataLoader) loadDuplicateDecisionsLocked() (map[string]DuplicateDecision, error) {
 	path := dl.duplicateDecisionsPath()
 	data, err := dl.store.ReadFile(path)
 	if err != nil {
@@ -79,7 +87,9 @@ func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDe
 	if err := validateDuplicateDecision(decision); err != nil {
 		return err
 	}
-	decisions, err := dl.LoadDuplicateDecisions()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	decisions, err := dl.loadDuplicateDecisionsLocked()
 	if err != nil {
 		return err
 	}
@@ -87,7 +97,7 @@ func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDe
 		decision.DecidedAt = time.Now().UTC()
 	}
 	decisions[pairKey] = decision
-	return dl.writeDecisions(decisions)
+	return dl.writeDecisionsLocked(decisions)
 }
 
 // ClearDuplicateDecision removes a decision. No-op if the key isn't
@@ -96,7 +106,9 @@ func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error {
 	if pairKey == "" {
 		return fmt.Errorf("pair key is required")
 	}
-	decisions, err := dl.LoadDuplicateDecisions()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	decisions, err := dl.loadDuplicateDecisionsLocked()
 	if err != nil {
 		return err
 	}
@@ -104,10 +116,12 @@ func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error {
 		return nil
 	}
 	delete(decisions, pairKey)
-	return dl.writeDecisions(decisions)
+	return dl.writeDecisionsLocked(decisions)
 }
 
-func (dl *DataLoader) writeDecisions(decisions map[string]DuplicateDecision) error {
+// writeDecisionsLocked marshals and persists the decisions map. Caller
+// holds writeMu.
+func (dl *DataLoader) writeDecisionsLocked(decisions map[string]DuplicateDecision) error {
 	doc := duplicateDecisionsDoc{Decisions: decisions}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

@@ -1,6 +1,7 @@
 package dataloader
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -67,4 +68,40 @@ func TestDerivedStateIsRaceFree(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// TestConcurrentPinWritesDoNotLoseUpdates pins 32 distinct hashes from 32
+// goroutines. Each call is a load->modify->save over one file, so without a
+// lock around the whole sequence the later writers save a map they read
+// before the earlier writers' changes landed, and pins vanish.
+func TestConcurrentPinWritesDoNotLoseUpdates(t *testing.T) {
+	loader := newRaceLoader(t)
+
+	const n = 32
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			hash := fmt.Sprintf("hash-%02d", i)
+			if _, err := loader.SetTransactionPins(map[string]string{hash: "expense-1"}); err != nil {
+				t.Errorf("SetTransactionPins(%s): %v", hash, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	pins, err := loader.LoadTransactionPins()
+	if err != nil {
+		t.Fatalf("LoadTransactionPins: %v", err)
+	}
+	if len(pins) != n {
+		t.Fatalf("pins on disk = %d, want %d -- concurrent writes lost updates", len(pins), n)
+	}
+	for i := 0; i < n; i++ {
+		hash := fmt.Sprintf("hash-%02d", i)
+		if pins[hash] != "expense-1" {
+			t.Errorf("pin %s = %q, want %q", hash, pins[hash], "expense-1")
+		}
+	}
 }

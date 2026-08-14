@@ -24,6 +24,8 @@ func (dl *DataLoader) amazonEnrichmentPath() string {
 // file is not an error — enrichment is opt-in (users without Amazon
 // data won't have generated this file).
 func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error) {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
 	path := dl.amazonEnrichmentPath()
 	data, err := dl.store.ReadFile(path)
 	if err != nil {
@@ -40,8 +42,13 @@ func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error) {
 }
 
 // SaveAmazonEnrichment writes the full map to disk (overwrites). The
-// CLI calls this after a successful matching pass.
+// CLI calls this after a successful matching pass. Neither this nor
+// LoadAmazonEnrichment is itself a read-modify-write, but a caller that
+// reads then saves (cmd/enrich-amazon/main.go) is one, and writeMu is
+// what makes that caller's sequence correct under concurrent access.
 func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err

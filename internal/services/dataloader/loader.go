@@ -35,14 +35,25 @@ const aliasFile = "aliases.json"
 //   - stateMu guards the derived fields LoadData stamps and later callers
 //     read. Held only across the assignment or the read, never across file
 //     I/O.
-//   - writeMu (see transaction_pins.go) makes each load->modify->save
-//     sequence over a JSON sidecar file one critical section.
+//   - writeMu (see below) makes each load->modify->save sequence over a
+//     JSON sidecar file one critical section.
 //
 // No method holds both. stateMu sites do no file I/O; writeMu sites touch no
 // derived state.
 type DataLoader struct {
 	CSVDirectory string
 	store        *storage.Storage
+
+	// writeMu makes each load->modify->save sequence over a JSON sidecar
+	// file ONE critical section. storage.Storage locks only around an
+	// individual WriteFile -- and only with an RLock, which is shared -- so
+	// it does nothing for a caller that reads, edits in memory and writes
+	// back.
+	//
+	// NOT reentrant. The invariant, without exception: a public method takes
+	// writeMu and then calls only *Locked helpers; a *Locked helper never
+	// takes writeMu and never calls a public method.
+	writeMu sync.Mutex
 
 	// stateMu guards every field below it.
 	stateMu               sync.RWMutex
@@ -719,6 +730,13 @@ func (dl *DataLoader) aliasPath() string {
 
 // LoadAliases reads the hash->displayName mapping from disk
 func (dl *DataLoader) LoadAliases() (map[string]string, error) {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	return dl.loadAliasesLocked()
+}
+
+// loadAliasesLocked is LoadAliases' body. Caller holds writeMu.
+func (dl *DataLoader) loadAliasesLocked() (map[string]string, error) {
 	path := dl.aliasPath()
 	data, err := dl.store.ReadFile(path)
 	if err != nil {
@@ -736,7 +754,9 @@ func (dl *DataLoader) LoadAliases() (map[string]string, error) {
 
 // SaveAlias sets or removes an alias for a transaction hash
 func (dl *DataLoader) SaveAlias(hash, displayName string) error {
-	aliases, err := dl.LoadAliases()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	aliases, err := dl.loadAliasesLocked()
 	if err != nil {
 		return fmt.Errorf("load aliases: %w", err)
 	}

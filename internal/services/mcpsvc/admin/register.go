@@ -124,4 +124,5 @@ func (d Deps) load() (*models.TransactionSet, error) {
 // Register adds the housekeeping tools to s.
 func Register(s *mcp.Server, deps Deps) {
 	registerStatus(s, deps)
+	registerFiles(s, deps)
 }

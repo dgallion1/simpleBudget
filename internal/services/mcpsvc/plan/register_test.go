@@ -507,7 +507,7 @@ func TestPanicInToolHandlerSurvivesRealTransport(t *testing.T) {
 // retirement plan. Ported from the deleted whatifmcp/server_test.go; the
 // tool list is narrowed to plan's own six -- get_anomalies and
 // get_price_creep now live in mcpsvc/spend and are covered by
-// mcpsvc.TestNewServerRegistersAllNineTools instead.
+// mcpsvc.TestNewServerRegistersAllTwelveTools instead.
 func TestToolDescriptionsAreMeaningful(t *testing.T) {
 	cs := connect(t, Deps{Settings: newTestManager(t)})
 

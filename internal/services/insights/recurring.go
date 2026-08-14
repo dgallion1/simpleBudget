@@ -1,8 +1,9 @@
 // Package insights holds pattern-detection logic over a transaction
-// history -- currently recurring-payment detection -- factored out of
-// internal/handlers/insights so it can be called directly by non-HTTP
-// consumers (e.g. the MCP get_recurring tool) without depending on the
-// handlers package.
+// history -- recurring-payment detection, category and major-expense
+// spending trends, income-pattern detection, and spending velocity --
+// factored out of internal/handlers/insights so it can be called directly
+// by non-HTTP consumers (e.g. the MCP get_recurring and get_trends tools)
+// without depending on the handlers package.
 package insights
 
 import (

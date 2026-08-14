@@ -22,10 +22,7 @@ import (
 
 // duplicateDecisionsFile is the sidecar the write tools snapshot before
 // changing. It mirrors the unexported constant in
-// internal/services/dataloader. Unused until the write tools land in a
-// later task.
-//
-//lint:ignore U1000 consumed by a duplicate-decision write tool in a later task
+// internal/services/dataloader.
 const duplicateDecisionsFile = "duplicate_decisions.json"
 
 // TransactionSource loads the full transaction history.
@@ -126,4 +123,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerStatus(s, deps)
 	registerFiles(s, deps)
 	registerListDuplicates(s, deps)
+	registerResolve(s, deps)
 }

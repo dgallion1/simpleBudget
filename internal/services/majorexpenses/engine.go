@@ -12,6 +12,16 @@ import (
 	"budget2/internal/models"
 )
 
+// DefaultUnknownLargeThreshold and DefaultNewMerchantWindowDays are the
+// values the Major Expenses page and the MCP curation tools both apply when
+// building MatchOptions. They live here, in the one package both callers
+// already import, so the page and the tools cannot silently drift apart on
+// what counts as an exception.
+const (
+	DefaultUnknownLargeThreshold = 100.0
+	DefaultNewMerchantWindowDays = 30
+)
+
 // MatchOptions controls thresholds used to detect exceptions.
 type MatchOptions struct {
 	// UnknownLargeThreshold is the absolute-dollar floor for flagging an

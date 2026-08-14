@@ -52,7 +52,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersAllTwelveTools drives an in-memory client/server
+// TestNewServerRegistersAllSeventeenTools drives an in-memory client/server
 // round trip to enumerate what NewServer actually registered, rather than
 // merely asserting deps.Loader != nil is checked somewhere. Deps{} (a zero
 // value) is deliberately NOT used here: with a nil Loader, NewServer's own
@@ -60,7 +60,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 // that only ever constructs NewServer(Deps{}) would stay green even if
 // spend.Register were deleted from NewServer outright. A non-nil Loader (and
 // the Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
-func TestNewServerRegistersAllTwelveTools(t *testing.T) {
+func TestNewServerRegistersAllSeventeenTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -90,14 +90,15 @@ func TestNewServerRegistersAllTwelveTools(t *testing.T) {
 	for _, want := range []string{
 		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
 		"get_anomalies", "get_price_creep", "search_transactions", "summarize_spending", "get_recurring",
-		"get_trends",
+		"get_trends", "list_major_expenses", "list_exceptions", "pin_transactions", "upsert_major_expense",
+		"delete_major_expense",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 12 {
-		t.Errorf("expected exactly 12 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 17 {
+		t.Errorf("expected exactly 17 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 
@@ -123,12 +124,36 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"MIXED in",
 		"get_trends (current_amount/previous_amount are positive",
 		"summarize_spending (total_expenses is always non-negative",
-		"COMPLETE list of all six",
+		"COMPLETE list of all six SPENDING tools",
 		// Duplicate exclusion.
 		"already resolved as duplicates",
 		// Merchant-label rule: fuzzy grouping, lower-cased.
 		"fuzzy grouping",
 		"lower-cased",
+		// The five curation tools: which read, which write, and the sign
+		// split that differs from the spending tools' own.
+		"five curation tools",
+		"pin_transactions, upsert_major_expense and delete_major_expense WRITE",
+		"`total` is NET SPEND and normally POSITIVE",
+		"`amount` is SIGNED as stored",
+		"two identical-looking transactions share one hash",
+		"Only outflows are matched against major expenses",
+		// The reversal asymmetry: unpin removes a pin but does not restore
+		// whatever the transaction was pinned to before; delete_major_expense
+		// restores a deleted expense; upsert never reverses. A model told
+		// otherwise either refuses an undo it can perform or promises one it
+		// cannot.
+		"pin_transactions unpins when unpin is true",
+		"only REMOVES the pin",
+		"NOT restore whatever the transaction was pinned to before",
+		"delete_major_expense restores a deleted expense when restore is true",
+		"upsert_major_expense does NOT reverse",
+		// The .bak recovery path is conditional, not guaranteed: a write
+		// with nothing on disk yet has no prior state to protect, so no
+		// backup is taken for it. A model told the backup is unconditional
+		// could promise a recovery path that does not exist.
+		"the .bak copy taken before its first change of a session, when there was prior data on disk to",
+		"a write with nothing there yet to back up has no .bak, but also nothing to lose",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

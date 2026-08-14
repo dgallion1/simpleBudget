@@ -277,6 +277,28 @@ func TestSummarizeSpendingRejectsAnInvalidDate(t *testing.T) {
 	}
 }
 
+// TestSummarizeSpendingRejectsDefaultingAnEmptyLedger guards Finding 9 of
+// the Phase 2 review: before the fix, an empty (post-suppression) ledger
+// with no explicit dates defaulted from ts.MinDate()/MaxDate()'s zero time,
+// reporting start/end as "0001-01-01" instead of surfacing that there was
+// nothing to default from. get_trends already got this right
+// (TestGetTrendsRejectsDefaultingAnEmptyLedger); this brings
+// summarize_spending in line with it.
+func TestSummarizeSpendingRejectsDefaultingAnEmptyLedger(t *testing.T) {
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: &models.TransactionSet{}}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("summarize_spending should have reported an empty ledger as a tool error when defaulting the window")
+	}
+}
+
 // TestSummarizeSpendingReportsALoadFailureAsAToolError mirrors
 // get_anomalies' load-failure handling.
 func TestSummarizeSpendingReportsALoadFailureAsAToolError(t *testing.T) {
@@ -362,5 +384,136 @@ func TestSummarizeSpendingExcludesSuppressedTransactions(t *testing.T) {
 	}
 	if len(out.ByMerchant) != 1 || out.ByMerchant[0].Count != 1 {
 		t.Errorf("by_merchant = %+v, want one merchant with count 1", out.ByMerchant)
+	}
+}
+
+// TestSummarizeSpendingCategoryAndMerchantSumsReconcileWithTotalExpenses is
+// the durable guard for Finding 1 of the Phase 2 review: classifier.go
+// deliberately records credits/refunds as Outflow transactions with a
+// POSITIVE amount (see classifier_test.go), so any breakdown that sums
+// math.Abs(amount) per transaction (the old byCategoryRows/byMerchantRows)
+// silently DISAGREES with total_expenses (metrics.Calculate's
+// math.Abs(outflows.SumAmount())) by 2x the refund total, because the old
+// code adds a refund to a category/merchant's total while total_expenses
+// subtracts it. by_category and by_merchant must sum the SIGNED amount and
+// negate, exactly like total_expenses, so that summing either breakdown
+// reproduces total_expenses for the same window. If this convention drifts
+// apart again, this test must fail.
+func TestSummarizeSpendingCategoryAndMerchantSumsReconcileWithTotalExpenses(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		{Date: day("2026-01-05"), Description: "NETFLIX", Category: "Entertainment", Amount: -15.99, TransactionType: models.Outflow},
+		{Date: day("2026-01-10"), Description: "SAFEWAY", Category: "Groceries", Amount: -204.10, TransactionType: models.Outflow},
+		// A refund: classifier.go records this as a POSITIVE-amount Outflow,
+		// not Income (see classifier.go's "Positive amounts that aren't
+		// income stay positive" rule). It belongs to the same merchant and
+		// category as the Safeway charge above so both breakdowns exercise
+		// the reconciliation, not just total_expenses.
+		{Date: day("2026-01-20"), Description: "SAFEWAY", Category: "Groceries", Amount: 50.00, TransactionType: models.Outflow},
+	})
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+
+	// total_expenses = |(-15.99) + (-204.10) + 50.00| = 170.09. The refund
+	// SUBTRACTS from the total rather than adding to it.
+	if out.TotalExpenses != 170.09 {
+		t.Fatalf("total_expenses = %v, want 170.09 (refund must subtract, not add)", out.TotalExpenses)
+	}
+
+	var catSum float64
+	for _, c := range out.ByCategory {
+		catSum += c.Amount
+	}
+	if round2(catSum) != out.TotalExpenses {
+		t.Errorf("sum(by_category) = %v, want %v (must equal total_expenses)", round2(catSum), out.TotalExpenses)
+	}
+	// Groceries specifically: -204.10 + 50.00 = -154.10, negated = 154.10 --
+	// NOT 204.10 + 50.00 = 254.10, which is what summing math.Abs per
+	// transaction (the pre-fix bug) would have produced.
+	for _, c := range out.ByCategory {
+		if c.Category == "Groceries" && c.Amount != 154.10 {
+			t.Errorf("by_category[Groceries] = %v, want 154.10 (refund must subtract)", c.Amount)
+		}
+	}
+
+	var merchSum float64
+	for _, m := range out.ByMerchant {
+		merchSum += m.Amount
+	}
+	if round2(merchSum) != out.TotalExpenses {
+		t.Errorf("sum(by_merchant) = %v, want %v (must equal total_expenses)", round2(merchSum), out.TotalExpenses)
+	}
+	for _, m := range out.ByMerchant {
+		if m.Merchant == "safeway" && m.Amount != 154.10 {
+			t.Errorf("by_merchant[safeway] = %v, want 154.10 (refund must subtract)", m.Amount)
+		}
+	}
+}
+
+// TestSummarizeSpendingByMonthReportsANetRefundMonthAsNegative guards the
+// second half of Finding 1: byMonthRows used to math.Abs the month's signed
+// total, which silently flips the sign of a month whose refunds exceed its
+// spending (a large return, a chargeback) into a POSITIVE figure that reads
+// as ordinary spending. It must instead negate the signed total, letting a
+// genuinely negative (net-refund) month through.
+func TestSummarizeSpendingByMonthReportsANetRefundMonthAsNegative(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		// A small charge and a much larger refund in the same month: the
+		// signed total is net POSITIVE (+80 = 100 - 20), which the old
+		// math.Abs code would have reported as +80 ("$80 of spending")
+		// instead of the true -80 (a net refund of $80).
+		{Date: day("2026-03-05"), Description: "WIDGET CO", Category: "Shopping", Amount: -20.00, TransactionType: models.Outflow},
+		{Date: day("2026-03-15"), Description: "WIDGET CO REFUND", Category: "Shopping", Amount: 100.00, TransactionType: models.Outflow},
+	})
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if len(out.ByMonth) != 1 {
+		t.Fatalf("by_month has %d entries, want 1: %+v", len(out.ByMonth), out.ByMonth)
+	}
+	if out.ByMonth[0].Amount != -80 {
+		t.Errorf("by_month[2026-03] = %v, want -80 (a net-refund month must report negative, not +80)", out.ByMonth[0].Amount)
 	}
 }

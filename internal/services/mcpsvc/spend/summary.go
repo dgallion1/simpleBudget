@@ -2,7 +2,7 @@ package spend
 
 import (
 	"context"
-	"math"
+	"fmt"
 	"sort"
 
 	"budget2/internal/models"
@@ -62,12 +62,26 @@ type summaryOutput struct {
 // byCategoryRows returns expense totals by category over ts (already
 // window-filtered), sorted by amount descending, truncated to topN. Only
 // outflows count -- CategoryTotals sums every transaction it's given, so
-// income would otherwise show up as a spurious "category".
+// income would otherwise show up as a spurious "category". Amounts are
+// summed SIGNED and negated here (rather than using CategoryTotals, which
+// sums math.Abs per transaction) so this matches total_expenses'
+// (metrics.Calculate's) convention: a positive-amount refund SUBTRACTS from
+// a category's total instead of adding to it. See Finding 1 in the Phase 2
+// review -- CategoryTotals' own math.Abs-per-transaction convention is still
+// correct for its other (non-MCP) callers and is left unchanged.
 func byCategoryRows(ts *models.TransactionSet, topN int) []namedAmount {
-	totals := ts.FilterByType(models.Outflow).CategoryTotals()
+	outflows := ts.FilterByType(models.Outflow)
+	totals := make(map[string]float64, outflows.Len())
+	for _, t := range outflows.Transactions {
+		cat := t.Category
+		if cat == "" {
+			cat = "Uncategorized"
+		}
+		totals[cat] += t.Amount
+	}
 	rows := make([]namedAmount, 0, len(totals))
 	for cat, amt := range totals {
-		rows = append(rows, namedAmount{Category: cat, Amount: round2(amt)})
+		rows = append(rows, namedAmount{Category: cat, Amount: round2(-amt)})
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].Amount != rows[j].Amount {
@@ -83,10 +97,11 @@ func byCategoryRows(ts *models.TransactionSet, topN int) []namedAmount {
 
 // byMonthRows returns expense totals by month over ts (already
 // window-filtered), sorted chronologically, never truncated. MonthlyTotals
-// sums the signed amount (expenses negative), so math.Abs is applied to
-// report a positive dollar figure -- this tool's OWN contract (see the
-// registerSummary description below), which differs from
-// search_transactions' signed amounts.
+// sums the signed amount (expenses negative, positive-amount refunds
+// positive), and the negated (not math.Abs'd) total is reported: a month
+// whose refunds exceed its spending is a real net-negative month, and
+// math.Abs would flip its sign to look like ordinary positive spending. See
+// Finding 1 in the Phase 2 review.
 func byMonthRows(ts *models.TransactionSet) []namedAmount {
 	totals := ts.FilterByType(models.Outflow).MonthlyTotals()
 	months := make([]string, 0, len(totals))
@@ -96,7 +111,7 @@ func byMonthRows(ts *models.TransactionSet) []namedAmount {
 	sort.Strings(months)
 	rows := make([]namedAmount, 0, len(months))
 	for _, m := range months {
-		rows = append(rows, namedAmount{Month: m, Amount: round2(math.Abs(totals[m]))})
+		rows = append(rows, namedAmount{Month: m, Amount: round2(-totals[m])})
 	}
 	return rows
 }
@@ -104,19 +119,22 @@ func byMonthRows(ts *models.TransactionSet) []namedAmount {
 // byMerchantRows groups ts's outflows via merchants.GroupTransactions --
 // the same fuzzy matching get_anomalies and get_price_creep already use, so
 // "SAFEWAY #123" and "SAFEWAY #456" count as one merchant here too -- and
-// returns each group's total (absolute dollars) and transaction count,
-// sorted by amount descending, truncated to topN.
+// returns each group's total and transaction count, sorted by amount
+// descending, truncated to topN. The total is summed SIGNED and negated
+// (not math.Abs per transaction) so a positive-amount refund subtracts
+// rather than adds, matching total_expenses' convention. See Finding 1 in
+// the Phase 2 review.
 func byMerchantRows(ts *models.TransactionSet, topN int) []namedAmount {
 	groups := merchants.GroupTransactions(ts.FilterByType(models.Outflow).Transactions)
 	rows := make([]namedAmount, 0, len(groups))
 	for _, txns := range groups {
 		var total float64
 		for _, t := range txns {
-			total += math.Abs(t.Amount)
+			total += t.Amount
 		}
 		rows = append(rows, namedAmount{
 			Merchant: merchants.DisplayLabel(txns),
-			Amount:   round2(total),
+			Amount:   round2(-total),
 			Count:    len(txns),
 		})
 	}
@@ -137,24 +155,40 @@ func registerSummary(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "summarize_spending",
 		Description: "Totals for the transaction history over an optional date window (default: the full " +
-			"ledger, i.e. its earliest through latest transaction): total_income, total_expenses, net_savings, " +
-			"and savings_rate (a PERCENTAGE, 0-100, not a fraction -- 47 means 47%, not 4700%), plus " +
-			"breakdowns by category, by merchant, and by month. by_category, by_merchant, and by_month are " +
-			"expenses only -- income is not broken out by category/merchant/month, only in the top-level " +
-			"total_income. All amounts in every breakdown, and total_expenses, are POSITIVE dollar figures " +
-			"(unlike search_transactions, which returns signed amounts, expenses negative). Transactions the " +
-			"user has already marked as a resolved duplicate are excluded, matching the dashboard and " +
-			"get_anomalies/get_price_creep/search_transactions. Merchants are grouped by the same fuzzy " +
-			"matching used by get_anomalies, so \"SAFEWAY #123\" and \"SAFEWAY #456\" count as one merchant; " +
-			"the merchant name returned is lower-cased and may not match any single transaction's description " +
-			"verbatim. count (number of transactions folded in) is populated for by_merchant only, not " +
-			"by_category or by_month. by_category and by_merchant are limited to top_n entries (default 10) " +
-			"sorted by amount descending; by_month is always complete, sorted chronologically. The budget " +
-			"block appears only when a retirement plan with a nonzero living or healthcare spending target is " +
-			"configured -- it is omitted entirely, not zeroed, otherwise -- and compares actual monthly " +
-			"spending against that plan's target for this window, with healthcare tracked separately from " +
-			"living expenses; combined_cumulative_delta is the two categories' net dollar variance over the " +
-			"whole window (positive = over budget).",
+			"ledger, i.e. its earliest through latest transaction; a ledger with no transactions after " +
+			"excluding resolved duplicates is a tool error rather than a fabricated 0001-01-01 window, " +
+			"unless start_date and end_date are both given explicitly): total_income, total_expenses, " +
+			"net_savings, and savings_rate (a PERCENTAGE, not a fraction -- 47 means 47%, not 4700%; it is " +
+			"NEGATIVE whenever expenses exceed income, which is the ordinary case for a household living " +
+			"off savings in retirement, not an error), plus breakdowns by category, by merchant, and by " +
+			"month. by_category, by_merchant, and by_month are expenses only -- income is not broken out by " +
+			"category/merchant/month, only in the top-level total_income. Amounts in by_category, " +
+			"by_merchant, and by_month, and total_expenses itself, are normally POSITIVE dollar figures, but " +
+			"can be NEGATIVE: refunds/credits are recorded in this ledger as positive-amount outflows, so " +
+			"they subtract from whichever category/merchant/month they fall in, and if a category's, " +
+			"merchant's, or month's refunds exceed its spend in this window that row goes negative rather " +
+			"than clamping at zero. All four figures share this identical signed-sum-then-negate " +
+			"convention, so summing by_category (or summing by_merchant) reproduces total_expenses for the " +
+			"same window. (This differs from search_transactions, which returns every amount signed, " +
+			"expenses negative -- the opposite sign convention.) Transactions the user has already marked " +
+			"as a resolved duplicate are excluded, matching the dashboard and " +
+			"get_anomalies/get_price_creep/search_transactions. Merchants are grouped by the same fuzzy-" +
+			"matching ALGORITHM get_anomalies and get_price_creep use, so \"SAFEWAY #123\" and " +
+			"\"SAFEWAY #456\" count as one merchant here too; the merchant name returned is lower-cased and " +
+			"may not match any single transaction's description verbatim. The resulting GROUPS can still " +
+			"differ from get_anomalies'/get_price_creep's groups, and from this tool's own groups in a " +
+			"different window, because grouping runs over whatever transactions are in scope here (this " +
+			"window's outflows, including positive-amount refunds) versus get_anomalies'/get_price_creep's " +
+			"full active-outflow, negative-amount-only history -- the same merchant can get a different " +
+			"display label or cluster boundary between tools, or between two calls to this tool with " +
+			"different windows. count (number of transactions folded in) is populated for by_merchant only, " +
+			"not by_category or by_month. by_category and by_merchant are limited to top_n entries (default " +
+			"10) sorted by amount descending; by_month is always complete, sorted chronologically. The " +
+			"budget block appears only when a retirement plan with a nonzero living or healthcare spending " +
+			"target is configured -- it is omitted entirely, not zeroed, otherwise -- and compares actual " +
+			"monthly spending against that plan's target for this window, with healthcare tracked " +
+			"separately from living expenses; combined_cumulative_delta is the two categories' net dollar " +
+			"variance over the whole window (positive = over budget).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in summaryInput) (res *mcp.CallToolResult, out summaryOutput, err error) {
 		defer recoverToError("summarize_spending", &err)
 
@@ -181,13 +215,27 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		ts = ts.Active()
 
 		from, to := start, end
-		if from == nil {
-			min := ts.MinDate()
-			from = &min
-		}
-		if to == nil {
-			max := ts.MaxDate()
-			to = &max
+		if from == nil || to == nil {
+			// ts.MinDate()/MaxDate() are the zero time on an empty (post-
+			// suppression) ledger; defaulting from them would silently
+			// report the window as starting/ending 0001-01-01 instead of
+			// surfacing that there is nothing to default from. Mirrors
+			// get_trends' identical guard. Two fully explicit dates are
+			// still a legitimate (if empty) request against an empty
+			// ledger, so only the defaulting path needs this check.
+			if ts.MaxDate().IsZero() {
+				return nil, summaryOutput{}, fmt.Errorf(
+					"cannot default the summary window: the ledger has no transactions (after excluding " +
+						"suppressed rows); pass start_date and end_date explicitly")
+			}
+			if from == nil {
+				min := ts.MinDate()
+				from = &min
+			}
+			if to == nil {
+				max := ts.MaxDate()
+				to = &max
+			}
 		}
 		filtered := ts.FilterByDateRange(*from, *to)
 
@@ -224,8 +272,10 @@ func registerSummary(s *mcp.Server, deps Deps) {
 
 		// A zero target means "unset" throughout this codebase (see
 		// metrics.BudgetTargets); reporting a budget block against an
-		// unset target would read as a 100% overrun, so both must be
-		// positive before the block is populated at all.
+		// unset target would read as a 100% overrun, so EITHER target being
+		// positive is enough to populate the block (a household can have a
+		// living target with no healthcare target configured, or vice
+		// versa) -- hence the || below, not &&.
 		if m.HasBudgetTarget || m.HasHealthcareTarget {
 			out.Budget = &budgetView{
 				LivingTarget:            round2(m.BudgetTarget),

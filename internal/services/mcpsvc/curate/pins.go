@@ -2,7 +2,9 @@ package curate
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 	"time"
@@ -113,8 +115,10 @@ func registerPin(s *mcp.Server, deps Deps) {
 			"filter matching zero rows. `matched` counts only the hashes that were actually targeted (i.e. " +
 			"excluding unknown_hashes) and `changed` how many pins actually differed, so changed can be smaller " +
 			"when some were already pinned where you asked. The pins file is copied to a .bak before this " +
-			"session's first change to it; later changes in the same session are not separately recoverable. An " +
-			"already-open Major Expenses page does NOT refresh itself -- it shows stale data until reloaded.",
+			"session's first change to it when there is prior data on disk to protect; on a fresh install with " +
+			"no pins file yet there is nothing to back up, so none is taken and `snapshot_path` comes back " +
+			"empty. Later changes in the same session are not separately recoverable. An already-open Major " +
+			"Expenses page does NOT refresh itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pinInput) (res *mcp.CallToolResult, out pinOutput, err error) {
 		defer recoverToError("pin_transactions", &err)
 
@@ -214,12 +218,21 @@ func registerPin(s *mcp.Server, deps Deps) {
 			return nil, out, nil
 		}
 
-		// Before the write, never after: a failed snapshot must abort it.
+		// Before the write, never after: a failed snapshot must abort it. The
+		// ONLY tolerated Ensure failure is the source file not existing yet --
+		// legitimate on a fresh install, since transaction_pins.json is not
+		// created until the first pin is ever written, so there is no prior
+		// state a backup could protect -- distinguished via errors.Is(err,
+		// fs.ErrNotExist), same as delete.go and upsert.go's pin_hash path.
+		// Any OTHER error (permission denied, a transient read failure, ...)
+		// still aborts the write: it is not evidence the file never existed,
+		// and letting the write proceed could destroy that file's contents
+		// with no backup.
 		snapPath, err := deps.Snapshots.Ensure(transactionPinsFile, time.Now())
-		if err != nil {
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, pinOutput{}, err
 		}
-		out.SnapshotPath = snapPath
+		out.SnapshotPath = snapPath // empty when there was no prior file to snapshot
 
 		target := in.ExpenseID
 		if in.Unpin {

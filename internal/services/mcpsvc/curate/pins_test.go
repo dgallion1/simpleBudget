@@ -243,6 +243,101 @@ func TestPinTransactionsPinsTheValidHashesInAMixAndReportsTheRest(t *testing.T) 
 	}
 }
 
+// TestPinTransactionsSucceedsOnAFreshInstallWithNoPinsFileYet covers the fix:
+// transaction_pins.json is not created until the first pin is ever written,
+// so Ensure's "missing source is an error" behavior must not block that very
+// first write -- pin_transactions, the package's primary curation flow, was
+// unusable on a fresh install before this fix. Unlike the other pin tests in
+// this file, this one deliberately does NOT seed transaction_pins.json first.
+func TestPinTransactionsSucceedsOnAFreshInstallWithNoPinsFileYet(t *testing.T) {
+	deps, dir := newDeps(t, ledger())
+	mortgageExpense(t, deps)
+	if _, err := os.Stat(filepath.Join(dir, "transaction_pins.json")); err == nil {
+		t.Fatal("test setup: transaction_pins.json must not exist yet")
+	}
+	roof := models.Transaction{Date: day(2026, 2, 14), Description: "ACME ROOFING", Amount: -4500}
+	cs := connect(t, deps)
+
+	res := call(t, cs, "pin_transactions", map[string]any{
+		"expense_id": "me-mortgage",
+		"hashes":     []any{roof.ComputeHash()},
+	})
+	if res.IsError {
+		t.Fatalf("FRESH-INSTALL PIN FAILED: %s", toolErrorText(t, res))
+	}
+	out := decodeToolResult[pinOutput](t, res)
+	if out.Changed != 1 || out.Matched != 1 {
+		t.Errorf("matched/changed = %d/%d, want 1/1", out.Matched, out.Changed)
+	}
+	if out.SnapshotPath != "" {
+		t.Errorf("snapshot_path = %q, want empty -- there was no prior file to back up", out.SnapshotPath)
+	}
+	pins, err := deps.Pins.LoadTransactionPins()
+	if err != nil {
+		t.Fatalf("LoadTransactionPins: %v", err)
+	}
+	if pins[roof.ComputeHash()] != "me-mortgage" {
+		t.Fatalf("pin not written: %+v", pins)
+	}
+}
+
+// TestPinTransactionsAbortsWhenAnExistingPinsFileCannotBeBackedUp covers the
+// fix's other half: a non-not-found Ensure failure (permission denied here)
+// must still abort the write, unlike a genuinely missing file.
+//
+// The pins file is seeded by calling deps.Pins.SetTransactionPins directly,
+// not by routing a pin through pin_transactions or upsert_major_expense's
+// pin_hash first: either of those would call
+// Snapshots.Ensure(transactionPinsFile, ...) itself and the Snapshotter
+// remembers a successful backup for the life of the process, short-circuiting
+// a later Ensure of the same name without touching the file again -- so the
+// chmod below would go unnoticed and this test would pass vacuously against
+// the CACHED snapshot path from the seeding call rather than genuinely
+// re-reading the now-unreadable file.
+func TestPinTransactionsAbortsWhenAnExistingPinsFileCannotBeBackedUp(t *testing.T) {
+	deps, dir := newDeps(t, ledger())
+	mortgageExpense(t, deps)
+	if _, err := deps.Pins.SetTransactionPins(map[string]string{"seed": "me-mortgage"}); err != nil {
+		t.Fatalf("seed pins: %v", err)
+	}
+	cs := connect(t, deps)
+
+	pinsPath := filepath.Join(dir, "transaction_pins.json")
+	before, err := os.ReadFile(pinsPath)
+	if err != nil {
+		t.Fatalf("read pins before: %v", err)
+	}
+	if err := os.Chmod(pinsPath, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pinsPath, 0o644) })
+
+	roof := models.Transaction{Date: day(2026, 2, 14), Description: "ACME ROOFING", Amount: -4500}
+	res := call(t, cs, "pin_transactions", map[string]any{
+		"expense_id": "me-mortgage",
+		"hashes":     []any{roof.ComputeHash()},
+	})
+	if err := os.Chmod(pinsPath, 0o644); err != nil {
+		t.Fatalf("chmod restore: %v", err)
+	}
+	msg := toolErrorText(t, res)
+	if !strings.Contains(msg, transactionPinsFile) {
+		t.Errorf("expected the refusal to name %s, got: %s", transactionPinsFile, msg)
+	}
+
+	after, err := os.ReadFile(pinsPath)
+	if err != nil {
+		t.Fatalf("read pins after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Error("transaction_pins.json changed despite the backup failing")
+	}
+	pins, _ := deps.Pins.LoadTransactionPins()
+	if pins[roof.ComputeHash()] != "" {
+		t.Errorf("pin must not have been written: %+v", pins)
+	}
+}
+
 func TestPinTransactionsReportsAFilterThatMatchedNothing(t *testing.T) {
 	deps, _ := newDeps(t, ledger())
 	mortgageExpense(t, deps)

@@ -138,10 +138,14 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"`amount` is SIGNED as stored",
 		"two identical-looking transactions share one hash",
 		"Only outflows are matched against major expenses",
-		// The reversal asymmetry: two of the three writes undo themselves
-		// in-app, and the third does not. A model told otherwise either
-		// refuses an undo it can perform or promises one it cannot.
+		// The reversal asymmetry: unpin removes a pin but does not restore
+		// whatever the transaction was pinned to before; delete_major_expense
+		// restores a deleted expense; upsert never reverses. A model told
+		// otherwise either refuses an undo it can perform or promises one it
+		// cannot.
 		"pin_transactions unpins when unpin is true",
+		"only REMOVES the pin",
+		"NOT restore whatever the transaction was pinned to before",
 		"delete_major_expense restores a deleted expense when restore is true",
 		"upsert_major_expense does NOT reverse",
 	} {

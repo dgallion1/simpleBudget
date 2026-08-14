@@ -58,11 +58,13 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	" There are also five curation tools covering the user's declared \"major expenses\" -- their own " +
 	"labels for spending they already understand. list_major_expenses and list_exceptions read; " +
 	"pin_transactions, upsert_major_expense and delete_major_expense WRITE TO THE USER'S DATA, so " +
-	"confirm with the user before calling one. Two of the three reverse themselves: pin_transactions " +
-	"unpins when unpin is true, and delete_major_expense restores a deleted expense when restore is " +
-	"true, so a mistaken pin or delete does not need the browser to undo. upsert_major_expense does " +
-	"NOT reverse -- an edit overwrites the previous definition, and the only way back is the .bak copy " +
-	"each write tool takes before its first change of a session. " +
+	"confirm with the user before calling one. pin_transactions unpins when unpin is true -- but unpin " +
+	"only REMOVES the pin, returning the transaction to ordinary keyword and amount matching; it does " +
+	"NOT restore whatever the transaction was pinned to before, so repinning over an existing pin is " +
+	"not reversible this way. delete_major_expense restores a deleted expense when restore is true, " +
+	"bringing the definition and its captured pins back. upsert_major_expense does NOT reverse -- an " +
+	"edit overwrites the previous definition, and the only way back for any of these three writes is " +
+	"the .bak copy each takes before its first change of a session. " +
 	"In these tools a per-expense `total` is NET SPEND and normally " +
 	"POSITIVE (a refund reduces it, and a total can go negative), while a per-transaction `amount` is " +
 	"SIGNED as stored, negative for a purchase -- the same split the spending tools use. Transactions " +

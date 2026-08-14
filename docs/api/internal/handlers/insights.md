@@ -6,28 +6,19 @@
 import "budget2/internal/handlers/insights"
 ```
 
-Package insights serves the Insights page and exposes pattern\-detection helpers \(income cadence, recurring expenses, anomaly detection\) used by both the dashboard and the what\-if defaults pipeline.
+Package insights serves the Insights page: HTTP handlers that load transaction data, run the pattern\-detection analyses now living in internal/services/insights \(and the sibling anomalies/pricecreep/ majorexpenses packages\), and render the page and its partials. It also holds small presentation\-only helpers that belong to this page rather than to any analysis package \-\- anomaly method labels \(AnomalyView\) and the spending\-pace verdict banding \(verdict.go's PaceVerdictView / BuildPaceVerdict\). Nothing here is imported by other handler packages; internal/handlers/whatif switched to internal/services/insights directly once its one dependency \(income\-pattern detection\) was extracted there.
 
 ## Index
 
-- [func AnalyzeIncomePatterns\(ts \*models.TransactionSet\) \[\]models.IncomePattern](<#AnalyzeIncomePatterns>)
 - [func Initialize\(l \*dataloader.DataLoader, r \*templates.Renderer\)](<#Initialize>)
 - [func RegisterRoutes\(r chi.Router\)](<#RegisterRoutes>)
+- [type AnomalyView](<#AnomalyView>)
 - [type PaceVerdictView](<#PaceVerdictView>)
   - [func BuildPaceVerdict\(v \*models.SpendingVelocity\) PaceVerdictView](<#BuildPaceVerdict>)
 
 
-<a name="AnalyzeIncomePatterns"></a>
-## func [AnalyzeIncomePatterns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/handlers.go#L800>)
-
-```go
-func AnalyzeIncomePatterns(ts *models.TransactionSet) []models.IncomePattern
-```
-
-AnalyzeIncomePatterns detects recurring income sources from transaction data. Exported for use by other packages \(e.g., whatif\).
-
 <a name="Initialize"></a>
-## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/handlers.go#L28>)
+## func Initialize
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
@@ -36,7 +27,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
 Initialize sets up the insights package with required dependencies
 
 <a name="RegisterRoutes"></a>
-## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/handlers.go#L34>)
+## func RegisterRoutes
 
 ```go
 func RegisterRoutes(r chi.Router)
@@ -44,8 +35,20 @@ func RegisterRoutes(r chi.Router)
 
 RegisterRoutes registers all insights routes
 
+<a name="AnomalyView"></a>
+## type AnomalyView
+
+AnomalyView adds a plain\-language method label to an anomalies.Anomaly for display on the Insights page. Embedding preserves direct template access to all of anomalies.Anomaly's fields \(Date, Description, Category, Amount, Severity, ...\).
+
+```go
+type AnomalyView struct {
+    anomalies.Anomaly
+    MethodLabel string
+}
+```
+
 <a name="PaceVerdictView"></a>
-## type [PaceVerdictView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/verdict.go#L11-L20>)
+## type PaceVerdictView
 
 PaceVerdictView is the precomputed model the insights verdict band renders.
 
@@ -63,7 +66,7 @@ type PaceVerdictView struct {
 ```
 
 <a name="BuildPaceVerdict"></a>
-### func [BuildPaceVerdict](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/verdict.go#L25>)
+### func BuildPaceVerdict
 
 ```go
 func BuildPaceVerdict(v *models.SpendingVelocity) PaceVerdictView

@@ -1,80 +1,20 @@
-package whatifmcp
+package spend
 
 import (
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"budget2/internal/models"
 	"budget2/internal/services/anomalies"
-	"budget2/internal/services/dataloader"
+	"budget2/internal/services/merchants"
 	"budget2/internal/services/pricecreep"
 )
 
-// TransactionSource loads the full transaction history for the insight
-// tools (get_anomalies, get_price_creep). *dataloader.DataLoader satisfies
-// it via its existing LoadData method, so no adapter is needed in
-// production. The interface exists so tests can substitute a canned
-// models.TransactionSet directly -- constructing exact peer groups and
-// planted anomalies through real CSV parsing, classification, and
-// near-duplicate detection would be indirect and brittle.
-type TransactionSource interface {
-	LoadData() (*models.TransactionSet, error)
-}
-
-// Transactions loads the full transaction history for tools that read
-// across the whole ledger rather than a single saved scenario (currently
-// get_anomalies and get_price_creep). It goes through the storage layer
-// NewSource was given -- never os.ReadFile on a data file directly -- so a
-// locked/encrypted store or a missing data directory surfaces as a plain
-// error a tool call can report, the same way Source.Load already does for
-// an unreadable scenario file, instead of a panic or a silently-empty
-// result.
-//
-// txSource is nil in production; NewServer never sets it. This then builds
-// a *dataloader.DataLoader rooted at the settings directory's PARENT --
-// cmd/server's own DataLoader is rooted at cfg.DataDirectory, and
-// settingsDir is always cfg.DataDirectory + "/settings" (see
-// cmd/whatif-mcp/main.go's resolveDataDir). dataDirFromSettingsDir
-// (live.go) enforces that shape and REFUSES anything else -- the same
-// guard spawnArgs already applies to settingsDir for a different purpose
-// (deriving BUDGET_DATA_DIR). Without it, a settingsDir not named
-// ".../settings" (e.g. a custom -data flag value) would silently resolve
-// to some unrelated parent directory: dataloader.LoadData finds no CSVs
-// there, and get_anomalies/get_price_creep would report a confident
-// "count: 0" instead of the misconfiguration that produced it. Tests set
-// txSource directly to skip all of this.
-func (s *Source) Transactions() (*models.TransactionSet, error) {
-	src := s.txSource
-	if src == nil {
-		if s.store != nil && s.store.IsEncrypted() && !s.store.IsUnlocked() {
-			return nil, fmt.Errorf(
-				"cannot load transaction history: storage is encrypted and locked; unlock it via the budget2 web UI (/unlock) first")
-		}
-
-		dataDir, err := dataDirFromSettingsDir(s.settingsDir)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"cannot load transaction history: settings directory %q is not shaped <data-dir>/settings, "+
-					"so the transaction data directory cannot be derived from it (%w)", s.settingsDir, err)
-		}
-		if _, err := os.Stat(dataDir); err != nil {
-			return nil, fmt.Errorf("data directory %q is not readable: %w", dataDir, err)
-		}
-
-		src = dataloader.New(dataDir, s.store)
-	}
-
-	ts, err := src.LoadData()
-	if err != nil {
-		return nil, fmt.Errorf("load transaction history: %w", err)
-	}
-	if ts == nil {
-		ts = models.NewTransactionSet(nil)
-	}
-	return ts, nil
-}
+// round0 rounds a currency amount to whole dollars. Duplicated from
+// plan/view.go rather than exported across packages -- it is one line, and
+// cross-package coupling for math.Round is not worth it.
+func round0(v float64) float64 { return math.Round(v) }
 
 // anomaliesInput is get_anomalies' parameters. Both dates are optional,
 // inclusive, YYYY-MM-DD, and -- per the tool description -- narrow only
@@ -95,7 +35,12 @@ type anomalyRow struct {
 	Method      string  `json:"method"`
 	Severity    string  `json:"severity"`
 	Score       float64 `json:"score"`
-	PeerGroup   string  `json:"peer_group"`
+	// PeerGroup is a category name (mad_category) or a merchant label
+	// (mad_merchant, new_merchant). Merchant labels are lower-cased, matching
+	// every other spend tool's merchant field -- NOT anomalies.Anomaly's own
+	// PeerGroup, which for those two methods is the merchants package's
+	// canonical uppercase-normalized matching key; see peerGroupLabel.
+	PeerGroup string `json:"peer_group"`
 }
 
 // anomaliesWindow echoes back the requested display window. A field is null
@@ -131,8 +76,13 @@ type priceCreepOutput struct {
 	Items []creepRow `json:"items"`
 }
 
-// round2 rounds to two decimal places, for scores and percentages where
-// round0's whole-dollar rounding would lose the signal.
+// round2 rounds to two decimal places (cents). Originally added for scores
+// and percentages where round0's whole-dollar rounding would lose the
+// signal; since Finding 7 of the Phase 2 review it is also the currency
+// rounder for get_anomalies' and get_price_creep's dollar amounts, matching
+// every other spend tool's cent precision -- round0 is now used only by
+// search_transactions' sum_amount (search.go), not for any currency field
+// in this file.
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
 // nilableString returns nil for an empty string, otherwise a pointer to a
@@ -181,6 +131,43 @@ func inWindow(d time.Time, start, end *time.Time) bool {
 	return true
 }
 
+// anomalyExpenses returns the same expense set anomalies.Detect scores
+// against, internally: active (non-suppressed) transactions that are
+// outflows with a negative amount. anomalies.Detect does not expose the
+// merchant groups it builds from this set (its canonical key is an internal
+// matching key), so peerGroupLabel recomputes the identical, deterministic
+// grouping to translate mad_merchant/new_merchant's PeerGroup into a display
+// label without reaching into the anomalies package's internals.
+func anomalyExpenses(ts *models.TransactionSet) []models.Transaction {
+	active := ts.Active().Transactions
+	expenses := make([]models.Transaction, 0, len(active))
+	for _, t := range active {
+		if t.TransactionType == models.Outflow && t.Amount < 0 {
+			expenses = append(expenses, t)
+		}
+	}
+	return expenses
+}
+
+// peerGroupLabel maps mad_merchant/new_merchant's PeerGroup -- the merchants
+// package's canonical uppercase-normalized key -- to the lower-cased display
+// label every other spend tool uses for a merchant (merchants.DisplayLabel).
+// mad_category's PeerGroup is already a human-readable category name and is
+// returned unchanged. groups is keyed by the same canonical key, built by
+// merchants.GroupTransactions over the identical expense set anomalies.Detect
+// used, so a mad_merchant/new_merchant PeerGroup always has a matching entry;
+// a lookup miss (method mismatch or a future anomalies.go change) falls back
+// to the raw key rather than losing the row.
+func peerGroupLabel(a anomalies.Anomaly, groups map[string][]models.Transaction) string {
+	if a.Method != "mad_merchant" && a.Method != "new_merchant" {
+		return a.PeerGroup
+	}
+	if g, ok := groups[a.PeerGroup]; ok {
+		return merchants.DisplayLabel(g)
+	}
+	return a.PeerGroup
+}
+
 // anomalyRows runs anomalies.Detect over the FULL history in ts (baselines
 // and new-merchant first-occurrence are never window-scoped, per
 // ANALYTICS_PORT_SPEC.md Rulings) and returns only the flags whose Date
@@ -189,6 +176,7 @@ func inWindow(d time.Time, start, end *time.Time) bool {
 // reorder.
 func anomalyRows(ts *models.TransactionSet, start, end *time.Time) []anomalyRow {
 	detected := anomalies.Detect(*ts)
+	groups := merchants.GroupTransactions(anomalyExpenses(ts))
 	rows := make([]anomalyRow, 0, len(detected))
 	for _, a := range detected {
 		if !inWindow(a.Date, start, end) {
@@ -198,11 +186,11 @@ func anomalyRows(ts *models.TransactionSet, start, end *time.Time) []anomalyRow 
 			Date:        a.Date.Format("2006-01-02"),
 			Description: a.Description,
 			Category:    a.Category,
-			Amount:      round0(a.Amount),
+			Amount:      round2(a.Amount),
 			Method:      a.Method,
 			Severity:    a.Severity,
 			Score:       round2(a.Score),
-			PeerGroup:   a.PeerGroup,
+			PeerGroup:   peerGroupLabel(a, groups),
 		})
 	}
 	return rows
@@ -215,8 +203,8 @@ func priceCreepRows(ts *models.TransactionSet) []creepRow {
 	for _, c := range creeps {
 		rows = append(rows, creepRow{
 			Merchant:      c.Merchant,
-			FirstAmount:   round0(c.FirstAmount),
-			CurrentAmount: round0(c.CurrentAmount),
+			FirstAmount:   round2(c.FirstAmount),
+			CurrentAmount: round2(c.CurrentAmount),
 			PctChange:     round2(c.PctChange),
 			FirstDate:     c.FirstDate.Format("2006-01-02"),
 			LastDate:      c.LastDate.Format("2006-01-02"),

@@ -58,7 +58,7 @@ const (
 ```
 
 <a name="DataLoader"></a>
-## type [DataLoader](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L31-L40>)
+## type DataLoader
 
 DataLoader handles loading and preprocessing of financial data from CSV files
 
@@ -71,7 +71,7 @@ type DataLoader struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L95>)
+### func New
 
 ```go
 func New(csvDirectory string, store *storage.Storage) *DataLoader
@@ -80,7 +80,7 @@ func New(csvDirectory string, store *storage.Storage) *DataLoader
 New creates a new DataLoader
 
 <a name="DataLoader.AddMajorExpense"></a>
-### func \(\*DataLoader\) [AddMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L53>)
+### func \(\*DataLoader\) AddMajorExpense
 
 ```go
 func (dl *DataLoader) AddMajorExpense(me models.MajorExpense) ([]models.MajorExpense, error)
@@ -89,7 +89,7 @@ func (dl *DataLoader) AddMajorExpense(me models.MajorExpense) ([]models.MajorExp
 AddMajorExpense appends a new entry, stamping CreatedAt/UpdatedAt, and returns the resulting slice.
 
 <a name="DataLoader.ArchiveMajorExpense"></a>
-### func \(\*DataLoader\) [ArchiveMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L173>)
+### func \(\*DataLoader\) ArchiveMajorExpense
 
 ```go
 func (dl *DataLoader) ArchiveMajorExpense(id string) error
@@ -102,7 +102,7 @@ Write order is archive → active list → pins, so a crash mid\-operation leave
 Returns os\-style "not found" sentinel error if no active expense has the given ID.
 
 <a name="DataLoader.ClearDuplicateDecision"></a>
-### func \(\*DataLoader\) [ClearDuplicateDecision](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/duplicate_decisions.go#L95>)
+### func \(\*DataLoader\) ClearDuplicateDecision
 
 ```go
 func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error
@@ -111,7 +111,7 @@ func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error
 ClearDuplicateDecision removes a decision. No\-op if the key isn't present. Used by the review panel's "Undo" button.
 
 <a name="DataLoader.ClearTransactionPin"></a>
-### func \(\*DataLoader\) [ClearTransactionPin](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/transaction_pins.go#L59>)
+### func \(\*DataLoader\) ClearTransactionPin
 
 ```go
 func (dl *DataLoader) ClearTransactionPin(hash string) error
@@ -120,7 +120,7 @@ func (dl *DataLoader) ClearTransactionPin(hash string) error
 ClearTransactionPin removes the pin for a transaction hash. No\-op if the hash isn't pinned.
 
 <a name="DataLoader.DeleteMajorExpense"></a>
-### func \(\*DataLoader\) [DeleteMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L105>)
+### func \(\*DataLoader\) DeleteMajorExpense
 
 ```go
 func (dl *DataLoader) DeleteMajorExpense(id string) ([]models.MajorExpense, error)
@@ -131,7 +131,7 @@ DeleteMajorExpense removes the entry with matching ID.
 Deprecated: use ArchiveMajorExpense, which preserves the definition and pin attachments in deleted\_major\_expenses.json so they can be restored. DeleteMajorExpense is retained only for tests of pre\-archive behavior and may be removed in a future cleanup pass.
 
 <a name="DataLoader.DiscardDeletedMajorExpense"></a>
-### func \(\*DataLoader\) [DiscardDeletedMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L322>)
+### func \(\*DataLoader\) DiscardDeletedMajorExpense
 
 ```go
 func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error
@@ -140,7 +140,7 @@ func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error
 DiscardDeletedMajorExpense permanently removes an archived entry. The definition and its captured pin hashes are gone; this cannot be undone.
 
 <a name="DataLoader.GetFileInfo"></a>
-### func \(\*DataLoader\) [GetFileInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L561>)
+### func \(\*DataLoader\) GetFileInfo
 
 ```go
 func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error)
@@ -149,7 +149,7 @@ func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error)
 GetFileInfo returns information about available CSV files
 
 <a name="DataLoader.LoadAliases"></a>
-### func \(\*DataLoader\) [LoadAliases](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L673>)
+### func \(\*DataLoader\) LoadAliases
 
 ```go
 func (dl *DataLoader) LoadAliases() (map[string]string, error)
@@ -158,7 +158,7 @@ func (dl *DataLoader) LoadAliases() (map[string]string, error)
 LoadAliases reads the hash\-\>displayName mapping from disk
 
 <a name="DataLoader.LoadAmazonEnrichment"></a>
-### func \(\*DataLoader\) [LoadAmazonEnrichment](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/amazon_enrichment.go#L26>)
+### func \(\*DataLoader\) LoadAmazonEnrichment
 
 ```go
 func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error)
@@ -167,7 +167,7 @@ func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error)
 LoadAmazonEnrichment reads the hash\-\>label map from disk. A missing file is not an error — enrichment is opt\-in \(users without Amazon data won't have generated this file\).
 
 <a name="DataLoader.LoadData"></a>
-### func \(\*DataLoader\) [LoadData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L138>)
+### func \(\*DataLoader\) LoadData
 
 ```go
 func (dl *DataLoader) LoadData() (*models.TransactionSet, error)
@@ -176,7 +176,7 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error)
 LoadData loads and combines data from all CSV files in the directory
 
 <a name="DataLoader.LoadDataContext"></a>
-### func \(\*DataLoader\) [LoadDataContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L146>)
+### func \(\*DataLoader\) LoadDataContext
 
 ```go
 func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionSet, error)
@@ -185,7 +185,7 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 LoadDataContext is LoadData with caller\-supplied cancellation. It fails fast on entry and between CSV files if ctx is cancelled \(e.g. the HTTP client disconnected\), so an abandoned dashboard request stops loading promptly instead of parsing every file to completion.
 
 <a name="DataLoader.LoadDeletedMajorExpenses"></a>
-### func \(\*DataLoader\) [LoadDeletedMajorExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L132>)
+### func \(\*DataLoader\) LoadDeletedMajorExpenses
 
 ```go
 func (dl *DataLoader) LoadDeletedMajorExpenses() ([]models.DeletedMajorExpense, error)
@@ -194,7 +194,7 @@ func (dl *DataLoader) LoadDeletedMajorExpenses() ([]models.DeletedMajorExpense, 
 LoadDeletedMajorExpenses reads the archive of soft\-deleted major expenses. Returns an empty slice if the file does not exist.
 
 <a name="DataLoader.LoadDuplicateDecisions"></a>
-### func \(\*DataLoader\) [LoadDuplicateDecisions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/duplicate_decisions.go#L50>)
+### func \(\*DataLoader\) LoadDuplicateDecisions
 
 ```go
 func (dl *DataLoader) LoadDuplicateDecisions() (map[string]DuplicateDecision, error)
@@ -203,7 +203,7 @@ func (dl *DataLoader) LoadDuplicateDecisions() (map[string]DuplicateDecision, er
 LoadDuplicateDecisions reads the pairKey → DuplicateDecision map from disk. Returns an empty map when the file is missing or empty; returns an error only when the file exists with non\-empty contents that fail to parse. Callers can rely on a non\-error result always being a usable map.
 
 <a name="DataLoader.LoadMajorExpenses"></a>
-### func \(\*DataLoader\) [LoadMajorExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L22>)
+### func \(\*DataLoader\) LoadMajorExpenses
 
 ```go
 func (dl *DataLoader) LoadMajorExpenses() ([]models.MajorExpense, error)
@@ -212,7 +212,7 @@ func (dl *DataLoader) LoadMajorExpenses() ([]models.MajorExpense, error)
 LoadMajorExpenses reads the user\-declared major expenses from disk. Returns an empty slice if the file does not exist.
 
 <a name="DataLoader.LoadTransactionPins"></a>
-### func \(\*DataLoader\) [LoadTransactionPins](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/transaction_pins.go#L19>)
+### func \(\*DataLoader\) LoadTransactionPins
 
 ```go
 func (dl *DataLoader) LoadTransactionPins() (map[string]string, error)
@@ -221,7 +221,7 @@ func (dl *DataLoader) LoadTransactionPins() (map[string]string, error)
 LoadTransactionPins reads the hash → MajorExpense.ID mapping from disk. Returns an empty map if the file does not exist.
 
 <a name="DataLoader.PrunePinsForMissingExpenses"></a>
-### func \(\*DataLoader\) [PrunePinsForMissingExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/transaction_pins.go#L109>)
+### func \(\*DataLoader\) PrunePinsForMissingExpenses
 
 ```go
 func (dl *DataLoader) PrunePinsForMissingExpenses(validIDs map[string]bool) error
@@ -230,7 +230,7 @@ func (dl *DataLoader) PrunePinsForMissingExpenses(validIDs map[string]bool) erro
 PrunePinsForMissingExpenses drops pins whose target ID is not in the supplied list of valid expense IDs. Used by DeleteMajorExpense and on startup to prevent orphaned pins from quietly hiding transactions.
 
 <a name="DataLoader.ResolvedDuplicates"></a>
-### func \(\*DataLoader\) [ResolvedDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L742>)
+### func \(\*DataLoader\) ResolvedDuplicates
 
 ```go
 func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair
@@ -239,7 +239,7 @@ func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair
 ResolvedDuplicates returns the kept\_winner pairs the user has already resolved, sourced from the most recent load. The Left side is the kept transaction; Right is the suppressed one.
 
 <a name="DataLoader.RestoreMajorExpense"></a>
-### func \(\*DataLoader\) [RestoreMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L253>)
+### func \(\*DataLoader\) RestoreMajorExpense
 
 ```go
 func (dl *DataLoader) RestoreMajorExpense(id string) error
@@ -252,7 +252,7 @@ Pin restoration is non\-destructive: a hash that has been pinned to a different 
 Returns an error if no archived entry has the given ID, or if an active expense with the same ID already exists \(which would shadow the restore\).
 
 <a name="DataLoader.SaveAlias"></a>
-### func \(\*DataLoader\) [SaveAlias](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L690>)
+### func \(\*DataLoader\) SaveAlias
 
 ```go
 func (dl *DataLoader) SaveAlias(hash, displayName string) error
@@ -261,7 +261,7 @@ func (dl *DataLoader) SaveAlias(hash, displayName string) error
 SaveAlias sets or removes an alias for a transaction hash
 
 <a name="DataLoader.SaveAmazonEnrichment"></a>
-### func \(\*DataLoader\) [SaveAmazonEnrichment](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/amazon_enrichment.go#L44>)
+### func \(\*DataLoader\) SaveAmazonEnrichment
 
 ```go
 func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error
@@ -270,7 +270,7 @@ func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error
 SaveAmazonEnrichment writes the full map to disk \(overwrites\). The CLI calls this after a successful matching pass.
 
 <a name="DataLoader.SaveDeletedMajorExpenses"></a>
-### func \(\*DataLoader\) [SaveDeletedMajorExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L149>)
+### func \(\*DataLoader\) SaveDeletedMajorExpenses
 
 ```go
 func (dl *DataLoader) SaveDeletedMajorExpenses(list []models.DeletedMajorExpense) error
@@ -279,7 +279,7 @@ func (dl *DataLoader) SaveDeletedMajorExpenses(list []models.DeletedMajorExpense
 SaveDeletedMajorExpenses persists the entire archive list to disk.
 
 <a name="DataLoader.SaveDuplicateDecision"></a>
-### func \(\*DataLoader\) [SaveDuplicateDecision](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/duplicate_decisions.go#L75>)
+### func \(\*DataLoader\) SaveDuplicateDecision
 
 ```go
 func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDecision) error
@@ -288,7 +288,7 @@ func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDe
 SaveDuplicateDecision writes a decision keyed by pairKey, replacing any prior decision under the same key. Validates outcome and the hash invariants for kept\_winner.
 
 <a name="DataLoader.SaveMajorExpenses"></a>
-### func \(\*DataLoader\) [SaveMajorExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L39>)
+### func \(\*DataLoader\) SaveMajorExpenses
 
 ```go
 func (dl *DataLoader) SaveMajorExpenses(list []models.MajorExpense) error
@@ -297,7 +297,7 @@ func (dl *DataLoader) SaveMajorExpenses(list []models.MajorExpense) error
 SaveMajorExpenses persists the entire list to disk.
 
 <a name="DataLoader.SetEnabledFiles"></a>
-### func \(\*DataLoader\) [SetEnabledFiles](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L130>)
+### func \(\*DataLoader\) SetEnabledFiles
 
 ```go
 func (dl *DataLoader) SetEnabledFiles(files []string)
@@ -306,7 +306,7 @@ func (dl *DataLoader) SetEnabledFiles(files []string)
 SetEnabledFiles sets which files should be loaded
 
 <a name="DataLoader.SetTransactionPin"></a>
-### func \(\*DataLoader\) [SetTransactionPin](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/transaction_pins.go#L37>)
+### func \(\*DataLoader\) SetTransactionPin
 
 ```go
 func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error
@@ -315,7 +315,7 @@ func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error
 SetTransactionPin pins a transaction \(by hash\) to a major\-expense ID. An empty expenseID removes the pin.
 
 <a name="DataLoader.SetTransactionPins"></a>
-### func \(\*DataLoader\) [SetTransactionPins](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/transaction_pins.go#L68>)
+### func \(\*DataLoader\) SetTransactionPins
 
 ```go
 func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
@@ -324,7 +324,7 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 SetTransactionPins writes many hash → expense\-ID pins in one disk round\-trip. Existing pins for hashes not in the input map are left untouched; pins in the input map with an empty expenseID are removed. Empty hashes are silently skipped so callers don't have to filter upstream. Returns the number of pins actually changed.
 
 <a name="DataLoader.UnresolvedDuplicateCount"></a>
-### func \(\*DataLoader\) [UnresolvedDuplicateCount](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L727>)
+### func \(\*DataLoader\) UnresolvedDuplicateCount
 
 ```go
 func (dl *DataLoader) UnresolvedDuplicateCount() int
@@ -333,7 +333,7 @@ func (dl *DataLoader) UnresolvedDuplicateCount() int
 UnresolvedDuplicateCount returns the number of candidate pairs that have not yet been resolved by the user. Recomputed on every LoadData.
 
 <a name="DataLoader.UnresolvedDuplicates"></a>
-### func \(\*DataLoader\) [UnresolvedDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L733>)
+### func \(\*DataLoader\) UnresolvedDuplicates
 
 ```go
 func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair
@@ -342,7 +342,7 @@ func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair
 UnresolvedDuplicates returns the candidate pairs awaiting user review, in detection order.
 
 <a name="DataLoader.UpdateMajorExpense"></a>
-### func \(\*DataLoader\) [UpdateMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L71>)
+### func \(\*DataLoader\) UpdateMajorExpense
 
 ```go
 func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense) ([]models.MajorExpense, error)
@@ -351,7 +351,7 @@ func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense)
 UpdateMajorExpense replaces the entry with matching ID. Fields copied from updates: Name, Keywords, ExpectedMin, ExpectedMax, Notes. ID and CreatedAt are preserved from the existing entry; UpdatedAt is bumped.
 
 <a name="DuplicateDecision"></a>
-## type [DuplicateDecision](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/duplicate_decisions.go#L27-L32>)
+## type DuplicateDecision
 
 DuplicateDecision records the user's resolution of a single near\-duplicate candidate pair. Outcome controls how the loader applies it on subsequent loads:
 
@@ -368,7 +368,7 @@ type DuplicateDecision struct {
 ```
 
 <a name="DuplicatePair"></a>
-## type [DuplicatePair](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/near_duplicates.go#L36-L40>)
+## type DuplicatePair
 
 DuplicatePair is the public\-facing detection result. Order of Left and Right is stable for a given input but is not otherwise meaningful — UI should treat them symmetrically.
 

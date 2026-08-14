@@ -17,7 +17,7 @@ Package whatif serves the What\-If retirement\-projection page and all of its HT
 
 
 <a name="Initialize"></a>
-## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/whatif/handlers.go#L708>)
+## func Initialize
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.SettingsManager)
@@ -26,7 +26,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.
 Initialize sets up the whatif package with required dependencies
 
 <a name="RegisterRoutes"></a>
-## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/whatif/handlers.go#L715>)
+## func RegisterRoutes
 
 ```go
 func RegisterRoutes(r chi.Router)
@@ -35,7 +35,7 @@ func RegisterRoutes(r chi.Router)
 RegisterRoutes registers all whatif routes
 
 <a name="VerdictView"></a>
-## type [VerdictView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/whatif/verdict.go#L17-L40>)
+## type VerdictView
 
 VerdictView is the precomputed model the sticky verdict bar renders.
 
@@ -67,7 +67,7 @@ type VerdictView struct {
 ```
 
 <a name="BuildVerdict"></a>
-### func [BuildVerdict](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/whatif/verdict.go#L44>)
+### func BuildVerdict
 
 ```go
 func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictView

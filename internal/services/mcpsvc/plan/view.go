@@ -1,7 +1,7 @@
-// Package whatifmcp shapes what-if analysis output for MCP consumption and
+// Package plan shapes what-if analysis output for MCP consumption and
 // applies scenario overrides. It reads scenarios and runs the engine; it never
 // writes to the data directory.
-package whatifmcp
+package plan
 
 import (
 	"math"

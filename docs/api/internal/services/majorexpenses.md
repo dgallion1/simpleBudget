@@ -18,7 +18,7 @@ Package majorexpenses implements pure matching and exception detection over a Tr
 
 
 <a name="AnnotateRecurringPayments"></a>
-## func [AnnotateRecurringPayments](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L94>)
+## func AnnotateRecurringPayments
 
 ```go
 func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models.MajorExpense, pins map[string]string) []models.RecurringPayment
@@ -29,7 +29,7 @@ AnnotateRecurringPayments fills in RecurringPayment.MajorExpenseName for each de
 Returns a new slice; the input is not mutated.
 
 <a name="MatchTransaction"></a>
-## func [MatchTransaction](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L154>)
+## func MatchTransaction
 
 ```go
 func MatchTransaction(t models.Transaction, defs []models.MajorExpense) (string, bool)
@@ -48,7 +48,7 @@ MatchTransaction returns the first MajorExpense.ID that matches the transaction.
 First\-def\-wins for determinism.
 
 <a name="MatchOptions"></a>
-## type [MatchOptions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L16-L28>)
+## type MatchOptions
 
 MatchOptions controls thresholds used to detect exceptions.
 
@@ -69,7 +69,7 @@ type MatchOptions struct {
 ```
 
 <a name="MatchResult"></a>
-## type [MatchResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L31-L39>)
+## type MatchResult
 
 MatchResult is the consolidated output the handler renders.
 
@@ -86,7 +86,7 @@ type MatchResult struct {
 ```
 
 <a name="Match"></a>
-### func [Match](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L43>)
+### func Match
 
 ```go
 func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOptions) MatchResult

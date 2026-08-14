@@ -18,6 +18,7 @@ The witness type's purpose is to make "I expect normalized settings" a compile\-
 
 ## Index
 
+- [func Clone\(cfg \*models.WhatIfSettings\) \(\*models.WhatIfSettings, error\)](<#Clone>)
 - [func ComputeAges\(s \*models.WhatIfSettings\)](<#ComputeAges>)
 - [func DeepCopy\(cfg \*models.WhatIfSettings\) \(\*models.WhatIfSettings, error\)](<#DeepCopy>)
 - [func NormalizePhaseAgeReference\(s \*models.WhatIfSettings\)](<#NormalizePhaseAgeReference>)
@@ -29,8 +30,23 @@ The witness type's purpose is to make "I expect normalized settings" a compile\-
   - [func \(p PreparedSettings\) Settings\(\) \*models.WhatIfSettings](<#PreparedSettings.Settings>)
 
 
+<a name="Clone"></a>
+## func Clone
+
+```go
+func Clone(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error)
+```
+
+Clone returns a deep copy of cfg that is lossless: unlike DeepCopy it also carries the fields tagged json:"\-", which the JSON round\-trip silently drops.
+
+Use Clone \(not DeepCopy\) whenever the copy is handed to a caller that will read those fields WITHOUT first going through From. DeepCopy is only safe when From re\-derives them: From runs ComputeAges, so CurrentAge/SpouseAge come back, but nothing re\-derives RothConversion.PerYearOverrides — see the re\-attach overrides.Apply has to perform by hand after its own DeepCopy.
+
+The set of carried fields is enforced by TestCloneCarriesEveryJSONOmittedField, which reflects over models.WhatIfSettings rather than hard\-coding a list, so a newly added json:"\-" field fails the test instead of being dropped.
+
+NOT value\-faithful for empty slices. Clone inherits DeepCopy's JSON round trip, so an omitempty field holding a non\-nil empty slice is omitted on marshal and comes back nil: RemovedIncomeSources, RemovedExpenseSources, BigTicketItems and RemovedBigTicketItems all make that trip on a default plan. Benign for every current caller — append, len and range treat nil and empty alike, templates render both as nothing, and omitempty emits the same bytes for either, so nothing reaches disk differently — but it is a real change of value, so reflect.DeepEqual\(cfg, clone\) is FALSE even when every field prints identically. Two tests in the retirement package \(TestLoad\_CacheHitOnSecondCall, TestSettingsManager\_LoadReturnsCacheOnSubsequentCalls\) compare two Load results with DeepEqual and only pass because BOTH operands are Clones and so share the nil\-ing; making this value\-faithful is safe, but check them first. The one place that re\-fills the nils is initializeLoadedSettings, on the disk\-decode path, which Clone does not go through.
+
 <a name="ComputeAges"></a>
-## func [ComputeAges](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/normalize.go#L14>)
+## func ComputeAges
 
 ```go
 func ComputeAges(s *models.WhatIfSettings)
@@ -41,7 +57,7 @@ ComputeAges derives CurrentAge and SpouseAge from StartDate plus the matching pr
 Tolerant: if a date can't be parsed, the corresponding age is left untouched \(CurrentAge\) or zeroed \(SpouseAge\) so that callers can still work with partially\-valid input. Validation belongs in ValidatePersons.
 
 <a name="DeepCopy"></a>
-## func [DeepCopy](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/prepare.go#L80>)
+## func DeepCopy
 
 ```go
 func DeepCopy(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error)
@@ -52,7 +68,7 @@ DeepCopy returns a deep clone of cfg via JSON round\-trip. Fields marked json:"\
 Performance: \~microseconds per call. The projection loops dominate runtime in every analysis that calls this. Replace with structure\-aware copy only if profiling proves it.
 
 <a name="NormalizePhaseAgeReference"></a>
-## func [NormalizePhaseAgeReference](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/normalize.go#L46>)
+## func NormalizePhaseAgeReference
 
 ```go
 func NormalizePhaseAgeReference(s *models.WhatIfSettings)
@@ -61,7 +77,7 @@ func NormalizePhaseAgeReference(s *models.WhatIfSettings)
 NormalizePhaseAgeReference coerces s.PhaseAgeReference to one of the recognized values. Unknown values default to "older". The "spouse" reference falls back to "older" when the settings lack a spouse Person.
 
 <a name="ValidatePersons"></a>
-## func [ValidatePersons](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/validate.go#L21>)
+## func ValidatePersons
 
 ```go
 func ValidatePersons(s *models.WhatIfSettings) error
@@ -79,7 +95,7 @@ ValidatePersons checks the settings' Persons slice for the invariants the retire
 - HealthcarePerson entries reference valid Person IDs \(or are unlinked\)
 
 <a name="PreparedSettings"></a>
-## type [PreparedSettings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/prepare.go#L25-L27>)
+## type PreparedSettings
 
 PreparedSettings is the retirement engine's input. Constructable only via From or MustFrom. The underlying \*WhatIfSettings has been deep\-copied and normalized; treat it as read\-only.
 
@@ -90,7 +106,7 @@ type PreparedSettings struct {
 ```
 
 <a name="From"></a>
-### func [From](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/prepare.go#L47>)
+### func From
 
 ```go
 func From(cfg *models.WhatIfSettings) (PreparedSettings, error)
@@ -101,7 +117,7 @@ From deep\-copies, normalizes, and validates a configuration, returning a Prepar
 From is idempotent: passing already\-normalized settings produces an equivalent PreparedSettings \(the deep copy still happens\).
 
 <a name="MustFrom"></a>
-### func [MustFrom](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/prepare.go#L64>)
+### func MustFrom
 
 ```go
 func MustFrom(tb testing.TB, cfg *models.WhatIfSettings) PreparedSettings
@@ -110,7 +126,7 @@ func MustFrom(tb testing.TB, cfg *models.WhatIfSettings) PreparedSettings
 MustFrom wraps From for tests. It calls tb.Fatalf on error.
 
 <a name="PreparedSettings.IsZero"></a>
-### func \(PreparedSettings\) [IsZero](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/prepare.go#L38>)
+### func \(PreparedSettings\) IsZero
 
 ```go
 func (p PreparedSettings) IsZero() bool
@@ -119,7 +135,7 @@ func (p PreparedSettings) IsZero() bool
 IsZero reports whether p is the zero value \(constructed without From\).
 
 <a name="PreparedSettings.Settings"></a>
-### func \(PreparedSettings\) [Settings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/prepare/prepare.go#L33>)
+### func \(PreparedSettings\) Settings
 
 ```go
 func (p PreparedSettings) Settings() *models.WhatIfSettings

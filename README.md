@@ -311,48 +311,65 @@ make help
 
 ## Talking to your plan (MCP)
 
-`cmd/whatif-mcp` serves the what-if planner and financial analytics over MCP on stdio, so you can ask
-questions about a plan in Claude Code — what a number means, why it moved, and
-what happens under a different assumption — and have it re-run the engine to
-check. Six of its eight tools are read-only: `list_scenarios`, `get_analysis`,
-`get_months`, `run_scenario`, `get_anomalies`, and `get_price_creep` only load and copy scenarios and transaction history. `open_page`
-opens the what-if page (starting `cmd/server` if nothing is listening), and
-`apply_changes` **writes to the saved plan** — it saves changed assumptions
-through the running server's `POST /whatif/apply`. There is also a
-`whatif://assumptions` resource describing what the engine does not model.
+The running server exposes its tools over MCP at `http://localhost:8080/mcp`.
+The repo ships a `.mcp.json` pointing there, so Claude Code picks it up from the
+repo root — you can ask questions about a plan, have the engine re-run to check
+an answer, and look at spending patterns. **Start `budget2` first:** the tools
+come from the running server, so if nothing is listening when a Claude Code
+session starts, they will not be available. There is no separate MCP process.
 
-The MCP server talks HTTP to a `cmd/server` instance on localhost, default
-`http://localhost:8080`, overridable with `BUDGET_SERVER_URL`. If nothing is
-listening there, `open_page` and `apply_changes` start one — on the port that
-URL names, and only when it is a loopback address; a non-loopback
-`BUDGET_SERVER_URL` names a machine this process cannot start anything on, so
-it refuses instead. It resolves its
-own data directory from the `-data` flag, else `BUDGET_DATA_DIR`, else
-`./data/settings`, and refuses to write if the server it finds is serving a
-different settings directory than the one it reads. Locked or encrypted storage and misconfigured data directories (not shaped `<data-dir>/settings`) surface as clear errors. Before its first write to
-a scenario in a session, it snapshots that scenario to a `.bak` file outside
-the data directory; there is no in-app undo, so restoring that file by hand is
-the recovery path for an unwanted change.
+Six planner tools: `list_scenarios`, `get_analysis`, `get_months`, and
+`run_scenario` are read-only; `open_page` returns the what-if page URL,
+switching the active scenario if you name one; and `apply_changes` **writes to
+the saved plan**. Before its first write to a scenario in a session,
+`apply_changes` snapshots that scenario to a `.bak` file under
+`<backup-dir>/mcp-snapshots`. There is no in-app undo, so restoring that file by
+hand is the recovery path for an unwanted change. A `whatif://assumptions`
+resource describes what the engine does not model.
 
-`get_anomalies` flags unusual expense transactions (outflows only, TransactionType == Outflow AND Amount < 0) by three methods: amounts far outside a merchant's or category's typical range (mad_merchant, mad_category using robust z-score against absolute amounts), or an outsized first-ever charge from a brand-new merchant (new_merchant). Detection always runs over the complete transaction history — peer-group baselines and each merchant's first-ever occurrence never change with the window — and accepts optional `start_date` and `end_date` (YYYY-MM-DD) to filter which already-detected flags are returned. Returns count and anomaly rows with date, description, category, amount (signed, negative for expenses), method, severity (high when score > 6), and score.
+Six spending tools read the transaction history rather than a scenario.
+`get_anomalies` flags unusual expense transactions (outflows only,
+TransactionType == Outflow AND Amount < 0) by three methods: amounts far outside
+a merchant's or category's typical range (mad_merchant, mad_category, using a
+robust z-score against absolute amounts), or an outsized first-ever charge from
+a brand-new merchant (new_merchant). Detection always runs over the complete
+transaction history — peer-group baselines and each merchant's first-ever
+occurrence never change with the window — and accepts optional `start_date` and
+`end_date` (YYYY-MM-DD) to filter which already-detected flags are returned.
+`get_price_creep` finds recurring merchant charges whose amounts have drifted
+upward: for each merchant with at least 6 occurrences it compares the median of
+the first 3 charges to the median of the last 3 and reports when the increase
+exceeds 5%; decreases and single outliers never report. `search_transactions`
+searches the ledger by date range, category, free-text, type, and amount bounds,
+paginated, with signed amounts (expenses negative). `summarize_spending` totals
+income, expenses, savings, and category/merchant/month breakdowns over a date
+window, with positive dollar amounts throughout and an optional budget-vs-target
+comparison when a plan is configured. `get_recurring` detects recurring
+payments — subscriptions, bills, and other repeating charges — by clustering
+outflows into merchant groups with consistent amounts at consistent intervals.
+`get_trends` compares category and major-expense spending, income patterns, and
+spending velocity (burn rate) against the immediately preceding window of equal
+length. All six exclude transactions the user has already marked as a resolved
+duplicate.
 
-`get_price_creep` finds recurring merchant charges whose amounts have drifted upward (outflows only). For each merchant with at least 6 occurrences, it compares the median of the first 3 charges to the median of the last 3 and reports when the increase exceeds 5%; decreases and single outliers never report. Returns count and rows with merchant name, first amount, current amount, percent change, first and last dates, and occurrence count.
-
-The repo ships a `.mcp.json`, so Claude Code picks it up from the repo root
-and runs it with `go run ./cmd/whatif-mcp`, which triggers `go mod download`
-on a fresh clone — real network egress at first launch, from the Go toolchain
-rather than from the server itself.
+Locked or encrypted storage surfaces as a clear error from the tool rather than
+a parse failure — unlock via `/unlock` in the web UI first. Cross-site browser
+requests are refused (403), and a request arriving over a loopback connection
+with a spoofed non-localhost `Host` header is rejected (403) too — but the
+default listen address (`:8080`, all interfaces) is not restricted to this
+machine, so anyone who can reach it can use these tools exactly as they can
+already use the web UI. Bind to a loopback address (`BUDGET_LISTEN_ADDR`) if
+that matters to you.
 
 ## Project Structure
 
 ```
 budget2/
 ├── cmd/
-│   ├── server/                  # Main server application
+│   ├── server/                  # Main server application (also mounts MCP at /mcp)
 │   │   ├── main.go              # HTTP handlers and routing
 │   │   └── main_test.go         # Integration tests
-│   ├── validate/                # CLI validation tool
-│   └── whatif-mcp/              # MCP server (stdio) for the what-if planner
+│   └── validate/                # CLI validation tool
 ├── internal/
 │   ├── config/                  # Environment configuration
 │   ├── models/                  # Data structures

@@ -12,10 +12,11 @@ Package engine runs deterministic retirement projections from prepared settings.
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func Age65CountForYear\(s \*models.WhatIfSettings, year int\) int](<#Age65CountForYear>)
 - [func AnnualRMDForYear\(s \*models.WhatIfSettings, currentYear int, taxDeferredBalance float64\) float64](<#AnnualRMDForYear>)
 - [func ApplyRothConversionAtYear\(s \*models.WhatIfSettings, currentYear int, taxDeferredBalance, rothBalance, rothBasis \*float64, rothFirstFundedYear \*int\) float64](<#ApplyRothConversionAtYear>)
 - [func ApplyTaxStateMonth\(taxState \*ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64\)](<#ApplyTaxStateMonth>)
-- [func CalculateMonthlyIRMAA\(magi float64, filingStatus models.FilingStatus, inflationFactor float64\) float64](<#CalculateMonthlyIRMAA>)
+- [func CalculateMonthlyIRMAA\(magi float64, filingStatus models.FilingStatus, thresholdFactor, surchargeFactor float64\) float64](<#CalculateMonthlyIRMAA>)
 - [func CalculateNIIT\(magi, netInvestmentIncome float64, filingStatus models.FilingStatus\) float64](<#CalculateNIIT>)
 - [func CalculateRMD\(taxDeferredBalance float64, age int\) \(amount float64, percent float64\)](<#CalculateRMD>)
 - [func CalculateRMDForYear\(s \*models.WhatIfSettings, taxDeferredBalance float64, calendarYear int\) \(amount float64, percent float64\)](<#CalculateRMDForYear>)
@@ -33,6 +34,7 @@ Package engine runs deterministic retirement projections from prepared settings.
 - [func NormalizeFilingStatus\(filingStatus models.FilingStatus\) models.FilingStatus](<#NormalizeFilingStatus>)
 - [func ParseStartYear\(startDate string\) int](<#ParseStartYear>)
 - [func PlannerIRMAAInflationFactorForYear\(annualInflationRate float64, yearsFromTaxBase float64\) float64](<#PlannerIRMAAInflationFactorForYear>)
+- [func PlannerIRMAASurchargeInflationFactorForYear\(yearsFromTaxBase float64\) float64](<#PlannerIRMAASurchargeInflationFactorForYear>)
 - [func PresentValueAnnuity\(payment, discountRate, growthRate float64, startMonth, numPayments int\) float64](<#PresentValueAnnuity>)
 - [func ProjectionTimingGrowthFractions\(timing models.ProjectionTiming\) \(before float64, after float64\)](<#ProjectionTimingGrowthFractions>)
 - [func PropertyTaxAtMonth\(s \*models.WhatIfSettings, month int\) float64](<#PropertyTaxAtMonth>)
@@ -41,7 +43,7 @@ Package engine runs deterministic retirement projections from prepared settings.
 - [func RMDLifeFactor\(s \*models.WhatIfSettings, calendarYear int\) float64](<#RMDLifeFactor>)
 - [func RMDTriggerMonth\(timing models.RMDTiming\) int](<#RMDTriggerMonth>)
 - [func RebaseLivingExpensesAtTransition\(s \*models.WhatIfSettings, phaseAge int, cumulativeInflation float64, netCumulativeInflation float64\) float64](<#RebaseLivingExpensesAtTransition>)
-- [func ReinvestRequiredRMDToTaxableState\(monthlyRMD, marginalRate float64, taxDeferredBalance \*float64, taxable \*TaxableAccountState\) \(gross, net float64\)](<#ReinvestRequiredRMDToTaxableState>)
+- [func ReinvestRequiredRMDToTaxableState\(monthlyRMD float64, taxDeferredBalance \*float64, taxable \*TaxableAccountState\) \(gross float64\)](<#ReinvestRequiredRMDToTaxableState>)
 - [func RothConversionAmountForYear\(s \*models.WhatIfSettings, currentYear int, availableTaxDeferred float64\) float64](<#RothConversionAmountForYear>)
 - [func RothQualifiedDistributionClockSatisfied\(firstFundedYear, calendarYear int\) bool](<#RothQualifiedDistributionClockSatisfied>)
 - [func ShortfallCausesDepletion\(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64\) bool](<#ShortfallCausesDepletion>)
@@ -75,7 +77,7 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func CalculateMonthlyIncomeBreakdown\(hooks Hooks, s \*models.WhatIfSettings, month int\) MonthlyIncomeBreakdown](<#CalculateMonthlyIncomeBreakdown>)
 - [type MonthlyTaxInputs](<#MonthlyTaxInputs>)
 - [type PortfolioCashFlowResult](<#PortfolioCashFlowResult>)
-  - [func ExecutePortfolioCashFlowWithTaxableState\(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate, marginalRate float64, taxDeferredBalance \*float64, taxable \*TaxableAccountState, rothBalance, rothBasis \*float64\) PortfolioCashFlowResult](<#ExecutePortfolioCashFlowWithTaxableState>)
+  - [func ExecutePortfolioCashFlowWithTaxableState\(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance \*float64, taxable \*TaxableAccountState, rothBalance, rothBasis \*float64\) PortfolioCashFlowResult](<#ExecutePortfolioCashFlowWithTaxableState>)
   - [func \(r PortfolioCashFlowResult\) GrossWithdrawal\(\) float64](<#PortfolioCashFlowResult.GrossWithdrawal>)
 - [type PortfolioMonthInput](<#PortfolioMonthInput>)
 - [type PreparedChainLink](<#PreparedChainLink>)
@@ -98,7 +100,7 @@ Package engine runs deterministic retirement projections from prepared settings.
 - [type TaxCalculator](<#TaxCalculator>)
   - [func NewTaxCalculator\(config \*models.TaxConfig, inflationRate float64\) \*TaxCalculator](<#NewTaxCalculator>)
   - [func \(tc \*TaxCalculator\) CalculateFederalTax\(grossIncome float64, yearsFromBase int\) \(tax float64, effectiveRate float64, marginalBracket float64\)](<#TaxCalculator.CalculateFederalTax>)
-  - [func \(tc \*TaxCalculator\) CalculateMonthlyIRMAA\(magi, inflationFactor float64\) float64](<#TaxCalculator.CalculateMonthlyIRMAA>)
+  - [func \(tc \*TaxCalculator\) CalculateMonthlyIRMAA\(magi, thresholdFactor, surchargeFactor float64\) float64](<#TaxCalculator.CalculateMonthlyIRMAA>)
   - [func \(tc \*TaxCalculator\) CalculateNIIT\(magi, netInvestmentIncome float64\) float64](<#TaxCalculator.CalculateNIIT>)
   - [func \(tc \*TaxCalculator\) CalculateStateTax\(taxableIncome float64\) float64](<#TaxCalculator.CalculateStateTax>)
   - [func \(tc \*TaxCalculator\) CalculateTaxWithInvestmentIncome\(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int\) \(federalTax, stateTax, totalTax, effectiveRate float64\)](<#TaxCalculator.CalculateTaxWithInvestmentIncome>)
@@ -227,8 +229,19 @@ var TaxBrackets2024 = map[models.FilingStatus][]FederalTaxBracket{
 }
 ```
 
+<a name="Age65CountForYear"></a>
+## func Age65CountForYear
+
+```go
+func Age65CountForYear(s *models.WhatIfSettings, year int) int
+```
+
+Age65CountForYear returns the number of filers aged 65 or older in the given projection year \(0, 1, or 2\), which drives the age\-65 additional standard deduction in GetAdjustedStandardDeduction. A spouse only counts when filing jointly — a non\-MFJ spouse files a separate return.
+
+F\-3: the count is derived here from the ages and filing status the projection already knows. TaxCalculator.Age65Count used to be read straight off the static TaxConfig.Age65Count JSON field, which has no UI input and ships as 0, so the engine dropped the deduction for every saved plan while the tax optimizer derived and applied it — leaving the optimizer sizing bracket\-fill conversions against a larger deduction than the engine then used. TaxConfig.Age65Count remains the fallback for callers outside the projection, which have no ages to derive from.
+
 <a name="AnnualRMDForYear"></a>
-## func [AnnualRMDForYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L178>)
+## func AnnualRMDForYear
 
 ```go
 func AnnualRMDForYear(s *models.WhatIfSettings, currentYear int, taxDeferredBalance float64) float64
@@ -239,7 +252,7 @@ AnnualRMDForYear returns the year's required minimum distribution for the given 
 All three projection loops \(canonical, Monte Carlo, backtest\) compute the annual RMD identically at every year boundary; this helper captures that shared rule.
 
 <a name="ApplyRothConversionAtYear"></a>
-## func [ApplyRothConversionAtYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L215-L220>)
+## func ApplyRothConversionAtYear
 
 ```go
 func ApplyRothConversionAtYear(s *models.WhatIfSettings, currentYear int, taxDeferredBalance, rothBalance, rothBasis *float64, rothFirstFundedYear *int) float64
@@ -252,7 +265,7 @@ The rothFirstFundedYear pointer holds projection\-local state — the caller see
 All three projection loops perform this mutation identically; this helper captures the shared in\-place update so the loops can shrink to a single call per year boundary.
 
 <a name="ApplyTaxStateMonth"></a>
-## func [ApplyTaxStateMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L288>)
+## func ApplyTaxStateMonth
 
 ```go
 func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64)
@@ -263,16 +276,18 @@ ApplyTaxStateMonth folds a single month's portfolio result into the running Proj
 TaxableRothEarnings is added to ordinary income so MAGI\-sensitive calculations \(IRMAA, NIIT thresholds\) agree with the converged monthly tax snapshot.
 
 <a name="CalculateMonthlyIRMAA"></a>
-## func [CalculateMonthlyIRMAA](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L367>)
+## func CalculateMonthlyIRMAA
 
 ```go
-func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, inflationFactor float64) float64
+func CalculateMonthlyIRMAA(magi float64, filingStatus models.FilingStatus, thresholdFactor, surchargeFactor float64) float64
 ```
 
-CalculateMonthlyIRMAA returns the monthly IRMAA Part B\+D surcharge per person at the supplied MAGI, scaled by the supplied inflation factor applied to the bundled 2026 bracket table.
+CalculateMonthlyIRMAA returns the monthly IRMAA Part B\+D surcharge per person at the supplied MAGI, inflating the bundled 2026 bracket table.
+
+The two factors index different things and must not be collapsed into one \(F\-6\): thresholdFactor moves the MAGI cutoffs, which are statutorily CPI\-indexed, while surchargeFactor moves the dollars charged once a cutoff is cleared, which track Medicare per\-capita cost growth. Passing the CPI factor for both understated every future surcharge.
 
 <a name="CalculateNIIT"></a>
-## func [CalculateNIIT](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L349>)
+## func CalculateNIIT
 
 ```go
 func CalculateNIIT(magi, netInvestmentIncome float64, filingStatus models.FilingStatus) float64
@@ -281,7 +296,7 @@ func CalculateNIIT(magi, netInvestmentIncome float64, filingStatus models.Filing
 CalculateNIIT computes the 3.8% Net Investment Income Tax surcharge.
 
 <a name="CalculateRMD"></a>
-## func [CalculateRMD](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L219>)
+## func CalculateRMD
 
 ```go
 func CalculateRMD(taxDeferredBalance float64, age int) (amount float64, percent float64)
@@ -290,7 +305,7 @@ func CalculateRMD(taxDeferredBalance float64, age int) (amount float64, percent 
 CalculateRMD calculates the Required Minimum Distribution for a given balance and age.
 
 <a name="CalculateRMDForYear"></a>
-## func [CalculateRMDForYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L305>)
+## func CalculateRMDForYear
 
 ```go
 func CalculateRMDForYear(s *models.WhatIfSettings, taxDeferredBalance float64, calendarYear int) (amount float64, percent float64)
@@ -299,7 +314,7 @@ func CalculateRMDForYear(s *models.WhatIfSettings, taxDeferredBalance float64, c
 CalculateRMDForYear computes the RMD amount and percentage for the given tax\-deferred balance and calendar year, selecting the Joint and Last Survivor Table or the Uniform Lifetime Table via RMDLifeFactor. It is the settings\-aware analogue of CalculateRMD.
 
 <a name="CalculateTaxableSocialSecurity"></a>
-## func [CalculateTaxableSocialSecurity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L306>)
+## func CalculateTaxableSocialSecurity
 
 ```go
 func CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64, filingStatus models.FilingStatus, mfsLivedWithSpouse bool) float64
@@ -308,7 +323,7 @@ func CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends,
 CalculateTaxableSocialSecurity computes the IRS\-taxable portion of Social Security benefits per 26 USC § 86.
 
 <a name="EffectiveRMDStartAge"></a>
-## func [EffectiveRMDStartAge](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L30>)
+## func EffectiveRMDStartAge
 
 ```go
 func EffectiveRMDStartAge(s *models.WhatIfSettings) int
@@ -322,7 +337,7 @@ EffectiveRMDStartAge returns the SECURE 2.0 RMD applicable age for the older per
 The older spouse drives the household's RMD timing. F\-077 fixup: when any Person.BirthMonth is set, derive the birth year directly from it — the floor'd integer ages on WhatIfSettings \(CurrentAge / SpouseAge\) read 1 year low whenever the birthday hasn't yet occurred in StartDate's calendar year, which silently pushed people born late in 1959 onto the post\-2032 \(age 75\) rule. Falls back to startYear \- GetOlderAge\(\) only for legacy callers that build settings without populating Persons.
 
 <a name="FindSteadyStateMonth"></a>
-## func [FindSteadyStateMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/month.go#L206>)
+## func FindSteadyStateMonth
 
 ```go
 func FindSteadyStateMonth(hooks Hooks, s *models.WhatIfSettings) int
@@ -331,7 +346,7 @@ func FindSteadyStateMonth(hooks Hooks, s *models.WhatIfSettings) int
 FindSteadyStateMonth finds the month when all income sources are active. Returns 0 if all sources start immediately \(no delayed income\). hooks supplies the SS\-projection\-active predicate; passing a zero Hooks value falls back to "no SS optimizer".
 
 <a name="FirstRMDCalendarYear"></a>
-## func [FirstRMDCalendarYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L98>)
+## func FirstRMDCalendarYear
 
 ```go
 func FirstRMDCalendarYear(s *models.WhatIfSettings) int
@@ -340,7 +355,7 @@ func FirstRMDCalendarYear(s *models.WhatIfSettings) int
 FirstRMDCalendarYear returns the first calendar year in which the older household member must take an RMD under SECURE 2.0. Equals the older person's birth year \+ their applicable age \(73 or 75\). Anchors all calendar\-year RMD gating so floor'd integer ages can't slip the first RMD year by one for late\-year births.
 
 <a name="GetLifeExpectancyFactor"></a>
-## func [GetLifeExpectancyFactor](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L206>)
+## func GetLifeExpectancyFactor
 
 ```go
 func GetLifeExpectancyFactor(age int) float64
@@ -349,7 +364,7 @@ func GetLifeExpectancyFactor(age int) float64
 GetLifeExpectancyFactor returns the IRS Uniform Lifetime Table factor for a given age.
 
 <a name="HealthcarePV"></a>
-## func [HealthcarePV](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/healthcare.go#L10>)
+## func HealthcarePV
 
 ```go
 func HealthcarePV(person models.HealthcarePerson, discountRate float64, totalMonths int) float64
@@ -358,7 +373,7 @@ func HealthcarePV(person models.HealthcarePerson, discountRate float64, totalMon
 HealthcarePV calculates the present value of healthcare costs for a single person. Handles the Medicare transition where costs and inflation rates change at age 65.
 
 <a name="IsSocialSecurityIncomeSource"></a>
-## func [IsSocialSecurityIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/ss_hooks.go#L17>)
+## func IsSocialSecurityIncomeSource
 
 ```go
 func IsSocialSecurityIncomeSource(source models.IncomeSource) bool
@@ -369,7 +384,7 @@ IsSocialSecurityIncomeSource reports whether the supplied income source represen
 Social Security optimizer hooks \(SocialSecurityProjectionActive, ProjectedSocialSecurityIncome\) used to live here as package\-level function vars wired by retirement's init\(\). They moved to fields on engine.Input.Hooks so engine.Run is a pure function of its Input. retirement.DefaultHooks\(\) returns the production set.
 
 <a name="LivingExpensesAtMonth"></a>
-## func [LivingExpensesAtMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L18>)
+## func LivingExpensesAtMonth
 
 ```go
 func LivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64
@@ -378,16 +393,22 @@ func LivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64
 LivingExpensesAtMonth returns the inflation\- and phase\-adjusted living expense for the given month. Exported so analysis\-package callers \(historical backtest\) can reuse the rule.
 
 <a name="MedicareEligibleAdultCountAtYear"></a>
-## func [MedicareEligibleAdultCountAtYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L66>)
+## func MedicareEligibleAdultCountAtYear
 
 ```go
 func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int
 ```
 
-MedicareEligibleAdultCountAtYear returns the count \(0, 1, or 2\) of household adults that are 65\+ in the given projection year. Used to scale the per\-person IRMAA surcharge to a household total.
+MedicareEligibleAdultCountAtYear returns the count \(0, 1, or 2\) of household adults actually paying Medicare premiums in the given projection year. Used to scale the per\-person IRMAA surcharge to a household total.
+
+F\-5: this counts enrolment, not age. IRMAA is a surcharge on Part B and Part D premiums, so someone who keeps employer coverage past 65 has nothing to surcharge — and the expense model already bills them an employer premium for those years. Reading age alone made the two models contradict each other for exactly the household EmployerCoverageYears exists to describe, and ignored HealthcarePerson.MedicareEligibleAge by hardcoding 65.
+
+When the multi\-person healthcare model is populated it is authoritative, matching GetTotalHealthcareCost. Plans on the legacy single\-value model carry no coverage detail, so they keep the age\-65 rule.
+
+Resolution is one year, and the test below is on the year's FIRST month: a person is counted only from the first projection year that begins at or after their Medicare start. A start part\-way through a projection year therefore skips that year's surcharge entirely, understating IRMAA for the transition year rather than overstating it.
 
 <a name="MonthlyCompoundFactorFromDecimal"></a>
-## func [MonthlyCompoundFactorFromDecimal](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/math.go#L18>)
+## func MonthlyCompoundFactorFromDecimal
 
 ```go
 func MonthlyCompoundFactorFromDecimal(annualRate float64) float64
@@ -396,7 +417,7 @@ func MonthlyCompoundFactorFromDecimal(annualRate float64) float64
 MonthlyCompoundFactorFromDecimal is the exported counterpart of monthlyCompoundFactorFromDecimal. Analysis\-package callers \(Monte Carlo, historical backtest\) reach in here so they don't have to redefine the helper.
 
 <a name="MonthlyRMDForMonth"></a>
-## func [MonthlyRMDForMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L193>)
+## func MonthlyRMDForMonth
 
 ```go
 func MonthlyRMDForMonth(s *models.WhatIfSettings, monthInYear int, annualRMD, taxDeferredBalance float64) float64
@@ -407,7 +428,7 @@ MonthlyRMDForMonth returns the monthly RMD withdrawal amount: the full annual RM
 All three projection loops apply the same trigger\-month rule; this helper captures the shared math.
 
 <a name="NormalizeFilingStatus"></a>
-## func [NormalizeFilingStatus](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L295>)
+## func NormalizeFilingStatus
 
 ```go
 func NormalizeFilingStatus(filingStatus models.FilingStatus) models.FilingStatus
@@ -416,7 +437,7 @@ func NormalizeFilingStatus(filingStatus models.FilingStatus) models.FilingStatus
 NormalizeFilingStatus coerces unknown filing statuses to MFJ. Exported so retirement\-package code \(and tests during the migration window\) can share the canonicalisation rule.
 
 <a name="ParseStartYear"></a>
-## func [ParseStartYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L138>)
+## func ParseStartYear
 
 ```go
 func ParseStartYear(startDate string) int
@@ -425,16 +446,29 @@ func ParseStartYear(startDate string) int
 ParseStartYear extracts the year from a "YYYY\-MM" start date string. Returns the current year if the string is empty or unparseable.
 
 <a name="PlannerIRMAAInflationFactorForYear"></a>
-## func [PlannerIRMAAInflationFactorForYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L86>)
+## func PlannerIRMAAInflationFactorForYear
 
 ```go
 func PlannerIRMAAInflationFactorForYear(annualInflationRate float64, yearsFromTaxBase float64) float64
 ```
 
-PlannerIRMAAInflationFactorForYear inflates the bundled IRMAA surcharge brackets from their CMS 2026 base year to the projection year. Pure math; the offset \(irmaaBaseYear − taxBaseYear\) keeps the IRMAA scaling decoupled from the tax\-bracket scaling even though callers express both as years\-from\-tax\-base.
+PlannerIRMAAInflationFactorForYear inflates the bundled IRMAA MAGI thresholds from their CMS 2026 base year to the projection year. The thresholds are statutorily CPI\-indexed, so this takes the plan's inflation rate. Pure math; the offset \(irmaaBaseYear − taxBaseYear\) keeps the IRMAA scaling decoupled from the tax\-bracket scaling even though callers express both as years\-from\-tax\-base.
+
+Deliberately not floored at zero, unlike GetAdjustedBrackets and InflationFactor: a plan year before irmaaBaseYear deflates the 2026 table backwards, which is what we want. At 3% the 2025 tier\-1 cutoff computes to roughly $105.8k/$211.6k against an actual $106k/$212k — closer than pinning it at the 2026 figures would be.
+
+<a name="PlannerIRMAASurchargeInflationFactorForYear"></a>
+## func PlannerIRMAASurchargeInflationFactorForYear
+
+```go
+func PlannerIRMAASurchargeInflationFactorForYear(yearsFromTaxBase float64) float64
+```
+
+PlannerIRMAASurchargeInflationFactorForYear inflates the IRMAA surcharge DOLLARS from the CMS 2026 base year to the projection year.
+
+F\-6: surcharge amounts are not CPI\-indexed. They are recalculated annually from projected Medicare per\-capita costs, which have historically grown several points faster than CPI. Applying the threshold's CPI factor to the surcharge as well understated every future surcharge, and compounded: at 30 years out the gap is roughly 2x. This deliberately does not take the plan's inflation rate — a household assuming lower CPI does not thereby slow Medicare cost growth.
 
 <a name="PresentValueAnnuity"></a>
-## func [PresentValueAnnuity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/math.go#L55>)
+## func PresentValueAnnuity
 
 ```go
 func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, numPayments int) float64
@@ -443,7 +477,7 @@ func PresentValueAnnuity(payment, discountRate, growthRate float64, startMonth, 
 PresentValueAnnuity calculates the PV of a series of payments \(regular or growing\). The retirement\-package PresentValueAnnuity forwards here; analysis\-package callers \(BudgetFit, PresentValue\) use this directly.
 
 <a name="ProjectionTimingGrowthFractions"></a>
-## func [ProjectionTimingGrowthFractions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L93>)
+## func ProjectionTimingGrowthFractions
 
 ```go
 func ProjectionTimingGrowthFractions(timing models.ProjectionTiming) (before float64, after float64)
@@ -452,7 +486,7 @@ func ProjectionTimingGrowthFractions(timing models.ProjectionTiming) (before flo
 ProjectionTimingGrowthFractions splits a month's growth into the fraction applied before vs. after the cash\-flow leg, matching the user\-selected projection\-timing convention.
 
 <a name="PropertyTaxAtMonth"></a>
-## func [PropertyTaxAtMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/expense.go#L37>)
+## func PropertyTaxAtMonth
 
 ```go
 func PropertyTaxAtMonth(s *models.WhatIfSettings, month int) float64
@@ -463,7 +497,7 @@ PropertyTaxAtMonth returns the inflation\-adjusted property tax for the given mo
 Exported so the analysis package \(Monte Carlo, backtest\) can include property tax in its own monthly expense accumulators rather than silently dropping it.
 
 <a name="RMDAgeForCalendarYear"></a>
-## func [RMDAgeForCalendarYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L113>)
+## func RMDAgeForCalendarYear
 
 ```go
 func RMDAgeForCalendarYear(s *models.WhatIfSettings, calendarYear int) int
@@ -472,7 +506,7 @@ func RMDAgeForCalendarYear(s *models.WhatIfSettings, calendarYear int) int
 RMDAgeForCalendarYear returns the age the older household member attains by December 31 of the given calendar year. This is the age the IRS Uniform Lifetime Table is keyed off, so it's the age that must be passed to CalculateRMD — not the start\-of\-year floor'd age that GetOlderAge\(\) returns.
 
 <a name="RMDApplies"></a>
-## func [RMDApplies](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L104>)
+## func RMDApplies
 
 ```go
 func RMDApplies(s *models.WhatIfSettings, calendarYear int) bool
@@ -481,7 +515,7 @@ func RMDApplies(s *models.WhatIfSettings, calendarYear int) bool
 RMDApplies reports whether RMD applies to the older household member in the given calendar year.
 
 <a name="RMDLifeFactor"></a>
-## func [RMDLifeFactor](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L289>)
+## func RMDLifeFactor
 
 ```go
 func RMDLifeFactor(s *models.WhatIfSettings, calendarYear int) float64
@@ -490,7 +524,7 @@ func RMDLifeFactor(s *models.WhatIfSettings, calendarYear int) float64
 RMDLifeFactor returns the RMD life\-expectancy divisor for the household's tax\-deferred pool in the given calendar year. It uses the Joint and Last Survivor Table \(Table II\) when UsesJointLifeTable reports the spouse is the sole beneficiary and \>10 years younger, and otherwise the Uniform Lifetime Table — in which case the result is bit\-for\-bit GetLifeExpectancyFactor for the owner's attained age, preserving current behavior. Ages below 72 return 0 \(no RMD\) under either table, exactly as today.
 
 <a name="RMDTriggerMonth"></a>
-## func [RMDTriggerMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L123>)
+## func RMDTriggerMonth
 
 ```go
 func RMDTriggerMonth(timing models.RMDTiming) int
@@ -499,7 +533,7 @@ func RMDTriggerMonth(timing models.RMDTiming) int
 RMDTriggerMonth returns the month\-of\-year \(0\-11\) at which the full annual RMD is withdrawn for the given timing. F\-074: the projection applies the entire year's RMD as a single monthly amount in the trigger month and zero in the others, so user\-selected timing actually shapes portfolio growth \(early withdrawal = more years lost to growth drag\).
 
 <a name="RebaseLivingExpensesAtTransition"></a>
-## func [RebaseLivingExpensesAtTransition](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L36>)
+## func RebaseLivingExpensesAtTransition
 
 ```go
 func RebaseLivingExpensesAtTransition(s *models.WhatIfSettings, phaseAge int, cumulativeInflation float64, netCumulativeInflation float64) float64
@@ -524,18 +558,20 @@ step-up error described in F-065.
 ```
 
 <a name="ReinvestRequiredRMDToTaxableState"></a>
-## func [ReinvestRequiredRMDToTaxableState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L175>)
+## func ReinvestRequiredRMDToTaxableState
 
 ```go
-func ReinvestRequiredRMDToTaxableState(monthlyRMD, marginalRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState) (gross, net float64)
+func ReinvestRequiredRMDToTaxableState(monthlyRMD float64, taxDeferredBalance *float64, taxable *TaxableAccountState) (gross float64)
 ```
 
-ReinvestRequiredRMDToTaxableState moves an RMD from tax\-deferred into the taxable account, with the after\-tax amount as new basis. The pre\-tax amount is decremented from tax\-deferred \(the gross RMD is the legal distribution\); the after\-tax portion \(gross × \(1 \- marginalRate\)\) is added to the taxable account with that net amount as cost basis. Returns \(gross, net\) — gross is the IRS distribution amount that callers must report as ordinary taxable income; net is the cash actually deposited into the taxable account.
+ReinvestRequiredRMDToTaxableState moves a surplus RMD from tax\-deferred into the taxable account. The gross RMD is the legal distribution: it is decremented from tax\-deferred and deposited into the taxable account in full, carrying full cost basis \(cash bought in at par realizes no gain on the way in\). Returns the gross distribution amount, which callers must report as ordinary taxable income.
 
-F\-049: prior implementation used gross as both reinvested amount and basis, which silently understated future LTCG on later withdrawals. F\-073: prior implementation returned only the net amount; callers stored that net into RMDWithdrawal and WithdrawalFromTaxDeferred, which understated ordinary income, taxes, MAGI, and RMD\-analysis totals by exactly gross × marginalRate every surplus\-RMD month.
+The distribution is NOT reduced by the marginal rate here. Tax on the full gross is already levied by the month's tax model — the gross feeds TaxableWithdrawals in ExecuteTaxAwarePortfolioMonth, and the resulting taxesPaid is funded as an explicit cash outflow via neededFromPortfolio. Withholding again at the point of reinvestment charged the same tax twice and destroyed gross × marginalRate of household wealth every surplus\-RMD month \(F\-1\). Depositing gross with gross basis keeps the F\-049 goal intact: basis equals the amount actually deposited, so later LTCG is correct.
+
+F\-049: an earlier implementation deposited net but recorded gross as basis, which understated future LTCG. F\-073: an earlier implementation returned only the net amount; callers stored that net into RMDWithdrawal and WithdrawalFromTaxDeferred, understating ordinary income, taxes, MAGI, and RMD\-analysis totals.
 
 <a name="RothConversionAmountForYear"></a>
-## func [RothConversionAmountForYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L139>)
+## func RothConversionAmountForYear
 
 ```go
 func RothConversionAmountForYear(s *models.WhatIfSettings, currentYear int, availableTaxDeferred float64) float64
@@ -544,7 +580,7 @@ func RothConversionAmountForYear(s *models.WhatIfSettings, currentYear int, avai
 RothConversionAmountForYear returns the Roth conversion to apply at the year boundary, capped to availableTaxDeferred. Returns 0 when the conversion is disabled, the year is outside the configured window, or the source balance is zero.
 
 <a name="RothQualifiedDistributionClockSatisfied"></a>
-## func [RothQualifiedDistributionClockSatisfied](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L273>)
+## func RothQualifiedDistributionClockSatisfied
 
 ```go
 func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) bool
@@ -553,7 +589,7 @@ func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) 
 RothQualifiedDistributionClockSatisfied reports whether the Roth IRA 5\-tax\-year aging requirement is met for the given calendar year. A firstFundedYear of 0 or less means unset and the clock is considered not satisfied \(the conservative projection default\). calendarYear is a calendar tax year, not a projection\-year offset; callers translate projection year via ParseStartYear\(s.StartDate\)\+projectionYear.
 
 <a name="ShortfallCausesDepletion"></a>
-## func [ShortfallCausesDepletion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L166>)
+## func ShortfallCausesDepletion
 
 ```go
 func ShortfallCausesDepletion(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool
@@ -562,7 +598,7 @@ func ShortfallCausesDepletion(shortfall float64, allowTaxDeferredWithdrawal bool
 ShortfallCausesDepletion reports whether the shortfall is a real depletion event \(money unavailable, not just delayed\).
 
 <a name="ShortfallIsTemporaryDueToDelay"></a>
-## func [ShortfallIsTemporaryDueToDelay](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L160>)
+## func ShortfallIsTemporaryDueToDelay
 
 ```go
 func ShortfallIsTemporaryDueToDelay(shortfall float64, allowTaxDeferredWithdrawal bool, taxDeferredBalance float64) bool
@@ -571,7 +607,7 @@ func ShortfallIsTemporaryDueToDelay(shortfall float64, allowTaxDeferredWithdrawa
 ShortfallIsTemporaryDueToDelay reports whether a shortfall is expected to clear once the tax\-deferred\-withdrawal delay ends. True when the household has a positive shortfall, withdrawals are currently blocked, and the tax\-deferred bucket still has funds.
 
 <a name="TotalExpenses"></a>
-## func [TotalExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/expense.go#L45>)
+## func TotalExpenses
 
 ```go
 func TotalExpenses(s *models.WhatIfSettings, month int) float64
@@ -580,7 +616,7 @@ func TotalExpenses(s *models.WhatIfSettings, month int) float64
 TotalExpenses returns total expenses for a specific month.
 
 <a name="TotalIncome"></a>
-## func [TotalIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/income.go#L8>)
+## func TotalIncome
 
 ```go
 func TotalIncome(s *models.WhatIfSettings, month int) float64
@@ -589,7 +625,7 @@ func TotalIncome(s *models.WhatIfSettings, month int) float64
 TotalIncome returns total income for a specific month.
 
 <a name="UsesJointLifeTable"></a>
-## func [UsesJointLifeTable](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/rmd.go#L275>)
+## func UsesJointLifeTable
 
 ```go
 func UsesJointLifeTable(s *models.WhatIfSettings) bool
@@ -598,7 +634,7 @@ func UsesJointLifeTable(s *models.WhatIfSettings) bool
 UsesJointLifeTable reports whether RMDs for this household use the IRS Joint and Last Survivor Table \(Table II\) rather than the Uniform Lifetime Table. It applies when the user keeps the spouse\-sole\-beneficiary setting on \(default\), the household has a spouse, and the younger member is more than 10 years younger than the older \(owner\) member — a birth\-year gap of at least 11 per 26 CFR 1.401\(a\)\(9\)\-9\(d\). The result is year\-independent \(the gap and the setting do not vary by year\), so the RMD display can surface it directly.
 
 <a name="YearsFromTaxBase"></a>
-## func [YearsFromTaxBase](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L59>)
+## func YearsFromTaxBase
 
 ```go
 func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int
@@ -607,7 +643,7 @@ func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int
 YearsFromTaxBase converts a projection\-year offset into the number of years between the plan's actual calendar year and the bundled federal tax tables' base year \(taxBaseYear\). The inflation\-adjusted bracket, standard\-deduction, and IRMAA math must key off this value — not the raw projection offset — so a plan that starts after the base year does not apply stale \(un\-inflated\) brackets in its early years. The result may be negative for plans that start before the base year; the downstream inflation helpers floor non\-positive values to "no adjustment".
 
 <a name="BigTicketFundingResult"></a>
-## type [BigTicketFundingResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L29-L33>)
+## type BigTicketFundingResult
 
 BigTicketFundingResult is the outcome of funding one big\-ticket expense from the portfolio waterfall: any portion that could not be funded plus the Roth basis/earnings split for the basis\-first ordering rule.
 
@@ -620,7 +656,7 @@ type BigTicketFundingResult struct {
 ```
 
 <a name="ApplyBigTicketExpenseWithTaxableState"></a>
-### func [ApplyBigTicketExpenseWithTaxableState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L198>)
+### func ApplyBigTicketExpenseWithTaxableState
 
 ```go
 func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketFundingResult
@@ -629,7 +665,7 @@ func ApplyBigTicketExpenseWithTaxableState(amount float64, allowTaxDeferred bool
 ApplyBigTicketExpenseWithTaxableState pulls a one\-off big\-ticket expense from the portfolio in priority order \(taxable → Roth → tax\- deferred\) and returns the structured result. Tax\-deferred withdrawals honour the early\-withdrawal penalty when active. Roth withdrawals split by IRS Pub 590\-B basis\-first ordering.
 
 <a name="BigTicketYearResult"></a>
-## type [BigTicketYearResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L238-L242>)
+## type BigTicketYearResult
 
 BigTicketYearResult aggregates a year's big\-ticket draws so the caller can fold the unfunded expense into the month's expense total and route the taxable Roth earnings \(if the clock is unsatisfied\) into that month's tax snapshot.
 
@@ -642,7 +678,7 @@ type BigTicketYearResult struct {
 ```
 
 <a name="ApplyBigTicketItemsForYear"></a>
-### func [ApplyBigTicketItemsForYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L249>)
+### func ApplyBigTicketItemsForYear
 
 ```go
 func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketYearResult
@@ -651,7 +687,7 @@ func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allow
 ApplyBigTicketItemsForYear processes every big\-ticket item scheduled for currentYear: income items add cash to the taxable account, expense items are funded via the canonical waterfall, and the aggregated unfunded\-expense plus Roth split are returned so the monthly loop can feed taxable Roth earnings into the tax snapshot.
 
 <a name="Engine"></a>
-## type [Engine](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/engine.go#L13>)
+## type Engine
 
 Engine is a stateless projection runner. Future deepening \(caching, tracing, fault injection\) can land on the struct without changing call sites.
 
@@ -660,7 +696,7 @@ type Engine struct{}
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/engine.go#L16>)
+### func New
 
 ```go
 func New() *Engine
@@ -669,7 +705,7 @@ func New() *Engine
 New returns an Engine. Cheap; callers may construct per request.
 
 <a name="Engine.Run"></a>
-### func \(\*Engine\) [Run](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/engine.go#L23>)
+### func \(\*Engine\) Run
 
 ```go
 func (e *Engine) Run(in Input) *models.ProjectionResult
@@ -678,7 +714,7 @@ func (e *Engine) Run(in Input) *models.ProjectionResult
 Run produces a deterministic monthly projection for in. Returns a fully populated \*models.ProjectionResult. Never returns nil. Run is a pure function of in — given identical Input \(including Hooks\), Run produces identical output. No package\-level state, no init\-order dependency.
 
 <a name="ExpenseBreakdown"></a>
-## type [ExpenseBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/expense.go#L8-L12>)
+## type ExpenseBreakdown
 
 ExpenseBreakdown holds categorized expenses for adaptive spending analysis.
 
@@ -691,7 +727,7 @@ type ExpenseBreakdown struct {
 ```
 
 <a name="CalculateExpenseBreakdown"></a>
-### func [CalculateExpenseBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/expense.go#L71>)
+### func CalculateExpenseBreakdown
 
 ```go
 func CalculateExpenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreakdown
@@ -700,7 +736,7 @@ func CalculateExpenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreak
 CalculateExpenseBreakdown separates expenses into discretionary and essential.
 
 <a name="FederalTaxBracket"></a>
-## type [FederalTaxBracket](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L15-L19>)
+## type FederalTaxBracket
 
 FederalTaxBracket represents a single tax bracket.
 
@@ -713,7 +749,7 @@ type FederalTaxBracket struct {
 ```
 
 <a name="GuardrailState"></a>
-## type [GuardrailState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/guardrails.go#L16-L20>)
+## type GuardrailState
 
 GuardrailState tracks portfolio peaks and spending adjustments for a simple portfolio\-drop/rise guardrail strategy. This is NOT the four\-rule Guyton & Klinger \(2006\) model \(which fires on withdrawal\-rate thresholds, not portfolio\-value thresholds, and includes an Inflation Rule and a Withdrawal Rule\). Full G\-K implementation is tracked at docs/superpowers/specs/2026\-05\-06\-full\-gk\-guardrails\-followup.md.
 
@@ -726,7 +762,7 @@ type GuardrailState struct {
 ```
 
 <a name="NewGuardrailState"></a>
-### func [NewGuardrailState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/guardrails.go#L25>)
+### func NewGuardrailState
 
 ```go
 func NewGuardrailState(initialPortfolio float64) *GuardrailState
@@ -735,7 +771,7 @@ func NewGuardrailState(initialPortfolio float64) *GuardrailState
 NewGuardrailState creates a new guardrail state with the given initial portfolio value. Peak is set to initial and spending multiplier starts at 1.0.
 
 <a name="GuardrailState.Evaluate"></a>
-### func \(\*GuardrailState\) [Evaluate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/guardrails.go#L36>)
+### func \(\*GuardrailState\) Evaluate
 
 ```go
 func (g *GuardrailState) Evaluate(cfg *models.GuardrailConfig, currentPortfolio float64) float64
@@ -744,7 +780,7 @@ func (g *GuardrailState) Evaluate(cfg *models.GuardrailConfig, currentPortfolio 
 Evaluate checks guardrail triggers and returns the updated spending multiplier. Floor is checked first; if it triggers, the ceiling check is skipped.
 
 <a name="GuardrailState.Multiplier"></a>
-### func \(\*GuardrailState\) [Multiplier](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/guardrails.go#L73>)
+### func \(\*GuardrailState\) Multiplier
 
 ```go
 func (g *GuardrailState) Multiplier() float64
@@ -753,7 +789,7 @@ func (g *GuardrailState) Multiplier() float64
 Multiplier returns the current spending multiplier.
 
 <a name="Hooks"></a>
-## type [Hooks](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L40-L54>)
+## type Hooks
 
 Hooks bundles the function dependencies the projection loop needs but cannot define itself: SS\-optimizer projection \(which lives in the retirement package's analysis layer\) and chain\-transition resolution \(which depends on retirement.prepareChainedSettings\). Callers populate Hooks when constructing Input. retirement.DefaultHooks\(\) returns the production set; tests can leave fields nil to get safe no\-op behaviour, or supply stubs.
 
@@ -778,7 +814,7 @@ type Hooks struct {
 ```
 
 <a name="Hooks.ResolveChain"></a>
-### func \(Hooks\) [ResolveChain](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L78>)
+### func \(Hooks\) ResolveChain
 
 ```go
 func (h Hooks) ResolveChain(currentYear, nextChainIndex int, primarySettings *models.WhatIfSettings, chain []PreparedChainLink) (int, *models.WhatIfSettings)
@@ -787,7 +823,7 @@ func (h Hooks) ResolveChain(currentYear, nextChainIndex int, primarySettings *mo
 ResolveChain invokes the chain\-transition resolver, falling back to "no transition" when the resolver is nil.
 
 <a name="Hooks.SSActive"></a>
-### func \(Hooks\) [SSActive](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L59>)
+### func \(Hooks\) SSActive
 
 ```go
 func (h Hooks) SSActive(s *models.WhatIfSettings) bool
@@ -796,7 +832,7 @@ func (h Hooks) SSActive(s *models.WhatIfSettings) bool
 SSActive reports whether the SS\-optimizer projection is active for s. Wraps Hooks.SocialSecurityProjectionActive with a nil\-safe default of false \(matches the old package\-level var's no\-op default\).
 
 <a name="Hooks.SSIncome"></a>
-### func \(Hooks\) [SSIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L69>)
+### func \(Hooks\) SSIncome
 
 ```go
 func (h Hooks) SSIncome(s *models.WhatIfSettings, month int) float64
@@ -805,7 +841,7 @@ func (h Hooks) SSIncome(s *models.WhatIfSettings, month int) float64
 SSIncome returns the SS\-optimizer\-projected monthly income at month. Wraps Hooks.ProjectedSocialSecurityIncome with a nil\-safe default of 0 \(matches the old package\-level var's no\-op default\).
 
 <a name="Input"></a>
-## type [Input](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L12-L16>)
+## type Input
 
 Input bundles everything Engine.Run needs. Chain may be nil for single\-scenario projections. Hooks may be zero\-valued — every hook callsite has a nil\-safe default that mirrors the old package\-level no\-op vars \(no SS optimizer, no chain transition\).
 
@@ -818,7 +854,7 @@ type Input struct {
 ```
 
 <a name="MonthOutcome"></a>
-## type [MonthOutcome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L94-L116>)
+## type MonthOutcome
 
 MonthOutcome reports one stepped month back to the loop.
 
@@ -849,7 +885,7 @@ type MonthOutcome struct {
 ```
 
 <a name="MonthReturns"></a>
-## type [MonthReturns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L64-L91>)
+## type MonthReturns
 
 MonthReturns carries the per\-month inputs that legitimately differ between the projection loops. Every field is explicit — the multipliers must be 1 \(not 0\) when unused.
 
@@ -885,7 +921,7 @@ type MonthReturns struct {
 ```
 
 <a name="MonthlyIncomeBreakdown"></a>
-## type [MonthlyIncomeBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L97-L101>)
+## type MonthlyIncomeBreakdown
 
 MonthlyIncomeBreakdown decomposes a month's income into the ordinary\-income and Social Security buckets the tax accumulator needs to estimate per\-month tax.
 
@@ -898,7 +934,7 @@ type MonthlyIncomeBreakdown struct {
 ```
 
 <a name="CalculateMonthlyIncomeBreakdown"></a>
-### func [CalculateMonthlyIncomeBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L109>)
+### func CalculateMonthlyIncomeBreakdown
 
 ```go
 func CalculateMonthlyIncomeBreakdown(hooks Hooks, s *models.WhatIfSettings, month int) MonthlyIncomeBreakdown
@@ -907,7 +943,7 @@ func CalculateMonthlyIncomeBreakdown(hooks Hooks, s *models.WhatIfSettings, mont
 CalculateMonthlyIncomeBreakdown classifies each income source for the given month: manual SS sources are pulled into the SS bucket unless the SS optimizer is active \(in which case the optimizer's ProjectedSocialSecurityIncome value replaces the manual sources\). hooks supplies the SS\-optimizer integration; passing a zero Hooks value falls back to manual\-sources\-only.
 
 <a name="MonthlyTaxInputs"></a>
-## type [MonthlyTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L78-L95>)
+## type MonthlyTaxInputs
 
 MonthlyTaxInputs bundles the arguments to EstimateMonthlySnapshot: the month's income components plus the IRMAA lookback context. Named fields replace what was a 14\-argument positional list — the same treatment PortfolioMonthInput gave the cash\-flow waterfall.
 
@@ -928,12 +964,18 @@ type MonthlyTaxInputs struct {
     CompletedMAGIHistory    []float64
     AssumedIRMALookbackMAGI *float64
     IRMAAEligibleAdults     int
-    IRMAAInflationFactor    float64
+    // IRMAAInflationFactor indexes the MAGI thresholds (CPI);
+    // IRMAASurchargeInflationFactor indexes the surcharge dollars (Medicare
+    // per-capita cost growth). They are separate series — see
+    // CalculateMonthlyIRMAA (F-6). A zero surcharge factor is treated as 1,
+    // so zero-value callers keep un-inflated surcharges.
+    IRMAAInflationFactor          float64
+    IRMAASurchargeInflationFactor float64
 }
 ```
 
 <a name="PortfolioCashFlowResult"></a>
-## type [PortfolioCashFlowResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L72-L82>)
+## type PortfolioCashFlowResult
 
 PortfolioCashFlowResult is the Outer view of a month's portfolio\-side cash flow: per\-bucket withdrawal amounts plus the realized capital gain on any taxable sale and the amount of need left unmet.
 
@@ -952,16 +994,16 @@ type PortfolioCashFlowResult struct {
 ```
 
 <a name="ExecutePortfolioCashFlowWithTaxableState"></a>
-### func [ExecutePortfolioCashFlowWithTaxableState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L233>)
+### func ExecutePortfolioCashFlowWithTaxableState
 
 ```go
-func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate, marginalRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance, rothBasis *float64) PortfolioCashFlowResult
+func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance *float64, taxable *TaxableAccountState, rothBalance, rothBasis *float64) PortfolioCashFlowResult
 ```
 
 ExecutePortfolioCashFlowWithTaxableState orchestrates a month's cash\-flow draws against the taxable account state machine. It calls WithdrawForExpenses for the bucket\-priority logic, then re\-applies any taxable withdrawal through TaxableAccountState.Withdraw so that cost\-basis\-aware realized gains are tracked. Required\-but\-unmet RMDs are reinvested into the taxable account at the supplied marginal rate.
 
 <a name="PortfolioCashFlowResult.GrossWithdrawal"></a>
-### func \(PortfolioCashFlowResult\) [GrossWithdrawal](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L86>)
+### func \(PortfolioCashFlowResult\) GrossWithdrawal
 
 ```go
 func (r PortfolioCashFlowResult) GrossWithdrawal() float64
@@ -970,7 +1012,7 @@ func (r PortfolioCashFlowResult) GrossWithdrawal() float64
 GrossWithdrawal returns the sum of pre\-tax withdrawals across account types.
 
 <a name="PortfolioMonthInput"></a>
-## type [PortfolioMonthInput](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L296-L327>)
+## type PortfolioMonthInput
 
 PortfolioMonthInput bundles the inputs to ExecuteTaxAwarePortfolioMonth. Replaces a 19\-positional\-arg signature so future parameter additions/ renames don't ripple through every call site.
 
@@ -1007,12 +1049,16 @@ type PortfolioMonthInput struct {
     // $0 IRMAA in years 0-1.
     AssumedIRMALookbackMAGI *float64
     IRMAAEligibleAdults     int
-    IRMAAInflationFactor    float64
+    // IRMAAInflationFactor indexes the MAGI thresholds (CPI);
+    // IRMAASurchargeInflationFactor indexes the surcharge dollars (Medicare
+    // per-capita cost growth). Separate series — see CalculateMonthlyIRMAA (F-6).
+    IRMAAInflationFactor          float64
+    IRMAASurchargeInflationFactor float64
 }
 ```
 
 <a name="PreparedChainLink"></a>
-## type [PreparedChainLink](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L21-L25>)
+## type PreparedChainLink
 
 PreparedChainLink describes a scenario transition that fires when the reference person reaches TransitionAge. Settings is the prepared snapshot for the post\-transition scenario.
 
@@ -1025,7 +1071,7 @@ type PreparedChainLink struct {
 ```
 
 <a name="ProjectedAnnualTaxInputs"></a>
-## type [ProjectedAnnualTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L30-L38>)
+## type ProjectedAnnualTaxInputs
 
 ProjectedAnnualTaxInputs is the YTD\-plus\-current\-month income picture extrapolated to a full\-year projection.
 
@@ -1042,7 +1088,7 @@ type ProjectedAnnualTaxInputs struct {
 ```
 
 <a name="ProjectedTaxSnapshot"></a>
-## type [ProjectedTaxSnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L42-L51>)
+## type ProjectedTaxSnapshot
 
 ProjectedTaxSnapshot is the per\-month tax \+ IRMAA picture produced by EstimateMonthlySnapshot.
 
@@ -1060,7 +1106,7 @@ type ProjectedTaxSnapshot struct {
 ```
 
 <a name="ProjectionState"></a>
-## type [ProjectionState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L19-L59>)
+## type ProjectionState
 
 ProjectionState is the cross\-month mutable state shared by every projection loop — the canonical deterministic loop \(month.go\), Monte Carlo, and the historical backtest. It owns the account balances, Roth basis/5\-year clock, expense/inflation accumulators, guardrail state, the tax accumulator with its IRMAA MAGI\-lookback history, and the scenario chain cursor. Loops advance it one month at a time via StepMonth, injecting only what legitimately differs between them: the month's returns, inflation, and expense adjustments \(MonthReturns\).
 
@@ -1091,8 +1137,10 @@ type ProjectionState struct {
     CompletedMAGIHistory   []float64
     CurrentYearTaxSnapshot ProjectedTaxSnapshot
     // AssumedLookbackMAGI seeds the IRMAA two-year MAGI lookback for years
-    // 0-1, before CompletedMAGIHistory has two entries. It tracks the
-    // year-0 MAGI estimate; real history takes over from year 2.
+    // 0-1, before CompletedMAGIHistory has two entries. Set once from month 0
+    // and excluding the plan's discrete events (Roth conversion, RMD), so it
+    // approximates MAGI from before the plan started; real history takes over
+    // from year 2. See StepMonth for why (F-2).
     AssumedLookbackMAGI float64
 
     // AnnualRMD persists across the year so the trigger-month logic can
@@ -1107,7 +1155,7 @@ type ProjectionState struct {
 ```
 
 <a name="NewProjectionState"></a>
-### func [NewProjectionState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L119>)
+### func NewProjectionState
 
 ```go
 func NewProjectionState(in Input) *ProjectionState
@@ -1116,7 +1164,7 @@ func NewProjectionState(in Input) *ProjectionState
 NewProjectionState builds the shared loop preamble from a prepared input.
 
 <a name="ProjectionState.Settings"></a>
-### func \(\*ProjectionState\) [Settings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L151>)
+### func \(\*ProjectionState\) Settings
 
 ```go
 func (st *ProjectionState) Settings() *models.WhatIfSettings
@@ -1125,7 +1173,7 @@ func (st *ProjectionState) Settings() *models.WhatIfSettings
 Settings returns the active settings \(the primary scenario, or the current chain link after a transition\).
 
 <a name="ProjectionState.StepMonth"></a>
-### func \(\*ProjectionState\) [StepMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L174>)
+### func \(\*ProjectionState\) StepMonth
 
 ```go
 func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSettings, month int) MonthReturns) MonthOutcome
@@ -1136,7 +1184,7 @@ StepMonth advances the projection by one month: the year\-boundary pass \(MAGI h
 returnsFor is invoked once, after the year\-boundary pass \(so it sees the post\-chain\-transition settings\), and supplies the month's returns and expense adjustments. It is also where a stochastic loop must draw any randomness for the month, in its legacy order, to keep RNG streams stable.
 
 <a name="ProjectionState.ZeroBalances"></a>
-### func \(\*ProjectionState\) [ZeroBalances](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L157>)
+### func \(\*ProjectionState\) ZeroBalances
 
 ```go
 func (st *ProjectionState) ZeroBalances()
@@ -1145,7 +1193,7 @@ func (st *ProjectionState) ZeroBalances()
 ZeroBalances empties every account — the canonical loop's depletion bookkeeping.
 
 <a name="ProjectionTaxAccumulator"></a>
-## type [ProjectionTaxAccumulator](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L17-L26>)
+## type ProjectionTaxAccumulator
 
 ProjectionTaxAccumulator tracks year\-to\-date taxable income and taxes paid during a monthly projection. Tax law is annual; this struct lets the monthly loop estimate per\-month tax with proper year\-to\-date awareness.
 
@@ -1169,7 +1217,7 @@ type ProjectionTaxAccumulator struct {
 ```
 
 <a name="ProjectionTaxAccumulator.AnnualizedInputs"></a>
-### func \(ProjectionTaxAccumulator\) [AnnualizedInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L56>)
+### func \(ProjectionTaxAccumulator\) AnnualizedInputs
 
 ```go
 func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) ProjectedAnnualTaxInputs
@@ -1178,7 +1226,7 @@ func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, ordinaryInco
 AnnualizedInputs extrapolates YTD totals plus the current month to a full year by linear annualization. Roth conversions are deliberately not annualized — they're discrete events.
 
 <a name="ProjectionTaxAccumulator.ApplyMonth"></a>
-### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L192>)
+### func \(\*ProjectionTaxAccumulator\) ApplyMonth
 
 ```go
 func (a *ProjectionTaxAccumulator) ApplyMonth(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions, taxesPaid float64)
@@ -1187,7 +1235,7 @@ func (a *ProjectionTaxAccumulator) ApplyMonth(ordinaryIncome, socialSecurityInco
 ApplyMonth folds a month's realised income and tax payments into the accumulator. Mutating receiver — caller resets at year boundary.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlySnapshot"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlySnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L101>)
+### func \(ProjectionTaxAccumulator\) EstimateMonthlySnapshot
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) ProjectedTaxSnapshot
@@ -1196,7 +1244,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 EstimateMonthlySnapshot computes the per\-month tax \+ IRMAA estimate for a given month, given YTD state and the month's income components. The remaining\-months division ensures actual taxes paid converge to the annual liability over the year.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlyTaxes"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L174>)
+### func \(ProjectionTaxAccumulator\) EstimateMonthlyTaxes
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64
@@ -1205,7 +1253,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsF
 EstimateMonthlyTaxes is a thin wrapper around EstimateMonthlySnapshot for callers that only need the monthly tax figure \(no IRMAA, no MAGI breakdown\).
 
 <a name="RothWithdrawal"></a>
-## type [RothWithdrawal](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L40-L44>)
+## type RothWithdrawal
 
 RothWithdrawal splits a single Roth distribution into the basis portion \(regular contributions plus conversion\-contribution amounts, always tax\-free under IRS Pub 590\-B ordering\) and the earnings portion \(taxable as ordinary income unless the qualified\-distribution clock is satisfied\).
 
@@ -1218,7 +1266,7 @@ type RothWithdrawal struct {
 ```
 
 <a name="WithdrawFromRoth"></a>
-### func [WithdrawFromRoth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L50>)
+### func WithdrawFromRoth
 
 ```go
 func WithdrawFromRoth(needed float64, rothBalance, rothBasis *float64) RothWithdrawal
@@ -1227,7 +1275,7 @@ func WithdrawFromRoth(needed float64, rothBalance, rothBasis *float64) RothWithd
 WithdrawFromRoth pulls up to \`needed\` from the Roth bucket, applying IRS Pub 590\-B basis\-first ordering. Mutates rothBalance and rothBasis in place. Clamps basis to balance to guard against floating\-point drift. Returns the split.
 
 <a name="TaxAwarePortfolioMonthResult"></a>
-## type [TaxAwarePortfolioMonthResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L274-L287>)
+## type TaxAwarePortfolioMonthResult
 
 TaxAwarePortfolioMonthResult bundles the outputs of a single projection month: cash\-flow effects, growth, taxable\-income components, taxes/IRMAA paid, and the converged tax snapshot.
 
@@ -1249,7 +1297,7 @@ type TaxAwarePortfolioMonthResult struct {
 ```
 
 <a name="ExecuteTaxAwarePortfolioMonth"></a>
-### func [ExecuteTaxAwarePortfolioMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L333>)
+### func ExecuteTaxAwarePortfolioMonth
 
 ```go
 func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMonthResult
@@ -1258,7 +1306,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 ExecuteTaxAwarePortfolioMonth runs the inner fixed\-point iteration that converges a single projection month's tax estimate, marginal rate, cash flow, and growth allocations. Mutates the supplied balances in place.
 
 <a name="TaxCalculator"></a>
-## type [TaxCalculator](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L182-L189>)
+## type TaxCalculator
 
 TaxCalculator computes federal and state income taxes.
 
@@ -1274,7 +1322,7 @@ type TaxCalculator struct {
 ```
 
 <a name="NewTaxCalculator"></a>
-### func [NewTaxCalculator](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L192>)
+### func NewTaxCalculator
 
 ```go
 func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalculator
@@ -1283,7 +1331,7 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 NewTaxCalculator creates a tax calculator with the given configuration.
 
 <a name="TaxCalculator.CalculateFederalTax"></a>
-### func \(\*TaxCalculator\) [CalculateFederalTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L407>)
+### func \(\*TaxCalculator\) CalculateFederalTax
 
 ```go
 func (tc *TaxCalculator) CalculateFederalTax(grossIncome float64, yearsFromBase int) (tax float64, effectiveRate float64, marginalBracket float64)
@@ -1292,16 +1340,16 @@ func (tc *TaxCalculator) CalculateFederalTax(grossIncome float64, yearsFromBase 
 CalculateFederalTax computes federal tax on taxable income. Returns: tax amount, effective rate \(%\), marginal bracket rate \(%\).
 
 <a name="TaxCalculator.CalculateMonthlyIRMAA"></a>
-### func \(\*TaxCalculator\) [CalculateMonthlyIRMAA](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L401>)
+### func \(\*TaxCalculator\) CalculateMonthlyIRMAA
 
 ```go
-func (tc *TaxCalculator) CalculateMonthlyIRMAA(magi, inflationFactor float64) float64
+func (tc *TaxCalculator) CalculateMonthlyIRMAA(magi, thresholdFactor, surchargeFactor float64) float64
 ```
 
 
 
 <a name="TaxCalculator.CalculateNIIT"></a>
-### func \(\*TaxCalculator\) [CalculateNIIT](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L397>)
+### func \(\*TaxCalculator\) CalculateNIIT
 
 ```go
 func (tc *TaxCalculator) CalculateNIIT(magi, netInvestmentIncome float64) float64
@@ -1310,7 +1358,7 @@ func (tc *TaxCalculator) CalculateNIIT(magi, netInvestmentIncome float64) float6
 
 
 <a name="TaxCalculator.CalculateStateTax"></a>
-### func \(\*TaxCalculator\) [CalculateStateTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L453>)
+### func \(\*TaxCalculator\) CalculateStateTax
 
 ```go
 func (tc *TaxCalculator) CalculateStateTax(taxableIncome float64) float64
@@ -1319,7 +1367,7 @@ func (tc *TaxCalculator) CalculateStateTax(taxableIncome float64) float64
 CalculateStateTax computes state income tax.
 
 <a name="TaxCalculator.CalculateTaxWithInvestmentIncome"></a>
-### func \(\*TaxCalculator\) [CalculateTaxWithInvestmentIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L476>)
+### func \(\*TaxCalculator\) CalculateTaxWithInvestmentIncome
 
 ```go
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int) (federalTax, stateTax, totalTax, effectiveRate float64)
@@ -1328,7 +1376,7 @@ func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualif
 
 
 <a name="TaxCalculator.CalculateTaxWithInvestmentIncomeBreakdown"></a>
-### func \(\*TaxCalculator\) [CalculateTaxWithInvestmentIncomeBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L486>)
+### func \(\*TaxCalculator\) CalculateTaxWithInvestmentIncomeBreakdown
 
 ```go
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncomeBreakdown(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown
@@ -1337,7 +1385,7 @@ func (tc *TaxCalculator) CalculateTaxWithInvestmentIncomeBreakdown(ordinaryIncom
 CalculateTaxWithInvestmentIncomeBreakdown returns a detailed tax breakdown including NIIT. nonQualifiedDividends should be the portion of ordinaryIncome that represents non\-qualified dividends — these are taxed as ordinary income but also count as net investment income for NIIT.
 
 <a name="TaxCalculator.CalculateTaxableSocialSecurity"></a>
-### func \(\*TaxCalculator\) [CalculateTaxableSocialSecurity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L393>)
+### func \(\*TaxCalculator\) CalculateTaxableSocialSecurity
 
 ```go
 func (tc *TaxCalculator) CalculateTaxableSocialSecurity(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64) float64
@@ -1346,7 +1394,7 @@ func (tc *TaxCalculator) CalculateTaxableSocialSecurity(ssBenefits, otherIncome,
 
 
 <a name="TaxCalculator.CalculateTotalTax"></a>
-### func \(\*TaxCalculator\) [CalculateTotalTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L461>)
+### func \(\*TaxCalculator\) CalculateTotalTax
 
 ```go
 func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase int) (federalTax, stateTax, totalTax, effectiveRate float64)
@@ -1355,7 +1403,7 @@ func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase in
 CalculateTotalTax computes combined federal and state tax.
 
 <a name="TaxCalculator.EstimateRothConversionTax"></a>
-### func \(\*TaxCalculator\) [EstimateRothConversionTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L538>)
+### func \(\*TaxCalculator\) EstimateRothConversionTax
 
 ```go
 func (tc *TaxCalculator) EstimateRothConversionTax(baseIncome, conversionAmount float64, yearsFromBase int) float64
@@ -1364,7 +1412,7 @@ func (tc *TaxCalculator) EstimateRothConversionTax(baseIncome, conversionAmount 
 EstimateRothConversionTax estimates the tax impact of a Roth conversion. Returns the additional tax owed due to the conversion.
 
 <a name="TaxCalculator.GetAdjustedBrackets"></a>
-### func \(\*TaxCalculator\) [GetAdjustedBrackets](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L208>)
+### func \(\*TaxCalculator\) GetAdjustedBrackets
 
 ```go
 func (tc *TaxCalculator) GetAdjustedBrackets(yearsFromBase int) []FederalTaxBracket
@@ -1373,7 +1421,7 @@ func (tc *TaxCalculator) GetAdjustedBrackets(yearsFromBase int) []FederalTaxBrac
 GetAdjustedBrackets returns tax brackets adjusted for inflation from base year.
 
 <a name="TaxCalculator.GetAdjustedLongTermCapitalGainsBrackets"></a>
-### func \(\*TaxCalculator\) [GetAdjustedLongTermCapitalGainsBrackets](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L235>)
+### func \(\*TaxCalculator\) GetAdjustedLongTermCapitalGainsBrackets
 
 ```go
 func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase int) []FederalTaxBracket
@@ -1382,7 +1430,7 @@ func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase i
 
 
 <a name="TaxCalculator.GetAdjustedStandardDeduction"></a>
-### func \(\*TaxCalculator\) [GetAdjustedStandardDeduction](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L265>)
+### func \(\*TaxCalculator\) GetAdjustedStandardDeduction
 
 ```go
 func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
@@ -1391,7 +1439,7 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
 GetAdjustedStandardDeduction returns standard deduction adjusted for inflation, including the age\-65\+ additional deduction per IRS Rev. Proc. 2023\-34 §3.16\(2\).
 
 <a name="TaxCalculator.GetMarginalRate"></a>
-### func \(\*TaxCalculator\) [GetMarginalRate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L550>)
+### func \(\*TaxCalculator\) GetMarginalRate
 
 ```go
 func (tc *TaxCalculator) GetMarginalRate(grossIncome float64, yearsFromBase int) float64
@@ -1400,7 +1448,7 @@ func (tc *TaxCalculator) GetMarginalRate(grossIncome float64, yearsFromBase int)
 GetMarginalRate returns the marginal tax rate for a given income level.
 
 <a name="TaxCalculator.InflationFactor"></a>
-### func \(\*TaxCalculator\) [InflationFactor](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L285>)
+### func \(\*TaxCalculator\) InflationFactor
 
 ```go
 func (tc *TaxCalculator) InflationFactor(yearsFromBase int) float64
@@ -1409,7 +1457,7 @@ func (tc *TaxCalculator) InflationFactor(yearsFromBase int) float64
 InflationFactor returns the cumulative inflation factor for yearsFromBase years at the calculator's annual inflation rate.
 
 <a name="TaxableAccountState"></a>
-## type [TaxableAccountState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L30-L37>)
+## type TaxableAccountState
 
 TaxableAccountState tracks the running market value, cost basis, and year\-to\-date realized gains of a taxable brokerage account during projection.
 
@@ -1425,7 +1473,7 @@ type TaxableAccountState struct {
 ```
 
 <a name="NewTaxableAccountState"></a>
-### func [NewTaxableAccountState](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L43>)
+### func NewTaxableAccountState
 
 ```go
 func NewTaxableAccountState(s *models.WhatIfSettings, marketValue float64) TaxableAccountState
@@ -1434,7 +1482,7 @@ func NewTaxableAccountState(s *models.WhatIfSettings, marketValue float64) Taxab
 NewTaxableAccountState seeds a TaxableAccountState from settings: the initial market value is treated as cost basis \(cf. cost\-basis policy in project\_retirement\_calculator.md\), and dividend yields are split into qualified vs. non\-qualified shares.
 
 <a name="TaxableAccountState.AddCash"></a>
-### func \(\*TaxableAccountState\) [AddCash](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L67>)
+### func \(\*TaxableAccountState\) AddCash
 
 ```go
 func (a *TaxableAccountState) AddCash(amount float64)
@@ -1443,7 +1491,7 @@ func (a *TaxableAccountState) AddCash(amount float64)
 AddCash records a deposit \(e.g., a big\-ticket reinvestment\) — both market value and cost basis grow by the same amount.
 
 <a name="TaxableAccountState.ApplyGrowth"></a>
-### func \(\*TaxableAccountState\) [ApplyGrowth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L124>)
+### func \(\*TaxableAccountState\) ApplyGrowth
 
 ```go
 func (a *TaxableAccountState) ApplyGrowth(components TaxableReturnComponents, fraction float64) TaxableGrowthResult
@@ -1452,7 +1500,7 @@ func (a *TaxableAccountState) ApplyGrowth(components TaxableReturnComponents, fr
 ApplyGrowth advances the account by a fractional month using the supplied return components. Appreciation moves into market value; dividends and cap\-gains distributions are returned for the caller to reinvest as cash \(so they hit cost basis correctly via AddCash\).
 
 <a name="TaxableAccountState.SyncAssumptions"></a>
-### func \(\*TaxableAccountState\) [SyncAssumptions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L58>)
+### func \(\*TaxableAccountState\) SyncAssumptions
 
 ```go
 func (a *TaxableAccountState) SyncAssumptions(s *models.WhatIfSettings)
@@ -1461,7 +1509,7 @@ func (a *TaxableAccountState) SyncAssumptions(s *models.WhatIfSettings)
 SyncAssumptions refreshes the dividend/capital\-gains assumptions from the supplied settings while preserving running market value, basis, and YTD realized gains. Used after a scenario transition.
 
 <a name="TaxableAccountState.Withdraw"></a>
-### func \(\*TaxableAccountState\) [Withdraw](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L78>)
+### func \(\*TaxableAccountState\) Withdraw
 
 ```go
 func (a *TaxableAccountState) Withdraw(amount float64) (cash, basisReduction, realizedGain float64)
@@ -1470,7 +1518,7 @@ func (a *TaxableAccountState) Withdraw(amount float64) (cash, basisReduction, re
 Withdraw pulls cash from the account, recognising a pro\-rata realized gain against the current basis. Returns the cash extracted, the reduction in cost basis, and the realized gain \(which may be zero\).
 
 <a name="TaxableGrowthResult"></a>
-## type [TaxableGrowthResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L20-L25>)
+## type TaxableGrowthResult
 
 TaxableGrowthResult captures one month of taxable\-account growth, split into the buckets the tax accumulator needs.
 
@@ -1484,7 +1532,7 @@ type TaxableGrowthResult struct {
 ```
 
 <a name="ExpectedTaxableMonthlyCashFlow"></a>
-### func [ExpectedTaxableMonthlyCashFlow](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L158>)
+### func ExpectedTaxableMonthlyCashFlow
 
 ```go
 func ExpectedTaxableMonthlyCashFlow(s *models.WhatIfSettings, taxableMarketValue, taxableAnnualReturn float64) TaxableGrowthResult
@@ -1493,7 +1541,7 @@ func ExpectedTaxableMonthlyCashFlow(s *models.WhatIfSettings, taxableMarketValue
 ExpectedTaxableMonthlyCashFlow returns the monthly dividend / cap\-gains distribution decomposition for a taxable account at the given market value and assumed total annual return. Used by analysis\-package snapshots \(BudgetFit\) that estimate first\-month and steady\-state cash flow without running a full projection.
 
 <a name="TaxableReturnComponents"></a>
-## type [TaxableReturnComponents](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L11-L16>)
+## type TaxableReturnComponents
 
 TaxableReturnComponents decomposes a taxable account's monthly return into its tax\-relevant pieces.
 
@@ -1507,7 +1555,7 @@ type TaxableReturnComponents struct {
 ```
 
 <a name="BuildTaxableReturnComponents"></a>
-### func [BuildTaxableReturnComponents](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L107>)
+### func BuildTaxableReturnComponents
 
 ```go
 func BuildTaxableReturnComponents(totalAnnualReturnPercent float64, s *models.WhatIfSettings) TaxableReturnComponents
@@ -1516,7 +1564,7 @@ func BuildTaxableReturnComponents(totalAnnualReturnPercent float64, s *models.Wh
 BuildTaxableReturnComponents derives a per\-month return decomposition from the supplied total annual return percent and the dividend / cap\-gains distribution assumptions in settings.
 
 <a name="WithdrawalBreakdown"></a>
-## type [WithdrawalBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L13-L23>)
+## type WithdrawalBreakdown
 
 WithdrawalBreakdown details the buckets touched by a single month's portfolio withdrawal: how much came from each account, how much of it was the legally\-required RMD, and how much \(if any\) of the need could not be met.
 
@@ -1535,7 +1583,7 @@ type WithdrawalBreakdown struct {
 ```
 
 <a name="WithdrawForExpenses"></a>
-### func [WithdrawForExpenses](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L110>)
+### func WithdrawForExpenses
 
 ```go
 func WithdrawForExpenses(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance, taxableBalance, rothBalance, rothBasis *float64) WithdrawalBreakdown

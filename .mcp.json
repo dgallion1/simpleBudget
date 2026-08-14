@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "whatif": {
-      "command": "go",
-      "args": ["run", "./cmd/whatif-mcp"]
+    "budget2": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
     }
   }
 }

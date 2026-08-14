@@ -1,15 +1,14 @@
-package whatifmcp
+package plan
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 )
 
@@ -38,34 +37,6 @@ func TestSource_LoadEmptyNameResolvesActive(t *testing.T) {
 	}
 	if name != "whatif.json" {
 		t.Errorf("Load(\"\") resolved filename = %q, want %q", name, "whatif.json")
-	}
-}
-
-// TestSource_LoadEmptyNameFallsBackWhenLiveStateFails proves the "reads must
-// still work with the server down" requirement: TestSource_LoadEmptyNameResolvesActive
-// only covers live == nil (the zero value from NewSource); this test attaches
-// a live client whose State() call fails (a non-200 response, standing in for
-// "server down" or "wrong app/settings dir" -- State() treats all of those as
-// a plain error) and asserts Load("") still resolves via the local
-// SettingsManager rather than propagating that error.
-func TestSource_LoadEmptyNameFallsBackWhenLiveStateFails(t *testing.T) {
-	s := newTestSource(t)
-
-	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "boom", http.StatusInternalServerError)
-	}))
-	defer failing.Close()
-	s.live = NewClient(failing.URL, "/settings/dir/does-not-matter-here")
-
-	settings, name, err := s.Load("")
-	if err != nil {
-		t.Fatalf(`Load("") with a failing live client should still succeed via the local fallback: %v`, err)
-	}
-	if settings == nil {
-		t.Fatal(`Load("") returned nil settings`)
-	}
-	if name != "whatif.json" {
-		t.Errorf(`Load("") resolved filename = %q, want the local fallback %q`, name, "whatif.json")
 	}
 }
 
@@ -168,5 +139,5 @@ func newTestSourceFixture(t *testing.T, withBroken bool) *Source {
 	if err != nil {
 		t.Fatalf("storage.New: %v", err)
 	}
-	return NewSource(dir, store)
+	return NewSource(retirement.NewSettingsManager(dir, store))
 }

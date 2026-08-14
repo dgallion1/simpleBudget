@@ -45,6 +45,7 @@ Package retirement is the top\-level coordinator for what\-if retirement project
   - [func \(sm \*SettingsManager\) AddExpenseSource\(source models.ExpenseSource\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.AddExpenseSource>)
   - [func \(sm \*SettingsManager\) AddHealthcarePerson\(person models.HealthcarePerson\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.AddHealthcarePerson>)
   - [func \(sm \*SettingsManager\) AddIncomeSource\(source models.IncomeSource\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.AddIncomeSource>)
+  - [func \(sm \*SettingsManager\) ApplyOverrides\(o overrides.Overrides, expectedScenario string\) \(\*models.WhatIfSettings, string, int, error\)](<#SettingsManager.ApplyOverrides>)
   - [func \(sm \*SettingsManager\) BeginExternalRewrite\(\) \(end func\(\)\)](<#SettingsManager.BeginExternalRewrite>)
   - [func \(sm \*SettingsManager\) CreateScenario\(name string\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.CreateScenario>)
   - [func \(sm \*SettingsManager\) DeleteScenario\(filename string\) error](<#SettingsManager.DeleteScenario>)
@@ -64,13 +65,16 @@ Package retirement is the top\-level coordinator for what\-if retirement project
   - [func \(sm \*SettingsManager\) RestoreBigTicketItem\(id string\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.RestoreBigTicketItem>)
   - [func \(sm \*SettingsManager\) RestoreExpenseSource\(id string\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.RestoreExpenseSource>)
   - [func \(sm \*SettingsManager\) RestoreIncomeSource\(id string\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.RestoreIncomeSource>)
+  - [func \(sm \*SettingsManager\) Revision\(\) int](<#SettingsManager.Revision>)
   - [func \(sm \*SettingsManager\) Save\(settings \*models.WhatIfSettings\) error](<#SettingsManager.Save>)
+  - [func \(sm \*SettingsManager\) SaveWithRevision\(settings \*models.WhatIfSettings\) \(int, error\)](<#SettingsManager.SaveWithRevision>)
+  - [func \(sm \*SettingsManager\) SettingsDir\(\) string](<#SettingsManager.SettingsDir>)
   - [func \(sm \*SettingsManager\) SwitchScenario\(filename string\) error](<#SettingsManager.SwitchScenario>)
   - [func \(sm \*SettingsManager\) UpdateExpenseSource\(id string, startYear int, endYear \*int, inflation, discretionary bool\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.UpdateExpenseSource>)
   - [func \(sm \*SettingsManager\) UpdateHealthcarePerson\(id string, updates map\[string\]interface\{\}\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.UpdateHealthcarePerson>)
   - [func \(sm \*SettingsManager\) UpdateIncomeSource\(id string, startYear int, endYear \*int, colaRate float64\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.UpdateIncomeSource>)
-  - [func \(sm \*SettingsManager\) UpdateSettings\(updates map\[string\]interface\{\}\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.UpdateSettings>)
-  - [func \(sm \*SettingsManager\) UpdateSettingsWithPersons\(updates map\[string\]interface\{\}, startDate string, persons \[\]models.Person\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.UpdateSettingsWithPersons>)
+  - [func \(sm \*SettingsManager\) UpdateSettings\(updates map\[string\]interface\{\}\) \(\*models.WhatIfSettings, int, error\)](<#SettingsManager.UpdateSettings>)
+  - [func \(sm \*SettingsManager\) UpdateSettingsWithPersons\(updates map\[string\]interface\{\}, startDate string, persons \[\]models.Person\) \(\*models.WhatIfSettings, int, error\)](<#SettingsManager.UpdateSettingsWithPersons>)
   - [func \(sm \*SettingsManager\) UpdateSpendingPhases\(enabled bool, phases \[\]models.SpendingPhase\) \(\*models.WhatIfSettings, error\)](<#SettingsManager.UpdateSpendingPhases>)
   - [func \(sm \*SettingsManager\) ValidateScenarioChain\(chain \[\]models.ScenarioChainLink, settings \*models.WhatIfSettings, currentFilename string\) error](<#SettingsManager.ValidateScenarioChain>)
 
@@ -98,7 +102,7 @@ var HistoricalReturns = []models.HistoricalYear(history.DefaultData())
 ```
 
 <a name="DefaultHooks"></a>
-## func [DefaultHooks](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine_hooks.go#L22>)
+## func DefaultHooks
 
 ```go
 func DefaultHooks() engine.Hooks
@@ -109,7 +113,7 @@ DefaultHooks returns the canonical engine.Hooks for production projections. Wire
 engine.Run consumes Hooks via Input. Callers that go through retirement.RunFull get DefaultHooks auto\-filled when they pass a zero\-valued Hooks. Direct engine.New\(\).Run callers \(notably retirement\-package tests outside the orchestrator path\) must either supply DefaultHooks explicitly or accept the safe\-default behaviour \(no SS optimizer, no chain transition\) baked into Hooks' nil\-safe methods.
 
 <a name="GetAvailableStartYears"></a>
-## func [GetAvailableStartYears](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/historical_data.go#L39>)
+## func GetAvailableStartYears
 
 ```go
 func GetAvailableStartYears(projectionYears int) []int
@@ -118,7 +122,7 @@ func GetAvailableStartYears(projectionYears int) []int
 GetAvailableStartYears returns the years that can be used as starting points for backtesting given the required projection length. Wrapper around history.AvailableStartYears; kept as a compat shim for retirement\-package tests.
 
 <a name="GetHistoricalReturns"></a>
-## func [GetHistoricalReturns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/historical_data.go#L24>)
+## func GetHistoricalReturns
 
 ```go
 func GetHistoricalReturns() []models.HistoricalYear
@@ -127,7 +131,7 @@ func GetHistoricalReturns() []models.HistoricalYear
 GetHistoricalReturns returns all historical data. Wrapper around history.DefaultData\(\); kept as a compat shim for retirement\-package tests.
 
 <a name="GetHistoricalSequence"></a>
-## func [GetHistoricalSequence](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/historical_data.go#L31>)
+## func GetHistoricalSequence
 
 ```go
 func GetHistoricalSequence(startYear int, yearsNeeded int) []models.HistoricalYear
@@ -136,7 +140,7 @@ func GetHistoricalSequence(startYear int, yearsNeeded int) []models.HistoricalYe
 GetHistoricalSequence returns a slice of historical years starting from a given year. Wrapper around history.Sequence; kept as a compat shim for retirement\-package tests.
 
 <a name="GetHistoricalStats"></a>
-## func [GetHistoricalStats](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/historical_data.go#L46>)
+## func GetHistoricalStats
 
 ```go
 func GetHistoricalStats() (avgStock, avgBond, avgCash, avgInflation, stockStdDev, bondStdDev float64)
@@ -145,7 +149,7 @@ func GetHistoricalStats() (avgStock, avgBond, avgCash, avgInflation, stockStdDev
 GetHistoricalStats returns summary statistics for the historical data. Wrapper around history.Stats; kept as a compat shim for retirement\-package tests.
 
 <a name="HasManualSocialSecurityIncomeSource"></a>
-## func [HasManualSocialSecurityIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/social_security.go#L33>)
+## func HasManualSocialSecurityIncomeSource
 
 ```go
 func HasManualSocialSecurityIncomeSource(s *models.WhatIfSettings) bool
@@ -154,7 +158,7 @@ func HasManualSocialSecurityIncomeSource(s *models.WhatIfSettings) bool
 HasManualSocialSecurityIncomeSource reports whether the user has a manual Social Security entry in their income sources \(separate from the optimizer\).
 
 <a name="RunFull"></a>
-## func [RunFull](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/orchestrator.go#L28>)
+## func RunFull
 
 ```go
 func RunFull(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis
@@ -163,7 +167,7 @@ func RunFull(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis
 RunFull executes the full what\-if analysis fan\-out for in. Returns a fully populated \*models.WhatIfAnalysis. Auto\-fills DefaultHooks when the caller passes a zero\-valued Input.Hooks so existing handler call sites keep working without explicitly wiring SS/chain hooks.
 
 <a name="RunTaxOptimizer"></a>
-## func [RunTaxOptimizer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/orchestrator.go#L134>)
+## func RunTaxOptimizer
 
 ```go
 func RunTaxOptimizer(eng *engine.Engine, in engine.Input) *models.TaxOptimizerAnalysis
@@ -172,7 +176,7 @@ func RunTaxOptimizer(eng *engine.Engine, in engine.Input) *models.TaxOptimizerAn
 RunTaxOptimizer runs only the Tax Optimizer analysis \(and the upstream SS analyses it depends on\). Called by the explicit /api/whatif/tax\-optimize endpoint, NOT by RunFull, because the optimizer's cost is too high for the interactive HTMX recalc path. Mirrors RunFull's hooks auto\-fill convention.
 
 <a name="SocialSecurityProjectionActive"></a>
-## func [SocialSecurityProjectionActive](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/social_security.go#L16>)
+## func SocialSecurityProjectionActive
 
 ```go
 func SocialSecurityProjectionActive(s *models.WhatIfSettings) bool
@@ -181,7 +185,7 @@ func SocialSecurityProjectionActive(s *models.WhatIfSettings) bool
 SocialSecurityProjectionActive reports whether the household has an active SS optimizer projection \(FRA benefit \+ valid claim age\).
 
 <a name="HistoricalYear"></a>
-## type [HistoricalYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/historical_data.go#L13>)
+## type HistoricalYear
 
 HistoricalYear is re\-exported as an alias for models.HistoricalYear. The canonical historical dataset lives in internal/services/retirement/history. The alias is kept so the retirement\-package test suite can refer to HistoricalYear without importing models directly.
 
@@ -190,7 +194,7 @@ type HistoricalYear = models.HistoricalYear
 ```
 
 <a name="ProjectedSSEntry"></a>
-## type [ProjectedSSEntry](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/social_security.go#L48-L55>)
+## type ProjectedSSEntry
 
 ProjectedSSEntry describes a single Social Security income stream computed by the SS Optimizer for display alongside manual income sources.
 
@@ -206,7 +210,7 @@ type ProjectedSSEntry struct {
 ```
 
 <a name="ProjectedSSEntries"></a>
-### func [ProjectedSSEntries](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/social_security.go#L60>)
+### func ProjectedSSEntries
 
 ```go
 func ProjectedSSEntries(s *models.WhatIfSettings) []ProjectedSSEntry
@@ -215,7 +219,7 @@ func ProjectedSSEntries(s *models.WhatIfSettings) []ProjectedSSEntry
 ProjectedSSEntries returns the optimizer\-derived Social Security income streams \(primary \+ spouse where applicable\). Returns nil when the optimizer is inactive.
 
 <a name="Scenario"></a>
-## type [Scenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L24-L28>)
+## type Scenario
 
 Scenario represents a named what\-if scenario
 
@@ -228,7 +232,7 @@ type Scenario struct {
 ```
 
 <a name="ScenarioChainValidationError"></a>
-## type [ScenarioChainValidationError](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L31-L33>)
+## type ScenarioChainValidationError
 
 ScenarioChainValidationError reports a user\-correctable invalid scenario chain.
 
@@ -239,7 +243,7 @@ type ScenarioChainValidationError struct {
 ```
 
 <a name="ScenarioChainValidationError.Error"></a>
-### func \(\*ScenarioChainValidationError\) [Error](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L35>)
+### func \(\*ScenarioChainValidationError\) Error
 
 ```go
 func (e *ScenarioChainValidationError) Error() string
@@ -248,7 +252,7 @@ func (e *ScenarioChainValidationError) Error() string
 
 
 <a name="ScenarioChainValidationError.Unwrap"></a>
-### func \(\*ScenarioChainValidationError\) [Unwrap](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L42>)
+### func \(\*ScenarioChainValidationError\) Unwrap
 
 ```go
 func (e *ScenarioChainValidationError) Unwrap() error
@@ -257,7 +261,7 @@ func (e *ScenarioChainValidationError) Unwrap() error
 
 
 <a name="ScenarioConflictError"></a>
-## type [ScenarioConflictError](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L88-L90>)
+## type ScenarioConflictError
 
 ScenarioConflictError reports user\-correctable conflicts with the current scenario state.
 
@@ -268,7 +272,7 @@ type ScenarioConflictError struct {
 ```
 
 <a name="ScenarioConflictError.Error"></a>
-### func \(\*ScenarioConflictError\) [Error](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L92>)
+### func \(\*ScenarioConflictError\) Error
 
 ```go
 func (e *ScenarioConflictError) Error() string
@@ -277,7 +281,7 @@ func (e *ScenarioConflictError) Error() string
 
 
 <a name="ScenarioConflictError.Unwrap"></a>
-### func \(\*ScenarioConflictError\) [Unwrap](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L99>)
+### func \(\*ScenarioConflictError\) Unwrap
 
 ```go
 func (e *ScenarioConflictError) Unwrap() error
@@ -286,7 +290,7 @@ func (e *ScenarioConflictError) Unwrap() error
 
 
 <a name="ScenarioNotFoundError"></a>
-## type [ScenarioNotFoundError](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L69-L71>)
+## type ScenarioNotFoundError
 
 ScenarioNotFoundError reports a requested scenario file that does not exist.
 
@@ -297,7 +301,7 @@ type ScenarioNotFoundError struct {
 ```
 
 <a name="ScenarioNotFoundError.Error"></a>
-### func \(\*ScenarioNotFoundError\) [Error](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L73>)
+### func \(\*ScenarioNotFoundError\) Error
 
 ```go
 func (e *ScenarioNotFoundError) Error() string
@@ -306,7 +310,7 @@ func (e *ScenarioNotFoundError) Error() string
 
 
 <a name="ScenarioNotFoundError.Unwrap"></a>
-### func \(\*ScenarioNotFoundError\) [Unwrap](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L80>)
+### func \(\*ScenarioNotFoundError\) Unwrap
 
 ```go
 func (e *ScenarioNotFoundError) Unwrap() error
@@ -315,7 +319,7 @@ func (e *ScenarioNotFoundError) Unwrap() error
 
 
 <a name="ScenarioValidationError"></a>
-## type [ScenarioValidationError](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L50-L52>)
+## type ScenarioValidationError
 
 ScenarioValidationError reports invalid scenario input supplied by the user.
 
@@ -326,7 +330,7 @@ type ScenarioValidationError struct {
 ```
 
 <a name="ScenarioValidationError.Error"></a>
-### func \(\*ScenarioValidationError\) [Error](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L54>)
+### func \(\*ScenarioValidationError\) Error
 
 ```go
 func (e *ScenarioValidationError) Error() string
@@ -335,7 +339,7 @@ func (e *ScenarioValidationError) Error() string
 
 
 <a name="ScenarioValidationError.Unwrap"></a>
-### func \(\*ScenarioValidationError\) [Unwrap](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L61>)
+### func \(\*ScenarioValidationError\) Unwrap
 
 ```go
 func (e *ScenarioValidationError) Unwrap() error
@@ -344,7 +348,7 @@ func (e *ScenarioValidationError) Unwrap() error
 
 
 <a name="SettingsManager"></a>
-## type [SettingsManager](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L111-L117>)
+## type SettingsManager
 
 SettingsManager handles persistence of what\-if settings
 
@@ -355,7 +359,7 @@ type SettingsManager struct {
 ```
 
 <a name="NewSettingsManager"></a>
-### func [NewSettingsManager](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L120>)
+### func NewSettingsManager
 
 ```go
 func NewSettingsManager(settingsDir string, store *storage.Storage) *SettingsManager
@@ -364,7 +368,7 @@ func NewSettingsManager(settingsDir string, store *storage.Storage) *SettingsMan
 NewSettingsManager creates a new settings manager
 
 <a name="SettingsManager.ActiveFilename"></a>
-### func \(\*SettingsManager\) [ActiveFilename](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1583>)
+### func \(\*SettingsManager\) ActiveFilename
 
 ```go
 func (sm *SettingsManager) ActiveFilename() string
@@ -373,7 +377,7 @@ func (sm *SettingsManager) ActiveFilename() string
 ActiveFilename returns the filename of the current active scenario
 
 <a name="SettingsManager.ActiveScenario"></a>
-### func \(\*SettingsManager\) [ActiveScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1572>)
+### func \(\*SettingsManager\) ActiveScenario
 
 ```go
 func (sm *SettingsManager) ActiveScenario() string
@@ -382,7 +386,7 @@ func (sm *SettingsManager) ActiveScenario() string
 ActiveScenario returns the display name of the current scenario
 
 <a name="SettingsManager.AddBigTicketItem"></a>
-### func \(\*SettingsManager\) [AddBigTicketItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1338>)
+### func \(\*SettingsManager\) AddBigTicketItem
 
 ```go
 func (sm *SettingsManager) AddBigTicketItem(item models.BigTicketItem) (*models.WhatIfSettings, error)
@@ -391,7 +395,7 @@ func (sm *SettingsManager) AddBigTicketItem(item models.BigTicketItem) (*models.
 AddBigTicketItem adds a new big ticket item and saves atomically
 
 <a name="SettingsManager.AddExpenseSource"></a>
-### func \(\*SettingsManager\) [AddExpenseSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L838>)
+### func \(\*SettingsManager\) AddExpenseSource
 
 ```go
 func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*models.WhatIfSettings, error)
@@ -400,7 +404,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 AddExpenseSource adds a new expense source and saves atomically
 
 <a name="SettingsManager.AddHealthcarePerson"></a>
-### func \(\*SettingsManager\) [AddHealthcarePerson](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1237>)
+### func \(\*SettingsManager\) AddHealthcarePerson
 
 ```go
 func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (*models.WhatIfSettings, error)
@@ -409,7 +413,7 @@ func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (
 AddHealthcarePerson adds a new healthcare person and saves atomically
 
 <a name="SettingsManager.AddIncomeSource"></a>
-### func \(\*SettingsManager\) [AddIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L686>)
+### func \(\*SettingsManager\) AddIncomeSource
 
 ```go
 func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.WhatIfSettings, error)
@@ -417,8 +421,23 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 
 AddIncomeSource adds a new income source and saves atomically
 
+<a name="SettingsManager.ApplyOverrides"></a>
+### func \(\*SettingsManager\) ApplyOverrides
+
+```go
+func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides, expectedScenario string) (*models.WhatIfSettings, string, int, error)
+```
+
+ApplyOverrides applies a sparse override set to the active scenario and saves it, returning the saved settings, the scenario filename it wrote to, and the revision this write produced.
+
+The whole body runs under one write lock. A caller doing Load → Apply → Save would not: Load releases the lock and hands back a private snapshot, so a concurrent UpdateSettings between the load and the save is silently reverted when the snapshot is written back whole. Every other mutation on this type loads, modifies, and saves inside one lock; this is no exception.
+
+expectedScenario, when non\-empty, is the scenario filename the caller believes is active — typically the one it snapshotted before calling. It is compared against the active filename INSIDE the lock and before any load or write, so a scenario switch that lands between the caller's read and this call cannot divert the write to a plan the caller never backed up. A mismatch writes nothing and returns a \*ScenarioConflictError. Empty means "no expectation" and preserves the previous behavior.
+
+The returned filename and revision are read under the same lock that performed the write. Callers must not read ActiveFilename\(\) or Revision\(\) afterwards — under concurrency either can describe a different writer's work.
+
 <a name="SettingsManager.BeginExternalRewrite"></a>
-### func \(\*SettingsManager\) [BeginExternalRewrite](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L487>)
+### func \(\*SettingsManager\) BeginExternalRewrite
 
 ```go
 func (sm *SettingsManager) BeginExternalRewrite() (end func())
@@ -431,7 +450,7 @@ Callers MUST NOT invoke any SettingsManager method between BeginExternalRewrite 
 Accepted residual: a save whose contents were computed BEFORE the rewrite but issued AFTER end\(\) still wins last\-writer\-wins and can overwrite the rewritten data. The gate serializes in\-flight operations; it cannot retract a stale caller's intent.
 
 <a name="SettingsManager.CreateScenario"></a>
-### func \(\*SettingsManager\) [CreateScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1614>)
+### func \(\*SettingsManager\) CreateScenario
 
 ```go
 func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, error)
@@ -440,7 +459,7 @@ func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, 
 CreateScenario copies the current settings to a new scenario file and switches to it
 
 <a name="SettingsManager.DeleteScenario"></a>
-### func \(\*SettingsManager\) [DeleteScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1698>)
+### func \(\*SettingsManager\) DeleteScenario
 
 ```go
 func (sm *SettingsManager) DeleteScenario(filename string) error
@@ -449,7 +468,7 @@ func (sm *SettingsManager) DeleteScenario(filename string) error
 DeleteScenario removes a scenario file
 
 <a name="SettingsManager.InvalidateCache"></a>
-### func \(\*SettingsManager\) [InvalidateCache](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L419>)
+### func \(\*SettingsManager\) InvalidateCache
 
 ```go
 func (sm *SettingsManager) InvalidateCache()
@@ -458,7 +477,7 @@ func (sm *SettingsManager) InvalidateCache()
 InvalidateCache drops the in\-memory settings cache so the next Load re\-reads from disk. Call it after anything rewrites the settings file behind the manager's back \(e.g. a backup restore\).
 
 <a name="SettingsManager.ListScenarios"></a>
-### func \(\*SettingsManager\) [ListScenarios](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1521>)
+### func \(\*SettingsManager\) ListScenarios
 
 ```go
 func (sm *SettingsManager) ListScenarios() ([]Scenario, error)
@@ -467,7 +486,7 @@ func (sm *SettingsManager) ListScenarios() ([]Scenario, error)
 ListScenarios returns all available what\-if scenarios
 
 <a name="SettingsManager.Load"></a>
-### func \(\*SettingsManager\) [Load](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L379>)
+### func \(\*SettingsManager\) Load
 
 ```go
 func (sm *SettingsManager) Load() (*models.WhatIfSettings, error)
@@ -475,8 +494,20 @@ func (sm *SettingsManager) Load() (*models.WhatIfSettings, error)
 
 Load reads settings from disk, returning defaults if file doesn't exist. Context\-less convenience wrapper around LoadContext for non\-request callers.
 
+The returned pointer is a PRIVATE deep copy. Every call allocates a fresh object; the manager's cached object never escapes through Load. Callers may mutate what they get and hand it back to Save/SaveWithRevision, and nothing else — no concurrent reader, no later Load — observes the mutation until Save publishes it.
+
+That is what makes a published settings object effectively immutable: once saveInternal stores a pointer in sm.cache, nothing mutates that object again, so a reader holding it from an earlier Load always sees a stable value even though it holds no lock while marshaling. This used to be a contract stated only in this comment, which made the wrong thing the easy thing: a handler written from the Load\-then\-mutate pattern wrote to state the 2s /whatif/poll path was marshaling, and a slice\-header mutation \(spending phases, scenario chain\) could be read torn rather than merely stale. Copying here removes the escape hatch instead of documenting it.
+
+The copy goes through prepare.Clone, not prepare.DeepCopy, because DeepCopy's JSON round\-trip drops every json:"\-" field — including CurrentAge/SpouseAge, which validateChainInternal reads between a load and the save that follows it.
+
+Concurrency caveat for load\-modify\-save callers — the semantics are NARROWER than the in\-place mutation they replace, not equal to it. Two overlapping edits resolve whole\-object last\-writer\-wins: each holds an independent snapshot, so a handler that loaded before another's save and saves after it writes back the whole pre\-save object and reverts the other's field. The shared\-pointer version merged such edits at field level instead — both handlers mutated one struct, so both fields survived whichever save landed last. That merge was accidental and was itself the data race \(it could tear a slice header\), so trading it for a short, well\-defined last\-writer\-wins window is the point; but it is a trade, not a wash.
+
+The fix for that lost update is to move such handlers behind manager methods that hold the write lock across load and save, as AddIncomeSource and friends already do. That is not this change.
+
+Cost: one marshal/unmarshal per call, microseconds. It lands only where a projection or a render follows immediately anyway — the /whatif/poll 204 branch never calls Load.
+
 <a name="SettingsManager.LoadContext"></a>
-### func \(\*SettingsManager\) [LoadContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L386>)
+### func \(\*SettingsManager\) LoadContext
 
 ```go
 func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSettings, error)
@@ -484,8 +515,10 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 
 LoadContext is Load with caller\-supplied cancellation. It fails fast on entry \(so an abandoned what\-if request stops before any disk read\) and threads ctx into the underlying decrypting read.
 
+Like Load, the returned pointer is a private copy; see Load's contract.
+
 <a name="SettingsManager.LoadScenarioSettings"></a>
-### func \(\*SettingsManager\) [LoadScenarioSettings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L550>)
+### func \(\*SettingsManager\) LoadScenarioSettings
 
 ```go
 func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIfSettings, error)
@@ -494,7 +527,7 @@ func (sm *SettingsManager) LoadScenarioSettings(filename string) (*models.WhatIf
 LoadScenarioSettings loads a scenario's settings without switching the active scenario. This is a read\-only operation used for pre\-resolving chained scenarios.
 
 <a name="SettingsManager.PurgeRemovedBigTicketItem"></a>
-### func \(\*SettingsManager\) [PurgeRemovedBigTicketItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1427>)
+### func \(\*SettingsManager\) PurgeRemovedBigTicketItem
 
 ```go
 func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfSettings, error)
@@ -503,7 +536,7 @@ func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfS
 PurgeRemovedBigTicketItem permanently removes a big ticket item from the removed list. Returns ScenarioNotFoundError if the ID is not in RemovedBigTicketItems. Does not touch the active BigTicketItems list.
 
 <a name="SettingsManager.PurgeRemovedExpenseSource"></a>
-### func \(\*SettingsManager\) [PurgeRemovedExpenseSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L958>)
+### func \(\*SettingsManager\) PurgeRemovedExpenseSource
 
 ```go
 func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfSettings, error)
@@ -512,7 +545,7 @@ func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfS
 PurgeRemovedExpenseSource permanently removes an expense source from the removed list. Returns ScenarioNotFoundError if the ID is not in RemovedExpenseSources. Does not touch the active ExpenseSources list.
 
 <a name="SettingsManager.PurgeRemovedIncomeSource"></a>
-### func \(\*SettingsManager\) [PurgeRemovedIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L776>)
+### func \(\*SettingsManager\) PurgeRemovedIncomeSource
 
 ```go
 func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSettings, error)
@@ -521,7 +554,7 @@ func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSe
 PurgeRemovedIncomeSource permanently removes an income source from the removed list. Returns ScenarioNotFoundError if the ID is not in RemovedIncomeSources. Does not touch the active IncomeSources list.
 
 <a name="SettingsManager.RemoveBigTicketItem"></a>
-### func \(\*SettingsManager\) [RemoveBigTicketItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1357>)
+### func \(\*SettingsManager\) RemoveBigTicketItem
 
 ```go
 func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSettings, error)
@@ -530,7 +563,7 @@ func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSetting
 RemoveBigTicketItem moves a big ticket item to the removed list by ID and saves atomically
 
 <a name="SettingsManager.RemoveExpenseSource"></a>
-### func \(\*SettingsManager\) [RemoveExpenseSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L888>)
+### func \(\*SettingsManager\) RemoveExpenseSource
 
 ```go
 func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSettings, error)
@@ -539,7 +572,7 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 RemoveExpenseSource moves an expense source to the removed list by ID and saves atomically
 
 <a name="SettingsManager.RemoveHealthcarePerson"></a>
-### func \(\*SettingsManager\) [RemoveHealthcarePerson](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1313>)
+### func \(\*SettingsManager\) RemoveHealthcarePerson
 
 ```go
 func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSettings, error)
@@ -548,7 +581,7 @@ func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSett
 RemoveHealthcarePerson removes a healthcare person by ID atomically
 
 <a name="SettingsManager.RemoveIncomeSource"></a>
-### func \(\*SettingsManager\) [RemoveIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L705>)
+### func \(\*SettingsManager\) RemoveIncomeSource
 
 ```go
 func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings, error)
@@ -557,7 +590,7 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 RemoveIncomeSource moves an income source to the removed list by ID and saves atomically
 
 <a name="SettingsManager.RenameScenario"></a>
-### func \(\*SettingsManager\) [RenameScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1734>)
+### func \(\*SettingsManager\) RenameScenario
 
 ```go
 func (sm *SettingsManager) RenameScenario(filename, newName string) error
@@ -566,7 +599,7 @@ func (sm *SettingsManager) RenameScenario(filename, newName string) error
 RenameScenario updates the display name of a scenario
 
 <a name="SettingsManager.RestoreBigTicketItem"></a>
-### func \(\*SettingsManager\) [RestoreBigTicketItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1386>)
+### func \(\*SettingsManager\) RestoreBigTicketItem
 
 ```go
 func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettings, error)
@@ -575,7 +608,7 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 RestoreBigTicketItem moves a big ticket item back from the removed list atomically. Returns a ScenarioConflictError if the active list already contains the ID.
 
 <a name="SettingsManager.RestoreExpenseSource"></a>
-### func \(\*SettingsManager\) [RestoreExpenseSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L917>)
+### func \(\*SettingsManager\) RestoreExpenseSource
 
 ```go
 func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettings, error)
@@ -584,7 +617,7 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 RestoreExpenseSource moves an expense source back from the removed list atomically. Returns a ScenarioConflictError if the active list already contains the ID.
 
 <a name="SettingsManager.RestoreIncomeSource"></a>
-### func \(\*SettingsManager\) [RestoreIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L735>)
+### func \(\*SettingsManager\) RestoreIncomeSource
 
 ```go
 func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSettings, error)
@@ -592,8 +625,17 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 
 RestoreIncomeSource moves an income source back from the removed list atomically. Returns a ScenarioConflictError if the active list already contains the ID \(e.g. from a hand\-edited file with the ID present in both lists\).
 
+<a name="SettingsManager.Revision"></a>
+### func \(\*SettingsManager\) Revision
+
+```go
+func (sm *SettingsManager) Revision() int
+```
+
+Revision returns the current display revision.
+
 <a name="SettingsManager.Save"></a>
-### func \(\*SettingsManager\) [Save](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L632>)
+### func \(\*SettingsManager\) Save
 
 ```go
 func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error
@@ -601,8 +643,28 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error
 
 Save writes settings to disk
 
+<a name="SettingsManager.SaveWithRevision"></a>
+### func \(\*SettingsManager\) SaveWithRevision
+
+```go
+func (sm *SettingsManager) SaveWithRevision(settings *models.WhatIfSettings) (int, error)
+```
+
+SaveWithRevision writes settings to disk and returns the revision this write produced, read under the same write lock that performed it.
+
+Callers that render the saved state must use this number rather than reading Revision\(\) afterwards: between the save and that read, a concurrent writer \(the MCP /whatif/apply path\) can bump the counter, and a client told to store that higher number as its baseline would poll with a revision that leads the state it was actually sent — every later poll answers 204 and the page shows pre\-change figures forever.
+
+<a name="SettingsManager.SettingsDir"></a>
+### func \(\*SettingsManager\) SettingsDir
+
+```go
+func (sm *SettingsManager) SettingsDir() string
+```
+
+SettingsDir returns the directory this manager reads scenarios from.
+
 <a name="SettingsManager.SwitchScenario"></a>
-### func \(\*SettingsManager\) [SwitchScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1590>)
+### func \(\*SettingsManager\) SwitchScenario
 
 ```go
 func (sm *SettingsManager) SwitchScenario(filename string) error
@@ -611,7 +673,7 @@ func (sm *SettingsManager) SwitchScenario(filename string) error
 SwitchScenario changes the active scenario to the specified file
 
 <a name="SettingsManager.UpdateExpenseSource"></a>
-### func \(\*SettingsManager\) [UpdateExpenseSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L857>)
+### func \(\*SettingsManager\) UpdateExpenseSource
 
 ```go
 func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear *int, inflation, discretionary bool) (*models.WhatIfSettings, error)
@@ -620,7 +682,7 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear
 UpdateExpenseSource updates an existing expense source by ID atomically
 
 <a name="SettingsManager.UpdateHealthcarePerson"></a>
-### func \(\*SettingsManager\) [UpdateHealthcarePerson](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1256>)
+### func \(\*SettingsManager\) UpdateHealthcarePerson
 
 ```go
 func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]interface{}) (*models.WhatIfSettings, error)
@@ -629,7 +691,7 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 UpdateHealthcarePerson updates an existing healthcare person by ID atomically
 
 <a name="SettingsManager.UpdateIncomeSource"></a>
-### func \(\*SettingsManager\) [UpdateIncomeSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L807>)
+### func \(\*SettingsManager\) UpdateIncomeSource
 
 ```go
 func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear *int, colaRate float64) (*models.WhatIfSettings, error)
@@ -638,25 +700,25 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear 
 UpdateIncomeSource updates an existing income source by ID atomically
 
 <a name="SettingsManager.UpdateSettings"></a>
-### func \(\*SettingsManager\) [UpdateSettings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L989>)
+### func \(\*SettingsManager\) UpdateSettings
 
 ```go
-func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, error)
+func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*models.WhatIfSettings, int, error)
 ```
 
-UpdateSettings updates all settings fields from form data and saves atomically
+UpdateSettings updates all settings fields from form data and saves atomically, returning the saved settings and the revision this write produced \(see SaveWithRevision for why the caller must not read Revision\(\) afterwards instead\).
 
 <a name="SettingsManager.UpdateSettingsWithPersons"></a>
-### func \(\*SettingsManager\) [UpdateSettingsWithPersons](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1007>)
+### func \(\*SettingsManager\) UpdateSettingsWithPersons
 
 ```go
-func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, error)
+func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interface{}, startDate string, persons []models.Person) (*models.WhatIfSettings, int, error)
 ```
 
-
+UpdateSettingsWithPersons is UpdateSettings plus the household fields. It returns the revision this write produced for the same reason UpdateSettings does.
 
 <a name="SettingsManager.UpdateSpendingPhases"></a>
-### func \(\*SettingsManager\) [UpdateSpendingPhases](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L1206>)
+### func \(\*SettingsManager\) UpdateSpendingPhases
 
 ```go
 func (sm *SettingsManager) UpdateSpendingPhases(enabled bool, phases []models.SpendingPhase) (*models.WhatIfSettings, error)
@@ -665,7 +727,7 @@ func (sm *SettingsManager) UpdateSpendingPhases(enabled bool, phases []models.Sp
 UpdateSpendingPhases updates spending phase configuration atomically
 
 <a name="SettingsManager.ValidateScenarioChain"></a>
-### func \(\*SettingsManager\) [ValidateScenarioChain](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/settings.go#L580>)
+### func \(\*SettingsManager\) ValidateScenarioChain
 
 ```go
 func (sm *SettingsManager) ValidateScenarioChain(chain []models.ScenarioChainLink, settings *models.WhatIfSettings, currentFilename string) error

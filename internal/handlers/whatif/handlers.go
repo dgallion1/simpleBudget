@@ -29,9 +29,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"budget2/internal/handlers/insights"
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/insights"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/completeness"
 	"budget2/internal/services/retirement/engine"
@@ -1110,7 +1110,7 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	settings.MonthlyLivingExpenses = totalExpenses / months
 
 	// Use insights income pattern detection for individual income sources
-	incomePatterns := insights.AnalyzeIncomePatterns(filtered)
+	incomePatterns := insights.IncomePatterns(filtered)
 
 	// Remove old auto-detected sources (prefixed with "insights-" or old "dashboard-income")
 	// Keep user-added sources (no special prefix)

@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"budget2/internal/models"
 	"budget2/internal/services/storage"
 )
 
@@ -34,6 +36,11 @@ func newRaceLoader(t *testing.T) *DataLoader {
 // the accessors that read them, plus the enabled-files map an HTTP handler
 // can rewrite mid-load. It asserts nothing about values -- the assertion is
 // the race detector's, and this test is only meaningful under -race.
+//
+// This test passes unconditionally under a plain `go test` -- there is no
+// value assertion for a data race to trip. It only has teeth under
+// `make race` (or `go test -race ./internal/services/dataloader/`), which
+// this repo deliberately keeps out of the per-commit `make check`.
 func TestDerivedStateIsRaceFree(t *testing.T) {
 	loader := newRaceLoader(t)
 
@@ -103,5 +110,80 @@ func TestConcurrentPinWritesDoNotLoseUpdates(t *testing.T) {
 		if pins[hash] != "expense-1" {
 			t.Errorf("pin %s = %q, want %q", hash, pins[hash], "expense-1")
 		}
+	}
+}
+
+// TestArchiveCannotInterleaveWithAdd is deterministic, not probabilistic.
+// It parks AddMajorExpense between its load and its save, then starts an
+// ArchiveMajorExpense and asserts the archive makes NO progress while the add
+// holds the write lock. Without the lock the archive runs to completion
+// during the park, its active-list write is then overwritten by the add's
+// stale [A,B] + C, and B ends up in both files.
+func TestArchiveCannotInterleaveWithAdd(t *testing.T) {
+	loader := newRaceLoader(t)
+
+	if _, err := loader.AddMajorExpense(models.MajorExpense{ID: "A", Name: "Rent"}); err != nil {
+		t.Fatalf("seed A: %v", err)
+	}
+	if _, err := loader.AddMajorExpense(models.MajorExpense{ID: "B", Name: "Insurance"}); err != nil {
+		t.Fatalf("seed B: %v", err)
+	}
+
+	parked := make(chan struct{})
+	release := make(chan struct{})
+	testHookAfterExpenseLoad = func() {
+		testHookAfterExpenseLoad = nil // fire once; the archive path must not re-trigger it
+		close(parked)
+		<-release
+	}
+	t.Cleanup(func() { testHookAfterExpenseLoad = nil })
+
+	addDone := make(chan error, 1)
+	go func() {
+		_, err := loader.AddMajorExpense(models.MajorExpense{ID: "C", Name: "Utilities"})
+		addDone <- err
+	}()
+	<-parked
+
+	archiveDone := make(chan error, 1)
+	go func() { archiveDone <- loader.ArchiveMajorExpense("B") }()
+
+	select {
+	case err := <-archiveDone:
+		t.Fatalf("ArchiveMajorExpense completed (err=%v) while AddMajorExpense held the write lock", err)
+	case <-time.After(200 * time.Millisecond):
+		// Correct: the archive is blocked on writeMu.
+	}
+
+	close(release)
+	if err := <-addDone; err != nil {
+		t.Fatalf("AddMajorExpense: %v", err)
+	}
+	if err := <-archiveDone; err != nil {
+		t.Fatalf("ArchiveMajorExpense: %v", err)
+	}
+
+	active, err := loader.LoadMajorExpenses()
+	if err != nil {
+		t.Fatalf("LoadMajorExpenses: %v", err)
+	}
+	deleted, err := loader.LoadDeletedMajorExpenses()
+	if err != nil {
+		t.Fatalf("LoadDeletedMajorExpenses: %v", err)
+	}
+	activeIDs := map[string]bool{}
+	for _, e := range active {
+		activeIDs[e.ID] = true
+	}
+	for _, d := range deleted {
+		if activeIDs[d.Expense.ID] {
+			t.Fatalf("expense %s is in BOTH the active list and the archive", d.Expense.ID)
+		}
+	}
+	if !activeIDs["C"] {
+		t.Error("the added expense C is missing from the active list")
+	}
+	if activeIDs["B"] {
+		t.Error("the archived expense B is still in the active list")
 	}
 }

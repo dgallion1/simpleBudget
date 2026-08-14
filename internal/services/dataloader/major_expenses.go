@@ -12,6 +12,13 @@ import (
 
 const majorExpensesFile = "major_expenses.json"
 
+// testHookAfterExpenseLoad, when non-nil, is called by AddMajorExpense after
+// it has loaded the active list and while it still holds writeMu. It exists
+// so a test can prove that a concurrent ArchiveMajorExpense really blocks for
+// the whole load->modify->save sequence rather than merely usually losing the
+// race. Nil in production; the only writer is a test in this package.
+var testHookAfterExpenseLoad func()
+
 // majorExpensesPath returns the path to the major_expenses.json file
 func (dl *DataLoader) majorExpensesPath() string {
 	return filepath.Join(dl.CSVDirectory, majorExpensesFile)
@@ -70,6 +77,9 @@ func (dl *DataLoader) AddMajorExpense(me models.MajorExpense) ([]models.MajorExp
 	list, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return nil, err
+	}
+	if testHookAfterExpenseLoad != nil {
+		testHookAfterExpenseLoad()
 	}
 	now := time.Now().UTC()
 	me.CreatedAt = now
@@ -202,7 +212,9 @@ func (dl *DataLoader) saveDeletedMajorExpensesLocked(list []models.DeletedMajorE
 //
 // Write order is archive → active list → pins, so a crash mid-operation
 // leaves the user with a recoverable duplicate (an entry in both lists)
-// rather than data loss. RestoreMajorExpense reverses this.
+// rather than data loss. A concurrent writer can no longer produce that
+// duplicate: the whole sequence is one writeMu critical section.
+// RestoreMajorExpense reverses this.
 //
 // Returns os-style "not found" sentinel error if no active expense has
 // the given ID.
@@ -210,7 +222,10 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 	if id == "" {
 		return fmt.Errorf("expense id is required")
 	}
-	active, err := dl.LoadMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+
+	active, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -229,7 +244,7 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		return fmt.Errorf("major expense not found: %s", id)
 	}
 
-	pins, err := dl.LoadTransactionPins()
+	pins, err := dl.loadTransactionPinsLocked()
 	if err != nil {
 		return err
 	}
@@ -240,7 +255,7 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		}
 	}
 
-	deleted, err := dl.LoadDeletedMajorExpenses()
+	deleted, err := dl.loadDeletedMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -249,14 +264,14 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		DeletedAt:    time.Now().UTC(),
 		PinnedHashes: pinnedHashes,
 	})
-	if err := dl.SaveDeletedMajorExpenses(deleted); err != nil {
+	if err := dl.saveDeletedMajorExpensesLocked(deleted); err != nil {
 		return err
 	}
 
 	out := make([]models.MajorExpense, 0, len(active)-1)
 	out = append(out, active[:targetIdx]...)
 	out = append(out, active[targetIdx+1:]...)
-	if err := dl.SaveMajorExpenses(out); err != nil {
+	if err := dl.saveMajorExpensesLocked(out); err != nil {
 		return err
 	}
 
@@ -264,11 +279,7 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		for _, h := range pinnedHashes {
 			delete(pins, h)
 		}
-		data, err := json.MarshalIndent(pins, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := dl.store.WriteFile(dl.transactionPinsPath(), data, 0644); err != nil {
+		if err := dl.writePinsLocked(pins); err != nil {
 			return err
 		}
 	}
@@ -290,7 +301,10 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 	if id == "" {
 		return fmt.Errorf("expense id is required")
 	}
-	deleted, err := dl.LoadDeletedMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+
+	deleted, err := dl.loadDeletedMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -309,7 +323,7 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 		return fmt.Errorf("deleted major expense not found: %s", id)
 	}
 
-	active, err := dl.LoadMajorExpenses()
+	active, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -319,12 +333,12 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 		}
 	}
 	active = append(active, entry.Expense)
-	if err := dl.SaveMajorExpenses(active); err != nil {
+	if err := dl.saveMajorExpensesLocked(active); err != nil {
 		return err
 	}
 
 	if len(entry.PinnedHashes) > 0 {
-		pins, err := dl.LoadTransactionPins()
+		pins, err := dl.loadTransactionPinsLocked()
 		if err != nil {
 			return err
 		}
@@ -337,11 +351,7 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 			changed = true
 		}
 		if changed {
-			data, err := json.MarshalIndent(pins, "", "  ")
-			if err != nil {
-				return err
-			}
-			if err := dl.store.WriteFile(dl.transactionPinsPath(), data, 0644); err != nil {
+			if err := dl.writePinsLocked(pins); err != nil {
 				return err
 			}
 		}
@@ -350,7 +360,7 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 	out := make([]models.DeletedMajorExpense, 0, len(deleted)-1)
 	out = append(out, deleted[:idx]...)
 	out = append(out, deleted[idx+1:]...)
-	return dl.SaveDeletedMajorExpenses(out)
+	return dl.saveDeletedMajorExpensesLocked(out)
 }
 
 // DiscardDeletedMajorExpense permanently removes an archived entry. The
@@ -359,7 +369,10 @@ func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error {
 	if id == "" {
 		return fmt.Errorf("expense id is required")
 	}
-	deleted, err := dl.LoadDeletedMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+
+	deleted, err := dl.loadDeletedMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -375,5 +388,5 @@ func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error {
 	if !found {
 		return fmt.Errorf("deleted major expense not found: %s", id)
 	}
-	return dl.SaveDeletedMajorExpenses(out)
+	return dl.saveDeletedMajorExpensesLocked(out)
 }

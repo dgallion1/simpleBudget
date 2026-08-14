@@ -5,7 +5,10 @@
 package mcpsvc
 
 import (
+	"path/filepath"
+
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/mcpsvc/curate"
 	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/mcpsvc/snapshot"
 	"budget2/internal/services/mcpsvc/spend"
@@ -75,6 +78,19 @@ func NewServer(deps Deps) *mcp.Server {
 			Store:         deps.Store,
 			Settings:      deps.Settings,
 			MajorExpenses: deps.Loader,
+		})
+		// The data directory comes off the loader rather than a new Deps
+		// field so the files curate snapshots are, by construction, the same
+		// files the loader writes.
+		curate.Register(s, curate.Deps{
+			Transactions: deps.Loader,
+			Expenses:     deps.Loader,
+			Pins:         deps.Loader,
+			Store:        deps.Store,
+			// A separate snapshot subdirectory: plan snapshots files from the
+			// settings dir and curate from the data dir, and nothing stops
+			// the two directories from holding a file of the same name.
+			Snapshots: snapshot.New(deps.Loader.CSVDirectory, filepath.Join(deps.SnapshotDir, "data")),
 		})
 	}
 	return s

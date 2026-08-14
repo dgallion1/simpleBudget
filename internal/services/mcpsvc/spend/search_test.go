@@ -303,3 +303,36 @@ func TestSearchTransactionsExcludesSuppressedTransactions(t *testing.T) {
 		t.Fatalf("total = %d, want 1 (the suppressed duplicate must be excluded)", out.Total)
 	}
 }
+
+// TestSearchReturnsTheTransactionHash pins the field pin_transactions uses to
+// address a row. Without it, "find this charge, then pin it" cannot be done
+// with these tools at all.
+func TestSearchReturnsTheTransactionHash(t *testing.T) {
+	txn := models.Transaction{
+		Date:            time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC),
+		Description:     "CITY WATER DEPT",
+		Category:        "Utilities",
+		Amount:          -88.10,
+		TransactionType: models.Outflow,
+	}
+	txn.Hash = txn.ComputeHash()
+
+	cs := connect(t, Deps{Transactions: stubTransactions{
+		ts: models.NewTransactionSet([]models.Transaction{txn}),
+	}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_transactions",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	out := decodeToolResult[searchOutput](t, res)
+	if len(out.Transactions) != 1 {
+		t.Fatalf("got %d rows, want 1", len(out.Transactions))
+	}
+	if out.Transactions[0].Hash != txn.Hash {
+		t.Errorf("hash = %q, want %q", out.Transactions[0].Hash, txn.Hash)
+	}
+}

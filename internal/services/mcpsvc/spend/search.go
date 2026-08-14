@@ -33,6 +33,11 @@ type transactionRow struct {
 	Category    string  `json:"category"`
 	Amount      float64 `json:"amount"`
 	Type        string  `json:"type"`
+	// Hash is the identifier the curation tools use to pin this transaction
+	// to a major expense. It is derived from date + lower-cased description +
+	// amount, so two distinct transactions sharing all three share one hash
+	// and are pinned together.
+	Hash string `json:"hash"`
 }
 
 type searchOutput struct {
@@ -84,6 +89,9 @@ func registerSearch(s *mcp.Server, deps Deps) {
 			"and paginated: `total` is the full number of matching rows, not the number returned, so check it " +
 			"against the rows you received before concluding you have seen everything. Default 50 rows per " +
 			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page. " +
+			"Each row carries a `hash`, which is what pin_transactions uses to attach that transaction to a " +
+			"major expense; the hash is derived from date + lower-cased description + amount, so two genuinely " +
+			"distinct transactions that share all three share one hash and pinning either pins both. " +
 			"Transactions the user has already marked as a resolved duplicate are excluded, matching every " +
 			"other aggregate in the app (the dashboard, get_anomalies, get_price_creep, summarize_spending) " +
 			"so sums here agree with those tools for the same window.",
@@ -168,6 +176,7 @@ func registerSearch(s *mcp.Server, deps Deps) {
 				Category:    t.Category,
 				Amount:      t.Amount,
 				Type:        string(t.TransactionType),
+				Hash:        t.Hash,
 			})
 		}
 

@@ -65,7 +65,9 @@ func registerStatus(s *mcp.Server, deps Deps) {
 		if deps.Store != nil {
 			out.DataDir = deps.Store.BaseDir()
 			out.Encrypted = deps.Store.IsEncrypted()
-			out.Unlocked = !deps.Store.IsEncrypted() || deps.Store.IsUnlocked()
+			// IsUnlocked already reports true for an unencrypted store (see
+			// storage.go), so it alone is the right answer for both cases.
+			out.Unlocked = deps.Store.IsUnlocked()
 			if out.Encrypted {
 				out.AuthMethod = string(deps.Store.GetAuthMethod())
 			}
@@ -117,6 +119,8 @@ func registerStatus(s *mcp.Server, deps Deps) {
 				n := len(infos)
 				out.CSVFileCount = &n
 			}
+		} else {
+			out.Notes = append(out.Notes, "no file lister is configured on this server; csv_file_count is unavailable")
 		}
 
 		if deps.Duplicates != nil {
@@ -130,6 +134,8 @@ func registerStatus(s *mcp.Server, deps Deps) {
 				n := deps.Duplicates.UnresolvedDuplicateCount()
 				out.UnresolvedDuplicates = &n
 			}
+		} else {
+			out.Notes = append(out.Notes, "no duplicate source is configured on this server; unresolved_duplicates is unavailable")
 		}
 
 		return nil, out, nil

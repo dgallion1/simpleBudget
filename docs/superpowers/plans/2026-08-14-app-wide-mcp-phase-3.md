@@ -21,7 +21,8 @@ These are carried forward from the spec's "Constraints learned in phases 1 and 2
 - Tool `Description` strings are the consuming model's only documentation. Write them to be read by a model with no other context: say what the numbers mean, what window they cover, what they exclude, and — for the write tools — exactly what changes on disk.
 - **Read the twelve existing tool descriptions before writing a new one** (`internal/services/mcpsvc/plan/register.go`, `internal/services/mcpsvc/spend/*.go`). They now agree with each other on merchant identity, duplicate handling, window semantics and signs. A thirteenth that quietly disagrees is worse than one that is merely vague.
 - **The sign convention is settled up front and is not negotiable per tool** (see "Sign convention" below). Refunds are `Outflow` rows with a *positive* amount (`internal/services/dataloader/classifier.go:83-93`). Phase 2 shipped `summarize_spending` with a `by_category` breakdown summed gross of refunds against a net `total_expenses`; do not repeat it.
-- **Every tool that loads transactions calls `ts.Active()` immediately after loading,** before any date defaulting, so suppressed duplicate-resolution losers are excluded and the default window is computed over active rows.
+- **Every tool that loads transactions excludes suppressed rows with `ts.Active()`** before any analysis, so duplicate-resolution losers never reach a total.
+- **But `curate`'s default date window comes from the RAW set, before `Active()`** — `internal/handlers/majorexpenses.buildPageData` takes its unbounded window from `parseRangeFromRequest(r, txns)`, which reads `MinDate()`/`MaxDate()` off the pre-`Active()` set, and this phase's premise is that a tool answer and the page cannot disagree. The analyzed transactions are the same either way (active rows always fall inside both windows); what differs is the `start`/`end` a caller is told, and it must be the page's. This deliberately differs from the six `spend` tools, which default over active rows — say so in a comment at the site, or the next reader will "fix" it back.
 - **A moved function's new description must be written from its implementation, not its name.** This binds Task 1 specifically.
 - **Never enumerate the tests to move by name.** Task 1 moves a file: run `LSP findReferences` on each moved symbol, take the union of files containing a caller, and report that list before moving anything.
 - **Gate the move on `go tool cover -func` before and after,** for both source and destination packages, in the task's report.
@@ -540,13 +541,21 @@ type view struct {
 }
 
 // pageView reproduces internal/handlers/majorexpenses.buildPageData's
-// pipeline exactly: load, drop transactions the user resolved as duplicates,
-// narrow to the window, keep only outflows, then match.
+// pipeline exactly: resolve the window, drop transactions the user resolved
+// as duplicates, narrow to the window, keep only outflows, then match.
 //
-// The order matters and is not incidental. Active() comes first so the
-// MinDate/MaxDate window defaults are computed over active rows only. The
-// outflow filter comes before Match so that income whose description happens
-// to contain a keyword cannot inflate a group's count or total.
+// Two orderings here are load-bearing and neither is incidental.
+//
+// The unbounded window defaults come from the RAW set, BEFORE Active(),
+// because buildPageData's parseRangeFromRequest reads MinDate/MaxDate off the
+// raw set too. This deliberately differs from the six mcpsvc/spend tools,
+// which default over active rows. The transactions analyzed are identical
+// either way -- every active row falls inside both windows -- so the only
+// thing at stake is the start/end reported back to the caller, and that has
+// to be the page's, not a second opinion. Do not "fix" this to Active().
+//
+// The outflow filter comes before Match so that income whose description
+// happens to contain a keyword cannot inflate a group's count or total.
 func (d Deps) pageView(startDate, endDate string) (*view, error) {
 	start, err := parseWindowDate("start_date", startDate)
 	if err != nil {
@@ -569,13 +578,15 @@ func (d Deps) pageView(startDate, endDate string) (*view, error) {
 	if err != nil {
 		return nil, err
 	}
-	ts = ts.Active()
 
 	pins, err := d.Pins.LoadTransactionPins()
 	if err != nil {
 		return nil, fmt.Errorf("load transaction pins: %w", err)
 	}
 
+	// Window defaults off the raw set, matching parseRangeFromRequest. See
+	// the note above: this is not the Active()-first defaulting the spend
+	// tools use, and that is on purpose.
 	from := ts.MinDate()
 	if start != nil {
 		from = *start
@@ -585,7 +596,7 @@ func (d Deps) pageView(startDate, endDate string) (*view, error) {
 		to = *end
 	}
 
-	outflows := ts.FilterByDateRange(from, to).FilterByType(models.Outflow)
+	outflows := ts.Active().FilterByDateRange(from, to).FilterByType(models.Outflow)
 
 	return &view{
 		Start:    from,

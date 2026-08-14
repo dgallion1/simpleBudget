@@ -119,6 +119,17 @@ func TestConcurrentPinWritesDoNotLoseUpdates(t *testing.T) {
 // holds the write lock. Without the lock the archive runs to completion
 // during the park, its active-list write is then overwritten by the add's
 // stale [A,B] + C, and B ends up in both files.
+//
+// What this test actually guards: that AddMajorExpense's own critical
+// section (load->modify->save) blocks a concurrent ArchiveMajorExpense from
+// starting, plus the final on-disk invariant. It does NOT guard
+// ArchiveMajorExpense's own three-file atomicity -- because this test's
+// Archive goroutine is only started after Add already holds writeMu, Archive
+// blocks on its very first call regardless of whether Archive's own steps
+// are one critical section. TestAddCannotInterleaveWithArchive below is the
+// one that guards ArchiveMajorExpense's own atomicity: it parks INSIDE
+// Archive, between its archive-file write and its active-list write, and
+// proves a concurrent Add cannot land in that window.
 func TestArchiveCannotInterleaveWithAdd(t *testing.T) {
 	loader := newRaceLoader(t)
 
@@ -161,6 +172,93 @@ func TestArchiveCannotInterleaveWithAdd(t *testing.T) {
 	}
 	if err := <-archiveDone; err != nil {
 		t.Fatalf("ArchiveMajorExpense: %v", err)
+	}
+
+	active, err := loader.LoadMajorExpenses()
+	if err != nil {
+		t.Fatalf("LoadMajorExpenses: %v", err)
+	}
+	deleted, err := loader.LoadDeletedMajorExpenses()
+	if err != nil {
+		t.Fatalf("LoadDeletedMajorExpenses: %v", err)
+	}
+	activeIDs := map[string]bool{}
+	for _, e := range active {
+		activeIDs[e.ID] = true
+	}
+	for _, d := range deleted {
+		if activeIDs[d.Expense.ID] {
+			t.Fatalf("expense %s is in BOTH the active list and the archive", d.Expense.ID)
+		}
+	}
+	if !activeIDs["C"] {
+		t.Error("the added expense C is missing from the active list")
+	}
+	if activeIDs["B"] {
+		t.Error("the archived expense B is still in the active list")
+	}
+}
+
+// TestAddCannotInterleaveWithArchive is deterministic, not probabilistic. It
+// parks ArchiveMajorExpense AFTER it has written deleted_major_expenses.json
+// but BEFORE it writes the shortened major_expenses.json, then starts an
+// AddMajorExpense and asserts the add makes NO progress while the archive
+// holds the write lock. Without a single critical section around the whole
+// archive sequence, the add's load->save could interleave in that exact
+// window: the add's save would then be built from an active list that still
+// contains B, later the archive's own active-list write would still remove
+// it -- but if scheduling instead let the add "win" the write after the
+// archive, its stale snapshot (still containing B, missing the add's own
+// change if a third writer landed) could resurrect an expense the archive
+// just moved into the deleted file, leaving it in both places. This test's
+// only oracle is that the write lock forces the two writers to run
+// end-to-end, one at a time, no matter which one goes first.
+//
+// This is the test that guards ArchiveMajorExpense's own three-file
+// atomicity -- see the comment on TestArchiveCannotInterleaveWithAdd for why
+// that test cannot do so itself.
+func TestAddCannotInterleaveWithArchive(t *testing.T) {
+	loader := newRaceLoader(t)
+
+	if _, err := loader.AddMajorExpense(models.MajorExpense{ID: "A", Name: "Rent"}); err != nil {
+		t.Fatalf("seed A: %v", err)
+	}
+	if _, err := loader.AddMajorExpense(models.MajorExpense{ID: "B", Name: "Insurance"}); err != nil {
+		t.Fatalf("seed B: %v", err)
+	}
+
+	parked := make(chan struct{})
+	release := make(chan struct{})
+	testHookMidArchive = func() {
+		testHookMidArchive = nil // fire once; the add path must not re-trigger it
+		close(parked)
+		<-release
+	}
+	t.Cleanup(func() { testHookMidArchive = nil })
+
+	archiveDone := make(chan error, 1)
+	go func() { archiveDone <- loader.ArchiveMajorExpense("B") }()
+	<-parked
+
+	addDone := make(chan error, 1)
+	go func() {
+		_, err := loader.AddMajorExpense(models.MajorExpense{ID: "C", Name: "Utilities"})
+		addDone <- err
+	}()
+
+	select {
+	case err := <-addDone:
+		t.Fatalf("AddMajorExpense completed (err=%v) while ArchiveMajorExpense held the write lock", err)
+	case <-time.After(200 * time.Millisecond):
+		// Correct: the add is blocked on writeMu.
+	}
+
+	close(release)
+	if err := <-archiveDone; err != nil {
+		t.Fatalf("ArchiveMajorExpense: %v", err)
+	}
+	if err := <-addDone; err != nil {
+		t.Fatalf("AddMajorExpense: %v", err)
 	}
 
 	active, err := loader.LoadMajorExpenses()

@@ -19,6 +19,15 @@ const majorExpensesFile = "major_expenses.json"
 // race. Nil in production; the only writer is a test in this package.
 var testHookAfterExpenseLoad func()
 
+// testHookMidArchive, when non-nil, is called by ArchiveMajorExpense after it
+// has written the archive file but BEFORE it writes the shortened active list
+// — the exact window in which a concurrent writer used to be able to save a
+// stale active list and leave one expense in both files. It exists so a test
+// can prove the whole three-file sequence is one critical section rather than
+// merely usually winning the race. Nil in production; the only writer is a
+// test in this package.
+var testHookMidArchive func()
+
 // majorExpensesPath returns the path to the major_expenses.json file
 func (dl *DataLoader) majorExpensesPath() string {
 	return filepath.Join(dl.CSVDirectory, majorExpensesFile)
@@ -266,6 +275,10 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 	})
 	if err := dl.saveDeletedMajorExpensesLocked(deleted); err != nil {
 		return err
+	}
+
+	if testHookMidArchive != nil {
+		testHookMidArchive()
 	}
 
 	out := make([]models.MajorExpense, 0, len(active)-1)

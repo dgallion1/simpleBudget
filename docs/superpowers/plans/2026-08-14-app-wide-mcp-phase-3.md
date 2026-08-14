@@ -1961,7 +1961,12 @@ this session's first change to it."
 
 The sparse-write problem the spec calls out for `/whatif/apply` applies here directly: `dataloader.UpdateMajorExpense` copies `Name`, `Keywords`, `ExpectedMin`, `ExpectedMax`, `Notes` and `IsInternalTransfer` wholesale from its argument, so a partial update built from a zero struct would silently blank every field the caller did not mention. Optional scalars are therefore pointers, and `keywords` uses nil-vs-empty-slice.
 
+The validation rules themselves are **extracted, not duplicated**: they currently live inline in `internal/handlers/majorexpenses.parseExpenseForm` and move to `internal/services/majorexpenses.Validate`, which both the handler and this tool call. A service must not import a handlers package, and a private copy would let the page and the tools drift apart on what a valid definition is with nothing to catch it.
+
 **Files:**
+- Create: `internal/services/majorexpenses/validate.go`
+- Create: `internal/services/majorexpenses/validate_test.go`
+- Modify: `internal/handlers/majorexpenses/handlers.go:515-575` (`parseExpenseForm` delegates)
 - Create: `internal/services/mcpsvc/curate/upsert.go`
 - Create: `internal/services/mcpsvc/curate/upsert_test.go`
 - Modify: `internal/services/mcpsvc/curate/register.go`
@@ -1969,7 +1974,218 @@ The sparse-write problem the spec calls out for `/whatif/apply` applies here dir
 
 **Interfaces:**
 - Consumes: `ExpenseStore.LoadMajorExpenses/AddMajorExpense/UpdateMajorExpense`, `PinStore.SetTransactionPins`, `Deps.Snapshots`, `majorExpensesFile`, `transactionPinsFile`, `majorExpenseRow` (Tasks 3, 5).
-- Produces: `func registerUpsert(s *mcp.Server, deps Deps)`; `func validateExpense(models.MajorExpense) error`; `type upsertInput`; `type upsertOutput`.
+- Produces: `func majorexpenses.Validate(models.MajorExpense) error`; `func registerUpsert(s *mcp.Server, deps Deps)`; `type upsertInput`; `type upsertOutput`.
+
+- [ ] **Step 0a: Enumerate what depends on the rules before moving them**
+
+Run the `LSP` tool `findReferences` on `parseExpenseForm` (`internal/handlers/majorexpenses/handlers.go:515`) and report the union of files containing a caller — including test files — before editing. Do not derive this list from test-function names.
+
+`parseExpenseForm` itself is NOT moving: it still parses the HTTP form. Only the rules it applies after parsing move. Its existing tests must therefore keep passing **unchanged**, which is the extraction's own regression check.
+
+- [ ] **Step 0b: Record the before-coverage**
+
+```bash
+go test -coverprofile=/tmp/before-svc.out ./internal/services/majorexpenses/ && go tool cover -func=/tmp/before-svc.out | tail -1
+go test -coverprofile=/tmp/before-hnd.out ./internal/handlers/majorexpenses/ && go tool cover -func=/tmp/before-hnd.out | tail -1
+```
+
+- [ ] **Step 0c: Write `internal/services/majorexpenses/validate.go`**
+
+The error strings are copied **byte-for-byte** from `parseExpenseForm`. They are what the handler's existing tests assert on, and changing one turns a pure extraction into a behavior change.
+
+```go
+package majorexpenses
+
+import (
+	"fmt"
+	"strings"
+
+	"budget2/internal/models"
+)
+
+// maxNameLen bounds a definition's display name.
+const maxNameLen = 200
+
+// Validate reports whether a major-expense definition is one the app will
+// accept. It is the single source of these rules: the Major Expenses page
+// applies them to a parsed HTML form, and the MCP curation tools apply them
+// to a tool call, and the two must not drift.
+//
+// A definition is valid in exactly three configurations:
+//
+//  1. At least one keyword. An amount range is then optional and is used only
+//     to flag anomalies, not to decide whether a transaction matches.
+//  2. No keywords, but BOTH ExpectedMin and ExpectedMax set. This matches by
+//     amount alone, which is how a fixed-dollar charge whose description
+//     varies gets captured; setting them equal matches that one amount.
+//  3. No keywords and no bounds at all: a pin-only target, which matches
+//     nothing automatically and collects transactions the user pins to it by
+//     hand.
+//
+// Setting exactly one bound with no keyword is the rejected case. It matches
+// nothing on its own and almost always means the other bound was forgotten.
+//
+// Validate reads Name with surrounding whitespace ignored but does not modify
+// its argument; callers that persist the definition are expected to have
+// trimmed it already.
+func Validate(me models.MajorExpense) error {
+	name := strings.TrimSpace(me.Name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if len(name) > maxNameLen {
+		return fmt.Errorf("name is too long (max %d chars)", maxNameLen)
+	}
+	if me.ExpectedMin < 0 {
+		return fmt.Errorf("expected_min cannot be negative")
+	}
+	if me.ExpectedMax < 0 {
+		return fmt.Errorf("expected_max cannot be negative")
+	}
+	if me.ExpectedMin > 0 && me.ExpectedMax > 0 && me.ExpectedMin > me.ExpectedMax {
+		return fmt.Errorf("expected_min cannot exceed expected_max")
+	}
+	if len(me.Keywords) == 0 && (me.ExpectedMin > 0) != (me.ExpectedMax > 0) {
+		return fmt.Errorf("set BOTH Min and Max to match by amount, or leave both blank to create a pin-only target")
+	}
+	// A transfer filter only makes sense if it can match something
+	// automatically -- pin-only doesn't filter at load time. Require at least
+	// a keyword or an amount rule.
+	if me.IsInternalTransfer && len(me.Keywords) == 0 && me.ExpectedMin == 0 && me.ExpectedMax == 0 {
+		return fmt.Errorf("internal-transfer filter needs at least one keyword or an amount range to match against")
+	}
+	return nil
+}
+```
+
+- [ ] **Step 0d: Write `internal/services/majorexpenses/validate_test.go`**
+
+```go
+package majorexpenses
+
+import (
+	"strings"
+	"testing"
+
+	"budget2/internal/models"
+)
+
+func TestValidateAcceptsTheThreeValidShapes(t *testing.T) {
+	cases := map[string]models.MajorExpense{
+		"keyword only":            {Name: "Mortgage", Keywords: []string{"mortgage"}},
+		"keyword with a range":    {Name: "Mortgage", Keywords: []string{"mortgage"}, ExpectedMin: 1900, ExpectedMax: 2100},
+		"amount only, both bounds": {Name: "Quarterly Check", ExpectedMin: 450, ExpectedMax: 450},
+		"pin-only target":         {Name: "Amazon — Books"},
+		"transfer with a keyword": {Name: "Transfer", Keywords: []string{"xfer"}, IsInternalTransfer: true},
+	}
+	for name, me := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := Validate(me); err != nil {
+				t.Errorf("Validate(%+v) = %v, want nil", me, err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsTheInvalidShapes(t *testing.T) {
+	cases := []struct {
+		name string
+		me   models.MajorExpense
+		want string
+	}{
+		{"no name", models.MajorExpense{Keywords: []string{"x"}}, "name is required"},
+		{"blank name", models.MajorExpense{Name: "   ", Keywords: []string{"x"}}, "name is required"},
+		{"name too long", models.MajorExpense{Name: strings.Repeat("a", 201), Keywords: []string{"x"}}, "too long"},
+		{"negative min", models.MajorExpense{Name: "A", ExpectedMin: -1}, "expected_min cannot be negative"},
+		{"negative max", models.MajorExpense{Name: "A", ExpectedMax: -1}, "expected_max cannot be negative"},
+		{"min above max", models.MajorExpense{Name: "A", ExpectedMin: 100, ExpectedMax: 10}, "cannot exceed"},
+		{"only min, no keyword", models.MajorExpense{Name: "A", ExpectedMin: 100}, "set BOTH Min and Max"},
+		{"only max, no keyword", models.MajorExpense{Name: "A", ExpectedMax: 100}, "set BOTH Min and Max"},
+		{"transfer with nothing to match", models.MajorExpense{Name: "A", IsInternalTransfer: true}, "internal-transfer filter needs"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(tc.me)
+			if err == nil {
+				t.Fatalf("Validate(%+v) = nil, want an error mentioning %q", tc.me, tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidateAllowsOnlyAMaxWhenAKeywordIsPresent pins the asymmetry: the
+// both-or-neither rule applies only when there is no keyword, because a
+// keyword-matched group uses a one-sided bound purely for anomaly detection.
+func TestValidateAllowsOnlyAMaxWhenAKeywordIsPresent(t *testing.T) {
+	if err := Validate(models.MajorExpense{Name: "A", Keywords: []string{"x"}, ExpectedMax: 100}); err != nil {
+		t.Errorf("Validate = %v, want nil", err)
+	}
+}
+```
+
+- [ ] **Step 0e: Delegate from the handler**
+
+In `internal/handlers/majorexpenses/handlers.go`, `parseExpenseForm` keeps its parsing and its two `invalid expected_min/expected_max: %w` wrapping errors — those are parse failures, not rule violations — and hands the assembled definition to the service for the rules:
+
+```go
+// parseExpenseForm extracts a MajorExpense from form values without
+// stamping ID/timestamps — those are set by the storage layer or
+// preserved on update. The rules for what makes a definition valid live
+// in majorexpenseengine.Validate, shared with the MCP curation tools so
+// the page and the tools cannot disagree about what is acceptable.
+func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
+	expectedMin, err := parseFormFloat(r, "expected_min")
+	if err != nil {
+		return models.MajorExpense{}, fmt.Errorf("invalid expected_min: %w", err)
+	}
+	expectedMax, err := parseFormFloat(r, "expected_max")
+	if err != nil {
+		return models.MajorExpense{}, fmt.Errorf("invalid expected_max: %w", err)
+	}
+
+	me := models.MajorExpense{
+		Name:               strings.TrimSpace(r.FormValue("name")),
+		Keywords:           splitAndTrim(r.FormValue("keywords"), ","),
+		ExpectedMin:        expectedMin,
+		ExpectedMax:        expectedMax,
+		Notes:              strings.TrimSpace(r.FormValue("notes")),
+		IsInternalTransfer: parseFormBool(r, "is_internal_transfer"),
+	}
+	if err := majorexpenseengine.Validate(me); err != nil {
+		return models.MajorExpense{}, err
+	}
+	return me, nil
+}
+```
+
+Note the one deliberate ordering change: both amount fields are now parsed before the name is checked, so a request with both a blank name and an unparseable amount reports the amount error rather than the name error. If any existing test asserts the opposite, restore the original order by parsing the name first and calling `Validate` at the end — the rules are what is being shared, not the sequencing.
+
+- [ ] **Step 0f: Run the affected packages and record the after-coverage**
+
+```bash
+go test ./internal/services/majorexpenses/ ./internal/handlers/majorexpenses/
+go test -coverprofile=/tmp/after-svc.out ./internal/services/majorexpenses/ && go tool cover -func=/tmp/after-svc.out | tail -1
+go test -coverprofile=/tmp/after-hnd.out ./internal/handlers/majorexpenses/ && go tool cover -func=/tmp/after-hnd.out | tail -1
+```
+
+Expected: PASS, with **no edits to any existing handler test**. Report all four coverage numbers. If a handler test had to change, say exactly which and why — that means the extraction changed behavior and is no longer a move.
+
+- [ ] **Step 0g: Commit the extraction on its own**
+
+```bash
+go build ./... && go vet ./... && go test ./... && staticcheck ./...
+git add -A
+git commit -m "refactor(majorexpenses): extract definition validation into the service
+
+The MCP curation tools need the same rules the Major Expenses form applies,
+and a service may not import a handlers package. Sharing them beats a second
+copy that can drift: the page and the tools would disagree about what a valid
+definition is with nothing to catch it. parseExpenseForm keeps its parsing
+and its parse-failure wrapping; only the rules moved, error strings included."
+```
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2132,6 +2348,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/majorexpenses"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -2154,40 +2371,6 @@ type upsertOutput struct {
 	Expense      majorExpenseRow `json:"expense"`
 	Pinned       bool            `json:"pinned"`
 	SnapshotPath string          `json:"snapshot_path,omitempty"`
-}
-
-// validateExpense mirrors internal/handlers/majorexpenses.parseExpenseForm's
-// rules exactly, so a definition the page would refuse is refused here too.
-// An expense is valid in three configurations: at least one keyword (range
-// optional, anomaly-only when set); no keywords with BOTH bounds set (match
-// by amount, for fixed-dollar charges whose description varies); or no
-// keywords and no bounds at all (a pin-only target the user attaches
-// transactions to by hand). Only one bound set without a keyword is the
-// half-finished case that usually means the other half was forgotten.
-func validateExpense(me models.MajorExpense) error {
-	name := strings.TrimSpace(me.Name)
-	if name == "" {
-		return fmt.Errorf("name is required")
-	}
-	if len(name) > 200 {
-		return fmt.Errorf("name is too long (max 200 chars)")
-	}
-	if me.ExpectedMin < 0 {
-		return fmt.Errorf("expected_min cannot be negative")
-	}
-	if me.ExpectedMax < 0 {
-		return fmt.Errorf("expected_max cannot be negative")
-	}
-	if me.ExpectedMin > 0 && me.ExpectedMax > 0 && me.ExpectedMin > me.ExpectedMax {
-		return fmt.Errorf("expected_min cannot exceed expected_max")
-	}
-	if len(me.Keywords) == 0 && (me.ExpectedMin > 0) != (me.ExpectedMax > 0) {
-		return fmt.Errorf("set BOTH expected_min and expected_max to match by amount, or leave both unset to create a pin-only target")
-	}
-	if me.IsInternalTransfer && len(me.Keywords) == 0 && me.ExpectedMin == 0 && me.ExpectedMax == 0 {
-		return fmt.Errorf("an internal-transfer filter needs at least one keyword or an amount range to match against")
-	}
-	return nil
 }
 
 // trimKeywords drops blank entries, matching the page's splitAndTrim. A
@@ -2270,7 +2453,9 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 			target.IsInternalTransfer = *in.IsInternalTransfer
 		}
 
-		if err := validateExpense(target); err != nil {
+		// The page's own rules, shared rather than restated, so a definition
+		// the Major Expenses form would refuse is refused here identically.
+		if err := majorexpenses.Validate(target); err != nil {
 			return nil, upsertOutput{}, err
 		}
 
@@ -2827,5 +3012,8 @@ Report any disagreement between a tool figure and the page rather than adjusting
 **Deliberate deviations, both justified inline:**
 1. `Snapshotter` goes to `mcpsvc/snapshot`, not `mcpsvc` — the spec's placement is an import cycle.
 2. `pin_transactions` also unpins and `delete_major_expense` also restores. The spec's table lists neither; without them an MCP-driven mistake can only be undone from the browser.
+3. Task 6 extracts the definition-validation rules into `internal/services/majorexpenses.Validate` rather than giving `curate` its own copy. The spec's "Where the logic lives" section says Phase 3 needs no extraction, and for the *analysis* that holds — `majorexpenses.Match` was already a service. The validation rules were not, and a second copy of them would let the page and the tools disagree about what a valid definition is with nothing to catch it.
+
+**Deliberate duplications that remain, and why:** `parseWindowDate` is copied from `mcpsvc/spend` (sibling packages, neither may import the other; 8 lines), and the `$100` / 30-day thresholds are copied from the handler (a service may not import a handlers package) but are pinned by `TestThresholdsMatchThePage`, so a change on the page's side that is not mirrored here fails a test rather than silently disagreeing.
 
 **Not in scope, carried to Phase 4:** the guarded two-step confirm-token pattern (`restore_backup`, `set_encryption`, `shutdown_server`), and the still-open question of `/whatif/state` and `/whatif/apply`, which have had no consumer since Phase 1 and remain an unauthenticated JSON write path.

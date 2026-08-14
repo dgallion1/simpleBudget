@@ -115,6 +115,29 @@ type view struct {
 	Match    majorexpenses.MatchResult
 }
 
+// outflowHashSet returns every hash this view considers an in-window
+// outflow, matched or not -- the universe pin_transactions may target when a
+// caller names hashes directly rather than supplying a filter. A hash
+// missing from this set is either an income row (outflows are filtered in
+// before Match runs), outside the window, or does not correspond to any
+// transaction pageView loaded at all.
+func (v *view) outflowHashSet() map[string]bool {
+	set := make(map[string]bool)
+	for _, group := range v.Match.Groups {
+		for _, t := range group {
+			if t.Hash != "" {
+				set[t.Hash] = true
+			}
+		}
+	}
+	for _, t := range v.Match.Unmatched {
+		if t.Hash != "" {
+			set[t.Hash] = true
+		}
+	}
+	return set
+}
+
 // pageView reproduces internal/handlers/majorexpenses.buildPageData's
 // pipeline exactly: resolve the window, drop transactions the user resolved
 // as duplicates, narrow to the window, keep only outflows, then match.

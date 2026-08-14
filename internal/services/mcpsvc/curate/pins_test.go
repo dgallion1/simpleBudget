@@ -156,6 +156,93 @@ func TestPinTransactionsRejectsAmbiguousOrEmptyTargeting(t *testing.T) {
 	}
 }
 
+// TestPinTransactionsRejectsAnIncomeRowHash covers the fix's headline
+// scenario: a hash for an income row (never a matched or unmatched outflow,
+// since pageView filters to outflows before matching) must be skipped rather
+// than silently pinned and inertly ignored forever.
+func TestPinTransactionsRejectsAnIncomeRowHash(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	mortgageExpense(t, deps)
+	if _, err := deps.Pins.SetTransactionPins(map[string]string{"seed": "me-mortgage"}); err != nil {
+		t.Fatalf("seed pins: %v", err)
+	}
+	income := models.Transaction{Date: day(2026, 2, 20), Description: "MORTGAGE ESCROW DEPOSIT", Amount: 1200}
+	cs := connect(t, deps)
+
+	out := decodeToolResult[pinOutput](t, call(t, cs, "pin_transactions", map[string]any{
+		"expense_id": "me-mortgage",
+		"hashes":     []any{income.ComputeHash()},
+	}))
+	if out.Matched != 0 || out.Changed != 0 {
+		t.Errorf("matched/changed = %d/%d, want 0/0 -- an income row is never pinnable", out.Matched, out.Changed)
+	}
+	if len(out.UnknownHashes) != 1 || out.UnknownHashes[0] != income.ComputeHash() {
+		t.Errorf("unknown_hashes = %v, want the income hash reported back", out.UnknownHashes)
+	}
+	if out.SnapshotPath != "" {
+		t.Error("nothing was written, so nothing should have been snapshotted")
+	}
+	pins, _ := deps.Pins.LoadTransactionPins()
+	if _, ok := pins[income.ComputeHash()]; ok {
+		t.Error("the income row must not have been pinned")
+	}
+}
+
+// TestPinTransactionsRejectsANonexistentHash covers a mistyped or
+// hallucinated hash that matches no transaction at all.
+func TestPinTransactionsRejectsANonexistentHash(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	mortgageExpense(t, deps)
+	cs := connect(t, deps)
+
+	out := decodeToolResult[pinOutput](t, call(t, cs, "pin_transactions", map[string]any{
+		"expense_id": "me-mortgage",
+		"hashes":     []any{"not-a-real-hash"},
+	}))
+	if out.Matched != 0 {
+		t.Errorf("matched = %d, want 0", out.Matched)
+	}
+	if len(out.UnknownHashes) != 1 || out.UnknownHashes[0] != "not-a-real-hash" {
+		t.Errorf("unknown_hashes = %v, want the bogus hash reported back", out.UnknownHashes)
+	}
+	if out.Note == "" {
+		t.Error("expected a note explaining nothing was targeted")
+	}
+}
+
+// TestPinTransactionsPinsTheValidHashesInAMixAndReportsTheRest covers a
+// call naming a blend of a real pinnable outflow, an income row, and a
+// nonexistent hash: the valid one must still be pinned, and the other two
+// reported back rather than silently dropped.
+func TestPinTransactionsPinsTheValidHashesInAMixAndReportsTheRest(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	mortgageExpense(t, deps)
+	if _, err := deps.Pins.SetTransactionPins(map[string]string{"seed": "me-mortgage"}); err != nil {
+		t.Fatalf("seed pins: %v", err)
+	}
+	roof := models.Transaction{Date: day(2026, 2, 14), Description: "ACME ROOFING", Amount: -4500}
+	income := models.Transaction{Date: day(2026, 2, 20), Description: "MORTGAGE ESCROW DEPOSIT", Amount: 1200}
+	cs := connect(t, deps)
+
+	out := decodeToolResult[pinOutput](t, call(t, cs, "pin_transactions", map[string]any{
+		"expense_id": "me-mortgage",
+		"hashes":     []any{roof.ComputeHash(), income.ComputeHash(), "bogus"},
+	}))
+	if out.Matched != 1 || out.Changed != 1 {
+		t.Errorf("matched/changed = %d/%d, want 1/1 -- only the roofing hash is a pinnable outflow", out.Matched, out.Changed)
+	}
+	if len(out.UnknownHashes) != 2 {
+		t.Errorf("unknown_hashes = %v, want the income row and the bogus hash", out.UnknownHashes)
+	}
+	if out.Note == "" {
+		t.Error("expected a note about the skipped hashes even though some were pinned")
+	}
+	pins, _ := deps.Pins.LoadTransactionPins()
+	if pins[roof.ComputeHash()] != "me-mortgage" {
+		t.Errorf("the valid hash must still have been pinned: %+v", pins)
+	}
+}
+
 func TestPinTransactionsReportsAFilterThatMatchedNothing(t *testing.T) {
 	deps, _ := newDeps(t, ledger())
 	mortgageExpense(t, deps)

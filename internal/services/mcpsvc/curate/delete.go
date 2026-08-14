@@ -2,7 +2,9 @@ package curate
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
@@ -46,9 +48,11 @@ func registerDelete(s *mcp.Server, deps Deps) {
 			"unmatched in list_exceptions and the app's unmatched spending total grows by their sum. A " +
 			"restore reattaches a captured pin only if that transaction is not currently pinned somewhere " +
 			"else, so a hash reassigned in the meantime keeps its newer pin. Use list_major_expenses with " +
-			"include_deleted to see what can be restored. The affected files are each copied to a .bak before " +
-			"this session's first change to them. An already-open Major Expenses page does NOT refresh itself " +
-			"-- it shows stale data until reloaded.",
+			"include_deleted to see what can be restored. Of the three files this touches, each one that " +
+			"already exists is copied to a .bak before this session's first change to it; a file that does " +
+			"not exist yet (a fresh install with nothing to back up) is skipped, not an error, but any OTHER " +
+			"failure to read an existing file aborts the whole call before anything is written. An " +
+			"already-open Major Expenses page does NOT refresh itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in deleteInput) (res *mcp.CallToolResult, out deleteOutput, err error) {
 		defer recoverToError("delete_major_expense", &err)
 
@@ -99,14 +103,24 @@ func registerDelete(s *mcp.Server, deps Deps) {
 
 		// Before the write, never after: a failed snapshot must abort it.
 		// Archive and restore each rewrite all three files, so all three are
-		// backed up; a missing one has no prior state to lose, so its absence
-		// is not fatal here the way it is for a single-file write.
+		// backed up. The ONLY tolerated Ensure failure is the source file not
+		// existing yet -- legitimate on a fresh install, where there is no
+		// prior state to lose -- distinguished via errors.Is(err,
+		// fs.ErrNotExist); Ensure wraps os.ReadFile's error with %w, and
+		// os.ReadFile's *fs.PathError satisfies errors.Is(fs.ErrNotExist) for
+		// a missing file. Any OTHER error (permission denied, a transient
+		// read failure, ...) aborts the whole operation before anything is
+		// written: it is not evidence the file never existed, and letting the
+		// write proceed could destroy that file's contents with no backup.
 		var paths []string
 		now := time.Now()
 		for _, f := range []string{majorExpensesFile, deletedMajorExpensesFile, transactionPinsFile} {
 			p, err := deps.Snapshots.Ensure(f, now)
 			if err != nil {
-				continue
+				if errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
+				return nil, deleteOutput{}, fmt.Errorf("refusing to write: could not back up %s: %w", f, err)
 			}
 			paths = append(paths, p)
 		}

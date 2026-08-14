@@ -1,6 +1,8 @@
 package curate
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -130,5 +132,108 @@ func TestUpsertRejectsAnUnknownID(t *testing.T) {
 	msg := toolErrorText(t, call(t, cs, "upsert_major_expense", map[string]any{"id": "nope", "notes": "x"}))
 	if !strings.Contains(msg, "nope") {
 		t.Errorf("error should name the missing id, got: %s", msg)
+	}
+}
+
+// TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken covers the failure
+// scenario the fix targets: transaction_pins.json already exists (so a
+// missing-file skip does not apply -- that case is covered separately by
+// TestUpsertCanCreateAndPinInOneCall, which never seeds the file at all) but
+// cannot be read. The pin write must be skipped, not silently proceed with no
+// backup, while the definition update itself still goes through.
+func TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken(t *testing.T) {
+	deps, dir := newDeps(t, ledger())
+	if _, err := deps.Expenses.AddMajorExpense(models.MajorExpense{
+		ID: "me-mortgage", Name: "Mortgage", Keywords: []string{"mortgage"}, Notes: "original",
+	}); err != nil {
+		t.Fatalf("AddMajorExpense: %v", err)
+	}
+	if _, err := deps.Pins.SetTransactionPins(map[string]string{"seed": "me-other"}); err != nil {
+		t.Fatalf("seed pins: %v", err)
+	}
+	pinsPath := filepath.Join(dir, "transaction_pins.json")
+	before, err := os.ReadFile(pinsPath)
+	if err != nil {
+		t.Fatalf("read pins before: %v", err)
+	}
+	if err := os.Chmod(pinsPath, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pinsPath, 0o644) })
+	cs := connect(t, deps)
+
+	roof := models.Transaction{Date: day(2026, 2, 14), Description: "ACME ROOFING", Amount: -4500}
+	out := decodeToolResult[upsertOutput](t, call(t, cs, "upsert_major_expense", map[string]any{
+		"id": "me-mortgage", "notes": "refinanced 2026", "pin_hash": roof.ComputeHash(),
+	}))
+	if out.Pinned {
+		t.Error("the pin must not be written when its snapshot cannot be taken")
+	}
+	if out.PinSnapshotPath != "" {
+		t.Errorf("pin_snapshot_path = %q, want empty since nothing was snapshotted", out.PinSnapshotPath)
+	}
+	if out.Note == "" {
+		t.Error("expected a note explaining the pin was skipped")
+	}
+
+	// The definition update must have gone through regardless.
+	list, _ := deps.Expenses.LoadMajorExpenses()
+	if list[0].Notes != "refinanced 2026" {
+		t.Errorf("notes = %q, want the update applied despite the pin skip", list[0].Notes)
+	}
+
+	if err := os.Chmod(pinsPath, 0o644); err != nil {
+		t.Fatalf("chmod restore: %v", err)
+	}
+	after, err := os.ReadFile(pinsPath)
+	if err != nil {
+		t.Fatalf("read pins after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Error("transaction_pins.json changed despite the backup failing")
+	}
+}
+
+// TestUpsertMergesIsInternalTransferOnUpdate is the load-bearing test for
+// merging a bool field that defaults false: an unconditional assignment from
+// a zero-value input struct would blank it and pass unnoticed, since the
+// existing fixtures never seed it true.
+func TestUpsertMergesIsInternalTransferOnUpdate(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	if _, err := deps.Expenses.AddMajorExpense(models.MajorExpense{
+		ID: "me-transfer", Name: "Savings Transfer", Keywords: []string{"transfer"}, IsInternalTransfer: true,
+	}); err != nil {
+		t.Fatalf("AddMajorExpense: %v", err)
+	}
+	cs := connect(t, deps)
+
+	call(t, cs, "upsert_major_expense", map[string]any{"id": "me-transfer", "notes": "checked"})
+	list, _ := deps.Expenses.LoadMajorExpenses()
+	if !list[0].IsInternalTransfer {
+		t.Error("is_internal_transfer must survive an update that does not mention it")
+	}
+	if list[0].Notes != "checked" {
+		t.Errorf("notes = %q, want the update applied", list[0].Notes)
+	}
+}
+
+// TestUpsertClearsAnAmountBoundWithExplicitZero covers passing 0 explicitly,
+// distinct from omitting the field (which leaves it alone).
+func TestUpsertClearsAnAmountBoundWithExplicitZero(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	if _, err := deps.Expenses.AddMajorExpense(models.MajorExpense{
+		ID: "me-mortgage", Name: "Mortgage", Keywords: []string{"mortgage"}, ExpectedMin: 1900, ExpectedMax: 2100,
+	}); err != nil {
+		t.Fatalf("AddMajorExpense: %v", err)
+	}
+	cs := connect(t, deps)
+
+	call(t, cs, "upsert_major_expense", map[string]any{"id": "me-mortgage", "expected_max": 0.0})
+	list, _ := deps.Expenses.LoadMajorExpenses()
+	if list[0].ExpectedMax != 0 {
+		t.Errorf("expected_max = %v, want cleared by the explicit 0", list[0].ExpectedMax)
+	}
+	if list[0].ExpectedMin != 1900 {
+		t.Errorf("expected_min = %v, want left alone", list[0].ExpectedMin)
 	}
 }

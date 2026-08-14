@@ -2,7 +2,9 @@ package curate
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
@@ -25,11 +27,13 @@ type upsertInput struct {
 }
 
 type upsertOutput struct {
-	ID           string          `json:"id"`
-	Created      bool            `json:"created"`
-	Expense      majorExpenseRow `json:"expense"`
-	Pinned       bool            `json:"pinned"`
-	SnapshotPath string          `json:"snapshot_path,omitempty"`
+	ID              string          `json:"id"`
+	Created         bool            `json:"created"`
+	Expense         majorExpenseRow `json:"expense"`
+	Pinned          bool            `json:"pinned"`
+	SnapshotPath    string          `json:"snapshot_path,omitempty"`
+	PinSnapshotPath string          `json:"pin_snapshot_path,omitempty"`
+	Note            string          `json:"note,omitempty"`
 }
 
 // trimKeywords drops blank entries, matching the page's splitAndTrim. A
@@ -61,8 +65,11 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 			"instead of counted as spending, which changes what every other tool reports, so do not set it " +
 			"unless the user says the money did not leave their household. pin_hash pins one transaction to " +
 			"the expense in the same call, which is how you make sure the charge that prompted the expense is " +
-			"matched even when the keywords would have missed it. The definitions file is copied to a .bak " +
-			"before this session's first change to it. An already-open Major Expenses page does NOT refresh " +
+			"matched even when the keywords would have missed it -- but pin_hash has its own backup step, " +
+			"separate from the definition write, and if THAT backup fails the definition is still saved while " +
+			"the pin is skipped; check `pinned` and `note` rather than assuming pin_hash succeeded because the " +
+			"call as a whole did. The definitions file, and the pins file when pin_hash is used, are each " +
+			"copied to a .bak before this session's first change to them. An already-open Major Expenses page does NOT refresh " +
 			"itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in upsertInput) (res *mcp.CallToolResult, out upsertOutput, err error) {
 		defer recoverToError("upsert_major_expense", &err)
@@ -118,11 +125,12 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 			return nil, upsertOutput{}, err
 		}
 
-		// Before the write, never after: a failed snapshot must abort it. A
-		// create is the one case where the definitions file may legitimately
-		// not exist yet, and Ensure treats a missing source as an error, so a
-		// first-ever create skips the snapshot -- there is no prior state to
-		// recover.
+		// Before the write, never after: a failed snapshot must abort it. The
+		// guard is len(existing) > 0, not create/edit: an empty existing list
+		// covers both a first-ever create (the file may legitimately not
+		// exist yet, and Ensure treats a missing source as an error) AND an
+		// edit of a file that exists but currently holds zero expenses --
+		// either way there is nothing on disk yet that a snapshot could lose.
 		var snapPath string
 		if len(existing) > 0 {
 			snapPath, err = deps.Snapshots.Ensure(majorExpensesFile, time.Now())
@@ -156,10 +164,25 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 
 		// Pin failure does not roll back the create, matching the page's
 		// create-and-pin affordance: the definition is the durable part and
-		// the pin can be reapplied with pin_transactions.
+		// the pin can be reapplied with pin_transactions. But the pin write
+		// itself still needs its own backup first, same as every other write
+		// in this package -- a snapshot failure here skips the pin rather
+		// than writing transaction_pins.json with no recovery path. A missing
+		// pins file is the one tolerated Ensure failure, exactly like the
+		// majorExpensesFile guard above and delete.go's tolerance for a file
+		// that legitimately doesn't exist yet: with nothing on disk, there is
+		// nothing a backup could protect, so the pin proceeds unsnapshotted.
+		// Any OTHER Ensure failure (the file exists but couldn't be read)
+		// skips the pin write entirely.
 		if h := strings.TrimSpace(in.PinHash); h != "" {
-			if _, err := deps.Pins.SetTransactionPins(map[string]string{h: target.ID}); err == nil {
+			pinSnapPath, snapErr := deps.Snapshots.Ensure(transactionPinsFile, time.Now())
+			if snapErr != nil && !errors.Is(snapErr, fs.ErrNotExist) {
+				out.Note = fmt.Sprintf(
+					"the definition was saved, but the pin was skipped because %s could not be backed up first: %v",
+					transactionPinsFile, snapErr)
+			} else if _, err := deps.Pins.SetTransactionPins(map[string]string{h: target.ID}); err == nil {
 				out.Pinned = true
+				out.PinSnapshotPath = pinSnapPath // empty when there was no prior file to snapshot
 			}
 		}
 		return nil, out, nil

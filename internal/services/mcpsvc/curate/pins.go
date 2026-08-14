@@ -36,14 +36,15 @@ type pinInput struct {
 }
 
 type pinOutput struct {
-	ExpenseID    string   `json:"expense_id,omitempty"`
-	ExpenseName  string   `json:"expense_name,omitempty"`
-	Unpinned     bool     `json:"unpinned"`
-	Matched      int      `json:"matched"`
-	Changed      int      `json:"changed"`
-	Hashes       []string `json:"hashes"`
-	SnapshotPath string   `json:"snapshot_path,omitempty"`
-	Note         string   `json:"note,omitempty"`
+	ExpenseID     string   `json:"expense_id,omitempty"`
+	ExpenseName   string   `json:"expense_name,omitempty"`
+	Unpinned      bool     `json:"unpinned"`
+	Matched       int      `json:"matched"`
+	Changed       int      `json:"changed"`
+	Hashes        []string `json:"hashes"`
+	UnknownHashes []string `json:"unknown_hashes,omitempty"`
+	SnapshotPath  string   `json:"snapshot_path,omitempty"`
+	Note          string   `json:"note,omitempty"`
 }
 
 // resolveFilter returns the hashes of every in-window outflow the filter
@@ -105,11 +106,15 @@ func registerPin(s *mcp.Server, deps Deps) {
 			"to remove pins instead; the transactions then fall back to keyword and amount matching, and " +
 			"expense_id is ignored. A hash is derived from date + lower-cased description + amount, so two " +
 			"genuinely distinct transactions sharing all three share one hash and are pinned or unpinned " +
-			"TOGETHER. `matched` is how many transactions were targeted and `changed` how many pins actually " +
-			"differed, so changed can be smaller when some were already pinned where you asked. The pins file " +
-			"is copied to a .bak before this session's first change to it; later changes in the same session " +
-			"are not separately recoverable. An already-open Major Expenses page does NOT refresh itself -- it " +
-			"shows stale data until reloaded.",
+			"TOGETHER. When pinning (not unpinning), named `hashes` are checked against the in-window outflows " +
+			"pageView reports; a hash for an income row, one outside the window, or one that matches nothing is " +
+			"skipped rather than silently written -- it comes back in `unknown_hashes` with a `note` saying so, " +
+			"and if none of the named hashes survive, nothing is written and nothing is snapshotted, same as a " +
+			"filter matching zero rows. `matched` counts only the hashes that were actually targeted (i.e. " +
+			"excluding unknown_hashes) and `changed` how many pins actually differed, so changed can be smaller " +
+			"when some were already pinned where you asked. The pins file is copied to a .bak before this " +
+			"session's first change to it; later changes in the same session are not separately recoverable. An " +
+			"already-open Major Expenses page does NOT refresh itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pinInput) (res *mcp.CallToolResult, out pinOutput, err error) {
 		defer recoverToError("pin_transactions", &err)
 
@@ -141,14 +146,39 @@ func registerPin(s *mcp.Server, deps Deps) {
 			}
 		}
 
-		var hashes []string
+		var hashes, unknownHashes []string
 		if hasHashes {
 			seen := make(map[string]bool, len(in.Hashes))
+			var deduped []string
 			for _, h := range in.Hashes {
 				if h = strings.TrimSpace(h); h != "" && !seen[h] {
 					seen[h] = true
-					hashes = append(hashes, h)
+					deduped = append(deduped, h)
 				}
+			}
+			if in.Unpin {
+				// Unpinning a hash that is no longer a current in-window
+				// outflow (the transaction was deleted, resolved as a
+				// duplicate, or the window moved) is harmless cleanup, not
+				// the dead-key-accretion failure mode this check exists
+				// for -- SetTransactionPins just no-ops on a hash it does
+				// not have pinned. So the validation below applies only to
+				// pinning, not to unpin.
+				hashes = deduped
+			} else {
+				v, verr := deps.pageView("", "")
+				if verr != nil {
+					return nil, pinOutput{}, verr
+				}
+				valid := v.outflowHashSet()
+				for _, h := range deduped {
+					if valid[h] {
+						hashes = append(hashes, h)
+					} else {
+						unknownHashes = append(unknownHashes, h)
+					}
+				}
+				sort.Strings(unknownHashes)
 			}
 		} else {
 			hashes, err = deps.resolveFilter(*in.Filter)
@@ -164,14 +194,23 @@ func registerPin(s *mcp.Server, deps Deps) {
 
 		out = pinOutput{
 			ExpenseID: in.ExpenseID, ExpenseName: expenseName, Unpinned: in.Unpin,
-			Matched: len(hashes), Hashes: hashes,
+			Matched: len(hashes), Hashes: hashes, UnknownHashes: unknownHashes,
 		}
 		if in.Unpin {
 			out.ExpenseID = ""
 		}
 		if len(hashes) == 0 {
 			out.Hashes = []string{}
-			out.Note = "nothing was targeted, so nothing was written; the filter matched no in-window outflow"
+			switch {
+			case hasHashes && len(unknownHashes) > 0:
+				out.Note = "nothing was targeted, so nothing was written; none of the named hashes are " +
+					"pinnable in-window outflows -- see unknown_hashes for what was skipped (an income row, " +
+					"a transaction outside the window, or a hash that matches nothing)"
+			case hasHashes:
+				out.Note = "nothing was targeted, so nothing was written; no hash was supplied after trimming"
+			default:
+				out.Note = "nothing was targeted, so nothing was written; the filter matched no in-window outflow"
+			}
 			return nil, out, nil
 		}
 
@@ -195,8 +234,17 @@ func registerPin(s *mcp.Server, deps Deps) {
 			return nil, pinOutput{}, err
 		}
 		out.Changed = changed
-		if changed == 0 {
+		switch {
+		case changed == 0 && len(unknownHashes) > 0:
+			out.Note = fmt.Sprintf(
+				"every targeted transaction was already in that state; nothing changed, and %d named hash(es) were skipped as not pinnable in-window outflows (see unknown_hashes)",
+				len(unknownHashes))
+		case changed == 0:
 			out.Note = "every targeted transaction was already in that state; nothing changed"
+		case len(unknownHashes) > 0:
+			out.Note = fmt.Sprintf(
+				"%d named hash(es) were skipped as not pinnable in-window outflows (see unknown_hashes)",
+				len(unknownHashes))
 		}
 		return nil, out, nil
 	})

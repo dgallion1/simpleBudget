@@ -34,8 +34,7 @@ const (
 // major expense, pin/unpin transactions) land in later tasks.
 const (
 	//lint:ignore U1000 consumed by upsert/delete-major-expense in a later task
-	majorExpensesFile = "major_expenses.json"
-	//lint:ignore U1000 consumed by pin/unpin-transactions in a later task
+	majorExpensesFile   = "major_expenses.json"
 	transactionPinsFile = "transaction_pins.json"
 	//lint:ignore U1000 consumed by delete/restore-major-expense in a later task
 	deletedMajorExpensesFile = "deleted_major_expenses.json"
@@ -234,4 +233,5 @@ func formatDay(t time.Time) string {
 func Register(s *mcp.Server, deps Deps) {
 	registerListExpenses(s, deps)
 	registerListExceptions(s, deps)
+	registerPin(s, deps)
 }

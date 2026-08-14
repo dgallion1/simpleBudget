@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"budget2/internal/models"
@@ -27,12 +28,26 @@ import (
 
 const aliasFile = "aliases.json"
 
-// DataLoader handles loading and preprocessing of financial data from CSV files
+// DataLoader handles loading and preprocessing of financial data from CSV files.
+//
+// It is safe for concurrent use. Two mutexes with distinct jobs:
+//
+//   - stateMu guards the derived fields LoadData stamps and later callers
+//     read. Held only across the assignment or the read, never across file
+//     I/O.
+//   - writeMu (see transaction_pins.go) makes each load->modify->save
+//     sequence over a JSON sidecar file one critical section.
+//
+// No method holds both. stateMu sites do no file I/O; writeMu sites touch no
+// derived state.
 type DataLoader struct {
-	CSVDirectory          string
-	FilteredTransferCount int
+	CSVDirectory string
+	store        *storage.Storage
+
+	// stateMu guards every field below it.
+	stateMu               sync.RWMutex
+	filteredTransferCount int
 	enabledFiles          map[string]bool
-	store                 *storage.Storage
 
 	// Populated by every LoadData call. Read-only for callers.
 	unresolvedDuplicates []DuplicatePair
@@ -128,10 +143,36 @@ func buildColumnIndex(header []string) map[string]int {
 
 // SetEnabledFiles sets which files should be loaded
 func (dl *DataLoader) SetEnabledFiles(files []string) {
-	dl.enabledFiles = make(map[string]bool)
+	set := make(map[string]bool, len(files))
 	for _, f := range files {
-		dl.enabledFiles[f] = true
+		set[f] = true
 	}
+	dl.stateMu.Lock()
+	dl.enabledFiles = set
+	dl.stateMu.Unlock()
+}
+
+// enabledFilesSnapshot returns the current enabled-file set for one load to
+// work against. A caller that rewrites the set mid-load therefore affects the
+// next load, not this one -- which is both race-free and the behavior a user
+// clicking "apply" expects.
+func (dl *DataLoader) enabledFilesSnapshot() map[string]bool {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
+	out := make(map[string]bool, len(dl.enabledFiles))
+	for k, v := range dl.enabledFiles {
+		out[k] = v
+	}
+	return out
+}
+
+// FilteredTransfers returns how many internal transfers the most recent load
+// filtered out. Replaces the former exported FilteredTransferCount field,
+// which could not be read safely while another goroutine was loading.
+func (dl *DataLoader) FilteredTransfers() int {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
+	return dl.filteredTransferCount
 }
 
 // LoadData loads and combines data from all CSV files in the directory
@@ -163,6 +204,8 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 
 	var allTransactions []models.Transaction
 
+	enabled := dl.enabledFilesSnapshot()
+
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -171,7 +214,7 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 		filename := filepath.Base(file)
 
 		// Skip if file list is set and this file is not enabled
-		if len(dl.enabledFiles) > 0 && !dl.enabledFiles[filename] {
+		if len(enabled) > 0 && !enabled[filename] {
 			log.Printf("Skipping disabled file: %s", filename)
 			continue
 		}
@@ -529,9 +572,12 @@ func (dl *DataLoader) filterInternalTransfers(transactions []models.Transaction)
 		filtered = append(filtered, t)
 	}
 
-	dl.FilteredTransferCount = initialCount - len(filtered)
-	if dl.FilteredTransferCount > 0 {
-		log.Printf("Filtered %d internal transfers", dl.FilteredTransferCount)
+	count := initialCount - len(filtered)
+	dl.stateMu.Lock()
+	dl.filteredTransferCount = count
+	dl.stateMu.Unlock()
+	if count > 0 {
+		log.Printf("Filtered %d internal transfers", count)
 	}
 
 	return filtered
@@ -567,6 +613,8 @@ func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error) {
 
 	var infos []models.FileInfo
 
+	enabled := dl.enabledFilesSnapshot()
+
 	for _, file := range files {
 		info, err := os.Stat(file)
 		if err != nil {
@@ -589,16 +637,16 @@ func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error) {
 			}
 		}
 
-		enabled := true
-		if len(dl.enabledFiles) > 0 {
-			enabled = dl.enabledFiles[filename]
+		fileEnabled := true
+		if len(enabled) > 0 {
+			fileEnabled = enabled[filename]
 		}
 
 		infos = append(infos, models.FileInfo{
 			Name:         filename,
 			Path:         file,
 			Size:         info.Size(),
-			Enabled:      enabled,
+			Enabled:      fileEnabled,
 			Transactions: transCount,
 			MinDate:      minDate,
 			MaxDate:      maxDate,
@@ -725,12 +773,16 @@ func (dl *DataLoader) applyAliases(transactions []models.Transaction) []models.T
 // UnresolvedDuplicateCount returns the number of candidate pairs that
 // have not yet been resolved by the user. Recomputed on every LoadData.
 func (dl *DataLoader) UnresolvedDuplicateCount() int {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
 	return len(dl.unresolvedDuplicates)
 }
 
 // UnresolvedDuplicates returns the candidate pairs awaiting user
 // review, in detection order.
 func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
 	out := make([]DuplicatePair, len(dl.unresolvedDuplicates))
 	copy(out, dl.unresolvedDuplicates)
 	return out
@@ -740,6 +792,8 @@ func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair {
 // already resolved, sourced from the most recent load. The Left side
 // is the kept transaction; Right is the suppressed one.
 func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
 	out := make([]DuplicatePair, len(dl.resolvedDuplicates))
 	copy(out, dl.resolvedDuplicates)
 	return out
@@ -750,11 +804,15 @@ func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair {
 // transactions accordingly. Caches unresolved/resolved pairs on the
 // loader for handlers to read.
 func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []models.Transaction {
-	dl.unresolvedDuplicates = nil
-	dl.resolvedDuplicates = nil
+	var unresolved []DuplicatePair
+	var resolved []DuplicatePair
 
 	pairs := detectNearDuplicatePairs(txns)
 	if len(pairs) == 0 {
+		dl.stateMu.Lock()
+		dl.unresolvedDuplicates = unresolved
+		dl.resolvedDuplicates = resolved
+		dl.stateMu.Unlock()
 		return txns
 	}
 
@@ -771,8 +829,8 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 	}
 
 	for _, pair := range pairs {
-		decision, resolved := decisions[pair.Key]
-		if !resolved {
+		decision, isResolved := decisions[pair.Key]
+		if !isResolved {
 			// Tag both sides for badge rendering.
 			if i, ok := idxByHash[pair.Left.Hash]; ok {
 				txns[i].DuplicatePairKey = pair.Key
@@ -780,7 +838,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 			if i, ok := idxByHash[pair.Right.Hash]; ok {
 				txns[i].DuplicatePairKey = pair.Key
 			}
-			dl.unresolvedDuplicates = append(dl.unresolvedDuplicates, pair)
+			unresolved = append(unresolved, pair)
 			continue
 		}
 		switch decision.Outcome {
@@ -794,7 +852,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 			if pair.Left.Hash == decision.SuppressedHash {
 				leftKept, rightSuppressed = pair.Right, pair.Left
 			}
-			dl.resolvedDuplicates = append(dl.resolvedDuplicates, DuplicatePair{
+			resolved = append(resolved, DuplicatePair{
 				Key:   pair.Key,
 				Left:  leftKept,
 				Right: rightSuppressed,
@@ -803,5 +861,10 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 			// No-op: leave both transactions live and untagged.
 		}
 	}
+
+	dl.stateMu.Lock()
+	dl.unresolvedDuplicates = unresolved
+	dl.resolvedDuplicates = resolved
+	dl.stateMu.Unlock()
 	return txns
 }

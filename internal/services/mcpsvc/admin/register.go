@@ -125,4 +125,5 @@ func (d Deps) load() (*models.TransactionSet, error) {
 func Register(s *mcp.Server, deps Deps) {
 	registerStatus(s, deps)
 	registerFiles(s, deps)
+	registerListDuplicates(s, deps)
 }

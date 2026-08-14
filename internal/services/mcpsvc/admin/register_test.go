@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+var errNoLedger = errors.New("ledger unavailable")
 
 type stubTransactions struct {
 	ts  *models.TransactionSet
@@ -60,6 +63,28 @@ func newDeps(t *testing.T, txns []models.Transaction) (Deps, string) {
 		Backups:      svc,
 		Snapshots:    snapshot.New(dir, filepath.Join(dir, "snapshots")),
 	}, dir
+}
+
+// newLiveDeps builds Deps whose TransactionSource is the SAME real
+// *dataloader.DataLoader as Duplicates, over a CSV containing one bill-pay →
+// posted-check pair. The duplicate tools read state that only a real LoadData
+// stamps, so a stubbed ledger cannot exercise them.
+func newLiveDeps(t *testing.T) (Deps, string) {
+	t.Helper()
+	deps, dir := newDeps(t, nil)
+	csv := "Date,Description,Amount,Status\n" +
+		"2024-02-03,ACME INSURANCE BILL PAY,-250.00,Scheduled\n" +
+		"2024-02-06,CHECK #1042,-250.00,Posted\n" +
+		"2024-02-10,GROCERY STORE,-42.10,\n"
+	if err := os.WriteFile(filepath.Join(dir, "checking.csv"), []byte(csv), 0o644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	loader, ok := deps.Files.(*dataloader.DataLoader)
+	if !ok {
+		t.Fatalf("Files is %T, want *dataloader.DataLoader", deps.Files)
+	}
+	deps.Transactions = loader
+	return deps, dir
 }
 
 func connect(t *testing.T, deps Deps) *mcp.ClientSession {
@@ -111,12 +136,7 @@ func decodeToolResult[T any](t *testing.T, res *mcp.CallToolResult) T {
 	return out
 }
 
-// toolErrorText is unused until a later task's tool can actually fail a
-// call (get_status has no inputs to reject and only panics, which
-// recoverToError also turns into an error result, but this test suite does
-// not yet provoke one).
-//
-//lint:ignore U1000 consumed by an error-path test in a later task
+// toolErrorText asserts res is an error result and returns its message.
 func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {
 	t.Helper()
 	if !res.IsError {

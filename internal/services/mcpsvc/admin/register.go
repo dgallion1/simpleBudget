@@ -124,4 +124,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerFiles(s, deps)
 	registerListDuplicates(s, deps)
 	registerResolve(s, deps)
+	registerUndo(s, deps)
 }

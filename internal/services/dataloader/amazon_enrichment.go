@@ -42,10 +42,13 @@ func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error) {
 }
 
 // SaveAmazonEnrichment writes the full map to disk (overwrites). The
-// CLI calls this after a successful matching pass. Neither this nor
-// LoadAmazonEnrichment is itself a read-modify-write, but a caller that
-// reads then saves (cmd/enrich-amazon/main.go) is one, and writeMu is
-// what makes that caller's sequence correct under concurrent access.
+// CLI calls this after a successful matching pass. writeMu makes this
+// call and LoadAmazonEnrichment each atomic against concurrent writers
+// individually, but LoadAmazonEnrichment releases writeMu before
+// returning, so a caller that reads then saves (cmd/enrich-amazon/main.go)
+// still spans two acquisitions with a lost-update window between them --
+// an atomic read-modify-write across that pair would need the *Locked
+// split the other four files got.
 func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error {
 	dl.writeMu.Lock()
 	defer dl.writeMu.Unlock()

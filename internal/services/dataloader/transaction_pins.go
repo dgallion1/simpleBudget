@@ -120,8 +120,14 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 }
 
 // PrunePinsForMissingExpenses drops pins whose target ID is not in the
-// supplied list of valid expense IDs. Used by DeleteMajorExpense and on
-// startup to prevent orphaned pins from quietly hiding transactions.
+// supplied list of valid expense IDs. Currently unused: no caller in this
+// package or the handler layer invokes it -- ArchiveMajorExpense's
+// per-expense pin detachment superseded the old DeleteMajorExpense ->
+// PrunePinsForMissingExpenses flow. Retained as a defensive cleanup path.
+//
+// It takes writeMu itself. Do not call it from DeleteMajorExpense or any
+// other writeMu-holding method in this package -- sync.Mutex is not
+// reentrant, so nesting the acquisition would deadlock.
 func (dl *DataLoader) PrunePinsForMissingExpenses(validIDs map[string]bool) error {
 	dl.writeMu.Lock()
 	defer dl.writeMu.Unlock()

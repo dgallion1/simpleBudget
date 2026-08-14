@@ -138,6 +138,12 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"`amount` is SIGNED as stored",
 		"two identical-looking transactions share one hash",
 		"Only outflows are matched against major expenses",
+		// The reversal asymmetry: two of the three writes undo themselves
+		// in-app, and the third does not. A model told otherwise either
+		// refuses an undo it can perform or promises one it cannot.
+		"pin_transactions unpins when unpin is true",
+		"delete_major_expense restores a deleted expense when restore is true",
+		"upsert_major_expense does NOT reverse",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

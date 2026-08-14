@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"budget2/internal/services/mcpsvc/snapshot"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
@@ -24,7 +25,7 @@ var assumptionsMD string
 // active-scenario selection, the settings cache, and the write lock.
 type Deps struct {
 	Settings  *retirement.SettingsManager
-	Snapshots *Snapshotter
+	Snapshots *snapshot.Snapshotter
 	BaseURL   string
 }
 

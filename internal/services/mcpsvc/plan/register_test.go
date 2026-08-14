@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"budget2/internal/models"
+	"budget2/internal/services/mcpsvc/snapshot"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 
@@ -176,7 +177,7 @@ func TestApplyChangesWritesSnapshotsAndReportsBothRevisions(t *testing.T) {
 	snapDir := t.TempDir()
 	deps := Deps{
 		Settings:  sm,
-		Snapshots: NewSnapshotter(sm.SettingsDir(), snapDir),
+		Snapshots: snapshot.New(sm.SettingsDir(), snapDir),
 		BaseURL:   "http://localhost:8080",
 	}
 	before := sm.Revision()
@@ -231,7 +232,7 @@ func TestApplyChangesDoesNotWriteWhenTheSnapshotFails(t *testing.T) {
 	}
 	deps := Deps{
 		Settings:  sm,
-		Snapshots: NewSnapshotter(sm.SettingsDir(), filepath.Join(blocker, "snapshots")),
+		Snapshots: snapshot.New(sm.SettingsDir(), filepath.Join(blocker, "snapshots")),
 	}
 
 	cs := connect(t, deps)
@@ -571,7 +572,7 @@ func TestApplyChangesSwitchesToNamedScenarioBeforeWriting(t *testing.T) {
 	sm := newTestManager(t)
 	target := secondScenarioFilename(t, sm)
 
-	deps := Deps{Settings: sm, Snapshots: NewSnapshotter(sm.SettingsDir(), t.TempDir()), BaseURL: "http://localhost:8080"}
+	deps := Deps{Settings: sm, Snapshots: snapshot.New(sm.SettingsDir(), t.TempDir()), BaseURL: "http://localhost:8080"}
 	cs := connect(t, deps)
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
@@ -643,7 +644,7 @@ func TestApplyChangesReportsScenarioConflictAsToolError(t *testing.T) {
 		t.Fatalf("SwitchScenario(%s): %v", target, err)
 	}
 
-	deps := Deps{Settings: sm, Snapshots: NewSnapshotter(sm.SettingsDir(), t.TempDir())}
+	deps := Deps{Settings: sm, Snapshots: snapshot.New(sm.SettingsDir(), t.TempDir())}
 	cs := connect(t, deps)
 	ctx := context.Background()
 

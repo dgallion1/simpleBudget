@@ -1,4 +1,4 @@
-package plan
+package snapshot
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ func TestSnapshotter_CopiesOncePerScenario(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := NewSnapshotter(settingsDir, snapDir)
+	s := New(settingsDir, snapDir)
 	now := time.Date(2026, 8, 9, 14, 22, 3, 0, time.UTC)
 
 	first, err := s.Ensure("whatif.json", now)
@@ -53,7 +53,7 @@ func TestSnapshotter_SnapshotsEachScenarioSeparately(t *testing.T) {
 		}
 	}
 
-	s := NewSnapshotter(settingsDir, snapDir)
+	s := New(settingsDir, snapDir)
 	now := time.Now()
 	// Switching scenarios mid-conversation must back up the second plan too.
 	a, err := s.Ensure("whatif.json", now)
@@ -76,7 +76,7 @@ func TestSnapshotter_WritesOutsideTheSettingsDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path, err := NewSnapshotter(settingsDir, snapDir).Ensure("whatif.json", time.Now())
+	path, err := New(settingsDir, snapDir).Ensure("whatif.json", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestSnapshotter_RejectsTraversalInScenarioName(t *testing.T) {
 			settingsDir := t.TempDir()
 			snapDir := t.TempDir()
 
-			_, err := NewSnapshotter(settingsDir, snapDir).Ensure(name, time.Now())
+			_, err := New(settingsDir, snapDir).Ensure(name, time.Now())
 			if err == nil {
 				t.Fatalf("expected an error for scenario name %q", name)
 			}
@@ -118,7 +118,7 @@ func TestSnapshotter_FailsWhenSourceUnreadable(t *testing.T) {
 	snapDir := t.TempDir()
 	// No scenario file written: Ensure must fail so the caller aborts before
 	// the POST rather than writing unbacked.
-	if _, err := NewSnapshotter(settingsDir, snapDir).Ensure("whatif.json", time.Now()); err == nil {
+	if _, err := New(settingsDir, snapDir).Ensure("whatif.json", time.Now()); err == nil {
 		t.Fatal("expected an error for a missing source file")
 	}
 }

@@ -232,6 +232,43 @@ Each phase gets its own implementation plan.
 3. **`curate`.** Major-expense reads and writes.
 4. **`admin`.** Housekeeping, then the three guarded operations last.
 
+## Constraints learned in phases 1 and 2
+
+Carry these into the Phase 3 and 4 plans as Global Constraints. Each cost a fix
+round or a defect that shipped.
+
+- **Never enumerate the tests to move by name.** Phase 2's plan derived its
+  test-move lists from test-function names; all three extractions undercounted
+  the real caller set (20 vs 46, 32 vs 49, 13 vs 21), and a whole file
+  (`handlers_http_test.go`) was missed. The misses were systematically the
+  edge-case tests. Instruct instead: run `LSP findReferences` on each moved
+  symbol, take the union of test files containing a caller, and report that
+  list before moving anything. Phase 1 deleted an 841-line test file wholesale
+  under its own plan's instruction and lost the regression guard for a
+  previously-shipped Critical bug; nothing failed.
+- **Gate every extraction on `go tool cover -func` before and after,** for both
+  the source and destination packages, in the task's report.
+- **A moved function's new description must be written from its
+  implementation, not its name.** "Move, not rewrite" protects the code but not
+  the prose written around it: `velocity.daily_average` divides by the span of
+  transactions present in the window rather than the window's length, and only
+  the new description was wrong.
+- **New spending/curation tools must call `ts.Active()` immediately after
+  loading,** before any date defaulting, so suppressed duplicate-resolution
+  losers are excluded and the default window is computed over active rows. All
+  six spend tools do this.
+- **Settle the sign convention before adding a tool that reports money.**
+  Refunds are `Outflow` rows with a *positive* amount (`classifier.go:83-93`).
+  `summarize_spending` shipped with `by_category` summed gross of refunds
+  against a net `total_expenses` and a description claiming they reconciled.
+  Curate's writes will face the same question.
+- **Read the six existing tool descriptions before writing a new one.** They
+  are the consuming model's only documentation, and they now agree with each
+  other on merchant identity, duplicate handling, window semantics and signs.
+  A seventh that quietly disagrees is worse than one that is merely vague.
+- **`Snapshotter` moves from `mcpsvc/plan` up to `mcpsvc`** when Phase 3's
+  writes need it, per the Write safety section above.
+
 ## Out of scope
 
 - The three wrong caveats on master recorded in

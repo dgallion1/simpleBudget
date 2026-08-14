@@ -23,11 +23,6 @@ import (
 	"budget2/internal/templates"
 )
 
-const (
-	defaultUnknownThreshold = 100.0
-	defaultNewWindowDays    = 30
-)
-
 var (
 	loader   *dataloader.DataLoader
 	renderer *templates.Renderer
@@ -351,8 +346,8 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 	outflows := windowed.FilterByType(models.Outflow)
 
 	match := majorexpenseengine.Match(outflows, expenses, majorexpenseengine.MatchOptions{
-		UnknownLargeThreshold: defaultUnknownThreshold,
-		NewMerchantWindow:     time.Duration(defaultNewWindowDays) * 24 * time.Hour,
+		UnknownLargeThreshold: majorexpenseengine.DefaultUnknownLargeThreshold,
+		NewMerchantWindow:     time.Duration(majorexpenseengine.DefaultNewMerchantWindowDays) * 24 * time.Hour,
 		Pins:                  pins,
 	})
 
@@ -470,8 +465,8 @@ func buildPageData(r *http.Request) (map[string]interface{}, error) {
 		"PinnedHashes":           match.PinnedHashes,
 		"PinMap":                 pins,
 		"Deleted":                deleted,
-		"Threshold":              defaultUnknownThreshold,
-		"WindowDays":             defaultNewWindowDays,
+		"Threshold":              majorexpenseengine.DefaultUnknownLargeThreshold,
+		"WindowDays":             majorexpenseengine.DefaultNewMerchantWindowDays,
 		"StartDate":              formatDateInputValue(startDate),
 		"EndDate":                formatDateInputValue(endDate),
 		"MinDate":                formatDateInputValue(minDate),

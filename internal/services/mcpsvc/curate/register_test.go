@@ -111,18 +111,3 @@ func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {
 	}
 	return text.Text
 }
-
-// TestThresholdsMatchThePage pins curate's copies of the Major Expenses
-// page's thresholds. They are duplicated because a service may not import a
-// handlers package; if the page's values change and these do not, a tool and
-// the page will disagree about which transactions are exceptions.
-func TestThresholdsMatchThePage(t *testing.T) {
-	if defaultUnknownThreshold != 100.0 {
-		t.Errorf("defaultUnknownThreshold = %v; internal/handlers/majorexpenses/handlers.go declares 100.0",
-			defaultUnknownThreshold)
-	}
-	if defaultNewWindowDays != 30 {
-		t.Errorf("defaultNewWindowDays = %v; internal/handlers/majorexpenses/handlers.go declares 30",
-			defaultNewWindowDays)
-	}
-}

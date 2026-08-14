@@ -19,15 +19,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// These mirror internal/handlers/majorexpenses/handlers.go's package
-// constants. They are duplicated rather than exported from the handler
-// package because a service must not import a handlers package; the
-// duplication is pinned by TestThresholdsMatchThePage.
-const (
-	defaultUnknownThreshold = 100.0
-	defaultNewWindowDays    = 30
-)
-
 // File names in the data directory that the write tools snapshot before
 // changing. They mirror the unexported constants in
 // internal/services/dataloader.
@@ -188,8 +179,8 @@ func (d Deps) pageView(startDate, endDate string) (*view, error) {
 		Expenses: expenses,
 		Pins:     pins,
 		Match: majorexpenses.Match(outflows, expenses, majorexpenses.MatchOptions{
-			UnknownLargeThreshold: defaultUnknownThreshold,
-			NewMerchantWindow:     time.Duration(defaultNewWindowDays) * 24 * time.Hour,
+			UnknownLargeThreshold: majorexpenses.DefaultUnknownLargeThreshold,
+			NewMerchantWindow:     time.Duration(majorexpenses.DefaultNewMerchantWindowDays) * 24 * time.Hour,
 			Pins:                  pins,
 		}),
 	}, nil

@@ -41,10 +41,12 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"Prefer run_scenario while exploring, and apply_changes only when the user has settled on a " +
 	"change. Expense amounts are not signed the same way across the spending tools -- this is the " +
 	"COMPLETE list of all six, not a sample: signed in search_transactions (expenses negative) and " +
-	"get_anomalies (expenses negative); positive in summarize_spending, get_price_creep, and " +
-	"get_recurring; and mixed in get_trends (current_amount/previous_amount are positive; " +
-	"change_amount/change_percent are signed) — read each field's own description rather than " +
-	"assuming a convention. A \"merchant\" " +
+	"get_anomalies (expenses negative); positive in get_price_creep and get_recurring; and MIXED in " +
+	"get_trends (current_amount/previous_amount are positive; change_amount/change_percent are " +
+	"signed) and summarize_spending (total_expenses is always non-negative, but its by_category/ " +
+	"by_merchant/by_month breakdown rows are normally positive and can go NEGATIVE when refunds " +
+	"outweigh spending in that row) — read each field's own description rather than assuming a " +
+	"convention. A \"merchant\" " +
 	"in these tools is a fuzzy grouping of similar transaction descriptions, not a verified " +
 	"counterparty, and merchant labels are lower-cased, so they will not match a transaction's " +
 	"description verbatim. All spending tools exclude transactions the user has already resolved as " +

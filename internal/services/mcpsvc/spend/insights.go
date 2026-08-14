@@ -76,8 +76,13 @@ type priceCreepOutput struct {
 	Items []creepRow `json:"items"`
 }
 
-// round2 rounds to two decimal places, for scores and percentages where
-// round0's whole-dollar rounding would lose the signal.
+// round2 rounds to two decimal places (cents). Originally added for scores
+// and percentages where round0's whole-dollar rounding would lose the
+// signal; since Finding 7 of the Phase 2 review it is also the currency
+// rounder for get_anomalies' and get_price_creep's dollar amounts, matching
+// every other spend tool's cent precision -- round0 is now used only by
+// search_transactions' sum_amount (search.go), not for any currency field
+// in this file.
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
 // nilableString returns nil for an empty string, otherwise a pointer to a

@@ -119,9 +119,10 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// must update this text (and this test) too.
 		"search_transactions (expenses negative)",
 		"get_anomalies (expenses negative)",
-		"positive in summarize_spending, get_price_creep, and",
-		"get_recurring",
-		"mixed in get_trends",
+		"positive in get_price_creep and get_recurring",
+		"MIXED in",
+		"get_trends (current_amount/previous_amount are positive",
+		"summarize_spending (total_expenses is always non-negative",
 		"COMPLETE list of all six",
 		// Duplicate exclusion.
 		"already resolved as duplicates",

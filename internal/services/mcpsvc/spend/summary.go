@@ -69,6 +69,13 @@ type summaryOutput struct {
 // a category's total instead of adding to it. See Finding 1 in the Phase 2
 // review -- CategoryTotals' own math.Abs-per-transaction convention is still
 // correct for its other (non-MCP) callers and is left unchanged.
+//
+// Known cosmetic artifact (left as-is): when a category's refunds exactly
+// offset its spend, round2(-amt) can produce float64 negative zero, which
+// encoding/json renders as the literal "-0" rather than "0". Same applies
+// to byMonthRows/byMerchantRows below. Not fixed here because doing so is a
+// computation change, not a documentation one, and the two are worth
+// keeping separate in this pass.
 func byCategoryRows(ts *models.TransactionSet, topN int) []namedAmount {
 	outflows := ts.FilterByType(models.Outflow)
 	totals := make(map[string]float64, outflows.Len())
@@ -168,8 +175,14 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			"they subtract from whichever category/merchant/month they fall in, and if a category's, " +
 			"merchant's, or month's refunds exceed its spend in this window that row goes negative rather " +
 			"than clamping at zero. All four figures share this identical signed-sum-then-negate " +
-			"convention, so summing by_category (or summing by_merchant) reproduces total_expenses for the " +
-			"same window. (This differs from search_transactions, which returns every amount signed, " +
+			"convention, but do NOT assume summing a breakdown reproduces total_expenses: by_category and " +
+			"by_merchant are each truncated to top_n (see below), so their sums only match total_expenses " +
+			"when this window has top_n or fewer categories/merchants -- with more, the truncated sum is " +
+			"necessarily LESS than total_expenses. by_month is never truncated, so summing it always matches " +
+			"total_expenses in MAGNITUDE, but total_expenses is always non-negative (it is an absolute value) " +
+			"while summing by_month can be negative -- if this window's refunds exceed its spending OVERALL " +
+			"(not just in one category/merchant/month), total_expenses and the sum of by_month are the " +
+			"negation of each other, not equal. (This differs from search_transactions, which returns every amount signed, " +
 			"expenses negative -- the opposite sign convention.) Transactions the user has already marked " +
 			"as a resolved duplicate are excluded, matching the dashboard and " +
 			"get_anomalies/get_price_creep/search_transactions. Merchants are grouped by the same fuzzy-" +

@@ -115,6 +115,7 @@ func SetupDependencies(c *config.Config) error {
 		SettingsDir: settingsDir,
 		SnapshotDir: filepath.Join(cfg.BackupDir, "mcp-snapshots"),
 		BaseURL:     mcpBaseURL(cfg.ListenAddr),
+		Backups:     backupService,
 	})
 
 	return nil

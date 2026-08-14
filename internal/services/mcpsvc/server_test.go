@@ -52,15 +52,16 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersAllSeventeenTools drives an in-memory client/server
+// TestNewServerRegistersAllEighteenTools drives an in-memory client/server
 // round trip to enumerate what NewServer actually registered, rather than
 // merely asserting deps.Loader != nil is checked somewhere. Deps{} (a zero
 // value) is deliberately NOT used here: with a nil Loader, NewServer's own
-// "if deps.Loader != nil" guard skips spend.Register entirely, so a suite
-// that only ever constructs NewServer(Deps{}) would stay green even if
-// spend.Register were deleted from NewServer outright. A non-nil Loader (and
-// the Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
-func TestNewServerRegistersAllSeventeenTools(t *testing.T) {
+// "if deps.Loader != nil" guard skips spend.Register (and admin.Register)
+// entirely, so a suite that only ever constructs NewServer(Deps{}) would stay
+// green even if spend.Register were deleted from NewServer outright. A
+// non-nil Loader (and the Settings/SettingsDir/SnapshotDir plan.Register
+// needs) closes that hole.
+func TestNewServerRegistersAllEighteenTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -91,14 +92,14 @@ func TestNewServerRegistersAllSeventeenTools(t *testing.T) {
 		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
 		"get_anomalies", "get_price_creep", "search_transactions", "summarize_spending", "get_recurring",
 		"get_trends", "list_major_expenses", "list_exceptions", "pin_transactions", "upsert_major_expense",
-		"delete_major_expense",
+		"delete_major_expense", "get_status",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 17 {
-		t.Errorf("expected exactly 17 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 18 {
+		t.Errorf("expected exactly 18 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 

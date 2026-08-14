@@ -7,7 +7,9 @@ package mcpsvc
 import (
 	"path/filepath"
 
+	"budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/mcpsvc/admin"
 	"budget2/internal/services/mcpsvc/curate"
 	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/mcpsvc/snapshot"
@@ -28,6 +30,7 @@ type Deps struct {
 	SettingsDir string
 	SnapshotDir string
 	BaseURL     string
+	Backups     *backup.Service
 }
 
 // serverInstructions is returned to the client on initialize. It is the
@@ -80,6 +83,15 @@ const serverInstructions = "These tools cover two things for one household: a pe
 // need them -- notably a nil SettingsDir/SnapshotDir still registers
 // apply_changes (via an always-constructed Snapshotter), which then fails at
 // call time rather than being absent from the tool list.
+//
+// deps.Settings must be either a genuinely nil *retirement.SettingsManager or
+// a fully constructed one -- never a typed-nil value manufactured some other
+// way. plan and spend take it as that concrete type, so a nil pointer is
+// harmless there, but it is also assigned into admin.Deps.Settings, which is
+// an interface: a typed-nil *retirement.SettingsManager stored in an
+// interface is a non-nil interface value that panics on first method call.
+// admin's own nil check (deps.Settings != nil) cannot see through that, so
+// this is a caller contract, not something get_status defends against.
 func NewServer(deps Deps) *mcp.Server {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "budget2", Version: "v0.2.0"},
@@ -108,6 +120,19 @@ func NewServer(deps Deps) *mcp.Server {
 			// A separate snapshot subdirectory: plan snapshots files from the
 			// settings dir and curate from the data dir, and nothing stops
 			// the two directories from holding a file of the same name.
+			Snapshots: snapshot.New(deps.Loader.CSVDirectory, filepath.Join(deps.SnapshotDir, "data")),
+		})
+		admin.Register(s, admin.Deps{
+			Transactions: deps.Loader,
+			Files:        deps.Loader,
+			Duplicates:   deps.Loader,
+			Decisions:    deps.Loader,
+			Store:        deps.Store,
+			Settings:     deps.Settings,
+			Backups:      deps.Backups,
+			// The same data-directory snapshot destination curate uses: both
+			// write sidecar JSON files that live in the data dir, and a
+			// restore is a hand-copy either way.
 			Snapshots: snapshot.New(deps.Loader.CSVDirectory, filepath.Join(deps.SnapshotDir, "data")),
 		})
 	}

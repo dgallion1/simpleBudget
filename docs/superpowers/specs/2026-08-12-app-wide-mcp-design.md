@@ -115,9 +115,9 @@ call path underneath changes.
 |------|--------|
 | `list_major_expenses` | definitions with match counts and totals |
 | `list_exceptions` | the three exception buckets, searchable by text/amount/date |
-| `pin_transactions` | pin one transaction or every transaction in a filter to a bucket |
+| `pin_transactions` | pin, or unpin, one transaction or every transaction in a filter |
 | `upsert_major_expense` | create or edit a definition, including internal-transfer mode |
-| `delete_major_expense` | soft-delete, matching the page's restore semantics |
+| `delete_major_expense` | soft-delete, or restore, matching the page's semantics |
 
 ### `admin`
 
@@ -229,7 +229,14 @@ Each phase gets its own implementation plan.
    patterns, and velocity moved to `internal/services/insights`, and the live
    KPI/budget math moved to `internal/services/metrics` — see "Where the logic
    lives" below for what moved and what stayed.
-3. **`curate`.** Major-expense reads and writes.
+3. **`curate`.** Major-expense reads and writes. **Implemented.** All five tools
+   (`list_major_expenses`, `list_exceptions`, `pin_transactions`,
+   `upsert_major_expense`, `delete_major_expense`) are registered.
+   `pin_transactions` also unpins and `delete_major_expense` also restores, so
+   every write has a reversal that does not require the browser.
+   `Snapshotter` moved to `internal/services/mcpsvc/snapshot` — a leaf package
+   rather than `mcpsvc` itself, because `mcpsvc` imports `plan` and a
+   `*mcpsvc.Snapshotter` in `plan.Deps` would be an import cycle.
 4. **`admin`.** Housekeeping, then the three guarded operations last.
 
 ## Constraints learned in phases 1 and 2

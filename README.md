@@ -314,9 +314,13 @@ make help
 The running server exposes its tools over MCP at `http://localhost:8080/mcp`.
 The repo ships a `.mcp.json` pointing there, so Claude Code picks it up from the
 repo root — you can ask questions about a plan, have the engine re-run to check
-an answer, and look at spending patterns. **Start `budget2` first:** the tools
-come from the running server, so if nothing is listening when a Claude Code
-session starts, they will not be available. There is no separate MCP process.
+an answer, look at spending patterns, and curate the Major Expenses page.
+**Start `budget2` first:** the tools come from the running server, so if
+nothing is listening when a Claude Code session starts, they will not be
+available. There is no separate MCP process.
+
+Seventeen tools in three groups: six planner tools, six spending tools, and
+five curation tools.
 
 Six planner tools: `list_scenarios`, `get_analysis`, `get_months`, and
 `run_scenario` are read-only; `open_page` returns the what-if page URL,
@@ -351,6 +355,19 @@ outflows into merchant groups with consistent amounts at consistent intervals.
 spending velocity (burn rate) against the immediately preceding window of equal
 length. All six exclude transactions the user has already marked as a resolved
 duplicate.
+
+Five curation tools cover the Major Expenses page. `list_major_expenses` returns
+the declared expenses with each one's in-window match count and net total, and
+`list_exceptions` returns the three buckets the page flags — unmatched outflows,
+transactions outside their expense's expected range, and first-time merchants.
+The other three **write**: `pin_transactions` attaches or detaches transactions
+by hash or by filter (a filter selecting more than 200 is refused rather than
+applied), `upsert_major_expense` creates or edits a definition with omitted
+fields left untouched, and `delete_major_expense` soft-deletes — and, with
+`restore`, undoes that. Each write copies the file it changes to a `.bak` under
+`<backup-dir>/mcp-snapshots/data` before this session's first change to it.
+Only the what-if page polls for changes, so an MCP curation write leaves an
+already-open Major Expenses tab stale until it is reloaded.
 
 Locked or encrypted storage surfaces as a clear error from the tool rather than
 a parse failure — unlock via `/unlock` in the web UI first. Cross-site browser

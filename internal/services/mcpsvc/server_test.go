@@ -124,12 +124,20 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"MIXED in",
 		"get_trends (current_amount/previous_amount are positive",
 		"summarize_spending (total_expenses is always non-negative",
-		"COMPLETE list of all six",
+		"COMPLETE list of all six SPENDING tools",
 		// Duplicate exclusion.
 		"already resolved as duplicates",
 		// Merchant-label rule: fuzzy grouping, lower-cased.
 		"fuzzy grouping",
 		"lower-cased",
+		// The five curation tools: which read, which write, and the sign
+		// split that differs from the spending tools' own.
+		"five curation tools",
+		"pin_transactions, upsert_major_expense and delete_major_expense WRITE",
+		"`total` is NET SPEND and normally POSITIVE",
+		"`amount` is SIGNED as stored",
+		"two identical-looking transactions share one hash",
+		"Only outflows are matched against major expenses",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

@@ -64,7 +64,8 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"not reversible this way. delete_major_expense restores a deleted expense when restore is true, " +
 	"bringing the definition and its captured pins back. upsert_major_expense does NOT reverse -- an " +
 	"edit overwrites the previous definition, and the only way back for any of these three writes is " +
-	"the .bak copy each takes before its first change of a session. " +
+	"the .bak copy taken before its first change of a session, when there was prior data on disk to " +
+	"protect -- a write with nothing there yet to back up has no .bak, but also nothing to lose. " +
 	"In these tools a per-expense `total` is NET SPEND and normally " +
 	"POSITIVE (a refund reduces it, and a total can go negative), while a per-transaction `amount` is " +
 	"SIGNED as stored, negative for a purchase -- the same split the spending tools use. Transactions " +

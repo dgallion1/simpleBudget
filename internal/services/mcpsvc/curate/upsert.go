@@ -69,8 +69,9 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 			"separate from the definition write, and if THAT backup fails the definition is still saved while " +
 			"the pin is skipped; check `pinned` and `note` rather than assuming pin_hash succeeded because the " +
 			"call as a whole did. The definitions file, and the pins file when pin_hash is used, are each " +
-			"copied to a .bak before this session's first change to them. An already-open Major Expenses page does NOT refresh " +
-			"itself -- it shows stale data until reloaded.",
+			"copied to a .bak before this session's first change to them when there is prior data on disk to " +
+			"protect; a file that does not exist yet has nothing to back up, so none is taken. An already-open " +
+			"Major Expenses page does NOT refresh itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in upsertInput) (res *mcp.CallToolResult, out upsertOutput, err error) {
 		defer recoverToError("upsert_major_expense", &err)
 

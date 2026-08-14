@@ -148,6 +148,12 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"NOT restore whatever the transaction was pinned to before",
 		"delete_major_expense restores a deleted expense when restore is true",
 		"upsert_major_expense does NOT reverse",
+		// The .bak recovery path is conditional, not guaranteed: a write
+		// with nothing on disk yet has no prior state to protect, so no
+		// backup is taken for it. A model told the backup is unconditional
+		// could promise a recovery path that does not exist.
+		"the .bak copy taken before its first change of a session, when there was prior data on disk to",
+		"a write with nothing there yet to back up has no .bak, but also nothing to lose",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

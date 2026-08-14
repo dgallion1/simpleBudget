@@ -136,9 +136,16 @@ call path underneath changes.
 ## Write safety
 
 Every write tool: `Snapshotter.Snapshot(target)` → the owning service's write
-path, under that service's own lock → return `{changed, revision}`. Because the
-tools call the same managers the UI calls, the settings manager's revision
-counter and its restore gate apply unchanged.
+path → return `{changed, revision}`. Because the tools call the same managers
+the UI calls, the settings manager's revision counter and its restore gate
+apply unchanged.
+
+**The lock is not uniform across services, and phase 3 proved it matters.** The
+retirement `SettingsManager` genuinely holds a write lock, which is what lets
+`apply_changes` compare its expected scenario inside that lock. `DataLoader`,
+which the `curate` and `spend` tools use, holds no lock at all — see
+"Serializing the data writes" above. Do not read this section as a claim that
+every write path is already serialized; phase 4 has to make that true.
 
 **Guarded operations** (`restore_backup`, `set_encryption`, `shutdown_server`)
 are two-step. The first call performs nothing and returns a preview — for
@@ -237,7 +244,42 @@ Each phase gets its own implementation plan.
    `Snapshotter` moved to `internal/services/mcpsvc/snapshot` — a leaf package
    rather than `mcpsvc` itself, because `mcpsvc` imports `plan` and a
    `*mcpsvc.Snapshotter` in `plan.Deps` would be an import cycle.
-4. **`admin`.** Housekeeping, then the three guarded operations last.
+4. **`admin`.** Serialize `dataloader`'s writes first (see "Serializing the data
+   writes" below) — it is a prerequisite, not a cleanup. Then housekeeping, then
+   the three guarded operations last.
+
+## Serializing the data writes
+
+**Scoped into phase 4, ahead of its tools.** `dataloader`'s major-expense and
+pin mutations are unsynchronized read-modify-write sequences over
+`major_expenses.json`, `transaction_pins.json` and
+`deleted_major_expenses.json`. `DataLoader` holds no mutex;
+`storage.Storage` locks only around an individual `WriteFile`, which does not
+help a caller that reads, edits in memory, and writes back.
+
+`ArchiveMajorExpense` is the sharp case: three separate writes (archive, then
+the active list, then pins). Interleave it with `AddMajorExpense` and the two
+lists diverge — `AddMajorExpense` loads `[A,B]`, `ArchiveMajorExpense(B)`
+writes the archive and then the active list as `[A]`, and the pending add saves
+`[A,B,C]`. `B` now exists in **both** the active and deleted files, and
+`RestoreMajorExpense` refuses it from then on with "active major expense with
+id already exists". Concurrent `SetTransactionPins` calls are milder —
+last-writer-wins loses a pin without corrupting anything.
+
+This predates MCP: two browser tabs could always race. What changed is the
+speed and the pacing. The go-sdk dispatches every tool call on its own
+goroutine, so a model issuing back-to-back curate writes reaches the
+interleaving at machine speed, with no human between clicks. Phase 3 shipped
+three write tools onto this substrate and phase 4 adds more, so the guard
+belongs before those tools rather than after.
+
+The fix is a mutex owned by `DataLoader` covering each load→modify→save
+sequence as one critical section, not a lock per file write. Both the HTTP
+handlers and the MCP tools already funnel through the same `*DataLoader`
+instance, so one lock covers both callers. Whether the multi-file operations
+also need a crash-consistent write order beyond today's
+archive → active → pins (which fails toward a recoverable duplicate rather
+than data loss) is worth settling at the same time.
 
 ## Constraints learned in phases 1 and 2
 

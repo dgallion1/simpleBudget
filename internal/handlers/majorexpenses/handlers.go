@@ -511,67 +511,31 @@ func buildExpenseOptions(expenses []models.MajorExpense) []ExpenseOption {
 
 // parseExpenseForm extracts a MajorExpense from form values without
 // stamping ID/timestamps — those are set by the storage layer or
-// preserved on update.
+// preserved on update. The rules for what makes a definition valid live
+// in majorexpenseengine.Validate, shared with the MCP curation tools so
+// the page and the tools cannot disagree about what is acceptable.
 func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
-	name := strings.TrimSpace(r.FormValue("name"))
-	if name == "" {
-		return models.MajorExpense{}, fmt.Errorf("name is required")
-	}
-	if len(name) > 200 {
-		return models.MajorExpense{}, fmt.Errorf("name is too long (max 200 chars)")
-	}
-
-	keywordsRaw := r.FormValue("keywords")
-	keywords := splitAndTrim(keywordsRaw, ",")
-
 	expectedMin, err := parseFormFloat(r, "expected_min")
 	if err != nil {
 		return models.MajorExpense{}, fmt.Errorf("invalid expected_min: %w", err)
-	}
-	if expectedMin < 0 {
-		return models.MajorExpense{}, fmt.Errorf("expected_min cannot be negative")
 	}
 	expectedMax, err := parseFormFloat(r, "expected_max")
 	if err != nil {
 		return models.MajorExpense{}, fmt.Errorf("invalid expected_max: %w", err)
 	}
-	if expectedMax < 0 {
-		return models.MajorExpense{}, fmt.Errorf("expected_max cannot be negative")
-	}
-	if expectedMin > 0 && expectedMax > 0 && expectedMin > expectedMax {
-		return models.MajorExpense{}, fmt.Errorf("expected_min cannot exceed expected_max")
-	}
 
-	// An expense is valid in three configurations:
-	//  1. At least one keyword (range optional, anomaly-only when set).
-	//  2. No keywords + both Min and Max > 0 (amount-only match — useful
-	//     for fixed-dollar checks where the description varies).
-	//  3. No keywords + Min == Max == 0 (pin-only target — the user
-	//     plans to manually pin transactions to it; e.g. an "Amazon —
-	//     Books" sub-bucket separate from "Amazon — Household").
-	// Anything else is a partial/inconsistent config: only Min or only
-	// Max set without a keyword usually means the user forgot the other
-	// half of the range.
-	if len(keywords) == 0 && (expectedMin > 0) != (expectedMax > 0) {
-		return models.MajorExpense{}, fmt.Errorf("set BOTH Min and Max to match by amount, or leave both blank to create a pin-only target")
-	}
-
-	isTransfer := parseFormBool(r, "is_internal_transfer")
-	// A transfer filter only makes sense if it can match something
-	// automatically — pin-only doesn't filter at load time. Require at
-	// least a keyword or an amount rule.
-	if isTransfer && len(keywords) == 0 && expectedMin == 0 && expectedMax == 0 {
-		return models.MajorExpense{}, fmt.Errorf("internal-transfer filter needs at least one keyword or an amount range to match against")
-	}
-
-	return models.MajorExpense{
-		Name:               name,
-		Keywords:           keywords,
+	me := models.MajorExpense{
+		Name:               strings.TrimSpace(r.FormValue("name")),
+		Keywords:           splitAndTrim(r.FormValue("keywords"), ","),
 		ExpectedMin:        expectedMin,
 		ExpectedMax:        expectedMax,
 		Notes:              strings.TrimSpace(r.FormValue("notes")),
-		IsInternalTransfer: isTransfer,
-	}, nil
+		IsInternalTransfer: parseFormBool(r, "is_internal_transfer"),
+	}
+	if err := majorexpenseengine.Validate(me); err != nil {
+		return models.MajorExpense{}, err
+	}
+	return me, nil
 }
 
 // parseFormBool returns true when the form value is "on", "true", or "1"

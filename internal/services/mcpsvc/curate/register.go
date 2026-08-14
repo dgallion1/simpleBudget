@@ -129,13 +129,21 @@ type view struct {
 }
 
 // pageView reproduces internal/handlers/majorexpenses.buildPageData's
-// pipeline exactly: load, drop transactions the user resolved as duplicates,
-// narrow to the window, keep only outflows, then match.
+// pipeline exactly: resolve the window, drop transactions the user resolved
+// as duplicates, narrow to the window, keep only outflows, then match.
 //
-// The order matters and is not incidental. Active() comes first so the
-// MinDate/MaxDate window defaults are computed over active rows only. The
-// outflow filter comes before Match so that income whose description happens
-// to contain a keyword cannot inflate a group's count or total.
+// Two orderings here are load-bearing and neither is incidental.
+//
+// The unbounded window defaults come from the RAW set, BEFORE Active(),
+// because buildPageData's parseRangeFromRequest reads MinDate/MaxDate off the
+// raw set too. This deliberately differs from the six mcpsvc/spend tools,
+// which default over active rows. The transactions analyzed are identical
+// either way -- every active row falls inside both windows -- so the only
+// thing at stake is the start/end reported back to the caller, and that has
+// to be the page's, not a second opinion. Do not "fix" this to Active().
+//
+// The outflow filter comes before Match so that income whose description
+// happens to contain a keyword cannot inflate a group's count or total.
 func (d Deps) pageView(startDate, endDate string) (*view, error) {
 	start, err := parseWindowDate("start_date", startDate)
 	if err != nil {
@@ -158,13 +166,15 @@ func (d Deps) pageView(startDate, endDate string) (*view, error) {
 	if err != nil {
 		return nil, err
 	}
-	ts = ts.Active()
 
 	pins, err := d.Pins.LoadTransactionPins()
 	if err != nil {
 		return nil, fmt.Errorf("load transaction pins: %w", err)
 	}
 
+	// Window defaults off the raw set, matching parseRangeFromRequest. See
+	// the note above: this is not the Active()-first defaulting the spend
+	// tools use, and that is on purpose.
 	from := ts.MinDate()
 	if start != nil {
 		from = *start
@@ -174,7 +184,7 @@ func (d Deps) pageView(startDate, endDate string) (*view, error) {
 		to = *end
 	}
 
-	outflows := ts.FilterByDateRange(from, to).FilterByType(models.Outflow)
+	outflows := ts.Active().FilterByDateRange(from, to).FilterByType(models.Outflow)
 
 	return &view{
 		Start:    from,

@@ -233,4 +233,5 @@ func formatDay(t time.Time) string {
 // Register adds the curation tools to s.
 func Register(s *mcp.Server, deps Deps) {
 	registerListExpenses(s, deps)
+	registerListExceptions(s, deps)
 }

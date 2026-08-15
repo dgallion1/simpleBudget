@@ -24,12 +24,14 @@ func registerUndo(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "undo_resolve",
 		Description: "Reverse one resolve_duplicates decision, putting the pair back in the review queue. " +
-			"THIS WRITES TO THE USER'S DATA. It is the exact inverse: a suppressed transaction becomes live " +
-			"again and re-enters every spending total, and the pair is re-flagged for review. This is the app's " +
-			"own Undo button, not a general undo -- it reverses a duplicate decision and nothing else. A " +
-			"pair_key with no decision recorded against it is refused rather than silently succeeding, so a " +
-			"success here always means something actually changed. duplicate_decisions.json is copied to a .bak " +
-			"before this session's first change to it when there is prior data on disk to protect; with no " +
+			"THIS WRITES TO THE USER'S DATA. Undoing a kept_winner decision makes the suppressed transaction " +
+			"live again so it re-enters every spending total, and re-flags the pair for review; undoing a " +
+			"kept_both decision only re-flags the pair for review, since kept_both never suppressed anything in " +
+			"the first place. previous_outcome in the result reports which of the two this call just undid. " +
+			"This is the app's own Undo button, not a general undo -- it reverses a duplicate decision and " +
+			"nothing else. A pair_key with no decision recorded against it is refused rather than silently " +
+			"succeeding, so a success here always means something actually changed. duplicate_decisions.json " +
+			"is copied to a .bak before this session's first change to it when there is prior data on disk to protect; with no " +
 			"decisions file yet there is nothing to back up, so none is taken and snapshot_paths comes back " +
 			"empty. Later changes in the same session are not separately recoverable. An already-open Duplicates " +
 			"page does NOT refresh itself -- it shows stale data until reloaded.",
@@ -40,7 +42,7 @@ func registerUndo(s *mcp.Server, deps Deps) {
 		if key == "" {
 			return nil, undoOutput{}, fmt.Errorf("pair_key is required; call list_duplicates with include_resolved to see what can be undone")
 		}
-		if deps.Decisions == nil {
+		if deps.Duplicates == nil || deps.Decisions == nil {
 			return nil, undoOutput{}, fmt.Errorf("no data loader is configured on this server")
 		}
 
@@ -71,7 +73,19 @@ func registerUndo(s *mcp.Server, deps Deps) {
 			SnapshotPaths:   paths,
 			Note:            note,
 		}
-		if _, err := deps.load(); err == nil && deps.Duplicates != nil {
+		// Re-load so the reported remainder reflects the undo just made. A
+		// failed reload must NOT leave UnresolvedRemaining at its zero value
+		// silently: a model reading that as "nothing left to resolve" would
+		// stop looping early when the truth is just "unknown". Mirrors
+		// resolve.go's identical guard.
+		if _, err := deps.load(); err != nil {
+			reloadNote := "unresolved_remaining could not be recomputed after the write: " + err.Error()
+			if out.Note == "" {
+				out.Note = reloadNote
+			} else {
+				out.Note += "; " + reloadNote
+			}
+		} else {
 			out.UnresolvedRemaining = deps.Duplicates.UnresolvedDuplicateCount()
 		}
 		return nil, out, nil

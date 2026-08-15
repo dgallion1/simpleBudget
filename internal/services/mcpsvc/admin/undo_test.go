@@ -64,6 +64,52 @@ func TestUndoResolveRestoresThePairToTheQueue(t *testing.T) {
 	}
 }
 
+// TestUndoResolveOfKeptBothOnlyRequeuesNothingWasEverSuppressed covers the
+// half of the outcome space TestUndoResolveRestoresThePairToTheQueue does
+// not: kept_both never sets a suppressed hash (resolve.go's decision.
+// SuppressedHash stays empty for kept_both, see resolve.go:124-146), so
+// undoing it can only re-flag the pair for review -- there is no suppressed
+// transaction to bring back. This is exactly the claim the tool's
+// description now makes per-outcome; without this test that claim would be
+// unchecked, same gap Task 7 and this task's Description text both fell
+// into once already.
+func TestUndoResolveOfKeptBothOnlyRequeuesNothingWasEverSuppressed(t *testing.T) {
+	deps, _ := newLiveDeps(t)
+	cs := connect(t, deps)
+	key, _, _ := pendingPairKey(t, cs)
+
+	resolved := decodeToolResult[resolveOutput](t, call(t, cs, "resolve_duplicates", map[string]any{
+		"pair_key": key,
+		"outcome":  "kept_both",
+	}))
+	if resolved.SuppressedHash != "" {
+		t.Fatalf("test setup: kept_both should never suppress a hash, got %q", resolved.SuppressedHash)
+	}
+
+	out := decodeToolResult[undoOutput](t, call(t, cs, "undo_resolve", map[string]any{"pair_key": key}))
+
+	if out.PreviousOutcome != "kept_both" {
+		t.Errorf("previous_outcome = %q, want kept_both", out.PreviousOutcome)
+	}
+	if out.UnresolvedRemaining != 1 {
+		t.Errorf("unresolved_remaining = %d, want 1 -- the pair should be back in the queue", out.UnresolvedRemaining)
+	}
+	if len(out.SnapshotPaths) == 0 {
+		t.Error("snapshot_paths is empty; a resolved decisions file existed and should have been backed up")
+	}
+
+	after := decodeToolResult[duplicatesOutput](t, call(t, cs, "list_duplicates", map[string]any{}))
+	if after.UnresolvedCount != 1 {
+		t.Errorf("list_duplicates unresolved_count = %d after undoing kept_both, want 1", after.UnresolvedCount)
+	}
+	// Both transactions must still be counted -- kept_both never suppressed
+	// either side, so undoing it must not newly suppress one either.
+	restored := after.Unresolved[0]
+	if restored.Left.Hash == "" || restored.Right.Hash == "" {
+		t.Errorf("re-flagged pair is missing a side: %+v", restored)
+	}
+}
+
 func TestUndoResolveRefusesAPairWithNoDecision(t *testing.T) {
 	deps, _ := newLiveDeps(t)
 	cs := connect(t, deps)

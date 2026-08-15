@@ -319,8 +319,8 @@ an answer, look at spending patterns, and curate the Major Expenses page.
 nothing is listening when a Claude Code session starts, they will not be
 available. There is no separate MCP process.
 
-Seventeen tools in three groups: six planner tools, six spending tools, and
-five curation tools.
+Twenty-three tools in four groups: six planner tools, six spending tools,
+five curation tools, and six housekeeping tools.
 
 Six planner tools: `list_scenarios`, `get_analysis`, `get_months`, and
 `run_scenario` are read-only; `open_page` returns the what-if page URL,
@@ -368,6 +368,28 @@ fields left untouched, and `delete_major_expense` soft-deletes — and, with
 `<backup-dir>/mcp-snapshots/data` before this session's first change to it.
 Only the what-if page polls for changes, so an MCP curation write leaves an
 already-open Major Expenses tab stale until it is reloaded.
+
+Six housekeeping tools describe the app itself rather than the money in it.
+`get_status` reports where the data lives, whether it is encrypted and
+unlocked, the plan's settings revision, and the last backup — call it first
+when another tool fails for no visible reason, since a locked encrypted store
+makes every ledger-reading tool fail and `get_status` is the only one that
+still answers. `list_data_files` inventories the CSV files on disk with raw,
+unfiltered row counts that will not match `search_transactions`' totals.
+`list_duplicates` lists the near-duplicate transaction pairs awaiting review;
+while a pair is unresolved, both sides are still counted in every spending
+total. `resolve_duplicates` and `undo_resolve` **write**: `resolve_duplicates`
+settles a pair as `kept_winner` (excluding the losing side from every total)
+or `kept_both` (keeping both, just not re-flagged), and `undo_resolve`
+reverses a decision — restoring the suppressed transaction for a `kept_winner`
+undo, or simply re-flagging the pair for a `kept_both` undo, since `kept_both`
+never suppressed anything to begin with. Both write tools copy
+`duplicate_decisions.json` to a `.bak` under `<backup-dir>/mcp-snapshots/data`
+before their first change to it in a session. `run_backup` takes an immediate
+backup zip; it adds a file and changes nothing else, so it is safe to call
+before any change the user might want to walk back. `set_encryption` is not
+exposed over MCP — enabling encryption needs a credential that must never
+travel through a tool argument into a model's transcript.
 
 Locked or encrypted storage surfaces as a clear error from the tool rather than
 a parse failure — unlock via `/unlock` in the web UI first. Cross-site browser

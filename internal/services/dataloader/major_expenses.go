@@ -12,6 +12,22 @@ import (
 
 const majorExpensesFile = "major_expenses.json"
 
+// testHookAfterExpenseLoad, when non-nil, is called by AddMajorExpense after
+// it has loaded the active list and while it still holds writeMu. It exists
+// so a test can prove that a concurrent ArchiveMajorExpense really blocks for
+// the whole load->modify->save sequence rather than merely usually losing the
+// race. Nil in production; the only writer is a test in this package.
+var testHookAfterExpenseLoad func()
+
+// testHookMidArchive, when non-nil, is called by ArchiveMajorExpense after it
+// has written the archive file but BEFORE it writes the shortened active list
+// — the exact window in which a concurrent writer used to be able to save a
+// stale active list and leave one expense in both files. It exists so a test
+// can prove the whole three-file sequence is one critical section rather than
+// merely usually winning the race. Nil in production; the only writer is a
+// test in this package.
+var testHookMidArchive func()
+
 // majorExpensesPath returns the path to the major_expenses.json file
 func (dl *DataLoader) majorExpensesPath() string {
 	return filepath.Join(dl.CSVDirectory, majorExpensesFile)
@@ -20,6 +36,13 @@ func (dl *DataLoader) majorExpensesPath() string {
 // LoadMajorExpenses reads the user-declared major expenses from disk.
 // Returns an empty slice if the file does not exist.
 func (dl *DataLoader) LoadMajorExpenses() ([]models.MajorExpense, error) {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	return dl.loadMajorExpensesLocked()
+}
+
+// loadMajorExpensesLocked is LoadMajorExpenses' body. Caller holds writeMu.
+func (dl *DataLoader) loadMajorExpensesLocked() ([]models.MajorExpense, error) {
 	path := dl.majorExpensesPath()
 	data, err := dl.store.ReadFile(path)
 	if err != nil {
@@ -37,6 +60,13 @@ func (dl *DataLoader) LoadMajorExpenses() ([]models.MajorExpense, error) {
 
 // SaveMajorExpenses persists the entire list to disk.
 func (dl *DataLoader) SaveMajorExpenses(list []models.MajorExpense) error {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	return dl.saveMajorExpensesLocked(list)
+}
+
+// saveMajorExpensesLocked is SaveMajorExpenses' body. Caller holds writeMu.
+func (dl *DataLoader) saveMajorExpensesLocked(list []models.MajorExpense) error {
 	if list == nil {
 		list = []models.MajorExpense{}
 	}
@@ -51,15 +81,20 @@ func (dl *DataLoader) SaveMajorExpenses(list []models.MajorExpense) error {
 // AddMajorExpense appends a new entry, stamping CreatedAt/UpdatedAt, and
 // returns the resulting slice.
 func (dl *DataLoader) AddMajorExpense(me models.MajorExpense) ([]models.MajorExpense, error) {
-	list, err := dl.LoadMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	list, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return nil, err
+	}
+	if testHookAfterExpenseLoad != nil {
+		testHookAfterExpenseLoad()
 	}
 	now := time.Now().UTC()
 	me.CreatedAt = now
 	me.UpdatedAt = now
 	list = append(list, me)
-	if err := dl.SaveMajorExpenses(list); err != nil {
+	if err := dl.saveMajorExpensesLocked(list); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -69,7 +104,9 @@ func (dl *DataLoader) AddMajorExpense(me models.MajorExpense) ([]models.MajorExp
 // from updates: Name, Keywords, ExpectedMin, ExpectedMax, Notes. ID and
 // CreatedAt are preserved from the existing entry; UpdatedAt is bumped.
 func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense) ([]models.MajorExpense, error) {
-	list, err := dl.LoadMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	list, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +127,7 @@ func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense)
 	if !found {
 		return nil, fmt.Errorf("major expense not found: %s", id)
 	}
-	if err := dl.SaveMajorExpenses(list); err != nil {
+	if err := dl.saveMajorExpensesLocked(list); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -103,7 +140,9 @@ func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense)
 // restored. DeleteMajorExpense is retained only for tests of pre-archive
 // behavior and may be removed in a future cleanup pass.
 func (dl *DataLoader) DeleteMajorExpense(id string) ([]models.MajorExpense, error) {
-	list, err := dl.LoadMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	list, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +152,7 @@ func (dl *DataLoader) DeleteMajorExpense(id string) ([]models.MajorExpense, erro
 			out = append(out, me)
 		}
 	}
-	if err := dl.SaveMajorExpenses(out); err != nil {
+	if err := dl.saveMajorExpensesLocked(out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -130,6 +169,14 @@ func (dl *DataLoader) deletedMajorExpensesPath() string {
 // LoadDeletedMajorExpenses reads the archive of soft-deleted major
 // expenses. Returns an empty slice if the file does not exist.
 func (dl *DataLoader) LoadDeletedMajorExpenses() ([]models.DeletedMajorExpense, error) {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	return dl.loadDeletedMajorExpensesLocked()
+}
+
+// loadDeletedMajorExpensesLocked is LoadDeletedMajorExpenses' body. Caller
+// holds writeMu.
+func (dl *DataLoader) loadDeletedMajorExpensesLocked() ([]models.DeletedMajorExpense, error) {
 	path := dl.deletedMajorExpensesPath()
 	data, err := dl.store.ReadFile(path)
 	if err != nil {
@@ -147,6 +194,14 @@ func (dl *DataLoader) LoadDeletedMajorExpenses() ([]models.DeletedMajorExpense, 
 
 // SaveDeletedMajorExpenses persists the entire archive list to disk.
 func (dl *DataLoader) SaveDeletedMajorExpenses(list []models.DeletedMajorExpense) error {
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+	return dl.saveDeletedMajorExpensesLocked(list)
+}
+
+// saveDeletedMajorExpensesLocked is SaveDeletedMajorExpenses' body. Caller
+// holds writeMu.
+func (dl *DataLoader) saveDeletedMajorExpensesLocked(list []models.DeletedMajorExpense) error {
 	if list == nil {
 		list = []models.DeletedMajorExpense{}
 	}
@@ -166,7 +221,9 @@ func (dl *DataLoader) SaveDeletedMajorExpenses(list []models.DeletedMajorExpense
 //
 // Write order is archive → active list → pins, so a crash mid-operation
 // leaves the user with a recoverable duplicate (an entry in both lists)
-// rather than data loss. RestoreMajorExpense reverses this.
+// rather than data loss. A concurrent writer can no longer produce that
+// duplicate: the whole sequence is one writeMu critical section.
+// RestoreMajorExpense reverses this.
 //
 // Returns os-style "not found" sentinel error if no active expense has
 // the given ID.
@@ -174,7 +231,10 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 	if id == "" {
 		return fmt.Errorf("expense id is required")
 	}
-	active, err := dl.LoadMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+
+	active, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -193,7 +253,7 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		return fmt.Errorf("major expense not found: %s", id)
 	}
 
-	pins, err := dl.LoadTransactionPins()
+	pins, err := dl.loadTransactionPinsLocked()
 	if err != nil {
 		return err
 	}
@@ -204,7 +264,7 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		}
 	}
 
-	deleted, err := dl.LoadDeletedMajorExpenses()
+	deleted, err := dl.loadDeletedMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -213,14 +273,18 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		DeletedAt:    time.Now().UTC(),
 		PinnedHashes: pinnedHashes,
 	})
-	if err := dl.SaveDeletedMajorExpenses(deleted); err != nil {
+	if err := dl.saveDeletedMajorExpensesLocked(deleted); err != nil {
 		return err
+	}
+
+	if testHookMidArchive != nil {
+		testHookMidArchive()
 	}
 
 	out := make([]models.MajorExpense, 0, len(active)-1)
 	out = append(out, active[:targetIdx]...)
 	out = append(out, active[targetIdx+1:]...)
-	if err := dl.SaveMajorExpenses(out); err != nil {
+	if err := dl.saveMajorExpensesLocked(out); err != nil {
 		return err
 	}
 
@@ -228,11 +292,7 @@ func (dl *DataLoader) ArchiveMajorExpense(id string) error {
 		for _, h := range pinnedHashes {
 			delete(pins, h)
 		}
-		data, err := json.MarshalIndent(pins, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := dl.store.WriteFile(dl.transactionPinsPath(), data, 0644); err != nil {
+		if err := dl.writePinsLocked(pins); err != nil {
 			return err
 		}
 	}
@@ -254,7 +314,10 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 	if id == "" {
 		return fmt.Errorf("expense id is required")
 	}
-	deleted, err := dl.LoadDeletedMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+
+	deleted, err := dl.loadDeletedMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -273,7 +336,7 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 		return fmt.Errorf("deleted major expense not found: %s", id)
 	}
 
-	active, err := dl.LoadMajorExpenses()
+	active, err := dl.loadMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -283,12 +346,12 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 		}
 	}
 	active = append(active, entry.Expense)
-	if err := dl.SaveMajorExpenses(active); err != nil {
+	if err := dl.saveMajorExpensesLocked(active); err != nil {
 		return err
 	}
 
 	if len(entry.PinnedHashes) > 0 {
-		pins, err := dl.LoadTransactionPins()
+		pins, err := dl.loadTransactionPinsLocked()
 		if err != nil {
 			return err
 		}
@@ -301,11 +364,7 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 			changed = true
 		}
 		if changed {
-			data, err := json.MarshalIndent(pins, "", "  ")
-			if err != nil {
-				return err
-			}
-			if err := dl.store.WriteFile(dl.transactionPinsPath(), data, 0644); err != nil {
+			if err := dl.writePinsLocked(pins); err != nil {
 				return err
 			}
 		}
@@ -314,7 +373,7 @@ func (dl *DataLoader) RestoreMajorExpense(id string) error {
 	out := make([]models.DeletedMajorExpense, 0, len(deleted)-1)
 	out = append(out, deleted[:idx]...)
 	out = append(out, deleted[idx+1:]...)
-	return dl.SaveDeletedMajorExpenses(out)
+	return dl.saveDeletedMajorExpensesLocked(out)
 }
 
 // DiscardDeletedMajorExpense permanently removes an archived entry. The
@@ -323,7 +382,10 @@ func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error {
 	if id == "" {
 		return fmt.Errorf("expense id is required")
 	}
-	deleted, err := dl.LoadDeletedMajorExpenses()
+	dl.writeMu.Lock()
+	defer dl.writeMu.Unlock()
+
+	deleted, err := dl.loadDeletedMajorExpensesLocked()
 	if err != nil {
 		return err
 	}
@@ -339,5 +401,5 @@ func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error {
 	if !found {
 		return fmt.Errorf("deleted major expense not found: %s", id)
 	}
-	return dl.SaveDeletedMajorExpenses(out)
+	return dl.saveDeletedMajorExpensesLocked(out)
 }

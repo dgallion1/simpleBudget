@@ -52,15 +52,16 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersAllSeventeenTools drives an in-memory client/server
+// TestNewServerRegistersAllTwentyThreeTools drives an in-memory client/server
 // round trip to enumerate what NewServer actually registered, rather than
 // merely asserting deps.Loader != nil is checked somewhere. Deps{} (a zero
 // value) is deliberately NOT used here: with a nil Loader, NewServer's own
-// "if deps.Loader != nil" guard skips spend.Register entirely, so a suite
-// that only ever constructs NewServer(Deps{}) would stay green even if
-// spend.Register were deleted from NewServer outright. A non-nil Loader (and
-// the Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
-func TestNewServerRegistersAllSeventeenTools(t *testing.T) {
+// "if deps.Loader != nil" guard skips spend.Register, curate.Register and
+// admin.Register entirely, so a suite that only ever constructs
+// NewServer(Deps{}) would stay green even if spend.Register were deleted
+// from NewServer outright. A non-nil Loader (and the
+// Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
+func TestNewServerRegistersAllTwentyThreeTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -91,15 +92,82 @@ func TestNewServerRegistersAllSeventeenTools(t *testing.T) {
 		"list_scenarios", "get_analysis", "get_months", "run_scenario", "open_page", "apply_changes",
 		"get_anomalies", "get_price_creep", "search_transactions", "summarize_spending", "get_recurring",
 		"get_trends", "list_major_expenses", "list_exceptions", "pin_transactions", "upsert_major_expense",
-		"delete_major_expense",
+		"delete_major_expense", "get_status", "list_data_files", "list_duplicates", "resolve_duplicates",
+		"undo_resolve", "run_backup",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 17 {
-		t.Errorf("expected exactly 17 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 23 {
+		t.Errorf("expected exactly 23 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
+}
+
+// TestNilBackupsDegradesRatherThanPanics guards the typed-nil seam between
+// Deps.Backups (a concrete *backup.Service) and admin.Deps.Backups (an
+// interface). Assigning a nil pointer straight across yields a NON-nil
+// interface holding a nil pointer, which sails past admin's own
+// `Backups == nil` guards and turns both tools into nil-pointer panics --
+// worst for get_status, the tool the instructions bill as "the only one that
+// still answers" when everything else is broken. The doc comment on NewServer
+// promises a nil Backups is a supported degraded mode; this is what holds it
+// to that.
+func TestNilBackupsDegradesRatherThanPanics(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	cs := connect(t, NewServer(Deps{
+		Settings:    retirement.NewSettingsManager(filepath.Join(dir, "settings"), store),
+		Loader:      dataloader.New(dir, store),
+		Store:       store,
+		SettingsDir: filepath.Join(dir, "settings"),
+		SnapshotDir: filepath.Join(dir, "mcp-snapshots"),
+		Backups:     nil,
+	}))
+	ctx := context.Background()
+
+	status, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "get_status"})
+	if err != nil {
+		t.Fatalf("CallTool get_status: %v", err)
+	}
+	if status.IsError {
+		t.Fatalf("get_status failed with a nil backup service instead of degrading: %+v", status.Content)
+	}
+	if !strings.Contains(toolText(t, status), "no backup service is configured") {
+		t.Errorf("get_status did not report the absent backup service; content = %s", toolText(t, status))
+	}
+
+	// run_backup cannot degrade -- there is nothing to run -- but it must fail
+	// with its own named error, not a recovered panic.
+	backup, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "run_backup"})
+	if err != nil {
+		t.Fatalf("CallTool run_backup: %v", err)
+	}
+	if !backup.IsError {
+		t.Fatal("run_backup claimed success with no backup service configured")
+	}
+	msg := toolText(t, backup)
+	if strings.Contains(msg, "panicked") {
+		t.Errorf("run_backup panicked instead of reporting the missing service: %s", msg)
+	}
+	if !strings.Contains(msg, "no backup service is configured") {
+		t.Errorf("run_backup error %q does not name the missing dependency", msg)
+	}
+}
+
+// toolText flattens a tool result's content to a single string.
+func toolText(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	var sb strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			sb.WriteString(tc.Text)
+		}
+	}
+	return sb.String()
 }
 
 // TestServerInstructionsCarryLoadBearingClaims pins the presence of every
@@ -154,6 +222,24 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// could promise a recovery path that does not exist.
 		"the .bak copy taken before its first change of a session, when there was prior data on disk to",
 		"a write with nothing there yet to back up has no .bak, but also nothing to lose",
+		// The six housekeeping tools: which read, which write, and the two
+		// claims a behavior change would silently falsify.
+		"six HOUSEKEEPING tools",
+		"get_status is the one to call FIRST",
+		"the only one that still answers",
+		"do NOT sum to search_transactions' totals",
+		"while a pair is unresolved BOTH sides are counted",
+		"resolve_duplicates and undo_resolve WRITE TO THE USER'S DATA",
+		"never invent a pair_key",
+		// The reversal asymmetry between the two resolve_duplicates outcomes:
+		// undoing kept_winner restores the suppressed transaction, but
+		// undoing kept_both has nothing to restore because kept_both never
+		// suppressed anything. A model told this is a uniform "exact inverse"
+		// (the claim admin/undo.go itself walked back in 5c1325d) could
+		// promise a restoration that kept_both never took away.
+		"undoing kept_winner makes the suppressed transaction live again",
+		"undoing kept_both only",
+		"run_backup adds a zip to the backup directory and changes nothing else",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

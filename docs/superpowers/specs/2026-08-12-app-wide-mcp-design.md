@@ -129,9 +129,9 @@ call path underneath changes.
 | `list_data_files` | CSV inventory with date coverage |
 | `get_status` | lock/encryption state, backup status, revision, active scenario, data dir |
 | `run_backup` | trigger a backup |
-| `restore_backup` | **guarded** — overwrites the live data directory |
-| `set_encryption` | **guarded** — enable/disable, change auth method |
-| `shutdown_server` | **guarded** — the existing `/killme` path |
+| `restore_backup` | **guarded**, phase 4b — overwrites the live data directory |
+| `set_encryption` | **descoped permanently** — see "Carried out of phase 4a"; `get_status` reports encryption state read-only instead |
+| `shutdown_server` | **guarded**, phase 4b — the existing `/killme` path |
 
 ## Write safety
 
@@ -147,14 +147,14 @@ which the `curate` and `spend` tools use, holds no lock at all — see
 "Serializing the data writes" above. Do not read this section as a claim that
 every write path is already serialized; phase 4 has to make that true.
 
-**Guarded operations** (`restore_backup`, `set_encryption`, `shutdown_server`)
-are two-step. The first call performs nothing and returns a preview — for
-restore, which files would be overwritten; for encryption, the current state and
-what would change — together with a single-use confirm token bound to the tool
-name and a hash of the arguments, with a short TTL, held in memory and dropped on
-restart. A second call must echo that token or nothing happens. Restore snapshots
-before writing. The UI has a human clicking; a tool gets called by a model
-reading prose, so the confirmation must be in the protocol.
+**Guarded operations** (`restore_backup`, `shutdown_server` — `set_encryption`
+was descoped permanently, see "Carried out of phase 4a") are two-step. The
+first call performs nothing and returns a preview — for restore, which files
+would be overwritten — together with a single-use confirm token bound to the
+tool name and a hash of the arguments, with a short TTL, held in memory and
+dropped on restart. A second call must echo that token or nothing happens.
+Restore snapshots before writing. The UI has a human clicking; a tool gets
+called by a model reading prose, so the confirmation must be in the protocol.
 
 **Known limitation.** Only the what-if page polls (`/whatif/poll`). An MCP write
 to major expenses or duplicates will not refresh an already-open tab; that page
@@ -246,24 +246,33 @@ Each phase gets its own implementation plan.
    `*mcpsvc.Snapshotter` in `plan.Deps` would be an import cycle.
 4. **`admin`.** Serialize `dataloader`'s writes first (see "Serializing the data
    writes" below) — it is a prerequisite, not a cleanup. Then housekeeping, then
-   the three guarded operations last.
+   the three guarded operations last. Split in two:
+   - **4a.** Write serialization plus the six housekeeping tools
+     (`get_status`, `list_data_files`, `list_duplicates`, `resolve_duplicates`,
+     `undo_resolve`, `run_backup`). **Implemented.**
+   - **4b.** The guarded operations (`restore_backup`, `set_encryption`,
+     `shutdown_server`). Blocked on extracting `restoreFromZip` and the
+     encryption handlers out of `internal/handlers/backup`, since a service
+     package may not import a handlers package. `set_encryption` itself is
+     now descoped permanently rather than deferred — see "Carried out of
+     phase 4a" below.
 
 ## Serializing the data writes
 
 **Scoped into phase 4, ahead of its tools.** `dataloader`'s major-expense and
-pin mutations are unsynchronized read-modify-write sequences over
+pin mutations were unsynchronized read-modify-write sequences over
 `major_expenses.json`, `transaction_pins.json` and
-`deleted_major_expenses.json`. `DataLoader` holds no mutex;
+`deleted_major_expenses.json`. `DataLoader` held no mutex;
 `storage.Storage` locks only around an individual `WriteFile`, which does not
 help a caller that reads, edits in memory, and writes back.
 
-`ArchiveMajorExpense` is the sharp case: three separate writes (archive, then
+`ArchiveMajorExpense` was the sharp case: three separate writes (archive, then
 the active list, then pins). Interleave it with `AddMajorExpense` and the two
 lists diverge — `AddMajorExpense` loads `[A,B]`, `ArchiveMajorExpense(B)`
 writes the archive and then the active list as `[A]`, and the pending add saves
 `[A,B,C]`. `B` now exists in **both** the active and deleted files, and
 `RestoreMajorExpense` refuses it from then on with "active major expense with
-id already exists". Concurrent `SetTransactionPins` calls are milder —
+id already exists". Concurrent `SetTransactionPins` calls were milder —
 last-writer-wins loses a pin without corrupting anything.
 
 This predates MCP: two browser tabs could always race. What changed is the
@@ -271,15 +280,35 @@ speed and the pacing. The go-sdk dispatches every tool call on its own
 goroutine, so a model issuing back-to-back curate writes reaches the
 interleaving at machine speed, with no human between clicks. Phase 3 shipped
 three write tools onto this substrate and phase 4 adds more, so the guard
-belongs before those tools rather than after.
+belonged before those tools rather than after.
 
-The fix is a mutex owned by `DataLoader` covering each load→modify→save
-sequence as one critical section, not a lock per file write. Both the HTTP
-handlers and the MCP tools already funnel through the same `*DataLoader`
-instance, so one lock covers both callers. Whether the multi-file operations
-also need a crash-consistent write order beyond today's
-archive → active → pins (which fails toward a recoverable duplicate rather
-than data loss) is worth settling at the same time.
+**What actually shipped: two mutexes, not one.** This section anticipated only
+the load→modify→save sequences and expected a single lock to cover them.
+Implementation found a second, independent race this section did not
+anticipate: `LoadDataContext` also stamps derived fields —
+`FilteredTransferCount` (now the `FilteredTransfers()` accessor),
+`unresolvedDuplicates`, `resolvedDuplicates` — and races on `enabledFiles`,
+which an Explorer POST rewrites mid-load. Those were live `-race` failures
+between two ordinary browser requests, predating MCP entirely, not something
+MCP's added concurrency introduced. `DataLoader` now carries:
+
+- `writeMu`, owned by `DataLoader`, covering each load→modify→save sequence
+  over a JSON sidecar file as one critical section — the lock this section
+  originally called for. Both the HTTP handlers and the MCP tools funnel
+  through the same `*DataLoader` instance, so one lock covers both callers.
+- `stateMu`, guarding the derived fields `LoadData` stamps and `enabledFiles`,
+  held only across the assignment or the read, never across file I/O.
+
+No method holds both locks. `ClearTransactionPin` is the one write method
+that deliberately does not take `writeMu` itself: it delegates to the public
+`SetTransactionPin`, which already takes `writeMu` for the whole sequence,
+and `sync.Mutex` is not reentrant — taking it in both would deadlock.
+
+The crash-consistent write order question this section raised is settled:
+archive → active → pins stays as it was. It now protects only against a
+crash, not against an interleaving writer — a concurrent writer producing
+that duplicate is structurally impossible once `writeMu` serializes the whole
+sequence.
 
 ## Carried out of phase 3
 
@@ -314,7 +343,18 @@ The last two exist because phase 3's write tools were built one per task, each
 reviewed against its own brief. Cross-tool consistency only became visible at
 the whole-branch review, which is where all five of these were found.
 
-## Constraints learned in phases 1 and 2
+## Carried out of phase 4a
+
+- **`set_encryption` is descoped permanently, not deferred.** It was listed as
+  a phase-4b guarded operation above, but enabling encryption requires a
+  credential (a password, or a key-derivation secret) that would have to
+  travel through a tool argument straight into a model's transcript. That is
+  not an acceptable exposure regardless of how the confirm-token guard is
+  built, so this is not "phase 4b will get to it" — it is off the tool
+  surface for good. `get_status` reports the store's encryption and lock
+  state read-only instead, which covers the read side without ever asking a
+  model to carry a credential. Phase 4b's guarded-operation work is
+  `restore_backup` and `shutdown_server` only.
 
 Carry these into the Phase 3 and 4 plans as Global Constraints. Each cost a fix
 round or a defect that shipped.

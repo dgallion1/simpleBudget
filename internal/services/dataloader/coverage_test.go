@@ -133,8 +133,8 @@ func TestFilterInternalTransfers(t *testing.T) {
 		t.Error("filtered result should not be longer than input")
 	}
 	// Verify FilteredTransferCount is set correctly
-	if loader.FilteredTransferCount != len(transactions)-len(result) {
-		t.Errorf("FilteredTransferCount = %d, expected %d", loader.FilteredTransferCount, len(transactions)-len(result))
+	if loader.FilteredTransfers() != len(transactions)-len(result) {
+		t.Errorf("FilteredTransferCount = %d, expected %d", loader.FilteredTransfers(), len(transactions)-len(result))
 	}
 }
 
@@ -150,8 +150,8 @@ func TestFilterInternalTransfers_NoTransfers(t *testing.T) {
 	if len(result) != 1 {
 		t.Errorf("expected 1 transaction, got %d", len(result))
 	}
-	if loader.FilteredTransferCount != 0 {
-		t.Errorf("expected 0 filtered, got %d", loader.FilteredTransferCount)
+	if loader.FilteredTransfers() != 0 {
+		t.Errorf("expected 0 filtered, got %d", loader.FilteredTransfers())
 	}
 }
 
@@ -829,8 +829,8 @@ func TestFilterInternalTransfers_UserFlaggedMajorExpense(t *testing.T) {
 			t.Error("flagged-major-expense transaction should have been filtered out")
 		}
 	}
-	if loader.FilteredTransferCount != 1 {
-		t.Errorf("FilteredTransferCount = %d, want 1", loader.FilteredTransferCount)
+	if loader.FilteredTransfers() != 1 {
+		t.Errorf("FilteredTransferCount = %d, want 1", loader.FilteredTransfers())
 	}
 }
 
@@ -860,8 +860,8 @@ func TestFilterInternalTransfers_NonFlaggedMajorExpenseDoesNotFilter(t *testing.
 	if len(result) != 1 {
 		t.Errorf("regular major-expense match must not be filtered; got %d surviving txns", len(result))
 	}
-	if loader.FilteredTransferCount != 0 {
-		t.Errorf("FilteredTransferCount = %d, want 0", loader.FilteredTransferCount)
+	if loader.FilteredTransfers() != 0 {
+		t.Errorf("FilteredTransferCount = %d, want 0", loader.FilteredTransfers())
 	}
 }
 
@@ -878,12 +878,12 @@ func TestFilterInternalTransfers_WithTransfers(t *testing.T) {
 	}
 
 	result := loader.filterInternalTransfers(transactions)
-	if loader.FilteredTransferCount == 0 {
+	if loader.FilteredTransfers() == 0 {
 		t.Error("expected some transfers to be filtered")
 	}
-	if len(result)+loader.FilteredTransferCount != len(transactions) {
+	if len(result)+loader.FilteredTransfers() != len(transactions) {
 		t.Errorf("filtered count mismatch: %d result + %d filtered != %d total",
-			len(result), loader.FilteredTransferCount, len(transactions))
+			len(result), loader.FilteredTransfers(), len(transactions))
 	}
 }
 

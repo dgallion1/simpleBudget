@@ -31,6 +31,11 @@ type Meta struct {
 
 func metaPath(dir string) string { return filepath.Join(dir, metaFileName) }
 
+// Meta returns the on-disk record of the most recent backup attempt. A
+// missing file is not an error -- it means no backup has run yet, and the
+// zero Meta says exactly that.
+func (s *Service) Meta() (Meta, error) { return loadMeta(s.cfg.BackupDir) }
+
 func loadMeta(dir string) (Meta, error) {
 	data, err := os.ReadFile(metaPath(dir))
 	if err != nil {

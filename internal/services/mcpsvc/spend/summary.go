@@ -167,7 +167,10 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			"unless start_date and end_date are both given explicitly): total_income, total_expenses, " +
 			"net_savings, and savings_rate (a PERCENTAGE, not a fraction -- 47 means 47%, not 4700%; it is " +
 			"NEGATIVE whenever expenses exceed income, which is the ordinary case for a household living " +
-			"off savings in retirement, not an error), plus breakdowns by category, by merchant, and by " +
+			"off savings in retirement, not an error -- but it is DEFINED AS 0 whenever total_income is zero " +
+			"or less, rather than negative or NaN, so a window with NO income reads savings_rate 0.0 even " +
+			"alongside heavy spending; a 0 there means \"no income in this window\", NOT \"broke even\"), " +
+			"plus breakdowns by category, by merchant, and by " +
 			"month. by_category, by_merchant, and by_month are expenses only -- income is not broken out by " +
 			"category/merchant/month, only in the top-level total_income. Amounts in by_category, " +
 			"by_merchant, and by_month, and total_expenses itself, are normally POSITIVE dollar figures, but " +
@@ -201,7 +204,17 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			"target is configured -- it is omitted entirely, not zeroed, otherwise -- and compares actual " +
 			"monthly spending against that plan's target for this window, with healthcare tracked " +
 			"separately from living expenses; combined_cumulative_delta is the two categories' net dollar " +
-			"variance over the whole window (positive = over budget).",
+			"variance over the whole window (positive = over budget). living_monthly_actual EXCLUDES the " +
+			"\"Health Insurance\" category -- living is total expenses MINUS healthcare, so the two never " +
+			"double-count the same premium, and living_monthly_actual + healthcare_monthly_actual is the " +
+			"window's whole outflow pace. living_monthly_target is PHASE-ADJUSTED: when the plan has " +
+			"spending phases enabled, each calendar month in the window contributes its own multiplier and " +
+			"the target is their average, so it may not equal the plan's raw monthly living-expense " +
+			"number, and a window straddling a phase boundary gets a blended target. " +
+			"healthcare_monthly_target is deliberately NOT phase-adjusted -- it is today's planned premium " +
+			"(premiums rise with age rather than falling with spending phases). months_in_range is the " +
+			"window's inclusive DAY count divided by 30.4375 (the average calendar month), not a count of " +
+			"whole months -- so it is fractional, and a short window yields a fraction well below 1.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in summaryInput) (res *mcp.CallToolResult, out summaryOutput, err error) {
 		defer recoverToError("summarize_spending", &err)
 

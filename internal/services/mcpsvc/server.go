@@ -52,6 +52,11 @@ type Deps struct {
 // closest thing this design has to a system prompt for the model consuming
 // these tools, so it names the grounding rule directly rather than leaving it
 // to be inferred from individual tool descriptions.
+//
+// The definitions this text encodes (transaction typing, sign convention,
+// internal transfers, savings rate, budget targets, ...) are canonical in
+// GLOSSARY.md at the repo root. Change a definition there first, then bring
+// this string in line with it -- do not let the two drift.
 const serverInstructions = "These tools cover two things for one household: a personal retirement " +
 	"projection (the plan tools) and the actual transaction ledger behind it (the spending tools). " +
 	"Ground every answer in the figures the tools actually return — do not estimate or recompute by " +
@@ -61,7 +66,11 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"does not model (mortality, market timing, and more), and a figure it never accounted for should " +
 	"not be presented as settled. apply_changes writes to the saved plan; run_scenario does not. " +
 	"Prefer run_scenario while exploring, and apply_changes only when the user has settled on a " +
-	"change. Expense amounts are not signed the same way across the spending tools -- this is the " +
+	"change. A transaction's income-vs-outflow TYPE is INFERRED at load time from " +
+	"description/category KEYWORDS, not supplied by the bank -- an unusually-worded deposit can be " +
+	"misfiled as an outflow, and a \"never income\" phrase (credit-card payment, autopay, loan " +
+	"payment, transfer to, withdrawal, fee) forces outflow regardless of the amount's sign. " +
+	"Expense amounts are not signed the same way across the spending tools -- this is the " +
 	"COMPLETE list of all six SPENDING tools, not a sample: signed in search_transactions (expenses " +
 	"negative) and get_anomalies (expenses negative); positive in get_price_creep and get_recurring; and MIXED in " +
 	"get_trends (current_amount/previous_amount are positive; change_amount/change_percent are " +
@@ -72,7 +81,15 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"in these tools is a fuzzy grouping of similar transaction descriptions, not a verified " +
 	"counterparty, and merchant labels are lower-cased, so they will not match a transaction's " +
 	"description verbatim. All spending tools exclude transactions the user has already resolved as " +
-	"duplicates." +
+	"duplicates. Money moving between the user's own accounts -- credit-card payments and " +
+	"brokerage/ACH transfers (Schwab, Fidelity, Vanguard, E*TRADE, Coinbase, Robinhood, \"usaa " +
+	"funds transfer\"), plus any major expense the user has flagged is_internal_transfer -- is an " +
+	"INTERNAL TRANSFER, filtered out at LOAD TIME before any spending tool ever sees it: there is " +
+	"no \"transfer\" transaction type at all, and a transfer is neither income nor expense. The " +
+	"ledger therefore does NOT show savings or investment contributions, so net_savings and " +
+	"savings_rate describe income minus spending, NOT money actually moved into savings -- a " +
+	"question like \"how much went into the brokerage this year\" CANNOT be answered from these " +
+	"tools." +
 	" There are also five curation tools covering the user's declared \"major expenses\" -- their own " +
 	"labels for spending they already understand. list_major_expenses and list_exceptions read; " +
 	"pin_transactions, upsert_major_expense and delete_major_expense WRITE TO THE USER'S DATA, so " +

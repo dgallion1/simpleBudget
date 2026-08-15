@@ -222,9 +222,9 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// could promise a recovery path that does not exist.
 		"the .bak copy taken before its first change of a session, when there was prior data on disk to",
 		"a write with nothing there yet to back up has no .bak, but also nothing to lose",
-		// The six housekeeping tools: which read, which write, and the two
+		// The seven housekeeping tools: which read, which write, and the two
 		// claims a behavior change would silently falsify.
-		"six HOUSEKEEPING tools",
+		"seven HOUSEKEEPING tools",
 		"get_status is the one to call FIRST",
 		"the only one that still answers",
 		"do NOT sum to search_transactions' totals",
@@ -240,6 +240,11 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"undoing kept_winner makes the suppressed transaction live again",
 		"undoing kept_both only",
 		"run_backup adds a zip to the backup directory and changes nothing else",
+		// shutdown_server is guarded and unrecoverable: it needs a confirm token
+		// that only one preview call can mint, and a successful redeem call stops
+		// the process with no undo path.
+		"shutdown_server stops the server",
+		"Calling it twice yourself is NOT the user agreeing",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

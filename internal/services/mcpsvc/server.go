@@ -82,7 +82,7 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"identical-looking transactions share one hash and are pinned together. Only outflows are matched " +
 	"against major expenses; income never is. Pages other than the what-if planner do not refresh " +
 	"themselves, so a curation write leaves an already-open Major Expenses tab showing stale data." +
-	" Finally, six HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
+	" Finally, seven HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
 	"the one to call FIRST when another tool fails inexplicably: if the user's data is encrypted and " +
 	"currently locked, every ledger-reading tool fails and get_status is the only one that still answers. " +
 	"list_data_files inventories the bank exports on disk; its per-file row counts are raw and do NOT sum " +
@@ -95,7 +95,11 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"undoing kept_winner makes the suppressed transaction live again, while undoing kept_both only " +
 	"re-flags the pair for review, since kept_both never suppressed anything to begin with. run_backup " +
 	"adds a zip to the backup directory and changes nothing else, so it is safe to call before suggesting " +
-	"anything the user might want to walk back."
+	"anything the user might want to walk back." +
+	" One tool is guarded: shutdown_server stops the server, and after it runs nothing in this session can " +
+	"undo that -- every tool stops answering and only the user can start the server again. It takes two " +
+	"calls: the first returns what would happen plus a single-use confirm_token, the second must echo that " +
+	"token. Calling it twice yourself is NOT the user agreeing; show them the first call's answer and wait."
 
 // NewServer builds the MCP server. A nil Loader disables spend's, curate's
 // and admin's tools; registration itself never touches a dependency. Other

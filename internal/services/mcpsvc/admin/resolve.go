@@ -82,11 +82,13 @@ func registerResolve(s *mcp.Server, deps Deps) {
 			"kept_hash and suppressed_hash and both must belong to THIS pair -- a hash from anywhere else is " +
 			"refused, not written. kept_both ignores the hashes. A pair_key that is not currently awaiting " +
 			"review is refused with the list of keys that are, so do not guess one: call list_duplicates first. " +
-			"undo_resolve reverses this exactly. duplicate_decisions.json is copied to a .bak before this " +
-			"session's first change to it when there is prior data on disk to protect; on a fresh install with " +
-			"no decisions file yet there is nothing to back up, so none is taken and snapshot_paths comes back " +
-			"empty. Later changes in the same session are not separately recoverable. An already-open " +
-			"Duplicates page does NOT refresh itself -- it shows stale data until reloaded.",
+			"undo_resolve reverses this exactly. duplicate_decisions.json is copied to a .bak before the " +
+			"first change of this session that has a file to copy: on a fresh install with no decisions file " +
+			"yet there is nothing to back up, so none is taken and snapshot_paths comes back empty -- the NEXT " +
+			"change is then the one that gets the .bak. Once a .bak exists for this session every later call " +
+			"reuses it, reporting the same snapshot_paths, so those later changes are not separately " +
+			"recoverable. An already-open Duplicates page does NOT refresh itself -- it shows stale data " +
+			"until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in resolveInput) (res *mcp.CallToolResult, out resolveOutput, err error) {
 		defer recoverToError("resolve_duplicates", &err)
 

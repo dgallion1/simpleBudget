@@ -298,3 +298,51 @@ func TestResolveDuplicatesAbortsWhenAnExistingDecisionsFileCannotBeBackedUp(t *t
 		t.Errorf("unresolved_count = %d, want 1 (nothing should have been resolved)", list.UnresolvedCount)
 	}
 }
+
+// TestDecisionsSnapshotSequenceOnAFreshInstall pins the .bak sequence both
+// write tools describe to the model. ensureDecisionsSnapshot returns early on
+// fs.ErrNotExist WITHOUT marking the file done in the Snapshotter, so on a
+// fresh install the first write takes no backup (nothing to lose) and the
+// SECOND write -- the first one with a file on disk -- takes a real one.
+// Every write after that reuses it. The descriptions used to claim flatly
+// that "later changes in the same session are not separately recoverable",
+// which is false for that second write; a model relaying it would tell the
+// user a change was unrecoverable when a .bak for it exists.
+func TestDecisionsSnapshotSequenceOnAFreshInstall(t *testing.T) {
+	deps, dir := newLiveDeps(t)
+	if _, err := os.Stat(filepath.Join(dir, "duplicate_decisions.json")); !os.IsNotExist(err) {
+		t.Fatalf("test setup: decisions file already exists (stat err = %v)", err)
+	}
+	cs := connect(t, deps)
+	key, _, _ := pendingPairKey(t, cs)
+
+	first := decodeToolResult[resolveOutput](t, call(t, cs, "resolve_duplicates", map[string]any{
+		"pair_key": key, "outcome": "kept_both",
+	}))
+	if len(first.SnapshotPaths) != 0 {
+		t.Errorf("first write took a .bak (%v) with no decisions file on disk to protect", first.SnapshotPaths)
+	}
+	if !strings.Contains(first.Note, "no .bak was taken") {
+		t.Errorf("first write's note %q does not explain the missing .bak", first.Note)
+	}
+
+	second := decodeToolResult[undoOutput](t, call(t, cs, "undo_resolve", map[string]any{"pair_key": key}))
+	if len(second.SnapshotPaths) != 1 {
+		t.Fatalf("second write took %d snapshots, want 1: the decisions file now exists, so this change IS recoverable", len(second.SnapshotPaths))
+	}
+	backup, err := os.ReadFile(second.SnapshotPaths[0])
+	if err != nil {
+		t.Fatalf("read snapshot %s: %v", second.SnapshotPaths[0], err)
+	}
+	if !strings.Contains(string(backup), key) {
+		t.Errorf("the .bak does not hold the state before the undo (the first write's decision):\n%s", backup)
+	}
+
+	third := decodeToolResult[resolveOutput](t, call(t, cs, "resolve_duplicates", map[string]any{
+		"pair_key": key, "outcome": "kept_both",
+	}))
+	if len(third.SnapshotPaths) != 1 || third.SnapshotPaths[0] != second.SnapshotPaths[0] {
+		t.Errorf("third write's snapshot_paths = %v, want the same single path as the second (%v): once a .bak exists it is reused",
+			third.SnapshotPaths, second.SnapshotPaths)
+	}
+}

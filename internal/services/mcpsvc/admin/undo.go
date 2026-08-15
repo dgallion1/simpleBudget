@@ -31,9 +31,11 @@ func registerUndo(s *mcp.Server, deps Deps) {
 			"This is the app's own Undo button, not a general undo -- it reverses a duplicate decision and " +
 			"nothing else. A pair_key with no decision recorded against it is refused rather than silently " +
 			"succeeding, so a success here always means something actually changed. duplicate_decisions.json " +
-			"is copied to a .bak before this session's first change to it when there is prior data on disk to protect; with no " +
+			"is copied to a .bak before the first change of this session that has a file to copy: with no " +
 			"decisions file yet there is nothing to back up, so none is taken and snapshot_paths comes back " +
-			"empty. Later changes in the same session are not separately recoverable. An already-open Duplicates " +
+			"empty -- the NEXT change is then the one that gets the .bak. Once a .bak exists for this session " +
+			"every later call reuses it, reporting the same snapshot_paths, so those later changes are not " +
+			"separately recoverable. An already-open Duplicates " +
 			"page does NOT refresh itself -- it shows stale data until reloaded.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in undoInput) (res *mcp.CallToolResult, out undoOutput, err error) {
 		defer recoverToError("undo_resolve", &err)

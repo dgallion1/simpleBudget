@@ -19,6 +19,19 @@ func shutdownDeps(t *testing.T) (Deps, *atomic.Int32) {
 	return deps, &calls
 }
 
+// assertNoShutdown fails if the shutdown func fires at all. The tool schedules
+// the real exit with time.AfterFunc, so a broken guard does not call it
+// synchronously -- it calls it shutdownExitDelay later. Asserting immediately
+// would pass against exactly the regression this test exists to catch, so wait
+// past the delay first.
+func assertNoShutdown(t *testing.T, calls *atomic.Int32, what string) {
+	t.Helper()
+	time.Sleep(shutdownExitDelay + 150*time.Millisecond)
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("shutdown func called %d times %s, want 0", got, what)
+	}
+}
+
 // The first call is the whole guard: if it shuts down, the two-step protocol
 // is decorative.
 func TestShutdownFirstCallDoesNotShutDown(t *testing.T) {
@@ -35,9 +48,7 @@ func TestShutdownFirstCallDoesNotShutDown(t *testing.T) {
 	if out.WhatWouldHappen == "" {
 		t.Error("no what_would_happen returned; the user has nothing to agree to")
 	}
-	if got := calls.Load(); got != 0 {
-		t.Fatalf("shutdown func called %d times on the preview call, want 0", got)
-	}
+	assertNoShutdown(t, calls, "on the preview call")
 }
 
 func TestShutdownSecondCallWithTheTokenShutsDown(t *testing.T) {
@@ -69,9 +80,7 @@ func TestShutdownRefusesABadToken(t *testing.T) {
 	if msg == "" {
 		t.Error("no error message explaining the refusal")
 	}
-	if got := calls.Load(); got != 0 {
-		t.Fatalf("shutdown func called %d times with a bad token, want 0", got)
-	}
+	assertNoShutdown(t, calls, "with a bad token")
 }
 
 func TestShutdownRefusesAReplayedToken(t *testing.T) {

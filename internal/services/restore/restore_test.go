@@ -215,7 +215,12 @@ func TestPruneExtras_WalkAndRemoveFailures(t *testing.T) {
 	chmod(lockedParent, 0o555)
 
 	archive := map[string]struct{}{keep: {}}
-	removed, failures := s.pruneExtras(dataAbs, archive, skip)
+	// pruneExtras runs inside a restore's exclusive hold, so the test takes
+	// one too; calling it with an unheld writer would be testing a state the
+	// production path never reaches.
+	writer := s.deps.Store.BeginExclusive()
+	defer writer.Release()
+	removed, failures := s.pruneExtras(writer, dataAbs, archive, skip)
 
 	if removed != 1 {
 		t.Fatalf("removed = %d, want 1 (stale.csv only)", removed)

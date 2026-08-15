@@ -47,6 +47,21 @@ type Storage struct {
 	mu        sync.RWMutex
 	cache     map[string]*cacheEntry
 	cacheMu   sync.RWMutex
+
+	// dataMu serializes ordinary data-directory mutations against a wholesale
+	// rewrite of that directory -- today, a restore's write+prune phase.
+	// Every write takes it shared; BeginExclusive takes it exclusively.
+	//
+	// It is deliberately NOT mu, which guards encryption state: a restore has
+	// no business blocking an unlock, and conflating the two would make the
+	// lock's meaning unstateable.
+	//
+	// The shared side is held for the duration of ONE storage call and never
+	// across a call into another service. That is what keeps it deadlock-free
+	// against the settings rewrite gate, which a restore holds at the same
+	// time: no writer can be waiting on the settings lock while holding this
+	// one.
+	dataMu sync.RWMutex
 }
 
 // New creates a new Storage instance for the given base directory
@@ -281,6 +296,17 @@ func (s *Storage) WriteFileContext(ctx context.Context, path string, data []byte
 		return err
 	}
 
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+	return s.writeFileLocked(path, data, perm)
+}
+
+// writeFileLocked is WriteFileContext's body without the data-directory lock.
+// Callers must already hold dataMu, shared or exclusive. It exists because
+// sync.RWMutex is not reentrant: a restore holding the exclusive lock would
+// deadlock on its own writes if they went through the public method. Same
+// shape as backup.Service's snapshotLocked.
+func (s *Storage) writeFileLocked(path string, data []byte, perm os.FileMode) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -395,13 +421,89 @@ func (s *Storage) Glob(pattern string) ([]string, error) {
 
 // MkdirAll creates a directory and all parents
 func (s *Storage) MkdirAll(path string, perm os.FileMode) error {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 	return os.MkdirAll(path, perm)
 }
 
 // Remove removes a file and invalidates its cache entry
 func (s *Storage) Remove(path string) error {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+	return s.removeLocked(path)
+}
+
+// removeLocked is Remove without the data-directory lock; see writeFileLocked.
+func (s *Storage) removeLocked(path string) error {
 	s.cacheMu.Lock()
 	delete(s.cache, path)
 	s.cacheMu.Unlock()
 	return os.Remove(path)
+}
+
+// ExclusiveWriter holds the data directory against every other writer for as
+// long as it is open. It is how a restore rewrites the directory without a
+// concurrent write landing in the window between the rewrite and the prune --
+// where the prune would delete a file the user had just created.
+//
+// Its methods bypass the lock they already hold, so nothing inside an
+// exclusive section may call the plain Storage write methods: that is the one
+// way to deadlock this.
+//
+// Reads are deliberately NOT excluded. A reader during a restore can see a
+// partly rewritten tree, which is a display concern the browser resolves by
+// reloading; making every page render contend with a restore would be a much
+// larger change for a much smaller problem.
+type ExclusiveWriter struct {
+	s        *Storage
+	released bool
+}
+
+// BeginExclusive blocks until every in-flight write has finished, then holds
+// the data directory until Release. Callers MUST Release, normally by defer.
+//
+// Lock order where a caller takes more than one: settings rewrite gate ->
+// this -> backup snapshot hold. A restore takes all three (see
+// internal/services/restore). The gate comes first because
+// SettingsManager.SaveWithRevision holds the manager's lock across its write
+// through this Storage, so a caller taking this one first would be the other
+// half of an ABBA deadlock.
+func (s *Storage) BeginExclusive() *ExclusiveWriter {
+	s.dataMu.Lock()
+	return &ExclusiveWriter{s: s}
+}
+
+// Release gives the data directory back. Safe to call more than once so a
+// deferred Release cannot double-unlock a mutex after an explicit one.
+func (w *ExclusiveWriter) Release() {
+	if w == nil || w.released {
+		return
+	}
+	w.released = true
+	w.s.dataMu.Unlock()
+}
+
+// WriteFile writes through the exclusive hold. Same semantics as
+// Storage.WriteFile, minus the locking it would deadlock on.
+func (w *ExclusiveWriter) WriteFile(path string, data []byte, perm os.FileMode) error {
+	if w.released {
+		return fmt.Errorf("storage: write attempted after the exclusive hold was released")
+	}
+	return w.s.writeFileLocked(path, data, perm)
+}
+
+// Remove removes through the exclusive hold.
+func (w *ExclusiveWriter) Remove(path string) error {
+	if w.released {
+		return fmt.Errorf("storage: remove attempted after the exclusive hold was released")
+	}
+	return w.s.removeLocked(path)
+}
+
+// MkdirAll creates a directory through the exclusive hold.
+func (w *ExclusiveWriter) MkdirAll(path string, perm os.FileMode) error {
+	if w.released {
+		return fmt.Errorf("storage: mkdir attempted after the exclusive hold was released")
+	}
+	return os.MkdirAll(path, perm)
 }

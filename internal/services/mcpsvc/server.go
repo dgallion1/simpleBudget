@@ -16,6 +16,7 @@ import (
 	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/mcpsvc/snapshot"
 	"budget2/internal/services/mcpsvc/spend"
+	"budget2/internal/services/restore"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 
@@ -33,6 +34,14 @@ type Deps struct {
 	SnapshotDir string
 	BaseURL     string
 	Backups     *backup.Service
+
+	// Restores is the SAME *restore.Service the /restore HTTP handler uses,
+	// handed over by handlers/backup.Initialize rather than constructed here:
+	// a second instance over the same directories would work, but only as
+	// long as nobody gave the two different gates or dirs. Nil disables
+	// restore_backup's ability to act (the tool still registers and still
+	// reports why).
+	Restores *restore.Service
 
 	// Shutdown stops the server process. Nil disables shutdown_server's
 	// ability to act (the tool still registers and still reports why).
@@ -82,7 +91,7 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"identical-looking transactions share one hash and are pinned together. Only outflows are matched " +
 	"against major expenses; income never is. Pages other than the what-if planner do not refresh " +
 	"themselves, so a curation write leaves an already-open Major Expenses tab showing stale data." +
-	" Finally, seven HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
+	" Finally, nine HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
 	"the one to call FIRST when another tool fails inexplicably: if the user's data is encrypted and " +
 	"currently locked, every ledger-reading tool fails and get_status is the only one that still answers. " +
 	"list_data_files inventories the bank exports on disk; its per-file row counts are raw and do NOT sum " +
@@ -95,11 +104,15 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"undoing kept_winner makes the suppressed transaction live again, while undoing kept_both only " +
 	"re-flags the pair for review, since kept_both never suppressed anything to begin with. run_backup " +
 	"adds a zip to the backup directory and changes nothing else, so it is safe to call before suggesting " +
-	"anything the user might want to walk back." +
-	" One tool is guarded: shutdown_server stops the server, and after it runs nothing in this session can " +
-	"undo that -- every tool stops answering and only the user can start the server again. It takes two " +
-	"calls: the first returns what would happen plus a single-use confirm_token, the second must echo that " +
-	"token. Calling it twice yourself is NOT the user agreeing; show them the first call's answer and wait."
+	"anything the user might want to walk back. list_backups reads that directory back, newest first, and " +
+	"is the only place a restore_backup name may come from." +
+	" Two tools are guarded, and both take two calls: the first returns what would happen plus a single-use " +
+	"confirm_token, the second must echo that token. Calling one twice yourself is NOT the user agreeing; " +
+	"show them the first call's answer and wait for a real answer. shutdown_server stops the server, and " +
+	"after it runs nothing in this session can undo that -- every tool stops answering and only the user can " +
+	"start the server again. restore_backup overwrites the whole data directory from an archive AND DELETES " +
+	"every file that archive does not contain, so anything imported or decided since it was taken is lost; " +
+	"it takes a safety snapshot first, which is the only route back and only via another restore."
 
 // NewServer builds the MCP server. A nil Loader disables spend's, curate's
 // and admin's tools; registration itself never touches a dependency. Other
@@ -111,12 +124,14 @@ const serverInstructions = "These tools cover two things for one household: a pe
 // reports "no backup service is configured" instead of a snapshot record)
 // and disables nothing else: run_backup still registers and still gets
 // called, it just fails that call with the same "not configured" error. A
-// nil Backups is a supported configuration. Likewise, a nil Shutdown is a
-// supported configuration: shutdown_server still registers, but every call --
+// nil Backups is a supported configuration -- though it also disables
+// list_backups and restore_backup, which have no way to name an archive
+// without it. Likewise, a nil Shutdown is a supported configuration:
+// shutdown_server still registers, but every call --
 // including the no-argument preview -- fails fast with "no shutdown path is
 // configured on this server" instead of stopping the process, because a
 // server that cannot shut down should not mint a token no redeem could ever
-// honor.
+// honor. A nil Restores behaves the same way for restore_backup.
 //
 // deps.Settings, by contrast, is not a supported nil configuration in
 // production: cmd/server/main.go constructs it unconditionally, and
@@ -184,6 +199,12 @@ func NewServer(deps Deps) *mcp.Server {
 		// service as absent. Only assign when there is really a service.
 		if deps.Backups != nil {
 			adminDeps.Backups = deps.Backups
+		}
+		// Same interface-holding-a-nil-pointer hazard as Backups above: assign
+		// only when there is really a service, or restore_backup's own nil
+		// check would take the wrong branch.
+		if deps.Restores != nil {
+			adminDeps.Restores = deps.Restores
 		}
 		// The registry is constructed per server, so tokens never outlive
 		// the process.

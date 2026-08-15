@@ -1,0 +1,181 @@
+package admin
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	backupsvc "budget2/internal/services/backup"
+	"budget2/internal/services/restore"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+type restoreBackupInput struct {
+	Name         string `json:"name" jsonschema:"the archive filename exactly as list_backups reported it, e.g. budget_backup_20260801_030000.zip"`
+	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"the token returned by a previous call for this same archive; omit it to get the preview and a fresh token"`
+}
+
+type restoreBackupOutput struct {
+	Confirmed    bool   `json:"confirmed"`
+	Name         string `json:"name,omitempty"`
+	ConfirmToken string `json:"confirm_token,omitempty"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
+
+	WhatWouldHappen string `json:"what_would_happen,omitempty"`
+
+	// Counts, populated only on a confirmed restore. Restored counts archive
+	// entries written; Pruned counts live files deleted because the archive
+	// did not contain them -- the number the user most needs to see.
+	Restored         int `json:"restored,omitempty"`
+	Pruned           int `json:"pruned,omitempty"`
+	SkippedProtected int `json:"skipped_protected,omitempty"`
+	PruneFailures    int `json:"prune_failures,omitempty"`
+
+	Note string `json:"note,omitempty"`
+}
+
+// restoreConsequences describes the blast radius in the concrete terms the
+// user needs to agree to. It names the prune explicitly: replacing files is
+// the obvious half of a restore, and deleting files the archive never had is
+// the half that surprises people.
+func restoreConsequences(a backupsvc.Archive) string {
+	return fmt.Sprintf(
+		"every file in the user's data directory would be rewritten from the archive %s (taken %s UTC, %d bytes), "+
+			"and ANY FILE THE ARCHIVE DOES NOT CONTAIN WOULD BE DELETED -- including bank CSVs imported since it "+
+			"was taken, duplicate-resolution decisions, major-expense definitions and the saved retirement plan. "+
+			"A safety snapshot of the current data is taken first and lands in the backup directory as a new "+
+			"archive, so the present state is recoverable only by restoring THAT archive afterwards; there is no "+
+			"undo tool here. Any browser tab the user has open keeps showing the old data until they reload it",
+		a.Name, a.TS.UTC().Format(time.RFC3339), a.Bytes)
+}
+
+func registerRestoreBackup(s *mcp.Server, deps Deps) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "restore_backup",
+		Description: "Overwrite the user's entire data directory with the contents of a backup archive. THIS IS " +
+			"DESTRUCTIVE AND THERE IS NO UNDO TOOL: it rewrites every file from the archive AND DELETES every " +
+			"file the archive does not contain -- CSVs imported since it was taken, duplicate decisions, major " +
+			"expense definitions, and the saved retirement plan all go. A safety snapshot of the current data is " +
+			"taken first and written to the backup directory, so the pre-restore state can only be recovered by " +
+			"restoring that snapshot in turn. Get `name` from list_backups and pass it back verbatim; never " +
+			"invent or edit one. Two steps: call it with `name` alone to get a description of exactly what would " +
+			"be lost plus a confirm_token, SHOW THAT DESCRIPTION TO THE USER, and call again with the same name " +
+			"plus the token only after they have actually said yes. The token is single-use, expires, and is " +
+			"bound to this tool AND to that one archive name -- change the name and it is refused. Confirming " +
+			"twice yourself is not the user agreeing; the second call is for after they have answered. Prefer " +
+			"run_backup first if there is any doubt: it costs a zip and makes the current state restorable.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in restoreBackupInput) (res *mcp.CallToolResult, out restoreBackupOutput, err error) {
+		defer recoverToError("restore_backup", &err)
+
+		// Fail before minting anything the server could never honor: a token
+		// handed out by a server with no restore path is a promise it cannot
+		// keep, which is how shutdown_server treats a nil Shutdown too.
+		if deps.Restores == nil {
+			return nil, restoreBackupOutput{}, fmt.Errorf("no restore service is configured on this server")
+		}
+		if deps.Backups == nil {
+			return nil, restoreBackupOutput{}, fmt.Errorf("no backup service is configured on this server, so archives cannot be identified")
+		}
+		if deps.Confirm == nil {
+			return nil, restoreBackupOutput{}, fmt.Errorf("no confirmation registry is configured on this server, so this guarded tool cannot run")
+		}
+
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			return nil, restoreBackupOutput{}, fmt.Errorf("name is required: call list_backups and pass one of the names it reports")
+		}
+
+		token := strings.TrimSpace(in.ConfirmToken)
+		if token == "" {
+			archive, findErr := findArchive(deps, name)
+			if findErr != nil {
+				return nil, restoreBackupOutput{}, findErr
+			}
+			// The minted args carry the name but not the token: `in` at redeem
+			// time carries the token itself, so hashing `in` would never match.
+			fresh, expires, mintErr := deps.Confirm.Mint("restore_backup", restoreBackupInput{Name: name})
+			if mintErr != nil {
+				return nil, restoreBackupOutput{}, mintErr
+			}
+			return nil, restoreBackupOutput{
+				Confirmed:       false,
+				Name:            name,
+				ConfirmToken:    fresh,
+				ExpiresAt:       expires.UTC().Format(time.RFC3339),
+				WhatWouldHappen: restoreConsequences(archive),
+				Note: "nothing has been restored or deleted; show the user what_would_happen and call again with " +
+					"the same name plus confirm_token ONLY if they agree",
+			}, nil
+		}
+
+		if err := deps.Confirm.Redeem(token, "restore_backup", restoreBackupInput{Name: name}); err != nil {
+			return nil, restoreBackupOutput{}, err
+		}
+
+		result, restoreErr := deps.Restores.FromArchive(ctx, name)
+		if restoreErr != nil {
+			return nil, restoreBackupOutput{}, fmt.Errorf("%s (the confirmation token has been spent either way; "+
+				"call restore_backup with the name alone to preview again and get a new one): %w",
+				restoreDamageReport(restoreErr), restoreErr)
+		}
+
+		out = restoreBackupOutput{
+			Confirmed:        true,
+			Name:             name,
+			Restored:         result.Restored,
+			Pruned:           result.Pruned,
+			SkippedProtected: result.SkippedProtected,
+			PruneFailures:    result.PruneFailures,
+			Note: fmt.Sprintf("restored %d files from %s and deleted %d that the archive did not contain; "+
+				"the data as it was a moment ago is in the safety snapshot this restore took, which is now the "+
+				"newest entry in list_backups. Any open browser tab still shows the old data until reloaded",
+				result.Restored, name, result.Pruned),
+		}
+		if result.PruneFailures > 0 {
+			out.Note += fmt.Sprintf(". %d stale file(s) could not be deleted, so some data the archive did not "+
+				"contain is still on disk; the server log has the details", result.PruneFailures)
+		}
+		return nil, out, nil
+	})
+}
+
+// findArchive resolves name against the archives actually on disk, so a
+// preview is only ever minted for something restorable. Returning the archive
+// (rather than a bool) is what lets the preview quote its real timestamp and
+// size instead of echoing the name back.
+func findArchive(deps Deps, name string) (backupsvc.Archive, error) {
+	archives, err := deps.Backups.List()
+	if err != nil {
+		return backupsvc.Archive{}, fmt.Errorf("the backup directory could not be listed: %w", err)
+	}
+	for _, a := range archives {
+		if a.Name == name {
+			return a, nil
+		}
+	}
+	if len(archives) == 0 {
+		return backupsvc.Archive{}, fmt.Errorf("there are no backup archives in %s, so there is nothing to restore", deps.Backups.BackupDir())
+	}
+	return backupsvc.Archive{}, fmt.Errorf("no backup archive named %q is in %s; call list_backups for the %d that are there and use a name verbatim",
+		name, deps.Backups.BackupDir(), len(archives))
+}
+
+// restoreDamageReport says whether the user's data can have changed. The
+// restore service validates the whole archive, and takes its safety snapshot,
+// before it writes anything -- so every failure except a write failure leaves
+// the data directory exactly as it was. Saying "nothing changed" for all of
+// them would be a lie in the one case that matters most.
+func restoreDamageReport(err error) string {
+	if errors.Is(err, restore.ErrWriteFailed) {
+		return "the restore FAILED PART WAY THROUGH and the data directory may be partly rewritten; " +
+			"the safety snapshot taken just before it is the newest archive in list_backups"
+	}
+	if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
+		return "the restore did not start because a backup was already running, so nothing was changed; " +
+			"wait for it to finish and try again"
+	}
+	return "the restore did not start and nothing was changed"
+}

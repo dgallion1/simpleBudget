@@ -61,7 +61,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 // NewServer(Deps{}) would stay green even if spend.Register were deleted
 // from NewServer outright. A non-nil Loader (and the
 // Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
-func TestNewServerRegistersAllTwentyFourTools(t *testing.T) {
+func TestNewServerRegistersAllTwentySixTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -93,14 +93,14 @@ func TestNewServerRegistersAllTwentyFourTools(t *testing.T) {
 		"get_anomalies", "get_price_creep", "search_transactions", "summarize_spending", "get_recurring",
 		"get_trends", "list_major_expenses", "list_exceptions", "pin_transactions", "upsert_major_expense",
 		"delete_major_expense", "get_status", "list_data_files", "list_duplicates", "resolve_duplicates",
-		"undo_resolve", "run_backup", "shutdown_server",
+		"undo_resolve", "run_backup", "list_backups", "restore_backup", "shutdown_server",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 24 {
-		t.Errorf("expected exactly 24 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 26 {
+		t.Errorf("expected exactly 26 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 
@@ -222,9 +222,9 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// could promise a recovery path that does not exist.
 		"the .bak copy taken before its first change of a session, when there was prior data on disk to",
 		"a write with nothing there yet to back up has no .bak, but also nothing to lose",
-		// The seven housekeeping tools: which read, which write, and the two
+		// The nine housekeeping tools: which read, which write, and the two
 		// claims a behavior change would silently falsify.
-		"seven HOUSEKEEPING tools",
+		"nine HOUSEKEEPING tools",
 		"get_status is the one to call FIRST",
 		"the only one that still answers",
 		"do NOT sum to search_transactions' totals",
@@ -240,11 +240,17 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"undoing kept_winner makes the suppressed transaction live again",
 		"undoing kept_both only",
 		"run_backup adds a zip to the backup directory and changes nothing else",
-		// shutdown_server is guarded and unrecoverable: it needs a confirm token
-		// that only one preview call can mint, and a successful redeem call stops
-		// the process with no undo path.
+		// list_backups is the only sanctioned source of a restore_backup name.
+		"is the only place a restore_backup name may come from",
+		// Both guarded tools are unrecoverable in their own way: each needs a
+		// confirm token that only a preview call can mint, and neither has an
+		// undo path once redeemed.
+		"Two tools are guarded",
 		"shutdown_server stops the server",
-		"Calling it twice yourself is NOT the user agreeing",
+		"Calling one twice yourself is NOT the user agreeing",
+		// The prune is the half of a restore that surprises people, so the
+		// instructions must state it, not just "overwrites".
+		"DELETES every file that archive does not contain",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

@@ -27,6 +27,14 @@ is how guards end up subtly wrong.
 
 ## Why restore_backup is deferred
 
+> **Superseded 2026-08-15.** `restore_backup` and `list_backups` shipped; see
+> `2026-08-15-restore-backup-design.md`. Two of the three objections below were
+> answered (the service exists, and there is now a public archive listing). The
+> third — that a confirm token proves deliberateness, not consent — was not
+> resolved; it was accepted, and is stated in the tool description, the preview
+> text and the README instead. The section is kept as written because it is the
+> record of what shipping cost.
+
 Every write tool shipped so far settles into the same shape: it touches one
 sidecar JSON, takes a `.bak` first, and has a reversal tool that does not
 require the browser. `restore_backup` breaks all three properties at once.
@@ -274,7 +282,8 @@ half-restored with no shutdown snapshot taken.
 
 ## Out of scope
 
-- `restore_backup` and its `list_backups` prerequisite.
+- `restore_backup` and its `list_backups` prerequisite. (Both shipped later the
+  same day — see `2026-08-15-restore-backup-design.md`.)
 - `set_encryption`, permanently.
 - Generalizing the guard into an `mcp.AddTool` wrapper. With one consumer the
   abstraction would be designed against a sample size of one; revisit when

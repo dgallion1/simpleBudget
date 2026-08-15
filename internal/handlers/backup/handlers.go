@@ -53,7 +53,12 @@ var restoreSvc *restore.Service
 // cannot be forgotten or installed in the wrong order; pass nil only when
 // no settings manager exists (isolated tests) — restores then run
 // unserialized, loudly.
-func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service, gate SettingsRewriteGate) {
+//
+// It returns the restore service it built so cmd/server can hand that exact
+// instance to the MCP server: the browser's /restore and the restore_backup
+// tool must share one service, or they would be two objects racing over the
+// same data directory with no shared snapshot hold between them.
+func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service, gate SettingsRewriteGate) *restore.Service {
 	cfg = c
 	store = s
 	renderer = r
@@ -73,6 +78,7 @@ func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *
 		rd.Backups = b
 	}
 	restoreSvc = restore.New(rd)
+	return restoreSvc
 }
 
 // RegisterPublicRoutes registers the endpoints that must stay reachable
@@ -142,8 +148,19 @@ func HandleBackupStatus(w http.ResponseWriter, r *http.Request) {
 			resp.Dir = dir
 			resp.Enabled = enabled
 		}
-		matches, _ := filepath.Glob(filepath.Join(dir, "budget_backup_*.zip"))
-		resp.SnapshotCount = len(matches)
+		// Counted through the service rather than an inline glob, so this
+		// page and list_backups cannot disagree about what an archive is:
+		// the glob counted budget_backup_NOT_A_DATE.zip as one, the service
+		// does not. Without a service the count stays 0 rather than falling
+		// back to a glob -- that configuration has no backups (enabled is
+		// false above for the same reason), and a second definition of
+		// "archive" living here is exactly what this replaced.
+		if backupSvc != nil {
+			archives, err := backupSvc.List()
+			if err == nil {
+				resp.SnapshotCount = len(archives)
+			}
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

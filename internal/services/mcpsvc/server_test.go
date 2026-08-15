@@ -104,6 +104,72 @@ func TestNewServerRegistersAllTwentyThreeTools(t *testing.T) {
 	}
 }
 
+// TestNilBackupsDegradesRatherThanPanics guards the typed-nil seam between
+// Deps.Backups (a concrete *backup.Service) and admin.Deps.Backups (an
+// interface). Assigning a nil pointer straight across yields a NON-nil
+// interface holding a nil pointer, which sails past admin's own
+// `Backups == nil` guards and turns both tools into nil-pointer panics --
+// worst for get_status, the tool the instructions bill as "the only one that
+// still answers" when everything else is broken. The doc comment on NewServer
+// promises a nil Backups is a supported degraded mode; this is what holds it
+// to that.
+func TestNilBackupsDegradesRatherThanPanics(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	cs := connect(t, NewServer(Deps{
+		Settings:    retirement.NewSettingsManager(filepath.Join(dir, "settings"), store),
+		Loader:      dataloader.New(dir, store),
+		Store:       store,
+		SettingsDir: filepath.Join(dir, "settings"),
+		SnapshotDir: filepath.Join(dir, "mcp-snapshots"),
+		Backups:     nil,
+	}))
+	ctx := context.Background()
+
+	status, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "get_status"})
+	if err != nil {
+		t.Fatalf("CallTool get_status: %v", err)
+	}
+	if status.IsError {
+		t.Fatalf("get_status failed with a nil backup service instead of degrading: %+v", status.Content)
+	}
+	if !strings.Contains(toolText(t, status), "no backup service is configured") {
+		t.Errorf("get_status did not report the absent backup service; content = %s", toolText(t, status))
+	}
+
+	// run_backup cannot degrade -- there is nothing to run -- but it must fail
+	// with its own named error, not a recovered panic.
+	backup, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "run_backup"})
+	if err != nil {
+		t.Fatalf("CallTool run_backup: %v", err)
+	}
+	if !backup.IsError {
+		t.Fatal("run_backup claimed success with no backup service configured")
+	}
+	msg := toolText(t, backup)
+	if strings.Contains(msg, "panicked") {
+		t.Errorf("run_backup panicked instead of reporting the missing service: %s", msg)
+	}
+	if !strings.Contains(msg, "no backup service is configured") {
+		t.Errorf("run_backup error %q does not name the missing dependency", msg)
+	}
+}
+
+// toolText flattens a tool result's content to a single string.
+func toolText(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	var sb strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			sb.WriteString(tc.Text)
+		}
+	}
+	return sb.String()
+}
+
 // TestServerInstructionsCarryLoadBearingClaims pins the presence of every
 // claim serverInstructions makes about tool behavior -- it is the model's
 // closest thing to a system prompt, read on every connection, and nothing

@@ -149,19 +149,28 @@ func NewServer(deps Deps) *mcp.Server {
 			// the two directories from holding a file of the same name.
 			Snapshots: snapshot.New(deps.Loader.CSVDirectory, filepath.Join(deps.SnapshotDir, "data")),
 		})
-		admin.Register(s, admin.Deps{
+		adminDeps := admin.Deps{
 			Transactions: deps.Loader,
 			Files:        deps.Loader,
 			Duplicates:   deps.Loader,
 			Decisions:    deps.Loader,
 			Store:        deps.Store,
 			Settings:     deps.Settings,
-			Backups:      deps.Backups,
 			// The same data-directory snapshot destination curate uses: both
 			// write sidecar JSON files that live in the data dir, and a
 			// restore is a hand-copy either way.
 			Snapshots: snapshot.New(deps.Loader.CSVDirectory, filepath.Join(deps.SnapshotDir, "data")),
-		})
+		}
+		// admin.Deps.Backups is an INTERFACE and deps.Backups is a concrete
+		// pointer, so assigning a nil *backup.Service unconditionally would
+		// produce a non-nil interface holding a nil pointer -- admin's own
+		// `Backups == nil` guards would then all take the wrong branch and
+		// get_status and run_backup would panic instead of reporting the
+		// service as absent. Only assign when there is really a service.
+		if deps.Backups != nil {
+			adminDeps.Backups = deps.Backups
+		}
+		admin.Register(s, adminDeps)
 	}
 	return s
 }

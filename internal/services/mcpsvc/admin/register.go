@@ -16,6 +16,7 @@ import (
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/mcpsvc/snapshot"
+	"budget2/internal/services/restore"
 	"budget2/internal/services/storage"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -79,12 +80,28 @@ type SettingsSource interface {
 
 // BackupService runs and reports on data-directory snapshots.
 // *backup.Service satisfies it.
+//
+// List reports the archives on disk newest first. It is what gives the model
+// a name to hand to restore_backup: before it existed the archives were
+// visible only to the Backup Status page, so a restore tool would have had
+// nothing to address.
 type BackupService interface {
 	BackupDir() string
 	DataDir() string
 	Enabled() bool
 	Meta() (backup.Meta, error)
 	Snapshot(ctx context.Context) error
+	List() ([]backup.Archive, error)
+}
+
+// RestoreService rewrites the data directory from a named archive in the
+// backup directory. *restore.Service satisfies it.
+//
+// It is the same instance the /restore HTTP handler uses, so a restore driven
+// from a tool and one driven from the browser take the same snapshot hold and
+// the same settings-rewrite gate.
+type RestoreService interface {
+	FromArchive(ctx context.Context, name string) (restore.Result, error)
 }
 
 // Deps is what the housekeeping tools need. Every field may be nil except
@@ -99,6 +116,7 @@ type Deps struct {
 	Store        *storage.Storage
 	Settings     SettingsSource
 	Backups      BackupService
+	Restores     RestoreService
 	Snapshots    *snapshot.Snapshotter
 
 	// Confirm mints and redeems the two-step tokens guarded tools require. A
@@ -148,5 +166,7 @@ func Register(s *mcp.Server, deps Deps) {
 	registerResolve(s, deps)
 	registerUndo(s, deps)
 	registerRunBackup(s, deps)
+	registerListBackups(s, deps)
+	registerRestoreBackup(s, deps)
 	registerShutdown(s, deps)
 }

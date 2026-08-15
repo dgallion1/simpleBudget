@@ -145,6 +145,7 @@ func (b busyBackups) DataDir() string                    { return b.inner.DataDi
 func (b busyBackups) Enabled() bool                      { return b.inner.Enabled() }
 func (b busyBackups) Meta() (backupsvc.Meta, error)      { return b.inner.Meta() }
 func (b busyBackups) Snapshot(ctx context.Context) error { return backupsvc.ErrSnapshotInProgress }
+func (b busyBackups) List() ([]backupsvc.Archive, error) { return b.inner.List() }
 
 // toolErrorText asserts res is an error result and returns its message.
 func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {

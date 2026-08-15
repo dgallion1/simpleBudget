@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -51,13 +50,11 @@ func listBackupTimes(dir string) ([]backupEntry, error) {
 	}
 	out := make([]backupEntry, 0, len(matches))
 	for _, m := range matches {
-		base := filepath.Base(m)
-		stamp := strings.TrimSuffix(strings.TrimPrefix(base, backupNamePrefix), backupNameSuffix)
-		ts, err := time.Parse("20060102_150405", stamp)
-		if err != nil {
+		ts, ok := parseArchiveStamp(filepath.Base(m))
+		if !ok {
 			continue
 		}
-		out = append(out, backupEntry{path: m, ts: ts.UTC()})
+		out = append(out, backupEntry{path: m, ts: ts})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ts.Before(out[j].ts) })
 	return out, nil

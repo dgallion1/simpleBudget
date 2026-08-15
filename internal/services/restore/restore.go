@@ -40,6 +40,7 @@ var (
 
 	// 500-class: the server or its wiring is the problem.
 	ErrBadDataDir      = errors.New("bad data directory")
+	ErrNoStore         = errors.New("no storage layer is configured")
 	ErrNoBackupService = errors.New("no backup service is configured")
 	ErrSnapshotFailed  = errors.New("safety snapshot failed")
 	ErrWriteFailed     = errors.New("write failed")
@@ -182,11 +183,65 @@ func (s *Service) FromZip(ctx context.Context, content []byte) (Result, error) {
 		return res, ErrEmptyArchive
 	}
 
+	if s.deps.Store == nil {
+		return res, ErrNoStore
+	}
 	if s.deps.Backups == nil {
 		return res, ErrNoBackupService
 	}
+
+	// LOCK ORDER -- settings gate, then data directory, then snapshot hold.
+	// Nothing may take them in another order, and the deferred releases
+	// unwind in reverse.
+	//
+	// The order is forced by SettingsManager.SaveWithRevision, which holds
+	// the manager's lock across its store.WriteFile and therefore takes
+	// settings-then-data. A restore taking data-then-settings would be the
+	// other half of an ABBA deadlock: the restore holding the data directory
+	// and waiting for the settings lock, an in-flight save holding the
+	// settings lock and waiting for the data directory.
+	//
+	// Serialize the entire snapshot + write + prune against settings saves.
+	// The gate (when wired) holds the SettingsManager's lock until the
+	// deferred endRewrite runs at function exit -- i.e. after pruneExtras --
+	// so no save can interleave with a half-restored settings directory, and
+	// endRewrite's cache drop + active-scenario reconciliation happen inside
+	// the same critical section. Nothing between here and return may call a
+	// SettingsManager method (that would deadlock).
+	//
+	// Accepted consequence of taking it first: a restore that fails at the
+	// snapshot step below has still opened and closed the gate, so it bumps
+	// the settings revision and drops the cache. That costs one page refresh
+	// on a failed restore, which is the cheap side of this trade.
+	if s.deps.Gate != nil {
+		endRewrite := s.deps.Gate.BeginExternalRewrite()
+		defer endRewrite()
+	} else {
+		// A nil gate means the service was wired without a settings manager
+		// -- the restore proceeds UNSERIALIZED against settings saves (the
+		// race the gate exists to prevent). Loud so a wiring regression is
+		// visible instead of silently racy.
+		log.Printf("restore: running without a restore gate; concurrent settings saves are not serialized (pass a SettingsRewriteGate in Deps)")
+	}
+
+	// Hold the data directory against every other writer for the whole
+	// snapshot + write + prune. Without this, an ordinary write (an MCP tool,
+	// a page handler) can land in the window between the rewrite and the
+	// prune walk, and the prune deletes it -- silently, since the writer was
+	// told its write succeeded.
+	//
+	// Taken BEFORE the safety snapshot, not after, so the snapshot captures
+	// exactly the state the prune will act on. Acquired the other way round,
+	// a write landing between the two would be deleted by the prune AND
+	// missing from the safety archive: data with no copy anywhere.
+	writer := s.deps.Store.BeginExclusive()
+	defer writer.Release()
+
 	// Hold the snapshot lock for the whole restore so a scheduled snapshot
-	// (or a second restore) cannot capture a half-restored data dir.
+	// (or a second restore) cannot capture a half-restored data dir. Innermost
+	// because nothing holding it ever writes through Storage or touches the
+	// settings manager -- snapshots write into the backup dir with os
+	// directly -- so it adds no edge back to the two locks above.
 	release, err := s.deps.Backups.SnapshotAndHold(ctx)
 	if err != nil {
 		if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
@@ -199,34 +254,19 @@ func (s *Service) FromZip(ctx context.Context, content []byte) (Result, error) {
 	}
 	defer release()
 
-	// Serialize the entire write+prune against settings saves. The gate
-	// (when wired) holds the SettingsManager's lock until the deferred
-	// endRewrite runs at function exit -- i.e. after pruneExtras -- so no
-	// save can interleave with a half-restored settings directory, and
-	// endRewrite's cache drop + active-scenario reconciliation happen
-	// inside the same critical section. Nothing between here and return
-	// may call a SettingsManager method (that would deadlock).
-	if s.deps.Gate != nil {
-		endRewrite := s.deps.Gate.BeginExternalRewrite()
-		defer endRewrite()
-	} else {
-		// A nil gate means the service was wired without a settings manager
-		// -- the restore proceeds UNSERIALIZED against settings saves (the
-		// race the gate exists to prevent). Loud so a wiring regression is
-		// visible instead of silently racy.
-		log.Printf("restore: running without a restore gate; concurrent settings saves are not serialized (pass a SettingsRewriteGate in Deps)")
-	}
-
+	// Through the exclusive writer, never through Store's own methods: those
+	// take the lock this function already holds, and sync.RWMutex is not
+	// reentrant.
 	for _, p := range queue {
-		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
+		if err := writer.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
 			return res, fmt.Errorf("%w: mkdir %s: %v", ErrWriteFailed, filepath.Dir(p.dest), err)
 		}
-		if err := s.deps.Store.WriteFile(p.dest, p.data, 0644); err != nil {
+		if err := writer.WriteFile(p.dest, p.data, 0644); err != nil {
 			return res, fmt.Errorf("%w: write %s: %v", ErrWriteFailed, p.dest, err)
 		}
 	}
 
-	res.Pruned, res.PruneFailures = s.pruneExtras(dataAbs, archiveEntries, skip)
+	res.Pruned, res.PruneFailures = s.pruneExtras(writer, dataAbs, archiveEntries, skip)
 	if res.PruneFailures > 0 {
 		log.Printf("restore prune completed with %d failures", res.PruneFailures)
 	}
@@ -239,7 +279,7 @@ func (s *Service) FromZip(ctx context.Context, content []byte) (Result, error) {
 // then removes directories left empty, deepest first. Returns (removed,
 // failures); failures are logged with their cause and never abort the
 // restore, because a half-pruned tree is still a correctly restored one.
-func (s *Service) pruneExtras(dataAbs string, archiveEntries map[string]struct{}, skip func(path string, isDir bool) bool) (int, int) {
+func (s *Service) pruneExtras(writer *storage.ExclusiveWriter, dataAbs string, archiveEntries map[string]struct{}, skip func(path string, isDir bool) bool) (int, int) {
 	var dirs []string
 	removed := 0
 	failures := 0
@@ -274,7 +314,7 @@ func (s *Service) pruneExtras(dataAbs string, archiveEntries map[string]struct{}
 		if _, ok := archiveEntries[pathAbs]; ok {
 			return nil
 		}
-		if err := s.deps.Store.Remove(pathAbs); err != nil {
+		if err := writer.Remove(pathAbs); err != nil {
 			log.Printf("restore prune: remove stale file %s: %v", pathAbs, err)
 			failures++
 			return nil
@@ -294,7 +334,7 @@ func (s *Service) pruneExtras(dataAbs string, archiveEntries map[string]struct{}
 		if dir == dataAbs || skip(dir, true) {
 			continue
 		}
-		if err := s.deps.Store.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := writer.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
 			if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) > 0 {
 				continue
 			}

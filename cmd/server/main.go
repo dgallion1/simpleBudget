@@ -103,7 +103,7 @@ func SetupDependencies(c *config.Config) error {
 	// interleave with a half-restored settings dir — and on release drops
 	// the in-memory cache and falls back to the default whatif.json if the
 	// restore pruned the active scenario's file.
-	backup.Initialize(cfg, store, renderer, backupService, retirementMgr)
+	restoreService := backup.Initialize(cfg, store, renderer, backupService, retirementMgr)
 
 	// The MCP server shares these exact instances -- not a second manager or
 	// loader on the same directory -- so a tool call and a page request cannot
@@ -116,6 +116,10 @@ func SetupDependencies(c *config.Config) error {
 		SnapshotDir: filepath.Join(cfg.BackupDir, "mcp-snapshots"),
 		BaseURL:     mcpBaseURL(cfg.ListenAddr),
 		Backups:     backupService,
+		// The same restore service the /restore route uses, so a tool-driven
+		// restore and a browser-driven one contend for one snapshot hold and
+		// one settings gate instead of racing as two.
+		Restores: restoreService,
 		Shutdown: func() {
 			// Signal rather than exit: the signal handler above drains
 			// in-flight requests and takes a final snapshot before exiting.

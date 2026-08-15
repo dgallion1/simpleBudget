@@ -6,8 +6,6 @@ package backup
 
 import (
 	"archive/zip"
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
@@ -26,6 +23,7 @@ import (
 
 	"budget2/internal/config"
 	backupsvc "budget2/internal/services/backup"
+	"budget2/internal/services/restore"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/testdata"
@@ -39,21 +37,16 @@ var (
 )
 
 // SettingsRewriteGate serializes an external rewrite of the settings files
-// (a restore's write+prune phase) against the settings manager's saves.
-// Acquiring it holds the manager's lock — no in-flight save can interleave
-// with a half-restored settings dir — and the returned end func carries the
-// post-rewrite bookkeeping (cache invalidation, active-scenario
-// reconciliation) inside the same critical section. Implemented by
-// retirement.SettingsManager.
-type SettingsRewriteGate interface {
-	BeginExternalRewrite() (end func())
-}
+// against the settings manager's saves. Defined in internal/services/restore,
+// aliased here so existing callers and tests keep compiling.
+type SettingsRewriteGate = restore.SettingsRewriteGate
 
 // RewriteGateFunc adapts a bare acquire function to SettingsRewriteGate.
-type RewriteGateFunc func() (end func())
+type RewriteGateFunc = restore.RewriteGateFunc
 
-// BeginExternalRewrite implements SettingsRewriteGate.
-func (f RewriteGateFunc) BeginExternalRewrite() func() { return f() }
+// restoreSvc performs the actual restore. Built in Initialize so the gate and
+// the data/backup directories cannot be registered out of order or forgotten.
+var restoreSvc *restore.Service
 
 // Initialize sets up the backup package with required dependencies. The
 // gate is part of the wiring, not a post-Initialize registration, so it
@@ -65,15 +58,22 @@ func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *
 	store = s
 	renderer = r
 	backupSvc = b
-	restoreGate = gate
-}
 
-// restoreGate is acquired for the duration of a restore's write+prune phase
-// (upload and bundled test-data paths alike) and released once the on-disk
-// rewrite is complete. Without it, an in-flight save could re-create a
-// pruned scenario file or clobber the freshly restored whatif.json with
-// pre-restore data.
-var restoreGate SettingsRewriteGate
+	rd := restore.Deps{
+		DataDir:   c.DataDirectory,
+		BackupDir: resolvedBackupDir(),
+		Store:     s,
+		Gate:      gate,
+	}
+	// b is a *backupsvc.Service; restore.Deps.Backups is an interface, so
+	// assigning a nil *backupsvc.Service unconditionally would yield a
+	// non-nil interface holding a nil pointer and restore.ErrNoBackupService
+	// would never fire. Guard it.
+	if b != nil {
+		rd.Backups = b
+	}
+	restoreSvc = restore.New(rd)
+}
 
 // RegisterPublicRoutes registers the endpoints that must stay reachable
 // while storage is locked: unlock, initial YubiKey setup, the encryption
@@ -407,243 +407,42 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 	log.Printf("PLAINTEXT EXPORT complete: %d files, %d bytes (method=%s)", fileCount, totalBytes, method)
 }
 
-// restoreFromZip extracts every entry of the supplied archive into
-// cfg.DataDirectory using store.WriteFile, then prunes files that were
-// not present in the archive. It validates the entire archive before
-// snapshotting or writing any files, so a malformed entry rejects the
-// whole operation before disk state changes.
-//
-// Archive entries that the backup skip list excludes (encryption-state
-// files, *.tmp, anything under the backup dir or a skip-listed directory
-// like cache/) are ignored rather than written: they describe local store
-// state, not user data, and a legit backup never contains them (older
-// backups may contain .encryption-config.json). Skipped entries are
-// counted in the result so callers can surface them.
-//
-// Returns (result, http status, error message). On success, status is 200.
-func restoreFromZip(ctx context.Context, content []byte) (restoreResult, int, string) {
-	var res restoreResult
-	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
-	if err != nil {
-		return res, http.StatusBadRequest, "Invalid ZIP file"
+// restoreFailure maps a restore service error to the status and message this
+// endpoint has always returned. The three static messages are preserved
+// verbatim because they are user-facing; the detail-carrying cases render the
+// service's own message, which now names the offending entry.
+func restoreFailure(err error) (int, string) {
+	switch {
+	case errors.Is(err, backupsvc.ErrSnapshotInProgress):
+		return http.StatusConflict, "a backup is currently running; retry shortly"
+	case errors.Is(err, restore.ErrInvalidArchive):
+		return http.StatusBadRequest, "Invalid ZIP file"
+	case errors.Is(err, restore.ErrEmptyArchive):
+		return http.StatusBadRequest, "No restorable files in archive"
+	case errors.Is(err, restore.ErrUnsafePath),
+		errors.Is(err, restore.ErrUnreadableEntry),
+		errors.Is(err, restore.ErrEncryptedEntry):
+		return http.StatusBadRequest, err.Error()
+	case errors.Is(err, restore.ErrBadDataDir):
+		return http.StatusInternalServerError, "Bad data directory"
+	case errors.Is(err, restore.ErrNoBackupService):
+		return http.StatusInternalServerError, "Backup service not initialized"
+	default:
+		return http.StatusInternalServerError, err.Error()
 	}
-
-	dataAbs, err := filepath.Abs(cfg.DataDirectory)
-	if err != nil {
-		return res, http.StatusInternalServerError, "Bad data directory"
-	}
-	skip := backupsvc.SkipPredicate(cfg.DataDirectory, resolvedBackupDir())
-
-	type prepared struct {
-		dest string
-		data []byte
-	}
-	var queue []prepared
-	archiveEntries := make(map[string]struct{})
-	skippedEntries := make(map[string]struct{})
-
-	for _, zf := range zr.File {
-		if zf.FileInfo().IsDir() {
-			continue
-		}
-		// Sanitize: forbid absolute, forbid ".." segments, must stay under data dir.
-		raw := filepath.ToSlash(zf.Name)
-		if strings.HasPrefix(raw, "/") {
-			return res, http.StatusBadRequest, fmt.Sprintf("Absolute path in archive: %s", zf.Name)
-		}
-		clean := filepath.Clean(raw)
-		if clean == "." || clean == "" {
-			continue
-		}
-		for _, seg := range strings.Split(filepath.ToSlash(clean), "/") {
-			if seg == ".." {
-				return res, http.StatusBadRequest, fmt.Sprintf("Path traversal in archive: %s", zf.Name)
-			}
-		}
-		dest := filepath.Join(cfg.DataDirectory, clean)
-		destAbs, err := filepath.Abs(dest)
-		if err != nil || !(destAbs == dataAbs || strings.HasPrefix(destAbs, dataAbs+string(filepath.Separator))) {
-			return res, http.StatusBadRequest, fmt.Sprintf("Path escapes data dir: %s", zf.Name)
-		}
-		// SkipPredicate is ancestor-aware for file paths, so entries under
-		// skip-listed directories (e.g. cache/plotly.min.js) are dropped too.
-		// Deduped like restored, so duplicate zip entries count once.
-		if skip(dest, false) {
-			if _, dup := skippedEntries[destAbs]; !dup {
-				skippedEntries[destAbs] = struct{}{}
-				res.skippedProtected++
-			}
-			continue
-		}
-
-		rc, err := zf.Open()
-		if err != nil {
-			return res, http.StatusBadRequest, fmt.Sprintf("Cannot open entry %s: %v", zf.Name, err)
-		}
-		data, err := io.ReadAll(rc)
-		_ = rc.Close()
-		if err != nil {
-			return res, http.StatusBadRequest, fmt.Sprintf("Cannot read entry %s: %v", zf.Name, err)
-		}
-
-		// Encrypted blob into unencrypted/locked store -> reject the whole archive.
-		if storage.IsAgeEncryptedData(data) && !(store.IsEncrypted() && store.IsUnlocked()) {
-			return res, http.StatusBadRequest, fmt.Sprintf(
-				"Archive contains encrypted entry %s but destination store is not encrypted/unlocked",
-				zf.Name,
-			)
-		}
-
-		queue = append(queue, prepared{dest: dest, data: data})
-		archiveEntries[destAbs] = struct{}{}
-	}
-
-	if len(queue) == 0 {
-		return res, http.StatusBadRequest, "No restorable files in archive"
-	}
-
-	if backupSvc == nil {
-		return res, http.StatusInternalServerError, "Backup service not initialized"
-	}
-	// Hold the snapshot lock for the whole restore so a scheduled snapshot
-	// (or a second restore) cannot capture a half-restored data dir.
-	release, err := backupSvc.SnapshotAndHold(ctx)
-	if err != nil {
-		if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
-			return res, http.StatusConflict, "a backup is currently running; retry shortly"
-		}
-		return res, http.StatusInternalServerError, fmt.Sprintf("safety snapshot failed: %v", err)
-	}
-	defer release()
-
-	// Serialize the entire write+prune against settings saves. The gate
-	// (when wired) holds the SettingsManager's lock until the deferred
-	// endRewrite runs at function exit — i.e. after pruneRestoreExtras —
-	// so no save can interleave with a half-restored settings directory,
-	// and endRewrite's cache drop + active-scenario reconciliation happen
-	// inside the same critical section. Nothing between here and return
-	// may call a SettingsManager method (that would deadlock).
-	if restoreGate != nil {
-		endRewrite := restoreGate.BeginExternalRewrite()
-		defer endRewrite()
-	} else {
-		// A nil gate means Initialize was wired without a settings manager
-		// — the restore proceeds UNSERIALIZED against settings saves (the
-		// race the gate exists to prevent). Loud so a wiring regression is
-		// visible instead of silently racy.
-		log.Printf("backup: restore running without a restore gate; concurrent settings saves are not serialized (pass a SettingsRewriteGate to Initialize)")
-	}
-
-	for _, p := range queue {
-		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
-			return res, http.StatusInternalServerError, fmt.Sprintf("mkdir: %v", err)
-		}
-		if err := store.WriteFile(p.dest, p.data, 0644); err != nil {
-			return res, http.StatusInternalServerError, fmt.Sprintf("write %s: %v", p.dest, err)
-		}
-	}
-
-	res.pruned, res.pruneFailures = pruneRestoreExtras(dataAbs, archiveEntries, skip)
-	if res.pruneFailures > 0 {
-		log.Printf("restore prune completed with %d failures", res.pruneFailures)
-	}
-	// archiveEntries (not queue) so duplicate zip entries count once.
-	res.restored = len(archiveEntries)
-	return res, http.StatusOK, ""
-}
-
-// restoreResult summarizes a restoreFromZip run: files written, stale files
-// pruned, archive entries dropped by the skip list, and prune removals that
-// failed (details in the server log).
-type restoreResult struct {
-	restored         int
-	pruned           int
-	skippedProtected int
-	pruneFailures    int
 }
 
 // restoreResponseMessage renders the client-facing summary for a successful
 // restore. noun distinguishes "files" from "test files".
-func restoreResponseMessage(res restoreResult, noun string) string {
-	msg := fmt.Sprintf("Restored %d %s, removed %d stale files", res.restored, noun, res.pruned)
-	if res.skippedProtected > 0 {
-		msg += fmt.Sprintf(", skipped %d protected entries", res.skippedProtected)
+func restoreResponseMessage(res restore.Result, noun string) string {
+	msg := fmt.Sprintf("Restored %d %s, removed %d stale files", res.Restored, noun, res.Pruned)
+	if res.SkippedProtected > 0 {
+		msg += fmt.Sprintf(", skipped %d protected entries", res.SkippedProtected)
 	}
-	if res.pruneFailures > 0 {
-		msg += fmt.Sprintf(", %d stale files could not be removed (see server log)", res.pruneFailures)
+	if res.PruneFailures > 0 {
+		msg += fmt.Sprintf(", %d stale files could not be removed (see server log)", res.PruneFailures)
 	}
 	return msg
-}
-
-// pruneRestoreExtras deletes every file under dataAbs that is neither an
-// archive entry nor excluded by skip (the shared backup skip predicate),
-// then removes directories left empty. Directories that were already empty
-// before the restore are removed too — zip archives cannot represent empty
-// directories, so full replace treats them as stale.
-func pruneRestoreExtras(dataAbs string, archiveEntries map[string]struct{}, skip func(path string, isDir bool) bool) (int, int) {
-	var dirs []string
-	removed := 0
-	failures := 0
-	err := filepath.Walk(dataAbs, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			log.Printf("restore prune: walk %s: %v", path, walkErr)
-			failures++
-			if info != nil && info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		pathAbs, err := filepath.Abs(path)
-		if err != nil {
-			log.Printf("restore prune: abs %s: %v", path, err)
-			failures++
-			return nil
-		}
-		if pathAbs == dataAbs {
-			return nil
-		}
-		if info.IsDir() {
-			if skip(pathAbs, true) {
-				return filepath.SkipDir
-			}
-			dirs = append(dirs, pathAbs)
-			return nil
-		}
-		if skip(pathAbs, false) {
-			return nil
-		}
-		if _, ok := archiveEntries[pathAbs]; ok {
-			return nil
-		}
-		if err := store.Remove(pathAbs); err != nil {
-			log.Printf("restore prune: remove stale file %s: %v", pathAbs, err)
-			failures++
-			return nil
-		}
-		removed++
-		return nil
-	})
-	if err != nil {
-		log.Printf("restore prune: walk root %s: %v", dataAbs, err)
-		failures++
-	}
-
-	sort.Slice(dirs, func(i, j int) bool {
-		return len(dirs[i]) > len(dirs[j])
-	})
-	for _, dir := range dirs {
-		if dir == dataAbs || skip(dir, true) {
-			continue
-		}
-		if err := store.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
-			if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) > 0 {
-				continue
-			}
-			log.Printf("restore prune: remove empty dir %s: %v", dir, err)
-			failures++
-		}
-	}
-	return removed, failures
 }
 
 func HandleRestore(w http.ResponseWriter, r *http.Request) {
@@ -671,13 +470,18 @@ func HandleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error reading file", http.StatusInternalServerError)
 		return
 	}
-	res, status, msg := restoreFromZip(r.Context(), content)
-	if status != http.StatusOK {
+	if restoreSvc == nil {
+		http.Error(w, "Restore service not initialized", http.StatusInternalServerError)
+		return
+	}
+	res, err := restoreSvc.FromZip(r.Context(), content)
+	if err != nil {
+		status, msg := restoreFailure(err)
 		http.Error(w, msg, status)
 		return
 	}
 	log.Printf("Restore complete: %d files restored, %d stale files removed, %d protected entries skipped, %d prune failures",
-		res.restored, res.pruned, res.skippedProtected, res.pruneFailures)
+		res.Restored, res.Pruned, res.SkippedProtected, res.PruneFailures)
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprint(w, restoreResponseMessage(res, "files"))
 }
@@ -688,13 +492,18 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Test backup not available", http.StatusInternalServerError)
 		return
 	}
-	res, status, msg := restoreFromZip(r.Context(), content)
-	if status != http.StatusOK {
+	if restoreSvc == nil {
+		http.Error(w, "Restore service not initialized", http.StatusInternalServerError)
+		return
+	}
+	res, err := restoreSvc.FromZip(r.Context(), content)
+	if err != nil {
+		status, msg := restoreFailure(err)
 		http.Error(w, msg, status)
 		return
 	}
 	log.Printf("Test data restore complete: %d files restored, %d stale files removed, %d protected entries skipped, %d prune failures",
-		res.restored, res.pruned, res.skippedProtected, res.pruneFailures)
+		res.Restored, res.Pruned, res.SkippedProtected, res.PruneFailures)
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprint(w, restoreResponseMessage(res, "test files"))
 }

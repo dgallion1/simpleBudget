@@ -6,10 +6,12 @@ package mcpsvc
 
 import (
 	"path/filepath"
+	"time"
 
 	"budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/mcpsvc/admin"
+	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/mcpsvc/curate"
 	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/mcpsvc/snapshot"
@@ -31,6 +33,10 @@ type Deps struct {
 	SnapshotDir string
 	BaseURL     string
 	Backups     *backup.Service
+
+	// Shutdown stops the server process. Nil disables shutdown_server's
+	// ability to act (the tool still registers and still reports why).
+	Shutdown func()
 }
 
 // serverInstructions is returned to the client on initialize. It is the
@@ -76,7 +82,7 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"identical-looking transactions share one hash and are pinned together. Only outflows are matched " +
 	"against major expenses; income never is. Pages other than the what-if planner do not refresh " +
 	"themselves, so a curation write leaves an already-open Major Expenses tab showing stale data." +
-	" Finally, six HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
+	" Finally, seven HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
 	"the one to call FIRST when another tool fails inexplicably: if the user's data is encrypted and " +
 	"currently locked, every ledger-reading tool fails and get_status is the only one that still answers. " +
 	"list_data_files inventories the bank exports on disk; its per-file row counts are raw and do NOT sum " +
@@ -89,7 +95,11 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"undoing kept_winner makes the suppressed transaction live again, while undoing kept_both only " +
 	"re-flags the pair for review, since kept_both never suppressed anything to begin with. run_backup " +
 	"adds a zip to the backup directory and changes nothing else, so it is safe to call before suggesting " +
-	"anything the user might want to walk back."
+	"anything the user might want to walk back." +
+	" One tool is guarded: shutdown_server stops the server, and after it runs nothing in this session can " +
+	"undo that -- every tool stops answering and only the user can start the server again. It takes two " +
+	"calls: the first returns what would happen plus a single-use confirm_token, the second must echo that " +
+	"token. Calling it twice yourself is NOT the user agreeing; show them the first call's answer and wait."
 
 // NewServer builds the MCP server. A nil Loader disables spend's, curate's
 // and admin's tools; registration itself never touches a dependency. Other
@@ -101,7 +111,12 @@ const serverInstructions = "These tools cover two things for one household: a pe
 // reports "no backup service is configured" instead of a snapshot record)
 // and disables nothing else: run_backup still registers and still gets
 // called, it just fails that call with the same "not configured" error. A
-// nil Backups is a supported configuration.
+// nil Backups is a supported configuration. Likewise, a nil Shutdown is a
+// supported configuration: shutdown_server still registers, but every call --
+// including the no-argument preview -- fails fast with "no shutdown path is
+// configured on this server" instead of stopping the process, because a
+// server that cannot shut down should not mint a token no redeem could ever
+// honor.
 //
 // deps.Settings, by contrast, is not a supported nil configuration in
 // production: cmd/server/main.go constructs it unconditionally, and
@@ -169,6 +184,12 @@ func NewServer(deps Deps) *mcp.Server {
 		// service as absent. Only assign when there is really a service.
 		if deps.Backups != nil {
 			adminDeps.Backups = deps.Backups
+		}
+		// The registry is constructed per server, so tokens never outlive
+		// the process.
+		adminDeps.Confirm = confirm.NewRegistry(5 * time.Minute)
+		if deps.Shutdown != nil {
+			adminDeps.Shutdown = deps.Shutdown
 		}
 		admin.Register(s, adminDeps)
 	}

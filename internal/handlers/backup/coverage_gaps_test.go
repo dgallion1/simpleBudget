@@ -2,10 +2,14 @@ package backup
 
 // coverage_gaps_test.go targets branches left uncovered by handlers_test.go:
 // HandleOpenBackupDir (via PATH stubs), stream-write failures in the backup
-// zips, restoreFromZip's malformed-archive rejections, pruneRestoreExtras
-// walk-error accounting, the testdata embed fallback, auto-backup toggle
-// errors, and the non-hardware YubiKey branches (via a stubbed
-// age-plugin-yubikey on PATH).
+// zips, HandleRestore's malformed-archive rejections (via the restore
+// service), the testdata embed fallback, auto-backup toggle errors, and the
+// non-hardware YubiKey branches (via a stubbed age-plugin-yubikey on PATH).
+//
+// restoreFromZip / restoreResult / pruneRestoreExtras moved to
+// internal/services/restore (restore.Service.FromZip / restore.Result /
+// (*restore.Service).pruneExtras); their direct-call tests, including the
+// walk-error accounting test, moved with them to restore_test.go.
 //
 // Documented ceilings (branches intentionally NOT covered, no production
 // seam without code changes):
@@ -15,12 +19,12 @@ package backup
 //     absolute paths, and zw.Create only fails when flushing a previous
 //     entry fails, but the walk aborts on the first copy error.
 //   - handlers.go:330,336  same two branches in HandleBackupPlaintext.
-//   - handlers.go:384,416  restoreFromZip: filepath.Abs fails only if
-//     Getwd fails; the "escapes data dir" return is shadowed by the earlier
-//     ".." rejection for any representable zip name.
+//   - internal/services/restore/restore.go: FromZip's filepath.Abs(DataDir)
+//     failure path only if Getwd fails; the "escapes data dir" return is
+//     shadowed by the earlier ".." rejection for any representable zip name.
 //   - handlers.go:614  HandleRestore: io.ReadAll of a multipart part that
 //     ParseMultipartForm already buffered in full cannot fail.
-//   - handlers.go:541,570,579  pruneRestoreExtras: Abs error (Getwd),
+//   - internal/services/restore/restore.go: pruneExtras's Abs error (Getwd),
 //     Walk root error (the walk func swallows every error), and the
 //     dirs-loop skip guard (skip-listed dirs are never appended).
 //   - handlers.go:1112-1126  handleEnableYubiKeyEncryption success path
@@ -43,7 +47,7 @@ import (
 	"testing"
 
 	"budget2/internal/config"
-	backupsvc "budget2/internal/services/backup"
+	"budget2/internal/services/restore"
 	"budget2/internal/services/storage"
 	"budget2/internal/testutil"
 	"budget2/testdata"
@@ -518,7 +522,10 @@ func TestHandleRestore_RejectsCorruptLocalHeader(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "Cannot open entry") {
+	// restoreFailure renders ErrUnreadableEntry's own message verbatim (it
+	// names the offending entry); the handler no longer has its own
+	// "Cannot open entry" literal for this case.
+	if !strings.Contains(rec.Body.String(), restore.ErrUnreadableEntry.Error()) {
 		t.Fatalf("body: %s", rec.Body.String())
 	}
 }
@@ -554,7 +561,7 @@ func TestHandleRestore_RejectsCorruptEntryData(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "Cannot read entry") {
+	if !strings.Contains(rec.Body.String(), restore.ErrUnreadableEntry.Error()) {
 		t.Fatalf("body: %s", rec.Body.String())
 	}
 }
@@ -620,96 +627,18 @@ func TestHandleRestore_WriteFileFailureReturns500(t *testing.T) {
 	}
 }
 
-// ---------- pruneRestoreExtras walk-error accounting ----------
-
-func TestPruneRestoreExtras_WalkAndRemoveFailures(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("permission fixtures do not block root")
-	}
-	dataDir, cleanup := setupTestEnv(t)
-	t.Cleanup(cleanup)
-
-	dataAbs, err := filepath.Abs(dataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	skip := backupsvc.SkipPredicate(dataDir, resolvedBackupDir())
-
-	keep := filepath.Join(dataAbs, "keep.csv")
-	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	stale := filepath.Join(dataAbs, "stale.csv")
-	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	chmod := func(path string, mode os.FileMode) {
-		t.Helper()
-		if err := os.Chmod(path, mode); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.Chmod(path, 0o755) })
-	}
-
-	// noread (0311): lstat ok, listing fails -> walkErr with dir info ->
-	// failures++ and SkipDir (never queued for removal).
-	noread := filepath.Join(dataAbs, "noread")
-	if err := os.MkdirAll(noread, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(noread, "junk.csv"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	chmod(noread, 0o311)
-
-	// nolstat (0444): listing works but lstat of children fails -> walkErr
-	// with nil info -> failures++, non-dir branch returns nil.
-	nolstat := filepath.Join(dataAbs, "nolstat")
-	if err := os.MkdirAll(nolstat, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(nolstat, "child.csv"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	chmod(nolstat, 0o444)
-
-	// lockedparent (0555) holding an empty dir: the empty dir cannot be
-	// unlinked (parent read-only) but ReadDir shows it empty -> failures++.
-	lockedParent := filepath.Join(dataAbs, "lockedparent")
-	emptyChild := filepath.Join(lockedParent, "emptychild")
-	if err := os.MkdirAll(emptyChild, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	chmod(lockedParent, 0o555)
-
-	archive := map[string]struct{}{keep: {}}
-	removed, failures := pruneRestoreExtras(dataAbs, archive, skip)
-
-	if removed != 1 {
-		t.Fatalf("removed = %d, want 1 (stale.csv only)", removed)
-	}
-	// Three failures: the noread listing error (filepath.Walk reports a
-	// dir whose readdir fails in a single callback, so it is skipped and
-	// never queued for removal), the nolstat child lstat error, and the
-	// emptychild unlink failure.
-	if failures != 3 {
-		t.Fatalf("failures = %d, want 3", failures)
-	}
-	if _, err := os.Stat(keep); err != nil {
-		t.Fatalf("archive entry keep.csv must survive: %v", err)
-	}
-	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("stale.csv must be pruned, err=%v", err)
-	}
-}
-
 // ---------- HandleRestoreTestData ----------
 
 func TestHandleRestoreTestData_ServiceMissingReturns500(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	t.Cleanup(cleanup)
 	backupSvc = nil
+	// restoreSvc is built once, in Initialize -- mutating the backupSvc
+	// global alone does not reach it. Re-run Initialize with a nil backup
+	// service so restoreSvc's Backups dep actually goes nil (guarded: a
+	// literal nil here, not a typed-nil *backupsvc.Service, so
+	// restore.ErrNoBackupService fires).
+	Initialize(cfg, store, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	HandleRestoreTestData(w, httptest.NewRequest(http.MethodPost, "/restore/test-data", nil))

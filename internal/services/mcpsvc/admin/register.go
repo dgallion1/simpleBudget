@@ -14,6 +14,7 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/mcpsvc/snapshot"
 	"budget2/internal/services/storage"
 
@@ -99,6 +100,15 @@ type Deps struct {
 	Settings     SettingsSource
 	Backups      BackupService
 	Snapshots    *snapshot.Snapshotter
+
+	// Confirm mints and redeems the two-step tokens guarded tools require. A
+	// nil registry makes those tools refuse rather than run unguarded.
+	Confirm *confirm.Registry
+
+	// Shutdown stops the server. It is a func, never a direct os.Exit call,
+	// because a test that invokes the real thing kills the test binary. Nil
+	// means this server has no shutdown path wired.
+	Shutdown func()
 }
 
 // recoverToError converts a panic into an error so a bad definition fails one
@@ -138,4 +148,5 @@ func Register(s *mcp.Server, deps Deps) {
 	registerResolve(s, deps)
 	registerUndo(s, deps)
 	registerRunBackup(s, deps)
+	registerShutdown(s, deps)
 }

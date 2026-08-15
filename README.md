@@ -319,8 +319,8 @@ an answer, look at spending patterns, and curate the Major Expenses page.
 nothing is listening when a Claude Code session starts, they will not be
 available. There is no separate MCP process.
 
-Twenty-three tools in four groups: six planner tools, six spending tools,
-five curation tools, and six housekeeping tools.
+Twenty-four tools in four groups: six planner tools, six spending tools,
+five curation tools, and seven housekeeping tools.
 
 Six planner tools: `list_scenarios`, `get_analysis`, `get_months`, and
 `run_scenario` are read-only; `open_page` returns the what-if page URL,
@@ -369,7 +369,7 @@ fields left untouched, and `delete_major_expense` soft-deletes — and, with
 Only the what-if page polls for changes, so an MCP curation write leaves an
 already-open Major Expenses tab stale until it is reloaded.
 
-Six housekeeping tools describe the app itself rather than the money in it.
+Seven housekeeping tools describe the app itself rather than the money in it.
 `get_status` reports where the data lives, whether it is encrypted and
 unlocked, the plan's settings revision, and the last backup — call it first
 when another tool fails for no visible reason, since a locked encrypted store
@@ -387,9 +387,14 @@ never suppressed anything to begin with. Both write tools copy
 `duplicate_decisions.json` to a `.bak` under `<backup-dir>/mcp-snapshots/data`
 before their first change to it in a session. `run_backup` takes an immediate
 backup zip; it adds a file and changes nothing else, so it is safe to call
-before any change the user might want to walk back. `set_encryption` is not
-exposed over MCP — enabling encryption needs a credential that must never
-travel through a tool argument into a model's transcript.
+before any change the user might want to walk back. `shutdown_server` is
+guarded and unrecoverable: it stops the server, and after it runs every tool
+stops answering — only the user can restart the server. The first call returns
+a preview and a single-use confirmation token; the second call must echo that
+token to proceed. Show the first call's preview to the user and wait for their
+approval before redeeming the token. `set_encryption` is not exposed over MCP —
+enabling encryption needs a credential that must never travel through a tool
+argument into a model's transcript.
 
 Locked or encrypted storage surfaces as a clear error from the tool rather than
 a parse failure — unlock via `/unlock` in the web UI first. Cross-site browser

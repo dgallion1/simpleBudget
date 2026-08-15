@@ -116,6 +116,18 @@ func SetupDependencies(c *config.Config) error {
 		SnapshotDir: filepath.Join(cfg.BackupDir, "mcp-snapshots"),
 		BaseURL:     mcpBaseURL(cfg.ListenAddr),
 		Backups:     backupService,
+		Shutdown: func() {
+			// Signal rather than exit: the signal handler above drains
+			// in-flight requests and takes a final snapshot before exiting.
+			// A model can redeem a shutdown token while a browser restore
+			// is mid write-and-prune, and a hard exit there would leave
+			// the data directory half-restored.
+			p, err := os.FindProcess(os.Getpid())
+			if err == nil && p.Signal(syscall.SIGTERM) == nil {
+				return
+			}
+			os.Exit(0)
+		},
 	})
 
 	return nil

@@ -85,7 +85,11 @@ func registerSearch(s *mcp.Server, deps Deps) {
 			"matched), type (income or outflow; \"expense\" is also accepted as an alias for outflow), and " +
 			"min_amount/max_amount (compared against the ABSOLUTE dollar amount, so min_amount 100 matches a " +
 			"-150.00 expense; 0 means the bound is unset, so there is no way to express \"strictly greater " +
-			"than zero\"). Amounts in the result are SIGNED -- expenses are negative. Results are newest-first " +
+			"than zero\"). Amounts in the result are SIGNED, but NOT uniformly by type: an ordinary expense " +
+			"(type outflow) is negative, but a refund or credit is a POSITIVE amount that is still typed " +
+			"outflow -- so filtering type=outflow does not mean every amount returned is negative, and " +
+			"sum_amount over an outflow-only search nets those refunds against spend rather than totaling raw " +
+			"spend. Results are newest-first " +
 			"and paginated: `total` is the full number of matching rows, not the number returned, so check it " +
 			"against the rows you received before concluding you have seen everything. Default 50 rows per " +
 			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page. " +

@@ -112,11 +112,14 @@ func registerStatus(s *mcp.Server, deps Deps) {
 		}
 
 		if deps.Files != nil {
-			infos, ferr := deps.Files.GetFileInfo()
+			// CountCSVFiles, not GetFileInfo: only the count is reported here,
+			// and GetFileInfo parses every CSV to build the rest of the
+			// inventory -- which the deps.load() below then does all over
+			// again. list_data_files is the tool for the full inventory.
+			n, ferr := deps.Files.CountCSVFiles()
 			if ferr != nil {
 				out.Notes = append(out.Notes, "the CSV inventory could not be read: "+ferr.Error())
 			} else {
-				n := len(infos)
 				out.CSVFileCount = &n
 			}
 		} else {

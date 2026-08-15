@@ -33,8 +33,14 @@ type TransactionSource interface {
 }
 
 // FileLister reports the CSV inventory. *dataloader.DataLoader satisfies it.
+//
+// CountCSVFiles answers the same question as len(GetFileInfo()) without
+// parsing every CSV to do it; get_status wants only the count and is
+// advertised as the cheap first-resort probe, so it must not pay for the
+// full inventory.
 type FileLister interface {
 	GetFileInfo() ([]models.FileInfo, error)
+	CountCSVFiles() (int, error)
 }
 
 // DuplicateSource exposes the near-duplicate detection results cached by the

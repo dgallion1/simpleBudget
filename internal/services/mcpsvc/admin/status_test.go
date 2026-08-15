@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -86,5 +88,37 @@ func TestGetStatusReportsAnEncryptedLockedStore(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("notes do not explain why the counts are null; got %v", out.Notes)
+	}
+}
+
+// TestGetStatusCSVCountMatchesListDataFiles pins the equivalence that lets
+// get_status use the cheap CountCSVFiles instead of GetFileInfo. get_status is
+// advertised as the first-resort probe, so it must not parse every CSV just to
+// count them -- but the two tools disagreeing about how many files exist would
+// be worse than the wasted work. The fixture has two CSVs plus a non-CSV that
+// neither may count.
+func TestGetStatusCSVCountMatchesListDataFiles(t *testing.T) {
+	deps, dir := newLiveDeps(t)
+	if err := os.WriteFile(filepath.Join(dir, "second.csv"),
+		[]byte("Date,Description,Amount\n2024-03-01,COFFEE,-4.25\n"), 0o644); err != nil {
+		t.Fatalf("write second csv: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("not a csv"), 0o644); err != nil {
+		t.Fatalf("write non-csv: %v", err)
+	}
+	cs := connect(t, deps)
+
+	status := decodeToolResult[statusOutput](t, call(t, cs, "get_status", map[string]any{}))
+	files := decodeToolResult[filesOutput](t, call(t, cs, "list_data_files", map[string]any{}))
+
+	if status.CSVFileCount == nil {
+		t.Fatal("csv_file_count is null on a readable data directory")
+	}
+	if *status.CSVFileCount != files.Count {
+		t.Errorf("get_status csv_file_count = %d but list_data_files count = %d; the cheap count and the full inventory disagree",
+			*status.CSVFileCount, files.Count)
+	}
+	if *status.CSVFileCount != 2 {
+		t.Errorf("csv_file_count = %d, want 2 (the non-CSV must not be counted)", *status.CSVFileCount)
 	}
 }

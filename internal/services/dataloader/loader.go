@@ -617,6 +617,26 @@ func (dl *DataLoader) deduplicateTransactions(transactions []models.Transaction)
 	return unique
 }
 
+// CountCSVFiles returns how many CSV files GetFileInfo would report, without
+// the per-file scanCSVMetadata parse that dominates its cost. The inclusion
+// rule is deliberately identical -- glob *.csv, drop anything that fails to
+// stat -- so a caller that only needs the count never has to parse the whole
+// ledger a second time to get it.
+func (dl *DataLoader) CountCSVFiles() (int, error) {
+	files, err := filepath.Glob(filepath.Join(dl.CSVDirectory, "*.csv"))
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, file := range files {
+		if _, err := os.Stat(file); err != nil {
+			continue
+		}
+		n++
+	}
+	return n, nil
+}
+
 // GetFileInfo returns information about available CSV files
 func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error) {
 	pattern := filepath.Join(dl.CSVDirectory, "*.csv")

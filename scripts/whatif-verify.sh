@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Cold-start verify server for simpleBudget (what-if page QA).
 #
-# Launches the server against a throwaway COPY of data/ so nothing can
-# mutate real data, waits on /api/health (no sleeps), and tears down via
-# the /killme endpoint (no pkill, no spurious exit-144).
+# Launches the server against a throwaway COPY of data/ AND a throwaway
+# backup dir, so neither the ledger nor the real backup archives can be
+# mutated. Waits on /api/health (no sleeps), and tears down via the
+# /killme endpoint (no pkill, no spurious exit-144).
 #
 # Usage:
 #   scripts/whatif-verify.sh start [port]   # default port 8099
@@ -42,12 +43,20 @@ case "$CMD" in
     cp -r "$REPO/data" "$WORK/data"
     echo "Building server..."
     (cd "$REPO" && go build -o "$WORK/budget2-server" ./cmd/server)
-    BUDGET_DATA_DIR="$WORK/data" BUDGET_LISTEN_ADDR=":$PORT" \
+    # BUDGET2_BACKUP_DIR must be isolated too, not just the data dir.
+    # cfg.BackupDir defaults to the REAL ~/.local/share/budget2/backups, and
+    # cfg.SnapshotDir is derived from it -- so without this every MCP write
+    # tool drops .bak snapshots into the user's real backup directory, and
+    # run_backup writes a real zip there and can trip the retention policy
+    # into pruning real archives.
+    BUDGET_DATA_DIR="$WORK/data" BUDGET2_BACKUP_DIR="$WORK/backups" \
+    BUDGET_LISTEN_ADDR=":$PORT" \
       "$WORK/budget2-server" >"$WORK/server.log" 2>&1 &
     echo $! > "$WORK/server.pid"
     if wait_ready; then
       echo "READY $BASE  (what-if: $BASE/whatif)"
       echo "data copy: $WORK/data   log: $WORK/server.log"
+      echo "backups:   $WORK/backups (isolated from the real backup dir)"
     else
       echo "ERROR: server not healthy after 15s. Log tail:"
       tail -20 "$WORK/server.log"

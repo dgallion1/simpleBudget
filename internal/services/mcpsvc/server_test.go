@@ -52,15 +52,15 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 	}
 }
 
-// TestNewServerRegistersAllTwentyTwoTools drives an in-memory client/server
+// TestNewServerRegistersAllTwentyThreeTools drives an in-memory client/server
 // round trip to enumerate what NewServer actually registered, rather than
 // merely asserting deps.Loader != nil is checked somewhere. Deps{} (a zero
 // value) is deliberately NOT used here: with a nil Loader, NewServer's own
-// "if deps.Loader != nil" guard skips spend.Register (and admin.Register)
-// entirely, so a suite that only ever constructs NewServer(Deps{}) would stay
-// green even if spend.Register were deleted from NewServer outright. A
-// non-nil Loader (and the Settings/SettingsDir/SnapshotDir plan.Register
-// needs) closes that hole.
+// "if deps.Loader != nil" guard skips spend.Register, curate.Register and
+// admin.Register entirely, so a suite that only ever constructs
+// NewServer(Deps{}) would stay green even if spend.Register were deleted
+// from NewServer outright. A non-nil Loader (and the
+// Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
 func TestNewServerRegistersAllTwentyThreeTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
@@ -156,6 +156,24 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// could promise a recovery path that does not exist.
 		"the .bak copy taken before its first change of a session, when there was prior data on disk to",
 		"a write with nothing there yet to back up has no .bak, but also nothing to lose",
+		// The six housekeeping tools: which read, which write, and the two
+		// claims a behavior change would silently falsify.
+		"six HOUSEKEEPING tools",
+		"get_status is the one to call FIRST",
+		"the only one that still answers",
+		"do NOT sum to search_transactions' totals",
+		"while a pair is unresolved BOTH sides are counted",
+		"resolve_duplicates and undo_resolve WRITE TO THE USER'S DATA",
+		"never invent a pair_key",
+		// The reversal asymmetry between the two resolve_duplicates outcomes:
+		// undoing kept_winner restores the suppressed transaction, but
+		// undoing kept_both has nothing to restore because kept_both never
+		// suppressed anything. A model told this is a uniform "exact inverse"
+		// (the claim admin/undo.go itself walked back in 5c1325d) could
+		// promise a restoration that kept_both never took away.
+		"undoing kept_winner makes the suppressed transaction live again",
+		"undoing kept_both only",
+		"run_backup adds a zip to the backup directory and changes nothing else",
 	} {
 		if !strings.Contains(serverInstructions, want) {
 			t.Errorf("serverInstructions no longer contains %q -- a tool's behavior may have changed "+

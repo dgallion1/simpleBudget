@@ -75,14 +75,41 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"are addressed by `hash`, derived from date + lower-cased description + amount, so two " +
 	"identical-looking transactions share one hash and are pinned together. Only outflows are matched " +
 	"against major expenses; income never is. Pages other than the what-if planner do not refresh " +
-	"themselves, so a curation write leaves an already-open Major Expenses tab showing stale data."
+	"themselves, so a curation write leaves an already-open Major Expenses tab showing stale data." +
+	" Finally, six HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
+	"the one to call FIRST when another tool fails inexplicably: if the user's data is encrypted and " +
+	"currently locked, every ledger-reading tool fails and get_status is the only one that still answers. " +
+	"list_data_files inventories the bank exports on disk; its per-file row counts are raw and do NOT sum " +
+	"to search_transactions' totals. list_duplicates is the queue of transaction pairs that look like one " +
+	"payment recorded twice -- while a pair is unresolved BOTH sides are counted, so an unresolved queue " +
+	"means the spending totals are inflated by those amounts, and saying so is often more useful than the " +
+	"totals themselves. resolve_duplicates and undo_resolve WRITE TO THE USER'S DATA; confirm with the " +
+	"user before calling either, and never invent a pair_key -- call list_duplicates and use one from " +
+	"there. undo_resolve reverses a resolve_duplicates decision, but not by the same mechanism both ways: " +
+	"undoing kept_winner makes the suppressed transaction live again, while undoing kept_both only " +
+	"re-flags the pair for review, since kept_both never suppressed anything to begin with. run_backup " +
+	"adds a zip to the backup directory and changes nothing else, so it is safe to call before suggesting " +
+	"anything the user might want to walk back."
 
-// NewServer builds the MCP server. A nil Loader disables spend's tools;
-// registration itself never touches a dependency. Other nil fields are not
-// load-bearing at registration time but will fail individual tool calls that
-// need them -- notably a nil SettingsDir/SnapshotDir still registers
-// apply_changes (via an always-constructed Snapshotter), which then fails at
-// call time rather than being absent from the tool list.
+// NewServer builds the MCP server. A nil Loader disables spend's, curate's
+// and admin's tools; registration itself never touches a dependency. Other
+// nil fields are not load-bearing at registration time but will fail
+// individual tool calls that need them -- notably a nil SettingsDir/
+// SnapshotDir still registers apply_changes (via an always-constructed
+// Snapshotter), which then fails at call time rather than being absent from
+// the tool list. A nil Backups degrades get_status's backup section (it
+// reports "no backup service is configured" instead of a snapshot record)
+// and disables nothing else: run_backup still registers and still gets
+// called, it just fails that call with the same "not configured" error. A
+// nil Backups is a supported configuration.
+//
+// deps.Settings, by contrast, is not a supported nil configuration in
+// production: cmd/server/main.go constructs it unconditionally, and
+// plan.Register calls its methods without a nil check, so a nil Settings
+// reaching a real tool call is a programming error, not a degraded mode.
+// Tests may still construct NewServer with a nil Settings deliberately (see
+// TestNewServerExposesTheAssumptionsResource), as long as the test never
+// calls a tool that touches it.
 //
 // deps.Settings must be either a genuinely nil *retirement.SettingsManager or
 // a fully constructed one -- never a typed-nil value manufactured some other

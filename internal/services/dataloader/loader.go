@@ -61,8 +61,11 @@ type DataLoader struct {
 	enabledFiles          map[string]bool
 
 	// Populated by every LoadData call. Read-only for callers.
+	// The three lists partition the detected pairs: awaiting review,
+	// settled as kept_winner, settled as kept_both.
 	unresolvedDuplicates []DuplicatePair
 	resolvedDuplicates   []DuplicatePair
+	keptBothDuplicates   []DuplicatePair
 }
 
 // columnMappings maps common bank export column names to our standard names
@@ -811,11 +814,28 @@ func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair {
 // ResolvedDuplicates returns the kept_winner pairs the user has
 // already resolved, sourced from the most recent load. The Left side
 // is the kept transaction; Right is the suppressed one.
+//
+// kept_both pairs are deliberately NOT here -- the Duplicates page reads
+// this list and renders Right as the suppressed side, which a kept_both
+// pair has none of. See KeptBothDuplicates.
 func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair {
 	dl.stateMu.RLock()
 	defer dl.stateMu.RUnlock()
 	out := make([]DuplicatePair, len(dl.resolvedDuplicates))
 	copy(out, dl.resolvedDuplicates)
+	return out
+}
+
+// KeptBothDuplicates returns the pairs the user settled as kept_both, in
+// detection order. Both sides are live and untagged, so the pair affects
+// nothing about the ledger -- but the decision is still recorded and is
+// still undoable, and without this accessor such a pair appears in no
+// list at all and its pair_key becomes unrecoverable.
+func (dl *DataLoader) KeptBothDuplicates() []DuplicatePair {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
+	out := make([]DuplicatePair, len(dl.keptBothDuplicates))
+	copy(out, dl.keptBothDuplicates)
 	return out
 }
 
@@ -826,12 +846,14 @@ func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair {
 func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []models.Transaction {
 	var unresolved []DuplicatePair
 	var resolved []DuplicatePair
+	var keptBoth []DuplicatePair
 
 	pairs := detectNearDuplicatePairs(txns)
 	if len(pairs) == 0 {
 		dl.stateMu.Lock()
 		dl.unresolvedDuplicates = unresolved
 		dl.resolvedDuplicates = resolved
+		dl.keptBothDuplicates = keptBoth
 		dl.stateMu.Unlock()
 		return txns
 	}
@@ -878,13 +900,17 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 				Right: rightSuppressed,
 			})
 		case DuplicateOutcomeKeptBoth:
-			// No-op: leave both transactions live and untagged.
+			// Both transactions stay live and untagged -- nothing to stamp.
+			// The pair is still recorded so the decision remains visible
+			// and undoable rather than vanishing from every list.
+			keptBoth = append(keptBoth, pair)
 		}
 	}
 
 	dl.stateMu.Lock()
 	dl.unresolvedDuplicates = unresolved
 	dl.resolvedDuplicates = resolved
+	dl.keptBothDuplicates = keptBoth
 	dl.stateMu.Unlock()
 	return txns
 }

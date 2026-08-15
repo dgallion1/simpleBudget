@@ -40,11 +40,17 @@ type FileLister interface {
 // DuplicateSource exposes the near-duplicate detection results cached by the
 // most recent LoadData. *dataloader.DataLoader satisfies it.
 //
-// Every caller must LoadData FIRST: these three return the previous load's
+// Every caller must LoadData FIRST: these four return the previous load's
 // results, and on a freshly constructed loader they return nothing at all.
+//
+// The three list methods partition the detected pairs. A pair settled as
+// kept_both is in KeptBothDuplicates and nowhere else -- it is absent from
+// ResolvedDuplicates by design, so list_duplicates must read it separately
+// or the pair_key is unrecoverable once the model loses context.
 type DuplicateSource interface {
 	UnresolvedDuplicates() []dataloader.DuplicatePair
 	ResolvedDuplicates() []dataloader.DuplicatePair
+	KeptBothDuplicates() []dataloader.DuplicatePair
 	UnresolvedDuplicateCount() int
 }
 

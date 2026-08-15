@@ -12,7 +12,7 @@ import (
 )
 
 type duplicatesInput struct {
-	IncludeResolved bool `json:"include_resolved,omitempty" jsonschema:"also return pairs the user has already resolved as kept_winner"`
+	IncludeResolved bool `json:"include_resolved,omitempty" jsonschema:"also return the pairs the user has already settled, both kept_winner and kept_both"`
 }
 
 // duplicateRow is one side of a candidate pair. amount is SIGNED exactly as
@@ -31,11 +31,19 @@ type duplicatePairOut struct {
 	Right   duplicateRow `json:"right"`
 }
 
+// duplicatesOutput reports the three buckets separately rather than folding
+// the settled ones together: resolved_count is kept_winner only, because that
+// is the only outcome that removed an amount from the user's totals, while
+// kept_both_count is settled-but-changed-nothing. Both are undoable, so both
+// must be listed or undo_resolve has keys it will accept that no tool can
+// name.
 type duplicatesOutput struct {
 	UnresolvedCount int                `json:"unresolved_count"`
 	Unresolved      []duplicatePairOut `json:"unresolved"`
 	ResolvedCount   int                `json:"resolved_count"`
 	Resolved        []duplicatePairOut `json:"resolved,omitempty"`
+	KeptBothCount   int                `json:"kept_both_count"`
+	KeptBoth        []duplicatePairOut `json:"kept_both,omitempty"`
 	Note            string             `json:"note,omitempty"`
 }
 
@@ -76,8 +84,12 @@ func registerListDuplicates(s *mcp.Server, deps Deps) {
 			"exactly as stored (an expense is negative), matching search_transactions for the same transaction. " +
 			"Both sides are still LIVE and both are still counted in every spending total until the user " +
 			"resolves the pair, so an unresolved queue means the app is currently double-counting those " +
-			"amounts. Set include_resolved to also see pairs already settled as kept_winner, whose losing side " +
-			"is excluded from every total. This tool reads only -- it changes nothing.",
+			"amounts. Set include_resolved to also see the pairs already settled: resolved holds the " +
+			"kept_winner decisions, whose losing side is excluded from every total, and kept_both holds the " +
+			"pairs the user confirmed were two genuinely different payments, which changed no total but is " +
+			"still a recorded decision. Both lists are undoable via undo_resolve, and kept_both appears here " +
+			"and nowhere else -- it is the only way to recover such a pair_key. This tool reads only -- it " +
+			"changes nothing.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in duplicatesInput) (res *mcp.CallToolResult, out duplicatesOutput, err error) {
 		defer recoverToError("list_duplicates", &err)
 
@@ -97,8 +109,11 @@ func registerListDuplicates(s *mcp.Server, deps Deps) {
 		}
 		resolved := deps.Duplicates.ResolvedDuplicates()
 		out.ResolvedCount = len(resolved)
+		keptBoth := deps.Duplicates.KeptBothDuplicates()
+		out.KeptBothCount = len(keptBoth)
 		if in.IncludeResolved {
 			out.Resolved = pairsFrom(resolved)
+			out.KeptBoth = pairsFrom(keptBoth)
 		}
 		if out.UnresolvedCount == 0 {
 			out.Note = "nothing is waiting for review; no candidate pairs were detected, or the user has already decided every one"

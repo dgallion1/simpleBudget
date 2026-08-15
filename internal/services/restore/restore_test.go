@@ -152,6 +152,89 @@ func TestFromZipWithoutAGateStillRestores(t *testing.T) {
 	}
 }
 
+// ---------- pruneExtras walk-error accounting ----------
+
+func TestPruneExtras_WalkAndRemoveFailures(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission fixtures do not block root")
+	}
+	s, dir := newService(t)
+
+	dataAbs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skip := backupsvc.SkipPredicate(dir, s.deps.BackupDir)
+
+	keep := filepath.Join(dataAbs, "keep.csv")
+	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(dataAbs, "stale.csv")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	chmod := func(path string, mode os.FileMode) {
+		t.Helper()
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(path, 0o755) })
+	}
+
+	// noread (0311): lstat ok, listing fails -> walkErr with dir info ->
+	// failures++ and SkipDir (never queued for removal).
+	noread := filepath.Join(dataAbs, "noread")
+	if err := os.MkdirAll(noread, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(noread, "junk.csv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chmod(noread, 0o311)
+
+	// nolstat (0444): listing works but lstat of children fails -> walkErr
+	// with nil info -> failures++, non-dir branch returns nil.
+	nolstat := filepath.Join(dataAbs, "nolstat")
+	if err := os.MkdirAll(nolstat, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nolstat, "child.csv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chmod(nolstat, 0o444)
+
+	// lockedparent (0555) holding an empty dir: the empty dir cannot be
+	// unlinked (parent read-only) but ReadDir shows it empty -> failures++.
+	lockedParent := filepath.Join(dataAbs, "lockedparent")
+	emptyChild := filepath.Join(lockedParent, "emptychild")
+	if err := os.MkdirAll(emptyChild, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chmod(lockedParent, 0o555)
+
+	archive := map[string]struct{}{keep: {}}
+	removed, failures := s.pruneExtras(dataAbs, archive, skip)
+
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1 (stale.csv only)", removed)
+	}
+	// Three failures: the noread listing error (filepath.Walk reports a
+	// dir whose readdir fails in a single callback, so it is skipped and
+	// never queued for removal), the nolstat child lstat error, and the
+	// emptychild unlink failure.
+	if failures != 3 {
+		t.Fatalf("failures = %d, want 3", failures)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("archive entry keep.csv must survive: %v", err)
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale.csv must be pruned, err=%v", err)
+	}
+}
+
 // The gate must be acquired before any write and released only after the
 // prune, or a concurrent settings save can interleave with a half-restored
 // settings directory. Recording the data dir's contents at acquire and

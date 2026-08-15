@@ -3018,6 +3018,10 @@ func TestHandleRestore_SnapshotFailureAbortsWithoutDataChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	backupSvc = svc
+	// restoreSvc is built once, in Initialize, over whatever cfg/store/
+	// backupSvc were current at the time. Re-run it so restoreSvc's deps
+	// match the fixture this test just built, not a prior test's.
+	Initialize(cfg, store, nil, backupSvc, nil)
 
 	if err := os.WriteFile(filepath.Join(dataDir, "keep.csv"), []byte("original"), 0644); err != nil {
 		t.Fatal(err)
@@ -3122,6 +3126,11 @@ func TestHandleRestore_BackupServiceRequired(t *testing.T) {
 	}
 	store = s
 	backupSvc = nil
+	// restoreSvc is built once, in Initialize; re-run it with the nil
+	// backupSvc so restoreSvc's Backups dep actually goes nil (the guarded
+	// Initialize keeps a literal nil out of the interface, unlike a typed
+	// nil *backupsvc.Service would).
+	Initialize(cfg, store, nil, backupSvc, nil)
 
 	zipBuf := createZipBuffer(t, map[string]string{"file.csv": "data"})
 	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
@@ -3153,6 +3162,7 @@ func TestHandleRestore_RoundTripsAllFileTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	backupSvc = svc
+	Initialize(cfg, store, nil, backupSvc, nil)
 
 	// Build an in-memory zip with csv + json + nested settings/.
 	var buf bytes.Buffer
@@ -3191,6 +3201,7 @@ func TestHandleRestore_RejectsPathTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	backupSvc = svc
+	Initialize(cfg, store, nil, backupSvc, nil)
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -3228,6 +3239,7 @@ func TestHandleRestore_RejectsAbsolutePathEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	backupSvc = svc
+	Initialize(cfg, store, nil, backupSvc, nil)
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -3260,6 +3272,7 @@ func TestHandleRestore_RejectsEncryptedBlobsIntoUnencryptedStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	backupSvc = svc
+	Initialize(cfg, store, nil, backupSvc, nil)
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -3809,15 +3822,11 @@ func TestHandleRestore_AcquiresRestoreGateOnSuccessOnly(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// setupTestEnv's Initialize wired a nil gate; just make sure this
-	// test's gate doesn't leak to later tests.
-	t.Cleanup(func() { restoreGate = nil })
-
 	acquired, released := 0, 0
-	restoreGate = RewriteGateFunc(func() func() {
+	Initialize(cfg, store, nil, backupSvc, RewriteGateFunc(func() func() {
 		acquired++
 		return func() { released++ }
-	})
+	}))
 
 	// Failed restore (invalid zip) rejects before any write — the gate
 	// must not be acquired.
@@ -3856,19 +3865,25 @@ func TestHandleRestore_AcquiresRestoreGateOnSuccessOnly(t *testing.T) {
 func TestInitialize_ReplacesRestoreGate(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
-	t.Cleanup(func() { restoreGate = nil })
 
 	staleAcquired := 0
-	restoreGate = RewriteGateFunc(func() func() {
+	Initialize(cfg, store, renderer, backupSvc, RewriteGateFunc(func() func() {
 		staleAcquired++
 		return func() {}
-	})
+	}))
 
 	// Re-initializing (as repeated wiring does) must replace the gate so a
-	// stale one cannot outlive its wiring.
+	// stale one cannot outlive its wiring. A restore under the nil gate must
+	// not touch the earlier (now-stale) one.
 	Initialize(cfg, store, renderer, backupSvc, nil)
-	if restoreGate != nil {
-		t.Fatal("Initialize with a nil gate must clear the restore gate")
+	zipBuf := createZipBuffer(t, map[string]string{"probe.csv": "a,b\n"})
+	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	HandleRestore(rec, rec.Request)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if staleAcquired != 0 {
+		t.Fatalf("Initialize with a nil gate must clear the restore gate, stale gate acquired=%d", staleAcquired)
 	}
 
 	// A gate wired via Initialize is acquired exactly once per successful
@@ -3878,8 +3893,8 @@ func TestInitialize_ReplacesRestoreGate(t *testing.T) {
 		freshAcquired++
 		return func() { freshReleased++ }
 	}))
-	zipBuf := createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
-	rec := postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
+	zipBuf = createZipBuffer(t, map[string]string{"data.csv": "a,b\n"})
+	rec = postMultipartZip(t, "/restore", "file", "backup.zip", zipBuf.Bytes())
 	HandleRestore(rec, rec.Request)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())

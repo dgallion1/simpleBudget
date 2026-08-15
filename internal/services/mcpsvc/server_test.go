@@ -61,7 +61,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 // green even if spend.Register were deleted from NewServer outright. A
 // non-nil Loader (and the Settings/SettingsDir/SnapshotDir plan.Register
 // needs) closes that hole.
-func TestNewServerRegistersAllTwentyTwoTools(t *testing.T) {
+func TestNewServerRegistersAllTwentyThreeTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -93,14 +93,14 @@ func TestNewServerRegistersAllTwentyTwoTools(t *testing.T) {
 		"get_anomalies", "get_price_creep", "search_transactions", "summarize_spending", "get_recurring",
 		"get_trends", "list_major_expenses", "list_exceptions", "pin_transactions", "upsert_major_expense",
 		"delete_major_expense", "get_status", "list_data_files", "list_duplicates", "resolve_duplicates",
-		"undo_resolve",
+		"undo_resolve", "run_backup",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 22 {
-		t.Errorf("expected exactly 22 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 23 {
+		t.Errorf("expected exactly 23 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 

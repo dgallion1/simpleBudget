@@ -136,6 +136,16 @@ func decodeToolResult[T any](t *testing.T, res *mcp.CallToolResult) T {
 	return out
 }
 
+// busyBackups reports every snapshot as already in flight, the condition the
+// real service signals when the scheduler tick and a manual run collide.
+type busyBackups struct{ inner BackupService }
+
+func (b busyBackups) BackupDir() string                  { return b.inner.BackupDir() }
+func (b busyBackups) DataDir() string                    { return b.inner.DataDir() }
+func (b busyBackups) Enabled() bool                      { return b.inner.Enabled() }
+func (b busyBackups) Meta() (backupsvc.Meta, error)      { return b.inner.Meta() }
+func (b busyBackups) Snapshot(ctx context.Context) error { return backupsvc.ErrSnapshotInProgress }
+
 // toolErrorText asserts res is an error result and returns its message.
 func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {
 	t.Helper()

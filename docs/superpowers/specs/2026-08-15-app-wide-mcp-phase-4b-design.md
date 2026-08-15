@@ -246,6 +246,32 @@ description would be wrong in a way it cannot detect.
   guard and confirm it fails. Red-before/green-after has passed vacuous tests in
   this repo before.
 
+## Decisions from the final whole-branch review
+
+**(a) Five restore error strings changed wording, deliberately.** The
+extraction moved error text from ad hoc strings in the handler to messages
+rendered from the sentinels in the table above, and five of the resulting
+400-class strings now read differently than they did before the move:
+absolute path in archive, path traversal in archive, a destination escaping
+the data directory, an unreadable entry (which also collapsed the old
+separate "cannot open" and "cannot read" messages into one `ErrUnreadableEntry`
+string), and an encrypted entry going into a store that is not
+encrypted-and-unlocked. This is intentional, not a regression to fix: the new
+text is strictly more informative — it names the offending archive entry —
+and restoring the byte-identical old prose would mean re-deriving those
+distinctions in the handler from sentinels that no longer carry them.
+
+**(b) `shutdown_server` signals rather than exits.** `cmd/server/main.go`
+wires `Shutdown` to send the process `SIGTERM` (falling back to `os.Exit(0)`
+only if the signal send itself fails), not to call `os.Exit` directly. This
+lets a guarded shutdown go through the same signal handler as an operator's
+Ctrl-C: it drains in-flight HTTP requests and takes a final backup snapshot
+before the process exits, rather than killing the process mid-request. The
+concrete failure this avoids: a browser `POST /restore` mid write-and-prune,
+holding the snapshot lock and the settings gate, when a model redeems a
+shutdown token — a hard exit there would leave the data directory
+half-restored with no shutdown snapshot taken.
+
 ## Out of scope
 
 - `restore_backup` and its `list_backups` prerequisite.

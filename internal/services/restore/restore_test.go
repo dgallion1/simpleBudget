@@ -235,6 +235,54 @@ func TestPruneExtras_WalkAndRemoveFailures(t *testing.T) {
 	}
 }
 
+// An age-encrypted entry going into a store that is not encrypted-and-unlocked
+// must be rejected: writing decrypted-looking ciphertext as plaintext would
+// silently corrupt the restored file. storage.IsAgeEncryptedData looks only at
+// the "age-encryption.org" magic header, so any payload starting with it
+// (and longer than the header) qualifies -- the content after it need not be
+// real age ciphertext.
+func TestFromZipRejectsEncryptedEntryIntoUnlockedStore(t *testing.T) {
+	s, dir := newService(t)
+	// newService's store has no encryption marker file, so IsEncrypted() is
+	// false and this entry must be rejected regardless of IsUnlocked().
+	encryptedLooking := "age-encryption.org/v1\n-> X25519 fake-payload-bytes-follow\n"
+
+	_, err := s.FromZip(context.Background(), zipOf(t, map[string]string{
+		"secret.csv": encryptedLooking,
+	}))
+	if !errors.Is(err, ErrEncryptedEntry) {
+		t.Fatalf("err = %v, want ErrEncryptedEntry", err)
+	}
+	// The whole archive is rejected, so nothing may have been written.
+	entries, rerr := os.ReadDir(dir)
+	if rerr != nil {
+		t.Fatalf("readdir: %v", rerr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("data dir is not empty after a rejected archive: %v", entries)
+	}
+}
+
+// A write failure (here: os.MkdirAll cannot create a directory because a
+// regular file already occupies that path, so it fails ENOTDIR) must surface
+// as ErrWriteFailed. Planting a file where a directory is needed works
+// unprivileged and, unlike chmod, is not defeated when tests run as root.
+func TestFromZipReportsWriteFailure(t *testing.T) {
+	s, dir := newService(t)
+	// "sub" must be a directory for "sub/nested.json" to be written, but it
+	// already exists as a regular file.
+	if err := os.WriteFile(filepath.Join(dir, "sub"), []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("seed blocking file: %v", err)
+	}
+
+	_, err := s.FromZip(context.Background(), zipOf(t, map[string]string{
+		"sub/nested.json": "{}",
+	}))
+	if !errors.Is(err, ErrWriteFailed) {
+		t.Fatalf("err = %v, want ErrWriteFailed", err)
+	}
+}
+
 // The gate must be acquired before any write and released only after the
 // prune, or a concurrent settings save can interleave with a half-restored
 // settings directory. Recording the data dir's contents at acquire and

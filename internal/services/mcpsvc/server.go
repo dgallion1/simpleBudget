@@ -112,9 +112,11 @@ const serverInstructions = "These tools cover two things for one household: a pe
 // and disables nothing else: run_backup still registers and still gets
 // called, it just fails that call with the same "not configured" error. A
 // nil Backups is a supported configuration. Likewise, a nil Shutdown is a
-// supported configuration: shutdown_server still registers and its preview
-// call still works, but redeeming a token fails with "no shutdown path is
-// configured on this server" instead of stopping the process.
+// supported configuration: shutdown_server still registers, but every call --
+// including the no-argument preview -- fails fast with "no shutdown path is
+// configured on this server" instead of stopping the process, because a
+// server that cannot shut down should not mint a token no redeem could ever
+// honor.
 //
 // deps.Settings, by contrast, is not a supported nil configuration in
 // production: cmd/server/main.go constructs it unconditionally, and

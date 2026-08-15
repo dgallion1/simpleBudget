@@ -190,9 +190,10 @@ func (s *Service) FromZip(ctx context.Context, content []byte) (Result, error) {
 	release, err := s.deps.Backups.SnapshotAndHold(ctx)
 	if err != nil {
 		if errors.Is(err, backupsvc.ErrSnapshotInProgress) {
-			// Returned unwrapped-in-kind so the caller's errors.Is sees the
-			// backup package's own identity rather than a restore alias.
-			return res, fmt.Errorf("%w", backupsvc.ErrSnapshotInProgress)
+			// Returned as-is (not wrapped in a restore sentinel) so the
+			// caller's errors.Is sees the backup package's own identity
+			// rather than a restore alias.
+			return res, backupsvc.ErrSnapshotInProgress
 		}
 		return res, fmt.Errorf("%w: %v", ErrSnapshotFailed, err)
 	}

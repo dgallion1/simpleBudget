@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -93,10 +94,12 @@ func TestShutdownRefusesAReplayedToken(t *testing.T) {
 	if !res.IsError {
 		t.Fatal("a replayed token was accepted")
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for calls.Load() < 1 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Wait past the replay attempt's own would-be AfterFunc delay, not just
+	// until the legitimate redeem's call lands: polling-until-first-increment
+	// breaks as soon as the legitimate exit fires, which can read the count
+	// before a wrongly-accepted replay's own delayed call would have (same
+	// shape as the bug fixed in 582aebd).
+	time.Sleep(shutdownExitDelay + 150*time.Millisecond)
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("shutdown func called %d times, want exactly 1 (the replay must not shut down a second time)", got)
 	}
@@ -110,7 +113,21 @@ func TestShutdownWithoutAShutdownFuncReportsIt(t *testing.T) {
 	cs := connect(t, deps)
 
 	msg := toolErrorText(t, call(t, cs, "shutdown_server", map[string]any{}))
-	if msg == "" {
-		t.Error("no error message naming the missing shutdown path")
+	if !strings.Contains(msg, "shutdown path") {
+		t.Errorf("error message = %q, want it to name the missing shutdown path", msg)
+	}
+}
+
+// A nil Confirm must fail this one call with a named error too -- the guard
+// itself is unusable without a confirmation registry, matching the nil
+// Shutdown case above. It must NOT panic.
+func TestShutdownWithoutAConfirmRegistryReportsIt(t *testing.T) {
+	deps, _ := shutdownDeps(t)
+	deps.Confirm = nil
+	cs := connect(t, deps)
+
+	msg := toolErrorText(t, call(t, cs, "shutdown_server", map[string]any{}))
+	if !strings.Contains(msg, "confirmation registry") {
+		t.Errorf("error message = %q, want it to name the missing confirmation registry", msg)
 	}
 }

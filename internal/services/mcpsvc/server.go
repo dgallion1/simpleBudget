@@ -6,10 +6,12 @@ package mcpsvc
 
 import (
 	"path/filepath"
+	"time"
 
 	"budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/mcpsvc/admin"
+	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/mcpsvc/curate"
 	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/mcpsvc/snapshot"
@@ -31,6 +33,10 @@ type Deps struct {
 	SnapshotDir string
 	BaseURL     string
 	Backups     *backup.Service
+
+	// Shutdown stops the server process. Nil disables shutdown_server's
+	// ability to act (the tool still registers and still reports why).
+	Shutdown func()
 }
 
 // serverInstructions is returned to the client on initialize. It is the
@@ -101,7 +107,10 @@ const serverInstructions = "These tools cover two things for one household: a pe
 // reports "no backup service is configured" instead of a snapshot record)
 // and disables nothing else: run_backup still registers and still gets
 // called, it just fails that call with the same "not configured" error. A
-// nil Backups is a supported configuration.
+// nil Backups is a supported configuration. Likewise, a nil Shutdown is a
+// supported configuration: shutdown_server still registers and its preview
+// call still works, but redeeming a token fails with "no shutdown path is
+// configured on this server" instead of stopping the process.
 //
 // deps.Settings, by contrast, is not a supported nil configuration in
 // production: cmd/server/main.go constructs it unconditionally, and
@@ -169,6 +178,12 @@ func NewServer(deps Deps) *mcp.Server {
 		// service as absent. Only assign when there is really a service.
 		if deps.Backups != nil {
 			adminDeps.Backups = deps.Backups
+		}
+		// The registry is constructed per server, so tokens never outlive
+		// the process.
+		adminDeps.Confirm = confirm.NewRegistry(5 * time.Minute)
+		if deps.Shutdown != nil {
+			adminDeps.Shutdown = deps.Shutdown
 		}
 		admin.Register(s, adminDeps)
 	}

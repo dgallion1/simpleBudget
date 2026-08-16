@@ -101,10 +101,9 @@ behavior.
 
 ## What this still does not do
 
-- **URL-mode elicitation.** The SDK supports it, and pointing a client at
-  budget2's own Backup page would give a far better prompt than a boolean
-  form. It needs a route, a pending-approval registry and an
-  `elicitation/complete` notification, which is its own slice.
+- **URL-mode elicitation.** *Built on 2026-08-16; see
+  `2026-08-16-browser-approval-design.md`.* It needs a route, a pending-approval
+  registry and an `elicitation/complete` notification.
 - **Anything about clients that lie.** A client that auto-fills `confirm: true`
   reports approval that never happened. Nothing server-side can detect that;
   the browser page is the path that does not depend on the client's honesty.

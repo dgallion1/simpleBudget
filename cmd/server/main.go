@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"budget2/internal/config"
+	"budget2/internal/handlers/approval"
 	"budget2/internal/handlers/backup"
 	"budget2/internal/handlers/dashboard"
 	"budget2/internal/handlers/duplicates"
@@ -35,6 +36,7 @@ import (
 	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/mcpsvc"
+	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
@@ -52,6 +54,7 @@ var (
 	retirementMgr *retirement.SettingsManager
 	backupService *backupsvc.Service
 	mcpServer     *mcp.Server
+	mcpApprovals  *confirm.Approvals
 )
 
 // SetupDependencies initializes all global dependencies with the given config.
@@ -79,6 +82,16 @@ func SetupDependencies(c *config.Config) error {
 	// Initialize retirement settings manager with storage
 	settingsDir := filepath.Join(cfg.DataDirectory, "settings")
 	retirementMgr = retirement.NewSettingsManager(settingsDir, store)
+
+	// Approval requests a human answers in a browser. ONE registry, shared by
+	// the MCP tools that file requests and the HTTP route that serves them; two
+	// would mean a person approving a request no tool is waiting on.
+	//
+	// The TTL is also how long a guarded tool call blocks waiting for an
+	// answer, so it is a compromise: long enough to read a page and decide,
+	// short enough that an unanswered call does not hang a session.
+	mcpApprovals = confirm.NewApprovals(2 * time.Minute)
+	approval.Initialize(mcpApprovals)
 
 	// Initialize backup service
 	backupService, err = backupsvc.New(backupsvc.Config{
@@ -120,6 +133,8 @@ func SetupDependencies(c *config.Config) error {
 		// restore and a browser-driven one contend for one snapshot hold and
 		// one settings gate instead of racing as two.
 		Restores: restoreService,
+		// The same approvals registry /mcp/approve serves.
+		Approvals: mcpApprovals,
 		Shutdown: func() {
 			// Signal rather than exit: the signal handler above drains
 			// in-flight requests and takes a final snapshot before exiting.
@@ -192,6 +207,13 @@ func SetupRouter() chi.Router {
 	// Backup-owned routes that must stay reachable while storage is locked
 	// (unlock, YubiKey setup, encryption config probe, health, kill switch).
 	backup.RegisterPublicRoutes(r)
+
+	// The page a human answers when a guarded MCP tool asks permission. Public
+	// for the same reason as the routes above: a guarded operation can need
+	// approving while storage is locked, and the lock-check middleware would
+	// redirect this page to the unlock screen exactly when it is needed. The
+	// capability is the approval id in the path.
+	approval.RegisterPublicRoutes(r)
 
 	// File manager accessible when locked (has its own unlock UI)
 	r.Get("/filemanager", explorer.HandleFileManagerPage)

@@ -123,6 +123,18 @@ type Deps struct {
 	// nil registry makes those tools refuse rather than run unguarded.
 	Confirm *confirm.Registry
 
+	// Approvals holds the out-of-band approval requests a human answers in a
+	// browser, and must be the SAME instance the /mcp/approve route serves --
+	// two registries would mean a person approving a request no tool is
+	// waiting on. Nil (or an empty BaseURL) drops the guarded tools to the
+	// in-client form prompt, and then to the token alone.
+	Approvals *confirm.Approvals
+
+	// BaseURL is the origin a human can reach this server at, used to build
+	// the approval URL. Empty disables browser approval for the same reason a
+	// nil Approvals does.
+	BaseURL string
+
 	// Shutdown stops the server. It is a func, never a direct os.Exit call,
 	// because a test that invokes the real thing kills the test binary. Nil
 	// means this server has no shutdown path wired.

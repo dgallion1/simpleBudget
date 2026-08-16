@@ -43,6 +43,12 @@ type Deps struct {
 	// reports why).
 	Restores *restore.Service
 
+	// Approvals is where guarded tools file the requests a human answers in a
+	// browser. It MUST be the same instance the /mcp/approve route serves, so
+	// it is constructed by cmd/server rather than here. Nil drops the guarded
+	// tools to the in-client form prompt, and then to the token alone.
+	Approvals *confirm.Approvals
+
 	// Shutdown stops the server process. Nil disables shutdown_server's
 	// ability to act (the tool still registers and still reports why).
 	Shutdown func()
@@ -126,7 +132,9 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	" Two tools are guarded, and both take two calls: the first returns what would happen plus a single-use " +
 	"confirm_token, the second must echo that token. Calling one twice yourself is NOT the user agreeing; " +
 	"show them the first call's answer and wait for a real answer. On a client that can prompt, the second " +
-	"call ALSO asks the user directly and does nothing unless they agree -- read human_approval in the " +
+	"call ALSO asks the user directly -- best case by opening a page in their browser showing the whole " +
+	"operation, otherwise by a prompt in their client -- and does nothing unless they agree. Read " +
+	"human_approval in the " +
 	"result: \"refused\" means they said no and you must not retry, \"not asked\" means this client could not " +
 	"reach anybody so the token alone authorized it and you should say so plainly. " +
 	"shutdown_server stops the server, and " +
@@ -230,6 +238,12 @@ func NewServer(deps Deps) *mcp.Server {
 		// The registry is constructed per server, so tokens never outlive
 		// the process.
 		adminDeps.Confirm = confirm.NewRegistry(5 * time.Minute)
+		// BaseURL is what an approval URL is built from; without it a human
+		// has nowhere to be sent, so browser approval is simply unavailable.
+		adminDeps.BaseURL = deps.BaseURL
+		if deps.Approvals != nil {
+			adminDeps.Approvals = deps.Approvals
+		}
 		if deps.Shutdown != nil {
 			adminDeps.Shutdown = deps.Shutdown
 		}

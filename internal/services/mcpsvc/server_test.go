@@ -252,8 +252,9 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		// client can reach one, and admit it when they cannot. A model that
 		// reads "not asked" as approval would report a write nobody
 		// sanctioned as one the user wanted.
-		"ALSO asks the user directly and does nothing unless they agree",
-		"read human_approval in the",
+		"ALSO asks the user directly",
+		"opening a page in their browser showing the whole",
+		"human_approval",
 		// The prune is the half of a restore that surprises people, so the
 		// instructions must state it, not just "overwrites".
 		"DELETES every file that archive does not contain",

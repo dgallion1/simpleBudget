@@ -146,6 +146,12 @@ func registerRestoreBackup(s *mcp.Server, deps Deps) {
 			if findErr != nil {
 				return nil, restoreBackupOutput{}, findErr
 			}
+			// Best rung first: the person answers on the app's own page,
+			// where the whole operation is on screen.
+			if res, asked := askForApproval(deps, req, "restore_backup", name,
+				"Restore the backup "+name+"?", restoreConsequences(archive)); asked {
+				return res, restoreBackupOutput{}, nil
+			}
 			if confirm.CanAsk(req.Session) {
 				return &mcp.CallToolResult{
 					InputRequests: mcp.InputRequestMap{
@@ -163,6 +169,21 @@ func registerRestoreBackup(s *mcp.Server, deps Deps) {
 			// than failing on every client that has not implemented
 			// elicitation.
 			return runRestore(ctx, deps, name, tokenArgs, token, confirm.NotAsked)
+		}
+
+		// The answer came back. If it was a browser approval, the client's
+		// response only says "I showed them the URL" -- the real decision is
+		// the one the person clicked, which is waiting server-side.
+		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "restore_backup", name); viaBrowser {
+			if d != confirm.Approved {
+				return nil, restoreBackupOutput{
+					Confirmed:     false,
+					Name:          name,
+					HumanApproval: confirm.Refused.String(),
+					Note:          approvalRefusal("restore_backup", waitErr),
+				}, nil
+			}
+			return runRestore(ctx, deps, name, tokenArgs, token, confirm.Approved)
 		}
 
 		switch confirm.DecisionFrom(answer) {

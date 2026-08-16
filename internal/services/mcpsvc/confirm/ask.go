@@ -1,6 +1,8 @@
 package confirm
 
 import (
+	"strings"
+
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -59,7 +61,17 @@ func CanAsk(ss *mcp.ServerSession) bool {
 		return false
 	}
 	p := ss.InitializeParams()
-	return p != nil && p.Capabilities != nil && p.Capabilities.Elicitation != nil
+	if p == nil || p.Capabilities == nil || p.Capabilities.Elicitation == nil {
+		return false
+	}
+	// Mirrors the SDK's own rule for form elicitation: an explicit Form
+	// capability, or NEITHER sub-capability declared, which older clients
+	// leave empty and which the SDK reads as form support. A client that
+	// declared only URL cannot render a form, and asking it to would fail the
+	// call rather than degrade -- which is exactly the mistake this function
+	// exists to prevent.
+	e := p.Capabilities.Elicitation
+	return e.Form != nil || e.URL == nil
 }
 
 // ApprovalRequest builds the question a human answers before a guarded
@@ -108,4 +120,39 @@ func DecisionFrom(resp mcp.InputResponse) Decision {
 		return Refused
 	}
 	return Approved
+}
+
+// CanAskInBrowser reports whether the client can hand a human a URL to open
+// (the "url" elicitation sub-capability).
+//
+// Preferred over CanAsk when both are available: a browser page can show the
+// operation in full, in the application the person already trusts, instead of
+// a boolean rendered by whatever UI is driving the model.
+func CanAskInBrowser(ss *mcp.ServerSession) bool {
+	if ss == nil {
+		return false
+	}
+	p := ss.InitializeParams()
+	return p != nil && p.Capabilities != nil &&
+		p.Capabilities.Elicitation != nil && p.Capabilities.Elicitation.URL != nil
+}
+
+// BrowserApprovalRequest points the client at the app's own approval page for
+// this pending request.
+//
+// KNOWN GAP: when the person answers, the server should send
+// notifications/elicitation/complete so the client can stop showing its
+// "finish this in your browser" state. go-sdk v1.7.0 exposes no public API for
+// that notification -- the constant and the send path are unexported -- so it
+// is not sent. In the multi-round-trip flow this is survivable: the client has
+// already received its response and is waiting on the tool call itself, which
+// returns when the human answers. A client that renders a separate pending-
+// elicitation indicator may leave it up until then.
+func BrowserApprovalRequest(p *Pending, baseURL, message string) *mcp.ElicitParams {
+	return &mcp.ElicitParams{
+		Mode:          "url",
+		Message:       message,
+		URL:           strings.TrimSuffix(baseURL, "/") + "/mcp/approve/" + p.ID,
+		ElicitationID: p.ID,
+	}
 }

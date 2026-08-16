@@ -54,7 +54,15 @@ h1 { font-size: 1.5rem; margin: .4rem 0 1rem; }
 form { display: flex; gap: .75rem; align-items: center; }
 button { font: inherit; padding: .6rem 1.25rem; border-radius: 6px; cursor: pointer;
          border: 1px solid rgba(128,128,128,.5); background: transparent; color: inherit; }
-button.danger { border-color: #b3261e; background: #b3261e; color: #fff; font-weight: 600; }
+/* The SAFE action is the prominent one. On a page whose whole purpose is an
+   irreversible choice, the emphasis must not be doing the persuading: a
+   person clicking the obvious button should end up not losing their data. */
+button.primary { border-color: #2563eb; background: #2563eb; color: #fff; font-weight: 600; }
+button.danger { color: #b3261e; border-color: rgba(179,38,30,.55); font-weight: 500; }
+@media (prefers-color-scheme: dark) {
+  button.primary { border-color: #3b82f6; background: #3b82f6; }
+  button.danger { color: #f2686c; border-color: rgba(242,104,108,.55); }
+}
 .note { margin-top: 2rem; font-size: .9rem; opacity: .75; }
 `
 
@@ -66,8 +74,8 @@ var showTmpl = template.Must(template.New("approve").Parse(`<!doctype html>
 <h1>{{.Title}}</h1>
 <p class="detail">{{.Detail}}</p>
 <form method="post">
+  <button type="submit" name="decision" value="decline" class="primary">No, cancel</button>
   <button type="submit" name="decision" value="approve" class="danger">Yes, do it</button>
-  <button type="submit" name="decision" value="decline">No, cancel</button>
 </form>
 <p class="note">Nothing has happened yet. Closing this page without choosing is the same
 as declining — the request expires on its own and the tool is told nobody answered.</p>

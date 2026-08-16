@@ -64,6 +64,26 @@ func TestPageShowsTheConsequences(t *testing.T) {
 	if !strings.Contains(body, `value="approve"`) || !strings.Contains(body, `value="decline"`) {
 		t.Error("page does not offer both answers")
 	}
+	// The SAFE answer carries the emphasis. Deliberate: on a page whose whole
+	// purpose is an irreversible choice, someone clicking the obvious button
+	// should end up keeping their data. Reversing this is a real decision, so
+	// it should fail here rather than pass unnoticed.
+	decline := strings.Index(body, `value="decline"`)
+	approve := strings.Index(body, `value="approve"`)
+	if decline < 0 || approve < 0 {
+		t.Fatalf("cannot locate the buttons in:\n%s", body)
+	}
+	if !strings.Contains(body[decline:decline+60], `class="primary"`) {
+		t.Errorf("the cancel button is not the primary one:\n%s", body[decline:decline+60])
+	}
+	if strings.Contains(body[approve:approve+60], `class="primary"`) {
+		t.Errorf("the destructive button is styled as primary:\n%s", body[approve:approve+60])
+	}
+	// And cancel comes first, so the safe answer is what a keyboard or a
+	// screen reader reaches first.
+	if decline > approve {
+		t.Error("the destructive answer is offered before the safe one")
+	}
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Error("page is cacheable; a back button could re-serve an answered request")
 	}

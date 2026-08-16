@@ -395,9 +395,18 @@ Two housekeeping tools are **guarded**: each takes two calls, the first
 returning a preview plus a single-use confirmation token bound to that tool
 (and, for `restore_backup`, to that one archive name), the second echoing the
 token to proceed. On a client that supports MCP elicitation, that second call
-also puts the question to you directly: the tool returns an approval request,
-your client prompts you with the consequences, and nothing happens unless you
-agree. Every result reports `human_approval` as `approved`, `refused`, or
+also puts the question to you directly, by whichever of these the client can
+do:
+
+1. **In your browser.** The tool hands the client a link to this server's own
+   `/mcp/approve/<id>` page, which shows the whole operation and two buttons.
+   You answer in budget2 itself, not in the model's client. Requests expire
+   after two minutes, and closing the tab is the same as declining.
+2. **In the client.** A yes/no prompt rendered by whatever is driving the
+   model, carrying the same consequences text.
+3. **Not at all**, if the client can do neither.
+
+Every result reports `human_approval` as `approved`, `refused`, or
 `not asked` — the last meaning your client cannot prompt anybody, so the token
 alone authorized the operation. `shutdown_server` stops the server, and after
 it runs every tool stops answering — only the user can restart it.
@@ -411,8 +420,10 @@ decide twice with a preview in between, but a model can mint and redeem one
 inside a single turn, so on its own it is deliberateness, not consent. The
 elicitation prompt is the consent, and it only exists on clients that
 implement it — when `human_approval` says `not asked`, nobody outside the model
-sanctioned the write. The browser's Backup page remains the path that always
-has a human in the loop.
+sanctioned the write. The browser rung is the strongest of the three, because
+what you read is rendered by budget2 rather than by the client: a client that
+auto-answers a form prompt cannot be detected from here, but it cannot click a
+button on a page it never opened.
 `set_encryption` is not exposed over MCP —
 enabling encryption needs a credential that must never travel through a tool
 argument into a model's transcript.

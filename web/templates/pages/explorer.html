@@ -736,53 +736,6 @@
 {{end}}
 {{end}}
 
-{{define "file-list"}}
-<table class="w-full">
-    <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
-        <tr>
-            <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">File</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Transactions</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Date Range</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Enabled</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Actions</th>
-        </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-        {{range .Files}}
-        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-            <td class="p-3">
-                <div class="text-sm font-medium text-gray-900 dark:text-gray-100">{{.Name}}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{printf "%.1f" (div (toFloat .Size) 1024.0)}} KB</div>
-            </td>
-            <td class="p-3 text-center text-sm text-gray-600 dark:text-gray-400">{{.Transactions}}</td>
-            <td class="p-3 text-center text-xs text-gray-500 dark:text-gray-400">
-                {{if .MinDate}}{{.MinDate}} - {{.MaxDate}}{{else}}-{{end}}
-            </td>
-            <td class="p-3 text-center">
-                <input type="checkbox" {{if .Enabled}}checked{{end}} hx-post="/explorer/files/toggle"
-                    hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
-                    hx-target="#file-list" hx-swap="innerHTML"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
-            </td>
-            <td class="p-3 text-center">
-                <button hx-delete="/explorer/files/{{urlEncode .Name}}" hx-target="#file-list" hx-swap="innerHTML"
-                    class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm">
-                    Delete
-                </button>
-            </td>
-        </tr>
-        {{else}}
-        <tr>
-            <td colspan="5" class="p-8 text-center text-gray-500 dark:text-gray-400">
-                No CSV files found. Upload a file to get started.
-            </td>
-        </tr>
-        {{end}}
-    </tbody>
-</table>
-{{end}}
-
-
 {{define "summary-stats"}}
 <div id="summary-stats" class="flex flex-wrap items-center gap-2 text-sm" hx-swap-oob="true">
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">

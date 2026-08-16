@@ -1,0 +1,120 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: anthropic
+TASK: P13
+ATTEMPT: 1
+---
+EVIDENCE:
+
+1. Manifest fidelity.
+   `git status --porcelain`:
+     M web/templates/pages/filemanager.html
+     ?? .swarm/manifests/P13.1.files
+   `git diff --name-only`:
+     web/templates/pages/filemanager.html
+   Manifest lists exactly `web/templates/pages/filemanager.html`. The manifest
+   file itself is untracked and self-excluded per protocol. MATCH.
+
+2. Toolchain green (run in /home/darrell/bin/ai/budget2, which has go.mod).
+   `go build ./...` → EXIT 0, no output.
+   `go vet ./...` → EXIT 0, no output.
+   `go test ./...` → EXIT 0. Real tail:
+     ok  budget2/internal/handlers/explorer  (cached)
+     ... (43 packages ok) ...
+     ok  budget2/internal/services/retirement/engine  (cached)
+     ?   budget2/web  [no test files]
+   `staticcheck ./...` → /home/darrell/go/bin/staticcheck present; EXIT 0, no
+   output. All four green.
+
+3. Typed comparison (read the JS, filemanager.html:474-596).
+   Comparator `cmp(a,b,column)` (lines ~486-512):
+     - name: localeCompare with sensitivity:'base', numeric:true.
+     - rows / size: `(parseInt(av,10)||0) - (parseInt(bv,10)||0)` — integer
+       comparison, NOT string. `data-size` is the raw int64 byte count
+       (template line 1377: `data-size="{{.Size}}"`, and Size is
+       models.FileInfo.Size int64 = info.Size() bytes, loader.go:718). The
+       rendered `(25K)` cell (line 1384) is `div(.Size,1024.0)` rounded, so
+       25K=25600 bytes sorts above 4K=4096 bytes correctly by byte count.
+     - enabled: parseInt 0/1.
+     - mindate: empty string → Infinity; `an===Infinity` → r=1 (a after b);
+       then `r * dir`. Ascending (dir=1): empty sorts last. Descending
+       (dir=-1): empty sorts first. Matches the brief's "last in ascending"
+       rule. Non-empty mindate is ISO `YYYY-MM-DD` (loader.go:703
+       `minD.Format("2006-01-02")`), so lexical `<` = chronological. ✓
+   Sort target: `tbody.querySelectorAll('tr[data-name]')` — the empty-state
+   colspan row (lines 1406-1410) has no data-name and is correctly skipped,
+   so it is neither reordered nor dropped.
+
+4. Sort survives htmx swaps (HIGH-RISK item).
+   - Swap sources confirmed in the template:
+     * upload form (line 12): hx-target="#file-list" hx-swap="innerHTML".
+     * enable/disable checkbox (line 1393): hx-target="#file-list"
+       hx-swap="innerHTML".
+     * per-row delete (line 1397): hx-target="#file-list" hx-swap="innerHTML".
+     All three replace the innerHTML of `<div id="file-list">` (line 211),
+     which wraps the `filemanager-file-list` template (line 212).
+   - Persisted state: the IIFE `window.FileManagerSort` holds
+     `state = { column, direction }` in its closure (line ~478). This closure
+     lives on `window`, OUTSIDE the swapped `#file-list` region, so it
+     survives every innerHTML replacement.
+   - Re-apply: `document.body.addEventListener('htmx:afterSettle', ...)`
+     (line 594) calls `FileManagerSort.reapply()` → `wireButtons()` →
+     re-binds header buttons (guarded by `dataset.sortBound==='1'` to avoid
+     double-binding) and, if `state.column` is set, calls `applySort()` to
+     reorder the freshly swapped rows. Confirmed via filemanager.html:594-596
+     and the `wireButtons` body at lines ~570-584.
+   - The listener is attached to `document.body`, which is NOT inside
+     `#file-list` and is never swapped by any of the three hx-targets above.
+     The script block itself sits at line ~474, outside `#file-list` (which
+     closes at line 213), so the listener registration is not destroyed.
+   - `renderIndicators()` re-sets `aria-sort` and arrow state on the rebuilt
+     `<th>` elements after a swap, so the indicator also survives. ✓
+
+5. Accessibility (vs ACCESSIBILITY.md numbered baseline).
+   - A-4 / A-5 Keyboard + visible focus: each sortable header is a real
+     `<button type="button" data-sort-btn="...">` inside the `<th>`
+     (filemanager.html:1340-1368). No bare-`<th>` click handler. Button
+     class includes `focus:outline-none focus-visible:ring-2
+     focus-visible:ring-indigo-500` — a visible focus ring in both themes
+     (indigo-500 is visible on white and on gray-900). Click handler bound
+     via addEventListener in `wireButtons`, not via an inline `onclick=`.
+   - A-7 Real table semantics: every `<th>` carries `scope="col"`
+     (lines 1338, 1346, 1354, 1362, 1370). The structure remains
+     `<table>/<thead>/<tbody>/<tr>/<td>`, no div grid.
+   - A-9 Never color-only: `renderIndicators()` sets
+     `th.setAttribute('aria-sort', state.direction==='asc' ? 'ascending'
+     : 'descending')` on the active header and `th.removeAttribute('aria-sort')`
+     on the others (lines ~537-551). Sort state is programmatically
+     determinable, not conveyed by the arrow glyph alone.
+   - A-8 Icons: the arrow span has `aria-hidden="true"`
+     (filemanager.html:1343, 1351, 1359, 1367). It is decorative; the
+     accessible name comes from the button text ("File"/"Rows"/etc.).
+   - A-2 Both themes: header classes include `dark:` variants; the
+     `focus-visible:ring-indigo-500` ring renders in both light and dark
+     (Tailwind `focus-visible:` is theme-independent). Arrow glyph is
+     text content using the button's `text-gray-600 dark:text-gray-400`
+     color, visible in both. ✓
+   - A-14 CSP-clean: no inline event-handler attributes; behavior attaches
+     from the inline `<script>` via addEventListener. (The repo's existing
+     pattern uses inline `<script>` blocks; no new external origin.)
+
+6. No scope creep.
+   - `git diff --name-only` shows ONLY web/templates/pages/filemanager.html.
+     No Go file touched. No handler changed. `GetFileInfo` and
+     `handleFileManager` untouched.
+   - No `?sort=`/`?order=` query params introduced (grep of diff found only
+     `data-sort` attributes, no URL query params).
+   - No pagination, no filtering, no default sort order change: on initial
+     load `state.column` is null, so `applySort` is a no-op and rows render
+     in server order. The comparator only runs after a user click. ✓
+
+Supplementary: template fields verified against models.FileInfo
+(internal/models/user_profile.go:70-78): Name string, Size int64, Enabled
+bool, Transactions int, MinDate string, MaxDate string — all present and
+of the types the data-* attributes assume. `handleFileManager` /
+`HandleFileManagerPage` render this template via the explorer renderer;
+TestHandleFileManager_WithRenderer and TestHandleFileManagerPage_WithRenderer
+both PASS, confirming the template parses and renders end-to-end.
+
+Pre-existing gofmt deviations in untouched files were not assessed and are
+out of scope; P13's only changed file is the template, which is HTML.

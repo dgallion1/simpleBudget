@@ -573,14 +573,20 @@ func handleFileToggle(w http.ResponseWriter, r *http.Request) {
 	// Update loader
 	loader.SetEnabledFiles(enabledFiles)
 
-	// Return updated file list
+	// Return updated file list.
 	files, _ = loader.GetFileInfo()
 	partialData := map[string]interface{}{
 		"Files": files,
 	}
 
+	// Render the same `filemanager-file-list`
+	// partial the File Manager page uses on initial render, so the swapped-in
+	// table carries the sortable headers (data-sort-btn, scope="col") and the
+	// per-row data-* attributes the client-side sort JS re-wires on
+	// htmx:afterSettle. The `file-list` template (explorer.html) is the old
+	// non-sortable markup; rendering it here was the P13 sort-survival defect.
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "filemanager-file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -630,6 +636,10 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return updated file list plus the per-file outcomes of this batch.
+	// `filemanager-file-list` ignores .Results and only renders .Files, which
+	// is exactly what the #file-list swap target needs; the outcomes are kept
+	// for the JSON fallback. See handleFileToggle for why this renders
+	// filemanager-file-list rather than the legacy file-list partial.
 	files, _ := loader.GetFileInfo()
 	partialData := map[string]interface{}{
 		"Files":   files,
@@ -637,7 +647,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "filemanager-file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -730,14 +740,15 @@ func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Deleted file: %s", filename)
 
-	// Return updated file list
+	// Return updated file list. See handleFileToggle for why this renders
+	// filemanager-file-list rather than the legacy file-list partial.
 	files, _ := loader.GetFileInfo()
 	partialData := map[string]interface{}{
 		"Files": files,
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "filemanager-file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)

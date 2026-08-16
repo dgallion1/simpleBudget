@@ -212,6 +212,70 @@ inferred from the worker's test.
 left unmodified. Tightening it to reject rather than normalize would change the
 delete path too and belongs in its own task if wanted.
 
+**2026-08-16a — P13 attempt 1 rejected: the swap target is a different
+template.** Both Tier-2 checkers returned PASS on attempt 1, including on the
+high-risk "sort must survive htmx swaps" criterion. Both were wrong, and wrong
+in the same way: each traced the *initial page* include
+(`filemanager-content` → `filemanager-file-list`, filemanager.html:1334) and
+assumed the htmx swap returns that same template. It does not.
+
+`handleFileToggle` (handlers.go:583), the per-row delete (:640) and the upload
+(:740) all call `RenderPartial(w, "file-list", ...)`, and `{{define
+"file-list"}}` lives in **`web/templates/pages/explorer.html:739`** — a
+different template in a different file, carrying none of P13's markup.
+`grep -rln "data-sort-btn" web/templates/` matches only `filemanager.html`.
+
+Established by running the app against a fixture data directory:
+
+```
+$ curl -s -X POST /explorer/files/toggle -d "filename=zeta-bank.csv&enabled=true" \
+    | grep -c "data-sort-btn"
+0
+```
+
+and confirmed in a browser: after a real click on a file's "On" checkbox, the
+swapped-in `#file-list` had no sort buttons, no `data-*` row attributes, no
+`aria-sort`, no `scope="col"`, and different column headers. The sort UI
+disappears entirely until a full page reload — the `htmx:afterSettle` re-apply
+is structurally unable to help, because there is nothing left to re-wire.
+
+Ruled: attempt 1 fails the acceptance criterion; P13 returns to the worker as
+attempt 2. Two process consequences, both binding on later tasks:
+
+1. A checker may not conclude that an htmx swap preserves anything by reading
+   the template include. It must establish which template the *handler*
+   renders, and where feasible assert against the endpoint's actual response
+   body.
+2. Any task whose acceptance depends on swapped-in markup must ship a Go test
+   that renders the **swap partial** and asserts on it. Attempt 1 had no such
+   test, which is why a green suite coexisted with a broken feature.
+
+**2026-08-16b — P13 attempt 2 may change Go handlers.** The P13 brief said "do
+not touch `GetFileInfo` or any handler". Attempt 2 changed three
+(`handleFileToggle`, `handleFileUpload`, `handleFileDelete`), each a one-token
+change to the template name passed to `RenderPartial`, plus deletion of the
+orphaned `{{define "file-list"}}` in `explorer.html`. Checker-tests flagged the
+deviation rather than scoring it, and asked for a ruling.
+
+Ruled: in scope. The brief's "no handler" clause was written on the assumption
+that the swap rendered the same template the page did; ruling 2026-08-16a
+established it did not, which makes the acceptance criterion unreachable
+without touching those three call sites. The narrower reading — change the
+minimum needed to make the swap render the sortable partial — is what attempt 2
+did. No handler logic, signature, or route changed.
+
+The `{{define "file-list"}}` deletion was independently verified safe by both
+checkers: `git grep` shows its only consumers were those three `RenderPartial`
+calls, there was never a `{{template "file-list"}}` invocation, and the Explorer
+page still renders (HTTP 200, no template errors).
+
+**Known, not caused by P13:** an axe run during P13 attempt-2 verification found
+20 pre-existing WCAG violations on the File Manager page (unlabelled toggle
+checkboxes, unnamed SVG delete buttons, low-contrast size text), all confirmed
+byte-identical at HEAD. They belong to a follow-up task, not to P13, and are
+recorded here so the final accessibility pass does not mistake them for a
+regression introduced by this run.
+
 ## Testing
 
 - `sanitizeUploadFilename` and the import path guard: table tests for

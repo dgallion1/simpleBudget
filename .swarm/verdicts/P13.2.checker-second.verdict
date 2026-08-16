@@ -1,0 +1,141 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: P13
+ATTEMPT: 2
+---
+EVIDENCE:
+
+1. Manifest fidelity.
+   .swarm/manifests/P13.2.files lists exactly:
+     web/templates/pages/filemanager.html
+     internal/handlers/explorer/handlers.go
+     internal/handlers/explorer/handlers_test.go
+     web/templates/pages/explorer.html
+   `git diff --name-only` (excluding .swarm/) returns the same four files plus
+   docs/superpowers/specs/2026-08-12-file-manager-import-design.md. The spec
+   doc diff is a lead post-mortem annotation describing attempt 1's failure
+   (not worker implementation code), so its absence from the worker manifest
+   is expected. No untracked non-.swarm files. Manifest is faithful.
+
+2. Toolchain green (absolute go binary, bypassing rtk hook).
+   $ /home/darrell/go-sdk/go/bin/go build ./...   -> BUILD_EXIT=0
+   $ /home/darrell/go-sdk/go/bin/go vet ./...     -> VET_EXIT=0
+   $ /home/darrell/go/bin/staticcheck ./...        -> STATICCHECK_EXIT=0
+   $ /home/darrell/go-sdk/go/bin/go test -count=1 ./... -> TEST_EXIT=0
+   Test output shows 43 ok packages + 1 [no test files] (web). Real durations
+   (e.g. internal/services/storage 31.574s, internal/handlers/backup 26.278s)
+   confirm the suite actually executed, not a cached "Success".
+
+3. Typed comparison, not string comparison (filemanager.html:486-510).
+   The comparator `cmp(a,b,column)` reads `data-` attributes via
+   `a.getAttribute('data-'+column)` and coerces per column:
+     - name:  localeCompare(..., {sensitivity:'base', numeric:true})
+     - rows:  parseInt(av,10) - parseInt(bv,10)
+     - size:  parseInt(av,10) - parseInt(bv,10)   // BYTE COUNT, not "25K"
+     - enabled: parseInt 0/1 numeric
+     - mindate: empty -> Infinity (sorts last ascending, first descending);
+               non-empty compared as ISO date string (lexically sortable)
+   Verified against a live server: row for big.csv (11442 bytes, renders as
+   "11K") carries `data-size="11442"` and small.csv (64 bytes, renders "0K")
+   carries `data-size="64"`. The rendered "K" text is never the sort key.
+   Empty date range: `data-mindate=""` -> treated as Infinity -> sorts last
+   ascending. Confirmed in source lines 500-505.
+
+4. HIGH-RISK ITEM — sort survives htmx swaps. CONFIRMED, including against
+   the REAL RESPONSE BODY (attempt 1's exact failure mode).
+
+   (a) Handler template identification. Read handlers.go directly:
+       - handleFileToggle  (handlers.go:589):
+           renderer.RenderPartial(w, "filemanager-file-list", partialData)
+       - handleFileUpload  (handlers.go:650):
+           renderer.RenderPartial(w, "filemanager-file-list", partialData)
+       - handleFileDelete  (handlers.go:751):
+           renderer.RenderPartial(w, "filemanager-file-list", partialData)
+     All three render the SAME partial (`filemanager-file-list`) that the
+     File Manager page renders on initial load (filemanager.html:1334
+     `{{define "filemanager-file-list"}}`). The legacy non-sortable
+     `{{define "file-list"}}` partial was REMOVED from explorer.html
+     (git diff shows the entire block deleted). grep for `{{define "file-list"`
+     in web/templates/ returns no matches.
+
+   (b) The `filemanager-file-list` template (filemanager.html:1334-1414)
+       contains: data-sort-btn (x4 headers), data-name, data-size, data-rows,
+       data-mindate, data-enabled on each row, scope="col" (x5 th),
+       aria-hidden="true" (x4 arrow spans). Confirmed by grep counts and by
+       reading the template.
+
+   (c) REAL RESPONSE BODY assertion. Built ./cmd/server and ran it against a
+       temp data dir with two CSVs:
+       $ BUDGET_DATA_DIR=<tmp> BUDGET_LISTEN_ADDR=127.0.0.1:<port> /tmp/p13-server
+       Toggle swap (POST /explorer/files/toggle):
+         data-sort-btn count: 4
+         scope="col" count: 5
+         data-name count: 2
+         data-mindate count: 2
+         aria-hidden count: 4
+         legacy ">Delete<" marker: 0
+       Delete swap (DELETE /explorer/files/big.csv):
+         data-sort-btn count: 4, scope="col" count: 5, data-name count: 1
+       Upload swap (POST /explorer/upload -F file=@small.csv):
+         data-sort-btn count: 4, scope="col" count: 5, data-name count: 1
+       All three swap responses contain the sortable contract. This is
+       precisely the check attempt 1 failed (grep -c data-sort-btn returned 0).
+
+   (d) Re-apply logic lives OUTSIDE the swapped subtree. The sort state is
+       held in the `window.FileManagerSort` IIFE closure (filemanager.html:479)
+       and the `htmx:afterSettle` listener is attached to `document.body`
+       (filemanager.html:594), which is not inside `#file-list`. On
+       afterSettle, `reapply()` -> `wireButtons()` re-binds click handlers on
+       the freshly-swapped buttons (with a data-sort-bound guard) and, if
+       `state.column` is set, calls `applySort()` to re-order the new rows.
+       Necessary condition met; combined with (a)-(c) it is also sufficient.
+
+   (e) Explorer page still renders. GET /explorer returns 200; the page
+       contains explorer-content/transactions-table/explorer-filter-form and
+       does NOT contain file-manager-table (correct — the file list is a
+       separate page). The shared swap handlers do not break the Explorer
+       transactions view.
+
+   (f) Go test rendering the SWAP PARTIAL exists.
+       TestSwapPartials_RenderSortableFileList (handlers_test.go:1492) has
+       three subtests (toggle, upload, delete) that call the actual handlers
+       via httptest and assert the response body contains data-sort-btn="name",
+       data-sort-btn="rows", data-sort-btn="mindate", data-sort-btn="enabled",
+       scope="col", data-name=, data-size=, data-rows=, data-mindate=,
+       data-enabled=, and the ABSENCE of the legacy ">Delete<" marker. Ran
+       -count=1 -v: all three subtests PASS. This is the regression guard
+       attempt 1 lacked.
+
+5. Accessibility (ACCESSIBILITY.md).
+   - A-4/A-5 Keyboard + visible focus: each sort trigger is a real
+     <button type="button"> inside the <th> (filemanager.html:1340, 1348,
+     1356, 1364), with class "focus:outline-none focus-visible:ring-2
+     focus-visible:ring-indigo-500" — visible focus ring in both themes.
+     No bare <th> click handler.
+   - A-7 Real table semantics: <th scope="col"> preserved on all five
+     headers (grep count 5). Table is a real <table>, not divs.
+   - A-9 Never color-only: aria-sort is set programmatically on the active
+     <th> ("ascending"/"descending") and removeAttribute'd on the others
+     (filemanager.html:541-548). The arrow glyph span is aria-hidden="true"
+     (decorative). No arrow-only signaling. Verified no aria-sort is set in
+     the static initial HTML (state.column is null on load); it is applied
+     only after a click via JS.
+   - A-2 Both themes: button classes include dark: variants
+     (dark:text-gray-400, dark:hover:text-gray-100) and the focus ring
+     (focus-visible:ring-indigo-500) is visible in both light and dark.
+   Arrow glyph is text (▲/▼) in an aria-hidden span — no icon-only info.
+
+6. No scope creep.
+   handlers.go diff: only the RenderPartial template name changed from
+   "file-list" to "filemanager-file-list" in the three swap handlers, plus
+   explanatory comments (+16 -5). No ?sort=/?order= query params added, no
+   GetFileInfo or any handler logic changed, no pagination/filtering, no
+   default sort order (server order preserved; client sort is opt-in via
+   click). explorer.html diff only DELETES the legacy non-sortable partial.
+   filemanager.html adds the sort JS, sortable headers, and per-row data-*
+   attributes.
+
+All six numbered requirements pass. The attempt-1 defect (swap rendered a
+different, non-sortable template) is fixed and guarded by both a live
+response-body check and a dedicated Go test.

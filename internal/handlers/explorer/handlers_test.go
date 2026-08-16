@@ -1475,6 +1475,129 @@ func TestHandleFileDelete_WithRenderer(t *testing.T) {
 	}
 }
 
+// TestSwapPartials_RenderSortableFileList is the P13 regression guard. The
+// three htmx swap handlers (toggle, upload, delete) must render the
+// `filemanager-file-list` partial — the same sortable table the File Manager
+// page renders on initial load — not the legacy non-sortable `file-list`
+// partial. Otherwise an htmx swap (clicking the On checkbox, deleting a row,
+// or uploading) strips the sort buttons, the per-row data-* attributes, and
+// scope="col" off the table until a full page reload, so the client-side sort
+// JS has nothing to re-wire and the active sort is lost.
+//
+// This test renders each swap partial's HTTP response body and asserts the
+// sortable-table contract is present: real <button data-sort-btn="...">,
+// <th scope="col">, and tr[data-name][data-size][data-rows][data-mindate]
+// [data-enabled] on every file row. It would have failed against attempt 1,
+// which rendered the `file-list` partial with none of these attributes.
+func TestSwapPartials_RenderSortableFileList(t *testing.T) {
+	// sortableAttrs are the substrings every swap response must contain.
+	// They mirror the attributes the File Manager's initial render produces
+	// (filemanager.html filemanager-file-list define) and that the sort JS
+	// (window.FileManagerSort) depends on.
+	sortableAttrs := []string{
+		`data-sort-btn="name"`,
+		`data-sort-btn="rows"`,
+		`data-sort-btn="mindate"`,
+		`data-sort-btn="enabled"`,
+		`scope="col"`,
+		`data-name="`,
+		`data-size="`,
+		`data-rows="`,
+		`data-mindate="`,
+		`data-enabled="`,
+	}
+
+	// Two CSVs with deliberately disagreeing alphabetical / row-count /
+	// date-range orderings, so a future regression that re-introduces lexical
+	// sorting or drops a data-* attribute is still caught by the presence
+	// checks (and so the rows are unambiguously distinguishable).
+	csvA := "Date,Description,Amount\n2024-01-15,Salary,5000.00\n"
+	csvB := "Date,Description,Amount\n2025-03-01,X,-10.00\n2025-03-02,Y,-20.00\n"
+
+	assertSortable := func(t *testing.T, body string) {
+		t.Helper()
+		for _, want := range sortableAttrs {
+			if !strings.Contains(body, want) {
+				t.Errorf("swap response missing %q\nbody:\n%s", want, body)
+			}
+		}
+		// The legacy non-sortable partial used plain <th class=...> with no
+		// scope and a "Delete" text button. Their absence is a negative
+		// signal that the old partial is gone. (>Delete</ appeared in the
+		// file-list partial's row action; the sortable partial uses an SVG
+		// trash icon with no visible "Delete" text.)
+		if strings.Contains(body, ">Delete<") {
+			t.Errorf("swap response rendered legacy file-list partial (contains \">Delete<\")\nbody:\n%s", body)
+		}
+	}
+
+	t.Run("toggle", func(t *testing.T) {
+		setupTestEnvWithRenderer(t, csvA, csvB)
+		form := url.Values{
+			"file":    {"test0.csv"},
+			"enabled": {"true"},
+		}
+		req := httptest.NewRequest(http.MethodPost, "/explorer/files/toggle", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		handleFileToggle(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		// Toggling test0.csv on must leave both files as sortable rows,
+		// and test0.csv must now be marked enabled.
+		if !strings.Contains(body, `data-name="test0.csv"`) {
+			t.Errorf("toggle swap response missing data-name=\"test0.csv\"\nbody:\n%s", body)
+		}
+		if !strings.Contains(body, `data-name="test1.csv"`) {
+			t.Errorf("toggle swap response missing data-name=\"test1.csv\"\nbody:\n%s", body)
+		}
+		assertSortable(t, body)
+	})
+
+	t.Run("upload", func(t *testing.T) {
+		setupTestEnvWithRenderer(t, csvA)
+		uploaded := []byte("Date,Description,Amount\n2025-03-01,Test,10.00\n")
+		req := newUploadRequest(t, "test1.csv", uploaded)
+		rec := httptest.NewRecorder()
+		handleFileUpload(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		// Both the pre-existing test0.csv and the just-uploaded test1.csv
+		// must appear as sortable rows.
+		if !strings.Contains(body, `data-name="test0.csv"`) {
+			t.Errorf("upload swap response missing data-name=\"test0.csv\"\nbody:\n%s", body)
+		}
+		if !strings.Contains(body, `data-name="test1.csv"`) {
+			t.Errorf("upload swap response missing data-name=\"test1.csv\"\nbody:\n%s", body)
+		}
+		assertSortable(t, body)
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		setupTestEnvWithRenderer(t, csvA, csvB)
+		req := httptest.NewRequest(http.MethodDelete, "/explorer/files/test0.csv", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("filename", "test0.csv")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		handleFileDelete(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+		}
+		// After deleting test0.csv, only test1.csv remains — assert its row
+		// carries the sortable data-* attributes.
+		body := rec.Body.String()
+		if !strings.Contains(body, `data-name="test1.csv"`) {
+			t.Errorf("delete swap response missing data-name=\"test1.csv\"\nbody:\n%s", body)
+		}
+		assertSortable(t, body)
+	})
+}
+
 func TestHandleFileManagerPage_Encrypted_Locked(t *testing.T) {
 	dataDir := t.TempDir()
 

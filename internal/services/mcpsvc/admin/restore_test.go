@@ -259,9 +259,11 @@ func TestRestoreRejectsANameThatIsNotOnDisk(t *testing.T) {
 }
 
 // Retention can prune an archive between the preview and the confirmation.
-// The redeem still succeeds -- the token was valid -- so this is the path
-// where the tool has to explain a failure AFTER spending the token.
-func TestRestoreReportsAnArchiveThatVanishedAfterThePreview(t *testing.T) {
+// The confirm path re-resolves the archive before spending anything, so this
+// is refused early: the data is untouched, the error points back at
+// list_backups, and the token is not burned on an operation that could never
+// have succeeded.
+func TestRestoreRefusesWhenTheArchiveVanishedAfterThePreview(t *testing.T) {
 	deps, dir, svc := restoreDeps(t)
 	name := takeRealBackup(t, svc)
 	sentinel := filepath.Join(dir, "must-survive.csv")
@@ -279,13 +281,8 @@ func TestRestoreReportsAnArchiveThatVanishedAfterThePreview(t *testing.T) {
 		"name":          name,
 		"confirm_token": first.ConfirmToken,
 	}))
-	if !strings.Contains(msg, "nothing was changed") {
-		t.Errorf("error = %q, want it to say the data was not changed", msg)
-	}
-	// The token is gone even though the restore never ran; a model that does
-	// not know that will retry with it and get a confusing second failure.
-	if !strings.Contains(msg, "spent") {
-		t.Errorf("error = %q, want it to say the token has been spent", msg)
+	if !strings.Contains(msg, "nothing to restore") && !strings.Contains(msg, "list_backups") {
+		t.Errorf("error = %q, want it to say the archive is gone and point back at list_backups", msg)
 	}
 	if _, err := os.Stat(sentinel); err != nil {
 		t.Errorf("the failed restore touched the data directory: %v", err)
@@ -362,5 +359,162 @@ func TestListBackupsWithoutABackupServiceReportsIt(t *testing.T) {
 	msg := toolErrorText(t, call(t, cs, "list_backups", map[string]any{}))
 	if !strings.Contains(msg, "backup service") {
 		t.Errorf("error = %q, want it to name the missing backup service", msg)
+	}
+}
+
+// connectAsking is connect() with a client that CAN prompt a human, answering
+// every approval request with answer. The SDK drives the round-trip: the tool
+// returns an input request, this handler answers it, and the tool call is
+// re-invoked with the response -- so a test here exercises the real protocol
+// path, not a stubbed decision.
+//
+// mustSay is asserted against the prompt the human would see. It is per-call
+// because each guarded tool has its own consequence to state, and a prompt
+// that does not state it is theater.
+func connectAsking(t *testing.T, deps Deps, answer *mcp.ElicitResult, mustSay string) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.0"}, nil)
+	Register(srv, deps)
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.0"}, &mcp.ClientOptions{
+		ElicitationHandler: func(_ context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			// The person must be shown what they are agreeing to.
+			if !strings.Contains(req.Params.Message, mustSay) {
+				t.Errorf("approval prompt does not mention %q: %q", mustSay, req.Params.Message)
+			}
+			return answer, nil
+		},
+	})
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+
+	return clientSession
+}
+
+func approve() *mcp.ElicitResult {
+	return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirm": true}}
+}
+
+// The point of the whole change: a human says no and the data survives.
+func TestRestoreDoesNotRunWhenTheUserRefuses(t *testing.T) {
+	deps, dir, svc := restoreDeps(t)
+	name := takeRealBackup(t, svc)
+	sentinel := filepath.Join(dir, "added-after-the-backup.csv")
+	if err := os.WriteFile(sentinel, []byte("Date,Amount\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	cs := connectAsking(t, deps, &mcp.ElicitResult{Action: "decline"}, "WOULD BE DELETED")
+
+	first := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{"name": name}))
+	out := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{
+		"name":          name,
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if out.Confirmed {
+		t.Error("confirmed = true after the user refused")
+	}
+	if out.HumanApproval != "refused" {
+		t.Errorf("human_approval = %q, want refused", out.HumanApproval)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("the refused restore deleted data anyway: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "checking.csv")); err != nil {
+		t.Errorf("the data directory was disturbed by a refused restore: %v", err)
+	}
+}
+
+func TestRestoreRunsWhenTheUserApproves(t *testing.T) {
+	deps, dir, svc := restoreDeps(t)
+	name := takeRealBackup(t, svc)
+	added := filepath.Join(dir, "added-after-the-backup.csv")
+	if err := os.WriteFile(added, []byte("Date,Amount\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	cs := connectAsking(t, deps, approve(), "WOULD BE DELETED")
+
+	first := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{"name": name}))
+	out := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{
+		"name":          name,
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if !out.Confirmed {
+		t.Fatalf("confirmed = false after the user approved (note: %q)", out.Note)
+	}
+	if out.HumanApproval != "approved" {
+		t.Errorf("human_approval = %q, want approved", out.HumanApproval)
+	}
+	if _, err := os.Stat(added); !os.IsNotExist(err) {
+		t.Errorf("the approved restore did not prune (stat err = %v)", err)
+	}
+}
+
+// An accept whose form is empty is a client auto-accepting, not a person
+// agreeing. It must not be enough to overwrite the data directory.
+func TestRestoreRefusesAnEmptyAccept(t *testing.T) {
+	deps, dir, svc := restoreDeps(t)
+	name := takeRealBackup(t, svc)
+	sentinel := filepath.Join(dir, "added-after-the-backup.csv")
+	if err := os.WriteFile(sentinel, []byte("Date,Amount\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	cs := connectAsking(t, deps, &mcp.ElicitResult{Action: "accept"}, "WOULD BE DELETED")
+
+	first := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{"name": name}))
+	out := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{
+		"name":          name,
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if out.Confirmed {
+		t.Error("an empty accept was treated as approval")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("an empty accept deleted data: %v", err)
+	}
+}
+
+// The documented fallback: a client that cannot prompt still works, and the
+// answer says out loud that nobody was asked.
+func TestRestoreOnAClientThatCannotPromptSaysNobodyWasAsked(t *testing.T) {
+	deps, dir, svc := restoreDeps(t)
+	name := takeRealBackup(t, svc)
+	added := filepath.Join(dir, "added-after-the-backup.csv")
+	if err := os.WriteFile(added, []byte("Date,Amount\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	cs := connect(t, deps) // no elicitation handler
+
+	first := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{"name": name}))
+	out := decodeToolResult[restoreBackupOutput](t, call(t, cs, "restore_backup", map[string]any{
+		"name":          name,
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if !out.Confirmed {
+		t.Fatalf("the restore did not run on a client without elicitation (note: %q)", out.Note)
+	}
+	if out.HumanApproval != "not asked" {
+		t.Errorf("human_approval = %q, want \"not asked\"", out.HumanApproval)
+	}
+	if !strings.Contains(out.Note, "NO HUMAN WAS ASKED") {
+		t.Errorf("note = %q, want it to admit nobody was asked", out.Note)
+	}
+	if _, err := os.Stat(added); !os.IsNotExist(err) {
+		t.Errorf("the restore did not actually run (stat err = %v)", err)
 	}
 }

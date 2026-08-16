@@ -88,6 +88,37 @@ func (r *Registry) Mint(tool string, args any) (string, time.Time, error) {
 	return token, expires, nil
 }
 
+// Check validates token for tool/args WITHOUT consuming it. Every failure
+// returns ErrBadToken, exactly as Redeem does.
+//
+// It exists for guarded tools that ask a human between validating the token
+// and acting on it: the approval round-trip re-invokes the tool handler with
+// the same arguments, so a handler that redeemed before asking would find its
+// own token already spent on the way back. Check first, ask, then Redeem.
+//
+// Unlike Redeem it does not burn a token presented for the wrong tool or
+// arguments -- there is nothing to burn, since nothing was consumed. Redeem
+// remains the only path that spends one, so single-use is still single-use.
+func (r *Registry) Check(token, tool string, args any) error {
+	h, err := hashArgs(args)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sweepLocked()
+
+	found, e := r.findLocked(token)
+	if found == "" {
+		return ErrBadToken
+	}
+	if e.tool != tool || e.argsHash != h || !r.now().Before(e.expires) {
+		return ErrBadToken
+	}
+	return nil
+}
+
 // Redeem consumes token for tool/args. A successful redeem deletes the token,
 // so a replay is refused. Every failure returns ErrBadToken.
 func (r *Registry) Redeem(token, tool string, args any) error {
@@ -100,17 +131,7 @@ func (r *Registry) Redeem(token, tool string, args any) error {
 	defer r.mu.Unlock()
 	r.sweepLocked()
 
-	// Find by constant-time compare rather than a map lookup on attacker-
-	// supplied input. The threat model here is thin, but a token comparison
-	// that is not constant-time is a finding waiting to be filed.
-	var found string
-	var e entry
-	for k, v := range r.m {
-		if subtle.ConstantTimeCompare([]byte(k), []byte(token)) == 1 {
-			found, e = k, v
-			break
-		}
-	}
+	found, e := r.findLocked(token)
 	if found == "" {
 		return ErrBadToken
 	}
@@ -122,6 +143,21 @@ func (r *Registry) Redeem(token, tool string, args any) error {
 		return ErrBadToken
 	}
 	return nil
+}
+
+// findLocked returns the stored key and entry matching token, or "" if there
+// is none. Callers hold r.mu.
+//
+// The scan compares with crypto/subtle rather than doing a map lookup on
+// attacker-supplied input. The threat model here is thin, but a token
+// comparison that is not constant-time is a finding waiting to be filed.
+func (r *Registry) findLocked(token string) (string, entry) {
+	for k, v := range r.m {
+		if subtle.ConstantTimeCompare([]byte(k), []byte(token)) == 1 {
+			return k, v
+		}
+	}
+	return "", entry{}
 }
 
 // sweepLocked drops expired entries. Callers hold r.mu.

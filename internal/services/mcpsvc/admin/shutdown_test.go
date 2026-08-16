@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"budget2/internal/services/mcpsvc/confirm"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // shutdownDeps returns Deps wired with a RECORDING shutdown func. Never wire
@@ -129,5 +131,70 @@ func TestShutdownWithoutAConfirmRegistryReportsIt(t *testing.T) {
 	msg := toolErrorText(t, call(t, cs, "shutdown_server", map[string]any{}))
 	if !strings.Contains(msg, "confirmation registry") {
 		t.Errorf("error message = %q, want it to name the missing confirmation registry", msg)
+	}
+}
+
+// The same consent path restore_backup uses. Two guarded tools with different
+// consent semantics would be worse than either choice made consistently: a
+// reader could not tell which one asks.
+func TestShutdownDoesNotRunWhenTheUserRefuses(t *testing.T) {
+	deps, calls := shutdownDeps(t)
+	cs := connectAsking(t, deps, &mcp.ElicitResult{Action: "decline"}, "stops answering")
+
+	first := decodeToolResult[shutdownOutput](t, call(t, cs, "shutdown_server", map[string]any{}))
+	out := decodeToolResult[shutdownOutput](t, call(t, cs, "shutdown_server", map[string]any{
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if out.Confirmed {
+		t.Error("confirmed = true after the user refused")
+	}
+	if out.HumanApproval != "refused" {
+		t.Errorf("human_approval = %q, want refused", out.HumanApproval)
+	}
+	assertNoShutdown(t, calls, "after the user refused")
+}
+
+func TestShutdownRunsWhenTheUserApproves(t *testing.T) {
+	deps, calls := shutdownDeps(t)
+	cs := connectAsking(t, deps, approve(), "stops answering")
+
+	first := decodeToolResult[shutdownOutput](t, call(t, cs, "shutdown_server", map[string]any{}))
+	out := decodeToolResult[shutdownOutput](t, call(t, cs, "shutdown_server", map[string]any{
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if !out.Confirmed {
+		t.Fatalf("confirmed = false after the user approved (note: %q)", out.Note)
+	}
+	if out.HumanApproval != "approved" {
+		t.Errorf("human_approval = %q, want approved", out.HumanApproval)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for calls.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("shutdown func called %d times after approval, want 1", got)
+	}
+}
+
+func TestShutdownOnAClientThatCannotPromptSaysNobodyWasAsked(t *testing.T) {
+	deps, _ := shutdownDeps(t)
+	cs := connect(t, deps) // no elicitation handler
+
+	first := decodeToolResult[shutdownOutput](t, call(t, cs, "shutdown_server", map[string]any{}))
+	out := decodeToolResult[shutdownOutput](t, call(t, cs, "shutdown_server", map[string]any{
+		"confirm_token": first.ConfirmToken,
+	}))
+
+	if !out.Confirmed {
+		t.Fatalf("the shutdown did not run on a client without elicitation (note: %q)", out.Note)
+	}
+	if out.HumanApproval != "not asked" {
+		t.Errorf("human_approval = %q, want \"not asked\"", out.HumanApproval)
+	}
+	if !strings.Contains(out.Note, "NO HUMAN WAS ASKED") {
+		t.Errorf("note = %q, want it to admit nobody was asked", out.Note)
 	}
 }

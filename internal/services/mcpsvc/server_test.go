@@ -248,6 +248,12 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"Two tools are guarded",
 		"shutdown_server stops the server",
 		"Calling one twice yourself is NOT the user agreeing",
+		// The elicitation contract: the tools ask a real person when the
+		// client can reach one, and admit it when they cannot. A model that
+		// reads "not asked" as approval would report a write nobody
+		// sanctioned as one the user wanted.
+		"ALSO asks the user directly and does nothing unless they agree",
+		"read human_approval in the",
 		// The prune is the half of a restore that surprises people, so the
 		// instructions must state it, not just "overwrites".
 		"DELETES every file that archive does not contain",

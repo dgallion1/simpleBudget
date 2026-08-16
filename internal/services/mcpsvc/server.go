@@ -125,7 +125,11 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"is the only place a restore_backup name may come from." +
 	" Two tools are guarded, and both take two calls: the first returns what would happen plus a single-use " +
 	"confirm_token, the second must echo that token. Calling one twice yourself is NOT the user agreeing; " +
-	"show them the first call's answer and wait for a real answer. shutdown_server stops the server, and " +
+	"show them the first call's answer and wait for a real answer. On a client that can prompt, the second " +
+	"call ALSO asks the user directly and does nothing unless they agree -- read human_approval in the " +
+	"result: \"refused\" means they said no and you must not retry, \"not asked\" means this client could not " +
+	"reach anybody so the token alone authorized it and you should say so plainly. " +
+	"shutdown_server stops the server, and " +
 	"after it runs nothing in this session can undo that -- every tool stops answering and only the user can " +
 	"start the server again. restore_backup overwrites the whole data directory from an archive AND DELETES " +
 	"every file that archive does not contain, so anything imported or decided since it was taken is lost; " +

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	backupsvc "budget2/internal/services/backup"
+	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/restore"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -25,6 +26,14 @@ type restoreBackupOutput struct {
 	ExpiresAt    string `json:"expires_at,omitempty"`
 
 	WhatWouldHappen string `json:"what_would_happen,omitempty"`
+
+	// HumanApproval is what an actual person said: "approved" when one was
+	// shown the consequences and agreed, "refused" when they did not, and
+	// "not asked" when this client cannot prompt anybody. The last of those is
+	// the honest admission that the token alone authorized the write; it is a
+	// string rather than a bool so an unasked operation cannot be skimmed as
+	// an approved one.
+	HumanApproval string `json:"human_approval,omitempty"`
 
 	// Counts, populated only on a confirmed restore. Restored counts archive
 	// entries written; Pruned counts live files deleted because the archive
@@ -65,9 +74,13 @@ func registerRestoreBackup(s *mcp.Server, deps Deps) {
 			"be lost plus a confirm_token, SHOW THAT DESCRIPTION TO THE USER, and call again with the same name " +
 			"plus the token only after they have actually said yes. The token is single-use, expires, and is " +
 			"bound to this tool AND to that one archive name -- change the name and it is refused. Confirming " +
-			"twice yourself is not the user agreeing; the second call is for after they have answered. Prefer " +
-			"run_backup first if there is any doubt: it costs a zip and makes the current state restorable.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in restoreBackupInput) (res *mcp.CallToolResult, out restoreBackupOutput, err error) {
+			"twice yourself is not the user agreeing; the second call is for after they have answered. On a " +
+			"client that can prompt, the second call ALSO puts the question to the user directly and does " +
+			"nothing unless they say yes -- if human_approval comes back \"refused\", they said no: do not try " +
+			"again, ask them what they want instead. When human_approval says \"not asked\", this client could " +
+			"not reach anybody and the token alone authorized the write, so say plainly what was overwritten. " +
+			"Prefer run_backup first if there is any doubt: it costs a zip and makes the current state restorable.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in restoreBackupInput) (res *mcp.CallToolResult, out restoreBackupOutput, err error) {
 		defer recoverToError("restore_backup", &err)
 
 		// Fail before minting anything the server could never honor: a token
@@ -111,35 +124,100 @@ func registerRestoreBackup(s *mcp.Server, deps Deps) {
 			}, nil
 		}
 
-		if err := deps.Confirm.Redeem(token, "restore_backup", restoreBackupInput{Name: name}); err != nil {
-			return nil, restoreBackupOutput{}, err
+		// The token's minted args carry the name but not the token itself, so
+		// every Check and Redeem below hashes the same value Mint recorded.
+		tokenArgs := restoreBackupInput{Name: name}
+
+		// A token is deliberateness. Before spending it, put the operation to
+		// an actual person -- which is the thing the token cannot do, since a
+		// model can mint and redeem one inside a single turn.
+		//
+		// The approval is a multi-round-trip request (SEP-2322): this handler
+		// returns the question, the client asks the human, and the SAME call
+		// is re-invoked with the answer. Which is why the token is only
+		// Checked here and Redeemed on the way back -- redeeming now would
+		// spend it before the retry could use it.
+		answer, answered := req.Params.InputResponses[confirm.ApprovalID]
+		if !answered {
+			if err := deps.Confirm.Check(token, "restore_backup", tokenArgs); err != nil {
+				return nil, restoreBackupOutput{}, err
+			}
+			archive, findErr := findArchive(deps, name)
+			if findErr != nil {
+				return nil, restoreBackupOutput{}, findErr
+			}
+			if confirm.CanAsk(req.Session) {
+				return &mcp.CallToolResult{
+					InputRequests: mcp.InputRequestMap{
+						confirm.ApprovalID: confirm.ApprovalRequest("restore this backup, losing everything it does not contain",
+							restoreConsequences(archive)),
+					},
+					// Echoed back by the client on the retry. It is a
+					// breadcrumb for a reader of the traffic, NOT a fact this
+					// handler trusts: every check above re-runs on the retry
+					// against the arguments, so forging it buys nothing.
+					RequestState: "restore_backup:" + name,
+				}, restoreBackupOutput{}, nil
+			}
+			// Nobody to ask. Proceed on the token alone and say so, rather
+			// than failing on every client that has not implemented
+			// elicitation.
+			return runRestore(ctx, deps, name, tokenArgs, token, confirm.NotAsked)
 		}
 
-		result, restoreErr := deps.Restores.FromArchive(ctx, name)
-		if restoreErr != nil {
-			return nil, restoreBackupOutput{}, fmt.Errorf("%s (the confirmation token has been spent either way; "+
-				"call restore_backup with the name alone to preview again and get a new one): %w",
-				restoreDamageReport(restoreErr), restoreErr)
+		switch confirm.DecisionFrom(answer) {
+		case confirm.Approved:
+			return runRestore(ctx, deps, name, tokenArgs, token, confirm.Approved)
+		default:
+			// The token is left unspent: nothing happened, and the user may
+			// well say yes to a different archive in a moment.
+			return nil, restoreBackupOutput{
+				Confirmed:     false,
+				Name:          name,
+				HumanApproval: confirm.Refused.String(),
+				Note: "the user was asked and did NOT approve, so nothing was restored or deleted. " +
+					"Do not retry this without being told to; ask them what they want instead",
+			}, nil
 		}
-
-		out = restoreBackupOutput{
-			Confirmed:        true,
-			Name:             name,
-			Restored:         result.Restored,
-			Pruned:           result.Pruned,
-			SkippedProtected: result.SkippedProtected,
-			PruneFailures:    result.PruneFailures,
-			Note: fmt.Sprintf("restored %d files from %s and deleted %d that the archive did not contain; "+
-				"the data as it was a moment ago is in the safety snapshot this restore took, which is now the "+
-				"newest entry in list_backups. Any open browser tab still shows the old data until reloaded",
-				result.Restored, name, result.Pruned),
-		}
-		if result.PruneFailures > 0 {
-			out.Note += fmt.Sprintf(". %d stale file(s) could not be deleted, so some data the archive did not "+
-				"contain is still on disk; the server log has the details", result.PruneFailures)
-		}
-		return nil, out, nil
 	})
+}
+
+// runRestore redeems the token and performs the restore. It is the only path
+// that spends a token, and the only path that writes.
+func runRestore(ctx context.Context, deps Deps, name string, tokenArgs restoreBackupInput, token string, approval confirm.Decision) (*mcp.CallToolResult, restoreBackupOutput, error) {
+	if err := deps.Confirm.Redeem(token, "restore_backup", tokenArgs); err != nil {
+		return nil, restoreBackupOutput{}, err
+	}
+
+	result, restoreErr := deps.Restores.FromArchive(ctx, name)
+	if restoreErr != nil {
+		return nil, restoreBackupOutput{}, fmt.Errorf("%s (the confirmation token has been spent either way; "+
+			"call restore_backup with the name alone to preview again and get a new one): %w",
+			restoreDamageReport(restoreErr), restoreErr)
+	}
+
+	out := restoreBackupOutput{
+		Confirmed:        true,
+		Name:             name,
+		HumanApproval:    approval.String(),
+		Restored:         result.Restored,
+		Pruned:           result.Pruned,
+		SkippedProtected: result.SkippedProtected,
+		PruneFailures:    result.PruneFailures,
+		Note: fmt.Sprintf("restored %d files from %s and deleted %d that the archive did not contain; "+
+			"the data as it was a moment ago is in the safety snapshot this restore took, which is now the "+
+			"newest entry in list_backups. Any open browser tab still shows the old data until reloaded",
+			result.Restored, name, result.Pruned),
+	}
+	if result.PruneFailures > 0 {
+		out.Note += fmt.Sprintf(". %d stale file(s) could not be deleted, so some data the archive did not "+
+			"contain is still on disk; the server log has the details", result.PruneFailures)
+	}
+	if approval == confirm.NotAsked {
+		out.Note += ". NO HUMAN WAS ASKED: this client cannot prompt anyone, so the confirmation token alone " +
+			"authorized this. Tell the user plainly what was just overwritten"
+	}
+	return nil, out, nil
 }
 
 // findArchive resolves name against the archives actually on disk, so a

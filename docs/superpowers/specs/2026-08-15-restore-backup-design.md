@@ -16,7 +16,13 @@ line of that document's "Out of scope"; everything else there still holds.
   the same method, so the page and the tool cannot disagree about what counts
   as an archive — the glob counted `budget_backup_NOT_A_DATE.zip`, the service
   does not.
-- **"The confirm token proves deliberateness, not consent."** Still true.
+- **"The confirm token proves deliberateness, not consent."** Was still true
+  when this shipped; **closed on 2026-08-15** by
+  `2026-08-15-elicitation-approval-design.md`, which asks a real person through
+  MCP elicitation and reports whether one was asked. The paragraph below stands
+  as the record of what the token alone buys, which is still exactly what it
+  buys on a client that cannot prompt anybody:
+
   Shipping was decided with this understood, not resolved. A model can mint and
   redeem a token inside one turn without a human ever seeing the preview. The
   guard raises the bar from "a stray tool call rewrites the data directory" to
@@ -96,6 +102,10 @@ nobody gives the two different gates or directories, and the failure mode if
 they diverge is a restore that does not hold the settings gate.
 
 ## Known gap, unchanged
+
+> **Closed 2026-08-15**, after this slice, by
+> `2026-08-15-data-directory-gate-design.md`. Kept as written because it is why
+> the gate work came next.
 
 The phase-4a prune race is still open and this widens its reach: an HTTP or
 tool restore's prune can delete a file an MCP data-dir write tool created

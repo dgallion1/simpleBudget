@@ -394,18 +394,25 @@ of each — and is the only sanctioned source of a name for `restore_backup`.
 Two housekeeping tools are **guarded**: each takes two calls, the first
 returning a preview plus a single-use confirmation token bound to that tool
 (and, for `restore_backup`, to that one archive name), the second echoing the
-token to proceed. Show the first call's preview to the user and wait for their
-approval before redeeming. `shutdown_server` stops the server, and after it
-runs every tool stops answering — only the user can restart it.
+token to proceed. On a client that supports MCP elicitation, that second call
+also puts the question to you directly: the tool returns an approval request,
+your client prompts you with the consequences, and nothing happens unless you
+agree. Every result reports `human_approval` as `approved`, `refused`, or
+`not asked` — the last meaning your client cannot prompt anybody, so the token
+alone authorized the operation. `shutdown_server` stops the server, and after
+it runs every tool stops answering — only the user can restart it.
 `restore_backup` overwrites the whole data directory from an archive **and
 deletes every file that archive does not contain** — CSVs imported since,
 duplicate decisions, major-expense definitions and the saved plan. It takes a
 safety snapshot first, which lands in the backup directory as a new archive, so
 the pre-restore state is recoverable only by restoring that in turn; there is
-no undo tool. Be aware of what the token does and does not buy: it forces a
-model to decide twice with a preview in between, but a model can mint and
-redeem one inside a single turn, so it is deliberateness, not consent. For a
-restore with a human actually in the loop, use the browser's Backup page.
+no undo tool. Be aware of what each layer buys. The token forces a model to
+decide twice with a preview in between, but a model can mint and redeem one
+inside a single turn, so on its own it is deliberateness, not consent. The
+elicitation prompt is the consent, and it only exists on clients that
+implement it — when `human_approval` says `not asked`, nobody outside the model
+sanctioned the write. The browser's Backup page remains the path that always
+has a human in the loop.
 `set_encryption` is not exposed over MCP —
 enabling encryption needs a credential that must never travel through a tool
 argument into a model's transcript.

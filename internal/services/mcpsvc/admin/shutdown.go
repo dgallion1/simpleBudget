@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"budget2/internal/services/mcpsvc/confirm"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -24,7 +26,12 @@ type shutdownOutput struct {
 	ConfirmToken    string `json:"confirm_token,omitempty"`
 	ExpiresAt       string `json:"expires_at,omitempty"`
 	WhatWouldHappen string `json:"what_would_happen,omitempty"`
-	Note            string `json:"note,omitempty"`
+
+	// HumanApproval reports whether a person actually agreed; see
+	// restoreBackupOutput for why it is a string rather than a bool.
+	HumanApproval string `json:"human_approval,omitempty"`
+
+	Note string `json:"note,omitempty"`
 }
 
 const shutdownConsequences = "the budget2 server process stops; every MCP tool in this session stops answering, " +
@@ -44,7 +51,7 @@ func registerShutdown(s *mcp.Server, deps Deps) {
 			"The token is single-use, bound to this tool, and expires; a wrong or reused one is refused and you " +
 			"must start over. Confirming twice yourself is not the user agreeing -- the second call is for after " +
 			"they have actually answered.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in shutdownInput) (res *mcp.CallToolResult, out shutdownOutput, err error) {
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in shutdownInput) (res *mcp.CallToolResult, out shutdownOutput, err error) {
 		defer recoverToError("shutdown_server", &err)
 
 		if deps.Shutdown == nil {
@@ -71,6 +78,35 @@ func registerShutdown(s *mcp.Server, deps Deps) {
 
 		// The minted args are the zero input, not `in` -- `in` carries the
 		// token itself, so hashing it would never match what Mint recorded.
+		//
+		// Same shape as restore_backup: ask a real person before spending the
+		// token, via a multi-round-trip request that re-invokes this handler
+		// with their answer. Hence Check now, Redeem on the way back.
+		approval := confirm.NotAsked
+		answer, answered := req.Params.InputResponses[confirm.ApprovalID]
+		if !answered {
+			if err := deps.Confirm.Check(token, "shutdown_server", shutdownInput{}); err != nil {
+				return nil, shutdownOutput{}, err
+			}
+			if confirm.CanAsk(req.Session) {
+				return &mcp.CallToolResult{
+					InputRequests: mcp.InputRequestMap{
+						confirm.ApprovalID: confirm.ApprovalRequest("stop the budget2 server", shutdownConsequences),
+					},
+					RequestState: "shutdown_server",
+				}, shutdownOutput{}, nil
+			}
+		} else if approval = confirm.DecisionFrom(answer); approval != confirm.Approved {
+			// Left unspent: nothing happened, and the token costs nothing to
+			// hold until it expires.
+			return nil, shutdownOutput{
+				Confirmed:     false,
+				HumanApproval: confirm.Refused.String(),
+				Note: "the user was asked and did NOT approve, so the server is still running. " +
+					"Do not retry this without being told to",
+			}, nil
+		}
+
 		if err := deps.Confirm.Redeem(token, "shutdown_server", shutdownInput{}); err != nil {
 			return nil, shutdownOutput{}, err
 		}
@@ -79,9 +115,15 @@ func registerShutdown(s *mcp.Server, deps Deps) {
 		shutdown := deps.Shutdown
 		time.AfterFunc(shutdownExitDelay, shutdown)
 
-		return nil, shutdownOutput{
-			Confirmed: true,
-			Note:      "the server is shutting down; this is the last answer any tool in this session will give",
-		}, nil
+		out = shutdownOutput{
+			Confirmed:     true,
+			HumanApproval: approval.String(),
+			Note:          "the server is shutting down; this is the last answer any tool in this session will give",
+		}
+		if approval == confirm.NotAsked {
+			out.Note += ". NO HUMAN WAS ASKED: this client cannot prompt anyone, so the confirmation token alone " +
+				"authorized this"
+		}
+		return nil, out, nil
 	})
 }

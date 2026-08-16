@@ -2134,5 +2134,3 @@ func TestHandleImportScan_HonorsConfiguredImportDir(t *testing.T) {
 		t.Fatalf("expected single env.csv entry, got %+v", payload.ImportEntries)
 	}
 }
-
-

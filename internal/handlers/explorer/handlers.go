@@ -515,7 +515,7 @@ func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 
 	data := map[string]interface{}{
 		"Title":           "File Manager",
-		"ActiveTab":        "filemanager",
+		"ActiveTab":       "filemanager",
 		"IsEncrypted":     store.IsEncrypted(),
 		"IsLocked":        isLocked,
 		"ImportDirectory": cfg.ImportDirectory,

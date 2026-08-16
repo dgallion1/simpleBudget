@@ -36,7 +36,7 @@ type Config struct {
 	TemplatesDirectory string `json:"templates_directory"`
 	StaticDirectory    string `json:"static_directory"`
 	BackupDir          string `json:"backup_dir"`
-	ImportDirectory   string `json:"import_directory"`
+	ImportDirectory    string `json:"import_directory"`
 
 	// File paths
 	UserSettingsFile string `json:"user_settings_file"`

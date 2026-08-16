@@ -1,0 +1,110 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: P14
+ATTEMPT: 1
+---
+EVIDENCE:
+
+1. Manifest fidelity. `.swarm/manifests/P14.1.files` lists exactly:
+   internal/config/config.go, internal/config/config_test.go,
+   internal/handlers/explorer/handlers.go, internal/handlers/explorer/handlers_test.go,
+   web/templates/pages/filemanager.html. `git status --porcelain` shows those
+   five as ` M` plus the untracked manifest itself (self-excluded per
+   protocol). `git diff --name-only` returns the same five. Match exact.
+
+2. Toolchain green (run from /home/darrell/bin/ai/budget2, real go.mod present).
+   `go build ./...` -> BUILD_EXIT=0. `go vet ./...` -> VET_EXIT=0.
+   `go test ./...` -> all ~44 packages `ok`/`[no test files]`, TEST_EXIT=0
+   (no FAIL lines; backup 26s, storage 31s ran real). `staticcheck ./...` ->
+   SC_EXIT=0, no output. The P14 scan tests run verbosely all PASS:
+   TestHandleImportScan_ListsCSVWithDateRange, _ExcludesNonCSVSubdirSymlink,
+   _ExistsFlag, _MissingDirectory, _EmptyDirectory, _HonorsConfiguredImportDir;
+   plus TestImportDir_DefaultUsesXDG/_DefaultFallsBackToHome/_EnvOverride/
+   _LoadHonorsDefault.
+
+3. Handler genuinely read-only. Grepped non-test changed files for
+   os.Remove/os.Rename/os.WriteFile/os.Create/os.MkdirAll. The only hits are
+   PRE-EXISTING in config.go (ensureDirectories MkdirAll at line 144,
+   LoadUserSettings WriteFile at line 175) — `git diff` confirms NEITHER is in
+   the P14 diff (empty grep of the diff for these symbols). handlers.go diff
+   adds only os.Stat, os.Lstat, dataloader.New, loader.GetFileInfo. No write/
+   remove/rename anywhere in P14's added code. Read-only confirmed.
+
+4. No second CSV parser. scanImportDirectory builds `dataloader.New(importDir,
+   store)` and calls `importLoader.GetFileInfo()` (loader.go:677), which uses
+   the existing scanCSVMetadata (loader.go:730) for MinDate/MaxDate. The
+   exists flag uses the package-global `loader.GetFileInfo()` bound to
+   cfg.DataDirectory. No CSV tokenizing/encoding was added in handlers.go.
+   Date range genuinely reuses the existing loader path.
+
+5. Symlinks genuinely not followed. GetFileInfo stats via os.Stat (loader.go:
+   689) which follows links. scanImportDirectory re-stats each returned
+   candidate with os.Lstat and drops any whose mode has os.ModeSymlink set
+   (handlers.go, scanImportDirectory loop). Verified symlinks are creatable
+   in this sandbox (`ln -sf` succeeded in /tmp), so
+   TestHandleImportScan_ExcludesNonCSVSubdirSymlink actually exercises the
+   symlink branch (hasSymlink=true), not a graceful skip. The test creates
+   link.csv -> real.csv and asserts link.csv does not appear while real.csv
+   does. Read the code, not just the test name: the Lstat filter is real.
+
+6. Import button posts nowhere. RegisterRoutes adds only
+   `r.Get("/explorer/import/scan", handleImportScan)`. Grep for POST import:
+   only match is a doc comment ("P15's POST /explorer/import"). No
+   r.Post("/explorer/import", ...). In filemanager.html the Import button is
+   `type="button" disabled aria-disabled="true"` with NO hx-post/hx-get/action.
+   The delete_source checkbox has no form action. Inert confirmed.
+
+7. defaultBackupDir fallback pattern followed. defaultImportDir (config.go)
+   mirrors defaultBackupDir exactly: honor XDG_DOWNLOAD_DIR, else
+   os.UserHomeDir()+"/Downloads", else `filepath.Join(filepath.Dir(dataDir),
+   "budget2-imports")`. Uses os.UserHomeDir() (not a bare os.Getenv("HOME")),
+   matching defaultBackupDir's `if home, err := os.UserHomeDir(); err == nil &&
+   home != ""` guard. Load() applies `BUDGET2_IMPORT_DIR` override mirroring
+   BUDGET2_BACKUP_DIR. JSON tag is `json:"import_directory"`. DefaultConfig
+   seeds ImportDirectory via defaultImportDir(filepath.Join(wd,"data"))).
+
+8. Scan exclusions / exists / missing-dir behavior. Code: empty ImportDirectory
+   -> nil + "No import folder is configured."; os.Stat failure -> nil +
+   "Import folder not found: <dir>" (200, not 500); GetFileInfo glob error ->
+   nil + "Could not read import folder"; GetFileInfo globs *.csv only (non-CSV
+   excluded) with no recursion (filepath.Glob of *.csv in one dir); subdirs
+   not matched by the glob; symlinks dropped via Lstat. exists flag =
+   dataNames[fi.Name] where dataNames built from the data-dir loader. All
+   covered by the six passing tests. Missing dir returns 200 with empty list +
+   message (TestHandleImportScan_MissingDirectory asserts Code==200,
+   empty entries, message contains "not found").
+
+9. Accessibility (vs ACCESSIBILITY.md). New section uses
+   `aria-labelledby="import-folder-heading"` with an <h2> (A-6). Rescan button
+   is `type="button"` with `focus:outline-none focus:ring-2 focus:ring-indigo-500`
+   -> keyboard reachable + visible focus (A-4, A-5). Import button disabled
+   with aria-disabled + title text (A-9 text, not color-only). delete_source
+   checkbox is wrapped in a <label> with text -> programmatically associated
+   (label requirement). Per-entry checkboxes have `id="import-entry-{{$i}}"`
+   with matching `<label for="import-entry-{{$i}}">` -> programmatically
+   associated. The exists/disabled state is conveyed by TEXT "(already
+   present, will be skipped)" plus the disabled attribute, not by color alone
+   (A-9 satisfied). Scan list container has `aria-live="polite"` (A-10
+   friendly). No inline event-handler attributes; htmx hx-* used per repo
+   convention (A-14). Target size: checkboxes are w-4 h-4 (16px) but each is
+   wrapped in a flex-1 cursor-pointer label giving a large hit area, and this
+   matches the pre-existing file-list checkbox (filemanager.html:1232) —
+   consistent with repo convention, not made worse (A-15).
+
+   Both themes: panel uses `dark:` variants for all colors (bg-gray-800,
+   text-gray-300, etc.); text colors meet the same pairs as surrounding panels.
+
+NON-BLOCKING FINDING (quality, not a criterion failure): P14 introduced NEW
+gofmt deviations in files that were clean at HEAD. Baseline (`git stash`
+then `gofmt -l`) flagged none of config.go/handlers.go/handlers_test.go;
+after P14 all three are flagged. `gofmt -d` shows: config.go struct field
+`ImportDirectory   string` needs one more space to align the column;
+handlers.go handleFileManager data map has `"ActiveTab":        "filemanager"`
+and `"IsLocked":        isLocked` with extra spaces introduced when adding
+ImportDirectory; handlers_test.go has two trailing blank lines at EOF.
+config_test.go was already flagged at HEAD (pre-existing, P14 did not touch
+the offending lines). gofmt is NOT in the brief's verification contract
+(build/vet/test/staticcheck all pass), and these are cosmetic alignment
+issues in P14's own added lines, so this does not fail any numbered
+acceptance criterion — but `gofmt -w` on the three files should follow.

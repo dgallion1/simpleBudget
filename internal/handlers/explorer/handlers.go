@@ -101,6 +101,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/explorer", handleExplorer)
 	r.Get("/explorer/transactions", handleTransactionsPartial)
 	r.Get("/explorer/files", handleFileManager)
+	r.Get("/explorer/import/scan", handleImportScan)
 	r.Post("/explorer/files/toggle", handleFileToggle)
 	r.Post("/explorer/upload", handleFileUpload)
 	r.Post("/explorer/alias", handleAlias)
@@ -403,14 +404,121 @@ func handleFileManager(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// importScanEntry is one CSV discovered in ImportDirectory. It carries the
+// parsed transaction date range (derived through the same loader path as the
+// data-directory file listing — no second CSV parser) and an `exists` flag
+// set when a file of that name is already present in DataDirectory, so the UI
+// can pre-disable it.
+type importScanEntry struct {
+	Name    string `json:"name"`
+	Size    int64  `json:"size"`
+	MinDate string `json:"min_date"`
+	MaxDate string `json:"max_date"`
+	Exists  bool   `json:"exists"`
+}
+
+// handleImportScan lists *.csv files found directly inside ImportDirectory.
+// It is read-only: it never creates, modifies, or deletes a file. The actual
+// import (copy + optional source delete) is P15's POST /explorer/import.
+//
+// Exclusions, per the §3 spec:
+//   - No recursion: only files directly in ImportDirectory are listed.
+//   - Symlinks are neither followed nor listed. The date-range parse reuses
+//     loader.GetFileInfo (via a throwaway DataLoader pointed at the import
+//     dir), which reads through os.Stat — so symlinks would otherwise be
+//     followed. We Lstat each candidate and drop any symlink before returning
+//     it, regardless of what it points at.
+//   - Non-CSV files are not listed (GetFileInfo already globs *.csv).
+//
+// A missing or unreadable ImportDirectory is not an error: the user may simply
+// have no Downloads folder. The handler returns 200 with an empty list and a
+// message the UI can show.
+func handleImportScan(w http.ResponseWriter, r *http.Request) {
+	entries, message := scanImportDirectory(cfg.ImportDirectory)
+
+	partialData := map[string]interface{}{
+		"ImportEntries": entries,
+		"ImportMessage": message,
+		"ImportPath":    cfg.ImportDirectory,
+	}
+
+	if renderer != nil {
+		_ = renderer.RenderPartial(w, "import-scan", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// scanImportDirectory enumerates importable CSVs in importDir. It is split
+// from the handler so tests can drive it directly without an HTTP recorder.
+//
+// It builds a short-lived DataLoader whose CSVDirectory is the import dir and
+// reuses GetFileInfo's existing scanCSVMetadata parse for the date range,
+// rather than re-implementing CSV parsing here. Symlinks are filtered out
+// after the fact with os.Lstat (GetFileInfo stats via os.Stat, which follows
+// links); everything else in GetFileInfo's inclusion rule — glob *.csv, drop
+// stat failures — is preserved.
+//
+// The exists flag is derived from the package-global loader, which is bound
+// to cfg.DataDirectory — the same source the file-manager page uses.
+func scanImportDirectory(importDir string) ([]importScanEntry, string) {
+	if importDir == "" {
+		return nil, "No import folder is configured."
+	}
+	if _, err := os.Stat(importDir); err != nil {
+		// Missing or unreadable — not an error. The user may simply have no
+		// Downloads folder.
+		return nil, "Import folder not found: " + importDir
+	}
+
+	importLoader := dataloader.New(importDir, store)
+	infos, err := importLoader.GetFileInfo()
+	if err != nil {
+		// A Glob error reads as "no files to import" for the caller's
+		// purposes; GetFileInfo already drops per-file stat failures.
+		return nil, "Could not read import folder: " + importDir
+	}
+
+	// Names already present in the data dir mark an import entry as existing.
+	dataNames := make(map[string]bool)
+	if files, err := loader.GetFileInfo(); err == nil {
+		for _, f := range files {
+			dataNames[f.Name] = true
+		}
+	}
+
+	entries := make([]importScanEntry, 0, len(infos))
+	for _, fi := range infos {
+		// GetFileInfo follows symlinks via os.Stat. Re-stat without following
+		// and drop any symlink, no matter what it targets.
+		if li, err := os.Lstat(fi.Path); err == nil && li.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		entries = append(entries, importScanEntry{
+			Name:    fi.Name,
+			Size:    fi.Size,
+			MinDate: fi.MinDate,
+			MaxDate: fi.MaxDate,
+			Exists:  dataNames[fi.Name],
+		})
+	}
+
+	if len(entries) == 0 {
+		return entries, "No CSV files found in import folder."
+	}
+	return entries, ""
+}
+
 func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 	isLocked := store.IsEncrypted() && !store.IsUnlocked()
 
 	data := map[string]interface{}{
-		"Title":       "File Manager",
-		"ActiveTab":   "filemanager",
-		"IsEncrypted": store.IsEncrypted(),
-		"IsLocked":    isLocked,
+		"Title":           "File Manager",
+		"ActiveTab":        "filemanager",
+		"IsEncrypted":     store.IsEncrypted(),
+		"IsLocked":        isLocked,
+		"ImportDirectory": cfg.ImportDirectory,
 	}
 
 	// Add auth method info if encrypted

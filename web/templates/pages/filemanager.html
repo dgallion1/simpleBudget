@@ -54,6 +54,45 @@
         </div>
     </div>
 
+    <!-- Import from Folder panel: lists CSVs found in ImportDirectory.
+         Read-only scan; the Import button is inert until P15 wires
+         POST /explorer/import. -->
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow mb-4"
+             aria-labelledby="import-folder-heading">
+        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+            <h2 id="import-folder-heading" class="text-sm font-medium text-gray-700 dark:text-gray-300">Import from Folder</h2>
+            <button type="button"
+                hx-get="/explorer/import/scan" hx-target="#import-scan-list" hx-swap="innerHTML"
+                class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                Rescan
+            </button>
+        </div>
+        <div class="p-4 space-y-3">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                Import folder: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{{if .ImportDirectory}}{{.ImportDirectory}}{{else}}(not configured){{end}}</code>
+            </p>
+            <div id="import-scan-list" aria-live="polite" aria-busy="false">
+                {{template "import-scan" .}}
+            </div>
+            <!-- Import controls. Inert until P15: no action/hx-post is set, so
+                 this button posts nowhere. The delete-source checkbox is wired
+                 to nothing yet either. -->
+            <div class="flex items-center gap-3 pt-1">
+                <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" name="delete_source" value="true"
+                        class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                    Delete source files after import
+                </label>
+                <button type="button" disabled
+                    aria-disabled="true"
+                    title="Import is not yet available"
+                    class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    Import
+                </button>
+            </div>
+        </div>
+    </section>
+
     {{if and .IsEncrypted (not .IsLocked)}}
     <!-- Break-glass plaintext export modal -->
     <div id="plaintext-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -1213,4 +1252,29 @@ document.addEventListener('DOMContentLoaded', function() {
         {{end}}
     </tbody>
 </table>
+{{end}}
+
+{{define "import-scan"}}
+{{if .ImportMessage}}
+<p class="text-sm text-gray-500 dark:text-gray-400 py-2">{{.ImportMessage}}</p>
+{{end}}
+{{if .ImportEntries}}
+<ul class="divide-y divide-gray-100 dark:divide-gray-700" role="list">
+    {{range $i, $e := .ImportEntries}}
+    <li class="py-1.5 flex items-center gap-3">
+        <input type="checkbox" name="name" value="{{$e.Name}}" id="import-entry-{{$i}}"
+            {{if $e.Exists}}disabled{{else}}checked{{end}}
+            class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
+        <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
+            <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
+            {{if $e.MinDate}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
+            {{if $e.Exists}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
+        </label>
+    </li>
+    {{end}}
+</ul>
+{{else if not .ImportMessage}}
+<p class="text-sm text-gray-500 dark:text-gray-400 py-2">Click Rescan to list CSV files in the import folder.</p>
+{{end}}
 {{end}}

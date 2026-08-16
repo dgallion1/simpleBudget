@@ -1,0 +1,340 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P14
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Independently derived. I did not read .swarm/verdicts/P14.1.checker-second.verdict
+before forming this conclusion, to keep the two-family quorum genuinely independent.
+
+Working directory confirmed for every command: `pwd` -> /home/darrell/bin/ai/budget2,
+`ls go.mod` -> go.mod present.
+
+================================================================
+1. MANIFEST FIDELITY — PASS
+================================================================
+cat .swarm/manifests/P14.1.files:
+    internal/config/config.go
+    internal/config/config_test.go
+    internal/handlers/explorer/handlers.go
+    internal/handlers/explorer/handlers_test.go
+    web/templates/pages/filemanager.html
+
+git status --porcelain:
+     M internal/config/config.go
+     M internal/config/config_test.go
+     M internal/handlers/explorer/handlers.go
+     M internal/handlers/explorer/handlers_test.go
+     M web/templates/pages/filemanager.html
+    ?? .swarm/manifests/P14.1.files
+
+Exact set match, 5 for 5. The only extra entry is the manifest itself, untracked
+and self-excluded per this run's established protocol. No stray files, no
+unlisted edits.
+
+================================================================
+2. TOOLCHAIN GREEN — PASS
+================================================================
+I was warned that the rtk shell hook can print a bare "Success" when run from a
+directory with no go.mod. Guarding against that: the wrapper's own output carried
+real counts consistent with this repo's size --
+
+    === PWD ===
+    /home/darrell/bin/ai/budget2
+    === go build ./... ===   Go build: Success              build exit=0
+    === go vet ./... ===     Go vet: No issues found        vet exit=0
+    === go test ./... ===    Go test: 4147 passed in 44 packages   test exit=0
+    === staticcheck ./... ===                               staticcheck exit=0
+
+4147 tests / 44 packages matches the expected "thousands of tests across ~44
+packages", so this is not the wrong-directory failure mode. I then re-ran the
+suite unsummarized through `rtk proxy` with `set -o pipefail` to defeat the
+pipe-masks-exit-code trap, and got genuine per-package results:
+
+    ok  budget2/internal/services/retirement/prepare  (cached)
+    ok  budget2/internal/services/storage             30.872s
+    ok  budget2/internal/templates                    0.304s
+    ok  budget2/internal/testutil                     (cached)
+    ok  budget2/internal/version                      (cached)
+    ?   budget2/web                                   [no test files]
+    raw test exit=0
+
+Zero FAIL lines. All four gates exit 0.
+
+================================================================
+3. HANDLER IS GENUINELY READ-ONLY — PASS (the scope question)
+================================================================
+Grepped ONLY added lines of the two non-test sources for every write primitive
+(os.Remove, os.Rename, os.WriteFile, os.Create, os.MkdirAll, OpenFile, io.Copy,
+os.Truncate, os.Chmod, os.Chtimes):
+
+    --- internal/config/config.go (added lines) ---
+    (no write-path calls added)
+    --- internal/handlers/explorer/handlers.go (added lines) ---
+    (no write-path calls added)
+
+The repo-wide grep does hit os.WriteFile/os.MkdirAll nine times, but every hit is
+in handlers_test.go / config_test.go building fixtures (e.g. handlers_test.go:319
+`os.MkdirAll(sub, 0755)` creating the subdirectory whose exclusion is under test).
+Test fixtures are not runtime writes.
+
+I also checked the indirect write path, which a diff-only read would miss:
+config.Load() ends in cfg.ensureDirectories(), so if ImportDirectory had been
+added to that list, P14 would silently create directories. It was not:
+
+    func (c *Config) ensureDirectories() {
+        dirs := []string{ c.DataDirectory, c.UploadsDirectory, c.SettingsDirectory }
+        ...os.MkdirAll(dir, 0755)...
+    }
+
+ImportDirectory is absent. The only `ensureDirectories` token in the config diff
+is the unchanged context line. scanImportDirectory touches the import dir with
+os.Stat and os.Lstat only. Nothing in P14 creates, modifies, or deletes a file at
+runtime. P15's deletion logic has not arrived early.
+
+================================================================
+4. NO SECOND CSV PARSER — PASS
+================================================================
+Grep of added handler lines for encoding/csv, csv.NewReader, bufio, time.Parse,
+ReadDir, WalkDir, filepath.Walk: "(none — no second parser, no manual traversal)".
+
+handlers.go:475 builds a throwaway loader and delegates:
+    importLoader := dataloader.New(importDir, store)
+    infos, err := importLoader.GetFileInfo()
+and copies fi.MinDate / fi.MaxDate straight through. Read
+internal/services/dataloader/loader.go:677 GetFileInfo -> it calls
+dl.scanCSVMetadata(file) (loader.go:730) for the range. So the dates come from
+the existing loader path exactly as required; no parsing was reimplemented.
+
+Non-recursion is structural, not conventional: GetFileInfo's inclusion rule is
+`filepath.Glob(filepath.Join(dl.CSVDirectory, "*.csv"))` — a single-level glob.
+A subdirectory cannot be reached and a non-.csv name cannot match.
+
+================================================================
+5. SYMLINKS NOT LISTED — PASS (read from code, plus an empirical control)
+================================================================
+Read the code rather than the test name. handlers.go:493:
+
+    for _, fi := range infos {
+        if li, err := os.Lstat(fi.Path); err == nil && li.Mode()&os.ModeSymlink != 0 {
+            continue
+        }
+
+The load-bearing detail is that this only works if fi.Path is the *unresolved*
+glob path. Verified at loader.go:714 — GetFileInfo sets `Path: file`, where
+`file` is the raw filepath.Glob result, never filepath.EvalSymlinks'd. So Lstat
+inspects the link itself and the entry is dropped. Correct.
+
+The test could have been vacuous: TestHandleImportScan_ExcludesNonCSVSubdirSymlink
+sets `hasSymlink = false` and silently continues if os.Symlink fails, and its
+`len(...) != 1` assertion would then hold trivially. I checked whether that
+degradation was active on this machine:
+
+    ln -s $T/real.csv $T/link.csv  ->  SYMLINK CREATION: OK
+    lrwxrwxrwx ... link.csv -> /tmp/tmp.ptNFh8vFIh/real.csv
+
+Symlinks work here, so link.csv really was created and really was excluded. The
+assertion was genuinely exercised.
+
+NOTED, non-blocking: "not listed" holds, but "not followed" is only true of the
+result set. GetFileInfo calls scanCSVMetadata -> store.ReadFile(filePath) on the
+symlink *before* the Lstat filter runs, so a symlinked file's contents are read
+once and then discarded. Nothing leaks to the user and nothing is written, so
+this does not violate the acceptance criterion, but a symlink pointing at a FIFO
+or a very large file would stall or waste a scan. The code comment at
+handlers.go:427-432 discloses this ordering honestly. Worth tightening in P15,
+which will act on these paths for real.
+
+Also fail-open: if os.Lstat errors, the `err == nil` guard skips the `continue`
+and the entry is kept. Immaterial here (Glob just returned the path and os.Stat
+already succeeded), but flagged for completeness.
+
+================================================================
+6. IMPORT BUTTON POSTS NOWHERE — PASS
+================================================================
+Full route table, handlers.go:100-109:
+    r.Get("/explorer", handleExplorer)
+    r.Get("/explorer/transactions", handleTransactionsPartial)
+    r.Get("/explorer/files", handleFileManager)
+    r.Get("/explorer/import/scan", handleImportScan)      <- the only P14 addition
+    r.Post("/explorer/files/toggle", handleFileToggle)
+    r.Post("/explorer/upload", handleFileUpload)
+    r.Post("/explorer/alias", handleAlias)
+    r.Delete("/explorer/files/{filename}", handleFileDelete)
+
+No POST /explorer/import. Repo-wide grep for 'explorer/import' across .go and
+.html returns only: the new GET registration, the hx-get on the Rescan control,
+two comments naming P15, and test request lines. filemanager.html:86-92 — the
+Import button is `type="button" disabled aria-disabled="true"` with no action,
+no form, no hx-post; the delete_source checkbox has no hx-* attribute either.
+Both controls are inert exactly as specified.
+
+================================================================
+7. defaultBackupDir NO-HOME FALLBACK PATTERN — PASS
+================================================================
+Side by side, config.go:48 vs config.go:58:
+
+    func defaultBackupDir(dataDir string) string {
+        if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" { ... }
+        if home, err := os.UserHomeDir(); err == nil && home != "" {
+            return filepath.Join(home, ".local", "share", "budget2", "backups") }
+        return filepath.Join(filepath.Dir(dataDir), "budget2-backups")
+    }
+    func defaultImportDir(dataDir string) string {
+        if xdg := os.Getenv("XDG_DOWNLOAD_DIR"); xdg != "" { return xdg }
+        if home, err := os.UserHomeDir(); err == nil && home != "" {
+            return filepath.Join(home, "Downloads") }
+        return filepath.Join(filepath.Dir(dataDir), "budget2-imports")
+    }
+
+Same three-tier shape: XDG env, then os.UserHomeDir() with BOTH the error check
+and the non-empty check, then a dataDir-relative fallback. Specifically NOT a
+bare os.Getenv("HOME") — grep for BUDGET2_/HOME in config.go returns only the two
+BUDGET2_*_DIR overrides. Env override at config.go:125 mirrors
+BUDGET2_BACKUP_DIR at :122 (non-empty guard, applied in Load after DefaultConfig).
+JSON tag is `json:"import_directory"`.
+
+================================================================
+8. SCAN EXCLUSIONS / exists / MISSING DIR — PASS
+================================================================
+Ran the P14 tests verbosely, all real:
+
+    --- PASS: TestHandleImportScan_ListsCSVWithDateRange
+    --- PASS: TestHandleImportScan_ExcludesNonCSVSubdirSymlink
+    --- PASS: TestHandleImportScan_ExistsFlag
+    --- PASS: TestHandleImportScan_MissingDirectory
+    --- PASS: TestHandleImportScan_EmptyDirectory
+    --- PASS: TestHandleImportScan_HonorsConfiguredImportDir
+    ok  budget2/internal/handlers/explorer  0.005s   exit=0
+    --- PASS: TestImportDir_DefaultUsesXDG
+    --- PASS: TestImportDir_DefaultFallsBackToHome
+    --- PASS: TestImportDir_EnvOverride
+    --- PASS: TestImportDir_LoadHonorsDefault
+    ok  budget2/internal/config  0.002s   exit=0
+
+Read the bodies rather than trusting names. The exclusions test writes real.csv,
+notes.txt, sub/nested.csv and a link.csv symlink, then asserts exactly 1 entry
+named real.csv — that single assertion kills non-CSV, recursion and symlink at
+once. ExistsFlag seeds test0.csv into the data dir and asserts Exists=true for
+test0.csv and false for new.csv. MissingDirectory points cfg at a non-existent
+path and asserts rec.Code == 200, zero entries, non-empty message containing
+"not found" — explicitly NOT a 500.
+
+Confirmed against the handler: scanImportDirectory returns (nil, message) for
+both the empty-path and os.Stat-error cases and for a Glob error, and
+handleImportScan always writes 200 with {ImportEntries, ImportMessage,
+ImportPath}. There is no error branch that can produce a 500. The exists set is
+built from the package-global `loader`, which is bound to cfg.DataDirectory — the
+same source the file-manager page lists from, as specified.
+
+================================================================
+9. ACCESSIBILITY vs /home/darrell/work/agents2/ACCESSIBILITY.md — PASS
+================================================================
+Panel at filemanager.html:57-95, row partial `{{define "import-scan"}}` at :1257.
+Note A-7/A-12/A-13 are worded for the swarm dashboard (ledger table, verdict
+evidence, spend.jsonl) and have no counterpart here; I judged the applicable
+points.
+
+A-4 Keyboard. Rescan is a real <button type="button">; every row control is a
+native <input type="checkbox">; delete_source is a native checkbox. All natively
+focusable in DOM order. The Import button is `disabled`, hence outside the tab
+order — that is the correct encoding of the brief's "leave the control inert",
+and its state is exposed via aria-disabled="true", not by styling alone.
+
+A-5 Visible focus. Rescan carries `focus:outline-none focus:ring-2
+focus:ring-indigo-500` — outline is removed but replaced by an equal-or-better
+ring, which is what A-5 requires. The checkboxes add `focus:ring-indigo-500`
+WITHOUT focus:outline-none, so they keep the native outline plus a ring. No bare
+`outline: none` anywhere in the new markup.
+
+A-9 Never color-only — the point the brief singles out. Each already-present row
+renders literal text: `(already present, will be skipped)` at :1272, alongside
+`disabled:opacity-60`. The state survives with color and opacity stripped, so a
+colorblind operator reads the same thing. PASS.
+
+Label association. Row checkbox `id="import-entry-{{$i}}"` is paired with an
+explicit `<label for="import-entry-{{$i}}">` (:1265, :1268); delete_source uses a
+wrapping implicit <label> (:81). Both are programmatically associated. The new
+row checkbox is actually stricter than the pre-existing file-list checkbox at
+:1232, which has no label at all (pre-existing defect, not P14's).
+
+A-10 Live region: `<div id="import-scan-list" aria-live="polite">` wraps the
+swap target, so htmx replacements are announced politely. (Minor: aria-busy is
+hard-coded "false" and never toggled — harmless.)
+
+A-14 No inline handlers: grep for on(click|change|input|submit)= across the new
+panel returns "(none)". Behavior is hx-get only. The onclick/onchange handlers
+elsewhere in this file predate P14.
+
+A-15 Target size: checkboxes are w-4 h-4 (16px), under the 24px ideal, but each
+sits in a `py-1.5` row (~28px pitch, satisfying 2.5.8's spacing exception) with a
+large `flex-1 cursor-pointer` label extending the hit area. This also matches the
+file's pre-existing checkbox convention (:1235 is byte-identical in sizing and
+was not touched by P14 — the diff hunks are @@ -54,6 +54,45 @@ and
+@@ -1214,3 +1253,28 @@). Not a regression.
+
+A-1 axe: NOT RUN. These pages are Go server-rendered and I had no running
+instance; I verified the applicable points by markup inspection instead. Stating
+this rather than claiming a clean audit I did not perform.
+
+Template validity — the trap here is that all six handler tests run with
+renderer == nil and therefore exercise only the JSON fallback, so none of them
+touches the new "import-scan" partial. The partial uses `div` and `toFloat`,
+which are parse-time FuncMap lookups. Confirmed both are registered
+(internal/templates/render.go:83 "div", :85 "toFloat") and confirmed the real
+template tree actually parses, since insights/handlers_test.go:622 calls
+templates.New(ProjectRoot()+"/web/templates", true) over the whole directory:
+    --- PASS: TestHandleInsights_WithRenderer
+    --- PASS: TestInsightsVerdictBar_Render
+    ok  budget2/internal/handlers/insights  0.139s
+A parse error or unknown function in filemanager.html would have failed that.
+Page-load render is also safe: HandleFileManagerPage passes
+map[string]interface{}, and missing map keys yield nil rather than an error, so
+`{{template "import-scan" .}}` renders the "Click Rescan…" empty state.
+
+================================================================
+DEFECT FOUND — gofmt regression, reported not blocking
+================================================================
+This does not map to any of the nine acceptance items and the brief's stated gate
+is `go build && go vet && go test && staticcheck` (all green), so I am not
+failing on it — but it is a real, objective regression introduced by P14 and the
+lead should clear it before merge.
+
+I was told the repo has pre-existing gofmt deviations and to judge only whether
+P14 made things worse. I ran the delta: extracted each touched file at HEAD and
+compared gofmt diff size against the worktree.
+
+    FILE                                    HEAD    WORKTREE
+    internal/config/config.go                  0  ->  12   REGRESSED
+    internal/handlers/explorer/handlers.go     0  ->  12   REGRESSED
+    internal/handlers/explorer/handlers_test.go 0 ->   9   REGRESSED
+    internal/config/config_test.go            25  ->  25   pre-existing, unchanged
+
+Three files that were gofmt-clean at HEAD are now dirty, and all three
+deviations sit inside P14's own edits:
+
+    config.go:39      -	ImportDirectory   string `json:"import_directory"`
+                      +	ImportDirectory    string `json:"import_directory"`
+    handlers.go:518   -		"ActiveTab":        "filemanager",
+                      +		"ActiveTab":       "filemanager",
+                      (misaligned when the longer "ImportDirectory" key was added)
+    handlers_test.go  two trailing blank lines at EOF
+
+Purely cosmetic, no behavioral effect, fixed by
+`gofmt -w internal/config/config.go internal/handlers/explorer/handlers.go
+internal/handlers/explorer/handlers_test.go`. Flagging it explicitly so it is not
+lost; blocking a Tier-2 task and risking a three-judge dispute over three
+whitespace characters would be disproportionate when every stated acceptance
+criterion is met.
+
+================================================================
+CONCLUSION
+================================================================
+All nine required confirmations verified independently against code and executed
+output, not against test names or worker claims. The two highest-risk items —
+scope creep via an early write path, and a vacuous symlink test — were both
+probed directly (ensureDirectories inspected; symlink creation proven functional
+on this host) and both hold. One cosmetic gofmt regression recorded above for the
+lead to clear. VERDICT: PASS.

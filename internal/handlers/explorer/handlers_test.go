@@ -1852,3 +1852,287 @@ func newMultiUploadRequest(t *testing.T, files []uploadFile) *http.Request {
 	req.Header.Set("HX-Request", "true")
 	return req
 }
+
+// ---- handleImportScan tests ----
+
+// importScanResponse mirrors the JSON fallback body (renderer == nil).
+type importScanResponse struct {
+	ImportEntries []importScanEntry `json:"ImportEntries"`
+	ImportMessage string            `json:"ImportMessage"`
+	ImportPath    string            `json:"ImportPath"`
+}
+
+func decodeImportScan(t *testing.T, rec *httptest.ResponseRecorder) importScanResponse {
+	t.Helper()
+	var payload importScanResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON error: %v (body: %s)", err, rec.Body.String())
+	}
+	return payload
+}
+
+// scanEntryFor returns the named scan entry or fails the test.
+func scanEntryFor(t *testing.T, payload importScanResponse, name string) importScanEntry {
+	t.Helper()
+	for _, e := range payload.ImportEntries {
+		if e.Name == name {
+			return e
+		}
+	}
+	t.Fatalf("no scan entry for %q in %+v", name, payload.ImportEntries)
+	return importScanEntry{}
+}
+
+// setupImportScanEnv initializes the explorer package globals with a data dir
+// (optionally seeded with CSVs) and returns a separate import dir the test
+// populates itself.
+func setupImportScanEnv(t *testing.T, dataCSVs ...string) (dataDir, importDir string) {
+	t.Helper()
+	dataDir = t.TempDir()
+	importDir = t.TempDir()
+
+	testStore, err := storage.New(dataDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	for i, content := range dataCSVs {
+		name := fmt.Sprintf("test%d.csv", i)
+		if err := os.WriteFile(filepath.Join(dataDir, name), []byte(content), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+	}
+
+	loader = dataloader.New(dataDir, testStore)
+	renderer = nil
+	cfg = &config.Config{DataDirectory: dataDir, ImportDirectory: importDir}
+	store = testStore
+	return dataDir, importDir
+}
+
+func TestHandleImportScan_ListsCSVWithDateRange(t *testing.T) {
+	_, importDir := setupImportScanEnv(t)
+
+	content := []byte(sampleCSV)
+	if err := os.WriteFile(filepath.Join(importDir, "bank.csv"), content, 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/import/scan", nil)
+	rec := httptest.NewRecorder()
+	handleImportScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeImportScan(t, rec)
+	if len(payload.ImportEntries) != 1 {
+		t.Fatalf("expected 1 entry, got %d: %+v", len(payload.ImportEntries), payload.ImportEntries)
+	}
+	entry := payload.ImportEntries[0]
+	if entry.Name != "bank.csv" {
+		t.Errorf("Name=%q want bank.csv", entry.Name)
+	}
+	if entry.MinDate != "2024-01-15" {
+		t.Errorf("MinDate=%q want 2024-01-15", entry.MinDate)
+	}
+	if entry.MaxDate != "2024-03-01" {
+		t.Errorf("MaxDate=%q want 2024-03-01", entry.MaxDate)
+	}
+	if entry.Size != int64(len(content)) {
+		t.Errorf("Size=%d want %d", entry.Size, len(content))
+	}
+	if entry.Exists {
+		t.Errorf("Exists=true want false (not present in data dir)")
+	}
+	if payload.ImportMessage != "" {
+		t.Errorf("ImportMessage=%q want empty", payload.ImportMessage)
+	}
+	if payload.ImportPath != importDir {
+		t.Errorf("ImportPath=%q want %q", payload.ImportPath, importDir)
+	}
+}
+
+// Non-CSV files, subdirectories, and symlinks must all be excluded.
+func TestHandleImportScan_ExcludesNonCSVSubdirSymlink(t *testing.T) {
+	_, importDir := setupImportScanEnv(t)
+
+	// A real CSV that should be listed.
+	if err := os.WriteFile(filepath.Join(importDir, "real.csv"),
+		[]byte("Date,Description,Amount\n2024-01-01,A,1.00\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	// Non-CSV file — excluded.
+	if err := os.WriteFile(filepath.Join(importDir, "notes.txt"),
+		[]byte("not a csv"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	// Subdirectory (even containing a .csv) — excluded, no recursion.
+	sub := filepath.Join(importDir, "sub")
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "nested.csv"),
+		[]byte("Date,Description,Amount\n2024-01-02,B,2.00\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	// Symlink to a CSV, named *.csv — excluded, not followed.
+	target := filepath.Join(importDir, "real.csv")
+	link := filepath.Join(importDir, "link.csv")
+	hasSymlink := true
+	if err := os.Symlink(target, link); err != nil {
+		// Symlinks may be unsupported (e.g. unprivileged container). The
+		// non-CSV and subdir assertions below still hold; only the symlink
+		// exclusion can't be exercised here.
+		hasSymlink = false
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/import/scan", nil)
+	rec := httptest.NewRecorder()
+	handleImportScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeImportScan(t, rec)
+	if len(payload.ImportEntries) != 1 {
+		t.Fatalf("expected exactly 1 entry (real.csv), got %d: %+v", len(payload.ImportEntries), payload.ImportEntries)
+	}
+	if payload.ImportEntries[0].Name != "real.csv" {
+		t.Fatalf("expected real.csv, got %q", payload.ImportEntries[0].Name)
+	}
+	if hasSymlink {
+		// Confirm the symlink was genuinely excluded, not followed. If it had
+		// been followed, link.csv would appear alongside real.csv.
+		for _, e := range payload.ImportEntries {
+			if e.Name == "link.csv" {
+				t.Fatalf("symlink link.csv was listed — symlinks must be excluded, not followed")
+			}
+		}
+	}
+}
+
+func TestHandleImportScan_ExistsFlag(t *testing.T) {
+	// Seed the data dir with a CSV that shares a name with an import-dir file.
+	_, importDir := setupImportScanEnv(t, "Date,Description,Amount\n2024-01-01,Existing,1.00\n")
+
+	// The data-dir file is test0.csv (setupImportScanEnv names them testN.csv).
+	// Place a same-named CSV in the import dir to set exists=true, plus a new one.
+	if err := os.WriteFile(filepath.Join(importDir, "test0.csv"),
+		[]byte("Date,Description,Amount\n2024-02-02,Dup,2.00\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(importDir, "new.csv"),
+		[]byte("Date,Description,Amount\n2024-02-03,New,3.00\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/import/scan", nil)
+	rec := httptest.NewRecorder()
+	handleImportScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeImportScan(t, rec)
+	if len(payload.ImportEntries) != 2 {
+		t.Fatalf("expected 2 entries, got %d: %+v", len(payload.ImportEntries), payload.ImportEntries)
+	}
+	dup := scanEntryFor(t, payload, "test0.csv")
+	if !dup.Exists {
+		t.Errorf("test0.csv Exists=false want true (present in data dir)")
+	}
+	fresh := scanEntryFor(t, payload, "new.csv")
+	if fresh.Exists {
+		t.Errorf("new.csv Exists=true want false")
+	}
+}
+
+func TestHandleImportScan_MissingDirectory(t *testing.T) {
+	setupImportScanEnv(t) // import dir exists but we point cfg elsewhere
+	cfg.ImportDirectory = filepath.Join(t.TempDir(), "does-not-exist")
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/import/scan", nil)
+	rec := httptest.NewRecorder()
+	handleImportScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for missing import dir, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeImportScan(t, rec)
+	if len(payload.ImportEntries) != 0 {
+		t.Fatalf("expected empty entry list for missing dir, got %d", len(payload.ImportEntries))
+	}
+	if payload.ImportMessage == "" {
+		t.Fatal("expected a non-empty ImportMessage for missing dir")
+	}
+	if !strings.Contains(payload.ImportMessage, "not found") {
+		t.Errorf("ImportMessage=%q should mention 'not found'", payload.ImportMessage)
+	}
+}
+
+func TestHandleImportScan_EmptyDirectory(t *testing.T) {
+	_, _ = setupImportScanEnv(t) // import dir exists, no CSVs in it
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/import/scan", nil)
+	rec := httptest.NewRecorder()
+	handleImportScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeImportScan(t, rec)
+	if len(payload.ImportEntries) != 0 {
+		t.Fatalf("expected empty entry list, got %d", len(payload.ImportEntries))
+	}
+	if payload.ImportMessage == "" {
+		t.Fatal("expected a non-empty ImportMessage for empty dir")
+	}
+}
+
+func TestHandleImportScan_HonorsConfiguredImportDir(t *testing.T) {
+	// config.Load honors BUDGET2_IMPORT_DIR (covered in internal/config tests).
+	// Here we confirm the handler scans whatever cfg.ImportDirectory points at
+	// — the field Load populates from that env var — rather than a hard-coded
+	// path.
+	dataDir := t.TempDir()
+	importDir := t.TempDir()
+
+	cfgLoaded := config.DefaultConfig()
+	cfgLoaded.ImportDirectory = importDir
+	cfgLoaded.DataDirectory = dataDir
+
+	testStore, err := storage.New(dataDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	loader = dataloader.New(dataDir, testStore)
+	renderer = nil
+	cfg = cfgLoaded
+	store = testStore
+
+	if cfg.ImportDirectory != importDir {
+		t.Fatalf("ImportDirectory=%q want %q", cfg.ImportDirectory, importDir)
+	}
+
+	if err := os.WriteFile(filepath.Join(importDir, "env.csv"),
+		[]byte("Date,Description,Amount\n2024-05-05,Env,5.00\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/import/scan", nil)
+	rec := httptest.NewRecorder()
+	handleImportScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	payload := decodeImportScan(t, rec)
+	if payload.ImportPath != importDir {
+		t.Errorf("ImportPath=%q want %q", payload.ImportPath, importDir)
+	}
+	if len(payload.ImportEntries) != 1 || payload.ImportEntries[0].Name != "env.csv" {
+		t.Fatalf("expected single env.csv entry, got %+v", payload.ImportEntries)
+	}
+}
+
+

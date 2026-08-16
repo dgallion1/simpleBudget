@@ -36,6 +36,7 @@ type Config struct {
 	TemplatesDirectory string `json:"templates_directory"`
 	StaticDirectory    string `json:"static_directory"`
 	BackupDir          string `json:"backup_dir"`
+	ImportDirectory   string `json:"import_directory"`
 
 	// File paths
 	UserSettingsFile string `json:"user_settings_file"`
@@ -52,6 +53,22 @@ func defaultBackupDir(dataDir string) string {
 		return filepath.Join(home, ".local", "share", "budget2", "backups")
 	}
 	return filepath.Join(filepath.Dir(dataDir), "budget2-backups")
+}
+
+// defaultImportDir returns the default folder the file manager scans for
+// CSVs to import. It mirrors defaultBackupDir's home-relative derivation: it
+// honors XDG_DOWNLOAD_DIR when set, falls back to $HOME/Downloads, and falls
+// back further to a directory next to DataDirectory when no home is available
+// — so a machine with no home still gets a writable, discoverable import
+// folder rather than an empty path.
+func defaultImportDir(dataDir string) string {
+	if xdg := os.Getenv("XDG_DOWNLOAD_DIR"); xdg != "" {
+		return xdg
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, "Downloads")
+	}
+	return filepath.Join(filepath.Dir(dataDir), "budget2-imports")
 }
 
 // DefaultConfig returns configuration with sensible defaults
@@ -72,6 +89,7 @@ func DefaultConfig() *Config {
 		StaticDirectory:    filepath.Join(wd, "web", "static"),
 		UserSettingsFile:   filepath.Join(wd, "data", "settings", "user_settings.json"),
 		BackupDir:          defaultBackupDir(filepath.Join(wd, "data")),
+		ImportDirectory:    defaultImportDir(filepath.Join(wd, "data")),
 	}
 }
 
@@ -103,6 +121,9 @@ func Load() *Config {
 	}
 	if backupDir := os.Getenv("BUDGET2_BACKUP_DIR"); backupDir != "" {
 		cfg.BackupDir = backupDir
+	}
+	if importDir := os.Getenv("BUDGET2_IMPORT_DIR"); importDir != "" {
+		cfg.ImportDirectory = importDir
 	}
 
 	// Ensure directories exist

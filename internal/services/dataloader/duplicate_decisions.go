@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"budget2/internal/services/storage"
 )
 
 const duplicateDecisionsFile = "duplicate_decisions.json"
@@ -48,16 +50,16 @@ func (dl *DataLoader) duplicateDecisionsPath() string {
 // that fail to parse. Callers can rely on a non-error result always
 // being a usable map.
 func (dl *DataLoader) LoadDuplicateDecisions() (map[string]DuplicateDecision, error) {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	return dl.loadDuplicateDecisionsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	return dl.loadDuplicateDecisionsLocked(tx)
 }
 
-// loadDuplicateDecisionsLocked is LoadDuplicateDecisions' body. Caller
-// holds writeMu.
-func (dl *DataLoader) loadDuplicateDecisionsLocked() (map[string]DuplicateDecision, error) {
+// loadDuplicateDecisionsLocked is LoadDuplicateDecisions' body. Caller holds
+// the sequence opened by beginWrite and passes its transaction.
+func (dl *DataLoader) loadDuplicateDecisionsLocked(tx *storage.SharedTx) (map[string]DuplicateDecision, error) {
 	path := dl.duplicateDecisionsPath()
-	data, err := dl.store.ReadFile(path)
+	data, err := tx.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]DuplicateDecision), nil
@@ -87,9 +89,9 @@ func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDe
 	if err := validateDuplicateDecision(decision); err != nil {
 		return err
 	}
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	decisions, err := dl.loadDuplicateDecisionsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	decisions, err := dl.loadDuplicateDecisionsLocked(tx)
 	if err != nil {
 		return err
 	}
@@ -97,7 +99,7 @@ func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDe
 		decision.DecidedAt = time.Now().UTC()
 	}
 	decisions[pairKey] = decision
-	return dl.writeDecisionsLocked(decisions)
+	return dl.writeDecisionsLocked(tx, decisions)
 }
 
 // ClearDuplicateDecision removes a decision. No-op if the key isn't
@@ -106,9 +108,9 @@ func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error {
 	if pairKey == "" {
 		return fmt.Errorf("pair key is required")
 	}
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	decisions, err := dl.loadDuplicateDecisionsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	decisions, err := dl.loadDuplicateDecisionsLocked(tx)
 	if err != nil {
 		return err
 	}
@@ -116,18 +118,18 @@ func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error {
 		return nil
 	}
 	delete(decisions, pairKey)
-	return dl.writeDecisionsLocked(decisions)
+	return dl.writeDecisionsLocked(tx, decisions)
 }
 
-// writeDecisionsLocked marshals and persists the decisions map. Caller
-// holds writeMu.
-func (dl *DataLoader) writeDecisionsLocked(decisions map[string]DuplicateDecision) error {
+// writeDecisionsLocked marshals and persists the decisions map. Caller holds
+// the sequence opened by beginWrite and passes its transaction.
+func (dl *DataLoader) writeDecisionsLocked(tx *storage.SharedTx, decisions map[string]DuplicateDecision) error {
 	doc := duplicateDecisionsDoc{Decisions: decisions}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return err
 	}
-	return dl.store.WriteFile(dl.duplicateDecisionsPath(), data, 0644)
+	return tx.WriteFile(dl.duplicateDecisionsPath(), data, 0644)
 }
 
 func validateDuplicateDecision(d DuplicateDecision) error {

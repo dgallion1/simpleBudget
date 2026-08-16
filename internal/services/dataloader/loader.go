@@ -50,9 +50,15 @@ type DataLoader struct {
 	// it does nothing for a caller that reads, edits in memory and writes
 	// back.
 	//
-	// NOT reentrant. The invariant, without exception: a public method takes
-	// writeMu and then calls only *Locked helpers; a *Locked helper never
-	// takes writeMu and never calls a public method.
+	// It serializes these sequences against EACH OTHER only. A restore is not
+	// another sequence: it rewrites the whole directory through storage's
+	// exclusive hold and never touches this mutex. Excluding it needs the
+	// storage hold as well, which is why these sequences open through
+	// beginWrite rather than taking this mutex directly.
+	//
+	// NOT reentrant. The invariant, without exception: a public method opens
+	// a sequence with beginWrite and then calls only *Locked helpers; a
+	// *Locked helper never opens one and never calls a public method.
 	writeMu sync.Mutex
 
 	// stateMu guards every field below it.
@@ -66,6 +72,36 @@ type DataLoader struct {
 	unresolvedDuplicates []DuplicatePair
 	resolvedDuplicates   []DuplicatePair
 	keptBothDuplicates   []DuplicatePair
+}
+
+// beginWrite opens one sidecar read-modify-write. It takes both locks the
+// sequence needs: writeMu, which serializes these sequences against each
+// other, and the storage data-directory shared hold, which serializes them
+// against a restore.
+//
+// Both have to span the WHOLE load->modify->save. writeMu because two
+// concurrent editors would otherwise interleave. The storage hold because
+// storage locks only around the individual WriteFile: a restore granted the
+// exclusive hold between the load and the save replaces the file on disk, and
+// then this sequence writes back a value derived from the pre-restore
+// contents, resurrecting exactly the decisions, pins, aliases or major
+// expenses the restore rolled back — while the restore reports success.
+//
+// The returned transaction is what every *Locked helper reads and writes
+// through; going to dl.store directly inside a sequence would take the shared
+// lock a second time, which sync.RWMutex does not allow re-entrantly.
+//
+// Usage, without exception:
+//
+//	tx, done := dl.beginWrite()
+//	defer done()
+func (dl *DataLoader) beginWrite() (*storage.SharedTx, func()) {
+	dl.writeMu.Lock()
+	tx := dl.store.BeginShared()
+	return tx, func() {
+		tx.Release()
+		dl.writeMu.Unlock()
+	}
 }
 
 // columnMappings maps common bank export column names to our standard names
@@ -753,15 +789,16 @@ func (dl *DataLoader) aliasPath() string {
 
 // LoadAliases reads the hash->displayName mapping from disk
 func (dl *DataLoader) LoadAliases() (map[string]string, error) {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	return dl.loadAliasesLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	return dl.loadAliasesLocked(tx)
 }
 
-// loadAliasesLocked is LoadAliases' body. Caller holds writeMu.
-func (dl *DataLoader) loadAliasesLocked() (map[string]string, error) {
+// loadAliasesLocked is LoadAliases' body. Caller holds the sequence opened
+// by beginWrite and passes its transaction.
+func (dl *DataLoader) loadAliasesLocked(tx *storage.SharedTx) (map[string]string, error) {
 	path := dl.aliasPath()
-	data, err := dl.store.ReadFile(path)
+	data, err := tx.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]string), nil
@@ -777,9 +814,9 @@ func (dl *DataLoader) loadAliasesLocked() (map[string]string, error) {
 
 // SaveAlias sets or removes an alias for a transaction hash
 func (dl *DataLoader) SaveAlias(hash, displayName string) error {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	aliases, err := dl.loadAliasesLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	aliases, err := dl.loadAliasesLocked(tx)
 	if err != nil {
 		return fmt.Errorf("load aliases: %w", err)
 	}
@@ -792,7 +829,7 @@ func (dl *DataLoader) SaveAlias(hash, displayName string) error {
 	if err != nil {
 		return err
 	}
-	return dl.store.WriteFile(dl.aliasPath(), data, 0644)
+	return tx.WriteFile(dl.aliasPath(), data, 0644)
 }
 
 // applyAliases sets DisplayName on transactions that have aliases

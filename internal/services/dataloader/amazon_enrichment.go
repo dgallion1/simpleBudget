@@ -24,10 +24,10 @@ func (dl *DataLoader) amazonEnrichmentPath() string {
 // file is not an error — enrichment is opt-in (users without Amazon
 // data won't have generated this file).
 func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error) {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
+	tx, done := dl.beginWrite()
+	defer done()
 	path := dl.amazonEnrichmentPath()
-	data, err := dl.store.ReadFile(path)
+	data, err := tx.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]string), nil
@@ -50,13 +50,13 @@ func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error) {
 // an atomic read-modify-write across that pair would need the *Locked
 // split the other four files got.
 func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
+	tx, done := dl.beginWrite()
+	defer done()
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	return dl.store.WriteFile(dl.amazonEnrichmentPath(), data, 0644)
+	return tx.WriteFile(dl.amazonEnrichmentPath(), data, 0644)
 }
 
 // applyAmazonEnrichment stamps Transaction.EnrichedDescription on each

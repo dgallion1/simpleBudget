@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"budget2/internal/services/storage"
 )
 
 const transactionPinsFile = "transaction_pins.json"
@@ -17,15 +19,16 @@ func (dl *DataLoader) transactionPinsPath() string {
 // LoadTransactionPins reads the hash → MajorExpense.ID mapping from disk.
 // Returns an empty map if the file does not exist.
 func (dl *DataLoader) LoadTransactionPins() (map[string]string, error) {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	return dl.loadTransactionPinsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	return dl.loadTransactionPinsLocked(tx)
 }
 
-// loadTransactionPinsLocked is LoadTransactionPins' body. Caller holds writeMu.
-func (dl *DataLoader) loadTransactionPinsLocked() (map[string]string, error) {
+// loadTransactionPinsLocked is LoadTransactionPins' body. Caller holds the
+// sequence opened by beginWrite and passes its transaction.
+func (dl *DataLoader) loadTransactionPinsLocked(tx *storage.SharedTx) (map[string]string, error) {
 	path := dl.transactionPinsPath()
-	data, err := dl.store.ReadFile(path)
+	data, err := tx.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]string), nil
@@ -39,13 +42,14 @@ func (dl *DataLoader) loadTransactionPinsLocked() (map[string]string, error) {
 	return pins, nil
 }
 
-// writePinsLocked marshals and persists the pin map. Caller holds writeMu.
-func (dl *DataLoader) writePinsLocked(pins map[string]string) error {
+// writePinsLocked marshals and persists the pin map. Caller holds the
+// sequence opened by beginWrite and passes its transaction.
+func (dl *DataLoader) writePinsLocked(tx *storage.SharedTx, pins map[string]string) error {
 	data, err := json.MarshalIndent(pins, "", "  ")
 	if err != nil {
 		return err
 	}
-	return dl.store.WriteFile(dl.transactionPinsPath(), data, 0644)
+	return tx.WriteFile(dl.transactionPinsPath(), data, 0644)
 }
 
 // SetTransactionPin pins a transaction (by hash) to a major-expense ID.
@@ -54,9 +58,9 @@ func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error {
 	if hash == "" {
 		return fmt.Errorf("transaction hash is required")
 	}
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	pins, err := dl.loadTransactionPinsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	pins, err := dl.loadTransactionPinsLocked(tx)
 	if err != nil {
 		return fmt.Errorf("load transaction pins: %w", err)
 	}
@@ -65,15 +69,16 @@ func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error {
 	} else {
 		pins[hash] = expenseID
 	}
-	return dl.writePinsLocked(pins)
+	return dl.writePinsLocked(tx, pins)
 }
 
 // ClearTransactionPin removes the pin for a transaction hash. No-op if
 // the hash isn't pinned.
 //
-// This delegates to the PUBLIC SetTransactionPin rather than taking writeMu
-// itself: sync.Mutex is not reentrant, and SetTransactionPin already takes
-// writeMu for the whole sequence, so taking it here too would deadlock.
+// This delegates to the PUBLIC SetTransactionPin rather than opening a
+// sequence itself: neither writeMu nor the storage shared hold is reentrant,
+// and SetTransactionPin already opens one for the whole sequence, so opening a
+// second here would deadlock.
 func (dl *DataLoader) ClearTransactionPin(hash string) error {
 	return dl.SetTransactionPin(hash, "")
 }
@@ -87,9 +92,9 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 	if len(updates) == 0 {
 		return 0, nil
 	}
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	pins, err := dl.loadTransactionPinsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	pins, err := dl.loadTransactionPinsLocked(tx)
 	if err != nil {
 		return 0, err
 	}
@@ -113,7 +118,7 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 	if changed == 0 {
 		return 0, nil
 	}
-	if err := dl.writePinsLocked(pins); err != nil {
+	if err := dl.writePinsLocked(tx, pins); err != nil {
 		return 0, err
 	}
 	return changed, nil
@@ -125,13 +130,13 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 // per-expense pin detachment superseded the old DeleteMajorExpense ->
 // PrunePinsForMissingExpenses flow. Retained as a defensive cleanup path.
 //
-// It takes writeMu itself. Do not call it from DeleteMajorExpense or any
-// other writeMu-holding method in this package -- sync.Mutex is not
-// reentrant, so nesting the acquisition would deadlock.
+// It opens its own sequence. Do not call it from DeleteMajorExpense or any
+// other method in this package that already holds one -- neither writeMu nor
+// the storage shared hold is reentrant, so nesting would deadlock.
 func (dl *DataLoader) PrunePinsForMissingExpenses(validIDs map[string]bool) error {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	pins, err := dl.loadTransactionPinsLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	pins, err := dl.loadTransactionPinsLocked(tx)
 	if err != nil {
 		return err
 	}
@@ -145,5 +150,5 @@ func (dl *DataLoader) PrunePinsForMissingExpenses(validIDs map[string]bool) erro
 	if !changed {
 		return nil
 	}
-	return dl.writePinsLocked(pins)
+	return dl.writePinsLocked(tx, pins)
 }

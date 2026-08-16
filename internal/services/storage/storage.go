@@ -583,3 +583,75 @@ func (w *ExclusiveWriter) MkdirAll(path string, perm os.FileMode) error {
 	}
 	return os.MkdirAll(path, perm)
 }
+
+// SharedTx holds the data directory shared for the length of one
+// read-modify-write, so a restore's exclusive hold cannot be granted partway
+// through it.
+//
+// The problem it solves: WriteFile takes the shared lock for the write alone.
+// A sidecar update reads a JSON file, edits the decoded value, and writes it
+// back, and only the last of those three steps was inside the lock. A restore
+// acquiring the exclusive hold in between replaces the file on disk, and then
+// the blocked writer wakes up and persists a value it derived from the
+// pre-restore contents — resurrecting decisions, pins, aliases, or major
+// expenses the restore had just rolled back, with the restore reporting
+// success.
+//
+// Its WriteFile bypasses the lock the transaction already holds, for the same
+// reason ExclusiveWriter's does: sync.RWMutex is not reentrant, so a second
+// RLock while a restore is queued for the write lock blocks forever. Nothing
+// inside a transaction may call the plain Storage write methods.
+//
+// ReadFile does not need that treatment — Storage's read path takes no data
+// lock at all — but is provided so a transaction reads and writes through one
+// handle rather than two, and so the read is unambiguously inside the hold.
+//
+// Scope rule, inherited from dataMu: a transaction may span storage calls and
+// pure computation on their contents, and must not span a call into another
+// service. Holding it across the settings manager would put a shared holder
+// behind the settings rewrite gate that a restore takes ahead of the exclusive
+// hold, which is the ABBA deadlock the gate ordering exists to prevent.
+type SharedTx struct {
+	s        *Storage
+	released bool
+}
+
+// BeginShared holds the data directory shared until Release, admitting other
+// shared holders but excluding a restore. Callers MUST Release, normally by
+// defer.
+//
+// Lock order where a caller takes more than one: the caller's own
+// serialization for these sequences (dataloader's writeMu) -> this. Never the
+// reverse, and nothing that holds the data lock in either mode may then wait
+// on that serialization.
+func (s *Storage) BeginShared() *SharedTx {
+	s.dataMu.RLock()
+	return &SharedTx{s: s}
+}
+
+// Release gives the shared hold back. Safe to call more than once so a
+// deferred Release cannot double-unlock a mutex after an explicit one.
+func (t *SharedTx) Release() {
+	if t == nil || t.released {
+		return
+	}
+	t.released = true
+	t.s.dataMu.RUnlock()
+}
+
+// ReadFile reads through the transaction. Same semantics as Storage.ReadFile.
+func (t *SharedTx) ReadFile(path string) ([]byte, error) {
+	if t.released {
+		return nil, fmt.Errorf("storage: read attempted after the shared hold was released")
+	}
+	return t.s.ReadFile(path)
+}
+
+// WriteFile writes through the transaction. Same semantics as
+// Storage.WriteFile, minus the locking it would deadlock on.
+func (t *SharedTx) WriteFile(path string, data []byte, perm os.FileMode) error {
+	if t.released {
+		return fmt.Errorf("storage: write attempted after the shared hold was released")
+	}
+	return t.s.writeFileLocked(path, data, perm)
+}

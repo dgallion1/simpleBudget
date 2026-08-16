@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -310,6 +311,19 @@ func (s *Storage) writeFileLocked(path string, data []byte, perm os.FileMode) er
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	payload, err := s.encodeForWrite(path, data)
+	if err != nil {
+		return err
+	}
+	return s.atomicWrite(path, payload, perm)
+}
+
+// encodeForWrite invalidates path's cache entry and returns the bytes that
+// should land on disk, encrypting them when the store is encrypted and
+// unlocked. Caller holds mu. Split out of writeFileLocked so that every write
+// path — atomic replace and atomic create-if-absent alike — applies one
+// encryption rule rather than two that can drift.
+func (s *Storage) encodeForWrite(path string, data []byte) ([]byte, error) {
 	// Invalidate cache for this path
 	s.cacheMu.Lock()
 	delete(s.cache, path)
@@ -317,27 +331,89 @@ func (s *Storage) writeFileLocked(path string, data []byte, perm os.FileMode) er
 
 	// Skip encryption for certain files
 	if s.shouldSkipEncryption(path) {
-		return s.atomicWrite(path, data, perm)
+		return data, nil
 	}
 
 	// Encrypt if enabled and unlocked
 	if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
 		if isAgeEncrypted(data) {
 			// Already encrypted (e.g. restoring a backup blob). Pass through.
-		} else {
-			recipient, err := s.provider.Recipient()
-			if err != nil {
-				return fmt.Errorf("failed to get recipient: %w", err)
-			}
-			encrypted, err := encryptData(data, recipient)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt: %w", err)
-			}
-			data = encrypted
+			return data, nil
 		}
+		recipient, err := s.provider.Recipient()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get recipient: %w", err)
+		}
+		encrypted, err := encryptData(data, recipient)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt: %w", err)
+		}
+		return encrypted, nil
 	}
 
-	return s.atomicWrite(path, data, perm)
+	return data, nil
+}
+
+// CreateExclusive writes data to path only when path does not already exist,
+// returning an error satisfying errors.Is(err, os.ErrExist) when it does.
+//
+// Unlike Stat-then-WriteFile, the test and the create are one indivisible
+// step. That sequence has two failure modes this does not: two concurrent
+// callers can both observe "absent" and then overwrite each other, and a Stat
+// that fails for any reason other than non-existence (a permission error, an
+// I/O error) reads as "absent" and proceeds to overwrite.
+func (s *Storage) CreateExclusive(path string, data []byte, perm os.FileMode) error {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	payload, err := s.encodeForWrite(path, data)
+	if err != nil {
+		return err
+	}
+	return createExclusive(path, payload, perm)
+}
+
+// createExclusive stages the payload beside its destination and publishes it
+// with a hard link. Link, not rename: rename silently replaces an existing
+// destination, link fails with EEXIST. That is what makes this both atomic
+// against a concurrent creator and all-or-nothing against a crash.
+func createExclusive(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	// Staged in the destination directory so the link stays inside one
+	// filesystem, and under a unique name so concurrent callers cannot
+	// collide on the staging file itself.
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return err
+	}
+
+	if err := os.Link(tmpPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("storage: %s already exists: %w", path, os.ErrExist)
+		}
+		return err
+	}
+	return nil
 }
 
 // OpenFile returns a reader for a potentially encrypted file. Context-less

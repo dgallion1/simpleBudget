@@ -285,7 +285,11 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	incomeBreakdown := CalculateMonthlyIncomeBreakdown(st.in.Hooks, s, m)
 
 	taxableComponents := BuildTaxableReturnComponents(p.TaxableAnnualPercent, s)
-	irmaaEligibleAdults := MedicareEligibleAdultCountAtYear(s, currentYear)
+	// Month, not currentYear: the stepper runs every month, and a Medicare
+	// start part-way through a year is surcharged from that month — the same
+	// month GetTotalHealthcareCost starts billing the premium. Passing the
+	// year held one count flat across all twelve.
+	irmaaEligibleAdults := MedicareEligibleAdultCountAtMonth(s, m)
 	irmaaInflationFactor := PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(YearsFromTaxBase(s, currentYear)))
 	irmaaSurchargeInflationFactor := PlannerIRMAASurchargeInflationFactorForYear(float64(YearsFromTaxBase(s, currentYear)))
 

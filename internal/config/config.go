@@ -17,6 +17,18 @@ type Config struct {
 	ListenAddr string `json:"listen_addr"`
 	Debug      bool   `json:"debug"`
 
+	// PublicBaseURL is the origin a human reaches this server at, e.g.
+	// "https://budget.example.net" or "http://192.168.1.10:8080". Links the
+	// MCP server hands to a person — the browser approval URL and open_page —
+	// are rooted at it.
+	//
+	// It has to be configured rather than inferred because the default
+	// listener (":8080") binds every interface and names no host: nothing in
+	// the process knows which of its addresses the user's browser can reach.
+	// Empty falls back to deriving a URL from ListenAddr, which is correct
+	// only when the browser is on the same machine.
+	PublicBaseURL string `json:"public_base_url"`
+
 	// Directories
 	DataDirectory      string `json:"data_directory"`
 	UploadsDirectory   string `json:"uploads_directory"`
@@ -73,6 +85,9 @@ func Load() *Config {
 	}
 	if debug := os.Getenv("BUDGET_DEBUG"); debug == "true" || debug == "1" {
 		cfg.Debug = true
+	}
+	if base := os.Getenv("BUDGET_PUBLIC_URL"); base != "" {
+		cfg.PublicBaseURL = base
 	}
 	if dataDir := os.Getenv("BUDGET_DATA_DIR"); dataDir != "" {
 		cfg.DataDirectory = dataDir

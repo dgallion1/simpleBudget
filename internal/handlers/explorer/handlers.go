@@ -5,6 +5,7 @@ package explorer
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"math"
@@ -552,11 +553,6 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 
 	destPath := filepath.Join(cfg.DataDirectory, filename)
 
-	// Collisions skip: never overwrite, never auto-rename.
-	if _, err := store.Stat(destPath); err == nil {
-		return uploadOutcome{Name: filename, Status: "skipped", Reason: "already exists"}
-	}
-
 	file, err := header.Open()
 	if err != nil {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
@@ -568,8 +564,15 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
 	}
 
-	// Write via storage (handles encryption if enabled)
-	if err := store.WriteFile(destPath, data, 0644); err != nil {
+	// Collisions skip: never overwrite, never auto-rename. The existence test
+	// is the create itself. A separate Stat first would let two uploads of the
+	// same name both pass it and then overwrite each other, and would read a
+	// permission or I/O error from Stat as "absent" and overwrite anyway.
+	// Writes via storage, so encryption still applies when enabled.
+	if err := store.CreateExclusive(destPath, data, 0644); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return uploadOutcome{Name: filename, Status: "skipped", Reason: "already exists"}
+		}
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error saving file"}
 	}
 

@@ -27,7 +27,11 @@ import (
 func probeDataDir(t *testing.T) (string, *storage.Storage) {
 	t.Helper()
 	dir := t.TempDir()
-	return dir, storage.New(dir)
+	s, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	return dir, s
 }
 
 // bank-convention file: outflows negative.
@@ -35,6 +39,18 @@ const probeBankCSV = `Date,Description,Amount
 2025-01-05,GROCERY STORE,-52.10
 2025-01-06,PAYCHECK,2000.00
 2025-02-03,GROCERY STORE,-48.00
+`
+
+// A SECOND bank-convention file whose rows must not collide with
+// probeBankCSV's. Transaction.Hash is sha256(date|lowercased description|
+// amount) — it contains no file or account component — so two files with
+// identical contents dedup down to one set and the attribution assertion
+// below would be unsatisfiable. Distinct dates, descriptions and amounts keep
+// both files' rows alive through the dedup stage.
+const probeOtherBankCSV = `Date,Description,Amount
+2025-03-11,HARDWARE DEPOT,-77.30
+2025-03-12,DIVIDEND,15.00
+2025-04-02,HARDWARE DEPOT,-19.95
 `
 
 // card-convention file: charges POSITIVE. Only 3 rows, so the >=10-row
@@ -127,7 +143,7 @@ func TestProbeA2_LoaderStampsAccountID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "usaa-checking.csv"), []byte(probeBankCSV), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "mystery.csv"), []byte(probeBankCSV), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "mystery.csv"), []byte(probeOtherBankCSV), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := accounts.Save(store, []models.Account{{
@@ -138,13 +154,13 @@ func TestProbeA2_LoaderStampsAccountID(t *testing.T) {
 	}
 
 	dl := dataloader.New(dir, store)
-	if _, err := dl.LoadData(); err != nil {
+	ts, err := dl.LoadData()
+	if err != nil {
 		t.Fatalf("LoadData: %v", err)
 	}
-	txs := dl.Transactions()
 
 	var stamped, unassigned int
-	for _, tx := range txs {
+	for _, tx := range ts.Transactions {
 		switch tx.AccountID {
 		case "usaa-checking":
 			stamped++
@@ -181,10 +197,11 @@ func TestProbeA2_CreditKindForcesSignFlip(t *testing.T) {
 	}
 
 	dl := dataloader.New(dir, store)
-	if _, err := dl.LoadData(); err != nil {
+	ts, err := dl.LoadData()
+	if err != nil {
 		t.Fatalf("LoadData: %v", err)
 	}
-	for _, tx := range dl.Transactions() {
+	for _, tx := range ts.Transactions {
 		if tx.Amount > 0 {
 			t.Errorf("credit-kind file: charge %q stayed positive (%.2f); Kind must force the flip",
 				tx.Description, tx.Amount)
@@ -208,11 +225,12 @@ func TestProbeA2_NonCreditKindLeavesHeuristicAlone(t *testing.T) {
 	}
 
 	dl := dataloader.New(dir, store)
-	if _, err := dl.LoadData(); err != nil {
+	ts, err := dl.LoadData()
+	if err != nil {
 		t.Fatalf("LoadData: %v", err)
 	}
 	var positive int
-	for _, tx := range dl.Transactions() {
+	for _, tx := range ts.Transactions {
 		if tx.Amount > 0 {
 			positive++
 		}

@@ -1,0 +1,316 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A2
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Read in full: .swarm/briefs/A2.md, docs/superpowers/specs/2026-08-16-accounts-transfers-design.md
+(problem statement through §5), GLOSSARY.md, .swarm/tier3/A2/report.md,
+.swarm/tier3/A2/accept.sh, .swarm/tier3/A2/probe_test.go, and every file in
+.swarm/manifests/A2.1.files. I did NOT read .swarm/verdicts/A2.2.checker-second.verdict,
+to keep this verdict independent.
+
+Method note: because this repo has a recent ruling (2026-08-16a) about checkers reasoning
+from source rather than behavior, the load-bearing conclusions below come from EXECUTED
+mutation testing, not from reading. I copied the module (go.mod/go.sum/cmd/internal/web/
+testdata) to a scratchpad tree outside the repo, injected seven single-point defects, and
+ran the suite against each. The repo source was never modified: final `git status
+--porcelain` shows only the six manifest paths plus .swarm bookkeeping.
+
+------------------------------------------------------------------------------
+1. MANIFEST FIDELITY — PASS
+------------------------------------------------------------------------------
+.swarm/manifests/A2.1.files lists exactly 6 paths:
+  internal/models/account.go
+  internal/models/transaction.go
+  internal/services/accounts/accounts.go
+  internal/services/accounts/accounts_test.go
+  internal/services/dataloader/loader.go
+  internal/services/dataloader/account_attribution_test.go
+
+`git status --porcelain` (repo root):
+   M .swarm/ledger.tsv
+   M internal/models/transaction.go
+   M internal/services/dataloader/loader.go
+  ?? .swarm/manifests/A2.1.files
+  ?? .swarm/tier3/A2/report.md
+  ?? .swarm/verdicts/A2.2.checker-second.verdict
+  ?? internal/models/account.go
+  ?? internal/services/accounts/
+  ?? internal/services/dataloader/account_attribution_test.go
+
+`ls internal/services/accounts/` => accounts.go, accounts_test.go only (the untracked
+directory expands to exactly the two manifested files). Discarding .swarm/ bookkeeping and
+the wt-glm/wt-local worktrees as instructed, the manifest and the tree agree exactly: no
+unlisted source file changed, no listed file missing.
+
+------------------------------------------------------------------------------
+2. TOOLCHAIN — PASS
+------------------------------------------------------------------------------
+  $ go build ./...            -> BUILD_EXIT=0 (no output)
+  $ go vet ./...              -> VET_EXIT=0 (no output)
+  $ staticcheck ./...         -> SC_EXIT=0 (no output)
+  $ set -o pipefail; go test -count=1 ./...   -> TEST_EXIT=0
+
+`-count=1` used deliberately: the first run came back fully `(cached)`, which is not
+evidence. The uncached run reports all 44 packages with real durations, e.g.
+
+  ok  budget2/internal/services/accounts    0.010s
+  ok  budget2/internal/services/dataloader  0.973s
+  ok  budget2/internal/handlers/explorer    0.482s
+  ok  budget2/internal/services/storage    31.942s
+  ok  budget2/internal/handlers/backup     26.299s
+  ?   budget2/web  [no test files]
+
+`go test -count=1 -v` over the two A2 packages emits 256 `=== RUN` lines.
+
+Race, since both the unassignedCount field and its accessor are new shared state:
+  $ go test -race -count=1 ./internal/services/dataloader/ ./internal/services/accounts/ \
+      ./internal/handlers/explorer/
+  ok  budget2/internal/services/dataloader   1.975s
+  ok  budget2/internal/services/accounts     1.014s
+  ok  budget2/internal/handlers/explorer     3.554s
+No DATA RACE. `unassignedCount` is declared under the `stateMu sync.RWMutex` comment block
+(loader.go:65-68) and is only touched through UnassignedCount()/setUnassignedCount(), both
+of which take stateMu.
+
+  $ gofmt -l $(grep '\.go$' .swarm/manifests/A2.1.files)
+  (no output — clean)
+
+------------------------------------------------------------------------------
+3. ACCEPTANCE ORACLE — PASS
+------------------------------------------------------------------------------
+  $ bash .swarm/tier3/A2/accept.sh
+  CHECK 1 build: PASS
+  CHECK 2 vet: PASS
+  CHECK 3 existing-tests: PASS
+  CHECK 4 probe-compiles: PASS
+  CHECK 5 accounts-store-roundtrip: PASS
+  CHECK 6 missing-accounts-file-not-an-error: PASS
+  CHECK 7 match-file-first-match-by-id: PASS
+  CHECK 8 loader-stamps-account-id: PASS
+  CHECK 9 credit-kind-forces-sign-flip: PASS
+  CHECK 10 non-credit-kind-leaves-heuristic-alone: PASS
+  SUMMARY: 10 passed, 0 failed
+  ORACLE_EXIT=0
+
+Residue: `ls internal/handlers/explorer/ | grep zz_probe` -> nothing; the post-run
+`git status --porcelain` above is unchanged from the pre-run one. The EXIT trap fired.
+
+On the repaired probe's soundness (advisory; my verdict is on the implementation):
+the three documented repairs are all real and correctly made — storage.New's two-value
+return, the identical-content fixtures that exact-hash dedup would collapse (Hash is
+sha256(date|lower(desc)|amount)[:8] with no file/account component — I re-read
+transaction.go:67-75 and confirm), and the dropped dl.Transactions() pin (LoadData already
+returns *models.TransactionSet). One residual weakness I would not have let stand:
+TestProbeA2_CreditKindForcesSignFlip's assertion is a `for ... if tx.Amount > 0 { fail }`
+loop, which passes vacuously if the loader returned zero rows. Check 8 makes total
+starvation unlikely and the repo's own tests assert exact row counts, so this does not
+change the outcome — but the probe is weaker than the worker's test on exactly the axis
+the oracle exists to police.
+
+------------------------------------------------------------------------------
+4. PINNED API — PASS, verbatim
+------------------------------------------------------------------------------
+internal/models/account.go:13-21 — `type AccountKind string` and all five constants with
+the exact spellings and values: AccountKindChecking "checking", AccountKindSavings
+"savings", AccountKindBrokerage "brokerage", AccountKindCredit "credit", AccountKindOther
+"other".
+account.go:27-31 — BalanceAnchor{Date time.Time; Amount float64; Note string}.
+account.go:41-69 — Account with ID, Name, Institution, Kind, FilePatterns, Anchors,
+LowBalanceThreshold, CreatedAt, UpdatedAt — same names, same types, same order. JSON tags
+are snake_case per the pin (`file_patterns`, `low_balance_threshold`, `created_at`, ...).
+
+internal/services/accounts/accounts.go:
+  47  func Load(s *storage.Storage) ([]models.Account, error)
+  96  func Save(s *storage.Storage, accts []models.Account) error
+ 179  func MatchFile(accts []models.Account, basename string) string
+All three signatures byte-identical to the brief. Extra exported symbols (Path,
+SaveWithWarnings, Validate, OverlapWarnings, Find, const AccountsFile) are additive and do
+not alter a pinned signature; SaveWithWarnings is what lets `Save(...) error` still satisfy
+the brief's "overlap is a warning surfaced to the caller" requirement.
+
+loader.go:230-237 — `func (dl *DataLoader) UnassignedCount() int`, as pinned.
+
+models.Transaction: I diffed the added/removed lines mechanically rather than eyeballing.
+The ONLY semantic addition is `AccountID string \`json:"account_id,omitempty"\``; the other
++/- pairs are pure gofmt re-alignment of the existing ID/Date/Amount and
+Category/TransactionType/SourceFile/Hash tag columns (identical text, different padding).
+No StableID, TransferPairKey, or TransferClass. ComputeHash (transaction.go:67-75) is
+untouched and does NOT include AccountID, so adding the field cannot perturb any existing
+transaction identity.
+
+------------------------------------------------------------------------------
+5. CREDIT-KIND SIGN OVERRIDE — PASS, and the tests genuinely discriminate
+------------------------------------------------------------------------------
+Implementation, loader.go:491-514:
+
+  forcedByKind := acct != nil && acct.Kind == models.AccountKindCredit
+  if forcedByKind || usesCreditCardSignConvention(transactions) {
+      ... for i := range transactions {
+              transactions[i].Amount = -transactions[i].Amount
+              transactions[i].Hash = transactions[i].ComputeHash()
+          }
+  }
+  // Attribution: after parsing and the sign decision, before dedup.
+  if acct != nil && acct.ID != "" { for i := range transactions {
+      transactions[i].AccountID = acct.ID } }
+
+`git diff -U0` on loader.go shows the heuristic itself is untouched: the only lines
+mentioning usesCreditCardSignConvention / minSignConventionSample /
+ccConventionPositiveThreshold in the whole diff are the single condition line
+(`- if usesCreditCardSignConvention(transactions) {` ->
+`+ if forcedByKind || usesCreditCardSignConvention(transactions) {`) and a comment. The
+function body, both sample gates, and the bank-only-signal abort are byte-identical to
+HEAD. So "neither more nor less eager for other kinds" holds by construction: when
+forcedByKind is false the expression reduces to the original predicate.
+
+I did not take that on faith. INDEPENDENT EXECUTION, in the scratchpad copy, asserting the
+literal identity key rather than a relation between two computed values:
+
+  sha256("2026-02-01|wegmans|50.00")[:8]  = 34e9f6c82bce222d   (pre-flip)
+  sha256("2026-02-01|wegmans|-50.00")[:8] = 1ff5d7db5ad208bf   (post-flip)
+  loadCSVFileForAccount(card.csv, {Kind: credit}) yields:
+      amount=-50  hash=1ff5d7db5ad208bf  accountID="the-card"
+
+The stored Hash is the post-flip hash, computed from hex I derived myself, not from
+ComputeHash(). Identity is keyed to the amount the app actually uses.
+
+MUTATION TESTING — seven defects injected one at a time into the scratchpad copy; each row
+is a real `go test -count=1` run:
+
+  M1  forcedByKind forced to false (override removed)
+      -> FAIL TestCreditKind_ForcesFlipOnFileTooSmallForHeuristic/credit_forces_the_flip
+      -> FAIL TestCreditKind_ForcedFlipRecomputesHash                          CAUGHT
+  M2  post-flip `Hash = ComputeHash()` line deleted
+      -> FAIL TestCreditKind_ForcedFlipRecomputesHash
+      -> FAIL TestLoadCSVFile_HashReflectsPostFlipAmount (pre-existing test)   CAUGHT
+  M3  `AccountID = acct.ID` stamping deleted
+      -> FAIL x4 tests / 5 subtests                                            CAUGHT
+  M4  override made over-eager (fires for EVERY kind)
+      -> FAIL .../checking_leaves_the_heuristic_alone, savings_, brokerage_,
+              other_leaves_the_heuristic_alone                                 CAUGHT
+  M5  the two early-exit `setUnassignedCount(0)` calls deleted
+      -> ok  (both packages green)                                             NOT CAUGHT
+  M6  MatchFile iterates the raw slice instead of sortedByID
+      -> FAIL TestMatchFile (3 subtests), TestMatchFile_DeterministicRegardless-
+              OfSliceOrder, TestSaveWithWarnings_OverlappingPatternsWarnButSave CAUGHT
+  M7  missing accounts.json treated as an error
+      -> FAIL TestLoad_MissingFileIsNotAnError                                 CAUGHT
+
+Six of seven caught, including every mutation on the sign path. M4 is the one that matters
+most and is the answer to "would this pass with the override removed": the test does not
+merely check that credit flips, it drives the SAME four-row fixture through all five kinds
+and pins four negative cases, so both an absent override (M1) and an over-broad one (M4)
+are caught in opposite directions.
+
+The test is also self-guarding against silent decay. account_attribution_test.go:155-160
+asserts the premise before asserting the behavior:
+
+  if usesCreditCardSignConvention(raw) {
+      t.Fatal("premise broken: the heuristic fires on this file, so the override proves nothing")
+  }
+  if raw[0].Amount != 50.00 { t.Fatalf("premise broken: unowned file was flipped ...") }
+
+If the heuristic's thresholds ever move so that the 4-row fixture starts firing on its own,
+the test fails loudly instead of quietly passing for the wrong reason. That is exactly the
+failure mode ruling 2026-08-16a was about, and it is defended against here.
+
+M5 is a genuine test gap, NOT an implementation defect: the implementation does reset the
+count on both early-exit paths (loader.go, `dl.setUnassignedCount(0)` before each of the
+two empty-set returns), and the normal-path staleness case IS covered by
+TestUnassignedCount_AllAssignedAndNoAccountsConfigured (2 -> 0 across two loads). Only the
+"previous load had unassigned rows, this load finds zero CSV files" ordering is untested,
+because TestUnassignedCount_NoCSVFiles uses a fresh loader whose count is already 0.
+Reporting this as a note, not a failure: the shipped code is correct, the brief's required
+test list does not name this case, and no user-visible behavior is wrong.
+
+------------------------------------------------------------------------------
+6. ATTRIBUTION, UNASSIGNED COUNTING, MatchFile DETERMINISM — PASS
+------------------------------------------------------------------------------
+loader.go, per-file loop: `acct := accounts.Find(accts, accounts.MatchFile(accts, filename))`
+then `dl.loadCSVFileForAccount(file, acct)`. On error the loop `continue`s with a warning
+(pre-existing behavior, unchanged); a nil acct is NOT an error path — the file loads with
+AccountID "" and is tallied in unassignedFiles. Never dropped.
+
+Counting is done over the FINAL post-dedup set (`for i := range allTransactions { if
+allTransactions[i].AccountID == "" { unassigned++ } }`), so the banner number reconciles
+against the ledger the user is looking at. Executed evidence:
+TestLoadData_StampsAccountIDAndCountsUnassigned asserts 3 stamped rows from the matched
+file, 2 rows present-and-empty from the unmatched file, and UnassignedCount()==2. M3
+breaks it.
+
+MatchFile determinism: sortedByID copies before sorting (accounts.go:234-239), so the
+caller's slice is never reordered — pinned by TestMatchFile_DoesNotReorderCallerSlice, and
+TestMatchFile_DeterministicRegardlessOfSliceOrder feeds [a,b] and [b,a] and requires "aaa"
+both ways. M6 breaks both. Matching is case-insensitive path.Match with substring fallback,
+and a malformed glob (path.Match's only error is ErrBadPattern) falls through to substring
+rather than failing the load — covered by the "malformed glob falls back to substring"
+subtree.
+
+accounts.Load failure inside LoadDataContext is non-fatal (`log.Printf("Warning: could not
+load accounts: %v"); accts = nil`), verified end-to-end by
+TestLoadData_CorruptAccountsFileStillLoads: a `{broken` sidecar still yields 2 loaded rows
+and UnassignedCount()==2.
+
+------------------------------------------------------------------------------
+7. MISSING / CORRUPT accounts.json — PASS
+------------------------------------------------------------------------------
+accounts.go:51-57: os.IsNotExist(err) -> `return []models.Account{}, nil`. Not nil, not an
+error. TestLoad_MissingFileIsNotAnError asserts both len==0 AND non-nil slice; M7 catches
+its removal. Corrupt content IS an error at the accounts layer
+(TestLoad_CorruptFileIsAnError) but is degraded to "everything unassigned" at the loader
+layer — the correct split, since the loader must never fail a load over a sidecar.
+Save-time validation rejects duplicate IDs, empty IDs and empty/whitespace names, and
+TestSave_RejectsDuplicateIDsAndEmptyNames additionally asserts accounts.json was NOT
+written on rejection (no partial write).
+
+------------------------------------------------------------------------------
+8. SCOPE AND PIPELINE ORDER — PASS
+------------------------------------------------------------------------------
+grep for StableID | TransferClass | TransferPairKey | BalanceAt | Suppressed |
+transfer_decisions across all six manifest files: no hits. No new handler, template, route,
+or MCP tool is in the manifest. A1/A3/A4/A5/A6-A9 are absent.
+
+No other loader stage was reordered. Stage call sequence, HEAD vs working tree:
+
+  HEAD  288 filterInternalTransfers  289 ClassifyTransactions  290 deduplicateTransactions
+        295 applyDuplicateDetection  298 applyAliases  301 applyMajorExpenseNames
+        304 applyAmazonEnrichment
+  WT    330 filterInternalTransfers  331 ClassifyTransactions  332 deduplicateTransactions
+        337 applyDuplicateDetection  340 applyAliases  343 applyMajorExpenseNames
+        346 applyAmazonEnrichment
+
+Identical order; only line numbers shift. All 14 diff hunks in loader.go are additive or
+confined to the three intended sites.
+
+Against design §2, A2's slice of the pipeline is parse -> sign-flip (heuristic + credit
+override) -> account stamp, and stamping must precede dedup. Both hold: the flip and the
+stamp are consecutive blocks at the end of loadCSVFileForAccount (flip first, stamp
+second — the order the brief requires so identity is keyed to the post-flip amount), and
+deduplicateTransactions runs later in LoadDataContext. The design's larger reordering
+(StableID assignment, dedup before transfer classification, filterInternalTransfers ->
+transfer classification) is explicitly A1/A3 work and is correctly ABSENT here; attempting
+it would have been the scope violation.
+
+------------------------------------------------------------------------------
+NOTES (non-blocking)
+------------------------------------------------------------------------------
+a) Test gap, not a bug: the early-exit reset of unassignedCount (M5) has no test. A load
+   that follows an unassigned load and finds zero CSV files would report a stale count if
+   that line were ever deleted, and nothing would go red.
+b) The oracle probe's credit-flip check is vacuously satisfiable on an empty result set
+   (see item 3). The worker's own test is stronger; the oracle is the weaker artifact.
+c) Confirming the carry-forward the wt-local worker flagged: explorer/handlers.go:477
+   builds dataloader.New(importDir, store) where the CSV directory is not store.BaseDir(),
+   while accounts.Load reads accounts.json from store.BaseDir(). Folder-import files are
+   therefore matched against the user's real accounts. Correct today; A6/A7 must not
+   assume CSV dir == data dir.
+
+CONCLUSION: PASS. Every pinned symbol matches the brief exactly, the full toolchain and the
+10-check oracle are green from my own execution, the credit-kind override is correct in
+both directions and its hash consequence is confirmed against an independently derived
+sha256, and six of seven injected defects — including all four on the sign/identity path —
+are caught by the shipped tests.

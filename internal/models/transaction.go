@@ -20,17 +20,24 @@ const (
 
 // Transaction represents a single financial transaction
 type Transaction struct {
-	ID               string          `json:"id"`
-	Date             time.Time       `json:"date"`
-	Amount           float64         `json:"amount"`
+	ID                  string          `json:"id"`
+	Date                time.Time       `json:"date"`
+	Amount              float64         `json:"amount"`
 	Description         string          `json:"description"`
 	DisplayName         string          `json:"display_name,omitempty"`         // User-assigned alias
 	MajorExpenseName    string          `json:"major_expense_name,omitempty"`   // Derived; stamped at load time, not persisted to source CSVs
 	EnrichedDescription string          `json:"enriched_description,omitempty"` // Derived from external sources (e.g. Amazon order data); stamped at load time
-	Category         string          `json:"category"`
-	TransactionType  TransactionType `json:"transaction_type"`
-	SourceFile       string          `json:"source_file"`
-	Hash             string          `json:"hash"`
+	Category            string          `json:"category"`
+	TransactionType     TransactionType `json:"transaction_type"`
+	SourceFile          string          `json:"source_file"`
+	Hash                string          `json:"hash"`
+
+	// AccountID is the ID of the Account whose CSV this row came from,
+	// stamped at load time by matching the file's basename against each
+	// account's FilePatterns. Empty means unassigned -- the file matched
+	// no account. Unassigned rows load normally and are counted
+	// (DataLoader.UnassignedCount); they are never dropped.
+	AccountID string `json:"account_id,omitempty"`
 
 	// Status is the bank-reported lifecycle marker (e.g. "Posted",
 	// "Scheduled Bill Pay"). Optional; populated when the source CSV

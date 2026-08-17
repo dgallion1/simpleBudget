@@ -1,0 +1,129 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A2
+ATTEMPT: 2
+---
+EVIDENCE:
+
+1. Manifest fidelity — `.swarm/manifests/A2.1.files` lists exactly 6 paths:
+   internal/models/account.go, internal/models/transaction.go,
+   internal/services/accounts/accounts.go, internal/services/accounts/accounts_test.go,
+   internal/services/dataloader/loader.go,
+   internal/services/dataloader/account_attribution_test.go.
+   `git diff --name-only HEAD` (excluding .swarm) = transaction.go, loader.go
+   (2 modified). `git ls-files --others --exclude-standard` (excluding .swarm)
+   = account.go, accounts.go, accounts_test.go, account_attribution_test.go
+   (4 new). Union = the manifest exactly. No extras, no omissions.
+
+2. Toolchain green — `go build ./...` → "Go build: Success", exit 0.
+   `go vet ./...` → "Go vet: No issues found", exit 0.
+   `go test ./...` → every package `ok`, ~44 packages, exit 0 (uncached run
+   of handlers/backup at 24.59s and templates at 0.27s; rest cached but
+   validated by the subsequent -count=1 probe and dataloader runs).
+   `staticcheck ./...` → no findings, exit 0.
+   `gofmt -l` on all 6 manifest files → no output, exit 0 (all formatted).
+   `go test -race ./internal/services/accounts/ ./internal/services/dataloader/`
+   → both `ok`, exit 0 (load-bearing because the loader added mutex-guarded
+   `unassignedCount` state).
+
+3. Acceptance oracle — `bash .swarm/tier3/A2/accept.sh` printed exactly:
+   CHECK 1 build: PASS … CHECK 10 non-credit-kind-leaves-heuristic-alone: PASS
+   SUMMARY: 10 passed, 0 failed, exit 0.
+   Before the run, `internal/handlers/explorer/zz_probe_a2_test.go` did not
+   exist; after the run (trap cleanup EXIT) it still does not exist — no
+   residue left in the tree.
+
+4. Pinned API implemented exactly (verified by reading the files and by the
+   probe compiling against them):
+   - internal/models/account.go: `type AccountKind string` with the five
+     consts AccountKindChecking/Savings/Brokerage/Credit/Other = "checking"/
+     "savings"/"brokerage"/"credit"/"other" (account.go:13-21). `BalanceAnchor`
+     {Date time.Time; Amount float64; Note string} with snake_case json tags
+     (account.go:27-31). `Account` with ID/Name/Institution/Kind/FilePatterns/
+     Anchors/LowBalanceThreshold/CreatedAt/UpdatedAt and snake_case json tags
+     (account.go:41-69). Matches the brief verbatim.
+   - models.Transaction gained exactly one field, `AccountID string`
+     `json:"account_id,omitempty"` (transaction.go:40). No other field added;
+     no TransferPairKey/TransferClass/StableID/Transfer type — scope clean.
+   - internal/services/accounts: `func Load(s *storage.Storage) ([]models.Account, error)`
+     (accounts.go:47), `func Save(s *storage.Storage, accts []models.Account) error`
+     (accounts.go:96), `func MatchFile(accts []models.Account, basename string) string`
+     (accounts.go:179). Signatures match the brief exactly. SaveWithWarnings
+     is an additive extra (not a pin violation; it lets Save surface the
+     overlap warning the brief required).
+   - DataLoader.UnassignedCount() int (loader.go:234). Signature matches.
+
+5. Credit-kind sign override (the riskiest behavior):
+   - loader.go:491 `forcedByKind := acct != nil && acct.Kind == models.AccountKindCredit`
+     then `if forcedByKind || usesCreditCardSignConvention(transactions)` — the
+     OR means credit forces the flip even when the heuristic returns false
+     (e.g. <10 rows). For non-credit kinds, forcedByKind is false and the
+     branch reduces to the original `usesCreditCardSignConvention` alone, so
+     the heuristic is neither more nor less eager. Confirmed by reading the
+     diff: the only change to the flip gate is the leading `forcedByKind ||`.
+   - Hash recompute: loader.go:504-506 inside the flip loop sets
+     `transactions[i].Hash = transactions[i].ComputeHash()` on the post-flip
+     amount, for both the forced and heuristic paths. The dedicated
+     TestCreditKind_ForcedFlipRecomputesHash asserts `txns[i].Hash == ComputeHash()`
+     on every row after a forced flip.
+   - Discrimination: mutated `forcedByKind := false` and re-ran
+     TestCreditKind_ForcesFlipOnFileTooSmallForHeuristic → the
+     `credit_forces_the_flip` subtest FAILED with "Wegmans amount = 50, want -50"
+     while the four non-credit subtests still passed, and
+     TestCreditKind_ForcedFlipRecomputesHash FAILED on all four rows. The
+     test guards the branch, not a vacuous pass. Restored the file; `git diff
+     --stat` back to 92+/5- on loader.go.
+   - The probe's TestProbeA2_CreditKindForcesSignFlip uses a 3-row all-positive
+     file (below the ≥10 heuristic floor) so only the explicit credit Kind can
+     flip it; TestProbeA2_NonCreditKindLeavesHeuristicAlone runs the same file
+     under a checking account and asserts it stays positive. Both pass.
+   - TestCreditKind_DoesNotSuppressTheHeuristicForOtherKinds uses a 10-row
+     all-positive file under an "other"-kind account and asserts the first
+     amount is -50.00 — the heuristic still fires for non-credit kinds. Pass.
+
+6. Attribution and unassigned counting:
+   - LoadDataContext calls `accounts.Load(dl.store)` (loader.go:282); on error
+     logs a warning and proceeds with accts=nil (non-fatal).
+   - Per file: `acct := accounts.Find(accts, accounts.MatchFile(accts, filename))`
+     then `loadCSVFileForAccount(file, acct)` (loader.go:306-308). MatchFile
+     sorts a copy by ascending ID (accounts.go:234-239 sortedByID) and returns
+     the first match; TestMatchFile_DeterministicRegardlessOfSliceOrder and
+     TestMatchFile_DoesNotReorderCallerSlice pin both properties.
+   - loadCSVFileForAccount stamps `transactions[i].AccountID = acct.ID` after
+     the flip, before returning (loader.go:510-513). Unmatched files: acct is
+     nil, the `if acct != nil` guard skips stamping, rows keep AccountID="".
+     TestLoadData_StampsAccountIDAndCountsUnassigned asserts matched rows
+     carry the ID, unmatched file's 2 rows load with AccountID="" (not dropped).
+   - UnassignedCount: loader.go:356-362 counts `AccountID == ""` on the final
+     post-dedup set and calls setUnassignedCount. Every LoadDataContext exit
+     path clears it: len(files)==0 (loader.go:272), len(allTransactions)==0
+     (loader.go:325), and the normal path (loader.go:362). The ctx.Err()
+     early-returns do not reset it, but those are error returns where the load
+     is abandoned — acceptable and consistent with filteredTransferCount's
+     handling. TestUnassignedCount_AllAssignedAndNoAccountsConfigured covers
+     the stale-count case (load with no accounts → 2, then configure and
+     reload → 0); TestUnassignedCount_NoCSVFiles covers the no-files path.
+
+7. Missing/corrupt accounts.json non-fatal:
+   - accounts.Load (accounts.go:47-59): `s.ReadFile` error, `os.IsNotExist`
+     → return `[]models.Account{}, nil`. TestLoad_MissingFileIsNotAnError and
+     probe TestProbeA2_LoadMissingAccountsFile both assert empty slice + nil.
+   - Corrupt file: `decode` returns an error, LoadDataContext logs "Warning:
+     could not load accounts" and sets accts=nil; every file then loads
+     unassigned. TestLoadData_CorruptAccountsFileStillLoads writes "{broken"
+     and asserts 2 rows load and UnassignedCount()==2. Pass.
+
+8. Scope — no StableID, TransferPairKey, TransferClass, Transfer type,
+   BalanceAt, or transfer_decisions code anywhere under internal/ (grep
+   returned no files). The `filterInternalTransfers` drop filter is unchanged
+   (transfer classification is A3, not A2). No UI/MCP surface added
+   (internal/handlers/accounts does not exist; no /accounts route). Pipeline
+   order in LoadDataContext (loader.go:330-351) is the original
+   filterInternalTransfers → Classify → dedup → applyDuplicateDetection →
+   aliases → majorExpenses → amazon → derived — UNCHANGED except for the
+   added account-load at the top and the unassigned count at the bottom.
+   Per-file, account stamping happens inside loadCSVFileForAccount AFTER the
+   sign flip and BEFORE the rows are returned to LoadDataContext's aggregation
+   / dedup — satisfying the brief's "after parsing and the sign decision, and
+   before dedup". No other loader stage was reordered.

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/accounts"
 	"budget2/internal/services/classifier"
 	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/storage"
@@ -64,6 +65,7 @@ type DataLoader struct {
 	// stateMu guards every field below it.
 	stateMu               sync.RWMutex
 	filteredTransferCount int
+	unassignedCount       int
 	enabledFiles          map[string]bool
 
 	// Populated by every LoadData call. Read-only for callers.
@@ -225,6 +227,26 @@ func (dl *DataLoader) FilteredTransfers() int {
 	return dl.filteredTransferCount
 }
 
+// UnassignedCount returns how many transactions from the most recent load
+// carry no AccountID -- their CSV file matched no account's FilePatterns.
+// Those rows load normally; this is the count the dashboard and explorer
+// surface so an unassigned file is never a silent pass-through.
+func (dl *DataLoader) UnassignedCount() int {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
+	return dl.unassignedCount
+}
+
+// setUnassignedCount records the unassigned tally for the load that just
+// finished. Every LoadDataContext exit path goes through it, so a load that
+// finds no files or no rows clears the previous load's number instead of
+// leaving it stale.
+func (dl *DataLoader) setUnassignedCount(n int) {
+	dl.stateMu.Lock()
+	dl.unassignedCount = n
+	dl.stateMu.Unlock()
+}
+
 // LoadData loads and combines data from all CSV files in the directory
 func (dl *DataLoader) LoadData() (*models.TransactionSet, error) {
 	return dl.LoadDataContext(context.Background())
@@ -247,15 +269,27 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 
 	if len(files) == 0 {
 		log.Printf("No CSV files found in %s - returning empty dataset", dl.CSVDirectory)
+		dl.setUnassignedCount(0)
 		return models.NewTransactionSet(nil), nil
 	}
 
 	log.Printf("Found %d CSV files in %s", len(files), dl.CSVDirectory)
 
+	// Accounts drive per-file attribution and the credit-kind sign
+	// override. A failure here is non-fatal, like every other sidecar the
+	// loader consults: every file then loads unassigned rather than not at
+	// all. Files are never silently dropped.
+	accts, err := accounts.Load(dl.store)
+	if err != nil {
+		log.Printf("Warning: could not load accounts: %v", err)
+		accts = nil
+	}
+
 	var allTransactions []models.Transaction
 
 	enabled := dl.enabledFilesSnapshot()
 
+	unassignedFiles := 0
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -269,18 +303,26 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 			continue
 		}
 
-		transactions, err := dl.loadCSVFile(file)
+		acct := accounts.Find(accts, accounts.MatchFile(accts, filename))
+
+		transactions, err := dl.loadCSVFileForAccount(file, acct)
 		if err != nil {
 			log.Printf("Warning: failed to load %s: %v", filename, err)
 			continue
 		}
 
-		log.Printf("Loaded %d transactions from %s", len(transactions), filename)
+		if acct == nil {
+			unassignedFiles++
+			log.Printf("Loaded %d transactions from %s (unassigned: no account matches this file)", len(transactions), filename)
+		} else {
+			log.Printf("Loaded %d transactions from %s (account %s)", len(transactions), filename, acct.ID)
+		}
 		allTransactions = append(allTransactions, transactions...)
 	}
 
 	if len(allTransactions) == 0 {
 		log.Printf("No transactions loaded from CSV files - returning empty dataset")
+		dl.setUnassignedCount(0)
 		return models.NewTransactionSet(nil), nil
 	}
 
@@ -308,13 +350,46 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 		allTransactions[i].ComputeDerivedFields()
 	}
 
+	// Count unassigned rows on the final set, so the number the UI shows
+	// matches the ledger the user is looking at rather than a pre-dedup
+	// tally they cannot reconcile against anything.
+	unassigned := 0
+	for i := range allTransactions {
+		if allTransactions[i].AccountID == "" {
+			unassigned++
+		}
+	}
+	dl.setUnassignedCount(unassigned)
+	if unassigned > 0 {
+		log.Printf("%d transactions in %d files are not assigned to any account", unassigned, unassignedFiles)
+	}
+
 	log.Printf("Total transactions after processing: %d", len(allTransactions))
 
 	return models.NewTransactionSet(allTransactions), nil
 }
 
-// loadCSVFile loads transactions from a single CSV file
+// loadCSVFile loads transactions from a single CSV file that belongs to no
+// account. Rows come back with an empty AccountID and the sign convention
+// decided purely by the heuristic.
 func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error) {
+	return dl.loadCSVFileForAccount(filePath, nil)
+}
+
+// loadCSVFileForAccount loads transactions from a single CSV file, given the
+// account that owns it (nil when the file matched none).
+//
+// The account affects two things, in this order:
+//
+//  1. Sign convention. Kind credit FORCES the credit-card convention for
+//     this file, overriding usesCreditCardSignConvention -- including for
+//     files too small for the heuristic to fire on at all. Every other kind
+//     leaves the heuristic untouched, neither more nor less eager.
+//  2. Attribution. Every row is stamped with the account's ID.
+//
+// The order matters: the flip re-hashes each row on the post-flip amount, so
+// stamping after it keeps identity keyed to the amount the app actually uses.
+func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Account) ([]models.Transaction, error) {
 	file, err := dl.store.OpenFile(filePath)
 	if err != nil {
 		return nil, err
@@ -413,8 +488,13 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		transactions = append(transactions, t)
 	}
 
-	if usesCreditCardSignConvention(transactions) {
-		log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
+	forcedByKind := acct != nil && acct.Kind == models.AccountKindCredit
+	if forcedByKind || usesCreditCardSignConvention(transactions) {
+		if forcedByKind {
+			log.Printf("Account %s is kind %q; forcing credit-card sign convention in %s", acct.ID, acct.Kind, filepath.Base(filePath))
+		} else {
+			log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
+		}
 		for i := range transactions {
 			transactions[i].Amount = -transactions[i].Amount
 			// Re-key on the post-flip amount so dedup, pins, and
@@ -423,6 +503,13 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 			// source and a bank-convention source hashes differently
 			// and survives deduplicateTransactions.
 			transactions[i].Hash = transactions[i].ComputeHash()
+		}
+	}
+
+	// Attribution: after parsing and the sign decision, before dedup.
+	if acct != nil && acct.ID != "" {
+		for i := range transactions {
+			transactions[i].AccountID = acct.ID
 		}
 	}
 

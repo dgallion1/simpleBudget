@@ -13,9 +13,12 @@ Each entry names the owning code so the definition stays checkable.
 
 ## Transaction typing
 
-**Transaction type** — exactly two values: `Income` and `Outflow`
-(`internal/models/transaction.go`). There is **no Transfer type**: internal
-transfers are removed at load time and never enter the transaction set.
+**Transaction type** — exactly three values: `Income`, `Outflow`, and
+`Transfer` (`internal/models/transaction.go`). `Transfer` is neither income
+nor expense and is excluded from both, but unlike the prior drop-on-load
+filter it remains visible in the ledger and has its own page
+(`/transfers`). `metrics.Calculate` filters by type, so a `Transfer` row
+falls out of Total Income and Total Expenses without a formula change.
 
 **Classification** (`internal/services/classifier/classifier.go`) runs once
 per row at load, in this precedence order:
@@ -68,13 +71,81 @@ the same transaction arriving from a bank-convention and a card-convention
 source hashes identically and deduplicates. Pins and enrichment key off that
 same post-flip hash.
 
+**Account** — a named source of transactions (`internal/models/account.go`,
+persisted in the `data/accounts.json` sidecar through
+`internal/services/storage`). An Account carries `ID`, `Name`, `Institution`,
+`Kind`, `FilePatterns`, and `BalanceAnchors`. One CSV file maps to exactly one
+account, matched by filename pattern against `FilePatterns`; **first match
+wins**, with accounts sorted by ID for deterministic ordering. A file matching
+no account leaves its rows' `AccountID` empty — **unassigned**, not dropped:
+unassigned rows are counted and surfaced in the dashboard and explorer
+banner, never silently passed through. IDs are unique; at save time a warning
+is surfaced when two accounts' `FilePatterns` overlap an existing file (first
+match still wins by ID sort).
+
+**Account kind** — the `AccountKind` enum: `checking`, `savings`, `brokerage`,
+`credit`, `other`. One behavioral consequence: `Kind: credit` **forces** the
+credit-card sign convention for that file, overriding the ≥70%-positive
+heuristic in `usesCreditCardSignConvention`. Other kinds leave the heuristic
+alone.
+
+**Transfer** — the third `TransactionType`, alongside `Income` and `Outflow`.
+A transfer is neither income nor expense and is excluded from both, but unlike
+today it **remains visible** in the ledger and has its own page
+(`/transfers`). See Transfer classification below for how rows become
+`Transfer`-typed.
+
+**TransferClass** — `paired` (both legs present and linked via a shared
+`TransferPairKey`) or `external` (a leg whose counterparty account is not
+loaded, e.g. a Vanguard contribution whose receiving CSV is not imported).
+A non-transfer row carries an empty `TransferClass`.
+
+**TransferPairKey** — the value shared by exactly two legs of one paired
+transfer (`Transaction.TransferPairKey`). Computed as
+`sha256(stableID_a + "|" + stableID_b)[:12]` with the two legs ordered
+lexicographically, so both legs carry the same key and either one resolves the
+pair.
+
+**StableID** — `accountID|YYYY-MM-DD|amount-in-cents|n`, where `n` is the
+0-based occurrence index among rows identical in those first three fields,
+counted in file row order (`Transaction.StableID`). The amount is the
+**post-sign-normalization** value (after the credit-card flip), so the ID is
+stable regardless of the heuristic's input. Description is deliberately out of
+the identity, so a bank reformatting its description text cannot orphan user
+decisions. Unassigned rows use `file:<basename>` in the accountID slot —
+usable but not durable across file renames. Collisions (several same-amount
+rows, one account, one day) rely on export row order being stable across
+re-exports. Sidecar stores (`transaction_pins.json`,
+`duplicate_decisions.json`, `amazon_enrichment.json`,
+`transfer_decisions.json`) look up by `StableID` first and fall back to the
+legacy content `Hash`, rewriting entries to `StableID` on next save; no
+one-shot migration, nothing breaks if a sidecar is never re-saved.
+
+**BalanceAnchor** — a user-entered `{date, amount, note}` stating an account's
+balance as of the **end** of that day (`Account.Anchors`, kept sorted by
+date). A balance at a given date is the latest anchor at or before that date
+plus the sum of that account's transaction amounts after it
+(`internal/services/accounts`, `BalanceAt`); a transaction on the anchor day
+itself is excluded, because the anchor already reflects end-of-day. With no
+anchor at or before the date, the balance is **unavailable** — not zero; the
+UI shows "set an anchor" rather than `$0`.
+
 **Internal transfer** — a movement between the user's own accounts (credit
-card payments, brokerage ACH, "usaa funds transfer", …). Matched by substring
-against `InternalTransferPatterns` (classifier.go), plus any Major Expense the
-user has flagged `IsInternalTransfer: true`. Filtered out **before**
-classification (`internal/services/dataloader/loader.go`); the count is
-reported by `DataLoader.FilteredTransfers()`. Internal transfers are neither
-income nor expense — they exist nowhere downstream.
+card payments, brokerage ACH, "usaa funds transfer", …). Matching rows become
+`Transfer`-typed at the transfer-classification stage (see Load pipeline
+order); they are **not** filtered out, and remain in the ledger. Pairing is
+what makes the determination robust: two legs of opposite sign, equal amount
+in cents, different `AccountID`s, dates within ±4 days, with at least one leg
+matching `InternalTransferPatterns` (classifier.go) or an
+`IsInternalTransfer: true` Major Expense — the unique such candidate
+auto-pairs. Candidates with no pattern hit are **suggested for review, never
+auto-paired**, because coincidentally equal amounts are common; a user
+confirm/reject decision persists in `data/transfer_decisions.json`. An
+unpaired row that does match a pattern (counterparty CSV not loaded, e.g.
+Vanguard) becomes `Transfer`/`external`. `DataLoader.FilteredTransfers()`
+keeps returning a count for now, but it counts classified `Transfer` rows
+rather than dropped rows, for compatibility with the existing UI until the
+Transfers page ships.
 
 **Suppressed** — the user resolved a near-duplicate pair and dropped this side
 from totals (`Transaction.Suppressed`). **All aggregation/reporting must go
@@ -91,19 +162,34 @@ Order matters — several definitions above only hold at a particular stage.
 
 1. **Parse** each CSV (per file).
 2. **Sign-convention auto-detect and flip** (per file), re-hashing on the
-   post-flip amount.
-3. **Filter internal transfers** — dropped here, so nothing downstream sees
-   them.
-4. **Classify** Income/Outflow and normalize amounts.
+   post-flip amount. A `Kind: credit` account forces the flip for its file,
+   overriding the heuristic.
+3. **Stamp `AccountID`** on every row by matching the CSV basename against
+   accounts' `FilePatterns` (first match, accounts sorted by ID); unmatched
+   files leave `AccountID` empty and are counted as unassigned.
+4. **Assign `StableID`** to every row (`accountID|date|cents|n`, post-flip
+   amount; `file:<basename>` fallback for unassigned rows).
 5. **Deduplicate** exact matches, then detect near-duplicate pairs and apply
-   the user's resolutions (this is what sets `Suppressed`).
-6. **Stamp** aliases, `MajorExpenseName`, and Amazon `EnrichedDescription`.
-7. **Compute derived fields** (month, week, quarter, …).
+   the user's resolutions (this is what sets `Suppressed`). Exact dedup runs
+   before transfer classification so duplicate rows cannot create phantom pair
+   candidates.
+6. **Classify transfers** — pair opposite-sign rows with equal amount in
+   cents, different `AccountID`s, within ±4 days, at least one leg matching
+   `InternalTransferPatterns` or an `IsInternalTransfer` Major Expense; unique
+   candidates become `Transfer`/`paired`, pattern-less matches go to the
+   suspected review queue, and unpaired pattern hits become
+   `Transfer`/`external`. Replaces the old `filterInternalTransfers` drop.
+7. **Classify** Income/Outflow on the remaining (non-`Transfer`) rows and
+   normalize amounts; `Transfer` rows are skipped.
+8. **Stamp** aliases, `MajorExpenseName`, and Amazon `EnrichedDescription`.
+9. **Compute derived fields** (month, week, quarter, …).
 
-Two consequences worth stating: the sign flip happens **before** classification,
-so a file left unflipped feeds wrongly-signed amounts into the income/outflow
-decision; and internal transfers are removed **before** classification too, so
-they are never typed at all.
+Two consequences worth stating: the sign flip and credit-kind override happen
+**before** account stamping, StableID assignment, and transfer classification,
+so the amount used for pairing and identity is the normalized one; and
+transfers are **classified, not dropped** — they remain in the ledger as
+`Transfer`-typed rows, so income/outflow totals exclude them by type filter
+rather than by absence.
 
 ---
 

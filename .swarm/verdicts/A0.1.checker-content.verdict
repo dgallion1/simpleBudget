@@ -1,0 +1,162 @@
+VERDICT: PASS
+CHECKER: checker-content
+FAMILY: anthropic
+TASK: A0
+ATTEMPT: 1
+---
+EVIDENCE:
+
+1. MANIFEST FIDELITY AND SCOPE ✓
+   - `git status --porcelain` shows exactly: GLOSSARY.md, CHANGELOG.md, A0.1.files
+   - `git diff --name-only` shows exactly: GLOSSARY.md, CHANGELOG.md
+   - Zero .go, .html, or test files modified
+   - Manifest (A0.1.files) matches reality
+
+2. ALL EIGHT REQUIRED TERMS DEFINED ✓
+   ✓ Account — lines 74–84
+   ✓ Account kind — lines 86–90
+   ✓ Transfer — lines 92–96
+   ✓ TransferClass — lines 98–101
+   ✓ TransferPairKey — lines 103–107
+   ✓ StableID — lines 109–122
+   ✓ BalanceAnchor — lines 124–131
+   ✓ Internal transfer — lines 133–148
+
+3. STABLEID FORMAT VERIFICATION ✓
+   Glossary line 109: `accountID|YYYY-MM-DD|amount-in-cents|n`
+   Design doc §1: `StableID = accountID | YYYY-MM-DD | amount-in-cents | n`
+   ✓ Format matches exactly
+   ✓ n confirmed as 0-based occurrence index (line 110)
+   ✓ amount confirmed as post-sign-normalization (line 112)
+   ✓ description confirmed deliberately excluded (lines 113–114)
+   ✓ file:<basename> fallback mentioned (line 115)
+
+4. TRANSFER PAIRING RULE VERIFICATION ✓
+   Glossary lines 137–140:
+   "two legs of opposite sign, equal amount\nin cents, different `AccountID`s, 
+    dates within ±4 days, with at least one leg\nmatching `InternalTransferPatterns`"
+   Design doc §3:
+   "opposite-sign rows, equal amount-in-cents, **different** AccountIDs, 
+    dates within **±4 days**, neither leg already\npaired, and **at least one leg matches**"
+   ✓ All five components present and match
+
+5. PATTERN-LESS CANDIDATES GATE ✓
+   Glossary lines 141–142:
+   "Candidates with no pattern hit are **suggested for review, never
+   auto-paired**, because coincidentally equal amounts are common"
+   Design doc §3 rationale:
+   "Pattern-less candidates are suggested, never auto-paired"
+   ✓ Exact correspondence (line split across 141-142)
+
+6. BALANCE ANCHOR SPECIFICATIONS ✓
+   Glossary lines 124–125:
+   "user-entered `{date, amount, note}` stating an account's
+   balance as of the **end** of that day"
+   ✓ "end of day" present with markdown emphasis
+   
+   Glossary lines 130–131:
+   "balance is **unavailable** — not zero; the
+   UI shows 'set an anchor' rather than `$0`"
+   ✓ "unavailable, not zero" present with exact phrasing
+
+7. NO SURVIVING "NO TRANSFER TYPE" CLAIM ✓
+   grep -n "no Transfer type" GLOSSARY.md → No matches
+   Transaction-type entry (lines 16–21) now reads:
+   "exactly three values: `Income`, `Outflow`, and
+   `Transfer` ... `Transfer` is neither income
+   nor expense and is excluded from both, but unlike the prior 
+   drop-on-load filter it remains visible in the ledger"
+   ✓ Clearly states Transfer IS a type
+
+8. NO SURVIVING "FILTERED OUT BEFORE CLASSIFICATION" CLAIM ✓
+   grep -n "Filtered out" GLOSSARY.md → No matches
+   Internal transfer entry (lines 133–148) now reads:
+   "Matching rows become `Transfer`-typed at the transfer-classification stage
+   ... they are **not** filtered out, and remain in the ledger"
+   ✓ Explicitly negates the old claim
+
+9. LOAD PIPELINE ORDER MATCHES DESIGN DOC §2 EXACTLY ✓
+   Glossary lines 162–186 list 9 numbered stages:
+   1. Parse
+   2. Sign-convention auto-detect and flip (credit-kind override mentioned line 166)
+   3. Stamp AccountID
+   4. Assign StableID
+   5. Deduplicate (exact dedup runs before transfer classification, line 174)
+   6. Classify transfers (replaces filterInternalTransfers per line 181)
+   7. Classify Income/Outflow on non-Transfer rows (line 182–183)
+   8. Stamp aliases, MajorExpenseName, Amazon EnrichedDescription (line 184)
+   9. Compute derived fields (line 185)
+   
+   Design doc §2 pipeline:
+   parse → sign-flip (heuristic, credit-kind override) → account stamp
+      → StableID assignment → exact dedup
+      → TRANSFER CLASSIFICATION (new — replaces filterInternalTransfers)
+      → income/outflow classification (skips Transfer rows)
+      → aliases → major-expense stamp → amazon enrichment → derived fields
+   
+   ✓ Order matches exactly
+   ✓ Transfer classification explicitly replaces filterInternalTransfers (glossary line 181)
+
+10. CREDIT KIND FORCES CONVENTION ✓
+    Glossary lines 87–89:
+    "`Kind: credit` **forces** the
+    credit-card sign convention for that file, overriding the ≥70%-positive
+    heuristic in `usesCreditCardSignConvention`"
+    Design doc §2:
+    "`Kind == "credit"` **forces** credit-card convention for
+    the file, overriding the ≥70%-positive heuristic"
+    ✓ Matches exactly
+
+11. DATALOADER.FILTEREDTRANSFERS() CLARIFICATION ✓
+    Glossary lines 145–148:
+    "`DataLoader.FilteredTransfers()`
+    keeps returning a count for now, but it counts classified `Transfer` rows
+    rather than dropped rows, for compatibility with the existing UI until the
+    Transfers page ships."
+    ✓ Clarifies the semantic shift from "dropped" to "classified"
+
+12. VOICE CONSISTENCY ✓
+    - Present tense throughout (no "will be", "is planned to", "is designed to")
+    - Terse, definitional style matching file's existing entries
+    - Behavioral consequences stated in single sentences (e.g., credit-kind force, no-anchor = unavailable)
+    - No marketing language
+    - Code symbols in backticks; file/module references match existing pattern
+
+13. CHANGELOG ENTRY ✓
+    - Located at top of Unreleased section (lines 5–10)
+    - Follows existing format: subsection with date and description bullets
+    - Scopes to vocabulary change only; mentions design authority and build contract
+    - Explicitly states "No code change" and defers features to A1–A9
+    - Lists all eight defined terms
+    - Explains the two corrected statements
+    - Notes load-pipeline reordering
+    - Clarifies FilteredTransfers() semantics
+
+14. NO HIDDEN TEXT ✓
+    - GLOSSARY.md is pure markdown; no HTML/CSS display:none or aria-hidden
+    - CHANGELOG.md references to display:none are in descriptions of code elsewhere
+    - All definitions visible and human-readable
+
+SCOPE CHECKED:
+
+Terms defined and verified:
+1. Account (lines 74–84)
+2. Account kind (lines 86–90)
+3. Transfer (lines 92–96)
+4. TransferClass (lines 98–101)
+5. TransferPairKey (lines 103–107)
+6. StableID (lines 109–122)
+7. BalanceAnchor (lines 124–131)
+8. Internal transfer (lines 133–148)
+
+Sources used:
+- docs/superpowers/specs/2026-08-16-accounts-transfers-design.md (design authority §1–§4)
+- GLOSSARY.md (changed file, all 310 lines read)
+- CHANGELOG.md (changed file, lines 1–10 for new entry)
+
+Statements amended:
+1. Transaction-type entry: removed implicit "no Transfer type" claim; explicitly defines Transfer as third type
+2. Internal-transfer entry: changed from "filtered out before classification, exist nowhere downstream" to "classification → Transfer-typed, remain in ledger"
+
+All changes verified character-by-character against design doc authority.
+

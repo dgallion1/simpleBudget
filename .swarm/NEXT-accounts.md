@@ -4,7 +4,31 @@ Written 2026-08-16. Branch `fix/review-aug16`, nothing pushed.
 Read `.swarm/NEXT.md` too — it carries the headless dispatch recipe and its
 traps, which still apply.
 
-## Blocked on
+## Status as of the latest session
+
+**Six of ten tasks accepted:** A0, A1, A2, A4, A6. Remaining: **A3** (Tier 3),
+A5, A7, A8, A9. `gate.sh done` fails on those five, correctly.
+
+A1 took four attempts and hit the constitutional hard stop after two Tier-3
+failures; the user authorized a narrow fourth attempt, which passed both
+families. Both failures were found by the anthropic checker while the glm
+checker passed — see rulings 2026-08-16f and 2026-08-16g.
+
+## Next task: A3 (transfer classification, Tier 3)
+
+The last Tier-3 task and the heart of the feature. Before dispatch its oracle
+must be written AND validated at both ends (ruling 2026-08-16d), and — this is
+the one that matters most here — it must assert on an **existing consumer's
+observable output**, not just on the new classifier (ruling 2026-08-16f).
+Concretely: it is not enough to check that a pair is classified `Transfer`; the
+oracle must show that `metrics.Calculate`'s income and expense totals actually
+exclude those rows, because that is where a user would see the bug.
+
+Acceptance criteria are in `ACCOUNTS_TRANSFERS_SPEC.md`'s task table. A3 also
+replaces `filterInternalTransfers`, so it touches the dataloader critical glob
+— it is already Tier 3, so no further escalation applies.
+
+## Historical: the credit blocker (resolved)
 
 **OpenRouter credits are exhausted** — account shows `total_credits: 150`,
 `total_usage: 150.08`. Verify with:

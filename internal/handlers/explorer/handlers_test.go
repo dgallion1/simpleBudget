@@ -2257,3 +2257,641 @@ func TestHandleImportScan_HonorsConfiguredImportDir(t *testing.T) {
 		t.Fatalf("expected single env.csv entry, got %+v", payload.ImportEntries)
 	}
 }
+
+// ---- handleImport tests (POST /explorer/import) ----
+
+// importCSV is the source content used by the import tests. Two rows, so a
+// truncated write is detectable by length.
+const importCSV = "Date,Description,Amount\n2024-04-01,Coffee,-4.50\n2024-04-02,Groceries,-52.10\n"
+
+// importResultResponse mirrors the JSON fallback body (renderer == nil).
+type importResultResponse struct {
+	Results      []importOutcome `json:"Results"`
+	DeleteSource bool            `json:"DeleteSource"`
+	ImportPath   string          `json:"ImportPath"`
+}
+
+// postImport drives handleImport with a form-encoded body, the pinned wire
+// format for this endpoint.
+func postImport(t *testing.T, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/explorer/import", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	handleImport(rec, req)
+	return rec
+}
+
+func decodeImportResult(t *testing.T, rec *httptest.ResponseRecorder) importResultResponse {
+	t.Helper()
+	var payload importResultResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response JSON error: %v (body: %s)", err, rec.Body.String())
+	}
+	return payload
+}
+
+// outcomeFor returns the named per-file outcome or fails the test.
+func importOutcomeFor(t *testing.T, payload importResultResponse, name string) importOutcome {
+	t.Helper()
+	for _, o := range payload.Results {
+		if o.Name == name {
+			return o
+		}
+	}
+	t.Fatalf("no outcome for %q in %+v", name, payload.Results)
+	return importOutcome{}
+}
+
+// seedImportFile writes content into dir under name and returns the path.
+func seedImportFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile %s: %v", path, err)
+	}
+	return path
+}
+
+func mustExist(t *testing.T, path, why string) {
+	t.Helper()
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("%s: expected %s to exist, got %v", why, path, err)
+	}
+}
+
+func mustNotExist(t *testing.T, path, why string) {
+	t.Helper()
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Fatalf("%s: expected %s to be absent, got err=%v", why, path, err)
+	}
+}
+
+// Without delete_source the file lands in the data dir and the original stays
+// exactly where the user left it.
+func TestHandleImport_KeepsSourceWhenNotDeleting(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "alpha.csv", importCSV)
+
+	rec := postImport(t, url.Values{"name": {"alpha.csv"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	payload := decodeImportResult(t, rec)
+	if payload.DeleteSource {
+		t.Errorf("DeleteSource=true want false (field absent)")
+	}
+	out := importOutcomeFor(t, payload, "alpha.csv")
+	if out.Status != "imported" {
+		t.Errorf("Status=%q want imported (reason %q)", out.Status, out.Reason)
+	}
+	if out.SourceDeleted {
+		t.Errorf("SourceDeleted=true want false")
+	}
+
+	mustExist(t, src, "source must survive an import without delete_source")
+	got, err := store.ReadFile(filepath.Join(dataDir, "alpha.csv"))
+	if err != nil {
+		t.Fatalf("ReadFile destination: %v", err)
+	}
+	if string(got) != importCSV {
+		t.Errorf("destination content = %q want %q", got, importCSV)
+	}
+}
+
+// With delete_source=true a fully imported file's original is removed.
+func TestHandleImport_DeletesSourceWhenRequested(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "beta.csv", importCSV)
+
+	rec := postImport(t, url.Values{"name": {"beta.csv"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	payload := decodeImportResult(t, rec)
+	if !payload.DeleteSource {
+		t.Errorf("DeleteSource=false want true")
+	}
+	out := importOutcomeFor(t, payload, "beta.csv")
+	if out.Status != "imported" {
+		t.Fatalf("Status=%q want imported (reason %q)", out.Status, out.Reason)
+	}
+	if !out.SourceDeleted {
+		t.Errorf("SourceDeleted=false want true")
+	}
+
+	mustNotExist(t, src, "source must be deleted after a verified import")
+	mustExist(t, filepath.Join(dataDir, "beta.csv"), "destination must exist")
+}
+
+// The wire format pins deletion to the literal string "true"; anything else
+// means keep the source.
+func TestHandleImport_DeleteSourceOnlyOnLiteralTrue(t *testing.T) {
+	for _, value := range []string{"1", "yes", "TRUE", "on", ""} {
+		t.Run("value="+value, func(t *testing.T) {
+			dataDir, importDir := setupImportScanEnv(t)
+			src := seedImportFile(t, importDir, "gamma.csv", importCSV)
+
+			rec := postImport(t, url.Values{"name": {"gamma.csv"}, "delete_source": {value}})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+			payload := decodeImportResult(t, rec)
+			if payload.DeleteSource {
+				t.Errorf("delete_source=%q was read as enabled", value)
+			}
+			out := importOutcomeFor(t, payload, "gamma.csv")
+			if out.SourceDeleted {
+				t.Errorf("SourceDeleted=true for delete_source=%q", value)
+			}
+			mustExist(t, src, "source must survive delete_source="+value)
+			mustExist(t, filepath.Join(dataDir, "gamma.csv"), "destination must exist")
+		})
+	}
+}
+
+// A name already present in the data dir skips: no overwrite, no auto-rename,
+// and — the safety property — the source is not deleted even though the batch
+// asked for deletion.
+func TestHandleImport_CollisionSkipsAndKeepsSource(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	const existing = "Date,Description,Amount\n2024-01-01,Existing,1.00\n"
+	dest := filepath.Join(dataDir, "collide.csv")
+	if err := os.WriteFile(dest, []byte(existing), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	src := seedImportFile(t, importDir, "collide.csv", importCSV)
+
+	rec := postImport(t, url.Values{"name": {"collide.csv"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "collide.csv")
+	if out.Status != "skipped" {
+		t.Errorf("Status=%q want skipped (reason %q)", out.Status, out.Reason)
+	}
+	if out.SourceDeleted {
+		t.Errorf("SourceDeleted=true — a skipped file must never be deleted")
+	}
+
+	mustExist(t, src, "a skipped file's source must survive")
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile destination: %v", err)
+	}
+	if string(got) != existing {
+		t.Errorf("destination was overwritten: %q want %q", got, existing)
+	}
+}
+
+// A name carrying a path separator is rejected before any filesystem call:
+// nothing outside the import dir is read, copied, or deleted.
+func TestHandleImport_TraversalNameRejected(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+
+	// Sibling of importDir, so "../outside/outside.csv" is a traversal that
+	// genuinely resolves — otherwise this test would pass vacuously.
+	outsideDir := filepath.Join(filepath.Dir(importDir), "outside")
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	outside := seedImportFile(t, outsideDir, "outside.csv", importCSV)
+	traversal := "../outside/outside.csv"
+	if _, err := os.Stat(filepath.Join(importDir, traversal)); err != nil {
+		t.Fatalf("fixture: %q should resolve from the import dir, got %v", traversal, err)
+	}
+
+	rec := postImport(t, url.Values{"name": {traversal}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), traversal)
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	if out.SourceDeleted {
+		t.Errorf("SourceDeleted=true for a rejected traversal name")
+	}
+
+	mustExist(t, outside, "a file outside the import folder must survive")
+	mustNotExist(t, filepath.Join(dataDir, "outside.csv"), "nothing may be copied for a rejected name")
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("data dir must be untouched, contains %d entries", len(entries))
+	}
+}
+
+// A non-CSV name is rejected even when posted explicitly, and its source stays.
+func TestHandleImport_NonCSVRejected(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "notes.txt", "not a csv\n")
+
+	rec := postImport(t, url.Values{"name": {"notes.txt"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "notes.txt")
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	mustExist(t, src, "a rejected non-CSV source must survive")
+	mustNotExist(t, filepath.Join(dataDir, "notes.txt"), "a non-CSV must not be copied")
+}
+
+// A symlink planted in the import folder is not followed, so the file it
+// points at is neither imported nor deleted.
+func TestHandleImport_SymlinkNotFollowedTargetSurvives(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+
+	outsideDir := filepath.Join(filepath.Dir(importDir), "outside-link")
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	target := seedImportFile(t, outsideDir, "target.csv", importCSV)
+
+	link := filepath.Join(importDir, "link.csv")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+
+	rec := postImport(t, url.Values{"name": {"link.csv"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "link.csv")
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	if out.SourceDeleted {
+		t.Errorf("SourceDeleted=true — a symlink must never be removed")
+	}
+
+	mustExist(t, target, "the symlink target must survive")
+	mustExist(t, link, "the symlink itself must survive a rejection")
+	mustNotExist(t, filepath.Join(dataDir, "link.csv"), "a symlink must not be imported")
+}
+
+// A write that cannot succeed must leave the source in place. Staged for real
+// by making the data directory unwritable.
+func TestHandleImport_FailedWriteKeepsSource(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: an unwritable directory does not block writes")
+	}
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "delta.csv", importCSV)
+
+	if err := os.Chmod(dataDir, 0555); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dataDir, 0755) })
+
+	rec := postImport(t, url.Values{"name": {"delta.csv"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "delta.csv")
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	if out.SourceDeleted {
+		t.Errorf("SourceDeleted=true after a failed write")
+	}
+
+	mustExist(t, src, "a failed write must leave the source in place")
+	mustNotExist(t, filepath.Join(dataDir, "delta.csv"), "nothing may land when the write fails")
+}
+
+// Guard 1, isolated: when the write itself errors, no delete is attempted.
+// Injected rather than staged with permissions so the assertion holds
+// regardless of the uid running the suite.
+func TestImportOneFile_WriteFailureNeverDeletes(t *testing.T) {
+	_, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "epsilon.csv", importCSV)
+
+	removed := false
+	deps := defaultImportDeps()
+	deps.write = func(string, []byte, os.FileMode) error { return os.ErrPermission }
+	deps.removeSrc = func(path string) error { removed = true; return os.Remove(path) }
+
+	out := importOneFile("epsilon.csv", true, deps)
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	if removed {
+		t.Error("os.Remove was reached despite a failed write")
+	}
+	if out.SourceDeleted {
+		t.Error("SourceDeleted=true after a failed write")
+	}
+	mustExist(t, src, "source must survive a failed write")
+}
+
+// Guard 2, isolated: this is why the readback exists. The write "succeeds" but
+// the file reads back short — a truncated or encryption-failed save. No delete
+// may follow.
+func TestImportOneFile_ShortReadbackNeverDeletes(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "zeta.csv", importCSV)
+
+	removed := false
+	deps := defaultImportDeps()
+	deps.readBack = func(string) ([]byte, error) { return []byte(importCSV[:10]), nil }
+	deps.removeSrc = func(path string) error { removed = true; return os.Remove(path) }
+
+	out := importOneFile("zeta.csv", true, deps)
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	if removed {
+		t.Error("os.Remove was reached despite a short readback")
+	}
+	if out.SourceDeleted {
+		t.Error("SourceDeleted=true after a short readback")
+	}
+	mustExist(t, src, "source must survive a readback mismatch")
+
+	// The write did happen; only the verification failed. The source surviving
+	// is the property under test, not the destination's absence.
+	mustExist(t, filepath.Join(dataDir, "zeta.csv"), "the write itself was allowed to land")
+}
+
+// A readback that errors outright is treated the same way.
+func TestImportOneFile_ReadbackErrorNeverDeletes(t *testing.T) {
+	_, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "eta.csv", importCSV)
+
+	removed := false
+	deps := defaultImportDeps()
+	deps.readBack = func(string) ([]byte, error) { return nil, os.ErrPermission }
+	deps.removeSrc = func(path string) error { removed = true; return os.Remove(path) }
+
+	out := importOneFile("eta.csv", true, deps)
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	if removed {
+		t.Error("os.Remove was reached despite a failed readback")
+	}
+	mustExist(t, src, "source must survive a failed readback")
+}
+
+// Guard 3, isolated: a name whose path does not resolve to a direct child of
+// ImportDirectory never reaches the delete. Staged with a subdirectory entry,
+// which the scan never offers.
+func TestImportOneFile_SubdirectoryEntryNeverDeletes(t *testing.T) {
+	_, importDir := setupImportScanEnv(t)
+	sub := filepath.Join(importDir, "sub")
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	nested := seedImportFile(t, sub, "nested.csv", importCSV)
+
+	removed := false
+	deps := defaultImportDeps()
+	deps.removeSrc = func(path string) error { removed = true; return os.Remove(path) }
+
+	// Both spellings must fail: the separator form is rejected by name, and the
+	// bare form does not exist directly inside the import dir.
+	for _, name := range []string{"sub/nested.csv", "nested.csv"} {
+		out := importOneFile(name, true, deps)
+		if out.Status != "rejected" {
+			t.Errorf("%s: Status=%q want rejected (reason %q)", name, out.Status, out.Reason)
+		}
+	}
+	if removed {
+		t.Error("os.Remove was reached for a non-direct-child path")
+	}
+	mustExist(t, nested, "a file in a subdirectory must survive")
+}
+
+// A batch with no name fields is malformed: 400, and provably inert.
+func TestHandleImport_EmptyBatchIs400AndInert(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "theta.csv", importCSV)
+
+	before, err := os.ReadDir(importDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+
+	rec := postImport(t, url.Values{"delete_source": {"true"}})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	after, err := os.ReadDir(importDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(before) != len(after) {
+		t.Errorf("import dir changed: %d entries before, %d after", len(before), len(after))
+	}
+	mustExist(t, src, "a 400 must delete nothing")
+
+	dataEntries, err := os.ReadDir(dataDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(dataEntries) != 0 {
+		t.Errorf("a 400 must copy nothing, data dir has %d entries", len(dataEntries))
+	}
+}
+
+// A blank name field is not a selection either.
+func TestHandleImport_BlankNameIs400(t *testing.T) {
+	_, _ = setupImportScanEnv(t)
+
+	rec := postImport(t, url.Values{"name": {"", "   "}})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A name that is not in the import folder is rejected, not an error response.
+func TestHandleImport_MissingSourceRejected(t *testing.T) {
+	dataDir, _ := setupImportScanEnv(t)
+
+	rec := postImport(t, url.Values{"name": {"absent.csv"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "absent.csv")
+	if out.Status != "rejected" {
+		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	mustNotExist(t, filepath.Join(dataDir, "absent.csv"), "nothing may be created for a missing source")
+}
+
+// In a mixed batch only the files that genuinely imported lose their sources.
+func TestHandleImport_MixedBatchDeletesOnlyImported(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+
+	good := seedImportFile(t, importDir, "good.csv", importCSV)
+	collide := seedImportFile(t, importDir, "dupe.csv", importCSV)
+	txt := seedImportFile(t, importDir, "notes.txt", "not a csv\n")
+	if err := os.WriteFile(filepath.Join(dataDir, "dupe.csv"), []byte(importCSV), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rec := postImport(t, url.Values{
+		"name":          {"good.csv", "dupe.csv", "notes.txt", "../escape.csv"},
+		"delete_source": {"true"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	payload := decodeImportResult(t, rec)
+	if len(payload.Results) != 4 {
+		t.Fatalf("expected 4 outcomes, got %d: %+v", len(payload.Results), payload.Results)
+	}
+	for name, want := range map[string]string{
+		"good.csv":      "imported",
+		"dupe.csv":      "skipped",
+		"notes.txt":     "rejected",
+		"../escape.csv": "rejected",
+	} {
+		if got := importOutcomeFor(t, payload, name); got.Status != want {
+			t.Errorf("%s: Status=%q want %q (reason %q)", name, got.Status, want, got.Reason)
+		}
+	}
+
+	mustNotExist(t, good, "the imported file's source is deleted")
+	mustExist(t, collide, "the skipped file's source survives")
+	mustExist(t, txt, "the rejected file's source survives")
+	mustExist(t, filepath.Join(dataDir, "good.csv"), "the imported file lands")
+}
+
+// The endpoint is reachable through the package's own router, not just by
+// calling the handler directly.
+func TestHandleImport_RouteRegistered(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	seedImportFile(t, importDir, "routed.csv", importCSV)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	form := url.Values{"name": {"routed.csv"}}
+	req := httptest.NewRequest(http.MethodPost, "/explorer/import", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from the router, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	mustExist(t, filepath.Join(dataDir, "routed.csv"), "routed import must land")
+}
+
+// The swap target's markup: the result panel is what the browser actually
+// receives, so it is asserted against the rendered partial, not the page's
+// include of it.
+func TestImportResult_Render_Outcomes(t *testing.T) {
+	setupTestEnvWithRenderer(t)
+
+	out, err := renderer.RenderToString("import-result", map[string]any{
+		"Results": []importOutcome{
+			{Name: "good.csv", Status: "imported", Reason: "source file deleted", SourceDeleted: true},
+			{Name: "dupe.csv", Status: "skipped", Reason: "already exists in the data folder"},
+			{Name: "notes.txt", Status: "rejected", Reason: "only CSV files can be imported"},
+		},
+		"DeleteSource": true,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	// Every outcome is legible as text — no meaning carried by colour alone.
+	for _, want := range []string{
+		"good.csv", "imported", "source file deleted",
+		"dupe.csv", "skipped", "already exists in the data folder",
+		"notes.txt", "rejected", "only CSV files can be imported",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in import-result; got: %s", want, strunc(out, 900))
+		}
+	}
+}
+
+// A symlinked ImportDirectory (a symlinked ~/Downloads, or /tmp where it is a
+// link) is still a legitimate import folder: the direct-child check resolves
+// both sides, so files inside it import normally.
+func TestHandleImport_SymlinkedImportDirectoryStillImports(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "iota.csv", importCSV)
+
+	linkedDir := filepath.Join(filepath.Dir(importDir), "linked-import")
+	if err := os.Symlink(importDir, linkedDir); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+	cfg.ImportDirectory = linkedDir
+
+	rec := postImport(t, url.Values{"name": {"iota.csv"}, "delete_source": {"true"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "iota.csv")
+	if out.Status != "imported" {
+		t.Fatalf("Status=%q want imported (reason %q)", out.Status, out.Reason)
+	}
+	mustExist(t, filepath.Join(dataDir, "iota.csv"), "a symlinked import folder still imports")
+	mustNotExist(t, src, "the source inside the symlinked folder is deleted")
+}
+
+// isDirectChild is deletion guard 3 in isolation.
+func TestIsDirectChild(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "import")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(outside, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	for _, p := range []string{
+		filepath.Join(dir, "a.csv"),
+		filepath.Join(sub, "b.csv"),
+		filepath.Join(outside, "c.csv"),
+	} {
+		if err := os.WriteFile(p, []byte(importCSV), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+	}
+
+	linkedDir := filepath.Join(root, "linked")
+	haveSymlink := os.Symlink(dir, linkedDir) == nil
+
+	tests := []struct {
+		name string
+		dir  string
+		path string
+		want bool
+	}{
+		{"direct child", dir, filepath.Join(dir, "a.csv"), true},
+		{"grandchild in subdirectory", dir, filepath.Join(sub, "b.csv"), false},
+		{"sibling reached by traversal", dir, filepath.Join(dir, "..", "outside", "c.csv"), false},
+		{"outside directory", dir, filepath.Join(outside, "c.csv"), false},
+		{"nonexistent path", dir, filepath.Join(dir, "missing.csv"), false},
+		{"nonexistent dir", filepath.Join(root, "gone"), filepath.Join(dir, "a.csv"), false},
+	}
+	for _, tc := range tests {
+		if got := isDirectChild(tc.dir, tc.path); got != tc.want {
+			t.Errorf("%s: isDirectChild(%q, %q)=%v want %v", tc.name, tc.dir, tc.path, got, tc.want)
+		}
+	}
+
+	if haveSymlink {
+		// A symlinked import folder must still recognise its own children,
+		// otherwise a symlinked ~/Downloads could never import anything.
+		if !isDirectChild(linkedDir, filepath.Join(linkedDir, "a.csv")) {
+			t.Error("a symlinked import dir should recognise its own direct child")
+		}
+	}
+}

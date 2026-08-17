@@ -269,6 +269,26 @@ checkers: `git grep` shows its only consumers were those three `RenderPartial`
 calls, there was never a `{{template "file-list"}}` invocation, and the Explorer
 page still renders (HTTP 200, no template errors).
 
+**2026-08-16c — P15's second blind implementer is Anthropic, not Qwen.**
+CLAUDE.md's Tier 3 names `worker-coder` (GLM) and `worker-local` (Qwen) as the
+two blind N-version implementers. `worker-local` was unavailable: the Spark has
+no Qwen vLLM unit, port 8000 is OpenJarvis's own auth-required vLLM, and
+`litellm-config.yaml` still points at the unresolvable `spark.local:8000`.
+Unblocking it would have meant repointing the swarm at a personal service and
+reading its `.env` for a key.
+
+Ruled by the user, 2026-08-16: substitute an Anthropic-family model in the
+second slot. Tier 3's intent — two independent implementations written blind to
+each other, from different model families, compared against a pre-written
+oracle — is preserved; only the identity of the second family changes. The
+worktree is still named `wt-local` because `tier3-setup.sh` and
+`tier3-compare.sh` hardcode that path; the directory name is a label, not a
+claim about which model ran.
+
+Cost note: this forgoes the `$0` marginal cost of the local worker for one
+task. Recorded because CLAUDE.md's cost-discipline section makes that the
+default preference.
+
 **Known, not caused by P13:** an axe run during P13 attempt-2 verification found
 20 pre-existing WCAG violations on the File Manager page (unlabelled toggle
 checkboxes, unnamed SVG delete buttons, low-contrast size text), all confirmed

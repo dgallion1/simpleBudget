@@ -102,6 +102,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/explorer/transactions", handleTransactionsPartial)
 	r.Get("/explorer/files", handleFileManager)
 	r.Get("/explorer/import/scan", handleImportScan)
+	r.Post("/explorer/import", handleImport)
 	r.Post("/explorer/files/toggle", handleFileToggle)
 	r.Post("/explorer/upload", handleFileUpload)
 	r.Post("/explorer/alias", handleAlias)
@@ -419,7 +420,8 @@ type importScanEntry struct {
 
 // handleImportScan lists *.csv files found directly inside ImportDirectory.
 // It is read-only: it never creates, modifies, or deletes a file. The actual
-// import (copy + optional source delete) is P15's POST /explorer/import.
+// import (copy + optional source delete) is handleImport, POST
+// /explorer/import.
 //
 // Exclusions, per the §3 spec:
 //   - No recursion: only files directly in ImportDirectory are listed.
@@ -508,6 +510,216 @@ func scanImportDirectory(importDir string) ([]importScanEntry, string) {
 		return entries, "No CSV files found in import folder."
 	}
 	return entries, ""
+}
+
+// importOutcome is the per-file result of a folder import. It mirrors
+// uploadOutcome's shape (P12's batch upload) so the two panels can speak the
+// same vocabulary: "imported", "skipped", or "rejected", with a human reason.
+// SourceDeleted records whether the original in ImportDirectory was removed,
+// so the result panel can state that in text rather than leaving the user to
+// infer it from the presence of a delete tick.
+type importOutcome struct {
+	Name          string `json:"name"`
+	Status        string `json:"status"`
+	Reason        string `json:"reason,omitempty"`
+	SourceDeleted bool   `json:"source_deleted"`
+}
+
+// importDeps are the four filesystem/storage operations a single file import
+// performs. Production code always uses defaultImportDeps; tests substitute
+// one operation at a time to stage failures that real files cannot produce
+// reliably — above all a readback that returns short bytes, which is the only
+// thing standing between a truncated or encryption-failed write and an
+// irreversible source delete.
+type importDeps struct {
+	readSource func(path string) ([]byte, error)
+	write      func(path string, data []byte, perm os.FileMode) error
+	readBack   func(path string) ([]byte, error)
+	removeSrc  func(path string) error
+}
+
+// defaultImportDeps binds the real operations. The source lives outside the
+// data directory, so it is read with os.ReadFile and removed with os.Remove;
+// only the destination goes through store, so that encryption applies to what
+// lands in the data directory and the readback decrypts symmetrically.
+func defaultImportDeps() importDeps {
+	return importDeps{
+		readSource: os.ReadFile,
+		write:      func(path string, data []byte, perm os.FileMode) error { return store.WriteFile(path, data, perm) },
+		readBack:   func(path string) ([]byte, error) { return store.ReadFile(path) },
+		removeSrc:  os.Remove,
+	}
+}
+
+// handleImport copies selected CSVs out of ImportDirectory into the data
+// directory and, when asked, deletes the originals.
+//
+// Wire format (pinned by the §3 design so independent implementations agree):
+// form-encoded, with `name` repeated once per selected file — bare filenames
+// as returned by the scan — and an optional `delete_source` whose value must
+// be exactly the string "true" to enable deletion. Any other value, and the
+// field's absence, mean keep the sources.
+//
+// A processed batch is a 200 even when individual files were skipped or
+// rejected; the per-file outcomes travel in the body, matching P12's batch
+// upload. Only a malformed request — no `name` fields at all — is a 400, and
+// that path returns before touching the filesystem so it is provably inert.
+func handleImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	// Read names from PostForm, not Form: the selection belongs in the request
+	// body, and Form would also fold in URL query parameters.
+	names := make([]string, 0, len(r.PostForm["name"]))
+	for _, n := range r.PostForm["name"] {
+		if strings.TrimSpace(n) != "" {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		http.Error(w, "No files selected for import", http.StatusBadRequest)
+		return
+	}
+
+	deleteSource := r.PostFormValue("delete_source") == "true"
+
+	deps := defaultImportDeps()
+	outcomes := make([]importOutcome, 0, len(names))
+	for _, name := range names {
+		outcomes = append(outcomes, importOneFile(name, deleteSource, deps))
+	}
+
+	partialData := map[string]interface{}{
+		"Results":      outcomes,
+		"DeleteSource": deleteSource,
+		"ImportPath":   cfg.ImportDirectory,
+	}
+
+	if renderer != nil {
+		_ = renderer.RenderPartial(w, "import-result", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// importOneFile runs the six-step import for one selected name. It never
+// returns an error: a failure is the caller's outcome for that file, and the
+// rest of the batch continues.
+//
+// The source delete at the end is gated three ways, all of which must hold:
+// the write succeeded, the readback matched the expected byte length, and the
+// path resolved to a direct child of ImportDirectory. A file that was skipped
+// or rejected returns before reaching it, so it is never deleted.
+func importOneFile(name string, deleteSource bool, deps importDeps) importOutcome {
+	// Step 1 — validate the name with no filesystem call at all. filepath.Base
+	// strips every directory component, so a name that differs from its own
+	// Base carried a separator and cannot be a name the scan returned. "." and
+	// ".." are their own Base, so they are excluded by hand.
+	if name == "" || name == "." || name == ".." ||
+		name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "invalid filename"}
+	}
+
+	// The scan only ever offers *.csv; an explicitly posted non-CSV name is
+	// rejected here, still before any filesystem access.
+	if !strings.HasSuffix(strings.ToLower(name), ".csv") {
+		return importOutcome{Name: name, Status: "rejected", Reason: "only CSV files can be imported"}
+	}
+
+	if cfg.ImportDirectory == "" {
+		return importOutcome{Name: name, Status: "rejected", Reason: "no import folder is configured"}
+	}
+
+	// Step 2 — re-stat inside ImportDirectory and confirm a direct child.
+	// Lstat, not Stat: a symlink is never followed, so a link planted in the
+	// import folder cannot make an outside file look like a member of it — and
+	// cannot get that outside file deleted.
+	srcPath := filepath.Join(cfg.ImportDirectory, name)
+	info, err := os.Lstat(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not found in the import folder"}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return importOutcome{Name: name, Status: "rejected", Reason: "symlinks are not imported"}
+	}
+	if !info.Mode().IsRegular() {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not a regular file"}
+	}
+	if !isDirectChild(cfg.ImportDirectory, srcPath) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not directly inside the import folder"}
+	}
+
+	// Step 3 — a name already in the data directory skips. No overwrite, no
+	// auto-rename. A Stat that failed for a reason other than "absent" is not
+	// read as absent: overwriting on a permission or I/O error would lose the
+	// existing file, and a source delete on top of that would make it
+	// unrecoverable.
+	destPath := filepath.Join(cfg.DataDirectory, name)
+	if _, err := store.Stat(destPath); err == nil {
+		return importOutcome{Name: name, Status: "skipped", Reason: "already exists in the data folder"}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not check the destination"}
+	}
+
+	// Step 4 — read the source, then write through store so encryption applies.
+	data, err := deps.readSource(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not read the source file"}
+	}
+	if err := deps.write(destPath, data, 0644); err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not save the file"}
+	}
+
+	// Step 5 — read the destination back and confirm the expected byte length.
+	// This is what makes "fully saved" mean something: without it a truncated
+	// or encryption-failed write would still clear the way for step 6.
+	back, err := deps.readBack(destPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "saved file could not be read back"}
+	}
+	if len(back) != len(data) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "saved file failed verification"}
+	}
+
+	outcome := importOutcome{Name: name, Status: "imported"}
+	if !deleteSource {
+		log.Printf("Imported file: %s", name)
+		return outcome
+	}
+
+	// Step 6 — all three guards have held: the write succeeded, the readback
+	// matched, and srcPath was confirmed a direct, non-symlink child of
+	// ImportDirectory. Only now is the original removed.
+	if err := deps.removeSrc(srcPath); err != nil {
+		outcome.Reason = "imported, but the source file could not be deleted"
+		log.Printf("Imported file: %s (source delete failed: %v)", name, err)
+		return outcome
+	}
+	outcome.SourceDeleted = true
+	outcome.Reason = "source file deleted"
+	log.Printf("Imported file: %s (source deleted)", name)
+	return outcome
+}
+
+// isDirectChild reports whether path names an entry sitting directly inside
+// dir. Both sides go through EvalSymlinks so that a symlinked import folder
+// (a symlinked ~/Downloads, /tmp on systems where it is a link) still matches,
+// while anything reached by leaving the folder does not. Callers Lstat path
+// first and reject symlinks, so EvalSymlinks here only resolves path's parent
+// components.
+func isDirectChild(dir, path string) bool {
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return false
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	return filepath.Dir(resolvedPath) == resolvedDir
 }
 
 func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {

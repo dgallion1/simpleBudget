@@ -1,0 +1,129 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: P15
+ATTEMPT: 2
+---
+EVIDENCE:
+
+1. Manifest fidelity — PASS
+   .swarm/manifests/P15.1.files lists exactly:
+     internal/handlers/explorer/handlers.go
+     internal/handlers/explorer/handlers_test.go
+     web/templates/pages/filemanager.html
+   `git status --porcelain` (ignoring .swarm bookkeeping and the design-doc edit)
+   shows the same three source files modified. No unlisted source file touched.
+
+2. Toolchain green — PASS
+   - `go build ./...` → exit 0, no output.
+   - `go vet ./...` → exit 0, no output.
+   - `go test ./...` → exit 0; 44 packages reported (43 `ok` + `web` [no test
+     files]); zero FAIL/panic lines. Storage package ran 31.9s, retirement 2.7s.
+   - `staticcheck ./...` → exit 0, no output.
+
+3. Acceptance oracle — PASS
+   `bash .swarm/tier3/P15/accept.sh` reported:
+     CHECK 1..13 all PASS, SUMMARY: 13 passed, 0 failed. Exit 0.
+
+4. THE SAFETY PROPERTY — three deletion guards — PASS (the hardest criterion)
+   Exactly one call to `deps.removeSrc` exists (handlers.go:696). The only path
+   to it is the tail of importOneFile (handlers.go:616-705), and it requires
+   ALL THREE guards to have held:
+     Guard A (write succeeded): deps.write(destPath,data,0644) returned nil
+       at :672; a non-nil error returns "rejected" at :673 before the readback.
+     Guard B (readback matched): deps.readBack(destPath) returned no error
+       (:679) AND len(back)==len(data) (:683); a short readback returns
+       "rejected" at :684, a readback error at :681.
+     Guard C (direct child): srcPath was Lstat'd as a regular non-symlink file
+       (:641-650) and isDirectChild(cfg.ImportDirectory, srcPath) returned true
+       (:651); both sides go through filepath.EvalSymlinks so a symlinked
+       import folder still matches while anything reached by leaving it does
+       not (handlers.go:713-723).
+   `deleteSource` (line 586) is a fourth, explicit toggle; with it false the
+   function returns at :690 before removeSrc.
+   Skipped/rejected files NEVER reach line 696:
+     - Step 1 name validation (:621-624) and non-CSV check (:628-630) run
+       before any filesystem call — traversal/separator names rejected without
+       touching the FS.
+     - Step 2 not-found/symlink/non-regular/non-child (:642-653) returns before
+       the write.
+     - Step 3 collision (:661-662) and destination-stat error (:663-665)
+       return before the write.
+   This is verified by tests that stage each guard failing in isolation and
+   assert `removed == false` and the source survives:
+     TestImportOneFile_ShortReadbackNeverDeletes (handlers_test.go:2598) —
+       readback returns importCSV[:10], asserts removed false, source exists.
+     TestImportOneFile_ReadbackErrorNeverDeletes (:2625) — readback errors,
+       same assertions.
+     TestImportOneFile_SubdirectoryEntryNeverDeletes (:2647) — non-direct-child,
+       both "sub/nested.csv" and "nested.csv" spellings rejected, removed false.
+     TestImportOneFile_WriteFailureNeverDeletes (:2598 region) — write fails,
+       removed false.
+   The mixed-batch test (TestHandleImport_MixedBatchDeletesOnlyImported,
+   :2732) seeds good.csv + dupe.csv (collision) + notes.txt (non-CSV) +
+   ../escape.csv (traversal) in one POST with delete_source=true and asserts
+   only good.csv's source is deleted; collide/txt/escape sources survive. All
+   26 import tests pass under `go test ./internal/handlers/explorer/ -run
+   'Import|IsDirectChild' -v`.
+
+5. Wire format compliance — PASS
+   - deleteSource := r.PostFormValue("delete_source") == "true" (handlers.go:586)
+     — the literal string "true" only. TestHandleImport_DeleteSourceOnlyOnLiteral
+     True sub-tests value=1/yes/TRUE/on/(empty) all keep the source (pass).
+   - Names read from r.PostForm["name"] (:576), not Form, so URL query params
+     cannot inject selections.
+   - A name with a path separator is rejected at :621-624 BEFORE os.Lstat — no
+     filesystem touch. Confirmed live (curl -d name=../escape.csv → "rejected:
+     invalid filename", no /tmp/p15test/escape.csv created).
+   - No `name` fields → 400 at :581-584, returns before the per-file loop;
+     TestHandleImport_EmptyBatchIs400AndInert asserts the import dir entry
+     count is unchanged and the data dir stays empty. Blank-only names also 400
+     (TestHandleImport_BlankNameIs400).
+
+6. Scope — PASS
+   Only one new route added: r.Post("/explorer/import", handleImport)
+   (handlers.go:105). `git show HEAD:.../handlers.go | grep import` shows the
+   scan route r.Get("/explorer/import/scan", handleImportScan) was already
+   present at HEAD (P14); the diff's only deletion is one reworded comment
+   line, no P14 scan logic changed. No new config.Config field —
+   cfg.ImportDirectory (added in P14) is reused. No file-level dedup added
+   (the design doc §"Duplicate handling" explicitly defers to load-time
+   transaction dedup). No unrelated refactoring in the diff.
+
+7. Accessibility of the wired panel — PASS (ACCESSIBILITY.md points cited)
+   - Point 8 (no meaning by color alone): import-result partial
+     (filemanager.html:1455-1470) spells every outcome out in text —
+     "— {{.Status}}" plus "({{.Reason}})" — so imported/skipped/rejected and
+     "source file deleted" are legible without the emerald/amber/rose badge.
+     TestImportResult_Render_Outcomes asserts each of "imported", "skipped",
+     "rejected", "source file deleted", and the per-reason strings appear in
+     the rendered partial.
+   - Point 10 (HTMX swap result announced via aria-live): #import-result has
+     role="status" aria-live="polite" (filemanager.html:102), present on first
+     paint so the region is already watching when outcomes land.
+   - Point 4 (label associated): the delete-source checkbox
+     (filemanager.html:88) has <label for="import-delete-source"> at :86-91.
+   - Point 3 (buttons act): Import is <button type="submit"> (:92) and Rescan
+     is <button type="button"> (:64), no div onclick.
+   - Point 9 (visible focus): both buttons carry focus:ring-2
+     focus:ring-indigo-500 (:66, :93); the checkbox has focus:ring-indigo-500
+     (:89).
+
+8. Regression guard (ruling 2026-08-16a) — PASS
+   TestImportResult_Render_Outcomes (handlers_test.go:2795) renders the
+   "import-result" SWAP PARTIAL via renderer.RenderToString("import-result",
+   ...) with three outcomes (imported+deleted, skipped, rejected) and asserts
+   each outcome name, status word, and reason string is present in the
+   rendered HTML. This is the partial the handler swaps into #import-result
+   (handleImport calls renderer.RenderPartial(w, "import-result", ...) at
+   handlers.go:601), not the page's include of it — satisfying ruling
+   2026-08-16a consequence 2.
+
+   Live end-to-end against a real binary (built from the modified tree) with a
+   temp fixture dir outside the repo: scan listed only *.csv (excluded
+   notes.txt); POST name=bank.csv (no delete) copied to data dir, source
+   survived; POST name=second.csv&delete_source=true imported and deleted the
+   source; collision (bank.csv already present) skipped and source survived;
+   empty batch returned 400; traversal name=../escape.csv rejected with no
+   file created outside the import dir; non-CSV notes.txt rejected and
+   survived. Server killed and temp dir removed after.

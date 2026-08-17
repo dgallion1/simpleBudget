@@ -54,9 +54,9 @@
         </div>
     </div>
 
-    <!-- Import from Folder panel: lists CSVs found in ImportDirectory.
-         Read-only scan; the Import button is inert until P15 wires
-         POST /explorer/import. -->
+    <!-- Import from Folder panel: lists CSVs found in ImportDirectory and
+         imports the ticked ones through POST /explorer/import, optionally
+         deleting the originals. -->
     <section class="bg-white dark:bg-gray-800 rounded-lg shadow mb-4"
              aria-labelledby="import-folder-heading">
         <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
@@ -71,25 +71,35 @@
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Import folder: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{{if .ImportDirectory}}{{.ImportDirectory}}{{else}}(not configured){{end}}</code>
             </p>
-            <div id="import-scan-list" aria-live="polite" aria-busy="false">
-                {{template "import-scan" .}}
-            </div>
-            <!-- Import controls. Inert until P15: no action/hx-post is set, so
-                 this button posts nowhere. The delete-source checkbox is wired
-                 to nothing yet either. -->
-            <div class="flex items-center gap-3 pt-1">
-                <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
-                    <input type="checkbox" name="delete_source" value="true"
-                        class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
-                    Delete source files after import
-                </label>
-                <button type="button" disabled
-                    aria-disabled="true"
-                    title="Import is not yet available"
-                    class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    Import
-                </button>
-            </div>
+            <!-- The ticked entries and the delete-source flag are this form's
+                 fields, so htmx serializes exactly the pinned wire format:
+                 `name` repeated once per selection, plus `delete_source=true`
+                 only when the box is ticked. Entries already present in the
+                 data dir render disabled, and disabled inputs are never
+                 submitted. -->
+            <form id="import-form" class="space-y-3"
+                hx-post="/explorer/import" hx-target="#import-result" hx-swap="innerHTML">
+                <div id="import-scan-list" aria-live="polite" aria-busy="false">
+                    {{template "import-scan" .}}
+                </div>
+                <div class="flex items-center gap-3 pt-1">
+                    <label for="import-delete-source"
+                        class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" id="import-delete-source" name="delete_source" value="true"
+                            class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                        Delete source files after import
+                    </label>
+                    <button type="submit"
+                        class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        Import
+                    </button>
+                </div>
+            </form>
+            <!-- Result region. Outside the form, so an import never replaces
+                 the controls that triggered it and focus survives the swap;
+                 present on first paint so aria-live is already watching when
+                 the outcomes land. -->
+            <div id="import-result" role="status" aria-live="polite"></div>
         </div>
     </section>
 
@@ -1435,5 +1445,26 @@ document.addEventListener('DOMContentLoaded', function() {
 </ul>
 {{else if not .ImportMessage}}
 <p class="text-sm text-gray-500 dark:text-gray-400 py-2">Click Rescan to list CSV files in the import folder.</p>
+{{end}}
+{{end}}
+
+{{/* Per-file outcomes of POST /explorer/import, swapped into the page's
+     #import-result live region. Every outcome is spelled out in words —
+     "imported", "skipped", "rejected", and whether the source file was
+     deleted — so nothing depends on the badge colour to be understood. */}}
+{{define "import-result"}}
+{{if .Results}}
+<p class="text-sm font-medium text-gray-700 dark:text-gray-300">Import finished: {{len .Results}} file(s) processed.</p>
+<ul class="mt-1 space-y-1" role="list">
+    {{range .Results}}
+    <li class="text-sm text-gray-700 dark:text-gray-300">
+        <span class="font-medium text-gray-900 dark:text-gray-100">{{.Name}}</span>
+        <span class="font-medium {{if eq .Status "imported"}}text-emerald-700 dark:text-emerald-300{{else if eq .Status "skipped"}}text-amber-700 dark:text-amber-300{{else}}text-rose-700 dark:text-rose-300{{end}}">— {{.Status}}</span>
+        {{if .Reason}}<span class="text-gray-600 dark:text-gray-400">({{.Reason}})</span>{{end}}
+    </li>
+    {{end}}
+</ul>
+{{else}}
+<p class="text-sm text-gray-500 dark:text-gray-400">No files were selected for import.</p>
 {{end}}
 {{end}}

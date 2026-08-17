@@ -35,7 +35,7 @@ Dependency graph:
 ```
 A0 → A2 → A1 → A3 → A7, A9
           A2 → A4 → A5 → A8
-          A2, A4 → A6
+          A2 → A6
 ```
 
 | Task | Scope | Tier | Checks | Acceptance criteria (summary — worker brief carries full text) |
@@ -50,6 +50,12 @@ A0 → A2 → A1 → A3 → A7, A9
 | A7 | Transfers page (`/transfers`): monthly institution-flow chart with data-table fallback, history (paired + external), suspected-pair review queue (confirm/reject, HTMX) wired to A3 decisions. | 2 | tests, second, a11y | Queue actions persist decisions and update via HTMX with aria-live announcement; chart has table fallback; handler tests for confirm/reject/idempotent re-post; ACCESSIBILITY.md full pass. |
 | A8 | Dashboard Accounts card (balance, freshness, low-balance flag icon+text) + unassigned-files banner (dashboard + explorer) + projection summary line. | 1 | tests, a11y | Card renders all fixture states (healthy, stale, low, no-anchor); banner shows/links correctly; flag not color-only; ACCESSIBILITY.md pass. |
 | A9 | MCP: `get_accounts`, `get_balance_projection`, `get_transfers`, `set_balance_anchor` (confirm-token), `resolve_transfer` (confirm-token); server description replaces the "cannot answer transfers" clause. | 2 | tests, second | Tool tests per existing mcpsvc conventions; mutating tools refuse without token; description no longer disclaims transfers and references GLOSSARY terms. |
+
+**Graph amended 2026-08-16:** A6 originally listed A4 as a prerequisite. It is
+not one — A6's scope is account CRUD, the file-pattern editor, anchor *entry*
+and the threshold field, none of which read a balance. Displaying balances is
+A8. A6 needs only A2's Account model and store, so it may run in parallel with
+A1 and A4.
 
 Worker briefs: `.swarm/briefs/A<N>.md` — each contains the relevant design-doc
 sections verbatim plus file paths and the full acceptance criteria. Workers

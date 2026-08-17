@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -344,5 +345,78 @@ func TestDecisionsSnapshotSequenceOnAFreshInstall(t *testing.T) {
 	if len(third.SnapshotPaths) != 1 || third.SnapshotPaths[0] != second.SnapshotPaths[0] {
 		t.Errorf("third write's snapshot_paths = %v, want the same single path as the second (%v): once a .bak exists it is reused",
 			third.SnapshotPaths, second.SnapshotPaths)
+	}
+}
+
+// TestResolveDuplicatesReportsThePersistedSuppressedHash is the A1.4 fix's
+// guard. resolveOutput.SuppressedHash used to echo the caller's POSTED hash
+// (a legacy content hash) even though SaveDuplicateDecision rekeys it to a
+// StableID on the way to disk: the save takes the decision by value, so the
+// caller's local copy is never updated, and resolve.go echoed that untouched
+// local. The field's jsonschema description claimed it was "the value
+// actually persisted in duplicate_decisions.json", which was false.
+//
+// This test asserts the reported value EQUALS what is actually on disk, not
+// merely that it is non-empty and not merely that it equals the posted input.
+// It exercises the real rekeying path: list_duplicates (which the tool calls
+// via deps.load() at the top of its handler) runs LoadData first, populating
+// the StableID index that canonicalKey needs -- without that, canonicalKey is
+// a no-op and the posted hash would equal the persisted one, proving nothing
+// (the same trap that hid the A1.2 defect).
+func TestResolveDuplicatesReportsThePersistedSuppressedHash(t *testing.T) {
+	deps, dir := newLiveDeps(t)
+	cs := connect(t, deps)
+	key, kept, suppressed := pendingPairKey(t, cs)
+
+	out := decodeToolResult[resolveOutput](t, call(t, cs, "resolve_duplicates", map[string]any{
+		"pair_key":        key,
+		"outcome":         "kept_winner",
+		"kept_hash":       kept,
+		"suppressed_hash": suppressed,
+	}))
+
+	if out.SuppressedHash == "" {
+		t.Fatal("suppressed_hash is empty for a kept_winner resolution")
+	}
+	// The rekey MUST have fired: the reported value is a StableID, not the
+	// legacy content hash the panel posted. If they are equal, either the
+	// index was empty (the trap) or the re-read was skipped.
+	if out.SuppressedHash == suppressed {
+		t.Fatalf("suppressed_hash = %q equals the posted legacy hash; the SaveDuplicateDecision rekey to StableID did not fire (index empty?) or the re-read was skipped",
+			out.SuppressedHash)
+	}
+
+	// The discriminating assertion: read the file the loader actually wrote
+	// and compare, independently of the loader's in-memory view. The count
+	// guard rules out an empty/short file reading as vacuously equal.
+	type fileDecision struct {
+		KeptHash       string `json:"kept_hash,omitempty"`
+		SuppressedHash string `json:"suppressed_hash,omitempty"`
+		Outcome        string `json:"outcome"`
+	}
+	type fileDoc struct {
+		Decisions map[string]fileDecision `json:"decisions"`
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "duplicate_decisions.json"))
+	if err != nil {
+		t.Fatalf("read decisions file: %v", err)
+	}
+	var doc fileDoc
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("unmarshal decisions file: %v\n%s", err, raw)
+	}
+	if len(doc.Decisions) == 0 {
+		t.Fatalf("decisions file has no entries:\n%s", raw)
+	}
+	got, ok := doc.Decisions[key]
+	if !ok {
+		t.Fatalf("decisions file has no entry under the posted pair_key %q:\n%s", key, raw)
+	}
+	if got.Outcome != "kept_winner" {
+		t.Errorf("persisted outcome = %q, want kept_winner", got.Outcome)
+	}
+	if out.SuppressedHash != got.SuppressedHash {
+		t.Errorf("resolve_duplicates reported suppressed_hash = %q, but duplicate_decisions.json persists %q\nfile:\n%s",
+			out.SuppressedHash, got.SuppressedHash, raw)
 	}
 }

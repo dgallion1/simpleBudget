@@ -23,7 +23,7 @@ type resolveInput struct {
 type resolveOutput struct {
 	PairKey             string   `json:"pair_key"`
 	Outcome             string   `json:"outcome"`
-	SuppressedHash      string   `json:"suppressed_hash,omitempty"`
+	SuppressedHash      string   `json:"suppressed_hash,omitempty" jsonschema:"for kept_winner, the stored identity of the suppressed side as it is persisted in duplicate_decisions.json; SaveDuplicateDecision rekeys the posted hash to the row's StableID, so this may be a StableID rather than the legacy content hash list_duplicates reports"`
 	UnresolvedRemaining int      `json:"unresolved_remaining"`
 	SnapshotPaths       []string `json:"snapshot_paths,omitempty"`
 	Note                string   `json:"note,omitempty"`
@@ -156,10 +156,41 @@ func registerResolve(s *mcp.Server, deps Deps) {
 			return nil, resolveOutput{}, err
 		}
 
+		// The save succeeded, so the decision is on disk. Report the identity
+		// ACTUALLY persisted -- SaveDuplicateDecision rekeys the posted hash
+		// to the row's StableID on the way in, and takes the decision by value
+		// so `decision` here is still the untouched posted form. Echoing that
+		// would mis-document a StableID as a legacy content hash.
+		reportedSuppressed := decision.SuppressedHash
+		if stored, rerr := deps.Decisions.LoadDuplicateDecisions(); rerr != nil {
+			// The save itself succeeded; a read failure must not turn a
+			// success into a failure. Fall back to the posted hash and note
+			// the gap so a model does not treat it as the persisted value.
+			if note == "" {
+				note = "suppressed_hash is the posted value, not the persisted one: the post-save re-read failed: " + rerr.Error()
+			} else {
+				note += "; suppressed_hash is the posted value, not the persisted one: the post-save re-read failed: " + rerr.Error()
+			}
+		} else if sd, ok := stored[key]; ok {
+			reportedSuppressed = sd.SuppressedHash
+		} else {
+			// The key is absent from the re-read despite a successful save.
+			// SaveDuplicateDecision does not rekey the map KEY on its own
+			// (that pass lives in writeDecisionsLocked, which SaveDuplicateDecision
+			// also calls), so absence here would be a genuine surprise; treat
+			// it like the read-failure branch rather than claiming a value we
+			// cannot verify.
+			if note == "" {
+				note = "suppressed_hash is the posted value, not the persisted one: the saved decision was not found under the posted pair_key on re-read"
+			} else {
+				note += "; suppressed_hash is the posted value, not the persisted one: the saved decision was not found under the posted pair_key on re-read"
+			}
+		}
+
 		out = resolveOutput{
 			PairKey:        key,
 			Outcome:        outcome,
-			SuppressedHash: decision.SuppressedHash,
+			SuppressedHash: reportedSuppressed,
 			SnapshotPaths:  paths,
 			Note:           note,
 		}

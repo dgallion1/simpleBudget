@@ -30,6 +30,24 @@ func identityKey(t models.Transaction) string {
 	return t.Hash
 }
 
+// identityMatchesSuppressed reports whether key identifies the side of a
+// pair that a kept_winner decision suppressed. It is the equality analogue of
+// idxByIdentity: a stored decision's SuppressedHash may be either a StableID
+// (the form SaveDuplicateDecision rekeys to via canonicalKey) or a legacy
+// content hash (a decision written before StableID, or one whose row is
+// outside the loaded set), and the row being compared carries a legacy Hash
+// plus, usually, a StableID. Matching either form is what keeps the
+// Left = kept / Right = suppressed role swap correct for both on-disk shapes.
+func identityMatchesSuppressed(t models.Transaction, key string) bool {
+	if key == "" {
+		return false
+	}
+	if t.StableID != "" && key == t.StableID {
+		return true
+	}
+	return key == t.Hash
+}
+
 // assignStableIDs stamps StableID on every row in slice order -- which is file
 // order, because LoadDataContext appends whole files at a time -- and returns
 // the legacy Hash -> StableID index for those same rows.

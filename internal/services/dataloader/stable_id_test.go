@@ -488,3 +488,106 @@ func TestLoadData_DedupUnchangedAcrossOverlappingExports(t *testing.T) {
 		t.Errorf("survivor came from %q, want usaa-checking-a.csv", got)
 	}
 }
+
+// TestApplyDuplicateDetection_SuppressEarlierInFile_KeptIsLeft is the A1.3
+// regression: when the user suppresses the EARLIER-in-file row (pair.Left),
+// the resolved pair must still report Left = kept / Right = suppressed.
+//
+// Every pre-existing fixture happens to suppress the Right row, so the role
+// swap at loader.go:1075 never fired -- and because A1 rekeys
+// decision.SuppressedHash to a StableID on save while the comparison read
+// pair.Left.Hash (a legacy content hash), the swap could not fire even for
+// the Left-suppressed case. The panel and list_duplicates then named the
+// suppressed row as the kept one.
+//
+// This test drives the public write path the /duplicates form uses: a LoadData
+// first (the page calls loader.LoadData before rendering, which populates the
+// stableIDIndex), then SaveDuplicateDecision posting legacy content hashes
+// (the form renders Transaction.Hash), so the rekeying save path is exercised
+// end to end. Without LoadData the index is empty and canonicalKey is a no-op,
+// hiding the bug -- exactly why the suite stayed green.
+func TestApplyDuplicateDetection_SuppressEarlierInFile_KeptIsLeft(t *testing.T) {
+	// Detection pairs a scheduled bill pay with a posted check; the bill
+	// pay appears first in the slice, so detectNearDuplicatePairs makes it
+	// pair.Left. Suppressing it is the case every other fixture misses.
+	csv := `Date,Description,Category,Amount
+2026-03-19,Lucid,Auto Payment,-1580.43
+2026-03-20,Check #996583,Auto Payment,-1580.43`
+
+	dir, loader, cleanup := setupTestDir(t, map[string]string{
+		"usaa-checking-2026.csv": csv,
+	})
+	defer cleanup()
+
+	writeAccounts(t, dir, []models.Account{{
+		ID:           "usaa-checking",
+		Name:         "USAA Checking",
+		Kind:         models.AccountKindChecking,
+		FilePatterns: []string{"usaa-checking*.csv"},
+	}})
+
+	// LoadData runs assignStableIDs, publishing the stableIDIndex that
+	// SaveDuplicateDecision's canonicalKey needs to rekey the posted
+	// hashes. The /duplicates page does this same load before rendering.
+	ts, err := loader.LoadData()
+	if err != nil {
+		t.Fatalf("LoadData: %v", err)
+	}
+	if len(ts.Transactions) != 2 {
+		t.Fatalf("loaded %d rows, want 2", len(ts.Transactions))
+	}
+	billPay, check := ts.Transactions[0], ts.Transactions[1]
+	if billPay.Description != "Lucid" {
+		t.Fatalf("transaction order: [0] = %q, want Lucid (the bill pay, earlier in file)", billPay.Description)
+	}
+
+	// The pair key the panel would post. Use the unresolved pairs from the
+	// load above rather than re-detecting, so the key matches the loaded
+	// rows exactly.
+	unresolved := loader.UnresolvedDuplicates()
+	if len(unresolved) != 1 {
+		t.Fatalf("unresolved count = %d, want 1", len(unresolved))
+	}
+	pair := unresolved[0]
+	if pair.Left.Hash != billPay.Hash {
+		t.Fatalf("fixture orientation wrong: pair.Left = %q, want the bill pay %q",
+			pair.Left.Hash, billPay.Hash)
+	}
+
+	// The user suppresses the earlier-in-file (Left) row, keeping the
+	// check. The form posts legacy content hashes; SaveDuplicateDecision
+	// rekeys them to StableIDs internally.
+	if err := loader.SaveDuplicateDecision(pair.Key, DuplicateDecision{
+		Outcome:        DuplicateOutcomeKeptWinner,
+		KeptHash:       check.Hash,   // Right -- the kept side
+		SuppressedHash: billPay.Hash, // Left -- the suppressed side
+		DecidedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("SaveDuplicateDecision: %v", err)
+	}
+
+	// Reload so applyDuplicateDetection runs against the saved (rekeyed)
+	// decision, the same way the /duplicates page reflects a decision.
+	if _, err := loader.LoadData(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	resolved := loader.ResolvedDuplicates()
+	if len(resolved) != 1 {
+		t.Fatalf("resolved count = %d, want 1 (the kept_winner decision just saved)", len(resolved))
+	}
+	r := resolved[0]
+
+	// Left must be the kept row (the check), Right the suppressed row
+	// (the bill pay). Before the fix, Left stayed as pair.Left (the
+	// suppressed bill pay) because the rekeyed StableID could never equal
+	// pair.Left.Hash, so the swap never fired.
+	if r.Left.Hash != check.Hash {
+		t.Errorf("resolved Left = %q (%q), want the KEPT check %q",
+			r.Left.Hash, r.Left.Description, check.Hash)
+	}
+	if r.Right.Hash != billPay.Hash {
+		t.Errorf("resolved Right = %q (%q), want the SUPPRESSED bill pay %q",
+			r.Right.Hash, r.Right.Description, billPay.Hash)
+	}
+}

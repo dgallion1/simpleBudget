@@ -1070,9 +1070,14 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 				txns[i].Suppressed = true
 			}
 			// Keep the user-side roles in the resolved list: Left = kept.
+			// decision.SuppressedHash is rekeyed to a StableID on save
+			// (duplicate_decisions.go canonicalKey), while pair.Left.Hash
+			// is a legacy content hash -- so a raw == can never be true
+			// once a decision has been through SaveDuplicateDecision. Match
+			// either identity form, the same way idxByIdentity does above.
 			leftKept := pair.Left
 			rightSuppressed := pair.Right
-			if pair.Left.Hash == decision.SuppressedHash {
+			if identityMatchesSuppressed(pair.Left, decision.SuppressedHash) {
 				leftKept, rightSuppressed = pair.Right, pair.Left
 			}
 			resolved = append(resolved, DuplicatePair{

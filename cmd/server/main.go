@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"budget2/internal/config"
+	"budget2/internal/handlers/accounts"
 	"budget2/internal/handlers/approval"
 	"budget2/internal/handlers/backup"
 	"budget2/internal/handlers/dashboard"
@@ -110,6 +111,7 @@ func SetupDependencies(c *config.Config) error {
 	insights.Initialize(loader, renderer)
 	majorexpenses.Initialize(loader, renderer)
 	duplicates.Initialize(loader, renderer)
+	accounts.Initialize(loader, store, renderer)
 	// A restore rewrites the settings files on disk behind the settings
 	// manager's back. The manager is the restore gate: it holds its lock
 	// for the restore's whole write+prune phase — so no in-flight save can
@@ -292,6 +294,7 @@ func SetupRouter() chi.Router {
 		insights.RegisterRoutes(r)
 		majorexpenses.RegisterRoutes(r)
 		duplicates.RegisterRoutes(r)
+		accounts.RegisterRoutes(r)
 
 		backup.RegisterRoutes(r)
 	})

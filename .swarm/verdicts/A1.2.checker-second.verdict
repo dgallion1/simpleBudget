@@ -1,0 +1,52 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A1
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Repo: /home/darrell/bin/ai/budget2, HEAD 1deb38e; A1 introduced at 6435ed5 (parent a27d25d). Read the brief (.swarm/briefs/A1.md), GLOSSARY.md (StableID binding at line 109-122), design spec §1, and the Tier-3 divergence report (.swarm/tier3/A1/report.md) including the RESOLUTION.
+
+1. MANIFEST FIDELITY. `git diff --name-only 6435ed5~1 6435ed5` minus `.swarm/` and `ACCOUNTS_TRANSFERS_SPEC.md` is exactly 13 repo paths. `diff <(sort diff) <(sort .swarm/manifests/A1.1.files)` returns 0; both have 13 lines. `git status --porcelain` clean. No `wt-*` worktree paths leaked.
+
+2. TOOLCHAIN GREEN. Real output:
+   - `go build ./...` → exit 0, no output.
+   - `go vet ./...` → exit 0, no output.
+   - `staticcheck ./...` → exit 0, no output.
+   - `gofmt -l` over all 13 manifest Go files → exit 0, no files listed.
+   - `go test ./...` → every package `ok` (incl. internal/models, internal/services/dataloader, internal/services/majorexpenses, internal/services/insights, internal/handlers/majorexpenses); exit 0.
+
+3. ORACLE. `bash .swarm/tier3/A1/accept.sh` printed CHECK 1..10 all PASS, `SUMMARY: 10 passed, 0 failed`, ORACLE_EXIT=0. `ls internal/handlers/explorer/zz_probe*` after run → no such file (trap cleanup fired; no residue).
+
+4. THE DISTINGUISHING ISSUE (Hash-indexed sidecar lookups). The rejected impl rekeyed the pins sidecar to StableID while leaving three consumers indexing by `t.Hash`; pins silently stop resolving after rekey. Verified the merged code fixes all three, and audited every other site.
+   - `internal/services/insights/trends.go:37` — now `models.ResolveByIdentity(pins, t)` (was `pins[t.Hash]`). FIX confirmed.
+   - `internal/services/majorexpenses/engine.go:79` (the `Match` loop) — now `models.ResolveByIdentity(opts.Pins, t)`. FIX confirmed.
+   - `internal/services/majorexpenses/engine.go:128` (`AnnotateRecurringPayments`) — now `models.ResolveByIdentity(pins, first)`. FIX confirmed.
+   - `internal/services/dataloader/major_expense_names.go:61` — now `models.ResolveByIdentity(pins, t)`. FIX confirmed (the label-stamping path, a fourth consumer the report did not list).
+   - `internal/services/dataloader/amazon_enrichment.go:85` — now `models.ResolveByIdentity(enrich, transactions[i])`. FIX confirmed.
+   Other `[t.Hash]` / `[.*.Hash]` sites are NOT vulnerable because they do not read the rekeyed on-disk sidecar maps; they index freshly-built local maps keyed on Hash:
+   - `majorexpenses/engine.go:83` writes `result.PinnedHashes[t.Hash] = true` — a fresh, in-memory UI map (the unpin route posts Hash back). Not a sidecar read.
+   - `majorexpenses/engine.go:253` reads `pinned[t.Hash]` where `pinned` is the fresh `result.PinnedHashes` built two lines above, not the on-disk pins file.
+   - `handlers/explorer/handlers.go:81` builds `hashToExpense[t.Hash]` from `match.Groups` (fresh, in the same call), not from the sidecar.
+   - `mcpsvc/curate/register.go:129,135,230` — `set[t.Hash]`/`pinned[t.Hash]` are built fresh from `view.Match` (`Match`'s output), not from the persisted sidecar.
+   - `mcpsvc/curate/expenses.go:93`, `handlers/majorexpenses/handlers.go:377-378,430` — read `match.PinnedHashes[t.Hash]` (fresh from `Match`), not the sidecar.
+   - `dataloader/loader.go:951` — `aliases[transactions[i].Hash]` reads the ALIASES sidecar, which is OUT of A1 scope (brief pins only pins/duplicate_decisions/amazon_enrichment). Aliases is never rekeyed by A1, so Hash-indexing there remains correct. Confirmed aliases has no rekey path: `grep LoadAliases|SaveAliases|aliases\[` in dataloader shows no `rekeyToStable` call.
+   - `loader.go:747-748,1035,1058,1061` — `seen[t.Hash]` for dedup, `idxByIdentity[t.Hash]` for duplicate-decision application (both legacy-hash AND StableID are indexed at 1035-1038; the fallback path at 1048-1055 also checks the legacy pair key explicitly). Not sidecar-by-Hash consumers; correct.
+   - `anomalies/*`, `amazon/matcher.go:164`, `near_duplicates_test.go`, `dataloader/stable_id.go:60-61` — all build fresh local Hash-keyed maps or are the legacy-hash→StableID index itself. Not sidecar consumers.
+   No remaining site reads an identity-keyed sidecar by `.Hash` alone. Item 4 fully satisfied.
+
+5. LEGACY FALLBACK GENUINELY WORKS. In a scratch copy (transaction.go modified in place, then restored), deleted the `if t.Hash != "" { ... }` block from `models.ResolveByIdentity`. Ran the four named tests:
+   - `TestPinFor_LegacyHashSidecarStillResolves` → FAIL: `PinFor did not resolve a legacy-hash-keyed pin`.
+   - `TestApplyAmazonEnrichment_LegacyHashSidecarStillResolves` → FAIL: `EnrichedDescription = "", want the legacy-keyed label`.
+   The duplicate-decisions legacy test still passed because it resolves via `idxByIdentity[t.Hash]` (loader.go:1035) plus the legacy pair-key fallback at loader.go:1048-1055, not via `ResolveByIdentity` — so the fallback for that store is structurally separate and still present. After restore, the pins test returned to `ok`. Confirmed the fallback is load-bearing.
+
+6. REKEY ON SAVE, ORPHAN PRESERVED. `writePinsLocked` (transaction_pins.go:64-67) calls `rekeyToStable(pins, dl.stableIDIndex())` then persists. `rekeyToStable` (stable_id.go:143-161) explicitly skips (a) keys already in StableID form and (b) legacy keys not in the index — the orphan case — and only moves entries the index resolves. `TestSetTransactionPin_RekeysResolvedEntriesAndKeepsOrphans` (stable_id_test.go:246-298) stages `{vet.Hash, orphan}` via `WriteTransactionPins` (verbatim), then triggers a normal write, and asserts `len(pins) == 3`, `pins[vet.StableID] == "me-vet"`, no `pins[vet.Hash]`, `pins[orphan] == "me-vet"`. Amazon (`SaveAmazonEnrichment` amazon_enrichment.go:62) and duplicate-decisions (`writeDecisionsLocked` duplicate_decisions.go:154-173) rekey the same way. Item 6 satisfied.
+
+7. DEDUP UNCHANGED. `git diff 6435ed5~1 6435ed5 -- internal/services/dataloader/loader.go | grep -E "deduplicat|ComputeHash"` → no hunks touch `deduplicateTransactions` or `ComputeHash`. `ComputeHash` body unchanged (diff of transaction.go shows the function untouched; StableIDFor added after it). `deduplicateTransactions` (loader.go:742-759) still keys on `seen[t.Hash]` alone. `TestDeduplicateTransactions_IgnoresStableID` (stable_id_test.go:432-453) covers BOTH directions explicitly: (a) same Hash + different StableIDs → 1 row; (b) different Hashes + identical StableID → 2 rows. Plus `TestLoadData_DedupUnchangedAcrossOverlappingExports` covers it at load level. Item 7 satisfied.
+
+8. SCOPE. Diff stat shows only the 13 manifest files plus `.swarm/` bookkeeping and `ACCOUNTS_TRANSFERS_SPEC.md` (a spec note). No `internal/services/transfers` package (A3), no `internal/services/accounts` balance code (A4), no MCP tool additions, no new UI templates/handlers. The one pre-existing test change — `internal/handlers/majorexpenses/coverage_test.go` (TestBuildPageData_PinnedHashesReachSummary) — replaced `pins[hash] != ""` with `dl.PinFor(...)` followed by `ok || id == ""`. The old assertion encoded the old key convention (pins keyed by Hash); after A1 pins are stored under StableID, so the old assertion would fail spuriously against a correctly-rekeyed sidecar. This is exactly the reason behavior 3 says a test that encodes the old key convention should change, and is NOT papering over a regression: the new assertion still verifies the pin was stored (via the resolution path the production code uses), and still fails if the pin is missing.
+
+9. RULING 2026-08-16e (loop-based assertions). `internal/models/stable_id_test.go` has one loop (line 74) preceded by `if len(cases) == 0 { t.Fatal("no cases") }` at line 71. `internal/services/dataloader/stable_id_test.go` has two loops: line 19 is a helper that itself `t.Fatalf`s on empty/dup, and line 68 is preceded by `if len(want) != 3 { t.Fatalf(...) }` at line 65. No loop-based assertion is missing a count guard.
+
+FAMILY field note: routing-alias supplied by dispatcher is `checker-glm`, resolved by the LiteLLM gateway to Z.ai's GLM; set to `glm` per the dispatcher's explicit instruction.

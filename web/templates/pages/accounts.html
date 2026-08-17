@@ -1,0 +1,489 @@
+{{/* Accounts settings page (/accounts).
+   Expects: pageData (internal/handlers/accounts.pageData) with:
+     - Title, ActiveTab
+     - Accounts []accountView (Account, MatchedFiles, IsFirst)
+     - UnassignedFiles []string
+     - AccountKinds []models.AccountKind
+     - DefaultThreshold float64
+     - Warnings []string (pattern-overlap warnings)
+     - Error string (validation/save error to surface)
+     - ErrorField string (field name the error pertains to, for focus)
+     - ConfirmDeleteID string (account whose delete-confirm panel is open)
+   Accessibility:
+     - One <h1>, landmark <main> (from base), logical heading order.
+     - Every input has a programmatically associated <label>.
+     - Validation errors: an aria-live region announces the error, and
+       the offending field carries aria-describedby pointing at it. A
+       data-focus-target attribute marks the field so client-side JS can
+       move focus to it (the base layout is HTML-only; focus handling is
+       progressive enhancement).
+     - Required fields and the expected date/currency formats are stated
+       in text, not via placeholder alone.
+     - Status is never color-only: low-balance flags pair color with an
+       icon and text; unassigned files carry a text label.
+     - Full keyboard operability: every action is a real <button> or
+       <input type="submit">; the confirm step is a second submit, not a
+       click handler on a div.
+*/}}
+{{define "accounts-content"}}
+<div class="space-y-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Accounts</h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Tell the app which CSV files belong to which account. A file is
+            matched against each account&rsquo;s patterns in ascending account-ID
+            order; the first match wins. Files matching no account load as
+            <em>unassigned</em> &mdash; they are still visible, but their rows
+            carry no account attribution.
+        </p>
+    </div>
+
+    {{/* aria-live region: validation / save errors announced here. */}}
+    <div id="accounts-error-region" role="status" aria-live="polite" aria-atomic="true" class="sr-only">
+        {{if .Error}}{{.Error}}{{end}}
+    </div>
+
+    {{/* Visible error banner, kept in sync with the live region. */}}
+    {{if .Error}}
+    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="font-medium text-red-700 dark:text-red-300">There&rsquo;s a problem with your submission</span>
+        </div>
+        <p class="mt-2 text-sm text-red-600 dark:text-red-400" id="accounts-error-text">{{.Error}}</p>
+    </div>
+    {{end}}
+
+    {{/* Pattern-overlap warnings are advisory: the save still happens. */}}
+    {{if .Warnings}}
+    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
+            </svg>
+            <span class="font-medium text-amber-700 dark:text-amber-300">Pattern overlap warning</span>
+        </div>
+        <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside">
+            {{range .Warnings}}<li>{{.}}</li>{{end}}
+        </ul>
+        <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            First match still wins by account-ID order, so loading is deterministic.
+            Tighten the patterns if this is unintended.
+        </p>
+    </div>
+    {{end}}
+
+    <div id="accounts-list">
+        {{template "accounts-list-partial" .}}
+    </div>
+</div>
+
+{{/* HTMX focus handling (ACCESSIBILITY.md point 10). After a swap of
+     #accounts-list, move focus to the first field flagged aria-invalid (the
+     offending field on a validation error), or to the swapped region's
+     heading if there is no error, so the user lands somewhere sensible
+     inside the new markup rather than being dropped at the top of the
+     page. The aria-live region above announces errors; this script only
+     manages focus. It is progressive enhancement — the page is usable
+     without JS. */}}
+<script>
+    (function () {
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            var target = evt.detail && evt.detail.target;
+            if (!target || target.id !== 'accounts-list') return;
+            // Prefer the field flagged for the error (data-focus-target
+            // mirrors ErrorField); fall back to any aria-invalid field;
+            // otherwise land on the list heading.
+            var focusable = target.querySelector('[data-focus-target]')
+                || target.querySelector('[aria-invalid="true"]');
+            if (focusable) {
+                try { focusable.focus(); } catch (e) {}
+                return;
+            }
+            var heading = target.querySelector('#accounts-list-heading');
+            if (heading) {
+                heading.setAttribute('tabindex', '-1');
+                try { heading.focus(); } catch (e) {}
+            }
+        });
+    })();
+</script>
+{{end}}
+
+{{/* accounts-list-partial is the HTMX swap target for every mutation.
+     A single write is the whole response to a create/update/delete/anchor
+     action, so the page never needs a second round-trip to reflect the
+     new state. Mirrors the majorexpenses "major-expenses-results" partial
+     pattern. */}}
+{{define "accounts-list-partial"}}
+<div class="space-y-4">
+    {{/* Re-announce errors inside the swapped region too, so a mutation
+         that fails validation surfaces the message in-place. */}}
+    {{if .Error}}
+    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4" role="alert">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="font-medium text-red-700 dark:text-red-300">There&rsquo;s a problem with your submission</span>
+        </div>
+        <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{.Error}}</p>
+    </div>
+    {{end}}
+
+    {{if .Warnings}}
+    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
+            </svg>
+            <span class="font-medium text-amber-700 dark:text-amber-300">Pattern overlap warning</span>
+        </div>
+        <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside">
+            {{range .Warnings}}<li>{{.}}</li>{{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    {{/* Create form. Always visible so the user can add an account. */}}
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-new-heading">
+        <h2 id="accounts-new-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Add an account</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Required fields are marked with an asterisk (*).
+        </p>
+        <form hx-post="/accounts" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-4 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="acct-new-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Account ID <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                        <span class="sr-only">(required)</span>
+                    </label>
+                    <input type="text" id="acct-new-id" name="id" required
+                        autocomplete="off"
+                        data-focus-target="id"
+                        aria-describedby="acct-new-id-help"
+                        {{if eq .ErrorField "id"}}aria-invalid="true"{{end}}
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <p id="acct-new-id-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        A stable slug, e.g. <code>usaa-checking</code>. Transactions and
+                        your saved decisions reference it, so it must be unique and should
+                        not be renamed casually.
+                    </p>
+                </div>
+                <div>
+                    <label for="acct-new-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Name <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                        <span class="sr-only">(required)</span>
+                    </label>
+                    <input type="text" id="acct-new-name" name="name" required
+                        autocomplete="off"
+                        data-focus-target="name"
+                        {{if eq .ErrorField "name"}}aria-invalid="true"{{end}}
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="acct-new-institution" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Institution</label>
+                    <input type="text" id="acct-new-institution" name="institution"
+                        autocomplete="off"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="acct-new-kind" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kind</label>
+                    <select id="acct-new-kind" name="kind"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        {{range .AccountKinds}}
+                        <option value="{{.}}">{{title (printf "%s" .)}}</option>
+                        {{end}}
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <code>credit</code> forces the credit-card sign convention
+                        for this account&rsquo;s files, overriding the &ge;70%-positive
+                        heuristic. Other kinds leave the heuristic alone.
+                    </p>
+                </div>
+            </div>
+            <div>
+                <label for="acct-new-patterns" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    File patterns
+                </label>
+                <textarea id="acct-new-patterns" name="file_patterns" rows="3"
+                    aria-describedby="acct-new-patterns-help"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="usaa-checking*.csv&#10;usaa"></textarea>
+                <p id="acct-new-patterns-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    One pattern per line. Patterns are matched case-insensitively
+                    against the CSV filename: a glob first (<code>path.Match</code>),
+                    then a plain substring as a fallback. A pattern like
+                    <code>usaa</code> matches <code>usaa-checking.csv</code>.
+                </p>
+            </div>
+            <div>
+                <label for="acct-new-threshold" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Low-balance threshold
+                </label>
+                <input type="number" id="acct-new-threshold" name="low_balance_threshold"
+                    step="0.01" min="0"
+                    aria-describedby="acct-new-threshold-help"
+                    {{if eq .ErrorField "low_balance_threshold"}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                <p id="acct-new-threshold-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Enter a dollar amount, e.g. <code>500</code>. Leave blank or enter
+                    <code>0</code> to use the default of ${{printf "%.0f" .DefaultThreshold}}.
+                    Only meaningful for checking and savings accounts.
+                </p>
+            </div>
+            <div>
+                <button type="submit"
+                    class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    Add account
+                </button>
+            </div>
+        </form>
+    </section>
+
+    {{/* Existing accounts. */}}
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-list-heading">
+        <h2 id="accounts-list-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Your accounts</h2>
+        {{if not .Accounts}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">No accounts configured yet.</p>
+        {{else}}
+        <ul class="mt-3 space-y-4">
+            {{$root := .}}
+            {{range $acct := .Accounts}}
+            <li class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-medium text-gray-800 dark:text-gray-100">
+                            {{$acct.Account.Name}}
+                            {{if $acct.IsFirst}}
+                            <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">(first match wins)</span>
+                            {{end}}
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <span class="font-mono text-gray-700 dark:text-gray-300">{{$acct.Account.ID}}</span>
+                            {{if $acct.Account.Institution}}&middot; {{$acct.Account.Institution}}{{end}}
+                            &middot; <span class="font-mono">{{$acct.Account.Kind}}</span>
+                        </p>
+                    </div>
+                </div>
+
+                {{/* Edit form. */}}
+                <form hx-post="/accounts/{{$acct.Account.ID}}" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="acct-edit-name-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Name <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                <span class="sr-only">(required)</span>
+                            </label>
+                            <input type="text" id="acct-edit-name-{{$acct.Account.ID}}" name="name" value="{{$acct.Account.Name}}" required
+                                {{if and (eq $root.ErrorField "name") (eq $root.ConfirmDeleteID "")}}data-focus-target="name" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="acct-edit-institution-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Institution</label>
+                            <input type="text" id="acct-edit-institution-{{$acct.Account.ID}}" name="institution" value="{{$acct.Account.Institution}}"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="acct-edit-kind-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kind</label>
+                            <select id="acct-edit-kind-{{$acct.Account.ID}}" name="kind"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                {{range $root.AccountKinds}}
+                                <option value="{{.}}" {{if eq . $acct.Account.Kind}}selected{{end}}>{{title (printf "%s" .)}}</option>
+                                {{end}}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="acct-edit-threshold-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Low-balance threshold
+                            </label>
+                            <input type="number" id="acct-edit-threshold-{{$acct.Account.ID}}" name="low_balance_threshold"
+                                step="0.01" min="0"
+                                value="{{if gt $acct.Account.LowBalanceThreshold 0.0}}{{printf "%.2f" $acct.Account.LowBalanceThreshold}}{{end}}"
+                                aria-describedby="acct-edit-threshold-help-{{$acct.Account.ID}}"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <p id="acct-edit-threshold-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Blank or <code>0</code> uses the default (${{printf "%.0f" $root.DefaultThreshold}}).
+                            </p>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="acct-edit-patterns-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            File patterns
+                        </label>
+                        <textarea id="acct-edit-patterns-{{$acct.Account.ID}}" name="file_patterns" rows="3"
+                            aria-describedby="acct-edit-patterns-help-{{$acct.Account.ID}}"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">{{range $acct.Account.FilePatterns}}{{.}}&#10;{{end}}</textarea>
+                        <p id="acct-edit-patterns-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            One per line. Glob (<code>path.Match</code>) first, substring fallback.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="submit"
+                            class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            Save changes
+                        </button>
+                    </div>
+                </form>
+
+                {{/* Pattern editor: live matches for THIS account. */}}
+                <div class="mt-4">
+                    <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Matched files</h4>
+                    {{if $acct.MatchedFiles}}
+                    <ul class="mt-2 text-sm text-gray-700 dark:text-gray-300 list-disc list-inside">
+                        {{range $acct.MatchedFiles}}<li class="font-mono">{{.}}</li>{{end}}
+                    </ul>
+                    {{else}}
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        No CSV files in the data directory currently match this account&rsquo;s patterns.
+                    </p>
+                    {{end}}
+                </div>
+
+                {{/* Anchors. */}}
+                <div class="mt-4">
+                    <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Balance anchors</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        An anchor records the balance at the <strong>end</strong> of the
+                        anchor day. A transaction dated on the anchor day is already
+                        reflected in the amount and is not added again when rolling the
+                        balance forward.
+                    </p>
+                    {{if $acct.Account.Anchors}}
+                    <table class="mt-2 w-full text-sm">
+                        <caption class="sr-only">Balance anchors for {{$acct.Account.Name}}</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col" class="text-left font-medium text-gray-700 dark:text-gray-300 py-1">Date</th>
+                                <th scope="col" class="text-left font-medium text-gray-700 dark:text-gray-300 py-1">Amount</th>
+                                <th scope="col" class="text-left font-medium text-gray-700 dark:text-gray-300 py-1">Note</th>
+                                <th scope="col" class="sr-only">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range $acct.Account.Anchors}}
+                            <tr>
+                                <td class="py-1 text-gray-700 dark:text-gray-300">{{formatDate .Date}}</td>
+                                <td class="py-1 text-gray-700 dark:text-gray-300">{{formatMoney .Amount}}</td>
+                                <td class="py-1 text-gray-600 dark:text-gray-400">{{.Note}}</td>
+                                <td class="py-1">
+                                    <form hx-post="/accounts/{{$acct.Account.ID}}/anchor/{{.Date.Format "2006-01-02"}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                                        <button type="submit"
+                                            aria-label="Delete anchor dated {{formatDate .Date}}"
+                                            class="text-xs text-red-600 dark:text-red-400 hover:underline focus:outline-none focus:ring-2 focus:ring-red-400 rounded">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                    {{else}}
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">No anchors set.</p>
+                    {{end}}
+
+                    <form hx-post="/accounts/{{$acct.Account.ID}}/anchor" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                        <div class="md:col-span-1">
+                            <label for="acct-anchor-date-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Anchor date <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                <span class="sr-only">(required)</span>
+                            </label>
+                            <input type="date" id="acct-anchor-date-{{$acct.Account.ID}}" name="anchor_date" required
+                                pattern="\d{4}-\d{2}-\d{2}"
+                                aria-describedby="acct-anchor-date-help-{{$acct.Account.ID}}"
+                                {{if eq $root.ErrorField "anchor_date"}}data-focus-target="anchor_date" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <p id="acct-anchor-date-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Format: YYYY-MM-DD.
+                            </p>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label for="acct-anchor-amount-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Amount <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                <span class="sr-only">(required)</span>
+                            </label>
+                            <input type="number" id="acct-anchor-amount-{{$acct.Account.ID}}" name="anchor_amount" required
+                                step="0.01"
+                                aria-describedby="acct-anchor-amount-help-{{$acct.Account.ID}}"
+                                {{if eq $root.ErrorField "anchor_amount"}}data-focus-target="anchor_amount" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <p id="acct-anchor-amount-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Dollars, bank convention (positive = money you have), e.g. <code>4210.55</code>.
+                            </p>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label for="acct-anchor-note-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Note (optional)</label>
+                            <input type="text" id="acct-anchor-note-{{$acct.Account.ID}}" name="anchor_note"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div class="md:col-span-1">
+                            <button type="submit"
+                                class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                Add anchor
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {{/* Delete flow with explicit confirm. */}}
+                <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                    {{if eq $root.ConfirmDeleteID $acct.Account.ID}}
+                    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3" role="alert">
+                        <p class="text-sm font-medium text-red-700 dark:text-red-300">
+                            Deleting an account is destructive: its transactions become
+                            unassigned. This cannot be undone.
+                        </p>
+                        <div class="mt-2 flex items-center gap-2">
+                            <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                                <input type="hidden" name="confirm" value="yes">
+                                <button type="submit"
+                                    class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400">
+                                    Yes, delete &ldquo;{{$acct.Account.Name}}&rdquo;
+                                </button>
+                            </form>
+                            <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                                <button type="submit"
+                                    class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                    Cancel
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {{else}}
+                    <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                        <button type="submit"
+                            aria-label="Delete account {{$acct.Account.Name}} (asks for confirmation)"
+                            class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-red-600 dark:text-red-400 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-400">
+                            Delete account
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
+            </li>
+            {{end}}
+        </ul>
+        {{end}}
+    </section>
+
+    {{/* Unassigned files. */}}
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-unassigned-heading">
+        <h2 id="accounts-unassigned-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Unassigned files</h2>
+        {{if .UnassignedFiles}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            These CSV files match no account&rsquo;s patterns. They still load, but
+            their rows carry no account attribution.
+        </p>
+        <ul class="mt-2 text-sm text-gray-700 dark:text-gray-300 list-disc list-inside">
+            {{range .UnassignedFiles}}<li class="font-mono">{{.}}</li>{{end}}
+        </ul>
+        {{else}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Every CSV file in the data directory matches an account, or no CSV files are present.
+        </p>
+        {{end}}
+    </section>
+</div>
+{{end}}

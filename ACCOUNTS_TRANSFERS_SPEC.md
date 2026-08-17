@@ -152,6 +152,46 @@ output** (e.g. "a pinned transaction still shows its major-expense name via the
 insights path"), not merely on the new accessor. This is ruling 2026-08-16a's
 shape again — green tests over a feature broken where the user looks.
 
+**2026-08-16g — A1 attempt 2 rejected; dispute upheld without a judge panel.**
+`checker-tests` (anthropic) returned FAIL, `checker-second` (glm) returned PASS.
+The lead verified the FAIL mechanically before acting on it, and it is correct:
+
+`internal/services/dataloader/loader.go:1075` compares
+`pair.Left.Hash == decision.SuppressedHash`, but A1 rekeys
+`decision.SuppressedHash` to a StableID on save
+(`duplicate_decisions.go:107-108`). A legacy content hash can never equal a
+StableID, so the swap that makes `Left = kept` never fires. `/duplicates`
+renders `.Left` under "Kept" (`duplicates.html:70-77`) and MCP
+`list_duplicates` returns the same pairs, so whenever the user suppresses the
+earlier-in-file row **both surfaces name the suppressed row as the one that was
+kept**. Silent: no error, no log line, whole suite green — every existing
+fixture happens to suppress the Right row. The immediately preceding line
+(`:1069`) WAS converted to `idxByIdentity`; this one was missed.
+
+**Procedure note.** CLAUDE.md sends a Tier 2+ dispute to three judges. No panel
+was convened, for two reasons. First, `judge-local` is unavailable
+(`worker-local` down), and the gate requires three *distinct* families, so the
+panel is mechanically unservable. Second and decisive: a panel adjudicates
+genuine disagreement, and there was none to adjudicate — the lead reproduced
+the defect from the source and the public write path. Upholding the FAIL
+produces the same outcome a majority-UPHOLD would: the task returns to the
+worker as a new attempt. Verdicts for attempt 2 stand as the historical record.
+
+**Why the two families disagreed, which is the point of having them.** The GLM
+checker audited map-index patterns (`pins[t.Hash]`) and correctly found and
+cleared five of them — including one the divergence report had missed. This
+defect is an `==` comparison, a structurally different shape its method could
+not surface. Different family, different blind spot; the FAIL came from the
+family that read the control flow rather than grepping the access pattern.
+
+**Two lower-severity findings recorded, not driving the verdict:**
+- `aliases.json` (`loader.go:931/951`) is still Hash-keyed on both ends. NOT
+  broken by A1 (nothing rekeys it), but it remains orphanable by exactly the
+  description reformat A1 exists to prevent. Out of A1's named scope; deserves
+  its own task.
+- `mcpsvc/admin/resolve.go:162` now echoes a StableID in a field whose
+  jsonschema documents it as a hash. Introduced by A1, so in scope for the fix.
+
 **Known test gap, accepted at A2:** the early-exit `setUnassignedCount(0)`
 reset paths in `LoadDataContext` are correct but not covered — deleting those
 two lines leaves the suite green. Worth a test when A4 next touches that

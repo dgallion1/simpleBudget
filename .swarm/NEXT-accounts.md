@@ -49,38 +49,32 @@ it will not help; the account needs credits.
 
 User chose to top up. Once credits are back, no config change is needed.
 
-## Status
+## Task table
 
 | Task | Scope | Tier | Status |
 |------|-------|------|--------|
 | A0 | GLOSSARY vocabulary | 1 | **accepted** `496dd45` |
-| A1 | StableID + sidecar migration | 3 | merged `6435ed5`, **NOT accepted** — needs Tier-2 dual-family |
-| A2 | Account model + loader attribution | 3 | **accepted** `ce69515` |
-| A3 | Transfer classification | 3 | not started — oracle not yet written |
+| A1 | StableID + sidecar migration | 3 | **accepted at attempt 4** `1680e46` |
+| A2 | Account model + loader attribution | 3 | **accepted at attempt 2** `ce69515` |
+| A3 | Transfer classification | 3 | pending — oracle not yet written |
 | A4 | Balances (anchor, freshness, drift) | 2 | **accepted** `a27d25d` |
-| A5 | Funding projection | 2 | not started |
-| A6 | Accounts settings UI | 1 | **incomplete** — see below |
-| A7 | Transfers page | 2 | not started |
-| A8 | Dashboard card + banner | 1 | not started |
-| A9 | MCP tools | 2 | not started |
+| A5 | Funding projection | 2 | pending |
+| A6 | Accounts settings UI | 1 | **accepted** `e918fb2` |
+| A7 | Transfers page | 2 | pending |
+| A8 | Dashboard card + banner | 1 | pending |
+| A9 | MCP tools | 2 | pending |
 
-## Resume sequence, once credits are restored
+Follow-ups raised as separate task chips, not part of this run: the dead
+Cancel control on the accounts delete-confirm panel plus its focus
+misdirection and one vacuous test loop; the pre-existing File Manager a11y
+violations; and `handleImport`'s untested render path.
 
-1. **A1 verification.** Both blind implementations are already built, compared
-   (10/10 each), adjudicated and merged — only the two Tier-2 checkers still
-   need to run, at **attempt 2**. Briefs: reuse the A2 checker pattern; include
-   the routing fact (see `.swarm/NEXT.md`) so `checker-second` writes
-   `FAMILY: glm`. Verdict files go to `.swarm/verdicts/A1.2.<checker>.verdict`.
-   Then `gate.sh check A1`, escalate-scan, ledger → accepted.
-
-2. **A6.** Partial work is in the worktree `.swarm/work/A6`
-   (`internal/handlers/accounts/`, `cmd/server/main.go`,
-   `web/templates/layouts/base.html`, `web/templates/pages/accounts.html`).
-   Its first worker exited 0 having written only `handlers.go`; the
-   continuation then died on the 402. It needs finishing and has never been
-   verified. Brief: `.swarm/briefs/A6.md`.
-
-3. Then A3 (Tier 3, oracle must be written first), A5, A7, A8, A9.
+Known, outside A1's scope: `admin/undo.go:57` pre-checks `decisions[key]`
+without the `legacyPairKeysFor` aliasing that `ClearDuplicateDecision`
+applies, so a pre-StableID decision makes `undo_resolve` claim there is
+nothing to undo. Fails loudly. And `aliases.json` is still Hash-keyed on both
+ends — not broken by A1, but orphanable by exactly the description reformat
+A1 exists to prevent.
 
 ## Rulings this run has already produced
 

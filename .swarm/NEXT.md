@@ -4,19 +4,42 @@ Rewritten 2026-08-16. A relaunched session starts cold; this file is the handoff
 
 ## Where things stand
 
-Branch `fix/review-aug16`. P13 and P14 are accepted and committed. **P15 is
-blocked on infrastructure** — see "The P15 blocker" below.
+Branch `fix/review-aug16`. **The File Manager run is COMPLETE.** All 15 tasks
+are accepted with verified evidence; `swarm/gate.sh done` exits 0. The final
+accessibility pass found no regressions.
+
+P15's blocker was resolved by user ruling 2026-08-16c: an Anthropic-family
+model substituted for the unavailable `worker-local` as the second blind
+implementer. The `worker-local` infrastructure problem below is UNFIXED and
+will block the next Tier-3 task and any three-judge dispute.
 
 | Task | Scope | Tier | Status |
 |------|-------|------|--------|
 | P12 | Multi-file upload | 1 | accepted, merged, pushed |
 | P13 | Sortable columns | 2 | **accepted at attempt 2**, committed `ce963e2` |
 | P14 | `ImportDirectory` config + scan endpoint | 2 | **accepted at attempt 1**, committed `04ba148` |
-| P15 | Import execute + source delete | 3 | pending — oracle written, BLOCKED |
+| P15 | Import execute + source delete | 3 | **accepted at attempt 2**, committed `0a8225a` |
 
-`gate.sh done` currently fails listing P15 (correct). The ledger also carries
-the accounts/transfers run's tasks once those are appended — see
-`ACCOUNTS_TRANSFERS_SPEC.md`.
+`gate.sh done` exits 0. Next work is the accounts/transfers run (tasks A0–A9),
+spec approved 2026-08-16 — see `ACCOUNTS_TRANSFERS_SPEC.md`. Appending those
+rows to the ledger will make `gate.sh done` fail again, correctly, until they
+are accepted.
+
+## Follow-ups this run deliberately did not absorb
+
+1. **Pre-existing accessibility violations on the File Manager page.** Unlabelled
+   toggle checkboxes, an unnamed SVG delete button, and low-contrast text, all
+   byte-identical at the run's starting point. Counts disagree between the two
+   audits — the P13 axe run reported 20, the final pass reported 6 (5 contrast
+   plus the unnamed button). The discrepancy is unreconciled; whoever takes the
+   follow-up should re-count rather than trust either number.
+2. **`handleImport`'s render call is untested.** Every `handleImport` test runs
+   with `renderer == nil` (JSON fallback), so no Go test executes
+   `handlers.go:601`. Live curl confirmed correct behavior today, but an edit
+   changing only the template name would ship an empty body with a green suite —
+   the same failure shape as ruling 2026-08-16a. Cheap fix: one handler test
+   using `setupTestEnvWithRenderer` asserting the body contains "Import
+   finished".
 
 ## How to dispatch (this session learned it the hard way)
 

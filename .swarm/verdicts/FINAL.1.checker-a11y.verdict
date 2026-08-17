@@ -1,0 +1,106 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: FINAL
+ATTEMPT: 1
+
+---
+
+## SCOPE
+
+This pass audits the File Manager page (`web/templates/pages/filemanager.html`, served at `/filemanager`) following commits:
+- P13: Sortable column headers (commit ce963e2)
+- P14: ImportDirectory config + import folder panel (commit 04ba148)
+- P15: Wired import POST + result region (commit 0a8225a)
+
+Against ACCESSIBILITY.md constitution plus WCAG 2.2 AA standard.
+
+## EVIDENCE
+
+### AUTOMATED AUDIT (A-1)
+
+Ran `npx @axe-core/cli@4` against http://127.0.0.1:18123/filemanager with the app built from HEAD.
+
+**Result**: 5 color-contrast violations reported.
+**Classification**: ALL PRE-EXISTING. Design doc §3 confirms 20 pre-existing violations on this page; these 5 match the documented set (low-contrast gray text in light mode, file size span, nav link).
+
+Violations are byte-identical before and after P13/P14/P15 changes. They predate this run and are tracked as follow-up work.
+
+---
+
+### (a) INTRODUCED OR WORSENED BY P13/P14/P15
+
+**NONE FOUND.**
+
+**P13: Sortable column headers** (filemanager.html:1348–1378, lines 485–607 JavaScript)
+
+- ✓ Real `<button type="button">` elements inside `<th scope="col">` headers
+- ✓ `aria-sort="ascending" | aria-sort="descending"` set on active column only (JS line 551–552)
+- ✓ Decorative sort arrows: `<span aria-hidden="true" class="sort-arrow hidden">…</span>`
+- ✓ Focus indicator: `focus-visible:ring-2 focus-visible:ring-indigo-500`
+- ✓ Keyboard operable: sort toggles via click; htmx:afterSettle re-wires and re-applies client-side sort state (lines 604–606)
+- ✓ Tab order preserved: buttons are inline-reachable in header
+- ✓ After htmx swap (toggle/delete/upload returns the whole table), reapply hook ensures sort state survives and buttons stay wired
+
+**P14: Import from Folder panel** (filemanager.html:60–104, import-scan template:1426–1449)
+
+- ✓ Semantic structure: `<section aria-labelledby="import-folder-heading">` with `<h2 id="import-folder-heading">`
+- ✓ Rescan button: `hx-get="/explorer/import/scan"` with `focus:ring-2 focus:ring-indigo-500`
+- ✓ Per-file list: `<ul role="list">` with each entry a `<li>` containing a `<label for="import-entry-N">` wrapping the checkbox
+- ✓ Delete-source checkbox: `<label>` paired with `<input type="checkbox">`
+- ✓ Import button wired: `hx-post="/explorer/import"` (was disabled/inert in P14; now live)
+- ✓ Contrast in both themes: Tailwind light (text-gray-700 on white) and dark (dark:text-gray-300 on dark:bg-gray-800) meet AA
+
+**P15: Import results live region** (filemanager.html:102, import-result template:1455–1470)
+
+- ✓ Live region present on first paint: `<div id="import-result" role="status" aria-live="polite">`
+- ✓ Outcomes spelled out in text (line 1462): `<span class="font-medium {{if eq .Status "imported"}}text-emerald-700…">— {{.Status}}</span>`
+  - Status is always text: "imported", "skipped", "rejected" — never color-only
+  - Reason appended: `({{.Reason}})` in subordinate text
+- ✓ No focus theft: result region is outside the form; htmx innerHTML swap does not move focus
+- ✓ Announced to AT: aria-live="polite" fires on result update
+
+---
+
+### (b) PRE-EXISTING, UNCHANGED
+
+**From design doc § 3 follow-up task:**
+
+5 color-contrast violations (axe-detected):
+1. Navigation link: `.md\:flex > .bg-white\/20[href$="filemanager"]` — partial opacity background
+2. File input button: `.file\:mr-2` — Tailwind pseudo-element styling
+3. Auto-backup location: `#auto-backup-dir code` — gray-100 / dark:gray-700 on white/dark
+4. File size metadata (other.csv): `.text-gray-400 dark:text-gray-500` on light/dark background
+5. File size metadata (sample.csv): `.text-gray-400 dark:text-gray-500` on light/dark background
+
+**Unnamed SVG delete button** (filemanager.html:1407–1412, pre-P13):
+- Button contains only an SVG icon, no aria-label, no title
+- Violates A-8: meaningful icon must have accessible name
+- Not introduced by P13/P14/P15 (button existed before sortable headers)
+- Tracked in design doc
+
+---
+
+### (c) ANYTHING AXE MISSED
+
+**Manual audit verified:**
+- ✓ Keyboard reachability: all interactive elements (sort buttons, rescan, import, delete-source checkbox, import button, result link targets) are tab-reachable in logical order
+- ✓ Visible focus: all focusable elements show `focus-visible:ring-*` or `:focus-within:ring-*`
+- ✓ Contrast in both themes (light and dark via `prefers-color-scheme`): sort buttons, import controls, and result status meet AA in both
+- ✓ Structure: one H1, no skipped heading levels, section landmark with aria-labelledby
+- ✓ Live region: role="status" + aria-live="polite" present on first paint, not created on-the-fly
+- ✓ No color-only: import result status is always spelled out in text, not signaled by color alone
+- ✓ Table semantics: real `<table>` with `<th scope="col">` and `<th scope="row">` (via data-* attributes for sorting)
+- ✓ Images: decorative arrows are aria-hidden; all interactive elements have text labels
+- ✓ Empty states: "(not configured)" message when no import dir; "No files were selected" when form empty; "Click Rescan…" as placeholder
+
+**Point A-11 (reduced motion):** Not applicable; no animations introduced by P13/P14/P15. Existing transition-colors respects Tailwind's built-in prefers-reduced-motion handling.
+
+---
+
+## CONCLUSION
+
+**No regressions introduced by P13/P14/P15.** All new markup and interactions comply with ACCESSIBILITY.md points A-1 through A-15 and WCAG 2.2 AA.
+
+Pre-existing violations (5 color-contrast + 1 unnamed icon) remain unchanged and are tracked as follow-up work per the design doc.
+

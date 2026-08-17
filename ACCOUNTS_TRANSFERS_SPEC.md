@@ -89,4 +89,45 @@ voice. Money formatted like existing pages. Dark mode parity required
 
 ## Rulings
 
-(none yet — recorded here as they occur)
+**2026-08-16d — validating an oracle against a featureless tree is not
+enough.** The A2 oracle was written and validated before dispatch, showing
+3 pass / 7 fail on a tree without the feature — which looked like the P15
+precedent. It nonetheless shipped three defects, found by the first blind
+worker and verified independently: `probeDataDir` discarded the `error` from
+`storage.New` (a compile error), the attribution fixture wrote identical
+content to both files so exact-hash dedup collapsed them and the assertion was
+unsatisfiable, and the probe called `dl.Transactions()`, an accessor absent
+from the pinned API that one worker then invented purely to satisfy it.
+
+The failure mode is specific: on a featureless tree the probe fails to compile
+for a *legitimate* reason (the package under test does not exist yet), which
+masks a probe that would not compile anyway. Both implementations would have
+failed the same two checks and produced a zero diff that reads as agreement.
+
+Ruled, binding on A3 and any later Tier-3 task: **an oracle must be validated
+at both ends before dispatch** — it must fail on a featureless tree (proving
+the checks discriminate) AND pass against at least one real implementation
+(proving they are satisfiable). When no implementation exists yet, hand-write
+the minimum stub needed to compile the probe and run it once, or accept that
+the first worker's report is part of oracle validation and budget a repair
+cycle. Repairing an oracle mid-flight is legitimate and must be recorded in
+the divergence report, as it was here.
+
+**2026-08-16e — probe assertions must be non-vacuous.** A2's
+checker-tests found that `TestProbeA2_CreditKindForcesSignFlip` looped over the
+loaded transactions asserting none stayed positive, which passes trivially on
+an empty set — weaker than the worker's own test on precisely the axis the
+probe exists to police. Both affected probe tests now assert the fixture row
+count first. Any loop-based probe assertion must be preceded by a count
+assertion.
+
+**Carry-forward for A6/A7 (not a defect):**
+`internal/handlers/explorer/handlers.go:477` constructs
+`dataloader.New(importDir, store)` where the CSV directory is deliberately NOT
+`store.BaseDir()`, so folder-import files are matched against the user's real
+accounts. Intended, but easy to break; do not assume CSV dir == data dir.
+
+**Known test gap, accepted at A2:** the early-exit `setUnassignedCount(0)`
+reset paths in `LoadDataContext` are correct but not covered — deleting those
+two lines leaves the suite green. Worth a test when A4 next touches that
+function.

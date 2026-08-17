@@ -201,6 +201,12 @@ func TestProbeA2_CreditKindForcesSignFlip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadData: %v", err)
 	}
+	// Guard against vacuous success: a loop over an empty set passes while
+	// proving nothing. The fixture has 3 rows, so anything less means the
+	// file did not load and the assertion below never ran.
+	if len(ts.Transactions) != 3 {
+		t.Fatalf("fixture did not load: want 3 transactions, got %d", len(ts.Transactions))
+	}
 	for _, tx := range ts.Transactions {
 		if tx.Amount > 0 {
 			t.Errorf("credit-kind file: charge %q stayed positive (%.2f); Kind must force the flip",
@@ -228,6 +234,9 @@ func TestProbeA2_NonCreditKindLeavesHeuristicAlone(t *testing.T) {
 	ts, err := dl.LoadData()
 	if err != nil {
 		t.Fatalf("LoadData: %v", err)
+	}
+	if len(ts.Transactions) != 3 {
+		t.Fatalf("fixture did not load: want 3 transactions, got %d", len(ts.Transactions))
 	}
 	var positive int
 	for _, tx := range ts.Transactions {

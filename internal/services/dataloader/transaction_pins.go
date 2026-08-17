@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"budget2/internal/models"
 	"budget2/internal/services/storage"
 )
 
@@ -16,8 +17,11 @@ func (dl *DataLoader) transactionPinsPath() string {
 	return filepath.Join(dl.CSVDirectory, transactionPinsFile)
 }
 
-// LoadTransactionPins reads the hash → MajorExpense.ID mapping from disk.
-// Returns an empty map if the file does not exist.
+// LoadTransactionPins reads the identity → MajorExpense.ID mapping from disk.
+// Keys are StableIDs for everything written since StableID landed and legacy
+// content hashes for older entries, so resolve a transaction against the
+// result with models.ResolveByIdentity (or use PinFor) rather than indexing by
+// hash alone. Returns an empty map if the file does not exist.
 func (dl *DataLoader) LoadTransactionPins() (map[string]string, error) {
 	tx, done := dl.beginWrite()
 	defer done()
@@ -42,9 +46,9 @@ func (dl *DataLoader) loadTransactionPinsLocked(tx *storage.SharedTx) (map[strin
 	return pins, nil
 }
 
-// writePinsLocked marshals and persists the pin map. Caller holds the
-// sequence opened by beginWrite and passes its transaction.
-func (dl *DataLoader) writePinsLocked(tx *storage.SharedTx, pins map[string]string) error {
+// writePinsRawLocked marshals and persists the pin map exactly as given.
+// Caller holds the sequence opened by beginWrite and passes its transaction.
+func (dl *DataLoader) writePinsRawLocked(tx *storage.SharedTx, pins map[string]string) error {
 	data, err := json.MarshalIndent(pins, "", "  ")
 	if err != nil {
 		return err
@@ -52,8 +56,52 @@ func (dl *DataLoader) writePinsLocked(tx *storage.SharedTx, pins map[string]stri
 	return tx.WriteFile(dl.transactionPinsPath(), data, 0644)
 }
 
-// SetTransactionPin pins a transaction (by hash) to a major-expense ID.
-// An empty expenseID removes the pin.
+// writePinsLocked rekeys resolvable legacy-hash entries to StableID and then
+// persists the map. This is the whole migration: no one-shot pass, just every
+// save moving the entries it can identify, leaving the rest to be moved when
+// their rows are next loaded. Caller holds the sequence opened by beginWrite
+// and passes its transaction.
+func (dl *DataLoader) writePinsLocked(tx *storage.SharedTx, pins map[string]string) error {
+	rekeyToStable(pins, dl.stableIDIndex())
+	return dl.writePinsRawLocked(tx, pins)
+}
+
+// WriteTransactionPins persists a pin map verbatim, replacing the whole file.
+// Verbatim is the point: it is the one write path that does NOT rekey legacy
+// hashes to StableID, so a caller (a test staging a legacy-keyed sidecar, a
+// restore replaying a snapshot) can put exactly the bytes it means to on disk.
+// Everything else should go through SetTransactionPin(s).
+func (dl *DataLoader) WriteTransactionPins(pins map[string]string) error {
+	tx, done := dl.beginWrite()
+	defer done()
+	if pins == nil {
+		pins = make(map[string]string)
+	}
+	return dl.writePinsRawLocked(tx, pins)
+}
+
+// PinFor resolves a transaction's pinned major-expense ID, trying its StableID
+// first and falling back to its legacy content Hash. The fallback is what lets
+// a pins file written before StableID existed keep working untouched: no
+// migration step, no user action, and the entry moves to its StableID the next
+// time the file is written.
+//
+// A missing or unreadable pins file reports "not pinned" rather than an error
+// -- pinning is opt-in, and every caller's fallback is keyword/amount matching.
+func (dl *DataLoader) PinFor(t models.Transaction) (string, bool) {
+	pins, err := dl.LoadTransactionPins()
+	if err != nil {
+		return "", false
+	}
+	id, _, ok := models.ResolveByIdentity(pins, t)
+	return id, ok
+}
+
+// SetTransactionPin pins a transaction to a major-expense ID. The key may be
+// either a StableID or a legacy content hash; a legacy hash that names a
+// currently loaded row is normalized to that row's StableID, so a pin set from
+// a hash-rendering UI and an unpin issued later against the same hash land on
+// the same entry. An empty expenseID removes the pin.
 func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error {
 	if hash == "" {
 		return fmt.Errorf("transaction hash is required")
@@ -64,10 +112,15 @@ func (dl *DataLoader) SetTransactionPin(hash, expenseID string) error {
 	if err != nil {
 		return fmt.Errorf("load transaction pins: %w", err)
 	}
-	if expenseID == "" {
+	key := dl.canonicalKey(hash)
+	if key != hash {
+		// Drop the legacy duplicate; the StableID entry is authoritative.
 		delete(pins, hash)
+	}
+	if expenseID == "" {
+		delete(pins, key)
 	} else {
-		pins[hash] = expenseID
+		pins[key] = expenseID
 	}
 	return dl.writePinsLocked(tx, pins)
 }
@@ -99,23 +152,42 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 		return 0, err
 	}
 	changed := 0
+	// dirty covers edits that are cleanup rather than a change of the
+	// user's intent -- collapsing a legacy-hash entry onto its StableID.
+	// Those must still reach disk, but must not inflate the count callers
+	// render as "N pins changed".
+	dirty := false
 	for hash, expenseID := range updates {
 		if hash == "" {
 			continue
 		}
-		if expenseID == "" {
+		// Same key normalization as SetTransactionPin: a legacy hash
+		// naming a loaded row is written under that row's StableID.
+		key := dl.canonicalKey(hash)
+		pinned := false
+		if _, ok := pins[key]; ok {
+			pinned = true
+		}
+		if key != hash {
 			if _, ok := pins[hash]; ok {
+				pinned = true
 				delete(pins, hash)
+				dirty = true
+			}
+		}
+		if expenseID == "" {
+			if pinned {
+				delete(pins, key)
 				changed++
 			}
 			continue
 		}
-		if pins[hash] != expenseID {
-			pins[hash] = expenseID
+		if pins[key] != expenseID {
+			pins[key] = expenseID
 			changed++
 		}
 	}
-	if changed == 0 {
+	if changed == 0 && !dirty {
 		return 0, nil
 	}
 	if err := dl.writePinsLocked(tx, pins); err != nil {

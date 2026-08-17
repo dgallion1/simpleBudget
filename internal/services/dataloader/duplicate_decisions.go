@@ -26,6 +26,10 @@ const (
 //     via Transaction.Suppressed = true.
 //   - kept_both: both transactions stay live; the pair is no longer
 //     re-flagged as a candidate.
+//
+// KeptHash and SuppressedHash hold transaction identities: StableIDs for
+// anything written since StableID landed, legacy content hashes for older
+// entries. The loader indexes rows under both forms, so either resolves.
 type DuplicateDecision struct {
 	KeptHash       string    `json:"kept_hash,omitempty"`
 	SuppressedHash string    `json:"suppressed_hash,omitempty"`
@@ -98,7 +102,17 @@ func (dl *DataLoader) SaveDuplicateDecision(pairKey string, decision DuplicateDe
 	if decision.DecidedAt.IsZero() {
 		decision.DecidedAt = time.Now().UTC()
 	}
+	// The panel still posts legacy hashes (it renders Transaction.Hash);
+	// store the StableID of the row each names so the entry is durable.
+	decision.KeptHash = dl.canonicalKey(decision.KeptHash)
+	decision.SuppressedHash = dl.canonicalKey(decision.SuppressedHash)
 	decisions[pairKey] = decision
+	// A decision the user made before StableID existed lives under the
+	// pair's old key; drop it now that the same pair has been re-decided
+	// under the new one, or both would apply.
+	for _, legacy := range dl.legacyPairKeysFor(pairKey) {
+		delete(decisions, legacy)
+	}
 	return dl.writeDecisionsLocked(tx, decisions)
 }
 
@@ -114,16 +128,54 @@ func (dl *DataLoader) ClearDuplicateDecision(pairKey string) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := decisions[pairKey]; !ok {
+	// Undo has to reach the entry under whichever key it was filed: the
+	// caller supplies the pair's current key, but a decision made before
+	// StableID existed is still under the old one.
+	keys := append([]string{pairKey}, dl.legacyPairKeysFor(pairKey)...)
+	found := false
+	for _, k := range keys {
+		if _, ok := decisions[k]; ok {
+			delete(decisions, k)
+			found = true
+		}
+	}
+	if !found {
 		return nil
 	}
-	delete(decisions, pairKey)
 	return dl.writeDecisionsLocked(tx, decisions)
 }
 
-// writeDecisionsLocked marshals and persists the decisions map. Caller holds
-// the sequence opened by beginWrite and passes its transaction.
+// writeDecisionsLocked rekeys resolvable pre-StableID entries -- both the map
+// key and the identities inside each decision -- and then marshals and
+// persists the map. Entries naming a pair that is not in the current load are
+// written back untouched: the rows are probably outside the loaded date range,
+// not gone. Caller holds the sequence opened by beginWrite and passes its
+// transaction.
 func (dl *DataLoader) writeDecisionsLocked(tx *storage.SharedTx, decisions map[string]DuplicateDecision) error {
+	rekeyToStable(decisions, dl.stablePairKeyIndex())
+	if index := dl.stableIDIndex(); len(index) > 0 {
+		for key, decision := range decisions {
+			kept, keptOK := index[decision.KeptHash]
+			suppressed, suppressedOK := index[decision.SuppressedHash]
+			if !keptOK && !suppressedOK {
+				continue
+			}
+			if keptOK {
+				decision.KeptHash = kept
+			}
+			if suppressedOK {
+				decision.SuppressedHash = suppressed
+			}
+			decisions[key] = decision
+		}
+	}
+	return dl.writeDecisionsRawLocked(tx, decisions)
+}
+
+// writeDecisionsRawLocked marshals and persists the decisions map exactly as
+// given. Caller holds the sequence opened by beginWrite and passes its
+// transaction.
+func (dl *DataLoader) writeDecisionsRawLocked(tx *storage.SharedTx, decisions map[string]DuplicateDecision) error {
 	doc := duplicateDecisionsDoc{Decisions: decisions}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

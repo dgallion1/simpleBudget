@@ -133,6 +133,25 @@ assertion.
 `store.BaseDir()`, so folder-import files are matched against the user's real
 accounts. Intended, but easy to break; do not assume CSV dir == data dir.
 
+**2026-08-16f — an oracle must exercise the legacy consumers, not just the new
+helper.** A1's two blind implementations both passed the oracle 10/10 and were
+not equivalent. Both rekey the pins sidecar to StableID, but three shared
+lookups index that map by `Transaction.Hash`
+(`insights/trends.go:38`, `majorexpenses/engine.go:125`, and
+`AnnotateRecurringPayments`). One implementation fixed all three; the other
+left them untouched, so after the first rekey every pin silently stops
+resolving in the dashboard, explorer, insights and the MCP spend tools — no
+error, no log line, the pin still on disk.
+
+The oracle could not see it because it verifies `PinFor`, the NEW resolution
+path, and never exercises the OLD call sites that consume the same map.
+
+Ruled, binding on A3 and later: when a task changes how stored data is keyed,
+the oracle must assert on at least one **existing consumer's observable
+output** (e.g. "a pinned transaction still shows its major-expense name via the
+insights path"), not merely on the new accessor. This is ruling 2026-08-16a's
+shape again — green tests over a feature broken where the user looks.
+
 **Known test gap, accepted at A2:** the early-exit `setUnassignedCount(0)`
 reset paths in `LoadDataContext` are correct but not covered — deleting those
 two lines leaves the suite green. Worth a test when A4 next touches that

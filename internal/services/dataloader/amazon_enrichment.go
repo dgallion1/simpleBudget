@@ -13,7 +13,9 @@ import (
 const amazonEnrichmentFile = "amazon_enrichment.json"
 
 // amazonEnrichmentPath is the on-disk location of the enrichment map.
-// File format: {"<tx-hash>": "Amazon: <product label>"}.
+// File format: {"<tx-identity>": "Amazon: <product label>"}, where the
+// identity is a StableID for anything written since StableID landed and a
+// legacy content hash for older entries.
 // Lives alongside aliases.json so it shares the same encryption path
 // (the file is encrypted at rest when storage encryption is on).
 func (dl *DataLoader) amazonEnrichmentPath() string {
@@ -49,9 +51,15 @@ func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error) {
 // still spans two acquisitions with a lost-update window between them --
 // an atomic read-modify-write across that pair would need the *Locked
 // split the other four files got.
+//
+// Legacy-hash keys that name a currently loaded row are rekeyed to that row's
+// StableID on the way out, the same opportunistic migration the pins and
+// duplicate-decision stores do. Keys naming no loaded row are written back
+// untouched -- the row is probably just outside the loaded set.
 func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error {
 	tx, done := dl.beginWrite()
 	defer done()
+	rekeyToStable(m, dl.stableIDIndex())
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
@@ -60,8 +68,10 @@ func (dl *DataLoader) SaveAmazonEnrichment(m map[string]string) error {
 }
 
 // applyAmazonEnrichment stamps Transaction.EnrichedDescription on each
-// transaction whose hash appears in the enrichment map. Failure to load
-// is non-fatal: users without enrichment data see no behavior change.
+// transaction whose identity appears in the enrichment map -- StableID
+// first, legacy content hash second, so a map written before StableID
+// existed keeps matching with no migration step. Failure to load is
+// non-fatal: users without enrichment data see no behavior change.
 func (dl *DataLoader) applyAmazonEnrichment(transactions []models.Transaction) []models.Transaction {
 	enrich, err := dl.LoadAmazonEnrichment()
 	if err != nil {
@@ -72,7 +82,7 @@ func (dl *DataLoader) applyAmazonEnrichment(transactions []models.Transaction) [
 		return transactions
 	}
 	for i := range transactions {
-		if label, ok := enrich[transactions[i].Hash]; ok {
+		if label, _, ok := models.ResolveByIdentity(enrich, transactions[i]); ok {
 			transactions[i].EnrichedDescription = label
 		}
 	}

@@ -68,6 +68,15 @@ type DataLoader struct {
 	unassignedCount       int
 	enabledFiles          map[string]bool
 
+	// stableByHash maps each loaded row's legacy content Hash to its
+	// StableID, and stablePairKeys maps each detected near-duplicate
+	// pair's legacy hash-derived key to its StableID-derived one. Both
+	// are rebuilt by every load and are what lets a sidecar written
+	// before StableID existed be rekeyed opportunistically on its next
+	// write. Both maps are replaced wholesale, never mutated in place.
+	stableByHash   map[string]string
+	stablePairKeys map[string]string
+
 	// Populated by every LoadData call. Read-only for callers.
 	// The three lists partition the detected pairs: awaiting review,
 	// settled as kept_winner, settled as kept_both.
@@ -270,6 +279,7 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 	if len(files) == 0 {
 		log.Printf("No CSV files found in %s - returning empty dataset", dl.CSVDirectory)
 		dl.setUnassignedCount(0)
+		dl.setStableIndex(nil)
 		return models.NewTransactionSet(nil), nil
 	}
 
@@ -323,8 +333,16 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 	if len(allTransactions) == 0 {
 		log.Printf("No transactions loaded from CSV files - returning empty dataset")
 		dl.setUnassignedCount(0)
+		dl.setStableIndex(nil)
 		return models.NewTransactionSet(nil), nil
 	}
+
+	// Assign StableID before anything drops or reorders rows: the
+	// occurrence index is counted in file order over everything parsed, so
+	// a row's identity does not shift when a later stage (transfer filter,
+	// dedup) removes some other row. Amounts are already post-flip and
+	// AccountID is already stamped, both done per file above.
+	dl.setStableIndex(assignStableIDs(allTransactions))
 
 	// Preprocess: filter transfers, classify, deduplicate
 	allTransactions = dl.filterInternalTransfers(allTransactions)
@@ -998,6 +1016,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 		dl.unresolvedDuplicates = unresolved
 		dl.resolvedDuplicates = resolved
 		dl.keptBothDuplicates = keptBoth
+		dl.stablePairKeys = nil
 		dl.stateMu.Unlock()
 		return txns
 	}
@@ -1008,20 +1027,38 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 		decisions = nil
 	}
 
-	// Build hash → index lookup once.
-	idxByHash := make(map[string]int, len(txns))
+	// Build identity → index lookup once. Both key forms are indexed, so a
+	// decision recording a legacy hash resolves to the same row as one
+	// recording a StableID.
+	idxByIdentity := make(map[string]int, 2*len(txns))
 	for i, t := range txns {
-		idxByHash[t.Hash] = i
+		idxByIdentity[t.Hash] = i
+		if t.StableID != "" {
+			idxByIdentity[t.StableID] = i
+		}
 	}
+
+	// legacyKeys maps the pre-StableID pair key to the current one for
+	// every detected pair, so writeDecisionsLocked can move an entry the
+	// user decided before StableID existed.
+	legacyKeys := make(map[string]string, len(pairs))
 
 	for _, pair := range pairs {
 		decision, isResolved := decisions[pair.Key]
+		legacy := pairKey(pair.Left.Hash, pair.Right.Hash)
+		if legacy != pair.Key {
+			legacyKeys[legacy] = pair.Key
+			if !isResolved {
+				// Fall back to the key this pair had before StableID.
+				decision, isResolved = decisions[legacy]
+			}
+		}
 		if !isResolved {
 			// Tag both sides for badge rendering.
-			if i, ok := idxByHash[pair.Left.Hash]; ok {
+			if i, ok := idxByIdentity[pair.Left.Hash]; ok {
 				txns[i].DuplicatePairKey = pair.Key
 			}
-			if i, ok := idxByHash[pair.Right.Hash]; ok {
+			if i, ok := idxByIdentity[pair.Right.Hash]; ok {
 				txns[i].DuplicatePairKey = pair.Key
 			}
 			unresolved = append(unresolved, pair)
@@ -1029,7 +1066,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 		}
 		switch decision.Outcome {
 		case DuplicateOutcomeKeptWinner:
-			if i, ok := idxByHash[decision.SuppressedHash]; ok {
+			if i, ok := idxByIdentity[decision.SuppressedHash]; ok {
 				txns[i].Suppressed = true
 			}
 			// Keep the user-side roles in the resolved list: Left = kept.
@@ -1055,6 +1092,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 	dl.unresolvedDuplicates = unresolved
 	dl.resolvedDuplicates = resolved
 	dl.keptBothDuplicates = keptBoth
+	dl.stablePairKeys = legacyKeys
 	dl.stateMu.Unlock()
 	return txns
 }

@@ -39,6 +39,14 @@ type Transaction struct {
 	// (DataLoader.UnassignedCount); they are never dropped.
 	AccountID string `json:"account_id,omitempty"`
 
+	// StableID is the description-independent identity every user
+	// decision (pins, near-duplicate resolutions, Amazon enrichment) is
+	// keyed on: `accountID|YYYY-MM-DD|amount-in-cents|n`. See
+	// StableIDFor and GLOSSARY.md. Stamped at load time, after the sign
+	// flip and account attribution, so the amount it encodes is the one
+	// the app actually uses. Hash remains for the legacy fallback.
+	StableID string `json:"stable_id,omitempty"`
+
 	// Status is the bank-reported lifecycle marker (e.g. "Posted",
 	// "Scheduled Bill Pay"). Optional; populated when the source CSV
 	// has a Status column. Used by near-duplicate detection.
@@ -72,6 +80,59 @@ func (t *Transaction) ComputeHash() string {
 	input := fmt.Sprintf("%s|%s|%s", dateStr, desc, amount)
 	hash := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(hash[:8])
+}
+
+// StableIDFor builds the durable identity of one transaction:
+//
+//	accountID|YYYY-MM-DD|amount-in-cents|occurrence
+//
+// e.g. "usaa-checking|2025-05-04|-1234|0". occurrence is the 0-based index
+// among rows sharing the first three components, counted in file row order,
+// so several same-amount rows on one account and one day stay distinguishable
+// without the description.
+//
+// The description is deliberately absent: it is the one part of a bank export
+// that changes without the underlying transaction changing, and keying user
+// decisions on it means a reformatted description silently orphans them.
+// accountID is "file:<basename>" for rows whose file matched no account.
+// amountCents is the post-sign-normalization amount, so a credit-kind flip is
+// reflected in the identity.
+func StableIDFor(accountID string, date time.Time, amountCents int64, occurrence int) string {
+	return fmt.Sprintf("%s|%s|%d|%d", accountID, date.Format("2006-01-02"), amountCents, occurrence)
+}
+
+// AmountCents converts a transaction amount to integer cents, the unit
+// StableIDFor encodes. Rounding (rather than truncating) keeps values like
+// 12.34 off the 1233-cent cliff float64 would otherwise put them on.
+func AmountCents(amount float64) int64 {
+	return int64(math.Round(amount * 100))
+}
+
+// ResolveByIdentity looks a transaction up in a map keyed by transaction
+// identity, trying its StableID first and falling back to its legacy content
+// Hash. It returns the value, the key that matched, and whether one did.
+//
+// This is the single read path for every identity-keyed sidecar store
+// (transaction pins, duplicate decisions, Amazon enrichment). The fallback is
+// what lets a sidecar written before StableID existed keep working with no
+// migration step: entries are rekeyed opportunistically when their store is
+// next written, never in a one-shot pass.
+func ResolveByIdentity[V any](m map[string]V, t Transaction) (V, string, bool) {
+	var zero V
+	if len(m) == 0 {
+		return zero, "", false
+	}
+	if t.StableID != "" {
+		if v, ok := m[t.StableID]; ok {
+			return v, t.StableID, true
+		}
+	}
+	if t.Hash != "" {
+		if v, ok := m[t.Hash]; ok {
+			return v, t.Hash, true
+		}
+	}
+	return zero, "", false
 }
 
 // ComputeDerivedFields populates computed fields from Date

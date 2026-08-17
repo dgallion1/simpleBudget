@@ -33,13 +33,11 @@ func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, p
 	sumByExpense := func(window *models.TransactionSet) map[string]float64 {
 		totals := make(map[string]float64)
 		for _, t := range window.FilterByType(models.Outflow).Transactions {
-			// Pin wins.
-			if pins != nil && t.Hash != "" {
-				if id, ok := pins[t.Hash]; ok {
-					if def, exists := defByID[id]; exists {
-						totals[def.Name] += math.Abs(t.Amount)
-						continue
-					}
+			// Pin wins. StableID first, legacy content hash second.
+			if id, _, ok := models.ResolveByIdentity(pins, t); ok {
+				if def, exists := defByID[id]; exists {
+					totals[def.Name] += math.Abs(t.Amount)
+					continue
 				}
 			}
 			if id, ok := majorexpenses.MatchTransaction(t, defs); ok {

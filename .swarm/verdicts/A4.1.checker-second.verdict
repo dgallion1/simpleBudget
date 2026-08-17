@@ -1,0 +1,30 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A4
+ATTEMPT: 1
+---
+EVIDENCE:
+
+1. Manifest fidelity — `git status --porcelain` shows exactly `internal/services/accounts/balance.go` and `internal/services/accounts/balance_test.go` as untracked (plus the manifest file itself). These match `.swarm/manifests/A4.1.files` exactly. The pre-existing A2 files (`accounts.go`, `accounts_test.go`) are untouched.
+
+2. Toolchain green —
+   - `go build ./...` → `Go build: Success` (exit 0).
+   - `go vet ./...` → `Go vet: No issues found` (exit 0).
+   - `go test ./...` → 44 packages `ok`, exit 0 (after `go clean -cache`; the first run hit a corrupted toolchain cache reporting "package internal/goarch is not in std" for unrelated packages like storage/templates/testutil — environmental, not A4).
+   - `staticcheck ./...` → no output, exit 0.
+   - `gofmt -l` on both manifest files → no output (exit 0): both files are gofmt-clean.
+
+3. THE BOUNDARY (anchor is end-of-day) — `balance.go:63` uses `txDay.After(anchorDay) && !txDay.After(atDay)`, where `anchorDay`/`atDay`/`txDay` come from `dayOf` (`balance.go:197-199`), which truncates to the calendar day in the same Location. A same-calendar-day transaction is excluded because `txDay.After(anchorDay)` is false for equal days. The 09:00-anchor / 23:59-same-day-tx case is covered by `TestBalanceAt_AnchorDayTransactionExcludedEvenWithTimeComponent` (`balance_test.go:138`). I re-derived the discrimination rather than trusting the claim:
+   - Mutation A: flipped the boundary to `!txDay.Before(anchorDay)` (i.e. `>=`) → tests `TestBalanceAt_AnchorDayTransactionIsExcluded`, `...EvenWithTimeComponent`, and `...AnchorExactlyOnAtIsIncluded` all FAIL (amount became 4810/1350/2777 vs wanted 4310/1100/2000).
+   - Mutation B: replaced the anchor-side comparison with a full-timestamp `tx.Date.After(anchor.Date)` → `...EvenWithTimeComponent` FAILS (1350 vs 1100). The day-granularity truncation is load-bearing, not cosmetic.
+
+4. Unknown is not zero — `balance.go:47-50` returns `BalanceResult{Available: false}, nil` with no amount when no anchor is at or before `at`. `TestBalanceAt_NoAnchorReturnsUnavailableNotZero` and `TestBalanceAt_AnchorOnlyFutureOfAtIsUnavailable` pin it. Mutation C (coerce unknown to `Available:true, Amount:sum`) → both tests FAIL. Nothing coerces one into the other.
+
+5. Account isolation — `balance.go:57-59` (`BalanceAt`), `balance.go:83-85` (`Freshness`), `balance.go:129-131` (`Drift`) all `continue` when `tx.AccountID != acct.ID`. This also excludes unassigned rows (`AccountID == ""`) since "" != any account ID. `TestBalanceAt_OtherAccountsAndUnassignedExcluded` and `TestDrift_ThreeAnchorsProducesTwoReports` (the `schwab` row) pin it. Mutation D (drop the AccountID check in BalanceAt) → `...OtherAccountsAndUnassignedExcluded` FAILS (1850 vs 1100).
+
+6. Drift semantics — `balance.go:136` uses `txDay.After(earlierDay) && !txDay.After(laterDay)`: earlier anchor's own day EXCLUDED, later anchor's own day INCLUDED — mirroring BalanceAt's `(anchorDay, atDay]` window so predicted and actual are comparable. `TestDrift_MissingRowsBetweenAnchors` has a non-zero tx (`200.00`) on the later anchor's day (8/15) and a tx on the earlier anchor's day (8/1) — the comment and assertion (Predicted 1300 = 1000 + 100 + 200) pin both sides. Mutation E: flipped the later side to `txDay.Before(laterDay)` (exclude later-anchor-day) → `TestDrift_MissingRowsBetweenAnchors` FAILS (Predicted 1100 vs 1300, Difference 400 vs 200). The asymmetry is real and tested.
+
+7. Float comparison — no `==`/`!=` on computed float amounts anywhere in `balance.go`. Drift's zero-collapse uses `absFloat(diff) < floatTolerance` (`balance.go:146`, epsilon 1e-9, matching `internal/services/retirement/guardrails_test.go`). Tests compare via `moneyEq` (`balance_test.go:15`, `math.Abs(a-b) < floatTolerance`). The only `!=` in the test (`balance_test.go:219`, `got.Amount != 0`) checks the exact zero value returned by the unavailable branch (no arithmetic), not a computed amount. Rounding is presentation-only: the collapse-to-zero is the only rounding and it stays at full epsilon precision.
+
+8. Scope — only `internal/services/accounts/balance.go` and `balance_test.go` are new. No funding projection (the Projection bullet of spec §4 is A5's), no UI, no MCP. A2's `accounts.go`/`accounts_test.go` are unmodified. The `BalanceAt` signature takes `models.Account` directly (not `accountID` as the spec prose says), which is a reasonable concrete choice and matches the GLOSSARY's "(`internal/services/accounts`, `BalanceAt`)" pointer; the half-open interval `(anchor.Date, date]` from spec §4 is implemented exactly.

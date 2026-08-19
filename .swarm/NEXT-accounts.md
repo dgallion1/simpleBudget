@@ -4,77 +4,70 @@ Written 2026-08-16. Branch `fix/review-aug16`, nothing pushed.
 Read `.swarm/NEXT.md` too — it carries the headless dispatch recipe and its
 traps, which still apply.
 
-## Status as of the latest session
+## RUN COMPLETE — 2026-08-16
 
-**Six of ten tasks accepted:** A0, A1, A2, A4, A6. Remaining: **A3** (Tier 3),
-A5, A7, A8, A9. `gate.sh done` fails on those five, correctly.
+All ten tasks accepted. `swarm/gate.sh done` exits 0 across all 25 ledger rows
+(P1–P15 from the File Manager run plus A0–A9). Branch `fix/review-aug16`,
+committed, **not pushed**.
 
-A1 took four attempts and hit the constitutional hard stop after two Tier-3
-failures; the user authorized a narrow fourth attempt, which passed both
-families. Both failures were found by the anthropic checker while the glm
-checker passed — see rulings 2026-08-16f and 2026-08-16g.
+| Task | Scope | Tier | Accepted at |
+|------|-------|------|-------------|
+| A0 | GLOSSARY vocabulary | 1 | attempt 1 `496dd45` |
+| A1 | StableID + sidecar migration | 3 | attempt 4 `1680e46` |
+| A2 | Account model + loader attribution | 3 | attempt 2 `ce69515` |
+| A3 | Transfer classification | 3 | attempt 2 `e9ad6ae` |
+| A4 | Balances (anchor, freshness, drift) | 2 | attempt 1 `a27d25d` |
+| A5 | Funding projection | 2 | attempt 2 (in `80abbcc`/`6cb5da3`) |
+| A6 | Accounts settings UI | 1 | attempt 1 `e918fb2` |
+| A7 | Transfers page + explorer badge | 2 | attempt 1 `80abbcc` |
+| A8 | Dashboard card, projection line, banner | 1 | attempt 3 `347103c` |
+| A9 | MCP ledger tools + search fix | 2 | attempt 2 `6bc508d` |
 
-## Next task: A3 (transfer classification, Tier 3)
+Final accessibility pass: `.swarm/verdicts/FINALA.1.checker-a11y.verdict`. It
+returned FAIL on contrast; one of its three claims held and was fixed
+(`a957974`), two did not survive checking — see below.
 
-The last Tier-3 task and the heart of the feature. Before dispatch its oracle
-must be written AND validated at both ends (ruling 2026-08-16d), and — this is
-the one that matters most here — it must assert on an **existing consumer's
-observable output**, not just on the new classifier (ruling 2026-08-16f).
-Concretely: it is not enough to check that a pair is classified `Transfer`; the
-oracle must show that `metrics.Calculate`'s income and expense totals actually
-exclude those rows, because that is where a user would see the bug.
+## What the run actually delivers
 
-Acceptance criteria are in `ACCOUNTS_TRANSFERS_SPEC.md`'s task table. A3 also
-replaces `filterInternalTransfers`, so it touches the dataloader critical glob
-— it is already Tier 3, so no further escalation applies.
+A Schwab→USAA transfer no longer double-counts. Previously a transfer whose
+description missed the substring patterns inflated expenses on the debit leg
+and was classified Income on the credit leg; one that DID match vanished
+entirely. Now both legs are classified `Transfer`, stay visible in the ledger,
+and are excluded from income and expenses — including in the dashboard's
+cumulative cash-flow chart and the MCP spend tools, both of which had to be
+fixed explicitly because neither filters by type the way the rest of the app
+does.
 
-## Historical: the credit blocker (resolved)
+## Open follow-ups (task chips raised, not part of this run)
 
-**OpenRouter credits are exhausted** — account shows `total_credits: 150`,
-`total_usage: 150.08`. Verify with:
+1. **Accounts delete-confirm Cancel button does not cancel** — it re-POSTs and
+   re-renders the same panel. **Verified NOT destructive**: `handlers.go:172`
+   returns before any deletion whenever `confirm != "yes"`. A final-pass
+   verdict described it as "effectively confirms"; that reading is wrong.
+   Also in that chip: an unconditional `data-focus-target` that always focuses
+   the ID input regardless of which field errored, and one vacuous test loop.
+2. **Pre-existing File Manager a11y violations** (from the prior run).
+3. **`handleImport`'s render path is untested.**
+4. **`text-green-600` income figures elsewhere in the app** measure 3.30:1 on
+   white. The new transfers page was fixed to `green-700` (5.02:1); the
+   pre-existing instances were deliberately not swept up.
+5. **`/insights` and `/whatif` have no `<h1>`** — ruled out of A8's scope.
+6. **`admin/undo.go:57`** pre-checks `decisions[key]` without the
+   `legacyPairKeysFor` aliasing `ClearDuplicateDecision` applies, so a
+   pre-StableID decision makes `undo_resolve` claim there is nothing to undo.
+   Fails loudly.
+7. **`aliases.json` is still Hash-keyed** on both ends — not broken by A1, but
+   orphanable by exactly the description reformat A1 exists to prevent.
 
-```bash
-curl -s https://openrouter.ai/api/v1/credits -H "Authorization: Bearer $OPENROUTER_API_KEY"
-```
+## Two final-pass claims that did NOT survive checking
 
-Every cloud model in `litellm-config.yaml` routes through OpenRouter, so this
-takes out `worker-coder`/`checker-second` (GLM) **and** the haiku-backed
-`checker-content`/`checker-a11y` at once. Symptom: HTTP 402 "You requested up
-to 32000 tokens, but can only afford N". Small requests still succeed, which
-makes it look intermittent — Claude Code dispatches agents at
-`max_tokens: 32000`.
+Recorded so nobody "fixes" them later:
 
-The key's own limit ($20, $14.13 used) is NOT the binding constraint. Raising
-it will not help; the account needs credits.
-
-User chose to top up. Once credits are back, no config change is needed.
-
-## Task table
-
-| Task | Scope | Tier | Status |
-|------|-------|------|--------|
-| A0 | GLOSSARY vocabulary | 1 | **accepted** `496dd45` |
-| A1 | StableID + sidecar migration | 3 | **accepted at attempt 4** `1680e46` |
-| A2 | Account model + loader attribution | 3 | **accepted at attempt 2** `ce69515` |
-| A3 | Transfer classification | 3 | pending — oracle not yet written |
-| A4 | Balances (anchor, freshness, drift) | 2 | **accepted** `a27d25d` |
-| A5 | Funding projection | 2 | pending |
-| A6 | Accounts settings UI | 1 | **accepted** `e918fb2` |
-| A7 | Transfers page | 2 | pending |
-| A8 | Dashboard card + banner | 1 | pending |
-| A9 | MCP tools | 2 | pending |
-
-Follow-ups raised as separate task chips, not part of this run: the dead
-Cancel control on the accounts delete-confirm panel plus its focus
-misdirection and one vacuous test loop; the pre-existing File Manager a11y
-violations; and `handleImport`'s untested render path.
-
-Known, outside A1's scope: `admin/undo.go:57` pre-checks `decisions[key]`
-without the `legacyPairKeysFor` aliasing that `ClearDuplicateDecision`
-applies, so a pre-StableID decision makes `undo_resolve` claim there is
-nothing to undo. Fails loudly. And `aliases.json` is still Hash-keyed on both
-ends — not broken by A1, but orphanable by exactly the description reformat
-A1 exists to prevent.
+- The **accounts card uses no emerald at all** (amber-700 / red-700 / gray), so
+  the verdict's "accounts card emerald is the core blocker" is misattributed.
+- The **emerald-600 in the transfers success panel is a decorative
+  `aria-hidden` icon**, and its adjacent text is emerald-700 (5.21:1). At
+  3.58:1 the icon clears point 7's ≥3:1 threshold for non-text elements.
 
 ## Rulings this run has already produced
 

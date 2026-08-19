@@ -1042,6 +1042,15 @@ func buildCumulativeChartData(ts *models.TransactionSet) map[string]interface{} 
 	for _, d := range dates {
 		var dayTotal float64
 		for _, t := range daily[d].Transactions {
+			// A transfer is neither income nor expense (GLOSSARY:
+			// "Transfer"). This loop's else branch is the only
+			// income/expense consumer in the app that is not a
+			// FilterByType call, so without this skip every transfer
+			// leg would be subtracted from cumulative cash flow --
+			// and a paired transfer would be subtracted twice.
+			if t.TransactionType == models.Transfer {
+				continue
+			}
 			if t.TransactionType == models.Income {
 				dayTotal += math.Abs(t.Amount)
 			} else {

@@ -1,0 +1,162 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A3
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Read in full: .swarm/briefs/A3.md (pinned API + 7 behaviors + test list),
+GLOSSARY.md (Transfer/TransferClass/TransferPairKey/Internal transfer +
+Load pipeline order §6-7), design spec §3 referenced via the brief, and
+.swarm/tier3/A3/report.md Adjudication section naming
+buildCumulativeChartData (handlers.go:1044) as the consumer the rejected
+impl missed.
+
+1. MANIFEST FIDELITY — PASS.
+   .swarm/manifests/A3.1.files lists 13 source paths. git diff --name-only
+   HEAD (8 modified under internal/) + git ls-files --others (5 untracked
+   under internal/) = 13 source paths, identical set. The two .swarm files
+   in git status (ledger.tsv, tier3/A3/report.md) are bookkeeping, not
+   source, correctly excluded from the manifest.
+
+2. TOOLCHAIN GREEN — PASS. Real output:
+   go build ./...  -> Go build: Success  (exit 0)
+   go vet ./...    -> Go vet: No issues found  (exit 0)
+   go test ./...   -> Go test: 4296 passed in 47 packages  (exit 0)
+   staticcheck ./... -> exit 0, no output
+   gofmt -l on all 13 manifest files -> no output (clean), exit 0.
+   The test count (4296, 47 packages) matches the brief's "~45 packages"
+   sanity signal — the toolchain actually ran.
+
+3. ORACLE — PASS. `bash .swarm/tier3/A3/accept.sh`:
+   CHECK 1..12 all PASS, "SUMMARY: 12 passed, 0 failed", exit 0.
+   No zz_probe residue (find returned none).
+
+4. CONSUMER SWEEP — PASS. This is the check that killed wt-glm.
+   a) buildCumulativeChartData (handlers.go:1044-1058): the one consumer
+      that is NOT a FilterByType call. Its loop reads
+        if t.TransactionType == models.Income { dayTotal += Abs(Amount) }
+        else { dayTotal -= Abs(Amount) }
+      so a Transfer row (not Income) falls in the else and is subtracted;
+      a paired transfer subtracts twice. The merged code inserts, immediately
+      before that if/else (handlers.go:1051-1053):
+        if t.TransactionType == models.Transfer { continue }
+      with a comment naming exactly this reasoning. Regression test
+      TestBuildCumulativeChartData_SkipsTransfers (handlers_test.go:333)
+      feeds a paired $2000 pair + a $3000 external leg + a $500 grocery +
+      $5000 income and asserts cumulative[1]==5000 (transfer day moves
+      nothing) and cumulative[2]==4500 (only grocery). Mutation check:
+      remove the skip and the external(-3000)+food(-500) day yields
+      5000-3500=1500 != 4500, and the transfer day yields 5000-4000=1000
+      != 5000 — both assertions fail. Discriminating.
+   b) I then enumerated every other consumer myself, not trusting the
+      adjudication's list:
+      - metrics.Calculate (metrics.go:100-105): income/outflows via
+        FilterByType(models.Income/Outflow). Transfer excluded by type.
+        TestCalculateMetrics_ExcludesTransfers (metrics_test.go:359) +
+        TestLoadData_MetricsExcludeEveryTransferRow (transfers_test.go:132)
+        hold it; the latter's fixture is hostile (credit leg "TRANSFER IN
+        FROM SCHWAB" hits IncomeKeywords) so a leak lands in TotalIncome,
+        not cancelled.
+      - dashboard totals (handlers.go:351/356, 511/516, 616/620): all
+        inc.SumAmount()/Abs(exp.SumAmount()) on FilterByType slices. Safe.
+      - dashboard drilldown total (handlers.go:267): txns come from
+        bucketMajorExpenses output, built from FilterByType(Outflow). Safe.
+      - bucketMajorExpenses/unmatchedTotal (794-795, 822): operate on
+        outflows slice. Safe.
+      - buildSpendingTrendChart/buildMerchantsChart (910, 983): on
+        FilterByType(Outflow). Safe.
+      - insights trends (insights/trends.go:35,119,120,185,273,274,303)
+        and recurring (recurring.go:223): all FilterByType(Outflow/Income).
+        Safe.
+      - mcpsvc/spend summary/search/trends/insights: summary.go:80,113,135;
+        search.go:148,150; all FilterByType. insights.go:145 uses
+        `t.TransactionType == models.Outflow && t.Amount < 0` — a
+        composite guard that excludes Transfer (Transfer != Outflow). Safe.
+      - majorexpenses engine.go:282,323: `!= models.Outflow` guard skips
+        Transfer. Safe.
+      - anomalies.go:161, pricecreep.go:81: same `== Outflow && Amount<0`
+        composite guard. Safe.
+      - near_duplicates.go:58 and major_expense_names.go:49:
+        `!= models.Outflow` / `== models.Income` guards skip Transfer.
+        Near-dup indexes outflows only, so a transfer drops out of
+        near-duplicate candidacy automatically — documented by
+        TestLoadData_TransferIsNotANearDuplicateCandidate.
+      - explorer handlers.go:173,175,185,189,312,314,324,328: all
+        FilterByType. Safe.
+   No site treats "not Income" as "expense" without a FilterByType. The
+   buildCumulativeChartData site was the only one, and it is fixed.
+
+5. AUTO-PAIR DISCIPLINE — PASS.
+   - Pattern-less coincidence NOT auto-paired: Classify step 3
+     (transfers.go:210-222) only adds to `suspected`, never pairs.
+     TestClassify_PatternlessCoincidenceIsSuggestedNotPaired asserts
+     Paired==0 and Suspected==1 with Reason=amount_match.
+     TestLoadData_PatternlessCoincidenceIsSuggestedNotPaired asserts
+     the same end-to-end.
+   - Ambiguous tie to review: Classify step 2 (transfers.go:194-206) —
+     len(best)>1 sets ambiguous[i] and all best[j], queues them with
+     ReasonAmbiguous, does NOT pair. Crucially, ambiguous rows are also
+     withdrawn as candidates (the extra gate `!ambiguous[j]` at line 188)
+     so a tied row cannot become someone else's "unique" candidate — the
+     contagious-ambiguity insight the report flagged.
+     TestClassify_AmbiguousTieGoesToReview asserts Paired==0, Suspected==2.
+   - Same-account never pairs: isCandidatePair (transfers.go:366-375)
+     returns false when a.AccountID==b.AccountID; two empty AccountIDs
+     count as same account. TestClassify_SameAccountEqualAmountDoesNotPair
+     and TestLoadData_SameAccountEqualAmountDoesNotPair both assert
+     Paired==0 and Suspected==0.
+   - Same-sign never pairs: isCandidatePair requires ca==-cb.
+     TestClassify_SameSideAmountsDoNotPair.
+
+6. DECISIONS PERSIST — PASS.
+   - Confirmed pair survives reload: applyDecisions (transfers.go:288-332)
+     pairs confirmed decisions before the pattern-gated auto-pair pass, so
+     a confirmed pair pairs with no pattern. TestClassify_ConfirmedDecision
+     PairsWithoutAPattern + TestResolveTransfer_ConfirmSurvivesReload
+     (reloads via LoadData and asserts both legs Transfer/paired with the
+     decision's key, SuspectedTransfers empty afterwards).
+   - Rejected never re-suggested: applyDecisions builds a `rejected` set
+     keyed by pair key, and candidates() (line 347) skips any whose
+     PairKeyFor is in `rejected`. TestClassify_RejectedDecisionIsNever
+     SuggestedAgain + TestClassify_RejectedPairIsNotAutoPairedEither +
+     TestResolveTransfer_RejectIsNeverSuggestedAgain.
+   - Persistence store: transfer_decisions.go writes/reads
+     data/transfer_decisions.json via storage.SharedTx (writeMu), matching
+     the other sidecars' shape.
+
+7. TRANSFERS REMAIN VISIBLE — PASS. filterInternalTransfers is deleted
+   (loader.go lost 57 lines, gained 21). classifyTransfers (transfers.go
+   in dataloader) calls transfers.Classify which copies the input slice
+   and never drops a row (Classify: out := make(..., len); copy). Test
+   TestLoadData_TransfersAreClassifiedNotDropped asserts len==5 and each
+   leg present; TestCalculateMetrics_ExcludesTransfers asserts
+   TransactionCount==5 (transfers counted, not dropped). FilteredTransfers()
+   now returns Classified() = Paired+External (transfers.go:120), the
+   count of Transfer-typed rows, per GLOSSARY.
+
+8. SCOPE HYGIENE — PASS. deduplicateTransactions body is byte-identical
+   to before (verified by reading the function post-merge). assignStableIDs
+   call and StableID maps field untouched (diff only adds the
+   suspectedTransfers field nearby and reorders the preprocess call
+   sequence to dedup→classifyTransfers→ClassifyTransactions per GLOSSARY
+   §5-7). No UI (handlers/transfers, web/templates), no MCP
+   (internal/services/mcpsvc, internal/handlers/mcp), no projection
+   (internal/services/retirement) files in the diff (grep returned exit 1).
+   Pipeline position correct: account stamping and StableID (pre-existing,
+   lines ~350) → dedup → classifyTransfers → ClassifyTransactions.
+
+RULING 2026-08-16e (count-before-loop): checked the new tests.
+- TestLoadData_MetricsExcludeEveryTransferRow: `for _, tt := range
+  {...}{ for _, txn := range ts.FilterByType(tt).Transactions {...} }`
+  is preceded by `if m.TransactionCount != 5` Fatalf. Compliant.
+- TestClassifyTransactions_SkipsTransferRows: the want-table loop is
+  preceded by `if len(result) != 3` Fatalf. Compliant.
+- TestClassifyTransfers_TypesPatternHitsWithoutDropping: the
+  `for _, txn := range result` loop is preceded by
+  `if len(result) != len(transactions)` and `if loader.FilteredTransfers()
+  != 1` Fatalfs. Compliant.
+- TestBuildCumulativeChartData_SkipsTransfers: `cumulative` slice indexed
+  only after `if len(cumulative) != 3` Fatalf. Compliant.
+No bare loop assertions found.

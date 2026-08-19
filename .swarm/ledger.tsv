@@ -16,7 +16,7 @@ P15	3	tests,second	accepted	2	tier3-glm+anthropic-merged-local	gate-ok-tier3-att
 A0	1	content	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A1	3	tests,second	accepted	4	tier3-merged-wt-local+3-fix-attempts	gate-ok-tier3-attempt-4
 A2	3	tests,second	accepted	2	tier3-glm+anthropic-merged-local	gate-ok-tier3-attempt-2
-A3	3	tests,second	pending	1	-	blind-pair-incomplete-glm-killed-by-key-limit-403
+A3	3	tests,second	accepted	2	tier3-glm+anthropic-merged-local	gate-ok-tier3-attempt-2
 A4	2	tests,second	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A5	2	tests,second	pending	1	-	-
 A6	1	tests,a11y	accepted	1	worker-coder-glm	gate-ok-attempt-1

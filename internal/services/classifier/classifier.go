@@ -69,15 +69,24 @@ var InternalTransferPatterns = []string{
 	"vanguard sell",           // Vanguard sell / withdrawal
 	"etrade ach",              // E*TRADE
 	"e*trade ach",
-	"coinbase ach",     // Coinbase ACH
-	"coinbase inc.",    // Coinbase wire
-	"robinhood ach",    // Robinhood
+	"coinbase ach",  // Coinbase ACH
+	"coinbase inc.", // Coinbase wire
+	"robinhood ach", // Robinhood
 	"interactive brokers",
 }
 
-// ClassifyTransactions classifies each transaction as Income or Outflow
+// ClassifyTransactions classifies each transaction as Income or Outflow.
+//
+// Rows already typed models.Transfer are left exactly as they are. The
+// transfer-classification stage runs immediately before this one and has
+// already decided them; re-typing a transfer Income or Outflow would put it
+// straight back into the totals it must stay out of, and normalizing its
+// amount would flip the sign the two legs of a pair depend on.
 func ClassifyTransactions(transactions []models.Transaction) []models.Transaction {
 	for i := range transactions {
+		if transactions[i].TransactionType == models.Transfer {
+			continue
+		}
 		transactions[i].TransactionType = classifyTransaction(&transactions[i])
 
 		// Normalize amounts: positive for income, negative for outflow

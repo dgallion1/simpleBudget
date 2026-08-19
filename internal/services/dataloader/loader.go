@@ -23,8 +23,8 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/accounts"
 	"budget2/internal/services/classifier"
-	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/storage"
+	"budget2/internal/services/transfers"
 )
 
 const aliasFile = "aliases.json"
@@ -67,6 +67,11 @@ type DataLoader struct {
 	filteredTransferCount int
 	unassignedCount       int
 	enabledFiles          map[string]bool
+
+	// suspectedTransfers is the most recent load's transfer review queue:
+	// cross-account amount matches with no pattern behind them, which are
+	// suggested and never auto-paired. Replaced wholesale by every load.
+	suspectedTransfers []transfers.Suspected
 
 	// stableByHash maps each loaded row's legacy content Hash to its
 	// StableID, and stablePairKeys maps each detected near-duplicate
@@ -228,8 +233,11 @@ func (dl *DataLoader) enabledFilesSnapshot() map[string]bool {
 }
 
 // FilteredTransfers returns how many internal transfers the most recent load
-// filtered out. Replaces the former exported FilteredTransferCount field,
-// which could not be read safely while another goroutine was loading.
+// identified. Nothing is filtered any more: this counts rows CLASSIFIED
+// models.Transfer -- paired plus external -- and every one of them is still
+// in the ledger. The name and signature are kept so the existing UI keeps
+// working until the Transfers page ships. See GLOSSARY.md
+// ("Internal transfer").
 func (dl *DataLoader) FilteredTransfers() int {
 	dl.stateMu.RLock()
 	defer dl.stateMu.RUnlock()
@@ -280,6 +288,7 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 		log.Printf("No CSV files found in %s - returning empty dataset", dl.CSVDirectory)
 		dl.setUnassignedCount(0)
 		dl.setStableIndex(nil)
+		dl.setTransferState(0, nil)
 		return models.NewTransactionSet(nil), nil
 	}
 
@@ -334,6 +343,7 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 		log.Printf("No transactions loaded from CSV files - returning empty dataset")
 		dl.setUnassignedCount(0)
 		dl.setStableIndex(nil)
+		dl.setTransferState(0, nil)
 		return models.NewTransactionSet(nil), nil
 	}
 
@@ -344,10 +354,15 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 	// AccountID is already stamped, both done per file above.
 	dl.setStableIndex(assignStableIDs(allTransactions))
 
-	// Preprocess: filter transfers, classify, deduplicate
-	allTransactions = dl.filterInternalTransfers(allTransactions)
-	allTransactions = classifier.ClassifyTransactions(allTransactions)
+	// Preprocess: deduplicate, classify transfers, classify income/outflow.
+	//
+	// Exact dedup runs FIRST so a duplicated row cannot manufacture a
+	// phantom transfer pair candidate. Transfer classification then types
+	// the rows that move money between the user's own accounts, and
+	// income/outflow classification skips everything it typed.
 	allTransactions = dl.deduplicateTransactions(allTransactions)
+	allTransactions = dl.classifyTransfers(allTransactions)
+	allTransactions = classifier.ClassifyTransactions(allTransactions)
 
 	// Detect near-duplicate pairs and apply user decisions. Failure
 	// modes are non-fatal: a corrupt decisions file still allows the
@@ -685,57 +700,6 @@ func parseAmount(s string) float64 {
 
 	amount, _ := strconv.ParseFloat(s, 64)
 	return amount
-}
-
-// filterInternalTransfers removes internal transfers to avoid double-counting.
-// Two sources are consulted:
-//
-//  1. The hardcoded classifier.InternalTransferPatterns list (covers
-//     common bank/broker descriptions out of the box).
-//  2. User-declared major expenses flagged with IsInternalTransfer=true,
-//     matched via majorexpenses.MatchTransaction (same keyword/amount
-//     rules as the Major Expenses page). Lets every user filter their
-//     own broker without code changes.
-//
-// Major-expense load failure is non-fatal — we log and proceed with just
-// the hardcoded patterns so a corrupt major_expenses.json doesn't break
-// CSV ingestion entirely.
-func (dl *DataLoader) filterInternalTransfers(transactions []models.Transaction) []models.Transaction {
-	initialCount := len(transactions)
-
-	var transferDefs []models.MajorExpense
-	if defs, err := dl.LoadMajorExpenses(); err != nil {
-		log.Printf("Warning: could not load major expenses for transfer filtering: %v", err)
-	} else {
-		for _, d := range defs {
-			if d.IsInternalTransfer {
-				transferDefs = append(transferDefs, d)
-			}
-		}
-	}
-
-	var filtered []models.Transaction
-	for _, t := range transactions {
-		if classifier.IsInternalTransfer(&t) {
-			continue
-		}
-		if len(transferDefs) > 0 {
-			if _, ok := majorexpenses.MatchTransaction(t, transferDefs); ok {
-				continue
-			}
-		}
-		filtered = append(filtered, t)
-	}
-
-	count := initialCount - len(filtered)
-	dl.stateMu.Lock()
-	dl.filteredTransferCount = count
-	dl.stateMu.Unlock()
-	if count > 0 {
-		log.Printf("Filtered %d internal transfers", count)
-	}
-
-	return filtered
 }
 
 // deduplicateTransactions removes duplicate transactions based on hash

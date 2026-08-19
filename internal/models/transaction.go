@@ -10,12 +10,20 @@ import (
 	"time"
 )
 
-// TransactionType indicates whether a transaction is income or an outflow
+// TransactionType indicates whether a transaction is income, an outflow,
+// or a movement between the user's own accounts.
 type TransactionType string
 
 const (
 	Income  TransactionType = "Income"
 	Outflow TransactionType = "Outflow"
+	// Transfer is money moving between the user's own accounts. It is
+	// neither income nor expense and is excluded from both: every
+	// aggregation filters by type, so a Transfer row falls out of Total
+	// Income and Total Expenses without a formula change. Unlike the
+	// drop-on-load filter it replaces, a Transfer row stays visible in
+	// the ledger. See GLOSSARY.md ("Transfer", "Internal transfer").
+	Transfer TransactionType = "Transfer"
 )
 
 // Transaction represents a single financial transaction
@@ -61,6 +69,19 @@ type Transaction struct {
 	// an unresolved near-duplicate candidate pair. Used to render
 	// "possible duplicate" badges and link to the review panel.
 	DuplicatePairKey string `json:"duplicate_pair_key,omitempty"`
+
+	// TransferClass qualifies a TransactionType of Transfer:
+	// "paired" (the counterparty leg is loaded and linked through
+	// TransferPairKey) or "external" (the counterparty account's CSV is
+	// not loaded, e.g. a Vanguard contribution). A non-transfer row
+	// carries "". See GLOSSARY.md ("TransferClass").
+	TransferClass string `json:"transfer_class,omitempty"`
+
+	// TransferPairKey is shared by exactly the two legs of one paired
+	// transfer, so either leg resolves the pair. Empty on external
+	// transfers and on non-transfer rows. See GLOSSARY.md
+	// ("TransferPairKey").
+	TransferPairKey string `json:"transfer_pair_key,omitempty"`
 
 	// Derived fields (computed, not stored)
 	Month      string `json:"month,omitempty"` // "2024-01"

@@ -325,6 +325,47 @@ func TestBuildCumulativeChartData_PositiveAmountOutflows(t *testing.T) {
 	}
 }
 
+// TestBuildCumulativeChartData_SkipsTransfers guards the one income/expense
+// consumer in the app that is not a FilterByType call. Its else branch treats
+// everything that is not Income as money leaving, so without an explicit skip
+// both legs of a paired transfer would be SUBTRACTED from cumulative cash
+// flow -- the transfer would read as double the spending it never was.
+func TestBuildCumulativeChartData_SkipsTransfers(t *testing.T) {
+	debit := makeTransaction("Schwab MoneyLink", -2000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Transfer, "Transfer")
+	debit.TransferClass = "paired"
+	debit.TransferPairKey = "abc123abc123"
+	credit := makeTransaction("Transfer in from Schwab", 2000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Transfer, "Deposit")
+	credit.TransferClass = "paired"
+	credit.TransferPairKey = "abc123abc123"
+	external := makeTransaction("Vanguard buy investment", -3000, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Transfer, "Investing")
+	external.TransferClass = "external"
+
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		debit, credit,
+		makeTransaction("Food", -500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		external,
+	)
+
+	result := buildCumulativeChartData(ts)
+	data := result["data"].([]map[string]interface{})
+	cumulative := data[0]["y"].([]float64)
+
+	// Three dates: Jan 1, Jan 5 (transfers only), Jan 10 (food + external).
+	if len(cumulative) != 3 {
+		t.Fatalf("expected 3 data points, got %d", len(cumulative))
+	}
+	if !floatEqual(cumulative[0], 5000) {
+		t.Errorf("cumulative[0] = %v, want 5000", cumulative[0])
+	}
+	if !floatEqual(cumulative[1], 5000) {
+		t.Errorf("cumulative[1] = %v, want 5000 -- a transfer day moves the line by nothing", cumulative[1])
+	}
+	if !floatEqual(cumulative[2], 4500) {
+		t.Errorf("cumulative[2] = %v, want 4500 -- only the 500 grocery run is spending", cumulative[2])
+	}
+}
+
 func TestBuildCumulativeChartData_NegativeBalance(t *testing.T) {
 	ts := makeTransactionSet(
 		makeTransaction("Salary", 1000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),

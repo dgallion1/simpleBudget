@@ -1,0 +1,425 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A3
+ATTEMPT: 2
+---
+EVIDENCE:
+
+I did not read .swarm/verdicts/A3.2.checker-second.verdict. Every conclusion
+below is my own, from commands I ran and files I read.
+
+READ IN FULL
+  .swarm/briefs/A3.md
+  GLOSSARY.md (Transfer / TransferClass / TransferPairKey / Internal transfer /
+    Load pipeline order, lines 92-192)
+  docs/superpowers/specs/2026-08-16-accounts-transfers-design.md §2 and §3
+  .swarm/tier3/A3/report.md including Adjudication and the RESOLUTION line
+  internal/services/transfers/transfers.go (444 lines, whole file)
+  internal/services/transfers/transfers_test.go (404 lines, whole file)
+  internal/services/dataloader/transfers.go (137 lines, whole file)
+  internal/services/dataloader/transfers_test.go (349 lines, whole file)
+  internal/services/dataloader/transfer_decisions.go (72 lines, whole file)
+  git diff of the 6 modified tracked source/test files
+  plus the consumer files listed under item 4.
+
+
+1. MANIFEST FIDELITY -- PASS
+
+.swarm/manifests/A3.1.files holds 13 repo-relative paths. `git status
+--porcelain` at the start of my run:
+
+     M .swarm/ledger.tsv
+     M .swarm/tier3/A3/report.md
+     M internal/handlers/dashboard/handlers.go
+     M internal/handlers/dashboard/handlers_test.go
+     M internal/models/transaction.go
+     M internal/services/classifier/classifier.go
+     M internal/services/classifier/classifier_test.go
+     M internal/services/dataloader/coverage_test.go
+     M internal/services/dataloader/loader.go
+     M internal/services/metrics/metrics_test.go
+    ?? .swarm/manifests/A3.1.files
+    ?? internal/services/dataloader/transfer_decisions.go
+    ?? internal/services/dataloader/transfers.go
+    ?? internal/services/dataloader/transfers_test.go
+    ?? internal/services/transfers/
+
+`ls internal/services/transfers/` -> transfers.go, transfers_test.go. That
+accounts for all 13 manifest entries. No source file outside the manifest is
+touched. The two extra modified paths are swarm bookkeeping (.swarm/ledger.tsv,
+.swarm/tier3/A3/report.md), and .swarm/briefs/A5.md appeared untracked partway
+through my run -- lead activity for a different task, not A3 source.
+
+
+2. TOOLCHAIN GREEN -- PASS
+
+Run with `command go ...` to bypass the rtk shell wrapper, which collapses real
+output to "Go build: Success" and would have hidden a toolchain that never ran.
+
+    $ command go build ./... ; echo build-exit=$?
+    build-exit=0
+    $ command go vet ./... ; echo vet-exit=$?
+    vet-exit=0
+
+    $ set -o pipefail; command go test -count=1 ./... 2>&1 | tee gotest.txt | wc -l
+    47
+    test-exit=0
+    $ grep -c '^ok' gotest.txt
+    46
+    $ grep -v '^ok' gotest.txt
+    ?   	budget2/web	[no test files]
+
+47 package lines: 46 `ok`, 1 `[no test files]`. That is the ~45-package shape
+the brief requires, with `-count=1` so nothing is cached, and no FAIL line.
+`budget2/internal/services/transfers` is present in the ok list.
+
+    $ /home/darrell/go/bin/staticcheck ./... ; echo staticcheck-exit=$?
+    staticcheck-exit=0        (no diagnostics printed)
+
+    $ gofmt -l $(grep '\.go$' .swarm/manifests/A3.1.files)
+    (empty)
+
+gofmt clean on all 13 manifest files.
+
+
+3. ORACLE -- PASS
+
+    $ bash .swarm/tier3/A3/accept.sh
+    CHECK 1 build: PASS
+    CHECK 2 vet: PASS
+    CHECK 3 existing-tests: PASS
+    CHECK 4 probe-compiles: PASS
+    CHECK 5 clean-pair-auto-pairs: PASS
+    CHECK 6 METRICS-EXCLUDE-TRANSFERS: PASS
+    CHECK 7 transfers-remain-visible: PASS
+    CHECK 8 coincidence-never-auto-pairs: PASS
+    CHECK 9 coincidence-is-suggested: PASS
+    CHECK 10 external-leg-classified: PASS
+    CHECK 11 confirm-decision-persists: PASS
+    CHECK 12 reject-not-resuggested: PASS
+    SUMMARY: 12 passed, 0 failed
+    ORACLE-EXIT=0
+
+    $ find . -name '*zz_probe*' -not -path './.git/*'
+    (empty)
+
+No residue; `git status --porcelain` after the oracle is byte-identical to
+before it. Per my brief I give this result almost no independent weight: this
+same oracle went 12/12 on both blind implementations while they differed on a
+real user-visible bug. It is a floor, not evidence.
+
+
+4. THE CONSUMER SWEEP -- PASS, with three findings (none a totals defect)
+
+4a. The named regression, verified by mutation, not by reading.
+
+The merged tree fixes internal/handlers/dashboard/handlers.go:1051 with an
+explicit `if t.TransactionType == models.Transfer { continue }` ahead of the
+`if Income {+=} else {-=}` branch, and ships
+TestBuildCumulativeChartData_SkipsTransfers (handlers_test.go:328-366).
+
+I did not take the test's existence as proof it holds anything. I copied the
+tree to a scratch directory outside the repo (tar, excluding .git and data),
+deleted ONLY the three-line skip, and re-ran:
+
+    MUT1: remove the Transfer skip from buildCumulativeChartData
+    --- FAIL: TestBuildCumulativeChartData_SkipsTransfers (0.00s)
+        handlers_test.go:362: cumulative[1] = 1000, want 5000
+                              -- a transfer day moves the line by nothing
+        handlers_test.go:365: cumulative[2] = -2500, want 4500
+                              -- only the 500 grocery run is spending
+    FAIL	budget2/internal/handlers/dashboard	0.003s
+
+That is the adjudication's claim reproduced numerically on a $2,000 paired
+transfer: the line reads 1000 instead of 5000, a $4,000 error, both legs
+subtracted. The test genuinely holds the fix.
+
+I ran the same mutation discipline on the other two load-bearing guards:
+
+    MUT2: remove `if TransactionType == models.Transfer { continue }` from
+          classifier.ClassifyTransactions
+    --- FAIL: TestClassifyTransactions_SkipsTransferRows
+          "SCHWAB MONEYLINK TRANSFER": type = "Outflow", want "Transfer"
+          "TRANSFER IN FROM SCHWAB":   type = "Income",  want "Transfer"
+    --- FAIL: TestLoadData_TransfersAreClassifiedNotDropped
+    --- FAIL: TestLoadData_MetricsExcludeEveryTransferRow
+    --- FAIL: TestResolveTransfer_ConfirmSurvivesReload
+    FAIL	budget2/internal/services/classifier
+    FAIL	budget2/internal/services/dataloader
+
+The relabel-but-consumers-unchanged failure of ruling 2026-08-16f is caught at
+four sites, including the end-to-end metrics assertion. The fixture is
+deliberately hostile: the credit leg is described "TRANSFER IN FROM SCHWAB",
+which hits classifier.IncomeKeywords, so a leak surfaces in Total Income rather
+than quietly cancelling against the debit leg.
+
+4b. My own enumeration of consumers. I did not use the adjudication's list.
+
+Method: `grep -rn "models.Income|models.Outflow|models.Transfer"` over all
+non-test Go; `grep` for every `FilterByType`, `SumAmount`, `SumAbsAmount`,
+`MonthlyTotals`, `CategoryTotals`, `GroupByMonth/Category/Date`, every
+`range .*\.Transactions`, and every `+=`/`-=` over an Amount, across handlers,
+services, cmd, mcpsvc AND the html templates. Then I read each hit's
+surrounding function to see what set it was standing on.
+
+Sites that filter by type and are therefore correct for free (each verified by
+reading the enclosing function, not by the call site alone):
+
+  metrics.Calculate                      metrics.go:100-101 (income/outflows;
+    every later number in that function -- totals, savings rate, healthcare,
+    living, budget variance, all five trend arrays -- is derived from those two
+    sets and healthcareOutflows, so nothing there can see a Transfer row)
+  dashboard  handlers.go:314-315, 472-473, 593, 766, 898, 978
+  explorer   handlers.go:173/175, 185, 189, 312/314, 324, 328
+  majorexpenses handlers.go:346  (and engine.go:77 iterates unfiltered but
+    every caller -- dashboard:778, majorexpenses:348, curate/register.go:204 --
+    hands it an Outflow-filtered set; engine.go:282,323 additionally guard
+    `!= models.Outflow`)
+  insights   trends.go:35, 119-120, 185, 273-274, 303; recurring.go:223
+  mcpsvc     spend/summary.go:80, 113, 135; spend/search.go:148/150;
+             curate/register.go:197
+  anomalies.go:161, pricecreep.go:81, spend/insights.go:145
+    -- all three gate on `== models.Outflow && Amount < 0`, the safe direction
+  near_duplicates.go:58 -- `!= models.Outflow` -> skip; transfers drop out of
+    near-dup detection automatically, which is what design §2 predicted
+
+Sites that do NOT filter by type. There are five. I found two the adjudication
+does not name:
+
+  (i)  dashboard/handlers.go:1044 buildCumulativeChartData -- THE named one.
+       Fixed, mutation-proven above.
+
+  (ii) internal/services/dataloader/major_expense_names.go:49 -- NOT in the
+       adjudication's list. It reads `if t.TransactionType == models.Income {
+       continue }`, i.e. it stamps MajorExpenseName on everything that is not
+       Income. This is literally the "not Income means expense" shape, and
+       transfer classification runs before it (loader.go:354-356 then :377), so
+       Transfer rows now reach it where the old drop-on-load filter meant they
+       never did. Assessed: NOT a defect. MajorExpenseName is a label, not a
+       total; I traced every consumer of it -- dashboard:983 merchantTotals,
+       insights/trends.go:39,44, majorexpenses handlers/engine -- and all of
+       them stand on an Outflow-filtered set, so a stamped Transfer row cannot
+       enter any total. The visible effect is that a user-declared
+       IsInternalTransfer major expense now labels its own rows in the ledger,
+       which is desirable. Reported because item 4 asks for it.
+
+  (iii) web/templates/pages/explorer.html:711, 712, 715 -- NOT in the
+       adjudication's list, and the only user-visible consequence I found.
+       `{{if eq .TransactionType "Income"}}` green/"+" `{{else}}` red /
+       "Expense" badge. A Transfer row therefore renders red and badged
+       "Expense". Assessed: NOT an A3 failure. The brief's Out of scope is
+       explicit ("No UI (the transfers page is A7, the dashboard card A8)"),
+       my own item 8 requires that no UI work leaked in, and the explorer's
+       own totals on that page (handlers.go:185/189, 324/328) are type-filtered
+       and correct. FLAGGED FOR A7: the ledger needs a Transfer badge, or the
+       page will call every classified transfer an expense.
+
+  (iv) mcpsvc/spend/search.go:157 `sum := ts.SumAmount()` when the caller
+       passes no `type`. Transfers are now inside the searched set, so they are
+       inside that sum. Assessed: NOT a defect. It is the signed sum of the
+       rows being returned, not an income or expense total; a paired
+       transfer's two legs are equal and opposite and cancel to exactly zero,
+       and an external leg contributing its own signed amount is honest for a
+       "sum of what you are looking at" figure.
+
+  (v)  internal/services/accounts/balance.go:64 and :137 sum tx.Amount for an
+       account with no type filter at all. Assessed: CORRECT, and improved by
+       A3. A transfer really does move money, so a balance MUST include it.
+       Under the old drop-on-load filter every pattern-matching transfer was
+       deleted before balances were computed, so BalanceAt and the anchor-drift
+       check were silently wrong by the size of every transfer. A3 fixes that
+       as a side effect. This is the one place where "not filtering by type" is
+       the right answer, which is why a blanket "add a Transfer skip
+       everywhere" rule would have been wrong.
+
+Nothing else in the repo does arithmetic over transaction amounts. mcpsvc/plan
+and internal/services/retirement deal in models.IncomeSource (projection
+inputs), not transactions; cmd/validate only asserts on HTML strings.
+
+Regression cover exists at both real consumer sites, which is what the brief's
+requirement 6 asks for: TestCalculateMetrics_ExcludesTransfers
+(metrics_test.go:349-397, asserts TransactionCount 5 with TotalIncome 5000 /
+TotalExpenses 1500 / NetSavings 3500 / SavingsRate / IncomeTrend / ExpensesTrend
+against 9000+9000+7000 of transfers) and
+TestBuildCumulativeChartData_SkipsTransfers.
+
+
+5. AUTO-PAIR DISCIPLINE -- PASS, each rule mutation-proven
+
+Reading transfers.go: the auto-pair pass (lines 183-206) passes candidates() an
+`extra` gate of `!ambiguous[j] && (pattern[i] || pattern[j])`, so a pattern-less
+match can never reach pairLegs; isCandidatePair (366-375) returns false on
+`a.AccountID == b.AccountID`; a tie from nearest() (379-393) sets ambiguous and
+routes to addSuspected instead of guessing. Reading is not proof, so:
+
+    MUT3: `return !ambiguous[j] && (pattern[i] || pattern[j])`
+       -> `return !ambiguous[j]`   (pattern gate removed from auto-pair)
+    --- FAIL: TestClassify_PatternlessCoincidenceIsSuggestedNotPaired
+    --- FAIL: TestLoadData_PatternlessCoincidenceIsSuggestedNotPaired
+    --- FAIL: TestResolveTransfer_ConfirmSurvivesReload
+    --- FAIL: TestResolveTransfer_RejectIsNeverSuggestedAgain
+    --- FAIL: TestResolveTransfer_RejectsBadInput
+
+    MUT4: delete `if a.AccountID == b.AccountID { return false }`
+    --- FAIL: TestClassify_SameAccountEqualAmountDoesNotPair
+    --- FAIL: TestLoadData_SameAccountEqualAmountDoesNotPair
+
+    MUT5: `if len(best) == 1` -> `if len(best) >= 1` (tie silently picks first)
+    --- FAIL: TestClassify_AmbiguousTieGoesToReview
+
+All three rules are held by tests that fail when the rule is removed. The
+coincidence fixture is the right one: a -$60 TARGET STORE debit and a +$60
+ZELLE FROM PAT credit three days apart in different accounts, so auto-pairing
+it would erase exactly one real expense and one real deposit -- the data-
+integrity failure my brief singles out. Both the unit test
+(transfers_test.go:110-142) and the end-to-end loader test
+(transfers_test.go:204-234) assert neither row is typed Transfer AND that the
+pair lands in the review queue with Reason == ReasonAmountMatch.
+
+FLAG (advisory, not a failure): the "contagious ambiguity" insight the
+adjudication singles out is NOT actually covered.
+
+    MUT6: delete `ambiguous[j] = true` from the tie branch (transfers.go:203)
+    ok  	budget2/internal/services/transfers
+    ok  	budget2/internal/services/dataloader
+
+The whole suite still passes. The reasoning in the code comment is sound and I
+believe the guard is correct -- withdrawing a tied row as a *candidate* as well
+as a subject needs a 4-row fixture (two independent ties sharing a row) that no
+test builds. The adjudication's claim "Its own tie test caught that" is
+overstated: TestClassify_AmbiguousTieGoesToReview passes with the line removed,
+because `ambiguous[i]` alone is enough to defuse that particular 3-row fixture.
+Behavior is right; the coverage claim is not. Worth a follow-up test, not a
+rejection.
+
+
+6. DECISIONS PERSIST -- PASS
+
+transfer_decisions.go stores a {pair_key, stable_ids[2], verdict, decided_at}
+map under transferDecisionsFile, read through the same beginWrite/SharedTx
+sequence as the other sidecars; a missing or empty file returns an empty map
+rather than an error. ResolveTransfer (transfers.go:95-124) rejects an empty
+key, an unknown verdict, and a key that names no pair from the last load's
+queue -- so it cannot write a silent no-op entry. applyDecisions
+(transfers.go:288-332) runs BEFORE the auto-pair pass, iterates keys in sorted
+order for determinism, pairs confirms regardless of pattern, and returns the
+rejected set which candidates() then excludes everywhere -- which is exactly
+what "never suggested again" has to mean.
+
+Proven end to end across a real reload, not just in the unit layer:
+TestResolveTransfer_ConfirmSurvivesReload (transfers_test.go:236-287) confirms
+the pattern-less TARGET/ZELLE pair, calls loader.LoadData() again, and asserts
+both rows come back Transfer/paired sharing the recorded pairKey, that the
+queue is now empty, that FilteredTransfers() rose 3 -> 5, AND that
+metrics.Calculate still reports TotalIncome 12.50 / TotalExpenses 84.12 -- the
+newly confirmed pair leaves the totals too.
+TestResolveTransfer_RejectIsNeverSuggestedAgain (289-316) reloads after a
+reject and asserts the queue is empty, neither row is typed Transfer, and the
+unrelated real transfer is untouched at 3.
+TestClassify_RejectedPairIsNotAutoPairedEither (281-303) covers the harder
+case: a rejected pair that DOES match a pattern still must not auto-pair.
+
+
+7. TRANSFERS REMAIN VISIBLE -- PASS
+
+loader.go no longer has filterInternalTransfers; the diff removes the whole
+57-line function and its drop loop and replaces the call with
+dl.classifyTransfers, which returns result.Transactions (Classify copies the
+input and never shortens it -- transfers.go:145-149, and
+TestClassify_DoesNotMutateInput proves the input slice is untouched).
+TestLoadData_TransfersAreClassifiedNotDropped asserts ts.Len() == 5 on a
+fixture where the old filter would have deleted 3 rows, then asserts the two
+paired legs share a non-empty key and the Vanguard row is external with NO key.
+TestLoadData_MetricsExcludeEveryTransferRow additionally asserts
+ts.FilterByType(models.Transfer).Len() == 3 -- present in the ledger and
+absent from both by-type sets in the same test.
+
+FilteredTransfers() keeps its name and signature and now counts classified rows
+(loader.go:235-245, transfers.go:118-120). I checked its consumers: `grep -rni
+filteredtransfer` over *.go, *.html and *.js finds only the loader, the
+transfers package comment and tests -- there is no production reader today.
+That is pre-existing (the compatibility contract in the brief is satisfied by
+keeping the signature) and not something A3 broke.
+
+
+8. NO SCOPE LEAK -- PASS
+
+Dedup: deduplicateTransactions' body is untouched -- the git diff shows only
+context lines for it. StableID: internal/services/dataloader/stable_id.go and
+internal/models StableIDFor do not appear in git status at all. Near-duplicate
+engine: near_duplicates.go untouched. No web/, no internal/services/mcpsvc/,
+no retirement or projection file is modified -- confirmed by the manifest and
+by git status. So nothing from A5/A7/A8/A9 leaked in.
+
+One pipeline change deserves stating rather than passing over. The dedup call
+moved from AFTER classifier.ClassifyTransactions to BEFORE it
+(loader.go:354-356). That is mandated, not incidental: design §2's "New
+pipeline order" block and GLOSSARY "Load pipeline order" steps 5-7 both put
+exact dedup ahead of transfer classification, with the stated reason that a
+duplicated row must not manufacture a phantom pair candidate. The consequence
+is that ComputeHash (date|lowercased-description|%.2f amount,
+models/transaction.go:96-104) now sees pre-normalization amounts, so the narrow
+class of rows that only collided AFTER sign normalization -- e.g. a -1500 and a
++1500 row sharing a date and an income-keyword description, which the old order
+collapsed into one -- now survive as two rows. I judge that the more correct
+behavior, and the full suite including the dataloader dedup coverage tests
+passes, but it is a real behavioral consequence of a required reorder and
+should be on the record rather than discovered later.
+
+
+RULING 2026-08-16e (count assertion before loop assertion)
+
+I checked every loop that carries an assertion in all five new/modified test
+files. transfers_test.go (services): lines 61, 100, 137, 161, 173, 252, 398 --
+all preceded by a count assertion (res.Paired / res.External /
+len(res.Suspected) / len(res.Transactions)). transfers_test.go (dataloader):
+lines 92, 187, 213, 259 preceded by ts.Len(); 155-156 preceded by
+TransactionCount == 5 and followed by Transfer-set Len == 3; 308 preceded by a
+queue-length assertion and findByDescription itself fatals unless exactly one
+row matches. classifier_test.go's new loop is preceded by len(result) != 3.
+
+ONE FLAG: internal/services/dataloader/transfers_test.go:343, in
+TestLoadData_TransferIsNotANearDuplicateCandidate --
+
+    for _, txn := range ts.Transactions {
+        if txn.TransactionType == models.Transfer && txn.DuplicatePairKey != "" {
+
+has no preceding count assertion of any kind, so it passes vacuously on an
+empty or transfer-free set. It is a documentation test for a property already
+guaranteed structurally by near_duplicates.go:58, and every other test in the
+file pins the same fixture at 5 rows, so the risk is nil -- but it is exactly
+the shape the ruling names and I am flagging it as required.
+
+
+REQUIRED TEST LIST -- all nine present
+
+clean cross-account pair auto-pairs (TestClassify_AutoPairsCleanCrossAccountPair
++ TestLoadData_TransfersAreClassifiedNotDropped); metrics exclude both legs
+(TestLoadData_MetricsExcludeEveryTransferRow +
+TestCalculateMetrics_ExcludesTransfers); classified rows stay in the ledger
+(same two); pattern-less coincidence suggested not paired (unit + loader);
+ambiguous tie to review (TestClassify_AmbiguousTieGoesToReview); external leg
+with no pair key (TestClassify_ExternalLegHasNoPairKey); confirm survives
+reload; reject never re-suggested; same-account pair does not pair (unit +
+loader). Plus date-window boundary, closest-date-wins, same-sign rows, empty
+input, pair-key order independence and input non-mutation.
+
+
+CONCLUSION
+
+PASS. Requirements 1-8 hold. The one bug the oracle could not see is fixed and
+is held by a test that I proved fails without the fix; the pattern gate, the
+different-accounts rule and the tie-to-review rule are each held by a test that
+I proved fails without them; and my own independent enumeration of every
+income/expense consumer in the repo -- including two sites the adjudication
+never named and one, account balances, where not filtering by type is the
+correct answer -- turns up no site where a Transfer row corrupts a number the
+user reads. Three items are recorded for follow-up rather than as failures: the
+explorer ledger badging every Transfer as "Expense" (A7 UI work, explicitly out
+of A3's scope), the uncovered contagious-ambiguity guard, and the one loop
+assertion missing a count assertion.
+
+Repository state on exit: `git status --porcelain` is identical to the state I
+found, plus this verdict file. I wrote nothing else in the repo; the mutation
+work was done on a copy under the session scratchpad.

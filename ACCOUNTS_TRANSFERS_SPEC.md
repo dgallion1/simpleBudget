@@ -192,6 +192,29 @@ family that read the control flow rather than grepping the access pattern.
 - `mcpsvc/admin/resolve.go:162` now echoes a StableID in a field whose
   jsonschema documents it as a hash. Introduced by A1, so in scope for the fix.
 
+**2026-08-16h — enumerate EVERY consumer, not one.** A3's two blind
+implementations both passed the 12-check oracle and were not equivalent. Both
+excluded transfers from `metrics.Calculate` — which is what the oracle asserts
+on, per ruling 2026-08-16f. One of them left `buildCumulativeChartData`
+(`internal/handlers/dashboard/handlers.go:1044`) untouched: it does
+`if Income { += } else { -= }`, and a `Transfer` is not `Income`, so every leg
+was subtracted from the dashboard's cumulative cash-flow line — a $4,000 error
+on a $2,000 transfer, subtracted once per leg, on a movement whose true net
+effect is zero.
+
+This is the second time in one run that a green oracle hid a real divergence
+(A1 was the first). The pattern in both: the oracle asserted on the new
+behavior AND on one consumer, and the gap was a DIFFERENT consumer nobody
+enumerated.
+
+Ruled: 2026-08-16f is necessary but not sufficient. When a task changes the
+meaning of a shared field, the brief must require the worker to **enumerate
+every consumer and state its conclusion for each**, and the checker must
+re-derive that list independently rather than trusting it. The specific shape
+to hunt is code treating "not X" as "Y" — here, "not Income" as "expense" —
+which a new third enum value silently breaks. Grep for the enum values and for
+arithmetic over amounts, not just for the accessor the task added.
+
 **Known test gap, accepted at A2:** the early-exit `setUnassignedCount(0)`
 reset paths in `LoadDataContext` are correct but not covered — deleting those
 two lines leaves the suite green. Worth a test when A4 next touches that

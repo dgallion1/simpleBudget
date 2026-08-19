@@ -111,7 +111,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if asOf.IsZero() {
 		asOf = time.Now()
 	}
-	accountsCard := buildAccountsCard(store, data.Transactions, asOf, detectRecurringForDashboard(data, asOf))
+	accountsCard := buildAccountsCard(store, data.Active().Transactions, asOf, detectRecurringForDashboard(data, asOf))
 
 	// Unassigned-files banner (A8): surfaces how many transactions came from
 	// CSVs matching no account, linking to /accounts. Files are never

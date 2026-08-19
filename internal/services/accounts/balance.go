@@ -160,9 +160,13 @@ func Drift(acct models.Account, txs []models.Transaction) ([]DriftReport, error)
 // latestAnchorAtOrBefore returns the anchor whose day is the latest on or
 // before `at`, and whether one exists. Anchors are not assumed to be sorted;
 // this scans them all so the caller's storage order does not matter. Ties on
-// the same day resolve to the last seen, which is arbitrary but stable; an
-// account should not carry two anchors on the same day (they would state
-// the same end-of-day balance).
+// the same day resolve to the FIRST seen, because a candidate only replaces
+// the current best when it is strictly later. An account should not carry
+// two anchors on the same day (they would state competing versions of the
+// same end-of-day balance) -- callers that write anchors (the accounts UI's
+// add-anchor handler and the MCP set_balance_anchor tool) replace any
+// same-day anchor rather than appending a second one, so this tie-break
+// should only matter for data written outside those paths.
 func latestAnchorAtOrBefore(acct models.Account, at time.Time) (models.BalanceAnchor, bool) {
 	atDay := dayOf(at)
 	var best models.BalanceAnchor

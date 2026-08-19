@@ -14,7 +14,7 @@ func newApprovals(t *testing.T) *Approvals {
 
 func TestApprovalRoundTrip(t *testing.T) {
 	a := newApprovals(t)
-	p, err := a.Create("restore_backup", "a.zip", "Restore a.zip?", "everything else goes")
+	p, err := a.Create("restore_backup", "a.zip", "op-1", "Restore a.zip?", "everything else goes")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestApprovalRoundTrip(t *testing.T) {
 	if got, ok := a.Get(p.ID); !ok || got.Title != "Restore a.zip?" {
 		t.Fatalf("Get = %+v ok=%v", got, ok)
 	}
-	if got, ok := a.Find("restore_backup", "a.zip"); !ok || got.ID != p.ID {
+	if got, ok := a.Find("restore_backup", "a.zip", "op-1"); !ok || got.ID != p.ID {
 		t.Fatalf("Find = %+v ok=%v, want the request just created", got, ok)
 	}
 
@@ -47,7 +47,7 @@ func TestApprovalRoundTrip(t *testing.T) {
 
 func TestApprovalCarriesARefusal(t *testing.T) {
 	a := newApprovals(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 	if err := a.Decide(p.ID, Refused); err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestApprovalCarriesARefusal(t *testing.T) {
 // decision that has already been acted on.
 func TestApprovalCanOnlyBeDecidedOnce(t *testing.T) {
 	a := newApprovals(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 	if err := a.Decide(p.ID, Approved); err != nil {
 		t.Fatalf("first Decide: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestApprovalUnknownIDIsRefused(t *testing.T) {
 // Nobody answered. A destructive operation must not proceed on silence.
 func TestApprovalTimesOutAsRefused(t *testing.T) {
 	a := NewApprovals(40 * time.Millisecond)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 	d, err := a.Await(context.Background(), p)
 	if !errors.Is(err, ErrApprovalTimeout) {
@@ -107,7 +107,7 @@ func TestApprovalTimesOutAsRefused(t *testing.T) {
 
 func TestApprovalHonorsContextCancellation(t *testing.T) {
 	a := newApprovals(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -124,8 +124,8 @@ func TestApprovalHonorsContextCancellation(t *testing.T) {
 // operation means a human can answer the stale one.
 func TestCreateReplacesAnEarlierRequestForTheSameThing(t *testing.T) {
 	a := newApprovals(t)
-	first, _ := a.Create("restore_backup", "a.zip", "t", "d")
-	second, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	first, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
+	second, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 	if first.ID == second.ID {
 		t.Fatal("the replacement reused the id")
@@ -133,7 +133,7 @@ func TestCreateReplacesAnEarlierRequestForTheSameThing(t *testing.T) {
 	if _, ok := a.Get(first.ID); ok {
 		t.Error("the superseded request is still answerable")
 	}
-	if got, ok := a.Find("restore_backup", "a.zip"); !ok || got.ID != second.ID {
+	if got, ok := a.Find("restore_backup", "a.zip", "op"); !ok || got.ID != second.ID {
 		t.Errorf("Find returned %+v, want the newest request", got)
 	}
 }
@@ -142,19 +142,19 @@ func TestCreateReplacesAnEarlierRequestForTheSameThing(t *testing.T) {
 // shutdown, and one archive's approval must not answer another's.
 func TestCreateKeepsDistinctOperationsApart(t *testing.T) {
 	a := newApprovals(t)
-	restoreA, _ := a.Create("restore_backup", "a.zip", "t", "d")
-	restoreB, _ := a.Create("restore_backup", "b.zip", "t", "d")
-	shutdown, _ := a.Create("shutdown_server", "", "t", "d")
+	restoreA, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
+	restoreB, _ := a.Create("restore_backup", "b.zip", "op", "t", "d")
+	shutdown, _ := a.Create("shutdown_server", "", "op", "t", "d")
 
 	for _, id := range []string{restoreA.ID, restoreB.ID, shutdown.ID} {
 		if _, ok := a.Get(id); !ok {
 			t.Errorf("request %s was dropped", id)
 		}
 	}
-	if got, _ := a.Find("restore_backup", "b.zip"); got.ID != restoreB.ID {
+	if got, _ := a.Find("restore_backup", "b.zip", "op"); got.ID != restoreB.ID {
 		t.Error("Find crossed two archives")
 	}
-	if got, _ := a.Find("shutdown_server", ""); got.ID != shutdown.ID {
+	if got, _ := a.Find("shutdown_server", "", "op"); got.ID != shutdown.ID {
 		t.Error("Find crossed two tools")
 	}
 }
@@ -164,7 +164,7 @@ func TestExpiredApprovalsAreSweptAway(t *testing.T) {
 	now := time.Now()
 	a.now = func() time.Time { return now }
 
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 	now = now.Add(2 * time.Minute)
 
 	if _, ok := a.Get(p.ID); ok {
@@ -180,14 +180,14 @@ func TestExpiredApprovalsAreSweptAway(t *testing.T) {
 // back to wait. Their answer must not be dropped on the floor.
 func TestAnAnswerGivenBeforeTheToolWaitsIsNotLost(t *testing.T) {
 	a := newApprovals(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 	// Answered first...
 	if err := a.Decide(p.ID, Approved); err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
 	// ...and only then does the tool re-find its request and wait on it.
-	found, ok := a.Find("restore_backup", "a.zip")
+	found, ok := a.Find("restore_backup", "a.zip", "op")
 	if !ok {
 		t.Fatal("the tool cannot find its own request after the human answered it")
 	}
@@ -204,11 +204,11 @@ func TestAnAnswerGivenBeforeTheToolWaitsIsNotLost(t *testing.T) {
 // that some future caller reads as merely unanswered.
 func TestARefusalGivenBeforeTheToolWaitsIsNotLost(t *testing.T) {
 	a := newApprovals(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 	if err := a.Decide(p.ID, Refused); err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
-	found, _ := a.Find("restore_backup", "a.zip")
+	found, _ := a.Find("restore_backup", "a.zip", "op")
 	d, err := a.Await(context.Background(), found)
 	if err != nil {
 		t.Fatalf("Await: %v", err)
@@ -222,14 +222,14 @@ func TestARefusalGivenBeforeTheToolWaitsIsNotLost(t *testing.T) {
 // approval into a new operation.
 func TestAnAnswerIsConsumedOnce(t *testing.T) {
 	a := newApprovals(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 	if err := a.Decide(p.ID, Approved); err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
 	if _, err := a.Await(context.Background(), p); err != nil {
 		t.Fatalf("first Await: %v", err)
 	}
-	if _, ok := a.Find("restore_backup", "a.zip"); ok {
+	if _, ok := a.Find("restore_backup", "a.zip", "op"); ok {
 		t.Error("the consumed request is still findable; a later call could replay it")
 	}
 }

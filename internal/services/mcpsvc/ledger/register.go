@@ -137,8 +137,15 @@ func (s storageAccountStore) LoadAccounts() ([]models.Account, error) {
 	return accounts.Load(s.store)
 }
 
+// SaveAccounts persists an already-computed account list verbatim, through
+// accounts.Mutate rather than accounts.Save directly, so this call is also
+// one held section against every other Mutate sequence and a restore's
+// exclusive hold — even though it discards the section's own load and
+// always saves the list the caller already built.
 func (s storageAccountStore) SaveAccounts(a []models.Account) error {
-	return accounts.Save(s.store, a)
+	return accounts.Mutate(s.store, func([]models.Account) ([]models.Account, error) {
+		return a, nil
+	})
 }
 
 // Compile-time interface checks.

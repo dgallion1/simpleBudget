@@ -456,6 +456,121 @@ func TestHandleAddAnchor_KeepsAnchorsSortedByDate(t *testing.T) {
 	}
 }
 
+// TestHandleAddAnchor_ReplacesSameDayAnchor: adding an anchor for a date
+// that already has one must leave exactly ONE anchor for that date, and
+// the amount every balance/projection uses (via BalanceAt) must be the
+// NEW one, not the stale first-seen one latestAnchorAtOrBefore would
+// otherwise silently keep (its tie-break favors the first anchor it
+// scans, and a naive append would have left two anchors on 2026-08-15).
+func TestHandleAddAnchor_ReplacesSameDayAnchor(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "anch", Name: "Anchors", Kind: models.AccountKindChecking, Anchors: []models.BalanceAnchor{
+			{Date: parseDate("2026-08-15"), Amount: 1000, Note: "stale statement"},
+		}},
+	})
+
+	form := url.Values{
+		"anchor_date":   {"2026-08-15"},
+		"anchor_amount": {"4210.55"},
+		"anchor_note":   {"corrected statement"},
+	}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/anch/anchor", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	accts := loadAccounts(t, store)
+	if len(accts) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(accts))
+	}
+	if len(accts[0].Anchors) != 1 {
+		t.Fatalf("expected exactly 1 anchor on 2026-08-15, got %d: %+v", len(accts[0].Anchors), accts[0].Anchors)
+	}
+	got := accts[0].Anchors[0]
+	if got.Date.Format("2006-01-02") != "2026-08-15" {
+		t.Errorf("anchor date = %v, want 2026-08-15", got.Date)
+	}
+	if got.Amount != 4210.55 {
+		t.Errorf("anchor amount = %v, want 4210.55 (the new value, not the stale 1000)", got.Amount)
+	}
+	if got.Note != "corrected statement" {
+		t.Errorf("anchor note = %q, want %q", got.Note, "corrected statement")
+	}
+
+	// The balance the rest of the app derives from this account must also
+	// reflect the new anchor, not the stale one.
+	bal, err := accountssvc.BalanceAt(accts[0], nil, parseDate("2026-08-20"))
+	if err != nil {
+		t.Fatalf("BalanceAt: %v", err)
+	}
+	if !bal.Available {
+		t.Fatal("BalanceAt: Available = false, want true")
+	}
+	if bal.Amount != 4210.55 {
+		t.Errorf("BalanceAt = %v, want 4210.55 (from the corrected anchor)", bal.Amount)
+	}
+}
+
+// TestHandleAddAnchor_SameDayReplacementIsDeterministic pins that adding
+// two anchors for the same day, in sequence, always leaves the SECOND
+// one's amount authoritative. Pre-fix, this depended on sort.Slice's
+// unstable ordering of equal-date elements plus latestAnchorAtOrBefore's
+// first-seen tie-break, so which amount won could vary between runs; this
+// test repeats the sequence with a fresh store each time to catch that
+// kind of nondeterminism, which a single run cannot reveal.
+func TestHandleAddAnchor_SameDayReplacementIsDeterministic(t *testing.T) {
+	const iterations = 50
+	for i := 0; i < iterations; i++ {
+		_, store, cleanup := setupTestEnv(t)
+
+		saveAccounts(t, store, []models.Account{
+			{ID: "anch", Name: "Anchors", Kind: models.AccountKindChecking},
+		})
+
+		first := url.Values{
+			"anchor_date":   {"2026-08-15"},
+			"anchor_amount": {"1000"},
+		}
+		w1 := httptest.NewRecorder()
+		newRouter().ServeHTTP(w1, formPost("POST", "/accounts/anch/anchor", first))
+		if w1.Code != http.StatusOK {
+			t.Fatalf("iteration %d: first add status = %d, body=%s", i, w1.Code, w1.Body.String())
+		}
+
+		second := url.Values{
+			"anchor_date":   {"2026-08-15"},
+			"anchor_amount": {"4210.55"},
+		}
+		w2 := httptest.NewRecorder()
+		newRouter().ServeHTTP(w2, formPost("POST", "/accounts/anch/anchor", second))
+		if w2.Code != http.StatusOK {
+			t.Fatalf("iteration %d: second add status = %d, body=%s", i, w2.Code, w2.Body.String())
+		}
+
+		accts := loadAccounts(t, store)
+		if len(accts[0].Anchors) != 1 {
+			t.Fatalf("iteration %d: expected 1 anchor, got %d: %+v", i, len(accts[0].Anchors), accts[0].Anchors)
+		}
+		if accts[0].Anchors[0].Amount != 4210.55 {
+			t.Fatalf("iteration %d: authoritative amount = %v, want 4210.55 on every run", i, accts[0].Anchors[0].Amount)
+		}
+
+		bal, err := accountssvc.BalanceAt(accts[0], nil, parseDate("2026-08-20"))
+		if err != nil {
+			t.Fatalf("iteration %d: BalanceAt: %v", i, err)
+		}
+		if bal.Amount != 4210.55 {
+			t.Fatalf("iteration %d: BalanceAt = %v, want 4210.55 on every run", i, bal.Amount)
+		}
+
+		cleanup()
+	}
+}
+
 // TestHandleDeleteAnchor_RemovesByDate: the anchor is keyed by its date
 // in the URL; deleting removes that one anchor and leaves the rest.
 func TestHandleDeleteAnchor_RemovesByDate(t *testing.T) {

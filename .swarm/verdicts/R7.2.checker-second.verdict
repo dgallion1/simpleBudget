@@ -1,0 +1,72 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R7
+ATTEMPT: 2
+---
+Scope: .swarm/manifests/R7.2.files = resolve.go, resolve_test.go. Confirmed via
+`git diff HEAD --stat`: resolve.go 23 insertions / 0 deletions — byte-identical
+to attempt 1's diff (matches R7.1.checker-tests' reported "+23/-0"). Production
+code genuinely untouched in attempt 2. resolve_test.go gained exactly one new
+function (grep count 10 -> 11): TestResolveTransferWritePathRevalidatesBeforeWriting.
+
+Attack 1 — tautological / unreachable state?
+NOT tautological. Read approval.go: awaitApproval blocks on deps.Approvals.Await
+until the human answers a browser page or it times out; applyResolveTransfer is
+the exact function invoked afterward (resolve.go:155). The test calling
+applyResolveTransfer directly is the brief's own sanctioned shortcut for that
+same real blocking window, not an artificial state.
+
+Attack 2 — refusal for the RIGHT reason?
+Verified two ways:
+(a) grep -rn "no longer a suspected transfer" --include=*.go . shows the string
+    only at resolve.go:218 (production) and resolve_test.go:285 (assertion) —
+    no other error path in the package can satisfy the substring match.
+(b) Existing TestResolveTransferSecondCallWithTokenWrites drives the SAME
+    applyResolveTransfer function with the pair left suspected and asserts the
+    write succeeds — the positive control the dispatch asked for, confirming
+    the guard doesn't block valid writes and the refusal in the new test is
+    attributable to the CSV change, not a generally-broken path.
+Confirmed the token itself isn't the failure source: mutation runs below show
+Redeem succeeds and the call proceeds past it in every mutated variant (the
+refusal only appears when the guard/reload logic is intact).
+
+Attack 3 — mutation testing on a scratch copy
+(/tmp/.../scratchpad/b2mut/repo, copy of the whole working tree)
+1. Delete resolve.go:208-220 wholesale (comment through closing brace), keep
+   test: go build clean; `go test -run TestResolveTransferWritePathRevalidatesBeforeWriting -v`
+   -> FAIL: "applyResolveTransfer did not refuse a pair that is no longer suspected".
+   Confirms the base claim.
+2. Subtler mutation A — keep deps.load(), remove ONLY the suspectedContains
+   block: still FAILS, but for an instructive reason — the downstream
+   deps.Transfers.ResolveTransfer() has its own internal suspectedIdentities
+   check (dataloader/transfers.go:106-108) that also catches it, with a
+   DIFFERENT error string ("no suspected transfer pair with key ..."). The
+   test's `strings.Contains(err.Error(), "no longer a suspected transfer")`
+   assertion correctly fails on the mismatched message, so this mutation is
+   still caught — the test is pinned to resolve.go's own error text, not to
+   "any error occurred."
+3. Subtler mutation B — keep the suspectedContains check, remove ONLY
+   deps.load(): FAILS with "did not refuse" (err == nil, write proceeds).
+   This is the real vulnerability from the brief: without a fresh reload, both
+   resolve.go's own check and the downstream loader check consult the SAME
+   stale in-memory queue from the mint-time load, which still contains the
+   key, so nothing catches the staleness. The test catches this half too.
+All three mutations are caught; coverage is not limited to wholesale deletion.
+
+Attack 4 — transfer_decisions.json byte-unchanged
+Real content comparison: `before := "{\"decisions\": {}}"`, `after, _ :=
+os.ReadFile(decisionsPath)`, `if string(after) != before`. Not a path/existence
+check.
+
+Attack 5 — full go test -race ./... (brief's criterion 4)
+Ran independently in the actual repo (not scratch): `go build ./...` clean,
+`go vet ./...` clean, `go test -race ./...` — all packages "ok", none failing,
+including cmd/server and the rest of the in-flight R2/R3 tree. The brief's
+criterion 4 is satisfied by the current tree state regardless of what the
+worker personally ran.
+
+Net: the new test is reachable, non-tautological, attributable to the specific
+guard by exact error text, and independently confirmed via three separate
+mutations (wholesale delete, check-only removal, reload-only removal) to fail
+without the fix. Production code untouched. Build/vet/race clean.

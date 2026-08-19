@@ -1,0 +1,99 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R5
+ATTEMPT: 2
+---
+Claim under attack: "the default path is now behaviourally identical to
+pre-R5, the explicit-as_of behaviour is unchanged from attempt 1, and the
+truncation boundary is timezone-safe."
+
+GOOD NEWS FIRST — my own attempt-1 counterfactual is now fixed. Re-ran the
+exact fixture that failed attempt 1 (checking/brokerage pair, one paired
+inbound transfer of $777 dated 2027-01-05, no as_of) through the REAL tool
+(get_balance_projection via the MCP client, not the extracted helper): now
+returns has_reference=true, reference_amount=777.00, matching pre-R5. Also
+verified:
+- asOfSupplied wiring: as_of omitted, "", and "   " all correctly take the
+  not-supplied branch (TrimSpace collapses all three to ""); a malformed
+  date ("not-a-date") returns an error before either branch's effects apply
+  (TestGetBalanceProjectionRejectsBadDate, re-run, passes). No wrong-branch
+  takeover found.
+- Default path is genuinely untruncated, not truncated-later: default-path
+  round-trip tests use inbound transfers dated up to +10 days in the future
+  and assert reference_amount=200.00 (median of 100/200/900, i.e. the future
+  leg IS counted). Re-ran under TZ=America/New_York, Asia/Tokyo, UTC,
+  Pacific/Kiritimati, Pacific/Midway — all pass, all report 200.00.
+- Recurring-freshness bug (bug 1, DetectRecurring vs DetectRecurringAt(ts,
+  now)) is pinned directly against activeSetAndRecurringForProjection with a
+  fixture where the two reference dates provably diverge (Rent detected with
+  MaxDate fallback, excluded under time.Now()) — legitimately unit-level per
+  R12 being out of scope (a round-trip test would confound with R12's
+  separate byDay Location-key bug, as the brief's own addendum notes).
+- No other caller of activeSetAndRecurringForProjection / recurringFor-
+  Projection* / DetectRecurringAt was touched; grepped every call site.
+  get_accounts is untouched (still time.Now(), no branch dependency).
+- Boundary agreement for explicit as_of: FilterByDateRange's endDay (23:59:
+  59.999999999 in end.Location()) and BalanceAt's dayOf-based "on or before"
+  comparison agree, by inspection and by the existing historical/future
+  as_of tests (re-run, pass) — for the ACTUAL parsing path, where
+  time.Parse("2006-01-02", s) always yields UTC.
+- go build / go vet / go test -race ./... clean across the whole repo (not
+  just the ledger package); re-ran R3's TestDashboardAndMCPProjectionAgree-
+  class tests and R1/R7 regression tests via the full-suite race run — all
+  pass.
+
+THE FAIL — mutation from my own dispatch survives uncaught. The brief's
+"Required fix" section for attempt 2 mandates: "normalise as_of to a day
+boundary with the existing dayOf convention ... so the truncation boundary
+and BalanceAt's boundary agree," and separately requires "mutation check per
+fix" as evidence. I applied the exact subtler mutation my dispatch named:
+swapped `asOf.Location()` for `time.Now().Location()` on the EXPLICIT-as_of
+day-boundary construction (accounts.go:307, `asOfDay := time.Date(...,
+asOf.Location())`).
+
+- Built a fixture that isolates this: an inbound paired transfer dated the
+  calendar day AFTER an explicit as_of (as_of=2026-04-01, transfer dated
+  2026-04-02, both midnight UTC as CSV rows always parse). On the correct
+  (as_of.Location()) code this correctly reports has_reference=false under
+  both TZ=UTC and TZ=America/New_York. Under the mutation
+  (time.Now().Location()), TZ=America/New_York wrongly reports
+  has_reference=true / reference_amount=300.00 — the transfer leaks across
+  the as_of boundary because the mutated boundary is computed in a negative-
+  UTC-offset zone, extending FilterByDateRange's inclusive end instant past
+  midnight into the next UTC day. This reproduces the exact TZ-dependent
+  off-by-one bug class R5 attempt 2 exists to eliminate, on the explicit-
+  as_of path this time.
+- Ran the FULL committed ledger package test suite against the mutated code
+  under TZ=America/New_York and TZ=Asia/Tokyo: `go test -count=1
+  ./internal/services/mcpsvc/ledger/...` — both report `ok`, zero failures.
+  No committed test catches this mutation. Confirmed by grep: every TZ-
+  sensitivity assertion in accounts_test.go (`Location`, `TZ=`, `time.Local`)
+  is confined to the three DefaultAsOf* tests; there is no TZ-varying test,
+  and no exact-as_of-boundary-row test, on the EXPLICIT as_of path at all.
+- The worker's own comment at accounts.go:303-306 acknowledges this
+  precisely: "asOf already parses to UTC midnight ..., so this is a no-op in
+  practice; it is here so the boundary is correct by construction rather
+  than by the parse format's coincidence" — i.e. the worker knew the
+  guarantee is unverified by any test and relies entirely on an unstated,
+  unpinned invariant of the date-parsing format. If a future change ever
+  touches as_of parsing (a wider accepted format, an offset-aware parse) or
+  a maintainer "harmonizes" this line with the default path's now-based
+  boundary, the identical bug class silently returns and the entire
+  committed suite stays green.
+
+This is not the same bug I failed attempt 1 for, and it is not R12 (that
+bug is the byDay map-key Location mismatch inside accounts.Project; this one
+is the FilterByDateRange/dayOf boundary construction inside
+activeSetAndRecurringForProjection, upstream of accounts.Project). It is,
+however, exactly the class of defect this task exists to close: an untested,
+timezone-dependent date boundary in get_balance_projection, on the path the
+Attempt-2 brief explicitly required to be "correct by construction." "The
+truncation boundary is timezone-safe" is not demonstrated for the explicit-
+as_of path — it currently holds only by an accident of the parse format, and
+that accident has zero test coverage.
+
+Mutation reproduced and reverted on a working-tree copy only (not committed;
+repo restored to the pre-mutation state and verified via diff + full build/
+vet/test-clean before this verdict was written). No files left in the repo
+or scratchpad beyond this verdict.

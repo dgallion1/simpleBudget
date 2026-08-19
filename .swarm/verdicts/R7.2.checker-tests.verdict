@@ -1,0 +1,162 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R7
+ATTEMPT: 2
+---
+Repo /home/darrell/bin/ai/budget2, branch fix/review-aug16 (git rev-parse --abbrev-ref HEAD).
+Scope under judgement: .swarm/manifests/R7.2.files = internal/services/mcpsvc/ledger/resolve.go,
+internal/services/mcpsvc/ledger/resolve_test.go. I edited nothing in the repo; all mutation work
+was done on copies under the session scratchpad with .git removed.
+
+--- CRITERION 1: production code UNCHANGED from attempt 1 ---
+MET.
+Command: `git diff --numstat -- internal/services/mcpsvc/ledger/resolve.go`
+Output: `23      0      internal/services/mcpsvc/ledger/resolve.go`
+Attempt 1's two independent verdicts both recorded resolve.go as "+23/-0" / "23 insertions"
+(.swarm/verdicts/R7.1.checker-tests.verdict, .swarm/verdicts/R7.1.checker-second.verdict). Not one
+line has been added or removed since. The diff is purely additive, so no attempt-1 line could have
+been silently edited in place without changing the deletion count.
+Corroboration at exact line addresses cited in attempt 1:
+  `grep -n "deps.load()" internal/services/mcpsvc/ledger/resolve.go` -> 91, 213 (attempt 1 cited
+  "resolve.go:91-93" mint path and "resolve.go:208-220 / 213-220" write path).
+  `sed -n '208,220p'` reproduces the block verbatim, opening "// Re-validate against a fresh load
+  before writing, not only before" and closing on the brace after the fmt.Errorf whose text is the
+  same string quoted verbatim in the attempt-1 verdict ("pair_key %q is no longer a suspected
+  transfer awaiting review (it may already be resolved, or the underlying data changed since it was
+  confirmed); the confirmation token has been spent either way; ...").
+Limitation stated honestly: no byte-level snapshot of attempt 1's resolve.go was archived anywhere
+in the tree, so a byte-for-byte diff against attempt 1 is not possible. The evidence above (identical
+numstat, identical line addresses, identical error strings quoted independently by two attempt-1
+checkers) is as close as the repository permits.
+Test file, by contrast, moved from +12/-4 (attempt 1) to +71/-4 (`git diff --numstat`), i.e. the only
+new work is in the test.
+
+--- CRITERION 2: TestResolveTransferWritePathRevalidatesBeforeWriting exists, drives the WRITE
+    path, asserts refusal AND that transfer_decisions.json is byte-unchanged ---
+MET. Read in full at internal/services/mcpsvc/ledger/resolve_test.go:245-299.
+`grep -c "^func Test" internal/services/mcpsvc/ledger/resolve_test.go` = 11;
+`git show HEAD:internal/services/mcpsvc/ledger/resolve_test.go | grep -c "^func Test"` = 10.
+Exactly one test added.
+Body, verified by reading not by name:
+  resolve_test.go:257  writeCSV(t, dir, transferDecisionsFile, `{"decisions": {}}`)  (baseline bytes)
+  resolve_test.go:259  key := seedSuspectedPair(...)  -- seeds CSVs WITHOUT loading through deps
+  resolve_test.go:263  mints a real token via the registered tool while the pair IS suspected
+  resolve_test.go:272  writeCSV(t, dir, "checking.csv", header only) -- pair stops being suspected
+  resolve_test.go:280  _, out, err := applyResolveTransfer(deps, key, transfers.VerdictConfirm,
+                       resolveTokenArgs{...}, first.ConfirmToken, confirm.NotAsked)
+It calls applyResolveTransfer DIRECTLY, so the top-of-handler pre-mint check at resolve.go:95 is not
+in the call path at all and cannot be what refuses -- exactly the primary verifier's prescription.
+Assertions present:
+  :282-284  err == nil  -> t.Fatal("applyResolveTransfer did not refuse a pair that is no longer
+            suspected")
+  :285-287  !strings.Contains(err.Error(), "no longer a suspected transfer") -> t.Errorf
+  :288-290  out.Confirmed -> t.Error
+  :292-298  os.ReadFile(filepath.Join(dir, transferDecisionsFile)); string(after) != before ->
+            t.Errorf("transfer_decisions.json changed after a refused write: ...")
+Both the refusal AND the byte-unchanged file assertion are present.
+The byte-unchanged assertion is NOT vacuous: I proved the write really lands at that path. In the
+mutated scratch copy (criterion 3) I added a throwaway diagnostic (scratch only) running the same
+sequence and logged the outcome:
+  "DIAG err=<nil> confirmed=true snapshots=[.../snapshots/transfer_decisions.json...bak]"
+  "DIAG decisions file err=<nil> content=\"{\\n  \\\"decisions\\\": {\\n    \\\"f2dd5ca97cb3\\\": ...
+   \\\"verdict\\\": \\\"confirm\\\" ...\" changed=true"
+So without the guard the file at dir/transfer_decisions.json is genuinely rewritten; the assertion
+would fire. In the committed test the t.Fatal on the missing refusal simply reaches the failure one
+assertion earlier, which is correct ordering.
+
+--- CRITERION 3 (DECISIVE): reproduce the mutation independently ---
+MET. Reproduced by me, not taken on the worker's report.
+Setup: `cp -a /home/darrell/bin/ai/budget2/. <scratchpad>/r7mut/ && rm -rf <scratchpad>/r7mut/.git`
+Mutation: `sed -i '208,220d' <scratchpad>/r7mut/internal/services/mcpsvc/ledger/resolve.go`
+  `wc -l` confirms 272 -> 259 lines, i.e. exactly the 13 lines 208..220 inclusive, the
+  "Re-validate against a fresh load before writing" comment through the closing brace.
+  `grep -n "deps.load()"` on the mutated file -> only line 91, i.e. the mint-path load is intact and
+  nothing else was disturbed.
+Rebuild: `go build ./internal/...` -> MUT_BUILD_EXIT=0. NO compile error; the failure below is
+therefore behavioural, not a build artefact.
+Run: `go test -count=1 -v ./internal/services/mcpsvc/ledger/`
+  --- FAIL: TestResolveTransferWritePathRevalidatesBeforeWriting (0.01s)
+      resolve_test.go:283: applyResolveTransfer did not refuse a pair that is no longer suspected
+FAILS FOR THE RIGHT REASON: the assertion that tripped is `err == nil`, i.e. the refusal did not
+happen. Not a compile error, not a panic, not an unrelated helper breaking.
+The other 10 pre-existing resolve tests ALL still PASS under the same mutation, as does every other
+test in the package:
+  --- PASS: TestResolveTransferFirstCallDoesNotWrite
+  --- PASS: TestResolveTransferSecondCallWithTokenWrites
+  --- PASS: TestResolveTransferRefusesABadToken
+  --- PASS: TestResolveTransferRefusesAReplayedToken
+  --- PASS: TestResolveTransferRefusesATokenForDifferentVerdict
+  --- PASS: TestResolveTransferRejectsUnknownPairKey
+  --- PASS: TestResolveTransferRejectsUnknownVerdict
+  --- PASS: TestResolveTransferWithoutConfirmRegistryReportsIt
+  --- PASS: TestResolveTransferDoesNotWriteWhenTheUserRefuses
+  --- PASS: TestResolveTransferOnAClientThatCannotPromptSaysNobodyWasAsked
+  (plus all 18 accounts/set_balance_anchor tests and all 5 get_transfers tests -- PASS)
+  FAIL  budget2/internal/services/mcpsvc/ledger  0.258s ; MUT_TEST_EXIT=1
+This is precisely the acceptance evidence attempt 1 lacked: the new test is the sole thing covering
+resolve.go:208-220, and it is sufficient -- deleting that block makes it, and only it, fail.
+Unmutated baseline for contrast: `go test -race -count=1 -v -run TestResolveTransfer
+./internal/services/mcpsvc/ledger/` -> all 11 "--- PASS", "ok ... 1.158s", EXIT=0.
+
+--- CRITERION 4: criterion-1 coverage (fresh server) still intact; mint-path deps.load() still
+    present and load-bearing ---
+MET. Present: `grep -n "deps.load()" internal/services/mcpsvc/ledger/resolve.go` -> line 91, inside
+registerResolveTransfer, before `suspected := deps.Transfers.SuspectedTransfers()` at line 94.
+Load-bearing, proved by a second independent mutation (scratchpad r7mut2, .git removed):
+`sed -i '85,93d' internal/services/mcpsvc/ledger/resolve.go` (the mint-path comment + load block,
+leaving the write-path block at its new offset intact), `go build ./internal/...` -> exit 0, then
+`go test -count=1 -v -run TestResolveTransfer ./internal/services/mcpsvc/ledger/`:
+  --- FAIL: TestResolveTransferFirstCallDoesNotWrite
+  --- FAIL: TestResolveTransferSecondCallWithTokenWrites
+  --- FAIL: TestResolveTransferRefusesABadToken
+  --- FAIL: TestResolveTransferRefusesAReplayedToken
+  --- FAIL: TestResolveTransferRefusesATokenForDifferentVerdict
+  --- FAIL: TestResolveTransferDoesNotWriteWhenTheUserRefuses
+  --- FAIL: TestResolveTransferWritePathRevalidatesBeforeWriting
+  --- FAIL: TestResolveTransferOnAClientThatCannotPromptSaysNobodyWasAsked
+  (8 of 11 fail; MUT2_EXIT=1)
+The committed suite still protects the fresh-server half of the fix. Corroborating structural point,
+read not assumed: seedSuspectedPair (resolve_test.go:24-49) loads through a SEPARATE
+`dataloader.New(dir, deps.Store)` "peek" instance and never through deps, so deps' own suspected
+queue is empty when the tool is called -- the no-preload property attempt 1 established is unchanged.
+
+--- CRITERION 5: go build ./..., go vet ./..., FULL go test -race ./... ---
+MET.
+`go build ./...` -> BUILD_EXIT=0 (no output).
+`go vet ./...`  -> VET_EXIT=0 (no output).
+`go test -race -count=1 ./...` (FULL tree, run by me, not the ledger package alone) -> FULL_RACE_EXIT=0.
+All 48 packages report "ok", zero FAIL lines. Explicitly including the packages carrying other
+workers' in-flight changes: "ok budget2/internal/handlers/dashboard 10.702s",
+"ok budget2/internal/handlers/explorer 11.208s", "ok budget2/internal/services/mcpsvc/ledger 2.052s".
+No failure to attribute to dashboard/ or explorer/ -- there were none.
+Note on tree churn: between my full run and the end of verification another worker dropped untracked
+scratch files into the tree (internal/handlers/dashboard/zz_debug_test.go, zz_debug2_test.go,
+internal/services/mcpsvc/ledger/zz_debug_parity_test.go, timestamps 15:39-15:43). They are not in
+R7's manifest and are not R7's work. I re-ran `go test -race -count=1
+./internal/services/mcpsvc/ledger/` after they appeared: "ok budget2/internal/services/mcpsvc/ledger
+1.609s", LEDGER_EXIT=0. Flagging their presence as a fact for the lead; they should not be committed.
+
+--- CRITERION 6: no critical-glob paths touched ---
+MET.
+`git status --porcelain | awk '{print $NF}' | grep -E 'internal/services/(storage|dataloader|
+retirement/engine|transfers)/|internal/services/accounts/accounts\.go|internal/services/mcpsvc/
+confirm/'` -> no matches, grep exit 1. Every entry of .swarm/critical.globs is untouched.
+resolve_test.go imports budget2/internal/services/dataloader and .../mcpsvc/confirm; both are
+read-only dependencies, not modifications.
+
+--- SCOPE ---
+R7's two manifest files are the only files I judged. `git diff --numstat` for them: resolve.go 23/0,
+resolve_test.go 71/4. Other modified paths in the tree (internal/handlers/explorer/,
+internal/handlers/dashboard/, internal/services/mcpsvc/ledger/accounts.go and accounts_test.go,
+.swarm/briefs/R3.md, R4.md, ledger.tsv) belong to R2/R3/R4 in-flight work and were not evaluated and
+are not held against R7. I confirmed I changed nothing myself: post-verification md5sums
+334f63e35d73c1f8826d47f7bc65d9b2 resolve.go, 725040a1f2ff3e8f4dbb69ff6a917810 resolve_test.go, with
+numstat still 23/0 and 71/4.
+
+--- SUMMARY ---
+1 MET (with the stated archival limitation). 2 MET. 3 MET -- the decisive mutation reproduced
+independently: the new test fails for the correct behavioural reason and the 10 pre-existing tests
+stay green, proving it is the only cover for resolve.go:208-220. 4 MET. 5 MET, full-tree -race run
+by me, exit 0. 6 MET. The single defect that failed attempt 1 in both lanes is closed by committed,
+executable evidence.

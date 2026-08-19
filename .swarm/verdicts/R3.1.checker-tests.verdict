@@ -1,0 +1,193 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R3
+ATTEMPT: 1
+---
+Working tree: /home/darrell/bin/ai/budget2, branch fix/review-aug16.
+R3 scope per .swarm/manifests/R3.1.files:
+  internal/handlers/dashboard/handlers.go
+  internal/handlers/dashboard/accounts_card_test.go
+  internal/services/mcpsvc/ledger/accounts.go
+  internal/services/mcpsvc/ledger/accounts_test.go
+  internal/handlers/explorer/duplicate_suppression_test.go (new)
+
+Production diff is 3 lines (`git diff internal/handlers/dashboard/handlers.go
+internal/services/mcpsvc/ledger/accounts.go`):
+  dashboard/handlers.go:114   data.Transactions -> data.Active().Transactions
+  ledger/accounts.go:87,235   ts.Transactions   -> ts.Active().Transactions
+
+Method note: to test discrimination without editing the repo, the tree was
+copied to scratchpad (rsync, .git excluded) and mutated there. The repo under
+/home/darrell/bin/ai/budget2 was not modified by this check (`git status
+--short` identical before and after).
+
+-------------------------------------------------------------------------
+CRITERION 1 - resolved duplicate pair counted exactly once in
+              (a) balance, (b) low-balance warning, (c) funding projection,
+              on BOTH the dashboard path and the MCP path.
+
+RESULT: PARTIAL - 1(a) and 1(b) MET on both paths; 1(c) MET on the MCP path;
+        1(c) NOT MET on the dashboard path.
+
+1(a)+(b) dashboard - MET.
+  Test: internal/handlers/dashboard/accounts_card_test.go:412
+  TestAccountsCard_SuppressedDuplicateCountedOnce. Fixture is a real
+  bill-pay/posted-check pair resolved through dl.SaveDuplicateDecision
+  (kept_winner), anchor 2200, threshold 500, debit 1580.43.
+  Command: go test -count=1 -race -run SuppressedDuplicate -v
+           ./internal/handlers/dashboard/  ->  --- PASS (0.20s)
+  Discrimination proven: with dashboard/handlers.go:114 reverted to
+  data.Transactions in the scratch copy, the same test FAILS and the rendered
+  card contains "Below the $500 low-balance threshold"
+  (accounts_card_test.go:514/517/520 all fired). So the double-counted value
+  would have failed the assertion.
+
+1(a)+(b) MCP get_accounts - MET.
+  Test: internal/services/mcpsvc/ledger/accounts_test.go:350
+  TestGetAccountsCountsSuppressedDuplicateOnce. Asserts Balance == 1300 and
+  LowBalance == false.
+  Command: go test -count=1 -race -run SuppressedDuplicate -v
+           ./internal/services/mcpsvc/ledger/  ->  --- PASS
+  Discrimination proven: with ledger/accounts.go:87 reverted to
+  ts.Transactions, the test FAILS with
+  "balance = 400.00, want 1300.00" and "low_balance = true".
+
+1(c) MCP get_balance_projection - MET.
+  Test: internal/services/mcpsvc/ledger/accounts_test.go:377
+  TestGetBalanceProjectionCountsSuppressedDuplicateOnce. Asserts
+  Minimum == 1300, Crossing == "", SuggestedTopUp == 0.
+  Discrimination proven: with ledger/accounts.go:235 reverted, the test FAILS
+  with "minimum = 400.00", "crossing = \"2026-08-11\", want empty",
+  "suggested_top_up = 100.00, want 0".
+
+1(c) DASHBOARD - NOT MET.  Two distinct defects.
+
+  (i) No test asserts the dashboard's funding projection at all.
+      TestAccountsCard_SuppressedDuplicateCountedOnce
+      (accounts_card_test.go:412-521) asserts only "$619.57", absence of
+      "960.86", and absence of "low-balance threshold". Its fixture has two
+      rows total, so accounts.Project receives an empty recurring slice and
+      the projection line is exercised only vacuously. Nothing in the
+      dashboard package asserts Crossing / SuggestedTopUp / Minimum under a
+      resolved duplicate.
+
+  (ii) The projection IS still contaminated by the suppressed row, via the
+      recurring input. dashboard/handlers.go:114 filters the balance
+      argument but passes the RAW `data` to detectRecurringForDashboard,
+      which calls insights.DetectRecurringAt on the unfiltered set
+      (internal/handlers/dashboard/accounts_card.go:241). The MCP twin
+      recurringForProjection (internal/services/mcpsvc/ledger/accounts.go:283)
+      does apply .Active().
+
+      Demonstrated, not reasoned. Probe fixture (scratch copy, R3 fix intact):
+        account "checking", anchor 2026-05-01 = $4000, threshold $500
+        checking-a.csv: 2026-06-01 Lucid -900.00 Scheduled Bill Pay
+                        2026-07-01 Lucid -900.00 Scheduled Bill Pay
+                        2026-08-01 Lucid -950.00 Scheduled Bill Pay
+        checking-b.csv: 2026-08-02 Check #55501 -950.00 Posted
+        Resolved via dl.SaveDuplicateDecision(kept=check, suppressed=Aug-1
+        Lucid, kept_winner) - the same real workflow the worker's own tests
+        use. asOf = MaxDate = 2026-08-02.
+
+      Probe output (go test -run TestZZProbe_RecurringContamination -v
+      ./internal/handlers/dashboard/):
+        PROBE rows=4 suppressed=1 active=3
+        PROBE RAW recurring (dashboard input): 1 item(s)
+           desc="lucid" amount=916.67 freq=monthly occ=3 last=2026-08-01
+           next=2026-09-01
+        PROBE ACTIVE recurring (mcp input): 0 item(s)
+        PROBE projection dashboard(raw recurring):
+           available=true min=333.33 crossing=2026-09-01 topup=200.00
+        PROBE projection mcp-equivalent(active recurring):
+           available=true min=1250.00 crossing=(none) topup=0.00
+        PROBE rendered card: Accounts USAA Checking Data through Aug 2, 2026
+           $1,250.00 Drops below $500 around Sep 1, 2026 - no prior transfers
+           to reference. Suggested top-up: $200.
+
+      The suppressed $950 row is the third leg that turns a two-payment
+      history into a "monthly" series, and its amount is averaged into
+      Amount=916.67. Remove it (the .Active() counterfactual) and there is
+      no recurring item and no crossing at all. The dashboard therefore
+      renders a low-balance crossing and a $200 top-up recommendation that
+      exist solely because of the row the user already resolved as a
+      duplicate.
+
+      The MCP path on the IDENTICAL fixture is clean, through the real tool:
+        go test -run TestZZProbe_MCPRecurringContamination -v
+                ./internal/services/mcpsvc/ledger/
+        PROBE MCP projection: available=true min=1250.00 crossing="" topup=0.00
+        PROBE MCP get_accounts: balance=1250.00 low=false
+
+      So the two paths disagree on the same data, and the dashboard is the
+      wrong one. Criterion 1(c) is not met on the dashboard path.
+
+-------------------------------------------------------------------------
+CRITERION 2 - explorer still lists both rows.  MET.
+  Test: internal/handlers/explorer/duplicate_suppression_test.go:17
+  TestExplorerListsBothSidesOfAResolvedDuplicate.
+  Command: go test -count=1 -race -run BothSidesOfAResolvedDuplicate -v
+           ./internal/handlers/explorer/  ->  --- PASS (0.19s)
+  Discrimination proven: in the scratch copy, forcing
+  internal/handlers/explorer/handlers.go:113 to `data = data.Active()` makes
+  the test FAIL at duplicate_suppression_test.go:61 ("explorer must still
+  list the suppressed side (Lucid)"). The test is not vacuous.
+
+-------------------------------------------------------------------------
+CRITERION 3 - existing dashboard and mcpsvc tests pass unchanged.  MET.
+  git diff --numstat internal/handlers/dashboard/accounts_card_test.go
+                     internal/services/mcpsvc/ledger/accounts_test.go
+    120  0  internal/handlers/dashboard/accounts_card_test.go
+    155  0  internal/services/mcpsvc/ledger/accounts_test.go
+  Zero deleted lines. `git diff -U0 ... | grep -E "^-[^-]"` returns nothing.
+  Hunk headers show additions only: @@ -403,0 +404,120 @@ (appended after
+  TestProjectionLine_Unavailable), @@ -3,0 +4 @@ and @@ -8,0 +10,4 @@ (import
+  block), @@ -250,0 +256,150 @@ (appended after
+  TestGetBalanceProjectionRejectsBadDate). No existing test body was edited.
+  All packages pass: go test -count=1 -race ./... -> EXIT=0.
+
+-------------------------------------------------------------------------
+CRITERION 4 - BalanceAt, Freshness, Project, Active() unmodified.  MET.
+  git status --porcelain internal/services/accounts/ internal/models/
+    -> no output
+  git diff --stat HEAD -- internal/services/accounts internal/models
+    -> no output
+  BalanceAt/Freshness/Project live in internal/services/accounts (balance.go,
+  projection.go); Active() lives in internal/models/transaction.go:460. None
+  of those files appear in `git diff --name-only`.
+
+-------------------------------------------------------------------------
+CRITERION 5 - build, vet, targeted race tests.  MET.
+  go build ./...  -> BUILD_EXIT=0, no output
+  go vet ./...    -> VET_EXIT=0, no output
+  go test -race ./internal/handlers/dashboard/...
+                 ./internal/services/mcpsvc/ledger/...
+                 ./internal/handlers/explorer/...   -> EXIT=0, all ok
+  go test -count=1 -race ./...  -> EXIT=0 (whole module, including the
+  in-flight R2/R7 edits present in the tree)
+
+-------------------------------------------------------------------------
+SCOPE
+  Files changed by R3 match .swarm/manifests/R3.1.files exactly. The other
+  modified paths (internal/handlers/explorer/handlers.go +handlers_test.go,
+  internal/services/mcpsvc/ledger/resolve.go +resolve_test.go) belong to the
+  in-flight R2 and R7 tasks and were excluded from this review.
+  .swarm/critical.globs (internal/services/storage/**,
+  internal/services/dataloader/**, internal/services/retirement/engine/**,
+  internal/services/transfers/**, internal/services/accounts/accounts.go,
+  internal/services/mcpsvc/confirm/**) - none touched by R3.
+  Nothing in the repository was modified by this checker.
+
+-------------------------------------------------------------------------
+WHAT IS MISSING (for the worker)
+  1. internal/handlers/dashboard/handlers.go:114 - detectRecurringForDashboard
+     must receive the active set, matching the MCP twin at
+     internal/services/mcpsvc/ledger/accounts.go:283. Either pass
+     data.Active() at the call site, or filter inside
+     detectRecurringForDashboard (internal/handlers/dashboard/accounts_card.go
+     :236-245).
+  2. A dashboard test that asserts the funding projection (crossing /
+     suggested top-up / minimum) under a resolved duplicate, with a fixture
+     whose recurring detection actually differs between the raw and active
+     sets - the four-row Lucid/Check fixture above reproduces it and fails
+     against the current code.

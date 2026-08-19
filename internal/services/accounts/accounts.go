@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"budget2/internal/models"
 	"budget2/internal/services/storage"
@@ -56,6 +57,86 @@ func Load(s *storage.Storage) ([]models.Account, error) {
 		return nil, err
 	}
 	return decode(data)
+}
+
+// mu serializes every Mutate sequence over accounts.json against every
+// other one, the same job dataloader's writeMu does for its own sidecars.
+// It is a package-level lock rather than one hung off *storage.Storage
+// because every caller in this process shares the same accounts.json --
+// there is exactly one sidecar to serialize, not one per Storage value.
+//
+// It is taken OUTSIDE storage's BeginShared, never the reverse, and nothing
+// held while it is locked ever waits on storage's exclusive hold: Mutate's
+// only storage calls are the transaction's own ReadFile/WriteFile, which do
+// not block behind a restore any differently than the shared hold already
+// does.
+var mu sync.Mutex
+
+// Mutate serializes a load-modify-save of the accounts sidecar. fn receives
+// the currently stored accounts and returns the set to save. The load, fn and
+// the save happen inside one held section, so concurrent mutations do not lose
+// each other's writes and a restore cannot land between the load and the save.
+// An error from fn aborts the mutation without saving.
+func Mutate(s *storage.Storage, fn func([]models.Account) ([]models.Account, error)) error {
+	if s == nil {
+		return fmt.Errorf("accounts: nil storage")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	tx := s.BeginShared()
+	defer tx.Release()
+
+	accts, err := loadTx(tx, s)
+	if err != nil {
+		return err
+	}
+	next, err := fn(accts)
+	if err != nil {
+		return err
+	}
+	_, err = saveTx(tx, s, next)
+	return err
+}
+
+// loadTx is Load's body, reading through an already-open shared transaction
+// instead of taking Storage's own read path, so a Mutate section's load
+// happens inside the same held section as its save.
+func loadTx(tx *storage.SharedTx, s *storage.Storage) ([]models.Account, error) {
+	data, err := tx.ReadFile(Path(s))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []models.Account{}, nil
+		}
+		return nil, err
+	}
+	return decode(data)
+}
+
+// saveTx is SaveWithWarnings' body, writing through an already-open shared
+// transaction instead of Storage's own write path. Warnings are logged the
+// same way Save logs them, so a Mutate caller sees the same observable
+// warning behaviour a direct Save would have produced.
+func saveTx(tx *storage.SharedTx, s *storage.Storage, accts []models.Account) ([]string, error) {
+	if err := Validate(accts); err != nil {
+		return nil, err
+	}
+	warnings := OverlapWarnings(accts, existingCSVBasenames(s))
+	for _, w := range warnings {
+		log.Printf("Warning: %s", w)
+	}
+
+	if accts == nil {
+		accts = []models.Account{}
+	}
+	data, err := json.MarshalIndent(accountsDoc{Accounts: accts}, "", "  ")
+	if err != nil {
+		return warnings, err
+	}
+	if err := tx.WriteFile(Path(s), data, 0644); err != nil {
+		return warnings, err
+	}
+	return warnings, nil
 }
 
 // decode parses the sidecar's bytes, accepting either the canonical

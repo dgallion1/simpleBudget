@@ -148,7 +148,7 @@ func registerRestoreBackup(s *mcp.Server, deps Deps) {
 			}
 			// Best rung first: the person answers on the app's own page,
 			// where the whole operation is on screen.
-			if res, asked := askForApproval(deps, req, "restore_backup", name,
+			if res, asked := askForApproval(deps, req, "restore_backup", name, token,
 				"Restore the backup "+name+"?", restoreConsequences(archive)); asked {
 				return res, restoreBackupOutput{}, nil
 			}
@@ -174,7 +174,7 @@ func registerRestoreBackup(s *mcp.Server, deps Deps) {
 		// The answer came back. If it was a browser approval, the client's
 		// response only says "I showed them the URL" -- the real decision is
 		// the one the person clicked, which is waiting server-side.
-		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "restore_backup", name); viaBrowser {
+		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "restore_backup", name, token); viaBrowser {
 			if d != confirm.Approved {
 				return nil, restoreBackupOutput{
 					Confirmed:     false,

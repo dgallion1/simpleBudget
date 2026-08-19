@@ -535,3 +535,29 @@ func TestBalanceAt_DoesNotMutateAnchors(t *testing.T) {
 		}
 	}
 }
+
+// TestLatestAnchorAtOrBefore_SameDayTieResolvesToFirstSeen pins the actual
+// tie-break behaviour latestAnchorAtOrBefore's doc comment describes: a
+// candidate only replaces the current best when it is strictly later, so
+// among same-day anchors the first one scanned wins regardless of slice
+// order otherwise. Two anchors on the same day should not occur in data
+// written through the accounts UI or the MCP set_balance_anchor tool (both
+// replace same-day anchors instead of appending a second), but this pins
+// the fallback behaviour for anything else that reaches this function.
+func TestLatestAnchorAtOrBefore_SameDayTieResolvesToFirstSeen(t *testing.T) {
+	acct := models.Account{
+		ID:   "usaa",
+		Name: "usaa",
+		Anchors: []models.BalanceAnchor{
+			{Date: mustDate(2026, 8, 15), Amount: 1000.00, Note: "first"},
+			{Date: mustDate(2026, 8, 15), Amount: 4210.55, Note: "second"},
+		},
+	}
+	got, ok := latestAnchorAtOrBefore(acct, mustDate(2026, 8, 20))
+	if !ok {
+		t.Fatal("latestAnchorAtOrBefore: ok = false, want true")
+	}
+	if got.Note != "first" || !moneyEq(got.Amount, 1000.00) {
+		t.Errorf("got %+v, want the first-seen anchor (Note=\"first\", Amount=1000.00)", got)
+	}
+}

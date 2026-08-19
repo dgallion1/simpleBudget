@@ -82,6 +82,15 @@ func registerResolveTransfer(s *mcp.Server, deps Deps) {
 		}
 
 		// Validate the pair exists in the suspected queue before minting.
+		// SuspectedTransfers() only reflects the most recent load, and
+		// resolve_transfer otherwise never triggers one: on a fresh server
+		// the queue would be empty and every valid key would be rejected,
+		// and after the CSVs change the cached queue would be stale. load()
+		// also reports a locked store properly rather than letting
+		// ciphertext surface as a parse error.
+		if _, err := deps.load(); err != nil {
+			return nil, resolveTransferOutput{}, err
+		}
 		suspected := deps.Transfers.SuspectedTransfers()
 		if !suspectedContains(suspected, key) {
 			return nil, resolveTransferOutput{}, fmt.Errorf(
@@ -116,7 +125,7 @@ func registerResolveTransfer(s *mcp.Server, deps Deps) {
 			if err := deps.Confirm.Check(token, "resolve_transfer", tokenArgs); err != nil {
 				return nil, resolveTransferOutput{}, err
 			}
-			if res, asked := askForApproval(deps, req, "resolve_transfer", key,
+			if res, asked := askForApproval(deps, req, "resolve_transfer", key, token,
 				"Resolve transfer pair "+key+" as "+verdict+"?", resolveConsequences(key, verdict)); asked {
 				return res, resolveTransferOutput{}, nil
 			}
@@ -133,7 +142,7 @@ func registerResolveTransfer(s *mcp.Server, deps Deps) {
 			return applyResolveTransfer(deps, key, v, tokenArgs, token, confirm.NotAsked)
 		}
 
-		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "resolve_transfer", key); viaBrowser {
+		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "resolve_transfer", key, token); viaBrowser {
 			if d != confirm.Approved {
 				return nil, resolveTransferOutput{
 					Confirmed:     false,
@@ -194,6 +203,20 @@ func resolveConsequences(key, verdict string) string {
 func applyResolveTransfer(deps Deps, key string, v transfers.Verdict, tokenArgs resolveTokenArgs, token string, approval confirm.Decision) (*mcp.CallToolResult, resolveTransferOutput, error) {
 	if err := deps.Confirm.Redeem(token, "resolve_transfer", tokenArgs); err != nil {
 		return nil, resolveTransferOutput{}, err
+	}
+
+	// Re-validate against a fresh load before writing, not only before
+	// minting: the approval round trip (browser or in-client prompt) means
+	// time passes between the two, and the underlying CSVs may have changed
+	// so the pair is no longer suspected. The token is already spent either
+	// way; resolve_transfer without a token mints a fresh one.
+	if _, err := deps.load(); err != nil {
+		return nil, resolveTransferOutput{}, err
+	}
+	if suspected := deps.Transfers.SuspectedTransfers(); !suspectedContains(suspected, key) {
+		return nil, resolveTransferOutput{}, fmt.Errorf(
+			"pair_key %q is no longer a suspected transfer awaiting review (it may already be resolved, or the underlying data changed since it was confirmed); the confirmation token has been spent either way; call resolve_transfer without a token to preview again and get a new one",
+			key)
 	}
 
 	paths, snapNote, err := ensureSnapshot(deps, transferDecisionsFile)

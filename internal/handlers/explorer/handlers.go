@@ -554,11 +554,15 @@ type importDeps struct {
 // defaultImportDeps binds the real operations. The source lives outside the
 // data directory, so it is read with os.ReadFile and removed with os.Remove;
 // only the destination goes through store, so that encryption applies to what
-// lands in the data directory and the readback decrypts symmetrically.
+// lands in the data directory and the readback decrypts symmetrically. write
+// is bound to store.CreateExclusive, not store.WriteFile: a plain write
+// between a Stat and the write itself has a window where a concurrent upload
+// or import can create the destination first, and the write would then
+// overwrite it — see the upload path's uploadOneFile for the same reasoning.
 func defaultImportDeps() importDeps {
 	return importDeps{
 		readSource: os.ReadFile,
-		write:      func(path string, data []byte, perm os.FileMode) error { return store.WriteFile(path, data, perm) },
+		write:      func(path string, data []byte, perm os.FileMode) error { return store.CreateExclusive(path, data, perm) },
 		readBack:   func(path string) ([]byte, error) { return store.ReadFile(path) },
 		removeSrc:  os.Remove,
 	}
@@ -665,9 +669,11 @@ func importOneFile(name string, deleteSource bool, deps importDeps) importOutcom
 		return importOutcome{Name: name, Status: "rejected", Reason: "not directly inside the import folder"}
 	}
 
-	// Step 3 — a name already in the data directory skips. No overwrite, no
-	// auto-rename. A Stat that failed for a reason other than "absent" is not
-	// read as absent: overwriting on a permission or I/O error would lose the
+	// Step 3 — a fast-path check: a name already in the data directory skips.
+	// This is only an optimization to skip reading the source when the
+	// destination is obviously already taken; it does not decide anything by
+	// itself. A Stat that failed for a reason other than "absent" is not read
+	// as absent: overwriting on a permission or I/O error would lose the
 	// existing file, and a source delete on top of that would make it
 	// unrecoverable.
 	destPath := filepath.Join(cfg.DataDirectory, name)
@@ -677,12 +683,22 @@ func importOneFile(name string, deleteSource bool, deps importDeps) importOutcom
 		return importOutcome{Name: name, Status: "rejected", Reason: "could not check the destination"}
 	}
 
-	// Step 4 — read the source, then write through store so encryption applies.
+	// Step 4 — read the source, then write through store so encryption
+	// applies. The write itself is the real existence check: deps.write is
+	// bound to store.CreateExclusive, whose test and create are one
+	// indivisible step, so a destination created by a concurrent upload or
+	// import between the fast path above and this write still cannot be
+	// overwritten — the write fails with an error satisfying
+	// errors.Is(err, os.ErrExist) and this file is reported skipped, same as
+	// the fast path above, instead of clobbering the winner.
 	data, err := deps.readSource(srcPath)
 	if err != nil {
 		return importOutcome{Name: name, Status: "rejected", Reason: "could not read the source file"}
 	}
 	if err := deps.write(destPath, data, 0644); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return importOutcome{Name: name, Status: "skipped", Reason: "already exists in the data folder"}
+		}
 		return importOutcome{Name: name, Status: "rejected", Reason: "could not save the file"}
 	}
 

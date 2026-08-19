@@ -1,0 +1,110 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R3
+ATTEMPT: 2
+---
+Scope confirmed against .swarm/manifests/R3.2.files. Production diff (attempt 2
+beyond attempt 1) is exactly the amendment target:
+  internal/handlers/dashboard/accounts_card.go:251
+    - return insights.DetectRecurringAt(ts, asOf)
+    + return insights.DetectRecurringAt(ts.Active(), asOf)
+detectRecurringForDashboard now filters before detecting, matching the MCP
+twin recurringForProjection. handlers.go:114's balance argument
+(data.Active().Transactions) is unchanged from attempt 1. BalanceAt,
+Freshness, Project, Active() untouched (git diff on internal/services/accounts
+and internal/models is empty). Explorer untouched by production code
+(duplicate_suppression_test.go is new, handlers.go belongs to R2, out of
+scope).
+
+go build ./... / go vet ./... / go test -race ./... all clean, whole module.
+
+## Attack 1 — my own attempt-1 fixture (5x $900 monthly + suppressed
+near-zero-interval leg -> false "ongoing" reclassification, dropped $400
+crossing)
+This is now literally the committed test
+TestAccountsCard_ProjectionIgnoresSuppressedRecurringLeg
+(internal/handlers/dashboard/accounts_card_test.go:570). Ran it against the
+current code: PASS (Crossing=2026-06-01, Minimum=1500.00,
+SuggestedTopUp=500.00). Mutation: reverted accounts_card.go:251 to the raw
+call (ts, asOf) -> test FAILS with Crossing=zero-time, Minimum=2400.00,
+SuggestedTopUp=0.00 -- exactly the pre-fix "healthy, no top-up" defect.
+Restored file, confirmed git diff matches original.
+
+## Attack 2 — primary checker's attempt-1 fixture (2 genuine occurrences +
+1 suppressed 3rd leg promotes to "monthly", amount inflated to 916.67, false
+crossing/$200 top-up)
+Reproduced this exact shape as a throwaway probe (2x $900 real + 1
+Suppressed=true $950 as the 3rd leg, run through the real
+detectRecurringForDashboard + buildAccountsCard). Result against current
+fixed code: 0 recurring items detected (correctly excluded before the
+minimum-3 threshold check ever sees the suppressed row), projection
+available=true, Minimum=2200.00, Crossing=zero, SuggestedTopUp=0.00 -- no
+false crossing, matching the "correct" counterfactual the attempt-1 verdict
+described. Probe file created then deleted; not left in the tree.
+
+## Attack 3 — is TestDashboardAndMCPProjectionAgree genuinely cross-path?
+Yes. Traced the helpers: the MCP side calls cs.CallTool over a real
+mcp.NewInMemoryTransports() client/server pair (register_test.go:62-81,
+Register(srv, deps) is the production registration function) -- a real
+protocol round-trip, not a direct function call. The dashboard side calls
+dashboard.RegisterRoutes + chi router + httptest, i.e. the real HTTP handler
+and template renderer. Both consume the SAME underlying *dataloader.DataLoader
+and *storage.Storage (same tmp dir), which is the point -- they must
+independently agree on the same data through two structurally different
+entry points. Not a case of two thin wrappers around one call.
+
+## Attack 4 — subtler half-fix mutations
+(a) detectRecurringForDashboard fixed, handlers.go:114 balance argument
+reverted to raw data.Transactions: TestAccountsCard_SuppressedDuplicateCountedOnce
+FAILS ("Below the $500 low-balance threshold" appears; want absent) and
+TestDashboardAndMCPProjectionAgree FAILS (stale/parity assertions fail).
+(b) handlers.go fixed, accounts_card.go:251 reverted to raw ts (the actual
+attempt-2 fix under test) -- already covered by Attack 1's mutation, caught.
+Both halves are independently caught by committed tests; this is not the
+"attempt-1 shape" of leaving one half unfixed.
+
+## Attack 5 — other raw consumers of insights.DetectRecurring/DetectRecurringAt
+grep -rn "insights.DetectRecurring\|DetectRecurringAt(" --include=*.go .
+(non-test) found 5 call sites total:
+  dashboard/accounts_card.go:251        -> ts.Active() (fixed, this task)
+  mcpsvc/ledger/accounts.go:285         -> ts already .Active() upstream
+  insights/handlers.go:153              -> allData is `active := data.Active()`
+                                            from the caller (handlers.go:244-247),
+                                            already filtered before this call
+  insights/handlers.go:289              -> data.Active() inline
+  mcpsvc/spend/recurring.go:148         -> ts = ts.Active() applied at line 138
+                                            before this call, pre-existing
+No other raw/unfiltered consumer exists in the tree.
+
+## Attack 6 — legitimate raw-data callers of detectRecurringForDashboard?
+Only call site is dashboard/handlers.go:114 (the projection seam). No other
+caller needs the unfiltered recurring set.
+
+## Attack 7 — double filtering changing results
+recurringForProjection (mcpsvc/ledger/accounts.go) receives txns already
+filtered once at the call site (ts.Active().Transactions), then filters again
+internally (models.NewTransactionSet(txns).Active()). Read Active()'s
+implementation (models/transaction.go:466): a simple in-order append-filter
+on Suppressed, idempotent and order-preserving. Applying it twice to an
+already-Suppressed-free set is a no-op; confirmed no ordering or result
+change. Pre-existing from attempt 1, flagged as harmless redundancy in my own
+R3.1 verdict, not a regression.
+
+## Committed-test note
+None of R1-R7's in-flight changes are `git commit`-ed yet in this working
+tree (ledger.tsv shows R3 status "building"); "committed" per this run's
+established convention (confirmed against R2, already "accepted" with the
+same uncommitted-working-tree pattern) means "persisted in the tree as real
+test code," not a git commit object -- the distinction the brief actually
+cares about is attempt 1's throwaway tests that were deleted after
+verification, which is not what happened here. All new test files
+(accounts_card_test.go additions, dashboard_parity_test.go,
+duplicate_suppression_test.go, accounts_test.go additions) are present in
+the working tree, none marked for deletion.
+
+Net: both directions of the original defect are fixed and pinned by
+committed, discriminating, cross-path tests; the fix generalizes beyond the
+worker's own fixtures to both prior checkers' fixtures; no other unfiltered
+consumer exists; both possible half-fix shapes are independently caught;
+build/vet/race clean.

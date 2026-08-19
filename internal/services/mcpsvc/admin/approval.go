@@ -24,11 +24,14 @@ import (
 
 // askForApproval files an approval request and returns the input request that
 // sends the client to it, or false when this session cannot ask in a browser.
-func askForApproval(deps Deps, req *mcp.CallToolRequest, tool, subject, title, detail string) (*mcp.CallToolResult, bool) {
+// opID identifies the exact operation being asked about -- in practice the
+// confirm token, already bound to the arguments shown to the human -- so a
+// different operation on the same tool and subject never replaces this one.
+func askForApproval(deps Deps, req *mcp.CallToolRequest, tool, subject, opID, title, detail string) (*mcp.CallToolResult, bool) {
 	if deps.Approvals == nil || deps.BaseURL == "" || !confirm.CanAskInBrowser(req.Session) {
 		return nil, false
 	}
-	pending, err := deps.Approvals.Create(tool, subject, title, detail)
+	pending, err := deps.Approvals.Create(tool, subject, opID, title, detail)
 	if err != nil {
 		// Could not open a request, so there is nothing to send anyone to.
 		// Fall through to the next rung rather than failing the call.
@@ -40,7 +43,7 @@ func askForApproval(deps Deps, req *mcp.CallToolRequest, tool, subject, title, d
 				title+" -- open this to read what would happen and answer. Nothing happens until you do."),
 		},
 		// A breadcrumb for anyone reading the traffic. Not trusted: the
-		// pending request is re-found server-side by tool and subject.
+		// pending request is re-found server-side by tool, subject and opID.
 		RequestState: tool + ":" + subject,
 	}, true
 }
@@ -48,12 +51,14 @@ func askForApproval(deps Deps, req *mcp.CallToolRequest, tool, subject, title, d
 // awaitApproval returns the human's answer to an outstanding browser request,
 // blocking until they answer it or it expires. The third result is false when
 // there was no browser request outstanding, which means this session used a
-// different rung of the ladder.
-func awaitApproval(ctx context.Context, deps Deps, tool, subject string) (confirm.Decision, error, bool) {
+// different rung of the ladder. opID must be the same operation identity
+// passed to askForApproval, so this only ever waits on the request it itself
+// filed.
+func awaitApproval(ctx context.Context, deps Deps, tool, subject, opID string) (confirm.Decision, error, bool) {
 	if deps.Approvals == nil {
 		return confirm.NotAsked, nil, false
 	}
-	pending, ok := deps.Approvals.Find(tool, subject)
+	pending, ok := deps.Approvals.Find(tool, subject, opID)
 	if !ok {
 		return confirm.NotAsked, nil, false
 	}

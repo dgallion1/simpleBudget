@@ -1,0 +1,135 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R5
+ATTEMPT: 1
+---
+Claim under attack: "get_balance_projection now honours as_of correctly for
+historical and future dates, and the default (no as_of) path is unchanged."
+
+Criteria 1 and 2 (historical/future as_of) hold up: read
+internal/services/mcpsvc/ledger/accounts.go (registerGetBalanceProjection,
+recurringForProjection) and internal/services/insights/recurring.go
+(DetectRecurringAt, ReferenceDate, TransactionSetForRecurring). The existing
+tests TestGetBalanceProjectionHistoricalAsOfSchedulesFromPastEvidenceOnly and
+TestGetBalanceProjectionFutureAsOfEvaluatesFreshnessAgainstRequestedDate
+exercise real divergences (verified by reading fixtures and re-running
+`go test ./internal/services/mcpsvc/ledger/... -run TestGetBalanceProjection -v`,
+both pass and the crossing/emptiness assertions are non-trivial).
+
+Criterion 3 (default path unchanged) is FALSE. The worker's own pinned test,
+TestGetBalanceProjectionDefaultAsOfUnchanged, explicitly uses a fixture with
+"NO merchant with 3+ occurrences" (see its doc comment), so
+insights.DetectRecurring/DetectRecurringAt both return nil regardless of
+which reference date is used. It proves nothing about the actual code path
+that changed.
+
+`git diff 6bc508d -- internal/services/mcpsvc/ledger/accounts.go` shows the
+real change on the default path: pre-R5, get_balance_projection passed the
+UNTRUNCATED ts.Transactions into accounts.Project and called
+recurringForProjection(deps, txns) -> insights.DetectRecurring(ts) i.e.
+DetectRecurringAt(ts, zero) -> referenceDate falls back to ts.MaxDate().
+Post-R5 (current tree), for the SAME no-as_of call, asOf := time.Now()
+(unchanged line) is now (a) used to truncate the active set via
+active.FilterByDateRange(active.MinDate(), asOf), and (b) threaded into
+insights.DetectRecurringAt(ts, asOf) as referenceDate. Neither of these was
+true before R5. time.Now() and ts.MaxDate() are different dates whenever the
+ledger's last transaction isn't dated today -- the normal case for an
+imported ledger.
+
+Built two adversarial fixtures directly against the actual (uncommitted)
+tree and reran with `go test -count=1 -v`, then reconstructed the exact
+pre-R5 formula (`accounts.Project(acct, ts.Transactions, time.Now(), ...)`,
+`insights.DetectRecurring(active)`) as a counterfactual and ran it against
+the identical fixture for a direct comparison:
+
+1. Recurring-detection count divergence (isolates R5's own diff): a ledger
+   with three monthly $900 "Rent Payment" rows (2026-01-01..2026-03-01, real
+   wall clock in this environment is 2026-08-19) gives
+   insights.DetectRecurring(active) == 1 item (fresh, referenceDate =
+   ts.MaxDate() = 2026-03-01, 0 days stale) but
+   recurringForProjection(active, time.Now()) == 0 items (same series judged
+   ~171 days stale against today, outside the 90-day monthly freshness
+   window). Confirmed reproducibly with TZ=UTC and default TZ.
+
+2. Decisive, non-masked output divergence (ReferenceAmount/HasReference,
+   which reads txns directly with no time.Time map involved, so it isn't
+   confounded by an unrelated pre-existing map-key bug in accounts.Project
+   -- see note below): a two-account fixture (checking, brokerage) with one
+   future-dated (2027-01-05, well after the real 2026-08-19 clock) paired
+   internal transfer of $777 between them. Confirmed via deps.load() that
+   the transfer classifies TransferClass=="paired" as expected. Calling the
+   actual current-tree get_balance_projection with NO as_of on the brokerage
+   account returns has_reference=false, reference_amount=0.00. Reconstructing
+   the exact pre-R5 handler formula (accounts.Project(acct, ts.Transactions,
+   time.Now(), nil) -- untruncated txns, matching what the code did before
+   R5's diff) against the identical fixture returns has_reference=true,
+   reference_amount=777.00. This is the same tool, the same account, the
+   same data, the same "no as_of supplied" call, and the current tree
+   answers "no reference amount" where the pre-R5 tree answered "$777" --
+   directly contradicting "the default (no as_of) path is unchanged."
+
+This happens because R5's truncation (`active.FilterByDateRange(all.MinDate(),
+asOf)`, asOf=time.Now() on the default path) now excludes any transaction
+dated after today, including future-dated/post-dated rows that pre-R5's
+raw `ts.Transactions` included unfiltered. The R5 brief's acceptance
+criterion 3 demanded the default path be pinned unchanged; it silently
+changed for any ledger containing a future-dated transaction (post-dated
+transfers, scheduled items, clock skew on import) -- and separately, for
+the ordinary case of an imported ledger whose last row isn't dated today,
+it changes which recurring merchants are judged "fresh" for the default
+projection, per (1) above.
+
+Supporting finding, not load-bearing for this verdict (pre-existing,
+predates R5, and touches R3's territory which is out of scope/accepted):
+dashboard's default projection asOf is the ledger's own MaxDate
+(internal/handlers/dashboard/handlers.go line 110: "asOf := maxDate; if
+asOf.IsZero() { asOf = time.Now() }"), while the MCP tool's default asOf is
+time.Now() (accounts.go line 211, unchanged by R5). Built a fixture and
+confirmed the two surfaces give different crossing dates/minimums for the
+same account with no as_of on either side (dashboard: "Drops below $500
+around Mar 2, 2026"; MCP default: crossing "2026-08-20", minimum 400.00).
+TestDashboardAndMCPProjectionAgree (R3) only passes because it drives the
+MCP side with an explicit as_of chosen to match the dashboard's implicit
+maxDate default -- it does not, and cannot, cover the actual no-as_of/
+no-as_of comparison. This is exactly the fixture-coincidence risk the
+dispatch brief called out; it means "parity" is not structural for the
+default path even after R5.
+
+Separately noted, not pursued further (masks but does not resolve the
+above): accounts.Project's byDay map is keyed by time.Time values built two
+different ways -- occurrence dates derived from time.Parse-sourced dates
+(time.UTC, the built-in singleton Location) vs asOfDay derived from
+dayOf(time.Now()) (time.Local, a distinct *Location object even when
+TZ=UTC is exported, confirmed: `time.Local == time.UTC` is false in this
+environment both with and without TZ=UTC). Since Go's time.Time == uses
+pointer-identity on Location, this silently drops ALL recurring-occurrence
+byDay entries whenever asOf comes from time.Now() rather than a UTC-parsed
+date -- i.e., on every default (no as_of) call, recurring items can never
+move Crossing/Minimum/SuggestedTopUp regardless of whether detection
+included them, which is why fixture #1 above needed the ReferenceAmount
+field to get a clean signal. This bug predates R5 (projection.go is
+untouched by R5's diff) and is out of R5's stated scope, but it materially
+undermines any claim that the default path's Crossing/Minimum fields are
+being meaningfully exercised by ANY existing test, worker's or otherwise.
+
+Reran regressions after removing all temporary adversarial/debug files
+(confirmed via diff against a pre-edit backup that internal/services/
+accounts/projection.go is byte-identical to its state before this
+investigation, and `git status` shows no zz_* leftovers):
+- `go build ./...`: clean.
+- `go vet ./...`: clean.
+- `go test -race ./...`: all packages pass (dashboard_parity_test.go did not
+  flake in this run).
+- `go test ./internal/services/mcpsvc/ledger/... -v`: all tests pass,
+  including R1/R3/R7-adjacent tests in the same package
+  (TestGetTransfers*, TestResolveTransfer*, TestDashboardAndMCPProjectionAgree).
+
+No regression was found in R1/R3/R7's own accepted behavior; the failure is
+specific to R5's criterion 3.
+
+FILES: internal/services/mcpsvc/ledger/accounts.go,
+internal/services/mcpsvc/ledger/accounts_test.go,
+internal/services/accounts/projection.go (read-only, confirmed unchanged),
+internal/handlers/dashboard/handlers.go (read-only),
+internal/services/insights/recurring.go (read-only)

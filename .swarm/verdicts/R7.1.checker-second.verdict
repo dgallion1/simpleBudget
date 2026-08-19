@@ -1,0 +1,73 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R7
+ATTEMPT: 1
+---
+Scope respected: only resolve.go/resolve_test.go touched (git diff --stat confirms
+2 files, 23 insertions in resolve.go). Build/vet/test -race clean for the package.
+
+Runtime fix logic (resolve.go) is correct on inspection:
+- line 91-99: deps.load() then suspectedContains() check before minting.
+- line 213-220 (applyResolveTransfer): deps.load() then suspectedContains()
+  check again, immediately before ensureSnapshot/ResolveTransfer — this is the
+  write-time re-validation the brief demanded ("re-validate before writing,
+  not only before minting").
+- "Fresh server" test claim verified structurally: deps.Transactions and
+  deps.Transfers in newDeps() are the SAME *dataloader.DataLoader instance;
+  suspectedTransfers is a private in-memory field on that instance
+  (loader.go:74), guarded by stateMu, replaced wholesale only by that
+  instance's own LoadData. seedSuspectedPair's "peek" is built via a
+  DIFFERENT dataloader.New(dir, deps.Store) call — a distinct *DataLoader
+  struct with its own zero-value suspectedTransfers field. Loading through
+  peek cannot warm deps' queue; they share only the on-disk Store, not
+  in-memory queue state. The "fresh server" claim is real, not warmed
+  indirectly.
+
+CENTRAL FINDING — criterion 2 (write-time re-validation against stale cache)
+has ZERO committed regression coverage, confirmed two ways:
+
+1) Reverted resolve.go entirely (git stash), kept the updated
+   resolve_test.go (no queue preload). Ran `go test -run TestResolveTransfer
+   -v`: 8 of 10 tests FAIL. This proves criterion 1 (fresh-server, queue
+   populated before validation) IS covered by the committed suite — the
+   preload removal alone makes most tests exercise the mint-time load.
+   (Fix restored immediately after, confirmed via git diff --stat unchanged
+   from before, `go build` clean.)
+
+2) Restored the full fix, then surgically removed ONLY the second
+   `deps.load()` + `suspectedContains` block inside applyResolveTransfer
+   (lines ~208-220, the write-time re-validation — the mint-time check at
+   line 91-99 was left untouched). Rebuilt and ran the same 10 tests:
+   ALL 10 PASS. Nothing in resolve_test.go calls resolve_transfer a second
+   time after mutating the CSVs between mint and confirm, so nothing
+   notices the write-time guard is gone. (File restored from backup
+   immediately after; `go build` and `git diff --stat` confirm exact
+   restoration — 23 insertions, matching the pre-experiment diff.)
+
+This is precisely the risk the dispatch flagged: the worker's manifest
+claims criterion 2 ("no longer writes decisions based on stale cached
+state") was checked with an ad hoc test that was written, run, and then
+deleted. resolve_test.go still has exactly 10 test functions — the same
+count as before the fix — and none of them mutate the CSVs (or otherwise
+make the pair no longer-suspected) between the mint call and the
+token-redeeming call. A future refactor that deletes the write-time
+re-validation block ships silently; the full committed suite would stay
+green.
+
+Other attack vectors checked and NOT found defective:
+- deps.load() is a pre-existing helper (already used in accounts.go,
+  transfers.go) with the same nil-Transactions / locked-store error paths;
+  calling it twice per completed resolve introduces no new nil-deref or
+  contract change.
+- LoadTransferDecisions (called inside classifyTransfers during LoadData) is
+  read-only; found no write/side-effect path back into
+  transfer_decisions.json triggered by a load, so the double-load per
+  completed call does not race with or clobber the pending decision.
+- Acceptance bullet 4 (go build/vet/test -race) is clean.
+
+Net: acceptance criterion 1 is behaviorally fixed AND covered. Acceptance
+criterion 2 is behaviorally fixed but has NO committed regression test —
+the exact "deleted evidence" scenario the task was dispatched to check for
+is real for half the defect. Default-to-FAIL on ambiguous/deleted evidence
+applies; here the gap is not even ambiguous, it is mechanically reproduced.

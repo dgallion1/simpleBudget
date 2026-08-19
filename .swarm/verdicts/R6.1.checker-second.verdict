@@ -1,0 +1,95 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R6
+ATTEMPT: 1
+---
+Scope: internal/handlers/accounts/handlers.go, internal/handlers/accounts/handlers_test.go,
+internal/services/accounts/balance.go, internal/services/accounts/balance_test.go.
+
+CLAIM UNDER TEST: "adding an anchor for a date that already has one now leaves exactly one
+anchor for that date with the new amount authoritative, deterministically, and nothing else
+changed." Verified TRUE. Detail below.
+
+1. DAY-BOUNDARY / TIMEZONE ATTACK — did not break the claim.
+   handlers.go's new sameCalendarDay(a,b) (line 320) and ledger/anchor.go's pre-existing
+   sameDay(a,b) (already-accepted, out of scope) are semantically equivalent: both derive
+   Y/M/D from each argument in that argument's OWN Location via time.Time.Date()/Year()/
+   Month()/Day(). balance.go's dayOf (already-accepted) truncates in the value's own
+   Location too. Since every anchor ever written by either the UI handler or the MCP tool
+   is produced by time.Parse("2006-01-02", ...) — always midnight UTC — dayOf, sameDay and
+   sameCalendarDay all agree in practice; verified with a standalone probe using an
+   artificially non-UTC, non-midnight time.Time that .Date()-based comparison stays
+   internally consistent (no divergence between the handler's day test and BalanceAt's).
+   No case constructed where the UI would replace an anchor BalanceAt still treats as a
+   different day, or vice versa.
+
+2. TIE SURVIVING VIA ANOTHER PATH — brief's point about non-R6-written data. Confirmed:
+   latestAnchorAtOrBefore's doc comment (balance.go:160-169) was updated and now explicitly
+   states the FIRST-seen tie-break and explicitly scopes it to "data written outside those
+   [UI/MCP] paths" — i.e., the worker documented the residual nondeterminism for hand-edited/
+   imported data rather than claiming it's eliminated everywhere. TestLatestAnchorAtOrBefore_
+   SameDayTieResolvesToFirstSeen (balance_test.go:547) exercises exactly that fallback and
+   asserts which anchor wins (Note="first", Amount=1000.00) — not just that the call
+   succeeds. Comment now matches code (mutated code reverted to "last seen" language would
+   contradict `ad.After(dayOf(best.Date))`, and does not).
+
+3. DOES THE DETERMINISM TEST PIN A VALUE? Yes.
+   TestHandleAddAnchor_SameDayReplacementIsDeterministic (handlers_test.go:525) asserts
+   Amount == 4210.55 (the second-added value) on every one of 50 iterations with a fresh
+   store each time, plus BalanceAt() == 4210.55. This is a value assertion, not merely
+   "no error" or "len==1".
+
+4. R1 REGRESSION CHECK. go test -race -run 'LoadFailure|SaveFailure' -v
+   ./internal/handlers/accounts/... — all 6 tests pass (load failure still 500 with
+   byte-identical "Failed to load accounts: " prefix; save failure still 200 with inline
+   Error). R6's edit sits inside the same Mutate callback shape R1 established and did not
+   disturb the loaded-bool discipline.
+
+5. DELETE-BY-DATE INVARIANT AFTER REPLACE. handleDeleteAnchor matches by a.Date.Equal(date)
+   (exact timestamp), not calendar day. This is consistent with add: both add and delete
+   parse dates via the identical time.Parse("2006-01-02", ...) call, so the anchor written
+   by replace and the date looked up by delete are bit-identical time.Time values. Delete
+   continues to work after a replace (not independently re-tested by R6, but the invariant
+   is preserved by construction, and TestHandleDeleteAnchor_RemovesByDate already covers
+   the general path). This asymmetry (delete = exact-equal, add/replace = calendar-day) is
+   pre-existing and out of R6's stated scope.
+
+6. NOTE LOSS ON REPLACE. Confirmed: the old anchor's Note is silently discarded (filtered
+   out entirely, not merged or preserved). Brief explicitly permitted REPLACE as the
+   preferred scope choice, so this is not a criterion failure. Nothing records the loss;
+   there is no error/warning shown to the user on a successful replace (correct — it is not
+   an error state), so ACCESSIBILITY.md's error-announcement rules do not apply here. Stated
+   plainly per the task instructions: a user who had entered a Note on the stale anchor
+   loses that note text with no confirmation or audit trail when they add a corrected
+   anchor for the same day.
+
+7. MUTATION TESTING (internal/handlers/accounts/handlers.go, restored after each; working
+   tree diffed byte-identical to pre-mutation state afterward):
+   a. Revert to unconditional append + non-stable sort (the original defect) —
+      TestHandleAddAnchor_ReplacesSameDayAnchor and
+      TestHandleAddAnchor_SameDayReplacementIsDeterministic both FAIL as expected.
+   b. Filter same-day anchors but drop the re-sort call — caught by the pre-existing
+      TestHandleAddAnchor_KeepsAnchorsSortedByDate (FAIL as expected).
+   c. Replace the calendar-day filter (sameCalendarDay) with exact timestamp equality
+      (a.Date.Equal(date)) — NOT caught by any test; full suite still passes. This is a
+      genuine test-coverage gap: no test constructs an anchor with a non-midnight
+      time-of-day to distinguish calendar-day semantics from exact-equality semantics.
+      However this does not indicate a defect in the DELIVERED code: reading
+      sameCalendarDay directly (ay,am,ad := a.Date(); by,bm,bd := b.Date(); return
+      ay==by && am==bm && ad==bd) confirms it correctly implements calendar-day
+      comparison, not exact equality. The same blind spot exists in the already-accepted
+      MCP-side sameDay/anchor_test.go (out of scope, pre-existing precedent), so this is
+      not something R6 introduced or worsened, and it does not touch the specific defect
+      (unstable-sort + first-seen tie-break) the brief describes and requires fixed.
+
+8. BUILD/VET/TEST. go build ./... clean. go vet ./... clean. go test -race -count=1 ./...
+   (full repo) exits 0, all packages ok including internal/services/mcpsvc/ledger (the
+   known ~1/27 dashboard_parity_test.go flake, R9/out of scope, did not manifest this run).
+
+Net: the specific defect described in the brief (unconditional append + unstable sort
+producing nondeterministic, silently-stale anchors) is fixed, tested with value-pinning
+assertions, and survives targeted mutation of the actual defect mechanics. The one
+mutation that survived (day-boundary matching mode) targets a scenario outside the
+delivered code's actual behavior and mirrors a pre-existing, out-of-scope precedent, so it
+is reported as a finding, not treated as grounds for FAIL.

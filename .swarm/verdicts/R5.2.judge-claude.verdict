@@ -1,0 +1,132 @@
+VERDICT: OVERRULE
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: R5
+ATTEMPT: 2
+---
+Lens: CORRECTNESS. Ruling: the checker-second FAIL is set aside. R5 attempt 2 is
+accepted.
+
+TREE STATE VERIFIED FIRST (the prompt warned of a mid-window in-place mutation).
+  sha256 796f1f85b5b95d300e6544550db5a4eedfc4dd99c3bd1fd227a29352234d8d95
+    internal/services/mcpsvc/ledger/accounts.go
+  sha256 ed0d395f12918be4cdcc99ea15f38f43e11f04d1f3025483b11c3106d8622872
+    internal/services/mcpsvc/ledger/accounts_test.go
+Identical to the hashes checker-tests pinned, and unchanged after all my probes.
+accounts.go:307 currently reads `asOf.Location()`, i.e. the correct form. All my
+own experiments ran on a copy at $SCRATCH/jc; nothing was written into the repo
+except this verdict.
+
+WHAT I VERIFIED MECHANICALLY (not taken from either verdict)
+
+1. The explicit-as_of branch can only ever receive a UTC time.
+   accounts.go:212-220 is the sole place asOfSupplied becomes true, and it is set
+   in the same block that assigns `asOf = t` from `time.Parse("2006-01-02", s)`.
+   `grep -rn activeSetAndRecurringForProjection` shows exactly one production call
+   site (accounts.go:235) and one test call site (accounts_test.go:784, which
+   passes asOfSupplied=FALSE). There is no reachable path that reaches line 307
+   with a non-UTC asOf.
+
+2. The normalisation at :307 is provably the identity. Probe over 2026-01-01,
+   2026-03-08, 2026-04-01, 2024-02-29, 2026-11-01, 2026-12-31, 2026-06-15 under
+   TZ=UTC / America/New_York / Asia/Tokyo: every parse yields Location()==UTC and
+   norm.Equal(parsed) && norm.Location()==parsed.Location() in all three zones.
+   So for every input the MCP tool can receive, line 307 is a no-op.
+
+3. checker-second's mutation claim is TRUE and I reproduced it. Replacing
+   `asOf.Location()` with `time.Now().Location()` at :307 is a genuine behaviour
+   change (my probe prints mutantEqual=false in both non-UTC zones), and the
+   mutant survives: `go test -count=1 ./internal/services/mcpsvc/ledger/` is `ok`
+   under America/New_York, Asia/Tokyo, UTC and Pacific/Kiritimati, and the FULL
+   repo suite under America/New_York produces zero failures. No committed test
+   pins the location dimension of that boundary.
+
+4. checker-tests' sensitivity claim is also TRUE. Inserting
+   `asOfDay = asOfDay.AddDate(0,0,-1)` fails TestGetBalanceProjectionReportsCrossing
+   AndTopUp and TestDashboardAndMCPProjectionAgree under both TZs. The DAY
+   dimension of the explicit-as_of boundary is pinned; only the LOCATION dimension
+   of a provable no-op is not.
+
+Both lanes are factually honest. The dispute is purely about whether item 3 is a
+defect in the work.
+
+WHY IT IS NOT, MEASURED AGAINST .swarm/briefs/R5.md
+
+a) The attempt-2 contract's required fix is satisfied literally. It demands
+   (R5.md:78-83) a branch on whether as_of was SUPPLIED, with the absent case
+   taking "the pre-R5 path verbatim". accounts.go:295-297 is exactly that: an
+   early return of `all, recurringForProjectionDefault(all)` before line 307 is
+   ever reached. Criterion 3 therefore holds "by construction rather than by
+   fixture choice", which is the thing R5.md:81 attaches "by construction" to.
+   checker-second's verdict quotes "correct by construction" as if the brief
+   imposed it on the explicit-as_of boundary; it does not. That phrase in that
+   position is the WORKER'S code comment (accounts.go:303-306), and the brief's
+   own use of it (line 81) is about the default branch, which is fully pinned.
+
+b) The brief itself relies on the parse-format invariant that checker-second
+   faults the work for relying on. R5.md:73-74, describing bug 3: "Explicit as_of
+   is unaffected because it parses to UTC, which is exactly why the committed
+   tests miss it." The contract's own defect analysis declares the explicit path
+   out of the TZ bug's blast radius on precisely that ground. A checker cannot
+   fail work for depending on an invariant the operative contract depends on in
+   the same document.
+
+c) The instruction the line implements was followed exactly. R5.md:86-87 says
+   "normalise as_of to a day boundary with the existing `dayOf` convention
+   (balance.go:201-203) ... so the truncation boundary and BalanceAt's boundary
+   agree." balance.go:201-203 is `time.Date(t.Year(), t.Month(), t.Day(), 0,0,0,0,
+   t.Location())` -- the worker reproduced the named convention character for
+   character, including its use of the input's own Location. If `dayOf`'s
+   Location handling is a latent hazard, that is a property of the convention the
+   brief mandated, not a deviation by this worker. And the stated PURPOSE of the
+   instruction -- that the two boundaries agree -- is met: checker-tests' boundary-
+   row probe shows inTruncation==inBalance==true across three zones, and I
+   confirmed FilterByDateRange's endDay and BalanceAt's dayOf both land on the
+   same UTC day for every reachable input.
+
+d) None of the three "Evidence required" items (R5.md:89-96) names an explicit-
+   as_of timezone test. The two behaviourally-live fixes both have caught
+   mutations recorded (default branch -> DetectRecurringAt is caught by
+   accounts_test.go:786; unconditional truncation is caught by :669, :729 and
+   :786). "Mutation check per fix" cannot coherently demand that a fix which is
+   the identity for every reachable input be made behaviour-discriminating -- that
+   would require constructing an input the tool cannot produce.
+
+ON THE CORRECTNESS QUESTIONS I WAS ASKED
+
+- Can any input reachable through the MCP tool today take the mutated path? No.
+  Verified at the call graph (single production call site) and at the parse
+  (always UTC), across three zones and seven dates including a leap day.
+- Does an untested no-op differ, in correctness terms, from untested dead code?
+  Not materially. The line executes, but it is semantically inert for the entire
+  reachable input domain. Neither can produce a wrong answer for any input the
+  system can receive. The verdict question is whether the shipped artifact can
+  misbehave, and it cannot.
+- Would a correctness regression escape the committed suite? Not one in the
+  behaviour R5 specifies. The default path is pinned three ways (reference_amount
+  200.00 on a future-leg fixture, the tomorrow-edge fixture asserted across TZs,
+  and the branch itself unit-tested), and the explicit path's day boundary fails
+  two tests on a one-day shift. What escapes is only a hand-edit to the location
+  argument of a no-op -- an edit that would have to be made in direct contradiction
+  of the four-line comment sitting immediately above it.
+
+The decisive consideration for me: checker-tests' probe (ii) shows that deleting
+line 307 entirely (`asOfDay := asOf`) leaves behaviour byte-identical and the
+suite green. So a worker who simply omitted the brief's defensive normalisation
+would ship an artifact with identical behaviour and strictly fewer surviving
+mutants. A standard that rejects the worker who ADDED the requested defence, and
+would have accepted the worker who skipped it, is not measuring correctness. It
+is measuring mutation-score aesthetics on inert code.
+
+Standing of checker-second's finding: it is a legitimate hardening observation
+and I would log it, not discard it. The cheap fix is a unit test calling
+activeSetAndRecurringForProjection directly with a non-UTC asOf and asserting the
+truncation boundary lands on the UTC day, which would kill the mutant. That
+belongs on the R12 follow-up list (where the related byDay Location-pointer bug
+already lives, R5.md:99-101) or as a nit on the next touch of this function. It
+is desirable future hardening, not an unmet acceptance criterion.
+
+Verdict: OVERRULE. The delivered code is correct for the full reachable input
+domain, satisfies every clause of the attempt-2 contract, and the surviving
+mutant identified by checker-second targets an operation that is provably the
+identity for every input get_balance_projection can receive.

@@ -121,8 +121,233 @@ hand after checking no other reason is recorded in them.
 
 ## Rulings
 
+**2026-08-19b — R5 attempt 2, judge panel: 2 OVERRULE / 1 UPHOLD. FAIL set aside,
+work accepted.** The first genuine dispute of the run: checker-tests PASS,
+checker-second FAIL. Both were factually honest and each independently
+reproduced the other's key claim; the disagreement was about standards, not
+facts.
+
+Agreed facts: attempt 1's real defect (the default no-as_of path silently
+changed, reference_amount 777.00 -> 0.00) is fixed and re-confirmed. The
+explicit-as_of normalisation at accounts.go:307 uses asOf.Location(), which is
+provably the identity for every reachable input because as_of parses via
+time.Parse("2006-01-02", ...). No committed test pins it: swapping in
+time.Now().Location() leaves the whole suite green under every timezone tried.
+
+- judge-standards UPHELD. It read the ambiguous TZ-test bullet in the WORKER's
+  favour, then found a different obligation unmet on plain text: "mutation check
+  per fix" carries no exception, and the normalisation is one of the three
+  enumerated fixes. It also noted checker-tests' own mutation only tested
+  REMOVING the line (proving it inert), not the failure mode it guards.
+- judge-claude OVERRULED, decisively: deleting line 307 outright leaves
+  behaviour byte-identical and the suite green, so the mutation survives only
+  BECAUSE the worker added the defence the brief asked for. "A standard that
+  rejects the worker who added the requested defence, and accepts the one who
+  omitted it, is measuring mutation-score aesthetics on inert code, not
+  correctness." It further found the brief's own text exempts the explicit path
+  ("Explicit as_of is unaffected because it parses to UTC"), that "by
+  construction" attaches to criterion 3 / the default branch, and that the
+  worker followed the mandated dayOf convention exactly -- dayOf itself uses
+  t.Location(), so any hazard is a property of the convention the lead
+  specified.
+- judge-impact OVERRULED on consequence: no user-reachable input produces a
+  wrong number today, while a third failed attempt would halt the task at the
+  hard stop and ship the ORIGINAL reviewed defect unfixed.
+
+Carried forward, not discarded: a unit test calling
+activeSetAndRecurringForProjection directly with a non-UTC asOf would kill the
+surviving mutant cheaply. Logged as desirable hardening alongside R12, not as an
+unmet acceptance criterion.
+
+Lead's note: the lead did not adjudicate this personally because the dispute
+turned partly on whether the lead's own brief was clear. Two judges found it was
+not, in the worker's favour. That is a defect in the brief, not in the work.
+
 **2026-08-19a — critical.globs narrowed from `internal/services/accounts/**` to
 `internal/services/accounts/accounts.go`.** The package-wide form retroactively
 escalated the accepted tasks A4 and A5, whose only manifest entries are the
 read-only balance and projection calculators. The glob exists to guard the
 money-data *store*; a calculator that writes nothing is not that. User ruling.
+
+
+## Coverage gaps found during verification (recorded, not separately tasked)
+
+These were surfaced by checkers, judged not to warrant their own ledger task,
+and are written down so they are not lost with the transcript.
+
+- **Anchor day-comparison is untested for non-midnight times** (found by R6's
+  adversarial lane). Mutating `sameCalendarDay` to an exact `.Equal(date)`
+  comparison is caught by no test; the suite stays green. It is latent only
+  because every current write path parses anchors with
+  `time.Parse("2006-01-02", ...)`, producing midnight UTC. The same blind spot
+  pre-exists in the accepted MCP-side `sameDay`. Any future path that writes a
+  timestamped anchor breaks the day comparison silently.
+
+- **`latestAnchorAtOrBefore` still resolves same-day ties nondeterministically**
+  for data not created through the UI or MCP paths (hand-edited accounts.json,
+  future import). R6 closed the entry point, not the underlying tie-break. The
+  corrected doc comment now says so explicitly.
+
+- **Tier-3 oracles asserted return values only.** `accept.sh` for R1 and R4
+  checked signatures, concurrency and return values but never HTTP status codes
+  or log side effects, which is how two regressions of exactly that kind
+  (500 -> 200, dropped OverlapWarnings) survived R1's oracle and had to be
+  caught by a checker. A future Tier-3 `accept.sh` should assert observable
+  side effects.
+
+- **R8's test carries a wrong explanatory comment** (found by its checker).
+  `import_binding_race_test.go:20-23` predicts that under the reverted binding
+  "every goroutine would report imported". The observed mechanism is different:
+  the step-3 Stat fast-path absorbs late arrivals, so the mutant yields
+  imported==1, skipped==12, 3 rejected, and the test dies on the skipped-count
+  assertion instead. The test is correct; its stated reasoning is not. Fix in
+  the final review pass -- a wrong explanation in a concurrency test misleads
+  the next reader.
+
+- **No test covers "ErrExist branch + delete enabled + unstubbed binding".**
+  R8's checker showed this cannot be covered by a deterministic test of R8's
+  shape: with deleteSource=true the winner's os.Remove races the losers'
+  os.Lstat, failing 10/10 for an unrelated reason. Would need a different test
+  design.
+
+- **Tier 3 is wasted on over-constrained tasks.** R4's two blind arms produced
+  byte-identical production code because the brief pinned the API, the call
+  sites and the opID. Pin only what the shared oracle must call. See the
+  RESOLUTION in `.swarm/tier3/R4/report.md`.
+
+
+## RESOLVED — debug output in production code (2026-08-19)
+
+Twelve `println("DEBUG ...")` lines briefly appeared in `Project` in
+`internal/services/accounts/projection.go`. The lead attributed them to R9's
+in-flight worker on timing; that attribution was WRONG. They belonged to R5's
+adversarial checker, instrumenting its investigation, and it reverted them
+exactly as its report claimed. `projection.go` is byte-clean. The process point
+below still stands: nothing in the gate would have caught them.
+
+## (superseded) BLOCKER — debug output in production code
+
+`internal/services/accounts/projection.go` currently carries 12 added lines of
+`println("DEBUG ...")` inside `Project`, the funding-projection engine. These
+write to stderr on every projection and are in no task's manifest.
+
+Almost certainly R9's live instrumentation while diagnosing the
+TestDashboardAndMCPProjectionAgree flake -- a legitimate technique mid-task,
+but it is in a money path and must not survive. Not removed while R9 is still
+running, because deleting a diagnostic mid-diagnosis would sabotage the task.
+
+MUST be verified gone before: R9 is accepted, `gate.sh done` is run, or
+anything is committed. If R9 does not clean up after itself, the lead removes
+these lines in the final review pass.
+
+Process note: this was surfaced by R6's checker noticing the tree changing
+under its test run, not by any check aimed at it. Nothing in the gate would
+have caught debug output added to a file outside every manifest -- worth a
+mechanical check (e.g. grep for println/fmt.Print in non-test Go files) in
+`gate.sh done`.
+
+
+## R12 — byDay map keyed by time.Time compares Location pointers (found 2026-08-19)
+
+NOT DISPATCHED. Pre-existing, independent of every task in this run, and a real
+money-correctness defect. Found incidentally by R5's adversarial checker while
+building a counterfactual.
+
+`internal/services/accounts/projection.go:116` declares
+`byDay := make(map[time.Time]float64)`. Keys are WRITTEN as
+`occ := dayOf(rp.NextExpected)` (line 129) and READ as
+`day := asOfDay.AddDate(0, 0, d)` where `asOfDay = dayOf(asOf)` (line 117, 149).
+
+`dayOf` rebuilds the value in **its own argument's Location**
+(`time.Date(..., t.Location())`). Go compares `time.Time` map keys by struct
+fields, INCLUDING the `*Location` pointer. So when `asOf` derives from
+`time.Now()` (Local) and `rp.NextExpected` derives from parsed CSV dates (UTC),
+the read key never matches a written key. Every recurring outflow is dropped:
+`Crossing` is never set, `Minimum` stays at the starting balance, and
+`SuggestedTopUp` is 0.
+
+Impact: on any host where TZ != UTC, MCP `get_balance_projection` called
+WITHOUT an explicit `as_of` has been silently reporting "no crossing" whatever
+the data says. The dashboard is unaffected because it derives asOf from the
+ledger's own MaxDate, which carries the transactions' location.
+
+Likely fix: key the map on a normalized value (UTC-truncated date, or a
+`yyyy-mm-dd` string) rather than a raw `time.Time`. Cheap, but it changes
+figures users see, so it needs its own verification.
+
+
+## PROCESS DEFECT — verification ran against a concurrently-mutated tree
+
+Found by R9 (2026-08-19), and it is a defect in the LEAD's orchestration, not in
+any worker's or checker's output.
+
+R9 was asked to fix a 1-in-27 flake in TestDashboardAndMCPProjectionAgree. It
+could not reproduce the failure in **5,100+ executions** across isolated,
+per-process, raced, unraced, and whole-package conditions. Instead of
+guess-patching, it documented what it directly observed:
+
+- `zz_adversarial_default_test.go` appeared mid-session referencing an undefined
+  symbol, changed twice, vanished; `zz_adversarial_parity_test.go` then appeared.
+  (These were R5's adversarial checker's scratch files.)
+- `go vet` / `go build` on the package FAILED mid-run because of that file.
+- A 3000-iteration batch failed every time on another agent's in-flight test.
+- `accounts_card.go`, `anchor.go`, `resolve.go`, `approvals.go` all changed size
+  and mtime during its run — files R9 was forbidden to touch.
+
+Mechanism for the original flake: `dashboard_parity_test.go` is the only test in
+that package reading live shared state — `dashboard.Initialize` ->
+`templates.New(templateDir, false)` globs and `os.ReadFile`s every `.html` under
+the shared repo's `web/templates/**` at construction. A concurrent write during
+that non-atomic multi-file read yields a torn render. That matches the observed
+signature exactly: lines 175 AND 181, both dashboard-render assertions, failing
+together in one run while the MCP-JSON assertions in the same run passed.
+
+R9 correctly declined to call this a confirmed diagnosis (it cannot rewind to the
+failing run) and declined to "harden" the test against an unconfirmed cause.
+
+### What this means for the run
+
+The lead dispatched workers and checkers concurrently against ONE shared working
+tree. Every verification result in this run was produced against a tree that
+other agents could be, and demonstrably were, editing. This does not invalidate
+the accepted work — the tree's FINAL state is what the gate checked, and each
+checker re-ran its own commands — but it does mean:
+
+- Any single observed failure may be a collision artifact rather than a defect.
+- Any single observed pass may have been measured against a transient state.
+
+### Required mitigation before `gate.sh done`
+
+Run one full `go build ./... && go vet ./... && go test -race ./...` on a
+QUIESCENT tree, with zero workers or checkers in flight, and treat THAT as the
+run's toolchain evidence. Nothing else is trustworthy at face value.
+
+### Fix for future runs
+
+Give each verification pass a private worktree, as Tier 3 already does for its
+N-version arms. Tier 3 was isolated; Tier 2 verification was not, which is
+backwards — Tier 2 is where most of the run's verification actually happens.
+
+
+## Shared-tree contamination, second instance (2026-08-19)
+
+R5 attempt 2's two checkers ran concurrently against the same working tree. The
+ADVERSARIAL lane applied its mutation to `internal/services/mcpsvc/ledger/accounts.go`
+IN THE REPOSITORY (its report: "applied and reverted only in the working tree"),
+while the PRIMARY lane was verifying that same file. The primary lane caught a
+snapshot carrying `time.Now().Location()` at line 307 where the committed content
+has `asOf.Location()`, and recorded the mtime discrepancy (file written 18:04:21,
+manifest 17:58:51).
+
+Both handled it correctly -- the adversarial reverted and re-verified diff-clean;
+the primary discarded the contaminated snapshot, re-ran every experiment against a
+fresh copy, and hash-pinned the verified content at both ends of its window. No
+finding rests on contaminated state.
+
+This is the same lead-side defect R9 identified, now demonstrated BETWEEN TWO
+CHECKERS ON ONE TASK rather than between a worker and a checker. The dispatch
+told the adversarial lane to write nothing into the repo; it mutated in place
+anyway, which is the natural thing to do when no isolated copy is provided.
+
+Reinforces the required fix: every verification pass needs its own worktree. An
+instruction not to touch the shared tree is not a substitute for not sharing it.

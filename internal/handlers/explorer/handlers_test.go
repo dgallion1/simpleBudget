@@ -2567,6 +2567,50 @@ func TestHandleImport_FailedWriteKeepsSource(t *testing.T) {
 	mustNotExist(t, filepath.Join(dataDir, "delta.csv"), "nothing may land when the write fails")
 }
 
+// The race the fix closes: a concurrent uploader or importer creates the
+// destination in the window between step 3's existence check and step 4's
+// write. deps.write is bound to store.CreateExclusive in production, whose
+// test-and-create is one indivisible step, so the write below — issued after
+// the "concurrent" writer has already landed its file — must lose, report
+// skipped, leave the winner's bytes in place, and never touch the source.
+func TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	src := seedImportFile(t, importDir, "race.csv", importCSV)
+	destPath := filepath.Join(dataDir, "race.csv")
+
+	deps := defaultImportDeps()
+	deps.write = func(path string, data []byte, perm os.FileMode) error {
+		// Simulate another upload/import winning the race for this exact
+		// destination after step 3 observed it absent but before this write
+		// lands — the same store.CreateExclusive the production write uses.
+		if err := store.CreateExclusive(path, []byte("concurrent-winner"), 0644); err != nil {
+			t.Fatalf("simulated concurrent writer: %v", err)
+		}
+		return store.CreateExclusive(path, data, perm)
+	}
+
+	out := importOneFile("race.csv", true, deps)
+	if out.Status != "skipped" {
+		t.Fatalf("Status=%q want skipped (reason %q)", out.Status, out.Reason)
+	}
+	if out.Reason != "already exists in the data folder" {
+		t.Errorf("Reason=%q want %q", out.Reason, "already exists in the data folder")
+	}
+	if out.SourceDeleted {
+		t.Error("SourceDeleted=true — the loser of the race must never delete the source")
+	}
+
+	got, err := store.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("ReadFile destination: %v", err)
+	}
+	if string(got) != "concurrent-winner" {
+		t.Errorf("destination content = %q, want the winner's bytes %q — the loser overwrote it", got, "concurrent-winner")
+	}
+
+	mustExist(t, src, "the loser's source must survive even though delete_source was requested")
+}
+
 // Guard 1, isolated: when the write itself errors, no delete is attempted.
 // Injected rather than staged with permissions so the assertion holds
 // regardless of the uid running the suite.

@@ -238,9 +238,15 @@ func thresholdForCard(a models.Account) float64 {
 // recurring engine groups outflows by merchant across the whole ledger;
 // accounts.Project filters that output to the account in question, so
 // passing the full ledger's recurring items here is correct.
+//
+// It filters to ts.Active() before detecting, matching the MCP twin
+// (recurringForProjection in mcpsvc/ledger/accounts.go): a row the user has
+// already resolved as a duplicate must not be allowed to skew a series'
+// detected interval or amount, which is what silently dropped or fabricated
+// a funding crossing (R3 attempt-1 regression).
 func detectRecurringForDashboard(ts *models.TransactionSet, asOf time.Time) []models.RecurringPayment {
 	if ts == nil {
 		return nil
 	}
-	return insights.DetectRecurringAt(ts, asOf)
+	return insights.DetectRecurringAt(ts.Active(), asOf)
 }

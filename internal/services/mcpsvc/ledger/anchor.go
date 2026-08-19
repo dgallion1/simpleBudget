@@ -10,10 +10,17 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/accounts"
 	"budget2/internal/services/mcpsvc/confirm"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// errAnchorAccountVanished is returned by applyAnchor's Mutate callback when
+// the account named by a redeemed token is no longer present, so Mutate
+// aborts the save instead of persisting a filtered/rebuilt account list that
+// never actually gets to add the anchor.
+var errAnchorAccountVanished = errors.New("ledger: account vanished before the write")
 
 type setBalanceAnchorInput struct {
 	AccountID string  `json:"account_id" jsonschema:"the account to record the anchor on, as reported by get_accounts"`
@@ -115,7 +122,7 @@ func registerSetBalanceAnchor(s *mcp.Server, deps Deps) {
 			if err := deps.Confirm.Check(token, "set_balance_anchor", tokenArgs); err != nil {
 				return nil, setBalanceAnchorOutput{}, err
 			}
-			if res, asked := askForApproval(deps, req, "set_balance_anchor", id,
+			if res, asked := askForApproval(deps, req, "set_balance_anchor", id, token,
 				"Record a balance anchor on "+id+"?", anchorConsequences(id, dateStr, in.Amount)); asked {
 				return res, setBalanceAnchorOutput{}, nil
 			}
@@ -132,7 +139,7 @@ func registerSetBalanceAnchor(s *mcp.Server, deps Deps) {
 			return applyAnchor(deps, id, date, in.Amount, note, tokenArgs, token, confirm.NotAsked)
 		}
 
-		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "set_balance_anchor", id); viaBrowser {
+		if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "set_balance_anchor", id, token); viaBrowser {
 			if d != confirm.Approved {
 				return nil, setBalanceAnchorOutput{
 					Confirmed:     false,
@@ -193,36 +200,53 @@ func applyAnchor(deps Deps, id string, date time.Time, amount float64, note stri
 		return nil, setBalanceAnchorOutput{}, err
 	}
 
-	accts, err := deps.Accounts.LoadAccounts()
-	if err != nil {
-		return nil, setBalanceAnchorOutput{}, fmt.Errorf("cannot reload accounts before writing: %w", err)
-	}
-	found := false
-	for i := range accts {
-		if accts[i].ID != id {
-			continue
-		}
-		// Replace any existing anchor on the same day (the end-of-day
-		// balance is a single fact), then insert/append and re-sort.
-		filtered := make([]models.BalanceAnchor, 0, len(accts[i].Anchors)+1)
-		for _, a := range accts[i].Anchors {
-			if !sameDay(a.Date, date) {
-				filtered = append(filtered, a)
+	// The load, the edit and the save happen inside one Mutate section, so a
+	// concurrent writer or a restore landing between the load and the save
+	// cannot lose or resurrect this anchor. ensureSnapshot above is
+	// deliberately outside it: a transaction must not span a call into
+	// another service (the snapshotter), and the snapshot has to be taken
+	// against pre-write contents regardless of what Mutate later loads.
+	loaded := false
+	err = accounts.Mutate(deps.Store, func(accts []models.Account) ([]models.Account, error) {
+		loaded = true
+		found := false
+		for i := range accts {
+			if accts[i].ID != id {
+				continue
 			}
+			// Replace any existing anchor on the same day (the end-of-day
+			// balance is a single fact), then insert/append and re-sort.
+			filtered := make([]models.BalanceAnchor, 0, len(accts[i].Anchors)+1)
+			for _, a := range accts[i].Anchors {
+				if !sameDay(a.Date, date) {
+					filtered = append(filtered, a)
+				}
+			}
+			filtered = append(filtered, models.BalanceAnchor{Date: date, Amount: amount, Note: note})
+			sort.Slice(filtered, func(j, k int) bool { return filtered[j].Date.Before(filtered[k].Date) })
+			accts[i].Anchors = filtered
+			accts[i].UpdatedAt = time.Now()
+			found = true
+			break
 		}
-		filtered = append(filtered, models.BalanceAnchor{Date: date, Amount: amount, Note: note})
-		sort.Slice(filtered, func(j, k int) bool { return filtered[j].Date.Before(filtered[k].Date) })
-		accts[i].Anchors = filtered
-		accts[i].UpdatedAt = time.Now()
-		found = true
-		break
-	}
-	if !found {
-		// The account vanished between the preview and the redeem. The
-		// token is already spent, so say so plainly.
-		return nil, setBalanceAnchorOutput{}, fmt.Errorf("account %q disappeared before the write (the confirmation token has been spent; call set_balance_anchor without a token to preview again): not found", id)
-	}
-	if err := deps.Accounts.SaveAccounts(accts); err != nil {
+		if !found {
+			return nil, errAnchorAccountVanished
+		}
+		return accts, nil
+	})
+	if err != nil {
+		if errors.Is(err, errAnchorAccountVanished) {
+			// The account vanished between the preview and the redeem. The
+			// token is already spent, so say so plainly.
+			return nil, setBalanceAnchorOutput{}, fmt.Errorf("account %q disappeared before the write (the confirmation token has been spent; call set_balance_anchor without a token to preview again): not found", id)
+		}
+		if !loaded {
+			// The load itself failed -- distinct from a save/validation
+			// failure, and from the vanished-account case above: neither
+			// the write nor the token's effect happened here, so this does
+			// NOT carry the "confirmation token has been spent" wording.
+			return nil, setBalanceAnchorOutput{}, fmt.Errorf("cannot reload accounts before writing: %w", err)
+		}
 		return nil, setBalanceAnchorOutput{}, fmt.Errorf("%s (the confirmation token has been spent either way; call set_balance_anchor without a token to preview again and get a new one): %w",
 			snapNote, err)
 	}

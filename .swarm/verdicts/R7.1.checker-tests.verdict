@@ -1,0 +1,125 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R7
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16.
+Scope verified: .swarm/manifests/R7.1.files = internal/services/mcpsvc/ledger/resolve.go,
+internal/services/mcpsvc/ledger/resolve_test.go. Diff of those two files is +23/-0 in
+resolve.go and +12/-4 in resolve_test.go (git diff --stat). All other modified files in the
+tree belong to R2/R3 and were not evaluated.
+
+PRELIMINARY: DELETED EVIDENCE
+`grep -c "^func Test" internal/services/mcpsvc/ledger/resolve_test.go` = 10
+`git show HEAD:internal/.../resolve_test.go | grep -c "^func Test"` = 10.
+No test was added. The worker's claim that criteria 1 and 2 were "verified with ad hoc tests
+written to a temp file, run, then deleted" is not verifiable evidence and carries no
+regression protection. I therefore established the BEHAVIOUR myself, and report the
+DELIVERABLE COVERAGE question separately, per criterion.
+
+--- CRITERION 1: fresh server, no prior load, a valid pair key resolves ---
+BEHAVIOUR: MET.
+Evidence: my throwaway test (scratchpad copy of the repo, never written into the repo)
+TestVERIFY_C1_FreshServerValidKeyMints asserts deps.Transfers.SuspectedTransfers() has length
+0 immediately before the tool call, then calls resolve_transfer with the valid key.
+Output: "--- PASS: TestVERIFY_C1_FreshServerValidKeyMints" / "C1 OK: minted token on fresh
+server, deps queue was empty beforehand".
+COVERAGE IN THE DELIVERABLE: MET, indirectly but genuinely. Mutation test: I restored
+HEAD's resolve.go into a scratch copy while keeping the new resolve_test.go helper, then ran
+`go test -run TestResolveTransfer ./internal/services/mcpsvc/ledger/`. Output:
+  --- FAIL: TestResolveTransferFirstCallDoesNotWrite
+  --- FAIL: TestResolveTransferSecondCallWithTokenWrites
+  --- FAIL: TestResolveTransferRefusesABadToken
+  --- FAIL: TestResolveTransferRefusesAReplayedToken
+  --- FAIL: TestResolveTransferRefusesATokenForDifferentVerdict
+  --- FAIL: TestResolveTransferDoesNotWriteWhenTheUserRefuses
+  --- FAIL: TestResolveTransferOnAClientThatCannotPromptSaysNobodyWasAsked
+7 of 10 committed tests fail if the mint-path deps.load() (resolve.go:91-93) is removed. The
+committed suite does protect criterion 1.
+
+--- CRITERION 2: after the CSVs change, the key is rejected rather than written, at the
+    WRITE path after the approval round trip, not only at mint ---
+BEHAVIOUR: MET.
+Evidence: TestVERIFY_C2b_WritePathRevalidates calls applyResolveTransfer() directly with a
+live minted token after rewriting schwab.csv so the pair is no longer suspected. Output:
+"C2b OK: write path refused with \"pair_key \\\"f2dd5ca97cb3\\\" is no longer a suspected
+transfer awaiting review ...\"", and transfer_decisions.json byte-compared before/after was
+unchanged. resolve.go:216-220 is the check that fired.
+Black-box note (TestVERIFY_C2a): via the MCP tool surface, the second (token) call is refused
+by the PRE-MINT check at resolve.go:95 first, error text "is not a suspected transfer
+awaiting review", because the handler re-runs from the top for a token-bearing call. The
+write-path check is decisive only when the CSVs change during the blocking approval wait,
+which is exactly the window the brief describes. Nothing is written either way.
+COVERAGE IN THE DELIVERABLE: **NOT MET — this is the failing criterion.**
+Mutation test: in the scratch copy I deleted ONLY the write-path block (resolve.go:208-220,
+the "Re-validate against a fresh load before writing" comment through the closing brace) and
+left everything else including the new test helper intact, then ran
+`go test -count=1 ./internal/services/mcpsvc/ledger/`. Output: "ok
+budget2/internal/services/mcpsvc/ledger 0.069s" — all 10 tests still pass. The entire
+write-path re-validation, the second half of the fix and the specific behaviour of criterion
+2, can be deleted without a single committed test noticing. It has zero regression
+protection. No committed test rewrites the CSVs between mint and redeem; I read all ten
+functions in resolve_test.go to confirm this.
+
+--- CRITERION 3: the 10 existing tests pass without preloading; seedSuspectedPair no longer
+    populates deps' own queue ---
+MET.
+Read, not taken on description: resolve_test.go:33-37 now does
+  peek := dataloader.New(dir, deps.Store)
+  if _, err := peek.LoadData(); ...
+  suspected := peek.SuspectedTransfers()
+i.e. a separate DataLoader instance, replacing the old `deps.Transactions.LoadData()` /
+`deps.Transfers.SuspectedTransfers()` (git diff of resolve_test.go, -4 lines).
+Runtime proof rather than reading: TestVERIFY_C1 asserts len(deps.Transfers.
+SuspectedTransfers()) == 0 after seedSuspectedPair and before connect(); it passed.
+connect() (register_test.go:62-85) performs no load either.
+`go test -race -count=1 -v -run TestResolveTransfer ./internal/services/mcpsvc/ledger/`:
+all 10 named resolve tests report "--- PASS", "ok ... 1.153s", exit 0.
+
+--- CRITERION 4: go build ./..., go vet ./... clean; go test -race on the ledger package ---
+MET.
+`go build ./...` -> BUILD_EXIT=0. `go vet ./...` -> VET_EXIT=0.
+`go test -race -count=1 ./internal/services/mcpsvc/ledger/...` -> "ok
+budget2/internal/services/mcpsvc/ledger 1.410s", EXIT=0.
+Beyond the criterion, the brief also asks for `go test -race ./...`: full-tree run exit
+status FULL_EXIT=0 with no FAIL lines (note the tree also contains in-flight R2/R3 changes).
+
+--- CRITERION 5: nothing modified under internal/services/dataloader/** or
+    internal/services/transfers/** ---
+MET.
+`git status --porcelain | awk '{print $2}' | grep -E 'internal/services/(dataloader|transfers|
+storage|retirement/engine)/|internal/services/accounts/accounts.go|internal/services/mcpsvc/
+confirm/'` returned no matches (grep exit 1). No file under any entry of .swarm/critical.globs
+is modified. Note resolve_test.go now IMPORTS budget2/internal/services/dataloader, which is a
+read-only dependency, not a modification.
+
+--- ADDITIONAL CHECK REQUESTED: nil deps.Transactions ---
+CONFIRMED BEHAVIOUR CHANGE (regression against the documented Deps contract).
+register.go:56-59 documents "Every field may be nil except Accounts". register.go:88-97 makes
+deps.load() return "transaction source is not configured on this server" when Transactions is
+nil. resolve_transfer previously used only deps.Transfers, so a Deps with Transfers set and
+Transactions nil worked end to end.
+Evidence: my TestVERIFY_NilTransactionsSourceStillWorks (fake TransferSource, deps.Transactions
+= nil) against the worker's resolve.go:
+  "--- FAIL ... MINT path failed with a nil Transactions source: transaction source is not
+   configured on this server"
+The identical test against HEAD's resolve.go: "--- PASS ... ok". So the fix does break a
+configuration that previously worked.
+Reachability: NOT reachable in the shipped wiring. server.go:213 guards with
+`if deps.Loader != nil` and server.go:279-281 sets both Transactions and Transfers to the same
+deps.Loader, so the two are never independently nil in production. The failure mode is also a
+clear named error, which is what register.go:56-59 prescribes for a tool that needs a nil
+dependency. Reported as fact; it is not gated by any numbered acceptance criterion and I do
+not fail the task on it.
+
+--- SUMMARY ---
+1 BEHAVIOUR MET / COVERAGE MET. 2 BEHAVIOUR MET / COVERAGE NOT MET. 3 MET. 4 MET. 5 MET.
+FAIL is on criterion 2's deliverable: the write-path re-validation, the half of the fix the
+brief called out specifically ("Re-validate before writing, not only before minting the
+confirm token"), can be deleted with the committed suite still green. What is missing is one
+test in internal/services/mcpsvc/ledger/resolve_test.go that mints a token for a suspected
+pair, rewrites the CSVs so the pair is no longer suspected, drives the write path
+(applyResolveTransfer directly, or the elicitation/browser round trip so the top-of-handler
+check is not what fires), and asserts both the "no longer a suspected transfer" refusal and
+that transfer_decisions.json is unchanged.

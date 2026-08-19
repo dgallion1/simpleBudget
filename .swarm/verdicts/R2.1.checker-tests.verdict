@@ -1,0 +1,117 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R2
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16.
+Scope verified against .swarm/manifests/R2.1.files:
+  internal/handlers/explorer/handlers.go (+22 -6)
+  internal/handlers/explorer/handlers_test.go (+44 -0, purely additive)
+
+CRITERION 1 — race test asserts all four properties: MET
+  File: internal/handlers/explorer/handlers_test.go:2576-2612
+  `go test -race -count=1 -run TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite -v ./internal/handlers/explorer/`
+    --- PASS: TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite (0.00s)
+  Read the body line by line; the four required assertions are present and real:
+    - destination created between the check and the write: deps.write (2582-2590) runs
+      AFTER importOneFile's step-3 Stat pre-check (handlers.go:680) and calls
+      store.CreateExclusive(path, "concurrent-winner") at 2586 before issuing the real
+      write at 2589. The interleaving is deterministic, not goroutine-based.
+    - exactly one write wins: the winner's create is checked (t.Fatalf at 2587 if it
+      fails) and the loser's create returns ErrExist -> Status skipped (2593-2595);
+      the surviving bytes are the winner's (2607).
+    - loser reports Status "skipped": 2593-2595, plus Reason equality 2596-2598.
+    - destination holds the winner's bytes: store.ReadFile(destPath) at 2603 and
+      string(got) != "concurrent-winner" -> t.Errorf at 2607-2609.
+    - loser's source still on disk: mustExist(t, src, ...) at 2611, where mustExist
+      (handlers_test.go:2316) does os.Lstat and Fatalf's on error; delete_source was
+      passed true (2592) and out.SourceDeleted is asserted false (2599-2601).
+  Mutation evidence that the test is load-bearing (run in a copy at
+  <scratchpad>/b2mut, never in the repo): removing the os.ErrExist branch and
+  reverting write to store.WriteFile ->
+    handlers_test.go:2594: Status="rejected" want skipped (reason "could not save the file")
+    --- FAIL: TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite
+  RESIDUAL GAP (advisory, not a criterion): because the test replaces deps.write, no
+  test pins the production binding at handlers.go:565. Second mutation, reverting only
+  `write: store.CreateExclusive` -> `store.WriteFile` while keeping the ErrExist branch:
+    `go test -count=1 ./internal/handlers/explorer/` -> ok  budget2/internal/handlers/explorer  0.323s
+  i.e. the whole explorer suite stays green with the production write non-exclusive.
+  The binding itself is demonstrated only by inspection of handlers.go:565 + go build.
+
+CRITERION 2 — existing import outcome tests pass unchanged; reason strings byte-identical: MET
+  `go test -race -count=1 -run 'TestHandleImport|TestImportOneFile' -v ./internal/handlers/explorer/`
+    26 test functions, all "--- PASS", final "ok budget2/internal/handlers/explorer 1.037s"
+    (includes CollisionSkipsAndKeepsSource, SymlinkNotFollowedTargetSurvives,
+     NonCSVRejected, TraversalNameRejected, MixedBatchDeletesOnlyImported,
+     SubdirectoryEntryNeverDeletes, FailedWriteKeepsSource).
+  `git diff --stat internal/handlers/explorer/handlers_test.go` -> "44 +++++", 0 deletions:
+     no existing test was edited.
+  `git diff -U0 internal/handlers/explorer/handlers.go | grep '^[+-][^+-]' | grep Reason:`
+     -> exactly one line, the ADDED os.ErrExist skip. No Reason: line was removed.
+  Structural diff of the function against HEAD, comments stripped:
+    diff <(git show HEAD:...handlers.go | sed -n '/^func importOneFile/,/^}/p' | grep -v '^\s*//') \
+         <(sed -n '/^func importOneFile/,/^}/p' ...handlers.go | grep -v '^\s*//')
+    -> the ONLY code delta in the whole function is the 3-line ErrExist branch (41a42,44).
+    Therefore "symlinks are not imported" (handlers.go:663), "not a regular file" (:666)
+    and "not directly inside the import folder" (:669) are byte-identical to HEAD.
+
+CRITERION 3 — source deletion reachable only on a real import: MET
+  `grep -n removeSrc internal/handlers/explorer/handlers.go` -> 3 hits: the struct field
+  (:551), the default binding os.Remove (:567), and exactly ONE call site, :725.
+  Control-flow trace of importOneFile (handlers.go:628-733): both skip exits return
+  before :725 —
+    - Stat pre-check exit: `return importOutcome{... "skipped" ...}` at :681
+    - os.ErrExist exit: `return importOutcome{... "skipped" ...}` at :700
+  and :725 is reached only after the write succeeded (:698), the readback succeeded
+  (:708-713) and outcome was set to Status "imported" (:716), with an early
+  `return outcome` at :719 when deleteSource is false.
+  Test-backed for both skip paths: Stat pre-check path — TestHandleImport_CollisionSkipsAndKeepsSource
+  (handlers_test.go:2418-2448) asserts SourceDeleted false, mustExist(src), and destination
+  content unchanged; ErrExist path — the new race test asserts SourceDeleted false and
+  mustExist(src). Both PASS in the run above.
+
+CRITERION 4 — readback (step 5) retained; non-ErrNotExist Stat error still a rejection: MET
+  Demonstrated by the comment-stripped structural diff above (only delta = the ErrExist
+  branch), which proves both blocks are byte-identical to HEAD:
+    handlers.go:708-714  readBack + len(back) != len(data) -> "saved file could not be
+      read back" / "saved file failed verification"
+    handlers.go:682-684  `else if !errors.Is(err, os.ErrNotExist)` -> rejected,
+      "could not check the destination"
+  Reason-string counts HEAD vs working tree are 1:1 for all four strings
+  (loop over `git show HEAD:...handlers.go | grep -c` vs `grep -c`).
+  NOT DEMONSTRABLE BY TEST: `grep -n "could not check the destination" internal/handlers/explorer/*_test.go`
+  returns 0 matches — no test exercises the non-ErrNotExist Stat branch. It is unchanged
+  code, so this is a pre-existing coverage gap, not a regression introduced by R2.
+  Readback failures ARE covered: TestImportOneFile_ShortReadbackNeverDeletes and
+  TestImportOneFile_ReadbackErrorNeverDeletes both PASS.
+
+CRITERION 5 — upload path not modified: MET
+  diff <(git show HEAD:...handlers.go | sed -n '/func uploadOneFile/,/^}/p') \
+       <(sed -n '/func uploadOneFile/,/^}/p' ...handlers.go)
+    -> no output; printed UPLOAD_FUNC_IDENTICAL.
+  `git diff -U0 ...handlers.go | grep '^@@'` -> hunks at +557,5 / +565 / +672,5 / +686,8 /
+  +699,3 only; uploadOneFile begins at :901 and its CreateExclusive call is :931, outside
+  every hunk.
+
+CRITERION 6 — build, vet, race test: MET
+  `go build ./...`                              -> no output, exit 0
+  `go vet ./...`                                -> no output, VET_EXIT=0
+  `go test -race -count=1 ./internal/handlers/explorer/...`
+      -> ok  budget2/internal/handlers/explorer  4.121s, EXIT=0
+  `go test -race -count=1 ./...` (whole module, includes R3/R7 in-flight work)
+      -> exit 0, no FAIL lines. No out-of-scope breakage observed.
+
+SCOPE
+  Modified within R2's manifest: internal/handlers/explorer/handlers.go,
+  internal/handlers/explorer/handlers_test.go. Nothing else attributable to R2.
+  Out of scope, other workers' in-flight work, NOT judged here:
+    internal/handlers/dashboard/{handlers.go,accounts_card_test.go},
+    internal/services/mcpsvc/ledger/{accounts,resolve}{,_test}.go,
+    untracked internal/handlers/explorer/duplicate_suppression_test.go — its own header
+    comment says "acceptance criterion 2 for R3"; same package as R2 but not in R2.1.files.
+  .swarm/critical.globs (storage/**, dataloader/**, retirement/engine/**, transfers/**,
+    accounts.go, mcpsvc/confirm/**): none touched by R2. store.CreateExclusive was
+    consumed, not modified.
+  No files were edited by this checker; both mutations ran on an rsync copy under the
+  session scratchpad.

@@ -1,0 +1,178 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R4
+ATTEMPT: 2
+---
+Tree: /home/darrell/bin/ai/budget2, branch fix/review-aug16, HEAD 1a8636d (all
+R1/R2/R3/R4/R7 work uncommitted in the working tree).
+
+CRITERION 1 — accept.sh exits 0. MET.
+  cmd: bash .swarm/tier3/R4/accept.sh  (full log: scratchpad r4_accept.log)
+  Final lines: "=== accept.sh exit: 0 ===" / EXIT=0.
+  Steps 1 (build) and 2 (vet) produced no output. Step 3 printed
+  approvals.go:80 Create(tool, subject, opID, title, detail string) and
+  approvals.go:133 Find(tool, subject, opID string). Step 4 printed all eight
+  call-site lines and "all four sites bound — ok". Step 5:
+  "ok budget2/internal/services/mcpsvc/confirm 1.096s" for TestZZOracleR4.
+  Step 6: 47 packages "ok" under -race, none FAIL, including
+  internal/services/mcpsvc/ledger 2.731s (the R9 flake did not fire).
+
+CRITERION 2 — no prior accepted work lost. MET, by test and by diff.
+  (a) R7 write-path re-validation:
+      cmd: go test -race -count=1 -v -run 'TestResolveTransferWritePathRevalidatesBeforeWriting'
+           ./internal/services/mcpsvc/ledger/
+      -> "--- PASS: TestResolveTransferWritePathRevalidatesBeforeWriting (0.02s)".
+      Test read at resolve_test.go:253-299: it calls applyResolveTransfer
+      DIRECTLY (bypassing the handler pre-check), removes the checking-side
+      leg, asserts err contains "no longer a suspected transfer", asserts
+      out.Confirmed==false, and asserts transfer_decisions.json is byte-for-byte
+      unchanged. Guard lives at resolve.go:208-220 with deps.load() at
+      resolve.go:213.
+  (b) R1 applyAnchor load-failure message:
+      cmd: go test -race -count=1 -v -run 'TestApplyAnchor_LoadFailureMessageIsDistinct$'
+           ./internal/services/mcpsvc/ledger/  -> "--- PASS ... (0.00s)"
+      cmd: go test -race -count=1 -v -run 'TestApplyAnchor_SaveFailureMessageIsUnchanged'
+           ./internal/services/mcpsvc/ledger/  -> "--- PASS ... (0.00s)"
+      Tests read at anchor_load_failure_test.go:31-113: the load test corrupts
+      accounts.json AFTER minting, calls applyAnchor directly, asserts the error
+      contains "cannot reload accounts before writing" AND does NOT contain
+      "confirmation token has been spent"; the save test chmods the store dir
+      0500 and asserts the inverse pair. Message survives at anchor.go:248
+      inside the !loaded branch.
+  (c) R1 HTTP 500 restoration in handlers/accounts:
+      cmd: go test -race -count=1 -v -run 'TestHandleDelete_LoadFailureIs500|
+           TestHandleAddAnchor_LoadFailureIs500|TestHandleDeleteAnchor_LoadFailureIs500|
+           TestHandleDelete_SaveFailureStays200WithInlineError|
+           TestHandleAddAnchor_SaveFailureStays200WithInlineError|
+           TestHandleDeleteAnchor_SaveFailureStays200WithInlineError'
+           ./internal/handlers/accounts/
+      -> all six "--- PASS", "ok budget2/internal/handlers/accounts 1.023s".
+  (d) R1 oracle re-run on the merged tree:
+      cmd: bash .swarm/tier3/R1/accept.sh -> "=== accept.sh exit: 0 ===" / EXIT=0.
+      Step 3 found accounts.go:80 Mutate with the pinned signature; step 4
+      reported "none — ok" for saves outside the serialized API; step 5 ok;
+      step 6 full -race suite all ok.
+  (e) Structural proof the hand-merge lost nothing, in either direction:
+      cmd: diff -u <(git show 1a8636d:.../anchor.go) /tmp/swarm-worktrees/budget2/R4/wt-primary/.../anchor.go
+        -> the winning arm's entire change to anchor.go is 2 lines (token added
+           to askForApproval and awaitApproval). Same for resolve.go: 2 lines.
+      cmd: diff -u /tmp/swarm-worktrees/budget2/R4/wt-primary/.../anchor.go internal/.../anchor.go
+        -> the only differences are additive R1 work: the accounts import,
+           errAnchorAccountVanished, the accounts.Mutate closure, the
+           loaded/!loaded branch and the "cannot reload accounts before writing"
+           message. No R4 line is absent.
+      cmd: diff -u /tmp/swarm-worktrees/budget2/R4/wt-primary/.../resolve.go internal/.../resolve.go
+        -> the only differences are additive R7 work: the pre-mint deps.load()
+           at resolve.go:91 and the write-path re-validation block at
+           resolve.go:208-220. No R4 line is absent.
+      Conclusion: current anchor.go/resolve.go == wt-primary + (R1|R7), exactly.
+
+CRITERION 3 — the four hand-merged call sites are correct. MET.
+  anchor.go:  token declared once at :98 (token := strings.TrimSpace(in.ConfirmToken));
+              minted against anchorTokenArgs{AccountID,Date,Amount} at :101-103;
+              tokenArgs rebuilt identically at :118; deps.Confirm.Check(token,
+              "set_balance_anchor", tokenArgs) at :122 GATES reaching :125, so
+              control only reaches askForApproval(..., id, token, ...) with a
+              token that verifies against those exact arguments;
+              awaitApproval(ctx, deps, "set_balance_anchor", id, token) at :142;
+              applyAnchor Redeems the same token against the same tokenArgs at :194.
+  resolve.go: token at :101; minted against resolveTokenArgs{PairKey,Verdict}
+              at :103-105; tokenArgs at :121; Check at :125 gates :128
+              askForApproval(..., key, token, ...); awaitApproval(..., key, token)
+              at :145; Redeem at :204.
+  cmd: grep -n 'token :=|token =' on all four files -> exactly one declaration
+       per handler (anchor.go:98, resolve.go:101, restore.go:104, shutdown.go:64),
+       so no shadowed or unrelated variable can be in play.
+  Both askForApproval and awaitApproval receive the SAME identifier at each site.
+
+CRITERION 4 — pinned signatures and replace-only-on-all-three. MET.
+  approvals.go:80 func (a *Approvals) Create(tool, subject, opID, title, detail string) (*Pending, error)
+  approvals.go:133 func (a *Approvals) Find(tool, subject, opID string) (*Pending, bool)
+  (printed by accept.sh step 3). Replacement predicate at approvals.go:91:
+  `if p.Tool == tool && p.Subject == subject && p.OpID == opID`; Find predicate
+  identical at :138.
+  Behavioural evidence, not inspection:
+  cmd: go test -race -count=1 -v -run 'TestCreateReplacesAnEarlierRequestForTheSameThing|
+       TestCreateKeepsDistinctOperationsApart' ./internal/services/mcpsvc/confirm/
+       -> both "--- PASS".
+  Oracle checks 1/3/5 (TestZZOracleR4_SameSubjectDifferentOperationsCoexist,
+  _OppositeVerdictsAreDistinctOperations, _WrongOperationIDDoesNotMatch) passed
+  in accept.sh step 5; those assert coexistence, no cross-authorization, and
+  that an empty or wrong opID does not match.
+
+CRITERION 5 — all four guarded tools thread the opID, both helper copies. MET.
+  accept.sh step 4 output lists: ledger/resolve.go:128,145; ledger/anchor.go:125,142;
+  admin/restore.go:151,177; admin/shutdown.go:91,103 — each passing `token`.
+  Both helper copies carry the opID parameter: ledger/approval.go:29 and :57;
+  admin/approval.go:30 and :58 (the Correction paragraph's required second copy).
+  Runtime evidence that the threading works end to end, not merely compiles:
+  cmd: go test -race -count=1 -v -run 'TestRestoreRunsWhenApprovedInTheBrowser|
+       TestRestoreDoesNotRunWhenDeclinedInTheBrowser|TestRestoreDoesNotRunWhenNobodyAnswers|
+       TestShutdownDoesNotRunWhenDeclinedInTheBrowser|TestShutdownRunsWhenApprovedInTheBrowser|
+       TestWithoutBrowserWiringTheToolsFallBack' ./internal/services/mcpsvc/admin/
+       -> all six "--- PASS"; these drive Create-then-Find across a real browser
+       round trip with the token as opID.
+  cmd: go test -race -count=1 -v -run 'TestSetBalanceAnchor|TestResolveTransfer'
+       ./internal/services/mcpsvc/ledger/ -> all 20 "--- PASS".
+  OBSERVATION (not a failure against the written criteria): the ledger package
+  has no end-to-end browser-approval tool test (grep for Approvals/BaseURL in
+  internal/services/mcpsvc/ledger/*_test.go returns nothing), so for
+  set_balance_anchor and resolve_transfer the browser rung is covered by the
+  registry-level oracle plus the Check-gate argument above, not by a round-trip
+  test. admin has that coverage; ledger does not.
+
+CRITERION 6 — unchanged behaviour. MET (mixed evidence, stated per item).
+  (a) Ladder order browser -> form -> token alone. Mechanical:
+      cmd: grep -n 'askForApproval(deps|confirm.CanAsk(req.Session)|confirm.NotAsked'
+      on the four files -> anchor.go 125 < 129 < 139; resolve.go 128 < 132 < 142;
+      restore.go 151 < 155 < 171; shutdown.go 91 < 95 < (fallthrough, approval
+      initialised NotAsked at :85). Ladder doc still at ledger/approval.go:13-21
+      and admin/approval.go:12-22. Runtime: TestWithoutBrowserWiringTheToolsFallBack,
+      TestSetBalanceAnchorOnAClientThatCannotPromptSaysNobodyWasAsked and
+      TestResolveTransferOnAClientThatCannotPromptSaysNobodyWasAsked all PASS.
+  (b) Detail text still names the load-bearing facts. No test in the repo asserts
+      the consequence prose (grep for its distinctive phrases across *_test.go
+      returns nothing), so this is demonstrated by an unchanged-since-baseline
+      check rather than by a test:
+      cmd: per-function sed extraction compared against git show 1a8636d
+      -> "anchor.go::anchorConsequences UNCHANGED (10 lines)" and
+         "resolve.go::resolveConsequences UNCHANGED (19 lines)".
+  (c) RequestState still an untrusted breadcrumb. Again no test asserts it;
+      mechanical demonstration:
+      cmd: grep -rn 'RequestState' --include=*.go internal/ | grep -v _test.go
+      -> six hits, ALL of them writes (ledger/approval.go:46 and
+         admin/approval.go:47 as tool+":"+subject; anchor.go:136, resolve.go:139,
+         restore.go:165, shutdown.go:100). There is no read of RequestState
+         anywhere in production code, and re-finding goes through
+         Approvals.Find(tool, subject, opID) with server-side values only.
+  (d) A decided request stays decided.
+      cmd: go test -race -count=1 -v -run 'TestApprovalCanOnlyBeDecidedOnce'
+      ./internal/services/mcpsvc/confirm/ -> "--- PASS". Test asserts the second
+      Decide returns errors.Is(err, ErrNoSuchApproval) and that Get no longer
+      reports the request open. Code at approvals.go:154.
+
+CRITERION 7 — build, vet, go test -race ./... clean. MET.
+  accept.sh steps 1, 2 and 6 are exactly these three commands; step 6 listed 47
+  packages "ok" and no FAIL. R1's accept.sh independently re-ran the same three
+  and also exited 0. The R9 dashboard_parity flake did not fire in either run.
+
+SCOPE.
+  cmd: git diff --cached --name-only -> the 7 files applied by patch:
+    handlers/approval/handlers_test.go, admin/{approval,restore,shutdown}.go,
+    confirm/{approvals.go,approvals_test.go}, ledger/approval.go.
+  cmd: cmp against /tmp/swarm-worktrees/budget2/R4/wt-primary -> all 7 byte-identical
+    to the winning arm ("IDENTICAL to wt-primary" x7).
+  The 2 remaining manifest files (ledger/anchor.go, ledger/resolve.go) carry an
+  R4-attributable delta of exactly 4 lines total, per the diffs in criterion 2(e).
+  Total = the 9 files in .swarm/manifests/R4.2.files, and the same 9 files
+  wt-primary changed (git diff --name-only 1a8636d in the worktree). No file
+  outside the manifest is attributable to R4; the other modified paths in
+  git status belong to the already-accepted R1/R2/R3/R7.
+  critical.globs: internal/services/mcpsvc/confirm/** is listed and IS touched
+  (approvals.go, approvals_test.go). R4 is Tier 3, the highest tier, so this is
+  permitted.
+  The oracle and accept.sh are unmodified: .swarm/tier3/R4/ shows only report.md
+  as untracked/new; accept.sh and oracle/zz_oracle_r4_test.go are unchanged.
+  report.md carries the required RESOLUTION: line (winner = wt-primary) and the
+  MERGE NOTE.

@@ -12,6 +12,7 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log"
@@ -35,6 +36,15 @@ var (
 	loader   *dataloader.DataLoader
 	store    *storage.Storage
 	renderer *templates.Renderer
+)
+
+// errAccountNotFound and errAnchorNotFound are sentinels a Mutate callback
+// returns to abort the mutation without saving, letting the handler tell a
+// missing-account 404 apart from an unexpected load/save failure without
+// depending on Mutate's error carrying anything beyond fmt.Errorf strings.
+var (
+	errAccountNotFound = errors.New("account not found")
+	errAnchorNotFound  = errors.New("anchor not found")
 )
 
 // Initialize wires the package with its dependencies. The storage service
@@ -176,18 +186,22 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accts, err := accounts.Load(store)
-	if err != nil {
-		renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	filtered := make([]models.Account, 0, len(accts))
-	for _, a := range accts {
-		if a.ID != id {
-			filtered = append(filtered, a)
+	loaded := false
+	err := accounts.Mutate(store, func(accts []models.Account) ([]models.Account, error) {
+		loaded = true
+		filtered := make([]models.Account, 0, len(accts))
+		for _, a := range accts {
+			if a.ID != id {
+				filtered = append(filtered, a)
+			}
 		}
-	}
-	if err := accounts.Save(store, filtered); err != nil {
+		return filtered, nil
+	})
+	if err != nil {
+		if !loaded {
+			renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		data, _ := buildPageData(r)
 		data.Error = err.Error()
 		renderList(w, r, data)
@@ -197,11 +211,17 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	renderList(w, r, data)
 }
 
-// handleAddAnchor handles POST /accounts/{id}/anchor. Appends a
-// BalanceAnchor to the account and re-sorts anchors by date. The anchor
-// records the balance at the END of the anchor day; the template states
-// that in the label so the user does not misread it as a start-of-day
-// figure.
+// handleAddAnchor handles POST /accounts/{id}/anchor. Records a
+// BalanceAnchor on the account and re-sorts anchors by date. Any existing
+// anchor on the same calendar day is replaced rather than left alongside
+// the new one -- the end-of-day balance is a single fact, so two anchors
+// on one day would make it ambiguous which amount is authoritative, and
+// latestAnchorAtOrBefore's tie-break on encounter order would make that
+// ambiguity depend on slice order rather than intent. This mirrors
+// applyAnchor in internal/services/mcpsvc/ledger/anchor.go so the UI and
+// MCP paths agree. The anchor records the balance at the END of the
+// anchor day; the template states that in the label so the user does not
+// misread it as a start-of-day figure.
 func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -241,31 +261,49 @@ func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accts, err := accounts.Load(store)
-	if err != nil {
-		renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	found := false
-	for i := range accts {
-		if accts[i].ID != id {
-			continue
+	loaded := false
+	err = accounts.Mutate(store, func(accts []models.Account) ([]models.Account, error) {
+		loaded = true
+		found := false
+		for i := range accts {
+			if accts[i].ID != id {
+				continue
+			}
+			// Drop any anchor already on this calendar day before
+			// appending the new one, then re-sort. Filtering first keeps
+			// the outcome deterministic: exactly one anchor per day
+			// regardless of what order the old slice held them in.
+			filtered := make([]models.BalanceAnchor, 0, len(accts[i].Anchors)+1)
+			for _, a := range accts[i].Anchors {
+				if !sameCalendarDay(a.Date, date) {
+					filtered = append(filtered, a)
+				}
+			}
+			filtered = append(filtered, models.BalanceAnchor{
+				Date:   date,
+				Amount: amount,
+				Note:   note,
+			})
+			sort.Slice(filtered, func(j, k int) bool { return filtered[j].Date.Before(filtered[k].Date) })
+			accts[i].Anchors = filtered
+			accts[i].UpdatedAt = time.Now()
+			found = true
+			break
 		}
-		accts[i].Anchors = append(accts[i].Anchors, models.BalanceAnchor{
-			Date:   date,
-			Amount: amount,
-			Note:   note,
-		})
-		sort.Slice(accts[i].Anchors, func(j, k int) bool { return accts[i].Anchors[j].Date.Before(accts[i].Anchors[k].Date) })
-		accts[i].UpdatedAt = time.Now()
-		found = true
-		break
-	}
-	if !found {
-		renderError(w, "Account not found", http.StatusNotFound)
-		return
-	}
-	if err := accounts.Save(store, accts); err != nil {
+		if !found {
+			return nil, errAccountNotFound
+		}
+		return accts, nil
+	})
+	if err != nil {
+		if !loaded {
+			renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if errors.Is(err, errAccountNotFound) {
+			renderError(w, "Account not found", http.StatusNotFound)
+			return
+		}
 		data, _ := buildPageData(r)
 		data.Error = err.Error()
 		renderList(w, r, data)
@@ -273,6 +311,16 @@ func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 	}
 	data, _ := buildPageData(r)
 	renderList(w, r, data)
+}
+
+// sameCalendarDay reports whether a and b fall on the same calendar day in
+// a's location, ignoring time-of-day. A BalanceAnchor states the balance
+// as of the END of a day, so two anchors landing on the same day are
+// necessarily competing statements of the same fact.
+func sameCalendarDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
 }
 
 // handleDeleteAnchor handles POST /accounts/{id}/anchor/{aid}/delete. The
@@ -291,33 +339,40 @@ func handleDeleteAnchor(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Invalid anchor date", http.StatusBadRequest)
 		return
 	}
-	accts, err := accounts.Load(store)
-	if err != nil {
-		renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	found := false
-	for i := range accts {
-		if accts[i].ID != id {
-			continue
-		}
-		filtered := make([]models.BalanceAnchor, 0, len(accts[i].Anchors))
-		for _, a := range accts[i].Anchors {
-			if a.Date.Equal(date) {
-				found = true
+	loaded := false
+	err = accounts.Mutate(store, func(accts []models.Account) ([]models.Account, error) {
+		loaded = true
+		found := false
+		for i := range accts {
+			if accts[i].ID != id {
 				continue
 			}
-			filtered = append(filtered, a)
+			filtered := make([]models.BalanceAnchor, 0, len(accts[i].Anchors))
+			for _, a := range accts[i].Anchors {
+				if a.Date.Equal(date) {
+					found = true
+					continue
+				}
+				filtered = append(filtered, a)
+			}
+			accts[i].Anchors = filtered
+			accts[i].UpdatedAt = time.Now()
+			break
 		}
-		accts[i].Anchors = filtered
-		accts[i].UpdatedAt = time.Now()
-		break
-	}
-	if !found {
-		renderError(w, "Anchor not found", http.StatusNotFound)
-		return
-	}
-	if err := accounts.Save(store, accts); err != nil {
+		if !found {
+			return nil, errAnchorNotFound
+		}
+		return accts, nil
+	})
+	if err != nil {
+		if !loaded {
+			renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if errors.Is(err, errAnchorNotFound) {
+			renderError(w, "Anchor not found", http.StatusNotFound)
+			return
+		}
 		data, _ := buildPageData(r)
 		data.Error = err.Error()
 		renderList(w, r, data)
@@ -394,18 +449,15 @@ func parseAccountForm(r *http.Request) (formData, error) {
 }
 
 // applyForm parses the form, upserts the account into the loaded set, and
-// saves through accounts.Save. On update (existingID != "") the ID field
-// in the form is ignored — the URL param is authoritative, so a user
-// cannot rename an account's ID by editing the hidden field. Returns the
-// saved account list so callers can skip a second Load.
+// saves through accounts.Mutate so the load, the upsert and the save are one
+// held section. On update (existingID != "") the ID field in the form is
+// ignored — the URL param is authoritative, so a user cannot rename an
+// account's ID by editing the hidden field. Returns the saved account list
+// so callers can skip a second Load.
 func applyForm(r *http.Request, existingID string) ([]models.Account, formData, error) {
 	fd, err := parseAccountForm(r)
 	if err != nil {
 		return nil, fd, err
-	}
-	accts, err := accounts.Load(store)
-	if err != nil {
-		return nil, fd, fmt.Errorf("failed to load accounts: %w", err)
 	}
 
 	id := existingID
@@ -421,48 +473,52 @@ func applyForm(r *http.Request, existingID string) ([]models.Account, formData, 
 		return nil, fd, fmt.Errorf("account name is required")
 	}
 
-	// Update or append. On update (existingID != "") the URL-param ID is
-	// authoritative, so we merge into the matching record. On create
-	// (existingID == "") we ALWAYS append — even if an account with this
-	// ID already exists — so accounts.Save's Validate sees the duplicate
-	// and surfaces the error rather than silently overwriting the
-	// existing record.
 	now := time.Now()
-	if existingID != "" {
-		for i := range accts {
-			if accts[i].ID == id {
-				accts[i].Name = fd.name
-				accts[i].Institution = fd.institution
-				accts[i].Kind = models.AccountKind(fd.kind)
-				accts[i].FilePatterns = fd.filePatterns
-				accts[i].LowBalanceThreshold = fd.lowThreshold
-				accts[i].UpdatedAt = now
-				break
+	var result []models.Account
+	err = accounts.Mutate(store, func(accts []models.Account) ([]models.Account, error) {
+		// Update or append. On update (existingID != "") the URL-param ID is
+		// authoritative, so we merge into the matching record. On create
+		// (existingID == "") we ALWAYS append — even if an account with this
+		// ID already exists — so accounts.Mutate's save-side Validate sees
+		// the duplicate and surfaces the error rather than silently
+		// overwriting the existing record.
+		if existingID != "" {
+			for i := range accts {
+				if accts[i].ID == id {
+					accts[i].Name = fd.name
+					accts[i].Institution = fd.institution
+					accts[i].Kind = models.AccountKind(fd.kind)
+					accts[i].FilePatterns = fd.filePatterns
+					accts[i].LowBalanceThreshold = fd.lowThreshold
+					accts[i].UpdatedAt = now
+					break
+				}
 			}
+		} else {
+			accts = append(accts, models.Account{
+				ID:                  id,
+				Name:                fd.name,
+				Institution:         fd.institution,
+				Kind:                models.AccountKind(fd.kind),
+				FilePatterns:        fd.filePatterns,
+				LowBalanceThreshold: fd.lowThreshold,
+				CreatedAt:           now,
+				UpdatedAt:           now,
+			})
 		}
-	} else {
-		accts = append(accts, models.Account{
-			ID:                  id,
-			Name:                fd.name,
-			Institution:         fd.institution,
-			Kind:                models.AccountKind(fd.kind),
-			FilePatterns:        fd.filePatterns,
-			LowBalanceThreshold: fd.lowThreshold,
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		})
-	}
-
-	// Save surfaces duplicate-ID and empty-name errors from Validate. We
-	// pre-validated name above; the duplicate-ID case is the one this
-	// catches on create.
-	if err := accounts.Save(store, accts); err != nil {
-		if existingID == "" && HasDuplicateID(accts, id) {
+		result = accts
+		return accts, nil
+	})
+	// Mutate's save surfaces duplicate-ID and empty-name errors from
+	// Validate. We pre-validated name above; the duplicate-ID case is the
+	// one this catches on create.
+	if err != nil {
+		if existingID == "" && HasDuplicateID(result, id) {
 			fd.errorField = "id"
 		}
 		return nil, fd, err
 	}
-	return accts, fd, nil
+	return result, fd, nil
 }
 
 // buildPageData loads accounts and CSVs, computes the pattern matches the

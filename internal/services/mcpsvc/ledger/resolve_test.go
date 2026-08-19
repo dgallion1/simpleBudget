@@ -1,9 +1,13 @@
 package ledger
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"budget2/internal/services/dataloader"
+	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/transfers"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -12,6 +16,12 @@ import (
 // seedSuspectedPair writes a CSV pair that lands in the suspected review
 // queue (equal-amount, cross-account, no transfer pattern). Returns the
 // pair_key the queue reports.
+//
+// It does NOT load through deps: resolve_transfer must trigger its own load
+// to see the pair, so deps' suspected queue is left empty here on purpose. A
+// throwaway DataLoader over the same directory and store computes the same
+// deterministic pair_key from the CSV content, purely so the test knows what
+// key to hand the tool.
 func seedSuspectedPair(t *testing.T, deps Deps, dir string) string {
 	t.Helper()
 	seedAccounts(t, deps, twoAccounts())
@@ -22,11 +32,12 @@ func seedSuspectedPair(t *testing.T, deps Deps, dir string) string {
 	writeCSV(t, dir, "schwab.csv",
 		"Date,Description,Amount,Status\n"+
 			"2026-08-10,MYSTERY INFLOW,777.77,\n")
-	// Load so the suspected queue is populated.
-	if _, err := deps.Transactions.LoadData(); err != nil {
-		t.Fatalf("LoadData: %v", err)
+
+	peek := dataloader.New(dir, deps.Store)
+	if _, err := peek.LoadData(); err != nil {
+		t.Fatalf("LoadData (peek, not deps): %v", err)
 	}
-	suspected := deps.Transfers.SuspectedTransfers()
+	suspected := peek.SuspectedTransfers()
 	if len(suspected) == 0 {
 		t.Fatal("no suspected pairs after load; the fixture did not land in the queue")
 	}
@@ -228,6 +239,62 @@ func TestResolveTransferDoesNotWriteWhenTheUserRefuses(t *testing.T) {
 	}
 	if out.HumanApproval != "refused" {
 		t.Errorf("human_approval = %q, want refused", out.HumanApproval)
+	}
+}
+
+// The write path (applyResolveTransfer) must re-validate against a fresh
+// load, not just rely on the check that ran when the token was minted:
+// the approval round trip means time passes between mint and redeem, and
+// the underlying CSVs can change in between so the pair is no longer
+// suspected. This test drives applyResolveTransfer directly -- bypassing
+// the registered handler entirely -- so the top-of-handler pre-mint check
+// at resolve.go:95 cannot be what refuses the write; only the
+// re-validation inside applyResolveTransfer (resolve.go:208-220) can.
+func TestResolveTransferWritePathRevalidatesBeforeWriting(t *testing.T) {
+	deps, dir := newDeps(t)
+	decisionsPath := filepath.Join(dir, transferDecisionsFile)
+	const before = `{"decisions": {}}`
+	writeCSV(t, dir, transferDecisionsFile, before)
+
+	key := seedSuspectedPair(t, deps, dir)
+	cs := connect(t, deps)
+
+	// Mint a token for the pair while it is still suspected.
+	first := decodeToolResult[resolveTransferOutput](t, call(t, cs, "resolve_transfer", map[string]any{
+		"pair_key": key,
+		"verdict":  "confirm",
+	}))
+	if first.ConfirmToken == "" {
+		t.Fatal("no confirm_token minted")
+	}
+
+	// The underlying data changes so the pair is no longer suspected: drop
+	// the checking-side leg so the equal-amount, cross-account pair no
+	// longer exists.
+	writeCSV(t, dir, "checking.csv", "Date,Description,Amount,Status\n")
+
+	// Drive the write path directly. This skips the handler's own
+	// top-of-function pre-mint check (resolve.go:84-99) entirely, so only
+	// applyResolveTransfer's own re-validation before writing can catch a
+	// pair that stopped being suspected between mint and redeem.
+	_, out, err := applyResolveTransfer(deps, key, transfers.VerdictConfirm,
+		resolveTokenArgs{PairKey: key, Verdict: "confirm"}, first.ConfirmToken, confirm.NotAsked)
+	if err == nil {
+		t.Fatal("applyResolveTransfer did not refuse a pair that is no longer suspected")
+	}
+	if !strings.Contains(err.Error(), "no longer a suspected transfer") {
+		t.Errorf("error = %q, want it to say the pair is no longer suspected", err)
+	}
+	if out.Confirmed {
+		t.Error("confirmed = true for a pair that is no longer suspected")
+	}
+
+	after, readErr := os.ReadFile(decisionsPath)
+	if readErr != nil {
+		t.Fatalf("read %s after the refused write: %v", decisionsPath, readErr)
+	}
+	if string(after) != before {
+		t.Errorf("transfer_decisions.json changed after a refused write: got %q, want unchanged %q", after, before)
 	}
 }
 

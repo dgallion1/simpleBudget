@@ -1,0 +1,78 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R1
+ATTEMPT: 3
+---
+Scope checked: .swarm/manifests/R1.3.files (internal/handlers/accounts/handlers.go,
+internal/services/accounts/accounts.go, internal/services/mcpsvc/ledger/anchor.go, and
+their three new test files). Out of scope (R2/R3/R7) not touched by this review.
+
+Regression 1 — HTTP 500->200 on load failure (handleDelete/handleAddAnchor/handleDeleteAnchor):
+- Mechanism reviewed: Mutate's nil-storage guard (`if s == nil`) returns BEFORE mu.Lock/the
+  closure runs, so `loaded` correctly stays false for that case too, matching HEAD's
+  Load()-based nil-storage 500 (same underlying "accounts: nil storage" message either way —
+  no behavior change there).
+- A decode error and a genuine I/O error both surface from loadTx before fn runs, so both
+  correctly land on the !loaded/500 branch, same as HEAD's Load() folding both into one err.
+- saveTx failures (Validate or WriteFile) happen strictly AFTER fn has already set loaded=true
+  (verified by reading Mutate's body: loadTx -> fn -> saveTx, in that order), so a save/
+  validation failure still takes the loaded/200/renderList path. Confirmed with real tests:
+  TestHandle{Delete,AddAnchor,DeleteAnchor}_SaveFailureStays200WithInlineError all pass against
+  the actual repo (read-only store dir forces a write failure while load succeeds).
+- Restored message is byte-identical: "Failed to load accounts: "+err.Error(), 500.
+- My own reproduction: go test -run 'LoadFailure|SaveFailure' ./internal/handlers/accounts/...
+  -v — all 6 tests PASS against the real tree.
+- Mutation check (scratch copy outside repo, `if !loaded` -> `if false && !loaded`): all three
+  LoadFailureIs500 tests fail (200 got, 500 wanted) while all three SaveFailure tests still
+  pass — confirms the tests are pinned to this exact branch, not vacuous.
+
+Regression 2 — OverlapWarnings dropped on write failure:
+- saveTx: Validate runs first (unchanged order, matches SaveWithWarnings), THEN
+  OverlapWarnings is computed and logged unconditionally, BEFORE marshal/WriteFile. A
+  Validate failure still short-circuits before OverlapWarnings is ever computed/logged — no
+  new side effect on validation failure (the specific inverse regression the brief flagged as
+  a risk). A WriteFile failure now still logs, since the log statement runs before the write
+  is attempted.
+- TestMutate_LogsOverlapWarningsEvenWhenWriteFails passes against the real tree (read-only
+  store dir, two overlapping patterns).
+- Mutation check: reverting to log-after-WriteFile (attempt-2 shape) makes this test fail
+  ("expected the overlap warning to be logged... got log output: \"\"").
+
+Regression 3 — applyAnchor load-failure message folded into token-spent wording:
+- anchor.go restores the distinct `loaded` bool exactly matching the pre-Mutate-refactor
+  order confirmed via `git diff origin/fix/review-aug16 -- .../anchor.go`: Redeem -> ensureSnapshot
+  -> Mutate, with the !loaded branch giving the byte-identical "cannot reload accounts before
+  writing: %w" text and no snapNote/token-spent wording; the loaded-but-erred branch keeps the
+  original snapNote-wrapped "confirmation token has been spent either way" wording.
+  ensureSnapshot and Redeem still run BEFORE Mutate opens (unchanged control flow / token
+  spend / snapshot timing).
+- TestApplyAnchor_LoadFailureMessageIsDistinct and TestApplyAnchor_SaveFailureMessageIsUnchanged
+  both pass against the real tree.
+- Mutation check: reverting the !loaded branch makes the load-failure test fail with the
+  token-spent wording; the save-failure test is unaffected — confirms non-vacuous, tied to
+  message text not just presence of an error.
+
+Non-vacuousness of all nine new tests: verified by count (6 + 1 + 2 = 9, matches the brief)
+and by running all three representative mutation reversions myself in a scratch copy outside
+the repo (not the actual worktree) — each reversion fails exactly the tests that should catch
+it and none of the others. This satisfies the "revert and confirm the matching test fails"
+requirement even though I found no separate worker-authored report file documenting it.
+
+Concurrency untouched: read Mutate/loadTx/saveTx in full. Lock order matches storage.go's
+contract as previously confirmed at attempt 2 (package `mu` outside BeginShared, tx's own
+ReadFile/WriteFile used instead of Storage's plain methods, no cross-service call inside the
+held section). The saveTx warnings-log fix is a reordering of a pure log statement inside the
+already-held section — it does not add, remove, or reorder any lock/tx acquisition, so it
+cannot affect the "BeginExclusive not granted while a Mutate section is open" guarantee.
+ensureSnapshot in anchor.go remains outside Mutate, as before.
+
+Oracle and full suite: `bash .swarm/tier3/R1/accept.sh` run fresh by me, exit 0. All six
+steps pass, including go build, go vet, pinned Mutate signature grep, no unserialized
+save/Load-outside-Mutate at the call sites, the lead oracle test under -race, and the FULL
+suite under -race (including internal/services/mcpsvc/ledger, which passed — no R9 flake hit,
+no rerun needed).
+
+No counter-evidence found for the claim under test. All three regressions are repaired with
+byte-identical restored messages/status codes, no inverse regression was introduced on the
+save/validation paths, and the concurrency guarantees are intact.

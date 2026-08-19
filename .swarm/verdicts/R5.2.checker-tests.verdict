@@ -1,0 +1,271 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R5
+ATTEMPT: 2
+---
+Verified tree: /home/darrell/bin/ai/budget2, branch fix/review-aug16 (uncommitted).
+Verified content pinned by hash (stable across every run reported below):
+  796f1f85b5b95d300e6544550db5a4eedfc4dd99c3bd1fd227a29352234d8d95  internal/services/mcpsvc/ledger/accounts.go
+  ed0d395f12918be4cdcc99ea15f38f43e11f04d1f3025483b11c3106d8622872  internal/services/mcpsvc/ledger/accounts_test.go
+Scratch work (my own integration tests, mutations, probes) done on copies outside
+the repo at $S/b2 and $S/b2fresh, where
+  $S = /tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad
+$S/b2fresh/internal/services/mcpsvc/ledger/accounts.go diffs clean against the repo
+file ("FRESH_COPY_MATCHES_REPO"). My test file is
+$S/b2fresh/internal/services/mcpsvc/ledger/zzchecker_test.go; nothing was written into
+the repo except this verdict (git status shows no zz*/checker_test.go under
+internal/services/mcpsvc/ledger/).
+
+NOTE ON CACHING: `go test` does not key its cache on TZ (TZ is read by the runtime,
+not via os.Getenv). My first two-TZ runs came back "(cached)" with America/New_York
+still printed under TZ=Asia/Tokyo. Every result below was re-run with -count=1 and
+the TZ echoed from time.Local inside the test.
+
+---------------------------------------------------------------------------
+CRITERION 1 -- the wiring, not just the helper. PASS, with one dimension that
+no command can demonstrate at the MCP boundary (stated explicitly below).
+
+Command (scratch copy of the verified tree):
+  TZ=America/New_York go test -count=1 ./internal/services/mcpsvc/ledger/ -run TestZZ_C1 -v
+  TZ=Asia/Tokyo       go test -count=1 ./internal/services/mcpsvc/ledger/ -run TestZZ_C1 -v
+Test: zzchecker_test.go TestZZ_C1_BranchWiringThroughTool -- a real MCP round trip
+(connect() -> mcp client -> get_balance_projection) over one fixture with inbound
+paired transfers at now-60 (100.00), now-30 (200.00) and now+10 (900.00). Truncation
+is observable through reference_amount because medianInboundPairedTransfer
+(projection.go:249-265) applies no date filter of its own.
+
+  TZ=America/New_York as_of absent          -> as_of="2026-08-19" reference_amount=200.00
+  TZ=America/New_York as_of empty string    -> as_of="2026-08-19" reference_amount=200.00
+  TZ=America/New_York as_of whitespace only -> as_of="2026-08-19" reference_amount=200.00
+  TZ=America/New_York as_of explicit today  -> as_of="2026-08-19" reference_amount=150.00
+  TZ=Asia/Tokyo       as_of absent          -> as_of="2026-08-20" reference_amount=200.00
+  TZ=Asia/Tokyo       as_of empty string    -> as_of="2026-08-20" reference_amount=200.00
+  TZ=Asia/Tokyo       as_of whitespace only -> as_of="2026-08-20" reference_amount=200.00
+  TZ=Asia/Tokyo       as_of explicit today  -> as_of="2026-08-20" reference_amount=150.00
+
+So, through the real tool: absent / "" / "   " all take the NO-TRUNCATION branch;
+an explicit date takes the TRUNCATED branch (the future 900.00 leg disappears).
+asOfSupplied is derived at accounts.go:212-220 from `strings.TrimSpace(in.AsOf) != ""`
+inside the same guard that decides whether to parse, so the three "no value" forms
+cannot diverge from each other; the table above confirms that empirically, and the
+as_of echo is today in all three.
+
+Explicit as_of takes the DetectRecurringAt path, at integration:
+  zzchecker_test.go:97  TZ=... historical as_of=2026-04-01 -> crossing="2026-05-01" minimum=100.00 topup=400.00
+  zzchecker_test.go:113 control (DetectRecurring MaxDate fallback, untruncated) -> crossing=zero minimum=1000.00
+(the control is the pre-R5 formula computed over the same deps.load() set, so the
+fixture genuinely discriminates the two reference dates).
+
+STATED LIMIT: whether the DEFAULT branch calls DetectRecurring rather than
+DetectRecurringAt(now) CANNOT be observed through get_balance_projection's output
+fields. Proven, not assumed: under mutation (a) below the tool's response is
+byte-identical
+  tool={AccountID:checking Available:true AsOf:2026-08-19 Threshold:500 Crossing: Minimum:1300 SuggestedTopUp:0 ReferenceAmount:0 HasReference:false}
+while the recurring input changes from 1 payment to 0. Cause is R12 (excluded from
+this task): Project's byDay map (projection.go:113-137) keys time.Time values built
+from tx.Date (UTC) and looks them up with keys built from dayOf(asOf) (Local when
+asOf==time.Now()); time.Time equality includes the *Location pointer, so no
+occurrence is ever applied on the default path. The wiring is nonetheless
+established: accounts.go:292-310 is a single `if !asOfSupplied` whose one boolean
+selects BOTH the truncation and the recurring call, the handler's only call site is
+accounts.go:235 and it passes the returned slice straight to accounts.Project at
+:241, and the table above proves at integration which branch the tool executes.
+
+---------------------------------------------------------------------------
+CRITERION 2 -- default path byte-for-byte pre-R5. PASS.
+
+Command: TZ={America/New_York,Asia/Tokyo} go test -count=1 \
+  ./internal/services/mcpsvc/ledger/ -run TestZZ_C2 -v
+Test: zzchecker_test.go TestZZ_C2_DefaultPathIdenticalToPreR5. zPreR5Default()
+reconstructs the pre-R5 formula from the same deps.load() set:
+  txns := ts.Active().Transactions
+  rec  := insights.DetectRecurring(models.NewTransactionSet(txns).Active())  // MaxDate fallback
+  accounts.Project(acct, txns, time.Now(), rec) -> mapped through round2 into
+  balanceProjectionOutput
+and the result is compared with reflect.DeepEqual against the tool's response.
+
+(a) recurring detection genuinely fires (3 monthly $900 Rent debits ending 210 days
+    ago, ledger MaxDate == last occurrence):
+      TZ=America/New_York recurring: current=1 pre-R5=1 (first: "rent" monthly 900.00 next=2026-02-20)
+      tool ={... AsOf:2026-08-19 Threshold:500 Crossing: Minimum:1300 SuggestedTopUp:0 ReferenceAmount:0 HasReference:false}
+      preR5={... AsOf:2026-08-19 Threshold:500 Crossing: Minimum:1300 SuggestedTopUp:0 ReferenceAmount:0 HasReference:false}
+    Both the recurring INPUT (DeepEqual on []models.RecurringPayment) and the output
+    match -- the input comparison is what makes this non-vacuous given R12.
+(b) future-dated inbound paired transfer (100/200 past + 900 at now+10):
+      tool ={... Minimum:5300 ReferenceAmount:200 HasReference:true}
+      preR5={... Minimum:5300 ReferenceAmount:200 HasReference:true}
+(c) both together, with the third transfer leg at now+1 (the tomorrow edge):
+      TZ=Asia/Tokyo recurring=1
+      tool ={... AsOf:2026-08-20 Minimum:2600 ReferenceAmount:200 HasReference:true}
+      preR5={... AsOf:2026-08-20 Minimum:2600 ReferenceAmount:200 HasReference:true}
+All three subtests PASS under both TZs.
+
+Baseline robustness: I re-ran TestZZ_C2 with zPreR5Default using the HEAD-verbatim
+raw set (`ts.Transactions`, i.e. pre-R3 as well as pre-R5) instead of ts.Active():
+  TZ=America/New_York baseline=HEAD-verbatim(raw): ok
+  TZ=Asia/Tokyo       baseline=HEAD-verbatim(raw): ok
+so the identity holds against both the pre-R5/post-R3 and the committed-HEAD formula
+on these fixtures (they contain no suppressed rows, so the two coincide).
+
+This is the criterion attempt 1 failed; it now holds.
+
+---------------------------------------------------------------------------
+CRITERION 3 -- reference_amount 200.00 on the default path, stable across TZ. PASS.
+
+Command (real repo, uncached):
+  TZ=America/New_York go test -count=1 -race ./internal/services/mcpsvc/ledger/ \
+      -run 'TestGetBalanceProjection|TestActiveSetAndRecurring' -v
+  TZ=Asia/Tokyo       (same)
+Both report:
+  --- PASS: TestGetBalanceProjectionDefaultAsOfDoesNotTruncateReferenceAmount
+  --- PASS: TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones
+  ok  budget2/internal/services/mcpsvc/ledger  1.133s (NY) / 1.136s (Tokyo)
+The assertions read: accounts_test.go:668 `out.ReferenceAmount != 200.00` on the
+100/200/900-at-now+10 fixture, and accounts_test.go:728 the same value on the
+now+1 (tomorrow) edge fixture. My own independent round trip prints the literal
+value in both zones: reference_amount=200.00 under America/New_York AND under
+Asia/Tokyo (criterion-1 table above). I additionally ran Pacific/Kiritimati (UTC+14):
+also 200.00.
+
+---------------------------------------------------------------------------
+CRITERION 4 -- dayOf normalisation did not change explicit-as_of behaviour. PASS.
+
+(i) The normalisation is provably an identity for a parsed as_of.
+    Test zzchecker_test.go TestZZ_C4_NormalisationCannotShiftBoundary: for
+    2026-01-01, 2026-03-08, 2026-04-01, 2026-08-01, 2026-11-01, 2026-12-31 and
+    2024-02-29 it asserts norm.Equal(asOf) && norm.Location()==asOf.Location(), and
+    that FilterByDateRange(min, norm) keeps a row dated exactly on the boundary day
+    and drops one dated the next day. PASS under America/New_York, Asia/Tokyo and
+    Pacific/Kiritimati.
+(ii) Empirical no-op: probe on the scratch copy replacing
+     `asOfDay := time.Date(...)` (accounts.go:307) with `asOfDay := asOf` ->
+       TZ=America/New_York: ok  budget2/internal/services/mcpsvc/ledger 0.117s
+       TZ=Asia/Tokyo:       ok  budget2/internal/services/mcpsvc/ledger 0.117s
+     i.e. removing the normalisation entirely changes nothing, so it cannot have
+     changed the explicit-as_of behaviour either.
+(iii) The committed tests are genuinely sensitive to that boundary (so their passing
+     is not vacuous): probe shifting asOfDay by AddDate(0,0,-1) ->
+       --- FAIL: TestGetBalanceProjectionReportsCrossingAndTopUp
+           accounts_test.go:197: minimum = 1157.90, want 657.90
+       --- FAIL: TestDashboardAndMCPProjectionAgree
+     under both TZs.
+(iv) Same meaning as before: the attempt-1 verdict R5.1.checker-tests.verdict:48
+     records the historical test asserting crossing=="2026-05-01", minimum==100,
+     suggested_top_up==400, and :61 the future test asserting crossing=="",
+     minimum==1000. accounts_test.go:481/486/489 and :534/538/541 assert exactly
+     those same values today, and both tests PASS under both TZs (criterion 3
+     command output).
+
+---------------------------------------------------------------------------
+CRITERION 5 -- truncation boundary and BalanceAt's boundary agree. PASS.
+
+Test zzchecker_test.go TestZZ_C5_BoundaryRowAgrees, run with -count=1 under three
+zones. A single row dated exactly on the boundary day (2026-06-15 UTC, anchor
+2026-01-01 = 1000, row -300):
+  explicit as_of (current formula):
+    TZ=America/New_York   inTruncation=true inBalance=true (balance=700.00)
+    TZ=Asia/Tokyo         inTruncation=true inBalance=true (balance=700.00)
+    TZ=Pacific/Kiritimati inTruncation=true inBalance=true (balance=700.00)
+The previously-disagreeing case reproduced with the attempt-1 formula
+(FilterByDateRange end = time.Now(), Local) on a row dated exactly today in UTC:
+    TZ=America/New_York   inTruncation=true inBalance=true  (700.00) disagreement=false
+    TZ=Asia/Tokyo         inTruncation=true inBalance=false (1000.00) disagreement=true
+    TZ=Pacific/Kiritimati inTruncation=true inBalance=false (1000.00) disagreement=true
+i.e. east of UTC the old formula let the truncation keep a row BalanceAt excluded.
+Under the current code the same set through activeSetAndRecurringForProjection(ts,
+now, false) keeps 1 of 1 rows -- the default path applies no truncation at all, so
+only BalanceAt's boundary governs, and for an explicit as_of both boundaries are
+UTC-day and agree.
+
+---------------------------------------------------------------------------
+CRITERION 6 -- mutation checks, reproduced by me on a scratch copy outside the
+repo ($S/b2fresh). PASS. Both caught.
+
+(a) default branch uses DetectRecurringAt(all, asOf):
+      accounts.go:297-299 -> `return all, recurringForProjection(all, asOf)`
+    TZ=America/New_York and TZ=Asia/Tokyo, `go test -count=1 ./internal/services/mcpsvc/ledger/ -v`:
+      accounts_test.go:786: activeSetAndRecurringForProjection(ts, now, false): got 0
+        recurring payments, want 1 (Rent, fresh relative to the ledger's own MaxDate)
+      --- FAIL: TestActiveSetAndRecurringForProjectionDefaultMeasuresFreshnessAgainstLedgerMaxDate
+    Caught by that committed test only. No round-trip test catches it, and none can
+    (see criterion 1's stated limit / R12); my TestZZ_C2 caught it by comparing the
+    recurring INPUT against the pre-R5 formula.
+
+(b) truncate unconditionally, ignoring asOfSupplied (the `if !asOfSupplied` early
+    return deleted):
+    TZ=America/New_York:
+      accounts_test.go:669: reference_amount = 150.00, want 200.00
+      --- FAIL: TestGetBalanceProjectionDefaultAsOfDoesNotTruncateReferenceAmount
+      accounts_test.go:786: ... got 0 recurring payments, want 1
+      --- FAIL: TestActiveSetAndRecurringForProjectionDefaultMeasuresFreshnessAgainstLedgerMaxDate
+    TZ=Asia/Tokyo: the two above, PLUS
+      accounts_test.go:729: reference_amount = 150.00 (TZ=Asia/Tokyo), want 200.00 in
+        every timezone -- a TZ-dependent result means the default path is truncating again
+      --- FAIL: TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones
+    (that third test is TZ-sensitive by design: the tomorrow-edge row still falls
+    inside a Local-boundary truncation west of UTC, which is why the brief demanded
+    it be run under more than one TZ. It is.)
+    My TestZZ_C1_BranchWiringThroughTool (absent/""/"   " subtests) and TestZZ_C2
+    also failed under both zones.
+Source restored from $S/fresh.orig after each mutation; package green again
+(ok budget2/internal/services/mcpsvc/ledger 0.113s).
+
+---------------------------------------------------------------------------
+CRITERION 7 -- build / vet / race suite clean. PASS.
+
+  cd /home/darrell/bin/ai/budget2
+  go build ./...                                   -> BUILD_EXIT=0 (no output)
+  go vet ./...                                     -> VET_EXIT=0 (no output)
+  TZ=America/New_York go test -count=1 -race ./... -> EXIT=0, no FAIL lines
+  TZ=Asia/Tokyo       go test -count=1 -race ./... -> EXIT=0, no FAIL lines
+  gofmt -l internal/services/mcpsvc/ledger/accounts.go internal/services/mcpsvc/ledger/accounts_test.go -> empty
+Both full-suite runs were made after the last write to accounts.go (18:04:21) and
+against the hashes pinned at the top.
+
+---------------------------------------------------------------------------
+TEST-HONESTY REVIEW (committed tests read, not just their names)
+
+- TestGetBalanceProjectionDefaultAsOfDoesNotTruncateReferenceAmount
+  (accounts_test.go:641): fixture really does contain a future-dated (now+10)
+  inbound paired transfer with a matching -900.00 leg in schwab.csv, and asserts
+  reference_amount == 200.00. Non-vacuous: mutation (b) makes it fail with 150.00.
+- TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones
+  (accounts_test.go:701): tomorrow-edge (now+1) leg, asserts 200.00 and prints
+  time.Local. Non-vacuous under Asia/Tokyo (mutation (b) -> 150.00); it does NOT
+  discriminate under America/New_York, which is a property of the bug, not a defect
+  in the test -- the doc comment says so and instructs running two zones.
+- TestActiveSetAndRecurringForProjectionDefaultMeasuresFreshnessAgainstLedgerMaxDate
+  (accounts_test.go:769): calls the real branch point with asOfSupplied=false,
+  asserts exactly 1 detected series named "rent", AND contains a setup check that
+  insights.DetectRecurringAt(ts, now) returns 0 on the same fixture -- so the
+  fixture is proven to discriminate the two reference dates rather than assumed to.
+  It is a unit test of the wiring decision, not of a downstream helper.
+- TestGetBalanceProjectionDefaultAsOfUnchanged (accounts_test.go:547) is still the
+  weak pin attempt 1 was failed for (no transfers, no 3+-occurrence merchant); it is
+  now supplemented, not relied on. Its own comment admits the limitation.
+- TestGetBalanceProjectionHistoricalAsOf... / ...FutureAsOf... assert the same
+  values as attempt 1 and both fail under a one-day boundary shift or under the
+  MaxDate-fallback control, so they still mean what their names claim.
+
+---------------------------------------------------------------------------
+SCOPE
+
+- Files changed for R5 are exactly the R5.2 manifest: internal/services/mcpsvc/ledger/accounts.go
+  and internal/services/mcpsvc/ledger/accounts_test.go. `git diff -U0` hunk headers on
+  accounts.go land only in registerGetAccounts (line 87, R3's active-set change, also
+  in R3's manifest), registerGetBalanceProjection, and the recurring helpers below
+  findAccount. No production file outside the manifest carries an R5 change.
+- .swarm/critical.globs: none of storage/**, dataloader/**, retirement/engine/**,
+  transfers/**, services/accounts/accounts.go or mcpsvc/confirm/** is touched by R5.
+  (internal/services/accounts/accounts.go IS modified in the shared working tree but
+  is not in R5's manifest -- attributed to another task, not to R5.)
+- projection.go / R12 untouched, as the brief requires.
+- PROVENANCE NOTE for the lead: accounts.go was last written at 18:04:21, AFTER the
+  R5.2 manifest was written (17:58:51). A snapshot I took of the tree a few minutes
+  earlier carried `time.Now().Location()` at what is now line 307, where the verified
+  content has `asOf.Location()`. I discarded that snapshot and re-ran every scratch
+  experiment against a fresh copy that diffs clean against the repo. The repo hashes
+  were identical at the start and end of my verification window, and all seven
+  criteria above are evidenced against sha256 796f1f85…/ed0d395f…. Someone edited an
+  R5 file after the worker's manifest landed; the lead may want to know who.

@@ -1,0 +1,298 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R1
+ATTEMPT: 2
+---
+Verified on /home/darrell/bin/ai/budget2, branch fix/review-aug16, working tree
+as merged (wt-primary, unmodified). All commands run from the repo root.
+
+--------------------------------------------------------------------
+1. ORACLE — bash .swarm/tier3/R1/accept.sh exits 0            => PASS
+--------------------------------------------------------------------
+Command: bash .swarm/tier3/R1/accept.sh
+Exit status: 0 ("ORACLE_EXIT=0"; final line of output "=== accept.sh exit: 0 ===")
+
+Output, verbatim:
+
+### 1. build
+### 2. vet
+### 3. API surface — accounts.Mutate must exist with the pinned signature
+internal/services/accounts/accounts.go:80:func Mutate(s *storage.Storage, fn func([]models.Account) ([]models.Account, error)) error {
+### 4. no unserialized load-modify-save left at the call sites
+-- accounts.Load in handlers/MCP (each hit must be inside a Mutate fn or a read-only path):
+internal/handlers/accounts/handlers.go:483: accts, err := accounts.Load(store)
+internal/services/mcpsvc/ledger/anchor_test.go:42,85,128,209,233,297
+internal/services/mcpsvc/ledger/accounts.go:76,220
+internal/services/mcpsvc/ledger/register.go:137
+internal/services/mcpsvc/ledger/transfers.go:100
+internal/services/mcpsvc/ledger/anchor.go:90
+-- direct Save calls outside the accounts service (expect none):
+none — ok
+### 5. lead-authored oracle tests under -race
+ok  budget2/internal/services/accounts  1.332s
+### 6. full suite under -race (no regressions)
+ok for all 47 packages (cmd/enrich-amazon 38.381s ... internal/version 1.035s);
+    budget2/web [no test files]. No FAIL line anywhere in the output.
+=== accept.sh exit: 0 ===
+
+TIMING-SENSITIVE TEST — STABLE. Beyond its in-suite pass above, the test was
+staged and run 10 further times in isolation:
+  cp .swarm/tier3/R1/oracle/zz_oracle_r1_test.go internal/services/accounts/
+  for i in 1..10; do go test -race -count=1 \
+      -run TestZZOracleR1_MutateExcludesTheExclusiveHold \
+      ./internal/services/accounts/; done
+Result: 10/10 "ok budget2/internal/services/accounts ~1.314s". No flake
+observed in 11 total executions. The staged file was removed afterwards;
+`git status --short internal/services/accounts/` then shows only
+" M internal/services/accounts/accounts.go".
+
+--------------------------------------------------------------------
+2. saveTx reproduces Save's full observable contract          => PASS
+--------------------------------------------------------------------
+Read: internal/services/accounts/accounts.go:120-140 (saveTx) against
+      internal/services/accounts/accounts.go:177-208 (Save/SaveWithWarnings).
+Element-by-element:
+  - nil-storage guard  -> accounts.go:81-83 (in Mutate, ahead of the section);
+                          Save's is at accounts.go:190-191.
+  - Validate           -> accounts.go:121  vs accounts.go:192
+  - OverlapWarnings(accts, existingCSVBasenames(s))
+                       -> accounts.go:124  vs accounts.go:195  (identical args)
+  - marshal            -> accounts.go:129  vs accounts.go:200
+  - write              -> accounts.go:133 tx.WriteFile vs accounts.go:204 s.WriteFile
+  - log each warning   -> accounts.go:136-138 vs accounts.go:179-181
+
+Inspection alone is not evidence, so a checker-only probe was staged into the
+package, run, and removed (it is NOT left in the repo; the source is kept at
+/tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad/zz_checker_r1_warnings_test.go).
+Command:
+  cp .../zz_checker_r1_warnings_test.go internal/services/accounts/ && \
+  go test -race -count=1 -v -run 'TestZZCheckerR1' ./internal/services/accounts/
+The probe seeds a data dir containing usaa-checking-2026.csv and two accounts
+("aaa" pattern "usaa", "bbb" pattern "*.csv") that both match it, redirects the
+standard logger into a buffer, and compares the lines emitted by Save against
+the lines emitted by Mutate(fn returning the same set).
+Output:
+  --- PASS: TestZZCheckerR1_MutateEmitsSameOverlapWarningsAsSave (0.00s)
+      Save logged:   ["Warning: file \"usaa-checking-2026.csv\" matches multiple accounts (aaa, bbb); \"aaa\" wins by ID order"]
+      Mutate logged: ["Warning: file \"usaa-checking-2026.csv\" matches multiple accounts (aaa, bbb); \"aaa\" wins by ID order"]
+  --- PASS: TestZZCheckerR1_MutateNilStorageGuard (0.00s)
+      Save(nil)=accounts: nil storage  Mutate(nil)=accounts: nil storage
+  --- PASS: TestZZCheckerR1_MutateRunsValidate (0.00s)
+      both rejected with: duplicate account ID "x"
+  ok  budget2/internal/services/accounts  1.012s
+The lead's stated deciding reason therefore holds on the merged tree: a
+Mutate-based save emits byte-identical overlap warnings, the same nil-storage
+error string, and the same Validate error as a direct Save.
+
+MINOR, NON-BLOCKING NUANCE (recorded, not a criterion failure): Save logs its
+warnings unconditionally, including when SaveWithWarnings returned an error
+(accounts.go:178-182 loops over the returned warnings before returning err).
+saveTx logs only after a successful tx.WriteFile (accounts.go:133-138), so on a
+marshal or write failure the warnings are returned-but-unlogged. Success-path
+behaviour, which is what the criterion asks about, is identical.
+
+--------------------------------------------------------------------
+3. All load-modify-save call sites go through Mutate           => PASS
+--------------------------------------------------------------------
+Command: grep -rn 'accounts\.Mutate(' internal/
+Mapped to enclosing functions with awk over the same files:
+  internal/handlers/accounts/handlers.go:189  in handleDelete      (func at :170)
+  internal/handlers/accounts/handlers.go:252  in handleAddAnchor   (func at :213)
+  internal/handlers/accounts/handlers.go:303  in handleDeleteAnchor(func at :291)
+  internal/handlers/accounts/handlers.go:433  in applyForm         (func at :412)
+  internal/services/mcpsvc/ledger/anchor.go:209 in applyAnchor     (func at :193)
+  internal/services/mcpsvc/ledger/register.go:146 in storageAccountStore.SaveAccounts
+All five call sites named in the task (applyForm, handleAddAnchor,
+handleDeleteAnchor, handleDelete, applyAnchor) are present, plus the sixth
+(register.go SaveAccounts) both arms converged on.
+
+Command: grep -rn 'accounts\.Save(\|SaveAccounts(' internal/handlers/accounts/ internal/services/mcpsvc/ledger/
+Only hits:
+  internal/services/mcpsvc/ledger/anchor_test.go:216   (test seed)
+  internal/services/mcpsvc/ledger/register_test.go:47  (test seed, seedAccounts helper)
+  internal/services/mcpsvc/ledger/register.go:45       (interface method declaration)
+  internal/services/mcpsvc/ledger/register.go:145      (the method whose body IS the Mutate call at :146)
+No production accounts.Save or SaveAccounts survives outside a Mutate callback
+in either package. accept.sh step 4 independently reports "none — ok".
+Also checked the two remaining importers of the accounts package outside scope
+(grep -n 'accounts\.' internal/handlers/transfers/handlers.go
+ internal/handlers/dashboard/accounts_card.go): both are read-only
+(accounts.Load/Find/BalanceAt/Project), so no write path was missed.
+
+NOTE (informational): after this change storageAccountStore.SaveAccounts has no
+remaining production caller — `grep -rn 'SaveAccounts' internal/` returns only
+the interface declaration (register.go:45) and the implementation
+(register.go:145). anchor.go was its last caller. It compiles and vets clean
+because it satisfies the AccountStore interface; it is now dead but reachable
+through that interface.
+
+--------------------------------------------------------------------
+4. Lock order correct, cannot deadlock                         => PASS
+--------------------------------------------------------------------
+a) Package mutex OUTSIDE BeginShared:
+   internal/services/accounts/accounts.go:84  mu.Lock()
+   internal/services/accounts/accounts.go:85  defer mu.Unlock()
+   internal/services/accounts/accounts.go:87  tx := s.BeginShared()
+   internal/services/accounts/accounts.go:88  defer tx.Release()
+   Command: grep -rn 'mu\.Lock|mu\.Unlock|BeginShared|BeginExclusive' internal/services/accounts/
+   -- the only occurrences are those, in that order. Matches the order the
+   storage doc comment pins (storage.go:619-626).
+
+b) Nothing inside the held section calls the plain Storage write methods:
+   loadTx uses tx.ReadFile (accounts.go:106); saveTx uses tx.WriteFile
+   (accounts.go:133). SharedTx.WriteFile routes to s.writeFileLocked
+   (storage.go:652-657), which does NOT re-take dataMu; Storage.WriteFile
+   (storage.go:295-303) does take dataMu.RLock and is never called inside the
+   section. Storage's read path takes no dataMu at all (storage.go:226-251),
+   as the SharedTx doc comment states, so tx.ReadFile is safe. The only other
+   in-section work is pure computation plus filepath.Glob in
+   existingCSVBasenames (accounts.go:326-337) and log.Printf.
+
+c) No held section spans a call into another service. ensureSnapshot is
+   OUTSIDE the transaction: internal/services/mcpsvc/ledger/anchor.go:199
+   (`paths, snapNote, err := ensureSnapshot(deps, accountsFile)`) precedes the
+   Mutate call at anchor.go:209, and the comment at anchor.go:203-208 states
+   the reason. The four other Mutate callbacks (handlers.go:189, 252, 303,
+   433; register.go:146) contain only slice manipulation, sort.Slice and
+   time.Now — no service calls, verified by reading each callback body in
+   `git diff HEAD -- internal/handlers/accounts/handlers.go`.
+
+d) No inverse edge (dataMu held -> wait on accounts.mu):
+   Command: grep -rn 'BeginShared()\|BeginExclusive()' internal/ --include=*.go | grep -v '^internal/services/storage/'
+   Non-test holders are: internal/services/dataloader/loader.go:116 and
+   internal/services/restore/restore.go:237. restore.go does not reference the
+   accounts package at all (it is not among the importers listed by
+   `grep -rn 'services/accounts"' internal/ --include=*.go | grep -v _test.go`).
+   dataloader touches accounts only at loader.go:301 (accounts.Load) and :325
+   (accounts.Find/MatchFile), both inside LoadDataContext (func at :276), which
+   never calls beginWrite; and accounts.Load takes no lock in any case. So no
+   code path holds dataMu and then waits on accounts.mu.
+
+e) Empirical: the oracle's TestZZOracleR1_MutateExcludesTheExclusiveHold passes
+   (the exclusive hold is refused for the whole 300ms the section is open and
+   IS granted within 5s of Mutate returning, i.e. the hold does not leak), and
+   the whole suite is green under -race with no deadlock/timeout.
+
+--------------------------------------------------------------------
+5. 404/not-found behaviours preserved by the sentinels         => PASS
+   (with one adjacent behaviour change reported below for adjudication)
+--------------------------------------------------------------------
+Command:
+  git show HEAD:internal/handlers/accounts/handlers.go > /tmp/.../handlers_orig.go
+  grep -n 'StatusNotFound\|renderError' on both the original and the current file.
+
+Original (HEAD)                              Current (merged)
+  :265 "Account not found" StatusNotFound  ->  :275 "Account not found" StatusNotFound
+  :317 "Anchor not found"  StatusNotFound  ->  :328 "Anchor not found"  StatusNotFound
+  :141/:163 "Missing account id" 400       ->  :151/:173 identical
+  :208 "Missing account id" 400            ->  :216 identical
+  :167/:212 "Invalid form data: "+err 400  ->  :177/:220 identical
+  :286 "Missing account or anchor id" 400  ->  :295 identical
+  :291 "Invalid anchor date" 400           ->  :300 identical
+Both 404 strings and both status codes are byte-identical; they are now reached
+via errors.Is on errAccountNotFound (handlers.go:274) and errAnchorNotFound
+(handlers.go:327), declared at handlers.go:41-49. On the MCP side
+errAnchorAccountVanished (anchor.go:19-24) reproduces the original message
+verbatim -- the fmt.Errorf string at anchor.go:238 is character-for-character
+the string that was at anchor.go's pre-change `if !found` branch (confirmed in
+`git diff HEAD -- internal/services/mcpsvc/ledger/anchor.go`, where the same
+literal appears on both a removed and an added line). Package tests for both
+packages pass: `go test -race -count=1 ./internal/handlers/accounts/
+./internal/services/mcpsvc/ledger/` -> ok / ok.
+
+FINDING (advisory; outside criterion 5's literal text, but bears on the brief's
+"Behaviour visible to users does not change"): three error paths that were HTTP
+500 are now HTTP 200. In the original, an accounts.Load failure inside
+handleDelete (HEAD:181), handleAddAnchor (HEAD:246) and handleDeleteAnchor
+(HEAD:296) produced
+    renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
+Those three renderError calls are gone from the merged file (the current file
+has no "Failed to load accounts" at all except the buildPageData one at :121).
+A load failure inside Mutate now falls into the generic error branch --
+handlers.go:198-203, :277-282, :330-335 -- which does
+    data, _ := buildPageData(r); data.Error = err.Error(); renderList(w, r, data)
+and renderList writes http.StatusOK (handlers.go:540-545). So on a corrupt or
+unreadable accounts.json these three endpoints change from
+"500 + Failed to load accounts: <err>" to "200 + <err> in the page body", and
+the error string loses its prefix. applyForm similarly drops its
+`fmt.Errorf("failed to load accounts: %w", ...)` wrapper (HEAD:405-408). This
+is a real, evidenced observable change; it is not covered by any existing test,
+and no criterion I was given names it. Recorded for the lead to adjudicate
+against the brief's no-behaviour-change clause.
+
+--------------------------------------------------------------------
+6. Build, vet, full -race suite, existing accounts tests       => PASS
+--------------------------------------------------------------------
+Existing tests unchanged: `git status --short internal/services/accounts/
+internal/handlers/accounts/` reports only
+  M internal/handlers/accounts/handlers.go
+  M internal/services/accounts/accounts.go
+-- no test file in either package was added, modified or deleted, and
+`git diff HEAD --name-only` contains no *_test.go under those two paths. The
+R1 worker added no tests of its own; the only new test files in the tree
+(internal/handlers/explorer/duplicate_suppression_test.go,
+internal/services/mcpsvc/ledger/dashboard_parity_test.go) belong to R2 and R3.
+
+Standalone commands:
+  go build ./...   -> exit 0 ("Go build: Success")
+  go vet ./...     -> exit 0 ("Go vet: No issues found")
+  go test -race -count=1 ./...  -> run as accept.sh step 6 (byte-for-byte the
+    same command, line 38 of accept.sh); all 47 packages "ok", accept.sh
+    exit 0.
+  go test -race -count=1 ./internal/services/accounts/
+      ./internal/handlers/accounts/ ./internal/services/mcpsvc/ledger/
+    -> ok / ok / ok on three consecutive repeat runs.
+
+OUT-OF-SCOPE FLAKE OBSERVED ONCE (not R1's code, not reproducible): on one
+non-race invocation of the three in-scope packages,
+TestDashboardAndMCPProjectionAgree failed:
+  dashboard_parity_test.go:175: dashboard must show the balance counted once ($950.00)
+  dashboard_parity_test.go:181: dashboard crossing must agree with the MCP path (Jun 1, 2026)
+That test lives in internal/services/mcpsvc/ledger/dashboard_parity_test.go, an
+untracked file belonging to R3, and exercises the dashboard render path (R3's
+scope), not any R1 code -- it seeds accounts through seedAccounts ->
+accounts.Save (register_test.go:45-50), a function R1 did not modify, and never
+calls accounts.Mutate (grep for 'Mutate' in that file returns nothing).
+Reproduction attempts, all green:
+  - go test -race -run TestDashboardAndMCPProjectionAgree ./...ledger/  x3  -> ok
+  - go test -race ./...ledger/                                          x5  -> ok
+  - go test -count=1 -run TestDashboardAndMCPProjectionAgree ./...ledger/ x6 -> ok
+  - go test -count=1 ./...ledger/                                       x8  -> ok
+  - the three-package command that produced it                          x3  -> ok
+  - accept.sh step 6 (full tree, -race)                                 x1  -> ok
+1 failure in 27 executions, in an R3 test, on a non-race run. Flagged for R3's
+verification, not charged against R1.
+
+--------------------------------------------------------------------
+SCOPE
+--------------------------------------------------------------------
+`git diff HEAD --name-only` lists 17 files. The four in .swarm/manifests/R1.2.files
+are all present and all four were read in full or in diff:
+  internal/services/accounts/accounts.go
+  internal/handlers/accounts/handlers.go
+  internal/services/mcpsvc/ledger/anchor.go
+  internal/services/mcpsvc/ledger/register.go
+The remaining 13 (.swarm/briefs/R3.md, R4.md, R7.md, .swarm/ledger.tsv,
+handlers/dashboard/*, handlers/explorer/*, mcpsvc/ledger/accounts.go,
+accounts_test.go, resolve.go, resolve_test.go) are the declared-out-of-scope
+R2/R3/R7 changes and were not assessed here.
+
+critical.globs: `.swarm/critical.globs` lists internal/services/accounts/accounts.go
+(and internal/services/storage/**, dataloader/**, retirement/engine/**,
+transfers/**, mcpsvc/confirm/**). accounts.go IS touched -- permitted, since the
+ledger row `R1  3  tests,second  building  2  tier3-merged-wt-primary` puts R1
+at tier 3. No other critical glob is touched: internal/services/storage/,
+internal/services/dataloader/, retirement/engine/, transfers/ and
+mcpsvc/confirm/ do not appear in the changed-file list.
+
+Oracle integrity: `git ls-files .swarm/tier3/R1/` shows accept.sh and
+oracle/zz_oracle_r1_test.go are tracked, and `git diff HEAD --stat -- .swarm/tier3/`
+is empty -- neither the oracle test nor accept.sh was edited. The only new file
+under .swarm/tier3/R1/ is report.md, which carries the RESOLUTION line
+("winner = wt-primary, merged unmodified", report.md:295-324).
+
+Checker artifacts: the staged oracle copy and the criterion-2 probe were both
+removed after use; `git status --short internal/services/accounts/` ends at
+" M internal/services/accounts/accounts.go". No file in the repo was created or
+modified by this verification other than this verdict file.

@@ -84,7 +84,7 @@ func registerGetAccounts(s *mcp.Server, deps Deps) {
 		}
 		var txns []models.Transaction
 		if ts != nil {
-			txns = ts.Transactions
+			txns = ts.Active().Transactions
 		}
 
 		now := time.Now()
@@ -209,12 +209,14 @@ func registerGetBalanceProjection(s *mcp.Server, deps Deps) {
 		}
 
 		asOf := time.Now()
+		asOfSupplied := false
 		if s := strings.TrimSpace(in.AsOf); s != "" {
 			t, pErr := time.Parse("2006-01-02", s)
 			if pErr != nil {
 				return nil, balanceProjectionOutput{}, fmt.Errorf("as_of %q is not a valid date (want YYYY-MM-DD): %w", s, pErr)
 			}
 			asOf = t
+			asOfSupplied = true
 		}
 
 		accts, err := deps.Accounts.LoadAccounts()
@@ -230,12 +232,13 @@ func registerGetBalanceProjection(s *mcp.Server, deps Deps) {
 		if err != nil {
 			return nil, balanceProjectionOutput{}, err
 		}
+		active, recurring := activeSetAndRecurringForProjection(ts, asOf, asOfSupplied)
 		var txns []models.Transaction
-		if ts != nil {
-			txns = ts.Transactions
+		if active != nil {
+			txns = active.Transactions
 		}
 
-		proj, pErr := accounts.Project(acct, txns, asOf, recurringForProjection(deps, txns))
+		proj, pErr := accounts.Project(acct, txns, asOf, recurring)
 		if pErr != nil {
 			return nil, balanceProjectionOutput{}, fmt.Errorf("cannot project %s: %w", id, pErr)
 		}
@@ -269,18 +272,80 @@ func findAccount(accts []models.Account, id string) (models.Account, bool) {
 	return models.Account{}, false
 }
 
+// activeSetAndRecurringForProjection is get_balance_projection's single
+// branch point on whether as_of was supplied, factored out of the handler
+// so the branch itself -- not just the two functions it dispatches to -- is
+// directly unit-testable.
+//
+// Only an EXPLICIT as_of truncates the active set and threads a reference
+// date into recurring detection. When as_of is absent this takes the pre-R5
+// path verbatim -- the full active set and insights.DetectRecurring's own
+// MaxDate fallback (via recurringForProjectionDefault) -- so the default (no
+// as_of) response cannot drift from established behaviour.
+//
+// When as_of IS supplied, the active set, the recurring detection, and the
+// reference-amount median must all evaluate "as of" the requested date, not
+// the ledger's raw or actual-latest date. This is what lets
+// DetectRecurringAt's referenceDate (passed as asOf, via
+// recurringForProjection) do its freshness job against the date the caller
+// asked for.
+func activeSetAndRecurringForProjection(ts *models.TransactionSet, asOf time.Time, asOfSupplied bool) (*models.TransactionSet, []models.RecurringPayment) {
+	if ts == nil {
+		return nil, nil
+	}
+	all := ts.Active()
+	if !asOfSupplied {
+		return all, recurringForProjectionDefault(all)
+	}
+	// Normalise to a day boundary using the dayOf convention
+	// (internal/services/accounts/balance.go:201-203) before truncating, so
+	// this boundary and BalanceAt's day-boundary comparison inside
+	// accounts.Project agree. asOf already parses to UTC midnight
+	// (time.Parse("2006-01-02", ...)), so this is a no-op in practice; it is
+	// here so the boundary is correct by construction rather than by the
+	// parse format's coincidence.
+	asOfDay := time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, asOf.Location())
+	active := all.FilterByDateRange(all.MinDate(), asOfDay)
+	return active, recurringForProjection(active, asOf)
+}
+
 // recurringForProjection builds the recurring-payment list the projection
 // consumes from the loaded ledger. It runs the same insights detection the
 // spend get_recurring tool uses, so the projection's expected recurring
 // outflows agree with what the app shows.
-func recurringForProjection(deps Deps, txns []models.Transaction) []models.RecurringPayment {
+//
+// asOf is threaded through to insights.DetectRecurringAt as the reference
+// date, matching the dashboard's detectRecurringForDashboard. DetectRecurringAt's
+// referenceDate does two jobs (see its doc comment): it truncates the
+// history detection runs over, and it is the freshness "now" each candidate
+// series is checked against. Calling the DetectRecurring shorthand instead
+// (referenceDate zero) would fall back to ts's own MaxDate for both jobs --
+// wrong for a historical as_of (which would let detection see, and schedule
+// against, transactions after the requested date) and wrong for a future
+// as_of (which would judge freshness against the ledger's actual latest
+// date instead of the date the caller asked about).
+func recurringForProjection(ts *models.TransactionSet, asOf time.Time) []models.RecurringPayment {
 	// The recurring engine lives in internal/services/insights and is the
-	// shared source every consumer of recurring payments uses. We reach it
-	// through the same path the spend tools do: DetectRecurring over the
-	// active transaction set. This is a read; nothing is written.
-	if len(txns) == 0 {
+	// shared source every consumer of recurring payments uses. This is a
+	// read; nothing is written.
+	if ts == nil || ts.Len() == 0 {
 		return nil
 	}
-	ts := models.NewTransactionSet(txns).Active()
+	return insights.DetectRecurringAt(ts, asOf)
+}
+
+// recurringForProjectionDefault is the as_of-absent counterpart of
+// recurringForProjection. It calls the DetectRecurring shorthand (a zero
+// referenceDate), which falls back to ts's own MaxDate for both the
+// detection-history truncation and the freshness reference -- the pre-R5
+// behaviour for get_balance_projection's default (no as_of) response. This
+// exists so that path is preserved by construction rather than by
+// coincidentally passing time.Now() through DetectRecurringAt, which would
+// differ from MaxDate whenever the ledger's newest row is not dated today
+// (the normal case for an imported CSV).
+func recurringForProjectionDefault(ts *models.TransactionSet) []models.RecurringPayment {
+	if ts == nil || ts.Len() == 0 {
+		return nil
+	}
 	return insights.DetectRecurring(ts)
 }

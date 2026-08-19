@@ -304,6 +304,108 @@ func TestSearchTransactionsExcludesSuppressedTransactions(t *testing.T) {
 	}
 }
 
+// searchFixtureWithTransfer is the spec's defect fixture: one income, one
+// outflow, and one transfer. With no type filter the pre-fix code summed all
+// three (5000 + -1200 + -3000 = 800), netting the $3,000 transfer into a
+// spending total; the correct sum (income + outflow, matching
+// summarize_spending's net_savings for the same window) is 3800.
+func searchFixtureWithTransfer() *models.TransactionSet {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	return models.NewTransactionSet([]models.Transaction{
+		{Date: day("2026-01-05"), Description: "PAYCHECK", Category: "Income", Amount: 5000, TransactionType: models.Income},
+		{Date: day("2026-01-10"), Description: "RENT", Category: "Housing", Amount: -1200, TransactionType: models.Outflow},
+		{Date: day("2026-01-15"), Description: "TRANSFER TO BROKERAGE", Category: "Transfer", Amount: -3000, TransactionType: models.Transfer},
+	})
+}
+
+// TestSearchTransactionsDefaultSumExcludesTransfers pins the invariant
+// server.go promises ("a Transfer is excluded from both totals by type
+// filter"): on the default path (no type filter) sum_amount must NOT net a
+// Transfer into the spending total. The transfer row stays listed (the
+// ledger remains visible), but the sum covers Income + Outflow only, so it
+// agrees with summarize_spending's net_savings for the same window.
+//
+// Against the pre-fix code this fails: sum_amount comes back 800 (the
+// transfer netted in) rather than 3800.
+func TestSearchTransactionsDefaultSumExcludesTransfers(t *testing.T) {
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: searchFixtureWithTransfer()}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_transactions",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("search_transactions returned an error: %+v", res.Content)
+	}
+
+	var out searchOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+
+	// The transfer row stays listed -- the ledger remains visible.
+	if out.Total != 3 {
+		t.Fatalf("total = %d, want 3 (the transfer row must still be listed): %+v", out.Total, out.Transactions)
+	}
+	// But the sum must not net it in. 5000 + -1200 = 3800; the -3000 transfer
+	// is neither income nor expense and must be excluded.
+	const wantSum = 3800.0
+	if out.SumAmount == 800.0 {
+		t.Fatalf("sum_amount = %v matches the NETTED-IN transfer total (5000 + -1200 + -3000); the transfer must be excluded from the default sum", out.SumAmount)
+	}
+	if out.SumAmount != wantSum {
+		t.Errorf("sum_amount = %v, want %v (Income + Outflow only; the Transfer is listed but not summed)", out.SumAmount, wantSum)
+	}
+}
+
+// TestSearchTransactionsFiltersByTypeTransfer covers the missing "transfer"
+// branch of the type switch: a model must be able to ask "show me my
+// transfers", matching what the explorer UI already accepts. Against the
+// pre-fix code this fails because type:"transfer" hits the switch's default
+// branch and returns a tool error ("not recognized").
+func TestSearchTransactionsFiltersByTypeTransfer(t *testing.T) {
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: searchFixtureWithTransfer()}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_transactions",
+		Arguments: map[string]any{"type": "transfer"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("type \"transfer\" must be a valid filter, not an error: %+v", res.Content)
+	}
+
+	var out searchOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Total != 1 {
+		t.Fatalf("total = %d, want 1 (the single Transfer row): %+v", out.Total, out.Transactions)
+	}
+	if out.Transactions[0].Type != "Transfer" {
+		t.Errorf("row type = %q, want \"Transfer\"", out.Transactions[0].Type)
+	}
+	if out.Transactions[0].Amount != -3000 {
+		t.Errorf("amount = %v, want -3000", out.Transactions[0].Amount)
+	}
+	// With an explicit type=transfer filter, sum_amount is the signed sum over
+	// the transfer rows alone.
+	if out.SumAmount != -3000 {
+		t.Errorf("sum_amount = %v, want -3000 (the transfer sum)", out.SumAmount)
+	}
+}
+
 // TestSearchReturnsTheTransactionHash pins the field pin_transactions uses to
 // address a row. Without it, "find this charge, then pin it" cannot be done
 // with these tools at all.

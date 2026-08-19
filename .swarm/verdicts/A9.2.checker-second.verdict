@@ -1,0 +1,156 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A9
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Spec read: ACCOUNTS_TRANSFERS_SPEC.md:52 (A9 row: five MCP tools; server description
+replaces "cannot answer transfers" clause). GLOSSARY.md read in full (Account,
+Transfer, TransferClass, BalanceAnchor, Internal transfer, Sign convention).
+confirm/confirm.go read (Mint/Check/Redeem, ErrBadToken single identity,
+tool+argsHash binding). Attempt-1 verdict read for settled diagnosis on item 8.
+
+Attempt 2 scope: only 4 tracked files changed (server.go, server_test.go,
+spend/search.go, spend/search_test.go) plus the untracked ledger/ package from
+attempt 1. git diff --stat HEAD: 190 insertions, 27 deletions across those 4
+files. The fix is concentrated in spend/search.go.
+
+1. MANIFEST FIDELITY. .swarm/manifests/A9.2.files lists 15 paths (ledger/* +
+server.go + server_test.go + spend/search.go + spend/search_test.go). git
+status --porcelain shows exactly server.go (M), server_test.go (M),
+spend/search.go (M), spend/search_test.go (M), untracked ledger/ (12 files),
+and .swarm artifacts. No extra, no missing. PASS.
+
+2. TOOLCHAIN. go build ./... → "Go build: Success", exit 0. go vet ./... →
+"No issues found", exit 0. gofmt -l on all 15 manifest files → empty, exit 0.
+go test ./... -count=1 → "4360 passed in 49 packages", exit 0. staticcheck
+./... → exit 0, no findings. Tests run bare (no grep/head pipeline). PASS.
+
+3. BOTH MUTATING TOOLS REFUSE WITHOUT A VALID TOKEN AND SUCCEED WITH ONE.
+Driven via in-memory MCP transport (ledger tests). set_balance_anchor:
+TestSetBalanceAnchorFirstCallDoesNotWrite (Confirmed=false, token set, no
+anchor on disk), SecondCallWithTokenWrites (Confirmed=true, anchor 4210.55),
+RefusesABadToken, RefusesAReplayedToken, RefusesATokenForDifferentArguments,
+DoesNotWriteWhenTheUserRefuses. resolve_transfer: FirstCallDoesNotWrite,
+SecondCallWithTokenWrites, RefusesABadToken, RefusesAReplayedToken,
+RefusesATokenForDifferentVerdict, DoesNotWriteWhenTheUserRefuses. The refusal
+path is a genuine rejection: applyAnchor (anchor.go:187) and
+applyResolveTransfer (resolve.go:195) both call Confirm.Redeem BEFORE any
+write (SaveAccounts / ResolveTransfer); Redeem deletes the token before
+validating (confirm.go:140), so a bad/expired/wrong-tool/wrong-args token is
+spent and the write never runs. All 14 tests PASS. PASS.
+
+4. TOKEN DISCIPLINE. Ledger tools share the SAME *confirm.Registry as admin
+(server.go:284 `Confirm: adminDeps.Confirm`). Mint binds tool name +
+argsHash (confirm.go:72-89); Redeem checks `e.tool != tool || e.argsHash != h`
+(confirm.go:142). anchorTokenArgs = {AccountID, Date, Amount};
+resolveTokenArgs = {PairKey, Verdict}. Tests cover bad/replayed/different-args
+and different-verdict. Cross-tool binding enforced by the `tool` string in
+Redeem (a set_balance_anchor token presented to resolve_transfer is refused
+because `e.tool != "resolve_transfer"`). Matches the existing admin
+shutdown/restore convention exactly. PASS.
+
+5. NO-ANCHOR REPORTS UNAVAILABLE, NEVER ZERO. get_accounts:
+TestGetAccountsReportsUnavailableNotZeroForNoAnchor (Available=false,
+Balance=0, LowBalance=false, AnchorDate=""). get_balance_projection:
+TestGetBalanceProjectionReportsUnavailableForNoAnchor (Available=false,
+AsOf="", Crossing=""). Tool descriptions state "available=false
+(UNAVAILABLE, not $0)". PASS.
+
+6. READ-ONLY TOOLS GENUINELY READ-ONLY. grep for Save/Redeem/Mint/Ensure in
+ledger/accounts.go and ledger/transfers.go → no matches. get_accounts,
+get_balance_projection, get_transfers call only deps.load(),
+deps.Accounts.LoadAccounts(), accounts.BalanceAt/Freshness/Project (read),
+and insights.DetectRecurring (read). No sidecar writes, no Redeem, no
+snapshot.Ensure. PASS.
+
+7. SERVER DESCRIPTION no longer claims transfers are unanswerable, and uses
+GLOSSARY vocabulary. server.go:93-101: the old "CANNOT be answered" clause is
+gone; text now says a Transfer "is a TRANSFER: the third transaction type
+(Transfer)... the rows REMAIN in the ledger and are visible through
+get_transfers... how much went into the brokerage this year CAN now be
+answered from the ledger tools (get_transfers)". References
+BalanceAnchor, Account, TransferClass, Transfer, Internal transfer. The
+"Four tools are guarded" sentence (server.go:148) is TRUE: shutdown_server +
+restore_backup (admin) + set_balance_anchor + resolve_transfer (ledger) = 4.
+get_transfers reports total_in/total_out/net filterable by account, so the
+brokerage claim is answerable. PASS.
+
+8. THE CONSUMER CHECK (rulings 2026-08-16f, 2026-08-16h). Independently
+grepped internal/services/mcpsvc for the "not Income ⇒ expense" anti-pattern
+(`!= models.Income`, `!= models.Outflow`, `if == models.Income {+=} else`)
+→ no matches in any MCP tool. Every summing tool filters by explicit type:
+summarize_spending → metrics.Calculate (metrics.go:100-101
+FilterByType(Income)/FilterByType(Outflow)); byCategoryRows/byMonthRows/
+byMerchantRows → FilterByType(models.Outflow) (summary.go:80,113,135);
+search_transactions → FilterByType(Income/Outflow/Transfer) and on the
+default path Income.SumAmount()+Outflow.SumAmount() (search.go:153-157,175-176);
+get_anomalies anomalyExpenses → `t.TransactionType == models.Outflow && t.Amount < 0`
+(insights.go:145, explicit not "not Income"); get_trends/get_recurring/
+get_price_creep delegate to insights which uses FilterByType(models.Outflow)/
+FilterByType(models.Income) (trends.go:35,119,123,185,273,274,303,304;
+recurring.go:223); curate exceptions/expenses → FilterByType(models.Outflow)
+(register.go:197). Transfer rows fall out of every one of these by explicit
+type filter. The ONLY tool that summed the unfiltered set was
+search_transactions, and attempt 2 fixed exactly that (default path now
+Income+Outflow only). No MCP tool was missed; the defect shape from ruling
+2026-08-16h does not exist in any MCP tool. PASS.
+
+ATTEMPT-2 FIX VERIFICATION (the settled item 8 defect):
+
+- type:"transfer" now works: TestSearchTransactionsFiltersByTypeTransfer
+  passes — returns 1 row, Type="Transfer", Amount=-3000, SumAmount=-3000.
+  Against the pre-fix code (search.go reverted via `git stash` in a scratch
+  copy OUTSIDE the repo) this test FAILS: "type \"transfer\" must be a valid
+  filter, not an error" (the old switch's default branch returned "not
+  recognized").
+
+- Default path: sum_amount EXCLUDES transfers while `total` and the listed
+  rows STILL INCLUDE them. TestSearchTransactionsDefaultSumExcludesTransfers:
+  out.Total==3 (transfer listed), out.SumAmount==3800 (Income 5000 + Outflow
+  -1200, NOT 800 which would net the -3000 transfer). A probe test
+  (zz_page_check_test.go, since removed) confirmed the page rows include a
+  Type="Transfer", Amount=-3000 row on the default path. Both halves hold:
+  listing keeps transfers, sum excludes them. Against the pre-fix code this
+  test FAILS: "sum_amount = 800 matches the NETTED-IN transfer total".
+
+- sum_amount agrees with summarize_spending's net_savings for the same
+  fixture. A probe test (zz_crosscheck_test.go, since removed) drove both
+  tools over searchFixtureWithTransfer(): net_savings=3800, sum_amount=3800.
+  They agree because metrics.Calculate computes
+  netSavings = totalIncome - |sum outflows| = 5000 - 1200 = 3800, and
+  search's default sum is Income.SumAmount() + Outflow.SumAmount() =
+  5000 + (-1200) = 3800.
+
+- The new tests fail against the pre-fix code. Confirmed by copying the
+  worktree to /tmp/a9_prefix_check, reverting spend/search.go via
+  `git stash`, and re-running: both new tests FAIL (sum=800 netted-in;
+  transfer rejected as "not recognized"). Restored afterward.
+
+- The descriptions are TRUE of the code as it now stands. search.go:95-100
+  describes "on the default path (no type filter) it EXCLUDES Transfer rows
+  even though they are still listed (`total` and the page include them)...
+  with an explicit type filter the filtered set is already one type, so the
+  exclusion only matters on the default path" — matches behavior
+  (default: Income+Outflow sum; explicit: full filtered sum, including
+  transfer). server.go:94-101 "excluded from both totals by type filter...
+  rows REMAIN in the ledger and are visible through get_transfers... spending
+  tools therefore do NOT COUNT savings or investment contributions in their
+  totals" — TRUE: metrics.Calculate and the search default both exclude
+  transfers from totals, get_transfers lists them. This is NOT the
+  inverse-of-behavior shape A1 attempt 3 exhibited; the text now matches the
+  code.
+
+9. SCOPE. git diff --name-only HEAD: server.go, server_test.go,
+spend/search.go, spend/search_test.go; untracked ledger/ package. No
+internal/handlers/* (A6/A7/A8), no internal/services/transfers or accounts or
+dataloader changes (A2-A5), no web/templates. server.go wiring is the
+necessary assembly point. PASS.
+
+Ruling 2026-08-16e (loop assertions need preceding count assertions):
+TestSearchTransactionsFiltersByTypeTransfer indexes out.Transactions[0] at
+line 396, preceded by `if out.Total != 1 { t.Fatalf(...) }` at line 393 —
+count-guarded. The default-path test checks out.Total==3 before any row
+access. All loop/index probes are count-guarded. PASS.

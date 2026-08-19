@@ -21,5 +21,5 @@ A4	2	tests,second	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A5	2	tests,second	accepted	2	worker-coder-glm	gate-ok-attempt-2
 A6	1	tests,a11y	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A7	2	tests,second	accepted	1	worker-coder-glm	gate-ok-attempt-1
-A8	1	tests,a11y	pending	1	-	-
-A9	2	tests,second	pending	1	-	-
+A8	1	tests,a11y	pending	3	-	attempt-2-h1-added-but-h2-skipped-when-no-accounts
+A9	2	tests,second	accepted	2	worker-coder-glm	gate-ok-attempt-2

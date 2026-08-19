@@ -20,7 +20,7 @@ type searchInput struct {
 	EndDate   string  `json:"end_date,omitempty" jsonschema:"latest date to include, inclusive, YYYY-MM-DD"`
 	Category  string  `json:"category,omitempty" jsonschema:"exact category name; omit for all categories"`
 	Search    string  `json:"search,omitempty" jsonschema:"case-insensitive substring matched against the transaction's description, display name, major-expense name, or enriched description; the returned description field may differ from whichever of these matched"`
-	Type      string  `json:"type,omitempty" jsonschema:"income or outflow (expense is accepted as an alias for outflow); omit for both"`
+	Type      string  `json:"type,omitempty" jsonschema:"income, outflow, or transfer (expense is accepted as an alias for outflow); omit for all three"`
 	MinAmount float64 `json:"min_amount,omitempty" jsonschema:"smallest absolute dollar amount to include; 0 means unset, not \"greater than zero\""`
 	MaxAmount float64 `json:"max_amount,omitempty" jsonschema:"largest absolute dollar amount to include; 0 means unset"`
 	Page      int     `json:"page,omitempty" jsonschema:"1-based page number; defaults to 1"`
@@ -82,17 +82,22 @@ func registerSearch(s *mcp.Server, deps Deps) {
 			"matched against the transaction's description, its user-assigned display name, its major-expense " +
 			"name, or any enriched description -- NOT against the `description` field in the results below, " +
 			"which is the display label shown in the app and may differ from whichever field actually " +
-			"matched), type (income or outflow; \"expense\" is also accepted as an alias for outflow), and " +
-			"min_amount/max_amount (compared against the ABSOLUTE dollar amount, so min_amount 100 matches a " +
-			"-150.00 expense; 0 means the bound is unset, so there is no way to express \"strictly greater " +
-			"than zero\"). Amounts in the result are SIGNED, but NOT uniformly by type: an ordinary expense " +
-			"(type outflow) is negative, but a refund or credit is a POSITIVE amount that is still typed " +
-			"outflow -- so filtering type=outflow does not mean every amount returned is negative, and " +
-			"sum_amount over an outflow-only search nets those refunds against spend rather than totaling raw " +
-			"spend. Results are newest-first " +
+			"matched), type (income, outflow, or transfer; \"expense\" is also accepted as an alias for " +
+			"outflow; omit for all three), and min_amount/max_amount (compared against the ABSOLUTE dollar " +
+			"amount, so min_amount 100 matches a -150.00 expense; 0 means the bound is unset, so there is " +
+			"no way to express \"strictly greater than zero\"). Amounts in the result are SIGNED, but NOT " +
+			"uniformly by type: an ordinary expense (type outflow) is negative, but a refund or credit is a " +
+			"POSITIVE amount that is still typed outflow -- so filtering type=outflow does not mean every " +
+			"amount returned is negative, and sum_amount over an outflow-only search nets those refunds " +
+			"against spend rather than totaling raw spend. Results are newest-first " +
 			"and paginated: `total` is the full number of matching rows, not the number returned, so check it " +
 			"against the rows you received before concluding you have seen everything. Default 50 rows per " +
-			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page. " +
+			"page, maximum 200. sum_amount is the signed sum over ALL matches, not just this page, and on " +
+			"the default path (no type filter) it EXCLUDES Transfer rows even though they are still listed " +
+			"(`total` and the page include them): a Transfer is neither income nor expense -- money moving " +
+			"between the user's own accounts -- so netting it into a signed total would make this sum " +
+			"disagree with summarize_spending's net_savings for the same window; with an explicit type " +
+			"filter the filtered set is already one type, so the exclusion only matters on the default path. " +
 			"Each row carries a `hash`, which is what pin_transactions uses to attach that transaction to a " +
 			"major expense; the hash is derived from date + lower-cased description + amount, so two genuinely " +
 			"distinct transactions that share all three share one hash and pinning either pins both. " +
@@ -148,13 +153,30 @@ func registerSearch(s *mcp.Server, deps Deps) {
 			ts = ts.FilterByType(models.Income)
 		case "outflow", "expense":
 			ts = ts.FilterByType(models.Outflow)
+		case "transfer":
+			ts = ts.FilterByType(models.Transfer)
 		default:
-			return nil, searchOutput{}, fmt.Errorf("type %q is not recognized; use \"income\" or \"outflow\"", in.Type)
+			return nil, searchOutput{}, fmt.Errorf("type %q is not recognized; use \"income\", \"outflow\", or \"transfer\"", in.Type)
 		}
 		ts = filterByAbsAmount(ts, in.MinAmount, in.MaxAmount)
 
 		total := ts.Len()
-		sum := ts.SumAmount()
+		// sum_amount is the signed sum over the filtered rows. On the default
+		// path (no type filter) Transfer rows are EXCLUDED from the sum even
+		// though they are still listed (total and the page include them): a
+		// Transfer is neither income nor expense -- money moving between the
+		// user's own accounts -- so netting it into a signed total would make
+		// this sum disagree with summarize_spending's net_savings for the same
+		// window. With an explicit type filter the filtered set is already one
+		// type, so the sum covers whatever that filter selected (including
+		// transfer).
+		var sum float64
+		if in.Type == "" {
+			sum = ts.FilterByType(models.Income).SumAmount() +
+				ts.FilterByType(models.Outflow).SumAmount()
+		} else {
+			sum = ts.SumAmount()
+		}
 
 		perPage := in.PerPage
 		if perPage <= 0 {

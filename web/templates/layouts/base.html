@@ -102,6 +102,9 @@
                     <a href="/accounts" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">
                         Accounts
                     </a>
+                    <a href="/transfers" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">
+                        Transfers
+                    </a>
 
                     <!-- Theme Toggle -->
                     <button id="theme-toggle" class="p-2 rounded-md hover:bg-white/10 transition-colors"
@@ -143,6 +146,7 @@
                 {{end}}
                 <a href="/filemanager" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">File Manager</a>
                 <a href="/accounts" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">Accounts</a>
+                <a href="/transfers" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">Transfers</a>
             </div>
         </div>
     </nav>
@@ -165,6 +169,8 @@
         {{template "filemanager-content" .}}
         {{else if eq .ActiveTab "accounts"}}
         {{template "accounts-content" .}}
+        {{else if eq .ActiveTab "transfers"}}
+        {{template "transfers-content" .}}
         {{else}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Page Not Found</h1>

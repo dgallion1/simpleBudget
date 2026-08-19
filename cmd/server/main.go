@@ -33,6 +33,7 @@ import (
 	"budget2/internal/handlers/explorer"
 	"budget2/internal/handlers/insights"
 	"budget2/internal/handlers/majorexpenses"
+	"budget2/internal/handlers/transfers"
 	"budget2/internal/handlers/whatif"
 	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
@@ -112,7 +113,7 @@ func SetupDependencies(c *config.Config) error {
 	majorexpenses.Initialize(loader, renderer)
 	duplicates.Initialize(loader, renderer)
 	accounts.Initialize(loader, store, renderer)
-	// A restore rewrites the settings files on disk behind the settings
+	transfers.Initialize(loader, store, renderer) // A restore rewrites the settings files on disk behind the settings
 	// manager's back. The manager is the restore gate: it holds its lock
 	// for the restore's whole write+prune phase — so no in-flight save can
 	// interleave with a half-restored settings dir — and on release drops
@@ -295,6 +296,7 @@ func SetupRouter() chi.Router {
 		majorexpenses.RegisterRoutes(r)
 		duplicates.RegisterRoutes(r)
 		accounts.RegisterRoutes(r)
+		transfers.RegisterRoutes(r)
 
 		backup.RegisterRoutes(r)
 	})

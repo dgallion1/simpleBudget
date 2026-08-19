@@ -1,0 +1,43 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A5
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: .swarm/briefs/A5.md (task brief), docs/superpowers/specs/2026-08-16-accounts-transfers-design.md §4 (lines 173-192), GLOSSARY.md (BalanceAnchor end-of-day/binding; Transfer/TransferClass/TransferPairKey), internal/services/accounts/balance.go (A4 accepted), projection.go (266 lines), projection_test.go (525 lines), internal/models/transaction.go (A3's version), internal/models/account.go, internal/models/insights.go (RecurringPayment).
+
+1. Manifest fidelity — .swarm/manifests/A5.1.files lists exactly:
+   internal/services/accounts/projection.go
+   internal/services/accounts/projection_test.go
+   `git status --porcelain` shows both as untracked (??), plus .swarm/briefs/A7.md and the manifest itself. `git diff --name-only` is empty (no tracked files modified). Match is exact for the two source files.
+
+2. Toolchain green (real output, no pipe):
+   - go build ./... → "Go build: Success", BUILD_EXIT=0
+   - go vet ./... → "Go vet: No issues found", VET_EXIT=0
+   - go test ./... → "Go test: 4312 passed in 47 packages", TEST_EXIT=0 (brief says ~45-46; 47 observed)
+   - staticcheck ./... → STATICCHECK_EXIT=0 (clean)
+   - gofmt -l on both manifest files → empty output, GOFMT_EXIT=0
+
+3. Advisory only (writes nothing). proof, not reading: projection.go imports (lines 3-9) are only "math", "sort", "time", "budget2/internal/models" — NO os/io/ioutil/storage sidecar packages. Grep for WriteFile/os.Create/ioutil/storage./Save/sidecar found only doc-comment mentions (lines 25, 83). Project reads via BalanceAt (line 92) and iterates txs/recurring slices by value. TestProject_DoesNotMutateInputs (line 406) snapshots anchors/txs/recurring before, runs Project, then asserts (a) each anchor Date/Amount unchanged (loop at 431, gated by count check at 436/444), (b) txs slice length and element-wise equality unchanged, (c) recurring length unchanged. Passes. No sidecar write path is reachable from Project.
+
+4. Unknown is not zero. balance.go latestAnchorAtOrBefore returns (BalanceAnchor{}, false) when no anchor ≤ at; BalanceAt returns BalanceResult{Available:false} (line 49). Project line 96-100: if !start.Available { return out, nil } BEFORE any balance arithmetic (balance:= start.Amount is line 141, unreachable in this path). TestProject_NoAnchorIsUnavailableNotZero (line 119) asserts Available=false, Crossing zero, Minimum 0, SuggestedTopUp 0, HasReference false. Passes. No roll-forward from assumed zero.
+
+5. Threshold. projection.go thresholdFor (line 213): if acct.LowBalanceThreshold > floatTolerance return it, else DefaultLowBalanceThreshold (=500.0, line 14). Both paths tested: TestProject_DefaultThresholdWhenAccountThresholdZero (zero threshold → 500 used, crossing detected at 400<500, Threshold field==500) and TestProject_OverrideThresholdRespected (threshold 900 → 850<900 crosses; 850>500 so default would have missed). Passes.
+
+6. Suggested top-up = shortfall rounded UP to nearest $100. roundUpToHundred (line 224): if x<floatTolerance return 0, else math.Ceil(x/100)*100. Exact boundary: shortfall 100 → ceil(1.0)*100=100 (TestProject_TopUpRoundingAtExactBoundary asserts ==100, line 218; TestRoundUpToHundred case {100,100}). Just past: shortfall 150 → ceil(1.5)*100=200 (TestProject_TopUpRoundingJustPastBoundary asserts 200; table {101→200, 199→200, 250→300, 1→100}). Exact 100 does NOT become 200. Passes.
+
+7. Account isolation. recurringBelongsToAccount (line 176) requires at least one leg.AccountID==acct.ID. TestProject_OtherAccountsRecurringExcluded (line 341): schwab-only 4000 monthly outflow, usaa anchor 5000 → Crossing zero, Minimum 5000 (unchanged). TestProject_MixedRecurringFiltersByAccount (line 374): one usaa + one schwab leg → item applies to usaa (300 outflow, minimum 500) proving per-leg not all-or-nothing. medianInboundPairedTransfer (line 238) filters tx.AccountID==acct.ID (line 247) and TransactionType==models.Transfer / TransferClass=="paired" / Amount>0. Passes.
+
+8. Median reference. medianInboundPairedTransfer (line 238): collects positive-amount legs with type==Transfer, class=="paired", AccountID==acct.ID. Odd: n%2==1 → amounts[n/2] (line 261). TestProject_ReferenceMedianOddCount (3 values 1000/2000/3000 → 2000). Even: (amounts[n/2-1]+amounts[n/2])/2 (line 264). TestProject_ReferenceMedianEvenCount (4 values → (2000+2500)/2=2250). No history: returns (0,false) (line 256); TestProject_ReferenceNoPriorTransfers asserts HasReference=false, ReferenceAmount=0, with outbound/external/other-account/non-transfer rows all excluded. Passes.
+
+9. Float discipline. grep "==" in projection.go: only string comparisons (leg.AccountID==accountID line 178; TransferClass=="paired" line 244 via !=) and int comparisons (len(amounts)==0 line 255, n%2==1 line 260). NO amount == comparison. Crossing uses balance < out.Threshold-floatTolerance (line 154, strict-with-epsilon). roundUpToHundred guards x<floatTolerance (line 225). medianInboundPairedTransfer guards tx.Amount<=floatTolerance (line 250). moneyEq helper (balance_test.go:15) uses math.Abs(a-b)<floatTolerance. Rounding only at the $100 step (roundUpToHundred) and in presentation guards. Passes.
+
+10. Scope. No UI (A8): internal/handlers/transfers/ does not exist; internal/handlers/accounts/ pre-existing, projection.go not referenced there (grep found no Project/ProjectionResult of accounts package in any handler — whatif/dashboard matches are unrelated retirement models.ProjectionResult/ProjectionYears/ProjectRoot). No MCP (A9): no projection/funding files under internal/services/mcp. A4 balance.go unmodified: `git diff HEAD -- balance.go` empty, `git status --porcelain balance.go` empty.
+
+Merge note verification: A5 worker independently added models.Transfer/TransferClass/TransferPairKey but lead kept A3's transaction.go (commit e9ad6ae). projection.go compiles against A3's definitions (build green). A3's transaction.go defines Transfer (line 26), TransferClass field (line 78), TransferPairKey field (line 84) — identical to what A5's code/test uses (models.Transfer, TransferClass:"paired", AccountID, TransactionType, Amount). No A5 behavior depended on a differing definition: the test builds transactions with exactly the fields A3 defines, and medianInboundPairedTransfer/recurringBelongsToAccount read only AccountID/TransactionType/TransferClass/Amount, all present in A3. Coherent.
+
+Ruling 2026-08-16e (count assertion before loop assertion): the two loops in tests are in TestProject_DoesNotMutateInputs (line 431 loop over anchors; line 436 asserts len(txs) before line 439 loop; line 444 asserts len(recurring) before line 447 loop — count gates present). TestRoundUpToHundred (line 519) iterates a fixed table-test slice, not a computed collection — ruling scope is computed collections. No violation.
+
+All ten requirements satisfied; no constitution point violated.

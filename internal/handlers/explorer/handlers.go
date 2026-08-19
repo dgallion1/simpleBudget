@@ -173,6 +173,8 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 			filtered = filtered.FilterByType(models.Income)
 		} else if txnType == "Outflow" {
 			filtered = filtered.FilterByType(models.Outflow)
+		} else if txnType == "Transfer" {
+			filtered = filtered.FilterByType(models.Transfer)
 		}
 	}
 
@@ -312,6 +314,8 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 			filtered = filtered.FilterByType(models.Income)
 		} else if txnType == "Outflow" {
 			filtered = filtered.FilterByType(models.Outflow)
+		} else if txnType == "Transfer" {
+			filtered = filtered.FilterByType(models.Transfer)
 		}
 	}
 

@@ -1,0 +1,38 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A5
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Read in full: .swarm/briefs/A5.md, docs/superpowers/specs/2026-08-16-accounts-transfers-design.md §4 (lines 173-192), GLOSSARY.md "BalanceAnchor" (lines 124-131, end-of-day and binding, no-anchor=unavailable not zero), internal/services/accounts/balance.go (A4), projection.go, projection_test.go. Confirmed A5 compiles against A3's already-accepted models definitions: projection.go uses models.Transfer (TransactionType const, transaction.go:26), the TransferClass string field (transaction.go:78), models.RecurringPayment{Transactions []Transaction} (insights.go:6-17), models.Account.LowBalanceThreshold/Anchors (account.go:60-65), models.BalanceAnchor (account.go:27). It does NOT reference TransferPairKey (grep: no matches), so dropping A5's independent models/transaction.go from the merge is coherent — no A5 behavior depended on a differing definition.
+
+1. MANIFEST FIDELITY — .swarm/manifests/A5.2.files lists exactly internal/services/accounts/projection.go and projection_test.go. `git status --porcelain` is clean (committed); both files exist (test -f OK). balance.go's last touch is A4 commit a27d25d, and `git diff a27d25d -- internal/services/accounts/balance.go` is empty — A4's balance code is unmodified. No UI/MCP files in manifest; grep for handlers/mcpsvc/mcp/template in projection.go* → NONE.
+
+2. TOOLCHAIN GREEN — gofmt -l on both manifest files: empty (GOFMT_EXIT=0). `go build ./...` → "Go build: Success" (BUILD_EXIT=0). `go vet ./...` → "Go vet: No issues found" (VET_EXIT=0). `go test ./...` → 4327 passed in 48 packages (TEST_EXIT=0). staticcheck 2026.1 (v0.7.0) on ./internal/services/accounts/... → no output (SC_EXIT=0), and `staticcheck ./...` → STATICCHECK_EXIT=0. accounts package verbose: 51 PASS, 0 FAIL.
+
+3. ADVISORY ONLY — grep for WriteFile/os.Create/sidecar/ledger/Save/Persist/json.Marshal in projection.go returns only doc comments (lines 24,25,83,173) describing advisory nature; no calls. Project reads via BalanceAt, recurringBelongsToAccount (reads rp.Transactions), and medianInboundPairedTransfer (reads txs); no append to caller slices, no pointer writes. TestProject_DoesNotMutateInputs (projection_test.go:406) pins non-mutation of anchors/txs/recurring with explicit len() checks (lines 436,444) before element loops — passes.
+
+4. UNKNOWN IS NOT ZERO — Project (projection.go:92-100): when BalanceAt returns Available:false it returns out (Available:false) and skips the roll-forward. TestProject_NoAnchorIsUnavailableNotZero (line 119) pins Available=false, Crossing zero, Minimum 0, SuggestedTopUp 0, HasReference false — passes. No fabricated-zero projection.
+
+5. THRESHOLD — thresholdFor (projection.go:213-218): acct.LowBalanceThreshold > floatTolerance else DefaultLowBalanceThreshold (500.0, line 14). Default path covered by TestProject_DefaultThresholdWhenAccountThresholdZero (line 149, asserts Threshold==500, crossing on 9/1); override path by TestProject_OverrideThresholdRespected (line 175, asserts Threshold==900, 850<900 crosses) — both pass.
+
+6. SUGGESTED TOP-UP — roundUpToHundred (projection.go:235-240) = math.Ceil(x/100-floatTolerance)*100, guarded; non-positive → 0. Exact boundary $100 → $100 (TestProject_TopUpRoundingAtExactBoundary line 203; TestRoundUpToHundred case {100,100} line 513). Just-past $150 → $200 (TestProject_TopUpRoundingJustPastBoundary line 226). $100.01 → $200 (TestRoundUpToHundred_GenuinelyPastBoundaryStillRoundsUp line 612) — confirms the epsilon does NOT under-recommend genuinely-past shortfalls. All pass against the fixed code.
+
+   DISCRIMINATION PROOF (the attempt-2 fix): Built a scratch copy of the package at .scratch-a5verify/accounts inside the repo tree (so budget2/internal/models is importable), reverted the one line to the pre-fix `math.Ceil(x/100) * 100`, and ran the named tests. Pre-fix results:
+   - TestRoundUpToHundred_CentDustAtExactBoundary FAIL: "[800.30 start 400.30 outflow (brief fixture A)] shortfall=100.00000000000005684342 topup=200.0000, want 100.00"; "[800.04 start 400.04 outflow (brief fixture B)] ... topup=200.0000, want 100.00".
+   - TestRoundUpToHundred_CentDustSweep FAIL (cent=93 sample: topup=200.0000).
+   - TestRoundUpToHundred_CentDustSweepWeekly FAIL (40 of 100 cents, e.g. cent=2..98, topup=200).
+   - TestProject_TopUpCentDustAtExactBoundary FAIL: "SuggestedTopUp=200.0000, want 100.00; Minimum=399.99999999999994315658 shortfall=100.00000000000005684342".
+   The same scratch copy PASSES the non-dust tests (TestRoundUpToHundred, TestRoundUpToHundred_GenuinelyPastBoundaryStillRoundsUp, TestProject_TopUpRoundingAtExactBoundary/JustPastBoundary) — confirming the tests discriminate ONLY the dust defect and not unrelated behavior. Scratch removed; `git status --porcelain` clean afterward.
+
+7. ACCOUNT ISOLATION — recurringBelongsToAccount (projection.go:176-183) filters recurring items by leg AccountID; medianInboundPairedTransfer (249-265) filters txs by tx.AccountID. TestProject_OtherAccountsRecurringExcluded (line 341): a $4000 schwab-only recurring item leaves usaa at 5000, no crossing. TestProject_MixedRecurringFiltersByAccount (line 374): a split usaa/schwab item applies to usaa (800-300=500, at threshold, no crossing, Minimum 500) — guards per-leg filtering, not all-or-nothing. Both pass.
+
+8. MEDIAN REFERENCE — medianInboundPairedTransfer selects tx with TransactionType==models.Transfer, TransferClass=="paired", AccountID==acct.ID, Amount>floatTolerance. Odd (TestProject_ReferenceMedianOddCount, 1000/2000/3000 → 2000), even (TestProject_ReferenceMedianEvenCount, 1000/2000/2500/3000 → 2250), no-history (TestProject_ReferenceNoPriorTransfers: outbound paired, external, other-account, non-transfer all excluded → HasReference false, amount 0) — all pass. No history reported as absent (HasReference false), not as zero.
+
+9. FLOAT DISCIPLINE — grep `==` in projection.go: only string comparisons (leg.AccountID==accountID line 178; doc text lines 245) and integer comparisons (len==0 line 266, n%2==1 line 271). No float64 `==`. All amount comparisons use floatTolerance: balance<threshold-floatTolerance (154), LowBalanceThreshold>floatTolerance (214), Amount<=floatTolerance (261), x<floatTolerance (236). Rounding only in roundUpToHundred (the deliberate $100 step) and nowhere in intermediate arithmetic.
+
+10. SCOPE — No UI (A8) or MCP (A9) files in manifest or referenced; A4's balance.go byte-identical to its A4 commit (git diff a27d25d empty). Items 1-5 and 7-10 from attempt 1 came through untouched; only roundUpToHundred line 239 changed (now subtracts floatTolerance) plus four new discriminating tests (CentDustAtExactBoundary, CentDustSweep, CentDustSweepWeekly, GenuinelyPastBoundaryStillRoundsUp) and the end-to-end TestProject_TopUpCentDustAtExactBoundary.
+
+RULING 2026-08-16e (count assertion before loop assertion): TestProject_DoesNotMutateInputs asserts len(txs)/len(recurring) (lines 436,444) before its element loops; the anchors loop (431) iterates a copy whose length matches by construction. Table-driven `for _, c := range cases` and the fixed-count `for c:=0;c<100` sweeps are not computed-collection loops. No violation.

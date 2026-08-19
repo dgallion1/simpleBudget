@@ -18,7 +18,7 @@ A1	3	tests,second	accepted	4	tier3-merged-wt-local+3-fix-attempts	gate-ok-tier3-
 A2	3	tests,second	accepted	2	tier3-glm+anthropic-merged-local	gate-ok-tier3-attempt-2
 A3	3	tests,second	accepted	2	tier3-glm+anthropic-merged-local	gate-ok-tier3-attempt-2
 A4	2	tests,second	accepted	1	worker-coder-glm	gate-ok-attempt-1
-A5	2	tests,second	pending	2	-	attempt-1-failed-unguarded-ceil-in-roundUpToHundred
+A5	2	tests,second	accepted	2	worker-coder-glm	gate-ok-attempt-2
 A6	1	tests,a11y	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A7	2	tests,second	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A8	1	tests,a11y	pending	1	-	-

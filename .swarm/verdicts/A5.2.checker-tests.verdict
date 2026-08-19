@@ -1,0 +1,410 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A5
+ATTEMPT: 2
+---
+EVIDENCE:
+
+## What I read
+
+- `.swarm/briefs/A5.md` (full task brief)
+- `internal/services/accounts/projection.go` (277 lines, the whole file)
+- `internal/services/accounts/projection_test.go` (655 lines, the whole file)
+- `internal/services/accounts/balance.go` (A4's `BalanceAt`/`Freshness`/`Drift`,
+  and `floatTolerance = 1e-9` at balance.go:16)
+- `internal/services/accounts/balance_test.go:10-30` (`moneyEq`, `mustDate`)
+- `internal/models/transaction.go:13-95` (A3's `TransactionType`, `Transfer`,
+  `TransferClass`, `TransferPairKey`)
+- `.swarm/manifests/A5.2.files`, `.swarm/manifests/A5.1.files`,
+  `.swarm/manifests/A7.1.files`
+
+I did NOT read `.swarm/verdicts/A5.2.checker-second.verdict` (it appeared in the
+tree while I was working); this verdict is independent of it.
+
+I am read-only. All mutation work was done in a copy at
+`/tmp/claude-1000/.../scratchpad/prefix-repo`, outside the repository.
+
+---
+
+## THE CENTRAL CHECK: do the new tests genuinely fail against the pre-fix code?
+
+YES. This is the strongest evidence in this verdict, and it is what attempt 1
+lacked.
+
+Method: `rsync -a --exclude='.git' ...` the repo to
+`/tmp/claude-1000/.../scratchpad/prefix-repo` (outside the repository), then
+reverted exactly the one line under review with
+
+    sed -i 's|return math.Ceil(x/100-floatTolerance) \* 100|return math.Ceil(x/100) * 100|'
+
+leaving projection_test.go byte-identical.
+
+CONTROL (scratch copy unmodified, epsilon present) — `go test ./internal/services/accounts/ -run 'TestRoundUpToHundred|TestProject_TopUp' -v`:
+
+    --- PASS: TestProject_TopUpRoundingAtExactBoundary (0.00s)
+    --- PASS: TestProject_TopUpRoundingJustPastBoundary (0.00s)
+    --- PASS: TestRoundUpToHundred (0.00s)
+    --- PASS: TestRoundUpToHundred_CentDustAtExactBoundary (0.00s)
+    --- PASS: TestRoundUpToHundred_CentDustSweep (0.00s)
+    --- PASS: TestRoundUpToHundred_CentDustSweepWeekly (0.00s)
+    --- PASS: TestRoundUpToHundred_GenuinelyPastBoundaryStillRoundsUp (0.00s)
+    --- PASS: TestProject_TopUpCentDustAtExactBoundary (0.00s)
+    ok  	budget2/internal/services/accounts	0.003s   rc=0
+
+MUTATED (epsilon reverted to the attempt-1 code), same command:
+
+    === RUN   TestRoundUpToHundred_CentDustAtExactBoundary
+        projection_test.go:557: [800.30 start 400.30 outflow (brief fixture A)] start=800.30 outflow=400.30 -> shortfall=100.00000000000005684342 topup=200.0000, want 100.00 (exact $100 boundary must not round up)
+        projection_test.go:557: [800.04 start 400.04 outflow (brief fixture B)] start=800.04 outflow=400.04 -> shortfall=100.00000000000005684342 topup=200.0000, want 100.00 (exact $100 boundary must not round up)
+    --- FAIL: TestRoundUpToHundred_CentDustAtExactBoundary (0.00s)
+    ...
+    --- FAIL: TestRoundUpToHundred_CentDustSweep (0.00s)
+    --- FAIL: TestRoundUpToHundred_CentDustSweepWeekly (0.00s)
+    === RUN   TestProject_TopUpCentDustAtExactBoundary
+        projection_test.go:651: SuggestedTopUp = 200.0000, want 100.00 (cent-valued exactly-$100 shortfall must not round up); Minimum=399.99999999999994315658 shortfall=100.00000000000005684342
+    --- FAIL: TestProject_TopUpCentDustAtExactBoundary (0.00s)
+    FAIL	budget2/internal/services/accounts	0.003s   rc=1
+
+Four tests flip PASS -> FAIL on that single line. Both fixtures named in the
+brief are covered BY NAME and both fail pre-fix:
+
+  - `start=800.30, outflow=400.30` -> shortfall 100.00000000000005684342 -> 200 (pre-fix), 100 (fixed)
+  - `start=800.04, outflow=400.04` -> shortfall 100.00000000000005684342 -> 200 (pre-fix), 100 (fixed)
+
+`TestProject_TopUpCentDustAtExactBoundary` is the end-to-end one: it exercises
+the real wiring (anchor 800.30 -> BalanceAt -> Project -> minimum
+399.99999999999994315658 -> shortfall -> roundUpToHundred), not a literal, so
+the dust it collapses is dust the production path actually produces.
+
+Crucially, the two PRE-EXISTING boundary tests (`TestProject_TopUpRoundingAtExactBoundary`,
+`TestProject_TopUpRoundingJustPastBoundary`) PASS in the mutated build — they use
+whole-dollar 800/400 fixtures with no cent dust. That is exactly the blind spot
+that let attempt 1 through, and it is now covered.
+
+Sweep magnitudes recorded on the mutated build:
+  - `TestRoundUpToHundred_CentDustSweep`: 24 of 100 cent values return 200 pre-fix
+    (e.g. cent=66..68, 79..81, 91..93), each with shortfall 100.00000000000005684342.
+  - `TestRoundUpToHundred_CentDustSweepWeekly`: 40 of 100 pre-fix, dust widening to
+    100.00000000000022737368 as five weekly subtractions accumulate.
+Both counts match the brief's stated 24/100 and 40/100.
+
+Scratch copy restored afterwards and confirmed byte-identical to the repo:
+`diff -u <repo>/projection.go <scratch>/projection.go` -> no output,
+"SCRATCH RESTORED IDENTICAL TO REPO".
+
+---
+
+## THE OTHER DIRECTION: does the epsilon over-correct?
+
+Weighted equally, because an over-eager epsilon under-recommends and sends the
+user to move too little. It does NOT over-correct. I measured the absorption
+band directly rather than trusting the fixture list.
+
+Probe A (`TestProbe_GenuineOneCentOvershootSweep`, my own file, scratch only):
+for every cent c in [0,100), `start = 800.00+c/100`, `outflow = 400.01+c/100`,
+so the true decimal shortfall is exactly $100.01 — one genuine cent past the
+boundary:
+
+    genuine $100.01 shortfalls correctly rounded to 200: 100/100 (wrong: 0)
+    --- PASS
+
+Probe B (`TestProbe2_AbsorptionThreshold`) walks the boundary to find where the
+epsilon stops absorbing:
+
+    roundUpToHundred(100+0           ) = 100.0000
+    roundUpToHundred(100+9.948e-14   ) = 100.0000     <- observed dust magnitude
+    roundUpToHundred(100+1e-09       ) = 100.0000
+    roundUpToHundred(100+1e-08       ) = 100.0000
+    roundUpToHundred(100+9e-08       ) = 100.0000
+    roundUpToHundred(100+1.1e-07     ) = 200.0000     <- absorption ends here
+    roundUpToHundred(100+1e-06       ) = 200.0000
+    roundUpToHundred(100+0.001       ) = 200.0000     <- a tenth of a cent
+    roundUpToHundred(100+0.01        ) = 200.0000     <- one cent, REAL money
+
+The epsilon is `1e-9` in quotient space = `1e-7` dollars = 0.00001 cents. So the
+three magnitudes are cleanly separated by many orders:
+
+    float dust observed:   5.7e-14 .. 2.3e-13 dollars
+    epsilon absorbs up to: 1.0e-7  dollars     (~5x10^5 above the worst dust)
+    smallest real money:   1.0e-2  dollars     (~1x10^5 above the epsilon)
+
+The epsilon sits roughly in the geometric middle. It cannot swallow a cent, and
+it cannot fail to swallow the dust. `TestRoundUpToHundred_GenuinelyPastBoundaryStillRoundsUp`
+(projection_test.go:612-628) pins 100.01, 100.50, 199.99, 200.01 in-tree, and it
+PASSES both pre-fix and post-fix — correctly, since it is a guard against
+over-correction, not a discriminator for the defect.
+
+---
+
+## Numbered items
+
+**1. Manifest fidelity.** `.swarm/manifests/A5.2.files` lists exactly:
+
+    internal/services/accounts/projection.go
+    internal/services/accounts/projection_test.go
+
+`git status --porcelain` and `git diff --name-only` are both EMPTY: the lead
+committed A5's files in `80abbcc feat(transfers): transfers page, review queue,
+explorer badge (A7)` rather than leaving them in the working tree, so there is
+no dirty state to compare against. I validated against that commit instead:
+
+    $ git show --name-only --format= 80abbcc | grep 'services/accounts'
+    internal/services/accounts/projection.go
+    internal/services/accounts/projection_test.go
+
+Exactly the two manifest paths, no more. The remaining files in 80abbcc
+(handlers/transfers, cmd/server/main.go, explorer, web/templates/*) are all
+accounted for by `.swarm/manifests/A7.1.files`. Nothing in 80abbcc is
+unmanifested. PASS, with the noted caveat that the manifest was checked against
+the commit, not the working tree.
+
+**2. Toolchain green.** Real output:
+
+    $ go build ./...        -> rc=0, no diagnostics
+    $ go vet ./...          -> rc=0, no diagnostics
+    $ staticcheck ./...     -> rc=0, no output   (/home/darrell/go/bin/staticcheck)
+    $ go test ./...         -> rc=0
+
+`go test ./...` emitted 48 lines: 47 `ok` package lines plus
+`?  budget2/web  [no test files]` — in the expected ~46-package range. Tail of
+the run includes `ok  budget2/internal/services/accounts`. No output was piped
+through grep/head before the exit status was captured; PIPESTATUS was recorded
+(`EXITCODES=0 0`).
+
+`gofmt -l internal/services/accounts/projection.go internal/services/accounts/projection_test.go`
+-> empty output, rc=0. Both manifest files are gofmt-clean.
+
+Fresh, uncached verbose run of the package (`-count=1 -v`): 32 tests, all PASS,
+`ok budget2/internal/services/accounts 0.005s`, rc=0.
+
+**3. Advisory only — proven, not read.** Two independent proofs.
+
+Static: projection.go:3-9 imports only `math`, `sort`, `time`,
+`budget2/internal/models`. No `os`, no `io`, no storage package. A grep for
+`os.|ioutil|Write|Create|Save|Store|Persist` over projection.go returns nothing.
+The file has no capability to write.
+
+Runtime (`TestProbe_ProjectWritesNothing`): chdir into a fresh `t.TempDir()`,
+`filepath.Walk` snapshot, run `Project` with anchors + transactions + recurring
+items, re-snapshot:
+
+    filesystem entries before=1 after=1 (both just the temp dir itself)
+    --- PASS
+
+Input non-mutation is covered in-tree by `TestProject_DoesNotMutateInputs`
+(projection_test.go:406-447, deliberately passing out-of-order anchors) and
+independently by my Probe D below, which compares whole `ProjectionResult`
+structs. `medianInboundPairedTransfer` sorts a locally built `amounts` slice
+(projection.go:250, 269), never the caller's `txs`.
+
+**4. Unknown is not zero.** projection.go:96-100 returns early on
+`!start.Available` with only `AccountID`, `AsOf`, `Threshold` populated —
+`Available:false`, no roll-forward. `TestProject_NoAnchorIsUnavailableNotZero`
+pins it in-tree.
+
+My `TestProbe_UnknownIsNotZero` additionally proves the two states are
+*distinguishable*, which is the part that matters for a user acting on the
+number. Same account ID, same window:
+
+    unknown={AccountID:usaa Available:false Threshold:500 Crossing:0001-01-01 Minimum:0 SuggestedTopUp:0 HasReference:false}
+    genuine-zero={AccountID:usaa Available:true Threshold:500 Crossing:2026-08-16 Minimum:0 SuggestedTopUp:500 HasReference:false}
+
+A genuine zero balance yields `Available:true` with a real crossing and a $500
+top-up; an unknown balance yields `Available:false` with everything zeroed and
+no `HasReference` either. No fabricated starting amount anywhere.
+
+**5. Threshold, both paths.** `thresholdFor` (projection.go:213-218) returns
+`acct.LowBalanceThreshold` when `> floatTolerance`, else
+`DefaultLowBalanceThreshold = 500.0` (projection.go:14). Both paths are pinned
+in-tree and both PASS:
+  - default: `TestProject_DefaultThresholdWhenAccountThresholdZero` (700 - 300 =
+    400 < default 500 -> crossing 2026-09-01, `Threshold == 500`)
+  - override: `TestProject_OverrideThresholdRespected` (threshold 900, 1000 - 150
+    = 850 -> crosses; the default 500 would have missed it, so the test actually
+    discriminates the two paths rather than merely exercising one)
+
+The crossing comparison itself is epsilon-guarded and strict:
+`balance < out.Threshold-floatTolerance` (projection.go:154).
+`TestProject_MixedRecurringFiltersByAccount` pins that a balance landing exactly
+AT the threshold (500.00) is NOT a crossing, while confirming the outflow was
+applied via `Minimum == 500`.
+
+**6. Suggested top-up — THE ITEM UNDER REVIEW. Fixed.**
+
+    projection.go:235-240
+    func roundUpToHundred(x float64) float64 {
+        if x < floatTolerance {
+            return 0
+        }
+        return math.Ceil(x/100-floatTolerance) * 100
+    }
+
+Exact boundary now returns $100 for cent-valued fixtures (both brief fixtures by
+name, plus 800.60/800.10/800.90, plus the full 0..99 cent sweep, plus the
+weekly-accumulation sweep — all PASS in-tree, all FAIL pre-fix). Genuinely-past
+boundary still rounds up: $100.01 -> $200, verified in-tree and across my own
+100/100 sweep. Both directions hold. See the two sections above for the
+measured evidence.
+
+**7. Account isolation.** Two halves, both checked.
+
+Recurring items: `recurringBelongsToAccount` (projection.go:176-183) filters by
+per-leg `AccountID`, called at projection.go:120 before any delta is applied.
+`TestProject_OtherAccountsRecurringExcluded` proves a schwab-only $4000/mo item
+leaves usaa at `Minimum == 5000.00` with no crossing (it would have crossed if
+leaked). `TestProject_MixedRecurringFiltersByAccount` proves the filter is
+per-leg, not all-or-nothing.
+
+Transactions: the in-tree tests do not stress this half, so I wrote
+`TestProbe_OtherAccountTransactionsIgnored`. It computes a baseline projection,
+then re-runs with three foreign rows injected — a schwab -99999 outflow, a
+schwab +77777 paired inbound transfer, and an unassigned (`AccountID: ""`)
+-55555 outflow — and compares the whole `ProjectionResult` structs:
+
+    projection unchanged by 99999/77777/55555 foreign rows:
+    {AccountID:usaa Available:true Threshold:500 Crossing:2026-09-01 Minimum:400 SuggestedTopUp:100 ReferenceAmount:300 HasReference:true}
+    --- PASS
+
+Byte-identical result. The +77777 schwab transfer is the pointed one: had the
+median filter leaked, `ReferenceAmount` would have moved off 300. Isolation
+holds on both the balance path (balance.go:57) and the median path
+(projection.go:258).
+
+**8. Median reference.** `medianInboundPairedTransfer` (projection.go:249-276)
+applies all four conditions from the brief: `TransactionType == models.Transfer`,
+`TransferClass == "paired"`, `AccountID == acct.ID`, `Amount > floatTolerance`.
+Odd count returns `amounts[n/2]`; even returns `(amounts[n/2-1]+amounts[n/2])/2`
+in full precision. Pinned in-tree and passing:
+  - odd: `TestProject_ReferenceMedianOddCount` (1000/2000/3000 -> 2000)
+  - even: `TestProject_ReferenceMedianEvenCount` (1000/2000/2500/3000 -> 2250)
+  - none: `TestProject_ReferenceNoPriorTransfers` -> `HasReference == false` and
+    `ReferenceAmount == 0`; "no history" is reported as ABSENT, not as zero.
+    That test is properly adversarial: it seeds an outbound paired leg, an
+    external transfer, another account's paired inbound, and a non-transfer
+    income row, and requires all four to be rejected.
+
+On "confirmed": `internal/models/transaction.go:73-84` defines `TransferClass ==
+"paired"` as "the counterparty leg is loaded and linked through
+TransferPairKey", which is the confirmed state. There is no separate confirmation
+flag on `Transaction`, so the brief's four-condition definition is complete as
+written. Repo-wide the only `TransferClass` literals in use are "paired" (15) and
+"external" (7) — no third value the filter could be missing.
+
+**9. Float discipline.** `grep -n '==\|!=' projection.go` returns only:
+err != nil (93), leg.AccountID == accountID (178), a doc comment (245),
+tx.TransactionType != models.Transfer (252), tx.TransferClass != "paired" (255),
+tx.AccountID != acct.ID (258), len(amounts) == 0 (266), n%2 == 1 (271). Every one
+is a string, error, or int comparison. There is no `==` on a float64 amount in
+the file. All money comparisons go through `floatTolerance`: projection.go:154
+(crossing), :214 (threshold), :238 (round guard), :239 (the fix), :261 (positive
+amount). Rounding appears exactly once, in `roundUpToHundred`, and nowhere in
+intermediate arithmetic — the roll-forward at projection.go:141-158 accumulates
+in full float64 precision. Tests compare with `moneyEq` (balance_test.go:14-16,
+`math.Abs(a-b) < 1e-9`) — a strict tolerance that cannot mask a 100-vs-200
+error, which is what makes the mutation result above meaningful.
+
+**10. Scope.** The manifest contains no UI and no MCP files. A4's balance code is
+untouched:
+
+    $ git log --oneline -3 -- internal/services/accounts/balance.go
+    a27d25d feat(accounts): anchor-based balances, freshness and drift (A4)
+    $ git log --oneline -3 -- internal/services/accounts/balance_test.go
+    a27d25d feat(accounts): anchor-based balances, freshness and drift (A4)
+
+Both still sit at the A4 commit; nothing since has modified them. A5 builds on
+`BalanceAt` (projection.go:92) rather than reimplementing it.
+
+---
+
+## Merge coherence (the note I was told to verify, not assume)
+
+`80abbcc` does not touch `internal/models/transaction.go` at all
+(`git show --name-only 80abbcc | grep -c internal/models/transaction.go` -> 0),
+confirming A5's version was dropped and A3's kept.
+
+I then diffed A5's dropped version against the merged A3 version:
+
+    diff -u <repo>/internal/models/transaction.go /tmp/swarm-worktrees/budget2/work/A5/internal/models/transaction.go
+
+The differences are entirely comments and field ordering. Semantically the two
+are IDENTICAL where A5 depends on them:
+  - `Income = "Income"`, `Outflow = "Outflow"`, `Transfer = "Transfer"` — same
+    constant values in both.
+  - `TransferClass string \`json:"transfer_class,omitempty"\`` — same name, type,
+    tag; both documents define the values as "paired" / "external" / "".
+  - `TransferPairKey string \`json:"transfer_pair_key,omitempty"\`` — same.
+
+A5's own dropped comment even says: 'A5's projection reads it to identify
+confirmed inbound paired transfers as a reference amount' — the same contract
+A3's version provides. No A5 behavior depended on a differing definition. The
+merged tree compiles (`go build ./...` rc=0) and the package's tests pass, so
+`projection.go` genuinely compiles and runs against A3's definitions.
+
+---
+
+## Ruling 2026-08-16e — loop assertions flagged (observations, not failures)
+
+I am flagging these as the ruling requires. None is a failure, because in every
+case the iteration count is fixed in the source of the same function and cannot
+be zero at runtime — no loop here ranges over a value derived from production
+code, so none can be vacuous.
+
+  - projection_test.go:519 `TestRoundUpToHundred` — ranges an 8-element literal
+    table declared at :506-518. No preceding count assertion.
+  - projection_test.go:552 `TestRoundUpToHundred_CentDustAtExactBoundary` —
+    ranges a 5-element literal table declared at :542-551. No count assertion.
+  - projection_test.go:622 `TestRoundUpToHundred_GenuinelyPastBoundaryStillRoundsUp` —
+    ranges a 4-element literal table declared at :613-621. No count assertion.
+  - projection_test.go:571 / :591 — index loops `for c := 0; c < 100; c++`;
+    the bound is a literal, so 100 iterations are guaranteed.
+  - projection_test.go:431 `TestProject_DoesNotMutateInputs` — `for i := range
+    anchorsBefore` with NO preceding length assertion, whereas the sibling `txs`
+    loop (:436) and the `recurring` check (:444) both DO assert length first.
+    This is the one real inconsistency in the file. It is harmless
+    (`anchorsBefore` copies a 2-element literal, and `acct` is passed by value so
+    its slice header cannot change in the caller) but a
+    `len(acct.Anchors) != len(anchorsBefore)` check would make it match its own
+    neighbours.
+
+## Additional observation (not a defect, recorded for the file)
+
+`roundUpToHundred` returns negative zero for `x` in [1e-9, 1e-7]:
+
+    roundUpToHundred(1e-09) = -0.0000  negzero=true
+    roundUpToHundred(5e-08) = -0.0000  negzero=true
+    roundUpToHundred(1e-07) = -0.0000  negzero=true
+    roundUpToHundred(2e-07) = 100.0000
+
+`math.Ceil` of a small negative quotient yields -0. This band is unreachable from
+`Project`: the crossing gate at projection.go:154 requires
+`balance < Threshold - 1e-9`, and any shortfall arising from cent-valued data is
+either >= $0.01 or is float dust below `floatTolerance` (caught by the
+`x < floatTolerance` guard at :238, which returns a positive 0). It would take a
+shortfall of under a ten-millionth of a dollar to reach it. `moneyEq(-0, 0)` is
+true, so no assertion is affected. Cosmetic only; no action needed.
+
+---
+
+## Conclusion
+
+The one-line fix is correct in both directions and, unlike attempt 1, is now
+covered by tests that actually discriminate: reverting the single changed line in
+an out-of-repo scratch copy flips four tests from PASS to FAIL, including both
+fixtures named in the brief and one end-to-end test through the real `Project`
+wiring. The epsilon absorbs up to 1e-7 dollars — five orders of magnitude above
+the worst observed dust (2.3e-13) and five orders below one cent — so it cannot
+under-recommend on a genuine cent-level overshoot; 100 of 100 synthetic $100.01
+shortfalls still round to $200. Items 1-5 and 7-10 were re-verified independently
+this attempt (not carried over) and all hold, including transaction-level account
+isolation and the unknown-vs-zero distinction, which I proved by execution rather
+than by reading. Toolchain is fully green: build, vet, staticcheck, gofmt clean,
+and `go test ./...` rc=0 across 47 packages.
+
+Repository state on completion: `git status --porcelain` shows no tracked source
+file modified. The only untracked entries under `.swarm/verdicts/` are verdict
+files. All scratch work lived in
+`/tmp/claude-1000/-home-darrell-work-agents2/e77cc9b5-a7ea-4593-a19e-1669b194a03a/scratchpad/prefix-repo`,
+outside the repository, and my probe test files were never written into the repo.
+
+VERDICT: PASS

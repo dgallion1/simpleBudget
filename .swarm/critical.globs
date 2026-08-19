@@ -2,3 +2,5 @@ internal/services/storage/**
 internal/services/dataloader/**
 internal/services/retirement/engine/**
 internal/services/transfers/**
+internal/services/accounts/accounts.go
+internal/services/mcpsvc/confirm/**

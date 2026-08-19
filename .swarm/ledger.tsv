@@ -23,3 +23,10 @@ A6	1	tests,a11y	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A7	2	tests,second	accepted	1	worker-coder-glm	gate-ok-attempt-1
 A8	1	tests,a11y	accepted	3	worker-coder-glm	gate-ok-attempt-3
 A9	2	tests,second	accepted	2	worker-coder-glm	gate-ok-attempt-2
+R1	3	tests,second	pending	0	-	phase-0-awaiting-signoff
+R2	2	tests,second	pending	0	-	phase-0-awaiting-signoff
+R3	2	tests,second	pending	0	-	phase-0-awaiting-signoff
+R4	3	tests,second	pending	0	-	phase-0-awaiting-signoff
+R5	2	tests,second	pending	0	-	phase-0-awaiting-signoff
+R6	2	tests,second,a11y	pending	0	-	phase-0-awaiting-signoff
+R7	2	tests,second	pending	0	-	phase-0-awaiting-signoff

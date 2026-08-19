@@ -1,0 +1,63 @@
+{{/* Unassigned-files banner (A8).
+   Expects: UnassignedCount int (number of transactions from CSVs matching
+   no account).
+   Accessibility (ACCESSIBILITY.md):
+     - Status never by color alone (point 8): the banner pairs an amber icon
+       with text stating the count and a link.
+     - Dismissible by keyboard (point 14): the dismiss button is a real
+       <button>, focusable, with visible focus. Dismissal is tracked in
+       sessionStorage so the banner is not re-announced on every page load
+       within the session (point 14: "re-announced only on state change, not
+       every page load within a session"). The dismiss key is scoped to the
+       current count, so if the count changes the banner re-appears.
+     - Contrast >= 4.5:1 in both themes (points 7, 12): amber text on
+       amber-50 / amber-900-30 backgrounds, matching the accounts page
+       warnings.
+     - The link to /accounts is a real <a>, keyboard-operable (point 9).
+   Files are never silently dropped; this banner is what makes that visible
+   on both the dashboard and the explorer.
+*/}}
+{{define "unassigned_banner"}}
+{{if .UnassignedCount}}
+<div id="unassigned-banner" class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+    <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
+        </svg>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm text-amber-700 dark:text-amber-300">
+                <span class="font-medium">{{.UnassignedCount}} transaction{{if gt .UnassignedCount 1}}s{{end}} came from CSV files matching no account.</span>
+                These rows are still loaded but carry no account attribution.
+                <a href="/accounts" class="underline font-medium text-amber-800 dark:text-amber-200 hover:text-amber-900 dark:hover:text-amber-100">Assign them on the accounts page</a>.
+            </p>
+        </div>
+        <button type="button"
+            onclick="document.getElementById('unassigned-banner').remove()"
+            class="flex-shrink-0 text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 rounded p-1 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            aria-label="Dismiss unassigned files notice">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+</div>
+<script>
+    (function () {
+        var key = 'unassigned-banner-dismissed-' + {{.UnassignedCount}};
+        try {
+            if (sessionStorage.getItem(key) === '1') {
+                var b = document.getElementById('unassigned-banner');
+                if (b) b.remove();
+                return;
+            }
+        } catch (e) { /* sessionStorage may be unavailable; banner stays */ }
+        var btn = document.querySelector('#unassigned-banner button[aria-label="Dismiss unassigned files notice"]');
+        if (btn) {
+            btn.addEventListener('click', function () {
+                try { sessionStorage.setItem(key, '1'); } catch (e) {}
+            });
+        }
+    })();
+</script>
+{{end}}
+{{end}}

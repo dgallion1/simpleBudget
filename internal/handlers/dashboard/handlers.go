@@ -23,6 +23,7 @@ import (
 	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/metrics"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 )
 
@@ -30,13 +31,19 @@ var (
 	loader        *dataloader.DataLoader
 	renderer      *templates.Renderer
 	retirementMgr *retirement.SettingsManager
+	store         *storage.Storage
 )
 
-// Initialize sets up the dashboard package with required dependencies.
-func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.SettingsManager) {
+// Initialize sets up the dashboard package with required dependencies. The
+// storage service is needed to read the accounts sidecar for the accounts
+// card and the projection summary line (A8); a nil store is tolerated --
+// buildAccountsCard returns an empty card -- so existing tests that wire
+// only a loader still pass.
+func Initialize(l *dataloader.DataLoader, r *templates.Renderer, rm *retirement.SettingsManager, s *storage.Storage) {
 	loader = l
 	renderer = r
 	retirementMgr = rm
+	store = s
 }
 
 // currentBudgetSettings returns the active what-if settings used to
@@ -94,6 +101,28 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings)
 	}
 
+	// Accounts card (A8): per-account balance, freshness, low/stale/no-anchor
+	// flags, and a checking/savings projection summary line. Uses the loader's
+	// maxDate as the "as of" date so "data through Aug 12" and the balance are
+	// consistent with what the rest of the dashboard shows. Reuses
+	// accounts.BalanceAt / Freshness / Project; adds no balance or projection
+	// logic of its own.
+	asOf := maxDate
+	if asOf.IsZero() {
+		asOf = time.Now()
+	}
+	accountsCard := buildAccountsCard(store, data.Transactions, asOf, detectRecurringForDashboard(data, asOf))
+
+	// Unassigned-files banner (A8): surfaces how many transactions came from
+	// CSVs matching no account, linking to /accounts. Files are never
+	// silently dropped; this banner is what makes that visible. Read from
+	// the loader's most recent load count (the same figure the accounts page
+	// derives its unassigned file list from).
+	unassignedCount := 0
+	if loader != nil {
+		unassignedCount = loader.UnassignedCount()
+	}
+
 	pageData := map[string]interface{}{
 		"Title":            "Dashboard",
 		"ActiveTab":        "dashboard",
@@ -105,6 +134,8 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"MinDate":          minDate.Format("2006-01-02"),
 		"MaxDate":          maxDate.Format("2006-01-02"),
 		"Comparison":       comparison,
+		"AccountsCard":     accountsCard,
+		"UnassignedCount":  unassignedCount,
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

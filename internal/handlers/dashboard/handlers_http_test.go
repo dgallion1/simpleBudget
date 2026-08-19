@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -22,8 +23,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// writeTempCSV creates a temp dir with a CSV file and returns the dir, loader, and cleanup fn.
-func writeTempCSV(t *testing.T, rows [][]string) (string, *dataloader.DataLoader, func()) {
+// writeTempCSV creates a temp dir with a CSV file and returns the dir,
+// loader, store, and cleanup fn. The store is returned so the dashboard's
+// accounts card (A8), which reads the accounts sidecar through it, can be
+// exercised by tests that write accounts fixtures.
+func writeTempCSV(t *testing.T, rows [][]string) (string, *dataloader.DataLoader, *storage.Storage, func()) {
 	t.Helper()
 
 	tmpDir, err := os.MkdirTemp("", "dashboard-test-*")
@@ -53,7 +57,7 @@ func writeTempCSV(t *testing.T, rows [][]string) (string, *dataloader.DataLoader
 	}
 
 	dl := dataloader.New(tmpDir, store)
-	return tmpDir, dl, func() { os.RemoveAll(tmpDir) }
+	return tmpDir, dl, store, func() { os.RemoveAll(tmpDir) }
 }
 
 // setupTestEnv creates a temp directory with a CSV file and initializes the
@@ -62,8 +66,8 @@ func writeTempCSV(t *testing.T, rows [][]string) (string, *dataloader.DataLoader
 func setupTestEnv(t *testing.T, rows [][]string) (chi.Router, func()) {
 	t.Helper()
 
-	_, dl, cleanup := writeTempCSV(t, rows)
-	Initialize(dl, nil, nil) // nil renderer triggers fallback paths
+	_, dl, store, cleanup := writeTempCSV(t, rows)
+	Initialize(dl, nil, nil, store) // nil renderer triggers fallback paths
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -76,7 +80,7 @@ func setupTestEnv(t *testing.T, rows [][]string) (chi.Router, func()) {
 func setupTestEnvWithRenderer(t *testing.T, rows [][]string) (chi.Router, func()) {
 	t.Helper()
 
-	_, dl, cleanup := writeTempCSV(t, rows)
+	_, dl, store, cleanup := writeTempCSV(t, rows)
 
 	// Use the project's actual template directory.
 	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
@@ -86,7 +90,7 @@ func setupTestEnvWithRenderer(t *testing.T, rows [][]string) (chi.Router, func()
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	Initialize(dl, rend, nil)
+	Initialize(dl, rend, nil, store)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -125,7 +129,7 @@ func doGet(t *testing.T, router chi.Router, path string) *httptest.ResponseRecor
 
 func TestInitialize(t *testing.T) {
 	// Just verify it doesn't panic and sets globals.
-	Initialize(nil, nil, nil)
+	Initialize(nil, nil, nil, nil)
 }
 
 func TestRegisterRoutes(t *testing.T) {
@@ -203,7 +207,7 @@ func TestHandleDashboard_LoadDataError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(filepath.Join(tmpDir, "nonexistent"), store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -267,7 +271,7 @@ func TestHandleKPIsPartial_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -338,7 +342,7 @@ func TestHandleChartData_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -399,7 +403,7 @@ func TestHandleMajorExpenseDrilldown_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -511,7 +515,7 @@ func TestHandleKPIDetail_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -655,7 +659,7 @@ func TestHandleKPIExport_LoadError(t *testing.T) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(tmpDir, store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -814,7 +818,7 @@ func TestBuildMajorExpenseChartData_AllUnmatched(t *testing.T) {
 // var; restored on cleanup.
 func withMajorExpenses(t *testing.T, expenses []models.MajorExpense) {
 	t.Helper()
-	tmpDir, dl, cleanup := writeTempCSV(t, [][]string{})
+	tmpDir, dl, _, cleanup := writeTempCSV(t, [][]string{})
 	t.Cleanup(cleanup)
 	_ = tmpDir
 	if err := dl.SaveMajorExpenses(expenses); err != nil {
@@ -1101,7 +1105,7 @@ func setupBrokenLoader(t *testing.T) (chi.Router, func()) {
 
 	store, _ := storage.New(tmpDir)
 	dl := dataloader.New(badDir, store)
-	Initialize(dl, nil, nil)
+	Initialize(dl, nil, nil, nil)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -1183,6 +1187,116 @@ func TestHandleDashboard_WithRenderer(t *testing.T) {
 	}
 }
 
+// headingLevels returns the ordered list of heading levels (1-6) as they
+// appear in the body, so a test can assert the outline has no skipped levels
+// rather than describing it in an unenforced comment.
+var headingLevelRe = regexp.MustCompile(`<h([1-6])\b`)
+
+func headingLevels(body string) []int {
+	matches := headingLevelRe.FindAllStringSubmatch(body, -1)
+	out := make([]int, len(matches))
+	for i, m := range matches {
+		out[i] = int(m[1][0] - '0')
+	}
+	return out
+}
+
+// assertNoSkippedLevels fails the test if the heading outline skips a level:
+// the first heading must be <h1>, and each subsequent heading may be the same
+// level or nested one level deeper, never more than one.
+func assertNoSkippedLevels(t *testing.T, body string) {
+	t.Helper()
+	levels := headingLevels(body)
+	if len(levels) == 0 {
+		t.Fatalf("no headings found in body")
+	}
+	if levels[0] != 1 {
+		t.Errorf("first heading is h%d, want h1", levels[0])
+	}
+	prev := levels[0]
+	for _, l := range levels[1:] {
+		if l < 1 || l > 6 {
+			t.Errorf("heading level %d out of range", l)
+			continue
+		}
+		if l > prev+1 {
+			t.Errorf("heading outline skips a level: h%d -> h%d", prev, l)
+		}
+		if l > prev {
+			prev = l
+		} else {
+			prev = l
+		}
+	}
+}
+
+// TestHandleDashboard_HeadingOutlineNoSkippedLevels asserts the dashboard
+// page has exactly one <h1> naming the page and a heading outline with no
+// skipped levels (ACCESSIBILITY.md point 1), in BOTH the no-accounts state
+// (the normal first-run state and the state setupTestEnvWithRenderer
+// renders, since it never writes an accounts.json) and the with-accounts
+// state. The dashboard's panels -- the accounts card, the Budget vs Actual
+// card, and the four chart cards -- are siblings, so each is an <h2>; none
+// is nested under another, so <h3> would skip a level when the accounts
+// card is absent.
+func TestHandleDashboard_HeadingOutlineNoSkippedLevels(t *testing.T) {
+	// --- No accounts configured (the first-run state) ---
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
+	}
+	body := rec.Body.String()
+
+	openH1 := strings.Count(body, "<h1")
+	closeH1 := strings.Count(body, "</h1>")
+	if openH1 != 1 {
+		t.Errorf("dashboard page (no accounts) has %d <h1> open tags, want exactly 1", openH1)
+	}
+	if closeH1 != 1 {
+		t.Errorf("dashboard page (no accounts) has %d </h1> close tags, want exactly 1", closeH1)
+	}
+	if !strings.Contains(body, ">Dashboard</h1>") {
+		t.Errorf("dashboard page <h1> must name the page; got:\n%s", excerptAround(body, "<h1", 200))
+	}
+	// The accounts card is absent (HasAny is false), so the only <h2>s are the
+	// chart/budget section headings. The outline must still have no skips.
+	assertNoSkippedLevels(t, body)
+	if strings.Contains(body, `aria-labelledby="accounts-card-heading"`) {
+		t.Errorf("dashboard page (no accounts) must not render the accounts card section")
+	}
+
+	// --- With an account configured (accounts card present) ---
+	router2, _, cleanup2 := setupAccountsTestEnv(t, defaultRows(), []models.Account{
+		{
+			ID:                  "usaa",
+			Name:                "USAA Checking",
+			Institution:         "USAA",
+			Kind:                models.AccountKindChecking,
+			FilePatterns:        []string{"test.csv"},
+			Anchors:             []models.BalanceAnchor{{Date: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), Amount: 2000.00}},
+			LowBalanceThreshold: 500.00,
+		},
+	}, time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC))
+	defer cleanup2()
+
+	rec2 := doGetDash(t, router2, "/dashboard?start=2025-01-01&end=2025-03-31")
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec2.Code, rec2.Body.String()[:min(rec2.Body.Len(), 300)])
+	}
+	body2 := rec2.Body.String()
+
+	if strings.Count(body2, "<h1") != 1 {
+		t.Errorf("dashboard page (with accounts) has %d <h1> open tags, want exactly 1", strings.Count(body2, "<h1"))
+	}
+	if !strings.Contains(body2, `aria-labelledby="accounts-card-heading"`) {
+		t.Errorf("dashboard page (with accounts) must render the accounts card section")
+	}
+	assertNoSkippedLevels(t, body2)
+}
+
 func TestHandleKPIsPartial_WithRenderer(t *testing.T) {
 	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
 	defer cleanup()
@@ -1256,7 +1370,7 @@ func TestDashboardKPIs_LivingSparkline_HasTargetAttribute(t *testing.T) {
 		{"2025-01-15", "Salary", "5000", "Payroll"},
 		{"2025-01-05", "Rent", "-1500", "Housing"},
 	}
-	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	tmpDir, dl, store, cleanup := writeTempCSV(t, rows)
 	defer cleanup()
 
 	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
@@ -1265,17 +1379,13 @@ func TestDashboardKPIs_LivingSparkline_HasTargetAttribute(t *testing.T) {
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	store, err := storage.New(tmpDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
 	rm := retirement.NewSettingsManager(tmpDir, store)
 	settingsPath := filepath.Join(tmpDir, "whatif.json")
 	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	Initialize(dl, rend, rm)
+	Initialize(dl, rend, rm, store)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -1298,7 +1408,7 @@ func TestDashboardKPIs_BudgetSparkline_BalanceMode(t *testing.T) {
 	rows := [][]string{
 		{"2025-01-05", "Rent", "-1500", "Housing"},
 	}
-	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	tmpDir, dl, store, cleanup := writeTempCSV(t, rows)
 	defer cleanup()
 
 	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
@@ -1307,17 +1417,13 @@ func TestDashboardKPIs_BudgetSparkline_BalanceMode(t *testing.T) {
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	store, err := storage.New(tmpDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
 	rm := retirement.NewSettingsManager(tmpDir, store)
 	settingsPath := filepath.Join(tmpDir, "whatif.json")
 	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	Initialize(dl, rend, rm)
+	Initialize(dl, rend, rm, store)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -1357,7 +1463,7 @@ func excerptAround(body, needle string, around int) string {
 
 func TestHandleDashboard_RendersBudgetVsActualCard(t *testing.T) {
 	rows := defaultRows()
-	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	tmpDir, dl, store, cleanup := writeTempCSV(t, rows)
 	defer cleanup()
 
 	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
@@ -1366,17 +1472,13 @@ func TestHandleDashboard_RendersBudgetVsActualCard(t *testing.T) {
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	store, err := storage.New(tmpDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
 	rm := retirement.NewSettingsManager(tmpDir, store)
 	settingsPath := filepath.Join(tmpDir, "whatif.json")
 	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	Initialize(dl, rend, rm)
+	Initialize(dl, rend, rm, store)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)
@@ -1455,7 +1557,7 @@ func TestDashboardKPIs_RendersBudgetCards_WithTarget(t *testing.T) {
 	rows := [][]string{
 		{"2025-01-05", "Rent", "-3000", "Housing"},
 	}
-	tmpDir, dl, cleanup := writeTempCSV(t, rows)
+	tmpDir, dl, store, cleanup := writeTempCSV(t, rows)
 	defer cleanup()
 
 	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
@@ -1464,10 +1566,6 @@ func TestDashboardKPIs_RendersBudgetCards_WithTarget(t *testing.T) {
 		t.Fatalf("templates.New: %v", err)
 	}
 
-	store, err := storage.New(tmpDir)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
 	rm := retirement.NewSettingsManager(tmpDir, store)
 	// Write the settings file directly so the manager loads our target.
 	settingsPath := filepath.Join(tmpDir, "whatif.json")
@@ -1475,7 +1573,7 @@ func TestDashboardKPIs_RendersBudgetCards_WithTarget(t *testing.T) {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	Initialize(dl, rend, rm)
+	Initialize(dl, rend, rm, store)
 
 	r := chi.NewRouter()
 	RegisterRoutes(r)

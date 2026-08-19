@@ -106,7 +106,7 @@ func SetupDependencies(c *config.Config) error {
 	}
 
 	// Initialize handler packages
-	dashboard.Initialize(loader, renderer, retirementMgr)
+	dashboard.Initialize(loader, renderer, retirementMgr, store)
 	explorer.Initialize(loader, renderer, cfg, store)
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)

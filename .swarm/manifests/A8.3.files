@@ -1,0 +1,12 @@
+cmd/server/main.go
+internal/handlers/dashboard/accounts_card.go
+internal/handlers/dashboard/accounts_card_test.go
+internal/handlers/dashboard/handlers.go
+internal/handlers/dashboard/handlers_http_test.go
+internal/handlers/explorer/accounts_card_explorer_test.go
+internal/handlers/explorer/handlers.go
+web/templates/components/accounts_card.html
+web/templates/components/budget-vs-actual.html
+web/templates/components/unassigned_banner.html
+web/templates/pages/dashboard.html
+web/templates/pages/explorer.html

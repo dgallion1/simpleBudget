@@ -241,6 +241,15 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 		"MajorExpenseFilter": majorExpenseID,
 	}
 
+	// Unassigned-files banner (A8): same count the dashboard shows, surfaced
+	// here too so a user browsing transactions is never left unaware that some
+	// came from CSVs matching no account. Files are never silently dropped.
+	unassignedCount := 0
+	if loader != nil {
+		unassignedCount = loader.UnassignedCount()
+	}
+	pageData["UnassignedCount"] = unassignedCount
+
 	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
 		_ = renderer.Render(w, "base", pageData)

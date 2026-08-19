@@ -145,7 +145,7 @@
                         <td class="px-3 py-2">{{$leg.Description}}</td>
                         <td class="px-3 py-2">{{$leg.Institution}}</td>
                         <td class="px-3 py-2">{{$leg.AccountName}}</td>
-                        <td class="px-3 py-2 text-right font-medium {{if isNegative $leg.Amount}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                        <td class="px-3 py-2 text-right font-medium {{if isNegative $leg.Amount}}text-red-600 dark:text-red-400{{else}}text-green-700 dark:text-green-400{{end}}">
                             {{if isNegative $leg.Amount}}{{formatMoney $leg.Amount}}{{else}}+{{formatMoney $leg.Amount}}{{end}}
                         </td>
                         <td class="px-3 py-2 text-center">
@@ -253,7 +253,7 @@
                     {{.Left.Date.Format "2006-01-02"}}
                     {{if .Left.AccountID}}&middot; {{.Left.AccountID}}{{else}}&middot; unassigned{{end}}
                 </div>
-                <div class="text-sm mt-1 {{if isNegative .Left.Amount}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                <div class="text-sm mt-1 {{if isNegative .Left.Amount}}text-red-600 dark:text-red-400{{else}}text-green-700 dark:text-green-400{{end}}">
                     {{if isNegative .Left.Amount}}{{formatMoney .Left.Amount}}{{else}}+{{formatMoney .Left.Amount}}{{end}}
                 </div>
             </div>
@@ -264,7 +264,7 @@
                     {{.Right.Date.Format "2006-01-02"}}
                     {{if .Right.AccountID}}&middot; {{.Right.AccountID}}{{else}}&middot; unassigned{{end}}
                 </div>
-                <div class="text-sm mt-1 {{if isNegative .Right.Amount}}text-red-600 dark:text-red-400{{else}}text-green-600 dark:text-green-400{{end}}">
+                <div class="text-sm mt-1 {{if isNegative .Right.Amount}}text-red-600 dark:text-red-400{{else}}text-green-700 dark:text-green-400{{end}}">
                     {{if isNegative .Right.Amount}}{{formatMoney .Right.Amount}}{{else}}+{{formatMoney .Right.Amount}}{{end}}
                 </div>
             </div>

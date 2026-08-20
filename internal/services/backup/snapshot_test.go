@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"budget2/internal/services/storage"
 )
 
 // helper: populate a fake data dir with the file-types we expect to back up
@@ -147,6 +149,68 @@ func TestSkipPredicate_FilesUnderSkipListedDirs(t *testing.T) {
 		if got := skip(path, tc.isDir); got != tc.want {
 			t.Errorf("skip(%q, isDir=%v) = %v, want %v", tc.rel, tc.isDir, got, tc.want)
 		}
+	}
+}
+
+// newStagingName derives a name in exactly the form atomicWrite and
+// createExclusive stage under — os.CreateTemp(dir, base+storage.
+// StagingSuffix+"*") — using storage's own exported separator rather than a
+// hand-written ".tmp-" literal, so this fixture cannot silently drift out of
+// sync with what the storage package actually produces. The file is created
+// on disk (a real os.CreateTemp call, not a string built by hand) and
+// removed again; only its generated name is kept.
+func newStagingName(t *testing.T, dir, destBase string) string {
+	t.Helper()
+	f, err := os.CreateTemp(dir, destBase+storage.StagingSuffix+"*")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	name := filepath.Base(f.Name())
+	if err := f.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := os.Remove(f.Name()); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	return name
+}
+
+// TestSkipPredicate_StagingNames pins the cross-package contract from R11
+// attempt 3: SkipPredicate must recognise a staging name via
+// storage.IsStagingName, not a hardcoded literal, and must keep recognising
+// both the current random-suffixed form and the pre-fix fixed-suffix form
+// left behind by crashes before staging names were randomised. It must NOT
+// treat every file that merely contains ".tmp" as a leftover.
+func TestSkipPredicate_StagingNames(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	skip := SkipPredicate(dataDir, backupDir)
+
+	// Current form: <dest-base>.tmp-<random>, derived from the real staging
+	// path (see newStagingName), not typed out by hand.
+	current := newStagingName(t, dataDir, "sidecar.json")
+	if !skip(filepath.Join(dataDir, current), false) {
+		t.Errorf("SkipPredicate did not skip %q, a name produced by the real "+
+			"atomicWrite/createExclusive staging path", current)
+	}
+
+	// Legacy form: staging files orphaned by a crash before this change —
+	// path+".tmp" with no random suffix — must still be swept up.
+	const legacy = "sidecar.json.tmp"
+	if !skip(filepath.Join(dataDir, legacy), false) {
+		t.Errorf("SkipPredicate did not skip %q, the pre-fix staging name "+
+			"(pre-existing crash orphans must still be recognised)", legacy)
+	}
+
+	// A legitimate data file whose name merely contains ".tmp" as a
+	// substring — not as the exact legacy suffix, and not followed by a
+	// decimal random component after StagingSuffix — is real user data and
+	// must be backed up, not silently dropped.
+	const legitimate = "report.tmp-notes.csv"
+	if skip(filepath.Join(dataDir, legitimate), false) {
+		t.Errorf("SkipPredicate skipped %q, a legitimate file that merely "+
+			"contains \".tmp\"/StagingSuffix as a substring — it is not a "+
+			"staging leftover and must not be excluded from backups", legitimate)
 	}
 }
 

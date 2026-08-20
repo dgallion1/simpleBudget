@@ -1,0 +1,138 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R12
+ATTEMPT: 1
+---
+## Integrity check (done first, as required)
+
+- Prompt-injection claim: independently confirmed the fix is present and not
+  reverted/hidden. Both call sites use the new key:
+  - write: internal/services/accounts/projection.go:163 `byDay[keyOf(occ)] += -rp.Amount`
+  - read:  internal/services/accounts/projection.go:177 `balance += byDay[keyOf(day)]`
+  Verified via `git diff internal/services/accounts/projection.go` (working
+  tree vs HEAD 040f4b3) and by reading the full function body
+  (projection.go:90-190). No stray `make(map[time.Time]` survives anywhere
+  in the tree (`grep -rn "make(map\[time.Time\]"` → no hits). `keyOf` is
+  declared exactly once (projection.go:139) and not shadowed elsewhere
+  (`grep -n keyOf projection.go` → 3 hits: decl + 2 call sites, both listed
+  above).
+- Full diff of every R12 file reviewed
+  (`git diff internal/services/accounts/projection.go internal/services/accounts/projection_test.go`,
+  plus `cat` of the new `internal/services/mcpsvc/ledger/r12_default_asof_recurring_test.go`):
+  scoped exactly to the described change (calendarDay key type + keyOf
+  closure + 2 call-site edits, +30/-3 lines) and one new pinning test
+  (+81 lines) plus one new e2e MCP test file. No stray edits, no weakened
+  assertions, no commented-out code, no debug output, no altered existing
+  expectations found.
+- `go build ./...`, `go vet ./...` both clean. Full `go test -race ./...`
+  (whole module) passed with exit code 0 — no regressions anywhere,
+  including R1/R3/R5/R7 packages.
+- Confirmed no pre-existing fixture in internal/services/accounts used
+  time.Now() (`grep -rn "time.Now()" *_test.go` → only comment references in
+  the new test). The worker's "no existing test expectation changed" claim
+  holds: `git diff` on projection_test.go shows pure addition (+81/-0).
+
+Integrity check: no evidence of the described injection surviving in the
+delivered code. The mechanical/regression side of the fix is genuinely
+correct for the exact case R12 was scoped to (UTC write / Local read on the
+same nominal calendar day, tested and passing under TZ=UTC,
+America/New_York, Asia/Tokyo).
+
+## The claim under test is FALSE: a genuine, reproducible occurrence-vanish
+case survives the fix
+
+The brief's chosen convention — key on (Y, M, D) taken in EACH value's own
+Location — collides two different failure directions:
+
+1. dayOf(rp.NextExpected) always carries UTC (CSV dates).
+2. asOfDay = dayOf(asOf) carries asOf's own Location (time.Local on the
+   default path).
+3. The advance-loop (`!occ.After(asOfDay)`) correctly filters on REAL
+   INSTANTS — Location does not affect `After`/`Before`. It is the balance
+   walk that is label-based: it walks calendar-day LABELS
+   asOfDay+1 .. asOfDay+35 in ASOF's OWN LOCATION, explicitly excluding
+   "today" (asOfDay itself, d=0).
+
+For a positive-UTC-offset zone (e.g. Asia/Tokyo, UTC+9), an occurrence whose
+UTC-labeled calendar day equals asOf's LOCAL "today" label, but whose real
+instant is still in asOf's future (because the occurrence's midnight-UTC
+instant lands at 09:00 local, and asOf is earlier than that in local
+wall-clock time), passes the instant-based advance-loop filter (it genuinely
+is "after asOf") but is written under a label (asOf's own "today") that the
+label-based balance walk never visits, since the walk starts at asOfDay+1.
+The occurrence is silently dropped — not applied to the balance at all.
+
+Reproduced with a standalone test (built and run under
+internal/services/accounts/, then deleted — not left in the tree, confirmed
+by `git status --porcelain` before/after):
+
+```go
+loc, _ := time.LoadLocation("Asia/Tokyo")
+acct := ...Anchor 800.00 on 2026-08-01, LowBalanceThreshold 500.00...
+asOf := time.Date(2026, 9, 1, 8, 0, 0, 0, loc)              // 2026-08-31 23:00 UTC (real instant)
+yearly := rp("insurance", 400.00, "yearly",
+    time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),             // 1 real hour AFTER asOf's instant
+    leg("usaa", mustDate(2026, 7, 1)))
+got, _ := Project(acct, nil, asOf, []models.RecurringPayment{yearly})
+```
+
+Result: `Crossing=0001-01-01 00:00:00 +0000 UTC Minimum=800.00 SuggestedTopUp=0.00`
+— i.e. the $400 outflow, which genuinely occurs 1 hour after asOf and
+comfortably within the 35-day horizon, never registers. The account reports
+"healthy, no top-up needed" when a real, imminent debit was scheduled and
+silently dropped. Yearly frequency was used specifically to rule out a
+same-run second-cycle collision papering over the drop (confirmed with a
+monthly variant first: the near occurrence vanished but a coincidental
+second-cycle occurrence 30 days later happened to land on a matching label,
+masking the loss behind a wrong-but-nonzero Crossing date one full cycle
+later than the true first crossing — itself also a defect, a materially
+wrong "first crossing" date shown to the user).
+
+This is exactly the attack the dispatch brief asked me to construct
+("asOf is Local and NextExpected is UTC and the instants straddle midnight
+— does an occurrence land on the wrong day, or get double-counted, or
+vanish?"), and it is not a contrived corner case restricted to a single
+instant: the vanish window spans up to |UTC offset| hours of every affected
+occurrence's due date, for any host whose time.Local differs from UTC by a
+positive offset (e.g. all of APAC). The committed pinning test
+(TestProject_RecurringAppliesAcrossUTCWriteAndLocalReadLocations) explicitly
+avoids this by using dates "17 days apart... so the fixture's outcome is
+identical under any TZ" — i.e. the author was aware the interaction is
+timing-sensitive and chose a fixture that cannot exercise the boundary,
+rather than one that proves the boundary is safe.
+
+Net effect: the fix correctly repairs the 100%-drop defect R12 was opened
+for, but the specific keying/walk-boundary design it lands has its own,
+narrower but real and reproducible, false-negative case for near-term
+occurrences on non-UTC hosts. The stated acceptance claim ("every
+time.Now()-derived projection now applies recurring occurrences correctly")
+is not true as delivered.
+
+## Other criteria checked, no defects found
+- R3 TestDashboardAndMCPProjectionAgree: PASS, and now also agrees with the
+  MCP default path for a genuine recurring case (per the new e2e test),
+  matching the brief's claim.
+- R5's TestGetBalanceProjectionDefaultAsOf* suite: all PASS, unchanged.
+- Constraint compliance: only projection.go + projection_test.go modified
+  under internal/services/accounts; the new mcpsvc/ledger test file is
+  additive-only (new file), consistent with the manifest's declared scope
+  (R12.1.files lists it explicitly) even though the brief's prose
+  constraint section reads as excluding mcpsvc/ — not treated as
+  disqualifying since it is a new file, not a change to committed mcpsvc
+  code, and criterion 2 requires exactly this e2e test to exist.
+- No repo debris left by this checker (git status identical before/after
+  except my temporary test file, which was created and removed within
+  internal/services/accounts/, confirmed via `git status --porcelain`).
+
+## Verdict rationale
+Default-to-FAIL-on-ambiguity does not even apply here — the vanish case is
+deterministic and reproduced twice (yearly and monthly variants). This is a
+real, user-visible correctness gap in the delivered fix (an imminent
+recurring debit can still be silently omitted from the projection on
+non-UTC hosts), directly contradicting the claim under test. Recommend
+sending back to the worker: either compare using each side's UTC-normalized
+calendar day (not each value's own Location) so write/read semantics attach
+to a single, unambiguous "today" boundary, or otherwise close the
+asOfDay-exclusion boundary explicitly against occ's real instant rather than
+its label.

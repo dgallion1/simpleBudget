@@ -376,6 +376,59 @@ func (s *Storage) CreateExclusive(path string, data []byte, perm os.FileMode) er
 	return createExclusive(path, payload, perm)
 }
 
+// StagingSuffix separates a staging file's destination-derived prefix from
+// the random component os.CreateTemp appends, in both createExclusive below
+// and atomicWrite further down: <destination-base>+StagingSuffix+<random>.
+// It is exported, and IsStagingName below is built on it, so that a
+// consumer needing to recognise (or, in a test, construct) a staging name
+// derives it from here instead of duplicating the separator as a string
+// literal in another package — the two cannot drift apart because there is
+// only one definition.
+//
+// legacyStagingSuffix is the pre-fix staging name, <destination-base>.tmp,
+// used by both functions before concurrent writers could otherwise share
+// one staging file (see atomicWrite's doc comment). Neither function
+// produces it anymore, but a crash before this change could have orphaned
+// one in a real data directory, so IsStagingName still recognises it.
+const (
+	StagingSuffix       = ".tmp-"
+	legacyStagingSuffix = ".tmp"
+)
+
+// IsStagingName reports whether base is the name of a staging file produced
+// by createExclusive or atomicWrite: <destination-base>+StagingSuffix+
+// <decimal random>, e.g. "sidecar.json.tmp-2496562633". It also recognises
+// the legacyStagingSuffix form for staging files orphaned by a crash before
+// staging names were randomised.
+//
+// Consumers that need to treat a leftover staging file specially — notably
+// backup.SkipPredicate, which must exclude one from a snapshot and from
+// restore-time pruning — call this instead of matching a string literal of
+// their own, so a future change to the staging convention is a compile-time
+// change here rather than a silent behavior change somewhere else.
+func IsStagingName(base string) bool {
+	if strings.HasSuffix(base, legacyStagingSuffix) {
+		return true
+	}
+	i := strings.LastIndex(base, StagingSuffix)
+	if i < 0 {
+		return false
+	}
+	random := base[i+len(StagingSuffix):]
+	if random == "" {
+		return false
+	}
+	for _, r := range random {
+		if r < '0' || r > '9' {
+			// Not the decimal suffix os.CreateTemp generates — a legitimate
+			// file name that merely contains StagingSuffix as a substring
+			// (e.g. "report.tmp-notes.txt") is not a staging leftover.
+			return false
+		}
+	}
+	return true
+}
+
 // createExclusive stages the payload beside its destination and publishes it
 // with a hard link. Link, not rename: rename silently replaces an existing
 // destination, link fails with EEXIST. That is what makes this both atomic
@@ -389,7 +442,7 @@ func createExclusive(path string, data []byte, perm os.FileMode) error {
 	// Staged in the destination directory so the link stays inside one
 	// filesystem, and under a unique name so concurrent callers cannot
 	// collide on the staging file itself.
-	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	f, err := os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
 	if err != nil {
 		return err
 	}
@@ -431,20 +484,44 @@ func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadClos
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-// atomicWrite writes data to a file atomically using a temp file
+// atomicWrite writes data to a file atomically using a temp file. The
+// staging file is created under a unique name (mirroring createExclusive
+// above) so that concurrent writers to the same destination — permitted by
+// WriteFile's shared lock — never share a staging file: each writer gets its
+// own temp file, so neither a spurious rename failure nor torn content from
+// two writers' bytes interleaving in one staging file can occur.
 func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	// Write to temp file
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, perm); err != nil {
+	// Staged in the destination directory (same filesystem, so the rename
+	// below is atomic) under a unique name so concurrent callers cannot
+	// collide on the staging file itself.
+	f, err := os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	// If the rename below succeeds this is a no-op (nothing left at
+	// tmpPath); if we return early on an error this cleans up the staging
+	// file so a failed write doesn't litter the data directory.
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
 		return err
 	}
 
-	// Atomic rename
+	// Rename, unlike Link, replaces an existing destination, which is what
+	// gives atomicWrite its rewrite semantics.
 	return os.Rename(tmpPath, path)
 }
 

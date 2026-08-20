@@ -1,0 +1,192 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R10
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16. Scratch copy for all
+mutation work: /tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad/r10
+(outside the repo; rsync -a --exclude .git). Scratch verified byte-identical to the
+repo afterwards: `diff -r $SC/internal <repo>/internal` -> SCRATCH_FULLY_RESTORED_NO_DIFF.
+I edited nothing in the repo.
+
+--- CRITERION 1: no production code changed; confirm/ untouched --- MET
+Command: `git diff HEAD --stat -- internal/services/mcpsvc/` -> EMPTY output.
+anchor.go, resolve.go, approval.go therefore match HEAD exactly.
+Command: `git ls-files --others --exclude-standard internal/services/mcpsvc/` ->
+  internal/services/mcpsvc/ledger/browser_approval_test.go
+  internal/services/mcpsvc/ledger/consequences_test.go
+  internal/services/mcpsvc/ledger/r12_default_asof_recurring_test.go   (R12's, not R10's)
+Command: `git status --short internal/services/mcpsvc/confirm/` -> EMPTY. No file
+added, modified or deleted under the critical glob internal/services/mcpsvc/confirm/**.
+`find internal/services/mcpsvc/confirm -type f` still lists exactly the 6 pre-existing
+files (approvals.go, approvals_test.go, ask.go, ask_test.go, confirm.go, confirm_test.go).
+Whole-tree `git diff HEAD --stat` shows modifications only in .swarm/briefs/R12.md,
+.swarm/ledger.tsv, REVIEW_FIXES_SPEC.md, internal/services/accounts/projection.go,
+internal/services/accounts/projection_test.go -- all R12's, per the brief's
+shared-tree note, none of them R10's.
+
+--- CRITERION 2: set_balance_anchor round trip is genuinely end-to-end --- MET
+Read browser_approval_test.go in full. It is not stubbed:
+ - real server + real in-memory transport: browser_approval_test.go:47-56
+   (mcp.NewServer, Register(srv, deps), mcp.NewInMemoryTransports, srv.Connect).
+ - real approval registry, not a fake: browser_approval_test.go:103
+   `deps.Approvals = confirm.NewApprovals(browserApprovalTTL)` -- the production type.
+ - URL actually produced by askForApproval: the client declares ONLY URL elicitation
+   (browser_approval_test.go:59-61), so confirm.CanAsk (confirm/ask.go, `e.Form != nil
+   || e.URL == nil`) is false and confirm.CanAskInBrowser is true; anchor.go:125 is the
+   only rung that can fire. Asserted at browser_approval_test.go:126-128 against the
+   prefix "http://localhost:8080/mcp/approve/", which is exactly what
+   confirm.BrowserApprovalRequest builds.
+ - decision recorded OUT OF BAND: browser_approval_test.go:70-73 pulls the id out of
+   the URL and calls `deps.Approvals.Decide(id, *answer)` -- the same call
+   confirm/approvals.go's Decide doc says the /mcp/approve HTTP handler makes. The
+   ElicitResult returned to the server carries NO answer (browser_approval_test.go:77,
+   Action "accept" with empty Content), so the answer cannot travel through the client.
+ - consumed through awaitApproval: proven, not inferred. MUTATION in scratch, at
+   approval.go:58, `if deps.Approvals == nil || true {` (browser rung never consulted):
+   --- FAIL: TestSetBalanceAnchorApprovedInBrowserWritesTheDescribedAmount
+   --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict
+   Both approved round trips die when awaitApproval is neutered. (They cannot be
+   rescued by the form rung: confirm.DecisionFrom on an accept with no "confirm" field
+   returns Refused.)
+ - the anchor written is the amount the approval described: browser_approval_test.go:130-149
+   loads via accounts.Load(deps.Store) and compares a.Anchors[0].Amount to wantAmount.
+   Proven live: MUTATION in scratch at anchor.go:225 writing `Amount: amount * 2` ->
+   --- FAIL: TestSetBalanceAnchorApprovedInBrowserWritesTheDescribedAmount  (and only that one).
+
+--- CRITERION 3: resolve_transfer approval path + refusal leaves the file byte-unchanged --- MET
+Approval path: same harness, browser_approval_test.go:199-232; URL asserted at :229-231;
+awaitApproval dependence proven by the approval.go:58 mutation above.
+Refusal path compares CONTENT, not existence or mtime:
+  browser_approval_test.go:263-269
+    after, err := os.ReadFile(decisionsPath)
+    if string(after) != before {   // before is the literal `{"decisions": {}}` written at :240
+Proven live: MUTATION in scratch at resolve.go:146 and anchor.go:143,
+`if false && d != confirm.Approved {` (a refusal writes anyway) ->
+   --- FAIL: TestSetBalanceAnchorRefusedInBrowserWritesNothing
+   --- FAIL: TestResolveTransferRefusedInBrowserLeavesDecisionsFileByteUnchanged
+   (the two approved tests still PASS -- the mutation is caught by exactly the two
+   refusal tests and nothing else).
+Fixture is sound: seedSuspectedPair (resolve_test.go:25-45) writes only accounts,
+checking.csv and schwab.csv, so the transfer_decisions.json written at :240 is
+untouched by the seeding.
+
+--- CRITERION 4: prose tests assert facts, not sentences --- MET
+consequences_test.go asserts independent substrings: account id (:36), fmt.Sprintf
+"%.2f" amount (:39-40), date (:43), pair key (:76, :87), verdict words CONFIRMED /
+REJECTED plus the absence of the opposite (:79-84, :90-95). No fixed-sentence compare
+anywhere in the file.
+Copyedit survivability, tested rather than asserted: in scratch I rewrote the leading
+sentence of BOTH consequence functions -- anchorConsequences' first two format lines
+("a BalanceAnchor would be recorded on account %s stating its balance was %.2f as of
+the END of %s" -> "COPYEDIT: this will record a balance anchor for the account %s,
+asserting the balance to be %.2f at the close of business on %s.", plus a reworded
+bank-convention clause) and both resolveConsequences branches ("transfer pair %s would
+be CONFIRMED as a real transfer: both legs become Transfer/paired on the" -> "COPYEDIT:
+the transfer pair %s is about to be CONFIRMED, i.e. treated as a genuine transfer; both
+legs get paired on the", and the mirror for REJECTED). Result: all 8 tests PASS. A
+substantial copyedit does not break them.
+Judgment: they would survive an innocuous copyedit and catch semantic drift (criterion 5
+below demonstrates the catch). Two residual couplings, both to the fact itself rather
+than to wording, noted for the record: the verdict assertions require the words
+CONFIRMED/REJECTED to stay upper-case, and the amount assertion requires plain %.2f
+rendering (a change to "$4,210.55" would fail it). Neither is a fixed sentence.
+
+--- CRITERION 5: discrimination, reproduced by me --- MET
+All runs: `go test -count=1 -run '<the 8 names>' -v ./internal/services/mcpsvc/ledger/`
+in the scratch copy. Baseline before any mutation: 8/8 PASS.
+(a) anchorConsequences renders a different amount than is written -- scratch anchor.go:188
+    `id, amount, date)` -> `id, amount+1, date)`:
+      --- FAIL: TestAnchorConsequencesNamesTheAccountAmountAndDate
+      --- FAIL: TestAnchorConsequencesDistinguishesAmounts
+      --- PASS: the other six (both resolve prose tests and all four round trips)
+(b) CONFIRMED/REJECTED swapped between resolveConsequences' branches -- scratch
+    resolve.go:185 CONFIRMED->REJECTED and resolve.go:193 REJECTED->CONFIRMED:
+      --- FAIL: TestResolveConsequencesNamesThePairKeyAndVerdict
+              (consequences_test.go:80, :83, :91, :94 all fired)
+      --- PASS: TestResolveConsequencesDistinguishesPairKeys   <-- as required, it does
+              NOT fail under (b); it compares pair-a vs pair-b within one branch, so the
+              verdict word is irrelevant to it. The tests are not coupled.
+      --- PASS: both anchor prose tests and all four round trips.
+Each mutation is caught by exactly the tests that own the fact, and by no others.
+Scratch restored from saved originals and diff-verified against the repo after each step.
+
+--- CRITERION 6: stability, 30+ runs under -race in separate processes --- MET, 88/88
+Run A -- 40 separate `go test` processes, sequential:
+  `for i in $(seq 1 40); do go test -race -count=1 -run 'InBrowser|Consequences'
+   ./internal/services/mcpsvc/ledger/ ...; done`
+  -> SEQUENTIAL_RESULT: PASS=40 FAIL=0 of 40
+Run B -- adversarial contention, because the harness uses a 400ms approval TTL
+(browser_approval_test.go:34) and Approvals.sweepLocked would delete a pending request
+that ages past it, so a slow machine is the realistic flake vector. Prebuilt race binary
+(`go test -race -c`, verified instrumented: `go tool nm /tmp/r10.test | grep -c
+racefuncenter` -> 3), then 8 concurrent processes per round x 6 rounds, ALL pinned to
+two CPUs via `taskset -c 0,1` on a 32-core box (~16x oversubscription under -race):
+  -> CONTENDED_RESULT: PASS=48 FAIL=0 of 48
+Total 88/88. `grep -l "DATA RACE" /tmp/r10run.*.log /tmp/r10c.*.log` -> RACE_REPORTS_FOUND=0.
+The `-run 'InBrowser|Consequences'` selector was verified to match exactly the 8 new
+tests and nothing else (grep of ^func Test across the package -> count 8), and the
+prebuilt binary reports 8 `--- PASS` lines per run.
+
+--- CRITERION 7: the eight tests exercise what their names claim --- MET, with one
+narrowness recorded below for the lead
+Opened all eight.
+1 TestSetBalanceAnchorApprovedInBrowserWritesTheDescribedAmount (:96) -- browser round
+  trip + written amount. Both halves proven live (approval.go:58 and anchor.go:225 mutations).
+2 TestSetBalanceAnchorRefusedInBrowserWritesNothing (:154) -- asserts len(a.Anchors)==0
+  at :189. Proven live by the anchor.go:143 mutation.
+3 TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (:199) -- browser round
+  trip proven live; see NARROWNESS below.
+4 TestResolveTransferRefusedInBrowserLeavesDecisionsFileByteUnchanged (:236) -- file
+  content compare at :267. Proven live by the resolve.go:146 mutation.
+5 TestAnchorConsequencesNamesTheAccountAmountAndDate (:25) -- two dissimilar cases
+  (positive and negative amount, different ids/dates) so a hardcoded literal cannot
+  satisfy it. Proven live by mutation (a).
+6 TestAnchorConsequencesDistinguishesAmounts (:53) -- 500.00 vs 5000.00, guards the
+  substring-of-a-longer-number trap explicitly (:59). Proven live by mutation (a).
+7 TestResolveConsequencesNamesThePairKeyAndVerdict (:72) -- proven live by mutation (b).
+8 TestResolveConsequencesDistinguishesPairKeys (:105) -- correctly insensitive to (b),
+  fails only on a pair-key collapse.
+
+NARROWNESS (reproduced, reported for the lead's adjudication -- not scored as a
+criterion failure): TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict
+asserts out.Verdict (browser_approval_test.go:220), and applyResolveTransfer builds that
+field as `Verdict: string(v)` (resolve.go:234) -- an echo of the tool's own input, not a
+read-back of transfer_decisions.json. I mutated scratch resolve.go:227 to call
+`deps.Transfers.ResolveTransfer(key, written)` with the OPPOSITE verdict while leaving
+the output field alone: all 8 tests still PASS. So this test cannot distinguish a write
+that records the opposite verdict from a correct one. What it DOES prove: the browser
+round trip (it fails when awaitApproval is neutered), that a write happened at all
+(Confirmed=true is reachable only after ResolveTransfer returns nil, resolve.go:227-236),
+and that a .bak was taken (:226-228). Context: the pre-existing non-browser write test
+TestResolveTransferSecondCallWithTokenWrites (resolve_test.go:75-103) has the identical
+assertion depth and also never reads the decisions file, so this is the package's
+established shape, which the brief told the worker to reuse -- not a regression R10
+introduced. The lead's criterion 3 asked for the round trip "likewise" plus a
+content-compare on the REFUSAL path; both are present and proven. If the lead wants the
+approved path to read the verdict back off disk, that is a follow-up, and I flag it
+rather than fail on it.
+Second, smaller note: the two Refused round-trip tests still PASS under the approval.go:58
+mutation, because a refusal reads the same ("refused", nothing written) whether it came
+from awaitApproval or from confirm.DecisionFrom. They correctly pin the OUTCOME (no
+write) but do not by themselves pin the browser rung; the two Approved tests do.
+
+--- CRITERION 8: build, vet, race tests clean --- MET
+`go build ./...`  -> "Go build: Success", BUILD=0
+`go vet ./...`    -> "Go vet: No issues found", VET=0
+`go test -race -count=1 ./internal/services/mcpsvc/ledger/...`
+                  -> ok budget2/internal/services/mcpsvc/ledger 1.720s, LEDGER=0
+`go test -race -count=1 ./...` -> FULL=0, no FAIL lines. Nothing odd in accounts/ or in
+R12's r12_default_asof_recurring_test.go to attribute either way.
+
+--- SCOPE ---
+Exactly the two files in .swarm/manifests/R10.1.files were added:
+internal/services/mcpsvc/ledger/browser_approval_test.go and
+internal/services/mcpsvc/ledger/consequences_test.go. Both are _test.go; the change is
+test-only as the brief required. Nothing under .swarm/critical.globs was touched --
+specifically internal/services/mcpsvc/confirm/** is byte-unchanged and gained no file,
+so Tier 1 remains correct for this task. The other dirty paths in the tree
+(internal/services/accounts/projection.go, projection_test.go, .swarm/briefs/R12.md,
+.swarm/ledger.tsv, REVIEW_FIXES_SPEC.md, r12_default_asof_recurring_test.go) are R12's
+halted work and are outside R10's manifest.

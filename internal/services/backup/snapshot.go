@@ -228,8 +228,9 @@ func (s *Service) skipPredicate() func(path string, isDir bool) bool {
 // SkipPredicate returns the canonical exclusion rules for walking the data
 // directory: the backup directory itself (when nested under dataDir), the
 // cache/ directory (and, for file paths, anything under a cache/ ancestor),
-// atomicWrite *.tmp leftovers, and the storage layer's encryption-state
-// files. It is the single source of truth shared by
+// atomicWrite/createExclusive staging leftovers (storage.IsStagingName), and
+// the storage layer's encryption-state files. It is the single source of
+// truth shared by
 // snapshot creation, the manual backup downloads, and restore pruning so
 // the rule set cannot drift between them.
 func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool {
@@ -265,8 +266,12 @@ func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool
 				}
 			}
 		}
-		// Skip atomicWrite leftovers and encryption-state files.
-		if strings.HasSuffix(base, tmpSuffix) {
+		// Skip atomicWrite/createExclusive staging leftovers and
+		// encryption-state files. storage.IsStagingName is the compile-time
+		// coupled predicate for the former — see its doc comment — rather
+		// than a string literal matched here that could drift out of sync
+		// with what the storage package actually stages.
+		if storage.IsStagingName(base) {
 			return true
 		}
 		return storage.IsEncryptionStateFile(base)

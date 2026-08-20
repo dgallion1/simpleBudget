@@ -1,0 +1,167 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R11
+ATTEMPT: 2
+---
+SCOPE CHECKED: internal/services/storage/storage.go (per .swarm/manifests/R11.2.files)
+plus a repo-wide grep for cross-cutting dependencies on the old staging name,
+per the brief's own precedent-reuse instruction and the checker task's
+explicit prompt to check for exactly this.
+
+## Storage.go itself: correct on every axis tested
+
+atomicWrite now does CreateTemp(dir, base+".tmp-*") -> Write -> Close -> Chmod
+-> Rename, with deferred os.Remove(tmpPath) as a backstop. I verified, by
+building and running targeted Go tests against the real code (not just
+reading it):
+
+- Reader's view: ReadFile stats/reads only `path`, never globs the directory,
+  so it can only observe the pre-write file or the fully-written post-rename
+  file, never the staging file or a torn destination. Confirmed by tracing
+  ReadFileContext (storage.go:226) — no directory listing, no glob.
+- Permissions: 0600/0644/0666 round-trip exactly under umask 0022
+  (TestZZAdHocPermsAcrossValues, PASS). Chmod operates on path, not fd, so
+  umask at CreateTemp time (which forces 0600) does not leak through — the
+  explicit Chmod always wins. Rewriting over an existing destination with a
+  different perm also lands the newly requested perm exactly
+  (TestZZAdHocPermsOverwriteDifferentPerm, PASS).
+- Cross-filesystem / directory derivation: filepath.Dir is used for both
+  MkdirAll and CreateTemp, including the no-directory-component case
+  ("bare.txt" -> dir "."); staging and destination share a directory in every
+  case tested (TestZZAdHocNoDirComponent, PASS).
+- Failure paths: forced Rename failure (destination pre-exists as a
+  directory) returns a non-swallowed error ("file exists") and leaves zero
+  staging files behind (TestZZAdHocCleanupOnRenameFailure, PASS). Forced
+  CreateTemp failure (read-only destination directory) returns a
+  non-swallowed "permission denied" error and leaves zero staging files
+  behind (TestZZAdHocReadOnlyDirCreateTempFails, PASS).
+- Cleanup race: CreateTemp's uniqueness guarantee holds; the deferred Remove
+  targets a name no other writer can produce, and it no-ops on the success
+  path (target already moved away by Rename). Reasoning verified, not just
+  read.
+- Encryption: full existing encryption suite (round-trip, marker-file skip,
+  locked/unlocked, age + SSH providers) passes under -race including through
+  atomicWrite.
+- Out-of-scope sites: `git diff HEAD -- migration.go auth.go` is empty —
+  migration.go:247, migration.go:275, auth.go:92 are untouched, confirmed by
+  diff not by inspection.
+- Subtler-mutation probe of the ORACLE (not the delivered code): I mutated a
+  scratch copy of atomicWrite three ways and re-ran accept.sh's oracle
+  (TestZZOracleR11*):
+    (a) drop the deferred cleanup entirely -> oracle still exits 0. The
+        oracle's "no staging file survives" check (Check 2) only exercises
+        the success path, where Rename already removes the tmp file
+        regardless of the defer; it never forces a write to fail. My own
+        forced-failure test (above) DOES catch this mutation (FAIL, staging
+        file leaked). So the oracle has a real coverage gap on exactly the
+        brief's third scope bullet ("clean up the staging file if the write
+        fails") — it happens not to matter here because the delivered code
+        does have the defer, confirmed independently.
+    (b) Chmod before Close, (c) Rename before Close/Close-after-Rename: both
+        pass the oracle and are not actually behavioral bugs on Linux (Chmod
+        operates on the path, not the fd; Rename of an open fd's path is
+        legal POSIX). Not a finding.
+  This is reported as an oracle-robustness gap, not counted against the
+  verdict on its own, because the delivered code is independently correct on
+  the failure-cleanup requirement.
+
+## The regression that drives the FAIL verdict
+
+Per the checker task's explicit instruction to grep the repo for anything
+depending on the OLD ".tmp" staging name (cleanup routine / glob / backup
+exclusion / gitignore):
+
+`internal/services/backup/snapshot.go`:
+  const tmpSuffix = ".tmp"
+  // SkipPredicate ... atomicWrite *.tmp leftovers ...
+  func SkipPredicate(...) func(path string, isDir bool) bool {
+      ...
+      if strings.HasSuffix(base, tmpSuffix) { return true }   // line ~267
+      ...
+  }
+
+SkipPredicate's documented job (its own doc comment: "Skip atomicWrite
+leftovers and encryption-state files") is to exclude a crash-orphaned
+atomicWrite staging file from (1) backup zip contents (filepath.Walk over
+DataDir in buildZip, snapshot.go:167-208) and (2) restore-time pruning
+protection (restore.go:119, "a file present on disk but absent from the
+archive is removed unless the skip predicate protects it").
+
+The OLD staging name (`path + ".tmp"`) has suffix ".tmp" and was correctly
+matched. The NEW staging name, from
+`os.CreateTemp(dir, filepath.Base(path)+".tmp-*")`, is `<base>.tmp-<8 random
+digits>` — e.g. `sidecar.json.tmp-2496562633` — which does NOT have suffix
+".tmp" (it has ".tmp-" followed by digits). I confirmed this breaks the
+predicate with a targeted test against the real SkipPredicate function:
+
+  TestZZAdHocSkipPredicateNewStagingName:
+    oldStyle := "/data/sidecar.json.tmp"          -> skip() = true  (as before)
+    newStyle := "/data/sidecar.json.tmp-2496562633" -> skip() = false (BROKEN)
+  --- FAIL: NEW-style staging name NOT skipped by SkipPredicate
+
+Consequence: if a process is killed between os.CreateTemp and the deferred
+Remove/Rename in atomicWrite (the exact scenario cleanOrphanTmp's sibling
+mechanism exists to guard against, and the exact scenario SkipPredicate's own
+doc comment names), the orphaned staging file in DataDir will now be walked
+into the next backup zip (previously excluded) and, on a later restore, will
+NOT be treated as protected — it round-trips into backups and back onto disk
+as permanent cruft instead of being excluded. This is a live behavioral
+regression caused by R11's staging-name change, not speculative: reproduced
+directly against the shipped SkipPredicate function, not against a
+hypothetical.
+
+The existing test `TestSkipPredicate_FilesUnderSkipListedDirs`
+(snapshot_test.go) gives false confidence here: it hardcodes a literal
+old-style name `"foo.tmp"` rather than deriving it from what atomicWrite
+actually produces, so it keeps passing after R11 while the real
+cross-package contract silently breaks. Neither the R11 oracle
+(scoped to internal/services/storage only) nor the full test suite run in
+report.md exercises this path, because no test constructs a live
+`<base>.tmp-<rand>` file and walks it through SkipPredicate.
+
+There is no other DataDir-scoped cleanup for orphaned atomicWrite staging
+files (cleanOrphanTmp only sweeps BackupDir's own zip .tmp files, a different
+mechanism) — SkipPredicate's suffix check was the only protection, and R11's
+implementation broke it without touching or being told about
+internal/services/backup/snapshot.go.
+
+## Why this is R11's to answer, not out of scope
+
+R11's brief explicitly chose the `.tmp-*` naming convention (mirroring
+CreateExclusive) and explicitly enumerated three out-of-scope call sites by
+name (migration.go:247/275, auth.go:92) that use the OLD fixed-name pattern
+directly — but never audited or named backup/snapshot.go's SkipPredicate,
+which does not call atomicWrite at all but encodes an assumption about its
+output format. The SHARED-TREE CONTEXT note in the dispatch says R12/ledger
+failures are not R11's to own; this is different — it is a direct, causal
+consequence of the exact code change under review, in a critical-glob path
+(internal/services/storage/**) that "every sidecar in the app writes
+through," feeding a backup/restore path for a money-data application.
+
+## Cleanup
+
+All scratch test files (zz_failtest_test.go, zz_perm_test.go, zz_dir_test.go,
+zz_fail2_test.go, zz_skippred_test.go) were created under
+internal/services/storage/ and internal/services/backup/ during this
+adversarial run and have been removed; storage.go was diffed byte-identical
+back to its pre-experiment (post-R11-fix) state before finishing. `git status
+--porcelain` on internal/services/storage and internal/services/backup shows
+only the pre-existing staged R11 change to storage.go.
+
+## FINDINGS SUMMARY
+
+1. FAIL-worthy: internal/services/backup/snapshot.go's SkipPredicate silently
+   stops recognizing atomicWrite's own staging files after this change,
+   defeating its documented backup-exclusion / restore-pruning purpose for
+   crash-orphaned writes. Reproduced with a direct test against the real
+   function.
+2. Non-blocking process note: the Tier-3 oracle's "no staging file survives"
+   check only exercises the success path and would not have caught a dropped
+   deferred-cleanup; the delivered code is independently correct there, so
+   this alone does not change the verdict, but the oracle should not be
+   trusted as proof of the brief's explicit failure-path-cleanup requirement.
+3. Everything else attacked (reader atomicity, permissions incl. umask,
+   directory derivation incl. no-dir/relative paths, failure-path error
+   propagation, cleanup-race uniqueness, encryption round-trip, out-of-scope
+   sites) held up under direct testing, not just inspection.

@@ -1,0 +1,190 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R11
+ATTEMPT: 2
+---
+Subject under test: merged tree at /home/darrell/bin/ai/budget2 (branch
+fix/review-aug16), internal/services/storage/storage.go, md5
+86c941aebfb6463f6439dee2898d847f. That md5 is byte-identical to
+/tmp/swarm-worktrees/budget2/R11/wt-primary/internal/services/storage/storage.go
+(the merge winner named in .swarm/tier3/R11/report.md RESOLUTION) and to the
+git index blob (`git show :internal/services/storage/storage.go | md5sum`).
+
+PROCESS NOTE, read this first. My FIRST accept.sh run is VOID and I discarded
+it. A concurrent agent mutated the shared tree during it: a copy of the tree I
+took at 00:18:19 held a storage.go variant with the unique staging name but
+WITHOUT the cleanup defer (md5 fd43985d8bb6dd96bc7908df2b1dd3c4, 677 lines,
+`grep -c "os.Remove(tmpPath)"` = 1), and an untracked file
+internal/services/storage/zz_failtest_test.go (mtime 00:20:45, self-described
+"Ad-hoc checker test") appeared. storage.go was restored at 00:21:36 to
+86c941... My probes run against that stale copy FAILED
+TestProbeR11_CleanupOnRenameFailure; that failure is an artifact of the
+sibling lane's negative-control experiment, NOT of the merged work. Every
+result below comes from a re-run against 86c941..., md5-fenced before and
+after. As of my final check the storage package is clean again:
+`git status --short internal/services/storage/` prints only
+"M  internal/services/storage/storage.go", and .swarm/verdicts/
+R11.2.checker-second.verdict has since landed, identifying the concurrent lane.
+
+1. ORACLE EXITS 0 — PASS.
+   `cd /home/darrell/bin/ai/budget2 && bash .swarm/tier3/R11/accept.sh`
+   Final line: "=== accept.sh exit: 0 ===", captured EXIT=0. All seven steps
+   reported: step 3 "no fixed staging name in storage.go — ok"; step 4
+   "balance.go unchanged — ok"; step 5 "ok budget2/internal/services/storage
+   1.136s"; step 6 "ok ... 184.308s"; step 7 all 48 packages "ok", zero FAIL.
+   md5 of storage.go identical before ($S/md5_before.txt) and after
+   ($S/md5_after.txt) the run: 86c941aebfb6463f6439dee2898d847f, so the oracle
+   ran end-to-end against one unchanging file.
+   accept.sh and oracle/zz_oracle_r11_test.go are unedited by the worker:
+   `git diff HEAD --stat -- .swarm/tier3/R11/accept.sh .swarm/tier3/R11/oracle/`
+   is empty; both are committed at 040f4b3. I read the oracle: its three tests
+   assert what their names claim — ConcurrentWritesNeverTear runs 8 goroutines
+   x 2 MiB x 5 rounds and checks length and byte-uniformity;
+   NoStagingFileSurvives ReadDirs for ".tmp"; SingleWriterContractUnchanged
+   checks replace-not-append and 0644.
+
+2. DEFECT GENUINELY FIXED — PASS. Original failure reproduced against
+   pre-merge code, then shown gone.
+   Method: `git archive HEAD | tar -x` into a scratch tree (pre-merge, has
+   `tmpPath := path + ".tmp"` at storage.go:442) and a copy of the merged tree;
+   identical checker-authored probes compiled into package storage in each.
+   (a) Spurious rename error. PRE-MERGE:
+       TestProbeR11_NoSpuriousRenameError (8 writers x 1 MiB x 20 rounds)
+       "spurious-ENOENT-rename-errors=129 other-errors=0", FAIL, with logged
+       instances of the exact brief text: "rename .../sidecar.json.tmp
+       .../sidecar.json: no such file or directory".
+       MERGED: same probe, -race: "spurious-ENOENT-rename-errors=0
+       other-errors=0", PASS.
+   (b) Torn content. MERGED: TestProbeR11_NoTornContent (8 writers x 2 MiB x
+       20 rounds) "torn-rounds=0 of 20", PASS; and the oracle's own
+       ConcurrentWritesNeverTear passes under -race in accept.sh step 5.
+       PRE-MERGE, honest detail: post-hoc reads after all writers finish did
+       NOT tear on this kernel/fs (torn-rounds=0 of 20; a wider hunt at 12
+       writers x 24 MiB x 12 rounds also found 0) because Linux completes a
+       multi-MiB write(2) to a regular file in one call. The tear IS reachable
+       and I reached it from a reader's vantage instead:
+       TestProbeR11_ReaderNeverSeesPartial against PRE-MERGE logged
+       "complete-reads=7476 partial-or-failed-reads=1079" with repeated
+       "reader saw length 0 want 2097152" — writer A's os.WriteFile truncates
+       the shared staging file while writer B renames it onto the destination,
+       so the destination momentarily holds a 0-length file. That is the
+       torn/truncated-length consequence, observed. Against MERGED the same
+       probe logs "complete-reads=204 partial-or-failed-reads=0", PASS.
+   Both consequences are unreachable now, and structurally so: storage.go:449
+   `os.CreateTemp(dir, filepath.Base(path)+".tmp-*")` gives each writer a
+   private staging inode, so no writer can truncate or rename another's.
+
+3. SINGLE-WRITER CONTRACT PRESERVED — PASS.
+   Diff against HEAD: `git diff -U0 HEAD -- internal/services/storage/
+   storage.go | grep '^@@'` returns exactly three hunks, all labelled
+   "func (s *Storage) atomicWrite" (@@ -434 +434,6 @@, @@ -441,3 +446,21 @@,
+   @@ -447 +470,2 @@). Nothing outside atomicWrite changed.
+   Each property tested, not inferred — TestProbeR11_SingleWriterContract over
+   perms 0600/0640/0644/0664: same content, permissions exact after both the
+   create and the rewrite, "content replaced, not appended" (writes
+   "first-and-much-longer-payload" then "second", reads back exactly "second",
+   proving no tail survives), and no staging leftovers. It PASSES identically
+   on the pre-merge tree and on the merged tree — the contract is unchanged.
+   Reader-visible atomicity: TestProbeR11_ReaderNeverSeesPartial on the merged
+   tree, 4 readers x 4 writers x 2 MiB, "complete-reads=204
+   partial-or-failed-reads=0". Note this property is strictly BETTER than
+   HEAD, which scored 1079 partial observations (see criterion 2); under
+   single-writer conditions the two are equivalent.
+
+4. RENAME, NOT LINK — PASS.
+   `grep -n "os.Rename\|os.Link\|os.CreateTemp" internal/services/storage/
+   storage.go`: 449 CreateTemp (atomicWrite), 472 `return os.Rename(tmpPath,
+   path)` (atomicWrite), 392 CreateTemp + 410 `os.Link(tmpPath, path)`
+   (createExclusive). atomicWrite uses Rename; Link stays where it belongs.
+   Behaviour, TestProbeR11_RewriteOverExistingSucceeds: WriteFile("one") then
+   WriteFile("two") both succeed and the file reads "two"; the same path
+   through CreateExclusive is refused — logged "CreateExclusive refused with
+   storage: .../sidecar.json already exists: file already exists (Link
+   EEXIST)", errors.Is(err, os.ErrExist) true, and the existing content is not
+   clobbered. That is exactly the asymmetry both arms reasoned about.
+
+5. FAILURE-PATH CLEANUP — PASS, with one stage stated as unreachable.
+   One `defer func() { _ = os.Remove(tmpPath) }()` at storage.go:457, placed
+   immediately after tmpPath is bound at :453 and before any fallible call, so
+   it covers every later return: write :459-462, close :463-465, chmod
+   :466-468, rename :472. Forced, per stage:
+   - staging-create (:449-452): TestProbeR11_CleanupOnCreateTempFailure, dir
+     mode 0500 -> "open .../sidecar.json.tmp-4063544387: permission denied",
+     "no staging leftovers". PASS.
+   - write (:459): TestProbeR11_CleanupOnWriteFailure, RLIMIT_FSIZE lowered to
+     64 KiB and a 1 MiB payload -> "write .../sidecar.json.tmp-3769042705:
+     file too large", "no staging leftovers after a failed write". PASS.
+     Same probe against PRE-MERGE: "staging file(s) survived a failed write:
+     [sidecar.json.tmp]" — FAIL, confirming the probe has teeth.
+   - chmod (:466): TestProbeR11_ChmodStageFailure, a sweeper goroutine unlinks
+     *.tmp-* mid-flight -> "REACHED the chmod stage failure: chmod
+     .../sidecar.json.tmp-1546193938: no such file or directory", then "no
+     staging leftovers after chmod-stage failures". PASS.
+   - rename (:472): TestProbeR11_CleanupOnRenameFailure, destination is a
+     non-empty directory -> "rename .../sidecar.json.tmp-1028851847
+     .../sidecar.json: file exists", "no staging leftovers after a failed
+     rename". PASS. Same probe against PRE-MERGE: "staging file(s) survived a
+     failed rename: [sidecar.json.tmp]" — FAIL.
+   - close (:463): NOT DEMONSTRATED BY COMMAND. I could not make close(2) fail
+     on a regular ext4/tmpfs file without a fault injector, and I am not
+     asserting it on inspection. It shares the single :457 defer with the four
+     stages above, three of which I forced empirically.
+
+6. ENCRYPTION PATH — PASS.
+   Routing is in the source: writeFileLocked at storage.go:311 calls
+   `s.encodeForWrite(path, data)` at :314 and passes the result to
+   `s.atomicWrite(path, payload, perm)` at :318; WriteFile -> WriteFileContext
+   -> writeFileLocked (:288, :295, :303-305).
+   TestProbeR11_EncryptedRoundTrip under -race, on an encrypted+unlocked store
+   (s.encrypted = true, NewPasswordProvider unlocked): the on-disk bytes
+   satisfy isAgeEncrypted and do NOT contain the plaintext; ReadFile returns
+   the exact plaintext; perm 0600 preserved; a rewrite round-trips to the new
+   plaintext; no staging leftovers. Logged "encrypted round trip ok:
+   ciphertext on disk, plaintext via ReadFile, rewrite ok, no leftovers".
+   PASS. The same probe also PASSES on the pre-merge tree, so the staging
+   change disturbed nothing here.
+
+7. OUT-OF-SCOPE SITES UNTOUCHED — PASS.
+   `git diff HEAD --stat -- internal/services/storage/migration.go
+   internal/services/storage/auth.go internal/services/accounts/balance.go`
+   produces no output — all three unchanged.
+   `grep -rn '\.tmp"' internal/services/storage/migration.go
+   internal/services/storage/auth.go` still shows the fixed pattern at exactly
+   the three reported sites: migration.go:247 `tmpPath := path + ".tmp"`,
+   migration.go:275 `tmpPath := path + ".tmp"`, auth.go:92
+   `tmpPath := configPath + ".tmp"`. Reported, not fixed, as the brief required.
+
+8. LOCKING AND LOCK ORDERING UNCHANGED — PASS.
+   Extracted the full bodies of WriteFile, WriteFileContext, writeFileLocked,
+   BeginShared and BeginExclusive from `git show HEAD:...storage.go` and from
+   the merged file with the same awk range, and diffed: 30 lines each, diff
+   exit 0, no output — byte-identical.
+   The documented lock-ordering block (HEAD 520-560, now 544-584 after the
+   +24-line shift) diffed line-for-line: identical. WriteFileContext still
+   takes `s.dataMu.RLock()` (:303) — the shared lock is untouched, so this
+   stayed a staging-name fix and not a concurrency-model change.
+   balance.go unchanged (criterion 7 command above, and accept.sh step 4
+   "balance.go unchanged — ok").
+
+9. BUILD / VET / RACE SUITE CLEAN — PASS.
+   `cd /home/darrell/bin/ai/budget2 && go build ./...` -> BUILD_OK.
+   `go vet ./...` -> VET_OK.
+   `go test -race -count=1 ./...` via accept.sh step 7 -> all 48 packages
+   "ok", "?   budget2/web [no test files]", zero FAIL.
+   Nothing odd appeared in accounts/ this run:
+   "ok budget2/internal/services/accounts 1.044s". No R12 attribution needed.
+
+SCOPE. .swarm/manifests/R11.2.files lists exactly
+internal/services/storage/storage.go. `git diff HEAD --stat` shows storage.go
++29/-5, and every changed line is inside atomicWrite (criterion 3's hunk
+headers). internal/services/storage/** is in .swarm/critical.globs, which R11's
+Tier 3 permits and the brief authorizes for this file.
+Also modified in the shared tree, none of it R11's and none of it touched by
+this task: internal/services/accounts/projection.go and projection_test.go
+(R12, halted), internal/services/mcpsvc/ledger/*_test.go (R10 accepted + R12),
+REVIEW_FIXES_SPEC.md, .swarm/ledger.tsv, .swarm/briefs/R12.md and the .swarm
+manifests/verdicts. The transient
+internal/services/storage/zz_failtest_test.go described in the process note
+above is no longer present. I modified nothing; all probes were compiled in
+throwaway copies under the session scratchpad.

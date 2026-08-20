@@ -351,3 +351,65 @@ anyway, which is the natural thing to do when no isolated copy is provided.
 
 Reinforces the required fix: every verification pass needs its own worktree. An
 instruction not to touch the shared tree is not a substitute for not sharing it.
+
+
+## R12 HALTED by the lead — needs a semantic decision, not another patch
+
+Status: halted after two failed attempts, with a third still permitted. The lead
+stopped it deliberately rather than spend the last attempt on a fix that the
+evidence says would relocate the defect again.
+
+### What happened
+
+- Attempt 1 fixed the byDay map key (keyed by time.Time, which compares the
+  *Location pointer). Correct and necessary — it made the real bug observable.
+  It exposed a pre-existing instant-vs-label mismatch: an occurrence strictly
+  after asOf could carry a calendar-day label the balance walk never visits.
+  FAILED the adversarial lane.
+- Attempt 2 anchored the day grid to UTC. It fixed positive-offset zones and
+  BROKE negative-offset ones. Both lanes failed it independently. The primary
+  lane swept 24 hours x 4 zones behind a clock hook and showed the defect class
+  was RELOCATED, not eliminated: New York 22:42 local now loses a $900 outflow
+  the user reads as due tomorrow (crossing 2026-09-19 / minimum 400.00 where
+  the truth is 2026-08-20 / -500.00). The adversarial lane separately showed
+  attempt 2 newly diverged Project's cutoff from BalanceAt's — before it, both
+  were the identical dayOf() call and could not disagree.
+
+### Why a third attempt was not spent
+
+The lead traced the obvious remaining fix — normalise all three frames to UTC by
+also passing asOf.UTC() to BalanceAt. It repairs the Tokyo fixture and then
+fails the New York one: local 2026-08-19 22:42 EDT is already 2026-08-20 UTC, so
+an occurrence the user reads as due tomorrow falls on UTC today and is advanced
+past. Third location for the same bug.
+
+Project carries THREE cutoffs that must agree — BalanceAt's (`dayOf(at)` in at's
+Location), the grid's (`asOfDay`), and the occurrence labels' (`dayOf(occ)`).
+Every attempt aligns one pair and separates another. That is not worker error;
+it is the shape of the problem. "Day" is genuinely ambiguous when the user's
+local calendar and the data's UTC calendar disagree.
+
+### The decision needed (user's, not the lead's)
+
+Does the projection speak in the USER'S calendar or the DATA'S calendar?
+
+- **User's local calendar.** "Will I dip below threshold in the next 35 days" is
+  a question about the user's days. Then asOf's Location is authoritative and
+  every occurrence must be converted INTO it — including BalanceAt's cutoff.
+  Cost: the same UTC transaction can land on different days for users in
+  different zones, so two people looking at one dataset see different dates.
+- **Data's UTC calendar.** The ledger is UTC end to end; CSV dates carry no
+  zone. Then everything normalises to UTC, and the UI states plainly that dates
+  are ledger dates. Cost: a user at 22:42 local sees an outflow dated
+  "tomorrow" that the projection already calls today.
+
+Either is defensible. Neither is discoverable from the code, and a worker
+guessing produces exactly the oscillation seen above.
+
+### Current tree state
+
+Attempt 2's changes are IN THE WORKING TREE and are NOT accepted. They are
+strictly better than the committed state for positive-offset zones and strictly
+worse for negative-offset ones near local midnight. They must not be committed
+as-is. Either revert to ecbdbfe's projection.go and re-plan, or make the
+semantic decision above and re-scope R12 around it.

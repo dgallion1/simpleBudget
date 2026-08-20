@@ -1,0 +1,120 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R12
+ATTEMPT: 2
+---
+Scope: internal/services/accounts/projection.go, projection_test.go,
+internal/services/mcpsvc/ledger/r12_default_asof_recurring_test.go
+(.swarm/manifests/R12.2.files). Contract: .swarm/briefs/R12.md "Attempt 2".
+
+INTEGRITY: fix is present and applied symmetrically (asOfUTC := asOf.UTC();
+occ := dayOf(rp.NextExpected.UTC()); both feed keyOf/dayOf consistently).
+`go build ./...`, `go vet ./...` clean; `go test -race -count=1 ./...`
+RC=0, zero FAIL lines across the whole module. All committed probes were
+created and removed from the tree during this review; `git status --porcelain`
+confirms no residue (only R12's own declared files remain modified/untracked).
+
+REQUIRED EVIDENCE (yearly/monthly/negative-offset tests): all three pass
+under TZ=UTC, America/New_York, Asia/Tokyo, Pacific/Midway with -count=1.
+Independently verified.
+
+"Is UTC necessary" claim: verified TRUE. Mutating the fix to normalise into
+asOf's own Location instead of UTC (on a scratch copy outside the repo)
+reproduces the drop: both TestProject_YearlyOccurrenceOneHourAfter... and
+...MonthlyCrossingIsNearDate... FAIL against that mutant. The worker's
+rejection of asOf-Location normalisation is correct.
+
+Mutation checks: normalising asOfDay to UTC but leaving occ un-normalised is
+caught by the committed tests (2 FAIL). Normalising occ but not asOfDay is a
+no-op given the codebase's existing UTC-only convention for NextExpected, so
+it proves nothing either way.
+
+"Exact instant" / "one second after" claims: verified true and consistent
+with the disclosed day-granularity design (an occurrence 1s after asOf but
+on the same UTC calendar day is excluded, same as an exact-instant match).
+Not a hidden defect; this matches the doc comment's own stated behaviour.
+
+PRIME TARGET B (rebuilt MCP test): reran the ORIGINAL (attempt-1-style,
+Local-`now`-anchored) fixture and expectation against attempt 2's code
+across five ambient TZs (UTC, America/New_York, Asia/Tokyo, Pacific/Midway,
+Pacific/Kiritimati). It still passes in every zone — the fixture-generation
+offset and the grid's UTC offset cancel because both the CSV dates and asOf
+are derived from the same `now`. No evidence the rewrite is hiding a
+regression; not a basis for FAIL on its own.
+
+PRIME TARGET A — CONFIRMED, AND WORSE THAN THE WORKER'S OWN DISCLOSURE:
+
+The worker's report says BalanceAt's cutoff (dayOf(asOf) in asOf's own
+Location, via `start`) and Project's grid cutoff (now dayOf(asOf.UTC()))
+"can differ by up to a day when asOf isn't UTC, that this predates the fix,
+and is unobservable given day-granularity output." Both halves of that claim
+are false:
+
+1. NOT unobservable. Built a fixture (Asia/Tokyo, asOf = 2026-09-01 20:00
+   JST = 2026-09-01 11:00 UTC — a LATE local time-of-day) with one real
+   transaction dated 2026-09-01 05:00 UTC, Amount -300, which genuinely
+   happened 6 hours before asOf's instant. Calling BalanceAt directly
+   returns Amount=1000.00 (the -300 tx is dropped: its UTC calendar day is
+   `After` BalanceAt's Local-Location cutoff). Calling Project with the same
+   fixture returns Minimum=1000.00, Crossing=zero, SuggestedTopUp=0.00 —
+   even though the true balance is 700.00, below the 800.00 threshold. This
+   is a real dollar-value discrepancy in exactly the fields the brief names
+   (Minimum, Crossing, SuggestedTopUp), not a cosmetic label difference
+   invisible at "day granularity." (Probe run and deleted; git status
+   confirmed clean before/after.)
+
+2. NOT pre-existing. Before attempt 2, Project computed `asOfDay :=
+   dayOf(asOf)` — literally the same call, on the same input, in the same
+   Location, as BalanceAt's `atDay := dayOf(at)` (at == asOf). The two
+   cutoffs were therefore ALWAYS IDENTICAL prior to this change; there was
+   no gap to be "pre-existing." Attempt 2 introduces the gap by moving only
+   Project's cutoff to `dayOf(asOf.UTC())` while leaving BalanceAt (called
+   internally via `start`) on `dayOf(asOf)`. Confirmed by re-deriving the
+   pre-attempt-2 diff: `asOfDay := dayOf(asOf)` (old) vs `asOfDay :=
+   dayOf(asOfUTC)` (new); BalanceAt's own call is untouched.
+
+Mechanism, generalised: for a positive-UTC-offset zone, BalanceAt's
+effective cutoff (as a UTC calendar day) is always asOf's local calendar day
+minus one. Project's UTC-anchored asOfDay is asOf's local calendar day minus
+one ONLY when asOf's local time-of-day is early enough that asOf.UTC()
+hasn't rolled onto the next UTC day; once local time-of-day passes the
+offset threshold (e.g. after 09:00 in JST, UTC+9 — the ordinary case for a
+daytime query), asOf.UTC()'s calendar day advances by one and Project's
+asOfDay becomes asOf's local day itself. That day is then excluded from
+BOTH BalanceAt's sum (cutoff didn't reach it) AND Project's walk (it's
+`asOfDay`, deliberately excluded as "already reflected in the starting
+balance" — except it isn't). Any real, already-posted transaction dated
+that UTC calendar day is silently dropped from the entire computation. The
+same asymmetric gap recurs for negative-offset zones once local
+time-of-day + |offset| crosses a UTC day boundary. This fires for the
+*ordinary* daytime case in non-UTC zones, not a rare edge — every
+`get_balance_projection` call with no `as_of` from an APAC host made after
+local mid-morning is exposed.
+
+This is a real, newly-introduced, dollar-observable regression in the
+starting-balance/Minimum/Crossing/SuggestedTopUp path, misdiagnosed in the
+worker's own report as harmless and pre-existing. No committed test in
+R12.2.files exercises it (all committed tests use asOf built at a fixed
+early local hour — 08:00 JST / 18:00 Midway — which lands in the "no gap"
+branch of the mechanism above); the gap survives `go test -race ./...`
+clean.
+
+The claim under test — "an occurrence strictly after asOf is now always
+written to a label the balance walk visits, in every timezone, and nothing
+else changed" — is false on the "nothing else changed" clause: the
+BalanceAt/Project cutoff relationship changed, and it now drops real,
+already-happened transactions in a materially observable way.
+
+FINDINGS SUMMARY
+- FAIL: Prime Target A confirmed as a genuine, newly-introduced,
+  dollar-observable defect (not pre-existing, not unobservable). Affects
+  Minimum/Crossing/SuggestedTopUp for real transactions landing in the gap
+  day, on ordinary (non-early-morning) queries in non-UTC zones.
+- Prime Target B: no defect found; original and rebuilt test expectations
+  agree across 5 TZs for this fixture shape.
+- UTC-vs-asOf-Location necessity: worker's claim verified correct.
+- Required TZ sweep (yearly/monthly/negative-offset): all pass, 4 TZs.
+- Mutation checks: one meaningful mutation caught by committed tests; the
+  other is a no-op given the codebase's UTC-only NextExpected convention.
+- go build / go vet / go test -race ./...: all clean.

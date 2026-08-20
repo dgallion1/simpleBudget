@@ -34,5 +34,5 @@ R8	1	tests	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
 R9	1	tests	no-change	1	worker-coder-sonnet	no-defect-found-root-cause-was-lead-shared-tree-see-SPEC
 R10	1	tests	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
 R11	3	tests,second	accepted	3	worker-coder-sonnet	gate-ok-tier3-attempt-3
-R12	2	tests,second	halted	2	worker-coder-sonnet	HALTED-by-lead-needs-a-semantic-decision-see-SPEC-not-a-patch
+R12	3	tests,second	pending	2	-	escalated-to-tier3-user-decision-UTC-calendar-2026-08-20
 R13	1	tests	pending	0	-	resolve_transfer-consent-test-asserts-echoed-verdict-not-persisted-one

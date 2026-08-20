@@ -652,3 +652,227 @@ func TestProject_TopUpCentDustAtExactBoundary(t *testing.T) {
 			got.SuggestedTopUp, got.Minimum, got.Threshold-got.Minimum)
 	}
 }
+
+// -----------------------------------------------------------------------
+// R12 regression tests, added by this worker in addition to the lead's
+// Tier-3 oracle (.swarm/tier3/R12/oracle/zz_oracle_r12_test.go). The oracle
+// is copied into the package only for the acceptance run and then removed;
+// these tests are persisted in the tree so the same guarantees are checked
+// on every `go test ./...` run, not only during Tier-3 acceptance.
+// -----------------------------------------------------------------------
+
+// r12Zone loads a named IANA zone, skipping the test if the host's tzdata
+// does not have it (matches the oracle's own skip-on-missing-zone pattern).
+func r12Zone(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Skipf("zone %s unavailable: %v", name, err)
+	}
+	return loc
+}
+
+// TestProject_SameUTCDayOccurrenceNotDoubleApplied pins that an occurrence
+// landing on asOf's OWN UTC calendar day is not applied by the walk, in
+// either direction: it fires only if a fresh occurrence advances past
+// asOf's day, matching the deliberate "walk starts at asOfDay+1" contract
+// (an anchor is an end-of-day balance, so a same-day movement is already
+// reflected). This guards that the UTC-normalization added for R12 didn't
+// accidentally make the advance filter and the walk agree on the WRONG day
+// -- e.g. re-including asOf's own day.
+func TestProject_SameUTCDayOccurrenceNotDoubleApplied(t *testing.T) {
+	tokyo := r12Zone(t, "Asia/Tokyo")
+	// asOf: 2026-09-01 08:00 JST == 2026-08-31 23:00 UTC, so asOf's UTC
+	// calendar day is 2026-08-31.
+	asOf := time.Date(2026, 9, 1, 8, 0, 0, 0, tokyo)
+	// Occurrence dated 2026-08-31 (same UTC day as asOf, hours earlier). It
+	// must NOT be applied AS THAT OCCURRENCE -- it is not strictly after
+	// asOf's UTC day -- but the recurring series still continues: the
+	// advance loop steps it forward one whole interval to 2026-09-30, which
+	// *is* strictly after asOf and within the 35-day horizon (asOfDay+35 =
+	// 2026-10-05), so it is applied there. Minimum is 1000-400=600, not
+	// 1000: the series is not skipped entirely, only that one occurrence.
+	rec := []models.RecurringPayment{
+		zzR12FreqRecurring("monthly", time.Date(2026, 8, 31, 3, 0, 0, 0, time.UTC), 400),
+	}
+	acct := models.Account{
+		ID: "chk", Name: "chk", LowBalanceThreshold: 500,
+		Anchors: []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 1000}},
+	}
+	got, err := Project(acct, nil, asOf, rec)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if !moneyEq(got.Minimum, 600) {
+		t.Errorf("Minimum = %.2f, want 600.00 (the same-day occurrence is skipped, but its series' next occurrence 2026-09-30 still applies)", got.Minimum)
+	}
+	// 600 is above the 500 threshold -- no crossing.
+	if !got.Crossing.IsZero() {
+		t.Errorf("Crossing = %v, want zero (600 does not cross the 500 threshold)", got.Crossing)
+	}
+}
+
+// TestProject_MonthlyCrossingIsNotOneCycleLateAcrossZones is a direct pin of
+// the measurement in the R12 brief's Attempt 2: Asia/Tokyo, asOf 2026-09-01
+// 08:00 JST (2026-08-31 23:00 UTC), a monthly occurrence 2026-09-01 00:00
+// UTC -- one real hour after asOf's instant. Before this fix the advance
+// filter (instant-based) and the walk (label-based) disagreed and the
+// crossing was reported a full 30-day cycle late (2026-10-01 instead of
+// 2026-09-01). Run across all five zones: the crossing date must be
+// identical regardless of asOf's Location.
+//
+// Minimum is 0, not 400: the first occurrence (2026-09-01, day 1 of the
+// window) is 30 days -- one whole monthly interval -- inside the 35-day
+// horizon, so a second occurrence (2026-10-01, day 31) also falls within
+// the window and is genuinely applied too (see TestProject_HorizonIs35Days
+// for the pre-existing, un-touched-by-R12 rule that the window is
+// inclusive of every day through day 35). This test's assertion is
+// therefore on the CROSSING DATE -- the specific figure the brief's
+// measurement named as wrong -- not on the minimum.
+func TestProject_MonthlyCrossingIsNotOneCycleLateAcrossZones(t *testing.T) {
+	base := time.Date(2026, 9, 1, 8, 0, 0, 0, time.FixedZone("JST", 9*60*60)) // 2026-08-31 23:00 UTC
+	occUTC := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)                     // one hour after base's instant
+	acct := models.Account{
+		ID: "chk", Name: "chk", LowBalanceThreshold: 500,
+		Anchors: []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 800}},
+	}
+	for _, name := range []string{"UTC", "America/New_York", "Asia/Tokyo", "Pacific/Midway", "Pacific/Kiritimati"} {
+		loc := r12Zone(t, name)
+		asOf := base.In(loc)
+		rec := []models.RecurringPayment{zzR12FreqRecurring("monthly", occUTC, 400)}
+		got, err := Project(acct, nil, asOf, rec)
+		if err != nil {
+			t.Fatalf("%s: Project: %v", name, err)
+		}
+		wantCrossing := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+		if got.Crossing.IsZero() {
+			t.Fatalf("%s: no crossing -- the occurrence one hour after asOf was dropped", name)
+		}
+		if !got.Crossing.UTC().Equal(wantCrossing) {
+			t.Errorf("%s: Crossing = %v, want %v (near date, not a cycle late)", name, got.Crossing.UTC(), wantCrossing)
+		}
+		if !moneyEq(got.Minimum, 0) {
+			t.Errorf("%s: Minimum = %.2f, want 0.00 (both the 9/1 and 10/1 occurrences fall inside the 35-day window)", name, got.Minimum)
+		}
+	}
+}
+
+// TestProject_NegativeOffsetZoneAppliesOccurrence pins the brief's explicit
+// call for "a negative-offset zone too... where the skew runs the other
+// way": Pacific/Midway is UTC-11, so a Local-derived asOf sits BEHIND UTC,
+// the opposite skew direction from Asia/Tokyo (UTC+9). An occurrence on the
+// UTC day after asOf's UTC day must still be applied.
+func TestProject_NegativeOffsetZoneAppliesOccurrence(t *testing.T) {
+	midway := r12Zone(t, "Pacific/Midway")
+	// 2026-09-01 11:00 UTC == 2026-08-31 24:00-11:00 == 2026-08-31 00:00 Midway... use explicit conversion.
+	asOfUTC := time.Date(2026, 9, 1, 11, 0, 0, 0, time.UTC)
+	asOf := asOfUTC.In(midway)
+	rec := []models.RecurringPayment{
+		zzR12FreqRecurring("yearly", time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC), 400),
+	}
+	acct := models.Account{
+		ID: "chk", Name: "chk", LowBalanceThreshold: 500,
+		Anchors: []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 800}},
+	}
+	got, err := Project(acct, nil, asOf, rec)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if got.Crossing.IsZero() {
+		t.Fatal("no crossing -- the occurrence on the next UTC day was not applied under a negative-offset zone")
+	}
+	if !moneyEq(got.Minimum, 400) {
+		t.Errorf("Minimum = %.2f, want 400.00", got.Minimum)
+	}
+}
+
+// TestProject_TimeNowDerivedAsOfAppliesRecurring_FixedInterval is a
+// deterministic analog of the oracle's real-clock
+// TestZZOracleR12_TimeNowDerivedAsOfAppliesRecurring: it exercises the same
+// defect (a Local, "wall clock now"-shaped asOf failing to match a
+// UTC-derived occurrence key) but with a fixed base instant and an offset
+// chosen so the single scheduled occurrence falls well inside the 35-day
+// horizon without landing on the horizon's own boundary, so the assertion
+// does not depend on how the horizon's day-35 edge is resolved (see
+// TestProject_HorizonIs35Days / TestProject_OutflowBeyondHorizonExcluded,
+// which pin that day 35 is INCLUSIVE). Run across zones via TZ in
+// accept.sh; the Location conversions here exercise the same Local-vs-UTC
+// mismatch that TestZZOracleR12_TimeNowDerivedAsOfAppliesRecurring pins
+// with a live clock.
+func TestProject_TimeNowDerivedAsOfAppliesRecurring_FixedInterval(t *testing.T) {
+	for _, name := range []string{"UTC", "America/New_York", "Asia/Tokyo"} {
+		loc := r12Zone(t, name)
+		nowUTCDay := mustDate(2026, 9, 1)
+		asOf := time.Date(2026, 9, 1, 14, 30, 0, 0, time.UTC).In(loc)
+		acct := models.Account{
+			ID: "chk", Name: "chk", LowBalanceThreshold: 500,
+			Anchors: []models.BalanceAnchor{{Date: nowUTCDay.AddDate(0, 0, -30), Amount: 1000}},
+		}
+		rec := []models.RecurringPayment{
+			zzR12FreqRecurring("monthly", nowUTCDay.AddDate(0, 0, 10), 600), // day 10, well clear of the day-35 edge
+		}
+		got, err := Project(acct, nil, asOf, rec)
+		if err != nil {
+			t.Fatalf("%s: Project: %v", name, err)
+		}
+		if got.Crossing.IsZero() {
+			t.Fatalf("%s: no crossing from a Local-Location asOf -- recurring occurrences are still being dropped", name)
+		}
+		if !moneyEq(got.Minimum, 400) {
+			t.Errorf("%s: Minimum = %.2f, want 400.00", name, got.Minimum)
+		}
+	}
+}
+
+// zzR12FreqRecurring builds a minimal RecurringPayment belonging to account
+// "chk", mirroring the oracle's own zzR12Recurring helper (kept separate,
+// rather than reused, because the oracle file is copied in only for the
+// acceptance run and is not present when these tests run on their own).
+func zzR12FreqRecurring(freq string, next time.Time, amt float64) models.RecurringPayment {
+	return models.RecurringPayment{
+		Description: "rent", Amount: amt, Frequency: freq, NextExpected: next,
+		Transactions: []models.Transaction{{
+			AccountID: "chk", Date: mustDate(2026, 7, 1), Amount: -amt,
+		}},
+	}
+}
+
+// TestProject_StartingBalanceCutoffIsUTCAsOf pins Project's call
+// BalanceAt(acct, txs, asOfUTC) -- NOT BalanceAt(acct, txs, asOf) -- as the
+// starting-balance cutoff (projection.go:108). Under a positive-offset zone
+// (Asia/Tokyo, UTC+9), asOf's own Local calendar day and asOf's UTC calendar
+// day differ: asOf = 2026-09-01 20:00 JST names the UTC instant 2026-09-01
+// 11:00 UTC, whose UTC calendar day is 2026-09-01. A transaction posted
+// 2026-09-01 05:00 UTC -- several hours BEFORE asOf's instant, and on asOf's
+// own UTC calendar day -- must be counted in the starting balance.
+//
+// Passing the raw (Local) asOf into BalanceAt instead would derive its
+// day-of cutoff in JST, i.e. 2026-09-01 00:00 JST == 2026-08-31 15:00 UTC.
+// The transaction's own day-of, taken in ITS Location (UTC), is 2026-09-01
+// 00:00 UTC -- an instant strictly AFTER that Local-derived cutoff -- so it
+// would be wrongly excluded, leaving the anchor's 1000.00 untouched instead
+// of the true 700.00.
+//
+// No recurring items are supplied, so the projected balance is flat across
+// the whole window and Minimum pins the starting balance directly.
+func TestProject_StartingBalanceCutoffIsUTCAsOf(t *testing.T) {
+	tokyo := r12Zone(t, "Asia/Tokyo")
+	asOf := time.Date(2026, 9, 1, 20, 0, 0, 0, tokyo) // == 2026-09-01 11:00 UTC
+	acct := models.Account{
+		ID: "chk", Name: "chk", LowBalanceThreshold: 500,
+		Anchors: []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 1000.00}},
+	}
+	txs := []models.Transaction{
+		{AccountID: "chk", Date: time.Date(2026, 9, 1, 5, 0, 0, 0, time.UTC), Amount: -300.00},
+	}
+	got, err := Project(acct, txs, asOf, nil)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if !got.Available {
+		t.Fatal("Available = false, want true")
+	}
+	if !moneyEq(got.Minimum, 700.00) {
+		t.Errorf("Minimum = %.2f, want 700.00 (the 05:00 UTC transaction, on asOf's own UTC calendar day, must be counted in the starting balance)", got.Minimum)
+	}
+}

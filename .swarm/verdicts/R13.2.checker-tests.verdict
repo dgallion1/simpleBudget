@@ -1,0 +1,210 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R13
+ATTEMPT: 2
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16. HEAD = 6b30d30 (pre-R13;
+R13 attempts 1 and 2 are uncommitted working-tree changes). All mutation work done by ME on
+scratch copies OUTSIDE the repo, under
+/tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad/:
+  r13v2_write   mutation (a) - persist the OPPOSITE verdict, out.Verdict left correct
+  r13v2_echo    mutation (b) - corrupt out.Verdict ONLY, write left correct
+  r13v2_both    extra probe  - both corrupted (masking check)
+  r13v2_nowrite extra probe  - write removed entirely (vacuity check)
+  r13a1         attempt-1 test files, recovered from the attempt-1 scratch copy r13mut
+  r13pre        pre-R13 test files, from `git show HEAD:`
+Each mutant was rsync'd from the current repo and verified to differ from it in exactly ONE
+file, resolve.go: `diff -rq --exclude=.git /home/darrell/bin/ai/budget2 <mutant> | grep -v
+"^Only in"` -> a single line naming resolve.go, for both r13v2_write and r13v2_echo.
+I edited nothing in the repo.
+
+SUMMARY: all 8 criteria MET. Attempt 2 restores the out.Verdict assertion alongside attempt
+1's persisted-value assertion in both tests, and I reproduced both decisive mutations myself:
+each fails for its own reason with its own message, and neither produces the other's message.
+
+--- CRITERION 1: NO PRODUCTION CODE CHANGED --- MET
+`git diff HEAD -- internal/services/mcpsvc/ledger/resolve.go internal/services/mcpsvc/ledger/
+anchor.go internal/services/mcpsvc/ledger/approval.go internal/services/mcpsvc/confirm/ | wc -l`
+  -> 0   (all four paths byte-unchanged vs HEAD)
+`git ls-files --others --exclude-standard internal/ | wc -l` -> 0
+  -> nothing added anywhere under internal/, so nothing added under confirm/.
+`git ls-files internal/services/mcpsvc/confirm/` and `find internal/services/mcpsvc/confirm/
+-type f | sort` return the SAME 6 files (approvals.go, approvals_test.go, ask.go, ask_test.go,
+confirm.go, confirm_test.go) -> no untracked file hiding in the critical glob.
+`git diff HEAD --name-only` (whole repo) ->
+  .swarm/ledger.tsv
+  .swarm/tier3/R12/oracle/zz_oracle_r12_test.go        (lead's, R12 - excluded per brief)
+  internal/services/mcpsvc/ledger/browser_approval_test.go
+  internal/services/mcpsvc/ledger/resolve_test.go
+`git ls-files --others --exclude-standard` (whole repo) -> .swarm/briefs/R13.md,
+.swarm/manifests/R13.1.files, .swarm/manifests/R13.2.files,
+.swarm/verdicts/R13.1.checker-tests.verdict. All bookkeeping.
+No path in .swarm/critical.globs (storage, dataloader, retirement/engine, transfers,
+accounts/accounts.go, mcpsvc/confirm) is touched.
+internal/services/accounts/projection.go (R12, other worktrees):
+`git diff HEAD --name-only -- internal/services/accounts/projection.go | wc -l` -> 0.
+
+--- CRITERION 2: BOTH assertions present in BOTH tests --- MET
+`grep -n "out.Verdict\|persisted verdict\|reported out.Verdict\|readTransferDecision"` on both
+files:
+TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (browser_approval_test.go:199):
+  browser_approval_test.go:234-236  if out.Verdict != "confirm" {
+                                      t.Errorf("reported out.Verdict = %q, want confirm", out.Verdict) }
+  browser_approval_test.go:241-244  decision := readTransferDecision(t, deps, dir, key)
+                                    if string(decision.Verdict) != "confirm" {
+                                      t.Errorf("persisted verdict = %q, want confirm (the verdict the approval described)", decision.Verdict) }
+TestResolveTransferSecondCallWithTokenWrites (resolve_test.go:~104):
+  resolve_test.go:128-130  if out.Verdict != "confirm" { t.Errorf("reported out.Verdict = %q, want confirm", out.Verdict) }
+  resolve_test.go:134-137  decision := readTransferDecision(t, deps, dir, key)
+                           if string(decision.Verdict) != "confirm" { t.Errorf("persisted verdict = %q, want confirm", decision.Verdict) }
+Both are t.Errorf (not Fatalf), so within a single run the first does not suppress the second
+-- proven empirically under mutation C below.
+The `key` used for the persisted read is the same value passed as the tool's "pair_key"
+argument in both tests (browser_approval_test.go:203/210/215; resolve_test.go equivalent).
+
+--- CRITERION 3: attempt 1's work intact, fresh dataloader, reads the FILE --- MET
+resolve_test.go:56-68, unchanged from attempt 1 (see criterion 6 diff: the attempt-1 ->
+attempt-2 delta does not touch the helper at all).
+  resolve_test.go:58   peek := dataloader.New(dir, deps.Store)
+This is a NEW DataLoader, not the writer: the writer is deps.Transfers, assigned in
+newDeps at register_test.go:31/35 from a different `dataloader.New(dir, store)` instance.
+Empirical proof it reads disk rather than echoing in-memory state: under mutation (a) the
+helper returned "reject" while the test's input argument AND out.Verdict were both "confirm"
+(browser_approval_test.go:243 printed `persisted verdict = "reject"`). It cannot be echoing
+the input.
+Non-vacuity proof (extra probe, mutant r13v2_nowrite, `deps.Transfers.ResolveTransfer` call
+replaced by a no-op at resolve.go:227):
+    browser_approval_test.go:241: no persisted decision for pair_key "f2dd5ca97cb3" in transfer_decisions.json
+    --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict
+    resolve_test.go:134: no persisted decision for pair_key "f2dd5ca97cb3" in transfer_decisions.json
+    --- FAIL: TestResolveTransferSecondCallWithTokenWrites
+So a build that writes NOTHING is caught too; the persisted assertion cannot pass vacuously.
+
+--- CRITERION 4: BOTH MUTATIONS, reproduced by me, failing for their OWN reasons --- MET
+(a) WRITE mutation, scratch r13v2_write, resolve.go:227
+    `if err := deps.Transfers.ResolveTransfer(key, v); err != nil {`  replaced by
+    `mutated := transfers.VerdictReject; if v == transfers.VerdictReject { mutated =
+     transfers.VerdictConfirm }; if err := deps.Transfers.ResolveTransfer(key, mutated); ...`
+    resolve.go:235 `Verdict: string(v),` LEFT UNTOUCHED.
+    `go test -count=1 -v ./internal/services/mcpsvc/ledger/` ->
+        browser_approval_test.go:243: persisted verdict = "reject", want confirm (the verdict the approval described)
+        --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (0.00s)
+        resolve_test.go:136: persisted verdict = "reject", want confirm
+        --- FAIL: TestResolveTransferSecondCallWithTokenWrites (0.00s)
+    Independence: `go test -count=1 -v ./internal/services/mcpsvc/ledger/ | grep -c "reported
+    out.Verdict"` -> 0. The reported-value assertion does NOT fire. Each test emits exactly
+    one failure message and it names the PERSISTED value and prints the wrong verdict on disk.
+(b) ECHO mutation, scratch r13v2_echo, resolve.go:235
+    `Verdict:       string(v),`  ->  `Verdict:       "MUTATED-echo-only",`
+    resolve.go:227 (the write) LEFT UNTOUCHED.
+    `go test -count=1 -v ./internal/services/mcpsvc/ledger/` ->
+        browser_approval_test.go:235: reported out.Verdict = "MUTATED-echo-only", want confirm
+        --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (0.00s)
+        resolve_test.go:129: reported out.Verdict = "MUTATED-echo-only", want confirm
+        --- FAIL: TestResolveTransferSecondCallWithTokenWrites (0.00s)
+    Independence: `grep -c "persisted verdict"` over the same verbose output -> 0. The
+    persisted assertion does NOT fire. Each message names the REPORTED value.
+    This is precisely the mutation that escaped the ENTIRE module after attempt 1 (recorded in
+    R13.1.checker-tests.verdict, criterion 6). It is now caught in both places.
+NEITHER MUTATION PRODUCES THE OTHER'S MESSAGE. The two assertions are orthogonal, and neither
+masks the other: extra probe r13v2_both (both mutations applied together) ->
+        browser_approval_test.go:235: reported out.Verdict = "MUTATED-echo-only", want confirm
+        browser_approval_test.go:243: persisted verdict = "reject", want confirm (the verdict the approval described)
+        --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict
+        resolve_test.go:129: reported out.Verdict = "MUTATED-echo-only", want confirm
+        resolve_test.go:136: persisted verdict = "reject", want confirm
+        --- FAIL: TestResolveTransferSecondCallWithTokenWrites
+Both messages appear in both tests, so the first t.Errorf does not short-circuit the second.
+
+--- CRITERION 5: ONLY those two tests fail, module-wide, under EACH mutation --- MET
+(a) r13v2_write:
+    `go test -count=1 -v ./internal/services/mcpsvc/ledger/ | grep -c "^--- FAIL"` -> 2
+    `go test -count=1 ./...` (whole module) ->
+        --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (0.01s)
+        --- FAIL: TestResolveTransferSecondCallWithTokenWrites (0.02s)
+        FAIL  budget2/internal/services/mcpsvc/ledger  0.594s
+    and no other failing test or package anywhere in the module.
+(b) r13v2_echo:
+    `go test -count=1 -v ./internal/services/mcpsvc/ledger/ | grep -c "^--- FAIL"` -> 2
+    `go test -count=1 ./...` (whole module) ->
+        --- FAIL: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (0.01s)
+        --- FAIL: TestResolveTransferSecondCallWithTokenWrites (0.01s)
+        FAIL  budget2/internal/services/mcpsvc/ledger  0.272s
+    and no other failing test or package anywhere in the module.
+These two tests are the sole cover for BOTH the write side and the reporting side of
+resolve_transfer's verdict. Nothing incidental is doing the work.
+
+--- CRITERION 6: nothing else weakened; diffs vs attempt 1 AND vs pre-R13 --- MET
+vs ATTEMPT 1 (`diff -u <r13a1 copy> <repo file>`; r13a1 recovered from the attempt-1 scratch
+copy r13mut, whose HEAD is the same 6b30d30 and whose only production edit was resolve.go):
+  browser_approval_test.go: ONE hunk at @@ -227,11 +227,17 @@ -- an attempt-1 comment block
+    replaced by a new comment + the re-added `if out.Verdict != "confirm" { t.Errorf("reported
+    out.Verdict = %q, want confirm", out.Verdict) }` + a comment. The persisted check below is
+    context, i.e. UNCHANGED.
+  resolve_test.go: ONE hunk at @@ -121,8 +121,16 @@ -- same shape.
+  NOTHING ELSE. In particular readTransferDecision (resolve_test.go:46-70) is untouched: it
+  does not appear as a changed line in the attempt-1 -> attempt-2 diff at all.
+vs PRE-R13 (`git show HEAD:<file>` into r13pre, then `diff -u`):
+  browser_approval_test.go: exactly two hunks -- (i) removal of the original
+    `if out.Verdict != "confirm" { t.Errorf("verdict = %q, want confirm (the verdict the
+     approval described)", out.Verdict) }` from line ~220, (ii) addition at the end of the test
+    of the SAME assertion reworded ("reported out.Verdict = %q, want confirm") PLUS the new
+    persisted check. Net: the reported assertion is relocated and reworded, not lost; one new
+    assertion added. +16 -3.
+  resolve_test.go: exactly two hunks -- (i) the readTransferDecision helper added after
+    seedSuspectedPair, (ii) the same relocate-and-add inside
+    TestResolveTransferSecondCallWithTokenWrites. +38 -3.
+  No other assertion in either file is removed, loosened, or converted from Fatalf to Errorf.
+  out.Confirmed, out.HumanApproval, out.SnapshotPaths and the approve-URL prefix check all
+  survive verbatim as diff context.
+R10's other seven:
+  R10's manifest (.swarm/manifests/R10.1.files) = browser_approval_test.go + consequences_test.go.
+  `git diff HEAD --name-only -- internal/services/mcpsvc/ledger/consequences_test.go | wc -l`
+    -> 0. All four consequences tests are byte-identical to pre-R13.
+  In browser_approval_test.go only TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict
+    is touched; TestSetBalanceAnchorApprovedInBrowserWritesTheDescribedAmount (:96),
+    TestSetBalanceAnchorRefusedInBrowserWritesNothing (:154) and
+    TestResolveTransferRefusedInBrowserLeavesDecisionsFileByteUnchanged (:249) show no hunks.
+  The refusal path's byte-comparison survives intact at browser_approval_test.go:281-288:
+    after, err := os.ReadFile(decisionsPath) ... if string(after) != before {
+      t.Errorf("transfer_decisions.json changed after a browser refusal: got %q, want unchanged %q", after, before) }
+  `go test -count=1 -race -v -run '<the seven>' ./internal/services/mcpsvc/ledger/` ->
+    7x --- PASS, ok budget2/internal/services/mcpsvc/ledger 1.083s.
+
+--- CRITERION 7: STABILITY, 30 separate -race processes --- MET, 30/30
+Loop of 30 SEPARATE processes, each `go test -count=1 -race -run
+'TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict|TestResolveTransferSecondCall
+WithTokenWrites' ./internal/services/mcpsvc/ledger/`, each redirected to its own log:
+    STABILITY: PASS=30 FAIL=0 TOTAL=30
+EXACT COUNT: 30 processes run, 30 passed, 0 failed. 30 log files written.
+Guards against a vacuous pass:
+  - `grep -l "no tests to run" <all 30 logs> | wc -l` -> 0.
+  - the run filter provably selects BOTH tests:
+    `go test -count=1 -race -v -run '<same filter>' ./internal/services/mcpsvc/ledger/` ->
+        --- PASS: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict (0.02s)
+        --- PASS: TestResolveTransferSecondCallWithTokenWrites (0.01s)
+        ok  budget2/internal/services/mcpsvc/ledger  1.057s
+  - `-count=1` on every iteration, so no cached results.
+  - sample logs: iter 1 -> `ok budget2/internal/services/mcpsvc/ledger 1.059s`;
+                 iter 30 -> `ok budget2/internal/services/mcpsvc/ledger 1.056s`.
+No data race was reported in any of the 30 runs.
+
+--- CRITERION 8: build / vet / race --- MET
+`go build ./...`                                              -> Success (exit 0)
+`go vet ./...`                                                -> No issues found (exit 0)
+`go test -race -count=1 ./internal/services/mcpsvc/ledger/...` -> ok, 51 tests passed, 1 package (exit 0)
+Additionally, unmutated module-wide: `go test -count=1 ./...` -> no FAIL lines, exit 0.
+
+--- SCOPE ---
+Modified in the repo: exactly the two files in .swarm/manifests/R13.2.files
+(internal/services/mcpsvc/ledger/browser_approval_test.go,
+internal/services/mcpsvc/ledger/resolve_test.go), plus the .swarm/ledger.tsv status row
+(R13 pending/0/- -> building/2/worker-coder-sonnet, reason
+"attempt-1-dropped-the-out.Verdict-assertion-lead-wording") and the untracked
+.swarm/briefs/R13.md, .swarm/manifests/R13.{1,2}.files, .swarm/verdicts/R13.1....verdict.
+TEST-ONLY honoured: zero production code changed. No path in .swarm/critical.globs touched;
+in particular internal/services/mcpsvc/confirm/ is byte-unchanged with no files added.
+NOT R13's, excluded from this verdict per the brief: .swarm/tier3/R12/oracle/
+zz_oracle_r12_test.go (lead's correction for R12) and the R12 worktrees'
+internal/services/accounts/projection.go (unmodified in this tree).

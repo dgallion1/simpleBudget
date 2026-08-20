@@ -89,7 +89,23 @@ type ProjectionResult struct {
 func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recurring []models.RecurringPayment) (ProjectionResult, error) {
 	out := ProjectionResult{AccountID: acct.ID, AsOf: asOf, Threshold: thresholdFor(acct)}
 
-	start, err := BalanceAt(acct, txs, asOf)
+	// Project speaks in the DATA'S UTC calendar, not the caller's local one:
+	// the starting-balance cutoff, the walk grid, and every occurrence label
+	// below are all derived from asOfUTC, the UTC instant asOf names. A
+	// host's local timezone must not change any figure this function
+	// reports. out.AsOf still echoes the caller's original asOf, Location
+	// and all, unchanged -- only the internal day-boundary math is
+	// normalized.
+	asOfUTC := asOf.UTC()
+
+	// Passing asOfUTC (rather than asOf) into BalanceAt matters: BalanceAt's
+	// cutoff is dayOf(at), which rebuilds the calendar day in at's OWN
+	// Location. Transactions and anchors in this codebase are UTC (parsed
+	// from CSV), so a Local asOf would put the cutoff on a different
+	// calendar day than the data it is being compared against, silently
+	// dropping (or double-counting) a transaction dated on asOf's own UTC
+	// day. dayOf itself is unchanged; only what we hand it is.
+	start, err := BalanceAt(acct, txs, asOfUTC)
 	if err != nil {
 		return ProjectionResult{}, err
 	}
@@ -113,8 +129,27 @@ func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recu
 	// and on or before asOf+horizon are applied. RecurringPayment.Amount is
 	// positive and recurring items are outflows, so each occurrence
 	// subtracts Amount.
-	byDay := make(map[time.Time]float64)
-	asOfDay := dayOf(asOf)
+	//
+	// The grid is keyed by calendarDayKey, not by a raw time.Time value: Go
+	// compares time.Time map keys by struct fields INCLUDING the *Location
+	// pointer, and time.Local and time.UTC are distinct Location objects
+	// even when they denote the same zone, so a raw-time.Time-keyed map
+	// entry written from one Location and read from another would never
+	// match even though the instants (and calendar days) are identical.
+	// calendarDayKey drops the Location entirely and identifies a day by
+	// its UTC (year, month, day) alone -- see utcCalendarDay.
+	//
+	// Both asOfDay (the walk grid's origin) and occ (each occurrence's
+	// running position) are built from dayOf() applied to an already-UTC
+	// value (asOfUTC and rp.NextExpected.UTC() respectively), so the advance
+	// filter below (which compares INSTANTS via After) and the walk (which
+	// reads LABELS via utcCalendarDay) agree about what "day" means: both
+	// are UTC calendar days. Before this fix the filter compared instants in
+	// asOf's own Location while the walk read UTC-derived labels, so an
+	// occurrence strictly after asOf could land on a label the walk never
+	// visited and silently vanish.
+	byDay := make(map[calendarDayKey]float64)
+	asOfDay := dayOf(asOfUTC)
 	horizonEnd := asOfDay.AddDate(0, 0, projectionHorizonDays)
 	for _, rp := range recurring {
 		if !recurringBelongsToAccount(rp, acct.ID) {
@@ -126,14 +161,14 @@ func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recu
 		}
 		// Walk occurrences forward from NextExpected. Advance past any
 		// that are on or before asOf, then apply those within the window.
-		occ := dayOf(rp.NextExpected)
+		occ := dayOf(rp.NextExpected.UTC())
 		// Guard against a malformed interval that would spin forever: cap
 		// the advance loop at a sane bound (a year of daily occurrences).
 		for guard := 0; !occ.After(asOfDay) && guard < 400; guard++ {
 			occ = occ.AddDate(0, 0, interval)
 		}
 		for guard := 0; !occ.After(horizonEnd) && guard < 400; guard++ {
-			byDay[occ] += -rp.Amount
+			byDay[utcCalendarDay(occ)] += -rp.Amount
 			occ = occ.AddDate(0, 0, interval)
 		}
 	}
@@ -147,7 +182,7 @@ func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recu
 	crossed := false
 	for d := 1; d <= projectionHorizonDays; d++ {
 		day := asOfDay.AddDate(0, 0, d)
-		balance += byDay[day]
+		balance += byDay[utcCalendarDay(day)]
 		if balance < minimum {
 			minimum = balance
 		}
@@ -166,6 +201,30 @@ func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recu
 	out.ReferenceAmount, out.HasReference = medianInboundPairedTransfer(acct, txs)
 
 	return out, nil
+}
+
+// calendarDayKey is a Location-independent identifier for a UTC calendar
+// day, used as the key of Project's byDay grid. A plain (year, month, day)
+// struct -- rather than a time.Time -- sidesteps Go's map-key trap: a
+// time.Time's equality (and hence its map-key identity) includes its
+// *Location pointer, so two time.Time values naming the same instant but
+// carrying different Location objects (e.g. one from a UTC transaction date,
+// one from a time.Local asOf) would never collide as map keys even though
+// Equal() reports them identical. calendarDayKey has no Location field, so
+// it cannot fall into that trap.
+type calendarDayKey struct {
+	year  int
+	month time.Month
+	day   int
+}
+
+// utcCalendarDay returns t's calendar day expressed in UTC, as a
+// Location-independent key. Used for both the recurring-occurrence labels
+// and the walk-grid labels in Project, so every read and write of byDay
+// names the same UTC day regardless of what Location t itself carries.
+func utcCalendarDay(t time.Time) calendarDayKey {
+	u := t.UTC()
+	return calendarDayKey{u.Year(), u.Month(), u.Day()}
 }
 
 // recurringBelongsToAccount reports whether any leg of a RecurringPayment

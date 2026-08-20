@@ -1,0 +1,113 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R12
+ATTEMPT: 4
+---
+Scope reviewed: internal/services/accounts/projection_test.go (matches
+.swarm/manifests/R12.4.files exactly). Contract: .swarm/briefs/R12.md,
+"Attempt 4". Claim under attack: "the starting-balance UTC cutoff is now
+protected by a persisted test, and nothing else changed."
+
+METHOD: mutation performed in a scratch copy at
+/tmp/.../scratchpad/r12-mutation/budget2 (full `cp -r` of the repo, not a
+git worktree), never in the working tree; deleted afterward, confirmed gone.
+
+PRIME TARGET A — the new test IS load-bearing.
+Reverted projection.go:108 to `BalanceAt(acct, txs, asOf)` in the scratch copy.
+
+(i) Fails under every TZ tested, not just some: ran
+    `TZ=$z go test ./internal/services/accounts/... -run
+    TestProject_StartingBalanceCutoffIsUTCAsOf -v` for UTC,
+    America/New_York, Asia/Tokyo and Pacific/Midway (positive- and
+    negative-offset zones both covered). Fails identically in all four,
+    because the test hardcodes explicit Locations (Asia/Tokyo, UTC) rather
+    than depending on time.Local/host TZ — so this is TZ-independent by
+    construction, stronger than "happens to fail under the zones tried."
+
+(ii) Fails for the RIGHT reason: the only assertion failure is
+    `Minimum = 1000.00, want 700.00 (...)`. Available stayed true (the
+    t.Fatal guard on Available did not fire) and no Crossing-related
+    assertion exists in this test to fail incidentally — the failure is
+    squarely on the balance figure.
+
+(iii) It is the ONLY persisted test that fails: `go test ./...` on the
+    mutated scratch copy (full repo, TZ=UTC) reports exactly one FAIL
+    (TestProject_StartingBalanceCutoffIsUTCAsOf) and every other package
+    still `ok`. This confirms attempt 3's finding was accurate, not
+    overstated — the gap really was that specific and really is now closed.
+
+Hand-verified the arithmetic independently against balance.go's BalanceAt/
+dayOf: asOfUTC = 2026-09-01 11:00 UTC -> atDay = 2026-09-01 00:00 UTC (UTC
+Location, since dayOf rebuilds in `at`'s own Location and asOfUTC's Location
+is UTC). txDay for the 05:00 UTC transaction is also 2026-09-01 00:00 UTC.
+txDay.After(anchorDay) is true (Sept > Aug 1 anchor) and !txDay.After(atDay)
+is true (equal, not after) -> transaction counted -> 1000.00 - 300.00 =
+700.00. Confirms 700.00 is correct, not a repeat of the earlier
+wrong-fixture incident. Under the mutation, atDay shifts to
+2026-08-31 15:00 UTC (JST-derived), the same txDay is now strictly after it,
+so the transaction is wrongly excluded -> 1000.00, matching the observed
+mutant output exactly.
+
+Not just a "Minimum coincidence": the fixture has zero recurring items, so
+byDay is empty and balance is flat across the whole 35-day walk — Minimum is
+mathematically forced to equal the starting balance exactly. There is no
+alternate path by which Minimum could land on 700.00 without the starting
+balance itself being 700.00.
+
+No dependency on projectionHorizonDays or the monthly interval: the fixture
+has no recurring items at all, so those constants are irrelevant to this
+test.
+
+PRIME TARGET B — nothing else moved.
+`git diff -- internal/services/accounts/projection.go` (worktree vs staged
+index) is EMPTY — production code is byte-identical to the staged
+(attempt-3) state, not merely to HEAD's parent. Cross-checked against the
+attempt-3 checker-second verdict (.swarm/verdicts/R12.3.checker-second.verdict),
+which independently captured and hand-verified the same staged
+projection.go content before this attempt began; the file has not moved
+since.
+`git diff -- internal/services/accounts/projection_test.go` (worktree vs
+staged) shows exactly one hunk: a 40-line new test function appended at the
+end of the file. No existing test, fixture or expected value in this file
+was altered.
+Other unstaged changes present in the working tree
+(.swarm/tier3/R12/oracle/zz_oracle_r12_test.go,
+internal/services/mcpsvc/ledger/browser_approval_test.go,
+internal/services/mcpsvc/ledger/resolve_test.go, .swarm/briefs/R12.md,
+.swarm/ledger.tsv) are outside R12.4.files and belong to the R12 brief
+update / concurrent R13 work in this shared tree; none touches
+internal/services/accounts.
+
+Evidence for other required attacks:
+- go build ./... clean, go vet ./... clean (run directly).
+- `bash .swarm/tier3/R12/accept.sh` on the unmutated tree: exit 0. Full
+  output captured (steps 1-8: build, vet, byDay-key grep guard,
+  blast-radius guard on balance.go, 5-zone oracle run, 3-zone accounts
+  package run, 2-zone downstream run, full `go test -race ./...`) — all
+  green, including every package in the repo.
+- Re-ran the accepted-task regression surface directly (not only via
+  accept.sh): TestDashboardAndMCPProjectionAgree and
+  TestGetBalanceProjectionDefaultAsOf* under TZ=UTC and TZ=Asia/Tokyo — all
+  PASS. internal/handlers/accounts, internal/services/mcpsvc/ledger,
+  internal/services/mcpsvc/admin, internal/services/accounts,
+  internal/handlers/dashboard (covering R1, R3, R5, R7, R10, R13's surface
+  packages) all `ok` under both zones.
+- Oracle-vs-persisted-suite coverage: the oracle's Check 2
+  (TestZZOracleR12_StartingBalanceUsesTheUTCDay) is now duplicated by the
+  new persisted test on this exact scenario. Checks 1, 3 and 4 (the
+  cross-zone invariant, the next-UTC-day occurrence, and the
+  time.Now()-derived-asOf case) remain uniquely the oracle's — attempt 3's
+  TestProject_MonthlyCrossingIsNotOneCycleLateAcrossZones and
+  TestProject_SameUTCDayOccurrenceNotDoubleApplied etc. cover the
+  label/instant-agreement defect, not identically Check 1's full
+  Location-invariance sweep or Check 4's time.Now() path — so the oracle
+  still adds coverage beyond what's now persisted, consistent with it being
+  a Tier-3 artifact rather than fully subsumed.
+
+No defect found. The single new test is load-bearing, targeted, correctly
+computed, and the only production-code diff versus the accepted attempt-3
+state is none.
+
+Scratch artifacts (scratch repo copy, accept.sh log tee) created during this
+check have been deleted; none were left in the repo or any worktree.

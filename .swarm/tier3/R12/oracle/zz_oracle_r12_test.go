@@ -154,8 +154,16 @@ func TestZZOracleR12_TimeNowDerivedAsOfAppliesRecurring(t *testing.T) {
 		LowBalanceThreshold: 500,
 		Anchors:             []models.BalanceAnchor{{Date: nowUTCDay.AddDate(0, 0, -30), Amount: 1000}},
 	}
+	// Day 10, not day 5. "monthly" resolves to a fixed 30-day interval and the
+	// horizon walk is `for d := 1; d <= 35`, so a first occurrence at +5 puts the
+	// SECOND at exactly +35 -- inside the inclusive window -- and the expected
+	// minimum would be -200, not 400. That was a bug in this fixture, caught by
+	// R12's Tier-3 primary arm, which flagged it rather than making day 35
+	// exclusive to go green (which would have broken the pre-existing, accepted
+	// TestProject_HorizonIs35Days). At +10 the second occurrence lands at +40,
+	// outside the window, so exactly one occurrence applies.
 	rec := []models.RecurringPayment{
-		zzR12Recurring("monthly", nowUTCDay.AddDate(0, 0, 5), 600),
+		zzR12Recurring("monthly", nowUTCDay.AddDate(0, 0, 10), 600),
 	}
 	got, err := Project(acct, nil, now, rec)
 	if err != nil {

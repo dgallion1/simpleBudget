@@ -1,0 +1,167 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R12
+ATTEMPT: 3
+---
+Tree: /home/darrell/bin/ai/budget2 @ fix/review-aug16 (HEAD 6b30d30, working tree
+merged from wt-primary). Independent fixtures written by this checker live OUTSIDE
+the repo at
+/tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad/scratch/internal/services/accounts/zz_checker_r12_test.go
+(rsync copy of the merged tree). Nothing in the repo was edited by this checker.
+
+CRITERION 1 — oracle exits 0 on the merged tree; oracle file untouched by worker. PASS
+  cmd: bash .swarm/tier3/R12/accept.sh  (log: scratchpad/accept-merged.log)
+  Last line: "=== accept.sh exit: 0 ==="; background task exit code 0.
+  All 8 steps present; `grep -c FAIL accept-merged.log` = 0; step 8 lists 48 "ok"
+  packages. Step 5 ran the oracle under -race in UTC, America/New_York, Asia/Tokyo,
+  Pacific/Midway, Pacific/Kiritimati — all ok.
+  Oracle integrity: sha256sum of .swarm/tier3/R12/oracle/zz_oracle_r12_test.go in the
+  merged tree, in /tmp/swarm-worktrees/budget2/R12/wt-primary and in .../wt-alt are all
+  e879563dd61a70dd41ac6f6c8cee891953e669899007f3048fcfb99658250371 — byte-identical, so
+  both arms were judged against the same contract and the worker did not edit it.
+  `git diff HEAD -- .swarm/tier3/R12/oracle/zz_oracle_r12_test.go` is +9/-1: the
+  documented lead correction (day 5 -> day 10 plus its comment) and nothing else.
+  .swarm/manifests/R12.3.files lists only projection.go and projection_test.go.
+  accept.sh removed its staged copy: `ls internal/services/accounts/` shows no
+  zz_oracle_r12_test.go.
+
+CRITERION 2 — all three defects fixed, shown by MY fixtures. PASS
+  file: scratchpad/scratch/internal/services/accounts/zz_checker_r12_test.go
+  cmd: TZ=$tz go test -race -count=1 -v -run 'TestCK_R12_' ./internal/services/accounts/
+       for tz in UTC America/New_York Asia/Tokyo Pacific/Midway Pacific/Kiritimati — all
+       "--- PASS" / "ok" in all five host zones.
+  (a) TestCK_R12_A_TimeNowAppliesRecurring: real time.Now() asOf, weekly $100 from +2d,
+      anchor 1200/threshold 1000. Asserts Crossing == nowUTCDay+16, Minimum 700.00,
+      TopUp 300.00. Logged live: "time.Local=Asia/Tokyo now=2026-08-20 22:11:40 +0900 JST".
+      Against the unfixed HEAD projection.go it fails: "no crossing: recurring
+      occurrences dropped for a time.Now() asOf (min=1200.00)".
+  (b) TestCK_R12_B_OccurrenceOneHourAfterAsOfTokyo: asOf 2026-09-01 08:00 JST
+      (= 2026-08-31 23:00 UTC, asserted in-test), yearly occurrence 2026-09-01 00:00 UTC
+      one hour later. Asserts Crossing == 2026-09-01 UTC and Minimum 400.00; second leg
+      asserts the monthly variant crosses on the near date, not a cycle late.
+      Against HEAD: "occurrence one hour after asOf vanished (min=800.00)".
+  (c) TestCK_R12_C_StartingBalanceCountsSameUTCDayTx: asOf 2026-09-01 20:00 JST
+      (= 11:00 UTC), tx -250 at 2026-09-01 05:00 UTC (six hours earlier, same UTC day).
+      Asserts Minimum 750.00. Against HEAD, and against the targeted mutant that only
+      reverts BalanceAt(asOfUTC)->BalanceAt(asOf): "Minimum = 1000.00, want 750.00 (1000
+      - 250): the already-posted transaction was dropped".
+
+CRITERION 3 — headline invariant, independently tested. PASS
+  test: TestCK_R12_D_SameInstantAcrossZonesIdentical. One instant (2026-09-01 11:00 UTC)
+  expressed in SEVEN zones incl. three negative-offset ones: UTC, America/New_York (-4),
+  Asia/Tokyo (+9), Pacific/Midway (-11), Pacific/Kiritimati (+14), America/Sao_Paulo (-3),
+  Asia/Kolkata (+5:30). Fixture carries BOTH a recurring series (monthly 400 from 09-05
+  and weekly 25 from 09-03) AND three transactions, one of which straddles asOf.
+  Compares crossing/minimum/topup/available/threshold as a struct. It also self-checks
+  that the fixture is discriminating (fails if there is no crossing or min >= 600).
+  Logged, identical across all seven in every host TZ:
+    {crossing:2026-09-05 min:-325 topup:900 avail:true thresh:500}
+  Against HEAD: "zone America/New_York changed the answer: {crossing: min:600 topup:0 ...}
+  vs UTC baseline {crossing:2026-09-05 min:-325 topup:900 ...}".
+
+CRITERION 4 — dayOf/BalanceAt/Freshness/Project signature unchanged, balance.go untouched. PASS
+  cmd: git diff HEAD --stat -- internal/services/accounts/balance.go -> empty.
+  cmd: git status --porcelain internal/services/accounts/ -> only projection.go and
+       projection_test.go modified.
+  cmd: git diff HEAD -- internal/services/accounts/projection.go | grep '^[-+]func '
+       -> a single line, "+func utcCalendarDay(t time.Time) calendarDayKey" (a new
+       helper). No '-func' line: no existing signature changed.
+  projection.go:89 still reads
+    func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recurring []models.RecurringPayment) (ProjectionResult, error)
+  accept.sh step 4 reported "balance.go unchanged — ok".
+  Merged content equals the declared winner: diff -q against
+  /tmp/swarm-worktrees/budget2/R12/wt-primary/... reports IDENTICAL for both files.
+
+CRITERION 5 — the walk still starts at asOfDay+1. PASS
+  projection.go:183-184: "for d := 1; d <= projectionHorizonDays; d++ {" /
+  "day := asOfDay.AddDate(0, 0, d)".
+  Behavioural proof: TestCK_R12_E_WalkStartsAtAsOfDayPlusOne — (i) start 400 already
+  below the 500 threshold, no recurring, asOf 2026-09-01: Crossing must be 2026-09-02;
+  (ii) a monthly occurrence dated on asOf's OWN UTC day is not applied that day but its
+  series still advances to 2026-10-01 inside the window, so Minimum is 600.00, not 200.00.
+  Discrimination: mutating "for d := 1" -> "for d := 0" makes it fail in both TZ=UTC and
+  TZ=Asia/Tokyo: "Crossing = 2026-09-01 00:00:00 +0000 UTC, want 2026-09-02".
+
+CRITERION 6 — R3 and R5 accepted behaviour survives, under >= 2 timezones. PASS
+  cmd: TZ=$tz go test -race -count=1 -v -run 'TestDashboardAndMCPProjectionAgree|
+       TestGetBalanceProjectionDefaultAsOf|TestGetBalanceProjectionHistoricalAsOfSchedules
+       FromPastEvidenceOnly|TestGetBalanceProjectionFutureAsOfEvaluatesFreshnessAgainst
+       RequestedDate|TestActiveSetAndRecurringForProjectionDefaultMeasuresFreshnessAgainst
+       LedgerMaxDate' ./internal/services/mcpsvc/ledger/
+  for tz in UTC, Asia/Tokyo, America/New_York, Pacific/Midway. All four runs:
+    --- PASS: TestDashboardAndMCPProjectionAgree
+    --- PASS: TestGetBalanceProjectionDefaultAsOfUnchanged
+    --- PASS: TestGetBalanceProjectionDefaultAsOfDoesNotTruncateReferenceAmount
+    --- PASS: TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones
+    --- PASS: TestGetBalanceProjectionHistoricalAsOfSchedulesFromPastEvidenceOnly
+    --- PASS: TestGetBalanceProjectionFutureAsOfEvaluatesFreshnessAgainstRequestedDate
+    --- PASS: TestActiveSetAndRecurringForProjectionDefaultMeasuresFreshnessAgainstLedgerMaxDate
+  accept.sh step 7 additionally ran the whole ledger + dashboard packages under UTC and
+  Asia/Tokyo: ok / ok.
+
+CRITERION 7 — the corrected check-4 fixture is itself right. PASS
+  test: TestCK_R12_F_Check4FixtureArithmetic, verified independently of the oracle.
+  - frequencyIntervalDays("monthly") == 30 (asserted).
+  - projection.go:18 projectionHorizonDays = 35; walk is d <= 35, i.e. INCLUSIVE.
+  - day10 + 30 == day40, and day40 is strictly After horizonEnd (asserted).
+  - day5 + 30 == horizonEnd EXACTLY, i.e. inside the inclusive window (asserted) —
+    confirming the lead's original fixture was wrong, and confirming the diagnosis
+    recorded in report.md's ORACLE CORRECTION note.
+  - Through Project itself, printed: "check4: day10 min=400.00 (one occurrence);
+    day5 min=-200.00 (two occurrences)". So minimum 400.00 is right at day 10, and the
+    original assertion of 400.00 at day 5 was wrong (true value -200.00).
+  The oracle still discriminates at day 10: see criterion 8 and the HEAD-baseline run,
+  where TestZZOracleR12_TimeNowDerivedAsOfAppliesRecurring fails with "no crossing from a
+  time.Now()-derived asOf".
+
+CRITERION 8 — mutation: revert the UTC normalisation, oracle must fail. PASS
+  Performed on the scratch copy outside the repo; the repo tree was never mutated.
+  M5 (both normalisations reverted: BalanceAt(asOfUTC)->BalanceAt(asOf),
+  asOfDay := dayOf(asOf), occ := dayOf(rp.NextExpected)), oracle only, five zones:
+    every zone -> --- FAIL: TestZZOracleR12_OutputDependsOnlyOnTheUTCInstant
+                  --- FAIL: TestZZOracleR12_StartingBalanceUsesTheUTCDay
+  M1 (projection.go restored verbatim from `git show HEAD:...`), TZ=UTC and Asia/Tokyo:
+    all FOUR oracle checks fail, plus my A/B/C/D fixtures.
+  M2 (only BalanceAt's argument reverted): oracle checks 1 and 2 fail in both TZs, as do
+    my C and D.
+  M4 ("for d := 1" -> "for d := 0"): my E fails in both TZs.
+  Scratch copy restored to the merged content after each mutation (cp of
+  scratchpad/projection.fixed.go).
+
+CRITERION 9 — build, vet, test -race clean. PASS
+  cmd: go build ./...  -> "Go build: Success"
+  cmd: go vet ./...    -> "Go vet: No issues found"
+  cmd: go test -race -count=1 ./...  (accept.sh step 8) -> 48 packages "ok", 1 "[no test
+  files]" (budget2/web), zero FAIL lines in the whole log.
+
+NOTES (not criteria failures, recorded for the lead)
+  N1. ORACLE SENSITIVITY GAP. Mutant M3 — reverting ONLY the grid normalisation
+      (asOfDay := dayOf(asOf); occ := dayOf(rp.NextExpected)) while keeping
+      calendarDayKey and the BalanceAt fix — passes ALL FOUR oracle checks in all five
+      zones (UTC, America/New_York, Asia/Tokyo, Pacific/Midway, Pacific/Kiritimati: "ok"
+      each). It is caught by the worker's own persisted test
+      TestProject_MonthlyCrossingIsNotOneCycleLateAcrossZones (fails in TZ=UTC and
+      TZ=Asia/Tokyo) and by my TestCK_R12_B ("Crossing = 2026-09-01 15:00:00 +0000 UTC,
+      want 2026-09-01 00:00:00 +0000 UTC"). Cause: under M3 the occurrence is still
+      applied — only its LABEL drifts by the zone offset — and the oracle's checks 3 and 4
+      assert application and minimum, not the crossing instant; check 1 formats crossing
+      with .UTC().Format("2006-01-02"), which its particular fixture leaves unchanged.
+      The merged tree is protected because the worker asserted the crossing instant; the
+      oracle alone would not be. Worth folding into the oracle for future runs.
+  N2. BEHAVIOUR CHANGE, intended by the user decision: ProjectionResult.Crossing is now
+      always a UTC midnight (asOfDay derives from asOf.UTC()), where it previously
+      carried asOf's Location. out.AsOf still echoes the caller's original asOf with its
+      Location (projection.go:90). Downstream surfaces pass under UTC/Tokyo/New_York/
+      Midway (criterion 6), so no caller depends on the old Location.
+
+SCOPE
+  Modified vs HEAD in the repo: internal/services/accounts/projection.go (+65/-6),
+  internal/services/accounts/projection_test.go (+184/-0) — exactly
+  .swarm/manifests/R12.3.files. Also dirty but not R12's: .swarm/ledger.tsv (lead),
+  .swarm/tier3/R12/oracle/zz_oracle_r12_test.go (lead's documented day-10 correction),
+  internal/services/mcpsvc/ledger/browser_approval_test.go and resolve_test.go (R13,
+  not judged here), and untracked .swarm/ bookkeeping.
+  .swarm/critical.globs: internal/services/storage/**, dataloader/**,
+  retirement/engine/**, transfers/**, accounts/accounts.go, mcpsvc/confirm/** — NONE
+  touched. accounts.go is unmodified (git status shows only the two projection files).

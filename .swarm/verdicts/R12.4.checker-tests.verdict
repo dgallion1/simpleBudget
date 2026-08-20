@@ -1,0 +1,172 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R12
+ATTEMPT: 4
+---
+Tree: /home/darrell/bin/ai/budget2 @ fix/review-aug16 (HEAD 6b30d30).
+Attempt-3 baseline = the git INDEX (staged). `git diff --cached --numstat` gives
+projection.go 65/6 and projection_test.go 184/0 — byte-for-byte the deltas recorded in
+.swarm/verdicts/R12.3.checker-tests.verdict, so the index is a faithful attempt-3 anchor.
+Attempt-4 delta = worktree vs index.
+All mutation work was done on a scratch rsync copy OUTSIDE the repo at
+/tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad/a4mut
+(`rsync -rcn --exclude .git --exclude .swarm` back against the repo reports zero content
+differences, so the scratch is a checksum-identical stand-in). This checker edited nothing
+in the repo.
+
+CRITERION 1 — projection.go BYTE-UNCHANGED from attempt 3. PASS
+  cmd: git diff --stat -- internal/services/accounts/projection.go  -> empty output.
+       (worktree == index == attempt-3 state; this is the diff against attempt 3, not HEAD)
+  cmd: sha256sum internal/services/accounts/projection.go
+       -> 1eb25c7a1e7b0e5de1a0db7753739c23da0bff47874e0ed585f63fb40f30825c
+  cmd: git show :internal/services/accounts/projection.go | sha256sum
+       -> 1eb25c7a1e7b0e5de1a0db7753739c23da0bff47874e0ed585f63fb40f30825c   (index)
+  cmd: sha256sum /tmp/swarm-worktrees/budget2/R12/wt-primary/internal/services/accounts/projection.go
+       -> 1eb25c7a1e7b0e5de1a0db7753739c23da0bff47874e0ed585f63fb40f30825c   (declared Tier-3 winner)
+  Three independent sources, one hash. No production code changed in attempt 4.
+  cmd: git diff --name-only | rg -v '^\.swarm/'
+       -> internal/services/accounts/projection_test.go
+          internal/services/mcpsvc/ledger/browser_approval_test.go   (R13, not judged here)
+          internal/services/mcpsvc/ledger/resolve_test.go            (R13, not judged here)
+       projection.go is absent from the attempt-4 delta entirely.
+
+CRITERION 2 — the new test is purely additive. PASS
+  cmd: git diff -- internal/services/accounts/projection_test.go
+       -> "1 file changed, 40 insertions(+)", 0 deletions. Single hunk header
+          "@@ -836,3 +836,43 @@" — appended at end of file, no existing line touched.
+  Set comparison of test function names, index vs worktree:
+    cmd: git show :.../projection_test.go | rg -o '^func Test[A-Za-z0-9_]+' | sort  (25 names)
+         rg -o '^func Test[A-Za-z0-9_]+' .../projection_test.go | sort              (26 names)
+         comm -3 idx.txt wt.txt -> a single right-column line,
+           "func TestProject_StartingBalanceCutoffIsUTCAsOf"
+         Zero left-column lines, i.e. zero removals and zero renames.
+  cmd: git show HEAD:internal/services/accounts/projection_test.go | rg -c 'StartingBalanceCutoffIsUTCAsOf'
+       -> 0 matches. The name is genuinely new.
+
+CRITERION 3 — THE DECISIVE MUTATION, reproduced by this checker. PASS
+  Mutation applied on the scratch copy only:
+    cmd: sed -i '108s/BalanceAt(acct, txs, asOfUTC)/BalanceAt(acct, txs, asOf)/' \
+           internal/services/accounts/projection.go
+    cmd: rtk proxy diff -u projection.a4good.go internal/services/accounts/projection.go
+      @@ -105,7 +105,7 @@
+      -	start, err := BalanceAt(acct, txs, asOfUTC)
+      +	start, err := BalanceAt(acct, txs, asOf)
+      Exactly one line changed; nothing else.
+  cmd: for tz in UTC America/New_York Asia/Tokyo Pacific/Midway Pacific/Kiritimati \
+         Asia/Kolkata; do TZ=$tz go test -count=1 -v ./internal/services/accounts/; done
+  In ALL SIX zones, including TZ=UTC, byte-identical output:
+      projection_test.go:876: Minimum = 1000.00, want 700.00 (the 05:00 UTC transaction,
+        on asOf's own UTC calendar day, must be counted in the starting balance)
+      --- FAIL: TestProject_StartingBalanceCutoffIsUTCAsOf (0.00s)
+  The failure is on the balance figure at the Minimum assertion (projection_test.go:876),
+  not on the t.Fatal for Available (which did not fire) and not on a panic, compile error
+  or LoadLocation skip. Expected 1000.00 vs want 700.00, exactly as the brief predicts.
+  Zone-independence is real, not incidental: the fixture's asOf carries an explicitly
+  loaded Asia/Tokyo Location, so host TZ cannot reach it.
+  Restored: cp projection.a4good.go back; sha256sum -> 1eb25c7a1e7b... (matches criterion 1).
+
+CRITERION 4 — deterministic zone, not ambient TZ. PASS
+  file: internal/services/accounts/projection_test.go:858
+    tokyo := r12Zone(t, "Asia/Tokyo")
+    asOf := time.Date(2026, 9, 1, 20, 0, 0, 0, tokyo) // == 2026-09-01 11:00 UTC
+  file: internal/services/accounts/projection_test.go:666-673 — r12Zone is
+    time.LoadLocation(name), with t.Skipf if the zone database lacks it. No time.Local,
+    no os.Setenv("TZ"), no reliance on the host zone anywhere in the test.
+  cmd: rg -n 'time\.Local|os\.Setenv' on the new hunk -> no matches.
+  Transaction date is time.Date(2026, 9, 1, 5, 0, 0, 0, time.UTC) — also pinned.
+  Empirically deterministic: PASS unmutated and FAIL mutated in all six zones tried
+  (criterion 3), i.e. the verdict of the test never varied with the ambient zone.
+
+CRITERION 5 — under the mutation the new test is the ONLY persisted failure. PASS
+  Whole repository, mutant scratch:
+    cmd: TZ=UTC go test -count=1 ./...        -> exit 1; 47 packages "ok";
+         rg '^(FAIL|---.*FAIL)' on the log yields exactly:
+           --- FAIL: TestProject_StartingBalanceCutoffIsUTCAsOf (0.00s)
+           FAIL / FAIL budget2/internal/services/accounts / FAIL
+    cmd: TZ=Asia/Tokyo go test -count=1 ./... -> identical: same single --- FAIL line.
+  Accounts package tallies, TZ=UTC, mutant:
+    cmd: TZ=UTC go test -count=1 -v ./internal/services/accounts/ | rg -c '^--- PASS' -> 57
+    cmd: ... | rg -c '^--- FAIL' -> 1
+  Accounts package tallies, TZ=UTC, restored:
+    cmd: TZ=UTC go test -count=1 -v ./internal/services/accounts/ | rg -c '^--- PASS' -> 58
+  This is the exact arithmetic the attempt-3 FAIL rested on: the adversarial lane measured
+  57 passes / 0 failures under this mutation. The 57 are unchanged and the 58th, the new
+  test, is the one that now fires. It is the cover, and it is the only cover — which also
+  confirms the gap was real and is now closed.
+
+CRITERION 6 — bash .swarm/tier3/R12/accept.sh exits 0. PASS
+  cmd: cd /home/darrell/bin/ai/budget2 && bash .swarm/tier3/R12/accept.sh
+       -> "=== accept.sh exit: 0 ==="; shell exit status ACCEPT_EXIT=0.
+  Log: scratchpad/accept_a4.log — all 8 steps present (### 1..### 8), 60 "ok" lines,
+  `rg -c 'FAIL'` returns no matches (zero). Step 3: "no raw time.Time map key — ok".
+  Step 4: "balance.go unchanged — ok". Step 5 ran the oracle under -race in UTC,
+  America/New_York, Asia/Tokyo, Pacific/Midway, Pacific/Kiritimati.
+  Repo left clean: `ls internal/services/accounts/` afterwards shows only accounts.go,
+  accounts_test.go, balance.go, balance_test.go, mutate_warnings_test.go, projection.go,
+  projection_test.go — accept.sh's staged oracle copy was removed, and
+  sha256sum projection.go is still 1eb25c7a1e7b...
+
+CRITERION 7 — accepted work R1, R3, R5, R7, R10, R13 + parity test, >= 2 timezones. PASS
+  Packages carrying those tasks' tests, taken from .swarm/manifests/{R1.3,R3.2,R5.2,R7.2,
+  R10.1,R13.2}.files: internal/handlers/accounts, internal/handlers/dashboard,
+  internal/handlers/explorer, internal/services/accounts, internal/services/mcpsvc/ledger.
+  cmd: for tz in UTC Asia/Tokyo America/New_York; do TZ=$tz go test -race -count=1 \
+         ./internal/handlers/accounts/... ./internal/handlers/dashboard/... \
+         ./internal/handlers/explorer/... ./internal/services/accounts/... \
+         ./internal/services/mcpsvc/ledger/...; done
+  All three zones, all five packages "ok" (15/15), no FAIL line.
+  Named tests, verbose, TZ=UTC and TZ=Asia/Tokyo:
+    --- PASS: TestDashboardAndMCPProjectionAgree                              (R3)
+    --- PASS: TestAccountsCard_SuppressedDuplicateCountedOnce                 (R3)
+    --- PASS: TestGetBalanceProjectionDefaultAsOfUnchanged                    (R5)
+    --- PASS: TestGetBalanceProjectionDefaultAsOfDoesNotTruncateReferenceAmount (R5)
+    --- PASS: TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones (R5)
+    --- PASS: TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict  (R13)
+    --- PASS: TestResolveTransferSecondCallWithTokenWrites                    (R13)
+  R1's tests (TestMutate_LogsOverlapWarningsEvenWhenWriteFails,
+  TestHandle{Delete,AddAnchor,DeleteAnchor}_{Load,Save}Failure*,
+  TestApplyAnchor_{Load,Save}FailureMessage*) and R10's
+  (TestAnchorConsequences*, TestResolveConsequences*, TestSetBalanceAnchor*InBrowser*,
+  TestResolveTransferRefusedInBrowserLeavesDecisionsFileByteUnchanged) are inside those
+  same five packages and are covered by the three-zone package runs above.
+  accept.sh step 7 independently re-ran ledger + dashboard under -race in UTC and
+  Asia/Tokyo: ok / ok.
+
+CRITERION 8 — build, vet, test -race clean. PASS
+  In the repo:
+    cmd: go build ./...  -> no output, BUILD_EXIT=0
+    cmd: go vet ./...    -> no output, VET_EXIT=0
+    cmd: bash .swarm/tier3/R12/accept.sh step 8 (go test -race -count=1 ./...) — inside a
+         script that exited 0 with zero FAIL lines in the log.
+  On the checksum-identical scratch copy (run there to avoid racing a concurrently
+  executing accept.sh from the other lane, see NOTE N1):
+    cmd: go build ./...            -> BUILD=0
+    cmd: go vet ./...              -> VET=0
+    cmd: go test -race -count=1 ./... -> RACE_EXIT=0; 48 "ok" packages;
+         `rg -c 'FAIL|DATA RACE'` returns no matches (zero).
+
+NOTES (not criteria failures)
+  N1. While I was checking the tree, the adversarial lane was running
+      `bash .swarm/tier3/R12/accept.sh` concurrently in the SAME working tree
+      (ps: pid 1845996 "bash .swarm/tier3/R12/accept.sh"). One of my `git status` calls
+      caught its transient staged copy of internal/services/accounts/zz_oracle_r12_test.go;
+      the file was gone moments later and the tree is clean now. accept.sh stages and then
+      `rm -f`s that path, so two simultaneous runs in one tree can interfere. Not
+      attributable to the worker; worth serialising in future runs.
+  N2. The brief's "Recorded, not required" oracle sensitivity gap (M3, grid normalisation
+      only) is unchanged by this attempt and remains covered by the persisted
+      TestProject_MonthlyCrossingIsNotOneCycleLateAcrossZones, not by the oracle.
+
+SCOPE
+  Attempt-4 delta (worktree vs the attempt-3 index) in application code:
+    internal/services/accounts/projection_test.go  (+40/-0)   == .swarm/manifests/R12.4.files, exactly.
+  Also dirty but NOT R12 attempt 4's: internal/services/mcpsvc/ledger/browser_approval_test.go
+  and resolve_test.go (R13.2's accepted manifest, not judged here); .swarm/briefs/R12.md,
+  .swarm/ledger.tsv, .swarm/tier3/R12/oracle/zz_oracle_r12_test.go (lead bookkeeping);
+  untracked .swarm/ manifests, report and verdicts.
+  .swarm/critical.globs — internal/services/storage/**, internal/services/dataloader/**,
+  internal/services/retirement/engine/**, internal/services/transfers/**,
+  internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/** — NONE touched;
+  `git status --short` lists no path under any of them, and accounts.go is unmodified.
+  No production code touched at any point, as the attempt-4 brief required.

@@ -44,6 +44,29 @@ func seedSuspectedPair(t *testing.T, deps Deps, dir string) string {
 	return suspected[0].PairKey
 }
 
+// readTransferDecision reads the verdict actually PERSISTED to
+// transfer_decisions.json for pairKey, independent of the tool's own output.
+// resolveTransferOutput.Verdict is built in applyResolveTransfer as a bare
+// echo of the verdict string the caller passed in, so asserting against it
+// proves nothing about what was written to disk -- a test that only checks
+// out.Verdict would still pass even if the write persisted a different
+// verdict than the one the approval described. This reads the decision back
+// from disk through a throwaway DataLoader, the same way seedSuspectedPair
+// peeks the suspected queue.
+func readTransferDecision(t *testing.T, deps Deps, dir, pairKey string) transfers.Decision {
+	t.Helper()
+	peek := dataloader.New(dir, deps.Store)
+	decisions, err := peek.LoadTransferDecisions()
+	if err != nil {
+		t.Fatalf("LoadTransferDecisions: %v", err)
+	}
+	d, ok := decisions[pairKey]
+	if !ok {
+		t.Fatalf("no persisted decision for pair_key %q in transfer_decisions.json", pairKey)
+	}
+	return d
+}
+
 // The first call MUST NOT write.
 func TestResolveTransferFirstCallDoesNotWrite(t *testing.T) {
 	deps, dir := newDeps(t)
@@ -94,11 +117,23 @@ func TestResolveTransferSecondCallWithTokenWrites(t *testing.T) {
 	if !out.Confirmed {
 		t.Fatal("confirmed = false after redeeming a valid token")
 	}
-	if out.Verdict != "confirm" {
-		t.Errorf("verdict = %q, want confirm", out.Verdict)
-	}
 	if len(out.SnapshotPaths) == 0 {
 		t.Error("no snapshot_paths; a .bak should have been taken for the pre-existing transfer_decisions.json")
+	}
+
+	// out.Verdict proves what the tool REPORTED back to the caller. It is
+	// built as an echo of the request in applyResolveTransfer, but a bug
+	// that reports one verdict while persisting another must still fail
+	// here even when the write itself is correct.
+	if out.Verdict != "confirm" {
+		t.Errorf("reported out.Verdict = %q, want confirm", out.Verdict)
+	}
+
+	// The persisted decision proves what actually got WRITTEN to
+	// transfer_decisions.json, independent of out.Verdict.
+	decision := readTransferDecision(t, deps, dir, key)
+	if string(decision.Verdict) != "confirm" {
+		t.Errorf("persisted verdict = %q, want confirm", decision.Verdict)
 	}
 }
 

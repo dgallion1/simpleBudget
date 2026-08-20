@@ -217,9 +217,6 @@ func TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict(t *testing.T
 	if !out.Confirmed {
 		t.Fatalf("confirmed = false after a browser approval (note: %q)", out.Note)
 	}
-	if out.Verdict != "confirm" {
-		t.Errorf("verdict = %q, want confirm (the verdict the approval described)", out.Verdict)
-	}
 	if out.HumanApproval != "approved" {
 		t.Errorf("human_approval = %q, want approved", out.HumanApproval)
 	}
@@ -228,6 +225,22 @@ func TestResolveTransferApprovedInBrowserRecordsTheDescribedVerdict(t *testing.T
 	}
 	if u := seenURL.Load(); u == nil || !strings.HasPrefix(*u, "http://localhost:8080/mcp/approve/") {
 		t.Errorf("approval URL = %v, want this server's own approve page", u)
+	}
+
+	// out.Verdict proves what the tool REPORTED back to the caller. It is
+	// built as an echo of the request in applyResolveTransfer, but a bug
+	// that reports one verdict while persisting another must still fail
+	// here even when the write itself is correct.
+	if out.Verdict != "confirm" {
+		t.Errorf("reported out.Verdict = %q, want confirm", out.Verdict)
+	}
+
+	// The persisted decision proves what actually got WRITTEN to
+	// transfer_decisions.json -- the value that governs how the pair is
+	// treated on the next load. Read it back independent of out.Verdict.
+	decision := readTransferDecision(t, deps, dir, key)
+	if string(decision.Verdict) != "confirm" {
+		t.Errorf("persisted verdict = %q, want confirm (the verdict the approval described)", decision.Verdict)
 	}
 }
 

@@ -14,3 +14,4 @@ P13	2	tests,second	pending	1	-	-
 P14	2	tests,second	pending	1	-	-
 P15	3	tests,second	pending	1	-	-
 P16	3	tests,second	pending	1	lead	escalated-critical-glob-implemented-in-lead-session-unverified
+P17	3	tests,second	pending	1	lead	sa4023-dead-decrypt-path-escalated-critical-glob-unverified

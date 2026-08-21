@@ -73,13 +73,27 @@ func TestFinanceGap_TaxableAccountHasNoLots(t *testing.T) {
 			gainA, gainB)
 	}
 
+	// The tax model can now price short-term gain correctly (see
+	// short_term_gains_test.go); what is missing is anything that produces it,
+	// because holding period is exactly what lots would carry.
+	tc := fcCalculator(t)
+	shortTermIsPriced := tc.CalculateTaxBreakdown(
+		InvestmentIncomeTaxInputs{OrdinaryIncome: 90000, ShortTermCapitalGains: 20000}, 0).TotalTax >
+		tc.CalculateTaxBreakdown(
+			InvestmentIncomeTaxInputs{OrdinaryIncome: 90000, LongTermCapitalGains: 20000}, 0).TotalTax
+	if !shortTermIsPriced {
+		t.Fatal("regression: the tax model no longer distinguishes short-term from long-term gain")
+	}
+
 	t.Errorf("GAP (FINANCEAPPCONCERNS.md §2, selection half): Withdraw recognises "+
 		"%.2f of gain pro-rata against a blended basis.\n"+
-		"  Still missing: individual lots (open date, quantity, cost/share), a\n"+
+		"  Still missing: individual lots (open date, quantity, cost/share) and a\n"+
 		"  cost-basis method (FIFO / LIFO / HighCost / LowCost / SpecID /\n"+
-		"  TaxLotOptimizer), and a holding-period split — this engine treats every\n"+
-		"  realized gain as long-term, so short-term gain is never taxed as\n"+
-		"  ordinary income.\n"+
+		"  TaxLotOptimizer).\n"+
+		"  The holding-period half is now half-closed: the tax model prices\n"+
+		"  short-term gain as ordinary income, but nothing in the projection ever\n"+
+		"  produces any, because average-cost accounting has no notion of when a\n"+
+		"  dollar was bought. Lots are what would carry that.\n"+
 		"  The document's case realized $1,663 of gain on $34,667 of proceeds by\n"+
 		"  picking lots, against ~10x that blended. Reproducing it needs a\n"+
 		"  single-year lot-selection tool, not lots in the projection loop.", gainA)

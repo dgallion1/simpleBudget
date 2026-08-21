@@ -71,6 +71,7 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func \(h Hooks\) SSActive\(s \*models.WhatIfSettings\) bool](<#Hooks.SSActive>)
   - [func \(h Hooks\) SSIncome\(s \*models.WhatIfSettings, month int\) float64](<#Hooks.SSIncome>)
 - [type Input](<#Input>)
+- [type InvestmentIncomeTaxInputs](<#InvestmentIncomeTaxInputs>)
 - [type MonthOutcome](<#MonthOutcome>)
 - [type MonthReturns](<#MonthReturns>)
 - [type MonthlyIncomeBreakdown](<#MonthlyIncomeBreakdown>)
@@ -89,10 +90,11 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func \(st \*ProjectionState\) StepMonth\(m int, returnsFor func\(s \*models.WhatIfSettings, month int\) MonthReturns\) MonthOutcome](<#ProjectionState.StepMonth>)
   - [func \(st \*ProjectionState\) ZeroBalances\(\)](<#ProjectionState.ZeroBalances>)
 - [type ProjectionTaxAccumulator](<#ProjectionTaxAccumulator>)
-  - [func \(a ProjectionTaxAccumulator\) AnnualizedInputs\(monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64\) ProjectedAnnualTaxInputs](<#ProjectionTaxAccumulator.AnnualizedInputs>)
-  - [func \(a \*ProjectionTaxAccumulator\) ApplyMonth\(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions, taxesPaid float64\)](<#ProjectionTaxAccumulator.ApplyMonth>)
+  - [func \(a ProjectionTaxAccumulator\) AnnualizedInputs\(monthInYear int, m MonthlyTaxInputs\) ProjectedAnnualTaxInputs](<#ProjectionTaxAccumulator.AnnualizedInputs>)
+  - [func \(a \*ProjectionTaxAccumulator\) ApplyMonth\(m RealizedMonthIncome\)](<#ProjectionTaxAccumulator.ApplyMonth>)
   - [func \(a ProjectionTaxAccumulator\) EstimateMonthlySnapshot\(in MonthlyTaxInputs\) ProjectedTaxSnapshot](<#ProjectionTaxAccumulator.EstimateMonthlySnapshot>)
   - [func \(a ProjectionTaxAccumulator\) EstimateMonthlyTaxes\(tc \*TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64\) float64](<#ProjectionTaxAccumulator.EstimateMonthlyTaxes>)
+- [type RealizedMonthIncome](<#RealizedMonthIncome>)
 - [type RothWithdrawal](<#RothWithdrawal>)
   - [func WithdrawFromRoth\(needed float64, rothBalance, rothBasis \*float64\) RothWithdrawal](<#WithdrawFromRoth>)
 - [type TaxAwarePortfolioMonthResult](<#TaxAwarePortfolioMonthResult>)
@@ -104,6 +106,7 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func \(tc \*TaxCalculator\) CalculateMonthlyIRMAA\(magi, thresholdFactor, surchargeFactor float64\) float64](<#TaxCalculator.CalculateMonthlyIRMAA>)
   - [func \(tc \*TaxCalculator\) CalculateNIIT\(magi, netInvestmentIncome float64\) float64](<#TaxCalculator.CalculateNIIT>)
   - [func \(tc \*TaxCalculator\) CalculateStateTax\(taxableIncome float64\) float64](<#TaxCalculator.CalculateStateTax>)
+  - [func \(tc \*TaxCalculator\) CalculateTaxBreakdown\(in InvestmentIncomeTaxInputs, yearsFromBase int\) investmentIncomeTaxBreakdown](<#TaxCalculator.CalculateTaxBreakdown>)
   - [func \(tc \*TaxCalculator\) CalculateTaxWithInvestmentIncome\(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int\) \(federalTax, stateTax, totalTax, effectiveRate float64\)](<#TaxCalculator.CalculateTaxWithInvestmentIncome>)
   - [func \(tc \*TaxCalculator\) CalculateTaxWithInvestmentIncomeBreakdown\(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int\) investmentIncomeTaxBreakdown](<#TaxCalculator.CalculateTaxWithInvestmentIncomeBreakdown>)
   - [func \(tc \*TaxCalculator\) CalculateTaxableSocialSecurity\(ssBenefits, otherIncome, qualifiedDividends, longTermCapitalGains float64\) float64](<#TaxCalculator.CalculateTaxableSocialSecurity>)
@@ -855,6 +858,38 @@ type Input struct {
 }
 ```
 
+<a name="InvestmentIncomeTaxInputs"></a>
+## type [InvestmentIncomeTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L501-L522>)
+
+InvestmentIncomeTaxInputs is a year's income split by how each piece is taxed. Named fields rather than a positional list: these are all float64 dollars, so a transposed pair would be silent.
+
+ShortTermCapitalGains and NonQualifiedDividends receive identical treatment — taxed at ordinary rates, and counted as net investment income for NIIT — but they are kept apart so callers can report them separately and so the distinction survives if the two ever diverge.
+
+```go
+type InvestmentIncomeTaxInputs struct {
+    // OrdinaryIncome is wages, pensions, tax-deferred withdrawals, Roth
+    // conversions and the taxable portion of Social Security.
+    OrdinaryIncome float64
+    // QualifiedDividends and LongTermCapitalGains use the preferential
+    // capital-gains brackets, stacked on top of ordinary income.
+    QualifiedDividends   float64
+    LongTermCapitalGains float64
+    // NonQualifiedDividends is the portion of OrdinaryIncome that is
+    // non-qualified dividends: already counted there for rate purposes, named
+    // here so NIIT can see it.
+    NonQualifiedDividends float64
+    // ShortTermCapitalGains is gain on positions held one year or less. Unlike
+    // LongTermCapitalGains it gets no preferential rate — 26 USC § 1(h)
+    // applies only to net long-term gain — so it is taxed as ordinary income,
+    // and it crowds long-term gain out of the 0% bracket exactly as wages do.
+    //
+    // Supply it as its own field, NOT folded into OrdinaryIncome: this
+    // function adds it there itself, and also counts it as net investment
+    // income for NIIT and includes it in the § 86 provisional-income base.
+    ShortTermCapitalGains float64
+}
+```
+
 <a name="MonthOutcome"></a>
 ## type [MonthOutcome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/stepper.go#L96-L118>)
 
@@ -945,7 +980,7 @@ func CalculateMonthlyIncomeBreakdown(hooks Hooks, s *models.WhatIfSettings, mont
 CalculateMonthlyIncomeBreakdown classifies each income source for the given month: manual SS sources are pulled into the SS bucket unless the SS optimizer is active \(in which case the optimizer's ProjectedSocialSecurityIncome value replaces the manual sources\). hooks supplies the SS\-optimizer integration; passing a zero Hooks value falls back to manual\-sources\-only.
 
 <a name="MonthlyTaxInputs"></a>
-## type [MonthlyTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L85-L108>)
+## type [MonthlyTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L88-L112>)
 
 MonthlyTaxInputs bundles the arguments to EstimateMonthlySnapshot: the month's income components plus the IRMAA lookback context. Named fields replace what was a 14\-argument positional list — the same treatment PortfolioMonthInput gave the cash\-flow waterfall.
 
@@ -960,6 +995,7 @@ type MonthlyTaxInputs struct {
     TaxableWithdrawals    float64
     QualifiedDividends    float64
     LongTermCapitalGains  float64
+    ShortTermCapitalGains float64
     NonQualifiedDividends float64
     RothConversions       float64
 
@@ -1073,7 +1109,7 @@ type PreparedChainLink struct {
 ```
 
 <a name="ProjectedAnnualTaxInputs"></a>
-## type [ProjectedAnnualTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L30-L38>)
+## type [ProjectedAnnualTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L31-L40>)
 
 ProjectedAnnualTaxInputs is the YTD\-plus\-current\-month income picture extrapolated to a full\-year projection.
 
@@ -1084,13 +1120,14 @@ type ProjectedAnnualTaxInputs struct {
     TaxableWithdrawals    float64
     QualifiedDividends    float64
     LongTermCapitalGains  float64
+    ShortTermCapitalGains float64
     NonQualifiedDividends float64
     RothConversions       float64
 }
 ```
 
 <a name="ProjectedTaxSnapshot"></a>
-## type [ProjectedTaxSnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L42-L58>)
+## type [ProjectedTaxSnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L44-L60>)
 
 ProjectedTaxSnapshot is the per\-month tax \+ IRMAA picture produced by EstimateMonthlySnapshot.
 
@@ -1202,7 +1239,7 @@ func (st *ProjectionState) ZeroBalances()
 ZeroBalances empties every account — the canonical loop's depletion bookkeeping.
 
 <a name="ProjectionTaxAccumulator"></a>
-## type [ProjectionTaxAccumulator](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L17-L26>)
+## type [ProjectionTaxAccumulator](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L17-L27>)
 
 ProjectionTaxAccumulator tracks year\-to\-date taxable income and taxes paid during a monthly projection. Tax law is annual; this struct lets the monthly loop estimate per\-month tax with proper year\-to\-date awareness.
 
@@ -1219,6 +1256,7 @@ type ProjectionTaxAccumulator struct {
     TaxableWithdrawalsYTD    float64
     QualifiedDividendsYTD    float64
     LongTermCapitalGainsYTD  float64
+    ShortTermCapitalGainsYTD float64
     NonQualifiedDividendsYTD float64
     RothConversionsYTD       float64
     TaxesPaidYTD             float64
@@ -1226,25 +1264,25 @@ type ProjectionTaxAccumulator struct {
 ```
 
 <a name="ProjectionTaxAccumulator.AnnualizedInputs"></a>
-### func \(ProjectionTaxAccumulator\) [AnnualizedInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L63>)
+### func \(ProjectionTaxAccumulator\) [AnnualizedInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L65>)
 
 ```go
-func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) ProjectedAnnualTaxInputs
+func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTaxInputs) ProjectedAnnualTaxInputs
 ```
 
 AnnualizedInputs extrapolates YTD totals plus the current month to a full year by linear annualization. Roth conversions are deliberately not annualized — they're discrete events.
 
 <a name="ProjectionTaxAccumulator.ApplyMonth"></a>
-### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L280>)
+### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L318>)
 
 ```go
-func (a *ProjectionTaxAccumulator) ApplyMonth(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions, taxesPaid float64)
+func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome)
 ```
 
 ApplyMonth folds a month's realised income and tax payments into the accumulator. Mutating receiver — caller resets at year boundary.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlySnapshot"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlySnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L114>)
+### func \(ProjectionTaxAccumulator\) [EstimateMonthlySnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L118>)
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) ProjectedTaxSnapshot
@@ -1253,13 +1291,32 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 EstimateMonthlySnapshot computes the per\-month tax \+ IRMAA estimate for a given month, given YTD state and the month's income components. The remaining\-months division ensures actual taxes paid converge to the annual liability over the year.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlyTaxes"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L262>)
+### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L300>)
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64
 ```
 
 EstimateMonthlyTaxes is a thin wrapper around EstimateMonthlySnapshot for callers that only need the monthly tax figure \(no IRMAA, no MAGI breakdown\).
+
+<a name="RealizedMonthIncome"></a>
+## type [RealizedMonthIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L334-L344>)
+
+RealizedMonthIncome is one month's realised income split by tax treatment, plus the tax actually paid. Named fields for the same reason InvestmentIncomeTaxInputs has them: nine float64 dollars in a row is a transposition waiting to happen.
+
+```go
+type RealizedMonthIncome struct {
+    OrdinaryIncome        float64
+    SocialSecurityIncome  float64
+    TaxableWithdrawals    float64
+    QualifiedDividends    float64
+    LongTermCapitalGains  float64
+    ShortTermCapitalGains float64
+    NonQualifiedDividends float64
+    RothConversions       float64
+    TaxesPaid             float64
+}
+```
 
 <a name="RothWithdrawal"></a>
 ## type [RothWithdrawal](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/portfolio_month.go#L40-L44>)
@@ -1340,7 +1397,7 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 NewTaxCalculator creates a tax calculator with the given configuration.
 
 <a name="TaxCalculator.AnnualIncomeTaxOn"></a>
-### func \(\*TaxCalculator\) [AnnualIncomeTaxOn](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L196>)
+### func \(\*TaxCalculator\) [AnnualIncomeTaxOn](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L205>)
 
 ```go
 func (tc *TaxCalculator) AnnualIncomeTaxOn(in ProjectedAnnualTaxInputs, yearsFromBase int) float64
@@ -1386,6 +1443,15 @@ func (tc *TaxCalculator) CalculateStateTax(taxableIncome float64) float64
 
 CalculateStateTax computes state income tax.
 
+<a name="TaxCalculator.CalculateTaxBreakdown"></a>
+### func \(\*TaxCalculator\) [CalculateTaxBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L532>)
+
+```go
+func (tc *TaxCalculator) CalculateTaxBreakdown(in InvestmentIncomeTaxInputs, yearsFromBase int) investmentIncomeTaxBreakdown
+```
+
+CalculateTaxBreakdown computes federal, state and NIIT liability from a full income composition, including short\-term capital gain.
+
 <a name="TaxCalculator.CalculateTaxWithInvestmentIncome"></a>
 ### func \(\*TaxCalculator\) [CalculateTaxWithInvestmentIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L484>)
 
@@ -1396,7 +1462,7 @@ func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualif
 
 
 <a name="TaxCalculator.CalculateTaxWithInvestmentIncomeBreakdown"></a>
-### func \(\*TaxCalculator\) [CalculateTaxWithInvestmentIncomeBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L494>)
+### func \(\*TaxCalculator\) [CalculateTaxWithInvestmentIncomeBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L541>)
 
 ```go
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncomeBreakdown(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown
@@ -1423,7 +1489,7 @@ func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase in
 CalculateTotalTax computes combined federal and state tax.
 
 <a name="TaxCalculator.EstimateRothConversionTax"></a>
-### func \(\*TaxCalculator\) [EstimateRothConversionTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L546>)
+### func \(\*TaxCalculator\) [EstimateRothConversionTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L604>)
 
 ```go
 func (tc *TaxCalculator) EstimateRothConversionTax(baseIncome, conversionAmount float64, yearsFromBase int) float64
@@ -1459,7 +1525,7 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
 GetAdjustedStandardDeduction returns standard deduction adjusted for inflation, including the age\-65\+ additional deduction per IRS Rev. Proc. 2023\-34 §3.16\(2\).
 
 <a name="TaxCalculator.GetBracketRate"></a>
-### func \(\*TaxCalculator\) [GetBracketRate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L568>)
+### func \(\*TaxCalculator\) [GetBracketRate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/tax.go#L626>)
 
 ```go
 func (tc *TaxCalculator) GetBracketRate(grossIncome float64, yearsFromBase int) float64
@@ -1481,7 +1547,7 @@ func (tc *TaxCalculator) InflationFactor(yearsFromBase int) float64
 InflationFactor returns the cumulative inflation factor for yearsFromBase years at the calculator's annual inflation rate.
 
 <a name="TaxCalculator.MarginalRateOnOrdinaryIncome"></a>
-### func \(\*TaxCalculator\) [MarginalRateOnOrdinaryIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L226>)
+### func \(\*TaxCalculator\) [MarginalRateOnOrdinaryIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L264>)
 
 ```go
 func (tc *TaxCalculator) MarginalRateOnOrdinaryIncome(in ProjectedAnnualTaxInputs, yearsFromBase int) float64

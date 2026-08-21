@@ -377,14 +377,14 @@ func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) 
 // calculations (IRMAA, NIIT thresholds) agree with the converged
 // monthly tax snapshot.
 func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64) {
-	taxState.ApplyMonth(
-		incomeBreakdown.OrdinaryIncome+monthResult.TaxableNonQualifiedDividends+monthResult.TaxableRothEarnings,
-		incomeBreakdown.SocialSecurityIncome,
-		monthResult.CashFlow.WithdrawalFromTaxDeferred,
-		monthResult.TaxableQualifiedDividends,
-		monthResult.TaxableCapitalGains,
-		monthResult.TaxableNonQualifiedDividends,
-		rothConversionThisMonth,
-		monthResult.TaxesPaid,
-	)
+	taxState.ApplyMonth(RealizedMonthIncome{
+		OrdinaryIncome:        incomeBreakdown.OrdinaryIncome + monthResult.TaxableNonQualifiedDividends + monthResult.TaxableRothEarnings,
+		SocialSecurityIncome:  incomeBreakdown.SocialSecurityIncome,
+		TaxableWithdrawals:    monthResult.CashFlow.WithdrawalFromTaxDeferred,
+		QualifiedDividends:    monthResult.TaxableQualifiedDividends,
+		LongTermCapitalGains:  monthResult.TaxableCapitalGains,
+		NonQualifiedDividends: monthResult.TaxableNonQualifiedDividends,
+		RothConversions:       rothConversionThisMonth,
+		TaxesPaid:             monthResult.TaxesPaid,
+	})
 }

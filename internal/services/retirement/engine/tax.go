@@ -482,8 +482,55 @@ func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase in
 }
 
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int) (federalTax, stateTax, totalTax, effectiveRate float64) {
-	breakdown := tc.calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, 0, yearsFromBase)
+	breakdown := tc.CalculateTaxBreakdown(InvestmentIncomeTaxInputs{
+		OrdinaryIncome:       ordinaryIncome,
+		QualifiedDividends:   qualifiedDividends,
+		LongTermCapitalGains: longTermCapitalGains,
+	}, yearsFromBase)
 	return breakdown.FederalTax, breakdown.StateTax, breakdown.TotalTax, breakdown.EffectiveRate
+}
+
+// InvestmentIncomeTaxInputs is a year's income split by how each piece is
+// taxed. Named fields rather than a positional list: these are all float64
+// dollars, so a transposed pair would be silent.
+//
+// ShortTermCapitalGains and NonQualifiedDividends receive identical treatment
+// — taxed at ordinary rates, and counted as net investment income for NIIT —
+// but they are kept apart so callers can report them separately and so the
+// distinction survives if the two ever diverge.
+type InvestmentIncomeTaxInputs struct {
+	// OrdinaryIncome is wages, pensions, tax-deferred withdrawals, Roth
+	// conversions and the taxable portion of Social Security.
+	OrdinaryIncome float64
+	// QualifiedDividends and LongTermCapitalGains use the preferential
+	// capital-gains brackets, stacked on top of ordinary income.
+	QualifiedDividends   float64
+	LongTermCapitalGains float64
+	// NonQualifiedDividends is the portion of OrdinaryIncome that is
+	// non-qualified dividends: already counted there for rate purposes, named
+	// here so NIIT can see it.
+	NonQualifiedDividends float64
+	// ShortTermCapitalGains is gain on positions held one year or less. Unlike
+	// LongTermCapitalGains it gets no preferential rate — 26 USC § 1(h)
+	// applies only to net long-term gain — so it is taxed as ordinary income,
+	// and it crowds long-term gain out of the 0% bracket exactly as wages do.
+	//
+	// Supply it as its own field, NOT folded into OrdinaryIncome: this
+	// function adds it there itself, and also counts it as net investment
+	// income for NIIT and includes it in the § 86 provisional-income base.
+	ShortTermCapitalGains float64
+}
+
+// ordinaryTotal is everything taxed at ordinary rates: ordinary income plus
+// short-term capital gain.
+func (in InvestmentIncomeTaxInputs) ordinaryTotal() float64 {
+	return in.OrdinaryIncome + in.ShortTermCapitalGains
+}
+
+// CalculateTaxBreakdown computes federal, state and NIIT liability from a
+// full income composition, including short-term capital gain.
+func (tc *TaxCalculator) CalculateTaxBreakdown(in InvestmentIncomeTaxInputs, yearsFromBase int) investmentIncomeTaxBreakdown {
+	return tc.calculateTaxWithInvestmentIncomeInternal(in, yearsFromBase)
 }
 
 // CalculateTaxWithInvestmentIncomeBreakdown returns a detailed tax
@@ -492,15 +539,26 @@ func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualif
 // taxed as ordinary income but also count as net investment income for
 // NIIT.
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncomeBreakdown(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown {
-	return tc.calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, yearsFromBase)
+	return tc.calculateTaxWithInvestmentIncomeInternal(InvestmentIncomeTaxInputs{
+		OrdinaryIncome:        ordinaryIncome,
+		QualifiedDividends:    qualifiedDividends,
+		LongTermCapitalGains:  longTermCapitalGains,
+		NonQualifiedDividends: nonQualifiedDividends,
+	}, yearsFromBase)
 }
 
-func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown {
+func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(in InvestmentIncomeTaxInputs, yearsFromBase int) investmentIncomeTaxBreakdown {
+	ordinaryIncome := in.ordinaryTotal()
+	qualifiedDividends := in.QualifiedDividends
+	longTermCapitalGains := in.LongTermCapitalGains
+
 	totalGrossIncome := ordinaryIncome + qualifiedDividends + longTermCapitalGains
 	if totalGrossIncome <= 0 {
 		return investmentIncomeTaxBreakdown{}
 	}
 
+	// The standard deduction is consumed by ordinary income (short-term gain
+	// included) before any is left over for preferentially-taxed income.
 	standardDeduction := tc.GetAdjustedStandardDeduction(yearsFromBase)
 	taxableOrdinaryIncome := math.Max(0, ordinaryIncome-standardDeduction)
 	remainingDeduction := math.Max(0, standardDeduction-ordinaryIncome)
@@ -523,7 +581,7 @@ func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(ordinaryIncome
 	}
 
 	magi := ordinaryIncome + qualifiedDividends + longTermCapitalGains
-	netInvestmentIncome := qualifiedDividends + longTermCapitalGains + nonQualifiedDividends
+	netInvestmentIncome := qualifiedDividends + longTermCapitalGains + in.NonQualifiedDividends + in.ShortTermCapitalGains
 	niit := tc.CalculateNIIT(magi, netInvestmentIncome)
 	stateTaxableIncome := taxableOrdinaryIncome + taxableInvestmentIncome
 	stateTax := tc.CalculateStateTax(stateTaxableIncome)

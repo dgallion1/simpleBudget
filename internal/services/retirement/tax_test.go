@@ -206,7 +206,10 @@ func TestProjectionTaxAccumulatorEstimateMonthlyTaxes(t *testing.T) {
 			t.Fatalf("month 0 taxes = %.2f, want %.2f", month0Taxes, wantTotal/12)
 		}
 
-		accumulator.ApplyMonth(monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0, month0Taxes)
+		accumulator.ApplyMonth(engine.RealizedMonthIncome{
+			OrdinaryIncome: monthlyOrdinaryIncome,
+			TaxesPaid:      month0Taxes,
+		})
 		month1Taxes := accumulator.EstimateMonthlyTaxes(tc, 0, 1, monthlyOrdinaryIncome, 0, 0, 0, 0, 0, 0)
 		if math.Abs(month1Taxes-wantTotal/12) > 0.01 {
 			t.Fatalf("month 1 taxes = %.2f, want %.2f", month1Taxes, wantTotal/12)

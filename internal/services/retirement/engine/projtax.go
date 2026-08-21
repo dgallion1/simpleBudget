@@ -20,6 +20,7 @@ type ProjectionTaxAccumulator struct {
 	TaxableWithdrawalsYTD    float64
 	QualifiedDividendsYTD    float64
 	LongTermCapitalGainsYTD  float64
+	ShortTermCapitalGainsYTD float64
 	NonQualifiedDividendsYTD float64
 	RothConversionsYTD       float64
 	TaxesPaidYTD             float64
@@ -33,6 +34,7 @@ type ProjectedAnnualTaxInputs struct {
 	TaxableWithdrawals    float64
 	QualifiedDividends    float64
 	LongTermCapitalGains  float64
+	ShortTermCapitalGains float64
 	NonQualifiedDividends float64
 	RothConversions       float64
 }
@@ -60,7 +62,7 @@ type ProjectedTaxSnapshot struct {
 // AnnualizedInputs extrapolates YTD totals plus the current month to a
 // full year by linear annualization. Roth conversions are deliberately
 // not annualized — they're discrete events.
-func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) ProjectedAnnualTaxInputs {
+func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTaxInputs) ProjectedAnnualTaxInputs {
 	monthsElapsed := float64(monthInYear + 1)
 	if monthsElapsed <= 0 {
 		monthsElapsed = 1
@@ -68,13 +70,14 @@ func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, ordinaryInco
 	annualizationFactor := 12.0 / monthsElapsed
 
 	return ProjectedAnnualTaxInputs{
-		OrdinaryIncome:        (a.OrdinaryIncomeYTD + ordinaryIncome) * annualizationFactor,
-		SocialSecurityIncome:  (a.SocialSecurityIncomeYTD + socialSecurityIncome) * annualizationFactor,
-		TaxableWithdrawals:    (a.TaxableWithdrawalsYTD + taxableWithdrawals) * annualizationFactor,
-		QualifiedDividends:    (a.QualifiedDividendsYTD + qualifiedDividends) * annualizationFactor,
-		LongTermCapitalGains:  (a.LongTermCapitalGainsYTD + longTermCapitalGains) * annualizationFactor,
-		NonQualifiedDividends: (a.NonQualifiedDividendsYTD + nonQualifiedDividends) * annualizationFactor,
-		RothConversions:       a.RothConversionsYTD + rothConversions,
+		OrdinaryIncome:        (a.OrdinaryIncomeYTD + m.OrdinaryIncome) * annualizationFactor,
+		SocialSecurityIncome:  (a.SocialSecurityIncomeYTD + m.SocialSecurityIncome) * annualizationFactor,
+		TaxableWithdrawals:    (a.TaxableWithdrawalsYTD + m.TaxableWithdrawals) * annualizationFactor,
+		QualifiedDividends:    (a.QualifiedDividendsYTD + m.QualifiedDividends) * annualizationFactor,
+		LongTermCapitalGains:  (a.LongTermCapitalGainsYTD + m.LongTermCapitalGains) * annualizationFactor,
+		ShortTermCapitalGains: (a.ShortTermCapitalGainsYTD + m.ShortTermCapitalGains) * annualizationFactor,
+		NonQualifiedDividends: (a.NonQualifiedDividendsYTD + m.NonQualifiedDividends) * annualizationFactor,
+		RothConversions:       a.RothConversionsYTD + m.RothConversions,
 	}
 }
 
@@ -92,6 +95,7 @@ type MonthlyTaxInputs struct {
 	TaxableWithdrawals    float64
 	QualifiedDividends    float64
 	LongTermCapitalGains  float64
+	ShortTermCapitalGains float64
 	NonQualifiedDividends float64
 	RothConversions       float64
 
@@ -124,12 +128,17 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 		return ProjectedTaxSnapshot{}
 	}
 
-	inputs := a.AnnualizedInputs(monthInYear, in.OrdinaryIncome, in.SocialSecurityIncome, in.TaxableWithdrawals, in.QualifiedDividends, in.LongTermCapitalGains, in.NonQualifiedDividends, in.RothConversions)
-	otherIncome := inputs.OrdinaryIncome + inputs.TaxableWithdrawals + inputs.RothConversions
-	taxableSocialSecurity := tc.CalculateTaxableSocialSecurity(inputs.SocialSecurityIncome, otherIncome, inputs.QualifiedDividends, inputs.LongTermCapitalGains)
-	estimatedOrdinaryIncome := otherIncome + taxableSocialSecurity
+	inputs := a.AnnualizedInputs(monthInYear, in)
+	taxableSocialSecurity := taxableSocialSecurityFor(tc, inputs)
+	estimatedOrdinaryIncome := ordinaryIncomeBeforeSocialSecurity(inputs) + taxableSocialSecurity
 
-	taxBreakdown := tc.CalculateTaxWithInvestmentIncomeBreakdown(estimatedOrdinaryIncome, inputs.QualifiedDividends, inputs.LongTermCapitalGains, inputs.NonQualifiedDividends, yearsFromBase)
+	taxBreakdown := tc.CalculateTaxBreakdown(InvestmentIncomeTaxInputs{
+		OrdinaryIncome:        estimatedOrdinaryIncome,
+		QualifiedDividends:    inputs.QualifiedDividends,
+		LongTermCapitalGains:  inputs.LongTermCapitalGains,
+		NonQualifiedDividends: inputs.NonQualifiedDividends,
+		ShortTermCapitalGains: inputs.ShortTermCapitalGains,
+	}, yearsFromBase)
 	lookbackMAGI, hasIRMALookback := resolveIRMAALookbackMAGI(completedMAGIHistory, assumedIRMALookbackMAGI)
 
 	annualIRMAA := 0.0
@@ -197,13 +206,42 @@ func (tc *TaxCalculator) AnnualIncomeTaxOn(in ProjectedAnnualTaxInputs, yearsFro
 	if tc == nil {
 		return 0
 	}
-	otherIncome := in.OrdinaryIncome + in.TaxableWithdrawals + in.RothConversions
-	taxableSocialSecurity := tc.CalculateTaxableSocialSecurity(
-		in.SocialSecurityIncome, otherIncome, in.QualifiedDividends, in.LongTermCapitalGains)
-	ordinaryIncome := otherIncome + taxableSocialSecurity
-	return tc.CalculateTaxWithInvestmentIncomeBreakdown(
-		ordinaryIncome, in.QualifiedDividends, in.LongTermCapitalGains,
-		in.NonQualifiedDividends, yearsFromBase).TotalTax
+	ordinaryIncome := ordinaryIncomeBeforeSocialSecurity(in) + taxableSocialSecurityFor(tc, in)
+	return tc.CalculateTaxBreakdown(InvestmentIncomeTaxInputs{
+		OrdinaryIncome:        ordinaryIncome,
+		QualifiedDividends:    in.QualifiedDividends,
+		LongTermCapitalGains:  in.LongTermCapitalGains,
+		NonQualifiedDividends: in.NonQualifiedDividends,
+		ShortTermCapitalGains: in.ShortTermCapitalGains,
+	}, yearsFromBase).TotalTax
+}
+
+// ordinaryIncomeBeforeSocialSecurity is everything taxed at ordinary rates
+// except the taxable portion of Social Security, which depends on this total
+// and so must be computed from it.
+//
+// Short-term capital gain is deliberately NOT included here even though it is
+// taxed at ordinary rates: CalculateTaxBreakdown adds it itself, and counting
+// it in both places would tax it twice. It does belong in the § 86
+// provisional-income base, which is why taxableSocialSecurityFor adds it
+// separately.
+func ordinaryIncomeBeforeSocialSecurity(in ProjectedAnnualTaxInputs) float64 {
+	return in.OrdinaryIncome + in.TaxableWithdrawals + in.RothConversions
+}
+
+// taxableSocialSecurityFor computes the § 86 taxable portion of benefits for
+// an annual income picture.
+//
+// Provisional income is AGI-before-benefits plus tax-exempt interest plus half
+// of gross benefits, and short-term capital gain is part of AGI — so it drags
+// benefits into taxation exactly as wages do. Omitting it here would understate
+// taxable Social Security for anyone realising short-term gain inside the
+// phase-in band. This is one of the six distinct income measures the design
+// notes warn must each be derived on their own.
+func taxableSocialSecurityFor(tc *TaxCalculator, in ProjectedAnnualTaxInputs) float64 {
+	provisionalOther := ordinaryIncomeBeforeSocialSecurity(in) + in.ShortTermCapitalGains
+	return tc.CalculateTaxableSocialSecurity(
+		in.SocialSecurityIncome, provisionalOther, in.QualifiedDividends, in.LongTermCapitalGains)
 }
 
 // MarginalRateOnOrdinaryIncome returns the effective marginal tax rate, as a
@@ -277,13 +315,30 @@ func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsF
 
 // ApplyMonth folds a month's realised income and tax payments into the
 // accumulator. Mutating receiver — caller resets at year boundary.
-func (a *ProjectionTaxAccumulator) ApplyMonth(ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions, taxesPaid float64) {
-	a.OrdinaryIncomeYTD += ordinaryIncome
-	a.SocialSecurityIncomeYTD += socialSecurityIncome
-	a.TaxableWithdrawalsYTD += taxableWithdrawals
-	a.QualifiedDividendsYTD += qualifiedDividends
-	a.LongTermCapitalGainsYTD += longTermCapitalGains
-	a.NonQualifiedDividendsYTD += nonQualifiedDividends
-	a.RothConversionsYTD += rothConversions
-	a.TaxesPaidYTD += taxesPaid
+func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome) {
+	a.OrdinaryIncomeYTD += m.OrdinaryIncome
+	a.SocialSecurityIncomeYTD += m.SocialSecurityIncome
+	a.TaxableWithdrawalsYTD += m.TaxableWithdrawals
+	a.QualifiedDividendsYTD += m.QualifiedDividends
+	a.LongTermCapitalGainsYTD += m.LongTermCapitalGains
+	a.ShortTermCapitalGainsYTD += m.ShortTermCapitalGains
+	a.NonQualifiedDividendsYTD += m.NonQualifiedDividends
+	a.RothConversionsYTD += m.RothConversions
+	a.TaxesPaidYTD += m.TaxesPaid
+}
+
+// RealizedMonthIncome is one month's realised income split by tax treatment,
+// plus the tax actually paid. Named fields for the same reason
+// InvestmentIncomeTaxInputs has them: nine float64 dollars in a row is a
+// transposition waiting to happen.
+type RealizedMonthIncome struct {
+	OrdinaryIncome        float64
+	SocialSecurityIncome  float64
+	TaxableWithdrawals    float64
+	QualifiedDividends    float64
+	LongTermCapitalGains  float64
+	ShortTermCapitalGains float64
+	NonQualifiedDividends float64
+	RothConversions       float64
+	TaxesPaid             float64
 }

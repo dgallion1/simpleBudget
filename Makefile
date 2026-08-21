@@ -155,8 +155,36 @@ else
 endif
 	$(GO) clean
 
+# Node.js is required by one test, TestSyncWarnings_ClientRegressionHarness
+# (internal/handlers/accounts/warnings_client_regression_test.go), which
+# shells out to node to execute accounts.html's client-side syncWarnings()
+# script and catch dismissal-ordering regressions (ACCESSIBILITY.md point
+# 16) that no Go-only test can see. That guard lives in the test itself,
+# not here: the test FAILS (not skips) when node is absent, unless the
+# developer opts out with BUDGET2_ALLOW_SKIP_JS (see the test's doc
+# comment and README.md's Testing section). Earlier revisions of this
+# Makefile tried to police every target that runs `go test` with a
+# check-node prerequisite, hand-listed and then discovered by scanning
+# this file's text; both were evadable and both have been removed. No
+# target below requires node -- the test does.
+#
+# `go test` result caching is the one gap the test itself cannot close:
+# `go test` keys its cache in part on the literal PATH string, and on
+# Debian/Ubuntu (and other distros whose package manager installs node into
+# a directory that is already on PATH, e.g. /usr/bin) removing node does not
+# change that string, so a stale cached PASS can replay and this guard never
+# fires -- see the test file's doc comment and README.md's Testing section
+# for the full explanation. Every target below that runs this package's
+# tests therefore re-runs internal/handlers/accounts a second time with
+# -count=1 to force a real, uncached execution; that package takes well
+# under a second, so the cost is negligible. This is a fixed, explicit
+# rerun of one named package, not a scan of this file or any target for
+# `go test` invocations.
+ACCOUNTS_PKG := ./internal/handlers/accounts
+
 test: check-go
 	$(GO) test ./...
+	$(GO) test -count=1 $(ACCOUNTS_PKG)
 
 vet: check-go
 	$(GO) vet ./...
@@ -169,6 +197,7 @@ vuln:
 
 race: check-go
 	$(GO) test -race ./...
+	$(GO) test -race -count=1 $(ACCOUNTS_PKG)
 
 fuzz: check-go
 ifeq ($(strip $(PKG)),)
@@ -187,12 +216,14 @@ endif
 
 test-unit: check-go
 	$(GO) test -v ./internal/...
+	$(GO) test -count=1 -v $(ACCOUNTS_PKG)
 
 test-integration: check-go
 	$(GO) test -v ./cmd/server/...
 
 test-coverage: check-go
 	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) test -count=1 $(ACCOUNTS_PKG)
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 

@@ -1,0 +1,110 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 4
+---
+Attacked the "scan the Makefile's own text for `$(GO) test`" guard from
+.swarm/manifests/S5.4.files (merged wt-primary, per .swarm/tier3/S5/report.md
+RESOLUTION). Found a reproducible silent-evasion class that is the same
+failure category attempt 2 was FAILed for, and worse: it is open-ended, not
+a fixed missed target.
+
+REPRODUCTION (in a scratch copy of the real repo, node stripped from PATH):
+
+  cd <scratch-copy-of-repo>
+  cat >> Makefile <<'MK'
+  GOCMD := $(GO)
+  sneaky-alias: check-go
+  	$(GOCMD) test ./internal/handlers/accounts/...
+  MK
+  env PATH=/usr/bin:/bin make sneaky-alias
+  =>
+  /home/darrell/.local/go/bin/go test ./internal/handlers/accounts/...
+  ok  	budget2/internal/handlers/accounts	0.224s
+
+No "ERROR: node is required" line, no check-node invocation, exit 0. The
+harness-carrying test (TestSyncWarnings_ClientRegressionHarness) silently
+t.Skip()s because node is absent, and the target goes green — exactly the
+"go test ./... test-unit went green with the harness silently skipped"
+defect that failed attempt 2, now reachable through any target that spells
+the invocation as anything other than the literal adjacent tokens "$(GO)"
++ " test" on one line. Also reproduced with:
+  - a `define RUN_GO_TEST ... $(GO) test ... endef` canned recipe invoked as
+    `$(RUN_GO_TEST)` (real Make idiom for DRY test targets) — silently
+    unguarded.
+  - a line-continuation split (`$(GO) \` newline `test ./...`) — silently
+    unguarded.
+  - bare `go test ./...` with no $(GO) at all — silently unguarded (unless
+    accidentally rescued by the misattribution bug below).
+This is not exotic: the Makefile itself already uses variable indirection
+for its tool path (GO_SYSTEM/GO_LOCAL -> GO), so `GOCMD := $(GO)` is a
+completely ordinary pattern in this exact codebase's own style.
+
+SECOND, INDEPENDENT BUG — misattribution across target boundaries. The awk
+scanner is a single-pass state machine that remembers "current target = t"
+from the last line matching /^[A-Za-z0-9_.-]+:/, and attributes ANY later
+line containing the literal "$(GO) test" to that remembered t, regardless of
+whether that line is actually inside t's own recipe. Appending
+  define RUN_GO_TEST
+  $(GO) test ./internal/...
+  endef
+  sneaky-canned: check-go
+  	$(RUN_GO_TEST)
+after the Makefile's real `release:` target causes `release` (last real
+target header seen before the define block) to be incorrectly granted
+check-node as a prerequisite, verified live:
+  env PATH=/usr/bin:/bin make -n release v=1.2.3
+  => first printed command is check-node's `command -v node ... || { echo
+     ERROR: node is required ...; exit 1; }`
+`make release` now fails on any machine without node, even though release
+never runs go test — the exact "build/vet/static/dev/install must not
+require node" regression class the brief calls out, just on a different
+target (release) than the ones enumerated. Meanwhile `sneaky-canned`
+(the actual go-test invocation) gets NO guard at all — the same bug
+produces a false positive on an unrelated target and a false negative on
+the real offender simultaneously.
+
+THE ORACLE HAS THE SAME BLIND SPOT. accept.sh's own gotest_targets scan
+(independent regex over `make -pn`'s database: `\tgo test|\t.*\$\(GO\)
+test|\tgotestsum`) was checked against the same three sneaky targets in the
+real repo's make -pn dump:
+  sneaky-alias  recipe: `$(GOCMD) test ...`      -> no oracle regex match
+  sneaky-canned2 recipe: `$(RUN_GO_TEST)`         -> no oracle regex match
+  sneaky-bare   recipe: `go test ...`             -> matches `\tgo test`
+Both the alias and canned-recipe evasions are invisible to the oracle too,
+so re-running accept.sh against a Makefile carrying either would print
+ORACLE: PASS — the escape is undetectable by the instrument the report
+relies on to declare the winner robust. This directly contradicts the
+report's stated reason for preferring wt-primary over wt-alt ("recipe-
+content driven, so a target added later is covered without anyone
+remembering to wire it") — that claim is false for two ordinary Make idioms
+(variable aliasing, canned recipes), and the Makefile's own added comment
+makes the same false promise to future maintainers.
+
+Per the task brief: "Silent evaporation is a worse defect than the one this
+task fixed and is a FAIL." That is what was found. Not a hypothetical edge
+case — reproduced against the actual repo tree with node genuinely absent
+from PATH, using idioms already present in this very Makefile's style.
+
+OTHER ANGLES CHECKED, NO DEFECT FOUND:
+- Self-reference trap: `grep -n '\$(GO) test' Makefile` in the real tree
+  returns 0 matches — the scanner's own line does not self-tag.
+- awk presence/portability: system awk resolves to mawk; GOTEST_TARGETS
+  computed correctly (`fuzz race test test-coverage test-integration
+  test-unit`), matches oracle's list.
+- No over-application to build/clean/vet/static/dev in the unmodified tree:
+  `make -n build|clean|vet|static|dev` with node stripped from PATH shows
+  no check-node step for any of them.
+- Guard fires loudly (nonzero make exit, ERROR line) for test, test-unit,
+  test-integration, test-coverage, race in the unmodified tree with node
+  absent — confirmed by direct (non -n) execution.
+- PASS regex `(?m)^RESULT <name> PASS(\s|$)` in
+  internal/handlers/accounts/warnings_client_regression_test.go:147 uses
+  regexp.QuoteMeta(name) and requires PASS at start of a line followed by
+  whitespace/EOL; not chased further given the decisive finding above.
+
+Did not compare against wt-primary/wt-alt worktrees under
+/tmp/swarm-worktrees (not reached; the defect above is dispositive on its
+own and no repo files were modified — all mutation was in scratch copies
+under /tmp/claude-1000/.../scratchpad).

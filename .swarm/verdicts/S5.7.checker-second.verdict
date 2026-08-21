@@ -1,0 +1,91 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 7
+---
+Scope: .swarm/manifests/S5.7.files. No repo files left modified (verified
+`git status --porcelain` byte-identical to the pre-attack snapshot, including
+the mtimes I temporarily touched on accounts.html and the harness JS, which
+were restored to their original values via `touch -d`). go1.26.3 from
+/home/darrell/go-sdk/go, same version the worker cited.
+
+Mechanism claims re-derived from cmd/go/internal/test/test.go on this GOROOT,
+all confirmed TRUE:
+- `case "getenv"` (line 2032-2033) hashes the value with no directory/root
+  guard, unlike `case "stat"`/`case "open"` (lines 2037-2054), which both
+  `break` via `if a.Package.Root == "" || search.InDir(name, a.Package.Root)
+  == "" { break }` before hashing anything outside the module root.
+- os/exec/lp_unix.go:60 `LookPath` calls `os.Getenv("PATH")`, and
+  os/env.go:102/113 route that through `testlog.Getenv`. Chain confirmed on
+  this platform (linux/amd64).
+
+Empirically re-verified with a controlled experiment (constructed PATH from
+scratch directories only, no repo edits, no system package installs):
+- Node absent, `PATH` unchanged after `go test` populated the cache -> second
+  run reports `(cached) PASS` with `which node` genuinely failing (exit 1).
+  Confirms the caveat's core claim.
+- `go clean -testcache` and `-count=1` both correctly force a real re-run and
+  correctly FAIL when node is absent -> the stated remedies work.
+- Touching (not editing) accounts.html's mtime alone (md5 unchanged) busts
+  the cache to a real re-run; same for testdata/js/warnings_dom_harness.js
+  individually. Both file-read claims hold.
+- Opt-out (`BUDGET2_ALLOW_SKIP_JS=1`, node absent, `-count=1`) produces a
+  clean t.Skip, not a failure. No regression there.
+- Guard fires correctly with node absent and no cache in play (plain FAIL,
+  correct message). No regression there.
+
+FALSIFIED CLAIM (present in both the test-file comment and README.md, so
+this is not a comment/README mismatch -- it is the same overclaim in both
+places):
+
+  Comment (warnings_client_regression_test.go):
+    "installing or removing node, which is what normally changes PATH,
+     busts the cache and forces a real re-run"
+  ... and, describing the exception:
+    "A cached green in that one narrow case is not evidence the harness
+     ran"
+
+  README.md (lines 645-647):
+    "installing or uninstalling node normally changes PATH, which is what
+     busts the cache in the common case"
+
+Both instances frame the PATH-unchanged hole as an edge case bounded by the
+two examples given in the comment (an nvm prune, a Docker base image). It is
+not narrow: the single most common Linux installation path for node --
+apt/dnf-style system package manager -- installs straight into a directory
+that is unconditionally on PATH by default and does not touch PATH at all.
+Verified directly, not asserted:
+
+  $ apt-get download nodejs   # Ubuntu noble universe, 18.19.1+dfsg-6ubuntu5
+  $ dpkg-deb --contents nodejs_18.19.1+dfsg-6ubuntu5_amd64.deb | grep bin/node
+  -rwxr-xr-x root/root  26704 2024-04-18 15:08 ./usr/bin/node
+
+  $ echo "$PATH" | tr ':' '\n' | grep -x /usr/bin
+  /usr/bin
+
+`/usr/bin` is on PATH unconditionally (via /etc/environment, not the shell
+profile the comment worries about), before and after `apt install`/`apt
+remove nodejs`. Reproduced the mechanics of exactly this configuration with a
+scratch PATH entry acting as the pre-existing "/usr/bin": ran the test to a
+genuine PASS with node present in that single directory, removed node from
+that same directory (the directory itself never leaves PATH, exactly the
+apt-remove case), reran without `go clean -testcache`, and got `(cached)
+PASS` with node objectively absent -- the identical hole the comment
+attributes only to nvm/Docker.
+
+So "normally changes PATH" is false for the majority real-world install
+method on Debian/Ubuntu/RPM-based distros (all install to a fixed,
+already-on-PATH system directory), not just for two named edge cases, and
+"one narrow case" undersells how reachable the exception is. This is the
+same defect class the task flagged for attempts 5 and 6 (miscalibrated
+scope of a claim about this cache hole), now manifesting as understatement
+rather than overstatement, and it appears in both the comment and the
+README, not just one of them.
+
+Not independently re-verified this round (read-only constraint, no repo
+edits permitted): the pre-S5 template regression (md5
+fb2a5b02af41e835bbe1fc52fd22ed69) and the subtler partial-revert case, since
+reproducing either requires mutating a tracked file. Did not run
+.swarm/tier3/S5/accept.sh per instructions (checker-tests owns the oracle
+this round).

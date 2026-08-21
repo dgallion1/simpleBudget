@@ -1,0 +1,455 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S4
+ATTEMPT: 3
+---
+Tree: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted working
+tree. Manifest .swarm/manifests/S4.3.files =
+  internal/handlers/accounts/handlers.go
+  internal/handlers/accounts/handlers_test.go
+  web/templates/pages/accounts.html
+
+METHOD. Every fault-injection probe was run in a COPY of the tree OUTSIDE the
+repo (rsync -a --exclude=.git to
+.../scratchpad/b2a3), restored with `rsync --delete` between probes. The repo
+itself was never modified; `git status --short` before and after is identical
+and the only file I wrote inside the repo is this verdict. File hashes of the
+three manifest files at the end of the run:
+  d461d41603813b68a34872d410f31316  internal/handlers/accounts/handlers.go
+  8a45d649b8f77fb752a0eb26c7c75559  internal/handlers/accounts/handlers_test.go
+  fb2a5b02af41e835bbe1fc52fd22ed69  web/templates/pages/accounts.html
+
+SUMMARY: all 12 criteria met, each by a command I ran. Two DEFECTS found that
+are not criterion failures and are recorded below for the lead (D1 and D2);
+D1 in particular is the same class of problem attempt 2 was failed for, so it
+deserves a look even though criterion 7 as written is about warningsKey's
+behaviour and that behaviour is correct.
+
+==================================================================
+CRITERION 1 — overlapping fixture names the contested basename;
+              non-overlapping yields none.                         PASS
+==================================================================
+$ go test -count=1 -v -run 'Overlap|Warning|Dismiss|Clears' ./internal/handlers/accounts/
+  --- PASS: TestBuildPageData_OverlapWarningsNameContestedBasename (0.00s)
+  --- PASS: TestBuildPageData_NoOverlapNoWarnings (0.00s)
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock (0.02s)
+
+Independently reproduced (my own zz_chk3_test.go in the scratch copy):
+  zz_chk3_test.go:87: CHK3 rendered warning order: []string{"file
+    \"usaa-checking.csv\" matches multiple accounts (a-wide, b-narrow);
+    \"a-wide\" wins by ID order", "file \"usaa-credit-2026-08.csv\" matches
+    multiple accounts (a-wide, b-narrow); \"a-wide\" wins by ID order"}
+
+Non-vacuity, overlap half (PROBE A, scratch copy: `Warnings: warnings` ->
+`Warnings: nil`, `WarningsKey: warningsKey(warnings)` -> `""`):
+$ go test -count=1 ./internal/handlers/accounts/
+  --- FAIL: TestBuildPageData_OverlapWarningsNameContestedBasename
+  --- FAIL: TestHandleCreate_OverlapWarningsSurfacedInPartial
+  --- FAIL: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce
+  --- FAIL: TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap
+  --- FAIL: TestBuildPageData_WarningsKey_ChangesWithContent
+  --- FAIL: TestHandleUpdate_ResolvingOverlapClearsWarnings
+  --- FAIL: TestHandleDelete_ResolvingOverlapClearsWarnings
+
+Non-vacuity, no-overlap half (PROBE E, scratch copy: warnings forced
+non-empty whenever OverlapWarnings returns nothing):
+$ go test -count=1 ./internal/handlers/accounts/
+  --- FAIL: TestBuildPageData_NoOverlapNoWarnings
+  --- FAIL: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock
+  --- FAIL: TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings
+  --- FAIL: TestBuildPageData_WarningsKey_ChangesWithContent
+  --- FAIL: TestHandleUpdate_ResolvingOverlapClearsWarnings
+  --- FAIL: TestHandleDelete_ResolvingOverlapClearsWarnings
+Both directions are non-vacuous.
+
+==================================================================
+CRITERION 2 — every mutation path surfaces CURRENT warnings on the
+              partial it renders.                                  PASS
+==================================================================
+All five mutation routes exercised through the real router with the same
+overlapping fixture, asserting non-empty Warnings AND non-empty WarningsKey
+on the response body (my own test, scratch copy):
+$ go test -count=1 -v -run 'TestCHK3_AllMutationPathsSurfaceCurrentWarnings' \
+    ./internal/handlers/accounts/
+  --- PASS: .../create        Warnings=[file "usaa-checking.csv" matches
+                              multiple accounts (a-wide, b-narrow, c-third);
+                              "a-wide" wins by ID order] Key="15bb925654190b37"
+  --- PASS: .../update        Warnings=[...(a-wide, b-narrow)...] Key="1760451a3dcb1ab8"
+  --- PASS: .../add-anchor    Warnings=[...] Key="1760451a3dcb1ab8"
+  --- PASS: .../delete-anchor Warnings=[...] Key="1760451a3dcb1ab8"
+  --- PASS: .../delete        Warnings=[...] Key="1760451a3dcb1ab8"
+(the "delete" subtest deletes a THIRD, unrelated account so the overlap
+survives the mutation and the assertion is about a live warning, not a
+leftover.)
+
+The CLEARING direction — the half attempt 2 was failed for — is now covered by
+two SHIPPED tests, and they are real (see criterion 8):
+$ go test -count=1 -v -run 'Clears' ./internal/handlers/accounts/
+  --- PASS: TestHandleUpdate_ResolvingOverlapClearsWarnings (0.00s)
+  --- PASS: TestHandleDelete_ResolvingOverlapClearsWarnings (0.00s)
+I read both bodies (handlers_test.go, the two funcs added in this attempt).
+Each one:
+  (i) calls buildPageData FIRST and t.Fatalf's unless len(Warnings)>0 AND
+      WarningsKey!="" — so it cannot pass vacuously from an already-empty
+      start;
+  (ii) performs the resolving mutation through newRouter()/formPost
+      (POST /accounts/b-narrow with a narrowed pattern; POST
+      /accounts/b-narrow/delete with confirm=yes);
+  (iii) asserts len(Warnings)==0 AND WarningsKey=="" on the RESPONSE BODY;
+  (iv) the delete case additionally re-reads the sidecar and requires exactly
+      a-wide to remain.
+These assert what their names claim.
+
+==================================================================
+CRITERION 3 — rendered exactly once, full page and partial swap.   PASS
+==================================================================
+$ go test -count=1 -v -run 'TestCHK3_RenderedExactlyOnce' ./internal/handlers/accounts/
+  zz_chk3_test.go:280: CHK3 FULL PAGE: banner=1 visibleHeading=1 region=1 data=1
+  zz_chk3_test.go:286: CHK3 FULL PAGE visible <li> warning count = 1
+  zz_chk3_test.go:306: CHK3 PARTIAL: banner=1 visibleHeading=1 data=1 li=1
+  --- PASS: TestCHK3_RenderedExactlyOnce (0.03s)
+Counted four independent markers (id="accounts-warnings-banner",
+">Pattern overlap warning<", id="accounts-warnings-region",
+id="accounts-warnings-data") plus the user-visible <li> carrying the warning
+text; the partial response was first asserted not to contain "<html".
+
+Non-vacuity (PROBE B, scratch copy: `git show HEAD:web/templates/pages/
+accounts.html` restored beside the new handlers.go, i.e. the duplicated-block
+template returns):
+$ go test -count=1 ./internal/handlers/accounts/
+  --- FAIL: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce
+  --- FAIL: TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap
+  --- FAIL: TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings
+
+==================================================================
+CRITERION 4 — overlapping saves still succeed (advisory).          PASS
+==================================================================
+$ go test -count=1 -v -run 'TestHandleCreate_OverlapDoesNotBlockSave' \
+    ./internal/handlers/accounts/
+  --- PASS (0.00s)
+Read the body: it asserts w.Code==200, body["Error"]=="" with the comment
+"an overlap is advisory, not a validation error", AND re-reads the sidecar via
+loadAccounts requiring len(accts)==2. It asserts persistence, not just a 200.
+Corroborated independently: my create/update/add-anchor/delete-anchor subtests
+above all returned 200 with the mutation applied while an overlap was live.
+
+==================================================================
+CRITERION 5 — internal/services/accounts/accounts.go NOT modified. PASS
+==================================================================
+$ git diff --numstat internal/services/accounts/accounts.go
+  (no output — unmodified)
+$ git diff --name-only
+  .swarm/ledger.tsv
+  internal/handlers/accounts/handlers.go
+  internal/handlers/accounts/handlers_test.go
+  internal/handlers/transfers/handlers.go
+  internal/handlers/transfers/handlers_test.go
+  internal/services/accounts/projection.go
+  internal/services/accounts/projection_test.go
+  internal/services/transfers/transfers.go
+  internal/services/transfers/transfers_test.go
+  web/templates/pages/accounts.html
+accounts.go is absent. OverlapWarnings (accounts.go:~234) is consumed unchanged;
+I read it and accountMatches to establish criterion 9.
+
+==================================================================
+CRITERION 6 — no pre-existing assertion edited or deleted.         PASS
+==================================================================
+$ git diff --numstat
+  479  0  internal/handlers/accounts/handlers_test.go
+Zero deleted lines in the S4 test file — pure addition.
+Whole change set: every *_test.go has 0 deletions
+  (transfers/handlers_test.go 142/0, projection_test.go 122/0,
+   transfers_test.go 155/0).
+$ git show HEAD:internal/handlers/accounts/handlers_test.go | grep -c '^func Test' -> 21
+$ grep -c '^func Test' internal/handlers/accounts/handlers_test.go              -> 33
+21 pre-existing retained, 12 added (the 9 from attempt 2 plus
+TestWarningsKey_OrderInvariant, TestHandleUpdate_ResolvingOverlapClearsWarnings,
+TestHandleDelete_ResolvingOverlapClearsWarnings).
+handlers.go has 3 deletions; I read them — they are the three struct-field
+comment lines (Error/ErrorField/ConfirmDeleteID) re-aligned by gofmt because
+the new WarningsKey field changed the column width. No logic, no assertion.
+
+==================================================================
+CRITERION 7 — warningsKey order-invariant AND non-mutating; distinct
+              sets still distinct.                                 PASS
+==================================================================
+The implementation now does:
+    sorted := make([]string, len(warnings)); copy(sorted, warnings)
+    sort.Strings(sorted); ... hash sorted with a NUL delimiter
+(a) ORDER-INVARIANCE — three permutation pairs, my own test, unmodified tree:
+$ go test -count=1 -v -run 'TestCHK3_WarningsKey_OrderInvariance' ./internal/handlers/accounts/
+  case 0: key([a b])="ab40d7820d408076" key([b a])="ab40d7820d408076"
+  case 1: key([w1 w2 w3])="dd806f978f411d84" key([w3 w1 w2])="dd806f978f411d84"
+  case 2: key([zebra apple mango])="86b958742913b113" key([mango zebra apple])="86b958742913b113"
+  --- PASS
+Attempt 2's exact failing probe (key(a,b) != key(b,a)) is now equal.
+
+(b) NON-MUTATION, caller-visible slice — my own test, deliberately using an
+    UNSORTED input so an in-place sort would be visible:
+$ go test -count=1 -v -run 'TestCHK3_WarningsKey_DoesNotMutateCallersSlice' ...
+  CHK3 caller slice before=[zzz-last aaa-first mmm-mid] after=[zzz-last aaa-first mmm-mid]
+  --- PASS
+    Also checked through a second alias of the same backing array (would catch
+    an in-place sort even if the header were copied).
+(c) NON-MUTATION, end-to-end on the slice the PAGE renders:
+$ go test -count=1 -v -run 'TestCHK3_BuildPageData_WarningsRenderOrderUnperturbed' ...
+  CHK3 rendered warning order: [usaa-checking..., usaa-credit-2026-08...]
+  --- PASS
+    pageData.Warnings was snapshotted, warningsKey re-invoked on that very
+    slice, and element-by-element compared: unchanged.
+(d) DISTINCT SETS STILL DISTINCT — 16 hand-built sets including duplicates,
+    delimiter-boundary pairs, empty strings and the two real warning strings:
+$ go test -count=1 -v -run 'TestCHK3_WarningsKey_DistinctSetsDistinctKeys' ...
+  CHK3 16 distinct sets -> 15 distinct keys
+  CHK3 intended permutation collision (same multiset): [real-both real-both-swapd]
+    -> "186ed37008a9e99e"
+  --- PASS
+    The ONLY collision is the one sorting is supposed to create: the two
+    permutations of the identical two-warning multiset. No unintended
+    collision — in particular ("ab","c") vs ("a","bc") still differ (the NUL
+    delimiter), and ("") vs ("","a") vs ("a") all differ.
+(e) DUPLICATES STILL MATTER (sorting did not merge equal multisets of
+    different cardinality):
+$ go test -count=1 -v -run 'TestCHK3_WarningsKey_DuplicatesMatter' ...
+  [a]="89be207b544f1e4"    [a a]="ab3d71820d3d9d4d"
+  [a b]="ab40d7820d408076" [a a b]="2faf540cfb9cd987"
+  [a b]="ab40d7820d408076" [a b b]="cec2e815510e3f34"
+  --- PASS
+
+Non-vacuity of the SHIPPED order-invariance assertion (PROBE C, scratch copy:
+the sorted-copy block removed, restoring attempt 2's order-sensitive hash):
+$ go test -count=1 -v -run 'TestWarningsKey_OrderInvariant' ./internal/handlers/accounts/
+  handlers_test.go:764: warningsKey is order-sensitive: key([a b]) =
+    "ab40d7820d408076", key([b a]) = "8c00299b1091d6ee", want equal
+  --- FAIL: TestWarningsKey_OrderInvariant
+The order half of the shipped test is real.
+
+The remaining theoretical collision (a warning string containing a literal NUL
+would alias the delimiter) is unreachable: warning strings come only from
+OverlapWarnings' fmt.Sprintf over CSV basenames and account IDs.
+
+>>> DEFECT D1 (NOT a criterion failure — reported for the lead) <<<
+The NON-MUTATION half of the shipped TestWarningsKey_OrderInvariant is
+VACUOUS. It reads:
+    a := []string{"a", "b"}
+    ...
+    if a[0] != "a" || a[1] != "b" { t.Errorf("warningsKey mutated its input...") }
+`a` is ALREADY in sorted order, so an in-place sort leaves it identical and the
+assertion cannot fire. Proven by fault injection (PROBE D, scratch copy:
+`sorted := make(...); copy(...)` replaced by `sorted := warnings`, i.e. sorting
+the caller's slice IN PLACE):
+$ go test -count=1 -v -run 'TestWarningsKey_OrderInvariant' ./internal/handlers/accounts/
+  --- PASS: TestWarningsKey_OrderInvariant (0.00s)     <-- stays GREEN
+$ go test -count=1 -v -run 'TestCHK3B_' ./internal/handlers/accounts/   (my mirror)
+  zz_chk3b_test.go:13: CHK3B before=[zzz-last aaa-first mmm-mid]
+                             after=[aaa-first mmm-mid zzz-last]
+  --- FAIL: TestCHK3B_NonMutation_UnsortedInput
+  --- PASS: TestCHK3B_ShippedAssertionShape_SortedInput  <-- the shipped shape,
+                                                             green under the bug
+So the IMPLEMENTATION is non-mutating (proved in (b) and (c) above, which is
+what criterion 7 asserts, hence PASS), but the shipped regression guard would
+not catch a future edit that drops the copy. One-word fix: assert on `b`
+(which is ["b","a"]) instead of / as well as `a`.
+
+==================================================================
+CRITERION 8 — the clearing tests are REAL (sticky-cache experiment). PASS
+==================================================================
+Re-ran attempt 2's exact experiment in the scratch copy OUTSIDE the repo. In
+buildPageData, immediately after
+  warnings := accounts.OverlapWarnings(accts, basenames)
+I injected a per-data-dir sticky cache so that once an overlap has been seen
+for a given store.BaseDir() the warnings never clear again (scoped per BaseDir
+so it cannot leak between tests):
+  if len(warnings) == 0 { warnings = chkStickyWarnings[store.BaseDir()] } else
+  { chkStickyWarnings[store.BaseDir()] = warnings }
+$ gofmt -l internal/handlers/accounts/   -> clean
+$ go build ./internal/handlers/accounts/ -> BUILD_OK
+$ go test -count=1 -v ./internal/handlers/accounts/
+  --- PASS: (all 9 attempt-2 tests, unchanged, still green under the bug)
+  handlers_test.go:819: Warnings = [file "usaa-checking.csv" matches multiple
+    accounts (a-wide, b-narrow); "a-wide" wins by ID order], want empty on the
+    response that resolves the overlap
+  handlers_test.go:822: WarningsKey = "1760451a3dcb1ab8", want empty ...
+  --- FAIL: TestHandleUpdate_ResolvingOverlapClearsWarnings (0.00s)
+  handlers_test.go:856: Warnings = [...], want empty on the response that
+    removes the contesting account
+  handlers_test.go:859: WarningsKey = "1760451a3dcb1ab8", want empty ...
+  --- FAIL: TestHandleDelete_ResolvingOverlapClearsWarnings (0.00s)
+  FAIL  budget2/internal/handlers/accounts  0.201s   EXIT=1
+THE SUITE GOES RED. In attempt 2 this same injection left all nine tests green.
+The fix is not cosmetic; the two new tests are the guard that was missing.
+
+==================================================================
+CRITERION 9 — the worker's excluded paths (anchor add/delete).     PASS
+==================================================================
+Verified against the handlers, not accepted on the worker's word.
+(a) STATIC. I read handleAddAnchor and handleDeleteAnchor in full. Inside
+    accounts.Mutate, the ONLY fields either one writes are
+      accts[i].Anchors = filtered
+      accts[i].UpdatedAt = time.Now()
+    Neither adds nor removes an element of accts, and neither touches
+    FilePatterns. (`sed -n '/func handleDeleteAnchor/,/^}/p' ... | grep 'accts\[i\]\.'`
+    yields exactly those two lines; same for handleAddAnchor.)
+(b) STATIC, other side of the dependency. OverlapWarnings(accts, basenames)
+    (internal/services/accounts/accounts.go) iterates basenames x sortedByID
+    (accts) and calls accountMatches(a, name), which reads ONLY a.FilePatterns.
+    Nothing in either function reads Anchors or UpdatedAt. So the warning set
+    is a pure function of (account existence, FilePatterns, CSV basenames) —
+    none of which an anchor mutation can change. The claim holds.
+(c) DYNAMIC, and the important half: excluded from *resolving* does NOT mean
+    excluded from *reporting*. Both anchor handlers call buildPageData(r)
+    followed by renderList(w, r, data) on the success path, so they must serve
+    the CURRENT warning set. Proved by resolving the overlap out-of-band and
+    then running an anchor delete:
+$ go test -count=1 -v -run 'TestCHK3_AnchorPathsCannotResolveButDoReportCurrentState' ...
+  zz_chk3_test.go:242: CHK3 anchor-add warnings=[file "usaa-checking.csv"
+    matches multiple accounts (a-wide, b-narrow); "a-wide" wins by ID order]
+  zz_chk3_test.go:260: CHK3 anchor-delete after out-of-band resolve:
+    Warnings=[] Key=""
+  --- PASS
+An anchor mutation neither invents nor caches a warning: it reports exactly
+what the store says right now. Not writing a "resolving" test for the anchor
+paths is therefore correct — such a test could not be written, because no
+anchor mutation can move the warning set.
+
+==================================================================
+CRITERION 10 — adjudicating the disclosed workaround.
+      JUDGEMENT: the test is asserting something MEANINGFUL, but its
+      MECHANISM is a brittle whole-body string scan and it WILL misfire
+      again. Reported as DEFECT D2; not a criterion failure.
+==================================================================
+FACTS FIRST. The literal announcement string in the template is now
+  web/templates/pages/accounts.html:184:  region.textContent = 'Account
+      overlap warning dismissed.';
+and that <script> lives in the accounts-content block, i.e. it is served on
+EVERY /accounts response regardless of warning state. Demonstrated:
+$ go test -count=1 -v -run 'TestCHK3_NoOverlapPage_ScriptCopyIsInScannedBody' ...
+  CHK3 no-overlap body contains 'Pattern overlap warning' = false
+  CHK3 no-overlap body contains dismissal announcement literal = true
+  CHK3 no-overlap body contains accounts-warnings-region = true
+  CHK3 with NATURAL wording, no-overlap body would contain 'Pattern overlap
+    warning' = true
+(the last line substitutes "Pattern overlap warning dismissed." back into the
+served bytes and re-scans — it trips.) So the worker's disclosure is accurate:
+the natural wording really would have turned
+TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock red.
+
+IS THE TEST STILL MEANINGFUL? Yes. It is not a dead assertion. Its scan is
+gated on three genuinely warning-conditional things, all inside {{if .Warnings}}:
+the visible banner heading ">Pattern overlap warning<", the sr-only region text
+"Pattern overlap warning: ...", and the data-warnings-text attribute. PROBE E
+(force warnings non-empty) turned it FAIL, so it is non-vacuous and it does
+guard the real "no overlap => no warning UI anywhere" property.
+
+BUT THE MECHANISM IS A DEFECT (D2). The assertion is
+`strings.Contains(wholeBody, "Pattern overlap warning")` over the ENTIRE
+response, which includes an always-rendered <script> block whose JS `//`
+comments and string literals are served verbatim. That makes unrelated script
+copy a hostage of a test about warning rendering. Consequences already visible:
+  - it forced a copy change that has nothing to do with the property under
+    test, and
+  - the substitute wording is now internally inconsistent with the rest of the
+    UI: the banner heading says "Pattern overlap warning", the dismiss control
+    says aria-label="Dismiss pattern overlap warning", and the confirmation
+    the user then hears says "Account overlap warning dismissed." — a phrase
+    that appears nowhere else on the page. (Whether that mismatch is an a11y
+    problem in its own right is checker-a11y's call, not mine; I note it only
+    because this test caused it.)
+  - the next person who writes any script comment or literal containing the
+    phrase gets a red test with a misleading failure message.
+A test should not be able to fail for a reason unrelated to what it is named
+for. The property is better pinned by scoped assertions the same file already
+uses elsewhere: assert `strings.Count(body, ">Pattern overlap warning<") == 0`,
+`!strings.Contains(body, "id=\"accounts-warnings-banner\"")`, and
+`strings.Contains(body, "data-warnings-text=\"\"")` — same coverage, no
+constraint on script copy, and a failure message that says which thing broke.
+RECOMMENDATION: accept attempt 3 as-is (the workaround is disclosed, harmless
+to the property, and the tree is green), and fix D2 as a follow-up rather than
+sending S4 back for it. Fixing D2 would also let the announcement text be
+restored to "Pattern overlap warning dismissed.", matching the control's own
+accessible name.
+
+==================================================================
+CRITERION 11 — build, vet, full suite, gofmt, staticcheck.         PASS
+==================================================================
+$ go build ./...                                -> BUILD_EXIT=0, "Success"
+$ go vet  ./...                                 -> VET_EXIT=0, "No issues found"
+$ go test -count=1 ./...                        -> TEST_EXIT=0
+    every package "ok", no FAIL anywhere, including
+      ok budget2/internal/handlers/accounts   0.389s
+      ok budget2/internal/handlers/transfers  0.288s
+      ok budget2/internal/services/accounts   0.010s
+      ok budget2/internal/services/transfers  0.006s
+      ok budget2/internal/templates           0.546s
+      ok budget2/cmd/server                   5.291s
+    48 packages ok, 1 "no test files" (budget2/web).
+    Green with S1, S2 and S3 all present in the tree.
+$ gofmt -l internal/handlers/accounts/          -> no output (clean)
+$ staticcheck ./internal/handlers/accounts/...  -> SC_EXIT=0, no output
+$ gofmt -l internal/handlers/majorexpenses/     -> handlers_test.go
+$ git diff --numstat internal/handlers/majorexpenses/  -> (empty)
+  i.e. that gofmt entry is PRE-EXISTING and untouched by this change set,
+  exactly as the brief states.
+$ go test -count=1 -v -run 'Overlap|Warning|Dismiss|Clears' ./internal/handlers/accounts/
+  all 12 S4 tests PASS (list in criterion 6).
+
+==================================================================
+CRITERION 12 — no debug prints or leftover instrumentation.        PASS
+==================================================================
+$ grep -n "fmt.Print\|println(\|log.Print\|console\.\|debugger\|TODO\|FIXME\|XXX\|spew\.\|alert(\|DEBUG" \
+    internal/handlers/accounts/handlers.go internal/handlers/accounts/handlers_test.go \
+    web/templates/pages/accounts.html
+  internal/handlers/accounts/handlers.go:733:var _ = log.Print
+Single hit, PRE-EXISTING (the documented nil-logger guard):
+$ git show HEAD:internal/handlers/accounts/handlers.go | grep -n "var _ = log.Print"
+  670:var _ = log.Print
+The `2026/08/20 ... Warning: file "usaa-checking.csv" ...` lines visible in test
+output are NOT S4 instrumentation — they come from
+internal/services/accounts/accounts.go:126 and :180 (`log.Printf("Warning: %s", w)`),
+both present at HEAD in a file this task did not modify:
+$ git show HEAD:internal/services/accounts/accounts.go | grep -n 'Warning: '
+  126:            log.Printf("Warning: %s", w)
+  180:            log.Printf("Warning: %s", w)
+The new client script contains no console.* call; its two catch blocks are
+deliberate empty no-ops for unavailable sessionStorage, commented as such.
+
+==================================================================
+SCOPE
+==================================================================
+$ git diff --name-only | while read p; do
+      grep -qxF "$p" .swarm/manifests/S*.files || echo "UNCLAIMED: $p"; done
+  UNCLAIMED: .swarm/ledger.tsv
+Every changed source file is claimed by an S-task manifest; the only unclaimed
+path is the run ledger, which is lead bookkeeping. S4 touched exactly its three
+manifest files and nothing else.
+critical.globs =
+  internal/services/storage/**, internal/services/dataloader/**,
+  internal/services/retirement/engine/**, internal/services/transfers/**,
+  internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**
+None of S4's three files matches any glob; accounts.go is unmodified
+(criterion 5). internal/services/transfers/** IS modified and IS critical, but
+that is S2's already-accepted Tier-3 work, outside this task's manifest —
+noted, not judged here. internal/services/accounts/projection.go (S1) is not
+covered by the glob, which names accounts.go specifically.
+The repo was not modified by me: `git status --short` is byte-identical before
+and after, and the only file I wrote inside the repo is this verdict.
+
+==================================================================
+DEFECTS FOR THE LEAD (neither is a criterion failure)
+==================================================================
+D1  TestWarningsKey_OrderInvariant's non-mutation assertion is vacuous: it
+    inspects `a := []string{"a","b"}`, which is already sorted, so an in-place
+    sort cannot perturb it. Proven green under PROBE D (sorting the caller's
+    slice in place). The implementation is correct — I proved non-mutation
+    with an unsorted caller-visible slice and end-to-end on pageData.Warnings —
+    but the shipped guard would not catch a regression. Fix: assert on the
+    permuted slice `b` (["b","a"]) instead of, or as well as, `a`.
+    Location: internal/handlers/accounts/handlers_test.go, the block commented
+    "warningsKey must sort a COPY for hashing, not the caller's slice".
+D2  TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock scans the whole
+    response body for the bare string "Pattern overlap warning", which
+    includes the always-rendered <script> block. It therefore constrains
+    unrelated script copy, has already forced one wording change, and will
+    misfire again. Full reasoning and a scoped replacement under criterion 10.

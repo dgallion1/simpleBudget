@@ -1,0 +1,266 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S3
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted work.
+Manifest .swarm/manifests/S3.1.files = internal/handlers/transfers/handlers.go,
+internal/handlers/transfers/handlers_test.go. Tier 2, so no .swarm/tier3/S3/accept.sh
+exists (`ls .swarm/tier3/S3/accept.sh` -> "No such file or directory"); criteria were
+established with the commands below instead.
+
+Read-only discipline: the only file I wrote inside the repo is this verdict. All
+probing was done in an out-of-tree copy at
+$SCRATCH/b2 (rsync of the working tree, excluding .git), never in the repo.
+
+=====================================================================
+CRITERION 1 - Conflicting re-post reports the STORED verdict.  PASS
+=====================================================================
+Delivered test: TestHandleResolve_ConflictingRepostReportsStoredVerdict
+(internal/handlers/transfers/handlers_test.go:434).
+
+  $ go test -count=1 -run TestHandleResolve -v ./internal/handlers/transfers/
+  --- PASS: TestHandleResolve_ConflictingRepostReportsStoredVerdict (0.02s)
+
+I did not take the test's word for the message. An out-of-tree probe
+(zz_probe_test.go in the scratch copy, new handlers.go in place) drove the exact
+sequence - GET /transfers to seed the queue, POST confirm, dl.LoadData(), POST
+reject - and logged the rendered message and the on-disk file:
+
+  $ go test -count=1 -run TestProbe_AllPaths ./internal/handlers/transfers/ -v
+  PROBE crit1 confirm: status=200
+  PROBE crit1 conflicting-reject: status=200 msg="Pair 197a8e9d43a8 was already
+      confirmed; the reject you just submitted was not applied."
+  PROBE crit1 persisted verdict for 197a8e9d43a8 = "confirm"
+  PROBE crit1 transfer_decisions.json on disk:
+      { "decisions": { "197a8e9d43a8": { ... "verdict": "confirm", ... } } }
+
+The message names the STORED verdict (confirmed), states the submitted verdict was
+not applied, and data/transfer_decisions.json still holds confirm after the rejected
+attempt. The delivered test asserts all four of these itself, including
+`dec.Verdict != transfers.VerdictConfirm` against the reloaded decisions map
+(handlers_test.go:483-496), and negatively asserts the body does NOT contain
+"already rejected" (:474) nor the success wording "Rejected pair" (:477).
+
+=====================================================================
+CRITERION 2 - Matching re-post stays idempotent.  PASS
+=====================================================================
+Delivered test: TestHandleResolve_MatchingRepostStaysIdempotent (handlers_test.go:499)
+
+  --- PASS: TestHandleResolve_MatchingRepostStaysIdempotent (0.02s)
+
+Probe, fresh env, POST reject then reload then POST reject again:
+  PROBE crit2 matching-repost: status=200 msg="Pair 197a8e9d43a8 was already
+      rejected; nothing to do."
+
+Wording is byte-identical to HEAD's ("Pair %s was already rejected; nothing to do."
+-- see $SCRATCH/handlers.HEAD.go, and the old-code probe under the vacuity check
+below produced the same sentence). The delivered test asserts both "already rejected"
+AND "nothing to do", negatively asserts "not applied" is absent, and re-reads the
+decisions map to confirm the persisted verdict is unchanged (:535-541).
+
+=====================================================================
+CRITERION 3 - Unknown key claims no verdict.  PASS
+=====================================================================
+Delivered test: TestHandleResolve_UnknownKeyReportsNoVerdictRecorded
+(handlers_test.go:547)
+
+  --- PASS: TestHandleResolve_UnknownKeyReportsNoVerdictRecorded (0.01s)
+
+  PROBE crit3 unknown-key: status=200 msg="Pair totally-made-up-key is not a known
+      pair; no verdict is recorded for it."
+
+Says no verdict is recorded; does not say "already confirmed" or "already rejected".
+The delivered test asserts the negative explicitly at handlers_test.go:566.
+
+Note on reachability, established by reading + running rather than assuming:
+ResolveTransfer (internal/services/dataloader/transfers.go:106-109) returns the
+"no suspected transfer pair with key" error from suspectedIdentities BEFORE it
+touches the decisions file, so the handler's isAlreadyResolvedError branch genuinely
+receives both the already-decided and never-existed cases, which is what
+describeAlreadyResolved then disambiguates.
+
+=====================================================================
+CRITERION 4 - No 4xx on any of those paths.  PASS
+=====================================================================
+Every probe line above reports status=200, on all five exercised paths
+(conflicting re-post, unknown key, corrupt-file, matching re-post, unreadable file).
+Each body was the rendered HTML queue partial containing the message (the probe's
+message regex extracted the sentence from surrounding markup, and the pre-existing
+TestHandleResolve_IdempotentRepost still asserts the partial renders
+"No suspected transfer pairs awaiting review", handlers_test.go:368). The three
+delivered tests each t.Fatalf on any status != http.StatusOK.
+
+=====================================================================
+CRITERION 5 - Load failure degrades honestly.  PASS (with a gap, see FINDING A)
+=====================================================================
+Exercised with the corrupt-file lever in the out-of-tree probe: overwrote
+<csvdir>/transfer_decisions.json with "{ this is not json" and re-posted.
+
+  PROBE crit5 corrupt-file: status=200 msg="Could not resolve transfer: the stored
+      decision for pair 197a8e9d43a8 could not be read (invalid transfer_decisions
+      file: invalid character 't' looking for beginning of object key string)."
+  PROBE crit5 corrupt-file unknown-key: status=200 msg="Could not resolve transfer:
+      the stored decision for pair totally-made-up-key could not be read (...)."
+
+The message says the stored state could not be read and guesses no verdict: it
+contains neither "already confirmed" nor "already rejected" nor "not a known pair".
+Behaviour is correct and demonstrated. Still 200, so criterion 4 holds here too.
+
+(The chmod-000 lever did not trip the error path in this environment - the read
+succeeded - so the corrupt-JSON lever is the one that carries this criterion.)
+
+FINDING A (non-blocking, reported for the lead's judgment): no test in the DELIVERED
+work exercises this path. Proven, not inferred:
+
+  $ go test -count=1 -coverprofile=cov.out ./internal/handlers/transfers/
+  $ go tool cover -func=cov.out | grep describeAlreadyResolved
+  handlers.go:244:  describeAlreadyResolved  88.9%
+  $ grep 'handlers.go:24[4-9]' cov.out
+  handlers.go:244.82,246.16 2 1
+  handlers.go:246.16,248.3  1 0     <-- the load-error return, execution count 0
+  handlers.go:249.2,250.9   2 1
+
+The criterion as written describes handler behaviour and instructs the verifier to
+exercise it, which I did; it does not on its face require a delivered regression
+test. I therefore score it PASS, but the branch is unlocked by the suite and a
+future edit could silently regress it. (The only other uncovered new block is
+verdictWord's defensive default, handlers.go:269.10,270.19 count 0, which the
+worker's own comment documents as unreachable.)
+
+=====================================================================
+CRITERION 6 - Scope confined to internal/handlers/transfers/.  PASS
+=====================================================================
+  $ git status --porcelain internal/services/dataloader/
+  (no output - dataloader is clean, no critical-glob hit)
+
+  $ git status --porcelain --untracked-files=all internal/
+   M internal/handlers/accounts/handlers.go
+   M internal/handlers/accounts/handlers_test.go
+   M internal/handlers/transfers/handlers.go
+   M internal/handlers/transfers/handlers_test.go
+   M internal/services/accounts/projection.go
+   M internal/services/accounts/projection_test.go
+   M internal/services/transfers/transfers.go
+   M internal/services/transfers/transfers_test.go
+  (no untracked files under internal/ - nothing snuck in unlisted)
+
+  $ diff <(git status --porcelain | grep '^ M' | awk '{print $2}' | sort) \
+         <(cat .swarm/manifests/S{1.1,2.2,3.1,4.1}.files | sort)
+  9d8
+  < .swarm/ledger.tsv
+
+The dirty set is EXACTLY the union of the four task manifests plus the lead-owned
+.swarm/ledger.tsv. S3's two manifest files are the only ones it may claim, and
+every other dirty path is claimed by S1, S2 or S4.
+
+internal/services/transfers/** is dirty and IS a critical glob, but it belongs to
+S2's manifest (.swarm/manifests/S2.2.files, accepted at Tier 3, attempt 2, with
+.swarm/tier3/S2/ present and both S2.2 verdicts on disk). Corroborating mtimes:
+
+  $ ls -l --time-style=full-iso ...
+  2026-08-20 13:40:18  internal/services/transfers/transfers.go      (S2)
+  2026-08-20 13:40:18  internal/services/transfers/transfers_test.go (S2)
+  2026-08-20 13:52:14  internal/handlers/transfers/handlers.go       (S3)
+  2026-08-20 13:52:14  internal/handlers/transfers/handlers_test.go  (S3)
+
+S3's files were written 12 minutes after S2's; S3 contributed nothing to either
+critical glob. No escalation trigger from this task.
+
+=====================================================================
+CRITERION 7 - Existing handler tests pass unchanged.  PASS
+=====================================================================
+  $ git diff --numstat internal/handlers/transfers/handlers_test.go
+  142     0       internal/handlers/transfers/handlers_test.go
+
+Zero deleted lines. Confirmed independently of git's diff heuristics by extracting
+HEAD and diffing directly:
+
+  $ git show HEAD:internal/handlers/transfers/handlers_test.go > handlers_test.HEAD.go
+  $ diff -u handlers_test.HEAD.go internal/handlers/transfers/handlers_test.go \
+      | grep -c '^-[^-]'
+  0
+
+The entire change is one contiguous insertion at @@ -426,6 +426,148 @@ (three new
+test funcs), above the pre-existing mustSuspectedPairKey helper. No pre-existing
+assertion was edited or deleted.
+
+TestHandleResolve_IdempotentRepost specifically:
+  $ grep -n 'strings.Contains(body, "already")' internal/handlers/transfers/handlers_test.go
+  365:      if !strings.Contains(body, "already") {
+Still present, still asserting on the word "already", and still green:
+  --- PASS: TestHandleResolve_IdempotentRepost (0.02s)
+All four pre-existing TestHandleResolve_* funcs pass, including
+TestHandleResolve_BadInput's two subtests.
+
+=====================================================================
+CRITERION 8 - Build, vet, suite, gofmt, staticcheck.  PASS
+=====================================================================
+  $ go build ./...                          -> exit 0
+  $ go vet ./...                            -> exit 0, no diagnostics
+  $ go test -count=1 ./...                  -> exit 0
+      ok  budget2/internal/handlers/transfers      0.366s
+      ok  budget2/internal/services/transfers      0.008s
+      ok  budget2/internal/services/dataloader     0.969s
+      ok  budget2/internal/services/accounts       0.011s
+      ok  budget2/internal/services/storage       32.271s
+      (every package "ok"; no FAIL lines anywhere in the output)
+  $ gofmt -l internal/handlers/transfers/   -> no output (clean)
+  $ staticcheck ./internal/handlers/transfers/...  -> exit 0, no output
+     (staticcheck IS installed: /home/darrell/go/bin/staticcheck)
+The full suite is green with S1, S2 and S4's uncommitted work all present.
+
+=====================================================================
+CRITERION 9 - No debug prints or leftover instrumentation.  PASS
+=====================================================================
+  $ diff -u handlers.HEAD.go internal/handlers/transfers/handlers.go \
+      | grep '^+' | grep -Ei 'fmt\.Print|println|log\.|os\.Std(err|out)|spew|DEBUG|TODO|FIXME|XXX'
+  (no matches, grep exit 1)
+
+None of the 58 added lines introduces a print, a log call or a marker comment. The
+four log.Printf calls and the `var _ = log.Print` at handlers.go:651 in the current
+file are all pre-existing - `grep -n 'var _ = log.Print' handlers.HEAD.go` returns
+`608:var _ = log.Print`, i.e. it is at HEAD.
+
+=====================================================================
+NON-VACUITY CHECK (required by the brief).  PASS - tests go red
+=====================================================================
+In the out-of-tree scratch copy (NOT the repo), I replaced handlers.go with
+`git show HEAD:internal/handlers/transfers/handlers.go` and left the new tests in
+place:
+
+  $ go test -count=1 -run 'TestHandleResolve_...' ./internal/handlers/transfers/ -v
+  --- PASS: TestHandleResolve_IdempotentRepost (0.02s)
+  --- FAIL: TestHandleResolve_ConflictingRepostReportsStoredVerdict (0.02s)
+        message should name the STORED verdict (confirmed)
+        message should say the reject was not applied
+        message must NOT claim the pair was already rejected
+  --- PASS: TestHandleResolve_MatchingRepostStaysIdempotent (0.02s)
+  --- FAIL: TestHandleResolve_UnknownKeyReportsNoVerdictRecorded (0.01s)
+        message should say the key is not a known pair
+        message should say no verdict is recorded
+  FAIL    budget2/internal/handlers/transfers
+
+And the old code's actual message, extracted from the failing body, is the reported
+defect verbatim:
+
+  $ grep -oE "Pair [^<]*" old_conflict.txt
+  Pair 197a8e9d43a8 was already rejected; nothing to do.
+
+That is the exact lie S3 was dispatched to fix: the pair was CONFIRMED on disk.
+The conflicting-repost test therefore fails for the right reason, not an
+environmental one - control run: with the NEW handlers.go in the SAME scratch copy,
+all seven TestHandleResolve_* pass (`ok budget2/internal/handlers/transfers 0.118s`).
+TestHandleResolve_MatchingRepostStaysIdempotent passing under old code is correct
+and expected: matching re-post behaviour is unchanged by design (criterion 2).
+
+=====================================================================
+SUMMARY
+=====================================================================
+9 of 9 criteria met, each by a cited command. The three new tests are non-vacuous:
+two of them go red against the pre-change handler, and the one that does not is the
+no-change-by-design idempotency case. One gap is recorded as FINDING A - the
+LoadTransferDecisions error branch (handlers.go:246-248) is correct and I exercised
+it by hand, but no delivered test covers it (coverage execution count 0), so it is
+not protected against future regression.

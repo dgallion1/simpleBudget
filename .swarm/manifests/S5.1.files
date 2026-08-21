@@ -1,0 +1,5 @@
+web/templates/pages/accounts.html
+internal/handlers/accounts/handlers_test.go
+internal/handlers/transfers/handlers.go
+internal/handlers/transfers/handlers_test.go
+internal/services/accounts/projection_test.go

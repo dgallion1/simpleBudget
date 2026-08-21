@@ -1,0 +1,87 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S1
+ATTEMPT: 1
+---
+Attacked recurringOwnerAccount / Project in a scratch copy (/tmp/checker-scratch-budget2,
+outside the repo; deleted after use). Repo itself untouched (git status clean except the
+worker's own pending diff).
+
+1. Tie-break order-independence. Wrote scratch tests calling recurringOwnerAccount directly
+   with legs in forward and reversed order (2-way and 3-way permutations, exact-date ties).
+   Owner was identical regardless of slice order in every permutation
+   (TestScratch_OwnerOrderIndependence, TestScratch_TieBreakOrderIndependence,
+   TestScratch_ThreeWayTie all PASS). The running-max reduction is not first-wins, so it is
+   genuinely order-independent, matching the doc comment's claim.
+
+2. Empty/missing data. No-legs RecurringPayment -> owner "" (TestScratch_NoLegs PASS). A
+   series whose legs are ALL AccountID=="" (unassigned rows) -> owner "" too
+   (TestScratch_AllLegsUnassigned).
+
+3. Zero-value trap (the angle explicitly called out). Constructed an Account{ID: ""} and fed
+   it an all-unassigned-legs series: recurringOwnerAccount(rp) == "" == acct.ID, so the
+   filter `recurringOwnerAccount(rp) != acct.ID` is FALSE and the series IS applied in full
+   to a hypothetical empty-ID account (Minimum dropped from 1000 to 1, confirming the
+   collision). This is a real latent defect in the design. However I verified it is NOT
+   reachable in production: internal/services/accounts/accounts.go:217 rejects
+   "account ... has an empty ID" at save time (Validate), and both Project call sites
+   (internal/handlers/dashboard/accounts_card.go:190, internal/services/mcpsvc/ledger/accounts.go:241)
+   only ever pass an Account looked up by findAccount, which returns ok=false (and the
+   caller errors out) rather than a zero-value Account when no match exists. So no live
+   caller can ever pass acct.ID == "". Noted as a design footgun, not a live bug -- not
+   sufficient alone to fail the task, since the invariant it depends on is enforced
+   elsewhere and documented as such nowhere is contradicted.
+
+4. Regression, single-account case: TestProject_SingleAccountSeriesUnaffected (worker's own
+   test) and TestScratch checks both confirm an unchanged result for a series confined to
+   one account.
+
+5. Verified the new tests are not vacuous: swapped projection.go for the pre-fix version
+   (git show HEAD:...) in the scratch copy, kept the new test file, and reran. Both
+   TestProject_RecurringAttributedToNewestLegOnly and
+   TestProject_FormerAccountGetsNoCrossingOrTopUp go RED against the old code (cardA wrongly
+   drained to 800, oldCard wrongly crosses at 400/500) -- these are real regression guards,
+   not tautologies.
+
+6. Scope creep: diffed projection.go hunk-by-hunk (git diff). Only four hunks touch: the two
+   package/function doc comments, the filter call site (recurringBelongsToAccount ->
+   recurringOwnerAccount), and the recurringOwnerAccount function body itself.
+   calendarDayKey, utcCalendarDay, dayOf, frequencyIntervalDays, BalanceAt and the horizon
+   walk are referenced only as unchanged context, never modified. `grep -rn` for
+   recurringOwnerAccount/BelongsToAccount confirms no touch to internal/services/insights.
+   go build ./... and go vet ./... are clean; go test ./... is green repo-wide (all "ok",
+   web has no test files).
+
+7. Instrumentation: no fmt.Println/log.Print/DEBUG in the diff or the resulting file.
+
+8. Doc-vs-code drift -- REAL FINDING, does not rise to a FAIL but is worth recording: the
+   pre-existing test TestProject_MixedRecurringFiltersByAccount (internal/services/accounts/
+   projection_test.go, ~line 373-399) was left untouched by this change. Its comment still
+   reads "It qualifies for usaa (recurringBelongsToAccount is true)" -- a function that no
+   longer exists anywhere in the codebase (confirmed by repo-wide grep, only remaining hit is
+   this comment). Worse: the test still passes under the NEW code, but only by coincidence --
+   its two legs ("usaa", "schwab") share the same date, and the new tie-break happens to pick
+   "usaa" (lexicographically greater) as the owner, which is what the test asserts. The test
+   name and comment now describe semantics ("filters by account", "any leg" membership) the
+   code no longer implements; it survives as an accidental pass, not a verified guarantee.
+   REVIEW_AUG20_SPEC.md's S1 acceptance criteria only requires
+   "existing test 'other accounts' recurring items are excluded' still passes unchanged" (a
+   different test, TestProject_OtherAccountsRecurringExcluded, which is a true single-account
+   exclusion case unaffected by tie-breaking) -- it says nothing about
+   TestProject_MixedRecurringFiltersByAccount, so this is not a violation of a named
+   acceptance criterion, but it is a stale/misleading test the worker should have either
+   updated or removed given the mandated rule change directly invalidates its rationale.
+
+9. Callers: both call sites (dashboard accounts_card.go, mcpsvc/ledger/accounts.go) call only
+   accounts.Project(...); neither references recurringBelongsToAccount by name, so the rename
+   has no collateral call-site breakage.
+
+Net: could not construct an input that makes the mandated rule (most-recent-leg wins,
+order-independent, single-account regression-safe, in-scope) misbehave. The one genuine
+defect found (the acct.ID=="" / owner=="" collision) is unreachable given the existing
+account-ID-non-empty invariant enforced at Validate() and at both call sites, so it does not
+meet the bar for a reproducible production-input FAIL. The doc-drift in
+TestProject_MixedRecurringFiltersByAccount is real and should be flagged back to the worker,
+but it is a quality nit on an untouched pre-existing test, not a violation of the S1
+acceptance criteria as written in REVIEW_AUG20_SPEC.md line 105.

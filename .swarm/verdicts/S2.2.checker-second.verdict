@@ -1,0 +1,106 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S2
+ATTEMPT: 2
+---
+Scope: internal/services/transfers/transfers.go, transfers_test.go (S2.2.files).
+All mutation happened in scratch copies outside the repo
+(/tmp/.../scratchpad/s2check/{budget2-scratch,budget2-old}); the repo itself
+was only read.
+
+1. Merge-fidelity claim (report.md RESOLUTION line).
+   `diff -u /tmp/swarm-worktrees/budget2/S2/wt-primary/.../transfers.go
+   /home/darrell/bin/ai/budget2/.../transfers.go` -> exactly one hunk, the
+   claimed dead-loop-variable removal (`for cents, idxs := range byCents {
+   _ = cents ...}` -> `for _, idxs := range byCents`). transfers_test.go
+   diffs byte-identical (no output). Claim holds.
+
+2. Map-iteration nondeterminism (edge-set built from `range byCents`).
+   Built a 40-row fixture landing in one $20.00 bucket (pattern-hit legs
+   across 5 accounts/20 dates) and ran `Classify` 200 times in one process,
+   fingerprinting every row's TransferPairKey plus the full suspected-queue
+   pair-key/reason set each run. Identical on all 200 runs
+   (TestProbe_ManyEqualBucketDeterminism, go test -count=1, PASS). The
+   `sort.Slice` tiebreak on `PairKeyFor(...)` (content, not slice position)
+   does its job.
+
+3. Layer-boundary / degree-counting angles.
+   - Asymmetric degree: Y has two dist-1 candidates X and Z (degree 2); X
+     and Z each have only Y (degree 1 for themselves). Result: neither
+     X, Y, nor Z is paired; both edges (X,Y) and (Y,Z) are queued
+     `ambiguous`, per code's own degree map applying to both endpoints of
+     an edge, not just the locally->1 one. Matches doc ("every edge
+     touching it goes to review").
+   - Stale edge after pairing: A-B pair at distance 1 (layer 1); C is a
+     distance-3 candidate for both. A and B pair correctly; C is left
+     unpaired (its only real candidates were claimed), not resurrected,
+     no double TransferPairKey write. The `paired[e.i]||paired[e.j]`
+     staleness filter at each layer's start works.
+   - Could not construct a case where a row is both `ambiguous` and
+     `TransferClass==paired`: `pairLegs` is only called for edges that
+     fail the `degree>1` test in the *same* degree map used to set
+     `ambiguous`, so the two are mutually exclusive by construction in
+     pass 2, verified by code trace and by the probes above.
+
+4. "Tie semantic changed" (pre-fix auto-paired first index on an exact
+   tie; new code queues both). Checked the package's top-of-file doc
+   comment and GLOSSARY.md ("Internal transfer"): both say "an exact tie
+   goes to review rather than guessing" / equivalent language, and that
+   text is UNCHANGED by this diff (`git diff HEAD` shows only the pass-2
+   body and its inline comment changed). The pre-fix behaviour was
+   actually a violation of that documented rule (order accident, not a
+   real tie-break), so the new behaviour is the one consistent with the
+   doc. No contradiction found.
+
+5. Regression surface. `git diff HEAD -- transfers.go` confirms only the
+   pass-2 body/comment changed; `applyDecisions`, the rejected-pair
+   exclusion, pass 3 (suggestions), pass 4 (external typing), the
+   `Suspected` sort, and `Paired`/`External` counting are byte-identical
+   to HEAD. Full repo: `go build ./...`, `go vet ./...`, `gofmt -l` clean;
+   `go test ./...` all packages pass, including
+   internal/services/dataloader (the sole caller of `transfers.Classify`,
+   confirmed via grep — no other caller exists). No leftover reference to
+   the deleted `nearest` function outside its one mention in an
+   explanatory comment. No debug prints (grep for Print/println/debug:
+   none).
+
+6. Test-quality check (does not eyeball test names). Copied HEAD's
+   pre-fix transfers.go into a scratch package alongside the NEW test
+   file and ran the three new order-independence tests:
+   `TestClassify_ClosestDatePairingIsOrderIndependent` and
+   `TestClassify_ABCCounterexamplePairsClosestInEveryOrder` both FAIL
+   against the old implementation (permutations where B is visited before
+   A wrongly pair A-B instead of the closer A-C, exactly the described
+   defect); `TestClassify_PermutationsNeverDropOrDuplicateRows` passes on
+   both (correctly scoped — it isn't testing the order bug). All three,
+   plus the rest of the suite (14 pre-existing tests, unmodified),
+   PASS against the merged code. Not vacuous.
+
+7. Complexity (non-blocking observation, not a SPEC criterion).
+   Benchmarked a single pattern-hit, same-magnitude bucket at n=200/1000/
+   3000 rows: 5ms / 107ms / 1.1s, consistent with the pairwise edge
+   enumeration being O(bucket^2). This requires hundreds-to-thousands of
+   rows sharing one exact cent amount AND a transfer-pattern hit
+   (InternalTransferPatterns is a narrow substring list: "schwab
+   moneylink", "usaa funds transfer", etc.), which is unlikely in a
+   single-user ledger. SPEC's S2 acceptance criteria (order independence,
+   closest-date, no-drop, Paired/External as row counts, unchanged pass
+   3) say nothing about performance, so this is reported as a finding,
+   not a failing criterion.
+
+8. One pre-existing, non-regression observation: an `ambiguous` row from
+   pass 2 is not excluded from pass 3's suggestion scan (pass 3 only
+   checks `paired[i]`), so it can pick up an additional suspected entry
+   for a farther candidate beyond its already-queued nearest tie
+   (reproduced with TestProbe_AmbiguousRowReenteringPass3). Confirmed via
+   `git diff HEAD` that pass 3's code is byte-identical to HEAD -- this
+   behaviour predates S2 and is not something this diff introduced or
+   was tasked to fix ("pass 3 (suggestions) untouched" is itself the
+   acceptance criterion, and it is in fact untouched). Not a basis for
+   failing S2.
+
+No input was found that violates any S2 acceptance criterion (order
+independence across all permutations, closest-date resolution, no row
+dropped, Paired/External as row counts, pass 3/4/applyDecisions/sort
+unchanged, existing tests pass unchanged). Verdict: PASS.

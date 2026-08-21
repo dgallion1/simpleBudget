@@ -57,3 +57,19 @@ page a task touches; the final pass runs it site-wide.
     within a session.
 15. No motion-based-only feedback; respects `prefers-reduced-motion` for any
     animated transition.
+
+16. Client-side suppression is parity-complete. When a control hides,
+    dismisses, or removes a visible affordance without a server round-trip,
+    the SAME action must clear or update that affordance's assistive-
+    technology counterpart — live-region text, `aria-*` state, and any hidden
+    data node the announcement is derived from — so the accessibility tree
+    never asserts a condition the page no longer shows, and a re-announcement
+    never fires for an affordance the user can no longer see or act on. A
+    dismissal that suppresses only the visual channel has not been granted to
+    assistive-technology users at all.
+
+    Added 2026-08-20 (user decision) on `judge-standards`' recommendation in
+    the S4 dispute: findings 1 and 2 of `.swarm/verdicts/S4.3.checker-second.
+    verdict` were real defects that no numbered point covered, so the FAIL
+    rested on an "implicit companion requirement" and was overruled. This
+    point makes that defect class citable.

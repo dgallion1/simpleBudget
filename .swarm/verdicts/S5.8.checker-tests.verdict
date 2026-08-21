@@ -1,0 +1,405 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 8
+---
+Environment: /home/darrell/bin/ai/budget2, branch fix/review-aug16, working tree
+uncommitted. Ubuntu 24.04.4 LTS. go1.26.6 linux/amd64; the Makefile's $(GO) is
+/home/darrell/go-sdk/go/bin/go (from `make -n test`), also go1.26.6. node
+v24.12.0 at /home/darrell/.config/nvm/versions/node/v24.12.0/bin.
+I wrote nothing inside the repository except this file. Every mutating or
+PATH-manipulating experiment ran on a scratch copy of the tree at
+$SCRATCH/s58 (tar copy, md5-verified identical to the repo for all five S5
+files) with an isolated GOCACHE ($SCRATCH/gocache58), so checker-second's
+concurrent work on the shared cache could not perturb any result and my
+experiments could not perturb his.
+
+Attempt-8 delta (baseline = the attempt-7 md5s recorded in
+S5.7.checker-tests.verdict, whose byte-identical copy I still hold at
+$SCRATCH/s57/repo -- Makefile 55ee77be, test file 85106a1f, README 116dc386,
+all three confirmed by md5sum against that copy):
+  Makefile           55ee77be -> aa2af545   CHANGED (the only executable change)
+  test file          85106a1f -> e8b13add   CHANGED (comment-only, item 7)
+  README.md          116dc386 -> 26256bb7   CHANGED (prose-only)
+  harness JS         3ea4ad74 -> 3ea4ad74   unchanged
+  accounts.html      163d70d7 -> 163d70d7   unchanged
+  handlers.go        d461d416 -> d461d416   unchanged
+  handlers_test.go   de990125 -> de990125   unchanged
+  transfers/handlers.go     0809c0e4 -> 0809c0e4   unchanged
+  transfers/handlers_test.go 1253e8df -> 1253e8df  unchanged
+  projection_test.go bc1caf37 -> bc1caf37   unchanged
+Corroborated by mtime over every path in `git status --porcelain`: exactly
+three are newer than my attempt-7 verdict (20:22:51) and newer than the lead's
+bookkeeping (20:24:38) --
+    20:26:09  Makefile
+    20:26:47  internal/handlers/accounts/warnings_client_regression_test.go
+    20:27:05  README.md
+
+SUMMARY: PASS on all ten brief items. The PATH-unchanged cache hole is closed
+for every `make` path, proved by direct reproduction rather than by reading the
+recipe: with node deleted behind a symlink and the PATH string byte-identical
+(same md5 before and after the deletion), the attempt-7 Makefile exits 0 with
+`internal/handlers/accounts (cached)` and the attempt-8 Makefile exits 2 at the
+exact added recipe line, in all of test / test-unit / test-coverage / race /
+check / check-full. Two findings that are NOT blocking are recorded at the end:
+the oracle's new check 3b is weaker than it looks (I demonstrated two decorative
+recipes that satisfy it), and one Makefile-comment cost figure is understated
+for the `race` rerun.
+
+=====================================================================
+(1) THE DECISIVE TEST: SYMLINKED NODE, PATH HELD BYTE-IDENTICAL -- PASS
+=====================================================================
+Setup: $SCRATCH/nodedir58/node is a symlink to the real node; the real nvm bin
+dir is removed from PATH and nodedir58 appended, so node resolves ONLY through
+the symlinked directory and can be removed without touching one byte of PATH.
+GOCACHE isolated. BUDGET2_ALLOW_SKIP_JS unset throughout (`unset` in the
+sourced env file; separately re-checked).
+
+  $ echo "PATH_MD5=$(printf '%s' "$PATH" | md5sum)"     04f742726ebe799504b19e0475b8ce06
+  $ command -v node   -> $SCRATCH/nodedir58/node  (v24.12.0)
+
+Cache warmed with node present, using the EXACT first command of each target,
+so that in the negative run the first command is a cache hit and only the added
+line can produce the failure:
+  go test ./...                       (test)          -> accounts (cached)
+  go test -v ./internal/...           (test-unit)     -> accounts (cached)
+  go test -coverprofile=... ./...     (test-coverage) -> accounts (cached) 80.3%
+  go test -race ./...                 (race)          -> accounts (cached)
+  (cold full suite 40.20s; warm 0.29s; cold -race suite 243.78s)
+This mattered: on my FIRST pass I had only warmed `go test ./...`, and
+test-unit/test-coverage then failed at their FIRST line (Makefile:218 / :225)
+because `-v` and `-coverprofile` carry different cache keys. That would have
+been weak evidence for the added line, so I re-warmed per-target and re-ran.
+
+  $ rm -f $NODEDIR/node
+  $ printf '%s' "$PATH" | md5sum   -> 04f742726ebe799504b19e0475b8ce06  IDENTICAL
+  $ command -v node                -> rc 1, no output (nothing named node
+                                      resolves anywhere on that PATH)
+
+CONTROL -- the attempt-7 Makefile (md5 55ee77be) dropped into the same tree,
+same cache, same PATH, node gone:
+  $ make test                          rc=0
+    ok  budget2/internal/handlers/accounts  (cached)
+  Exactly the defect checker-second reported: green, cached, guard never fired.
+
+ATTEMPT-8 Makefile (md5 aa2af545), identical conditions:
+  target          rc   first line                              added line
+  make test        2   accounts (cached)                       go test -count=1 ./internal/handlers/accounts
+                       -> FAIL budget2/internal/handlers/accounts 0.246s
+                       -> make: *** [Makefile:187: test] Error 1
+  make test-unit   2   accounts (cached)                       go test -count=1 -v ./internal/handlers/accounts
+                       -> FAIL ... 0.262s ; make: *** [Makefile:219: test-unit] Error 1
+  make test-coverage 2 accounts (cached) coverage: 80.3%       go test -count=1 ./internal/handlers/accounts
+                       -> FAIL ... 0.241s ; make: *** [Makefile:226: test-coverage] Error 1
+  make race        2   accounts (cached)                       go test -race -count=1 ./internal/handlers/accounts
+                       -> FAIL ... 1.669s ; make: *** [Makefile:200: race] Error 1
+  make check       2   (via its `test` prerequisite)
+                       -> make: *** [Makefile:187: test] Error 1
+  make check-full  2   (via check -> test)
+                       -> make: *** [Makefile:187: test] Error 1
+Makefile:187/200/219/226 ARE the four added lines (verified by numbering the
+file: 186 `$(GO) test ./...`, 187 `$(GO) test -count=1 $(ACCOUNTS_PKG)`; 199/200;
+218/219; 225/226). So in every case the pre-existing line replayed a cached PASS
+and the ADDED line is what failed the target. The guard's own message appears in
+full, naming node, BUDGET2_ALLOW_SKIP_JS and the ACCESSIBILITY.md point:
+  warnings_client_regression_test.go:172: `node` was not found on PATH. ...
+  this test FAILS rather than skips when node is missing. ... or set
+  BUDGET2_ALLOW_SKIP_JS=1 to deliberately opt out ...
+
+=====================================================================
+(2) THE EXIT STATUS IS NOT SWALLOWED -- PASS
+=====================================================================
+Static: the four added lines carry no `-` prefix, no `|| true`, no `||` at all,
+and no pipeline.
+  $ awk 'NR>=185 && NR<=230' Makefile | grep -nE '^\t-|\|\| *true|\|\|'
+    -> the ONLY hit is line 210 inside `fuzz`: `... || exit $$?`, which
+       PROPAGATES status rather than swallowing it. None of the added lines.
+  $ grep -nE '^\.IGNORE|MAKEFLAGS|\.SHELLFLAGS|^SHELL|\.ONESHELL' Makefile
+    -> rc 1, no matches. No global error suppression, no -k baked in, no
+       .ONESHELL that could merge the two commands into one shell whose exit
+       status is the last one only.
+Behavioural (stronger, and the one I rely on): six `make: *** [Makefile:NNN:
+target] Error 1` lines above, each naming the added line, with shell rc 2. If
+the status were swallowed the target would have exited 0, as the attempt-7
+control does.
+Ordering: in test-coverage the added line precedes `go tool cover`, so a failure
+aborts before the report is regenerated -- confirmed, coverage.html kept its
+pre-run mtime (Jul 4 13:52) after `make test-coverage` failed.
+
+=====================================================================
+(3) ONLY THAT PACKAGE LOSES CACHING -- PASS
+=====================================================================
+node present, two consecutive `make test` runs, timed:
+  run A: rc=0, ELAPSED 0.79 s
+  run B: rc=0, ELAPSED 0.72 s
+  run B breakdown: 49 `ok` lines, 48 of them `(cached)`.
+  $ grep '^ok' runB | grep -v '(cached)'
+    ok  budget2/internal/handlers/accounts  0.214s      <- the ONLY one
+  $ grep -E 'handlers/accounts|services/storage' runB
+    ok  budget2/internal/handlers/accounts  (cached)     (first line)
+    ok  budget2/internal/services/storage   (cached)     <- storage stayed cached
+    go test -count=1 ./internal/handlers/accounts
+    ok  budget2/internal/handlers/accounts  0.214s       (the rerun)
+0.72s total against a 40.20s cold suite: if caching had been disabled suite-wide
+the storage package alone would have shown. It did not.
+Cost of the added rerun, measured twice each with node present and a warm build
+cache: plain 0.46s / 0.55s wall (test binary 0.231s / 0.275s); -race 3.30s /
+3.31s wall (test binary ~2.99s). See finding (B) below.
+
+=====================================================================
+(4) test-integration AND fuzz UNTOUCHED -- PASS
+=====================================================================
+Same node-absent, PATH-identical state:
+  $ make test-integration   rc=0   ok budget2/cmd/server 4.754s
+  $ make fuzz               rc=0   "No fuzz tests found. Run 'make fuzz
+                                    PKG=./path/to/package' ..."
+Neither gained a rerun line, and neither needs one: the full inventory of
+`$(GO) test` invocations in the Makefile is lines 186/187, 199/200, 204/210/214
+(fuzz), 218/219, 222, 225/226. test-integration runs only ./cmd/server/... and
+fuzz runs only packages containing Fuzz* (none), so neither compiles
+internal/handlers/accounts.
+Every OTHER target that does run this package's tests is covered: test, race,
+test-unit, test-coverage directly; check and check-full transitively (both
+demonstrated failing above at Makefile:187).
+
+=====================================================================
+(5) BARE `go test ./...` IS STILL EXPOSED -- PASS (matches the prose)
+=====================================================================
+Same state (node gone, PATH byte-identical, warm cache):
+  $ go test ./...            rc=0   ok budget2/internal/handlers/accounts (cached)
+  $ go test -short ./...     rc=1   FAIL budget2/internal/handlers/accounts 0.425s
+The first is exactly what README and the comment now say ("A bare `go test
+./...`, run outside the Makefile, is not covered by that rerun and can still
+replay a stale cached pass in this situation"). The second re-ran because
+`-short` is a different cache key -- consistent with the same mechanism, not a
+contradiction.
+
+=====================================================================
+(6) THE PROSE IS ACCURATE -- PASS
+=====================================================================
+(a) The Debian/Ubuntu claim, verified from the packages themselves, not from
+the worker and not from checker-second:
+  Ubuntu 24.04 (this host, `apt-cache policy nodejs` -> candidate
+  18.19.1+dfsg-6ubuntu5, noble/universe):
+    $ apt-get download nodejs
+    $ dpkg -c nodejs_18.19.1+dfsg-6ubuntu5_amd64.deb | grep bin/
+      drwxr-xr-x root/root      0  ./usr/bin/
+      -rwxr-xr-x root/root  26704  ./usr/bin/node
+      lrwxrwxrwx root/root      0  ./usr/bin/nodejs -> node
+  Debian 12 bookworm, fetched independently from deb.debian.org (index stanza
+  Package: nodejs, Version: 18.20.4+dfsg-1~deb12u2, Filename:
+  pool/main/n/nodejs/nodejs_18.20.4+dfsg-1~deb12u2_amd64.deb, SHA256
+  ed733bca...24cfc; the downloaded file's sha256sum matches the index):
+    $ dpkg -c nodejs_deb12.deb | grep bin/
+      -rwxr-xr-x root/root  26704  ./usr/bin/node
+      lrwxrwxrwx root/root      0  ./usr/bin/nodejs -> node
+  Both distributions install the binary as /usr/bin/node. /usr/bin is on this
+  host's PATH and is a standard FHS directory whose presence does not depend on
+  the nodejs package, so install and removal leave the PATH string unchanged.
+  The README's "not a rare edge case" and the comment's "the ordinary way node
+  goes away on those distributions, not an edge case" are correct. The word
+  "narrow" is gone: `grep -n 'narrow' README.md <test file> Makefile` -> no
+  matches in the S5 text.
+
+(b) The corrected stat-versus-read distinction. Comment now reads: "it also
+tracks accounts.html being opened (read) and the harness JS being stat'd, both
+within the module root". Verified by dumping the exact input list `go test`
+hashes, from the current tree's test binary:
+    $ go test -c -o acct58.test ./internal/handlers/accounts/
+    $ ./acct58.test -test.run TestSyncWarnings_ClientRegressionHarness \
+        -test.testlogfile=testlog58.txt          (rc 0)
+    open .../s58/web/templates/pages/accounts.html            <- OPEN (read)
+    stat .../internal/handlers/accounts/testdata/js/warnings_dom_harness.js
+                                                              <- STAT, not read
+    getenv PATH                                               <- the tracked PATH read
+  Exactly as the comment now states, and exactly the imprecision my attempt-7
+  verdict flagged as a non-blocking precision note. It is now correct.
+  Source correspondence: os.ReadFile at warnings_client_regression_test.go:116
+  (accounts.html), the harness path only joined at :108 and handed to node, and
+  exec.LookPath("node") at :162 -- which is what produces `getenv PATH`.
+
+(c) "Every `make` target that runs this package's tests (`test`, `test-unit`,
+`test-coverage`, `race`, and `check` through its `test` prerequisite) closes
+this hole" -- true; all five demonstrated in item 1, and check-full (not named)
+is also covered, so the universal claim holds even where the parenthetical list
+is not exhaustive.
+
+(d) "This is a fixed, explicit rerun of one named package, not a scan of this
+file or any target" -- true: `ACCOUNTS_PKG := ./internal/handlers/accounts`
+(Makefile:183), a literal. No check-node target and no node probe survives:
+`grep -nE 'check-node|command -v node|node is required' Makefile` matches only
+line 167, inside the comment describing the removed design.
+
+(e) README and comment agree with each other and with measured behaviour on
+every clause: PATH-string cache key (getenv PATH above), apt remove leaving PATH
+unchanged (item 1 control), the five make targets closing it (item 1), bare
+`go test ./...` still exposed (item 5), `go clean -testcache` / `-count=1` as
+the manual remedy (the added line IS `-count=1` and it fails, item 1).
+
+=====================================================================
+(7) COMMENT/PROSE CHANGES STAY COMMENT/PROSE -- PASS
+=====================================================================
+  $ diff -u $SCRATCH/s57/repo/internal/handlers/accounts/warnings_client_regression_test.go \
+            internal/handlers/accounts/warnings_client_regression_test.go
+    ONE hunk, @@ -43,17 +43,26 @@. Every removed line and every added line
+    begins with `//`. The hunk ends before the blank line preceding `import (`.
+    No executable byte of the Go file changed.
+  $ gofmt -l internal/handlers/accounts/warnings_client_regression_test.go
+    -> no output.
+  $ diff -u $SCRATCH/s57/repo/README.md README.md
+    ONE hunk, @@ -639,15 +639,22 @@, entirely inside the Testing section's
+    prose; the ```bash fence and its contents appear only as context lines.
+  Makefile: the only executable change permitted this attempt, and it is
+  additive -- `git diff --stat Makefile` -> 31 insertions, 0 deletions;
+  23 of those 31 lines are comment, the other 8 are `ACCOUNTS_PKG :=`, a blank
+  line, and the four rerun lines (plus their surrounding blanks). No existing
+  recipe line was altered.
+
+=====================================================================
+(8) NOTHING REGRESSED -- PASS
+=====================================================================
+  guard fires with node absent .... item 1, six targets, plus the oracle's
+                                   "node absent and no opt-out -> test fails
+                                   loudly" and "make test-unit fails when node
+                                   is absent (exit 2)".
+  opt-out skips cleanly .......... $ BUDGET2_ALLOW_SKIP_JS=1 go test -count=1 -v
+                                     -run TestSyncWarnings... ./internal/handlers/accounts/
+                                     rc=0
+                                     warnings_client_regression_test.go:165:
+                                       skipping ... `node` was not found on
+                                       PATH, and BUDGET2_ALLOW_SKIP_JS is set,
+                                       so this is a deliberate opt-out ...
+                                     --- SKIP: TestSyncWarnings_ClientRegressionHarness
+                                     ok budget2/internal/handlers/accounts 0.003s
+                                   And the opt-out still governs the new line:
+                                     $ BUDGET2_ALLOW_SKIP_JS=1 make test  (node
+                                       absent) -> rc=0. A node-less machine is
+                                       not bricked by the rerun.
+  accounts.html byte-identical ... 163d70d7849ce363f1c463052805db32, == the hash
+                                   at S5.1.checker-tests.verdict:32.
+  items (b)-(e) intact ........... handlers.go d461d416, handlers_test.go
+                                   de990125, transfers/handlers.go 0809c0e4,
+                                   transfers/handlers_test.go 1253e8df,
+                                   projection_test.go bc1caf37 -- every one
+                                   identical to the attempt-6/7 values, so the
+                                   merits verification recorded at attempts 4-7
+                                   stands unchanged.
+  suite green with node present .. oracle checks 1: `go build ./...`,
+                                   `go vet ./...`, `go test -count=1 ./...` all
+                                   PASS in the real repo; and `make test` rc=0
+                                   twice in the scratch copy (item 3).
+
+=====================================================================
+(9) THE ORACLE -- PASS, RUN ONCE, TREE INTACT
+=====================================================================
+Run by this lane only, exactly once, per the lead's instruction.
+  BEFORE  3ea4ad74b76cd07dd34aa370b51d3df2  testdata/js/warnings_dom_harness.js
+          e8b13add3807275d54b143454de5b79a  warnings_client_regression_test.go
+          26256bb76074571cecfa9487ae6cfb48  README.md
+          aa2af54539c4bc6586330dc6f8203bed  Makefile
+          163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html
+          d3625a4f773ade2a12ee2f933c88f1b4  `git status --porcelain | md5sum`
+  $ env -u BUDGET2_ALLOW_SKIP_JS bash .swarm/tier3/S5/accept.sh ; echo $?
+    == S5 oracle ==
+    PASS  go build ./...
+    PASS  go vet ./...
+    PASS  go test ./...
+    PASS  harness runs and passes when node is present
+          opt-out variable: BUDGET2_ALLOW_SKIP_JS
+    PASS  node absent and no opt-out -> test fails loudly
+    PASS  the failure message names node
+    PASS  opt-out set -> skips cleanly with a named reason
+    PASS  make test-unit fails when node is absent (exit 2)
+    PASS  make test re-runs internal/handlers/accounts uncached
+    PASS  make test-unit re-runs internal/handlers/accounts uncached
+    PASS  make test-coverage re-runs internal/handlers/accounts uncached
+    PASS  make race re-runs internal/handlers/accounts uncached
+    PASS  caching is disabled only for internal/handlers/accounts
+    PASS  the Makefile target-scanning machinery is gone
+    PASS  non-test targets (build, clean, vet, dev) do not require node
+    PASS  a harness reporting FAIL while exiting 0 fails the Go test
+    ORACLE: PASS
+    0
+  AFTER   3ea4ad74b76cd07dd34aa370b51d3df2  testdata/js/warnings_dom_harness.js
+          e8b13add3807275d54b143454de5b79a  warnings_client_regression_test.go
+          26256bb76074571cecfa9487ae6cfb48  README.md
+          aa2af54539c4bc6586330dc6f8203bed  Makefile
+          163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html
+          d3625a4f773ade2a12ee2f933c88f1b4  `git status --porcelain | md5sum`
+Every hash identical before and after, including the tracked harness that check
+5 forges and restores, and including the whole-tree `git status` fingerprint.
+
+=====================================================================
+(10) SCOPE -- PASS
+=====================================================================
+  $ git status --porcelain go.mod go.sum        -> no output (both unmodified)
+  $ find . -name package.json -not -path './node_modules/*' -not -path './.claude/*'
+                                                -> none
+Attempt 8 wrote exactly three files (item-1 delta + mtime evidence):
+Makefile, README.md, internal/handlers/accounts/warnings_client_regression_test.go.
+All three are listed in .swarm/manifests/S5.8.files. (The manifest is a superset:
+it also lists the seven earlier S5 files, all byte-unchanged this attempt.)
+Critical globs (internal/services/storage/**, dataloader/**, retirement/engine/**,
+transfers/**, accounts/accounts.go, mcpsvc/confirm/**): none touched by attempt 8.
+internal/services/transfers/*.go IS modified in the working tree and IS a
+critical glob, but its mtime is 13:40:18 -- S2's accepted work, seven hours
+before attempt 8 began (20:26); internal/services/accounts/accounts.go is
+2026-08-19. No new imports in the Go file (comment-only). No new Makefile
+variables beyond ACCOUNTS_PKG.
+
+=====================================================================
+FINDINGS THAT DO NOT BLOCK, BUT THE LEAD SHOULD SEE
+=====================================================================
+(A) THE ORACLE'S NEW CHECK 3b IS WEAKER THAN IT LOOKS -- it can be satisfied by
+a recipe that enforces nothing. This is my answer to the question the lead put
+to me about the third amendment.
+
+  Faithfulness: the SHAPE is faithful. It asserts the four named targets and
+  asserts the negative (caching not disabled suite-wide), which is exactly the
+  two halves of user decision 2026-08-20h. Using `make -n` rather than grepping
+  the Makefile text is a real improvement over the scanning machinery this
+  oracle previously carried, because it asks make what it would actually run,
+  which follows variables, includes and prerequisite recipes.
+
+  Strength: NOT sufficient on its own. `make -n` prints the command with the
+  ignore-errors prefix STRIPPED, and the regex `test[^|]*-count=1[^|]*internal/
+  handlers/accounts` only excludes a pipe BETWEEN "test" and the package path,
+  not after it. I built two throwaway Makefiles and ran the oracle's exact grep
+  against them:
+    recipe `-$(GO) test -count=1 $(ACCOUNTS_PKG)`        -> MATCH (3b PASSes)
+       `make -n` prints it as "... go test -count=1 ./internal/handlers/accounts",
+       the leading `-` invisible; at run time make would IGNORE the failure.
+    recipe `$(GO) test -count=1 $(ACCOUNTS_PKG) || true` -> MATCH (3b PASSes)
+  Both are decorative and both pass check 3b. It also cannot see `.IGNORE:`,
+  a `-k` in MAKEFLAGS, or `.ONESHELL`. The negative check
+  (`grep -qE 'test .*-count=1 \./\.\.\.'`) is likewise evadable by
+  `GOFLAGS=-count=1`, a preceding `go clean -testcache`, or
+  `-count=1 ./cmd/... ./internal/...`.
+
+  Consequence for this attempt: none, but only because I did not rely on the
+  oracle for it. Item 2 rules out all of those constructs by inspection AND item
+  1 demonstrates the behaviour end to end -- make actually aborts, at the added
+  line, with rc 2, in six targets. If a future attempt changes these recipes,
+  the oracle alone will not catch a `-` prefix or a trailing `|| true`; the
+  behavioural test (delete a symlinked node, hold PATH constant, run the target,
+  expect nonzero) is the check that has teeth. My recommendation, for the lead
+  to accept or ignore: if 3b is amended again, replace the `make -n` grep with
+  that behavioural run. I did not edit accept.sh.
+
+(B) ONE COST FIGURE IN THE MAKEFILE COMMENT IS UNDERSTATED FOR `race`. The
+comment says "that package takes well under a second, so the cost is
+negligible", covering all four rerun lines. Measured with node present and a
+warm build cache: plain reruns 0.46s / 0.55s wall -- accurate; the `race` rerun
+`go test -race -count=1 ./internal/handlers/accounts` is 3.30s / 3.31s wall
+(test binary ~2.99s), i.e. roughly 3x "well under a second". The conclusion
+("the cost is negligible") still holds -- `make race` runs a 244s -race suite
+ahead of it -- and no acceptance criterion turns on the number, so I am
+recording it rather than failing on it.
+
+(C) CARRIED FORWARD FROM ATTEMPT 7, STILL TRUE, STILL OUT OF SCOPE: the harness
+JS header comment (unchanged since attempt 5) says "a machine without node
+cannot silently skip it" with no pointer to the cache caveat, though it does
+direct the reader to the test file where the caveat now lives. Not a false
+statement about the test's behaviour; attempt 8 was not asked to touch that file
+and did not (md5 3ea4ad74 unchanged).

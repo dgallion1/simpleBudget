@@ -1,0 +1,70 @@
+VERDICT: OVERRULE
+CHECKER: judge-impact
+FAMILY: impact
+TASK: S4
+ATTEMPT: 3
+---
+## Finding verification
+
+Reproduced both findings against the exact harness (Node.js, accounts.html lines 114-234 extracted verbatim):
+
+**Scenario 1 (Finding 1):** Dismiss with key K1 → warnings clear (lastWarningsText reset) → identical warning W1/K1 reappears. Result: region.textContent updated to warning (will announce via aria-live), but banner remains removed because sessionStorage['accounts-warnings-dismissed'] === K1. Confirmed: "banner present after sync? false" while region holds the warning text.
+
+**Scenario 2 (Finding 2):** Page reload with dismissal key K1 persisted in sessionStorage. Server renders region with warning text and banner. Script seeds lastWarningsText from region.textContent (the warning). syncWarnings() sees text === lastWarningsText (no change), so region is not mutated. Banner is removed by sessionStorage key match. Result: region contains warning text in accessibility tree, no announcement (not a state change per aria-live), no visual banner.
+
+Both are reproducible and involve a state mismatch between what is announced/in-tree vs. what is visible.
+
+## User impact analysis
+
+**Sighted users:** See correct behavior in both scenarios. Dismissal persists across reload (expected). No visual banner when dismissed is correct.
+
+**Screen reader users:**
+- Scenario 1: Hear aria-live announcement "Pattern overlap warning: [file] matches [accounts]" but find no dismiss button or banner on screen. Can still see the problem in the accounts list. Can resolve by changing patterns. Confusing but actionable.
+- Scenario 2: If they navigate to the #accounts-warnings-region (not automatic — it's sr-only, not a heading or button), find warning text in accessibility tree. But no announcement (correct, not a state change). No visual banner. Only discovered if user actively searches for the region.
+
+**Financial decisions:** Neither scenario affects the underlying overlap computation (correct and not suppressed) or the file attribution logic (still first-match-wins). Users cannot be misled into making wrong account decisions; they either see the warning (mismatched state) or don't see it but can infer the overlap from the account/file lists.
+
+**Likelihood:** 
+- Scenario 1: Low. Requires patterns to change, clear an overlap, then recreate the same overlap — an uncommon developer/testing workflow, not typical user interaction.
+- Scenario 2: Moderate-to-high for page reloads, but problem only manifests if screen reader user navigates to the region (not automatic announcement), and even then only if they expect a visual banner to accompany it.
+
+## Comparison to pre-S4 baseline
+
+Before S4: Zero warning visibility. Users silently receive files on the lower-ranked account with no notification.
+
+After S4 attempt 3: Warning visible and announced correctly in all primary use cases. Edge-case state mismatches (region text without banner) in two specific sequences.
+
+This is substantial improvement in user visibility, even with the edge cases.
+
+## Accessibility.md Point 14 compliance
+
+Explicit text: "Banners are dismissible via keyboard and re-announced only on state change, not every page load within a session."
+
+Checker-a11y explicitly verified all three requirements:
+1. Dismissible via keyboard: PASS (tested via Tab + Enter)
+2. Re-announced only on state change: PASS (tested unrelated edits produce no mutation)
+3. Not every page load within a session: PASS (tested reload preserves dismissal)
+
+Additionally, checker-a11y (lines 101-113) specifically tested scenario 2: "Dismissal survives an in-session reload: banner absent after page.reload(), sessionStorage key intact, AND #accounts-warnings-data's data-warnings-text still carries the full, correct warning text." They found this correct and noted dismissal is "purely a visual/announcement-state suppression" not a data suppression.
+
+Checker-second infers an "implicit companion requirement" that announced state match visible state, but this is not an explicit criterion in point 14. Point 14 addresses announcement frequency, not text/visual sync across the full page.
+
+## Tier and delegation
+
+S4 is Tier 1 (advisory UI plumbing). Per CLAUDE.md, Tier 1 requires one lane only: checker-tests (code) and checker-a11y (accessibility). Both PASSED.
+
+Checker-second is an adversarial second lane designed for Tier 2+ to catch gaps the primary might miss. Checker-second's role is to "ask what would make this wrong" and "default to FAIL on ambiguity." They found real ambiguities.
+
+However, the primary accessibility checker (checker-a11y) — the authority on ACCESSIBILITY.md compliance — explicitly tested the contested scenarios and found them compliant. Checker-second's failure rests on inferring a criterion not present in the written standard. For Tier 1, the explicit pass from the primary lane (a11y) carries weight.
+
+## Verdict reasoning
+
+This is a genuine issue: state mismatch between announced/accessible text and visible elements in two edge cases. But it does not:
+1. Violate explicit accessibility criteria (point 14 is explicitly PASS per checker-a11y)
+2. Block users from making correct decisions about their money
+3. Leave users without any way to see the overlap (file list still shows it)
+4. Represent a regression from pre-S4 (vast improvement from no warning at all)
+
+For advisory Tier 1 UI, where the primary accessibility checker has explicitly verified all criteria and found them met, shipping with a known post-acceptance fix is appropriate. The scope of S4 is to surface the computed warnings; it succeeds. The state-machine edge cases are a client-side display quirk, not a defect in the core feature.
+
+Checker-second found real issues, but the contested verdict of FAIL does not align with checker-a11y's explicit verification of the written standard, and the impact does not warrant rejection at Tier 1.

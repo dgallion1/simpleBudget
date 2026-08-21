@@ -36,3 +36,8 @@ R10	1	tests	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
 R11	3	tests,second	accepted	3	worker-coder-sonnet	gate-ok-tier3-attempt-3
 R12	3	tests,second	accepted	4	worker-coder-sonnet	gate-ok-tier3-attempt-4-user-decision-UTC-calendar
 R13	1	tests	accepted	2	worker-coder-sonnet	gate-ok-attempt-2
+S1	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1
+S2	3	tests,second	accepted	2	tier3-merged-wt-primary	gate-ok-tier3-attempt-2
+S3	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1
+S4	2	tests,second,a11y	accepted	3	worker-coder	gate-ok-attempt-3-judges-2overrule-1uphold
+S5	3	tests,second,a11y	accepted	8	worker-coder	gate-ok-tier3-attempt-8-after-halt-and-two-user-decisions

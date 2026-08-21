@@ -1,0 +1,135 @@
+VERDICT: UPHOLD
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: S4
+ATTEMPT: 3
+---
+LENS: correctness. Ruled against REVIEW_AUG20_SPEC.md's S4 row and ACCESSIBILITY.md
+points 10 and 14 as written. I did not read the other two judges' verdicts.
+
+WHAT I VERIFIED MYSELF (real browser, not the checker's harness, not template
+reading). Built cmd/server to scratchpad, ran it against an isolated data dir
+outside the repo (BUDGET_DATA_DIR=.../scratchpad/jc/data, :18477) with two
+accounts (a-wide pattern "usaa", b-narrow pattern "usaa-checking") and a real
+usaa-checking-2026.csv on disk, so accounts.OverlapWarnings fires through the
+production code path. Drove Chromium via Playwright 1.62.1: keyboard-only
+dismissal (page.focus + keyboard.press('Enter'), never .click), real HTMX form
+submits for the mutations, MutationObserver installed via addInitScript BEFORE
+any page script ran, and CDP Accessibility.getFullAXTree for the a11y tree. The
+only file I wrote inside the repo is this verdict; `git status --short` is
+unchanged apart from the other judges' verdict files, which I did not open.
+
+BOTH CONTESTED SEQUENCES REPRODUCE IN A REAL BROWSER.
+
+Sequence 1 (dismiss -> overlap cleared by a real HTMX edit -> the same overlap
+restored by a real HTMX edit), observed:
+  [1 fresh load]        banner=true  dismissBtn=true  key=59318409db522b3d stored=null
+                        region="Pattern overlap warning: file \"usaa-checking-2026.csv\" ..."
+  [2 dismissed]         mut=1 banner=false dismissBtn=false stored=59318409db522b3d
+                        region="Account overlap warning dismissed."
+  [3 overlap cleared]   mut=1 banner=false key=""  stored=59318409db522b3d  region=""
+  [4 same overlap back] mut=1 banner=false dismissBtn=false key=59318409db522b3d
+                        region="Pattern overlap warning: file \"usaa-checking-2026.csv\" ..."
+Step 4 is a genuine post-load aria-live mutation (mut=1, region role="status"
+aria-live="polite", registered long before) carrying an active-warning
+assertion, while the same syncWarnings() call removes the banner. Screen-reader
+user hears an active pattern-overlap warning; sighted user sees nothing; nobody
+has a dismiss control.
+
+Sequence 2 (dismiss -> ordinary reload, warnings unchanged), observed:
+  final region text = "Pattern overlap warning: file \"usaa-checking-2026.csv\" ..."
+  banner present = false ; dismiss button in DOM = false
+  computed style of region: display block, visibility visible, clip rect(0,0,0,0),
+    1x1, aria-hidden null  -> sr-only, i.e. exposed, not display:none
+  CDP getFullAXTree after dismiss+reload: 2 nodes containing "Pattern overlap
+    warning" (role StaticText and InlineTextBox), ignored=false
+So after the dismissal the warning text is live in the accessibility tree on
+every subsequent load in the session, with no visible counterpart anywhere and
+no control to dismiss it again.
+
+WHERE checker-second IS WRONG ON MECHANISM (and why it does not save the work).
+Its Finding 2 claims the seed makes text === lastWarningsText so "the region is
+left untouched". That is false. The server renders the region's content
+whitespace-padded:
+  accounts.html:169-171 ->  "\n        Pattern overlap warning: ...\n    "
+while #accounts-warnings-data's data-warnings-text is unpadded. I confirmed this
+against the raw served bytes (curl) and against the DOM. Consequence, observed
+with a document-wide MutationObserver armed before the page's own script:
+EVERY full page load produces two childList mutations on the region -- the
+server's padded text, then the script's trimmed rewrite -- on LOAD 1, LOAD 2
+(post-dismissal, nothing changed) and LOAD 3 alike. The same-text guard, which
+the template's own comment offers as its ACCESSIBILITY.md point 14 mechanism
+("assigning identical text on every swap would still count as a DOM mutation to
+a screen reader's live-region observer, which is exactly the 're-announced ...
+every page load' ACCESSIBILITY.md point 14 rules out"), never holds across a
+page load at all. Both mutations occur at readyState==="loading", so most AT
+will not speak them; I therefore do not rest the ruling on "it is spoken on
+every load". I rest it on the state that persists, which I measured directly in
+the accessibility tree. checker-second's harness misdescribed the path and got
+the observable end state exactly right; the error understates the problem.
+
+THE WRITTEN TEXT I AM RULING AGAINST.
+ACCESSIBILITY.md point 14: "Banners (unassigned files, staleness warnings) are
+dismissible via keyboard and re-announced only on state change, not every page
+load within a session."
+The implementation honours that in the visual channel only. The dismissal
+suppresses the amber banner and, with it, the dismiss button; it does nothing to
+the sr-only region, which the server re-renders with the full warning text on
+every load because the dismissal exists only in the browser. A screen-reader
+user who dismisses and reloads gets the warning back in reading order, for the
+rest of the session, with the control that would let them dismiss it again now
+absent from the DOM. Reading point 14 as satisfied by suppressing only the
+sighted channel would make, inside an accessibility standard, a dismissal
+requirement that accessibility users cannot obtain -- not a plausible reading of
+a document whose neighbouring points (8, 12, 13) exist precisely to demand
+parity of meaning across presentation channels. Point 14 is not met.
+
+The S4 row of REVIEW_AUG20_SPEC.md requires "The rendered warning is announced
+per ACCESSIBILITY.md". In sequence 1 the warning is announced but not rendered;
+in sequence 2 it is rendered only to AT and only after being dismissed. Neither
+is "announced per ACCESSIBILITY.md".
+
+ROOT CAUSE, AND WHY THIS IS A DEFECT AND NOT MY TASTE IN FRONT-END DESIGN.
+accounts.html documents behaviour the code does not have. The data carrier's
+comment says it is emitted even when empty "so a mutation that resolves the last
+overlap can clear the live region and the dismissal key too." It does not clear
+the dismissal key: syncWarnings() hits `var banner = ...; if (!banner) return;`
+and returns before touching sessionStorage. Measured at step 3 above:
+data-warnings-key="" while sessionStorage still holds 59318409db522b3d. That
+stale key is exactly what suppresses the banner at step 4. The banner block's
+comment likewise asserts "a changed warning set is a state change and
+reappears/re-announces" -- at step 4 the set changed twice and only the
+re-announce half happened. The remedy is small and local (clear the stored key
+when data-warnings-key is empty; and either gate the server-rendered region
+content on a dismissal the server can see, or clear/normalise the region so the
+dismissed state survives a load). A one-line-class fix that restores the
+implementation's own documented contract is a defect, not an architectural
+preference, and I am not ruling on architecture.
+
+ON POINT 14's "STATE CHANGE" QUESTION PUT TO ME. In sequence 1 the state did
+change twice, so re-announcing is not itself the violation -- the pair is
+jointly wrong. Point 14's subject is the banner: it is the banner that is
+"dismissible" and the banner that is "re-announced ... on state change". At step
+4 something is re-announced that is not a banner, because no banner exists and
+none can be summoned. The announcement and the presentation are supposed to be
+the same event; the diff makes them two independently-keyed pieces of state and
+step 4 is the visible cost.
+
+ON THE TWO PASSES. Absence of a finding is not evidence, but one of them is
+worse than silent. checker-a11y's point 14 PASS rests on the stated claim that
+the dismissal is "purely a visual/announcement-state suppression"; it verified
+data-warnings-text after the reload and never the region's own content after the
+reload. LOAD 2 above falsifies that claim on the announcement half. checker-tests
+scoped itself to the twelve written criteria and explicitly recorded two
+uncharged defects (D1, D2), noting D1 "is the same class of problem attempt 2
+was failed for" -- which is consistent with, not contrary to, this FAIL.
+
+WHAT WOULD HAVE CHANGED MY MIND. If the sr-only region had been empty (or
+carrying the dismissal confirmation) after dismiss+reload, sequence 2 would
+collapse and sequence 1 alone would be a thin, arguable basis and I would have
+overruled. It is not empty: two un-ignored StaticText/InlineTextBox nodes in
+Chromium's accessibility tree say otherwise.
+
+VERDICT: UPHOLD. The FAIL stands. I note for the lead only, without letting it
+weigh on the merits, that under CLAUDE.md's hard stop this is S4's third
+attempt.

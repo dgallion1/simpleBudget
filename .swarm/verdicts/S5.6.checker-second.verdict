@@ -1,0 +1,105 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 6
+---
+Scope: .swarm/manifests/S5.6.files. Confirmed comments-only change: attempt 5
+vs attempt 6 diff on the two flagged sentences shows only prose edits; no Go
+statement, Makefile recipe, or JS execution line changed (checked all ten
+manifest files' non-comment lines are unchanged from the S5.5-recorded state
+via re-reading handlers.go/handlers_test.go/transfers files, Makefile recipe
+lines 77-207, and the harness JS code below its header comment).
+
+7a (stale pointer) and the S5.5 7b (unscoped "every other target") overclaim
+are both fixed: the harness header now says "The guard lives in the test
+itself, not in any Makefile target," and the package comment scopes the claim
+to "any invocation that RUNS this package's tests" with test-integration/fuzz
+correctly named as out of scope. `make check` genuinely reaches the guard
+(check: vet static vuln test -> test: go test ./...) -- verified, not asserted.
+
+But the new sentence overclaims on a different axis, the one the task flagged:
+
+QUOTED CLAIM (warnings_client_regression_test.go, package comment):
+  "even a warm test cache (this test execs node and reads a file outside
+   its package directory, so the cache never replays it)"
+
+FALSIFIED. A warm cache DOES replay this test when nothing relevant changed
+-- that is the literal, unconditional claim in the parenthetical, and it is
+false by direct observation:
+
+  $ go clean -testcache
+  $ make test 2>&1 | grep accounts
+    ok  	budget2/internal/handlers/accounts	0.585s
+    ok  	budget2/internal/services/accounts	0.011s
+  $ make test 2>&1 | grep accounts        # unchanged tree, second run
+    ok  	budget2/internal/handlers/accounts	(cached)
+    ok  	budget2/internal/services/accounts	(cached)
+
+"(cached)" is `go test`'s own literal word for "this package's test result was
+served from cache, the binary did not re-run" -- meaning node was NOT
+re-invoked and the JS harness did NOT re-execute on the second `make test`.
+Reproduced identically with `go test -run TestSyncWarnings_ClientRegressionHarness
+./internal/handlers/accounts/...` run twice back to back (second run: `ok
+budget2/internal/handlers/accounts (cached)`), and with an unrelated env var
+added (`SOME_UNRELATED_VAR=xyz$$ go test ...` -> still `(cached)`).
+
+Separating the two candidate mechanisms the task asked me to distinguish:
+
+1. "reads a file outside its package directory" -- tested in isolation with a
+   throwaway module (test that os.ReadFile's a file one directory above its
+   package, no exec at all). Unchanged reruns of that test ALSO show
+   `(cached)` once mtimes settle, and mutating the outside file's content DOES
+   bust the cache on the next run. This is generic Go test-cache file-content
+   tracking (via internal/testlog) that applies to ANY os.Open/os.ReadFile
+   target regardless of location -- reading testdata/js/warnings_dom_harness.js
+   (which IS inside this package's directory) would be tracked identically.
+   "Outside its package directory" is not what makes the read trackable; it is
+   a red herring as a distinguishing explanation.
+
+2. PATH / exec.LookPath -- confirmed this is the piece that responds to "node
+   became unavailable": stripping node's directory from PATH busts the cache
+   and the test fails loudly (reproduced). Appending a harmless, nonexistent
+   directory to PATH (node still resolves to the same binary) ALSO busts the
+   cache and forces a real re-run, confirming PATH's string value itself,
+   not just node's resolved location, is part of the tracked inputs -- this
+   is closer to what actually protects the "node went missing" case, and is
+   the attribution the attempt-6 worker used in their own verification per
+   the task brief, not what ended up in the shipped comment.
+
+Neither mechanism supports "the cache never replays it" as an absolute
+claim -- both are ordinary cache-invalidate-on-input-change behavior, which
+by definition means the cache DOES replay when inputs are unchanged, which is
+exactly what "even a warm test cache ... hits the guard" was trying to deny.
+The parenthetical's literal reading (this specific test's cache entry is
+never honored) is directly falsified by `make test` run twice; the more
+charitable reading (cache correctly busts when node-availability or the
+template content changes) is true but for a different, less specific reason
+than the one stated, and "reads a file outside its package directory" adds a
+false distinguishing detail that doesn't hold up under a same-mechanism
+control read from inside the package directory.
+
+This is the same defect class the task has now failed on for two prior
+attempts: a comment asserting more than the code (or in this case, more than
+Go's test-cache semantics) actually deliver. The claim is longer and more
+specific than attempts 4/5's, and the extra specificity is exactly where it
+breaks.
+
+Other angles attacked, all held:
+- Opt-out presence-based semantics: `BUDGET2_ALLOW_SKIP_JS=0` and `=false`
+  both skip (verified against the code: `os.Getenv(skipEnvVar) != ""`, no
+  value-parsing, so any non-empty string including whitespace-only opts out --
+  confirmed `BUDGET2_ALLOW_SKIP_JS=" "` with node stripped from PATH produces
+  a Skip, matching the comment). README and test-comment wording agree.
+- `make check` reaches the guard for a real reason (traced the prerequisite
+  chain), not coincidentally.
+- test-integration/fuzz correctly listed as not-covered; fuzz's `-run=^$`
+  would exclude this test even if a Fuzz func were later added to this
+  package, so the "not a hole" framing holds there.
+- Did not run .swarm/tier3/S5/accept.sh (checker-tests owns it this round);
+  all commands above were constructed independently against the working tree.
+- Pre-S5 template regression (md5 fb2a5b02af41e835bbe1fc52fd22ed69,
+  authenticate-first) and the subtler partial revert: not re-tested this
+  round since scope for attempt 6 is comments/prose only and the executable
+  guard code is byte-for-byte unchanged from the S5.5-verified state (spot
+  diffed the non-comment lines of the test file and Makefile recipes).

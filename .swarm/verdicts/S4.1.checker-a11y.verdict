@@ -1,0 +1,141 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: S4
+ATTEMPT: 1
+---
+METHOD: Real browser, not just template reading. Built the working tree
+(`go build ./cmd/server`), ran it against an isolated copy of data/ in
+scratchpad (BUDGET_DATA_DIR override, so the real repo/data was never
+touched) with two accounts sharing file_patterns=["bk_download"] to force
+`.Warnings` non-empty. Drove it with Playwright (chromium, installed this
+session) for DOM/AX inspection, computed-style contrast measurement, and a
+real HTMX form-submit interaction; cross-checked contrast with axe-core
+4.13 run both as a full-page scan and scoped directly at the warning node.
+No Playwright MCP tool was actually exposed to me in this session (only
+Read/Bash) despite the task text — I built the browser harness myself via
+npx playwright rather than silently downgrading to template-reading.
+Server killed after testing; no repo files touched.
+
+POINT 10 (live region + focus restoration) — FAIL.
+Rendered GET /accounts: the only stable, pre-existing aria-live region
+outside the HTMX swap target is #accounts-error-region (sr-only, lives in
+accounts-content, outside #accounts-list). The pattern-overlap block's new
+role="status"/aria-live="polite" lives entirely INSIDE
+accounts-list-partial, i.e. inside the fragment #accounts-list replaces via
+hx-swap="innerHTML" on every mutation.
+Proved this mechanically: tagged the warning node with a probe attribute,
+submitted the acct-a edit form (a real state-changing swap), and re-queried
+after the swap. Result: WARNING_NODE_IS_SAME_AFTER_SWAP = false — the node
+is destroyed and a brand-new element is inserted with role/aria-live already
+baked onto it at insertion time, not an existing registered live region
+whose text content changed. This is exactly the failure mode point 10 (and
+the task brief) describes: several screen readers (NVDA, VoiceOver
+historically) only announce mutations to a live region that was already
+present and registered before the change; a region that is born with its
+final content in one paint is frequently not announced at all. The
+worker's own comment defends this by analogy to the visible error block's
+role="alert" — but that analogy argues against the change: the codebase
+already has the *correct* pattern for this exact problem
+(#accounts-error-region, a stable node outside the swap target whose text
+is what changes), and the warning block does not use it.
+Concrete fix: add a stable, always-rendered (not `{{if .Warnings}}`-gated)
+sr-only live-region container in accounts-content, outside #accounts-list,
+mirroring #accounts-error-region, and make every response (full page and
+the accounts-list-partial swap) populate its text from .Warnings — e.g. via
+hx-swap-oob on that node in the partial, the same way #accounts-error-region
+would need updating to survive a swap. role="status" on the visible amber
+box can stay for redundancy, but it cannot be the only mechanism.
+
+Focus restoration: submitted the acct-a edit form (focused its "Save
+changes" button first) and read document.activeElement after the swap.
+Focus landed on #acct-new-id (the "Account ID" field in the unrelated "Add
+an account" form), not on anything related to acct-a or the new warning.
+Root cause: `data-focus-target="id"` on that field
+(web/templates/pages/accounts.html, "Add an account" section) is
+unconditional — unlike every other data-focus-target in the template, which
+is gated by `{{if eq .ErrorField "..."}}`. htmx:afterSwap's handler always
+finds it first via `target.querySelector('[data-focus-target]')` and steals
+focus regardless of what actually happened. This bug is NOT part of S4's
+diff (git diff confirms handlers.go/accounts.html changes are scoped to the
+Warnings plumbing and the two doc-comment blocks; this input's markup is
+untouched) — recorded as an OBSERVATION, not charged to this task — but it
+does mean the task brief's specific question ("check where focus lands")
+has an answer worth flagging: focus restoration for this exact interaction
+is currently broken for reasons S4 did not introduce and did not fix
+either.
+
+POINT 14 (banners dismissible / re-announced only on state change) — FAIL.
+Template has no dismiss control anywhere in the warning block (grepped for
+dismiss/localStorage/sessionStorage in accounts.html: none). Loaded
+GET /accounts three times in a row with the overlap condition unchanged:
+the block rendered identically every time (`grep -c "Pattern overlap
+warning"` = 1, 1, 1) with no session-level suppression. Point 14's text is
+explicit: "dismissible via keyboard and re-announced only on state change,
+not every page load within a session." A pattern-overlap warning is a
+banner by the constitution's own parenthetical ("unassigned files,
+staleness warnings" — this is the same class of advisory persistent-state
+banner). As built it has neither property: not dismissible, and it renders
+(and, if the live-region worked, would re-announce) on every load and every
+partial swap while the condition persists, not just once per
+state-change/session. This is not softened by the warning being useful —
+point 14's text does not carve out an exception for "important" banners.
+
+POINT 8 (not color alone) — PASS.
+Rendered DOM confirms: amber background + `<svg aria-hidden="true">`
+triangle-warning icon + literal visible text "Pattern overlap warning"
+(span.font-medium). Meaning is carried by icon and text, not amber alone.
+
+POINT 7 / 12 (contrast, both themes) — FAIL (light theme only).
+Measured actual computed styles in the browser and cross-checked with
+axe-core's color-contrast rule scoped directly to the warning node:
+
+  LIGHT theme:
+    label/list text  (amber-700 #b45309 on amber-50 #fffbeb): 4.84:1  PASS
+    small text-xs    (amber-600 #d97706 on amber-50 #fffbeb): 3.07:1  FAIL
+        axe-core confirms independently: "serious" wcag143 violation,
+        contrastRatio 3.07, fontSize 12px/normal weight, expected 4.5:1,
+        target ".text-amber-600", element
+        <p class="mt-2 text-xs text-amber-600 dark:text-amber-400"> — this
+        is the exact "First match still wins by account-ID order..."
+        explanatory line the task flagged as most likely to fail.
+
+  DARK theme (`document.documentElement.classList.add('dark')`, matching
+  the app's real toggle mechanism):
+    label/list text (amber-300 on composited ~rgb(48,33,32)): 10.71:1 PASS
+    small text-xs    (amber-400 on same):                      9.25:1 PASS
+    axe-core full-page scan in dark mode: no color-contrast violation on
+    the warning block (only two pre-existing, unrelated "Delete account"
+    button contrast failures, present in both light and dark and untouched
+    by this diff).
+
+This text-xs/amber-600 pairing is unchanged code (same Tailwind classes
+existed in the old, dead outer copy) — but S4 is precisely what makes this
+element render for a real user for the first time. A contrast failure in
+dead code is moot; the same failure in now-live code is a point 7 violation
+this task is responsible for surfacing, whether or not S4 introduced the
+class names.
+
+POINTS 1-3, 9 (structure/keyboard, disturbed by the template edit) — PASS.
+Full axe-core scan (wcag2a/wcag2aa/wcag22aa/best-practice) on the rendered
+page: 1 violation type (color-contrast, 3 nodes: the point-7 failure above
+plus the two pre-existing delete-button nodes) — no heading-order,
+landmark, region, button-name, or link-name violations.
+Heading walk: exactly one <h1> ("Accounts"), then h2 ("Add an account",
+"Your accounts", "Unassigned files") → h3 (per-account) → h4 ("Matched
+files", "Balance anchors"), no skipped levels. Exactly one <main>, one
+<nav>, one <footer> landmark. The template edit only removed a dead,
+never-rendered duplicate block and added attributes to the surviving one;
+it added/removed no headings, landmarks, or interactive elements, so it
+did not disturb points 1-3 or 9 structurally.
+
+DECORATIVE SVG — confirmed. Rendered markup:
+<svg ... aria-hidden="true"><path .../></svg> — present on the warning
+icon, unchanged by the diff.
+
+OVERALL: FAIL. Point 10 (live region does not reliably announce because it
+is not a pre-existing registered region — proved via DOM node-identity
+test across a real HTMX swap) and point 14 (no dismissal, re-renders every
+load) are clear, literal-text violations, not judgment calls. Point 7 adds
+a light-theme contrast failure on the small explanatory line, now reachable
+because S4 makes the block actually render. Points 8, 12(dark)/1-3/9 pass.

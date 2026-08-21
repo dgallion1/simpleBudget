@@ -1,0 +1,431 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 2
+---
+Tree: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted.
+Manifest .swarm/manifests/S5.2.files (8 entries = 5 carried from attempt 1 +
+3 new). Ledger row: `S5  2  tests,second,a11y  pending  2`. Tier 2, so no
+.swarm/tier3/S5/accept.sh exists and none is required.
+
+METHOD. Every probe ran in a COPY of the tree OUTSIDE the repo, under
+.../scratchpad/a2/{base,pre,noop1,noop2,mutA,mutB,late,copy1,copy2,div1,
+vac1..vac6}. The repo was never modified: `git status --porcelain | md5sum`
+= 4c3e9436a01e1804827c87225a71c214 before and after, and the only file I
+wrote inside the repo is this verdict.
+
+SUMMARY: all 10 criteria met. The gap that failed attempt 1 is closed, and it
+is closed by something that actually bites -- I reproduced the worker's three
+proofs and then went past them with two surgical template mutations, a
+compile-then-mutate test, six vacuity attacks and a copy-edit/divergence pair.
+Attempt 1's five files are byte-identical to their attempt-1 hashes.
+
+FILE HASHES at end of my run:
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html
+  de990125ada6a151d85dba1df4ccb2d3  internal/handlers/accounts/handlers_test.go
+  0809c0e404fa9a629d2d293ab92cebc4  internal/handlers/transfers/handlers.go
+  1253e8dfeb48a738769e36fc9eb0a382  internal/handlers/transfers/handlers_test.go
+  bc1caf37dbb8c61676eefd052bf6f769  internal/services/accounts/projection_test.go
+  75d117bf64805a50ef3dca9b3b20497d  Makefile                                   (new in a2)
+  c7ae4f42560b4e6f0b846f1036e30c34  internal/handlers/accounts/warnings_client_regression_test.go   (new in a2)
+  eabf2674111a9e4cca17eddc76aa4325  internal/handlers/accounts/testdata/js/warnings_dom_harness.js  (new in a2)
+
+==================================================================
+CRITERION 1 -- reproduce all three proofs, authenticate the       PASS
+               pre-S5 template by hash first.
+==================================================================
+AUTHENTICATION FIRST, provenance second. The worker's claimed recovery path
+is .../scratchpad/b2a3 (left by my own attempt-1 run). I did not trust that;
+I hashed it:
+  $ md5sum .../scratchpad/b2a3/web/templates/pages/accounts.html
+    fb2a5b02af41e835bbe1fc52fd22ed69
+  $ grep -n md5 .swarm/verdicts/S4.3.checker-tests.verdict
+    21:  fb2a5b02af41e835bbe1fc52fd22ed69  web/templates/pages/accounts.html
+  MATCH. Same tree's handlers_test.go = 8a45d649b8f77fb752a0eb26c7c75559,
+  also matching S4.3 line 20. The recovered file is the genuine pre-S5 one.
+
+PROOF A -- pre-S5 template FAILS both sequences. Authenticated fb2a5b02...
+copied over the current tree in .../a2/pre (nothing else changed):
+  $ go test -count=1 -v -run TestSyncWarnings_ClientRegressionHarness ./internal/handlers/accounts/
+    RESULT dismiss_resolve_recreate FAIL {"bannerPresent":false,"dismissPresent":false,
+      "regionAssertsWarning":true,"parityOK":false,
+      "regionText":"Pattern overlap warning: usaa-checking.csv overlaps with schwab-checking.csv ...",
+      "dataText":"Pattern overlap warning: usaa-checking.csv overlaps with schwab-checking.csv ..."}
+    RESULT dismiss_then_reload_unchanged FAIL {"bannerAbsent":true,"regionEmpty":false,
+      "regionText":"Pattern overlap warning: usaa-checking.csv ..."}
+    RESULT guard_directions PASS
+    --- FAIL: TestSyncWarnings_ClientRegressionHarness    PRE_S5_EXIT=1
+  Both point-16 defects reproduced exactly as attempt 1 described them: the
+  region asserting an active warning with no banner (parityOK false), and a
+  dismissed warning re-announcing itself after reload (regionEmpty false).
+  guard_directions correctly stays green -- that is S4-era behaviour and was
+  never broken.
+
+  And at the level that matters -- the whole suite:
+  $ cd .../a2/pre && go test -count=1 ./...
+    FAIL  budget2/internal/handlers/accounts  0.500s
+    FULLSUITE_PRE_S5_EXIT=1
+  This is the precise command that returned 0 in attempt 1 (S5.1 verdict,
+  "FULL_SUITE_WITH_PRE_S5_TEMPLATE_EXIT=0"). It now returns 1. The attempt-1
+  FAIL is closed by direct comparison of the same command.
+
+PROOF B -- current tree PASSES, and RUNS rather than skips:
+  $ cd .../a2/base && go test -count=1 -v -run 'TestSyncWarnings_ClientRegressionHarness|TestExtractSyncWarningsScript' ./internal/handlers/accounts/
+    --- PASS: TestExtractSyncWarningsScript_FindsExactlyOneBlock (0.00s)
+    --- PASS: TestSyncWarnings_ClientRegressionHarness (0.02s)     EXIT=0
+  No SKIP line, so the harness genuinely executed.
+
+PROOF C -- script replaced by a no-op comment FAILS all three checks.
+Two variants, because "replaced by a no-op comment" is ambiguous:
+  C1, whole <script>...</script> -> "<!-- script removed (no-op) -->"
+    (.../a2/noop1; the substitution reported "blocks replaced: 1", which
+    also independently confirms the template ships exactly ONE script block)
+    --- FAIL: TestExtractSyncWarningsScript_FindsExactlyOneBlock
+        :90 expected exactly one <script> block ... found 0
+    --- FAIL: TestSyncWarnings_ClientRegressionHarness
+        :117 same                                       NOOP1_EXIT=1
+  C2, <script> tag kept, body -> "// no-op" (.../a2/noop2). This is the
+  stronger variant: extraction succeeds and the harness runs against a
+  script that does nothing.
+    RESULT dismiss_resolve_recreate      FAIL {"postDismissBannerAbsent":false,"postDismissStored":false,...}
+    RESULT dismiss_then_reload_unchanged FAIL {"dismissedTookEffect":false,"bannerAbsent":false,"regionEmpty":false,...}
+    RESULT guard_directions              FAIL {"unrelatedWrites":0,"changedWrites":0,"clearingEmpty":false}
+    SUMMARY SOME_FAILED                                  NOOP2_EXIT=1
+  All three checks red, as claimed. Worth naming the mechanism: the harness
+  carries its own anti-vacuity sentinels (postDismissBannerAbsent,
+  postDismissStored, dismissedTookEffect at warnings_dom_harness.js:210-211
+  and :258-259) which assert the dismissal ACTUALLY took effect before the
+  rest of the sequence is allowed to mean anything. Without them a
+  do-nothing script would coast through dismiss_resolve_recreate, because a
+  fresh server render is already internally consistent. Those sentinels are
+  exactly what turned C2's first two checks red.
+
+==================================================================
+CRITERION 2 -- the harness reads the REAL template at test time.  PASS
+==================================================================
+(2a) NO INLINED COPY. grep for syncWarnings / effectiveText /
+lastWarningsText / accounts-warnings-dismissed across both new files returns
+only: the extraction regex and its error strings in the Go file, and the
+sessionStorage KEY string in the harness (a contract, not a copy of the
+script). There is no pasted script body anywhere.
+
+(2b) SURGICAL TEMPLATE EDITS ARE NOTICED, WITH NO TEST FILE TOUCHED. In each
+tree below I verified the two new test files hash-identical to base
+(c7ae4f42560b4e6f0b846f1036e30c34 / eabf2674111a9e4cca17eddc76aa4325) before
+running:
+  MUT-A (.../a2/mutA): delete the stale-key clear --
+    `try { sessionStorage.removeItem('accounts-warnings-dismissed'); } catch (e) {}` -> `/* removed */`
+    RESULT dismiss_resolve_recreate FAIL {"bannerPresent":false,"dismissPresent":false,...}
+    RESULT dismiss_then_reload_unchanged PASS
+    RESULT guard_directions PASS                          mutA_EXIT=1
+  MUT-B (.../a2/mutB): `var effectiveText = dismissed ? '' : text;` -> `var effectiveText = text;`
+    RESULT dismiss_resolve_recreate PASS
+    RESULT dismiss_then_reload_unchanged FAIL {"regionEmpty":false,...}
+    RESULT guard_directions PASS                          mutB_EXIT=1
+  Each mutation flips exactly the one check that owns that guarantee and
+  leaves the other two green. That is discrimination, not a blanket tripwire.
+
+(2c) THE DECISIVE ONE -- read at TEST time, not compile time. I compiled the
+test binary once, ran it, then mutated ONLY the template and re-ran the SAME
+unrecompiled binary (.../a2/late):
+  $ go test -c -o /tmp/acct.test ./internal/handlers/accounts/   # 16:24:56
+  $ /tmp/acct.test -test.run TestSyncWarnings_ClientRegressionHarness
+    PASS   EXIT=0
+  $ <mutate template only>   ; stat /tmp/acct.test -> mtime still 16:24:56
+  $ /tmp/acct.test -test.run TestSyncWarnings_ClientRegressionHarness
+    RESULT dismiss_then_reload_unchanged FAIL {"regionEmpty":false,...}
+    --- FAIL   EXIT=1
+  Same bytes of test binary, opposite result, only web/templates/pages/
+  accounts.html changed. The template is unambiguously read from disk at run
+  time. Path resolution is via runtime.Caller(0) (test file lines 41-57), and
+  it worked correctly from a scratch tree at a completely different absolute
+  path -- which is itself the proof that it does not depend on the process
+  working directory.
+
+==================================================================
+CRITERION 3 -- the skip cannot mask a failure.                    PASS
+==================================================================
+The glue requires all three named checks to have REPORTED (test file
+:136-145) before it trusts the exit code. Six attacks, all blocked:
+  V1 harness truncated to an empty file (.../a2/vac1)
+     :142 harness output is missing expected check "RESULT dismiss_resolve_recreate"
+          -- harness may not have run to completion         vac1_EXIT=1
+  V2 harness = `process.exit(0);`, silent success (.../a2/vac2)
+     :142 same message, empty output                        vac2_EXIT=1
+  V3 harness prints only TWO of three RESULT lines, all PASS, SUMMARY
+     ALL_PASS, exit 0 (.../a2/vac3)
+     :142 harness output is missing expected check "RESULT guard_directions"
+          full output shows the two PASS lines it did print vac3_EXIT=1
+  V4 harness throws inside the first sequence (.../a2/vac4)
+     :142 missing "RESULT dismiss_resolve_recreate"          vac4_EXIT=1
+     (the catch block at harness :334 labels the line with the JS function
+      name `testDismissResolveRecreate`, not the snake_case check name, so
+      the missing-name fatal fires. Cosmetically inconsistent, but it makes
+      the check STRICTER, not weaker. Recorded as observation O1.)
+  V5 harness file deleted entirely (.../a2/vac5)
+     :127 harness script not found at ...                    vac5_EXIT=1
+  Plus the node-absent path, criterion 4 below: SKIP, never a silent PASS.
+
+The three attacks the brief names -- truncate, exit 0 silently, print only
+two of three -- are V1, V2, V3. All red.
+
+==================================================================
+CRITERION 4 -- Makefile enforcement is real and wired in.         PASS
+==================================================================
+node lives at /home/darrell/.config/nvm/versions/node/v24.12.0/bin. I built
+a PATH with that directory removed and confirmed the removal took:
+  PATH=$CLEANPATH command -v node  -> NO
+  PATH=$CLEANPATH command -v go    -> /home/darrell/go-sdk/go/bin/go
+
+(4a) `make test` FAILS, does not skip:
+  $ env -u NVM_BIN PATH="$CLEANPATH" make test
+    ERROR: node is required by TestSyncWarnings_ClientRegressionHarness
+    (internal/handlers/accounts/testdata/js/warnings_dom_harness.js) but was
+    not found in PATH. Install Node.js, or run 'go test ./...' directly ...
+    make: *** [Makefile:171: check-node] Error 1
+    MAKE_TEST_NO_NODE_EXIT=2
+  It fails at check-node, BEFORE go test runs at all.
+
+(4b) `go test ./...` SKIPS with a named reason:
+  $ env -u NVM_BIN PATH="$CLEANPATH" go test -count=1 -v -run '...' ./internal/handlers/accounts/
+    --- PASS: TestExtractSyncWarningsScript_FindsExactlyOneBlock (0.00s)
+    --- SKIP: TestSyncWarnings_ClientRegressionHarness (0.00s)
+      :109 skipping client-side warnings regression harness: `node` was not
+      found on PATH. This test executes accounts.html's syncWarnings()
+      script under node ... `make test` requires node and will fail, not
+      skip, if it is missing.
+    ok  budget2/internal/handlers/accounts    EXIT=0
+  $ env -u NVM_BIN PATH="$CLEANPATH" go test -count=1 ./...
+    GOTEST_NO_NODE_EXIT=0, zero FAIL lines
+  Note the node-free skip still leaves the structural check
+  TestExtractSyncWarningsScript_FindsExactlyOneBlock running and green, so
+  even a node-less machine catches a change to the script's block structure.
+
+(4c) WIRED IN, not defined-and-unreferenced. From make's own database, not
+from reading the file:
+  $ make -p -n test | grep -E '^(test|check|check-node|race):'
+    check: vet static vuln test
+    race: check-go
+    test: check-go check-node
+    check-node:
+  So check-node is a real prerequisite of `test`, and the repo's quality
+  entry point reaches it: check -> test -> check-node (and check-full ->
+  check -> test -> check-node).
+  Observation O2: race, test-unit, test-integration and test-coverage depend
+  on check-go only, so they would skip the harness on a node-less machine.
+  `make test` and `make check` -- the targets the brief names, and the ones
+  CI/pre-commit use -- both enforce it. Not a criterion failure.
+
+(4d) With node present the target runs the harness for real:
+  $ cd .../a2/base && make test
+    ... ok budget2/internal/services/storage 32.847s ... MAKE_TEST_EXIT=0
+
+==================================================================
+CRITERION 5 -- parity is structural, not a string match.          PASS
+==================================================================
+Both halves, and neither by inspection.
+
+HALF A -- copy edits must NOT flip the test.
+  COPY-1 (.../a2/copy1): the dismissal confirmation --
+    `region.textContent = 'Pattern overlap warning dismissed.';`
+    -> `region.textContent = 'Notice hidden for this session.';`
+    $ go test -count=1 -run TestSyncWarnings_ClientRegressionHarness ./internal/handlers/accounts/
+      ok  budget2/internal/handlers/accounts  0.020s     COPY1_EXIT=0
+  COPY-2 (.../a2/copy2): the user-visible warning phrase renamed everywhere
+    in the template -- all 7 occurrences of "Pattern overlap warning" ->
+    "File pattern conflict notice" (live region, banner span,
+    data-warnings-text, the dismiss confirmation, comments)
+      ok  budget2/internal/handlers/accounts  0.019s     COPY2_EXIT=0
+  Neither copy edit flips it. Consistent with the code: the parity assertion
+  (harness :225-230) compares region.textContent against the data
+  attribute's own value -- both sides derived from the same runtime source
+  -- and the only other comparisons are `=== ''`. No UI copy literal is
+  asserted on anywhere.
+
+HALF B -- a genuine banner/region divergence MUST flip it.
+  DIV-1 (.../a2/div1): `if (dismissed) { banner.remove(); return; }` ->
+    `if (true) { ... }`. Not one string in the file changed; the banner is
+    simply always removed while the region keeps announcing.
+    RESULT dismiss_resolve_recreate FAIL {"bannerPresent":false,
+      "dismissPresent":false,"regionAssertsWarning":true,"parityOK":false,
+      "regionText":"Pattern overlap warning: usaa-checking.csv ...",
+      "dataText":"Pattern overlap warning: usaa-checking.csv ..."}
+    DIV1_EXIT=1
+  parityOK went false on a pure structural change with zero copy change.
+  Together with MUT-A (banner missing when it should be present) and PROOF A
+  (region asserting when banner is gone), divergence is caught in both
+  directions.
+
+==================================================================
+CRITERION 6 -- attempt 1's fix is untouched.                      PASS
+==================================================================
+By hash, against the five hashes recorded in .swarm/verdicts/S5.1.checker-
+tests.verdict:
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html          MATCH
+  de990125ada6a151d85dba1df4ccb2d3  internal/handlers/accounts/handlers_test.go MATCH
+  0809c0e404fa9a629d2d293ab92cebc4  internal/handlers/transfers/handlers.go     MATCH
+  1253e8dfeb48a738769e36fc9eb0a382  internal/handlers/transfers/handlers_test.go MATCH
+  bc1caf37dbb8c61676eefd052bf6f769  internal/services/accounts/projection_test.go MATCH
+All five byte-identical, so the code fix, the template behaviour and every
+attempt-1 test are unchanged by construction, not by argument.
+
+Corroborated structurally by a full tree diff of the current repo against my
+attempt-1 tree copy (.../scratchpad/b2-c1, which is the attempt-1 tree with
+the pre-S5 template deliberately swapped in):
+  differing:  Makefile, REVIEW_AUG20_SPEC.md, web/templates/pages/accounts.html
+  only in repo: internal/handlers/accounts/testdata/,
+                internal/handlers/accounts/warnings_client_regression_test.go
+accounts.html differs solely because b2-c1 carries my swapped pre-S5 copy;
+its current hash matches attempt 1's exactly (above). So attempt 2's entire
+code footprint is: Makefile + the two new files. Nothing else.
+Corroborated by mtime: accounts.html 15:35:30 (attempt-1 window), while the
+attempt-2 artifacts are 16:14:01 (harness), 16:15:05 (Go glue), 16:16:24
+(Makefile), 16:17:41 (manifest).
+
+==================================================================
+CRITERION 7 -- attempt 1's criteria still hold.                   PASS
+==================================================================
+(b) guard bites:
+  --- PASS: TestWarningsKey_OrderInvariant
+(c) scan scoped:
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock
+(d) branch covered -- re-measured by counter, not asserted:
+  $ go test -covermode=count -run TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage ./internal/handlers/transfers/
+    handlers.go:260.16,262.3 1 1   <- load-failure branch  HIT
+    handlers.go:264.9,266.3  1 0   <- unknown-key branch   NOT hit
+    handlers.go:267.2,267.30 1 0   <- same-verdict branch  NOT hit
+  Same attribution as attempt 1: the new test lands on the load-failure path
+  and not on the unknown-key path.
+(e) comment matches code:
+  $ grep -rn recurringBelongsToAccount --include=*.go .
+    internal/services/accounts/projection_test.go:383  (explicitly historical)
+  $ grep -n "func recurringOwnerAccount" internal/services/accounts/projection.go
+    278:func recurringOwnerAccount(...)   <- the live name
+S4 PRESERVED GUARANTEES -- all 12 re-run, all green:
+  $ go test -count=1 -v -run '<12 names>' ./internal/handlers/accounts/
+    --- PASS x12 (OverlapWarningsNameContestedBasename, OverlapWarningsSurfaced
+    InPartial, NoOverlapNoWarnings, NoOverlapRendersNoWarningBlock,
+    OverlapRendersWarningBlockOnce, OverlapWarningRendersOnceInPartialSwap,
+    DismissButtonAbsentWithoutWarnings, WarningsKey_ChangesWithContent,
+    OverlapDoesNotBlockSave, WarningsKey_OrderInvariant,
+    Update_ResolvingOverlapClearsWarnings, Delete_ResolvingOverlapClearsWarnings)
+    ok  budget2/internal/handlers/accounts  0.059s   EXIT=0
+Nothing attempt 2 added disturbed anything attempt 1 established.
+
+==================================================================
+CRITERION 8 -- scope.                                             PASS
+==================================================================
+$ git diff --name-only
+  .swarm/ledger.tsv, ACCESSIBILITY.md, Makefile,
+  internal/handlers/accounts/handlers.{go,_test.go},
+  internal/handlers/transfers/handlers.{go,_test.go},
+  internal/services/accounts/projection{.go,_test.go},
+  internal/services/transfers/transfers{.go,_test.go},
+  web/templates/pages/accounts.html
+That is S1-S5 combined (HEAD c363bb4 predates all of them), so it is not by
+itself an answer; the tree diff under criterion 6 isolates attempt 2 to
+Makefile + 2 new files. Against the brief's named exclusions:
+  internal/services/accounts/accounts.go   -- absent from git diff entirely
+  internal/services/dataloader/**          -- absent from git diff entirely
+  internal/services/transfers/**           -- present (that is S2's work);
+      unchanged by attempt 2 per the criterion-6 tree diff, and attempt 1
+      already established S5 left it at +0/-0 vs the authenticated pre-S5 tree
+  go.mod / go.sum -- absent from git diff --name-only; `git diff --stat
+      go.mod go.sum` produces no output. No new dependency.
+  package.json -- `find . -name package.json` (excluding .git/node_modules)
+      returns nothing. The harness is dependency-free, stdlib `fs` only.
+.swarm/critical.globs = storage/**, dataloader/**, retirement/engine/**,
+transfers/**, accounts/accounts.go, mcpsvc/confirm/**. Attempt 2's footprint
+(Makefile, internal/handlers/accounts/*) touches none of them.
+The harness lives under testdata/, which the go tool excludes from builds:
+`go list -f '{{.EmbedFiles}}{{.TestGoFiles}}'` -> `[][handlers_test.go
+load_failure_test.go warnings_client_regression_test.go]`; no EmbedFiles, no
+go:embed anywhere in the package. It cannot reach a production binary.
+One file changed that is NOT in the manifest: REVIEW_AUG20_SPEC.md. Its diff
+is the "S5 attempt 1" narrative section and the Rulings list, and its mtime
+is 16:05:34 -- before the worker's 16:14-16:17 window. Lead-authored spec
+prose, not worker output. Flagged for the lead, not a scope violation.
+
+==================================================================
+CRITERION 9 -- build, vet, suite, gofmt, staticcheck, make.       PASS
+==================================================================
+All run in .../a2/base (a faithful copy of the repo):
+$ go build ./...                     BUILD_EXIT=0, "Success"
+$ go vet ./...                       VET_EXIT=0, "No issues found"
+$ go test -count=1 ./...             TEST_EXIT=0
+    49 package lines, 0 FAIL lines; ok budget2/internal/handlers/accounts 0.418s
+$ gofmt -l <the 5 S5 Go files + the new test file>
+    (empty -- all formatted)
+  Repo-wide `gofmt -l internal/ cmd/` lists 27 files including the
+  pre-cleared internal/handlers/majorexpenses/handlers_test.go. I spot-
+  checked four of the others against HEAD (config_test.go, dashboard.go,
+  dataloader/loader_test.go, version.go) -- all UNFORMATTED AT HEAD, i.e.
+  pre-existing. No S5 file appears in the list.
+$ staticcheck ./...                  STATICCHECK_EXIT=0, no diagnostics
+                                     (whole repo, not just the S5 packages)
+$ make test                          MAKE_TEST_EXIT=0  -- this is the target
+                                     that runs the harness, and it ran it
+                                     (criterion 4d).
+
+==================================================================
+CRITERION 10 -- no debug prints in production code.               PASS
+==================================================================
+$ grep -n "console\.|debugger|alert(|XXX|FIXME|TODO" web/templates/pages/accounts.html
+    (none)
+$ grep -n "fmt\.Print|println(|log\.Print" internal/handlers/transfers/handlers.go internal/handlers/accounts/handlers.go
+    5 pre-existing log.Printf/log.Print in transfers, 1 in accounts. Verified
+    pre-existing, not S5's: count is 5 and 1 in the AUTHENTICATED pre-S5 tree
+    (b2a3) and 5 and 1 now -- identical. And the S5 diff of
+    transfers/handlers.go against pre-S5 contains ZERO non-comment +/- lines
+    (`diff -u ... | grep -vE '^[+-]\s*//'` produces nothing), confirming
+    attempt 1's finding that it was a doc-comment-only change.
+$ grep -rln "console\.log" web/ internal/
+    web/static/vendor/htmx.min.js (vendored), web/static/js/charts.js
+    (pre-existing), internal/templates/render_spending_preview_test.go
+    (test), internal/handlers/accounts/testdata/js/warnings_dom_harness.js
+    The harness's console.log calls ARE its reporting protocol -- they are
+    what the Go glue parses -- and they live in testdata/, excluded from the
+    build. Not production instrumentation.
+
+==================================================================
+OBSERVATIONS (not criterion failures; for the lead)
+==================================================================
+O1. The Go glue matches on the check NAME only (`RESULT guard_directions`),
+    not on `NAME PASS`. I probed it: a harness printing all three names
+    marked FAIL and exiting 0 passes the Go test (.../a2/vac6, vac6_EXIT=0).
+    This is NOT reachable in the shipped harness -- main() derives the
+    printed verdict and the exit code from the same `allPass` variable
+    (harness :336-340), so they cannot diverge -- and every attack the brief
+    names is blocked. But `regexp.QuoteMeta(name + " PASS")` would have cost
+    nothing and closed it. Belt-and-braces gap, recorded honestly.
+O2. The harness's catch block labels a thrown sequence with the JS function
+    name (`testDismissResolveRecreate`) rather than the snake_case check name
+    (`dismiss_resolve_recreate`), so a crash reports under a name the Go glue
+    is not looking for. Consequence is a stricter failure, never a weaker
+    one (V4 above). Cosmetic.
+O3. `make race`, `test-unit`, `test-integration` and `test-coverage` do not
+    depend on check-node, so on a node-less machine they would skip the
+    harness silently. `make test`, `make check` and `make check-full` all
+    enforce it. Worth a one-line fix if the lead wants uniformity.
+O4. The harness stubs the DOM rather than rendering the real Go template, so
+    it validates the <script>'s BEHAVIOUR but not that the server-rendered
+    region text and data-warnings-text agree. That agreement is what attempt
+    1's whitespace-padding finding was about, and it is covered by the Go
+    handler tests. Noted so the division of labour is on the record, not as
+    a gap.
+
+==================================================================
+BOTTOM LINE
+==================================================================
+The one thing attempt 1 lacked now exists and demonstrably bites. The exact
+command that exposed the attempt-1 failure -- restoring the authenticated
+pre-S5 accounts.html and running `go test ./...` -- went from exit 0 to exit
+1. The check reads the live template at run time (proven by mutating the
+template under an already-compiled test binary), discriminates a real
+structural divergence from a pure copy edit in both directions, cannot be
+satisfied vacuously by six different attacks, skips with a named reason
+where node is absent, and is hard-required by `make test` through a
+prerequisite chain confirmed against make's own database. Attempt 1's five
+files are byte-identical. No new dependency, no package.json, no critical
+glob touched. PASS.

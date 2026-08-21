@@ -1,0 +1,275 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S4
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted working tree.
+Manifest .swarm/manifests/S4.1.files = internal/handlers/accounts/handlers.go,
+internal/handlers/accounts/handlers_test.go, web/templates/pages/accounts.html.
+No file in the repo was modified by this checker except this verdict file.
+All independent probing was done in copies OUTSIDE the repo at
+  $SCRATCH/b2   (working tree copy + my own probe tests)
+  $SCRATCH/vac  (working tree copy with HEAD's handlers.go restored)
+  $SCRATCH/tpl  (working tree copy with HEAD's accounts.html restored)
+
+======================================================================
+CRITERION 1 - GET shows warnings, naming the contested basename.  PASS
+======================================================================
+$ go test -count=1 -v -run 'Overlap|NoOverlap|Warning' ./internal/handlers/accounts/...
+  --- PASS: TestBuildPageData_OverlapWarningsNameContestedBasename (0.00s)
+  2026/08/20 13:55:42 Warning: file "usaa-checking.csv" matches multiple accounts (a-wide, b-narrow); "a-wide" wins by ID order
+
+I read the test body (handlers_test.go:395-425). It is not vacuous: it saves two
+accounts ("usaa" substring vs "usaa-checking*.csv" glob) into a data dir that
+setupTestEnv (handlers_test.go:34-56) populates with a real usaa-checking.csv on
+disk, calls buildPageData, and asserts len(data.Warnings) != 0 AND that one entry
+strings.Contains "usaa-checking.csv". Both assertions are present and checked.
+
+Mechanism confirmed by reading internal/handlers/accounts/handlers.go:591
+  warnings := accounts.OverlapWarnings(accts, basenames)
+and handlers.go:600  Warnings: warnings,  -- the previously-dead field is now
+assigned from the same `basenames` set the match map at handlers.go:552-558 uses.
+
+======================================================================
+CRITERION 2 - Mutations show warnings immediately.  PASS
+======================================================================
+JSON-fallback path (worker's test), verified by running it:
+$ go test -count=1 -v -run Overlap ./internal/handlers/accounts/...
+  --- PASS: TestHandleCreate_OverlapWarningsSurfacedInPartial (0.00s)
+Body asserts body["Warnings"] is a non-empty []interface{} and one element
+contains "usaa-checking.csv" -- read at handlers_test.go:428-466.
+
+I did not accept "immediate" on the strength of a present-warning test alone,
+because a stale pre-save re-load would also show a warning that happened to be
+true beforehand. I wrote two falsifying probes (in $SCRATCH/b2, outside the repo)
+that go red if the re-load ran before the save was visible:
+$ go test -count=1 -v -run 'TestProbe_' ./internal/handlers/accounts/...
+  --- PASS: TestProbe_UpdateOutOfOverlapClearsWarning (0.01s)
+      (starts overlapping; POST /accounts/a-wide narrows the pattern; asserts the
+       swapped-in partial NO LONGER contains "Pattern overlap warning")
+  --- PASS: TestProbe_DeleteClearsWarningOnPartial (0.01s)
+      (starts overlapping; POST /accounts/b-narrow/delete confirm=yes; asserts the
+       partial no longer contains the marker, and that the delete persisted)
+Both pass, so the buildPageData re-load observes post-save state.
+
+======================================================================
+CRITERION 3 - No false warnings.  PASS
+======================================================================
+$ go test -count=1 -v -run 'NoOverlap' ./internal/handlers/accounts/...
+  --- PASS: TestBuildPageData_NoOverlapNoWarnings (0.00s)          [data struct]
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock (0.02s)  [rendered HTML]
+The renderer-mode test asserts !strings.Contains(body, "Pattern overlap warning")
+on a real templates.NewFromFS render (handlers_test.go:489-513).
+Extended to the mutation path by my own probe:
+  --- PASS: TestProbe_NonOverlapCreateRendersNoWarningBlock (0.01s)
+
+======================================================================
+CRITERION 4 - Advisory, not blocking.  PASS
+======================================================================
+$ go test -count=1 -v -run 'OverlapDoesNotBlockSave' ./internal/handlers/accounts/...
+  --- PASS: TestHandleCreate_OverlapDoesNotBlockSave (0.00s)
+Asserts status 200, body["Error"] == "", and loadAccounts returns 2 accounts.
+My independent probe additionally checks the persisted record's contents:
+  --- PASS: TestProbe_OverlapCreatePersists (0.01s)
+      (asserts b-narrow is present with FilePatterns == ["usaa-checking*.csv"])
+
+======================================================================
+CRITERION 5 - Both render paths, in RENDERED HTML, exactly once each.  PASS
+======================================================================
+The worker's suite covers the FULL PAGE only:
+  --- PASS: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce (0.02s)
+  (asserts marker present, role="status" present, and strings.Count(...) == 1)
+
+The worker shipped NO rendered-HTML test for the HTMX partial-swap path (its
+create test uses the JSON fallback). I supplied that evidence myself, outside the
+repo, rather than pass the criterion on inspection:
+$ cd $SCRATCH/b2 && go test -count=1 -v -run 'TestProbe_' ./internal/handlers/accounts/...
+  --- PASS: TestProbe_FullPageRenderedWarningExactlyOnce (0.02s)
+      (GET /accounts with renderer wired: asserts body contains "<html",
+       Count(marker)==1, and the body names usaa-checking.csv)
+  --- PASS: TestProbe_CreatePartialRenderedWarningExactlyOnce (0.01s)
+      (POST /accounts with renderer wired: asserts body does NOT contain "<html"
+       i.e. it really is the partial, Count(marker)==1, names usaa-checking.csv)
+  --- PASS: TestProbe_DeleteUnrelatedKeepsWarningOnPartial (0.01s)  [Count==1]
+  --- PASS: TestProbe_UpdateIntoOverlapPartialWarning (0.02s)       [Count==1]
+  --- PASS: TestProbe_AddAnchorPartialWarning (0.01s)               [Count==1]
+  --- PASS: TestProbe_DeleteAnchorPartialWarning (0.01s)            [Count==1]
+Exactly one occurrence on every one of those rendered responses. No double-render.
+
+Template structure confirms the single copy reaches both paths:
+$ grep -n '{{define\|id="accounts-list"\|{{template "accounts-list-partial"' web/templates/pages/accounts.html
+  34:{{define "accounts-content"}}
+  70:    <div id="accounts-list">
+  71:        {{template "accounts-list-partial" .}}
+  105:{{end}}
+  112:{{define "accounts-list-partial"}}
+  ... warning block at 134-154 ...
+  495:{{end}}
+The remaining warning block lives inside accounts-list-partial (112-495), which
+the full page includes at line 71 and which renderList
+(handlers.go:608-614, renderer.RenderPartial "accounts-list-partial") is the
+HTMX swap target for. One definition, both paths.
+
+The dedup assertion is itself non-vacuous. I restored HEAD's accounts.html
+(2 copies of the block) beside the new handlers.go in $SCRATCH/tpl:
+$ grep -c "Pattern overlap warning" web/templates/pages/accounts.html  ->  2
+$ go test -count=1 -v -run 'OverlapRendersWarningBlockOnce' ./internal/handlers/accounts/...
+  handlers_test.go:541: overlap warning block rendered 2 times, want exactly 1
+  --- FAIL: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce (0.02s)
+So the Count==1 assertion genuinely detects the duplicate it claims to guard.
+
+======================================================================
+CRITERION 6 - Scope: internal/services/accounts/accounts.go untouched.  PASS
+======================================================================
+$ git diff --name-only
+  .swarm/ledger.tsv
+  internal/handlers/accounts/handlers.go
+  internal/handlers/accounts/handlers_test.go
+  internal/handlers/transfers/handlers.go
+  internal/handlers/transfers/handlers_test.go
+  internal/services/accounts/projection.go
+  internal/services/accounts/projection_test.go
+  internal/services/transfers/transfers.go
+  internal/services/transfers/transfers_test.go
+  web/templates/pages/accounts.html
+$ git status --short internal/services/accounts/accounts.go
+  (no output -- unmodified)
+internal/services/accounts/accounts.go is absent from the diff. The critical glob
+matches in the tree (internal/services/transfers/**) belong to S2's manifest
+(.swarm/manifests/S2.2.files), a Tier-3 task already accepted per .swarm/ledger.tsv;
+they are not S4's. S4's three manifest files are disjoint from the S1/S2/S3
+manifests and none of them matches any line of .swarm/critical.globs.
+
+======================================================================
+CRITERION 7 - The SaveWithWarnings deviation.  CLAIM VERIFIED; BEHAVIOUR HOLDS
+======================================================================
+The worker's claim is factually correct:
+$ grep -n "accounts\.Save\|accounts\.SaveWithWarnings\|accounts\.Mutate" internal/handlers/accounts/handlers.go
+  190:  err := accounts.Mutate(...)     <- handleDelete
+  265:  err = accounts.Mutate(...)      <- handleAddAnchor
+  343:  err = accounts.Mutate(...)      <- handleDeleteAnchor
+  478:  err = accounts.Mutate(...)      <- applyForm, used by handleCreate AND handleUpdate
+  (529/533/536 are comment text only; NO call to accounts.Save or
+   accounts.SaveWithWarnings appears anywhere in the file)
+So "where it fits" fits nowhere: there is no Save call site to convert, and
+switching Mutate to Save/SaveWithWarnings would surrender Mutate's atomic
+load-modify-save. The deviation is justified.
+
+I then verified the BEHAVIOUR criterion independently of the mechanism, on every
+mutation handler, not just create. Reading the source, all five paths end with the
+identical post-save pair `data, _ := buildPageData(r)` then `renderList(w, r, data)`:
+  handleCreate       handlers.go:143-144
+  handleUpdate       handlers.go:159-160
+  handleDelete       handlers.go:206-207
+  handleAddAnchor    handlers.go:303-304
+  handleDeleteAnchor handlers.go:379-380
+and buildPageData re-reads through accounts.Load(store) at handlers.go:541.
+
+Source reading is not proof, so each path was exercised end-to-end in rendered
+HTML by the probes listed under criterion 5:
+  create        -> TestProbe_CreatePartialRenderedWarningExactlyOnce      PASS
+  update        -> TestProbe_UpdateIntoOverlapPartialWarning              PASS
+  add-anchor    -> TestProbe_AddAnchorPartialWarning                      PASS
+  delete-anchor -> TestProbe_DeleteAnchorPartialWarning                   PASS
+  delete        -> TestProbe_DeleteUnrelatedKeepsWarningOnPartial         PASS
+and the "re-load must be AFTER the save is visible" hazard was falsified on the
+two paths where it is observable:
+  TestProbe_UpdateOutOfOverlapClearsWarning  PASS  (warning disappears same response)
+  TestProbe_DeleteClearsWarningOnPartial     PASS  (warning disappears same response)
+No mutation path is missing the warning, and none serves a stale snapshot.
+
+======================================================================
+CRITERION 8 - Existing tests unchanged.  PASS
+======================================================================
+$ git diff --numstat
+  23   0   internal/handlers/accounts/handlers.go
+  191  0   internal/handlers/accounts/handlers_test.go
+  27   21  web/templates/pages/accounts.html
+Zero deletions and zero modified lines in handlers_test.go: the change is purely
+additive, so no pre-existing assertion could have been edited or deleted.
+handlers.go is likewise 23 insertions / 0 deletions; its three hunks
+  $ git diff -U0 internal/handlers/accounts/handlers.go | grep '^@@'
+  @@ -526,0 +527,13 @@   @@ -570,0 +584,9 @@   @@ -577,0 +600 @@
+are all pure insertions confined to buildPageData and its doc comment.
+The 21 template deletions are the duplicated warning block that was removed from
+"accounts-content"; I read the full diff and no other template content was cut.
+
+======================================================================
+CRITERION 9 - Build, vet, suite, gofmt, staticcheck.  PASS
+======================================================================
+$ go build ./... ; echo BUILD_EXIT=$?
+  Go build: Success
+  BUILD_EXIT=0
+$ go vet ./... ; echo VET_EXIT=$?
+  Go vet: No issues found
+  VET_EXIT=0
+$ go test -count=1 ./... ; echo TEST_EXIT=$?
+  Go test: 4430 passed in 49 packages
+  TEST_EXIT=0
+  (grep -c FAIL over the full captured log = 0; S1, S2 and in-flight S3 work all
+   present in the tree)
+$ gofmt -l internal/handlers/accounts/
+  (no output -- clean)
+$ staticcheck ./internal/handlers/accounts/... ; echo STATICCHECK_EXIT=$?
+  STATICCHECK_EXIT=0   (/home/darrell/go/bin/staticcheck, no findings)
+Package-level: 33 --- PASS, 0 --- FAIL in budget2/internal/handlers/accounts.
+The pre-existing internal/handlers/majorexpenses/handlers_test.go gofmt report is
+outside S4's manifest and outside the directory checked above, as the brief noted.
+
+======================================================================
+CRITERION 10 - No debug prints / leftover instrumentation.  PASS
+======================================================================
+$ git diff -U0 internal/handlers/accounts/handlers.go | grep '^+' \
+    | grep -E "fmt\.Print|println|log\.|spew|Debug|TODO|XXX|FIXME"
+  NO_DEBUG_PRINTS_IN_ADDED_LINES
+$ git diff web/templates/pages/accounts.html | grep '^+' \
+    | grep -iE "console\.|debugger|alert\(|TODO|FIXME"
+  NONE
+The only log reference in the file is `var _ = log.Print` at handlers.go:693; it is
+PRE-EXISTING, not S4's:
+$ git show HEAD:internal/handlers/accounts/handlers.go | grep -n "var _ = log.Print"
+  670:var _ = log.Print
+(The "Warning: file ... matches multiple accounts" lines in test output come from
+accounts.Save inside the services package, which S4 did not touch.)
+
+======================================================================
+NON-VACUITY OF THE NEW TESTS
+======================================================================
+$SCRATCH/vac = working-tree copy with HEAD's handlers.go restored (Warnings
+assignment removed; confirmed the restored file lacks lines 591 and 600) beside
+the NEW tests, outside the repo:
+$ go test -count=1 -v -run 'Overlap|NoOverlap|Warning' ./internal/handlers/accounts/...
+  handlers_test.go:409: Warnings is empty, want a warning naming usaa-checking.csv
+  --- FAIL: TestBuildPageData_OverlapWarningsNameContestedBasename (0.00s)
+  handlers_test.go:451: expected non-empty Warnings in the mutation response, got <nil>
+  --- FAIL: TestHandleCreate_OverlapWarningsSurfacedInPartial (0.00s)
+  --- PASS: TestBuildPageData_NoOverlapNoWarnings (0.00s)
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock (0.02s)
+  handlers_test.go:532: overlapping config did not render the overlap warning block
+  --- FAIL: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce (0.02s)
+  --- PASS: TestHandleCreate_OverlapDoesNotBlockSave (0.00s)
+  FAIL
+All three positive tests go red against the pre-change code. The three that stay
+green are the negative/invariant guards (no-overlap-no-warning x2, save-not-blocked),
+which are expected to hold before and after -- they exist to catch false positives
+and regressions in the save path, not to detect the fix. That is the correct shape,
+not vacuity. Separately, the Count==1 dedup assertion was shown to fail against
+HEAD's two-copy template ($SCRATCH/tpl, see criterion 5).
+
+======================================================================
+SCOPE
+======================================================================
+S4 touched exactly its three manifest files. No critical glob was touched by S4
+(internal/services/accounts/accounts.go unmodified; the transfers critical-glob
+edits in the tree belong to S2, already accepted). Nothing else in the repo was
+modified. This checker wrote only this verdict file; all experiments ran in
+copies under the session scratchpad, outside the repository.
+
+FINAL: all 10 acceptance criteria established by executed commands. VERDICT PASS.
+Noted for the lead, not a failure: the worker's own suite proves the HTMX partial
+path only through the JSON fallback (data struct), not rendered HTML. Criterion 5's
+rendered-HTML-after-swap half is currently backed by MY throwaway probes, which are
+not in the repo. The behaviour is correct today, but the repo carries no regression
+guard for it -- a future template edit that moved the block out of
+accounts-list-partial would keep every shipped test green.

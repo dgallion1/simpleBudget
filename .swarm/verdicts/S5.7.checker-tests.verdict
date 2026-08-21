@@ -1,0 +1,331 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 7
+---
+Environment: /home/darrell/bin/ai/budget2, branch fix/review-aug16, working tree
+uncommitted. go1.26.6 linux/amd64 (both the toolchain module the repo pins,
+GOROOT=/home/darrell/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64,
+and the Makefile's $(GO) = /home/darrell/go-sdk/go/bin/go, which also reports
+go1.26.6). node v24.12.0 at /home/darrell/.config/nvm/versions/node/v24.12.0/bin.
+I wrote nothing in the repository but this file; all mutating experiments ran on
+a scratch copy outside the repo. Tree state, before and after everything I ran:
+  3ea4ad74b76cd07dd34aa370b51d3df2  internal/handlers/accounts/testdata/js/warnings_dom_harness.js
+  85106a1fb3e74c1d3270a7407cc9cdbf  internal/handlers/accounts/warnings_client_regression_test.go
+  116dc3862a1309ef2741464e533bc369  README.md
+  55ee77bedc32d98fa00c32f527e425a1  Makefile
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html
+  92d304387fde8e4f2d744ab878cb6cca  `git status --porcelain | md5sum`
+DISCLOSURE: I did NOT run `make test-coverage` this round (it rewrites the
+gitignored coverage.out while checker-second is working the same tree); that one
+row of the covered list is evidenced by `make -n test-coverage` instead. Nothing
+else was substituted.
+
+SUMMARY: PASS on all nine brief items. The attempt-6 defect is genuinely
+repaired: the false parenthetical is gone, and the paragraph that replaced it is
+true sentence by sentence -- I re-derived the mechanism from the cmd/go source
+this toolchain actually uses, captured the raw testlog to see the tracked inputs
+directly, and re-ran all four of my attempt-6 falsifying experiments. Each one
+now confirms the shipped wording instead of contradicting it. What shipped is,
+in substance, the replacement text my attempt-6 verdict prescribed, plus the
+remedy sentence.
+
+=====================================================================
+(1) COMMENT AND PROSE ONLY -- PASS
+=====================================================================
+Baselines: my attempt-5 scratch copies, whose md5s match the ones recorded in
+S5.5.checker-tests.verdict (test file 0ff1eb2e9a40cca13fb8c12ed6483d61) and
+whose README (6d54c257eaa542435813df128f7e8f84) is also the attempt-6 README,
+since attempt 6 did not touch README (S5.6 verdict, item 1).
+
+  $ diff -u <attempt-5 test file> internal/handlers/accounts/warnings_client_regression_test.go
+    ONE hunk, @@ -24,14 +24,36 @@. Every removed line and every added line
+    begins with `//`. The hunk ends at the blank comment-free line preceding
+    `import (`. This is the attempt-5 -> attempt-7 delta, i.e. a SUPERSET of the
+    attempt-6 -> attempt-7 delta, and it is comment-only; since attempt 6 was
+    itself comment-only against attempt 5 (verified at attempt 6), attempt 7
+    changes no executable byte of this file.
+  $ diff -u <attempt-6 README.md> README.md
+    ONE hunk, @@ -639,9 +639,15 @@, inside the Testing section's prose. The
+    ```bash fence and its contents are untouched (context lines only).
+
+No other file changed since attempt 6. md5 identity with the values recorded in
+S5.6.checker-tests.verdict: harness JS 3ea4ad74, Makefile 55ee77be, accounts.html
+163d70d7, handlers.go d461d416, handlers_test.go de990125, transfers/handlers.go
+0809c0e4, transfers/handlers_test.go 1253e8df, projection_test.go bc1caf37 --
+all MATCH. Corroborated by mtime over every path `git status --porcelain` lists:
+exactly two are newer than my attempt-6 verdict (18:15:32) and belong to the
+worker --
+    20:02:28  internal/handlers/accounts/warnings_client_regression_test.go
+    20:02:55  README.md
+(.swarm/ledger.tsv and REVIEW_AUG20_SPEC.md at 19:59 are the lead's bookkeeping;
+.swarm/manifests/S5.7.files 20:05.) The harness JS mtime is 18:11:20 with an
+unchanged md5 -- that is my own attempt-6 oracle run's forge-and-restore `cp`,
+not an edit.
+No executable change. Hard constraint honoured.
+
+=====================================================================
+(2) THE MECHANISM, RE-DERIVED FROM SOURCE -- PASS
+=====================================================================
+I did not take the worker's citation. Note first that the version question is
+moot: the go-sdk copy and the pinned toolchain-module copy of the file are
+byte-identical --
+  $ md5sum {toolchain@v0.0.1-go1.26.6,go-sdk/go}/src/cmd/go/internal/test/test.go
+    d893044ee5a2a5dbdc60cf7a77a6fc8d   (both)
+
+computeTestInputsID(), $(go env GOROOT)/src/cmd/go/internal/test/test.go:
+  2032  case "getenv":
+  2033      fmt.Fprintf(h, "env %s %x\n", name, hashGetenv(name))     <- NO InDir guard
+  2037  case "stat":
+  2041      if a.Package.Root == "" || search.InDir(name, a.Package.Root) == "" { break }
+  2046  case "open":
+  2050      if a.Package.Root == "" || search.InDir(name, a.Package.Root) == "" { break }
+  2068  func hashGetenv(name string) { ...; h.Write([]byte(v)) }      <- hashes the VALUE
+So the getenv case is unguarded while stat/open are gated on the package Root --
+exactly the asymmetry the comment asserts.
+
+The chain from this test to that opcode, all three links read on this machine:
+  $GOROOT/src/os/exec/lp_unix.go:60   path := os.Getenv("PATH")
+  $GOROOT/src/os/env.go:101-104       func Getenv(key string) { testlog.Getenv(key); ... }
+  $GOROOT/src/internal/testlog/log.go:50  func Getenv(name) { log.Getenv(name) }
+
+And the direct observation, which settles it without any reading: I built the
+package test binary and ran it with -test.testlogfile to dump the exact input
+list `go test` hashes.
+  $ go test -c -o <scratch>/acct.test ./internal/handlers/accounts/
+  $ <scratch>/acct.test -test.run TestSyncWarnings_ClientRegressionHarness \
+      -test.testlogfile=<scratch>/testlog.txt        (rc 0)
+  $ sort -u <scratch>/testlog.txt
+      getenv GOTMPDIR
+      getenv PATH                                              <- the tracked PATH read
+      getenv TMPDIR
+      open /dev/null
+      open <REPO>/web/templates/pages/accounts.html            <- inside module root
+      open /tmp
+      open <scratch>/nodedir/node
+      open <scratch>/extracted_sync_warnings.js
+      stat <REPO>/internal/handlers/accounts/testdata/js/warnings_dom_harness.js
+      stat <scratch>/nodedir/node
+Exactly one `getenv PATH` line, produced by this test's exec.LookPath("node")
+(warnings_client_regression_test.go:150). accounts.html and the harness JS both
+appear, both under the module root, hence both past the InDir gate.
+
+Sentence-by-sentence audit of the new comment paragraph (lines 41-57):
+  a. "`go test` records the PATH environment string as part of a package's cache
+     key" -- TRUE. test.go:2032-2033 + hashGetenv hashing the value; `getenv
+     PATH` in the testlog.
+  b. "this test's own call to exec.LookPath("node") reads PATH via os.Getenv,
+     and that read is what gets tracked" -- TRUE. The three-link chain above,
+     plus the single getenv PATH testlog line.
+  c. "installing or removing node, which is what normally changes PATH, busts
+     the cache and forces a real re-run" -- TRUE as measured (E4 below): with
+     node's bin dir removed from PATH the package re-ran (0.203s, not "(cached)")
+     and failed. "normally" is a hedge, and it is the same hedge my own
+     attempt-6 verdict prescribed ("which is how node normally disappears"); the
+     package-manager case where PATH does not change is not left to the hedge --
+     it is named explicitly in the very next sentence ("a base image losing the
+     node package but not the PATH string it set").
+  d. "editing accounts.html or the harness JS busts it too, since `go test` also
+     tracks file reads within the module root and both files live there" -- the
+     claimed effect is TRUE and measured (E5 below); both files are inside the
+     boundary (testlog above). PRECISION NOTE, non-blocking: accounts.html is an
+     `open` (os.ReadFile at line 105) but the harness JS is a `stat` (os.Stat at
+     line 177), hashed by hashStat over size/mode/mtime, not a read. "tracks file
+     reads" is a compression of open+stat rather than a false statement about
+     behaviour, and the behaviour it predicts is exactly what I observe.
+  e. "But PATH the string, not node's presence, is the tracked input" -- TRUE;
+     E2 vs E3 below are the two halves of that.
+  f. "if node disappears while PATH stays byte-for-byte identical ... `go test`
+     may replay a cached pass and this guard will not fire" -- TRUE, E2. "may"
+     is correctly hedged (the entry can have been trimmed or never saved).
+  g. "`go clean -testcache` or `-count=1` settles it" -- TRUE, both measured.
+
+=====================================================================
+(3) MY ATTEMPT-6 EXPERIMENTS, RE-RUN -- PASS (all four now confirm the wording)
+=====================================================================
+Isolated GOCACHE under scratch so that checker-second's concurrent runs could
+not perturb the result; BUDGET2_ALLOW_SKIP_JS unset throughout; node reached
+through a scratch dir holding a symlink, so node can be removed with the PATH
+string held byte-identical.
+
+E1 -- two-run warm cache (the case the attempt-6 text denied existed):
+  $ go test ./internal/handlers/accounts/   -> ok ... 0.217s
+  $ go test ./internal/handlers/accounts/   -> ok ... (cached)
+
+E2 -- node gone, PATH byte-identical (attempt 6's killer experiment):
+  $ rm <scratch>/nodedir/node ; command -v node  -> rc 1 (no node anywhere)
+  $ go test ./internal/handlers/accounts/        -> ok ... (cached)   rc 0
+  $ make test                                    -> rc 0, fully green
+  This is what the new paragraph now SAYS happens ("may replay a cached pass and
+  this guard will not fire"), where attempt 6 said the opposite.
+  Remedies, in that exact state:
+  $ go test -count=1 ./internal/handlers/accounts/ -> FAIL 0.214s, rc 1,
+      warnings_client_regression_test.go:163 "`node` was not found on PATH..."
+  $ go clean -testcache ; go test ./internal/...   -> FAIL 0.201s, rc 1
+
+E3 -- PATH string changed, node still resolving (the mechanism claim):
+  $ go test ...  -> (cached);  go test ... -> (cached)
+  $ PATH="$P:<scratch>/harmless" command -v node   -> still resolves
+  $ PATH="$P:<scratch>/harmless" go test ...       -> ok 0.213s   [MISS, re-ran]
+  $ PATH="$P:<scratch>/harmless" go test ...       -> ok (cached)
+  The PATH string alone flips the key. "PATH the string, not node's presence" is
+  exactly right.
+
+E4 -- node stripped the ordinary way (its bin dir removed from PATH):
+  $ PATH=$STRIPPED go test ./internal/handlers/accounts/
+    --- FAIL: TestSyncWarnings_ClientRegressionHarness (0.00s)
+    FAIL budget2/internal/handlers/accounts 0.203s   rc 1
+  Re-ran rather than replaying: the cache was busted, as clause (c) says.
+
+E5 -- editing the two named files busts the cache (run on a scratch COPY of the
+repo, since it mutates tracked files; the real tree was never touched):
+  warm:                          0.247s then (cached)
+  append a comment to the harness JS: 0.219s [MISS] then (cached)
+  append a comment to accounts.html:  0.228s [MISS] then (cached)
+  Clause (d)'s effect confirmed for both files.
+
+=====================================================================
+(4) NEITHER OVERSTATED NOR UNDERSTATED -- PASS
+=====================================================================
+My attempt-6 verdict's remedy was: "Delete [the parenthetical] from the covered
+list. If a cache sentence is wanted at all, the checkable one is: a warm test
+cache is invalidated when the PATH string changes -- which is how node normally
+disappears -- and when accounts.html or the harness JS is edited, because both
+sit under the module root; a cached green result is NOT invalidated by node being
+removed at an unchanged PATH."
+What shipped is that, component for component, plus a remedy sentence:
+  - deleted: `grep -n 'even a warm test cache\|execs node\|outside its package
+    directory\|cache never replays' <test file> README.md <harness JS>` -> rc 1,
+    no matches anywhere in the tree.
+  - PATH-string invalidation .............. present (clauses a-c)
+  - accounts.html / harness JS edits ...... present (clause d)
+  - the NOT-invalidated exception ......... present (clause f)
+  - remedy ................................ added (clause g), an improvement
+Placement: not buried. The paragraph opens "One case deserves stating precisely
+rather than folding into that list", sits immediately after the seven-invocation
+list, and is the only place the list is qualified -- so a reader cannot take the
+list as unconditional and miss this. Not overstated either: it is scoped by "one
+narrow case", by "may replay", and by naming the two concrete situations that
+produce it; nothing in it suggests the guard is unreliable in general, and the
+two sentences before it restate what does bust the cache. The README wording is
+the same shape ("That guarantee is for a fresh run", "only survives ... if PATH
+also stays byte-for-byte unchanged", "in the common case").
+
+=====================================================================
+(5) README <-> COMMENT <-> CODE AGREE -- PASS
+=====================================================================
+  README:639-649 "keys its result cache in part on the `PATH` string" ==
+    comment "records the PATH environment string as part of a package's cache key"
+    == test.go:2032-2033 + hashGetenv.
+  README "a cached pass only survives node being removed if `PATH` also stays
+    byte-for-byte unchanged" == comment "if node disappears while PATH stays
+    byte-for-byte identical ... may replay a cached pass" == E2/E4.
+  README "installing or uninstalling node normally changes `PATH`, which is what
+    busts the cache in the common case" == comment clause (c) == E4.
+  README "use `go clean -testcache` or `go test -count=1`" == comment "`go clean
+    -testcache` or `-count=1` settles it" == both measured in E2's state.
+No contradiction between them; README omits the accounts.html/harness-JS edit
+clause, which is an omission, not a conflict. Line numbers cited in neither
+document have drifted: LookPath at :150, Skipf at :156, Fatalf at :163, ReadFile
+at :105, Stat at :177 -- all consistent with what the prose describes.
+OBSERVATION (out of criteria, for the lead): the harness JS header comment
+(unchanged since attempt 6, and outside attempt 7's authorised scope) still says
+"a machine without node cannot silently skip it" with no pointer to the cache
+caveat -- though it does direct the reader to the test file, where the caveat
+now lives. Not a false statement about the test's behaviour, and not something
+attempt 7 was asked to touch; noting it only so the lead can decide.
+
+=====================================================================
+(6) NOTHING REGRESSED -- PASS
+=====================================================================
+Node absent (its bin dir removed from PATH; verified `command -v node` rc 1 and
+`command -v go` still resolving), BUDGET2_ALLOW_SKIP_JS removed with `env -u`.
+For each: exit code, that a FAIL line names this package, that NO Makefile
+prerequisite produced it, and that the guard's own message appeared once.
+                              rc   pkgFAIL  make-prereq-msg  guardMsg
+  go test -count=1 ./...       1      1            0             1
+  go test -count=1 -short ./.. 1      1            0             1
+  make test                    2      1            0             1
+  make test-unit               2      1            0             1
+  make check                   2      1            0             1
+  make race                    2      1            0             1
+  make test-coverage           not executed this round (see DISCLOSURE);
+    `make -n test-coverage` -> `/home/darrell/go-sdk/go/bin/go test
+    -coverprofile=coverage.out ./...`, which compiles and runs this package, so
+    the guard travels with it exactly as in the six rows above.
+Clean skip with the opt-out:
+  $ BUDGET2_ALLOW_SKIP_JS=1 PATH=$STRIPPED go test -count=1 -v -run TestSyncWarnings...
+    warnings_client_regression_test.go:156: skipping client-side warnings
+      regression harness: `node` was not found on PATH, and BUDGET2_ALLOW_SKIP_JS
+      is set, so this is a deliberate opt-out rather than an accidental one. ...
+    --- SKIP: TestSyncWarnings_ClientRegressionHarness (0.00s)
+    ok budget2/internal/handlers/accounts 0.003s
+accounts.html byte-identical to the S5.1-verified file:
+  163d70d7849ce363f1c463052805db32, == the hash at S5.1.checker-tests.verdict:32.
+Items (b)-(e) intact: handlers.go d461d41603813b68a34872d410f31316,
+handlers_test.go de990125ada6a151d85dba1df4ccb2d3, transfers/handlers.go
+0809c0e404fa9a629d2d293ab92cebc4, transfers/handlers_test.go
+1253e8dfeb48a738769e36fc9eb0a382, projection_test.go bc1caf37dbb8c61676eefd052bf6f769
+-- every one identical to the attempt-6 values, so the merits verification
+recorded at attempts 4-6 stands unchanged.
+Suite green with node present: `go test -count=1 ./...` rc 0, no FAIL lines.
+
+=====================================================================
+(7) THE ORACLE -- PASS, RUN ONCE, TREE INTACT
+=====================================================================
+  BEFORE  3ea4ad74b76cd07dd34aa370b51d3df2  testdata/js/warnings_dom_harness.js
+          85106a1fb3e74c1d3270a7407cc9cdbf  warnings_client_regression_test.go
+          116dc3862a1309ef2741464e533bc369  README.md
+          92d304387fde8e4f2d744ab878cb6cca  `git status --porcelain | md5sum`
+  $ env -u BUDGET2_ALLOW_SKIP_JS bash .swarm/tier3/S5/accept.sh ; echo $?
+    == S5 oracle ==
+    PASS  go build ./...
+    PASS  go vet ./...
+    PASS  go test ./...
+    PASS  harness runs and passes when node is present
+          opt-out variable: BUDGET2_ALLOW_SKIP_JS
+    PASS  node absent and no opt-out -> test fails loudly
+    PASS  the failure message names node
+    PASS  opt-out set -> skips cleanly with a named reason
+    PASS  make test-unit fails when node is absent (exit 2)
+    PASS  the Makefile target-scanning machinery is gone
+    PASS  non-test targets (build, clean, vet, dev) do not require node
+    PASS  a harness reporting FAIL while exiting 0 fails the Go test
+    ORACLE: PASS
+    0
+  AFTER   3ea4ad74b76cd07dd34aa370b51d3df2  testdata/js/warnings_dom_harness.js
+          85106a1fb3e74c1d3270a7407cc9cdbf  warnings_client_regression_test.go
+          116dc3862a1309ef2741464e533bc369  README.md
+          92d304387fde8e4f2d744ab878cb6cca  `git status --porcelain | md5sum`
+Every hash identical before and after: check 5's forge-and-restore left the
+tracked harness byte-for-byte as it found it. Run exactly once, by this lane
+only. As at attempt 6, the oracle inspects no prose, so its PASS is evidence for
+items 6 and 9, not for items 2-5.
+
+=====================================================================
+(8) SCOPE -- PASS
+=====================================================================
+  $ git status --porcelain go.mod go.sum   -> no output (both unmodified)
+  $ find . -name package.json -not -path './node_modules/*' -not -path './.claude/*'
+    -> none
+Attempt 7 wrote exactly two files (item 1's diff + mtime evidence): README.md and
+internal/handlers/accounts/warnings_client_regression_test.go. Both are listed in
+.swarm/manifests/S5.7.files. Neither matches any pattern in .swarm/critical.globs
+(internal/services/storage/**, dataloader/**, retirement/engine/**, transfers/**,
+accounts/accounts.go, mcpsvc/confirm/**). internal/services/transfers/*.go IS
+modified in the working tree and IS a critical glob, but its mtime is 13:40:18 --
+S2's accepted work, six and a half hours before attempt 7 began.
+No new imports: the test still imports only os, os/exec, path/filepath, regexp,
+runtime, testing.
+
+=====================================================================
+(9) BUILD / VET / SUITE / GOFMT -- PASS
+=====================================================================
+  $ go build ./...                        rc 0, no output
+  $ go vet ./...                          rc 0, no output
+  $ go test -count=1 ./...                rc 0, no FAIL lines
+  $ gofmt -l <the six S5 Go files>        no output
+  $ gofmt -l ./cmd ./internal             27 pre-existing files listed, NONE of
+    them modified in this working tree and none of them an S5 file; this is the
+    repo's standing state under go1.26 gofmt, unchanged by attempt 7.

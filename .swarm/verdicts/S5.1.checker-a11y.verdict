@@ -1,0 +1,164 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 1
+---
+SCOPE: web/templates/pages/accounts.html per .swarm/manifests/S5.1.files (a11y
+lane: points 1-8 of the delegation, i.e. ACCESSIBILITY.md points 7, 8, 9, 10,
+12, 14, 16 as they apply to accounts.html). Did not audit S5's Go-test-quality
+items (b)-(e) from REVIEW_AUG20_SPEC.md's S5 row -- that is checker-tests's
+remit, not mine.
+
+METHOD: Built cmd/server (go build, unmodified source) to a scratchpad binary,
+ran it with BUDGET_DATA_DIR pointed at a scratch directory OUTSIDE the repo
+(/tmp/.../scratchpad/a11y/data), never the repo's own data/. Fixture:
+usaa-wide (pattern "usaa") and usaa-narrow (pattern "usaa-checking"), one CSV
+usaa-checking-2026.csv that both patterns match, so
+accounts.OverlapWarnings runs the real production code path, same setup
+class as judge-claude's S4.3 verdict. Drove real Chromium (Playwright
+1.62.1): keyboard-only interaction via Tab-walks and .focus()+Enter (never
+.click() for the checks that matter), a MutationObserver armed via
+addInitScript before any page script runs, and CDP
+Accessibility.getFullAXTree for the AX-tree checks -- the specific
+instrument my S4.3 audit skipped. Harness/logs:
+/tmp/claude-1000/-home-darrell-work-agents2/f76f0c6a-1d57-487c-9d1f-12155a9b3cb0/scratchpad/a11y/pw/{harness.js,followup.js,followup2.js,axe_noWarnings.js}
+axe-core 4.10 run in-page against both themes, warnings present and absent.
+Only file written inside the repo is this verdict.
+
+POINT 16, SEQUENCE 1 (dismiss -> resolve -> recreate the SAME overlap).
+Keyboard-only throughout: Tab-walked from page load to the dismiss button
+(11 tabs), Enter to dismiss; Control+A + retype in the pattern textarea,
+Tab to "Save changes", Enter, twice (resolve then recreate).
+  initial:        banner=true  dismissBtn=true region="Pattern overlap warning: file \"usaa-checking-2026.csv\" ..."
+  after dismiss:   banner=false region="Pattern overlap warning dismissed." storedKey=9d511a0b...
+  after resolve:   banner=false region="Pattern overlap warning dismissed." storedKey=null dataKey=""
+  after recreate:  banner=true  dismissBtn=true region="Pattern overlap warning: file \"usaa-checking-2026.csv\" ..." storedKey=null dataKey=9d511a0b...
+  bannerVisibleText at recreate == regionText at recreate (byte match, modulo the trailing footnote paragraph).
+A clean second Tab-walk (from a fresh load of the same warning state, since
+the DOM after recreate is byte-identical to the DOM at initial load for the
+banner block) reached the dismiss button in 10 tabs and Enter dismissed it
+correctly -- confirms the recreated banner's control is keyboard-reachable
+and operable, not just present in markup.
+RULING: PASS. This is the S4-dispute defect (judge-claude's step 4): stale
+dismissal key survived a resolve because the old code returned at
+`if (!banner) return` before clearing it. Here the key clears when
+data-warnings-key is empty (dataKey="" / storedKey=null after resolve), so
+the recreate is correctly treated as a new, undismissed warning. Banner,
+dismiss control, and matching announcement all return together.
+
+POINT 16, SEQUENCE 2 (dismiss -> ordinary reload, warnings unchanged). This
+is the specific check my S4.3 audit substituted with a data-warnings-text
+read and got wrong. This time: CDP Accessibility.getFullAXTree() after
+dismiss + reload.
+  region.textContent after reload = ""  (innerHTML = "")
+  banner present = false, dismiss button in DOM = false
+  region computed style: role=status, aria-live=polite, still present (not
+    removed), sr-only (clip rect(0,0,0,0), 1x1) -- exposed to AT, not
+    display:none, and still armed for a future live update
+  seq2_axTreeWarningNodes = [] -- ZERO AX nodes anywhere contain "Pattern
+    overlap warning" text after dismiss+reload. (Repeated with a role=status
+    filter: two status nodes exist post-reload, both name="" -- the error
+    region and the warnings region -- neither carries warning text.)
+This directly falsifies the defect judge-claude found in S4.3 (two
+un-ignored StaticText/InlineTextBox AX nodes asserting the warning with no
+visible counterpart). Here there are none.
+RULING: PASS.
+
+THE GUARD, ALL DIRECTIONS (MutationObserver armed via addInitScript before
+page scripts run, filtered to mutations whose target is/inside
+#accounts-warnings-region):
+  - Unrelated mutation (edit account NAME only, unrelated to patterns):
+    0 mutations on the region. PASS.
+  - Genuinely changed warning set (resolve the overlap): exactly 1 mutation,
+    region text -> "". PASS (announces once, matches point 14's "on state
+    change" and point 16's parity).
+  - Warnings clearing leaves the region empty: same event, confirmed
+    regionText === "" afterward. PASS.
+  - Dismissal re-asserted on load: reload after dismiss (same session,
+    warnings unchanged) produced 2 region mutations -- server-rendered full
+    warning text (parser insertion), then the script's JS write to "".
+    Checked document.readyState at both: both fire at readyState="loading",
+    i.e. within the initial synchronous parse/script-execution window,
+    before DOMContentLoaded and before any AT would have flushed an
+    announcement for the intermediate state. Final, settled state is the
+    correct "" — matches the AX-tree-empty result in sequence 2. This is the
+    same mechanism judge-claude's S4.3 dissent described (readyState=loading
+    for both edits) but there the FINAL state was still wrong; here it
+    converges correctly. Also checked the ordinary case (no dismissal,
+    unchanged warnings, plain reload): exactly 1 mutation (the parse-time
+    insertion of the still-correct warning text) and 0 extra JS-triggered
+    writes — syncWarnings' same-text guard correctly no-ops when nothing
+    changed. PASS on all four directions.
+
+POINT 14 (still holds). Keyboard dismissal: confirmed above (Tab + Enter,
+twice, from two different starting states). In-session persistence:
+dismiss -> reload keeps banner suppressed (sequence 2). Reappearance on a
+changed set: sequence 1's recreate step, and the guard's "changed warning
+set" check. Nothing across sessions: every fresh browser context (fresh
+sessionStorage) in every test below shows the banner and full warning text
+on first load -- dismissal never leaks across sessions. Server computation
+never suppressed: data-warnings-key/data-warnings-text carry the full,
+correct warning on every response regardless of client dismissal state
+(confirmed in sequence 2's afterReload.dataKey, and directly in the No-JS
+test below, where nothing client-side ever runs). PASS.
+
+POINT 10 (dismiss announces result, focus lands sensibly). Fresh load,
+focus() the dismiss button directly, Enter:
+  regionText = "Pattern overlap warning dismissed."
+  activeElementId = "accounts-new-heading" (an <h2>, tabindex=-1'd by the
+    handler), activeElementIsBody = false.
+PASS -- a real result announcement, and focus does not fall back to <body>.
+
+POINTS 7/12 (contrast, both themes, warning text + dismiss icon). Measured
+via getComputedStyle + WCAG relative-luminance contrast, not eyeballed:
+  light: warning label/list text  rgb(180,83,9) on rgb(255,251,235) = 4.84:1
+         dismiss icon (svg stroke=currentColor, same class)          = 4.84:1
+         footnote text (amber-700 on amber-50)                       = 4.84:1
+  dark:  warning label/list text  rgb(252,211,77) on rgb(120,53,15) = 6.29:1
+         dismiss icon             rgb(251,191,36) on rgb(120,53,15) = 5.43:1
+         footnote text (amber-400 on dark amber-900/30 composited)   = 5.43:1
+All clear the 4.5:1 text floor (point 7) in both themes (point 12 parity);
+dismiss icon clears the 3:1 UI-component floor with margin in both themes.
+Matches the template's own inline comment (amber-700 not amber-600) and
+independently confirms it rather than trusting the comment. PASS.
+
+FULL AXE SCAN, both themes, warnings present and absent (axe-core 4.10,
+wcag2a/wcag2aa/wcag21aa/wcag22aa tags), 4 scans total:
+  light+warnings-present: 1 violation (color-contrast, serious) on the two
+    "Delete account" buttons (gray-200/text-red-600 combo) -- pre-existing,
+    named in the task as acceptable.
+  dark+warnings-present:  same 2 nodes, same pre-existing violation.
+  light+warnings-absent (overlap resolved via a live POST, then restored):
+    same 2 nodes, same violation, nothing new.
+  dark+warnings-absent:   same.
+No new violation in any of the four scans. PASS.
+
+NO-JS BEHAVIOUR. New context with javaScriptEnabled: false, full page load:
+  bannerPresent=true, dismissBtnPresent=true (button renders, inert without
+    JS -- acceptable, dismissal is documented progressive enhancement)
+  regionText === bannerText content (both server-rendered, both carry the
+    identical current warning, both always visible/exposed)
+PASS -- with JS off the warning is visible, the region's content is present
+and matches what's shown; there is no divergence to have, since dismissal
+(the only thing that could desync them) never executes.
+
+OBSERVATIONS (non-blocking).
+- After the "resolve" step in sequence 1 (dismiss, then an edit that clears
+  the overlap), the region is left holding the stale "Pattern overlap
+  warning dismissed." text rather than being cleared, because
+  lastWarningsText is already '' from the dismiss handler and the newly-
+  resolved effectiveText also computes to '', so the same-text guard no-ops
+  and the write never happens. This is not a point-16 violation -- the text
+  is a true, past-tense statement and nothing on screen contradicts it, so
+  no active condition is being asserted without a visible counterpart -- but
+  it is slightly stale UX for an AT user who navigates back into that region
+  later in the session. Worth a follow-up ticket, not a FAIL here.
+- Did not independently verify S5's Go-test-quality sub-items (b)-(e); that
+  is checker-tests's lane.
+
+VERDICT: PASS. Both contested S4.3 sequences reproduce correctly fixed under
+the same instrumentation that found them broken (real browser, keyboard-only
+interaction, CDP AX-tree read before/after, MutationObserver armed pre-load).
+ACCESSIBILITY.md points 7, 8, 9, 10, 12, 14, and the new point 16 all hold on
+accounts.html as changed by S5.

@@ -1,0 +1,322 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S4
+ATTEMPT: 2
+---
+Tree verified: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted
+working tree. Manifest .swarm/manifests/S4.2.files =
+  internal/handlers/accounts/handlers.go
+  internal/handlers/accounts/handlers_test.go
+  web/templates/pages/accounts.html
+
+All independent probes were run in a COPY of the tree outside the repo:
+  /tmp/claude-1000/-home-darrell-work-agents2/f76f0c6a-.../scratchpad/b2work
+(rsync -a --exclude=.git). The repo itself was never modified; the only file
+written inside the repo is this verdict.
+
+SUMMARY: two criteria fail — (2) and (7). Everything else passes.
+The RUNTIME BEHAVIOUR of the clearing path is correct (I proved it with my own
+tests); what is missing for (2) is the regression guard the criterion explicitly
+demands. (7) is a real property violation in the implementation.
+
+==================================================================
+CRITERION 1 — GET with overlapping fixture names the contested basename;
+              non-overlapping yields none.                        PASS
+==================================================================
+$ go test -count=1 -v -run 'Overlap|Warning|Dismiss' ./internal/handlers/accounts/
+  --- PASS: TestBuildPageData_OverlapWarningsNameContestedBasename (0.00s)
+  --- PASS: TestBuildPageData_NoOverlapNoWarnings (0.00s)
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock (0.02s)
+
+Independently reproduced (scratch copy, my own test):
+  zz_checker_test.go:208: CHK region="Pattern overlap warning: file
+    \"usaa-checking.csv\" matches multiple accounts (a-wide, b-narrow);
+    \"a-wide\" wins by ID order"
+
+Non-vacuity (PROBE B, scratch copy): buildPageData's `Warnings: warnings` was
+reverted to `Warnings: nil`; then
+$ go test -count=1 -run 'Warning|Overlap|Dismiss|TestCHK_' ./internal/handlers/accounts/
+  --- FAIL: TestBuildPageData_OverlapWarningsNameContestedBasename (0.00s)
+  --- FAIL: TestHandleCreate_OverlapWarningsSurfacedInPartial (0.00s)
+  --- FAIL: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce (0.02s)
+  --- FAIL: TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap
+  --- FAIL: TestBuildPageData_WarningsKey_ChangesWithContent (0.00s)
+The overlap assertions are non-vacuous.
+The no-overlap assertion is also non-vacuous: under PROBE C (always-non-empty
+warnings) TestBuildPageData_NoOverlapNoWarnings and
+TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock both went FAIL.
+
+==================================================================
+CRITERION 2 — every mutation path surfaces current warnings, INCLUDING
+              clearing them; the test must require disappearance.   *** FAIL ***
+==================================================================
+(a) BEHAVIOUR IS CORRECT. My own tests against the unmodified tree:
+$ go test -count=1 -run 'TestCHK_MutationPaths_SurfaceWarnings' -v ./internal/handlers/accounts/
+  --- PASS: TestCHK_MutationPaths_SurfaceWarnings/update
+  --- PASS: TestCHK_MutationPaths_SurfaceWarnings/add-anchor
+  --- PASS: TestCHK_MutationPaths_SurfaceWarnings/delete-anchor
+  --- PASS: TestCHK_MutationPaths_SurfaceWarnings/delete
+  (each logged Warnings=[file "usaa-checking.csv" matches multiple accounts
+   (a-wide, b-narrow); "a-wide" wins by ID order])
+$ go test -count=1 -run 'TestCHK_MutationClearsWarnings' -v ./internal/handlers/accounts/
+  --- PASS: TestCHK_MutationClearsWarnings/update-narrows-pattern   (Warnings=[],
+       and the JSON body carried "WarningsKey":"")
+  --- PASS: TestCHK_MutationClearsWarnings/delete-removes-contender (Warnings=[])
+
+(b) THE REQUIRED REGRESSION GUARD IS ABSENT. The nine tests the worker added
+    (git diff internal/handlers/accounts/handlers_test.go | grep '^+func Test'):
+      TestBuildPageData_OverlapWarningsNameContestedBasename
+      TestHandleCreate_OverlapWarningsSurfacedInPartial
+      TestBuildPageData_NoOverlapNoWarnings
+      TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock
+      TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce
+      TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap
+      TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings
+      TestBuildPageData_WarningsKey_ChangesWithContent
+      TestHandleCreate_OverlapDoesNotBlockSave
+    cover ONLY the create path. None of update / add-anchor / delete-anchor /
+    delete is exercised for warnings, and none requires a warning to DISAPPEAR
+    after a mutation resolves the overlap.
+
+    PROVEN, not inferred (PROBE C2, scratch copy): I injected exactly the
+    stale-read failure mode the criterion names — a per-data-dir cache in
+    buildPageData so that once an overlap has been seen the warning never
+    clears (scoped per store.BaseDir() so it cannot leak between tests):
+
+      if len(warnings) == 0 { warnings = chkSticky[dir] } else { chkSticky[dir] = warnings }
+
+$ go test -count=1 -v -run '<the nine worker tests>' ./internal/handlers/accounts/
+  --- PASS: TestBuildPageData_OverlapWarningsNameContestedBasename (0.00s)
+  --- PASS: TestHandleCreate_OverlapWarningsSurfacedInPartial (0.00s)
+  --- PASS: TestBuildPageData_NoOverlapNoWarnings (0.00s)
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock (0.02s)
+  --- PASS: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce (0.02s)
+  --- PASS: TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap (0.01s)
+  --- PASS: TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings (0.01s)
+  --- PASS: TestBuildPageData_WarningsKey_ChangesWithContent (0.00s)
+  --- PASS: TestHandleCreate_OverlapDoesNotBlockSave (0.00s)
+  PASS
+  ok  budget2/internal/handlers/accounts  0.066s
+
+    ALL NINE PASS against a never-clearing implementation. Only my own test
+    caught it:
+$ go test -count=1 -run 'TestCHK_MutationClearsWarnings' -v ./internal/handlers/accounts/
+  zz_checker_test.go:154: STALE READ: mutation resolved the overlap but response
+    still carried [file "usaa-checking.csv" matches multiple accounts
+    (a-wide, b-narrow); "a-wide" wins by ID order]
+  --- FAIL: TestCHK_MutationClearsWarnings/update-narrows-pattern
+
+    WHAT IS MISSING: tests in internal/handlers/accounts/handlers_test.go that
+    (i) assert non-empty Warnings on the responses of POST /accounts/{id},
+    POST /accounts/{id}/anchor, POST /accounts/{id}/anchor/{aid}/delete and
+    POST /accounts/{id}/delete while an overlap persists, and (ii) assert
+    Warnings is EMPTY (and WarningsKey empty) on the response of a mutation
+    that resolves the last overlap.
+
+==================================================================
+CRITERION 3 — visible warning renders exactly once, full page and partial;
+              assertion non-vacuous.                              PASS
+==================================================================
+$ go test -count=1 -run 'TestCHK_VisibleHeadingCounts' -v ./internal/handlers/accounts/
+  zz_checker_test.go:287: CHK full-page count of >Pattern overlap warning< = 1
+  zz_checker_test.go:293: CHK partial  count of >Pattern overlap warning< = 1
+  --- PASS: TestCHK_VisibleHeadingCounts (0.02s)
+
+Non-vacuity (PROBE A, scratch copy): `git show HEAD:web/templates/pages/accounts.html`
+restored beside the new handlers.go:
+$ go test -count=1 -run 'Warning|Overlap|Dismiss' ./internal/handlers/accounts/
+  --- FAIL: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce (0.02s)
+      handlers_test.go:540: visible overlap warning heading rendered 2 times,
+        want exactly 1
+      handlers_test.go:548: missing the stable #accounts-warnings-region live region
+  --- FAIL: TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap
+      handlers_test.go:628: partial-swap response missing #accounts-warnings-data
+  --- FAIL: TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings
+The count assertion moves 1 -> 2 when the duplication returns. Non-vacuous.
+
+==================================================================
+CRITERION 4 — overlapping save still succeeds and persists.        PASS
+==================================================================
+$ go test -count=1 -v -run 'TestHandleCreate_OverlapDoesNotBlockSave' ./internal/handlers/accounts/
+  --- PASS: TestHandleCreate_OverlapDoesNotBlockSave (0.00s)
+Read the body (handlers_test.go:717-749): it asserts body["Error"] == "" AND
+re-reads the sidecar through accountssvc.Load, requiring len(accts) == 2. It
+asserts persistence, not just a 200.
+Corroborated: my TestCHK_MutationPaths_SurfaceWarnings/update and
+/add-anchor mutate accounts that are in an overlapping state and return 200
+with the mutation applied.
+
+==================================================================
+CRITERION 5 — internal/services/accounts/accounts.go NOT modified. PASS
+==================================================================
+$ git diff --numstat internal/services/accounts/accounts.go
+  (no output — file unmodified)
+$ git diff --name-only
+  .swarm/ledger.tsv
+  internal/handlers/accounts/handlers.go
+  internal/handlers/accounts/handlers_test.go
+  internal/handlers/transfers/handlers.go
+  internal/handlers/transfers/handlers_test.go
+  internal/services/accounts/projection.go
+  internal/services/accounts/projection_test.go
+  internal/services/transfers/transfers.go
+  internal/services/transfers/transfers_test.go
+  web/templates/pages/accounts.html
+accounts.go is absent from the list. OverlapWarnings (accounts.go:234) is
+consumed unchanged.
+
+==================================================================
+CRITERION 6 — existing tests unchanged (deletions, not just green).PASS
+==================================================================
+$ git diff --numstat internal/handlers/accounts/handlers_test.go
+  359  0  internal/handlers/accounts/handlers_test.go
+Zero deleted lines — the change is pure addition.
+$ git show HEAD:internal/handlers/accounts/handlers_test.go | grep -c '^func Test'  -> 21
+$ grep -c '^func Test' internal/handlers/accounts/handlers_test.go                  -> 30
+21 pre-existing tests retained, 9 added.
+Whole-diff check: no file in the change set has any deletions in a _test.go
+file ($ git diff --numstat: transfers/handlers_test.go 142/0,
+projection_test.go 122/0, transfers_test.go 155/0).
+
+==================================================================
+CRITERION 7 — warningsKey is a function of CONTENT, not of order or
+              identity.                                            *** FAIL ***
+==================================================================
+The implementation (internal/handlers/accounts/handlers.go, warningsKey) writes
+each warning into an FNV-64a hash IN SLICE ORDER with a NUL delimiter and never
+sorts. It is order-SENSITIVE. The worker's own doc comment on the function says
+so verbatim -- "a cheap, deterministic, order-sensitive fingerprint" -- while
+the pageData.WarningsKey field comment two hundred lines earlier claims it is
+"a fingerprint of Warnings' content". Those two statements disagree; the
+criterion requires the field comment's version.
+
+$ go test -count=1 -run 'TestCHK_WarningsKey_OrderInvariance' -v ./internal/handlers/accounts/
+  zz_checker_test.go:24: CHK order: key(a,b)="1abc0897194b44de" key(b,a)="2b5c49f725efa5b6"
+  zz_checker_test.go:26: ORDER-SENSITIVE: same content in different order gives
+    different keys: "1abc0897194b44de" vs "2b5c49f725efa5b6"
+  --- FAIL: TestCHK_WarningsKey_OrderInvariance (0.00s)
+(a and b hold the SAME TWO warning strings, only permuted.)
+
+The other halves of the property DO hold:
+$ go test -count=1 -run 'TestCHK_WarningsKey_EmptyAddRemove' -v ./internal/handlers/accounts/
+  --- PASS
+  warningsKey(nil) == "" and warningsKey([]string{}) == ""
+  add:        k(["w1"])="5f5177194908097f"  k(["w1","w2"])="6f66aebe07bff13a"  (differ)
+  remove:     k(["w2"]) != k(["w1"])                                          (differ)
+  delimiter:  k(["ab","c"])="ad22872f536e4705" k(["a","bc"])="401801fc84f3ca79"(differ)
+  -> the NUL separator rules out the concatenation-boundary collision.
+Cross-process stability (three separate `go test` processes):
+  CHKKEY=fb5ff549a8c2e799
+  CHKKEY=fb5ff549a8c2e799
+  CHKKEY=fb5ff549a8c2e799
+  -> stable across processes; FNV-64a is unseeded, so this is real.
+
+WHICH FAILURE MODE THIS RISKS (as asked): the UN-DISMISSAL one, not the
+collision one. I probed for collisions four ways (add, remove, substitute,
+delimiter injection) and found none; a NEW warning will not stay hidden. What
+the implementation risks is the reverse: a permutation of an UNCHANGED warning
+set yields a new key, sessionStorage's stored key no longer matches, and the
+banner reappears and the live region re-announces even though nothing the user
+cares about changed -- exactly the "re-announced on every load" outcome the
+worker's own template comment says point 14 rules out.
+
+MITIGATION THE WORKER DID NOT CLAIM AND NO TEST PINS: today the ordering happens
+to be deterministic. csvBasenames() ends with sort.Strings(out), OverlapWarnings
+(accounts.go:234) emits one warning per basename in that order, and the account
+IDs inside each string come from sortedByID. So the permutation above is not
+currently reachable through buildPageData. That makes this a latent defect
+rather than a live bug -- but the criterion states the property, the
+implementation does not hold it, and NOTHING pins the two sorts that are
+accidentally protecting it. TestBuildPageData_WarningsKey_ChangesWithContent
+(handlers_test.go:668) tests empty-case and content-change only; there is no
+order-invariance assertion anywhere.
+
+WHAT WOULD FIX IT: sort a copy of warnings before hashing (or hash a
+sorted/canonicalised set), plus a test asserting
+warningsKey([a,b]) == warningsKey([b,a]).
+
+==================================================================
+CRITERION 8 — empty case: WarningsKey empty AND #accounts-warnings-data
+              still renders.                                       PASS
+==================================================================
+$ go test -count=1 -run 'TestCHK_EmptyCase_FullPageAndPartial' -v ./internal/handlers/accounts/
+  --- PASS: TestCHK_EmptyCase_FullPageAndPartial (0.02s)
+My test asserts, for a non-overlapping fixture:
+  full page  : id="accounts-warnings-data" present; data-warnings-key="";
+               data-warnings-text empty; #accounts-warnings-region present and
+               its text empty.
+  partial    : (POST /accounts/usaa-checking/anchor, response confirmed to be a
+               bare partial with no <html>) id="accounts-warnings-data" present,
+               data-warnings-key="".
+  buildPageData: len(Warnings)==0 && WarningsKey=="".
+Also covered by the worker at handlers_test.go:635 —
+$ go test -count=1 -v -run 'TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings'
+  --- PASS (0.01s)
+and shown non-vacuous by PROBE A above, where it went FAIL with
+"partial-swap response missing #accounts-warnings-data even with no warnings".
+
+==================================================================
+CRITERION 9 — #accounts-warnings-data text and #accounts-warnings-region
+              carry the same warning content on the same response. PASS
+==================================================================
+$ go test -count=1 -run 'TestCHK_RegionAndDataNodeAgree' -v ./internal/handlers/accounts/
+  zz_checker_test.go:208: CHK region="Pattern overlap warning: file
+    \"usaa-checking.csv\" matches multiple accounts (a-wide, b-narrow);
+    \"a-wide\" wins by ID order"
+  zz_checker_test.go:209: CHK data  ="Pattern overlap warning: file
+    \"usaa-checking.csv\" matches multiple accounts (a-wide, b-narrow);
+    \"a-wide\" wins by ID order"
+  --- PASS: TestCHK_RegionAndDataNodeAgree (0.02s)
+The two strings were extracted from ONE full-page response by regex, HTML-
+unescaped and whitespace-normalised, then compared for equality; the test also
+requires the region to be non-empty and to name the contested basename, so the
+equality is not vacuously true of two empty strings.
+(On a partial-swap response only the data node is present — the region lives
+outside the #accounts-list swap target by design — so the comparison is
+correctly scoped to the full page.)
+
+==================================================================
+CRITERION 10 — build, vet, full suite, gofmt, staticcheck.         PASS
+==================================================================
+$ go build ./...                     -> BUILD_EXIT=0, no output
+$ go vet ./...                       -> VET_EXIT=0, no output
+$ go test -count=1 ./...             -> every package "ok"; no FAIL anywhere.
+    ok budget2/internal/handlers/accounts   0.389s
+    ok budget2/internal/handlers/transfers  0.304s
+    ok budget2/internal/services/accounts   0.009s
+    ok budget2/internal/services/transfers  0.006s
+    ok budget2/internal/templates           0.539s
+    (48 packages ok, 1 "no test files": budget2/web)
+  Green with S1, S2 and S3 all present in the tree.
+$ gofmt -l internal/handlers/accounts/     -> no output (clean)
+$ staticcheck ./internal/handlers/accounts/... -> STATICCHECK_EXIT=0, no output
+Repo-wide `gofmt -l internal/ web/ cmd/` lists 27 files including
+internal/handlers/majorexpenses/handlers_test.go; all are pre-existing and none
+is in the S4 manifest.
+
+==================================================================
+CRITERION 11 — no debug prints or leftover instrumentation.        PASS
+==================================================================
+$ grep -n "fmt.Print\|println(\|log.Print\|console.log\|debugger\|TODO\|FIXME\|XXX\|spew\." \
+    internal/handlers/accounts/handlers.go internal/handlers/accounts/handlers_test.go \
+    web/templates/pages/accounts.html
+  internal/handlers/accounts/handlers.go:722:var _ = log.Print
+Single hit, and it is PRE-EXISTING:
+$ git show HEAD:internal/handlers/accounts/handlers.go | grep -n "var _ = log.Print"
+  670:var _ = log.Print
+It is the documented nil-logger guard, not instrumentation. The new client
+script in accounts.html contains no console.log; its two catch blocks are
+deliberate empty no-ops for unavailable sessionStorage.
+
+==================================================================
+SCOPE
+==================================================================
+$ git diff --name-only  (output above) — exactly S1 + S2 + S3 + S4 manifests
+plus .swarm/ledger.tsv. Nothing outside.
+S4 touched exactly its three manifest files and no others.
+critical.globs: internal/services/accounts/accounts.go is NOT modified (crit 5).
+internal/services/transfers/** IS modified and IS in critical.globs, but that is
+S2's already-accepted Tier-3 work, outside this task's manifest — noted, not
+judged here.
+The only file I wrote inside the repo is this verdict.

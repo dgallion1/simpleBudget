@@ -1421,8 +1421,34 @@ type CliffProximity struct {
 	AnnualCost float64 `json:"annual_cost"`
 }
 
+// TaxConstantsBasis records which tax figures an answer rests on, and how
+// much of the answer is forecast rather than law. Surfaced because a
+// projection that silently blends published figures with extrapolated ones
+// looks equally authoritative in both halves.
+type TaxConstantsBasis struct {
+	// StatutoryYear is the most recent tax year with published figures.
+	StatutoryYear int    `json:"statutory_year"`
+	Source        string `json:"source"`
+	VerifiedOn    string `json:"verified_on"`
+	// FirstProjectedYear and LastProjectedYear bound the span of the
+	// projection that uses extrapolated figures. Both zero when the whole
+	// projection is covered by published figures.
+	FirstProjectedYear int `json:"first_projected_year,omitempty"`
+	LastProjectedYear  int `json:"last_projected_year,omitempty"`
+	// InflationRate is the assumed annual rate used to extrapolate, percent.
+	InflationRate float64 `json:"inflation_rate,omitempty"`
+}
+
+// HasProjectedYears reports whether any year of the projection rests on
+// extrapolated rather than published figures.
+func (b TaxConstantsBasis) HasProjectedYears() bool { return b.FirstProjectedYear > 0 }
+
 // TaxAnalysis contains tax projections summary
 type TaxAnalysis struct {
+	// ConstantsBasis says which published figures this analysis rests on and
+	// which years are extrapolated from them.
+	ConstantsBasis *TaxConstantsBasis `json:"constants_basis,omitempty"`
+
 	// NearestCliff is the tightest squeeze anywhere in the projection: the
 	// year with the least headroom to a step-cost threshold. nil when no
 	// cliff applies to this household in any year.

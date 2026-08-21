@@ -261,3 +261,68 @@ func TestWhatIfTaxSummary_OmitsCliffPanelWhenNone(t *testing.T) {
 		t.Error("rendered the cliff panel with no cliff to report")
 	}
 }
+
+// TestWhatIfTaxSummary_RendersConstantsProvenance — the tax panel must say
+// which published figures it rests on and which years are extrapolated.
+func TestWhatIfTaxSummary_RendersConstantsProvenance(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.ConstantsBasis = &models.TaxConstantsBasis{
+		StatutoryYear:      2024,
+		Source:             "IRS Rev. Proc. 2023-34 (tax year 2024)",
+		VerifiedOn:         "2024-11-09",
+		FirstProjectedYear: 2025,
+		LastProjectedYear:  2055,
+		InflationRate:      3.0,
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	html := strings.Join(strings.Fields(out), " ")
+
+	for _, want := range []string{
+		"IRS Rev. Proc. 2023-34",
+		"last verified 2024-11-09",
+		"2025",
+		"2055",
+		"3.0%/yr",
+		"estimates, not published law",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("provenance line missing %q", want)
+		}
+	}
+}
+
+// TestWhatIfTaxSummary_OmitsProjectedNoteWhenFullyStatutory — a projection
+// entirely covered by published figures should not carry a forecast warning.
+func TestWhatIfTaxSummary_OmitsProjectedNoteWhenFullyStatutory(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.ConstantsBasis = &models.TaxConstantsBasis{
+		StatutoryYear: 2024,
+		Source:        "IRS Rev. Proc. 2023-34 (tax year 2024)",
+		VerifiedOn:    "2024-11-09",
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	if strings.Contains(out, "estimates, not published law") {
+		t.Error("warned about projected figures when none are projected")
+	}
+	if !strings.Contains(out, "IRS Rev. Proc. 2023-34") {
+		t.Error("source should still be shown when everything is statutory")
+	}
+}

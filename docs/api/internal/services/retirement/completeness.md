@@ -16,7 +16,7 @@ Package completeness inspects a WhatIfSettings for silent zero\-defaults and oth
 
 
 <a name="Finding"></a>
-## type Finding
+## type [Finding](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/completeness/check.go#L31-L38>)
 
 Finding describes one detected issue with a scenario.
 
@@ -34,7 +34,7 @@ type Finding struct {
 ```
 
 <a name="Check"></a>
-### func Check
+### func [Check](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/completeness/check.go#L47>)
 
 ```go
 func Check(s *models.WhatIfSettings) []Finding
@@ -45,7 +45,7 @@ Check returns findings ordered errors\-first, then warnings, then info. Within a
 Check is pure: it never mutates settings, never reads disk, never calls the engine. nil settings yields a single SeverityError finding so the banner still renders something meaningful.
 
 <a name="Severity"></a>
-## type Severity
+## type [Severity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/completeness/check.go#L17>)
 
 Severity ranks findings from informational to outright inconsistent. SeverityError means the projection is internally inconsistent \(e.g. MFJ filing status with no spouse Person — taxes are computed for two, IRMAA / RMD for one\). Warn means a silent zero is likely material. Info is discoverability only.
 

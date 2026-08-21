@@ -18,7 +18,7 @@ Package insights serves the Insights page: HTTP handlers that load transaction d
 
 
 <a name="Initialize"></a>
-## func Initialize
+## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/handlers.go#L35>)
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
@@ -27,7 +27,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
 Initialize sets up the insights package with required dependencies
 
 <a name="RegisterRoutes"></a>
-## func RegisterRoutes
+## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/handlers.go#L41>)
 
 ```go
 func RegisterRoutes(r chi.Router)
@@ -36,7 +36,7 @@ func RegisterRoutes(r chi.Router)
 RegisterRoutes registers all insights routes
 
 <a name="AnomalyView"></a>
-## type AnomalyView
+## type [AnomalyView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/handlers.go#L72-L75>)
 
 AnomalyView adds a plain\-language method label to an anomalies.Anomaly for display on the Insights page. Embedding preserves direct template access to all of anomalies.Anomaly's fields \(Date, Description, Category, Amount, Severity, ...\).
 
@@ -48,7 +48,7 @@ type AnomalyView struct {
 ```
 
 <a name="PaceVerdictView"></a>
-## type PaceVerdictView
+## type [PaceVerdictView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/verdict.go#L11-L20>)
 
 PaceVerdictView is the precomputed model the insights verdict band renders.
 
@@ -66,7 +66,7 @@ type PaceVerdictView struct {
 ```
 
 <a name="BuildPaceVerdict"></a>
-### func BuildPaceVerdict
+### func [BuildPaceVerdict](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/insights/verdict.go#L25>)
 
 ```go
 func BuildPaceVerdict(v *models.SpendingVelocity) PaceVerdictView

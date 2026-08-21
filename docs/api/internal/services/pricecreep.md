@@ -17,7 +17,7 @@ It has no I/O and no package\-level mutable state; every exported function is de
 
 
 <a name="Creep"></a>
-## type Creep
+## type [Creep](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/pricecreep/pricecreep.go#L24-L45>)
 
 Creep describes a merchant group whose charge amount has drifted upward across its history.
 
@@ -47,7 +47,7 @@ type Creep struct {
 ```
 
 <a name="Detect"></a>
-### func Detect
+### func [Detect](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/pricecreep/pricecreep.go#L76>)
 
 ```go
 func Detect(ts models.TransactionSet) []Creep

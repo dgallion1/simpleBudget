@@ -17,7 +17,7 @@ Package spend serves spending analysis over MCP: what the ledger says, as oppose
 
 
 <a name="Register"></a>
-## func Register
+## func [Register](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/spend/register.go#L65>)
 
 ```go
 func Register(s *mcp.Server, deps Deps)
@@ -26,7 +26,7 @@ func Register(s *mcp.Server, deps Deps)
 Register adds the spending tools to s.
 
 <a name="Deps"></a>
-## type Deps
+## type [Deps](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/spend/register.go#L41-L46>)
 
 Deps is what the spending tools need. Store is optional and used only to turn a locked store into a clear message instead of a parse failure. Settings is also optional: when nil, summarize\_spending omits the budget comparison instead of failing. MajorExpenses is also optional: when nil, or its major\-expenses load fails, get\_recurring returns payments unannotated instead of failing the call \-\- the major\-expense label is a convenience, not the answer. A pins\-load failure alone is tolerated; annotation still proceeds from definitions, matching the handler's own annotateRecurringWithMajorExpense.
 
@@ -40,7 +40,7 @@ type Deps struct {
 ```
 
 <a name="MajorExpenseSource"></a>
-## type MajorExpenseSource
+## type [MajorExpenseSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/spend/register.go#L27-L30>)
 
 MajorExpenseSource supplies the declared major expenses and manual pins used to label recurring payments. \*dataloader.DataLoader satisfies it.
 
@@ -52,7 +52,7 @@ type MajorExpenseSource interface {
 ```
 
 <a name="TransactionSource"></a>
-## type TransactionSource
+## type [TransactionSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/spend/register.go#L21-L23>)
 
 TransactionSource loads the full transaction history. \*dataloader.DataLoader satisfies it via its existing LoadData method, so no adapter is needed in production. The interface exists so tests can substitute a canned models.TransactionSet directly \-\- constructing exact peer groups and planted anomalies through real CSV parsing, classification, and near\-duplicate detection would be indirect and brittle.
 

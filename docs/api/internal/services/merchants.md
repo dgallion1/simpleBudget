@@ -31,7 +31,7 @@ The guard: keys with zero or one token \(degenerate keys\) only merge with other
 
 
 <a name="DisplayLabel"></a>
-## func DisplayLabel
+## func [DisplayLabel](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/merchants/merchants.go#L285>)
 
 ```go
 func DisplayLabel(group []models.Transaction) string
@@ -42,7 +42,7 @@ DisplayLabel picks a human\-readable label for a merchant group: the most freque
 This MUST be used instead of a group's canonical normalized key \(from GroupKeys/GroupTransactions\) wherever a group's identity is shown to a user: that canonical key is uppercase\-normalized purely for matching and would look like a bug if surfaced directly.
 
 <a name="GroupKeys"></a>
-## func GroupKeys
+## func [GroupKeys](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/merchants/merchants.go#L185>)
 
 ```go
 func GroupKeys(keys []string) map[string]string
@@ -53,7 +53,7 @@ GroupKeys clusters normalized merchant keys into groups using the token\-subset 
 The canonical key for a group is chosen deterministically: the member with the most tokens wins; ties are broken lexicographically \(smallest string wins\) so the result does not depend on map iteration or input ordering.
 
 <a name="GroupTransactions"></a>
-## func GroupTransactions
+## func [GroupTransactions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/merchants/merchants.go#L324>)
 
 ```go
 func GroupTransactions(ts []models.Transaction) map[string][]models.Transaction
@@ -64,7 +64,7 @@ GroupTransactions groups transactions into merchant groups. The raw merchant key
 GroupTransactions does not filter or skip any input transaction \(including Suppressed ones\) — callers that need to exclude suppressed transactions from aggregation should call TransactionSet.Active\(\) before passing transactions in.
 
 <a name="Normalize"></a>
-## func Normalize
+## func [Normalize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/merchants/merchants.go#L81>)
 
 ```go
 func Normalize(description string) string

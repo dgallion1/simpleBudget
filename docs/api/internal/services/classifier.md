@@ -90,7 +90,7 @@ var NeverIncomeKeywords = []string{
 ```
 
 <a name="ClassifyTransactions"></a>
-## func ClassifyTransactions
+## func [ClassifyTransactions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/classifier/classifier.go#L79>)
 
 ```go
 func ClassifyTransactions(transactions []models.Transaction) []models.Transaction
@@ -99,7 +99,7 @@ func ClassifyTransactions(transactions []models.Transaction) []models.Transactio
 ClassifyTransactions classifies each transaction as Income or Outflow
 
 <a name="IsInternalTransfer"></a>
-## func IsInternalTransfer
+## func [IsInternalTransfer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/classifier/classifier.go#L130>)
 
 ```go
 func IsInternalTransfer(t *models.Transaction) bool
@@ -108,7 +108,7 @@ func IsInternalTransfer(t *models.Transaction) bool
 IsInternalTransfer checks if a transaction is an internal transfer
 
 <a name="IsPotentialIncome"></a>
-## func IsPotentialIncome
+## func [IsPotentialIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/classifier/classifier.go#L154>)
 
 ```go
 func IsPotentialIncome(t *models.Transaction) bool

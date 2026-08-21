@@ -935,6 +935,19 @@ type ProjectionYearSummary struct {
 	// See TaxCalculator.MarginalRateOnLongTermGain.
 	MarginalRateLongTermGain float64 `json:"marginal_rate_long_term_gain,omitempty"`
 
+	// NextCliff* describe this year's proximity to the nearest income
+	// threshold that has a STEP cost — currently the IRMAA tiers, the only
+	// true discontinuities this engine models. Headroom is how much more
+	// income the year can absorb before the step lands; AnnualCost is what
+	// crossing costs. Empty label means no cliff applies (nobody on Medicare,
+	// or every tier already crossed).
+	//
+	// Measured against MAGI from two years prior, because that is what IRMAA
+	// is billed on — not this year's income.
+	NextCliffLabel      string  `json:"next_cliff_label,omitempty"`
+	NextCliffHeadroom   float64 `json:"next_cliff_headroom,omitempty"`
+	NextCliffAnnualCost float64 `json:"next_cliff_annual_cost,omitempty"`
+
 	Expenses            float64 `json:"expenses"`
 	Withdrawals         float64 `json:"withdrawals"`
 	EndingBalance       float64 `json:"ending_balance"`
@@ -1396,8 +1409,25 @@ type YearlyTaxSummary struct {
 	RMDAmount                float64 `json:"rmd_amount"`
 }
 
+// CliffProximity is the plan's closest approach to a step-cost income
+// threshold, and the year it happens. Surfaced because "you are $N under the
+// cliff" is more actionable than any rate: it is the one place where a single
+// dollar of extra income has a discontinuous price.
+type CliffProximity struct {
+	Year       int     `json:"year"`
+	Age        int     `json:"age"`
+	Label      string  `json:"label"`
+	Headroom   float64 `json:"headroom"`
+	AnnualCost float64 `json:"annual_cost"`
+}
+
 // TaxAnalysis contains tax projections summary
 type TaxAnalysis struct {
+	// NearestCliff is the tightest squeeze anywhere in the projection: the
+	// year with the least headroom to a step-cost threshold. nil when no
+	// cliff applies to this household in any year.
+	NearestCliff *CliffProximity `json:"nearest_cliff,omitempty"`
+
 	TotalFederalTaxPaid  float64            `json:"total_federal_tax_paid"`
 	TotalStateTaxPaid    float64            `json:"total_state_tax_paid"`
 	TotalTaxPaid         float64            `json:"total_tax_paid"`

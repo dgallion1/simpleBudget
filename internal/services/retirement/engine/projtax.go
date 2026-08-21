@@ -239,9 +239,30 @@ func ordinaryIncomeBeforeSocialSecurity(in ProjectedAnnualTaxInputs) float64 {
 // phase-in band. This is one of the six distinct income measures the design
 // notes warn must each be derived on their own.
 func taxableSocialSecurityFor(tc *TaxCalculator, in ProjectedAnnualTaxInputs) float64 {
-	provisionalOther := ordinaryIncomeBeforeSocialSecurity(in) + in.ShortTermCapitalGains
 	return tc.CalculateTaxableSocialSecurity(
-		in.SocialSecurityIncome, provisionalOther, in.QualifiedDividends, in.LongTermCapitalGains)
+		in.SocialSecurityIncome, provisionalOtherIncome(in), in.QualifiedDividends, in.LongTermCapitalGains)
+}
+
+// provisionalOtherIncome is everything in the § 86 base except the benefits
+// half — i.e. income excluding Social Security itself.
+func provisionalOtherIncome(in ProjectedAnnualTaxInputs) float64 {
+	return ordinaryIncomeBeforeSocialSecurity(in) + in.ShortTermCapitalGains
+}
+
+// ProvisionalIncome is the 26 USC § 86 measure that decides how much of a
+// household's Social Security is taxable: income excluding benefits, plus
+// half of gross benefits.
+//
+// It is one of several distinct definitions of "income" in play and is not
+// interchangeable with any of them — it counts half of benefits, where ACA
+// MAGI counts all of them and New York AGI counts none. Derive each measure
+// with its own function rather than sharing code between them; they diverge in
+// ways that cost real money.
+func ProvisionalIncome(in ProjectedAnnualTaxInputs) float64 {
+	return math.Max(0, provisionalOtherIncome(in)) +
+		math.Max(0, in.QualifiedDividends) +
+		math.Max(0, in.LongTermCapitalGains) +
+		0.5*math.Max(0, in.SocialSecurityIncome)
 }
 
 // MarginalRateOnOrdinaryIncome returns the effective marginal tax rate, as a

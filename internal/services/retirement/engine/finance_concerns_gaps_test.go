@@ -279,33 +279,58 @@ func TestFinanceGap_MoneyIsFloat64(t *testing.T) {
 		dimes, rateDimes*100, dimes-boundary)
 }
 
-// TestFinanceGap_NoCliffRegistry
+// TestFinanceGap_OptimizerDoesNotProbeCliffs
 //
-// FINANCEAPPCONCERNS.md §5: "Maintain an explicit registry of discontinuity
-// points... Any optimization evaluates the objective at and just below every
-// relevant cliff."
+// FINANCEAPPCONCERNS.md §5 asks for three things: an explicit registry of
+// discontinuity points, optimizers that evaluate the objective AT and JUST
+// BELOW every relevant cliff, and cliff proximity surfaced in the UI.
 //
-// IRMAA is already a genuine cliff in this engine (CalculateMonthlyIRMAA
-// steps), but nothing enumerates it as a discontinuity, and the tax
-// optimizer's bracket-fill search targets ordinary brackets only.
-func TestFinanceGap_NoCliffRegistry(t *testing.T) {
-	// IRMAA is a step function: probe either side of the first MFJ tier.
-	const tier1 = 218000.0
-	below := CalculateMonthlyIRMAA(tier1, models.FilingMarriedJoint, 1, 1)
-	above := CalculateMonthlyIRMAA(tier1+1, models.FilingMarriedJoint, 1, 1)
+// PARTIALLY CLOSED. The registry exists (ThresholdRegistry, thresholds.go),
+// it distinguishes true cliffs from kinks, it keys each entry to the income
+// measure it is actually tested against, and proximity is surfaced per
+// projection year and in the tax panel.
+//
+// What remains is the middle requirement. The Roth bracket-fill search in
+// analysis/tax_optimizer_strategies.go targets ordinary bracket tops only; it
+// never asks the registry where the step costs are, so it can size a
+// conversion that lands one dollar over an IRMAA tier and pay for the whole
+// tier to gain a few dollars of bracket fill.
+func TestFinanceGap_OptimizerDoesNotProbeCliffs(t *testing.T) {
+	zero := 0.0
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus:       models.FilingMarriedJoint,
+		StateIncomeTaxRate: &zero,
+		Age65Count:         2,
+	}, 0)
 
-	if above == below {
-		t.Skipf("first MFJ IRMAA tier is not at %.0f in the bundled table; adjust the probe", tier1)
+	registry := tc.ThresholdRegistry(ThresholdRegistryOptions{
+		IRMAAEligibleAdults:  2,
+		IRMAAThresholdFactor: 1,
+		IRMAASurchargeFactor: 1,
+	})
+
+	var cliffs []Threshold
+	for _, th := range registry {
+		if th.Kind == ThresholdCliff {
+			cliffs = append(cliffs, th)
+		}
+	}
+	if len(cliffs) == 0 {
+		t.Fatal("regression: the registry no longer enumerates any cliffs")
 	}
 
-	annualJump := (above - below) * 12 * 2 // two filers, twelve months
-	t.Errorf("GAP (FINANCEAPPCONCERNS.md §5): $1 of extra MAGI at $%.0f costs "+
-		"$%.2f/yr of IRMAA for an MFJ couple — a true discontinuity.\n"+
-		"  Nothing in this package enumerates it. There is no registry of cliff\n"+
-		"  locations for the optimizer to evaluate at and just below, and no UI\n"+
-		"  surface for proximity (\"you are $X over the next IRMAA tier\").\n"+
-		"  The ACA 400%%-FPL cliff is not modelled at all (see the ACA gap test).\n"+
-		"  Fix: build the registry as a function of the household's situation, and\n"+
-		"  make every optimizer probe it explicitly.",
-		tier1, annualJump)
+	// The optimizer's own target list, for contrast: bracket tops, no cliffs.
+	t.Errorf("GAP (FINANCEAPPCONCERNS.md §5, optimizer half): the registry knows "+
+		"about %d step-cost thresholds (first at $%.0f, costing $%.2f to cross), "+
+		"but no optimizer consults it.\n"+
+		"  analysis/tax_optimizer_strategies.go sizes Roth conversions against "+
+		"ordinary\n"+
+		"  bracket tops only. A conversion that fills a bracket and lands one dollar\n"+
+		"  over an IRMAA tier buys a few dollars of bracket at the price of the whole\n"+
+		"  tier, two years later.\n"+
+		"  Fix: evaluate every candidate at and just below each registered cliff, in\n"+
+		"  addition to whatever search runs.\n"+
+		"  Still entirely absent: the ACA premium-credit cliff at 400%% FPL, because\n"+
+		"  premium credits are not modelled — see the ACA gap test.",
+		len(cliffs), cliffs[0].Amount, cliffs[0].AnnualCostOfCrossing)
 }

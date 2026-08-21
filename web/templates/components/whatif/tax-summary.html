@@ -27,6 +27,18 @@
     </div>
 
     {{if $t.YearlyTaxSummary}}
+    {{with $t.NearestCliff}}
+    <div class="mb-3 rounded-md border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+        <p class="text-sm text-amber-800 dark:text-amber-200">
+            Closest approach to a cost step: in <span class="font-semibold">{{.Year}}</span> (age {{.Age}}) this plan is
+            <span class="font-semibold">{{formatDollars .Headroom}}</span> under {{.Label}}.
+            Crossing it costs <span class="font-semibold">{{formatDollars .AnnualCost}}</span> for that year.
+        </p>
+        <p class="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+            A step, not a ramp &mdash; one dollar over costs the whole amount. IRMAA is billed on income from two years earlier, so the year to act is two before the surcharge lands.
+        </p>
+    </div>
+    {{end}}
     <div class="overflow-x-auto max-h-96 overflow-y-auto">
         <table class="w-full text-sm">
             <thead>

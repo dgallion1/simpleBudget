@@ -122,17 +122,13 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 BuildRMD \(F\-072\) builds the RMD analysis from the actual projection instead of an isolated standalone math model. It samples each RMD year's starting tax\-deferred balance and sums the actual RMDWithdrawal over the year, so the panel cannot diverge from the main projection.
 
 <a name="BuildTax"></a>
-## func [BuildTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax.go#L20>)
+## func [BuildTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax.go#L43>)
 
 ```go
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis
 ```
 
-BuildTax summarizes the projection's tax burden into a TaxAnalysis. It reads the per\-year totals the engine already computed \(proj.YearlySummaries: income tax and MAGI\) and folds in the per\-month state\-tax, Roth\-conversion, and RMD figures, so the panel can never diverge from the main projection.
 
-The income\-tax total equals the sum of YearlySummaries.Taxes — the same figure the explainability panel reports as TotalTaxes. IRMAA is a Medicare premium surcharge, not income tax, so it is deliberately excluded here.
-
-ConversionTaxPaid is left zero: isolating the marginal tax attributable to Roth conversions requires a counterfactual no\-conversion projection, which this pure post\-projection summary does not run.
 
 <a name="CalculateSequenceRiskImpact"></a>
 ## func [CalculateSequenceRiskImpact](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L318>)

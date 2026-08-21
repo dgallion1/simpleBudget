@@ -41,6 +41,29 @@ jobs:
       # fail wholesale because the failure they inject never happens.
       - run: go test ./...
 
+  # Its own job rather than a step in `test`, for the same reason `race` is:
+  # a lint failure and a test failure are different problems, and running them
+  # in parallel means you see both from one run instead of the first masking
+  # the second. Costs no wall-clock time -- jobs run concurrently.
+  staticcheck:
+    name: staticcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Pinned, not @latest. staticcheck ships new checks in each release, so
+      # @latest can turn CI red on a commit that changed nothing -- the failure
+      # then looks like the PR's fault. Bump this deliberately.
+      #
+      # The Makefile's `static` target runs a bare `staticcheck` off PATH, so
+      # a contributor's local version and this one can drift. This is the one
+      # that gates.
+      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./...
+
   # Split out because it is an order of magnitude slower than the plain suite
   # (~2 min vs ~20), and a fast red on a compile error or a broken test should
   # not wait behind it. The Makefile draws the same line: `check` excludes the

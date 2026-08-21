@@ -166,9 +166,9 @@ func TestBuildTax_MarginalRateFlowsFromEngine(t *testing.T) {
 			len(tax.YearlyTaxSummary), len(proj.YearlySummaries))
 	}
 	for i, row := range tax.YearlyTaxSummary {
-		if want := proj.YearlySummaries[i].MarginalRate; row.MarginalBracket != want {
-			t.Errorf("row %d: MarginalBracket = %.4f; want the engine's %.4f",
-				i, row.MarginalBracket, want)
+		if want := proj.YearlySummaries[i].MarginalRate; row.MarginalRate != want {
+			t.Errorf("row %d: MarginalRate = %.4f; want the engine's %.4f",
+				i, row.MarginalRate, want)
 		}
 	}
 }

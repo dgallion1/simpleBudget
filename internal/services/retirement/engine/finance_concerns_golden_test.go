@@ -345,3 +345,58 @@ func TestFinanceConcerns_MarginalRateSeesSocialSecurityPhaseIn(t *testing.T) {
 	}
 	t.Logf("§86 phase-in: marginal %.2f%% vs bracket %.2f%%", marginal, bracket)
 }
+
+// TestFinanceConcerns_MarginalRateIsTheNextDollarNotAnAverage pins the
+// SEMANTICS of the measurement, independently of how it is implemented.
+//
+// The earlier derivative test compared the function against a hand-rolled
+// derivative using the same probe width, so it could only catch an
+// implementation slip — never a bad choice of probe. A wide probe silently
+// averages across any boundary it spans and reports a rate nobody faces.
+//
+// Reported at $100: a single filer $50 below the 12%/22% edge came back at
+// 17%, half a probe of each side, when the next dollar genuinely costs 12%.
+func TestFinanceConcerns_MarginalRateIsTheNextDollarNotAnAverage(t *testing.T) {
+	zero := 0.0
+	tc := NewTaxCalculator(&models.TaxConfig{
+		FilingStatus:       models.FilingSingle,
+		StateIncomeTaxRate: &zero,
+	}, 0)
+
+	// The true cost of the next dollar, computed without reference to
+	// marginalRateProbe so this test constrains the probe rather than
+	// inheriting it.
+	nextDollarCost := func(gross float64) float64 {
+		at := ProjectedAnnualTaxInputs{OrdinaryIncome: gross}
+		after := ProjectedAnnualTaxInputs{OrdinaryIncome: gross + 1}
+		return (tc.AnnualIncomeTaxOn(after, 0) - tc.AnnualIncomeTaxOn(at, 0)) * 100
+	}
+
+	// The reported case: $50 below the 12%/22% taxable-income boundary.
+	const reported = 61700.0
+	if got, want := tc.MarginalRateOnOrdinaryIncome(
+		ProjectedAnnualTaxInputs{OrdinaryIncome: reported}, 0), 12.0; math.Abs(got-want) > 0.01 {
+		t.Errorf("gross %.0f: marginal rate = %.2f%%, want %.2f%%. A rate between the "+
+			"two bracket rates means the probe straddled the boundary and averaged.",
+			reported, got, want)
+	}
+
+	// The general property: across a window that crosses the boundary in
+	// single-dollar steps, the reported rate must always equal the true cost
+	// of the next dollar.
+	boundary := TaxBrackets2024[models.FilingSingle][1].MaxIncome +
+		tc.GetAdjustedStandardDeduction(0)
+	sawBoth := map[float64]bool{}
+	for gross := boundary - 120; gross <= boundary+120; gross++ {
+		got := tc.MarginalRateOnOrdinaryIncome(ProjectedAnnualTaxInputs{OrdinaryIncome: gross}, 0)
+		want := nextDollarCost(gross)
+		if math.Abs(got-want) > 0.01 {
+			t.Fatalf("gross %.0f: reported %.2f%%, next dollar actually costs %.2f%%",
+				gross, got, want)
+		}
+		sawBoth[math.Round(got)] = true
+	}
+	if !sawBoth[12] || !sawBoth[22] {
+		t.Errorf("the sweep should span both sides of the 12%%/22%% boundary; saw %v", sawBoth)
+	}
+}

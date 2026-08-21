@@ -170,10 +170,20 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 }
 
 // marginalRateProbe is the income perturbation used to measure a marginal
-// rate numerically. $100 is small enough to stay local — one probe does not
-// span a whole bracket — and large enough that float64 money noise cannot
-// dominate the difference.
-const marginalRateProbe = 100.0
+// rate numerically.
+//
+// One dollar, because the question is literally "what does the next dollar
+// cost". A wider probe silently averages across any boundary it spans and
+// reports a rate nobody actually faces: at $100, a single filer $50 below the
+// 12%/22% edge was reported at 17%, being half a probe of each, when the next
+// dollar genuinely costs 12%.
+//
+// A dollar is also numerically safe here. The difference between two annual
+// tax figures a dollar apart is on the order of cents against totals in the
+// thousands — six or more decimal orders above float64 epsilon — so rounding
+// cannot dominate it. The residual blur is now one dollar wide, which is the
+// natural quantum of the thing being measured.
+const marginalRateProbe = 1.0
 
 // AnnualIncomeTaxOn returns the total income tax (federal + state + NIIT)
 // implied by a full-year income composition, recomputing the § 86 taxable

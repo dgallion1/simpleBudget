@@ -3,10 +3,15 @@
 Written 2026-08-12 by the lead session that completed P12. A relaunched session
 starts cold with no memory of that conversation; this file is the handoff.
 
+Revised 2026-08-21: P16 added, and step 1 rewritten. It told you to verify the
+session was routed through a LiteLLM gateway that no longer exists — following
+it as written would have stopped a relaunched session from dispatching anything.
+
 ## Where things stand
 
-`master` is at the merge commit carrying P12 and the P15 oracle, pushed to
-`origin/master`. Working tree clean, no feature branches.
+`master` is at `10d4902`, carrying P12, the P15 oracle, and unrelated work
+merged since. One unmerged branch: `claude/storage-cache-stale-data-i5lr29`,
+which carries P16.
 
 | Task | Scope | Tier | Status |
 |------|-------|------|--------|
@@ -14,30 +19,58 @@ starts cold with no memory of that conversation; this file is the handoff.
 | P13 | Sortable columns | 2 | pending — brief ready |
 | P14 | `ImportDirectory` config + scan endpoint | 2 | pending — brief ready |
 | P15 | Import execute + source delete | 3 | pending — oracle written |
+| P16 | Storage read-cache write ordering | 3 | pending — **code written and pushed, unverified** |
 
 Ledger: `.swarm/ledger.tsv`. Gate: `bash /home/darrell/work/agents2/swarm/gate.sh
 check <task>` run with cwd set to this repo. `gate.sh done` currently fails, as
-it should, listing P13–P15 as pending.
+it should, listing P13–P16 as pending.
 
 ## Do this next
 
-1. **Confirm the session is actually routed through the gateway** before
-   dispatching anything. `echo $ANTHROPIC_BASE_URL` must point at
-   `http://localhost:4000`, not `https://api.anthropic.com`. The previous
-   session was not routed and could not run any Tier 2+ task: the `worker-glm`,
-   `checker-glm`, and `worker-local` model aliases only resolve through the
-   proxy, and `gate.sh` enforces the two-family quorum mechanically. A
-   Sonnet-backed `checker-second` writing `FAMILY: glm` would satisfy the gate
-   and verify nothing.
+1. **Independence is a lane, not a vendor.** The LiteLLM gateway was dropped on
+   2026-08-19; there is no proxy and no local endpoint, `ANTHROPIC_BASE_URL` is
+   not something to check, and the `worker-glm` / `checker-glm` aliases are
+   gone. Every agent runs on Claude, with the model chosen per agent in
+   `.claude/agents/*.md` frontmatter. The second opinion now comes from a
+   different **job** and a different **model tier**: the primary verifier asks
+   "does this meet the criteria?" and cites the command proving each one;
+   `checker-second` asks "what would make this wrong?", defaults to FAIL on
+   ambiguity, and is doing its job badly if it never disagrees.
 
-2. **P13 and P14** are independent and can run as parallel background workers.
+   `gate.sh` still enforces two distinct `FAMILY` values mechanically. Write
+   `anthropic` for the primary verifier and `adversarial` for `checker-second`;
+   judges write `anthropic`, `adversarial`, and `impact`. `glm` and `local`
+   still validate only so pre-2026-08-19 verdicts keep parsing — writing either
+   today satisfies the gate and verifies nothing. Two PASSes are weaker
+   evidence than the old cross-vendor pair; that reduction was accepted
+   deliberately (user decision 2026-08-19).
+
+2. **P16 needs a decision before it needs work**, and it is independent of
+   everything below — different subsystem, no ordering constraint. The code is
+   already written, tested and pushed on
+   `claude/storage-cache-stale-data-i5lr29`: `06176ef` orders the storage read
+   cache against writes via a generation counter, `79ef006` covers Lock's bump.
+   It was built directly in a lead session, so there is no worker manifest from
+   a dispatch and no verdict from either lane.
+
+   `.swarm/manifests/P16.1.files` names two files under
+   `internal/services/storage/**`, which is in `critical.globs`, so
+   `escalate-scan` flagged it and the ledger tier followed to 3. That is the
+   problem: Tier 3 wants the oracle written *before* dispatch and two blind
+   arms, and the code already exists. Either treat the branch as one arm and
+   write `.swarm/tier3/P16/accept.sh` plus a genuinely blind second arm, or
+   discard the branch and run P16 properly from the top. Do not backfill an
+   oracle from the implementation and call it N-version — the oracle would
+   inherit exactly the assumptions it is supposed to test.
+
+3. **P13 and P14** are independent and can run as parallel background workers.
    Briefs are at `.swarm/briefs/P13.md` and `.swarm/briefs/P14.md`; each
    contains the exact text to paste into the `worker-coder` delegation message
-   plus checker notes. Tier 2: the Anthropic mechanical checker and
-   `checker-second` (GLM) both run, both must PASS, disagreement dispatches all
-   three judges.
+   plus checker notes. Tier 2: the primary mechanical checker (lane
+   `anthropic`) and `checker-second` (lane `adversarial`) both run, both must
+   PASS, disagreement dispatches all three judges.
 
-3. **P15 only after P14 has merged.** `swarm/tier3-setup.sh P15` cuts its two
+4. **P15 only after P14 has merged.** `swarm/tier3-setup.sh P15` cuts its two
    blind worktrees from `HEAD`. Starting before P14 lands gives both workers a
    tree with no `ImportDirectory` and no scan endpoint, and the oracle's scan
    check fails in both for reasons unrelated to either implementation.
@@ -52,10 +85,11 @@ it should, listing P13–P15 as pending.
    cannot satisfy it vacuously. The request wire format is pinned in the design
    doc §3 — both blind workers must be given it.
 
-4. **Final pass before `gate.sh done`.** Run `checker-a11y` across the File
+5. **Final pass before `gate.sh done`.** Run `checker-a11y` across the File
    Manager page — P13 adds interactive sort controls, which is exactly what the
    standard exists to catch. Then review every file the lead authored: the
-   design doc, the ledger, the P15 oracle, these briefs.
+   design doc, the ledger, the P15 oracle, these briefs, and the P16 ledger row
+   and manifest.
 
 ## Decisions already made — do not relitigate
 

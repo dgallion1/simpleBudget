@@ -48,6 +48,20 @@ type Storage struct {
 	cache     map[string]*cacheEntry
 	cacheMu   sync.RWMutex
 
+	// cacheGen counts cache-invalidating events. A read samples it before it
+	// stats the file and may only publish what it read if the counter has not
+	// moved since: mtime+size alone cannot tell a reader that the bytes it
+	// holds were overtaken by a write mid-read (see invalidateCache).
+	//
+	// It is deliberately one counter for the whole store rather than one per
+	// path. The cost is that a write to any path makes reads of other paths
+	// in flight at that moment skip caching for one round; the benefit is
+	// that there is no second map to keep in step with this one, and Lock's
+	// wholesale clear is covered by the same bump.
+	//
+	// Guarded by cacheMu, alongside cache itself.
+	cacheGen uint64
+
 	// dataMu serializes ordinary data-directory mutations against a wholesale
 	// rewrite of that directory -- today, a restore's write+prune phase.
 	// Every write takes it shared; BeginExclusive takes it exclusively.
@@ -204,10 +218,53 @@ func (s *Storage) Lock() {
 		s.provider = nil
 	}
 
-	// Clear cache for security - don't keep decrypted data in memory
+	// Clear cache for security - don't keep decrypted data in memory. The
+	// generation bump matters as much as the clear: it stops a read that
+	// decrypted before the lock from publishing that plaintext back into the
+	// fresh map afterwards.
 	s.cacheMu.Lock()
 	s.cache = make(map[string]*cacheEntry)
+	s.cacheGen++
 	s.cacheMu.Unlock()
+}
+
+// invalidateCache drops any cached entry for path and advances the cache
+// generation.
+//
+// Mutations invalidate on BOTH sides: before, so no reader serves the old
+// bytes while the new ones are in flight, and after, so a reader that already
+// sampled the old file cannot install what it saw once the mutation lands.
+// The second half is the load-bearing one. Without it a reader could stat the
+// file, read the old payload, watch a whole write complete, and then publish
+// the old payload keyed to the old mtime and size -- which, on a filesystem
+// with coarse or frozen timestamps and a same-length rewrite, still matches
+// the new file and so is served forever.
+func (s *Storage) invalidateCache(path string) {
+	s.cacheMu.Lock()
+	delete(s.cache, path)
+	s.cacheGen++
+	s.cacheMu.Unlock()
+}
+
+// cacheGeneration samples the generation a reader must still match in order
+// to publish. Sample it before stat'ing the file, not after.
+func (s *Storage) cacheGeneration() uint64 {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	return s.cacheGen
+}
+
+// publishCache installs entry for path, unless a cache-invalidating event has
+// happened since gen was sampled -- in which case the entry describes a file
+// state that no longer exists and is dropped. Losing a cache fill costs one
+// re-read; installing a stale one costs correctness.
+func (s *Storage) publishCache(path string, gen uint64, entry *cacheEntry) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.cacheGen != gen {
+		return
+	}
+	s.cache[path] = entry
 }
 
 // ReadFile reads and optionally decrypts a file, using cache when possible.
@@ -226,6 +283,12 @@ func (s *Storage) ReadFileContext(ctx context.Context, path string) ([]byte, err
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	// Sample the cache generation BEFORE stat'ing. Everything observed from
+	// here on -- the stat and the bytes -- belongs to this generation, and
+	// publishCache refuses the entry if a write moved it on in the meantime.
+	// Sampling after the stat would reopen the window this closes.
+	gen := s.cacheGeneration()
 
 	// Get file modification time
 	info, err := os.Stat(path)
@@ -271,10 +334,8 @@ func (s *Storage) ReadFileContext(ctx context.Context, path string) ([]byte, err
 		}
 	}
 
-	// Store in cache
-	s.cacheMu.Lock()
-	s.cache[path] = &cacheEntry{data: data, modTime: modTime, size: size}
-	s.cacheMu.Unlock()
+	// Store in cache, unless a write overtook this read since gen was sampled
+	s.publishCache(path, gen, &cacheEntry{data: data, modTime: modTime, size: size})
 
 	// Return a copy to prevent mutation
 	result := make([]byte, len(data))
@@ -310,34 +371,41 @@ func (s *Storage) writeFileLocked(path string, data []byte, perm os.FileMode) er
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Invalidate cache for this path
-	s.cacheMu.Lock()
-	delete(s.cache, path)
-	s.cacheMu.Unlock()
+	// Invalidate before staging, so no reader serves the old bytes from cache
+	// while the new ones are on their way to disk. The encryption failures
+	// below return before touching disk, so they need no second invalidation.
+	s.invalidateCache(path)
 
 	// Skip encryption for certain files
-	if s.shouldSkipEncryption(path) {
-		return s.atomicWrite(path, data, perm)
-	}
-
-	// Encrypt if enabled and unlocked
-	if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
-		if isAgeEncrypted(data) {
-			// Already encrypted (e.g. restoring a backup blob). Pass through.
-		} else {
-			recipient, err := s.provider.Recipient()
-			if err != nil {
-				return fmt.Errorf("failed to get recipient: %w", err)
+	if !s.shouldSkipEncryption(path) {
+		// Encrypt if enabled and unlocked
+		if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
+			if isAgeEncrypted(data) {
+				// Already encrypted (e.g. restoring a backup blob). Pass through.
+			} else {
+				recipient, err := s.provider.Recipient()
+				if err != nil {
+					return fmt.Errorf("failed to get recipient: %w", err)
+				}
+				encrypted, err := encryptData(data, recipient)
+				if err != nil {
+					return fmt.Errorf("failed to encrypt: %w", err)
+				}
+				data = encrypted
 			}
-			encrypted, err := encryptData(data, recipient)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt: %w", err)
-			}
-			data = encrypted
 		}
 	}
 
-	return s.atomicWrite(path, data, perm)
+	err := s.atomicWrite(path, data, perm)
+
+	// Invalidate again now that the rename has published (or failed to
+	// publish) the new bytes. This is what orders the cache against the
+	// write: any read still holding pre-write bytes sampled an older
+	// generation and is now barred from installing them. Unconditional --
+	// a failed write leaves the file's state unproven, and re-reading is
+	// cheaper than guessing.
+	s.invalidateCache(path)
+	return err
 }
 
 // OpenFile returns a reader for a potentially encrypted file. Context-less
@@ -435,10 +503,14 @@ func (s *Storage) Remove(path string) error {
 
 // removeLocked is Remove without the data-directory lock; see writeFileLocked.
 func (s *Storage) removeLocked(path string) error {
-	s.cacheMu.Lock()
-	delete(s.cache, path)
-	s.cacheMu.Unlock()
-	return os.Remove(path)
+	// Invalidated on both sides for the same reason as writeFileLocked: a
+	// read in flight must not be able to install the removed file's bytes
+	// after the unlink, where a same-size same-mtime recreation would then
+	// match them.
+	s.invalidateCache(path)
+	err := os.Remove(path)
+	s.invalidateCache(path)
+	return err
 }
 
 // ExclusiveWriter holds the data directory against every other writer for as

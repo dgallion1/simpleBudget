@@ -35,6 +35,9 @@ type investmentIncomeTaxBreakdown struct {
 	TotalTax      float64
 	EffectiveRate float64
 	MAGI          float64
+	// TaxableIncome is income after the standard deduction, ordinary plus
+	// preferentially-taxed — the quantity the bracket tables are indexed by.
+	TaxableIncome float64
 }
 
 // TaxBrackets2024 contains 2024 federal tax brackets by filing status.
@@ -596,6 +599,7 @@ func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(in InvestmentI
 		TotalTax:      totalTax,
 		EffectiveRate: effectiveRate,
 		MAGI:          magi,
+		TaxableIncome: taxableOrdinaryIncome + taxableInvestmentIncome,
 	}
 }
 

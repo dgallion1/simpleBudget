@@ -26,6 +26,7 @@ Package models defines the core domain types shared across the application: Tran
 - [type ChartData](<#ChartData>)
 - [type ChartLayout](<#ChartLayout>)
 - [type ChartResponse](<#ChartResponse>)
+- [type CliffProximity](<#CliffProximity>)
 - [type CoverageType](<#CoverageType>)
 - [type DashboardMetrics](<#DashboardMetrics>)
 - [type DeletedMajorExpense](<#DeletedMajorExpense>)
@@ -251,7 +252,7 @@ func ParseYearMonth(value string) (time.Time, error)
 ParseYearMonth parses a "YYYY\-MM" string. Exported so packages outside models \(notably the retirement engine's prepare package\) can perform equivalent date validation.
 
 <a name="BigTicketItem"></a>
-## type [BigTicketItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1354-L1362>)
+## type [BigTicketItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1367-L1375>)
 
 BigTicketItem represents a one\-time financial event
 
@@ -268,7 +269,7 @@ type BigTicketItem struct {
 ```
 
 <a name="BigTicketItem.GetNetAmount"></a>
-### func \(\*BigTicketItem\) [GetNetAmount](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1365>)
+### func \(\*BigTicketItem\) [GetNetAmount](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1378>)
 
 ```go
 func (b *BigTicketItem) GetNetAmount() float64
@@ -277,7 +278,7 @@ func (b *BigTicketItem) GetNetAmount() float64
 GetNetAmount returns the signed amount \(positive for income, negative for expense\)
 
 <a name="BigTicketType"></a>
-## type [BigTicketType](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1337>)
+## type [BigTicketType](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1350>)
 
 BigTicketType represents whether an item is income or expense
 
@@ -295,7 +296,7 @@ const (
 ```
 
 <a name="BudgetFitAnalysis"></a>
-## type [BudgetFitAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L971-L1039>)
+## type [BudgetFitAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L984-L1052>)
 
 BudgetFitAnalysis shows monthly gap and required rates
 
@@ -455,6 +456,21 @@ ChartResponse wraps chart data with layout options
 type ChartResponse struct {
     Data   []ChartData `json:"data"`
     Layout ChartLayout `json:"layout,omitempty"`
+}
+```
+
+<a name="CliffProximity"></a>
+## type [CliffProximity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1416-L1422>)
+
+CliffProximity is the plan's closest approach to a step\-cost income threshold, and the year it happens. Surfaced because "you are $N under the cliff" is more actionable than any rate: it is the one place where a single dollar of extra income has a discontinuous price.
+
+```go
+type CliffProximity struct {
+    Year       int     `json:"year"`
+    Age        int     `json:"age"`
+    Label      string  `json:"label"`
+    Headroom   float64 `json:"headroom"`
+    AnnualCost float64 `json:"annual_cost"`
 }
 ```
 
@@ -633,7 +649,7 @@ type ExceptionsReport struct {
 ```
 
 <a name="ExpenseBreakdownItem"></a>
-## type [ExpenseBreakdownItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L964-L968>)
+## type [ExpenseBreakdownItem](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L977-L981>)
 
 ExpenseBreakdownItem shows a named expense component
 
@@ -681,7 +697,7 @@ func (es *ExpenseSource) IsActive(month int) bool
 IsActive returns whether the expense is active in the given month
 
 <a name="FailurePoint"></a>
-## type [FailurePoint](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1158-L1166>)
+## type [FailurePoint](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1171-L1179>)
 
 FailurePoint represents the threshold where a parameter causes portfolio failure
 
@@ -698,7 +714,7 @@ type FailurePoint struct {
 ```
 
 <a name="FailurePointAnalysis"></a>
-## type [FailurePointAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1169-L1172>)
+## type [FailurePointAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1182-L1185>)
 
 FailurePointAnalysis contains all failure thresholds
 
@@ -727,7 +743,7 @@ type FileInfo struct {
 ```
 
 <a name="FilingStatus"></a>
-## type [FilingStatus](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1283>)
+## type [FilingStatus](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1296>)
 
 FilingStatus represents IRS tax filing status
 
@@ -942,7 +958,7 @@ func (hp *HealthcarePerson) YearsUntilMedicare() int
 YearsUntilMedicare returns years until Medicare eligibility \(0 if already eligible\)
 
 <a name="HistoricalBacktestAnalysis"></a>
-## type [HistoricalBacktestAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1432-L1443>)
+## type [HistoricalBacktestAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1462-L1473>)
 
 HistoricalBacktestAnalysis contains complete backtesting results
 
@@ -962,7 +978,7 @@ type HistoricalBacktestAnalysis struct {
 ```
 
 <a name="HistoricalBacktestResult"></a>
-## type [HistoricalBacktestResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1419-L1429>)
+## type [HistoricalBacktestResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1449-L1459>)
 
 HistoricalBacktestResult represents testing retirement from one starting year
 
@@ -981,7 +997,7 @@ type HistoricalBacktestResult struct {
 ```
 
 <a name="HistoricalYear"></a>
-## type [HistoricalYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1410-L1416>)
+## type [HistoricalYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1440-L1446>)
 
 HistoricalYear represents one year of market data
 
@@ -1124,7 +1140,7 @@ type MajorExpenseStore struct {
 ```
 
 <a name="MonteCarloAnalysis"></a>
-## type [MonteCarloAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1277-L1280>)
+## type [MonteCarloAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1290-L1293>)
 
 MonteCarloAnalysis contains complete simulation analysis
 
@@ -1136,7 +1152,7 @@ type MonteCarloAnalysis struct {
 ```
 
 <a name="MonteCarloDistBucket"></a>
-## type [MonteCarloDistBucket](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1270-L1274>)
+## type [MonteCarloDistBucket](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1283-L1287>)
 
 MonteCarloDistBucket represents a histogram bucket
 
@@ -1149,7 +1165,7 @@ type MonteCarloDistBucket struct {
 ```
 
 <a name="MonteCarloDistribution"></a>
-## type [MonteCarloDistribution](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1265-L1267>)
+## type [MonteCarloDistribution](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1278-L1280>)
 
 MonteCarloDistribution contains bucketed results for visualization
 
@@ -1160,7 +1176,7 @@ type MonteCarloDistribution struct {
 ```
 
 <a name="MonteCarloResult"></a>
-## type [MonteCarloResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1175-L1190>)
+## type [MonteCarloResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1188-L1203>)
 
 MonteCarloResult represents a single simulation run outcome
 
@@ -1184,7 +1200,7 @@ type MonteCarloResult struct {
 ```
 
 <a name="MonteCarloStats"></a>
-## type [MonteCarloStats](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1239-L1262>)
+## type [MonteCarloStats](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1252-L1275>)
 
 MonteCarloStats contains aggregated simulation statistics
 
@@ -1287,7 +1303,7 @@ const (
 ```
 
 <a name="PresentValueAnalysis"></a>
-## type [PresentValueAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1073-L1080>)
+## type [PresentValueAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1086-L1093>)
 
 PresentValueAnalysis shows PV of expenses vs income
 
@@ -1303,7 +1319,7 @@ type PresentValueAnalysis struct {
 ```
 
 <a name="ProjectionExplainability"></a>
-## type [ProjectionExplainability](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L953-L961>)
+## type [ProjectionExplainability](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L966-L974>)
 
 ProjectionExplainability contains reconciliation data for the projection UI.
 
@@ -1409,7 +1425,7 @@ func NormalizeProjectionTiming(timing ProjectionTiming) ProjectionTiming
 
 
 <a name="ProjectionYearSummary"></a>
-## type [ProjectionYearSummary](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L911-L950>)
+## type [ProjectionYearSummary](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L911-L963>)
 
 ProjectionYearSummary reconciles one projection year for explainability.
 
@@ -1441,6 +1457,19 @@ type ProjectionYearSummary struct {
     // See TaxCalculator.MarginalRateOnLongTermGain.
     MarginalRateLongTermGain float64 `json:"marginal_rate_long_term_gain,omitempty"`
 
+    // NextCliff* describe this year's proximity to the nearest income
+    // threshold that has a STEP cost — currently the IRMAA tiers, the only
+    // true discontinuities this engine models. Headroom is how much more
+    // income the year can absorb before the step lands; AnnualCost is what
+    // crossing costs. Empty label means no cliff applies (nobody on Medicare,
+    // or every tier already crossed).
+    //
+    // Measured against MAGI from two years prior, because that is what IRMAA
+    // is billed on — not this year's income.
+    NextCliffLabel      string  `json:"next_cliff_label,omitempty"`
+    NextCliffHeadroom   float64 `json:"next_cliff_headroom,omitempty"`
+    NextCliffAnnualCost float64 `json:"next_cliff_annual_cost,omitempty"`
+
     Expenses            float64 `json:"expenses"`
     Withdrawals         float64 `json:"withdrawals"`
     EndingBalance       float64 `json:"ending_balance"`
@@ -1457,7 +1486,7 @@ type ProjectionYearSummary struct {
 ```
 
 <a name="RMDAnalysis"></a>
-## type [RMDAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1052-L1070>)
+## type [RMDAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1065-L1083>)
 
 RMDAnalysis contains RMD projections and summary
 
@@ -1484,7 +1513,7 @@ type RMDAnalysis struct {
 ```
 
 <a name="RMDProjection"></a>
-## type [RMDProjection](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1042-L1049>)
+## type [RMDProjection](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1055-L1062>)
 
 RMDProjection represents RMD estimates for a specific year
 
@@ -1548,7 +1577,7 @@ type RecurringPayment struct {
 ```
 
 <a name="RothConversionConfig"></a>
-## type [RothConversionConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1320-L1334>)
+## type [RothConversionConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1333-L1347>)
 
 RothConversionConfig models annual Roth conversions
 
@@ -1571,7 +1600,7 @@ type RothConversionConfig struct {
 ```
 
 <a name="RothOptimizerStrategy"></a>
-## type [RothOptimizerStrategy](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1457-L1464>)
+## type [RothOptimizerStrategy](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1487-L1494>)
 
 RothOptimizerStrategy describes a Roth conversion strategy in a form the Tax Optimizer can apply to the engine without mutating saved settings.
 
@@ -1587,7 +1616,7 @@ type RothOptimizerStrategy struct {
 ```
 
 <a name="RothStrategyKind"></a>
-## type [RothStrategyKind](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1446>)
+## type [RothStrategyKind](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1476>)
 
 RothStrategyKind names a Roth conversion strategy family.
 
@@ -1606,7 +1635,7 @@ const (
 ```
 
 <a name="SSBreakevenResult"></a>
-## type [SSBreakevenResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1558-L1562>)
+## type [SSBreakevenResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1588-L1592>)
 
 SSBreakevenResult represents the age at which delaying benefits surpasses claiming earlier
 
@@ -1619,7 +1648,7 @@ type SSBreakevenResult struct {
 ```
 
 <a name="SSClaimingOption"></a>
-## type [SSClaimingOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1546-L1555>)
+## type [SSClaimingOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1576-L1585>)
 
 SSClaimingOption represents the benefit analysis for a specific claiming age
 
@@ -1637,7 +1666,7 @@ type SSClaimingOption struct {
 ```
 
 <a name="SSComparisonAnalysis"></a>
-## type [SSComparisonAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1565-L1584>)
+## type [SSComparisonAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1595-L1614>)
 
 SSComparisonAnalysis contains the full claiming age analysis
 
@@ -1665,7 +1694,7 @@ type SSComparisonAnalysis struct {
 ```
 
 <a name="SSPortfolioAnalysis"></a>
-## type [SSPortfolioAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1596-L1604>)
+## type [SSPortfolioAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1626-L1634>)
 
 
 
@@ -1682,7 +1711,7 @@ type SSPortfolioAnalysis struct {
 ```
 
 <a name="SSPortfolioOption"></a>
-## type [SSPortfolioOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1586-L1594>)
+## type [SSPortfolioOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1616-L1624>)
 
 
 
@@ -1744,7 +1773,7 @@ type SecondaryMetrics struct {
 ```
 
 <a name="SensitivityResult"></a>
-## type [SensitivityResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1149-L1155>)
+## type [SensitivityResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1162-L1168>)
 
 SensitivityResult contains the outcome of a scenario test
 
@@ -1759,7 +1788,7 @@ type SensitivityResult struct {
 ```
 
 <a name="SensitivityScenario"></a>
-## type [SensitivityScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1141-L1146>)
+## type [SensitivityScenario](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1154-L1159>)
 
 SensitivityScenario defines a parameter variation for testing
 
@@ -1773,7 +1802,7 @@ type SensitivityScenario struct {
 ```
 
 <a name="SequenceRiskBreakdown"></a>
-## type [SequenceRiskBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1193-L1236>)
+## type [SequenceRiskBreakdown](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1206-L1249>)
 
 SequenceRiskBreakdown provides detailed crash timing analysis
 
@@ -1893,7 +1922,7 @@ type SpendingVelocity struct {
 ```
 
 <a name="SustainabilityScore"></a>
-## type [SustainabilityScore](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1083-L1088>)
+## type [SustainabilityScore](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1096-L1101>)
 
 SustainabilityScore represents a 0\-100 score with visual attributes
 
@@ -1907,7 +1936,7 @@ type SustainabilityScore struct {
 ```
 
 <a name="CalculateSustainabilityScore"></a>
-### func [CalculateSustainabilityScore](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1091>)
+### func [CalculateSustainabilityScore](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1104>)
 
 ```go
 func CalculateSustainabilityScore(requiredRate float64, survives bool) *SustainabilityScore
@@ -1916,12 +1945,17 @@ func CalculateSustainabilityScore(requiredRate float64, survives bool) *Sustaina
 CalculateSustainabilityScore computes score from withdrawal rate
 
 <a name="TaxAnalysis"></a>
-## type [TaxAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1400-L1407>)
+## type [TaxAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1425-L1437>)
 
 TaxAnalysis contains tax projections summary
 
 ```go
 type TaxAnalysis struct {
+    // NearestCliff is the tightest squeeze anywhere in the projection: the
+    // year with the least headroom to a step-cost threshold. nil when no
+    // cliff applies to this household in any year.
+    NearestCliff *CliffProximity `json:"nearest_cliff,omitempty"`
+
     TotalFederalTaxPaid  float64            `json:"total_federal_tax_paid"`
     TotalStateTaxPaid    float64            `json:"total_state_tax_paid"`
     TotalTaxPaid         float64            `json:"total_tax_paid"`
@@ -1932,7 +1966,7 @@ type TaxAnalysis struct {
 ```
 
 <a name="TaxConfig"></a>
-## type [TaxConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1293-L1298>)
+## type [TaxConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1306-L1311>)
 
 TaxConfig holds tax modeling settings
 
@@ -1946,7 +1980,7 @@ type TaxConfig struct {
 ```
 
 <a name="DefaultTaxConfig"></a>
-### func [DefaultTaxConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1301>)
+### func [DefaultTaxConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1314>)
 
 ```go
 func DefaultTaxConfig() *TaxConfig
@@ -1955,7 +1989,7 @@ func DefaultTaxConfig() *TaxConfig
 DefaultTaxConfig returns sensible tax defaults
 
 <a name="TaxConfig.StateIncomeTaxRateOrZero"></a>
-### func \(\*TaxConfig\) [StateIncomeTaxRateOrZero](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1312>)
+### func \(\*TaxConfig\) [StateIncomeTaxRateOrZero](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1325>)
 
 ```go
 func (t *TaxConfig) StateIncomeTaxRateOrZero() float64
@@ -1964,7 +1998,7 @@ func (t *TaxConfig) StateIncomeTaxRateOrZero() float64
 StateIncomeTaxRateOrZero returns the configured state rate, or 0 if the TaxConfig pointer or rate is nil/zero. Use this at engine and math boundaries; use direct nil checks at completeness/validation boundaries where "unset" semantics matter.
 
 <a name="TaxOptimizerAnalysis"></a>
-## type [TaxOptimizerAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1512-L1522>)
+## type [TaxOptimizerAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1542-L1552>)
 
 TaxOptimizerAnalysis is the per\-scenario recommendation produced by analysis.TaxOptimizer. Always non\-nil when produced via RunFull; Eligible=false carries IneligibleReason for UI rendering.
 
@@ -1983,7 +2017,7 @@ type TaxOptimizerAnalysis struct {
 ```
 
 <a name="TaxOptimizerCandidate"></a>
-## type [TaxOptimizerCandidate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1476-L1507>)
+## type [TaxOptimizerCandidate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1506-L1537>)
 
 TaxOptimizerCandidate is one \(SS pair, Roth strategy\) configuration and its scored outcome.
 
@@ -2023,7 +2057,7 @@ type TaxOptimizerCandidate struct {
 ```
 
 <a name="TaxTreatment"></a>
-## type [TaxTreatment](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1345>)
+## type [TaxTreatment](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1358>)
 
 TaxTreatment represents how a big ticket item is taxed
 
@@ -2399,7 +2433,7 @@ func DefaultUserSettings() *UserSettings
 DefaultUserSettings returns settings with sensible defaults
 
 <a name="WhatIfAnalysis"></a>
-## type [WhatIfAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1525-L1543>)
+## type [WhatIfAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1555-L1573>)
 
 WhatIfAnalysis is the complete analysis container returned to templates
 
@@ -2426,7 +2460,7 @@ type WhatIfAnalysis struct {
 ```
 
 <a name="WhatIfPageData"></a>
-## type [WhatIfPageData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1607-L1616>)
+## type [WhatIfPageData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1637-L1646>)
 
 WhatIfPageData is the data passed to the whatif template
 
@@ -2931,7 +2965,7 @@ func (s *WhatIfSettings) TaxableStockPct() float64
 
 
 <a name="YearlyConversion"></a>
-## type [YearlyConversion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1469-L1472>)
+## type [YearlyConversion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1499-L1502>)
 
 YearlyConversion is one year's planned Roth conversion as part of an optimizer strategy. Age is the primary's age in that year; Amount is the dollar amount converted in that year, in nominal dollars.
 
@@ -2943,7 +2977,7 @@ type YearlyConversion struct {
 ```
 
 <a name="YearlyTaxSummary"></a>
-## type [YearlyTaxSummary](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1373-L1397>)
+## type [YearlyTaxSummary](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1386-L1410>)
 
 YearlyTaxSummary provides annual tax breakdown
 

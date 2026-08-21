@@ -17,6 +17,29 @@ import (
 // ConversionTaxPaid is left zero: isolating the marginal tax attributable to
 // Roth conversions requires a counterfactual no-conversion projection, which
 // this pure post-projection summary does not run.
+// nearestCliff finds the year that comes closest to a step-cost income
+// threshold without the plan doing anything about it. That year is where a
+// small change in timing is worth the most, so it is the one worth naming.
+func nearestCliff(summaries []models.ProjectionYearSummary, startYear, olderAge int) *models.CliffProximity {
+	var best *models.CliffProximity
+	for _, ys := range summaries {
+		if ys.NextCliffLabel == "" {
+			continue
+		}
+		if best != nil && ys.NextCliffHeadroom >= best.Headroom {
+			continue
+		}
+		best = &models.CliffProximity{
+			Year:       startYear + ys.Year,
+			Age:        olderAge + ys.Year,
+			Label:      ys.NextCliffLabel,
+			Headroom:   ys.NextCliffHeadroom,
+			AnnualCost: ys.NextCliffAnnualCost,
+		}
+	}
+	return best
+}
+
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis {
 	if proj == nil || len(proj.Months) == 0 {
 		return nil
@@ -100,6 +123,7 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 	if totalGrossIncome > 0 {
 		result.AverageEffectiveRate = result.TotalTaxPaid / totalGrossIncome * 100
 	}
+	result.NearestCliff = nearestCliff(proj.YearlySummaries, startYear, olderAge)
 
 	return result
 }

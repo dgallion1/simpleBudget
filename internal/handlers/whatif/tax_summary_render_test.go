@@ -210,3 +210,54 @@ func TestWhatIfTaxSummary_RendersMarginalRateOnGains(t *testing.T) {
 		t.Error("footnote still describes the old bracket-lookup behaviour")
 	}
 }
+
+// TestWhatIfTaxSummary_RendersNearestCliff covers the cliff panel: the
+// "you are $N under the cliff" sentence, which is only useful if the number
+// and the year are both right.
+func TestWhatIfTaxSummary_RendersNearestCliff(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.NearestCliff = &models.CliffProximity{
+		Year: 2031, Age: 78, Label: "IRMAA tier 1",
+		Headroom: 10319, AnnualCost: 2296.80,
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	html := strings.Join(strings.Fields(out), " ")
+
+	for _, want := range []string{"2031", "age 78", "IRMAA tier 1", "$10,319", "$2,297"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("cliff panel missing %q", want)
+		}
+	}
+	if !strings.Contains(html, "step, not a ramp") {
+		t.Error("cliff panel should explain that one dollar over costs the whole amount")
+	}
+}
+
+// TestWhatIfTaxSummary_OmitsCliffPanelWhenNone — no cliff applies to plenty of
+// households, and an empty warning box is worse than none.
+func TestWhatIfTaxSummary_OmitsCliffPanelWhenNone(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.NearestCliff = nil
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	if strings.Contains(out, "Closest approach to a cost step") {
+		t.Error("rendered the cliff panel with no cliff to report")
+	}
+}

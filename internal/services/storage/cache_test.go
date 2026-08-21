@@ -265,3 +265,128 @@ func TestRemoveOrdersCacheAgainstUnlink(t *testing.T) {
 		t.Error("publishCache installed an entry for a file Remove had already unlinked")
 	}
 }
+
+// TestLockBarsPublishFromReadStartedBeforeLock pins Lock's half of the
+// generation contract: a read that sampled the generation before the lock
+// must not be able to put what it decrypted back into the freshly cleared
+// map. Clearing alone is not enough -- the clear happens at a moment, and an
+// in-flight read outlives moments.
+//
+// The two halves of the read are driven directly rather than through
+// ReadFileContext because ReadFileContext holds s.mu across read, decrypt and
+// publish alike while Lock takes s.mu exclusively, so the two cannot in fact
+// interleave today. That makes the generation bump defence in depth: the
+// guarantee tested here is Lock's own, and must survive s.mu's coverage
+// narrowing later.
+func TestLockBarsPublishFromReadStartedBeforeLock(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := s.EnableEncryption("testpassword123"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	path := filepath.Join(dir, "ledger.csv")
+	if err := s.WriteFile(path, []byte("AAAA"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// First half of a read, taken while the store is still unlocked: sample
+	// the generation, stat, and hold the plaintext the read would have
+	// decrypted.
+	gen := s.cacheGeneration()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	plaintext, err := s.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(plaintext) != "AAAA" {
+		t.Fatalf("ReadFile = %q, want %q", plaintext, "AAAA")
+	}
+
+	s.Lock()
+
+	// Second half. The read is carrying plaintext from before the lock; the
+	// generation bump is what keeps it out.
+	s.publishCache(path, gen, &cacheEntry{
+		data:    plaintext,
+		modTime: info.ModTime().UnixNano(),
+		size:    info.Size(),
+	})
+
+	s.cacheMu.RLock()
+	entry, ok := s.cache[path]
+	s.cacheMu.RUnlock()
+	if ok {
+		t.Errorf("a read started before Lock put plaintext back into the cleared cache: %q", entry.data)
+	}
+
+	if _, err := s.ReadFile(path); err == nil {
+		t.Error("ReadFile succeeded while the store was locked")
+	}
+}
+
+// TestLockUnderConcurrentReadsLeavesNoPlaintext is the end-to-end form of the
+// same property: whatever reads are in flight when Lock lands, no plaintext
+// may remain cached once they have drained. It exercises the real
+// ReadFile/Lock paths under -race rather than the halves.
+func TestLockUnderConcurrentReadsLeavesNoPlaintext(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := s.EnableEncryption("testpassword123"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	path := filepath.Join(dir, "ledger.csv")
+	if err := s.WriteFile(path, []byte("AAAA"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Readers spin until the lock lands and their read starts failing.
+	locked := make(chan struct{})
+	var wg sync.WaitGroup
+	for reader := 0; reader < 4; reader++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				data, err := s.ReadFile(path)
+				if err != nil {
+					return
+				}
+				if got := string(data); got != "AAAA" {
+					t.Errorf("ReadFile returned %q, want %q", got, "AAAA")
+					return
+				}
+				select {
+				case <-locked:
+					// Lock has landed; one more pass, then err ends the loop.
+				default:
+				}
+			}
+		}()
+	}
+
+	s.Lock()
+	close(locked)
+	wg.Wait()
+
+	s.cacheMu.RLock()
+	cached := len(s.cache)
+	entry, ok := s.cache[path]
+	s.cacheMu.RUnlock()
+	if ok {
+		t.Errorf("plaintext survived Lock in the cache: %q", entry.data)
+	}
+	if cached != 0 {
+		t.Errorf("cache holds %d entries after Lock, want 0", cached)
+	}
+}

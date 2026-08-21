@@ -927,6 +927,14 @@ type ProjectionYearSummary struct {
 	// bracket. See TaxCalculator.MarginalRateOnOrdinaryIncome.
 	MarginalRate float64 `json:"marginal_rate,omitempty"`
 
+	// MarginalRateLongTermGain is the effective marginal tax rate (percent) on
+	// the next dollar of realized long-term capital gain in this year. Unlike
+	// the capital-gains bracket it accounts for the 0% ceiling running out, the
+	// § 86 Social Security phase-in that realized gain feeds, and NIIT — so
+	// "0% bracket" and "free to realize" are not the same thing.
+	// See TaxCalculator.MarginalRateOnLongTermGain.
+	MarginalRateLongTermGain float64 `json:"marginal_rate_long_term_gain,omitempty"`
+
 	Expenses            float64 `json:"expenses"`
 	Withdrawals         float64 `json:"withdrawals"`
 	EndingBalance       float64 `json:"ending_balance"`
@@ -1380,9 +1388,12 @@ type YearlyTaxSummary struct {
 	// includes capital-gain stacking and the § 86 Social Security phase-in.
 	// The field was called MarginalBracket until the value stopped being a
 	// bracket; the name now matches what it holds.
-	MarginalRate   float64 `json:"marginal_rate"`
-	RothConversion float64 `json:"roth_conversion"`
-	RMDAmount      float64 `json:"rmd_amount"`
+	MarginalRate float64 `json:"marginal_rate"`
+	// MarginalRateLongTermGain is the marginal cost of realizing one more
+	// dollar of long-term capital gain this year.
+	MarginalRateLongTermGain float64 `json:"marginal_rate_long_term_gain"`
+	RothConversion           float64 `json:"roth_conversion"`
+	RMDAmount                float64 `json:"rmd_amount"`
 }
 
 // TaxAnalysis contains tax projections summary

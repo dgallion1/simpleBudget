@@ -117,6 +117,7 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func \(tc \*TaxCalculator\) GetAdjustedStandardDeduction\(yearsFromBase int\) float64](<#TaxCalculator.GetAdjustedStandardDeduction>)
   - [func \(tc \*TaxCalculator\) GetBracketRate\(grossIncome float64, yearsFromBase int\) float64](<#TaxCalculator.GetBracketRate>)
   - [func \(tc \*TaxCalculator\) InflationFactor\(yearsFromBase int\) float64](<#TaxCalculator.InflationFactor>)
+  - [func \(tc \*TaxCalculator\) MarginalRateOnLongTermGain\(in ProjectedAnnualTaxInputs, yearsFromBase int\) float64](<#TaxCalculator.MarginalRateOnLongTermGain>)
   - [func \(tc \*TaxCalculator\) MarginalRateOnOrdinaryIncome\(in ProjectedAnnualTaxInputs, yearsFromBase int\) float64](<#TaxCalculator.MarginalRateOnOrdinaryIncome>)
 - [type TaxableAccountState](<#TaxableAccountState>)
   - [func NewTaxableAccountState\(s \*models.WhatIfSettings, marketValue float64\) TaxableAccountState](<#NewTaxableAccountState>)
@@ -342,7 +343,7 @@ EffectiveRMDStartAge returns the SECURE 2.0 RMD applicable age for the older per
 The older spouse drives the household's RMD timing. F\-077 fixup: when any Person.BirthMonth is set, derive the birth year directly from it — the floor'd integer ages on WhatIfSettings \(CurrentAge / SpouseAge\) read 1 year low whenever the birthday hasn't yet occurred in StartDate's calendar year, which silently pushed people born late in 1959 onto the post\-2032 \(age 75\) rule. Falls back to startYear \- GetOlderAge\(\) only for legacy callers that build settings without populating Persons.
 
 <a name="FindSteadyStateMonth"></a>
-## func [FindSteadyStateMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/month.go#L212>)
+## func [FindSteadyStateMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/month.go#L214>)
 
 ```go
 func FindSteadyStateMonth(hooks Hooks, s *models.WhatIfSettings) int
@@ -1273,7 +1274,7 @@ func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTax
 AnnualizedInputs extrapolates YTD totals plus the current month to a full year by linear annualization. Roth conversions are deliberately not annualized — they're discrete events.
 
 <a name="ProjectionTaxAccumulator.ApplyMonth"></a>
-### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L318>)
+### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L353>)
 
 ```go
 func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome)
@@ -1291,7 +1292,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 EstimateMonthlySnapshot computes the per\-month tax \+ IRMAA estimate for a given month, given YTD state and the month's income components. The remaining\-months division ensures actual taxes paid converge to the annual liability over the year.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlyTaxes"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L300>)
+### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L335>)
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64
@@ -1300,7 +1301,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsF
 EstimateMonthlyTaxes is a thin wrapper around EstimateMonthlySnapshot for callers that only need the monthly tax figure \(no IRMAA, no MAGI breakdown\).
 
 <a name="RealizedMonthIncome"></a>
-## type [RealizedMonthIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L334-L344>)
+## type [RealizedMonthIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L369-L379>)
 
 RealizedMonthIncome is one month's realised income split by tax treatment, plus the tax actually paid. Named fields for the same reason InvestmentIncomeTaxInputs has them: nine float64 dollars in a row is a transposition waiting to happen.
 
@@ -1545,6 +1546,23 @@ func (tc *TaxCalculator) InflationFactor(yearsFromBase int) float64
 ```
 
 InflationFactor returns the cumulative inflation factor for yearsFromBase years at the calculator's annual inflation rate.
+
+<a name="TaxCalculator.MarginalRateOnLongTermGain"></a>
+### func \(\*TaxCalculator\) [MarginalRateOnLongTermGain](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L290>)
+
+```go
+func (tc *TaxCalculator) MarginalRateOnLongTermGain(in ProjectedAnnualTaxInputs, yearsFromBase int) float64
+```
+
+MarginalRateOnLongTermGain returns the effective marginal tax rate, as a percentage, on the next dollar of realized LONG\-TERM capital gain.
+
+This is the number behind "how much gain can I realize this year", and it is not the capital\-gains bracket. Three things move it that a bracket table cannot see:
+
+- The 0% bracket runs out. While headroom remains the rate really is 0%; one dollar past the ceiling it steps to 15%, and the step is invisible until you differentiate.
+- Social Security. Realized gain is part of the § 86 provisional\-income base, so inside the phase\-in band each dollar of "0%" gain drags up to $0.85 of benefits into ordinary tax. Gain in the 0% bracket is routinely not free, and a headroom figure that ignores this overstates what can be realized cheaply.
+- NIIT. Above the threshold, gain carries the 3.8% surtax on top of whatever bracket applies.
+
+Short\-term gain is ordinary income, so MarginalRateOnOrdinaryIncome already answers the question for it; there is no separate short\-term variant.
 
 <a name="TaxCalculator.MarginalRateOnOrdinaryIncome"></a>
 ### func \(\*TaxCalculator\) [MarginalRateOnOrdinaryIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L264>)

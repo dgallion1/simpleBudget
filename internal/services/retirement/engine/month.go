@@ -83,9 +83,11 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		// Measured once per projection year, from the composition the year's
 		// final snapshot already computed — never in the monthly loop, which
 		// Monte Carlo and backtest also drive.
+		yearsFromTaxBase := YearsFromTaxBase(st.Settings(), currentYearSummary.Year)
 		currentYearSummary.MarginalRate = st.TaxCalculator.MarginalRateOnOrdinaryIncome(
-			st.CurrentYearTaxSnapshot.AnnualInputs,
-			YearsFromTaxBase(st.Settings(), currentYearSummary.Year))
+			st.CurrentYearTaxSnapshot.AnnualInputs, yearsFromTaxBase)
+		currentYearSummary.MarginalRateLongTermGain = st.TaxCalculator.MarginalRateOnLongTermGain(
+			st.CurrentYearTaxSnapshot.AnnualInputs, yearsFromTaxBase)
 		currentYearSummary.EndingBalance = month.PortfolioBalance
 		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
 		currentYearSummary.CumulativeInflation = month.CumulativeInflation

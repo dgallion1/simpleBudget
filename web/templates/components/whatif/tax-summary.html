@@ -39,6 +39,7 @@
                     <th class="pb-2 font-medium text-right">Total Tax</th>
                     <th class="pb-2 font-medium text-right">Eff. Rate</th>
                     <th class="pb-2 font-medium text-right">Marginal</th>
+                    <th class="pb-2 font-medium text-right">On Gains</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -54,13 +55,14 @@
                     <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatDollars .TotalTax}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
                     <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRate}}%</td>
+                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRateLongTermGain}}%</td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
     </div>
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs that year &mdash; measured from that year&rsquo;s own income, so it accounts for capital-gain stacking and the Social Security phase-in, and can exceed the statutory bracket. State tax is $0 unless a state rate is configured.
+        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs, and On Gains what the next dollar of realized long-term gain costs &mdash; both measured from that year&rsquo;s income, so they account for capital-gain stacking, the Social Security phase-in and NIIT. Neither is a statutory bracket and either can exceed one. State tax is $0 unless a state rate is configured.
     </p>
     {{end}}
 </div>

@@ -172,3 +172,40 @@ func TestBuildTax_MarginalRateFlowsFromEngine(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildTax_MarginalRateOnGainsFlowsFromEngine is the end-to-end check for
+// the "what does realizing one more dollar of gain cost" column. The rate is
+// legitimately 0 in a year with 0%-bracket headroom, so this asserts exact
+// pass-through plus at least one year where the cost is real.
+func TestBuildTax_MarginalRateOnGainsFlowsFromEngine(t *testing.T) {
+	proj, in := runProj(t, taxableScenario())
+
+	tax := BuildTax(proj, in)
+	if tax == nil {
+		t.Fatal("BuildTax returned nil for a taxable projection")
+	}
+	if len(tax.YearlyTaxSummary) != len(proj.YearlySummaries) {
+		t.Fatalf("YearlyTaxSummary has %d rows; want %d",
+			len(tax.YearlyTaxSummary), len(proj.YearlySummaries))
+	}
+
+	nonZero := 0
+	for i, row := range tax.YearlyTaxSummary {
+		want := proj.YearlySummaries[i].MarginalRateLongTermGain
+		if row.MarginalRateLongTermGain != want {
+			t.Errorf("row %d: MarginalRateLongTermGain = %.4f; want the engine's %.4f",
+				i, row.MarginalRateLongTermGain, want)
+		}
+		if want < 0 || want > 45 {
+			t.Errorf("row %d: implausible marginal rate on gains: %.4f%%", i, want)
+		}
+		if want > 0 {
+			nonZero++
+		}
+	}
+
+	if nonZero == 0 {
+		t.Error("no year priced realizing a gain above zero; this scenario draws down a " +
+			"large tax-deferred balance, so at least some years should sit past the 0% ceiling")
+	}
+}

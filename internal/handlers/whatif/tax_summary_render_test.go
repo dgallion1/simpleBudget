@@ -115,12 +115,12 @@ func fixtureTaxAnalysis(rmdStartAge int) *models.WhatIfAnalysis {
 				{
 					Year: 2025, Age: 72,
 					TaxableIncome: 90000.50, FederalTax: 8575.91, StateTax: 1200.25,
-					TotalTax: 9776.16, EffectiveRate: 10.9, MarginalBracket: 22,
+					TotalTax: 9776.16, EffectiveRate: 10.9, MarginalRate: 22,
 				},
 				{
 					Year: 2026, Age: 73,
 					TaxableIncome: 120000.33, FederalTax: 15200.44, StateTax: 1800.10,
-					TotalTax: 17000.54, EffectiveRate: 14.2, MarginalBracket: 24,
+					TotalTax: 17000.54, EffectiveRate: 14.2, MarginalRate: 24,
 				},
 			},
 		},

@@ -107,8 +107,8 @@ func TestEstimateRothConversionTaxAndMarginalRate(t *testing.T) {
 
 	assertClose(t, "zero conversion", tc.EstimateRothConversionTax(50000, 0, 0), 0)
 	assertClose(t, "conversion tax", tc.EstimateRothConversionTax(50000, 20000, 0), 3225)
-	assertClose(t, "nonpositive marginal rate default", tc.GetMarginalRate(0, 0), 10)
-	assertClose(t, "marginal rate", tc.GetMarginalRate(100000, 0), 22)
+	assertClose(t, "nonpositive marginal rate default", tc.GetBracketRate(0, 0), 10)
+	assertClose(t, "marginal rate", tc.GetBracketRate(100000, 0), 22)
 }
 
 func TestRothConversionAmountForYear_PerYearOverride(t *testing.T) {

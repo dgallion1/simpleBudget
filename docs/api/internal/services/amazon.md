@@ -30,7 +30,7 @@ Each CSV row is a product line; multi\-item shipments produce multiple rows shar
 
 
 <a name="SortShipmentsByDate"></a>
-## func SortShipmentsByDate
+## func [SortShipmentsByDate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/order.go#L271>)
 
 ```go
 func SortShipmentsByDate(s []Shipment)
@@ -39,7 +39,7 @@ func SortShipmentsByDate(s []Shipment)
 SortShipmentsByDate is a deterministic ordering \(newest first\) helpful for test snapshots and the CLI report.
 
 <a name="MatchOptions"></a>
-## type MatchOptions
+## type [MatchOptions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/matcher.go#L15-L19>)
 
 MatchOptions tunes matching behavior. A zero value picks safe defaults \(5\-day window, 1\-cent amount tolerance\).
 
@@ -52,7 +52,7 @@ type MatchOptions struct {
 ```
 
 <a name="MatchResult"></a>
-## type MatchResult
+## type [MatchResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/matcher.go#L22-L26>)
 
 MatchResult is one tx\-to\-shipment binding.
 
@@ -65,7 +65,7 @@ type MatchResult struct {
 ```
 
 <a name="Match"></a>
-### func Match
+### func [Match](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/matcher.go#L33>)
 
 ```go
 func Match(transactions []models.Transaction, shipments []Shipment, opts MatchOptions) []MatchResult
@@ -74,7 +74,7 @@ func Match(transactions []models.Transaction, shipments []Shipment, opts MatchOp
 Match links bank transactions to Amazon shipments and returns a label for each matched transaction. Transactions whose description contains neither "amazon" nor "amzn" are ignored — we only enrich Amazon charges, not random merchants. Each shipment is consumed by at most one transaction so multi\-charge orders don't double\-attribute.
 
 <a name="MatchByDescription"></a>
-### func MatchByDescription
+### func [MatchByDescription](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/matcher.go#L153>)
 
 ```go
 func MatchByDescription(transactions []models.Transaction, shipments []Shipment, alreadyMatched map[string]bool, consumedOrderIDs map[string]bool, opts MatchOptions) []MatchResult
@@ -85,7 +85,7 @@ MatchByDescription scans for Order IDs embedded in bank descriptions. Some state
 consumedOrderIDs lists Order IDs already attributed to a transaction in the prior pass; matches against them are skipped so a second transaction whose description happens to contain the same Order ID does not get the same shipment's label re\-applied.
 
 <a name="Shipment"></a>
-## type Shipment
+## type [Shipment](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/order.go#L37-L44>)
 
 Shipment is a single bank\-visible Amazon charge: one shipment's worth of products that posted as a single line on the user's statement.
 
@@ -101,7 +101,7 @@ type Shipment struct {
 ```
 
 <a name="LoadDir"></a>
-### func LoadDir
+### func [LoadDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/order.go#L49>)
 
 ```go
 func LoadDir(dir string) ([]Shipment, error)
@@ -110,7 +110,7 @@ func LoadDir(dir string) ([]Shipment, error)
 LoadDir reads both Amazon CSVs from a standard export directory. Missing files are treated as empty \(Amazon doesn't always include digital orders in every export\). Returns the combined shipment list.
 
 <a name="ParseDigitalContentOrders"></a>
-### func ParseDigitalContentOrders
+### func [ParseDigitalContentOrders](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/order.go#L153>)
 
 ```go
 func ParseDigitalContentOrders(r io.Reader) ([]Shipment, error)
@@ -119,7 +119,7 @@ func ParseDigitalContentOrders(r io.Reader) ([]Shipment, error)
 ParseDigitalContentOrders reads a Digital Content Orders.csv stream. Each row is one digital item; we group by Order ID. Rows with Transaction Amount of 0 \(gift\-card\-funded, free, etc.\) are skipped because they never hit the user's bank statement.
 
 <a name="ParseOrderHistory"></a>
-### func ParseOrderHistory
+### func [ParseOrderHistory](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/order.go#L86>)
 
 ```go
 func ParseOrderHistory(r io.Reader) ([]Shipment, error)
@@ -128,7 +128,7 @@ func ParseOrderHistory(r io.Reader) ([]Shipment, error)
 ParseOrderHistory reads a retail Order History.csv stream and returns one Shipment per \(Order ID, Ship Date\) group. Rows with a missing or non\-positive Total Amount are skipped \(cancelled / declined orders\).
 
 <a name="Source"></a>
-## type Source
+## type [Source](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/amazon/order.go#L28>)
 
 Source identifies which Amazon CSV a shipment originated from.
 

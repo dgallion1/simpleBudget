@@ -19,7 +19,7 @@ Package overrides is the sparse settings\-mutation vocabulary shared by the MCP 
 
 
 <a name="Apply"></a>
-## func Apply
+## func [Apply](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/overrides/overrides.go#L30>)
 
 ```go
 func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, error)
@@ -28,7 +28,7 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 Apply returns a deep copy of base with the overrides applied. base is never mutated. Invalid values are rejected before any engine work, naming the field.
 
 <a name="Overrides"></a>
-## type Overrides
+## type [Overrides](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/overrides/overrides.go#L14-L26>)
 
 Overrides is a sparse set of scenario changes. A nil pointer means "leave unchanged" — that is why every field is a pointer rather than a value.
 
@@ -49,7 +49,7 @@ type Overrides struct {
 ```
 
 <a name="Overrides.ValidateWritable"></a>
-### func \(Overrides\) ValidateWritable
+### func \(Overrides\) [ValidateWritable](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/overrides/overrides.go#L157>)
 
 ```go
 func (o Overrides) ValidateWritable() error
@@ -58,7 +58,7 @@ func (o Overrides) ValidateWritable() error
 ValidateWritable reports whether this override set may be persisted, as opposed to merely previewed. Apply deliberately does not call it: run\_scenario is allowed a wider field set than apply\_changes.
 
 <a name="ValidationError"></a>
-## type ValidationError
+## type [ValidationError](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/overrides/overrides.go#L149>)
 
 ValidationError marks an override value the caller can fix. Handlers map it to 400; anything else is a server\-side failure.
 
@@ -67,7 +67,7 @@ type ValidationError struct{ Err error }
 ```
 
 <a name="ValidationError.Error"></a>
-### func \(\*ValidationError\) Error
+### func \(\*ValidationError\) [Error](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/overrides/overrides.go#L151>)
 
 ```go
 func (e *ValidationError) Error() string
@@ -76,7 +76,7 @@ func (e *ValidationError) Error() string
 
 
 <a name="ValidationError.Unwrap"></a>
-### func \(\*ValidationError\) Unwrap
+### func \(\*ValidationError\) [Unwrap](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/overrides/overrides.go#L152>)
 
 ```go
 func (e *ValidationError) Unwrap() error

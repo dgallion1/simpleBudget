@@ -554,8 +554,18 @@ func (tc *TaxCalculator) EstimateRothConversionTax(baseIncome, conversionAmount 
 	return taxWith - taxWithout
 }
 
-// GetMarginalRate returns the marginal tax rate for a given income level.
-func (tc *TaxCalculator) GetMarginalRate(grossIncome float64, yearsFromBase int) float64 {
+// GetBracketRate returns the statutory ordinary-income bracket rate (percent)
+// that a given gross income falls in, after the standard deduction.
+//
+// This is a table lookup, and it is NOT the marginal tax rate. It cannot see
+// capital-gain stacking, the § 86 Social Security phase-in, or NIIT, so the
+// real cost of the next dollar is routinely far higher than what this
+// returns. For that, use MarginalRateOnOrdinaryIncome, which differentiates
+// the actual tax function numerically.
+//
+// Reporting this value to a user as their "marginal rate" was a defect; the
+// name now says what it does.
+func (tc *TaxCalculator) GetBracketRate(grossIncome float64, yearsFromBase int) float64 {
 	if grossIncome <= 0 {
 		return 10
 	}

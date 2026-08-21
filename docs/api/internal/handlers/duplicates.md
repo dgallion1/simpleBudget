@@ -15,7 +15,7 @@ Package duplicates serves the near\-duplicate review panel.
 
 
 <a name="Initialize"></a>
-## func Initialize
+## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/duplicates/handlers.go#L23>)
 
 ```go
 func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
@@ -24,7 +24,7 @@ func Initialize(l *dataloader.DataLoader, r *templates.Renderer)
 Initialize wires package dependencies. Both arguments may be nil in tests \(the page falls back to a JSON\-encoded payload when there is no renderer\).
 
 <a name="RegisterRoutes"></a>
-## func RegisterRoutes
+## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/duplicates/handlers.go#L29>)
 
 ```go
 func RegisterRoutes(r chi.Router)

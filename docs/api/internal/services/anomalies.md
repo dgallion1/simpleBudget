@@ -43,7 +43,7 @@ Results are sorted by Score descending; ties are broken by Hash ascending for de
 
 
 <a name="Anomaly"></a>
-## type Anomaly
+## type [Anomaly](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/anomalies/anomalies.go#L106-L147>)
 
 Anomaly is a single flagged transaction.
 
@@ -93,7 +93,7 @@ type Anomaly struct {
 ```
 
 <a name="Detect"></a>
-### func Detect
+### func [Detect](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/anomalies/anomalies.go#L156>)
 
 ```go
 func Detect(ts models.TransactionSet) []Anomaly

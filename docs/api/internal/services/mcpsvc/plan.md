@@ -27,9 +27,6 @@ Package plan shapes what\-if analysis output for MCP consumption and applies sce
 - [type Overrides](<#Overrides>)
 - [type RMDView](<#RMDView>)
 - [type ScenarioInfo](<#ScenarioInfo>)
-- [type Snapshotter](<#Snapshotter>)
-  - [func NewSnapshotter\(settingsDir, snapshotDir string\) \*Snapshotter](<#NewSnapshotter>)
-  - [func \(s \*Snapshotter\) Ensure\(scenario string, now time.Time\) \(string, error\)](<#Snapshotter.Ensure>)
 - [type Source](<#Source>)
   - [func NewSource\(sm \*retirement.SettingsManager\) \*Source](<#NewSource>)
   - [func \(s \*Source\) List\(\) \(\[\]ScenarioInfo, error\)](<#Source.List>)
@@ -55,7 +52,7 @@ var Apply = overrides.Apply
 ```
 
 <a name="Register"></a>
-## func Register
+## func [Register](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/register.go#L108>)
 
 ```go
 func Register(s *mcp.Server, deps Deps)
@@ -64,7 +61,7 @@ func Register(s *mcp.Server, deps Deps)
 Register adds the planner tools and the assumptions resource to s.
 
 <a name="AnalysisView"></a>
-## type AnalysisView
+## type [AnalysisView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L21-L28>)
 
 AnalysisView is a compact projection of models.WhatIfAnalysis. It carries headline scalars and per\-YEAR series only: models.ProjectionMonth series are 360 records for a 30\-year plan and are served separately by MonthWindow, and the tax\-optimizer candidates each embed a full \*models.WhatIfSettings which is excluded entirely.
 
@@ -80,7 +77,7 @@ type AnalysisView struct {
 ```
 
 <a name="RunWithOverrides"></a>
-### func RunWithOverrides
+### func [RunWithOverrides](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/overrides.go#L50>)
 
 ```go
 func RunWithOverrides(base *models.WhatIfSettings, o Overrides) (AnalysisView, error)
@@ -89,7 +86,7 @@ func RunWithOverrides(base *models.WhatIfSettings, o Overrides) (AnalysisView, e
 RunWithOverrides applies the overrides and runs the full analysis, returning the shaped view. Monte Carlo is excluded: the orchestrator auto\-seeds its RNG from the clock, so including it would make two identical runs disagree.
 
 <a name="ShapeAnalysis"></a>
-### func ShapeAnalysis
+### func [ShapeAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L86>)
 
 ```go
 func ShapeAnalysis(a *models.WhatIfAnalysis, includeMonteCarlo bool) AnalysisView
@@ -100,7 +97,7 @@ ShapeAnalysis converts a full analysis into its compact view.
 includeMonteCarlo is false for run\_scenario: the orchestrator auto\-seeds the Monte Carlo RNG from the clock, so MC figures differ between two runs of identical inputs. Including them in an override comparison would present that noise as an effect of the override.
 
 <a name="BudgetView"></a>
-## type BudgetView
+## type [BudgetView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L40-L47>)
 
 
 
@@ -116,20 +113,20 @@ type BudgetView struct {
 ```
 
 <a name="Deps"></a>
-## type Deps
+## type [Deps](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/register.go#L26-L30>)
 
 Deps is what the planner tools need. The settings manager is the server's own instance, not a second one opened on the same directory: it owns the active\-scenario selection, the settings cache, and the write lock.
 
 ```go
 type Deps struct {
     Settings  *retirement.SettingsManager
-    Snapshots *Snapshotter
+    Snapshots *snapshot.Snapshotter
     BaseURL   string
 }
 ```
 
 <a name="HeadlineView"></a>
-## type HeadlineView
+## type [HeadlineView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L30-L38>)
 
 
 
@@ -146,7 +143,7 @@ type HeadlineView struct {
 ```
 
 <a name="MonteCarloView"></a>
-## type MonteCarloView
+## type [MonteCarloView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L76-L78>)
 
 MonteCarloView carries stats only, never the full distribution.
 
@@ -157,7 +154,7 @@ type MonteCarloView struct {
 ```
 
 <a name="MonthRow"></a>
-## type MonthRow
+## type [MonthRow](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/months.go#L15-L32>)
 
 MonthRow is one month of projection detail.
 
@@ -183,7 +180,7 @@ type MonthRow struct {
 ```
 
 <a name="MonthWindow"></a>
-### func MonthWindow
+### func [MonthWindow](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/months.go#L36>)
 
 ```go
 func MonthWindow(p *models.ProjectionResult, from, to int) ([]MonthRow, error)
@@ -192,7 +189,7 @@ func MonthWindow(p *models.ProjectionResult, from, to int) ([]MonthRow, error)
 MonthWindow returns the inclusive \[from, to\] month range, rejecting spans wider than MaxMonthSpan and windows outside the projection.
 
 <a name="Overrides"></a>
-## type Overrides
+## type [Overrides](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/overrides.go#L16>)
 
 Overrides is the shared sparse settings vocabulary. Aliased rather than re\-declared so tool schemas and existing call sites are unaffected by the move to internal/services/retirement/overrides.
 
@@ -201,7 +198,7 @@ type Overrides = overrides.Overrides
 ```
 
 <a name="RMDView"></a>
-## type RMDView
+## type [RMDView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L61-L66>)
 
 
 
@@ -215,7 +212,7 @@ type RMDView struct {
 ```
 
 <a name="ScenarioInfo"></a>
-## type ScenarioInfo
+## type [ScenarioInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/scenarios.go#L12-L20>)
 
 ScenarioInfo is one row of the list\_scenarios result.
 
@@ -231,43 +228,8 @@ type ScenarioInfo struct {
 }
 ```
 
-<a name="Snapshotter"></a>
-## type Snapshotter
-
-Snapshotter copies a scenario before this process first writes to it.
-
-Once per \(process, scenario\), not once per process: switching scenarios in the UI mid\-conversation must back up the second plan too.
-
-```go
-type Snapshotter struct {
-    // contains filtered or unexported fields
-}
-```
-
-<a name="NewSnapshotter"></a>
-### func NewSnapshotter
-
-```go
-func NewSnapshotter(settingsDir, snapshotDir string) *Snapshotter
-```
-
-
-
-<a name="Snapshotter.Ensure"></a>
-### func \(\*Snapshotter\) Ensure
-
-```go
-func (s *Snapshotter) Ensure(scenario string, now time.Time) (string, error)
-```
-
-Ensure copies scenario to the snapshot directory if this process has not already done so, returning the snapshot path.
-
-It READS the source rather than linking it: followups §3 records that this server detects encryption in the wrong directory, so a blind copy of ciphertext would "succeed" and the caller's abort\-before\-write guarantee would not fire.
-
-Precondition: scenario must be a bare filename with no path separators or ".." segments \(filepath.Base\(scenario\) == scenario, and it must not contain ".."\). This is the only recovery path for an unwanted write to the user's real plan, so it validates its own input rather than trusting the caller: scenario is rejected, and nothing is read or written, before any file I/O happens. This mirrors retirement.SettingsManager.scenarioPath's validation.
-
 <a name="Source"></a>
-## type Source
+## type [Source](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/scenarios.go#L29-L31>)
 
 Source reads saved what\-if scenarios through the running server's settings manager. It writes nothing \-\- it exposes no method that does.
 
@@ -280,7 +242,7 @@ type Source struct {
 ```
 
 <a name="NewSource"></a>
-### func NewSource
+### func [NewSource](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/scenarios.go#L33>)
 
 ```go
 func NewSource(sm *retirement.SettingsManager) *Source
@@ -289,7 +251,7 @@ func NewSource(sm *retirement.SettingsManager) *Source
 
 
 <a name="Source.List"></a>
-### func \(\*Source\) List
+### func \(\*Source\) [List](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/scenarios.go#L38>)
 
 ```go
 func (s *Source) List() ([]ScenarioInfo, error)
@@ -298,7 +260,7 @@ func (s *Source) List() ([]ScenarioInfo, error)
 List returns every saved scenario with a one\-line summary.
 
 <a name="Source.Load"></a>
-### func \(\*Source\) Load
+### func \(\*Source\) [Load](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/scenarios.go#L66>)
 
 ```go
 func (s *Source) Load(name string) (*models.WhatIfSettings, string, error)
@@ -307,7 +269,7 @@ func (s *Source) Load(name string) (*models.WhatIfSettings, string, error)
 Load returns the named scenario's settings and the filename actually used. An empty name resolves to the active scenario. An unknown name produces an error that lists the valid names, so the caller can retry without a second round trip.
 
 <a name="TaxView"></a>
-## type TaxView
+## type [TaxView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L68-L73>)
 
 
 
@@ -321,7 +283,7 @@ type TaxView struct {
 ```
 
 <a name="YearView"></a>
-## type YearView
+## type [YearView](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/plan/view.go#L49-L59>)
 
 
 

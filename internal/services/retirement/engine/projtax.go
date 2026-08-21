@@ -48,6 +48,13 @@ type ProjectedTaxSnapshot struct {
 	TaxableSocialSecurityPct    float64
 	AnnualNIIT                  float64
 	AnnualIRMAA                 float64
+
+	// AnnualInputs is the annualized income composition this snapshot was
+	// computed from. Carried so callers can re-evaluate the tax function at
+	// a perturbed income (e.g. MarginalRateOnOrdinaryIncome) without having
+	// to reconstruct the composition — it is a plain copy of a value the
+	// snapshot already built, so carrying it costs nothing.
+	AnnualInputs ProjectedAnnualTaxInputs
 }
 
 // AnnualizedInputs extrapolates YTD totals plus the current month to a
@@ -158,7 +165,81 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 		TaxableSocialSecurityPct:    taxableSocialSecurityPct,
 		AnnualNIIT:                  taxBreakdown.NIIT,
 		AnnualIRMAA:                 annualIRMAA,
+		AnnualInputs:                inputs,
 	}
+}
+
+// marginalRateProbe is the income perturbation used to measure a marginal
+// rate numerically.
+//
+// One dollar, because the question is literally "what does the next dollar
+// cost". A wider probe silently averages across any boundary it spans and
+// reports a rate nobody actually faces: at $100, a single filer $50 below the
+// 12%/22% edge was reported at 17%, being half a probe of each, when the next
+// dollar genuinely costs 12%.
+//
+// A dollar is also numerically safe here. The difference between two annual
+// tax figures a dollar apart is on the order of cents against totals in the
+// thousands — six or more decimal orders above float64 epsilon — so rounding
+// cannot dominate it. The residual blur is now one dollar wide, which is the
+// natural quantum of the thing being measured.
+const marginalRateProbe = 1.0
+
+// AnnualIncomeTaxOn returns the total income tax (federal + state + NIIT)
+// implied by a full-year income composition, recomputing the § 86 taxable
+// portion of Social Security from that composition.
+//
+// IRMAA is deliberately excluded. It is a Medicare premium surcharge
+// assessed on a two-year MAGI lookback, so it is not a cost of *this*
+// year's marginal dollar — it lands on a different year's bill. Callers
+// reasoning about IRMAA must treat it as its own discontinuity.
+func (tc *TaxCalculator) AnnualIncomeTaxOn(in ProjectedAnnualTaxInputs, yearsFromBase int) float64 {
+	if tc == nil {
+		return 0
+	}
+	otherIncome := in.OrdinaryIncome + in.TaxableWithdrawals + in.RothConversions
+	taxableSocialSecurity := tc.CalculateTaxableSocialSecurity(
+		in.SocialSecurityIncome, otherIncome, in.QualifiedDividends, in.LongTermCapitalGains)
+	ordinaryIncome := otherIncome + taxableSocialSecurity
+	return tc.CalculateTaxWithInvestmentIncomeBreakdown(
+		ordinaryIncome, in.QualifiedDividends, in.LongTermCapitalGains,
+		in.NonQualifiedDividends, yearsFromBase).TotalTax
+}
+
+// MarginalRateOnOrdinaryIncome returns the effective marginal tax rate, as a
+// percentage, on the next dollar of ordinary income given a full-year income
+// composition.
+//
+// This is a numeric derivative of the real tax function —
+// (cost(income + delta) - cost(income)) / delta — not a bracket-table lookup.
+// The distinction is not cosmetic. A household in the nominal 12% bracket
+// with long-term gains straddling the 0%/15% boundary faces a real rate of
+// 27% on ordinary income, because each dollar of ordinary income both costs
+// 12 cents directly and pushes one dollar of gain out of the 0% band. The
+// § 86 Social Security phase-in produces the same kind of amplification.
+// Reading 12% off the bracket table and calling it the marginal rate
+// understates the true cost by more than a factor of two.
+//
+// Use GetBracketRate when the question really is "which statutory bracket
+// does this income fall in"; use this when the question is "what does the
+// next dollar cost".
+func (tc *TaxCalculator) MarginalRateOnOrdinaryIncome(in ProjectedAnnualTaxInputs, yearsFromBase int) float64 {
+	if tc == nil {
+		return 0
+	}
+	base := tc.AnnualIncomeTaxOn(in, yearsFromBase)
+
+	probed := in
+	probed.OrdinaryIncome += marginalRateProbe
+	rate := (tc.AnnualIncomeTaxOn(probed, yearsFromBase) - base) / marginalRateProbe * 100
+
+	// Total tax is non-decreasing in income everywhere this engine models
+	// (there are no subsidy cliffs in the income-tax path), so a negative
+	// result can only be float64 noise near a boundary.
+	if rate < 0 {
+		return 0
+	}
+	return rate
 }
 
 // resolveIRMAALookbackMAGI picks the MAGI from two years prior (the

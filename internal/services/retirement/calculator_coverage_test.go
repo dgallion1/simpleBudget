@@ -239,13 +239,13 @@ func TestGetAdjustedStandardDeduction_MarriedJoint(t *testing.T) {
 	}
 }
 
-func TestGetMarginalRate_ZeroIncome(t *testing.T) {
+func TestGetBracketRate_ZeroIncome(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 3.0)
 
-	rate := tc.GetMarginalRate(0, 0)
+	rate := tc.GetBracketRate(0, 0)
 	if rate != 10 {
 		t.Errorf("expected 10%% marginal rate for zero income, got %f", rate)
 	}
@@ -316,14 +316,14 @@ func TestFindSteadyStateMonth_BeyondProjection(t *testing.T) {
 	}
 }
 
-func TestGetMarginalRate_TopBracket(t *testing.T) {
+func TestGetBracketRate_TopBracket(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// Very high income should hit top bracket (37%)
-	rate := tc.GetMarginalRate(1_000_000, 0)
+	rate := tc.GetBracketRate(1_000_000, 0)
 	if rate != 37 {
 		t.Errorf("expected 37%% for very high income, got %f", rate)
 	}

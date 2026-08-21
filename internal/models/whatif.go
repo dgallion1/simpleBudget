@@ -876,11 +876,20 @@ type ProjectionYearSummary struct {
 	NIIT                     float64 `json:"niit,omitempty"`
 	IRMAA                    float64 `json:"irmaa,omitempty"`
 	TaxableSocialSecurityPct float64 `json:"taxable_social_security_pct,omitempty"`
-	Expenses                 float64 `json:"expenses"`
-	Withdrawals              float64 `json:"withdrawals"`
-	EndingBalance            float64 `json:"ending_balance"`
-	EndingBalanceReal        float64 `json:"ending_balance_real"`
-	CumulativeInflation      float64 `json:"cumulative_inflation"`
+
+	// MarginalRate is the effective marginal tax rate (percent) on the next
+	// dollar of ordinary income in this year, measured numerically from the
+	// year's own income composition. It is NOT a bracket-table lookup: it
+	// includes capital-gain stacking and the § 86 Social Security phase-in,
+	// both of which routinely push the real rate far above the nominal
+	// bracket. See TaxCalculator.MarginalRateOnOrdinaryIncome.
+	MarginalRate float64 `json:"marginal_rate,omitempty"`
+
+	Expenses            float64 `json:"expenses"`
+	Withdrawals         float64 `json:"withdrawals"`
+	EndingBalance       float64 `json:"ending_balance"`
+	EndingBalanceReal   float64 `json:"ending_balance_real"`
+	CumulativeInflation float64 `json:"cumulative_inflation"`
 
 	// Guardrail visibility (F-079)
 	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
@@ -1312,16 +1321,26 @@ func (b *BigTicketItem) GetNetAmount() float64 {
 
 // YearlyTaxSummary provides annual tax breakdown
 type YearlyTaxSummary struct {
-	Year            int     `json:"year"`
-	Age             int     `json:"age"`
-	TaxableIncome   float64 `json:"taxable_income"`
-	FederalTax      float64 `json:"federal_tax"`
-	StateTax        float64 `json:"state_tax"`
-	TotalTax        float64 `json:"total_tax"`
-	EffectiveRate   float64 `json:"effective_rate"`
-	MarginalBracket float64 `json:"marginal_bracket"`
-	RothConversion  float64 `json:"roth_conversion"`
-	RMDAmount       float64 `json:"rmd_amount"`
+	Year          int     `json:"year"`
+	Age           int     `json:"age"`
+	TaxableIncome float64 `json:"taxable_income"`
+	FederalTax    float64 `json:"federal_tax"`
+	StateTax      float64 `json:"state_tax"`
+	TotalTax      float64 `json:"total_tax"`
+	EffectiveRate float64 `json:"effective_rate"`
+	// MarginalRate is the effective marginal tax rate (percent) on the next
+	// dollar of ordinary income that year: federal plus state plus NIIT,
+	// measured numerically from the year's own income composition.
+	//
+	// This is NOT a statutory bracket and must not be labelled as one. It
+	// routinely exceeds the bracket — a household in the 12% bracket with
+	// long-term gains straddling the 0%/15% boundary faces 27% — because it
+	// includes capital-gain stacking and the § 86 Social Security phase-in.
+	// The field was called MarginalBracket until the value stopped being a
+	// bracket; the name now matches what it holds.
+	MarginalRate   float64 `json:"marginal_rate"`
+	RothConversion float64 `json:"roth_conversion"`
+	RMDAmount      float64 `json:"rmd_amount"`
 }
 
 // TaxAnalysis contains tax projections summary

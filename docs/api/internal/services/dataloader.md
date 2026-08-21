@@ -17,10 +17,12 @@ Package dataloader reads the user's bank\-export CSVs, normalizes per\-bank colu
   - [func \(dl \*DataLoader\) ArchiveMajorExpense\(id string\) error](<#DataLoader.ArchiveMajorExpense>)
   - [func \(dl \*DataLoader\) ClearDuplicateDecision\(pairKey string\) error](<#DataLoader.ClearDuplicateDecision>)
   - [func \(dl \*DataLoader\) ClearTransactionPin\(hash string\) error](<#DataLoader.ClearTransactionPin>)
+  - [func \(dl \*DataLoader\) CountCSVFiles\(\) \(int, error\)](<#DataLoader.CountCSVFiles>)
   - [func \(dl \*DataLoader\) DeleteMajorExpense\(id string\) \(\[\]models.MajorExpense, error\)](<#DataLoader.DeleteMajorExpense>)
   - [func \(dl \*DataLoader\) DiscardDeletedMajorExpense\(id string\) error](<#DataLoader.DiscardDeletedMajorExpense>)
   - [func \(dl \*DataLoader\) FilteredTransfers\(\) int](<#DataLoader.FilteredTransfers>)
   - [func \(dl \*DataLoader\) GetFileInfo\(\) \(\[\]models.FileInfo, error\)](<#DataLoader.GetFileInfo>)
+  - [func \(dl \*DataLoader\) KeptBothDuplicates\(\) \[\]DuplicatePair](<#DataLoader.KeptBothDuplicates>)
   - [func \(dl \*DataLoader\) LoadAliases\(\) \(map\[string\]string, error\)](<#DataLoader.LoadAliases>)
   - [func \(dl \*DataLoader\) LoadAmazonEnrichment\(\) \(map\[string\]string, error\)](<#DataLoader.LoadAmazonEnrichment>)
   - [func \(dl \*DataLoader\) LoadData\(\) \(\*models.TransactionSet, error\)](<#DataLoader.LoadData>)
@@ -59,7 +61,7 @@ const (
 ```
 
 <a name="DataLoader"></a>
-## type [DataLoader](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L43-L66>)
+## type [DataLoader](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L43-L69>)
 
 DataLoader handles loading and preprocessing of financial data from CSV files.
 
@@ -78,7 +80,7 @@ type DataLoader struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L121>)
+### func [New](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L124>)
 
 ```go
 func New(csvDirectory string, store *storage.Storage) *DataLoader
@@ -128,6 +130,15 @@ ClearTransactionPin removes the pin for a transaction hash. No\-op if the hash i
 
 This delegates to the PUBLIC SetTransactionPin rather than taking writeMu itself: sync.Mutex is not reentrant, and SetTransactionPin already takes writeMu for the whole sequence, so taking it here too would deadlock.
 
+<a name="DataLoader.CountCSVFiles"></a>
+### func \(\*DataLoader\) [CountCSVFiles](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L625>)
+
+```go
+func (dl *DataLoader) CountCSVFiles() (int, error)
+```
+
+CountCSVFiles returns how many CSV files GetFileInfo would report, without the per\-file scanCSVMetadata parse that dominates its cost. The inclusion rule is deliberately identical \-\- glob \*.csv, drop anything that fails to stat \-\- so a caller that only needs the count never has to parse the whole ledger a second time to get it.
+
 <a name="DataLoader.DeleteMajorExpense"></a>
 ### func \(\*DataLoader\) [DeleteMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L142>)
 
@@ -149,7 +160,7 @@ func (dl *DataLoader) DiscardDeletedMajorExpense(id string) error
 DiscardDeletedMajorExpense permanently removes an archived entry. The definition and its captured pin hashes are gone; this cannot be undone.
 
 <a name="DataLoader.FilteredTransfers"></a>
-### func \(\*DataLoader\) [FilteredTransfers](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L183>)
+### func \(\*DataLoader\) [FilteredTransfers](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L186>)
 
 ```go
 func (dl *DataLoader) FilteredTransfers() int
@@ -158,7 +169,7 @@ func (dl *DataLoader) FilteredTransfers() int
 FilteredTransfers returns how many internal transfers the most recent load filtered out. Replaces the former exported FilteredTransferCount field, which could not be read safely while another goroutine was loading.
 
 <a name="DataLoader.GetFileInfo"></a>
-### func \(\*DataLoader\) [GetFileInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L618>)
+### func \(\*DataLoader\) [GetFileInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L641>)
 
 ```go
 func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error)
@@ -166,8 +177,17 @@ func (dl *DataLoader) GetFileInfo() ([]models.FileInfo, error)
 
 GetFileInfo returns information about available CSV files
 
+<a name="DataLoader.KeptBothDuplicates"></a>
+### func \(\*DataLoader\) [KeptBothDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L854>)
+
+```go
+func (dl *DataLoader) KeptBothDuplicates() []DuplicatePair
+```
+
+KeptBothDuplicates returns the pairs the user settled as kept\_both, in detection order. Both sides are live and untagged, so the pair affects nothing about the ledger \-\- but the decision is still recorded and is still undoable, and without this accessor such a pair appears in no list at all and its pair\_key becomes unrecoverable.
+
 <a name="DataLoader.LoadAliases"></a>
-### func \(\*DataLoader\) [LoadAliases](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L732>)
+### func \(\*DataLoader\) [LoadAliases](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L755>)
 
 ```go
 func (dl *DataLoader) LoadAliases() (map[string]string, error)
@@ -185,7 +205,7 @@ func (dl *DataLoader) LoadAmazonEnrichment() (map[string]string, error)
 LoadAmazonEnrichment reads the hash\-\>label map from disk. A missing file is not an error — enrichment is opt\-in \(users without Amazon data won't have generated this file\).
 
 <a name="DataLoader.LoadData"></a>
-### func \(\*DataLoader\) [LoadData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L190>)
+### func \(\*DataLoader\) [LoadData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L193>)
 
 ```go
 func (dl *DataLoader) LoadData() (*models.TransactionSet, error)
@@ -194,7 +214,7 @@ func (dl *DataLoader) LoadData() (*models.TransactionSet, error)
 LoadData loads and combines data from all CSV files in the directory
 
 <a name="DataLoader.LoadDataContext"></a>
-### func \(\*DataLoader\) [LoadDataContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L198>)
+### func \(\*DataLoader\) [LoadDataContext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L201>)
 
 ```go
 func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionSet, error)
@@ -250,13 +270,15 @@ PrunePinsForMissingExpenses drops pins whose target ID is not in the supplied li
 It takes writeMu itself. Do not call it from DeleteMajorExpense or any other writeMu\-holding method in this package \-\- sync.Mutex is not reentrant, so nesting the acquisition would deadlock.
 
 <a name="DataLoader.ResolvedDuplicates"></a>
-### func \(\*DataLoader\) [ResolvedDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L814>)
+### func \(\*DataLoader\) [ResolvedDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L841>)
 
 ```go
 func (dl *DataLoader) ResolvedDuplicates() []DuplicatePair
 ```
 
 ResolvedDuplicates returns the kept\_winner pairs the user has already resolved, sourced from the most recent load. The Left side is the kept transaction; Right is the suppressed one.
+
+kept\_both pairs are deliberately NOT here \-\- the Duplicates page reads this list and renders Right as the suppressed side, which a kept\_both pair has none of. See KeptBothDuplicates.
 
 <a name="DataLoader.RestoreMajorExpense"></a>
 ### func \(\*DataLoader\) [RestoreMajorExpense](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/major_expenses.go#L313>)
@@ -272,7 +294,7 @@ Pin restoration is non\-destructive: a hash that has been pinned to a different 
 Returns an error if no archived entry has the given ID, or if an active expense with the same ID already exists \(which would shadow the restore\).
 
 <a name="DataLoader.SaveAlias"></a>
-### func \(\*DataLoader\) [SaveAlias](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L756>)
+### func \(\*DataLoader\) [SaveAlias](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L779>)
 
 ```go
 func (dl *DataLoader) SaveAlias(hash, displayName string) error
@@ -317,7 +339,7 @@ func (dl *DataLoader) SaveMajorExpenses(list []models.MajorExpense) error
 SaveMajorExpenses persists the entire list to disk.
 
 <a name="DataLoader.SetEnabledFiles"></a>
-### func \(\*DataLoader\) [SetEnabledFiles](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L156>)
+### func \(\*DataLoader\) [SetEnabledFiles](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L159>)
 
 ```go
 func (dl *DataLoader) SetEnabledFiles(files []string)
@@ -344,7 +366,7 @@ func (dl *DataLoader) SetTransactionPins(updates map[string]string) (int, error)
 SetTransactionPins writes many hash → expense\-ID pins in one disk round\-trip. Existing pins for hashes not in the input map are left untouched; pins in the input map with an empty expenseID are removed. Empty hashes are silently skipped so callers don't have to filter upstream. Returns the number of pins actually changed.
 
 <a name="DataLoader.UnresolvedDuplicateCount"></a>
-### func \(\*DataLoader\) [UnresolvedDuplicateCount](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L795>)
+### func \(\*DataLoader\) [UnresolvedDuplicateCount](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L818>)
 
 ```go
 func (dl *DataLoader) UnresolvedDuplicateCount() int
@@ -353,7 +375,7 @@ func (dl *DataLoader) UnresolvedDuplicateCount() int
 UnresolvedDuplicateCount returns the number of candidate pairs that have not yet been resolved by the user. Recomputed on every LoadData.
 
 <a name="DataLoader.UnresolvedDuplicates"></a>
-### func \(\*DataLoader\) [UnresolvedDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L803>)
+### func \(\*DataLoader\) [UnresolvedDuplicates](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/dataloader/loader.go#L826>)
 
 ```go
 func (dl *DataLoader) UnresolvedDuplicates() []DuplicatePair

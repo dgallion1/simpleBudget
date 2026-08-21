@@ -732,27 +732,27 @@ func TestCalculateNIIT_HeadOfHousehold(t *testing.T) {
 	}
 }
 
-// --- GetMarginalRate edge cases ---
+// --- GetBracketRate edge cases ---
 
-func TestGetMarginalRate_NegativeIncome(t *testing.T) {
+func TestGetBracketRate_NegativeIncome(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 0)
 
-	rate := tc.GetMarginalRate(-5000, 0)
+	rate := tc.GetBracketRate(-5000, 0)
 	if rate != 10 {
 		t.Errorf("expected 10 for negative income, got %f", rate)
 	}
 }
 
-func TestGetMarginalRate_WithInflation(t *testing.T) {
+func TestGetBracketRate_WithInflation(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 3.0)
 
 	// Same nominal income should have lower marginal rate with inflation-adjusted brackets
-	rateBase := tc.GetMarginalRate(100000, 0)
-	rateFuture := tc.GetMarginalRate(100000, 20)
+	rateBase := tc.GetBracketRate(100000, 0)
+	rateFuture := tc.GetBracketRate(100000, 20)
 
 	if rateFuture > rateBase {
 		t.Errorf("expected lower or equal marginal rate with inflation-adjusted brackets: base=%f future=%f", rateBase, rateFuture)

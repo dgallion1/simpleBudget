@@ -53,14 +53,14 @@
                     <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .StateTax}}</td>
                     <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatDollars .TotalTax}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
-                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalBracket}}%</td>
+                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRate}}%</td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
     </div>
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is the top federal bracket reached that year. State tax is $0 unless a state rate is configured.
+        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs that year &mdash; measured from that year&rsquo;s own income, so it accounts for capital-gain stacking and the Social Security phase-in, and can exceed the statutory bracket. State tax is $0 unless a state rate is configured.
     </p>
     {{end}}
 </div>

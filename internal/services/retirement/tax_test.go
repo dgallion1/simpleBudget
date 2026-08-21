@@ -160,7 +160,7 @@ func TestEstimateRothConversionTax(t *testing.T) {
 	}
 }
 
-func TestGetMarginalRate(t *testing.T) {
+func TestGetBracketRate(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 0)
@@ -179,7 +179,7 @@ func TestGetMarginalRate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		rate := tc.GetMarginalRate(tt.income, 0)
+		rate := tc.GetBracketRate(tt.income, 0)
 		if rate != tt.expectedRate {
 			t.Errorf("Income %f: expected marginal rate %f, got %f", tt.income, tt.expectedRate, rate)
 		}

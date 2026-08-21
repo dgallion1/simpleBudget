@@ -25,7 +25,6 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 	s := in.Prepared.Settings()
 	startYear := engine.ParseStartYear(s.StartDate)
 	olderAge := s.GetOlderAge()
-	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
 	// Per-relative-year figures not carried on the yearly summary.
 	type yearAgg struct {
@@ -73,7 +72,6 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 		}
 
 		calendarYear := startYear + ys.Year
-		marginalBracket := tc.GetMarginalRate(ys.MAGI, engine.YearsFromTaxBase(s, calendarYear))
 
 		result.TotalTaxPaid += totalTax
 		result.TotalFederalTaxPaid += federalTax
@@ -81,16 +79,20 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 		totalGrossIncome += ys.GrossIncome
 
 		result.YearlyTaxSummary = append(result.YearlyTaxSummary, models.YearlyTaxSummary{
-			Year:            calendarYear,
-			Age:             olderAge + ys.Year,
-			TaxableIncome:   ys.MAGI,
-			FederalTax:      federalTax,
-			StateTax:        stateTax,
-			TotalTax:        totalTax,
-			EffectiveRate:   effectiveRate,
-			MarginalBracket: marginalBracket,
-			RothConversion:  rothConversion,
-			RMDAmount:       rmd,
+			Year:          calendarYear,
+			Age:           olderAge + ys.Year,
+			TaxableIncome: ys.MAGI,
+			FederalTax:    federalTax,
+			StateTax:      stateTax,
+			TotalTax:      totalTax,
+			EffectiveRate: effectiveRate,
+			// Measured numerically by the engine from this year's own income
+			// composition, so it reflects capital-gain stacking and the § 86
+			// phase-in. Previously a bracket-table lookup fed MAGI, which
+			// understated the rate and passed the wrong quantity in.
+			MarginalRate:   ys.MarginalRate,
+			RothConversion: rothConversion,
+			RMDAmount:      rmd,
 		})
 	}
 

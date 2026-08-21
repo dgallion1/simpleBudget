@@ -27,7 +27,7 @@ const HealthInsuranceCategory = "Health Insurance"
 ```
 
 <a name="BudgetTargets"></a>
-## func BudgetTargets
+## func [BudgetTargets](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/metrics/metrics.go#L92>)
 
 ```go
 func BudgetTargets(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) (living, healthcare float64)
@@ -36,7 +36,7 @@ func BudgetTargets(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) (li
 BudgetTargets returns the monthly living\-expense and healthcare targets a plan implies over the given window. Both are zero when settings is nil, which callers read as "no target set" \-\- the same meaning the dashboard's hasBudgetTarget/hasHealthcareTarget flags carry.
 
 <a name="Calculate"></a>
-## func Calculate
+## func [Calculate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/metrics/metrics.go#L99>)
 
 ```go
 func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64) *models.DashboardMetrics
@@ -45,7 +45,7 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 
 
 <a name="Comparison"></a>
-## func Comparison
+## func [Comparison](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/metrics/metrics.go#L244>)
 
 ```go
 func Comparison(data *models.TransactionSet, start, end time.Time, compType string, settings *models.WhatIfSettings) *models.PeriodComparison
@@ -54,7 +54,7 @@ func Comparison(data *models.TransactionSet, start, end time.Time, compType stri
 
 
 <a name="MonthsBetween"></a>
-## func MonthsBetween
+## func [MonthsBetween](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/metrics/metrics.go#L25>)
 
 ```go
 func MonthsBetween(start, end time.Time) float64
@@ -63,7 +63,7 @@ func MonthsBetween(start, end time.Time) float64
 MonthsBetween returns the average\-calendar\-month count between two inclusive dates. A single\-day span returns 1/avgDaysPerMonth \(\~0.033\), never zero, so callers can safely divide by the result.
 
 <a name="PercentChange"></a>
-## func PercentChange
+## func [PercentChange](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/metrics/metrics.go#L295>)
 
 ```go
 func PercentChange(current, previous float64) float64

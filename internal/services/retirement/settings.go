@@ -1294,6 +1294,9 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	if v, ok := updates["taxable_cap_gains_distribution_rate"].(float64); ok {
 		settings.TaxableCapitalGainsDistributionRate = v
 	}
+	if v, ok := updates["taxable_cost_basis"].(*float64); ok {
+		settings.TaxableCostBasis = v
+	}
 	if v, ok := updates["projection_years"].(int); ok {
 		settings.ProjectionYears = v
 	}

@@ -1516,7 +1516,7 @@ type TaxableAccountState struct {
 func NewTaxableAccountState(s *models.WhatIfSettings, marketValue float64) TaxableAccountState
 ```
 
-NewTaxableAccountState seeds a TaxableAccountState from settings: the initial market value is treated as cost basis \(cf. cost\-basis policy in project\_retirement\_calculator.md\), and dividend yields are split into qualified vs. non\-qualified shares.
+NewTaxableAccountState seeds a TaxableAccountState from settings. Cost basis comes from the scenario's configured TaxableCostBasis; when that is unset it falls back to the market value \(zero unrealized gain\). Dividend yields are split into qualified vs. non\-qualified shares.
 
 <a name="TaxableAccountState.AddCash"></a>
 ### func \(\*TaxableAccountState\) [AddCash](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxable.go#L67>)

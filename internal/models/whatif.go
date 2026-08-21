@@ -124,6 +124,17 @@ type WhatIfSettings struct {
 	TaxableQualifiedDividendPercent     float64 `json:"taxable_qualified_dividend_percent,omitempty"`  // Share of taxable dividends that are qualified
 	TaxableCapitalGainsDistributionRate float64 `json:"taxable_cap_gains_distribution_rate,omitempty"` // Annual realized cap-gains distribution rate
 
+	// TaxableCostBasis is the total cost basis of the taxable brokerage
+	// account in dollars — what the holdings were bought for, as reported on
+	// a broker statement.
+	//
+	// nil = unset. When unset the projection falls back to treating the
+	// account's starting market value as its own basis, i.e. assuming zero
+	// unrealized gain, which understates the tax on every taxable withdrawal
+	// for the whole horizon. The completeness banner flags that case rather
+	// than letting it pass silently.
+	TaxableCostBasis *float64 `json:"taxable_cost_basis,omitempty"`
+
 	// Phase-based spending (go-go/slow-go/no-go retirement phases)
 	SpendingPhaseConfig *SpendingPhaseConfig `json:"spending_phase_config,omitempty"`
 
@@ -803,6 +814,37 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 
 func (s *WhatIfSettings) GetProjectionTiming() ProjectionTiming {
 	return NormalizeProjectionTiming(s.ProjectionTiming)
+}
+
+// TaxableCostBasisOrValue returns the cost basis to seed a taxable account
+// holding marketValue, in dollars.
+//
+// When TaxableCostBasis is unset this returns marketValue — the legacy
+// zero-embedded-gain assumption, preserved so existing saved scenarios keep
+// projecting the same numbers until their owner supplies a basis.
+//
+// The configured basis is clamped to [0, marketValue]. The upper clamp
+// matters: a basis above market value describes an underwater account, and
+// this engine models no capital-loss deduction (negative gains floor at zero
+// in CalculateTaxWithInvestmentIncomeBreakdown). Clamping is therefore
+// behaviourally identical for tax purposes and keeps negative gains from
+// flowing into code that does not expect them. A stale basis left over from
+// a larger allocation cannot silently manufacture a phantom loss.
+func (s *WhatIfSettings) TaxableCostBasisOrValue(marketValue float64) float64 {
+	if marketValue <= 0 {
+		return 0
+	}
+	if s == nil || s.TaxableCostBasis == nil {
+		return marketValue
+	}
+	switch basis := *s.TaxableCostBasis; {
+	case basis < 0:
+		return 0
+	case basis > marketValue:
+		return marketValue
+	default:
+		return basis
+	}
 }
 
 func (s *WhatIfSettings) GetTaxableQualifiedDividendPercent() float64 {

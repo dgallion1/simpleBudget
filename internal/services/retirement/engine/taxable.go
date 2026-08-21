@@ -36,16 +36,16 @@ type TaxableAccountState struct {
 	RealizedGainsYTD             float64
 }
 
-// NewTaxableAccountState seeds a TaxableAccountState from settings: the
-// initial market value is treated as cost basis (cf. cost-basis policy
-// in project_retirement_calculator.md), and dividend yields are split
-// into qualified vs. non-qualified shares.
+// NewTaxableAccountState seeds a TaxableAccountState from settings. Cost
+// basis comes from the scenario's configured TaxableCostBasis; when that is
+// unset it falls back to the market value (zero unrealized gain). Dividend
+// yields are split into qualified vs. non-qualified shares.
 func NewTaxableAccountState(s *models.WhatIfSettings, marketValue float64) TaxableAccountState {
 	qualifiedShare := s.GetTaxableQualifiedDividendPercent() / 100
 	totalDividendYield := math.Max(0, s.TaxableDividendYield) / 100
 	return TaxableAccountState{
 		MarketValue:                  marketValue,
-		CostBasis:                    marketValue,
+		CostBasis:                    s.TaxableCostBasisOrValue(marketValue),
 		QualifiedDividendYield:       totalDividendYield * qualifiedShare,
 		NonQualifiedDividendYield:    totalDividendYield * (1 - qualifiedShare),
 		CapitalGainsDistributionRate: math.Max(0, s.TaxableCapitalGainsDistributionRate) / 100,

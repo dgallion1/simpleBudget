@@ -30,46 +30,59 @@ import (
 // projection is a function of a selected set of lots, never of a position."
 // The document measures a ~10x error from blended position-level gain.
 //
-// TaxableAccountState (engine/taxable.go) holds a single MarketValue and a
-// single CostBasis, and Withdraw recognises gain pro-rata. There is no lot,
-// no open date, no holding period, and no cost-basis method.
+// PARTIALLY CLOSED. The seeding half is fixed: the account no longer starts
+// with CostBasis == MarketValue, because scenarios can now supply a real
+// TaxableCostBasis (see engine/taxable_cost_basis_test.go and the completeness
+// warning for scenarios that leave it unset).
+//
+// What remains is lot *selection*. TaxableAccountState still holds one blended
+// basis and Withdraw recognises gain pro-rata, so choosing which lots to sell
+// cannot change the tax.
+//
+// Note this is deliberate, not an oversight. Pro-rata against a blended basis
+// is average-cost, which is the correct expected-value treatment for a
+// simulated homogeneous reinvesting account. Real lot selection belongs in a
+// single-year "what can I realize this year, and from which lots" calculation
+// — not inside the monthly projection loop, where
+// ExecuteTaxAwarePortfolioMonth's fixed-point iteration copies the account by
+// value up to six times a month across every Monte Carlo path. A lot slice
+// there would alias its backing array between trial iterations and would need
+// a deep copy per trial to be correct.
 func TestFinanceGap_TaxableAccountHasNoLots(t *testing.T) {
 	s := models.DefaultWhatIfSettings()
 	const marketValue = 500000.0
 
-	account := NewTaxableAccountState(s, marketValue)
-
-	// Defect A: the account is seeded with zero embedded gain. A real
-	// brokerage position carries unrealized appreciation from day one; this
-	// systematically understates withdrawal tax for the whole horizon.
-	if account.CostBasis >= account.MarketValue {
-		t.Errorf("GAP (FINANCEAPPCONCERNS.md §2): NewTaxableAccountState seeds "+
-			"CostBasis (%.2f) == MarketValue (%.2f), i.e. zero embedded gain.\n"+
-			"  Every projection therefore starts with an untaxed-appreciation-free\n"+
-			"  taxable account and understates realized gain on withdrawal.\n"+
-			"  Fix: accept lots (open date, quantity, cost/share) at ingestion.",
-			account.CostBasis, account.MarketValue)
+	// The seeding half is closed: a configured basis is honoured.
+	s.TaxableCostBasis = models.FloatPtr(250000)
+	seeded := NewTaxableAccountState(s, marketValue)
+	if seeded.CostBasis != 250000 {
+		t.Fatalf("regression: configured cost basis was not honoured (got %.2f, want 250000)",
+			seeded.CostBasis)
 	}
 
-	// Defect B: withdrawal gain is pro-rata against blended basis, so lot
-	// selection cannot change the tax. The document's whole §2 is that
-	// choosing lots changed realized gain from ~$27,000 to $1,663.
-	account.CostBasis = marketValue * 0.5 // pretend a 100% blended gain
-	_, _, gainA := account.Withdraw(34667)
-
-	account2 := NewTaxableAccountState(s, marketValue)
-	account2.CostBasis = marketValue * 0.5
-	_, _, gainB := account2.Withdraw(34667)
+	// The selection half is open. Two callers selling the same dollar amount
+	// realize identical gain no matter which lots they would have chosen,
+	// because there is no API to choose.
+	a := NewTaxableAccountState(s, marketValue)
+	b := NewTaxableAccountState(s, marketValue)
+	_, _, gainA := a.Withdraw(34667)
+	_, _, gainB := b.Withdraw(34667)
 
 	if gainA != gainB {
-		t.Fatalf("unexpected: identical withdrawals produced different gains (%.2f vs %.2f)", gainA, gainB)
+		t.Fatalf("unexpected: identical withdrawals produced different gains (%.2f vs %.2f)",
+			gainA, gainB)
 	}
-	t.Errorf("GAP (FINANCEAPPCONCERNS.md §2): Withdraw recognises %.2f of gain "+
-		"pro-rata regardless of which lots are sold.\n"+
-		"  There is no API by which a caller could sell the low-gain lots, so the\n"+
-		"  ~10x spread the document measures is unrepresentable.\n"+
-		"  Fix: model lots explicitly and a cost-basis method\n"+
-		"  (FIFO / LIFO / HighCost / LowCost / SpecID / TaxLotOptimizer).", gainA)
+
+	t.Errorf("GAP (FINANCEAPPCONCERNS.md §2, selection half): Withdraw recognises "+
+		"%.2f of gain pro-rata against a blended basis.\n"+
+		"  Still missing: individual lots (open date, quantity, cost/share), a\n"+
+		"  cost-basis method (FIFO / LIFO / HighCost / LowCost / SpecID /\n"+
+		"  TaxLotOptimizer), and a holding-period split — this engine treats every\n"+
+		"  realized gain as long-term, so short-term gain is never taxed as\n"+
+		"  ordinary income.\n"+
+		"  The document's case realized $1,663 of gain on $34,667 of proceeds by\n"+
+		"  picking lots, against ~10x that blended. Reproducing it needs a\n"+
+		"  single-year lot-selection tool, not lots in the projection loop.", gainA)
 }
 
 // TestFinanceGap_NoACAPremiumCreditOrCliff

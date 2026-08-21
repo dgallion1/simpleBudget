@@ -71,14 +71,15 @@ func (p *SSHProvider) loadIdentity() error {
 		return fmt.Errorf("failed to read SSH key: %w", err)
 	}
 
-	// The agessh library handles encrypted keys internally by prompting
-	// For our use case, we need to decrypt the key ourselves if it's encrypted
+	// The agessh library handles encrypted keys internally by prompting; for
+	// our use case we would have to decrypt an encrypted key ourselves, and
+	// decryptSSHKey is still a stub. It cannot succeed, so a passphrase means
+	// failure -- take its error and return rather than assigning a keyData
+	// that is always nil and checking an err that is always non-nil. That
+	// dead success path is what staticcheck's SA4023 was pointing at.
 	if p.passphrase != "" {
-		// Decrypt the key if it's encrypted
-		keyData, err = decryptSSHKey(keyData, []byte(p.passphrase))
-		if err != nil {
-			return fmt.Errorf("failed to decrypt SSH key: %w", err)
-		}
+		_, err := decryptSSHKey(keyData, []byte(p.passphrase))
+		return fmt.Errorf("failed to decrypt SSH key: %w", err)
 	}
 
 	identity, err := agessh.ParseIdentity(keyData)

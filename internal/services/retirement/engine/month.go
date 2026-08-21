@@ -80,6 +80,12 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		currentYearSummary.NIIT = st.CurrentYearTaxSnapshot.AnnualNIIT
 		currentYearSummary.IRMAA = st.CurrentYearTaxSnapshot.AnnualIRMAA
 		currentYearSummary.TaxableSocialSecurityPct = st.CurrentYearTaxSnapshot.TaxableSocialSecurityPct
+		// Measured once per projection year, from the composition the year's
+		// final snapshot already computed — never in the monthly loop, which
+		// Monte Carlo and backtest also drive.
+		currentYearSummary.MarginalRate = st.TaxCalculator.MarginalRateOnOrdinaryIncome(
+			st.CurrentYearTaxSnapshot.AnnualInputs,
+			YearsFromTaxBase(st.Settings(), currentYearSummary.Year))
 		currentYearSummary.EndingBalance = month.PortfolioBalance
 		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
 		currentYearSummary.CumulativeInflation = month.CumulativeInflation

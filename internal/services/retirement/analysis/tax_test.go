@@ -125,3 +125,50 @@ func TestBuildTax_StateTaxSplit(t *testing.T) {
 		t.Errorf("5%% state rate: TotalStateTaxPaid = %.2f; want > 0", withState.TotalStateTaxPaid)
 	}
 }
+
+// TestBuildTax_MarginalRateFlowsFromEngine is the end-to-end check for the
+// §4 fix (FINANCEAPPCONCERNS.md): the marginal rate is measured in the engine
+// from each year's own income composition and carried through to the tax
+// panel. A plumbing break here would leave every displayed rate at 0 while
+// every unit test still passed.
+func TestBuildTax_MarginalRateFlowsFromEngine(t *testing.T) {
+	proj, in := runProj(t, taxableScenario())
+
+	// The engine must populate the per-year rate on the projection itself.
+	populated := 0
+	for _, ys := range proj.YearlySummaries {
+		if ys.Taxes <= 0 {
+			continue // a year with no tax legitimately has no marginal rate
+		}
+		if ys.MarginalRate <= 0 {
+			t.Errorf("year %d: taxes %.2f but MarginalRate = %.4f; "+
+				"the engine did not measure a rate for a taxable year",
+				ys.Year, ys.Taxes, ys.MarginalRate)
+			continue
+		}
+		if ys.MarginalRate > 60 {
+			t.Errorf("year %d: MarginalRate = %.2f%%; implausibly high for this scenario",
+				ys.Year, ys.MarginalRate)
+		}
+		populated++
+	}
+	if populated == 0 {
+		t.Fatal("no taxable year carried a marginal rate; the engine plumbing is broken")
+	}
+
+	// BuildTax must carry it through to what the UI renders, unmodified.
+	tax := BuildTax(proj, in)
+	if tax == nil {
+		t.Fatal("BuildTax returned nil for a taxable projection")
+	}
+	if len(tax.YearlyTaxSummary) != len(proj.YearlySummaries) {
+		t.Fatalf("YearlyTaxSummary has %d rows; want %d",
+			len(tax.YearlyTaxSummary), len(proj.YearlySummaries))
+	}
+	for i, row := range tax.YearlyTaxSummary {
+		if want := proj.YearlySummaries[i].MarginalRate; row.MarginalBracket != want {
+			t.Errorf("row %d: MarginalBracket = %.4f; want the engine's %.4f",
+				i, row.MarginalBracket, want)
+		}
+	}
+}

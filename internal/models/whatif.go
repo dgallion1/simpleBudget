@@ -876,11 +876,20 @@ type ProjectionYearSummary struct {
 	NIIT                     float64 `json:"niit,omitempty"`
 	IRMAA                    float64 `json:"irmaa,omitempty"`
 	TaxableSocialSecurityPct float64 `json:"taxable_social_security_pct,omitempty"`
-	Expenses                 float64 `json:"expenses"`
-	Withdrawals              float64 `json:"withdrawals"`
-	EndingBalance            float64 `json:"ending_balance"`
-	EndingBalanceReal        float64 `json:"ending_balance_real"`
-	CumulativeInflation      float64 `json:"cumulative_inflation"`
+
+	// MarginalRate is the effective marginal tax rate (percent) on the next
+	// dollar of ordinary income in this year, measured numerically from the
+	// year's own income composition. It is NOT a bracket-table lookup: it
+	// includes capital-gain stacking and the § 86 Social Security phase-in,
+	// both of which routinely push the real rate far above the nominal
+	// bracket. See TaxCalculator.MarginalRateOnOrdinaryIncome.
+	MarginalRate float64 `json:"marginal_rate,omitempty"`
+
+	Expenses            float64 `json:"expenses"`
+	Withdrawals         float64 `json:"withdrawals"`
+	EndingBalance       float64 `json:"ending_balance"`
+	EndingBalanceReal   float64 `json:"ending_balance_real"`
+	CumulativeInflation float64 `json:"cumulative_inflation"`
 
 	// Guardrail visibility (F-079)
 	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop

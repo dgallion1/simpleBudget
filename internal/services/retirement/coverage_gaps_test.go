@@ -427,14 +427,14 @@ func TestGetAdjustedLTCGBrackets_WithInflation(t *testing.T) {
 	}
 }
 
-func TestGetMarginalRate_MiddleBracket(t *testing.T) {
+func TestGetBracketRate_MiddleBracket(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// Income in 22% bracket range for single filer
-	rate := tc.GetMarginalRate(80000, 0)
+	rate := tc.GetBracketRate(80000, 0)
 	if rate != 22 {
 		t.Errorf("expected 22%% marginal rate, got %f", rate)
 	}
@@ -2299,16 +2299,16 @@ func TestRenameScenario_WriteError(t *testing.T) {
 	}
 }
 
-// --- GetMarginalRate: top bracket ---
+// --- GetBracketRate: top bracket ---
 
-func TestGetMarginalRate_VeryHighIncome(t *testing.T) {
+func TestGetBracketRate_VeryHighIncome(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus:       models.FilingSingle,
 		StateIncomeTaxRate: models.FloatPtr(0),
 	}, 0)
 
 	// Income high enough to go beyond all brackets
-	rate := tc.GetMarginalRate(10_000_000, 0)
+	rate := tc.GetBracketRate(10_000_000, 0)
 	if rate != 37 {
 		t.Errorf("expected 37%% for very high income, got %f", rate)
 	}

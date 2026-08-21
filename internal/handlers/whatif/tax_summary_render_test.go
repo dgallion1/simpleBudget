@@ -116,11 +116,13 @@ func fixtureTaxAnalysis(rmdStartAge int) *models.WhatIfAnalysis {
 					Year: 2025, Age: 72,
 					TaxableIncome: 90000.50, FederalTax: 8575.91, StateTax: 1200.25,
 					TotalTax: 9776.16, EffectiveRate: 10.9, MarginalRate: 22,
+					MarginalRateLongTermGain: 15,
 				},
 				{
 					Year: 2026, Age: 73,
 					TaxableIncome: 120000.33, FederalTax: 15200.44, StateTax: 1800.10,
 					TotalTax: 17000.54, EffectiveRate: 14.2, MarginalRate: 24,
+					MarginalRateLongTermGain: 18.8,
 				},
 			},
 		},
@@ -183,4 +185,28 @@ func TestWhatIfTaxSummary_WholeDollarsAndRMDBadge(t *testing.T) {
 			t.Errorf("did not expect an RMDs-begin badge when StartAge matches no row: %s", truncate(out, 1200))
 		}
 	})
+}
+
+// TestWhatIfTaxSummary_RendersMarginalRateOnGains covers the "On Gains" column:
+// the marginal cost of realizing one more dollar of long-term gain, which is
+// not the same as the ordinary-income marginal rate beside it.
+func TestWhatIfTaxSummary_RendersMarginalRateOnGains(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	html := renderTaxSummary(t)
+
+	if !strings.Contains(html, "On Gains") {
+		t.Error("expected an On Gains column header")
+	}
+	// Fixture rows carry 15% and 18.8%, rendered to whole percent.
+	for _, want := range []string{">15%<", ">19%<"} {
+		if !strings.Contains(strings.Join(strings.Fields(html), " "), want) {
+			t.Errorf("expected the gains column to render %s", want)
+		}
+	}
+	// The stale footnote from before the marginal rate became a derivative.
+	if strings.Contains(html, "top federal bracket reached") {
+		t.Error("footnote still describes the old bracket-lookup behaviour")
+	}
 }

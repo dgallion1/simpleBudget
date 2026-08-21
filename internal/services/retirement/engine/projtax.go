@@ -262,13 +262,48 @@ func taxableSocialSecurityFor(tc *TaxCalculator, in ProjectedAnnualTaxInputs) fl
 // does this income fall in"; use this when the question is "what does the
 // next dollar cost".
 func (tc *TaxCalculator) MarginalRateOnOrdinaryIncome(in ProjectedAnnualTaxInputs, yearsFromBase int) float64 {
+	return tc.marginalRateOn(in, yearsFromBase, func(p *ProjectedAnnualTaxInputs) {
+		p.OrdinaryIncome += marginalRateProbe
+	})
+}
+
+// MarginalRateOnLongTermGain returns the effective marginal tax rate, as a
+// percentage, on the next dollar of realized LONG-TERM capital gain.
+//
+// This is the number behind "how much gain can I realize this year", and it is
+// not the capital-gains bracket. Three things move it that a bracket table
+// cannot see:
+//
+//   - The 0% bracket runs out. While headroom remains the rate really is 0%;
+//     one dollar past the ceiling it steps to 15%, and the step is invisible
+//     until you differentiate.
+//   - Social Security. Realized gain is part of the § 86 provisional-income
+//     base, so inside the phase-in band each dollar of "0%" gain drags up to
+//     $0.85 of benefits into ordinary tax. Gain in the 0% bracket is routinely
+//     not free, and a headroom figure that ignores this overstates what can be
+//     realized cheaply.
+//   - NIIT. Above the threshold, gain carries the 3.8% surtax on top of
+//     whatever bracket applies.
+//
+// Short-term gain is ordinary income, so MarginalRateOnOrdinaryIncome already
+// answers the question for it; there is no separate short-term variant.
+func (tc *TaxCalculator) MarginalRateOnLongTermGain(in ProjectedAnnualTaxInputs, yearsFromBase int) float64 {
+	return tc.marginalRateOn(in, yearsFromBase, func(p *ProjectedAnnualTaxInputs) {
+		p.LongTermCapitalGains += marginalRateProbe
+	})
+}
+
+// marginalRateOn differentiates the tax function numerically with respect to
+// whichever income component bump adds to. Shared so the ordinary-income and
+// long-term-gain rates cannot drift apart in method.
+func (tc *TaxCalculator) marginalRateOn(in ProjectedAnnualTaxInputs, yearsFromBase int, bump func(*ProjectedAnnualTaxInputs)) float64 {
 	if tc == nil {
 		return 0
 	}
 	base := tc.AnnualIncomeTaxOn(in, yearsFromBase)
 
 	probed := in
-	probed.OrdinaryIncome += marginalRateProbe
+	bump(&probed)
 	rate := (tc.AnnualIncomeTaxOn(probed, yearsFromBase) - base) / marginalRateProbe * 100
 
 	// Total tax is non-decreasing in income everywhere this engine models

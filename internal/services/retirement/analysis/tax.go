@@ -90,9 +90,10 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 			// composition, so it reflects capital-gain stacking and the § 86
 			// phase-in. Previously a bracket-table lookup fed MAGI, which
 			// understated the rate and passed the wrong quantity in.
-			MarginalRate:   ys.MarginalRate,
-			RothConversion: rothConversion,
-			RMDAmount:      rmd,
+			MarginalRate:             ys.MarginalRate,
+			MarginalRateLongTermGain: ys.MarginalRateLongTermGain,
+			RothConversion:           rothConversion,
+			RMDAmount:                rmd,
 		})
 	}
 

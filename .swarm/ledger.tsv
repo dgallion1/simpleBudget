@@ -13,3 +13,4 @@ P12	1	tests	accepted	1	worker-coder-sonnet	gate-ok-attempt-1
 P13	2	tests,second	pending	1	-	-
 P14	2	tests,second	pending	1	-	-
 P15	3	tests,second	pending	1	-	-
+P16	2	tests,second	pending	1	lead	implemented-in-lead-session-unverified

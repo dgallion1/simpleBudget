@@ -426,6 +426,191 @@ func TestHandleResolve_BadInput(t *testing.T) {
 	}
 }
 
+// TestHandleResolve_ConflictingRepostReportsStoredVerdict: a confirmed pair
+// that receives a conflicting reject (a stale second tab) must be told the
+// TRUE stored verdict (confirmed) and that the reject was NOT applied -- not
+// the reassuring-but-false "already rejected" the old switch-on-request logic
+// produced. The persisted decision must still read confirm afterward.
+func TestHandleResolve_ConflictingRepostReportsStoredVerdict(t *testing.T) {
+	dl, _, cleanup := setupTestEnvWithRenderer(t, coincidenceCSVs)
+	defer cleanup()
+
+	// Seed the queue.
+	newRouter().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/transfers", nil))
+	pairKey := mustSuspectedPairKey(t, dl)
+
+	// First tab confirms.
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/transfers/resolve", url.Values{
+		"pair_key": {pairKey},
+		"verdict":  {"confirm"},
+	}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("confirm status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	// Reload so the pair drops out of the queue, matching what a stale
+	// second tab would see when it posts its own (conflicting) verdict.
+	if _, err := dl.LoadData(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	// Second, stale tab posts reject for the same key.
+	w = httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/transfers/resolve", url.Values{
+		"pair_key": {pairKey},
+		"verdict":  {"reject"},
+	}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("conflicting reject status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "already confirmed") {
+		t.Errorf("message should name the STORED verdict (confirmed); body: %s", body)
+	}
+	if !strings.Contains(body, "not applied") {
+		t.Errorf("message should say the reject was not applied; body: %s", body)
+	}
+	if strings.Contains(body, "already rejected") {
+		t.Errorf("message must NOT claim the pair was already rejected; body: %s", body)
+	}
+	if strings.Contains(body, "Rejected pair") {
+		t.Errorf("message must NOT use the success wording for a request that was not applied; body: %s", body)
+	}
+
+	// The persisted decision is still confirm: the conflicting reject did
+	// not overwrite it.
+	decisions, err := dl.LoadTransferDecisions()
+	if err != nil {
+		t.Fatalf("LoadTransferDecisions: %v", err)
+	}
+	dec, ok := decisions[pairKey]
+	if !ok {
+		t.Fatalf("no persisted decision for %s", pairKey)
+	}
+	if dec.Verdict != transfers.VerdictConfirm {
+		t.Errorf("persisted verdict = %q, want %q (the reject must not have applied)", dec.Verdict, transfers.VerdictConfirm)
+	}
+}
+
+// TestHandleResolve_MatchingRepostStaysIdempotent: re-posting the SAME
+// verdict that is already stored keeps today's idempotent "nothing to do"
+// wording and does not touch the persisted decision.
+func TestHandleResolve_MatchingRepostStaysIdempotent(t *testing.T) {
+	dl, _, cleanup := setupTestEnvWithRenderer(t, coincidenceCSVs)
+	defer cleanup()
+
+	newRouter().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/transfers", nil))
+	pairKey := mustSuspectedPairKey(t, dl)
+
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/transfers/resolve", url.Values{
+		"pair_key": {pairKey},
+		"verdict":  {"reject"},
+	}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("reject status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if _, err := dl.LoadData(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	// Re-post the SAME verdict (reject) for the now-absent key.
+	w = httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/transfers/resolve", url.Values{
+		"pair_key": {pairKey},
+		"verdict":  {"reject"},
+	}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("matching re-post status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "already rejected") || !strings.Contains(body, "nothing to do") {
+		t.Errorf("matching re-post should keep the idempotent no-op wording; body: %s", body)
+	}
+	if strings.Contains(body, "not applied") {
+		t.Errorf("a matching re-post is a no-op, not a rejected application; body: %s", body)
+	}
+
+	decisions, err := dl.LoadTransferDecisions()
+	if err != nil {
+		t.Fatalf("LoadTransferDecisions: %v", err)
+	}
+	if got := decisions[pairKey].Verdict; got != transfers.VerdictReject {
+		t.Errorf("persisted verdict = %q, want %q unchanged", got, transfers.VerdictReject)
+	}
+}
+
+// TestHandleResolve_UnknownKeyReportsNoVerdictRecorded: a key that was never
+// suspected and never decided must be reported as unknown -- no verdict
+// claimed, whether confirmed or rejected.
+func TestHandleResolve_UnknownKeyReportsNoVerdictRecorded(t *testing.T) {
+	_, _, cleanup := setupTestEnvWithRenderer(t, coincidenceCSVs)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/transfers/resolve", url.Values{
+		"pair_key": {"never-suspected-and-never-decided"},
+		"verdict":  {"confirm"},
+	}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "not a known pair") {
+		t.Errorf("message should say the key is not a known pair; body: %s", body)
+	}
+	if !strings.Contains(body, "no verdict is recorded") {
+		t.Errorf("message should say no verdict is recorded; body: %s", body)
+	}
+	if strings.Contains(body, "already confirmed") || strings.Contains(body, "already rejected") {
+		t.Errorf("message must not claim any verdict for an unknown key; body: %s", body)
+	}
+}
+
+// TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage covers
+// describeAlreadyResolved's load-failure branch (execution count 0 before
+// this test -- found independently by checker-tests and checker-second):
+// when transfer_decisions.json exists but will not parse,
+// loader.LoadTransferDecisions() itself errors, and the handler must say so
+// honestly rather than guessing a verdict ("already confirmed"/"already
+// rejected") or claiming the key is simply unknown -- both of those would
+// assert something about the stored decision that was never actually read.
+func TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage(t *testing.T) {
+	dl, _, cleanup := setupTestEnvWithRenderer(t, coincidenceCSVs)
+	defer cleanup()
+
+	// Corrupt the decisions file so LoadTransferDecisions fails. The pair
+	// key below is never in SuspectedTransfers either (queue was never
+	// seeded), so ResolveTransfer fails fast with "no suspected transfer
+	// pair with key" purely from its in-memory check -- it never touches
+	// this file itself -- routing the handler into
+	// describeAlreadyResolved, which is the function that DOES read it.
+	decisionsPath := filepath.Join(dl.CSVDirectory, "transfer_decisions.json")
+	if err := os.WriteFile(decisionsPath, []byte("{not valid json"), 0644); err != nil {
+		t.Fatalf("write corrupt decisions file: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/transfers/resolve", url.Values{
+		"pair_key": {"whatever-key"},
+		"verdict":  {"confirm"},
+	}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a read failure is reported as a message, not a 4xx/5xx); body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "could not be read") {
+		t.Errorf("message should say the stored decision could not be read; body: %s", body)
+	}
+	if strings.Contains(body, "already confirmed") || strings.Contains(body, "already rejected") {
+		t.Errorf("message must not guess a verdict when the decisions file itself could not be read; body: %s", body)
+	}
+	if strings.Contains(body, "not a known pair") {
+		t.Errorf("message must not claim the pair is simply unknown -- the truth is the file could not be read, not that the key is absent; body: %s", body)
+	}
+}
+
 // mustSuspectedPairKey returns the single suspected pair key from the loader,
 // failing the test if the queue is empty or has more than one entry.
 func mustSuspectedPairKey(t *testing.T, dl *dataloader.DataLoader) string {

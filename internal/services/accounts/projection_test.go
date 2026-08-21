@@ -378,9 +378,15 @@ func TestProject_MixedRecurringFiltersByAccount(t *testing.T) {
 		Anchors:             []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 800.00}},
 		LowBalanceThreshold: 500.00,
 	}
-	// A recurring item with one usaa leg and one schwab leg. It qualifies for
-	// usaa (recurringBelongsToAccount is true) and is applied to usaa. The
-	// schwab leg is just evidence of membership, not an additional outflow.
+	// A recurring item with one usaa leg and one schwab leg, both dated the
+	// same day. recurringOwnerAccount (the most-recent-leg rule; S1
+	// replaced the old any-leg-membership recurringBelongsToAccount, which
+	// this comment used to name) attributes a series to a single account,
+	// so an exact date tie has to resolve deterministically too: it keeps
+	// whichever AccountID sorts lexicographically greater ("usaa" > "schwab"),
+	// which is why usaa -- not schwab -- owns this series and gets the
+	// outflow applied. The fixture still exercises "applies when relevant,
+	// not all-or-nothing", just via the tie-break rather than membership.
 	mixed := rp("split-rent", 300.00, "monthly", mustDate(2026, 9, 1),
 		leg("usaa", mustDate(2026, 7, 1)),
 		leg("schwab", mustDate(2026, 7, 1)))
@@ -396,6 +402,128 @@ func TestProject_MixedRecurringFiltersByAccount(t *testing.T) {
 	}
 	if !moneyEq(got.Minimum, 500.00) {
 		t.Errorf("Minimum = %.4f, want 500.00 (300 outflow applied to usaa)", got.Minimum)
+	}
+}
+
+// TestProject_RecurringAttributedToNewestLegOnly is the regression test for
+// the double-drain bug (user decision 2026-08-20a): a single recurring series
+// whose legs moved from account A (older leg) to account B (newer leg) must
+// project its full occurrence against B only. Before the fix, Project's
+// per-leg "any leg belongs to this account" filter applied the FULL Amount to
+// BOTH A and B independently -- a $200/month series produced a $400/month
+// aggregate reduction across the two accounts, inventing a crossing on A that
+// no longer pays this series at all.
+func TestProject_RecurringAttributedToNewestLegOnly(t *testing.T) {
+	acctA := models.Account{
+		ID:                  "cardA",
+		Name:                "cardA",
+		Anchors:             []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 1000.00}},
+		LowBalanceThreshold: 500.00,
+	}
+	acctB := models.Account{
+		ID:                  "cardB",
+		Name:                "cardB",
+		Anchors:             []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 1000.00}},
+		LowBalanceThreshold: 500.00,
+	}
+	// The series' payment account moved from cardA (older leg, June) to
+	// cardB (newer leg, July). Only one occurrence (Sept 1) falls inside the
+	// 35-day window starting Aug 15.
+	migrated := rp("streaming-bundle", 200.00, "monthly", mustDate(2026, 9, 1),
+		leg("cardA", mustDate(2026, 6, 1)),
+		leg("cardB", mustDate(2026, 7, 1)))
+
+	gotA, err := Project(acctA, nil, mustDate(2026, 8, 15), []models.RecurringPayment{migrated})
+	if err != nil {
+		t.Fatalf("Project(A): %v", err)
+	}
+	gotB, err := Project(acctB, nil, mustDate(2026, 8, 15), []models.RecurringPayment{migrated})
+	if err != nil {
+		t.Fatalf("Project(B): %v", err)
+	}
+
+	// A carries the OLDER leg -- it must project NO reduction from this
+	// series: the newest leg (B, July) owns it.
+	if !moneyEq(gotA.Minimum, 1000.00) {
+		t.Errorf("cardA Minimum = %.4f, want 1000.00 (older leg must not be charged)", gotA.Minimum)
+	}
+	// B carries the NEWEST leg -- it must project the FULL occurrence.
+	if !moneyEq(gotB.Minimum, 800.00) {
+		t.Errorf("cardB Minimum = %.4f, want 800.00 (newest leg charged the full 200)", gotB.Minimum)
+	}
+	// The heart of the regression: summed across both accounts, exactly one
+	// occurrence (200) was removed from the two starting balances combined --
+	// never two (400).
+	totalReduction := (1000.00 - gotA.Minimum) + (1000.00 - gotB.Minimum)
+	if !moneyEq(totalReduction, 200.00) {
+		t.Errorf("total reduction across cardA+cardB = %.4f, want 200.00 (one occurrence, not two)", totalReduction)
+	}
+}
+
+// TestProject_SingleAccountSeriesUnaffected pins that a series whose legs all
+// belong to one account projects exactly as it always has -- most-recent-leg
+// attribution changes nothing when there is only one candidate account to
+// begin with. This is the no-drift guard for the common case.
+func TestProject_SingleAccountSeriesUnaffected(t *testing.T) {
+	acct := models.Account{
+		ID:                  "usaa",
+		Name:                "usaa",
+		Anchors:             []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 900.00}},
+		LowBalanceThreshold: 500.00,
+	}
+	singleAccount := rp("gym", 250.00, "monthly", mustDate(2026, 9, 1),
+		leg("usaa", mustDate(2026, 6, 1)),
+		leg("usaa", mustDate(2026, 7, 1)))
+
+	got, err := Project(acct, nil, mustDate(2026, 8, 15), []models.RecurringPayment{singleAccount})
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	// 900 - 250 = 650, above the 500 threshold: no crossing, no top-up.
+	if !got.Crossing.IsZero() {
+		t.Errorf("Crossing = %v, want zero", got.Crossing)
+	}
+	if !moneyEq(got.Minimum, 650.00) {
+		t.Errorf("Minimum = %.4f, want 650.00 (250 outflow applied, unchanged from pre-fix behavior)", got.Minimum)
+	}
+	if got.SuggestedTopUp != 0 {
+		t.Errorf("SuggestedTopUp = %.4f, want 0", got.SuggestedTopUp)
+	}
+}
+
+// TestProject_FormerAccountGetsNoCrossingOrTopUp is the sharper version of
+// TestProject_RecurringAttributedToNewestLegOnly: it drives the former
+// account (the one holding only the OLDER leg) into a balance that WOULD
+// cross the threshold if the buggy "any leg" filter still applied the full
+// amount, and asserts it does not -- no Crossing, no SuggestedTopUp, from a
+// series this account no longer pays.
+func TestProject_FormerAccountGetsNoCrossingOrTopUp(t *testing.T) {
+	former := models.Account{
+		ID:                  "oldCard",
+		Name:                "oldCard",
+		Anchors:             []models.BalanceAnchor{{Date: mustDate(2026, 8, 1), Amount: 600.00}},
+		LowBalanceThreshold: 500.00,
+	}
+	// Under the old per-leg filter, this 200/month series would drop
+	// oldCard from 600 to 400 -- below the 500 threshold, a crossing, and a
+	// SuggestedTopUp. The newest leg is on newCard, so oldCard must see none
+	// of that.
+	migrated := rp("insurance", 200.00, "monthly", mustDate(2026, 9, 1),
+		leg("oldCard", mustDate(2026, 6, 1)),
+		leg("newCard", mustDate(2026, 7, 1)))
+
+	got, err := Project(former, nil, mustDate(2026, 8, 15), []models.RecurringPayment{migrated})
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if !got.Crossing.IsZero() {
+		t.Errorf("Crossing = %v, want zero (oldCard no longer pays this series)", got.Crossing)
+	}
+	if !moneyEq(got.Minimum, 600.00) {
+		t.Errorf("Minimum = %.4f, want 600.00 (no outflow applied to the former account)", got.Minimum)
+	}
+	if got.SuggestedTopUp != 0 {
+		t.Errorf("SuggestedTopUp = %.4f, want 0", got.SuggestedTopUp)
 	}
 }
 

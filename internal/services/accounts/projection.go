@@ -71,10 +71,11 @@ type ProjectionResult struct {
 //
 // The projection rolls the account's balance forward from
 // BalanceAt(acct, txs, asOf) one day at a time over projectionHorizonDays
-// days, applying expected recurring items for THIS ACCOUNT ONLY -- the
-// recurring engine's output is filtered to transactions whose AccountID
-// matches acct.ID, so an item belonging to a different account cannot move
-// this account's balance.
+// days, applying expected recurring items for THIS ACCOUNT ONLY -- each
+// RecurringPayment is attributed to exactly one account (recurringOwnerAccount,
+// most-recent-leg wins) and applied only when that owner is acct.ID, so an
+// item belonging to a different account cannot move this account's balance,
+// and a single series is never applied to more than one account.
 //
 // Recurring items are applied on their NextExpected date, then again at each
 // whole-frequency interval after it that falls within the window, as an
@@ -117,12 +118,16 @@ func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recu
 	out.Available = true
 
 	// Build the per-day recurring cashflow deltas for THIS ACCOUNT ONLY.
-	// A RecurringPayment is relevant to this account when any of its
-	// historical legs carries this account's ID; the engine groups outflows
-	// by merchant, and outflows are account-specific, so a recurring item
-	// whose legs all belong to another account must not move this
-	// account's balance (the test "other accounts' recurring items are
-	// excluded" pins this).
+	// A RecurringPayment is attributed to exactly one account -- the one
+	// recurringOwnerAccount names -- never to more than one; see that
+	// function's doc comment for the full rule (most-recent-leg wins) and
+	// why (the engine groups outflows by merchant across the whole ledger,
+	// so a series whose payment account changed carries legs on more than
+	// one account, and applying the full Amount on every account that ever
+	// appears in its legs would double-count -- or N-times-count -- a
+	// single real-world payment). The test "other accounts' recurring
+	// items are excluded" pins the common case: a series with no legs on
+	// this account is skipped entirely.
 	//
 	// Each qualifying item is scheduled forward from its NextExpected date
 	// at its Frequency interval: occurrences that fall strictly after asOf
@@ -152,7 +157,7 @@ func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recu
 	asOfDay := dayOf(asOfUTC)
 	horizonEnd := asOfDay.AddDate(0, 0, projectionHorizonDays)
 	for _, rp := range recurring {
-		if !recurringBelongsToAccount(rp, acct.ID) {
+		if recurringOwnerAccount(rp) != acct.ID {
 			continue
 		}
 		interval, ok := frequencyIntervalDays(rp)
@@ -227,18 +232,62 @@ func utcCalendarDay(t time.Time) calendarDayKey {
 	return calendarDayKey{u.Year(), u.Month(), u.Day()}
 }
 
-// recurringBelongsToAccount reports whether any leg of a RecurringPayment
-// belongs to the given account. The recurring engine groups outflows by
-// merchant across the whole ledger; an item whose legs all belong to another
-// account must not move this account's balance, so the projection filters
-// the engine's output by account ID.
-func recurringBelongsToAccount(rp models.RecurringPayment, accountID string) bool {
+// recurringOwnerAccount returns the single account ID a RecurringPayment is
+// attributed to, or "" when it has no historical legs at all (an rp with an
+// empty Transactions slice is attributed to nothing, matching the
+// no-legs-no-attribution behavior of the old per-leg filter).
+//
+// The recurring engine ("internal/services/insights") groups outflows by
+// merchant across the WHOLE ledger, not per account, so a series whose
+// payment account changed over its lifetime -- a subscription moved from an
+// old card to a new one, say -- carries legs on more than one account. The
+// projection used to apply the full rp.Amount to every account that owned
+// ANY leg, which double-counted (or N-times-counted) a single real-world
+// payment: a $200/month series with legs on two cards produced a $400/month
+// aggregate reduction across the two accounts' projections, inventing
+// low-balance crossings and SuggestedTopUp recommendations on an account
+// that no longer pays it.
+//
+// The rule implemented here (user decision 2026-08-20a) is MOST-RECENT-LEG
+// WINS: a series is attributed to exactly one account, the one whose leg has
+// the latest Transactions[i].Date. That account's projection subtracts the
+// full occurrence amount; every other account subtracts nothing for this
+// series, so summed across all accounts one series never removes more than
+// one occurrence per period.
+//
+// Ties (two legs sharing the exact same Date, to the resolution the data
+// carries) are broken by comparing AccountID with Go's default string
+// ordering and keeping the lexicographically GREATER one. This is an
+// arbitrary but deterministic choice -- any total order on AccountID would
+// do equally well -- picked only so that two runs over the same data always
+// agree, and so the choice does not depend on the incidental order legs
+// appear in rp.Transactions (the comparison is against the current best
+// leg, not "first wins", so it is order-independent).
+//
+// ACCEPTED LIMITATION, recorded here deliberately rather than left as an
+// oversight: a series that genuinely alternates between two cards payment
+// to payment (rather than migrating once) is projected entirely against
+// whichever card holds the single newest leg. Real, still-active occurrences
+// on the OTHER card are invisible to that other account's projection. This
+// is judged an acceptable trade-off against the status quo bug (which
+// invented crossings on both accounts); a fully accurate model would need
+// the recurring engine itself to track a per-leg account rather than
+// collapsing a series to one Amount, which is out of scope here (the
+// insights/recurring detection engine is explicitly out of scope for this
+// fix).
+func recurringOwnerAccount(rp models.RecurringPayment) string {
+	var owner string
+	var ownerDate time.Time
+	var seen bool
 	for _, leg := range rp.Transactions {
-		if leg.AccountID == accountID {
-			return true
+		if !seen || leg.Date.After(ownerDate) ||
+			(leg.Date.Equal(ownerDate) && leg.AccountID > owner) {
+			owner = leg.AccountID
+			ownerDate = leg.Date
+			seen = true
 		}
 	}
-	return false
+	return owner
 }
 
 // frequencyIntervalDays maps a RecurringPayment's Frequency string to its

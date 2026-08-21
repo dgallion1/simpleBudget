@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"html"
 	"log"
 	"net/http"
@@ -105,9 +106,17 @@ type pageData struct {
 	AccountKinds     []models.AccountKind
 	DefaultThreshold float64
 	Warnings         []string // pattern-overlap warnings from Save
-	Error            string   // validation / save error to surface
-	ErrorField       string   // the field the error pertains to (for focus)
-	ConfirmDeleteID  string   // account whose delete-confirm panel is open
+	// WarningsKey is a fingerprint of Warnings' content (empty when
+	// Warnings is empty), used only as the client-side sessionStorage key
+	// for dismissing the pattern-overlap banner (ACCESSIBILITY.md point
+	// 14). Keying on content rather than a boolean means a mutation that
+	// changes which files overlap is a state change: it gets a new key, so
+	// the previous dismissal does not silently swallow a different
+	// warning.
+	WarningsKey     string
+	Error           string // validation / save error to surface
+	ErrorField      string // the field the error pertains to (for focus)
+	ConfirmDeleteID string // account whose delete-confirm panel is open
 	// UnresolvedDuplicateCount is read by the base layout's nav badge. The
 	// accounts page does not own that count; it stays zero here so the
 	// badge stays hidden, matching the other settings-style pages.
@@ -524,6 +533,19 @@ func applyForm(r *http.Request, existingID string) ([]models.Account, formData, 
 // buildPageData loads accounts and CSVs, computes the pattern matches the
 // template shows, and returns the full page model. It never returns a
 // nil data map — on load failure the caller renders an error page.
+//
+// Warnings is recomputed here from the freshly-loaded accounts rather than
+// threaded through from accounts.SaveWithWarnings. Every mutation handler
+// saves through accounts.Mutate, which holds the load-modify-save section
+// atomically (see applyForm's doc comment) and does not return the
+// warnings its internal save computes; switching those call sites to
+// SaveWithWarnings would give up that atomicity for no gain, because every
+// mutation handler already calls buildPageData again immediately after a
+// successful save to build the response it renders. That re-load runs
+// OverlapWarnings against the just-persisted accounts, which is the same
+// computation SaveWithWarnings would have returned, so the warning still
+// reaches the user on the response that swaps in, not only on a later
+// hard refresh.
 func buildPageData(r *http.Request) (pageData, error) {
 	accts, err := accounts.Load(store)
 	if err != nil {
@@ -568,6 +590,15 @@ func buildPageData(r *http.Request) (pageData, error) {
 		}
 	}
 
+	// Pattern-overlap warnings, computed against the same basename set the
+	// match map above uses, so the warning always agrees with what the page
+	// shows as matched/unassigned. This is what makes the amber warning
+	// block in accounts.html non-empty: every render path (full page and
+	// the accounts-list-partial HTMX swap) goes through buildPageData, so a
+	// mutation that creates an overlap is reflected on the very response
+	// that swaps in, not only on the next hard refresh.
+	warnings := accounts.OverlapWarnings(accts, basenames)
+
 	return pageData{
 		Title:            "Accounts",
 		ActiveTab:        "accounts",
@@ -575,7 +606,39 @@ func buildPageData(r *http.Request) (pageData, error) {
 		UnassignedFiles:  unassigned,
 		AccountKinds:     accountKinds,
 		DefaultThreshold: DefaultLowBalanceThreshold,
+		Warnings:         warnings,
+		WarningsKey:      warningsKey(warnings),
 	}, nil
+}
+
+// warningsKey returns a short, stable fingerprint of warnings' content, or
+// "" when warnings is empty. It is used purely as a client-side
+// sessionStorage dismissal key (ACCESSIBILITY.md point 14) — it never
+// affects what gets computed or saved, only whether the browser has
+// already shown this exact set of warnings to the user this session. The
+// warnings are sorted into a copy before hashing so the key is a function
+// of the warning SET, not the order buildPageData happened to produce them
+// in: today that order is incidentally stable (csvBasenames sorts, accounts
+// are walked by ID), but nothing pins it, and an order-sensitive key would
+// make a future reordering look like a content change — un-dismissing and
+// re-announcing a warning set the user already saw and dismissed, which is
+// exactly what point 14 forbids. The slice passed in (and rendered by the
+// page) is left untouched; only the local copy used for hashing is sorted.
+// FNV-64a is used only for a cheap, deterministic fingerprint, not for
+// anything security-sensitive.
+func warningsKey(warnings []string) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	sorted := make([]string, len(warnings))
+	copy(sorted, warnings)
+	sort.Strings(sorted)
+	h := fnv.New64a()
+	for _, w := range sorted {
+		_, _ = h.Write([]byte(w))
+		_, _ = h.Write([]byte{0})
+	}
+	return fmt.Sprintf("%x", h.Sum64())
 }
 
 // renderList renders the accounts-list partial. It is the HTMX swap

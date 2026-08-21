@@ -145,12 +145,28 @@ func handleQueuePartial(w http.ResponseWriter, r *http.Request) {
 // which persists to data/transfer_decisions.json. A confirmed pair becomes
 // paired on the next load; a rejected one is never suggested again.
 //
-// Re-posting the SAME decision must be idempotent, not an error: the
-// queue partial is rebuilt from the CURRENT load's SuspectedTransfers, so
-// once a decision is applied the pair is gone from the queue and a repeat
-// POST for the now-absent key returns the (unchanged) queue rather than a
-// 4xx. This matches the spec: "Re-posting the same decision must be
-// idempotent, not an error."
+// Re-posting the SAME decision must be idempotent, not an error: the queue
+// partial is rebuilt from the CURRENT load's SuspectedTransfers, so once a
+// decision is applied the pair is gone from the queue and a repeat POST for
+// the now-absent key returns the (unchanged) queue rather than a 4xx. This
+// matches the spec: "Re-posting the same decision must be idempotent, not an
+// error."
+//
+// ResolveTransfer returns the same "no suspected transfer pair with key"
+// error whether the pair was already decided or never existed at all, so
+// that error alone cannot tell the two apart -- and it cannot say WHICH
+// verdict was already recorded. When it fires, the handler reads the
+// persisted decisions itself (loader.LoadTransferDecisions) and reports what
+// is actually on disk rather than assuming the request's own verdict landed.
+// Four cases fall out of that read, all handled in describeAlreadyResolved:
+// a re-post of the SAME verdict is the idempotent no-op described above; a
+// re-post of a DIFFERENT verdict must say plainly that the stored verdict
+// disagrees and that this request was not applied, so a stale second tab
+// never leaves the user believing an action landed that did not; a key
+// that is in neither the queue nor the decisions map is reported as unknown,
+// claiming no verdict at all; and if the decisions file itself cannot be
+// read (present but unparsable), the handler says so honestly rather than
+// guessing a verdict it never actually observed.
 func handleResolve(w http.ResponseWriter, r *http.Request) {
 	if loader == nil {
 		http.Error(w, "loader not initialized", http.StatusInternalServerError)
@@ -175,18 +191,12 @@ func handleResolve(w http.ResponseWriter, r *http.Request) {
 	err := loader.ResolveTransfer(pairKey, v)
 	if err != nil {
 		// The pair is no longer in the queue: either it was already resolved
-		// (idempotent re-post) or it never was. In both cases the queue has
-		// nothing to do for this key, so we report a no-op rather than an
-		// error. The spec requires idempotency for a re-post of the same
-		// decision; treating an already-resolved key as a success is exactly
-		// that.
+		// (idempotent re-post, or a conflicting re-post from a stale tab) or
+		// it never existed. ResolveTransfer's error does not distinguish
+		// these, so read the persisted decisions directly and report what is
+		// actually stored rather than assuming the request's own verdict.
 		if isAlreadyResolvedError(err) {
-			switch v {
-			case transfers.VerdictConfirm:
-				msg = fmt.Sprintf("Pair %s was already confirmed; nothing to do.", pairKey)
-			case transfers.VerdictReject:
-				msg = fmt.Sprintf("Pair %s was already rejected; nothing to do.", pairKey)
-			}
+			msg = describeAlreadyResolved(pairKey, v)
 		} else {
 			msg = "Could not resolve transfer: " + err.Error()
 		}
@@ -226,6 +236,53 @@ func renderQueue(w http.ResponseWriter, r *http.Request, data pageData) {
 // the idempotent re-post case.
 func isAlreadyResolvedError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no suspected transfer pair with key")
+}
+
+// describeAlreadyResolved builds the resolve message for a pair that
+// ResolveTransfer rejected as absent from the queue. It reads the persisted
+// decisions itself so the message names the verdict actually on disk, not
+// the one the failed request carried: those two can differ (a stale second
+// tab posting reject after another tab already confirmed the same pair), and
+// collapsing them would tell the user their reject landed when it did not.
+// Four outcomes are possible here:
+//  1. LoadTransferDecisions itself fails (the file exists but will not
+//     parse) -- there is no verdict to read at all, so the message says
+//     plainly that the stored decision could not be read, rather than
+//     guessing confirm/reject/unknown from a state the handler never
+//     actually observed.
+//  2. The key is in neither the queue nor the decisions map: unknown pair,
+//     no verdict recorded.
+//  3. The stored verdict matches the one just requested: idempotent no-op.
+//  4. The stored verdict differs from the one just requested: the request
+//     was not applied, and the message says which verdict IS stored.
+func describeAlreadyResolved(pairKey string, requested transfers.Verdict) string {
+	decisions, err := loader.LoadTransferDecisions()
+	if err != nil {
+		return fmt.Sprintf("Could not resolve transfer: the stored decision for pair %s could not be read (%v).", pairKey, err)
+	}
+	dec, ok := decisions[pairKey]
+	if !ok {
+		return fmt.Sprintf("Pair %s is not a known pair; no verdict is recorded for it.", pairKey)
+	}
+	if dec.Verdict == requested {
+		return fmt.Sprintf("Pair %s was already %s; nothing to do.", pairKey, verdictWord(dec.Verdict))
+	}
+	return fmt.Sprintf("Pair %s was already %s; the %s you just submitted was not applied.", pairKey, verdictWord(dec.Verdict), requested)
+}
+
+// verdictWord renders a Verdict as the past-participle word used in
+// resolve-outcome messages ("confirmed"/"rejected"). An unrecognized verdict
+// (which should not occur: ResolveTransfer validates it before persisting)
+// falls back to the raw string rather than panicking.
+func verdictWord(v transfers.Verdict) string {
+	switch v {
+	case transfers.VerdictConfirm:
+		return "confirmed"
+	case transfers.VerdictReject:
+		return "rejected"
+	default:
+		return string(v)
+	}
 }
 
 // buildPageData loads the ledger and the review queue and assembles the

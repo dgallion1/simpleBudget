@@ -384,6 +384,161 @@ func TestPairKeyFor_OrderIndependentAndShort(t *testing.T) {
 	}
 }
 
+// permutations returns every ordering of in, by value so the caller's slice
+// is never aliased into more than one result.
+func permutations(in []models.Transaction) [][]models.Transaction {
+	if len(in) <= 1 {
+		cp := make([]models.Transaction, len(in))
+		copy(cp, in)
+		return [][]models.Transaction{cp}
+	}
+	var out [][]models.Transaction
+	for i := range in {
+		rest := make([]models.Transaction, 0, len(in)-1)
+		rest = append(rest, in[:i]...)
+		rest = append(rest, in[i+1:]...)
+		for _, p := range permutations(rest) {
+			perm := append([]models.Transaction{in[i]}, p...)
+			out = append(out, perm)
+		}
+	}
+	return out
+}
+
+// abcCounterexample is the fixture from the transfer-pairing order-dependence
+// defect: A is a pattern-hit debit with two same-side credits in its window,
+// B four days out and C one day out. Closest-date says A pairs with C, B is
+// left over. All rows share one magnitude ($100.00) so they land in the same
+// byCents bucket, which is exactly the condition that let the old
+// slice-order-first-claim bug misfire.
+func abcCounterexample() []models.Transaction {
+	return []models.Transaction{
+		txn("chk|1", "chk", "INTERNAL TRANSFER TO SAVINGS", -100.00, 10),
+		txn("sav|1", "sav", "DEPOSIT", 100.00, 14), // 4 days from A
+		txn("sav|2", "sav", "DEPOSIT", 100.00, 11), // 1 day from A
+	}
+}
+
+// resultFingerprint reduces a Result to the parts an order-independence check
+// cares about: what every row was typed and keyed as, what the review queue
+// holds, and the row tallies. Suspected is compared as a set (by pair key)
+// because Suspected's own slice order is already independently pinned by the
+// sort in Classify and is not what this fingerprint is checking.
+type resultFingerprint struct {
+	rows      map[string]string // StableID -> "type/class/pairKey"
+	suspected map[string]string // PairKey -> reason
+	paired    int
+	external  int
+}
+
+func fingerprint(res Result) resultFingerprint {
+	fp := resultFingerprint{
+		rows:      make(map[string]string, len(res.Transactions)),
+		suspected: make(map[string]string, len(res.Suspected)),
+		paired:    res.Paired,
+		external:  res.External,
+	}
+	for _, x := range res.Transactions {
+		fp.rows[x.StableID] = string(x.TransactionType) + "/" + x.TransferClass + "/" + x.TransferPairKey
+	}
+	for _, s := range res.Suspected {
+		fp.suspected[s.PairKey] = s.Reason
+	}
+	return fp
+}
+
+func TestClassify_ClosestDatePairingIsOrderIndependent(t *testing.T) {
+	// A fourth, unrelated row rides along so the fixture exercises a
+	// classify pass with something outside the pattern-gated component
+	// too, without changing the pairing outcome for A/B/C.
+	base := append(abcCounterexample(), txn("chk|2", "chk", "Wegmans", -22.10, 10))
+
+	var want resultFingerprint
+	for i, perm := range permutations(base) {
+		res := Classify(perm, nil, nil)
+		got := fingerprint(res)
+		if i == 0 {
+			want = got
+			continue
+		}
+		if len(got.rows) != len(want.rows) {
+			t.Fatalf("permutation %d: %d rows fingerprinted, want %d", i, len(got.rows), len(want.rows))
+		}
+		for id, w := range want.rows {
+			if g := got.rows[id]; g != w {
+				t.Errorf("permutation %d: row %s = %q, want %q (order-dependent result)", i, id, g, w)
+			}
+		}
+		if len(got.suspected) != len(want.suspected) {
+			t.Errorf("permutation %d: suspected = %v, want %v", i, got.suspected, want.suspected)
+		}
+		for key, w := range want.suspected {
+			if g := got.suspected[key]; g != w {
+				t.Errorf("permutation %d: suspected[%s] = %q, want %q", i, key, g, w)
+			}
+		}
+		if got.paired != want.paired || got.external != want.external {
+			t.Errorf("permutation %d: Paired/External = %d/%d, want %d/%d", i, got.paired, got.external, want.paired, want.external)
+		}
+	}
+}
+
+func TestClassify_ABCCounterexamplePairsClosestInEveryOrder(t *testing.T) {
+	// Pinned to the specific counterexample that exposed the defect: A
+	// must pair with C (one day away) in every input order, and B (four
+	// days away) must never consume A first just because it happened to
+	// be classified first.
+	wantKey := PairKeyFor("chk|1", "sav|2")
+	for i, perm := range permutations(abcCounterexample()) {
+		res := Classify(perm, nil, nil)
+		rows := byID(t, res.Transactions)
+
+		a, b, c := rows["chk|1"], rows["sav|1"], rows["sav|2"]
+		if a.TransferClass != ClassPaired || a.TransferPairKey != wantKey {
+			t.Errorf("permutation %d: A = class %q key %q, want %q/%q", i, a.TransferClass, a.TransferPairKey, ClassPaired, wantKey)
+		}
+		if c.TransferClass != ClassPaired || c.TransferPairKey != wantKey {
+			t.Errorf("permutation %d: C = class %q key %q, want %q/%q", i, c.TransferClass, c.TransferPairKey, ClassPaired, wantKey)
+		}
+		if b.TransferClass == ClassPaired || b.TransferPairKey != "" {
+			t.Errorf("permutation %d: B was consumed (class %q key %q), want unpaired", i, b.TransferClass, b.TransferPairKey)
+		}
+		if res.Paired != 2 {
+			t.Errorf("permutation %d: Paired = %d, want 2 (A and C only)", i, res.Paired)
+		}
+	}
+}
+
+func TestClassify_PermutationsNeverDropOrDuplicateRows(t *testing.T) {
+	base := append(abcCounterexample(), txn("chk|2", "chk", "Wegmans", -22.10, 10))
+	wantIDs := make(map[string]bool, len(base))
+	for _, x := range base {
+		wantIDs[x.StableID] = true
+	}
+
+	for i, perm := range permutations(base) {
+		res := Classify(perm, nil, nil)
+		if len(res.Transactions) != len(base) {
+			t.Fatalf("permutation %d: Classify returned %d rows, want %d", i, len(res.Transactions), len(base))
+		}
+		seen := make(map[string]bool, len(base))
+		for _, x := range res.Transactions {
+			if seen[x.StableID] {
+				t.Errorf("permutation %d: row %s appeared more than once", i, x.StableID)
+			}
+			seen[x.StableID] = true
+			if !wantIDs[x.StableID] {
+				t.Errorf("permutation %d: unexpected row %s in output", i, x.StableID)
+			}
+		}
+		for id := range wantIDs {
+			if !seen[id] {
+				t.Errorf("permutation %d: row %s missing from output", i, id)
+			}
+		}
+	}
+}
+
 func TestClassify_DoesNotMutateInput(t *testing.T) {
 	in := []models.Transaction{
 		txn("schwab|1", "schwab", "SCHWAB MONEYLINK TRANSFER", -2000, 4),

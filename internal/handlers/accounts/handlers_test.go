@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -383,6 +384,518 @@ func TestBuildPageData_PatternEditorListsMatchedFiles(t *testing.T) {
 	}
 	if want := []string{"vanguard-2026.csv"}; !equalStrings(data.UnassignedFiles, want) {
 		t.Errorf("unassigned = %v, want %v", data.UnassignedFiles, want)
+	}
+}
+
+// TestBuildPageData_OverlapWarningsNameContestedBasename: two accounts
+// whose FilePatterns both match usaa-checking.csv (the broad "usaa"
+// substring on one, the specific "usaa-checking*.csv" glob on the other)
+// must produce a non-empty Warnings naming that basename. This is the
+// GET/full-page path — S4 wires buildPageData's Warnings field to
+// accounts.OverlapWarnings, which previously went nowhere.
+func TestBuildPageData_OverlapWarningsNameContestedBasename(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+		{ID: "b-narrow", Name: "Narrow", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+	})
+
+	data, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if len(data.Warnings) == 0 {
+		t.Fatalf("Warnings is empty, want a warning naming usaa-checking.csv")
+	}
+	found := false
+	for _, w := range data.Warnings {
+		if strings.Contains(w, "usaa-checking.csv") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Warnings = %v, want one naming usaa-checking.csv", data.Warnings)
+	}
+}
+
+// TestHandleCreate_OverlapWarningsSurfacedInPartial: creating an account
+// whose patterns overlap an existing account's must surface the warning
+// on the very response that renders the mutation (the accounts-list
+// partial, JSON-mode here since no renderer is wired), not only on a
+// subsequent full page load. The handler package falls back to JSON when
+// no renderer is wired, which makes Warnings directly assertable.
+func TestHandleCreate_OverlapWarningsSurfacedInPartial(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+	})
+
+	form := url.Values{
+		"id":            {"b-narrow"},
+		"name":          {"Narrow"},
+		"kind":          {"checking"},
+		"file_patterns": {"usaa-checking*.csv"},
+	}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	body := readJSON(t, w.Result())
+	warnings, ok := body["Warnings"].([]interface{})
+	if !ok || len(warnings) == 0 {
+		t.Fatalf("expected non-empty Warnings in the mutation response, got %+v", body["Warnings"])
+	}
+	found := false
+	for _, w := range warnings {
+		if s, _ := w.(string); strings.Contains(s, "usaa-checking.csv") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Warnings = %v, want one naming usaa-checking.csv", warnings)
+	}
+}
+
+// TestBuildPageData_NoOverlapNoWarnings: accounts whose patterns match
+// disjoint files produce no warnings, and the amber block must not
+// render for them (the renderer-mode assertion lives alongside the other
+// RendererMode tests below; this pins the underlying data).
+func TestBuildPageData_NoOverlapNoWarnings(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "usaa-checking", Name: "USAA Checking", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+		{ID: "usaa-credit", Name: "USAA Credit", Kind: models.AccountKindCredit, FilePatterns: []string{"usaa-credit*.csv"}},
+	})
+
+	data, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if len(data.Warnings) != 0 {
+		t.Errorf("Warnings = %v, want none for non-overlapping patterns", data.Warnings)
+	}
+}
+
+// scriptBlockRE matches every <script>...</script> element in a rendered
+// page, used to scope body-text assertions to the RENDERED content and
+// exclude script source. base.html and accounts.html both emit <script>
+// blocks on every response regardless of warning state (HTMX config, theme
+// init, syncWarnings itself), and syncWarnings' own dismiss-confirmation
+// string legitimately contains the phrase "Pattern overlap warning" as
+// literal JS source. A whole-body substring scan for that phrase would
+// therefore fail the moment the confirmation wording used it too -- which
+// is exactly why an earlier attempt had to use inconsistent wording
+// ("Account overlap warning dismissed.") instead of matching the banner's
+// own text, purely to dodge this test. Stripping script blocks before
+// scanning removes that coupling.
+var scriptBlockRE = regexp.MustCompile(`(?s)<script[^>]*>.*?</script>`)
+
+// renderedBodyWithoutScripts returns body with every <script>...</script>
+// element removed, so assertions about what is actually RENDERED (visible
+// markup, sr-only live regions, hidden data carriers) are not tripped by
+// unrelated JS source text that happens to share a substring.
+func renderedBodyWithoutScripts(body string) string {
+	return scriptBlockRE.ReplaceAllString(body, "")
+}
+
+// TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock: with a
+// renderer wired, a non-overlapping configuration must not render the
+// amber "Pattern overlap warning" block at all.
+func TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "usaa-checking", Name: "USAA Checking", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+		{ID: "usaa-credit", Name: "USAA Credit", Kind: models.AccountKindCredit, FilePatterns: []string{"usaa-credit*.csv"}},
+	})
+
+	req := httptest.NewRequest("GET", "/accounts", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	// Scoped to the rendered warning block (banner, live region, hidden
+	// data carrier), not the whole body: the whole body also contains the
+	// always-served <script> block, whose dismiss-confirmation string
+	// legitimately shares this same phrase as literal JS source.
+	rendered := renderedBodyWithoutScripts(w.Body.String())
+	if strings.Contains(rendered, "Pattern overlap warning") {
+		t.Errorf("non-overlapping config rendered the overlap warning block:\n%s", rendered)
+	}
+}
+
+// TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce: with a
+// renderer wired, an overlapping configuration must render the amber
+// warning block, and exactly once — the full page previously duplicated
+// it (once outside #accounts-list, once inside accounts-list-partial),
+// which S4 removed since Warnings is now always populated when there is
+// an overlap.
+func TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+		{ID: "b-narrow", Name: "Narrow", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+	})
+
+	req := httptest.NewRequest("GET", "/accounts", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Pattern overlap warning") {
+		t.Fatalf("overlapping config did not render the overlap warning block:\n%s", body)
+	}
+	// Count the VISIBLE warning heading (">Pattern overlap warning<"), not
+	// bare substring occurrences: the stable live region's announcement
+	// text and the hidden #accounts-warnings-data payload both legitimately
+	// carry the same phrase (as "Pattern overlap warning: ..."), which is
+	// not the double-rendering bug this test guards against.
+	if got := strings.Count(body, ">Pattern overlap warning<"); got != 1 {
+		t.Errorf("visible overlap warning heading rendered %d times, want exactly 1 (was duplicated: once outside #accounts-list, once inside the partial)", got)
+	}
+	// The ANNOUNCEMENT lives on the stable #accounts-warnings-region
+	// (outside #accounts-list, so it survives every HTMX swap), not on the
+	// visible amber block (which is destroyed and recreated by
+	// hx-swap="innerHTML" on every mutation and would not reliably
+	// announce — ACCESSIBILITY.md point 10).
+	if !strings.Contains(body, `id="accounts-warnings-region"`) {
+		t.Fatalf("missing the stable #accounts-warnings-region live region:\n%s", body)
+	}
+	regionStart := strings.Index(body, `id="accounts-warnings-region"`)
+	regionTagStart := strings.LastIndex(body[:regionStart], "<div")
+	regionTagEnd := strings.Index(body[regionStart:], ">") + regionStart
+	regionTag := body[regionTagStart:regionTagEnd]
+	if !strings.Contains(regionTag, `role="status"`) || !strings.Contains(regionTag, `aria-live="polite"`) {
+		t.Errorf("#accounts-warnings-region must carry role=\"status\" aria-live=\"polite\"; got:\n%s", regionTag)
+	}
+	if !strings.Contains(body, "usaa-checking.csv") {
+		t.Fatalf("expected warning text naming usaa-checking.csv; got:\n%s", body)
+	}
+	regionText := body[regionTagEnd : strings.Index(body[regionTagEnd:], "</div>")+regionTagEnd]
+	if !strings.Contains(regionText, "usaa-checking.csv") {
+		t.Errorf("#accounts-warnings-region text does not carry the warning content; got:\n%s", regionText)
+	}
+	// The visible amber block must NOT also carry a live-region role: two
+	// live regions announcing the same warning would read it out twice.
+	bannerStart := strings.Index(body, `id="accounts-warnings-banner"`)
+	if bannerStart == -1 {
+		t.Fatalf("missing the visible #accounts-warnings-banner block:\n%s", body)
+	}
+	bannerTagStart := strings.LastIndex(body[:bannerStart], "<div")
+	bannerTagEnd := strings.Index(body[bannerStart:], ">") + bannerStart
+	bannerTag := body[bannerTagStart:bannerTagEnd]
+	if strings.Contains(bannerTag, `role="status"`) || strings.Contains(bannerTag, "aria-live") {
+		t.Errorf("#accounts-warnings-banner must not also be a live region (would double-announce); got:\n%s", bannerTag)
+	}
+	// The banner must carry a real, keyboard-operable dismiss button with
+	// an accessible name that says what it dismisses (ACCESSIBILITY.md
+	// point 14) — not a bare "x".
+	if !strings.Contains(body, `aria-label="Dismiss pattern overlap warning"`) {
+		t.Errorf("overlap warning banner is missing a dismiss button with an accessible name; got:\n%s", body)
+	}
+	if !strings.Contains(body, "data-dismiss-warnings") {
+		t.Errorf("dismiss button markup (data-dismiss-warnings) missing; got:\n%s", body)
+	}
+}
+
+// TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap:
+// the accounts-list-partial response served directly to a mutation (the
+// actual HTMX swap payload, not the full page) must render the warning
+// markup exactly once. A future edit that moves the warning block out of
+// the partial (e.g. back to living only in the full-page template) must
+// turn this test red — the full-page assertion above renders through
+// buildPageData + the base layout and would not by itself catch that.
+func TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+	})
+
+	form := url.Values{
+		"id":            {"b-narrow"},
+		"name":          {"Narrow"},
+		"kind":          {"checking"},
+		"file_patterns": {"usaa-checking*.csv"},
+	}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	// This response IS the partial (asserted elsewhere: no <html>/<!doctype>
+	// wrapper). The warning must appear exactly once in it.
+	if strings.Contains(strings.ToLower(body), "<!doctype") || strings.Contains(strings.ToLower(body), "<html") {
+		t.Fatalf("mutation response must be the bare partial, not the full page; got:\n%s", body)
+	}
+	// Count the VISIBLE warning heading (">Pattern overlap warning<"), not
+	// bare substring occurrences: the hidden #accounts-warnings-data node
+	// also carries the phrase (inside data-warnings-text="Pattern overlap
+	// warning: ..."), which is a second, legitimate, non-duplicate copy
+	// used only to sync the stable live region — not a rendering bug.
+	if got := strings.Count(body, ">Pattern overlap warning<"); got != 1 {
+		t.Errorf("mutation (partial-swap) response rendered the visible warning heading %d times, want exactly 1; got:\n%s", got, body)
+	}
+	if !strings.Contains(body, `id="accounts-warnings-data"`) {
+		t.Errorf("partial-swap response missing #accounts-warnings-data (needed to sync the stable live region after a swap); got:\n%s", body)
+	}
+}
+
+// TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings: the
+// dismiss control is part of the warning banner. With no overlap, there is
+// nothing to dismiss, so the control must not be present.
+func TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings(t *testing.T) {
+	_, _, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	form := url.Values{"id": {"solo"}, "name": {"Solo"}, "kind": {"other"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "Pattern overlap warning") {
+		t.Fatalf("no accounts overlap; warning block should not render:\n%s", body)
+	}
+	if strings.Contains(body, `aria-label="Dismiss pattern overlap warning"`) {
+		t.Errorf("dismiss button should not render when there are no warnings; got:\n%s", body)
+	}
+	// The data carrier must still be present (empty), so the client script
+	// can clear a stale live region / dismissal key from a previous state.
+	if !strings.Contains(body, `id="accounts-warnings-data"`) {
+		t.Errorf("partial-swap response missing #accounts-warnings-data even with no warnings; got:\n%s", body)
+	}
+	if !strings.Contains(body, `data-warnings-key=""`) {
+		t.Errorf("data-warnings-key should be empty with no warnings; got:\n%s", body)
+	}
+}
+
+// TestBuildPageData_WarningsKey_ChangesWithContent: WarningsKey is the
+// client-side dismissal fingerprint (ACCESSIBILITY.md point 14). It must be
+// empty with no warnings, non-empty with warnings, and DIFFERENT when the
+// warning content differs — otherwise a dismissal of one overlap would
+// silently swallow a different, later overlap that happens to arrive while
+// the same sessionStorage key is still set.
+func TestBuildPageData_WarningsKey_ChangesWithContent(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// No accounts yet: no warnings, no key.
+	data, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if data.WarningsKey != "" {
+		t.Errorf("WarningsKey = %q, want empty with no warnings", data.WarningsKey)
+	}
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+		{ID: "b-narrow", Name: "Narrow", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+	})
+	dataWithOverlap, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if dataWithOverlap.WarningsKey == "" {
+		t.Fatal("WarningsKey is empty despite non-empty Warnings")
+	}
+
+	// Change the overlap: a-wide no longer overlaps b-narrow (patterns no
+	// longer share a file), but usaa-credit-2026-08.csv now overlaps with a
+	// third, broader account instead — a DIFFERENT warning set.
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa-credit"}},
+		{ID: "b-narrow", Name: "Narrow", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+		{ID: "c-catchall", Name: "Catchall", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+	})
+	dataChanged, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if dataChanged.WarningsKey == "" {
+		t.Fatal("WarningsKey is empty despite non-empty Warnings")
+	}
+	if dataChanged.WarningsKey == dataWithOverlap.WarningsKey {
+		t.Errorf("WarningsKey did not change even though the warning content changed: both = %q", dataChanged.WarningsKey)
+	}
+}
+
+// TestHandleCreate_OverlapDoesNotBlockSave: pattern-overlap warnings are
+// advisory. Creating an account whose patterns overlap an existing one
+// must still persist the new account — the save is not turned into a
+// validation error.
+func TestHandleCreate_OverlapDoesNotBlockSave(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+	})
+
+	form := url.Values{
+		"id":            {"b-narrow"},
+		"name":          {"Narrow"},
+		"kind":          {"checking"},
+		"file_patterns": {"usaa-checking*.csv"},
+	}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	body := readJSON(t, w.Result())
+	if errMsg, _ := body["Error"].(string); errMsg != "" {
+		t.Errorf("Error = %q, want empty — an overlap is advisory, not a validation error", errMsg)
+	}
+
+	accts := loadAccounts(t, store)
+	if len(accts) != 2 {
+		t.Fatalf("expected both accounts persisted despite the overlap, got %+v", accts)
+	}
+}
+
+// TestWarningsKey_OrderInvariant: warningsKey must be a function of the
+// warning SET, not the slice order buildPageData happened to produce it
+// in. csvBasenames() sorts and accounts are walked by ID, so today's order
+// is incidentally stable, but nothing pins either of those; an
+// order-sensitive key would make a future reordering look like a content
+// change and un-dismiss (and re-announce) a warning set the user already
+// saw, which is exactly what ACCESSIBILITY.md point 14 forbids.
+func TestWarningsKey_OrderInvariant(t *testing.T) {
+	a := []string{"a", "b"}
+	b := []string{"b", "a"}
+	ka := warningsKey(a)
+	kb := warningsKey(b)
+	if ka == "" || kb == "" {
+		t.Fatalf("warningsKey returned empty for non-empty input: key(%v)=%q key(%v)=%q", a, ka, b, kb)
+	}
+	if ka != kb {
+		t.Errorf("warningsKey is order-sensitive: key(%v) = %q, key(%v) = %q, want equal (same content, different order)", a, ka, b, kb)
+	}
+	// warningsKey must sort a COPY for hashing, not the caller's slice:
+	// Warnings is rendered in display order, which is someone else's
+	// decision to make, not warningsKey's. Assert this on b, NOT a: a is
+	// already in sorted order ("a" < "b"), so an implementation that sorted
+	// the caller's slice in place (e.g. `sorted := warnings` followed by
+	// sort.Strings(sorted), which aliases rather than copies) would leave a
+	// untouched and this guard would never catch it. b starts unsorted
+	// ("b", "a"); if warningsKey sorts in place it becomes ("a", "b"),
+	// which this assertion catches.
+	if b[0] != "b" || b[1] != "a" {
+		t.Errorf("warningsKey mutated its input slice in place: got %v, want [b a] unchanged", b)
+	}
+}
+
+// TestHandleUpdate_ResolvingOverlapClearsWarnings: a mutation path that can
+// resolve a pattern overlap (narrowing a pattern so it no longer contests a
+// file) must clear both Warnings and WarningsKey on the very response that
+// applies it — not just leave the stale warning in place until the next
+// unrelated read. This is the regression the checker's own test proved was
+// unguarded in attempt 2: all nine shipped tests only ever created
+// overlaps, never resolved one, so a handler that never re-clears Warnings
+// (e.g. a stale per-request cache) would still pass every shipped test.
+func TestHandleUpdate_ResolvingOverlapClearsWarnings(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+		{ID: "b-narrow", Name: "Narrow", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+	})
+
+	// Confirm the overlap actually exists before resolving it, so this
+	// test exercises a real transition rather than starting from "already
+	// empty" (which would pass vacuously).
+	before, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if len(before.Warnings) == 0 || before.WarningsKey == "" {
+		t.Fatalf("fixture does not overlap before the update: Warnings=%v WarningsKey=%q", before.Warnings, before.WarningsKey)
+	}
+
+	// Narrow b-narrow's pattern so it no longer matches usaa-checking.csv.
+	// a-wide's substring match ("usaa") is then the only remaining match
+	// for that file, so the contest is gone.
+	form := url.Values{
+		"name":          {"Narrow"},
+		"kind":          {"checking"},
+		"file_patterns": {"no-such-file*.csv"},
+	}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/b-narrow", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	body := readJSON(t, w.Result())
+	warnings, _ := body["Warnings"].([]interface{})
+	if len(warnings) != 0 {
+		t.Errorf("Warnings = %v, want empty on the response that resolves the overlap", warnings)
+	}
+	if key, _ := body["WarningsKey"].(string); key != "" {
+		t.Errorf("WarningsKey = %q, want empty on the response that resolves the overlap", key)
+	}
+}
+
+// TestHandleDelete_ResolvingOverlapClearsWarnings: deleting the account
+// that was contesting a file must clear both Warnings and WarningsKey on
+// the response — the same stale-warning regression as the update case
+// above, but via removing an account rather than editing its patterns.
+func TestHandleDelete_ResolvingOverlapClearsWarnings(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "a-wide", Name: "Wide", Kind: models.AccountKindOther, FilePatterns: []string{"usaa"}},
+		{ID: "b-narrow", Name: "Narrow", Kind: models.AccountKindChecking, FilePatterns: []string{"usaa-checking*.csv"}},
+	})
+
+	before, err := buildPageData(httptest.NewRequest("GET", "/accounts", nil))
+	if err != nil {
+		t.Fatalf("buildPageData: %v", err)
+	}
+	if len(before.Warnings) == 0 || before.WarningsKey == "" {
+		t.Fatalf("fixture does not overlap before the delete: Warnings=%v WarningsKey=%q", before.Warnings, before.WarningsKey)
+	}
+
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/b-narrow/delete", url.Values{"confirm": {"yes"}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	body := readJSON(t, w.Result())
+	warnings, _ := body["Warnings"].([]interface{})
+	if len(warnings) != 0 {
+		t.Errorf("Warnings = %v, want empty on the response that removes the contesting account", warnings)
+	}
+	if key, _ := body["WarningsKey"].(string); key != "" {
+		t.Errorf("WarningsKey = %q, want empty on the response that removes the contesting account", key)
+	}
+
+	accts := loadAccounts(t, store)
+	if len(accts) != 1 || accts[0].ID != "a-wide" {
+		t.Fatalf("expected only a-wide to remain, got %+v", accts)
 	}
 }
 

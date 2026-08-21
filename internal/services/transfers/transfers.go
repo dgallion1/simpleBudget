@@ -175,33 +175,113 @@ func Classify(txns []models.Transaction, transferDefs []models.MajorExpense, dec
 
 	// 2. Auto-pair pass, restricted to candidates with a pattern hit.
 	//
-	// ambiguous marks rows a tie has already sent to review. They are
-	// withdrawn from this pass entirely -- both as subjects and as
-	// candidates -- because a row whose own counterparty is undecided must
-	// not become someone else's "unique" candidate and pair by default.
+	// The old version of this pass walked rows in slice order: row i
+	// claimed nearest(out, i, cands) and marked both legs paired, so a
+	// later row j that was strictly nearer to that same counterparty never
+	// got to compete -- the first claim won regardless of distance. That
+	// made pairing a function of row ORDER, not row identity, which is
+	// wrong: the documented rule is closest-date, and two permutations of
+	// the same input must classify identically.
+	//
+	// The fix builds the whole pattern-gated candidate graph up front (an
+	// edge for every structurally valid pair, symmetric by construction)
+	// and resolves it in strictly increasing date-distance order, one
+	// distance value ("layer") at a time. Within a layer every row still
+	// free is, by construction, at its own nearest remaining distance --
+	// any nearer edge it had was already resolved by an earlier layer.  A
+	// row with more than one edge in its layer has a genuine tie: it and
+	// every edge touching it go to review, because a row whose own
+	// counterparty is undecided must not become someone else's "unique"
+	// candidate either. What is left after removing tied rows is a set of
+	// edges between two rows that are each other's sole remaining option,
+	// which can only pair one way -- so the whole layer resolves without
+	// ever asking which row a caller happened to look at first. This makes
+	// the outcome a pure function of the row set: same rows in, same
+	// pairing out, no matter the input order.
 	ambiguous := make([]bool, len(out))
-	for i := range out {
-		if paired[i] || ambiguous[i] {
-			continue
+	type transferEdge struct {
+		i, j int
+		dist int
+	}
+	var edges []transferEdge
+	for _, idxs := range byCents {
+		for a := 0; a < len(idxs); a++ {
+			for b := a + 1; b < len(idxs); b++ {
+				i, j := idxs[a], idxs[b]
+				if paired[i] || paired[j] {
+					continue
+				}
+				if !isCandidatePair(out[i], out[j]) {
+					continue
+				}
+				if !(pattern[i] || pattern[j]) {
+					continue
+				}
+				if rejected[PairKeyFor(Identity(out[i]), Identity(out[j]))] {
+					continue
+				}
+				edges = append(edges, transferEdge{i: i, j: j, dist: dayDiff(out[i].Date, out[j].Date)})
+			}
 		}
-		cands := candidates(out, paired, rejected, byCents, i, func(j int) bool {
-			return !ambiguous[j] && (pattern[i] || pattern[j])
-		})
-		if len(cands) == 0 {
-			continue
+	}
+	// Sort by distance so layers can be walked in ascending order, and
+	// break same-distance ties by the pair's own identity rather than by
+	// where either row landed in byCents' (map, so unordered) bucket
+	// iteration -- the sort key must depend only on row content, never on
+	// slice position, or the "order independent" guarantee would just move
+	// one level down into this loop.
+	sort.Slice(edges, func(a, b int) bool {
+		if edges[a].dist != edges[b].dist {
+			return edges[a].dist < edges[b].dist
 		}
-		best := nearest(out, i, cands)
-		if len(best) == 1 {
-			pairLegs(out, paired, i, best[0])
-			continue
+		ka := PairKeyFor(Identity(out[edges[a].i]), Identity(out[edges[a].j]))
+		kb := PairKeyFor(Identity(out[edges[b].i]), Identity(out[edges[b].j]))
+		return ka < kb
+	})
+
+	for start := 0; start < len(edges); {
+		end := start
+		for end < len(edges) && edges[end].dist == edges[start].dist {
+			end++
 		}
-		// An exact tie on date distance: two equally plausible
-		// counterparties. Guessing one would silently invent a
-		// relationship, so the user decides.
-		ambiguous[i] = true
-		for _, j := range best {
-			ambiguous[j] = true
-			addSuspected(&suspected, seenPair, out, i, j, ReasonAmbiguous)
+		layer := edges[start:end]
+		start = end
+
+		// A row a nearer layer already settled (paired or sent to
+		// review) is no longer free, so its edges in this layer are
+		// stale and must be dropped before counting anything.
+		var free []transferEdge
+		degree := make(map[int]int, len(layer)*2)
+		for _, e := range layer {
+			if paired[e.i] || paired[e.j] || ambiguous[e.i] || ambiguous[e.j] {
+				continue
+			}
+			free = append(free, e)
+			degree[e.i]++
+			degree[e.j]++
+		}
+
+		// Any row with more than one candidate at this, its nearest
+		// remaining distance, is ambiguous -- and so is every edge
+		// that touches it, since guessing which of a tied row's
+		// candidates to keep would silently invent a relationship.
+		for _, e := range free {
+			if degree[e.i] > 1 || degree[e.j] > 1 {
+				ambiguous[e.i] = true
+				ambiguous[e.j] = true
+				addSuspected(&suspected, seenPair, out, e.i, e.j, ReasonAmbiguous)
+			}
+		}
+
+		// What remains is exactly the edges between two rows whose
+		// only candidate, at this distance, is each other -- pair
+		// them. Each such row has degree 1, so these edges cannot
+		// overlap and there is nothing left to arbitrate.
+		for _, e := range free {
+			if degree[e.i] > 1 || degree[e.j] > 1 {
+				continue
+			}
+			pairLegs(out, paired, e.i, e.j)
 		}
 	}
 
@@ -372,24 +452,6 @@ func isCandidatePair(a, b models.Transaction) bool {
 		return false
 	}
 	return dayDiff(a.Date, b.Date) <= WindowDays
-}
-
-// nearest returns the subset of cands closest in date to i. More than one
-// element means an exact tie.
-func nearest(out []models.Transaction, i int, cands []int) []int {
-	best := -1
-	var winners []int
-	for _, j := range cands {
-		d := dayDiff(out[i].Date, out[j].Date)
-		switch {
-		case best < 0 || d < best:
-			best = d
-			winners = []int{j}
-		case d == best:
-			winners = append(winners, j)
-		}
-	}
-	return winners
 }
 
 // pairLegs types both legs Transfer/paired under one shared key.

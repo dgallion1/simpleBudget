@@ -12,6 +12,7 @@ Package engine runs deterministic retirement projections from prepared settings.
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func ACAModifiedAGI\(tc \*TaxCalculator, in ProjectedAnnualTaxInputs\) float64](<#ACAModifiedAGI>)
 - [func Age65CountForYear\(s \*models.WhatIfSettings, year int\) int](<#Age65CountForYear>)
 - [func AnnualRMDForYear\(s \*models.WhatIfSettings, currentYear int, taxDeferredBalance float64\) float64](<#AnnualRMDForYear>)
 - [func ApplyRothConversionAtYear\(s \*models.WhatIfSettings, currentYear int, taxDeferredBalance, rothBalance, rothBasis \*float64, rothFirstFundedYear \*int\) float64](<#ApplyRothConversionAtYear>)
@@ -30,6 +31,7 @@ Package engine runs deterministic retirement projections from prepared settings.
 - [func IsSocialSecurityIncomeSource\(source models.IncomeSource\) bool](<#IsSocialSecurityIncomeSource>)
 - [func LatestStatutoryFederalTaxYear\(\) int](<#LatestStatutoryFederalTaxYear>)
 - [func LivingExpensesAtMonth\(s \*models.WhatIfSettings, month int\) float64](<#LivingExpensesAtMonth>)
+- [func MarketplaceStatusAtYear\(s \*models.WhatIfSettings, projectionYear int\) \(enrolled bool, disqualified bool\)](<#MarketplaceStatusAtYear>)
 - [func MedicareEligibleAdultCountAtYear\(s \*models.WhatIfSettings, year int\) int](<#MedicareEligibleAdultCountAtYear>)
 - [func MonthlyCompoundFactorFromDecimal\(annualRate float64\) float64](<#MonthlyCompoundFactorFromDecimal>)
 - [func MonthlyRMDForMonth\(s \*models.WhatIfSettings, monthInYear int, annualRMD, taxDeferredBalance float64\) float64](<#MonthlyRMDForMonth>)
@@ -87,6 +89,7 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func ExecutePortfolioCashFlowWithTaxableState\(neededFromPortfolio, monthlyRMD float64, allowTaxDeferred bool, earlyPenaltyRate float64, taxDeferredBalance \*float64, taxable \*TaxableAccountState, rothBalance, rothBasis \*float64\) PortfolioCashFlowResult](<#ExecutePortfolioCashFlowWithTaxableState>)
   - [func \(r PortfolioCashFlowResult\) GrossWithdrawal\(\) float64](<#PortfolioCashFlowResult.GrossWithdrawal>)
 - [type PortfolioMonthInput](<#PortfolioMonthInput>)
+- [type PovertyGuidelineRecord](<#PovertyGuidelineRecord>)
 - [type PreparedChainLink](<#PreparedChainLink>)
 - [type ProjectedAnnualTaxInputs](<#ProjectedAnnualTaxInputs>)
 - [type ProjectedTaxSnapshot](<#ProjectedTaxSnapshot>)
@@ -101,6 +104,9 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func \(a ProjectionTaxAccumulator\) EstimateMonthlySnapshot\(in MonthlyTaxInputs\) ProjectedTaxSnapshot](<#ProjectionTaxAccumulator.EstimateMonthlySnapshot>)
   - [func \(a ProjectionTaxAccumulator\) EstimateMonthlyTaxes\(tc \*TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64\) float64](<#ProjectionTaxAccumulator.EstimateMonthlyTaxes>)
 - [type RealizedMonthIncome](<#RealizedMonthIncome>)
+- [type ResolvedPovertyGuideline](<#ResolvedPovertyGuideline>)
+  - [func \(r ResolvedPovertyGuideline\) FederalPovertyLevel\(householdSize int\) float64](<#ResolvedPovertyGuideline.FederalPovertyLevel>)
+  - [func \(r ResolvedPovertyGuideline\) Projected\(\) bool](<#ResolvedPovertyGuideline.Projected>)
 - [type ResolvedTaxYear](<#ResolvedTaxYear>)
   - [func \(r ResolvedTaxYear\) Projected\(\) bool](<#ResolvedTaxYear.Projected>)
 - [type RothWithdrawal](<#RothWithdrawal>)
@@ -128,6 +134,7 @@ Package engine runs deterministic retirement projections from prepared settings.
   - [func \(tc \*TaxCalculator\) MarginalRateOnLongTermGain\(in ProjectedAnnualTaxInputs, yearsFromBase int\) float64](<#TaxCalculator.MarginalRateOnLongTermGain>)
   - [func \(tc \*TaxCalculator\) MarginalRateOnOrdinaryIncome\(in ProjectedAnnualTaxInputs, yearsFromBase int\) float64](<#TaxCalculator.MarginalRateOnOrdinaryIncome>)
   - [func \(tc \*TaxCalculator\) MeasureThresholdInputs\(in ProjectedAnnualTaxInputs, yearsFromBase int, lookbackMAGI float64\) ThresholdMeasures](<#TaxCalculator.MeasureThresholdInputs>)
+  - [func \(tc \*TaxCalculator\) PovertyGuidelineFor\(coverageYear int\) \(ResolvedPovertyGuideline, error\)](<#TaxCalculator.PovertyGuidelineFor>)
   - [func \(tc \*TaxCalculator\) ResolveTaxYear\(calendarYear, month int\) \(ResolvedTaxYear, error\)](<#TaxCalculator.ResolveTaxYear>)
   - [func \(tc \*TaxCalculator\) ThresholdRegistry\(opts ThresholdRegistryOptions\) \[\]Threshold](<#TaxCalculator.ThresholdRegistry>)
 - [type TaxYearRecord](<#TaxYearRecord>)
@@ -263,6 +270,17 @@ var TaxBrackets2024 = map[models.FilingStatus][]FederalTaxBracket{
 }
 ```
 
+<a name="ACAModifiedAGI"></a>
+## func [ACAModifiedAGI](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L269>)
+
+```go
+func ACAModifiedAGI(tc *TaxCalculator, in ProjectedAnnualTaxInputs) float64
+```
+
+ACAModifiedAGI is the income measure the Affordable Care Act premium tax credit is tested against: adjusted gross income plus tax\-exempt interest plus ALL Social Security benefits — including the portion that is not taxable.
+
+That last part is what catches people. § 86 provisional income counts half of benefits and New York AGI counts none, so a retired household can sit comfortably under the 400%\-FPL cliff on every other measure of income and still be over it here. This is deliberately its own function rather than a variation on the others; they diverge in ways that cost real money.
+
 <a name="Age65CountForYear"></a>
 ## func [Age65CountForYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L132>)
 
@@ -380,7 +398,7 @@ EffectiveRMDStartAge returns the SECURE 2.0 RMD applicable age for the older per
 The older spouse drives the household's RMD timing. F\-077 fixup: when any Person.BirthMonth is set, derive the birth year directly from it — the floor'd integer ages on WhatIfSettings \(CurrentAge / SpouseAge\) read 1 year low whenever the birthday hasn't yet occurred in StartDate's calendar year, which silently pushed people born late in 1959 onto the post\-2032 \(age 75\) rule. Falls back to startYear \- GetOlderAge\(\) only for legacy callers that build settings without populating Persons.
 
 <a name="FindSteadyStateMonth"></a>
-## func [FindSteadyStateMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/month.go#L250>)
+## func [FindSteadyStateMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/month.go#L255>)
 
 ```go
 func FindSteadyStateMonth(hooks Hooks, s *models.WhatIfSettings) int
@@ -443,6 +461,19 @@ func LivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64
 ```
 
 LivingExpensesAtMonth returns the inflation\- and phase\-adjusted living expense for the given month. Exported so analysis\-package callers \(historical backtest\) can reuse the rule.
+
+<a name="MarketplaceStatusAtYear"></a>
+## func [MarketplaceStatusAtYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L406>)
+
+```go
+func MarketplaceStatusAtYear(s *models.WhatIfSettings, projectionYear int) (enrolled bool, disqualified bool)
+```
+
+MarketplaceStatusAtYear reports whether anyone in the household is on a marketplace plan in a given projection year, and whether the household is barred from the premium tax credit regardless of income.
+
+Enrolment is checked mid\-year rather than at January, because coverage changes on a birthday: someone turning 65 in March is on a marketplace plan for a quarter of the year and Medicare for the rest, and treating January as the whole story would either invent or erase a cliff for that year.
+
+Disqualification is reported only when NOBODY is on a marketplace plan and somebody is on COBRA or employer coverage. Eligibility is individual, so one spouse holding COBRA does not forfeit the other's credit; a household where the only pre\-Medicare coverage is COBRA has no credit to lose at all, and that is worth saying rather than silently registering no cliff.
 
 <a name="MedicareEligibleAdultCountAtYear"></a>
 ## func [MedicareEligibleAdultCountAtYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/loop_helpers.go#L93>)
@@ -549,7 +580,7 @@ PropertyTaxAtMonth returns the inflation\-adjusted property tax for the given mo
 Exported so the analysis package \(Monte Carlo, backtest\) can include property tax in its own monthly expense accumulators rather than silently dropping it.
 
 <a name="ProvisionalIncome"></a>
-## func [ProvisionalIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L261>)
+## func [ProvisionalIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L291>)
 
 ```go
 func ProvisionalIncome(in ProjectedAnnualTaxInputs) float64
@@ -1086,7 +1117,7 @@ func CalculateMonthlyIncomeBreakdown(hooks Hooks, s *models.WhatIfSettings, mont
 CalculateMonthlyIncomeBreakdown classifies each income source for the given month: manual SS sources are pulled into the SS bucket unless the SS optimizer is active \(in which case the optimizer's ProjectedSocialSecurityIncome value replaces the manual sources\). hooks supplies the SS\-optimizer integration; passing a zero Hooks value falls back to manual\-sources\-only.
 
 <a name="MonthlyTaxInputs"></a>
-## type [MonthlyTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L88-L112>)
+## type [MonthlyTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L93-L117>)
 
 MonthlyTaxInputs bundles the arguments to EstimateMonthlySnapshot: the month's income components plus the IRMAA lookback context. Named fields replace what was a 14\-argument positional list — the same treatment PortfolioMonthInput gave the cash\-flow waterfall.
 
@@ -1201,6 +1232,22 @@ type PortfolioMonthInput struct {
 }
 ```
 
+<a name="PovertyGuidelineRecord"></a>
+## type [PovertyGuidelineRecord](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/povertyguidelines.go#L27-L34>)
+
+PovertyGuidelineRecord is one year's published guidelines for the 48 contiguous states and DC.
+
+```go
+type PovertyGuidelineRecord struct {
+    // Year is the year the guidelines were published FOR, not the coverage
+    // year they end up governing.
+    Year                int
+    OnePerson           float64
+    PerAdditionalPerson float64
+    Provenance          ConstantProvenance
+}
+```
+
 <a name="PreparedChainLink"></a>
 ## type [PreparedChainLink](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/input.go#L21-L25>)
 
@@ -1215,7 +1262,7 @@ type PreparedChainLink struct {
 ```
 
 <a name="ProjectedAnnualTaxInputs"></a>
-## type [ProjectedAnnualTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L31-L40>)
+## type [ProjectedAnnualTaxInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L31-L45>)
 
 ProjectedAnnualTaxInputs is the YTD\-plus\-current\-month income picture extrapolated to a full\-year projection.
 
@@ -1229,11 +1276,16 @@ type ProjectedAnnualTaxInputs struct {
     ShortTermCapitalGains float64
     NonQualifiedDividends float64
     RothConversions       float64
+    // TaxExemptInterest is excluded from taxable income but added back for
+    // ACA MAGI and for § 86 provisional income, so it moves a household
+    // toward both the subsidy cliff and benefit taxation while staying
+    // invisible in AGI. Nothing in the projection generates it yet.
+    TaxExemptInterest float64
 }
 ```
 
 <a name="ProjectedTaxSnapshot"></a>
-## type [ProjectedTaxSnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L44-L60>)
+## type [ProjectedTaxSnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L49-L65>)
 
 ProjectedTaxSnapshot is the per\-month tax \+ IRMAA picture produced by EstimateMonthlySnapshot.
 
@@ -1370,7 +1422,7 @@ type ProjectionTaxAccumulator struct {
 ```
 
 <a name="ProjectionTaxAccumulator.AnnualizedInputs"></a>
-### func \(ProjectionTaxAccumulator\) [AnnualizedInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L65>)
+### func \(ProjectionTaxAccumulator\) [AnnualizedInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L70>)
 
 ```go
 func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTaxInputs) ProjectedAnnualTaxInputs
@@ -1379,7 +1431,7 @@ func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTax
 AnnualizedInputs extrapolates YTD totals plus the current month to a full year by linear annualization. Roth conversions are deliberately not annualized — they're discrete events.
 
 <a name="ProjectionTaxAccumulator.ApplyMonth"></a>
-### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L374>)
+### func \(\*ProjectionTaxAccumulator\) [ApplyMonth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L404>)
 
 ```go
 func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome)
@@ -1388,7 +1440,7 @@ func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome)
 ApplyMonth folds a month's realised income and tax payments into the accumulator. Mutating receiver — caller resets at year boundary.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlySnapshot"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlySnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L118>)
+### func \(ProjectionTaxAccumulator\) [EstimateMonthlySnapshot](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L123>)
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) ProjectedTaxSnapshot
@@ -1397,7 +1449,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlySnapshot(in MonthlyTaxInputs) P
 EstimateMonthlySnapshot computes the per\-month tax \+ IRMAA estimate for a given month, given YTD state and the month's income components. The remaining\-months division ensures actual taxes paid converge to the annual liability over the year.
 
 <a name="ProjectionTaxAccumulator.EstimateMonthlyTaxes"></a>
-### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L356>)
+### func \(ProjectionTaxAccumulator\) [EstimateMonthlyTaxes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L386>)
 
 ```go
 func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsFromBase, monthInYear int, ordinaryIncome, socialSecurityIncome, taxableWithdrawals, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, rothConversions float64) float64
@@ -1406,7 +1458,7 @@ func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsF
 EstimateMonthlyTaxes is a thin wrapper around EstimateMonthlySnapshot for callers that only need the monthly tax figure \(no IRMAA, no MAGI breakdown\).
 
 <a name="RealizedMonthIncome"></a>
-## type [RealizedMonthIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L390-L400>)
+## type [RealizedMonthIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L420-L430>)
 
 RealizedMonthIncome is one month's realised income split by tax treatment, plus the tax actually paid. Named fields for the same reason InvestmentIncomeTaxInputs has them: nine float64 dollars in a row is a transposition waiting to happen.
 
@@ -1423,6 +1475,43 @@ type RealizedMonthIncome struct {
     TaxesPaid             float64
 }
 ```
+
+<a name="ResolvedPovertyGuideline"></a>
+## type [ResolvedPovertyGuideline](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/povertyguidelines.go#L56-L66>)
+
+ResolvedPovertyGuideline is a lookup outcome with its provenance, mirroring ResolvedTaxYear.
+
+```go
+type ResolvedPovertyGuideline struct {
+    Record PovertyGuidelineRecord
+    Basis  ConstantBasis
+    // DerivedFromYear is the published year a projected record was
+    // extrapolated from.
+    DerivedFromYear int
+    InflationFactor float64
+    // GuidelineYear is the year whose table governs the coverage year asked
+    // about — one earlier, per the open-enrolment lookback.
+    GuidelineYear int
+}
+```
+
+<a name="ResolvedPovertyGuideline.FederalPovertyLevel"></a>
+### func \(ResolvedPovertyGuideline\) [FederalPovertyLevel](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/povertyguidelines.go#L73>)
+
+```go
+func (r ResolvedPovertyGuideline) FederalPovertyLevel(householdSize int) float64
+```
+
+FederalPovertyLevel returns the poverty level for a household size under these guidelines.
+
+<a name="ResolvedPovertyGuideline.Projected"></a>
+### func \(ResolvedPovertyGuideline\) [Projected](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/povertyguidelines.go#L69>)
+
+```go
+func (r ResolvedPovertyGuideline) Projected() bool
+```
+
+Projected reports whether the figures are a forecast rather than published.
 
 <a name="ResolvedTaxYear"></a>
 ## type [ResolvedTaxYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxyears.go#L101-L110>)
@@ -1530,7 +1619,7 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 NewTaxCalculator creates a tax calculator with the given configuration.
 
 <a name="TaxCalculator.AnnualIncomeTaxOn"></a>
-### func \(\*TaxCalculator\) [AnnualIncomeTaxOn](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L205>)
+### func \(\*TaxCalculator\) [AnnualIncomeTaxOn](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L210>)
 
 ```go
 func (tc *TaxCalculator) AnnualIncomeTaxOn(in ProjectedAnnualTaxInputs, yearsFromBase int) float64
@@ -1680,7 +1769,7 @@ func (tc *TaxCalculator) InflationFactor(yearsFromBase int) float64
 InflationFactor returns the cumulative inflation factor for yearsFromBase years at the calculator's annual inflation rate.
 
 <a name="TaxCalculator.MarginalRateOnLongTermGain"></a>
-### func \(\*TaxCalculator\) [MarginalRateOnLongTermGain](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L311>)
+### func \(\*TaxCalculator\) [MarginalRateOnLongTermGain](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L341>)
 
 ```go
 func (tc *TaxCalculator) MarginalRateOnLongTermGain(in ProjectedAnnualTaxInputs, yearsFromBase int) float64
@@ -1697,7 +1786,7 @@ This is the number behind "how much gain can I realize this year", and it is not
 Short\-term gain is ordinary income, so MarginalRateOnOrdinaryIncome already answers the question for it; there is no separate short\-term variant.
 
 <a name="TaxCalculator.MarginalRateOnOrdinaryIncome"></a>
-### func \(\*TaxCalculator\) [MarginalRateOnOrdinaryIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L285>)
+### func \(\*TaxCalculator\) [MarginalRateOnOrdinaryIncome](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/projtax.go#L315>)
 
 ```go
 func (tc *TaxCalculator) MarginalRateOnOrdinaryIncome(in ProjectedAnnualTaxInputs, yearsFromBase int) float64
@@ -1710,7 +1799,7 @@ This is a numeric derivative of the real tax function — \(cost\(income \+ delt
 Use GetBracketRate when the question really is "which statutory bracket does this income fall in"; use this when the question is "what does the next dollar cost".
 
 <a name="TaxCalculator.MeasureThresholdInputs"></a>
-### func \(\*TaxCalculator\) [MeasureThresholdInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L271>)
+### func \(\*TaxCalculator\) [MeasureThresholdInputs](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L347>)
 
 ```go
 func (tc *TaxCalculator) MeasureThresholdInputs(in ProjectedAnnualTaxInputs, yearsFromBase int, lookbackMAGI float64) ThresholdMeasures
@@ -1719,6 +1808,17 @@ func (tc *TaxCalculator) MeasureThresholdInputs(in ProjectedAnnualTaxInputs, yea
 MeasureThresholdInputs computes every income measure the registry tests against, from one annual income picture.
 
 lookbackMAGI is the MAGI from two years prior, which IRMAA bills against. It is a genuinely different year's number and cannot be derived from \`in\`; callers hold it \(see resolveIRMAALookbackMAGI\). Passing this year's MAGI would silently answer the wrong question.
+
+<a name="TaxCalculator.PovertyGuidelineFor"></a>
+### func \(\*TaxCalculator\) [PovertyGuidelineFor](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/povertyguidelines.go#L85>)
+
+```go
+func (tc *TaxCalculator) PovertyGuidelineFor(coverageYear int) (ResolvedPovertyGuideline, error)
+```
+
+PovertyGuidelineFor returns the guidelines that govern a given COVERAGE year, applying the open\-enrolment lookback: coverage for year Y is measured against the guidelines published for Y\-1.
+
+Years with no published table are extrapolated from the most recent one and marked projected. A coverage year earlier than any table on file is an error, for the same reason the tax tables refuse one: no forecast produces the past.
 
 <a name="TaxCalculator.ResolveTaxYear"></a>
 ### func \(\*TaxCalculator\) [ResolveTaxYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/taxyears.go#L155>)
@@ -1732,7 +1832,7 @@ ResolveTaxYear returns the federal figures to use for a calendar year and month,
 A year with published figures resolves statutory. A later year resolves projected: the latest statutory table scaled by the calculator's assumed inflation, marked as an estimate and tagged with the year it came from. A year before the earliest record is an error — no forecast can produce the past, so a caller asking for one has a bug.
 
 <a name="TaxCalculator.ThresholdRegistry"></a>
-### func \(\*TaxCalculator\) [ThresholdRegistry](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L100>)
+### func \(\*TaxCalculator\) [ThresholdRegistry](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L121>)
 
 ```go
 func (tc *TaxCalculator) ThresholdRegistry(opts ThresholdRegistryOptions) []Threshold
@@ -1872,7 +1972,7 @@ func BuildTaxableReturnComponents(totalAnnualReturnPercent float64, s *models.Wh
 BuildTaxableReturnComponents derives a per\-month return decomposition from the supplied total annual return percent and the dividend / cap\-gains distribution assumptions in settings.
 
 <a name="Threshold"></a>
-## type [Threshold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L57-L74>)
+## type [Threshold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L61-L78>)
 
 Threshold is one registered point.
 
@@ -1945,11 +2045,15 @@ const (
     // MeasureTaxableIncome is income after the standard deduction — what the
     // bracket tables are indexed by.
     MeasureTaxableIncome ThresholdMeasure = "taxable_income"
+    // MeasureACAMAGI is the Affordable Care Act's own modified AGI: it counts
+    // ALL Social Security benefits, not the taxable half, plus tax-exempt
+    // interest. A household under every other threshold can be over this one.
+    MeasureACAMAGI ThresholdMeasure = "aca_magi"
 )
 ```
 
 <a name="ThresholdMeasures"></a>
-## type [ThresholdMeasures](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L257-L262>)
+## type [ThresholdMeasures](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L332-L338>)
 
 ThresholdMeasures is a household's value for each registered income measure. Computed once and reused so every threshold is tested against the right definition.
 
@@ -1959,11 +2063,12 @@ type ThresholdMeasures struct {
     MAGITwoYearsPrior float64
     ProvisionalIncome float64
     TaxableIncome     float64
+    ACAMAGI           float64
 }
 ```
 
 <a name="ThresholdProximity"></a>
-## type [ThresholdProximity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L226-L234>)
+## type [ThresholdProximity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L301-L309>)
 
 ThresholdProximity places a household against one registered threshold.
 
@@ -1980,7 +2085,7 @@ type ThresholdProximity struct {
 ```
 
 <a name="NextCliff"></a>
-### func [NextCliff](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L332>)
+### func [NextCliff](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L411>)
 
 ```go
 func NextCliff(proximities []ThresholdProximity) (ThresholdProximity, bool)
@@ -1989,7 +2094,7 @@ func NextCliff(proximities []ThresholdProximity) (ThresholdProximity, bool)
 NextCliff returns the nearest not\-yet\-crossed true discontinuity, and whether one exists. This is the "you are $N under the next cliff" figure — the single most useful sentence a plan can show, because it is the only one where a dollar of extra income has a step cost.
 
 <a name="ThresholdProximities"></a>
-### func [ThresholdProximities](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L311>)
+### func [ThresholdProximities](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L390>)
 
 ```go
 func ThresholdProximities(registry []Threshold, measures ThresholdMeasures) []ThresholdProximity
@@ -1998,7 +2103,7 @@ func ThresholdProximities(registry []Threshold, measures ThresholdMeasures) []Th
 ThresholdProximities places a household against every registered threshold, ordered by amount. Each threshold is compared against its own income measure, never against a single "income" number.
 
 <a name="ThresholdProximity.Headroom"></a>
-### func \(ThresholdProximity\) [Headroom](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L238>)
+### func \(ThresholdProximity\) [Headroom](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L313>)
 
 ```go
 func (p ThresholdProximity) Headroom() float64
@@ -2007,7 +2112,7 @@ func (p ThresholdProximity) Headroom() float64
 Headroom returns the remaining distance below the threshold, or 0 once it has been crossed.
 
 <a name="ThresholdProximity.Overage"></a>
-### func \(ThresholdProximity\) [Overage](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L247>)
+### func \(ThresholdProximity\) [Overage](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L322>)
 
 ```go
 func (p ThresholdProximity) Overage() float64
@@ -2016,7 +2121,7 @@ func (p ThresholdProximity) Overage() float64
 Overage returns how far past the threshold the household is, or 0 if it has not been crossed. This is the "$10,319 over" figure.
 
 <a name="ThresholdRegistryOptions"></a>
-## type [ThresholdRegistryOptions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L78-L89>)
+## type [ThresholdRegistryOptions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/engine/thresholds.go#L82-L110>)
 
 ThresholdRegistryOptions describes the household well enough to place the thresholds that actually apply to it.
 
@@ -2032,6 +2137,23 @@ type ThresholdRegistryOptions struct {
     // cost growth). They are different series — see CalculateMonthlyIRMAA.
     IRMAAThresholdFactor float64
     IRMAASurchargeFactor float64
+
+    // CoverageYear is the calendar year the household is being covered in.
+    // Needed to place the ACA cliff, which is measured against the poverty
+    // guidelines published before that year's open enrolment.
+    CoverageYear int
+    // ACA carries household size, the credit at stake and the advance-credit
+    // flag. nil, or a household with nobody on a marketplace plan, means no
+    // ACA cliff is registered.
+    ACA *models.ACAConfig
+    // MarketplaceEnrolled reports whether anyone in the household is actually
+    // on a marketplace plan this year, and therefore has a credit to lose.
+    MarketplaceEnrolled bool
+    // DisqualifiedFromPremiumCredit reports whether the household is barred
+    // from the credit regardless of income — COBRA or other employer coverage.
+    // No cliff is registered when it is, because there is no credit to fall
+    // off.
+    DisqualifiedFromPremiumCredit bool
 }
 ```
 

@@ -117,6 +117,13 @@ var settingsFormSpec = []fieldSpec{
 	{Name: "taxable_cost_basis", Kind: fieldOptionalFloat, ParseLabel: "taxable cost basis",
 		HasBounds: true, Min: 0, Max: 1000000000,
 		BoundsMsg: "Taxable cost basis must be between 0 and 1,000,000,000"},
+	{Name: "aca_household_size", Kind: fieldInt, ParseLabel: "household size",
+		HasBounds: true, Min: 0, Max: 20,
+		BoundsMsg:      "Household size must be between 0 and 20",
+		AllowBlankZero: true},
+	{Name: "aca_premium_credit", Kind: fieldOptionalFloat, ParseLabel: "premium tax credit",
+		HasBounds: true, Min: 0, Max: 100000,
+		BoundsMsg: "Premium tax credit must be between 0 and 100,000"},
 	{Name: "projection_years", Kind: fieldInt, ParseLabel: "projection years",
 		HasBounds: true, Min: 1, Max: 100,
 		BoundsMsg: "Projection years must be between 1 and 100"},
@@ -300,6 +307,20 @@ func applySpouseSoleBeneficiary(r *http.Request, updates map[string]interface{})
 	}
 	last := vals[len(vals)-1]
 	updates["spouse_sole_beneficiary"] = last == "true" || last == "on"
+}
+
+// applyACAAdvanceCredits parses the aca_advance_credits checkbox using the
+// same hidden-false + checkbox-true pattern as spouse_sole_beneficiary, and
+// with the same absent-key rule: a partial post from another form section must
+// not silently clear it.
+func applyACAAdvanceCredits(r *http.Request, updates map[string]interface{}) {
+	r.FormValue("aca_advance_credits")
+	vals, present := r.Form["aca_advance_credits"]
+	if !present || len(vals) == 0 {
+		return
+	}
+	last := vals[len(vals)-1]
+	updates["aca_advance_credits"] = last == "true" || last == "on"
 }
 
 // validateSettingsCrossFieldInvariants enforces the two cross-field rules

@@ -388,3 +388,41 @@ func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown Mont
 		TaxesPaid:             monthResult.TaxesPaid,
 	})
 }
+
+// MarketplaceStatusAtYear reports whether anyone in the household is on a
+// marketplace plan in a given projection year, and whether the household is
+// barred from the premium tax credit regardless of income.
+//
+// Enrolment is checked mid-year rather than at January, because coverage
+// changes on a birthday: someone turning 65 in March is on a marketplace plan
+// for a quarter of the year and Medicare for the rest, and treating January as
+// the whole story would either invent or erase a cliff for that year.
+//
+// Disqualification is reported only when NOBODY is on a marketplace plan and
+// somebody is on COBRA or employer coverage. Eligibility is individual, so one
+// spouse holding COBRA does not forfeit the other's credit; a household where
+// the only pre-Medicare coverage is COBRA has no credit to lose at all, and
+// that is worth saying rather than silently registering no cliff.
+func MarketplaceStatusAtYear(s *models.WhatIfSettings, projectionYear int) (enrolled bool, disqualified bool) {
+	if s == nil {
+		return false, false
+	}
+	month := projectionYear*12 + 6
+
+	sawDisqualifying := false
+	for i := range s.HealthcarePersons {
+		switch s.HealthcarePersons[i].CoverageAt(month, s.StartDate) {
+		case models.CoverageACA:
+			enrolled = true
+		case models.CoverageCOBRA, models.CoverageEmployer:
+			// Medicare also bars the marketplace credit, but someone on
+			// Medicare has simply aged out rather than forfeited anything —
+			// that is not a finding worth raising.
+			sawDisqualifying = true
+		}
+	}
+	if enrolled {
+		return true, false
+	}
+	return false, sawDisqualifying
+}

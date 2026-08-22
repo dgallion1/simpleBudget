@@ -196,6 +196,39 @@ func (hp *HealthcarePerson) GetMonthlyCostAt(month int, startDate string) float6
 	return hp.CurrentMonthlyCost * math.Pow(1+hp.PreMedicareInflation/100, yearsElapsedFloat)
 }
 
+// CoverageAt returns the kind of coverage this person is on in a given
+// projection month.
+//
+// It deliberately mirrors GetMonthlyCostAt branch for branch. The two answer
+// different questions about the same transitions — what does it cost, and what
+// kind of plan is it — and if they ever disagree the plan would price one kind
+// of coverage while testing eligibility against another.
+func (hp *HealthcarePerson) CoverageAt(month int, startDate string) CoverageType {
+	if hp.CurrentCoverage == CoverageMedicare {
+		return CoverageMedicare
+	}
+
+	monthsUntilMedicare := hp.monthsUntilMedicareEligible(startDate)
+
+	if hp.CurrentCoverage == CoverageEmployer && hp.EmployerCoverageYears > 0 {
+		if month < hp.EmployerCoverageYears*12 {
+			return CoverageEmployer
+		}
+		if month < hp.MedicareStartMonth(startDate) {
+			// The bridge between employer coverage ending and Medicare
+			// starting is a marketplace plan, and is where a premium tax
+			// credit — and the cliff — actually applies.
+			return CoverageACA
+		}
+		return CoverageMedicare
+	}
+
+	if month >= monthsUntilMedicare {
+		return CoverageMedicare
+	}
+	return hp.CurrentCoverage
+}
+
 // GetMonthlyCostWithVariation returns healthcare cost with Monte Carlo variation
 // variation is a multiplier (e.g., 0.98 to 1.02 for +/- 2% variation)
 func (hp *HealthcarePerson) GetMonthlyCostWithVariation(month int, variation float64) float64 {

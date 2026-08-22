@@ -99,37 +99,57 @@ func TestFinanceGap_TaxableAccountHasNoLots(t *testing.T) {
 		"  single-year lot-selection tool, not lots in the projection loop.", gainA)
 }
 
-// TestFinanceGap_NoACAPremiumCreditOrCliff
+// TestFinanceGap_ACACreditNotPricedIntoTheProjection
 //
-// FINANCEAPPCONCERNS.md §5 and §8. The ACA subsidy is a step function at
-// 400% FPL where "$1 of extra income can cost ~$8,000 of credit", and
-// "COBRA enrollment disqualifies you from premium tax credits at any income".
+// FINANCEAPPCONCERNS.md §5 and §8. The premium tax credit phases out at 400%
+// FPL as a cliff, COBRA forfeits it at any income, and advance credits are
+// clawed back — uncapped — above the cliff.
 //
-// models.HealthcarePerson carries CoverageType medicare|aca|employer and a
-// flat CurrentMonthlyCost. ACA cost is independent of income, so the largest
-// discontinuity in the document is invisible to the projection and to the
-// bracket-fill search in analysis/tax_optimizer_strategies.go.
-func TestFinanceGap_NoACAPremiumCreditOrCliff(t *testing.T) {
-	lowIncome := models.NewHealthcarePerson("low", 60, models.CoverageACA)
-	highIncome := models.NewHealthcarePerson("high", 60, models.CoverageACA)
-
-	// Two identical 60-year-olds on marketplace coverage. One is far under
-	// the 400% FPL cliff, one is far over. Nothing in the model can express
-	// the difference — there is no income input at all.
-	if lowIncome.CurrentMonthlyCost != highIncome.CurrentMonthlyCost {
-		t.Fatalf("unexpected: healthcare cost already varies (%v vs %v)",
-			lowIncome.CurrentMonthlyCost, highIncome.CurrentMonthlyCost)
+// PARTIALLY CLOSED. The household facts are modelled (size, credit, advance
+// flag, COBRA as its own coverage type), ACA MAGI is derived on its own terms
+// counting all Social Security, the poverty guidelines are versioned with the
+// open-enrolment lookback, and the cliff is registered and surfaced with its
+// proximity.
+//
+// What remains is that none of it reaches the CASH FLOW. Marketplace cost is
+// still a flat monthly figure inflating at a fixed rate, independent of
+// income, so a projection that crosses the cliff shows the household losing
+// nothing. The plan warns about the cliff; it does not yet pay for it.
+func TestFinanceGap_ACACreditNotPricedIntoTheProjection(t *testing.T) {
+	// The cliff is genuinely registered now — confirm before complaining.
+	tc := fcCalculator(t)
+	cfg := &models.ACAConfig{HouseholdSize: 2, AnnualPremiumTaxCredit: models.FloatPtr(9600)}
+	registered := false
+	for _, th := range tc.ThresholdRegistry(ThresholdRegistryOptions{
+		CoverageYear: 2025, ACA: cfg, MarketplaceEnrolled: true,
+	}) {
+		if th.Code == "aca_premium_credit_cliff" {
+			registered = true
+		}
+	}
+	if !registered {
+		t.Fatal("regression: the ACA cliff is no longer registered")
 	}
 
-	t.Errorf("GAP (FINANCEAPPCONCERNS.md §5, §8): marketplace cost is a flat "+
-		"$%.0f/mo constant, independent of income.\n"+
-		"  Missing from the data model: household size and FPL, premium tax credit,\n"+
-		"  the 400%%-FPL cliff, the advance-credit flag (repayment is uncapped above\n"+
-		"  400%%), and COBRA as a coverage type that disqualifies credits entirely.\n"+
-		"  Consequence: the tax optimizer's bracket-fill search can walk across an\n"+
-		"  ~$8,000 discontinuity without seeing it.\n"+
-		"  Fix: add a cliff registry (§5) and income-dependent premium modelling (§8).",
-		lowIncome.CurrentMonthlyCost)
+	// But healthcare cost still ignores income entirely.
+	poor := models.NewHealthcarePerson("under the cliff", 60, models.CoverageACA)
+	rich := models.NewHealthcarePerson("over the cliff", 60, models.CoverageACA)
+	if poor.GetMonthlyCost(0) != rich.GetMonthlyCost(0) {
+		t.Fatal("unexpected: marketplace cost already varies with something")
+	}
+
+	t.Errorf("GAP (FINANCEAPPCONCERNS.md §8, cash-flow half): marketplace cost is still "+
+		"$%.0f/mo for every household at every income.\n"+
+		"  The cliff is located, priced and surfaced, but crossing it does not change a\n"+
+		"  single projected dollar: the credit is not subtracted from healthcare cost,\n"+
+		"  losing it does not add cost back, and advance-credit repayment never appears\n"+
+		"  as the lump it is.\n"+
+		"  Doing this properly needs the credit to vary with each year's ACA MAGI, which\n"+
+		"  needs the benchmark silver plan for the household's rating area and the age of\n"+
+		"  every enrollee — local data this planner does not carry. A national benchmark\n"+
+		"  would be confidently wrong everywhere.\n"+
+		"  Also still absent: the § 36B applicable-percentage table, so the credit cannot\n"+
+		"  be derived even given a benchmark premium.", poor.GetMonthlyCost(0))
 }
 
 // TestFinanceGap_StateTaxCannotExcludeSocialSecurity

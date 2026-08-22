@@ -40,6 +40,33 @@ func nearestCliff(summaries []models.ProjectionYearSummary, startYear, olderAge 
 	return best
 }
 
+// constantsBasis reports which published tax figures the analysis rests on
+// and which of its years are extrapolated from them.
+func constantsBasis(s *models.WhatIfSettings, startYear, years int) *models.TaxConstantsBasis {
+	statutoryYear, provenance := engine.LatestStatutoryFederalProvenance()
+	basis := &models.TaxConstantsBasis{
+		StatutoryYear: statutoryYear,
+		Source:        provenance.Source,
+		VerifiedOn:    provenance.VerifiedOn,
+	}
+	if years <= 0 {
+		return basis
+	}
+
+	lastYear := startYear + years - 1
+	if lastYear <= statutoryYear {
+		return basis
+	}
+	first := statutoryYear + 1
+	if startYear > first {
+		first = startYear
+	}
+	basis.FirstProjectedYear = first
+	basis.LastProjectedYear = lastYear
+	basis.InflationRate = s.InflationRate
+	return basis
+}
+
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis {
 	if proj == nil || len(proj.Months) == 0 {
 		return nil
@@ -124,6 +151,7 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 		result.AverageEffectiveRate = result.TotalTaxPaid / totalGrossIncome * 100
 	}
 	result.NearestCliff = nearestCliff(proj.YearlySummaries, startYear, olderAge)
+	result.ConstantsBasis = constantsBasis(s, startYear, len(proj.YearlySummaries))
 
 	return result
 }

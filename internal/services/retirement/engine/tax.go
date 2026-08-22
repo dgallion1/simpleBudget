@@ -209,69 +209,44 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 // GetAdjustedBrackets returns tax brackets adjusted for inflation from
 // base year.
 func (tc *TaxCalculator) GetAdjustedBrackets(yearsFromBase int) []FederalTaxBracket {
-	baseBrackets := TaxBrackets2024[tc.FilingStatus]
-	if baseBrackets == nil {
-		baseBrackets = TaxBrackets2024[models.FilingMarriedJoint]
-	}
+	resolved := tc.resolveForYearsFromBase(yearsFromBase)
+	return bracketsFor(resolved.Record.OrdinaryBrackets, tc.FilingStatus)
+}
 
-	if yearsFromBase <= 0 {
-		return baseBrackets
-	}
-
-	inflationFactor := tc.InflationFactor(yearsFromBase)
-	adjusted := make([]FederalTaxBracket, len(baseBrackets))
-
-	for i, bracket := range baseBrackets {
-		adjusted[i] = FederalTaxBracket{
-			MinIncome: bracket.MinIncome * inflationFactor,
+// scaleBrackets multiplies every bracket edge by factor. An unbounded top
+// edge stays unbounded — scaling math.MaxFloat64 would overflow to +Inf and
+// poison every comparison downstream.
+func scaleBrackets(brackets []FederalTaxBracket, factor float64) []FederalTaxBracket {
+	scaled := make([]FederalTaxBracket, len(brackets))
+	for i, bracket := range brackets {
+		scaled[i] = FederalTaxBracket{
+			MinIncome: bracket.MinIncome * factor,
 			MaxIncome: bracket.MaxIncome,
 			Rate:      bracket.Rate,
 		}
 		if bracket.MaxIncome < math.MaxFloat64 {
-			adjusted[i].MaxIncome = bracket.MaxIncome * inflationFactor
+			scaled[i].MaxIncome = bracket.MaxIncome * factor
 		}
 	}
-
-	return adjusted
+	return scaled
 }
 
 func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase int) []FederalTaxBracket {
-	baseBrackets := LongTermCapitalGainsBrackets2024[tc.FilingStatus]
-	if baseBrackets == nil {
-		baseBrackets = LongTermCapitalGainsBrackets2024[models.FilingMarriedJoint]
-	}
-
-	if yearsFromBase <= 0 {
-		return baseBrackets
-	}
-
-	inflationFactor := tc.InflationFactor(yearsFromBase)
-	adjusted := make([]FederalTaxBracket, len(baseBrackets))
-
-	for i, bracket := range baseBrackets {
-		adjusted[i] = FederalTaxBracket{
-			MinIncome: bracket.MinIncome * inflationFactor,
-			MaxIncome: bracket.MaxIncome,
-			Rate:      bracket.Rate,
-		}
-		if bracket.MaxIncome < math.MaxFloat64 {
-			adjusted[i].MaxIncome = bracket.MaxIncome * inflationFactor
-		}
-	}
-
-	return adjusted
+	resolved := tc.resolveForYearsFromBase(yearsFromBase)
+	return bracketsFor(resolved.Record.LongTermGainBrackets, tc.FilingStatus)
 }
 
 // GetAdjustedStandardDeduction returns standard deduction adjusted for
 // inflation, including the age-65+ additional deduction per IRS Rev.
 // Proc. 2023-34 §3.16(2).
 func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64 {
+	resolved := tc.resolveForYearsFromBase(yearsFromBase)
 	status := NormalizeFilingStatus(tc.FilingStatus)
-	base, ok := StandardDeduction2024[status]
+
+	base, ok := resolved.Record.StandardDeduction[status]
 	if !ok {
-		base = StandardDeduction2024[models.FilingMarriedJoint]
+		base = resolved.Record.StandardDeduction[models.FilingMarriedJoint]
 	}
-	addPerPerson := AdditionalStandardDeduction2024Age65[status]
 	count := tc.Age65Count
 	if count < 0 {
 		count = 0
@@ -279,8 +254,7 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
 	if count > 2 {
 		count = 2
 	}
-	additional := float64(count) * addPerPerson
-	return (base + additional) * tc.InflationFactor(yearsFromBase)
+	return base + float64(count)*resolved.Record.AdditionalDeductionAge65[status]
 }
 
 // InflationFactor returns the cumulative inflation factor for

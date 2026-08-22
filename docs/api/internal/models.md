@@ -115,6 +115,8 @@ Package models defines the core domain types shared across the application: Tran
 - [type TaxConfig](<#TaxConfig>)
   - [func DefaultTaxConfig\(\) \*TaxConfig](<#DefaultTaxConfig>)
   - [func \(t \*TaxConfig\) StateIncomeTaxRateOrZero\(\) float64](<#TaxConfig.StateIncomeTaxRateOrZero>)
+- [type TaxConstantsBasis](<#TaxConstantsBasis>)
+  - [func \(b TaxConstantsBasis\) HasProjectedYears\(\) bool](<#TaxConstantsBasis.HasProjectedYears>)
 - [type TaxOptimizerAnalysis](<#TaxOptimizerAnalysis>)
 - [type TaxOptimizerCandidate](<#TaxOptimizerCandidate>)
 - [type TaxTreatment](<#TaxTreatment>)
@@ -958,7 +960,7 @@ func (hp *HealthcarePerson) YearsUntilMedicare() int
 YearsUntilMedicare returns years until Medicare eligibility \(0 if already eligible\)
 
 <a name="HistoricalBacktestAnalysis"></a>
-## type [HistoricalBacktestAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1462-L1473>)
+## type [HistoricalBacktestAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1488-L1499>)
 
 HistoricalBacktestAnalysis contains complete backtesting results
 
@@ -978,7 +980,7 @@ type HistoricalBacktestAnalysis struct {
 ```
 
 <a name="HistoricalBacktestResult"></a>
-## type [HistoricalBacktestResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1449-L1459>)
+## type [HistoricalBacktestResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1475-L1485>)
 
 HistoricalBacktestResult represents testing retirement from one starting year
 
@@ -997,7 +999,7 @@ type HistoricalBacktestResult struct {
 ```
 
 <a name="HistoricalYear"></a>
-## type [HistoricalYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1440-L1446>)
+## type [HistoricalYear](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1466-L1472>)
 
 HistoricalYear represents one year of market data
 
@@ -1600,7 +1602,7 @@ type RothConversionConfig struct {
 ```
 
 <a name="RothOptimizerStrategy"></a>
-## type [RothOptimizerStrategy](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1487-L1494>)
+## type [RothOptimizerStrategy](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1513-L1520>)
 
 RothOptimizerStrategy describes a Roth conversion strategy in a form the Tax Optimizer can apply to the engine without mutating saved settings.
 
@@ -1616,7 +1618,7 @@ type RothOptimizerStrategy struct {
 ```
 
 <a name="RothStrategyKind"></a>
-## type [RothStrategyKind](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1476>)
+## type [RothStrategyKind](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1502>)
 
 RothStrategyKind names a Roth conversion strategy family.
 
@@ -1635,7 +1637,7 @@ const (
 ```
 
 <a name="SSBreakevenResult"></a>
-## type [SSBreakevenResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1588-L1592>)
+## type [SSBreakevenResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1614-L1618>)
 
 SSBreakevenResult represents the age at which delaying benefits surpasses claiming earlier
 
@@ -1648,7 +1650,7 @@ type SSBreakevenResult struct {
 ```
 
 <a name="SSClaimingOption"></a>
-## type [SSClaimingOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1576-L1585>)
+## type [SSClaimingOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1602-L1611>)
 
 SSClaimingOption represents the benefit analysis for a specific claiming age
 
@@ -1666,7 +1668,7 @@ type SSClaimingOption struct {
 ```
 
 <a name="SSComparisonAnalysis"></a>
-## type [SSComparisonAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1595-L1614>)
+## type [SSComparisonAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1621-L1640>)
 
 SSComparisonAnalysis contains the full claiming age analysis
 
@@ -1694,7 +1696,7 @@ type SSComparisonAnalysis struct {
 ```
 
 <a name="SSPortfolioAnalysis"></a>
-## type [SSPortfolioAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1626-L1634>)
+## type [SSPortfolioAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1652-L1660>)
 
 
 
@@ -1711,7 +1713,7 @@ type SSPortfolioAnalysis struct {
 ```
 
 <a name="SSPortfolioOption"></a>
-## type [SSPortfolioOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1616-L1624>)
+## type [SSPortfolioOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1642-L1650>)
 
 
 
@@ -1945,12 +1947,16 @@ func CalculateSustainabilityScore(requiredRate float64, survives bool) *Sustaina
 CalculateSustainabilityScore computes score from withdrawal rate
 
 <a name="TaxAnalysis"></a>
-## type [TaxAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1425-L1437>)
+## type [TaxAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1447-L1463>)
 
 TaxAnalysis contains tax projections summary
 
 ```go
 type TaxAnalysis struct {
+    // ConstantsBasis says which published figures this analysis rests on and
+    // which years are extrapolated from them.
+    ConstantsBasis *TaxConstantsBasis `json:"constants_basis,omitempty"`
+
     // NearestCliff is the tightest squeeze anywhere in the projection: the
     // year with the least headroom to a step-cost threshold. nil when no
     // cliff applies to this household in any year.
@@ -1997,8 +2003,38 @@ func (t *TaxConfig) StateIncomeTaxRateOrZero() float64
 
 StateIncomeTaxRateOrZero returns the configured state rate, or 0 if the TaxConfig pointer or rate is nil/zero. Use this at engine and math boundaries; use direct nil checks at completeness/validation boundaries where "unset" semantics matter.
 
+<a name="TaxConstantsBasis"></a>
+## type [TaxConstantsBasis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1428-L1440>)
+
+TaxConstantsBasis records which tax figures an answer rests on, and how much of the answer is forecast rather than law. Surfaced because a projection that silently blends published figures with extrapolated ones looks equally authoritative in both halves.
+
+```go
+type TaxConstantsBasis struct {
+    // StatutoryYear is the most recent tax year with published figures.
+    StatutoryYear int    `json:"statutory_year"`
+    Source        string `json:"source"`
+    VerifiedOn    string `json:"verified_on"`
+    // FirstProjectedYear and LastProjectedYear bound the span of the
+    // projection that uses extrapolated figures. Both zero when the whole
+    // projection is covered by published figures.
+    FirstProjectedYear int `json:"first_projected_year,omitempty"`
+    LastProjectedYear  int `json:"last_projected_year,omitempty"`
+    // InflationRate is the assumed annual rate used to extrapolate, percent.
+    InflationRate float64 `json:"inflation_rate,omitempty"`
+}
+```
+
+<a name="TaxConstantsBasis.HasProjectedYears"></a>
+### func \(TaxConstantsBasis\) [HasProjectedYears](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1444>)
+
+```go
+func (b TaxConstantsBasis) HasProjectedYears() bool
+```
+
+HasProjectedYears reports whether any year of the projection rests on extrapolated rather than published figures.
+
 <a name="TaxOptimizerAnalysis"></a>
-## type [TaxOptimizerAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1542-L1552>)
+## type [TaxOptimizerAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1568-L1578>)
 
 TaxOptimizerAnalysis is the per\-scenario recommendation produced by analysis.TaxOptimizer. Always non\-nil when produced via RunFull; Eligible=false carries IneligibleReason for UI rendering.
 
@@ -2017,7 +2053,7 @@ type TaxOptimizerAnalysis struct {
 ```
 
 <a name="TaxOptimizerCandidate"></a>
-## type [TaxOptimizerCandidate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1506-L1537>)
+## type [TaxOptimizerCandidate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1532-L1563>)
 
 TaxOptimizerCandidate is one \(SS pair, Roth strategy\) configuration and its scored outcome.
 
@@ -2433,7 +2469,7 @@ func DefaultUserSettings() *UserSettings
 DefaultUserSettings returns settings with sensible defaults
 
 <a name="WhatIfAnalysis"></a>
-## type [WhatIfAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1555-L1573>)
+## type [WhatIfAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1581-L1599>)
 
 WhatIfAnalysis is the complete analysis container returned to templates
 
@@ -2460,7 +2496,7 @@ type WhatIfAnalysis struct {
 ```
 
 <a name="WhatIfPageData"></a>
-## type [WhatIfPageData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1637-L1646>)
+## type [WhatIfPageData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1663-L1672>)
 
 WhatIfPageData is the data passed to the whatif template
 
@@ -2965,7 +3001,7 @@ func (s *WhatIfSettings) TaxableStockPct() float64
 
 
 <a name="YearlyConversion"></a>
-## type [YearlyConversion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1499-L1502>)
+## type [YearlyConversion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/models/whatif.go#L1525-L1528>)
 
 YearlyConversion is one year's planned Roth conversion as part of an optimizer strategy. Age is the primary's age in that year; Amount is the dollar amount converted in that year, in nominal dollars.
 

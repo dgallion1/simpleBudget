@@ -122,7 +122,7 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 BuildRMD \(F\-072\) builds the RMD analysis from the actual projection instead of an isolated standalone math model. It samples each RMD year's starting tax\-deferred balance and sums the actual RMDWithdrawal over the year, so the panel cannot diverge from the main projection.
 
 <a name="BuildTax"></a>
-## func [BuildTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax.go#L43>)
+## func [BuildTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax.go#L70>)
 
 ```go
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis

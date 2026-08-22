@@ -73,6 +73,12 @@
             </tbody>
         </table>
     </div>
+    {{with $t.ConstantsBasis}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+        Federal figures: {{.Source}}{{if .VerifiedOn}}, last verified {{.VerifiedOn}}{{end}}.
+        {{if .HasProjectedYears}}Years {{.FirstProjectedYear}}&ndash;{{.LastProjectedYear}} are projected from the {{.StatutoryYear}} tables at {{printf "%.1f" .InflationRate}}%/yr &mdash; estimates, not published law. Real indexing rounds in fixed steps and some thresholds are never indexed at all.{{end}}
+    </p>
+    {{end}}
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
         Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs, and On Gains what the next dollar of realized long-term gain costs &mdash; both measured from that year&rsquo;s income, so they account for capital-gain stacking, the Social Security phase-in and NIIT. Neither is a statutory bracket and either can exceed one. State tax is $0 unless a state rate is configured.
     </p>

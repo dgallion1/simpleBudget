@@ -188,44 +188,57 @@ func TestFinanceGap_StateTaxCannotExcludeSocialSecurity(t *testing.T) {
 		stateA, targetOrdinary, wagesB, taxableSS, taxableSS*nyRate/100)
 }
 
-// TestFinanceGap_TaxConstantsAreNotVersioned
+// TestFinanceGap_TaxConstantsLackStatutoryYears
 //
-// FINANCEAPPCONCERNS.md §7: "Every constant lives in a data file keyed by
-// (tax_year, jurisdiction, effective_date)... Fail loudly on a missing year
-// rather than silently falling back to last year's table."
+// FINANCEAPPCONCERNS.md §7 asks for constants keyed by (tax_year,
+// jurisdiction, effective_date), each carrying a source and a verified_on
+// date, with mid-year effective dates supported, the dependency surfaced to
+// the user, and a missing year failing loudly rather than silently reusing
+// last year's table.
 //
-// Constants here are Go literals for a single base year (taxBaseYear = 2024),
-// projected forward by a uniform inflation factor. Asking for 2026 does not
-// return 2026 statutory values and does not fail — it silently returns
-// 2024 values scaled by an assumed inflation rate.
-func TestFinanceGap_TaxConstantsAreNotVersioned(t *testing.T) {
-	tc := NewTaxCalculator(&models.TaxConfig{
-		FilingStatus: models.FilingMarriedJoint,
-		Age65Count:   1,
-	}, 2.5) // 2.5%/yr assumed inflation
+// PARTIALLY CLOSED. The mechanism exists (taxyears.go): records are keyed and
+// dated, mid-year effective months resolve, every record carries provenance,
+// years before the earliest record are an error, and later years come back
+// explicitly marked BasisProjected with the year they were extrapolated from.
+// The tax panel states all of it.
+//
+// What is missing is DATA. Only 2024 is seeded, because it is the only year
+// this repository can cite. Every later year is therefore a forecast, so the
+// document's own 2026 figures — the new senior deduction, the restored ACA
+// cliff — remain unreachable no matter how good the mechanism is.
+func TestFinanceGap_TaxConstantsLackStatutoryYears(t *testing.T) {
+	tc := fcCalculator(t)
 
-	// 2026 is two years from the 2024 base.
-	got := tc.GetAdjustedStandardDeduction(2)
+	latest := LatestStatutoryFederalTaxYear()
+	if latest != taxBaseYear {
+		t.Fatalf("statutory coverage moved to %d; update this gap test", latest)
+	}
 
-	// FINANCEAPPCONCERNS.md §9's household implies a 2026 MFJ deduction of
-	// $33,850 (statutory standard + one 65+ additional), before the new
-	// $6,000 senior deduction the document lists in §7.
-	const want2026Statutory = 33850.0
-	const wantSeniorDeduction = 6000.0
+	// The mechanism is genuinely in place — confirm before complaining.
+	resolved, err := tc.ResolveTaxYear(latest+2, 1)
+	if err != nil {
+		t.Fatalf("resolving a future year should project, not fail: %v", err)
+	}
+	if !resolved.Projected() {
+		t.Fatal("regression: a year with no published figures was not marked projected")
+	}
 
-	t.Errorf("GAP (FINANCEAPPCONCERNS.md §7): standard deduction for 2026 is "+
-		"$%.2f — the 2024 table (%.0f + %.0f) inflated by %.1f%%/yr, not a 2026 "+
-		"statutory value ($%.0f).\n"+
-		"  Also absent entirely: the new senior deduction ($%.0f, phasing out over\n"+
-		"  $150,000 of AGI), which the document's golden cases depend on.\n"+
-		"  No constant in this package carries an effective date, a source URL, or a\n"+
-		"  verified_on date, and a missing year cannot fail loudly because every year\n"+
-		"  is synthesised from one base year.\n"+
-		"  Fix: move brackets, deductions, thresholds and IRMAA tiers into a data file\n"+
-		"  keyed by (tax_year, jurisdiction, effective_date) with mid-year support.",
-		got, StandardDeduction2024[models.FilingMarriedJoint],
-		AdditionalStandardDeduction2024Age65[models.FilingMarriedJoint],
-		2.5, want2026Statutory, wantSeniorDeduction)
+	t.Errorf("GAP (FINANCEAPPCONCERNS.md §7, data half): the constants store holds "+
+		"exactly one statutory year (%d).\n"+
+		"  Everything after it is extrapolated at an assumed inflation rate, which is\n"+
+		"  labelled honestly but is still not law: real indexing rounds in fixed steps\n"+
+		"  and several thresholds are never indexed at all.\n"+
+		"  Consequences: the 2026 senior deduction ($6,000, phasing out over $150,000)\n"+
+		"  does not exist in any table, and no 2025 or 2026 figure can be reproduced\n"+
+		"  exactly.\n"+
+		"  Also still unversioned: IRMAA keeps its own 2026 table, its own base\n"+
+		"  year and its own two inflation series outside TaxYearRecord, which\n"+
+		"  carries no IRMAA figures at all; and jurisdiction is nominal, since\n"+
+		"  state tax is one flat\n"+
+		"  rate with no notion of what a state excludes.\n"+
+		"  Fix: append statutory records with their own citations — a data change, not\n"+
+		"  a code change — and fold the IRMAA tiers into TaxYearRecord.",
+		latest)
 }
 
 // TestFinanceGap_MoneyIsFloat64

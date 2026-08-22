@@ -221,6 +221,34 @@
             <p class="text-xs text-gray-400 dark:text-gray-500">Dividends and capital-gains distributions are treated as taxable cash events and reinvested unless spent.</p>
         </div>
 
+        <div class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div class="flex items-center justify-between">
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Marketplace Health Coverage</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">Only if retiring before 65</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label for="aca-household-size-input" class="block text-xs text-gray-500 dark:text-gray-400">Tax Household Size</label>
+                    <input type="number" id="aca-household-size-input" name="aca_household_size" value="{{if and .Settings.ACA .Settings.ACA.HouseholdSize}}{{.Settings.ACA.HouseholdSize}}{{end}}"
+                        min="0" max="20" step="1" placeholder="Everyone on your return"
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="aca-premium-credit-input" class="block text-xs text-gray-500 dark:text-gray-400">Premium Tax Credit $/yr</label>
+                    <input type="number" id="aca-premium-credit-input" name="aca_premium_credit" value="{{if and .Settings.ACA .Settings.ACA.AnnualPremiumTaxCredit}}{{printf "%.0f" (deref .Settings.ACA.AnnualPremiumTaxCredit)}}{{end}}"
+                        min="0" max="100000" step="100" placeholder="From Form 1095-A"
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+            </div>
+            <label class="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
+                <input type="hidden" name="aca_advance_credits" value="false">
+                <input type="checkbox" id="aca-advance-credits-input" name="aca_advance_credits" value="true" {{if and .Settings.ACA .Settings.ACA.AdvanceCreditsTaken}}checked{{end}}
+                    class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                <span>Credits paid in advance to the insurer. If so, income over the cliff claws back what has already been paid this year &mdash; repayment is uncapped at and above 400% of the poverty level.</span>
+            </label>
+            <p class="text-xs text-gray-400 dark:text-gray-500">The subsidy cliff is measured against ACA MAGI, which counts <em>all</em> Social Security benefits, not just the taxable part. COBRA counts as employer coverage and forfeits the credit at any income.</p>
+        </div>
+
         <div>
             <label for="tax-deferred-delay-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Delay Tax-Deferred Withdrawals</label>
             <input type="range" id="tax-deferred-delay-slider" name="tax_deferred_delay_years" value="{{.Settings.TaxDeferredDelayYears}}"

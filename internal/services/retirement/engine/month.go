@@ -213,11 +213,16 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 // figures came from, never in the monthly loop.
 func applyNextCliff(summary *models.ProjectionYearSummary, st *ProjectionState, yearsFromTaxBase int) {
 	s := st.Settings()
+	marketplace, disqualified := MarketplaceStatusAtYear(s, summary.Year)
 	registry := st.TaxCalculator.ThresholdRegistry(ThresholdRegistryOptions{
-		YearsFromBase:        yearsFromTaxBase,
-		IRMAAEligibleAdults:  MedicareEligibleAdultCountAtYear(s, summary.Year),
-		IRMAAThresholdFactor: PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
-		IRMAASurchargeFactor: PlannerIRMAASurchargeInflationFactorForYear(float64(yearsFromTaxBase)),
+		YearsFromBase:                 yearsFromTaxBase,
+		IRMAAEligibleAdults:           MedicareEligibleAdultCountAtYear(s, summary.Year),
+		IRMAAThresholdFactor:          PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
+		IRMAASurchargeFactor:          PlannerIRMAASurchargeInflationFactorForYear(float64(yearsFromTaxBase)),
+		CoverageYear:                  ParseStartYear(s.StartDate) + summary.Year,
+		ACA:                           s.ACA,
+		MarketplaceEnrolled:           marketplace,
+		DisqualifiedFromPremiumCredit: disqualified,
 	})
 	if len(registry) == 0 {
 		return

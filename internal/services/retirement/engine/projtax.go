@@ -37,6 +37,11 @@ type ProjectedAnnualTaxInputs struct {
 	ShortTermCapitalGains float64
 	NonQualifiedDividends float64
 	RothConversions       float64
+	// TaxExemptInterest is excluded from taxable income but added back for
+	// ACA MAGI and for § 86 provisional income, so it moves a household
+	// toward both the subsidy cliff and benefit taxation while staying
+	// invisible in AGI. Nothing in the projection generates it yet.
+	TaxExemptInterest float64
 }
 
 // ProjectedTaxSnapshot is the per-month tax + IRMAA picture produced by
@@ -246,7 +251,32 @@ func taxableSocialSecurityFor(tc *TaxCalculator, in ProjectedAnnualTaxInputs) fl
 // provisionalOtherIncome is everything in the § 86 base except the benefits
 // half — i.e. income excluding Social Security itself.
 func provisionalOtherIncome(in ProjectedAnnualTaxInputs) float64 {
-	return ordinaryIncomeBeforeSocialSecurity(in) + in.ShortTermCapitalGains
+	// Tax-exempt interest is added back here by 26 USC § 86(b)(2)(B): it is
+	// the classic way a household is surprised into taxable benefits.
+	return ordinaryIncomeBeforeSocialSecurity(in) + in.ShortTermCapitalGains + in.TaxExemptInterest
+}
+
+// ACAModifiedAGI is the income measure the Affordable Care Act premium tax
+// credit is tested against: adjusted gross income plus tax-exempt interest
+// plus ALL Social Security benefits — including the portion that is not
+// taxable.
+//
+// That last part is what catches people. § 86 provisional income counts half
+// of benefits and New York AGI counts none, so a retired household can sit
+// comfortably under the 400%-FPL cliff on every other measure of income and
+// still be over it here. This is deliberately its own function rather than a
+// variation on the others; they diverge in ways that cost real money.
+func ACAModifiedAGI(tc *TaxCalculator, in ProjectedAnnualTaxInputs) float64 {
+	adjustedGross := ordinaryIncomeBeforeSocialSecurity(in) +
+		in.ShortTermCapitalGains +
+		in.QualifiedDividends +
+		in.LongTermCapitalGains +
+		taxableSocialSecurityFor(tc, in)
+
+	// Add back the untaxed portion of benefits, so that 100% of gross
+	// benefits is counted, plus tax-exempt interest.
+	untaxedSocialSecurity := math.Max(0, in.SocialSecurityIncome-taxableSocialSecurityFor(tc, in))
+	return adjustedGross + untaxedSocialSecurity + in.TaxExemptInterest
 }
 
 // ProvisionalIncome is the 26 USC § 86 measure that decides how much of a

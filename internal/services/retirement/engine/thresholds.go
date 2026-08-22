@@ -51,6 +51,10 @@ const (
 	// MeasureTaxableIncome is income after the standard deduction — what the
 	// bracket tables are indexed by.
 	MeasureTaxableIncome ThresholdMeasure = "taxable_income"
+	// MeasureACAMAGI is the Affordable Care Act's own modified AGI: it counts
+	// ALL Social Security benefits, not the taxable half, plus tax-exempt
+	// interest. A household under every other threshold can be over this one.
+	MeasureACAMAGI ThresholdMeasure = "aca_magi"
 )
 
 // Threshold is one registered point.
@@ -86,6 +90,23 @@ type ThresholdRegistryOptions struct {
 	// cost growth). They are different series — see CalculateMonthlyIRMAA.
 	IRMAAThresholdFactor float64
 	IRMAASurchargeFactor float64
+
+	// CoverageYear is the calendar year the household is being covered in.
+	// Needed to place the ACA cliff, which is measured against the poverty
+	// guidelines published before that year's open enrolment.
+	CoverageYear int
+	// ACA carries household size, the credit at stake and the advance-credit
+	// flag. nil, or a household with nobody on a marketplace plan, means no
+	// ACA cliff is registered.
+	ACA *models.ACAConfig
+	// MarketplaceEnrolled reports whether anyone in the household is actually
+	// on a marketplace plan this year, and therefore has a credit to lose.
+	MarketplaceEnrolled bool
+	// DisqualifiedFromPremiumCredit reports whether the household is barred
+	// from the credit regardless of income — COBRA or other employer coverage.
+	// No cliff is registered when it is, because there is no credit to fall
+	// off.
+	DisqualifiedFromPremiumCredit bool
 }
 
 // ThresholdRegistry enumerates the income points where this household's tax
@@ -105,6 +126,9 @@ func (tc *TaxCalculator) ThresholdRegistry(opts ThresholdRegistryOptions) []Thre
 	out := make([]Threshold, 0, 12)
 
 	out = append(out, tc.irmaaThresholds(status, opts)...)
+	if cliff, ok := tc.acaSubsidyCliff(opts); ok {
+		out = append(out, cliff)
+	}
 
 	// The 0% long-term capital-gains ceiling. A kink, not a cliff: gain below
 	// it is untaxed and gain above it is taxed at 15%, with no step in total
@@ -212,6 +236,57 @@ func (tc *TaxCalculator) irmaaThresholds(status models.FilingStatus, opts Thresh
 	return out
 }
 
+// acaSubsidyCliff registers the 400%-of-poverty-level premium tax credit
+// cliff, when one applies to this household.
+//
+// It is a cliff in the strictest sense: at 400% FPL the credit is the
+// difference between the benchmark premium and the household's expected
+// contribution; one dollar past it the credit is zero. Nothing tapers.
+//
+// No cliff is registered when the household cannot lose a credit it does not
+// have — nobody on a marketplace plan, or everyone disqualified by employer
+// or COBRA coverage. The disqualification is itself worth surfacing, but as a
+// finding rather than as a threshold.
+func (tc *TaxCalculator) acaSubsidyCliff(opts ThresholdRegistryOptions) (Threshold, bool) {
+	if !opts.MarketplaceEnrolled || opts.DisqualifiedFromPremiumCredit {
+		return Threshold{}, false
+	}
+	if !opts.ACA.ACAConfigured() || opts.CoverageYear <= 0 {
+		return Threshold{}, false
+	}
+
+	guideline, err := tc.PovertyGuidelineFor(opts.CoverageYear)
+	if err != nil {
+		return Threshold{}, false
+	}
+	povertyLevel := guideline.FederalPovertyLevel(opts.ACA.HouseholdSize)
+	if povertyLevel <= 0 {
+		return Threshold{}, false
+	}
+
+	note := "A step, not a ramp: one dollar over forfeits the whole year's credit. " +
+		"Measured against ACA MAGI, which counts all Social Security benefits, not just the taxable part."
+	if opts.ACA.AdvanceCreditsTaken {
+		note += " Advance credits are being taken, so crossing also claws back what has " +
+			"already been paid to the insurer this year — repayment is uncapped at and above 400%."
+	}
+	if !opts.ACA.CreditKnown() {
+		note += " The cost shown is zero only because the credit amount has not been supplied; " +
+			"it is unknown, not nil."
+	}
+
+	return Threshold{
+		Code:                 "aca_premium_credit_cliff",
+		Label:                "ACA premium tax credit cliff (400% of the federal poverty level)",
+		Kind:                 ThresholdCliff,
+		Measure:              MeasureACAMAGI,
+		Amount:               povertyLevel * 4,
+		AnnualCostOfCrossing: opts.ACA.AnnualCreditOrZero(),
+		Inflated:             guideline.Projected(),
+		Note:                 note,
+	}, true
+}
+
 // sortThresholdsByAmount orders ascending by amount; insertion sort because
 // the registry is a dozen entries at most.
 func sortThresholdsByAmount(ts []Threshold) {
@@ -259,6 +334,7 @@ type ThresholdMeasures struct {
 	MAGITwoYearsPrior float64
 	ProvisionalIncome float64
 	TaxableIncome     float64
+	ACAMAGI           float64
 }
 
 // MeasureThresholdInputs computes every income measure the registry tests
@@ -286,6 +362,7 @@ func (tc *TaxCalculator) MeasureThresholdInputs(in ProjectedAnnualTaxInputs, yea
 		MAGITwoYearsPrior: lookbackMAGI,
 		ProvisionalIncome: ProvisionalIncome(in),
 		TaxableIncome:     breakdown.TaxableIncome,
+		ACAMAGI:           ACAModifiedAGI(tc, in),
 	}
 }
 
@@ -300,6 +377,8 @@ func (m ThresholdMeasures) valueFor(measure ThresholdMeasure) float64 {
 		return m.ProvisionalIncome
 	case MeasureTaxableIncome:
 		return m.TaxableIncome
+	case MeasureACAMAGI:
+		return m.ACAMAGI
 	default:
 		return 0
 	}

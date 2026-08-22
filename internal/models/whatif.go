@@ -89,8 +89,14 @@ type WhatIfSettings struct {
 
 	// Multi-person healthcare model
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
-	StartDate         string             `json:"start_date"`
-	Persons           []Person           `json:"persons"`
+
+	// ACA holds the household facts an Affordable Care Act premium tax credit
+	// depends on — household size, the credit received, whether it is paid in
+	// advance. nil means the household has not supplied them, and the 400% FPL
+	// cliff cannot be located.
+	ACA       *ACAConfig `json:"aca,omitempty"`
+	StartDate string     `json:"start_date"`
+	Persons   []Person   `json:"persons"`
 
 	// RMD Settings
 	CurrentAge         int     `json:"-"`                             // User's current age (derived working state)

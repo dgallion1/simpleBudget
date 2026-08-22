@@ -43,6 +43,7 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	applySpouseSoleBeneficiary(r, updates)
+	applyACAAdvanceCredits(r, updates)
 	if msg := validateSettingsCrossFieldInvariants(r, updates); msg != "" {
 		renderError(w, msg, http.StatusBadRequest)
 		return

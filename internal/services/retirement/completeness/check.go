@@ -58,6 +58,9 @@ func Check(s *models.WhatIfSettings) []Finding {
 	var findings []Finding
 	findings = appendIfPresent(findings, checkStateTaxUnset(s))
 	findings = appendIfPresent(findings, checkTaxableCostBasisUnset(s))
+	findings = appendIfPresent(findings, checkACAHouseholdSizeUnset(s))
+	findings = appendIfPresent(findings, checkACACreditUnset(s))
+	findings = appendIfPresent(findings, checkACACOBRAForfeitsCredit(s))
 	findings = appendIfPresent(findings, checkSSUnconfigured(s))
 	findings = appendIfPresent(findings, checkSSPartial(s))
 	findings = appendIfPresent(findings, checkMFJNoSpousePerson(s))

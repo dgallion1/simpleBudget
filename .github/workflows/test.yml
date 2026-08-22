@@ -39,7 +39,10 @@ jobs:
       # looks: a large group of tests inject write failures by chmod'ing a path
       # read-only, and root ignores permission bits. Under root those tests
       # fail wholesale because the failure they inject never happens.
-      - run: go test ./...
+      # Explicit for the same reason as the race job: the 15-minute job budget
+      # and `go test`'s default 10-minute per-package cap are different limits,
+      # and only the latter was ever in force.
+      - run: go test -timeout 12m ./...
 
   # Its own job rather than a step in `test`, for the same reason `race` is:
   # a lint failure and a test failure are different problems, and running them
@@ -77,4 +80,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -race ./...
+      # -timeout must be set explicitly. The job budget above is 45 minutes,
+      # but `go test` applies its own 10-minute cap PER PACKAGE, so without
+      # this a single slow package panics with "test timed out" long before
+      # the job budget is anywhere near spent — and the run fails for a reason
+      # that has nothing to do with the code. internal/handlers/backup is the
+      # one that trips it: under -race it has been measured anywhere from 61s
+      # to over 600s on these runners depending on contention, against ~150s
+      # locally. Keep this below timeout-minutes so a genuinely hung test
+      # still surfaces as a Go panic with a stack dump rather than as an
+      # opaque job kill.
+      - run: go test -race -timeout 40m ./...

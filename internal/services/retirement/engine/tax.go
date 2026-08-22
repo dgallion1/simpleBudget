@@ -35,6 +35,9 @@ type investmentIncomeTaxBreakdown struct {
 	TotalTax      float64
 	EffectiveRate float64
 	MAGI          float64
+	// TaxableIncome is income after the standard deduction, ordinary plus
+	// preferentially-taxed — the quantity the bracket tables are indexed by.
+	TaxableIncome float64
 }
 
 // TaxBrackets2024 contains 2024 federal tax brackets by filing status.
@@ -206,69 +209,44 @@ func NewTaxCalculator(config *models.TaxConfig, inflationRate float64) *TaxCalcu
 // GetAdjustedBrackets returns tax brackets adjusted for inflation from
 // base year.
 func (tc *TaxCalculator) GetAdjustedBrackets(yearsFromBase int) []FederalTaxBracket {
-	baseBrackets := TaxBrackets2024[tc.FilingStatus]
-	if baseBrackets == nil {
-		baseBrackets = TaxBrackets2024[models.FilingMarriedJoint]
-	}
+	resolved := tc.resolveForYearsFromBase(yearsFromBase)
+	return bracketsFor(resolved.Record.OrdinaryBrackets, tc.FilingStatus)
+}
 
-	if yearsFromBase <= 0 {
-		return baseBrackets
-	}
-
-	inflationFactor := tc.InflationFactor(yearsFromBase)
-	adjusted := make([]FederalTaxBracket, len(baseBrackets))
-
-	for i, bracket := range baseBrackets {
-		adjusted[i] = FederalTaxBracket{
-			MinIncome: bracket.MinIncome * inflationFactor,
+// scaleBrackets multiplies every bracket edge by factor. An unbounded top
+// edge stays unbounded — scaling math.MaxFloat64 would overflow to +Inf and
+// poison every comparison downstream.
+func scaleBrackets(brackets []FederalTaxBracket, factor float64) []FederalTaxBracket {
+	scaled := make([]FederalTaxBracket, len(brackets))
+	for i, bracket := range brackets {
+		scaled[i] = FederalTaxBracket{
+			MinIncome: bracket.MinIncome * factor,
 			MaxIncome: bracket.MaxIncome,
 			Rate:      bracket.Rate,
 		}
 		if bracket.MaxIncome < math.MaxFloat64 {
-			adjusted[i].MaxIncome = bracket.MaxIncome * inflationFactor
+			scaled[i].MaxIncome = bracket.MaxIncome * factor
 		}
 	}
-
-	return adjusted
+	return scaled
 }
 
 func (tc *TaxCalculator) GetAdjustedLongTermCapitalGainsBrackets(yearsFromBase int) []FederalTaxBracket {
-	baseBrackets := LongTermCapitalGainsBrackets2024[tc.FilingStatus]
-	if baseBrackets == nil {
-		baseBrackets = LongTermCapitalGainsBrackets2024[models.FilingMarriedJoint]
-	}
-
-	if yearsFromBase <= 0 {
-		return baseBrackets
-	}
-
-	inflationFactor := tc.InflationFactor(yearsFromBase)
-	adjusted := make([]FederalTaxBracket, len(baseBrackets))
-
-	for i, bracket := range baseBrackets {
-		adjusted[i] = FederalTaxBracket{
-			MinIncome: bracket.MinIncome * inflationFactor,
-			MaxIncome: bracket.MaxIncome,
-			Rate:      bracket.Rate,
-		}
-		if bracket.MaxIncome < math.MaxFloat64 {
-			adjusted[i].MaxIncome = bracket.MaxIncome * inflationFactor
-		}
-	}
-
-	return adjusted
+	resolved := tc.resolveForYearsFromBase(yearsFromBase)
+	return bracketsFor(resolved.Record.LongTermGainBrackets, tc.FilingStatus)
 }
 
 // GetAdjustedStandardDeduction returns standard deduction adjusted for
 // inflation, including the age-65+ additional deduction per IRS Rev.
 // Proc. 2023-34 §3.16(2).
 func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64 {
+	resolved := tc.resolveForYearsFromBase(yearsFromBase)
 	status := NormalizeFilingStatus(tc.FilingStatus)
-	base, ok := StandardDeduction2024[status]
+
+	base, ok := resolved.Record.StandardDeduction[status]
 	if !ok {
-		base = StandardDeduction2024[models.FilingMarriedJoint]
+		base = resolved.Record.StandardDeduction[models.FilingMarriedJoint]
 	}
-	addPerPerson := AdditionalStandardDeduction2024Age65[status]
 	count := tc.Age65Count
 	if count < 0 {
 		count = 0
@@ -276,8 +254,7 @@ func (tc *TaxCalculator) GetAdjustedStandardDeduction(yearsFromBase int) float64
 	if count > 2 {
 		count = 2
 	}
-	additional := float64(count) * addPerPerson
-	return (base + additional) * tc.InflationFactor(yearsFromBase)
+	return base + float64(count)*resolved.Record.AdditionalDeductionAge65[status]
 }
 
 // InflationFactor returns the cumulative inflation factor for
@@ -482,8 +459,55 @@ func (tc *TaxCalculator) CalculateTotalTax(grossIncome float64, yearsFromBase in
 }
 
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualifiedDividends, longTermCapitalGains float64, yearsFromBase int) (federalTax, stateTax, totalTax, effectiveRate float64) {
-	breakdown := tc.calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, 0, yearsFromBase)
+	breakdown := tc.CalculateTaxBreakdown(InvestmentIncomeTaxInputs{
+		OrdinaryIncome:       ordinaryIncome,
+		QualifiedDividends:   qualifiedDividends,
+		LongTermCapitalGains: longTermCapitalGains,
+	}, yearsFromBase)
 	return breakdown.FederalTax, breakdown.StateTax, breakdown.TotalTax, breakdown.EffectiveRate
+}
+
+// InvestmentIncomeTaxInputs is a year's income split by how each piece is
+// taxed. Named fields rather than a positional list: these are all float64
+// dollars, so a transposed pair would be silent.
+//
+// ShortTermCapitalGains and NonQualifiedDividends receive identical treatment
+// — taxed at ordinary rates, and counted as net investment income for NIIT —
+// but they are kept apart so callers can report them separately and so the
+// distinction survives if the two ever diverge.
+type InvestmentIncomeTaxInputs struct {
+	// OrdinaryIncome is wages, pensions, tax-deferred withdrawals, Roth
+	// conversions and the taxable portion of Social Security.
+	OrdinaryIncome float64
+	// QualifiedDividends and LongTermCapitalGains use the preferential
+	// capital-gains brackets, stacked on top of ordinary income.
+	QualifiedDividends   float64
+	LongTermCapitalGains float64
+	// NonQualifiedDividends is the portion of OrdinaryIncome that is
+	// non-qualified dividends: already counted there for rate purposes, named
+	// here so NIIT can see it.
+	NonQualifiedDividends float64
+	// ShortTermCapitalGains is gain on positions held one year or less. Unlike
+	// LongTermCapitalGains it gets no preferential rate — 26 USC § 1(h)
+	// applies only to net long-term gain — so it is taxed as ordinary income,
+	// and it crowds long-term gain out of the 0% bracket exactly as wages do.
+	//
+	// Supply it as its own field, NOT folded into OrdinaryIncome: this
+	// function adds it there itself, and also counts it as net investment
+	// income for NIIT and includes it in the § 86 provisional-income base.
+	ShortTermCapitalGains float64
+}
+
+// ordinaryTotal is everything taxed at ordinary rates: ordinary income plus
+// short-term capital gain.
+func (in InvestmentIncomeTaxInputs) ordinaryTotal() float64 {
+	return in.OrdinaryIncome + in.ShortTermCapitalGains
+}
+
+// CalculateTaxBreakdown computes federal, state and NIIT liability from a
+// full income composition, including short-term capital gain.
+func (tc *TaxCalculator) CalculateTaxBreakdown(in InvestmentIncomeTaxInputs, yearsFromBase int) investmentIncomeTaxBreakdown {
+	return tc.calculateTaxWithInvestmentIncomeInternal(in, yearsFromBase)
 }
 
 // CalculateTaxWithInvestmentIncomeBreakdown returns a detailed tax
@@ -492,15 +516,26 @@ func (tc *TaxCalculator) CalculateTaxWithInvestmentIncome(ordinaryIncome, qualif
 // taxed as ordinary income but also count as net investment income for
 // NIIT.
 func (tc *TaxCalculator) CalculateTaxWithInvestmentIncomeBreakdown(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown {
-	return tc.calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends, yearsFromBase)
+	return tc.calculateTaxWithInvestmentIncomeInternal(InvestmentIncomeTaxInputs{
+		OrdinaryIncome:        ordinaryIncome,
+		QualifiedDividends:    qualifiedDividends,
+		LongTermCapitalGains:  longTermCapitalGains,
+		NonQualifiedDividends: nonQualifiedDividends,
+	}, yearsFromBase)
 }
 
-func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(ordinaryIncome, qualifiedDividends, longTermCapitalGains, nonQualifiedDividends float64, yearsFromBase int) investmentIncomeTaxBreakdown {
+func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(in InvestmentIncomeTaxInputs, yearsFromBase int) investmentIncomeTaxBreakdown {
+	ordinaryIncome := in.ordinaryTotal()
+	qualifiedDividends := in.QualifiedDividends
+	longTermCapitalGains := in.LongTermCapitalGains
+
 	totalGrossIncome := ordinaryIncome + qualifiedDividends + longTermCapitalGains
 	if totalGrossIncome <= 0 {
 		return investmentIncomeTaxBreakdown{}
 	}
 
+	// The standard deduction is consumed by ordinary income (short-term gain
+	// included) before any is left over for preferentially-taxed income.
 	standardDeduction := tc.GetAdjustedStandardDeduction(yearsFromBase)
 	taxableOrdinaryIncome := math.Max(0, ordinaryIncome-standardDeduction)
 	remainingDeduction := math.Max(0, standardDeduction-ordinaryIncome)
@@ -523,7 +558,7 @@ func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(ordinaryIncome
 	}
 
 	magi := ordinaryIncome + qualifiedDividends + longTermCapitalGains
-	netInvestmentIncome := qualifiedDividends + longTermCapitalGains + nonQualifiedDividends
+	netInvestmentIncome := qualifiedDividends + longTermCapitalGains + in.NonQualifiedDividends + in.ShortTermCapitalGains
 	niit := tc.CalculateNIIT(magi, netInvestmentIncome)
 	stateTaxableIncome := taxableOrdinaryIncome + taxableInvestmentIncome
 	stateTax := tc.CalculateStateTax(stateTaxableIncome)
@@ -538,6 +573,7 @@ func (tc *TaxCalculator) calculateTaxWithInvestmentIncomeInternal(ordinaryIncome
 		TotalTax:      totalTax,
 		EffectiveRate: effectiveRate,
 		MAGI:          magi,
+		TaxableIncome: taxableOrdinaryIncome + taxableInvestmentIncome,
 	}
 }
 
@@ -554,8 +590,18 @@ func (tc *TaxCalculator) EstimateRothConversionTax(baseIncome, conversionAmount 
 	return taxWith - taxWithout
 }
 
-// GetMarginalRate returns the marginal tax rate for a given income level.
-func (tc *TaxCalculator) GetMarginalRate(grossIncome float64, yearsFromBase int) float64 {
+// GetBracketRate returns the statutory ordinary-income bracket rate (percent)
+// that a given gross income falls in, after the standard deduction.
+//
+// This is a table lookup, and it is NOT the marginal tax rate. It cannot see
+// capital-gain stacking, the § 86 Social Security phase-in, or NIIT, so the
+// real cost of the next dollar is routinely far higher than what this
+// returns. For that, use MarginalRateOnOrdinaryIncome, which differentiates
+// the actual tax function numerically.
+//
+// Reporting this value to a user as their "marginal rate" was a defect; the
+// name now says what it does.
+func (tc *TaxCalculator) GetBracketRate(grossIncome float64, yearsFromBase int) float64 {
 	if grossIncome <= 0 {
 		return 10
 	}

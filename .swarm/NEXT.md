@@ -2,6 +2,10 @@
 
 Rewritten 2026-08-16. A relaunched session starts cold; this file is the handoff.
 
+Revised 2026-08-21: P16 added, and step 1 rewritten. It told you to verify the
+session was routed through a LiteLLM gateway that no longer exists — following
+it as written would have stopped a relaunched session from dispatching anything.
+
 ## Where things stand
 
 Branch `fix/review-aug16`. **The File Manager run is COMPLETE.** All 15 tasks
@@ -10,8 +14,9 @@ accessibility pass found no regressions.
 
 P15's blocker was resolved by user ruling 2026-08-16c: an Anthropic-family
 model substituted for the unavailable `worker-local` as the second blind
-implementer. The `worker-local` infrastructure problem below is UNFIXED and
-will block the next Tier-3 task and any three-judge dispute.
+implementer. The `worker-local` infrastructure problem described below is no
+longer live: the gateway it depended on was dropped 2026-08-19 and
+`worker-local` is a Claude Haiku agent now.
 
 | Task | Scope | Tier | Status |
 |------|-------|------|--------|
@@ -20,10 +25,21 @@ will block the next Tier-3 task and any three-judge dispute.
 | P14 | `ImportDirectory` config + scan endpoint | 2 | **accepted at attempt 1**, committed `04ba148` |
 | P15 | Import execute + source delete | 3 | **accepted at attempt 2**, committed `0a8225a` |
 
-`gate.sh done` exits 0. Next work is the accounts/transfers run (tasks A0–A9),
-spec approved 2026-08-16 — see `ACCOUNTS_TRANSFERS_SPEC.md`. Appending those
-rows to the ledger will make `gate.sh done` fail again, correctly, until they
-are accepted.
+Three runs have finished since: accounts & transfers (A0–A9), the review-fix
+run (R1–R13) and run S (S1–S5). All rows are accepted. See
+`.swarm/NEXT-accounts.md`, `ACCOUNTS_TRANSFERS_SPEC.md` and
+`REVIEW_AUG20_SPEC.md`.
+
+Merged with `master` 2026-08-22. `master` brought three rows this branch had no
+part in — P16 (storage read-cache write ordering, landed as PR #32), P17
+(SA4023 dead decrypt path) and P18 (CI workflow on pull requests) — all three
+written directly in a lead session and carried in the ledger as `pending`,
+unverified. They are kept as `pending` here rather than backfilled.
+
+`gate.sh done` therefore exits 1 on four lines: R9, which sits at `no-change`
+because no defect existed, plus P16–P18. No verdict was fabricated to make
+either an honest non-finding or somebody else's unverified work look like an
+acceptance.
 
 ## Follow-ups this run deliberately did not absorb
 
@@ -50,12 +66,31 @@ headless subprocesses instead, which works:
 ```bash
 cd /home/darrell/bin/ai/budget2 && \
 env -i HOME="$HOME" PATH="$PATH" TERM=dumb \
-  ANTHROPIC_BASE_URL=http://localhost:4000 \
-  ANTHROPIC_AUTH_TOKEN=sk-swarm-local \
   claude -p --agent worker-coder --permission-mode acceptEdits \
     --allowedTools "Read,Write,Edit,Glob,Grep,Bash" \
     --add-dir /home/darrell/bin/ai/budget2 < brief.md
 ```
+
+The gateway env vars this block used to carry are gone — see the note on
+independence lanes below; `ANTHROPIC_BASE_URL` is not something to set or to
+check.
+
+**Independence is a lane, not a vendor.** The LiteLLM gateway was dropped on
+2026-08-19; there is no proxy and no local endpoint, and the `worker-glm` /
+`checker-glm` aliases are gone. Every agent runs on Claude, with the model
+chosen per agent in `.claude/agents/*.md` frontmatter. The second opinion now
+comes from a different **job** and a different **model tier**: the primary
+verifier asks "does this meet the criteria?" and cites the command proving each
+one; `checker-second` asks "what would make this wrong?", defaults to FAIL on
+ambiguity, and is doing its job badly if it never disagrees.
+
+`gate.sh` still enforces two distinct `FAMILY` values mechanically. Write
+`anthropic` for the primary verifier and `adversarial` for `checker-second`;
+judges write `anthropic`, `adversarial`, and `impact`. `glm` and `local` still
+validate only so pre-2026-08-19 verdicts keep parsing — writing either today
+satisfies the gate and verifies nothing. Two PASSes are weaker evidence than
+the old cross-vendor pair; that reduction was accepted deliberately (user
+decision 2026-08-19).
 
 Four traps, all hit at least once:
 
@@ -75,6 +110,10 @@ Four traps, all hit at least once:
 
 ### checker-second misreports its own family
 
+**SUPERSEDED 2026-08-19** — kept as the record of why the gate checks
+`FAMILY` at all. There is no gateway and no GLM routing now; see the
+independence-lane note above for what to write today.
+
 `checker-second` routes to Z.ai GLM (verified: querying the `checker-glm` alias
 returns "Created by Z.ai... GLM model family"), but in long agentic contexts it
 sometimes writes `FAMILY: anthropic`, which silently defeats the two-family
@@ -90,6 +129,9 @@ a verdict file to fix it; re-dispatch with the fact stated. Wording used:
 > what your verdict should be.
 
 ## The P15 blocker — `worker-local` cannot resolve
+
+**SUPERSEDED 2026-08-19** — historical. `worker-local` is a Claude Haiku
+agent now, and the Tier-3 second arm differs by model tier, not by vendor.
 
 Tier 3 requires two blind implementations from different families:
 `worker-coder` (GLM, available) and `worker-local` (Qwen on the Spark,

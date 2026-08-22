@@ -115,12 +115,14 @@ func fixtureTaxAnalysis(rmdStartAge int) *models.WhatIfAnalysis {
 				{
 					Year: 2025, Age: 72,
 					TaxableIncome: 90000.50, FederalTax: 8575.91, StateTax: 1200.25,
-					TotalTax: 9776.16, EffectiveRate: 10.9, MarginalBracket: 22,
+					TotalTax: 9776.16, EffectiveRate: 10.9, MarginalRate: 22,
+					MarginalRateLongTermGain: 15,
 				},
 				{
 					Year: 2026, Age: 73,
 					TaxableIncome: 120000.33, FederalTax: 15200.44, StateTax: 1800.10,
-					TotalTax: 17000.54, EffectiveRate: 14.2, MarginalBracket: 24,
+					TotalTax: 17000.54, EffectiveRate: 14.2, MarginalRate: 24,
+					MarginalRateLongTermGain: 18.8,
 				},
 			},
 		},
@@ -183,4 +185,144 @@ func TestWhatIfTaxSummary_WholeDollarsAndRMDBadge(t *testing.T) {
 			t.Errorf("did not expect an RMDs-begin badge when StartAge matches no row: %s", truncate(out, 1200))
 		}
 	})
+}
+
+// TestWhatIfTaxSummary_RendersMarginalRateOnGains covers the "On Gains" column:
+// the marginal cost of realizing one more dollar of long-term gain, which is
+// not the same as the ordinary-income marginal rate beside it.
+func TestWhatIfTaxSummary_RendersMarginalRateOnGains(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	html := renderTaxSummary(t)
+
+	if !strings.Contains(html, "On Gains") {
+		t.Error("expected an On Gains column header")
+	}
+	// Fixture rows carry 15% and 18.8%, rendered to whole percent.
+	for _, want := range []string{">15%<", ">19%<"} {
+		if !strings.Contains(strings.Join(strings.Fields(html), " "), want) {
+			t.Errorf("expected the gains column to render %s", want)
+		}
+	}
+	// The stale footnote from before the marginal rate became a derivative.
+	if strings.Contains(html, "top federal bracket reached") {
+		t.Error("footnote still describes the old bracket-lookup behaviour")
+	}
+}
+
+// TestWhatIfTaxSummary_RendersNearestCliff covers the cliff panel: the
+// "you are $N under the cliff" sentence, which is only useful if the number
+// and the year are both right.
+func TestWhatIfTaxSummary_RendersNearestCliff(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.NearestCliff = &models.CliffProximity{
+		Year: 2031, Age: 78, Label: "IRMAA tier 1",
+		Headroom: 10319, AnnualCost: 2296.80,
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	html := strings.Join(strings.Fields(out), " ")
+
+	for _, want := range []string{"2031", "age 78", "IRMAA tier 1", "$10,319", "$2,297"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("cliff panel missing %q", want)
+		}
+	}
+	if !strings.Contains(html, "step, not a ramp") {
+		t.Error("cliff panel should explain that one dollar over costs the whole amount")
+	}
+}
+
+// TestWhatIfTaxSummary_OmitsCliffPanelWhenNone — no cliff applies to plenty of
+// households, and an empty warning box is worse than none.
+func TestWhatIfTaxSummary_OmitsCliffPanelWhenNone(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.NearestCliff = nil
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	if strings.Contains(out, "Closest approach to a cost step") {
+		t.Error("rendered the cliff panel with no cliff to report")
+	}
+}
+
+// TestWhatIfTaxSummary_RendersConstantsProvenance — the tax panel must say
+// which published figures it rests on and which years are extrapolated.
+func TestWhatIfTaxSummary_RendersConstantsProvenance(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.ConstantsBasis = &models.TaxConstantsBasis{
+		StatutoryYear:      2024,
+		Source:             "IRS Rev. Proc. 2023-34 (tax year 2024)",
+		VerifiedOn:         "2024-11-09",
+		FirstProjectedYear: 2025,
+		LastProjectedYear:  2055,
+		InflationRate:      3.0,
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	html := strings.Join(strings.Fields(out), " ")
+
+	for _, want := range []string{
+		"IRS Rev. Proc. 2023-34",
+		"last verified 2024-11-09",
+		"2025",
+		"2055",
+		"3.0%/yr",
+		"estimates, not published law",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("provenance line missing %q", want)
+		}
+	}
+}
+
+// TestWhatIfTaxSummary_OmitsProjectedNoteWhenFullyStatutory — a projection
+// entirely covered by published figures should not carry a forecast warning.
+func TestWhatIfTaxSummary_OmitsProjectedNoteWhenFullyStatutory(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := fixtureTaxAnalysis(73)
+	analysis.Tax.ConstantsBasis = &models.TaxConstantsBasis{
+		StatutoryYear: 2024,
+		Source:        "IRS Rev. Proc. 2023-34 (tax year 2024)",
+		VerifiedOn:    "2024-11-09",
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-summary", map[string]any{
+		"Settings": retiredTaxableSettings(), "Analysis": analysis,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	if strings.Contains(out, "estimates, not published law") {
+		t.Error("warned about projected figures when none are projected")
+	}
+	if !strings.Contains(out, "IRS Rev. Proc. 2023-34") {
+		t.Error("source should still be shown when everything is statutory")
+	}
 }

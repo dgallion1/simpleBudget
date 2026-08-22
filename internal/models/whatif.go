@@ -89,8 +89,14 @@ type WhatIfSettings struct {
 
 	// Multi-person healthcare model
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
-	StartDate         string             `json:"start_date"`
-	Persons           []Person           `json:"persons"`
+
+	// ACA holds the household facts an Affordable Care Act premium tax credit
+	// depends on — household size, the credit received, whether it is paid in
+	// advance. nil means the household has not supplied them, and the 400% FPL
+	// cliff cannot be located.
+	ACA       *ACAConfig `json:"aca,omitempty"`
+	StartDate string     `json:"start_date"`
+	Persons   []Person   `json:"persons"`
 
 	// RMD Settings
 	CurrentAge         int     `json:"-"`                             // User's current age (derived working state)
@@ -123,6 +129,17 @@ type WhatIfSettings struct {
 	TaxableDividendYield                float64 `json:"taxable_dividend_yield,omitempty"`              // Annual dividend yield on taxable account
 	TaxableQualifiedDividendPercent     float64 `json:"taxable_qualified_dividend_percent,omitempty"`  // Share of taxable dividends that are qualified
 	TaxableCapitalGainsDistributionRate float64 `json:"taxable_cap_gains_distribution_rate,omitempty"` // Annual realized cap-gains distribution rate
+
+	// TaxableCostBasis is the total cost basis of the taxable brokerage
+	// account in dollars — what the holdings were bought for, as reported on
+	// a broker statement.
+	//
+	// nil = unset. When unset the projection falls back to treating the
+	// account's starting market value as its own basis, i.e. assuming zero
+	// unrealized gain, which understates the tax on every taxable withdrawal
+	// for the whole horizon. The completeness banner flags that case rather
+	// than letting it pass silently.
+	TaxableCostBasis *float64 `json:"taxable_cost_basis,omitempty"`
 
 	// Phase-based spending (go-go/slow-go/no-go retirement phases)
 	SpendingPhaseConfig *SpendingPhaseConfig `json:"spending_phase_config,omitempty"`
@@ -805,6 +822,37 @@ func (s *WhatIfSettings) GetProjectionTiming() ProjectionTiming {
 	return NormalizeProjectionTiming(s.ProjectionTiming)
 }
 
+// TaxableCostBasisOrValue returns the cost basis to seed a taxable account
+// holding marketValue, in dollars.
+//
+// When TaxableCostBasis is unset this returns marketValue — the legacy
+// zero-embedded-gain assumption, preserved so existing saved scenarios keep
+// projecting the same numbers until their owner supplies a basis.
+//
+// The configured basis is clamped to [0, marketValue]. The upper clamp
+// matters: a basis above market value describes an underwater account, and
+// this engine models no capital-loss deduction (negative gains floor at zero
+// in CalculateTaxWithInvestmentIncomeBreakdown). Clamping is therefore
+// behaviourally identical for tax purposes and keeps negative gains from
+// flowing into code that does not expect them. A stale basis left over from
+// a larger allocation cannot silently manufacture a phantom loss.
+func (s *WhatIfSettings) TaxableCostBasisOrValue(marketValue float64) float64 {
+	if marketValue <= 0 {
+		return 0
+	}
+	if s == nil || s.TaxableCostBasis == nil {
+		return marketValue
+	}
+	switch basis := *s.TaxableCostBasis; {
+	case basis < 0:
+		return 0
+	case basis > marketValue:
+		return marketValue
+	default:
+		return basis
+	}
+}
+
 func (s *WhatIfSettings) GetTaxableQualifiedDividendPercent() float64 {
 	switch {
 	case s.TaxableQualifiedDividendPercent < 0:
@@ -876,11 +924,41 @@ type ProjectionYearSummary struct {
 	NIIT                     float64 `json:"niit,omitempty"`
 	IRMAA                    float64 `json:"irmaa,omitempty"`
 	TaxableSocialSecurityPct float64 `json:"taxable_social_security_pct,omitempty"`
-	Expenses                 float64 `json:"expenses"`
-	Withdrawals              float64 `json:"withdrawals"`
-	EndingBalance            float64 `json:"ending_balance"`
-	EndingBalanceReal        float64 `json:"ending_balance_real"`
-	CumulativeInflation      float64 `json:"cumulative_inflation"`
+
+	// MarginalRate is the effective marginal tax rate (percent) on the next
+	// dollar of ordinary income in this year, measured numerically from the
+	// year's own income composition. It is NOT a bracket-table lookup: it
+	// includes capital-gain stacking and the § 86 Social Security phase-in,
+	// both of which routinely push the real rate far above the nominal
+	// bracket. See TaxCalculator.MarginalRateOnOrdinaryIncome.
+	MarginalRate float64 `json:"marginal_rate,omitempty"`
+
+	// MarginalRateLongTermGain is the effective marginal tax rate (percent) on
+	// the next dollar of realized long-term capital gain in this year. Unlike
+	// the capital-gains bracket it accounts for the 0% ceiling running out, the
+	// § 86 Social Security phase-in that realized gain feeds, and NIIT — so
+	// "0% bracket" and "free to realize" are not the same thing.
+	// See TaxCalculator.MarginalRateOnLongTermGain.
+	MarginalRateLongTermGain float64 `json:"marginal_rate_long_term_gain,omitempty"`
+
+	// NextCliff* describe this year's proximity to the nearest income
+	// threshold that has a STEP cost — currently the IRMAA tiers, the only
+	// true discontinuities this engine models. Headroom is how much more
+	// income the year can absorb before the step lands; AnnualCost is what
+	// crossing costs. Empty label means no cliff applies (nobody on Medicare,
+	// or every tier already crossed).
+	//
+	// Measured against MAGI from two years prior, because that is what IRMAA
+	// is billed on — not this year's income.
+	NextCliffLabel      string  `json:"next_cliff_label,omitempty"`
+	NextCliffHeadroom   float64 `json:"next_cliff_headroom,omitempty"`
+	NextCliffAnnualCost float64 `json:"next_cliff_annual_cost,omitempty"`
+
+	Expenses            float64 `json:"expenses"`
+	Withdrawals         float64 `json:"withdrawals"`
+	EndingBalance       float64 `json:"ending_balance"`
+	EndingBalanceReal   float64 `json:"ending_balance_real"`
+	CumulativeInflation float64 `json:"cumulative_inflation"`
 
 	// Guardrail visibility (F-079)
 	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
@@ -1312,20 +1390,76 @@ func (b *BigTicketItem) GetNetAmount() float64 {
 
 // YearlyTaxSummary provides annual tax breakdown
 type YearlyTaxSummary struct {
-	Year            int     `json:"year"`
-	Age             int     `json:"age"`
-	TaxableIncome   float64 `json:"taxable_income"`
-	FederalTax      float64 `json:"federal_tax"`
-	StateTax        float64 `json:"state_tax"`
-	TotalTax        float64 `json:"total_tax"`
-	EffectiveRate   float64 `json:"effective_rate"`
-	MarginalBracket float64 `json:"marginal_bracket"`
-	RothConversion  float64 `json:"roth_conversion"`
-	RMDAmount       float64 `json:"rmd_amount"`
+	Year          int     `json:"year"`
+	Age           int     `json:"age"`
+	TaxableIncome float64 `json:"taxable_income"`
+	FederalTax    float64 `json:"federal_tax"`
+	StateTax      float64 `json:"state_tax"`
+	TotalTax      float64 `json:"total_tax"`
+	EffectiveRate float64 `json:"effective_rate"`
+	// MarginalRate is the effective marginal tax rate (percent) on the next
+	// dollar of ordinary income that year: federal plus state plus NIIT,
+	// measured numerically from the year's own income composition.
+	//
+	// This is NOT a statutory bracket and must not be labelled as one. It
+	// routinely exceeds the bracket — a household in the 12% bracket with
+	// long-term gains straddling the 0%/15% boundary faces 27% — because it
+	// includes capital-gain stacking and the § 86 Social Security phase-in.
+	// The field was called MarginalBracket until the value stopped being a
+	// bracket; the name now matches what it holds.
+	MarginalRate float64 `json:"marginal_rate"`
+	// MarginalRateLongTermGain is the marginal cost of realizing one more
+	// dollar of long-term capital gain this year.
+	MarginalRateLongTermGain float64 `json:"marginal_rate_long_term_gain"`
+	RothConversion           float64 `json:"roth_conversion"`
+	RMDAmount                float64 `json:"rmd_amount"`
 }
+
+// CliffProximity is the plan's closest approach to a step-cost income
+// threshold, and the year it happens. Surfaced because "you are $N under the
+// cliff" is more actionable than any rate: it is the one place where a single
+// dollar of extra income has a discontinuous price.
+type CliffProximity struct {
+	Year       int     `json:"year"`
+	Age        int     `json:"age"`
+	Label      string  `json:"label"`
+	Headroom   float64 `json:"headroom"`
+	AnnualCost float64 `json:"annual_cost"`
+}
+
+// TaxConstantsBasis records which tax figures an answer rests on, and how
+// much of the answer is forecast rather than law. Surfaced because a
+// projection that silently blends published figures with extrapolated ones
+// looks equally authoritative in both halves.
+type TaxConstantsBasis struct {
+	// StatutoryYear is the most recent tax year with published figures.
+	StatutoryYear int    `json:"statutory_year"`
+	Source        string `json:"source"`
+	VerifiedOn    string `json:"verified_on"`
+	// FirstProjectedYear and LastProjectedYear bound the span of the
+	// projection that uses extrapolated figures. Both zero when the whole
+	// projection is covered by published figures.
+	FirstProjectedYear int `json:"first_projected_year,omitempty"`
+	LastProjectedYear  int `json:"last_projected_year,omitempty"`
+	// InflationRate is the assumed annual rate used to extrapolate, percent.
+	InflationRate float64 `json:"inflation_rate,omitempty"`
+}
+
+// HasProjectedYears reports whether any year of the projection rests on
+// extrapolated rather than published figures.
+func (b TaxConstantsBasis) HasProjectedYears() bool { return b.FirstProjectedYear > 0 }
 
 // TaxAnalysis contains tax projections summary
 type TaxAnalysis struct {
+	// ConstantsBasis says which published figures this analysis rests on and
+	// which years are extrapolated from them.
+	ConstantsBasis *TaxConstantsBasis `json:"constants_basis,omitempty"`
+
+	// NearestCliff is the tightest squeeze anywhere in the projection: the
+	// year with the least headroom to a step-cost threshold. nil when no
+	// cliff applies to this household in any year.
+	NearestCliff *CliffProximity `json:"nearest_cliff,omitempty"`
+
 	TotalFederalTaxPaid  float64            `json:"total_federal_tax_paid"`
 	TotalStateTaxPaid    float64            `json:"total_state_tax_paid"`
 	TotalTaxPaid         float64            `json:"total_tax_paid"`

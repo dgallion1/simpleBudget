@@ -1294,6 +1294,10 @@ func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings,
 	if v, ok := updates["taxable_cap_gains_distribution_rate"].(float64); ok {
 		settings.TaxableCapitalGainsDistributionRate = v
 	}
+	if v, ok := updates["taxable_cost_basis"].(*float64); ok {
+		settings.TaxableCostBasis = v
+	}
+	applyACAUpdates(settings, updates)
 	if v, ok := updates["projection_years"].(int); ok {
 		settings.ProjectionYears = v
 	}
@@ -1967,4 +1971,29 @@ func (sm *SettingsManager) RenameScenario(filename, newName string) error {
 
 	log.Printf("Renamed scenario %s to %q", filename, newName)
 	return nil
+}
+
+// applyACAUpdates folds the Affordable Care Act household facts into settings,
+// allocating the config only when something is actually being set so a plan
+// with no marketplace coverage does not sprout an empty ACA block.
+func applyACAUpdates(settings *models.WhatIfSettings, updates map[string]interface{}) {
+	size, hasSize := updates["aca_household_size"].(int)
+	credit, hasCredit := updates["aca_premium_credit"].(*float64)
+	advance, hasAdvance := updates["aca_advance_credits"].(bool)
+
+	if !hasSize && !hasCredit && !hasAdvance {
+		return
+	}
+	if settings.ACA == nil {
+		settings.ACA = &models.ACAConfig{}
+	}
+	if hasSize {
+		settings.ACA.HouseholdSize = size
+	}
+	if hasCredit {
+		settings.ACA.AnnualPremiumTaxCredit = credit
+	}
+	if hasAdvance {
+		settings.ACA.AdvanceCreditsTaken = advance
+	}
 }

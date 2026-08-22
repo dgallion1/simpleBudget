@@ -68,7 +68,7 @@ Tax Optimizer: ranks \(SS claim pair × Roth strategy\) candidates by real endin
 
 
 <a name="AdjustedSSBenefit"></a>
-## func AdjustedSSBenefit
+## func [AdjustedSSBenefit](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L66>)
 
 ```go
 func AdjustedSSBenefit(pia float64, fra int, claimAge int) float64
@@ -77,7 +77,7 @@ func AdjustedSSBenefit(pia float64, fra int, claimAge int) float64
 AdjustedSSBenefit calculates the monthly Social Security benefit for a given claiming age based on SSA actuarial adjustment rules. The pia is the Primary Insurance Amount \(monthly benefit at FRA\), fra is the full retirement age, and claimAge is the age at which benefits are claimed \(clamped to 62\-70\).
 
 <a name="AdjustedSpousalBenefit"></a>
-## func AdjustedSpousalBenefit
+## func [AdjustedSpousalBenefit](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L120>)
 
 ```go
 func AdjustedSpousalBenefit(spousalPIA float64, spouseFRA, claimAge int) float64
@@ -86,7 +86,7 @@ func AdjustedSpousalBenefit(spousalPIA float64, spouseFRA, claimAge int) float64
 AdjustedSpousalBenefit calculates the monthly spousal Social Security benefit for a given claiming age. The spousal early\-claim reduction is steeper than the worker's own reduction: 25/36 of 1% per month for the first 36 months before FRA, then 5/12 of 1% per month for additional earlier months. Spousal benefits do not earn delayed retirement credits, so claims at or past FRA return the full spousal PIA.
 
 <a name="BestSSPortfolioOption"></a>
-## func BestSSPortfolioOption
+## func [BestSSPortfolioOption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L741>)
 
 ```go
 func BestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfolioOption, bool)
@@ -95,7 +95,7 @@ func BestSSPortfolioOption(options []models.SSPortfolioOption) (models.SSPortfol
 BestSSPortfolioOption is exported so retirement\-package code \(and tests\) can call the SS portfolio\-option ranker directly.
 
 <a name="BudgetFit"></a>
-## func BudgetFit
+## func [BudgetFit](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/budget_fit.go#L19>)
 
 ```go
 func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFitAnalysis
@@ -104,7 +104,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 BudgetFit analyzes the monthly budget gap \(expenses vs. income\) at month 0 and at a steady\-state month when delayed income sources have activated. If proj is non\-nil, the steady\-state Tax\-Deferred and Taxable balances are read from the projection's per\-month state so they reflect actual drawdown \(RMD, withdrawals\) rather than naïve compound growth — important at far\-out years where decades of RMDs would otherwise be ignored. Pass nil to fall back to the closed\-form compound\-growth estimate.
 
 <a name="BuildExplainability"></a>
-## func BuildExplainability
+## func [BuildExplainability](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/explainability.go#L13>)
 
 ```go
 func BuildExplainability(proj *models.ProjectionResult, in engine.Input) *models.ProjectionExplainability
@@ -113,7 +113,7 @@ func BuildExplainability(proj *models.ProjectionResult, in engine.Input) *models
 BuildExplainability summarizes a projection into per\-year totals and portfolio metrics consumed by the explainability panel. When projection.YearlySummaries is empty \(older code paths or partial runs\), the function rebuilds the summaries from monthly rows using the prepared settings' starting portfolio value.
 
 <a name="BuildRMD"></a>
-## func BuildRMD
+## func [BuildRMD](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/rmd.go#L17>)
 
 ```go
 func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysis
@@ -122,20 +122,16 @@ func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysi
 BuildRMD \(F\-072\) builds the RMD analysis from the actual projection instead of an isolated standalone math model. It samples each RMD year's starting tax\-deferred balance and sums the actual RMDWithdrawal over the year, so the panel cannot diverge from the main projection.
 
 <a name="BuildTax"></a>
-## func BuildTax
+## func [BuildTax](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax.go#L70>)
 
 ```go
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis
 ```
 
-BuildTax summarizes the projection's tax burden into a TaxAnalysis. It reads the per\-year totals the engine already computed \(proj.YearlySummaries: income tax and MAGI\) and folds in the per\-month state\-tax, Roth\-conversion, and RMD figures, so the panel can never diverge from the main projection.
 
-The income\-tax total equals the sum of YearlySummaries.Taxes — the same figure the explainability panel reports as TotalTaxes. IRMAA is a Medicare premium surcharge, not income tax, so it is deliberately excluded here.
-
-ConversionTaxPaid is left zero: isolating the marginal tax attributable to Roth conversions requires a counterfactual no\-conversion projection, which this pure post\-projection summary does not run.
 
 <a name="CalculateSequenceRiskImpact"></a>
-## func CalculateSequenceRiskImpact
+## func [CalculateSequenceRiskImpact](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L318>)
 
 ```go
 func CalculateSequenceRiskImpact(results []models.MonteCarloResult) float64
@@ -144,7 +140,7 @@ func CalculateSequenceRiskImpact(results []models.MonteCarloResult) float64
 CalculateSequenceRiskImpact exposes the sequence\-of\-returns risk calculation so retirement\-package test helpers can call it directly.
 
 <a name="CreateDistributionBuckets"></a>
-## func CreateDistributionBuckets
+## func [CreateDistributionBuckets](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L324>)
 
 ```go
 func CreateDistributionBuckets(sortedBalances []float64) *models.MonteCarloDistribution
@@ -153,7 +149,7 @@ func CreateDistributionBuckets(sortedBalances []float64) *models.MonteCarloDistr
 CreateDistributionBuckets exposes the distribution\-bucket builder so retirement\-package test helpers can call it directly.
 
 <a name="CumulativeBenefit"></a>
-## func CumulativeBenefit
+## func [CumulativeBenefit](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L747>)
 
 ```go
 func CumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate float64) float64
@@ -162,7 +158,7 @@ func CumulativeBenefit(monthlyAtClaim float64, claimAge, targetAge int, colaRate
 CumulativeBenefit is exported so retirement\-package code \(and tests\) can call the cumulative\-benefit calculation directly.
 
 <a name="DerivedPIA"></a>
-## func DerivedPIA
+## func [DerivedPIA](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L99>)
 
 ```go
 func DerivedPIA(actualBenefit float64, fra, claimAge int) float64
@@ -171,7 +167,7 @@ func DerivedPIA(actualBenefit float64, fra, claimAge int) float64
 DerivedPIA back\-derives the PIA from an actual benefit amount and the claiming age, reversing the SSA actuarial adjustment. This is used when a person has already claimed and enters their actual benefit rather than PIA.
 
 <a name="EffectiveSeed"></a>
-## func EffectiveSeed
+## func [EffectiveSeed](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/seed.go#L16>)
 
 ```go
 func EffectiveSeed(seed int64) int64
@@ -182,7 +178,7 @@ EffectiveSeed resolves a caller\-supplied Monte Carlo seed into the ONE non\-zer
 This is the load\-bearing common\-random\-numbers contract: passing 0 down instead would make each consumer auto\-seed independently, so delta columns \(e.g. SS DeltaSurvivalRate\) would compare success rates across non\-common random paths. Resolve once per analysis pass and thread the result everywhere — never re\-derive per consumer.
 
 <a name="FailurePointsWithBaseline"></a>
-## func FailurePointsWithBaseline
+## func [FailurePointsWithBaseline](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/failure_points.go#L23>)
 
 ```go
 func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjection *models.ProjectionResult) *models.FailurePointAnalysis
@@ -191,7 +187,7 @@ func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjecti
 FailurePointsWithBaseline finds exact thresholds where the portfolio fails by running a binary search over each parameter \(return, inflation, expenses, portfolio value\), reusing an already\-computed baseline projection so orchestrators that just ran the baseline don't pay for a redundant full projection. Returns BaselineSurvives=false \(and an empty FailurePoints slice\) when the baseline projection itself fails — in that case there's no meaningful failure threshold to find. The four binary searches are independent of one another and run concurrently \(capped at NumCPU workers\); each perturbed run builds its own PreparedSettings deep copy, and results land in fixed parameter\-order slots so the output is identical to the sequential form regardless of scheduling.
 
 <a name="FindExpensesThreshold"></a>
-## func FindExpensesThreshold
+## func [FindExpensesThreshold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/failure_points.go#L72>)
 
 ```go
 func FindExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint
@@ -200,7 +196,7 @@ func FindExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailureP
 FindExpensesThreshold forwards to findExpensesThreshold.
 
 <a name="FindInflationThreshold"></a>
-## func FindInflationThreshold
+## func [FindInflationThreshold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/failure_points.go#L67>)
 
 ```go
 func FindInflationThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint
@@ -209,7 +205,7 @@ func FindInflationThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 FindInflationThreshold forwards to findInflationThreshold.
 
 <a name="FindPortfolioThreshold"></a>
-## func FindPortfolioThreshold
+## func [FindPortfolioThreshold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/failure_points.go#L77>)
 
 ```go
 func FindPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint
@@ -218,7 +214,7 @@ func FindPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 FindPortfolioThreshold forwards to findPortfolioThreshold.
 
 <a name="FindReturnThreshold"></a>
-## func FindReturnThreshold
+## func [FindReturnThreshold](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/failure_points.go#L62>)
 
 ```go
 func FindReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint
@@ -227,7 +223,7 @@ func FindReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 FindReturnThreshold, FindInflationThreshold, FindExpensesThreshold, and FindPortfolioThreshold are exported so retirement\-package test helpers can drive a single threshold search directly.
 
 <a name="GenerateYearlyReturns"></a>
-## func GenerateYearlyReturns
+## func [GenerateYearlyReturns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L331>)
 
 ```go
 func GenerateYearlyReturns(s *models.WhatIfSettings, rng *rand.Rand, config *MonteCarloConfig, years int, timing *CrashTiming, lastCrashYear *int) []float64
@@ -236,7 +232,7 @@ func GenerateYearlyReturns(s *models.WhatIfSettings, rng *rand.Rand, config *Mon
 GenerateYearlyReturns blends the per\-asset returns by the settings' effective allocation. Exposed so retirement\-package test helpers can drive the generator directly.
 
 <a name="HistoricalBacktest"></a>
-## func HistoricalBacktest
+## func [HistoricalBacktest](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/backtest.go#L48>)
 
 ```go
 func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBacktestAnalysis
@@ -245,7 +241,7 @@ func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBa
 HistoricalBacktest runs the projection against all available historical sequences in data. Returns an analysis with success rate, best/worst start years, and per\-sequence details.
 
 <a name="MonteCarlo"></a>
-## func MonteCarlo
+## func [MonteCarlo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L85>)
 
 ```go
 func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *models.MonteCarloAnalysis
@@ -254,7 +250,7 @@ func MonteCarlo(eng *engine.Engine, in engine.Input, runs int, seed int64) *mode
 MonteCarlo runs enhanced randomized scenario analysis. seed == 0 means auto\-seed from time.Now\(\); any non\-zero seed is used directly so deterministic parity tests get reproducible RNG sequences.
 
 <a name="NormalizedSSCOLARate"></a>
-## func NormalizedSSCOLARate
+## func [NormalizedSSCOLARate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L36>)
 
 ```go
 func NormalizedSSCOLARate(rate *float64) float64
@@ -263,7 +259,7 @@ func NormalizedSSCOLARate(rate *float64) float64
 NormalizedSSCOLARate returns the SS COLA rate to apply. nil rate → returns the 2% default \(caller did not supply a value\). Non\-nil → returns the value, clamping negatives to 0 \(SSA COLA is never negative\). Explicit 0 is honored. F\-026.
 
 <a name="NormalizedSSFRA"></a>
-## func NormalizedSSFRA
+## func [NormalizedSSFRA](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L25>)
 
 ```go
 func NormalizedSSFRA(fra int) int
@@ -272,7 +268,7 @@ func NormalizedSSFRA(fra int) int
 NormalizedSSFRA returns the FRA to use, defaulting to 67 if fra==0.
 
 <a name="ParallelIndexed"></a>
-## func ParallelIndexed
+## func [ParallelIndexed](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/parallel.go#L24>)
 
 ```go
 func ParallelIndexed(n, workers int, fn func(i int))
@@ -283,7 +279,7 @@ ParallelIndexed runs fn\(i\) for i in \[0,n\) on at most workers goroutines. It 
 A panic in fn is captured and re\-thrown on the CALLING goroutine after all workers finish, so callers' panic semantics match a sequential loop and HTTP middleware \(e.g. chi's Recoverer\) can recover it instead of the process dying from an unrecovered goroutine panic. Only the first panic value is re\-thrown, but EVERY panic — including the worker's stack, which would otherwise be lost in the hop to the calling goroutine — is logged at capture time, so production logs always show the faulting frame and no concurrent secondary panic disappears silently. The remaining indices still complete, so fixed\-slot result arrays are fully populated for the survivors.
 
 <a name="PresentValue"></a>
-## func PresentValue
+## func [PresentValue](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/present_value.go#L20>)
 
 ```go
 func PresentValue(in engine.Input, proj *models.ProjectionResult) *models.PresentValueAnalysis
@@ -294,7 +290,7 @@ PresentValue computes the present value of expenses, income, and the resulting g
 Expenses and income are closed\-form annuity math. Taxes are not: income taxes and IRMAA depend on withdrawal sequencing, SS taxation, and RMDs, which don't reduce to a closed form — so when proj is non\-nil the projection's actual per\-month taxes and per\-year IRMAA are discounted into Total Needs \(PVTaxes\). This keeps the coverage ratio after\-tax and consistent with the Budget Analysis panel. Pass nil for a pre\-tax estimate \(PVTaxes stays 0\).
 
 <a name="RunSingleMonteCarloSimulation"></a>
-## func RunSingleMonteCarloSimulation
+## func [RunSingleMonteCarloSimulation](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L312>)
 
 ```go
 func RunSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *MonteCarloConfig) models.MonteCarloResult
@@ -303,7 +299,7 @@ func RunSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 RunSingleMonteCarloSimulation drives a single MC run. Exposed so retirement\-package test helpers can exercise the simulator directly without going through the full MonteCarlo fan\-out.
 
 <a name="SSAnalysis"></a>
-## func SSAnalysis
+## func [SSAnalysis](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L347>)
 
 ```go
 func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis
@@ -312,7 +308,7 @@ func SSAnalysis(in engine.Input) *models.SSComparisonAnalysis
 SSAnalysis computes the full SS claiming\-age comparison for the configured settings. Returns nil if SS is not configured.
 
 <a name="SSBreakevenAges"></a>
-## func SSBreakevenAges
+## func [SSBreakevenAges](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L251>)
 
 ```go
 func SSBreakevenAges(pia float64, fra int, colaRate float64) []models.SSBreakevenResult
@@ -321,7 +317,7 @@ func SSBreakevenAges(pia float64, fra int, colaRate float64) []models.SSBreakeve
 SSBreakevenAges calculates the breakeven age for each adjacent pair of claiming ages \(62\-63, 63\-64, ..., 69\-70\). The breakeven age is when the cumulative benefit of the later claiming age surpasses the earlier one. Returns 0 for breakeven\_age if it never breaks even within age 100.
 
 <a name="SSBreakevenAgesWithSpousalTopUp"></a>
-## func SSBreakevenAgesWithSpousalTopUp
+## func [SSBreakevenAgesWithSpousalTopUp](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L240>)
 
 ```go
 func SSBreakevenAgesWithSpousalTopUp(pia float64, fra int, colaRate float64, higherPIA float64) []models.SSBreakevenResult
@@ -330,7 +326,7 @@ func SSBreakevenAgesWithSpousalTopUp(pia float64, fra int, colaRate float64, hig
 SSBreakevenAgesWithSpousalTopUp is SSBreakevenAges with the spousal top\-up adjuster applied.
 
 <a name="SSComparisonTable"></a>
-## func SSComparisonTable
+## func [SSComparisonTable](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L189>)
 
 ```go
 func SSComparisonTable(pia float64, fra int, currentAge int, colaRate float64) []models.SSClaimingOption
@@ -339,7 +335,7 @@ func SSComparisonTable(pia float64, fra int, currentAge int, colaRate float64) [
 SSComparisonTable returns a slice of models.SSClaimingOption for claiming ages 62\-70, skipping ages below currentAge. Each option includes the adjusted benefit and cumulative amounts at ages 80, 85, and 90 with annual COLA applied from the claiming age onward.
 
 <a name="SSComparisonTableWithSpousalTopUp"></a>
-## func SSComparisonTableWithSpousalTopUp
+## func [SSComparisonTableWithSpousalTopUp](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L195>)
 
 ```go
 func SSComparisonTableWithSpousalTopUp(pia float64, fra int, currentAge int, colaRate float64, higherPIA float64) []models.SSClaimingOption
@@ -348,7 +344,7 @@ func SSComparisonTableWithSpousalTopUp(pia float64, fra int, currentAge int, col
 SSComparisonTableWithSpousalTopUp is SSComparisonTable with the spousal top\-up adjuster applied.
 
 <a name="SSConfigCOLARate"></a>
-## func SSConfigCOLARate
+## func [SSConfigCOLARate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L50>)
 
 ```go
 func SSConfigCOLARate(s *models.WhatIfSettings) float64
@@ -357,7 +353,7 @@ func SSConfigCOLARate(s *models.WhatIfSettings) float64
 SSConfigCOLARate extracts the effective COLA rate from WhatIfSettings. If SocialSecurityConfig.COLARateSet is true the stored value is used \(even 0\); otherwise the 2% default is returned. F\-026.
 
 <a name="SSPortfolio"></a>
-## func SSPortfolio
+## func [SSPortfolio](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L534>)
 
 ```go
 func SSPortfolio(eng *engine.Engine, in engine.Input, ss *models.SSComparisonAnalysis) *models.SSPortfolioAnalysis
@@ -368,7 +364,7 @@ SSPortfolio evaluates how eligible claiming ages affect portfolio survival while
 SSPortfolio uses the default Monte Carlo seed \(auto\-seed\). For deterministic/parity runs, see SSPortfolioWithSeed.
 
 <a name="SSPortfolioEligible"></a>
-## func SSPortfolioEligible
+## func [SSPortfolioEligible](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L338>)
 
 ```go
 func SSPortfolioEligible(s *models.WhatIfSettings) bool
@@ -377,7 +373,7 @@ func SSPortfolioEligible(s *models.WhatIfSettings) bool
 SSPortfolioEligible reports whether at least one person in the household qualifies for SS portfolio analysis.
 
 <a name="SSPortfolioFromMainMC"></a>
-## func SSPortfolioFromMainMC
+## func [SSPortfolioFromMainMC](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L559>)
 
 ```go
 func SSPortfolioFromMainMC(eng *engine.Engine, in engine.Input, ssAnalysis *models.SSComparisonAnalysis, seed int64, main MainMCRuns) *models.SSPortfolioAnalysis
@@ -386,7 +382,7 @@ func SSPortfolioFromMainMC(eng *engine.Engine, in engine.Input, ssAnalysis *mode
 SSPortfolioFromMainMC is SSPortfolioWithSeed with the baseline cell derived from the main Monte Carlo's per\-run results instead of re\-simulating it. The baseline cell holds the CURRENT claim ages, so when the main MC was run with the same seed against the same prepared input, its first ssPortfolioMonteCarloRuns per\-run results are identical to what the baseline cell would simulate \(per\-run seeds derive from the same master sequence regardless of the total run count\). main must have been simulated from the SAME in this call receives; the seed half of that contract is enforced — the runs are ignored \(and the cell re\-simulated\) when main.Seed \!= seed or fewer than ssPortfolioMonteCarloRuns results are supplied, so a mismatched caller degrades to correct\-but\-slower instead of silently comparing non\-common random numbers in every DeltaSurvivalRate.
 
 <a name="SSPortfolioPrimaryEligible"></a>
-## func SSPortfolioPrimaryEligible
+## func [SSPortfolioPrimaryEligible](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L312>)
 
 ```go
 func SSPortfolioPrimaryEligible(s *models.WhatIfSettings) bool
@@ -395,7 +391,7 @@ func SSPortfolioPrimaryEligible(s *models.WhatIfSettings) bool
 SSPortfolioPrimaryEligible reports whether the primary's configuration enables the SS portfolio analysis.
 
 <a name="SSPortfolioSpouseEligible"></a>
-## func SSPortfolioSpouseEligible
+## func [SSPortfolioSpouseEligible](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L325>)
 
 ```go
 func SSPortfolioSpouseEligible(s *models.WhatIfSettings) bool
@@ -404,7 +400,7 @@ func SSPortfolioSpouseEligible(s *models.WhatIfSettings) bool
 SSPortfolioSpouseEligible reports whether the spouse's configuration enables the SS portfolio analysis.
 
 <a name="SSPortfolioWithSeed"></a>
-## func SSPortfolioWithSeed
+## func [SSPortfolioWithSeed](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L542>)
 
 ```go
 func SSPortfolioWithSeed(eng *engine.Engine, in engine.Input, ssAnalysis *models.SSComparisonAnalysis, seed int64) *models.SSPortfolioAnalysis
@@ -413,7 +409,7 @@ func SSPortfolioWithSeed(eng *engine.Engine, in engine.Input, ssAnalysis *models
 SSPortfolioWithSeed is SSPortfolio but threads a fixed Monte Carlo seed through every cell. seed == 0 means auto\-seed \(preserves the legacy "default = unpredictable" contract\); any non\-zero seed is used directly so deterministic comparisons are reproducible.
 
 <a name="Score"></a>
-## func Score
+## func [Score](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/sustainability.go#L12>)
 
 ```go
 func Score(requiredRate float64, survives bool) *models.SustainabilityScore
@@ -422,7 +418,7 @@ func Score(requiredRate float64, survives bool) *models.SustainabilityScore
 Score computes the sustainability score. Only the budget fit's required withdrawal rate and the projection's survival flag drive the score, so the signature takes exactly those two scalars — callers pull them from their BudgetFitAnalysis / ProjectionResult. The analysis package keeps no projection state of its own.
 
 <a name="SensitivityWithBaseline"></a>
-## func SensitivityWithBaseline
+## func [SensitivityWithBaseline](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/sensitivity.go#L19>)
 
 ```go
 func SensitivityWithBaseline(eng *engine.Engine, in engine.Input, baseProjection *models.ProjectionResult, baseBudgetFit *models.BudgetFitAnalysis) []models.SensitivityResult
@@ -431,7 +427,7 @@ func SensitivityWithBaseline(eng *engine.Engine, in engine.Input, baseProjection
 SensitivityWithBaseline runs sensitivity analysis on key parameters by perturbing settings and re\-running the projection, reusing an already\-computed baseline projection and budget fit so orchestrators that just ran the baseline don't pay for a redundant full projection. The scenario projections are independent of one another and run concurrently \(capped at NumCPU workers\); each perturbation builds its own PreparedSettings deep copy, and results land in fixed scenario\-order slots so the output is identical to the sequential form regardless of scheduling.
 
 <a name="SpousalTopUp"></a>
-## func SpousalTopUp
+## func [SpousalTopUp](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L160>)
 
 ```go
 func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge int) float64
@@ -440,7 +436,7 @@ func SpousalTopUp(spouseOwnBenefit, higherPIA float64, spouseFRA, spouseClaimAge
 SpousalTopUp returns the larger of the spouse's own benefit or the spousal benefit derived from the higher earner's PIA.
 
 <a name="SurvivorBenefitForClaimAge"></a>
-## func SurvivorBenefitForClaimAge
+## func [SurvivorBenefitForClaimAge](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L149>)
 
 ```go
 func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64
@@ -449,7 +445,7 @@ func SurvivorBenefitForClaimAge(pia float64, fra, claimAge int) float64
 SurvivorBenefitForClaimAge returns the monthly Social Security survivor benefit a worker's record produces if claimed at claimAge, in current \(claim\-date\) dollars. Per 20 CFR §404.338, a record claimed before FRA floors the survivor benefit at 82.5% of PIA \(RIB\-LIM\); claimed at or after FRA the survivor inherits the full benefit, including any delayed\-retirement credits. The survivor inherits the larger of their own benefit and this amount; callers apply it to the higher\-PIA worker. This is the amount inherited from the worker's record, before any reduction for the survivor's own early survivor\-claiming age \(which callers apply separately, if at all\).
 
 <a name="TaxOptimizer"></a>
-## func TaxOptimizer
+## func [TaxOptimizer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax_optimizer.go#L311>)
 
 ```go
 func TaxOptimizer(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAnalysis) *models.TaxOptimizerAnalysis
@@ -458,7 +454,7 @@ func TaxOptimizer(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAna
 TaxOptimizer runs the Tax Optimizer and returns a recommendation. Always synchronous. Eligibility is gated; ineligible scenarios return a non\-nil result with Eligible=false and IneligibleReason set. Uses the auto\-seed convention \(seed=0\) for Monte Carlo refinement \(Phase 1.5 — MC refinement is added in a later task\).
 
 <a name="TaxOptimizerWithSeed"></a>
-## func TaxOptimizerWithSeed
+## func [TaxOptimizerWithSeed](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/tax_optimizer.go#L344>)
 
 ```go
 func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPortfolioAnalysis, seed int64) *models.TaxOptimizerAnalysis
@@ -467,7 +463,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 TaxOptimizerWithSeed is TaxOptimizer with an explicit Monte Carlo seed for deterministic tests. seed=0 means auto\-seed.
 
 <a name="ValidSSClaimAge"></a>
-## func ValidSSClaimAge
+## func [ValidSSClaimAge](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/ss.go#L20>)
 
 ```go
 func ValidSSClaimAge(age int) bool
@@ -476,7 +472,7 @@ func ValidSSClaimAge(age int) bool
 ValidSSClaimAge reports whether age is a valid Social Security claiming age \(62\-70 inclusive\).
 
 <a name="YearsUntilDepletion"></a>
-## func YearsUntilDepletion
+## func [YearsUntilDepletion](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/backtest.go#L41>)
 
 ```go
 func YearsUntilDepletion(result HistoricalSequenceResult) int
@@ -485,7 +481,7 @@ func YearsUntilDepletion(result HistoricalSequenceResult) int
 YearsUntilDepletion exposes yearsUntilDepletion for retirement\-package test helpers.
 
 <a name="AssetReturns"></a>
-## type AssetReturns
+## type [AssetReturns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L76-L80>)
 
 AssetReturns holds per\-asset\-class returns for Monte Carlo simulation.
 
@@ -498,7 +494,7 @@ type AssetReturns struct {
 ```
 
 <a name="CrashTiming"></a>
-## type CrashTiming
+## type [CrashTiming](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L67-L73>)
 
 CrashTiming tracks when crashes occurred during simulation.
 
@@ -513,7 +509,7 @@ type CrashTiming struct {
 ```
 
 <a name="HistoricalSequenceResult"></a>
-## type HistoricalSequenceResult
+## type [HistoricalSequenceResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/backtest.go#L15-L27>)
 
 HistoricalSequenceResult represents the outcome of one historical sequence within a backtest.
 
@@ -534,7 +530,7 @@ type HistoricalSequenceResult struct {
 ```
 
 <a name="RunSingleHistoricalSequence"></a>
-### func RunSingleHistoricalSequence
+### func [RunSingleHistoricalSequence](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/backtest.go#L182>)
 
 ```go
 func RunSingleHistoricalSequence(in engine.Input, data history.Data, startYear int) HistoricalSequenceResult
@@ -543,7 +539,7 @@ func RunSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 RunSingleHistoricalSequence exposes the single\-sequence runner for retirement\-package test helpers.
 
 <a name="MainMCRuns"></a>
-## type MainMCRuns
+## type [MainMCRuns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L95-L98>)
 
 MainMCRuns pairs Monte Carlo per\-run results with the resolved seed they were simulated under, so downstream consumers that reuse them \(the SS portfolio baseline cell\) can verify common\-random\-numbers provenance instead of trusting the call site to have threaded the same seed. Seed is never 0: the producer resolves auto\-seeding before simulating.
 
@@ -555,7 +551,7 @@ type MainMCRuns struct {
 ```
 
 <a name="MonteCarloWithResults"></a>
-### func MonteCarloWithResults
+### func [MonteCarloWithResults](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L104>)
 
 ```go
 func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed int64) (*models.MonteCarloAnalysis, MainMCRuns)
@@ -564,7 +560,7 @@ func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed i
 MonteCarloWithResults is MonteCarlo, additionally returning the per\-run results slice \(in run order\) together with the seed that produced it. The orchestrator uses it to derive the SS portfolio baseline cell from the main run's first N simulations instead of re\-simulating them.
 
 <a name="MonteCarloConfig"></a>
-## type MonteCarloConfig
+## type [MonteCarloConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L16-L40>)
 
 MonteCarloConfig defines parameters for enhanced simulation. Mirrors the parity\-window type previously hosted on Calculator.
 
@@ -597,7 +593,7 @@ type MonteCarloConfig struct {
 ```
 
 <a name="DefaultMonteCarloConfig"></a>
-### func DefaultMonteCarloConfig
+### func [DefaultMonteCarloConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/retirement/analysis/monte_carlo.go#L43>)
 
 ```go
 func DefaultMonteCarloConfig() *MonteCarloConfig

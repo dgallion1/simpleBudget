@@ -80,6 +80,15 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		currentYearSummary.NIIT = st.CurrentYearTaxSnapshot.AnnualNIIT
 		currentYearSummary.IRMAA = st.CurrentYearTaxSnapshot.AnnualIRMAA
 		currentYearSummary.TaxableSocialSecurityPct = st.CurrentYearTaxSnapshot.TaxableSocialSecurityPct
+		// Measured once per projection year, from the composition the year's
+		// final snapshot already computed — never in the monthly loop, which
+		// Monte Carlo and backtest also drive.
+		yearsFromTaxBase := YearsFromTaxBase(st.Settings(), currentYearSummary.Year)
+		currentYearSummary.MarginalRate = st.TaxCalculator.MarginalRateOnOrdinaryIncome(
+			st.CurrentYearTaxSnapshot.AnnualInputs, yearsFromTaxBase)
+		currentYearSummary.MarginalRateLongTermGain = st.TaxCalculator.MarginalRateOnLongTermGain(
+			st.CurrentYearTaxSnapshot.AnnualInputs, yearsFromTaxBase)
+		applyNextCliff(&currentYearSummary, st, yearsFromTaxBase)
 		currentYearSummary.EndingBalance = month.PortfolioBalance
 		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
 		currentYearSummary.CumulativeInflation = month.CumulativeInflation
@@ -197,6 +206,46 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		Survives:        depletionMonth == nil,
 		GuardrailEvents: guardrailEvents,
 	}
+}
+
+// applyNextCliff records the year's headroom to the nearest step-cost income
+// threshold. Measured once per projection year from the same snapshot the tax
+// figures came from, never in the monthly loop.
+func applyNextCliff(summary *models.ProjectionYearSummary, st *ProjectionState, yearsFromTaxBase int) {
+	s := st.Settings()
+	marketplace, disqualified := MarketplaceStatusAtYear(s, summary.Year)
+	registry := st.TaxCalculator.ThresholdRegistry(ThresholdRegistryOptions{
+		YearsFromBase:                 yearsFromTaxBase,
+		IRMAAEligibleAdults:           MedicareEligibleAdultCountAtYear(s, summary.Year),
+		IRMAAThresholdFactor:          PlannerIRMAAInflationFactorForYear(s.InflationRate, float64(yearsFromTaxBase)),
+		IRMAASurchargeFactor:          PlannerIRMAASurchargeInflationFactorForYear(float64(yearsFromTaxBase)),
+		CoverageYear:                  ParseStartYear(s.StartDate) + summary.Year,
+		ACA:                           s.ACA,
+		MarketplaceEnrolled:           marketplace,
+		DisqualifiedFromPremiumCredit: disqualified,
+	})
+	if len(registry) == 0 {
+		return
+	}
+
+	// IRMAA bills against MAGI from two years prior, resolved exactly as the
+	// stepper resolves it for the surcharge itself, so the headroom shown
+	// matches the surcharge actually charged.
+	lookbackMAGI, ok := resolveIRMAALookbackMAGI(st.CompletedMAGIHistory, &st.AssumedLookbackMAGI)
+	if !ok {
+		return
+	}
+
+	measures := st.TaxCalculator.MeasureThresholdInputs(
+		st.CurrentYearTaxSnapshot.AnnualInputs, yearsFromTaxBase, lookbackMAGI)
+	next, ok := NextCliff(ThresholdProximities(registry, measures))
+	if !ok {
+		return
+	}
+
+	summary.NextCliffLabel = next.Label
+	summary.NextCliffHeadroom = next.Headroom()
+	summary.NextCliffAnnualCost = next.AnnualCostOfCrossing
 }
 
 // FindSteadyStateMonth finds the month when all income sources are

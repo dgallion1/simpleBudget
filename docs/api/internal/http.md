@@ -17,7 +17,7 @@ Package http contains small HTTP utility helpers shared across handler packages:
 
 
 <a name="ErrorResponse"></a>
-## func ErrorResponse
+## func [ErrorResponse](<https://github.com/dgallion1/simpleBudget/blob/master/internal/http/http.go#L36>)
 
 ```go
 func ErrorResponse(w http.ResponseWriter, message string, statusCode int)
@@ -26,7 +26,7 @@ func ErrorResponse(w http.ResponseWriter, message string, statusCode int)
 ErrorResponse sends an error response
 
 <a name="ParseDateRange"></a>
-## func ParseDateRange
+## func [ParseDateRange](<https://github.com/dgallion1/simpleBudget/blob/master/internal/http/http.go#L42>)
 
 ```go
 func ParseDateRange(startStr, endStr string, minDate, maxDate time.Time) (start, end time.Time)
@@ -35,7 +35,7 @@ func ParseDateRange(startStr, endStr string, minDate, maxDate time.Time) (start,
 ParseDateRange parses start and end date query parameters with defaults
 
 <a name="RenderPartial"></a>
-## func RenderPartial
+## func [RenderPartial](<https://github.com/dgallion1/simpleBudget/blob/master/internal/http/http.go#L26>)
 
 ```go
 func RenderPartial(w http.ResponseWriter, renderer *templates.Renderer, partialName string, data map[string]interface{})
@@ -44,7 +44,7 @@ func RenderPartial(w http.ResponseWriter, renderer *templates.Renderer, partialN
 RenderPartial renders a partial template with data
 
 <a name="RenderTemplate"></a>
-## func RenderTemplate
+## func [RenderTemplate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/http/http.go#L16>)
 
 ```go
 func RenderTemplate(w http.ResponseWriter, renderer *templates.Renderer, templateName string, data map[string]interface{})

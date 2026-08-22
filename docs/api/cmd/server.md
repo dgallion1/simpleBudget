@@ -15,7 +15,7 @@ Command server is the SimpleBudget HTTP application. It boots the chi router, wi
 
 
 <a name="SetupDependencies"></a>
-## func SetupDependencies
+## func [SetupDependencies](<https://github.com/dgallion1/simpleBudget/blob/master/cmd/server/main.go#L62>)
 
 ```go
 func SetupDependencies(c *config.Config) error
@@ -24,7 +24,7 @@ func SetupDependencies(c *config.Config) error
 SetupDependencies initializes all global dependencies with the given config. This is exported for testing purposes.
 
 <a name="SetupRouter"></a>
-## func SetupRouter
+## func [SetupRouter](<https://github.com/dgallion1/simpleBudget/blob/master/cmd/server/main.go#L172>)
 
 ```go
 func SetupRouter() chi.Router

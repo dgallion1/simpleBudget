@@ -243,7 +243,15 @@ lint:
 docs-api: ## Generate Markdown API docs for all Go packages (docs/api/)
 	@command -v gomarkdoc >/dev/null 2>&1 || { echo "gomarkdoc not installed. Run: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest"; exit 1; }
 	@$(MKDIR) docs/api
-	gomarkdoc -o 'docs/api/{{.ImportPath}}.md' ./cmd/... ./internal/...
+	# Repository details are pinned rather than auto-detected. gomarkdoc
+	# derives source links from the git context it happens to find, so the
+	# same version emits links from a normal checkout and none from a git
+	# worktree — making the committed tree flip depending on who regenerated
+	# it last. Passing these explicitly makes the output identical everywhere.
+	gomarkdoc --repository.url https://github.com/dgallion1/simpleBudget \
+		--repository.default-branch master \
+		--repository.path / \
+		-o 'docs/api/{{.ImportPath}}.md' ./cmd/... ./internal/...
 	@./scripts/gen-api-index.sh
 	@echo "API docs written to docs/api/ (start at docs/api/README.md)"
 

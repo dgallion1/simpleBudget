@@ -15,16 +15,20 @@ Package mcpsvc assembles the budget2 MCP server from its per\-domain subpackages
 
 
 <a name="NewServer"></a>
-## func NewServer
+## func [NewServer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/server.go#L181>)
 
 ```go
 func NewServer(deps Deps) *mcp.Server
 ```
 
-NewServer builds the MCP server. A nil Loader disables spend's tools; registration itself never touches a dependency. Other nil fields are not load\-bearing at registration time but will fail individual tool calls that need them \-\- notably a nil SettingsDir/SnapshotDir still registers apply\_changes \(via an always\-constructed Snapshotter\), which then fails at call time rather than being absent from the tool list.
+NewServer builds the MCP server. A nil Loader disables spend's, curate's and admin's tools; registration itself never touches a dependency. Other nil fields are not load\-bearing at registration time but will fail individual tool calls that need them \-\- notably a nil SettingsDir/ SnapshotDir still registers apply\_changes \(via an always\-constructed Snapshotter\), which then fails at call time rather than being absent from the tool list. A nil Backups degrades get\_status's backup section \(it reports "no backup service is configured" instead of a snapshot record\) and disables nothing else: run\_backup still registers and still gets called, it just fails that call with the same "not configured" error. A nil Backups is a supported configuration \-\- though it also disables list\_backups and restore\_backup, which have no way to name an archive without it. Likewise, a nil Shutdown is a supported configuration: shutdown\_server still registers, but every call \-\- including the no\-argument preview \-\- fails fast with "no shutdown path is configured on this server" instead of stopping the process, because a server that cannot shut down should not mint a token no redeem could ever honor. A nil Restores behaves the same way for restore\_backup.
+
+deps.Settings, by contrast, is not a supported nil configuration in production: cmd/server/main.go constructs it unconditionally, and plan.Register calls its methods without a nil check, so a nil Settings reaching a real tool call is a programming error, not a degraded mode. Tests may still construct NewServer with a nil Settings deliberately \(see TestNewServerExposesTheAssumptionsResource\), as long as the test never calls a tool that touches it.
+
+deps.Settings must be either a genuinely nil \*retirement.SettingsManager or a fully constructed one \-\- never a typed\-nil value manufactured some other way. plan and spend take it as that concrete type, so a nil pointer is harmless there, but it is also assigned into admin.Deps.Settings, which is an interface: a typed\-nil \*retirement.SettingsManager stored in an interface is a non\-nil interface value that panics on first method call. admin's own nil check \(deps.Settings \!= nil\) cannot see through that, so this is a caller contract, not something get\_status defends against.
 
 <a name="Deps"></a>
-## type Deps
+## type [Deps](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/mcpsvc/server.go#L29-L55>)
 
 Deps carries the running server's services. Subpackages declare their own narrower Deps structs; NewServer maps onto them. Dependencies flow one way \(mcpsvc \-\> subpackages\), so no subpackage may import this one.
 
@@ -36,6 +40,25 @@ type Deps struct {
     SettingsDir string
     SnapshotDir string
     BaseURL     string
+    Backups     *backup.Service
+
+    // Restores is the SAME *restore.Service the /restore HTTP handler uses,
+    // handed over by handlers/backup.Initialize rather than constructed here:
+    // a second instance over the same directories would work, but only as
+    // long as nobody gave the two different gates or dirs. Nil disables
+    // restore_backup's ability to act (the tool still registers and still
+    // reports why).
+    Restores *restore.Service
+
+    // Approvals is where guarded tools file the requests a human answers in a
+    // browser. It MUST be the same instance the /mcp/approve route serves, so
+    // it is constructed by cmd/server rather than here. Nil drops the guarded
+    // tools to the in-client form prompt, and then to the token alone.
+    Approvals *confirm.Approvals
+
+    // Shutdown stops the server process. Nil disables shutdown_server's
+    // ability to act (the tool still registers and still reports why).
+    Shutdown func()
 }
 ```
 

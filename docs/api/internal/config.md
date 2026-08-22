@@ -18,7 +18,7 @@ Package config loads and persists the application's runtime configuration: liste
 
 
 <a name="Config"></a>
-## type Config
+## type [Config](<https://github.com/dgallion1/simpleBudget/blob/master/internal/config/config.go#L15-L30>)
 
 Config holds application configuration
 
@@ -42,7 +42,7 @@ type Config struct {
 ```
 
 <a name="DefaultConfig"></a>
-### func DefaultConfig
+### func [DefaultConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/config/config.go#L46>)
 
 ```go
 func DefaultConfig() *Config
@@ -51,7 +51,7 @@ func DefaultConfig() *Config
 DefaultConfig returns configuration with sensible defaults
 
 <a name="Load"></a>
-### func Load
+### func [Load](<https://github.com/dgallion1/simpleBudget/blob/master/internal/config/config.go#L67>)
 
 ```go
 func Load() *Config
@@ -60,7 +60,7 @@ func Load() *Config
 Load loads configuration from environment and/or config file
 
 <a name="Config.LoadUserSettings"></a>
-### func \(\*Config\) LoadUserSettings
+### func \(\*Config\) [LoadUserSettings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/config/config.go#L115>)
 
 ```go
 func (c *Config) LoadUserSettings() (map[string]interface{}, error)
@@ -69,7 +69,7 @@ func (c *Config) LoadUserSettings() (map[string]interface{}, error)
 LoadUserSettings loads user settings from JSON file
 
 <a name="Config.SaveUserSettings"></a>
-### func \(\*Config\) SaveUserSettings
+### func \(\*Config\) [SaveUserSettings](<https://github.com/dgallion1/simpleBudget/blob/master/internal/config/config.go#L133>)
 
 ```go
 func (c *Config) SaveUserSettings(settings map[string]interface{}) error

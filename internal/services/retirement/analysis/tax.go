@@ -17,6 +17,56 @@ import (
 // ConversionTaxPaid is left zero: isolating the marginal tax attributable to
 // Roth conversions requires a counterfactual no-conversion projection, which
 // this pure post-projection summary does not run.
+// nearestCliff finds the year that comes closest to a step-cost income
+// threshold without the plan doing anything about it. That year is where a
+// small change in timing is worth the most, so it is the one worth naming.
+func nearestCliff(summaries []models.ProjectionYearSummary, startYear, olderAge int) *models.CliffProximity {
+	var best *models.CliffProximity
+	for _, ys := range summaries {
+		if ys.NextCliffLabel == "" {
+			continue
+		}
+		if best != nil && ys.NextCliffHeadroom >= best.Headroom {
+			continue
+		}
+		best = &models.CliffProximity{
+			Year:       startYear + ys.Year,
+			Age:        olderAge + ys.Year,
+			Label:      ys.NextCliffLabel,
+			Headroom:   ys.NextCliffHeadroom,
+			AnnualCost: ys.NextCliffAnnualCost,
+		}
+	}
+	return best
+}
+
+// constantsBasis reports which published tax figures the analysis rests on
+// and which of its years are extrapolated from them.
+func constantsBasis(s *models.WhatIfSettings, startYear, years int) *models.TaxConstantsBasis {
+	statutoryYear, provenance := engine.LatestStatutoryFederalProvenance()
+	basis := &models.TaxConstantsBasis{
+		StatutoryYear: statutoryYear,
+		Source:        provenance.Source,
+		VerifiedOn:    provenance.VerifiedOn,
+	}
+	if years <= 0 {
+		return basis
+	}
+
+	lastYear := startYear + years - 1
+	if lastYear <= statutoryYear {
+		return basis
+	}
+	first := statutoryYear + 1
+	if startYear > first {
+		first = startYear
+	}
+	basis.FirstProjectedYear = first
+	basis.LastProjectedYear = lastYear
+	basis.InflationRate = s.InflationRate
+	return basis
+}
+
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis {
 	if proj == nil || len(proj.Months) == 0 {
 		return nil
@@ -25,7 +75,6 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 	s := in.Prepared.Settings()
 	startYear := engine.ParseStartYear(s.StartDate)
 	olderAge := s.GetOlderAge()
-	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
 
 	// Per-relative-year figures not carried on the yearly summary.
 	type yearAgg struct {
@@ -73,7 +122,6 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 		}
 
 		calendarYear := startYear + ys.Year
-		marginalBracket := tc.GetMarginalRate(ys.MAGI, engine.YearsFromTaxBase(s, calendarYear))
 
 		result.TotalTaxPaid += totalTax
 		result.TotalFederalTaxPaid += federalTax
@@ -81,22 +129,29 @@ func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysi
 		totalGrossIncome += ys.GrossIncome
 
 		result.YearlyTaxSummary = append(result.YearlyTaxSummary, models.YearlyTaxSummary{
-			Year:            calendarYear,
-			Age:             olderAge + ys.Year,
-			TaxableIncome:   ys.MAGI,
-			FederalTax:      federalTax,
-			StateTax:        stateTax,
-			TotalTax:        totalTax,
-			EffectiveRate:   effectiveRate,
-			MarginalBracket: marginalBracket,
-			RothConversion:  rothConversion,
-			RMDAmount:       rmd,
+			Year:          calendarYear,
+			Age:           olderAge + ys.Year,
+			TaxableIncome: ys.MAGI,
+			FederalTax:    federalTax,
+			StateTax:      stateTax,
+			TotalTax:      totalTax,
+			EffectiveRate: effectiveRate,
+			// Measured numerically by the engine from this year's own income
+			// composition, so it reflects capital-gain stacking and the § 86
+			// phase-in. Previously a bracket-table lookup fed MAGI, which
+			// understated the rate and passed the wrong quantity in.
+			MarginalRate:             ys.MarginalRate,
+			MarginalRateLongTermGain: ys.MarginalRateLongTermGain,
+			RothConversion:           rothConversion,
+			RMDAmount:                rmd,
 		})
 	}
 
 	if totalGrossIncome > 0 {
 		result.AverageEffectiveRate = result.TotalTaxPaid / totalGrossIncome * 100
 	}
+	result.NearestCliff = nearestCliff(proj.YearlySummaries, startYear, olderAge)
+	result.ConstantsBasis = constantsBasis(s, startYear, len(proj.YearlySummaries))
 
 	return result
 }

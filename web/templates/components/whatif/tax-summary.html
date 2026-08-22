@@ -27,6 +27,18 @@
     </div>
 
     {{if $t.YearlyTaxSummary}}
+    {{with $t.NearestCliff}}
+    <div class="mb-3 rounded-md border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+        <p class="text-sm text-amber-800 dark:text-amber-200">
+            Closest approach to a cost step: in <span class="font-semibold">{{.Year}}</span> (age {{.Age}}) this plan is
+            <span class="font-semibold">{{formatDollars .Headroom}}</span> under {{.Label}}.
+            Crossing it costs <span class="font-semibold">{{formatDollars .AnnualCost}}</span> for that year.
+        </p>
+        <p class="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+            A step, not a ramp &mdash; one dollar over costs the whole amount. IRMAA is billed on income from two years earlier, so the year to act is two before the surcharge lands.
+        </p>
+    </div>
+    {{end}}
     <div class="overflow-x-auto max-h-96 overflow-y-auto">
         <table class="w-full text-sm">
             <thead>
@@ -39,6 +51,7 @@
                     <th class="pb-2 font-medium text-right">Total Tax</th>
                     <th class="pb-2 font-medium text-right">Eff. Rate</th>
                     <th class="pb-2 font-medium text-right">Marginal</th>
+                    <th class="pb-2 font-medium text-right">On Gains</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -53,14 +66,21 @@
                     <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .StateTax}}</td>
                     <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatDollars .TotalTax}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
-                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalBracket}}%</td>
+                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRate}}%</td>
+                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRateLongTermGain}}%</td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
     </div>
+    {{with $t.ConstantsBasis}}
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is the top federal bracket reached that year. State tax is $0 unless a state rate is configured.
+        Federal figures: {{.Source}}{{if .VerifiedOn}}, last verified {{.VerifiedOn}}{{end}}.
+        {{if .HasProjectedYears}}Years {{.FirstProjectedYear}}&ndash;{{.LastProjectedYear}} are projected from the {{.StatutoryYear}} tables at {{printf "%.1f" .InflationRate}}%/yr &mdash; estimates, not published law. Real indexing rounds in fixed steps and some thresholds are never indexed at all.{{end}}
+    </p>
+    {{end}}
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+        Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs, and On Gains what the next dollar of realized long-term gain costs &mdash; both measured from that year&rsquo;s income, so they account for capital-gain stacking, the Social Security phase-in and NIIT. Neither is a statutory bracket and either can exceed one. State tax is $0 unless a state rate is configured.
     </p>
     {{end}}
 </div>

@@ -10,15 +10,28 @@ Package majorexpenses implements pure matching and exception detection over a Tr
 
 ## Index
 
+- [Constants](<#constants>)
 - [func AnnotateRecurringPayments\(payments \[\]models.RecurringPayment, defs \[\]models.MajorExpense, pins map\[string\]string\) \[\]models.RecurringPayment](<#AnnotateRecurringPayments>)
 - [func MatchTransaction\(t models.Transaction, defs \[\]models.MajorExpense\) \(string, bool\)](<#MatchTransaction>)
+- [func Validate\(me models.MajorExpense\) error](<#Validate>)
 - [type MatchOptions](<#MatchOptions>)
 - [type MatchResult](<#MatchResult>)
   - [func Match\(ts \*models.TransactionSet, defs \[\]models.MajorExpense, opts MatchOptions\) MatchResult](<#Match>)
 
 
+## Constants
+
+<a name="DefaultUnknownLargeThreshold"></a>DefaultUnknownLargeThreshold and DefaultNewMerchantWindowDays are the values the Major Expenses page and the MCP curation tools both apply when building MatchOptions. They live here, in the one package both callers already import, so the page and the tools cannot silently drift apart on what counts as an exception.
+
+```go
+const (
+    DefaultUnknownLargeThreshold = 100.0
+    DefaultNewMerchantWindowDays = 30
+)
+```
+
 <a name="AnnotateRecurringPayments"></a>
-## func AnnotateRecurringPayments
+## func [AnnotateRecurringPayments](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L104>)
 
 ```go
 func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models.MajorExpense, pins map[string]string) []models.RecurringPayment
@@ -29,7 +42,7 @@ AnnotateRecurringPayments fills in RecurringPayment.MajorExpenseName for each de
 Returns a new slice; the input is not mutated.
 
 <a name="MatchTransaction"></a>
-## func MatchTransaction
+## func [MatchTransaction](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L164>)
 
 ```go
 func MatchTransaction(t models.Transaction, defs []models.MajorExpense) (string, bool)
@@ -47,8 +60,27 @@ MatchTransaction returns the first MajorExpense.ID that matches the transaction.
 
 First\-def\-wins for determinism.
 
+<a name="Validate"></a>
+## func [Validate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/validate.go#L35>)
+
+```go
+func Validate(me models.MajorExpense) error
+```
+
+Validate reports whether a major\-expense definition is one the app will accept. It is the single source of these rules: the Major Expenses page applies them to a parsed HTML form, and the MCP curation tools apply them to a tool call, and the two must not drift.
+
+A definition is valid in exactly three configurations:
+
+1. At least one keyword. An amount range is then optional and is used only to flag anomalies, not to decide whether a transaction matches.
+2. No keywords, but BOTH ExpectedMin and ExpectedMax set. This matches by amount alone, which is how a fixed\-dollar charge whose description varies gets captured; setting them equal matches that one amount.
+3. No keywords and no bounds at all: a pin\-only target, which matches nothing automatically and collects transactions the user pins to it by hand.
+
+Setting exactly one bound with no keyword is the rejected case. It matches nothing on its own and almost always means the other bound was forgotten.
+
+Validate reads Name with surrounding whitespace ignored but does not modify its argument; callers that persist the definition are expected to have trimmed it already.
+
 <a name="MatchOptions"></a>
-## type MatchOptions
+## type [MatchOptions](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L26-L38>)
 
 MatchOptions controls thresholds used to detect exceptions.
 
@@ -69,7 +101,7 @@ type MatchOptions struct {
 ```
 
 <a name="MatchResult"></a>
-## type MatchResult
+## type [MatchResult](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L41-L49>)
 
 MatchResult is the consolidated output the handler renders.
 
@@ -86,7 +118,7 @@ type MatchResult struct {
 ```
 
 <a name="Match"></a>
-### func Match
+### func [Match](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/majorexpenses/engine.go#L53>)
 
 ```go
 func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOptions) MatchResult

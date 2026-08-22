@@ -22,7 +22,7 @@ Package insights holds pattern\-detection logic over a transaction history \-\- 
 
 
 <a name="CategoryTrends"></a>
-## func CategoryTrends
+## func [CategoryTrends](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/trends.go#L111>)
 
 ```go
 func CategoryTrends(ts *models.TransactionSet, currentStart, currentEnd time.Time) []models.CategoryTrend
@@ -31,7 +31,7 @@ func CategoryTrends(ts *models.TransactionSet, currentStart, currentEnd time.Tim
 
 
 <a name="DetectRecurring"></a>
-## func DetectRecurring
+## func [DetectRecurring](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/recurring.go#L197>)
 
 ```go
 func DetectRecurring(ts *models.TransactionSet) []models.RecurringPayment
@@ -40,7 +40,7 @@ func DetectRecurring(ts *models.TransactionSet) []models.RecurringPayment
 DetectRecurring detects recurring payments over the whole of ts, using ts's own latest transaction date \(or, if ts is empty, the wall clock\) as the reference date \-\- equivalent to DetectRecurringAt\(ts, time.Time\{\}\).
 
 <a name="DetectRecurringAt"></a>
-## func DetectRecurringAt
+## func [DetectRecurringAt](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/recurring.go#L219>)
 
 ```go
 func DetectRecurringAt(ts *models.TransactionSet, referenceDate time.Time) []models.RecurringPayment
@@ -56,7 +56,7 @@ referenceDate does two distinct jobs, both resolved via ReferenceDate when zero 
 Results are capped at the 20 highest AnnualCost payments.
 
 <a name="IncomePatterns"></a>
-## func IncomePatterns
+## func [IncomePatterns](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/trends.go#L184>)
 
 ```go
 func IncomePatterns(ts *models.TransactionSet) []models.IncomePattern
@@ -65,7 +65,7 @@ func IncomePatterns(ts *models.TransactionSet) []models.IncomePattern
 IncomePatterns detects recurring income sources from transaction data. Exported for use by other packages \(e.g., whatif\).
 
 <a name="IsSubscription"></a>
-## func IsSubscription
+## func [IsSubscription](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/recurring.go#L52>)
 
 ```go
 func IsSubscription(rp models.RecurringPayment) bool
@@ -74,7 +74,7 @@ func IsSubscription(rp models.RecurringPayment) bool
 IsSubscription classifies a recurring payment as a subscription service. Subscriptions are regular payments that are not retail stores or utility bills. This includes both fixed\-amount \(Netflix\) and variable\-amount \(API billing\) services.
 
 <a name="MajorExpenseTrends"></a>
-## func MajorExpenseTrends
+## func [MajorExpenseTrends](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/trends.go#L19>)
 
 ```go
 func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, pins map[string]string, currentStart, currentEnd time.Time) []models.CategoryTrend
@@ -83,7 +83,7 @@ func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, p
 MajorExpenseTrends groups outflows by matched MajorExpense.Name for the current and previous periods and returns the same CategoryTrend shape as CategoryTrends so existing UI can render it. Unmatched transactions are intentionally excluded — the trend list is meant to surface movement on what the user has declared important. Pins win over keyword/amount matching, mirroring the rest of the engine.
 
 <a name="ReferenceDate"></a>
-## func ReferenceDate
+## func [ReferenceDate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/recurring.go#L109>)
 
 ```go
 func ReferenceDate(ts *models.TransactionSet, referenceDate time.Time) time.Time
@@ -92,7 +92,7 @@ func ReferenceDate(ts *models.TransactionSet, referenceDate time.Time) time.Time
 ReferenceDate resolves the "as of" date DetectRecurringAt uses for both truncating the ledger and judging freshness: referenceDate itself when non\-zero, otherwise ts's latest transaction date, otherwise \(a nil or empty ts\) the wall clock.
 
 <a name="SpendingVelocity"></a>
-## func SpendingVelocity
+## func [SpendingVelocity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/trends.go#L274>)
 
 ```go
 func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.SpendingVelocity
@@ -101,7 +101,7 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 
 
 <a name="TransactionSetForRecurring"></a>
-## func TransactionSetForRecurring
+## func [TransactionSetForRecurring](<https://github.com/dgallion1/simpleBudget/blob/master/internal/services/insights/recurring.go#L128>)
 
 ```go
 func TransactionSetForRecurring(ts *models.TransactionSet, referenceDate time.Time) *models.TransactionSet

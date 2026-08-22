@@ -29,7 +29,7 @@ var (
 ```
 
 <a name="Info"></a>
-## type Info
+## type [Info](<https://github.com/dgallion1/simpleBudget/blob/master/internal/version/version.go#L20-L27>)
 
 Info contains version and build information
 
@@ -45,7 +45,7 @@ type Info struct {
 ```
 
 <a name="Get"></a>
-### func Get
+### func [Get](<https://github.com/dgallion1/simpleBudget/blob/master/internal/version/version.go#L30>)
 
 ```go
 func Get() Info
@@ -54,7 +54,7 @@ func Get() Info
 Get returns the current version and build information
 
 <a name="Info.Check"></a>
-### func \(Info\) Check
+### func \(Info\) [Check](<https://github.com/dgallion1/simpleBudget/blob/master/internal/version/version.go#L84>)
 
 ```go
 func (i Info) Check() string
@@ -63,7 +63,7 @@ func (i Info) Check() string
 Check logs a warning if the binary appears to have been modified after build
 
 <a name="Info.String"></a>
-### func \(Info\) String
+### func \(Info\) [String](<https://github.com/dgallion1/simpleBudget/blob/master/internal/version/version.go#L55>)
 
 ```go
 func (i Info) String() string

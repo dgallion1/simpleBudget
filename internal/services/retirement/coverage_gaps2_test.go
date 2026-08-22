@@ -470,7 +470,14 @@ func TestMedicareEligibleAdultCountAtYear(t *testing.T) {
 
 func TestAnnualizedInputs_MonthZero(t *testing.T) {
 	acc := engine.ProjectionTaxAccumulator{}
-	inputs := acc.AnnualizedInputs(0, 1000, 200, 500, 100, 50, 25, 0)
+	inputs := acc.AnnualizedInputs(0, engine.MonthlyTaxInputs{
+		OrdinaryIncome:        1000,
+		SocialSecurityIncome:  200,
+		TaxableWithdrawals:    500,
+		QualifiedDividends:    100,
+		LongTermCapitalGains:  50,
+		NonQualifiedDividends: 25,
+	})
 
 	// monthInYear=0 => monthsElapsed=1, annualizationFactor=12
 	if math.Abs(inputs.OrdinaryIncome-12000) > 0.01 {
@@ -488,7 +495,7 @@ func TestAnnualizedInputs_MonthEleven(t *testing.T) {
 	acc := engine.ProjectionTaxAccumulator{
 		OrdinaryIncomeYTD: 11000,
 	}
-	inputs := acc.AnnualizedInputs(11, 1000, 0, 0, 0, 0, 0, 0)
+	inputs := acc.AnnualizedInputs(11, engine.MonthlyTaxInputs{OrdinaryIncome: 1000})
 
 	// monthInYear=11 => monthsElapsed=12, annualizationFactor=1
 	if math.Abs(inputs.OrdinaryIncome-12000) > 0.01 {
@@ -499,7 +506,7 @@ func TestAnnualizedInputs_MonthEleven(t *testing.T) {
 func TestAnnualizedInputs_NegativeMonthClampedToOne(t *testing.T) {
 	// monthInYear that would make monthsElapsed <= 0 is clamped to 1
 	acc := engine.ProjectionTaxAccumulator{}
-	inputs := acc.AnnualizedInputs(-2, 1000, 0, 0, 0, 0, 0, 0)
+	inputs := acc.AnnualizedInputs(-2, engine.MonthlyTaxInputs{OrdinaryIncome: 1000})
 
 	// monthsElapsed = -2+1 = -1, clamped to 1, annualizationFactor=12
 	if math.Abs(inputs.OrdinaryIncome-12000) > 0.01 {
@@ -512,7 +519,7 @@ func TestAnnualizedInputs_RothConversionsNotAnnualized(t *testing.T) {
 		RothConversionsYTD: 5000,
 	}
 	// Roth conversions should NOT be annualized - they're a one-time event
-	inputs := acc.AnnualizedInputs(0, 0, 0, 0, 0, 0, 0, 10000)
+	inputs := acc.AnnualizedInputs(0, engine.MonthlyTaxInputs{RothConversions: 10000})
 
 	// RothConversions = YTD + current = 5000 + 10000 = 15000 (no annualization factor)
 	if math.Abs(inputs.RothConversions-15000) > 0.01 {
@@ -732,27 +739,27 @@ func TestCalculateNIIT_HeadOfHousehold(t *testing.T) {
 	}
 }
 
-// --- GetMarginalRate edge cases ---
+// --- GetBracketRate edge cases ---
 
-func TestGetMarginalRate_NegativeIncome(t *testing.T) {
+func TestGetBracketRate_NegativeIncome(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 0)
 
-	rate := tc.GetMarginalRate(-5000, 0)
+	rate := tc.GetBracketRate(-5000, 0)
 	if rate != 10 {
 		t.Errorf("expected 10 for negative income, got %f", rate)
 	}
 }
 
-func TestGetMarginalRate_WithInflation(t *testing.T) {
+func TestGetBracketRate_WithInflation(t *testing.T) {
 	tc := engine.NewTaxCalculator(&models.TaxConfig{
 		FilingStatus: models.FilingSingle,
 	}, 3.0)
 
 	// Same nominal income should have lower marginal rate with inflation-adjusted brackets
-	rateBase := tc.GetMarginalRate(100000, 0)
-	rateFuture := tc.GetMarginalRate(100000, 20)
+	rateBase := tc.GetBracketRate(100000, 0)
+	rateFuture := tc.GetBracketRate(100000, 20)
 
 	if rateFuture > rateBase {
 		t.Errorf("expected lower or equal marginal rate with inflation-adjusted brackets: base=%f future=%f", rateBase, rateFuture)

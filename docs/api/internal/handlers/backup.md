@@ -33,19 +33,18 @@ Package backup serves the HTTP endpoints behind the Backup admin panel: list sna
 - [func HandleUnlockPage\(w http.ResponseWriter, r \*http.Request\)](<#HandleUnlockPage>)
 - [func HandleYubiKeyIdentity\(w http.ResponseWriter, r \*http.Request\)](<#HandleYubiKeyIdentity>)
 - [func HandleYubiKeySetup\(w http.ResponseWriter, r \*http.Request\)](<#HandleYubiKeySetup>)
-- [func Initialize\(c \*config.Config, s \*storage.Storage, r \*templates.Renderer, b \*backupsvc.Service, gate SettingsRewriteGate\)](<#Initialize>)
+- [func Initialize\(c \*config.Config, s \*storage.Storage, r \*templates.Renderer, b \*backupsvc.Service, gate SettingsRewriteGate\) \*restore.Service](<#Initialize>)
 - [func IsStorageLocked\(\) bool](<#IsStorageLocked>)
 - [func RegisterPublicRoutes\(r chi.Router\)](<#RegisterPublicRoutes>)
 - [func RegisterRoutes\(r chi.Router\)](<#RegisterRoutes>)
 - [type DetectedKeys](<#DetectedKeys>)
 - [type MethodInfo](<#MethodInfo>)
 - [type RewriteGateFunc](<#RewriteGateFunc>)
-  - [func \(f RewriteGateFunc\) BeginExternalRewrite\(\) func\(\)](<#RewriteGateFunc.BeginExternalRewrite>)
 - [type SettingsRewriteGate](<#SettingsRewriteGate>)
 
 
 <a name="HandleBackup"></a>
-## func HandleBackup
+## func [HandleBackup](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L248>)
 
 ```go
 func HandleBackup(w http.ResponseWriter, r *http.Request)
@@ -54,7 +53,7 @@ func HandleBackup(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleBackupPlaintext"></a>
-## func HandleBackupPlaintext
+## func [HandleBackupPlaintext](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L326>)
 
 ```go
 func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request)
@@ -65,7 +64,7 @@ HandleBackupPlaintext is the "break\-glass" plaintext export. Walks the data dir
 The friction is intentional — accidental plaintext exports defeat at\-rest encryption.
 
 <a name="HandleBackupStatus"></a>
-## func HandleBackupStatus
+## func [HandleBackupStatus](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L131>)
 
 ```go
 func HandleBackupStatus(w http.ResponseWriter, r *http.Request)
@@ -74,7 +73,7 @@ func HandleBackupStatus(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleChangeAuthMethod"></a>
-## func HandleChangeAuthMethod
+## func [HandleChangeAuthMethod](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L1010>)
 
 ```go
 func HandleChangeAuthMethod(w http.ResponseWriter, r *http.Request)
@@ -83,7 +82,7 @@ func HandleChangeAuthMethod(w http.ResponseWriter, r *http.Request)
 HandleChangeAuthMethod changes the encryption method \(re\-encrypts data\)
 
 <a name="HandleDeleteAllData"></a>
-## func HandleDeleteAllData
+## func [HandleDeleteAllData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L528>)
 
 ```go
 func HandleDeleteAllData(w http.ResponseWriter, r *http.Request)
@@ -92,7 +91,7 @@ func HandleDeleteAllData(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleDetectKeys"></a>
-## func HandleDetectKeys
+## func [HandleDetectKeys](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L796>)
 
 ```go
 func HandleDetectKeys(w http.ResponseWriter, r *http.Request)
@@ -101,7 +100,7 @@ func HandleDetectKeys(w http.ResponseWriter, r *http.Request)
 HandleDetectKeys returns detected SSH keys and age identities
 
 <a name="HandleDisableEncryption"></a>
-## func HandleDisableEncryption
+## func [HandleDisableEncryption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L601>)
 
 ```go
 func HandleDisableEncryption(w http.ResponseWriter, r *http.Request)
@@ -110,7 +109,7 @@ func HandleDisableEncryption(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleEnableEncryption"></a>
-## func HandleEnableEncryption
+## func [HandleEnableEncryption](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L569>)
 
 ```go
 func HandleEnableEncryption(w http.ResponseWriter, r *http.Request)
@@ -119,7 +118,7 @@ func HandleEnableEncryption(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleEnableEncryptionWithMethod"></a>
-## func HandleEnableEncryptionWithMethod
+## func [HandleEnableEncryptionWithMethod](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L825>)
 
 ```go
 func HandleEnableEncryptionWithMethod(w http.ResponseWriter, r *http.Request)
@@ -128,7 +127,7 @@ func HandleEnableEncryptionWithMethod(w http.ResponseWriter, r *http.Request)
 HandleEnableEncryptionWithMethod enables encryption with a specific auth method
 
 <a name="HandleEncryptionStatus"></a>
-## func HandleEncryptionStatus
+## func [HandleEncryptionStatus](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L637>)
 
 ```go
 func HandleEncryptionStatus(w http.ResponseWriter, r *http.Request)
@@ -137,7 +136,7 @@ func HandleEncryptionStatus(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleGetAuthMethods"></a>
-## func HandleGetAuthMethods
+## func [HandleGetAuthMethods](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L748>)
 
 ```go
 func HandleGetAuthMethods(w http.ResponseWriter, r *http.Request)
@@ -146,7 +145,7 @@ func HandleGetAuthMethods(w http.ResponseWriter, r *http.Request)
 HandleGetAuthMethods returns available authentication methods
 
 <a name="HandleGetEncryptionConfig"></a>
-## func HandleGetEncryptionConfig
+## func [HandleGetEncryptionConfig](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L1017>)
 
 ```go
 func HandleGetEncryptionConfig(w http.ResponseWriter, r *http.Request)
@@ -155,7 +154,7 @@ func HandleGetEncryptionConfig(w http.ResponseWriter, r *http.Request)
 HandleGetEncryptionConfig returns the current encryption configuration
 
 <a name="HandleHealth"></a>
-## func HandleHealth
+## func [HandleHealth](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L217>)
 
 ```go
 func HandleHealth(w http.ResponseWriter, r *http.Request)
@@ -164,7 +163,7 @@ func HandleHealth(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleKillServer"></a>
-## func HandleKillServer
+## func [HandleKillServer](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L225>)
 
 ```go
 func HandleKillServer(w http.ResponseWriter, r *http.Request)
@@ -173,7 +172,7 @@ func HandleKillServer(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleOpenBackupDir"></a>
-## func HandleOpenBackupDir
+## func [HandleOpenBackupDir](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L172>)
 
 ```go
 func HandleOpenBackupDir(w http.ResponseWriter, r *http.Request)
@@ -182,7 +181,7 @@ func HandleOpenBackupDir(w http.ResponseWriter, r *http.Request)
 HandleOpenBackupDir launches the OS file manager pointed at the configured BackupDir. The path is taken from server config — no client input is used — so this cannot be coerced into opening arbitrary directories.
 
 <a name="HandlePlotly"></a>
-## func HandlePlotly
+## func [HandlePlotly](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L642>)
 
 ```go
 func HandlePlotly(w http.ResponseWriter, r *http.Request)
@@ -191,7 +190,7 @@ func HandlePlotly(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleRestore"></a>
-## func HandleRestore
+## func [HandleRestore](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L465>)
 
 ```go
 func HandleRestore(w http.ResponseWriter, r *http.Request)
@@ -200,7 +199,7 @@ func HandleRestore(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleRestoreTestData"></a>
-## func HandleRestoreTestData
+## func [HandleRestoreTestData](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L506>)
 
 ```go
 func HandleRestoreTestData(w http.ResponseWriter, r *http.Request)
@@ -209,7 +208,7 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleSetAutoBackupEnabled"></a>
-## func HandleSetAutoBackupEnabled
+## func [HandleSetAutoBackupEnabled](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L1062>)
 
 ```go
 func HandleSetAutoBackupEnabled(w http.ResponseWriter, r *http.Request)
@@ -218,7 +217,7 @@ func HandleSetAutoBackupEnabled(w http.ResponseWriter, r *http.Request)
 
 
 <a name="HandleUnlock"></a>
-## func HandleUnlock
+## func [HandleUnlock](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L703>)
 
 ```go
 func HandleUnlock(w http.ResponseWriter, r *http.Request)
@@ -227,7 +226,7 @@ func HandleUnlock(w http.ResponseWriter, r *http.Request)
 HandleUnlock unlocks the encrypted storage with the provided credentials
 
 <a name="HandleUnlockPage"></a>
-## func HandleUnlockPage
+## func [HandleUnlockPage](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L689>)
 
 ```go
 func HandleUnlockPage(w http.ResponseWriter, r *http.Request)
@@ -236,7 +235,7 @@ func HandleUnlockPage(w http.ResponseWriter, r *http.Request)
 HandleUnlockPage serves the unlock page for encrypted storage
 
 <a name="HandleYubiKeyIdentity"></a>
-## func HandleYubiKeyIdentity
+## func [HandleYubiKeyIdentity](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L1036>)
 
 ```go
 func HandleYubiKeyIdentity(w http.ResponseWriter, r *http.Request)
@@ -245,7 +244,7 @@ func HandleYubiKeyIdentity(w http.ResponseWriter, r *http.Request)
 HandleYubiKeyIdentity returns the identity for a given YubiKey recipient
 
 <a name="HandleYubiKeySetup"></a>
-## func HandleYubiKeySetup
+## func [HandleYubiKeySetup](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L1091>)
 
 ```go
 func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request)
@@ -254,16 +253,18 @@ func HandleYubiKeySetup(w http.ResponseWriter, r *http.Request)
 HandleYubiKeySetup returns instructions for YubiKey setup YubiKey setup requires terminal interaction and cannot be done via web
 
 <a name="Initialize"></a>
-## func Initialize
+## func [Initialize](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L61>)
 
 ```go
-func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service, gate SettingsRewriteGate)
+func Initialize(c *config.Config, s *storage.Storage, r *templates.Renderer, b *backupsvc.Service, gate SettingsRewriteGate) *restore.Service
 ```
 
 Initialize sets up the backup package with required dependencies. The gate is part of the wiring, not a post\-Initialize registration, so it cannot be forgotten or installed in the wrong order; pass nil only when no settings manager exists \(isolated tests\) — restores then run unserialized, loudly.
 
+It returns the restore service it built so cmd/server can hand that exact instance to the MCP server: the browser's /restore and the restore\_backup tool must share one service, or they would be two objects racing over the same data directory with no shared snapshot hold between them.
+
 <a name="IsStorageLocked"></a>
-## func IsStorageLocked
+## func [IsStorageLocked](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L735>)
 
 ```go
 func IsStorageLocked() bool
@@ -272,7 +273,7 @@ func IsStorageLocked() bool
 IsStorageLocked returns true if the storage is encrypted and not yet unlocked
 
 <a name="RegisterPublicRoutes"></a>
-## func RegisterPublicRoutes
+## func [RegisterPublicRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L88>)
 
 ```go
 func RegisterPublicRoutes(r chi.Router)
@@ -281,7 +282,7 @@ func RegisterPublicRoutes(r chi.Router)
 RegisterPublicRoutes registers the endpoints that must stay reachable while storage is locked: unlock, initial YubiKey setup, the encryption config probe, health, and the kill switch. Everything else backup owns goes through RegisterRoutes behind the lock\-check middleware.
 
 <a name="RegisterRoutes"></a>
-## func RegisterRoutes
+## func [RegisterRoutes](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L100>)
 
 ```go
 func RegisterRoutes(r chi.Router)
@@ -290,7 +291,7 @@ func RegisterRoutes(r chi.Router)
 RegisterRoutes registers the lock\-protected backup, restore, and encryption admin routes, matching the other handler packages.
 
 <a name="DetectedKeys"></a>
-## type DetectedKeys
+## type [DetectedKeys](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L788-L793>)
 
 DetectedKeys contains detected SSH keys and age identities
 
@@ -304,7 +305,7 @@ type DetectedKeys struct {
 ```
 
 <a name="MethodInfo"></a>
-## type MethodInfo
+## type [MethodInfo](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L740-L745>)
 
 MethodInfo describes an available authentication method
 
@@ -318,32 +319,21 @@ type MethodInfo struct {
 ```
 
 <a name="RewriteGateFunc"></a>
-## type RewriteGateFunc
+## type [RewriteGateFunc](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L45>)
 
 RewriteGateFunc adapts a bare acquire function to SettingsRewriteGate.
 
 ```go
-type RewriteGateFunc func() (end func())
+type RewriteGateFunc = restore.RewriteGateFunc
 ```
-
-<a name="RewriteGateFunc.BeginExternalRewrite"></a>
-### func \(RewriteGateFunc\) BeginExternalRewrite
-
-```go
-func (f RewriteGateFunc) BeginExternalRewrite() func()
-```
-
-BeginExternalRewrite implements SettingsRewriteGate.
 
 <a name="SettingsRewriteGate"></a>
-## type SettingsRewriteGate
+## type [SettingsRewriteGate](<https://github.com/dgallion1/simpleBudget/blob/master/internal/handlers/backup/handlers.go#L42>)
 
-SettingsRewriteGate serializes an external rewrite of the settings files \(a restore's write\+prune phase\) against the settings manager's saves. Acquiring it holds the manager's lock — no in\-flight save can interleave with a half\-restored settings dir — and the returned end func carries the post\-rewrite bookkeeping \(cache invalidation, active\-scenario reconciliation\) inside the same critical section. Implemented by retirement.SettingsManager.
+SettingsRewriteGate serializes an external rewrite of the settings files against the settings manager's saves. Defined in internal/services/restore, aliased here so existing callers and tests keep compiling.
 
 ```go
-type SettingsRewriteGate interface {
-    BeginExternalRewrite() (end func())
-}
+type SettingsRewriteGate = restore.SettingsRewriteGate
 ```
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

@@ -1,0 +1,430 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P15
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Scope of this verdict: the MERGED result in the main tree (branch
+fix/review-aug16). The two blind worktrees under .swarm/tier3/P15/wt-glm and
+wt-local were ignored throughout, as instructed. I did not read the
+concurrently-produced P15.2.checker-second.verdict; this conclusion is
+independent.
+
+Documents read in full as the standard:
+- docs/superpowers/specs/2026-08-12-file-manager-import-design.md §3
+  (lines 104-157: configuration, scan, POST wire format, the six-step
+  algorithm, the deletion guards) and its Testing section (lines 299-312)
+  and Rulings section (lines 195-297, including 2026-08-16a and 2026-08-16c).
+- .swarm/tier3/P15/report.md, including the RESOLUTION line.
+- .swarm/tier3/P15/accept.sh (the oracle) read before running it.
+- ACCESSIBILITY.md points 1-15.
+- .swarm/manifests/P15.1.files.
+No P15 brief exists in .swarm/briefs/ (only P13.md and P14.md); the task block
+in the design doc §3 was used as the standard instead.
+
+---------------------------------------------------------------------------
+1. MANIFEST FIDELITY — PASS
+---------------------------------------------------------------------------
+.swarm/manifests/P15.1.files lists exactly:
+    internal/handlers/explorer/handlers.go
+    internal/handlers/explorer/handlers_test.go
+    web/templates/pages/filemanager.html
+
+`git status --porcelain` at the end of my run:
+     M .swarm/ledger.tsv
+     M docs/superpowers/specs/2026-08-12-file-manager-import-design.md
+     M internal/handlers/explorer/handlers.go
+     M internal/handlers/explorer/handlers_test.go
+     M web/templates/pages/filemanager.html
+    ?? .swarm/manifests/P15.1.files
+    ?? .swarm/tier3/P15/report.md
+    ?? .swarm/tier3/P15/wt-glm/
+    ?? .swarm/tier3/P15/wt-local/
+    ?? .swarm/verdicts/P15.2.checker-second.verdict
+
+The three source files match the manifest exactly. The remaining entries are
+.swarm/ bookkeeping and the two worktrees, both excluded by my brief. The one
+non-.swarm extra, the design doc, is a documentation-only change: `git diff`
+shows 20 insertions, 0 deletions, and the entire hunk is the new ruling
+"2026-08-16c — P15's second blind implementer is Anthropic, not Qwen". No
+prose describing the import design was altered. Not a code change; not a
+manifest violation.
+
+`gofmt -l` on both touched Go files printed nothing (clean).
+
+---------------------------------------------------------------------------
+2. TOOLCHAIN GREEN — PASS
+---------------------------------------------------------------------------
+All run from /home/darrell/bin/ai/budget2.
+
+$ go build ./...
+    (no output, exit code 0)
+
+$ go vet ./...
+    (no output, exit code 0)
+
+$ set -o pipefail; go test ./... | tee test.out | tail -5
+    ok  	budget2/internal/services/storage	(cached)
+    ok  	budget2/internal/templates	(cached)
+    ok  	budget2/internal/testutil	(cached)
+    ok  	budget2/internal/version	(cached)
+    ?   	budget2/web	[no test files]
+    GOTEST_EXIT=0
+Package accounting over the full captured output (not a truncated view):
+    total result lines: 44
+    lines beginning "ok": 43
+    lines beginning "FAIL": 0
+That is the expected ~44-package shape; one package (budget2/web) has no test
+files, and every other package passed. `set -o pipefail` was used, and the
+full output was captured to a file before any filtering, so no failure could
+have been masked by the pipe.
+
+$ staticcheck ./...      (/home/darrell/go/bin/staticcheck)
+    (no output — clean)
+
+---------------------------------------------------------------------------
+3. ACCEPTANCE ORACLE, RUN BY ME — PASS
+---------------------------------------------------------------------------
+$ bash .swarm/tier3/P15/accept.sh
+    CHECK 1 build: PASS
+    CHECK 2 unit-tests: PASS
+    CHECK 3 server-boots: PASS
+    CHECK 4 scan-lists-only-direct-csvs: PASS
+    CHECK 5 import-keeps-source: PASS
+    CHECK 6 import-deletes-source: PASS
+    CHECK 7 collision-skips-and-keeps-source: PASS
+    CHECK 8 traversal-name-rejected: PASS
+    CHECK 9 non-csv-not-imported: PASS
+    CHECK 10 symlink-target-survives: PASS
+    CHECK 11 failed-write-keeps-source: PASS
+    CHECK 12 empty-batch-is-400-and-inert: PASS
+    CHECK 13 mixed-batch-deletes-only-imported: PASS
+    SUMMARY: 13 passed, 0 failed
+    ORACLE_EXIT=0
+13 passed, 0 failed, exit 0, matching report.md. The oracle builds to its own
+mktemp dir and never writes into the repo.
+
+Noted limitation, which is why I did not stop here: the oracle asserts only on
+HTTP status codes and filesystem effects, by deliberate design (its header
+says so). It cannot detect an empty or unrendered response body — exactly the
+class of defect ruling 2026-08-16a was about. Item 8 below closes that gap
+empirically.
+
+---------------------------------------------------------------------------
+4. THE SAFETY PROPERTY — THE THREE DELETION GUARDS — PASS
+---------------------------------------------------------------------------
+This is where a bug destroys user data, so it got the most scrutiny, by three
+independent methods: static reachability, test instrumentation, and a live
+server.
+
+(a) Static reachability. There is exactly ONE source-deleting call site in the
+package. `grep -n 'removeSrc' internal/handlers/explorer/handlers.go`:
+    538:	removeSrc  func(path string) error          (field decl)
+    550:	removeSrc:  os.Remove,                       (production binding)
+    696:	if err := deps.removeSrc(srcPath); err != nil {   (the only call)
+`grep -n 'os.Remove\|os.RemoveAll'` over the package finds no other removal of
+an import-directory path. So reaching line 696 is the whole safety question.
+
+Every branch between the entry of importOneFile (handlers.go:616) and line 696
+is an early `return`, so line 696 is reachable only with all preconditions
+satisfied. Walking the guards in order:
+
+  Step 1, handlers.go:621-624 — name validation with NO filesystem call:
+      if name == "" || name == "." || name == ".." ||
+          name != filepath.Base(name) || strings.ContainsAny(name, `/\`)
+    returns "rejected: invalid filename". Both separator flavours are covered,
+    and "." / ".." are excluded by hand (they are their own filepath.Base, so
+    the Base comparison alone would not catch them). Correct.
+  handlers.go:628 — non-.csv suffix rejected, still before any filesystem
+    access.
+  handlers.go:632 — empty ImportDirectory rejected.
+  Step 2, handlers.go:640-653 — os.Lstat (NOT os.Stat), so a symlink is never
+    followed; explicit rejects for symlink (645), non-regular file (648), and
+    !isDirectChild (651)  <-- GUARD 3.
+  Step 3, handlers.go:661-665 — destination exists => "skipped" return.
+    Notably a Stat error that is NOT os.ErrNotExist is rejected rather than
+    treated as absent (663-664), so a permission/IO error cannot be misread as
+    "absent" and lead to an overwrite-then-delete. This is a correctness point
+    the spec did not demand and the implementation got right.
+  Step 4, handlers.go:668-674 — read source; write via store.WriteFile;
+    a write error returns "rejected"  <-- GUARD 1.
+  Step 5, handlers.go:679-685 — readback error returns "rejected", and
+    `if len(back) != len(data)` returns "rejected: saved file failed
+    verification"  <-- GUARD 2.
+  handlers.go:688-691 — if !deleteSource, return before step 6.
+  Step 6, handlers.go:696 — os.Remove reached only here.
+
+Conclusion: no path reaches os.Remove with any guard unsatisfied. A skipped
+(collision) file returns at 662 and a rejected (traversal / non-CSV / symlink /
+subdirectory) file returns at 623/629/646/652 — all strictly before 696.
+
+isDirectChild (handlers.go:713-723) resolves symlinks on BOTH sides via
+filepath.EvalSymlinks and returns false when either resolution errors, then
+compares filepath.Dir(resolvedPath) == resolvedDir. Because callers Lstat and
+reject symlinks first, EvalSymlinks on the path can only resolve its parent
+components — so a symlinked import folder still works while anything reached
+by leaving the folder does not. Both directions are pinned by tests.
+
+(b) Every one of the three guards is EXERCISED BY A TEST that instruments
+removeSrc and asserts it was never called. My brief asked me to flag any guard
+present in code but not exercised; there are none. Specifically:
+  - Guard 1 (write succeeded): TestImportOneFile_WriteFailureNeverDeletes,
+    handlers_test.go:2573. Injects os.ErrPermission into deps.write, asserts
+    `removed` is false ("os.Remove was reached despite a failed write") and
+    mustExist(src).
+  - Guard 2 (readback matched): TestImportOneFile_ShortReadbackNeverDeletes,
+    handlers_test.go:2598. deps.readBack returns importCSV[:10] — a genuinely
+    short read, the truncated/encryption-failed-write scenario the design doc
+    calls out at line 149. Asserts removed==false and the source survives, and
+    deliberately asserts the destination DID land, making clear the property
+    under test is source survival, not destination absence. Companion
+    TestImportOneFile_ReadbackErrorNeverDeletes at 2625 covers the error arm.
+  - Guard 3 (direct child): TestImportOneFile_SubdirectoryEntryNeverDeletes,
+    handlers_test.go:2647, drives BOTH spellings "sub/nested.csv" (rejected by
+    name) and "nested.csv" (rejected as not a direct child), asserting one
+    shared removed==false. Plus TestIsDirectChild at 2847, a table covering
+    direct child, grandchild, traversal sibling, outside dir, nonexistent
+    path, nonexistent dir, and the symlinked-import-dir positive case.
+This directly satisfies the design doc's Testing bullet "a `store` stub whose
+readback returns short bytes must leave the source in place" (line 308-309),
+which the report.md adjudication cites as the deciding factor for wt-local. I
+confirmed the claim rather than taking it on trust.
+
+(c) Live server, mixed batch — the strongest single piece of evidence. I built
+the binary and ran it against fixture directories entirely outside the repo
+(details in item 8). A single batch mixing one importable file, one colliding
+file, and one non-CSV, all with delete_source=true:
+
+  POST name=delta.csv&name=collide.csv&name=notes.txt&delete_source=true
+  -> HTTP 200
+  delta src: DELETED | collide src: PRESENT | notes.txt: PRESENT | keepme: PRESENT
+
+Exactly the imported file's source was removed; the skipped file, the rejected
+file, and an uninvolved bystander (keepme.csv) were all untouched. Across the
+entire live run, of ten POSTs the ONLY two sources deleted were beta.csv and
+delta.csv — precisely the two files that fully imported with the literal
+delete_source=true. The final `ls` of the import dir confirms alpha.csv (no
+delete flag), gamma.csv (delete_source=TRUE, not literal), collide.csv
+(skipped), notes.txt (rejected), link.csv (symlink, rejected), subdir/ and
+keepme.csv all survived.
+
+---------------------------------------------------------------------------
+5. WIRE FORMAT COMPLIANCE — PASS
+---------------------------------------------------------------------------
+Confirmed against the REAL endpoint, not just the code.
+
+- delete_source deletes on the literal "true" and nothing else.
+  handlers.go:586 is `r.PostFormValue("delete_source") == "true"` — a literal
+  string comparison, not strconv.ParseBool. Live probe C sent
+  `name=gamma.csv&delete_source=TRUE`: HTTP 200, "— imported" with no deletion
+  reason, and `gamma src exists: YES`. Live probe B sent the literal `true`
+  and gamma's sibling beta.csv was deleted. Test coverage:
+  TestHandleImport_DeleteSourceOnlyOnLiteralTrue (handlers_test.go:2391)
+  table-drives "1", "yes", "TRUE", "on", "" and asserts the source survives
+  each.
+
+- A name containing a path separator is rejected WITHOUT touching the
+  filesystem. Static: the check at handlers.go:621-624 precedes every
+  filesystem call in the function (the first is os.Lstat at 641). Live probe E
+  `name=../outside/outside.csv&delete_source=true` -> HTTP 200 with body
+  "../outside/outside.csv — rejected (invalid filename)";
+  `outside survives: YES | leaked to data: NO`. I also probed a form the
+  oracle does not cover, `name=subdir/nested.csv&delete_source=true` (probe G)
+  -> "rejected (invalid filename)", `nested survives: YES`.
+  Also verified the symlink arm (probe H): `name=link.csv&delete_source=true`
+  -> "rejected (symlinks are not imported)", symlink target survives.
+
+- 400 on no `name` fields, and that 400 is inert. handlers.go:581-584 returns
+  before `deps := defaultImportDeps()` at 588 and before the per-file loop, so
+  inertness is structural. Live probe I sent `delete_source=true` with no name
+  field:
+      HTTP 400, body "No files selected for import"
+      import dir before: alpha.csv collide.csv delta.csv gamma.csv keepme.csv link.csv notes.txt subdir
+      import dir after : alpha.csv collide.csv delta.csv gamma.csv keepme.csv link.csv notes.txt subdir
+      INERT: YES
+  Names are read from r.PostForm (handlers.go:575-576), not r.Form, so URL
+  query parameters cannot smuggle in a selection — a detail the spec implies
+  ("the selection belongs in the request body") and the code comments call
+  out. Whitespace-only names are filtered at 577, covered by
+  TestHandleImport_BlankNameIs400 (handlers_test.go:2707).
+
+- 200 for a processed batch even with per-file skips: live probes D, F and J
+  all returned HTTP 200 while reporting skipped/rejected outcomes in the body.
+
+The form markup produces exactly this wire format: filemanager.html:1434 emits
+`<input type="checkbox" name="name" value="{{$e.Name}}">` per entry and
+filemanager.html:88 emits `name="delete_source" value="true"`, inside the
+`<form hx-post="/explorer/import">` at line 80-81. Entries already in the data
+dir render `disabled` (line 1435), and disabled inputs are not submitted.
+
+---------------------------------------------------------------------------
+6. SCOPE — PASS
+---------------------------------------------------------------------------
+`git diff -U0 internal/handlers/explorer/handlers.go | grep '^@@'` yields only
+three hunks:
+    @@ -104,0 +105 @@   func RegisterRoutes
+    @@ -422 +423,2 @@    type importScanEntry (context label only)
+    @@ -512,0 +515,210 @@ (new code appended)
+Inspecting them at -U6:
+  - Hunk 1 is a single added line: `r.Post("/explorer/import", handleImport)`.
+  - Hunk 2 is COMMENT-ONLY: the handleImportScan doc comment changed
+    "is P15's POST /explorer/import" to "is handleImport, POST
+    /explorer/import". One sentence of prose. No code.
+  - Hunk 3 is 210 lines of purely NEW code: importOutcome, importDeps,
+    defaultImportDeps, handleImport, importOneFile, isDirectChild.
+So P14's scan behavior is untouched: neither handleImportScan nor
+scanImportDirectory has a single modified line of logic. (The "func
+scanImportDirectory" label on hunk 3 is git's enclosing-function annotation
+for the preceding function, not evidence of a change inside it.) The oracle's
+CHECK 4 independently re-confirms the P14 scan contract still holds.
+
+No new configuration: internal/config/config.go is not modified (absent from
+`git status`), so ImportDirectory is P14's existing field, reused.
+No file-level dedup was added: importOneFile's only duplicate handling is the
+step-3 name-collision skip the spec mandates; there is no hashing or content
+comparison anywhere in the new code, matching design doc lines 170-171 and the
+"Out of scope" list at 188-193.
+No unrelated refactoring: 904 insertions against 23 deletions, and the
+deletions are accounted for by the template's inert-panel comment/markup being
+replaced with the wired form, plus the one-sentence comment edit above.
+
+---------------------------------------------------------------------------
+7. ACCESSIBILITY OF THE WIRED PANEL — PASS (against ACCESSIBILITY.md)
+---------------------------------------------------------------------------
+- Point 8 (meaning never conveyed by color alone). PASS, and verified from the
+  real response bytes rather than by reading the template. Every outcome
+  carries its status as a WORD: the live bodies contain "— imported",
+  "— skipped", "— rejected", plus a parenthesised text reason
+  ("source file deleted", "already exists in the data folder", "only CSV files
+  can be imported", "invalid filename", "symlinks are not imported"). The
+  Tailwind emerald/amber/rose classes at filemanager.html:1462 are a redundant
+  second cue, never the only one. Whether the source was deleted is likewise
+  stated in text, not left to be inferred from the checkbox state.
+- Point 10 (state-changing actions announce their result via an
+  aria-live="polite" region). PASS. filemanager.html:102 is
+  `<div id="import-result" role="status" aria-live="polite"></div>` — both
+  role="status" and an explicit aria-live. It is present on first paint, so
+  the live region is already being watched when the swap lands (an empty
+  region added at swap time is frequently not announced). It sits OUTSIDE the
+  <form>, and hx-target="#import-result" (line 81) targets only it, so the
+  import never replaces the controls that triggered it and keyboard focus
+  survives the swap — which is the other half of point 10.
+- Point 4 (every input programmatically associated with a label). PASS. The
+  delete-source checkbox has BOTH an explicit association and a wrapping
+  label: `<label for="import-delete-source">` at line 86 around
+  `<input type="checkbox" id="import-delete-source" name="delete_source">` at
+  line 88. Each scan entry likewise pairs `id="import-entry-{{$i}}"` (1434)
+  with `<label for="import-entry-{{$i}}">` (1437).
+- Point 3 (links navigate, buttons act; anything clickable is a real control).
+  PASS. Import is `<button type="submit">` (line 92-95) and Rescan is
+  `<button type="button">` (line 64). No div-with-handler anywhere in the
+  panel. The previous inert `disabled aria-disabled="true"` Import button and
+  its "Import is not yet available" title were correctly removed when it was
+  wired.
+- Point 9 (visible focus indicator; never outline:none without replacement).
+  PASS. Both buttons and both checkbox styles use
+  `focus:outline-none focus:ring-2 focus:ring-indigo-500` — the native outline
+  is suppressed but replaced by a 2px indigo ring, which is a replacement, not
+  a removal.
+- Point 1 (heading hierarchy). PASS. The panel is a <section
+  aria-labelledby="import-folder-heading"> whose <h2 id="import-folder-heading">
+  sits under the page's single <h1>. No level skipped.
+No accessibility regression is introduced by P15. The 20 pre-existing axe
+violations recorded in the design doc under "Known, not caused by P13"
+(unlabelled toggle checkboxes, unnamed SVG delete buttons, low-contrast size
+text) live elsewhere on this page and are untouched by this diff; per that
+note they belong to a follow-up task.
+
+---------------------------------------------------------------------------
+8. REGRESSION GUARD PER RULING 2026-08-16a — PASS
+---------------------------------------------------------------------------
+Ruling 2026-08-16a imposes two obligations. Both are met, and I deliberately
+did not repeat the earlier checker's mistake of reasoning from a template
+include.
+
+Obligation 2 ("must ship a Go test that renders the swap partial and asserts
+on it"): TestImportResult_Render_Outcomes, handlers_test.go:2795, is that
+test. It renders the "import-result" partial — the exact template name
+handleImport passes to RenderPartial at handlers.go:601 — and asserts nine
+substrings across all three outcome kinds. Two properties make it a genuine
+guard rather than a restatement:
+  - Its renderer is built from the REAL template tree, not a stub:
+    setupTestEnvWithRenderer (handlers_test.go:1301) does
+    `templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")`
+    then `templates.New(templateDir, false)` (lines 1318-1319).
+  - RenderToString and RenderPartial share one lookup mechanism. Both bottom
+    out in `r.templates.ExecuteTemplate(..., name, data)` — RenderPartial at
+    internal/templates/render.go:397, RenderToString at render.go:409 — on the
+    same parsed template set. So a lookup that succeeds in the test succeeds
+    in the handler. This is materially different from the P13 attempt-1
+    situation, where the test rendered the full PAGE and therefore said
+    nothing about what the handler returned.
+
+Obligation 1 ("where feasible assert against the endpoint's actual response
+body"): I did this directly, because it is the one thing neither the oracle
+nor the Go suite covers. Note the residual risk that motivated it: the
+handler discards the render error (`_ = renderer.RenderPartial(...)` at
+handlers.go:601), so a failed template lookup would surface as HTTP 200 with
+an empty body — invisible to accept.sh, which asserts only status codes and
+filesystem effects.
+
+Method (all artifacts outside the repo, in my scratchpad): built
+`go build -o $SCRATCH/live/budget2 ./cmd/server`, created fixture data/import/
+outside directories under $SCRATCH/live, started the server on port 18977 with
+BUDGET_DATA_DIR/BUDGET2_IMPORT_DIR pointed at them, and issued ten POSTs with
+curl capturing full response bodies.
+
+The endpoint returns real, correctly rendered markup. Probe B verbatim:
+    --- HTTP 200   body-bytes: 493
+    <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Import finished: 1 file(s) processed.</p>
+    <ul class="mt-1 space-y-1" role="list">
+        <li class="text-sm text-gray-700 dark:text-gray-300">
+            <span class="font-medium text-gray-900 dark:text-gray-100">beta.csv</span>
+            <span class="font-medium text-emerald-700 dark:text-emerald-300">— imported</span>
+            <span class="text-gray-600 dark:text-gray-400">(source file deleted)</span>
+        </li>
+    </ul>
+Bodies were 419-1178 bytes across the nine 200s, never empty, never the
+"Internal Server Error" text that a failed RenderPartial would produce, and
+the server log shows no "Error rendering partial" line. Startup logged
+"Templates loaded successfully: 49 files". The fragment is a bare partial with
+no <html>/base layout, confirming it is swap-ready for
+hx-swap="innerHTML" into #import-result. The feature is genuinely wired: this
+is behavior established from the handler and from the endpoint's real
+response, not from a template include.
+
+Server killed via the script's EXIT trap; `ss -ltnp` afterwards shows nothing
+listening on 18942 or 18977. Post-run `git status --porcelain` is unchanged
+from the pre-run state (see item 1) — I wrote nothing into the repository
+except this verdict file.
+
+---------------------------------------------------------------------------
+NON-BLOCKING OBSERVATION (does not affect the verdict)
+---------------------------------------------------------------------------
+All handleImport tests drive the JSON fallback branch: setupImportScanEnv
+leaves `renderer` nil, so handlers.go:600-605 takes the `else` arm and the
+tests decode JSON (decodeImportResult, handlers_test.go:2285). That is a
+reasonable design — it makes per-file outcome assertions precise — and the
+partial is separately covered by TestImportResult_Render_Outcomes. But it
+means no Go test executes handlers.go:601 itself. Because the render error
+there is discarded with `_ =`, a future edit that changed only the template
+NAME in the handler (leaving the {{define}} and its test intact) would ship a
+200-with-empty-body and the suite would stay green. I verified today's
+behavior is correct by live request, so this is a durability gap in the test
+net, not a defect in P15. Worth a cheap follow-up: one handler-level test that
+calls setupTestEnvWithRenderer and asserts the recorder body contains
+"Import finished", which would pin handlers.go:601 end to end.
+
+---------------------------------------------------------------------------
+CONCLUSION
+---------------------------------------------------------------------------
+All eight criteria pass. The safety property in item 4 — the one where a bug
+destroys the user's data — holds under static reachability analysis (one
+delete call site, every guard an early return), under test instrumentation
+(all three guards individually asserted never to reach os.Remove), and under a
+live mixed-batch request where exactly the imported file's source was removed
+and the skipped, rejected, and bystander files all survived.
+
+VERDICT: PASS

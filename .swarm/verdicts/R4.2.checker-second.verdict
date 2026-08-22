@@ -1,0 +1,132 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R4
+ATTEMPT: 2
+---
+Scope: .swarm/manifests/R4.2.files (confirm/approvals.go, confirm/approvals_test.go,
+ledger/approval.go, ledger/anchor.go, ledger/resolve.go, admin/approval.go,
+admin/restore.go, admin/shutdown.go, handlers/approval/handlers_test.go).
+Repo /home/darrell/bin/ai/budget2, branch fix/review-aug16, HEAD 1a8636d (all
+R1-R7 work uncommitted in the working tree). Read .swarm/briefs/R4.md and
+.swarm/tier3/R4/report.md (RESOLUTION + MERGE NOTE) in full before starting.
+
+LINE A — THE MERGE
+
+1. Read the full text of anchor.go and resolve.go as they stand in the tree.
+   Confirmed present and unaltered in shape:
+   - anchor.go: errAnchorAccountVanished sentinel (R1), the `loaded` bool set
+     as the FIRST statement of the accounts.Mutate closure, the distinct
+     "cannot reload accounts before writing: %w" message on !loaded
+     (anchor.go:248), the snapNote-wrapped "confirmation token has been spent"
+     wording on a loaded-but-erred save (anchor.go:250-251).
+   - resolve.go: the write-path re-validation block (R7) at resolve.go:208-220
+     — deps.load() then suspectedContains, with the "no longer a suspected
+     transfer" refusal — sitting AFTER Redeem (resolve.go:204) and BEFORE
+     ensureSnapshot/ResolveTransfer, unchanged order from R7's accepted shape.
+
+2. Ran R1's and R7's own committed regression tests against THIS merged tree
+   (not against either arm's worktree):
+     go test -race -run 'TestApplyAnchor_LoadFailureMessageIsDistinct|TestApplyAnchor_SaveFailureMessageIsUnchanged|TestResolveTransferWritePathRevalidatesBeforeWriting' ./internal/services/mcpsvc/ledger/
+     -> all three PASS.
+     go test -race -run 'LoadFailure|SaveFailure|LogsOverlapWarnings' ./internal/handlers/accounts/... ./internal/services/accounts/...
+     -> all seven PASS (TestHandle{Delete,AddAnchor,DeleteAnchor}_LoadFailureIs500,
+     the three SaveFailureStays200 controls, TestMutate_LogsOverlapWarningsEvenWhenWriteFails).
+   These are R1 attempt-3's own acceptance tests, run fresh by me — not taken
+   on the worker's or checker-tests' word.
+
+3. Ran R1's own Tier-3 oracle against the merged tree:
+     bash .swarm/tier3/R1/accept.sh -> "=== accept.sh exit: 0 ===".
+   All six steps pass, including the pinned Mutate signature grep, the
+   no-unserialized-save-outside-Mutate grep ("none — ok"), and the full
+   suite under -race.
+
+4. Ran R4's own Tier-3 oracle independently (not reusing the worker's or
+   checker-tests' run):
+     bash .swarm/tier3/R4/accept.sh -> "=== accept.sh exit: 0 ===".
+   Step 4 confirms all eight call sites (both askForApproval and
+   awaitApproval, all four tools) pass `token` as the opID argument. Step 6:
+   47 packages "ok" under -race, no FAIL, R9 dashboard_parity flake did not
+   fire.
+
+No reordering found: in both anchor.go and resolve.go the redeem-then-write
+sequence (Redeem -> ensureSnapshot -> Mutate for anchor; Redeem -> reload ->
+re-check -> ensureSnapshot -> ResolveTransfer for resolve) matches what R1/R7
+established, with the opID threading being the only change (token added as an
+argument to askForApproval/awaitApproval, no lines removed or reordered around
+Redeem, ensureSnapshot, or Mutate). The merge is additive, not a reversion.
+
+LINE B — THE CONSENT BINDING
+
+5. Read confirm/approvals.go in full. Create/Find both key on
+   (tool, subject, opID) with all three required to match (approvals.go:91,
+   :138). opID at all four call sites is the confirm token (verified by
+   reading anchor.go, resolve.go, restore.go, shutdown.go end to end — one
+   `token :=` declaration per handler, the same identifier passed to Check,
+   askForApproval, awaitApproval and Redeem with no shadowing).
+
+6. Token uniqueness: confirm.Registry.Mint (confirm.go:72) generates a fresh
+   32-byte random token on every call regardless of whether the arguments are
+   identical to a prior mint, so two concurrent set_balance_anchor previews
+   for the same account (different amounts, or even the same amount) always
+   get distinct opIDs — Create for the second never collides with or replaces
+   the first's Pending. Ran the oracle's own concurrency-shaped checks
+   (TestZZOracleR4_SameSubjectDifferentOperationsCoexist,
+   _DecidingOneDoesNotAuthorizeTheOther, _OppositeVerdictsAreDistinctOperations)
+   as part of accept.sh step 5 — all pass, and directly assert that deciding
+   one pending does not release Await on the other.
+
+7. Replayed-token-with-different-args attack: confirm.Check/Redeem hash the
+   CURRENT call's arguments and compare against the hash stored at Mint time
+   (confirm.go:102-146); a token minted for amount=500.00 presented against a
+   call with amount=5000.00 fails hashArgs comparison and returns ErrBadToken
+   before askForApproval/Create is ever reached (anchor.go:122-124,
+   resolve.go:125-127 gate on Check first). This is pre-existing behaviour,
+   not new to R4, and is exercised by the existing
+   TestSetBalanceAnchorRefusesATokenForDifferentArguments and
+   TestResolveTransferRefusesATokenForDifferentVerdict, both still present and
+   passing.
+
+8. Empty/defaulted opID: shutdown_server passes subject="" (as before) but
+   opID=token (a real, unique, non-empty value at the only point opID is ever
+   used — token is checked non-empty before reaching that code). The oracle's
+   TestZZOracleR4_WrongOperationIDDoesNotMatch explicitly asserts that
+   Find(tool, subject, "") does NOT match a bound approval, so an empty opID
+   cannot silently degrade back to (tool, subject) matching even if some
+   future caller passed one.
+
+9. Expiry/sweep: Approvals.Find, Get and Create all call sweepLocked() before
+   acting (approvals.go:88, :116, :136), and sweepLocked drops anything whose
+   Expires has passed. A swept pending cannot be returned by Find. Covered by
+   the pre-existing TestExpiredApprovalsAreSweptAway, unchanged and passing.
+
+10. End-to-end browser round trip: internal/services/mcpsvc/admin/approval_test.go
+    drives the FULL flow through a real in-memory MCP client/server session
+    for restore_backup and shutdown_server (TestRestoreRunsWhenApprovedInTheBrowser,
+    TestRestoreDoesNotRunWhenDeclinedInTheBrowser, TestRestoreDoesNotRunWhenNobodyAnswers,
+    TestShutdownRunsWhenApprovedInTheBrowser, TestShutdownDoesNotRunWhenDeclinedInTheBrowser,
+    TestWithoutBrowserWiringTheToolsFallBack) — all PASS under -race, run by me.
+    Human-facing detail text: anchorConsequences and resolveConsequences are
+    unchanged from HEAD (diffed against `git show 1a8636d`) and still name the
+    concrete amount/date/verdict, so what the human reads on the approval page
+    is genuinely the operation being authorized.
+
+GAP NOTED (does not change the verdict): there is no end-to-end browser-round-
+-trip integration test at the ledger-package level (set_balance_anchor /
+resolve_transfer) analogous to admin's — grep for Approvals/BaseURL in
+internal/services/mcpsvc/ledger/*_test.go returns nothing. The binding
+guarantee itself is proven at the Approvals-registry level (which both
+packages share, unmodified per package) and structurally at each of the four
+call sites (all eight token-threading lines verified by reading, not just
+grepping for a string match). This is the same gap checker-tests already
+flagged; I confirm it independently and agree it is a documented coverage
+limitation, not a violation of the brief's acceptance criteria (accept.sh is
+authoritative per the brief and it exercises exactly this).
+
+CONCLUSION: no reordering or reversion found in the hand-merged files; R1's
+and R7's own tests and R1's own Tier-3 oracle pass against the merged tree
+when run fresh by me; R4's own Tier-3 oracle passes when run fresh by me; the
+consent-binding claim holds under every constructed attack (concurrent
+different-amount anchors, opposite verdicts on one pair, token-carries-wrong-
+args, empty opID, expiry/sweep) using the actual registry and, for two of the
+four guarded tools, the actual end-to-end browser flow.

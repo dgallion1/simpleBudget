@@ -21,11 +21,16 @@ var (
 // Pending is one approval waiting for a human to answer it in a browser.
 type Pending struct {
 	ID string
-	// Tool and Subject identify what is being approved. The pair is how a
-	// tool re-finds its own request after the round-trip, which is why
-	// nothing here is ever looked up by a client-supplied identifier.
+	// Tool, Subject and OpID identify what is being approved. The triple is
+	// how a tool re-finds its own request after the round-trip, which is why
+	// nothing here is ever looked up by a client-supplied identifier. OpID is
+	// the operation identity -- in practice the confirm token, which is
+	// already bound to the exact arguments a human is shown -- so two
+	// operations that merely share a tool and subject (a different amount, a
+	// different verdict) can never collide or replace one another.
 	Tool    string
 	Subject string
+	OpID    string
 	Title   string
 	Detail  string
 	Expires time.Time
@@ -64,10 +69,15 @@ func NewApprovals(ttl time.Duration) *Approvals {
 // unguessable part of the URL a human visits to answer it.
 //
 // tool and subject identify the operation (subject is the archive name for a
-// restore, empty where the tool has no argument). Creating a second request
-// for the same tool and subject replaces the first: the earlier one is stale
-// by definition, and leaving both would let a human answer the wrong one.
-func (a *Approvals) Create(tool, subject, title, detail string) (*Pending, error) {
+// restore, empty where the tool has no argument); opID identifies the exact
+// operation -- in practice the confirm token, already bound to the arguments
+// a human is shown -- so a different amount, date or verdict on the same
+// subject never collides with an unrelated request. Creating a second
+// request for the same tool, subject AND opID replaces the first: the
+// earlier one is stale by definition (it is a re-file of the identical
+// operation), and leaving both would let a human answer the wrong one. A
+// second request that differs in opID is a DIFFERENT operation and coexists.
+func (a *Approvals) Create(tool, subject, opID, title, detail string) (*Pending, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return nil, fmt.Errorf("cannot generate an approval id: %w", err)
@@ -78,7 +88,7 @@ func (a *Approvals) Create(tool, subject, title, detail string) (*Pending, error
 	a.sweepLocked()
 
 	for id, p := range a.m {
-		if p.Tool == tool && p.Subject == subject {
+		if p.Tool == tool && p.Subject == subject && p.OpID == opID {
 			delete(a.m, id)
 		}
 	}
@@ -87,6 +97,7 @@ func (a *Approvals) Create(tool, subject, title, detail string) (*Pending, error
 		ID:      hex.EncodeToString(buf),
 		Tool:    tool,
 		Subject: subject,
+		OpID:    opID,
 		Title:   title,
 		Detail:  detail,
 		Expires: a.now().Add(a.ttl),
@@ -110,17 +121,21 @@ func (a *Approvals) Get(id string) (*Pending, bool) {
 	return p, true
 }
 
-// Find returns the request for tool and subject, answered or not. A guarded
-// tool uses this to re-find its own request when the client re-invokes it, so
-// the flow never depends on an identifier round-tripped through the client --
-// and it must see requests the human has already answered, since that race is
-// the common case when they click quickly.
-func (a *Approvals) Find(tool, subject string) (*Pending, bool) {
+// Find returns the request for tool, subject and opID, answered or not. A
+// guarded tool uses this to re-find its own request when the client
+// re-invokes it, so the flow never depends on an identifier round-tripped
+// through the client -- and it must see requests the human has already
+// answered, since that race is the common case when they click quickly.
+// opID must match exactly: it is what stops a lookup for one operation
+// (e.g. anchor the account at 500.00) from returning the pending record for
+// a different one that merely shares the tool and subject (anchor it at
+// 5000.00, or the opposite verdict on the same transfer pair).
+func (a *Approvals) Find(tool, subject, opID string) (*Pending, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.sweepLocked()
 	for _, p := range a.m {
-		if p.Tool == tool && p.Subject == subject {
+		if p.Tool == tool && p.Subject == subject && p.OpID == opID {
 			return p, true
 		}
 	}

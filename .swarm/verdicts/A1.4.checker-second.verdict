@@ -1,0 +1,164 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A1
+ATTEMPT: 4
+---
+EVIDENCE:
+
+What I read, in full: .swarm/briefs/A1.md (pinned API + 4 behaviors),
+.swarm/tier3/A1/report.md (adjudication: wt-local adopted; wt-glm's three
+unfixed Hash-indexed lookups), .swarm/manifests/A1.1.files (13 paths) and
+A1.3/A1.4.files, internal/services/dataloader/{loader.go, stable_id.go,
+stable_id_test.go, duplicate_decisions.go, transaction_pins.go,
+amazon_enrichment.go}, internal/services/mcpsvc/admin/{resolve.go,
+resolve_test.go}, internal/models/transaction.go (ResolveByIdentity),
+internal/services/{insights/trends.go, majorexpenses/engine.go},
+internal/handlers/majorexpenses/coverage_test.go.
+
+1. MANIFEST FIDELITY. `git diff --name-only 6435ed5^ 6435ed5` lists exactly
+   the 13 A1.1.files paths plus .swarm bookkeeping and ACCOUNTS_TRANSFERS_SPEC.
+   Working-tree changes (A1.3 + A1.4 layered on the merged commit) are five
+   non-.swarm files: loader.go, stable_id.go, stable_id_test.go, resolve.go,
+   resolve_test.go. All five are in A1.4.files. A1.4.files = A1.3.files +
+   internal/services/mcpsvc/admin/resolve_test.go only.
+
+2. TOOLCHAIN GREEN.
+   - `go build ./...` -> no output, exit 0.
+   - `go vet ./...` -> no output, exit 0.
+   - `staticcheck ./...` -> SC_EXIT=0, no output.
+   - `go test ./...` -> every package `ok` (incl. cached), TEST_EXIT=0. No
+     FAIL anywhere.
+   - `gofmt -l` on all 15 manifest files -> no output (clean).
+   - `bash .swarm/tier3/A1/accept.sh` -> "SUMMARY: 10 passed, 0 failed".
+     No zz_probe residue (`git status --porcelain | grep zz_probe` empty).
+
+3. A1.4 FIELD FIX (the authorized scope). resolve.go:155-211:
+   - SaveDuplicateDecision succeeds, THEN the handler re-reads via
+     deps.Decisions.LoadDuplicateDecisions() (resolve.go:165) and reports
+     stored[key].SuppressedHash (line 175). SaveDuplicateDecision takes the
+     decision BY VALUE (duplicate_decisions.go:89), and canonicalKey rekeys
+     SuppressedHash to a StableID on the callee's copy
+     (duplicate_decisions.go:107-108), so the re-read is the only path to
+     the persisted value. Independent byte-level check:
+     TestResolveDuplicatesReportsThePersistedSuppressedHash (resolve_test.go:366)
+     reads duplicate_decisions.json with encoding/json directly (its own
+     fileDecision/fileDoc types, lines 392-399) and asserts
+     out.SuppressedHash == got.SuppressedHash (line 418). Count guard at
+     line 408 (len(doc.Decisions)==0 fatals) precedes the lookup, satisfying
+     ruling 2026-08-16e.
+   - Re-read failure path (lines 166-173): sets `note` and falls back to the
+     posted decision.SuppressedHash; does NOT return an error. A successful
+     save is never turned into a tool error. Absent-key path (lines 176-188)
+     behaves the same. Neither silently claims a value it could not verify.
+   - Schema description (resolve.go:26) now reads "the stored identity of the
+     suppressed side as it is persisted in duplicate_decisions.json;
+     SaveDuplicateDecision rekeys the posted hash to the row's StableID, so
+     this may be a StableID rather than the legacy content hash
+     list_duplicates reports." Verified TRUE against the code: the reported
+     value comes from the re-read of the persisted file, and
+     SaveDuplicateDecision does rekey via canonicalKey.
+   - Revert test: in /tmp/a1scratch (outside the repo) I replaced the re-read
+     block with `reportedSuppressed := decision.SuppressedHash`. Build OK;
+     TestResolveDuplicatesReportsThePersistedSuppressedHash FAILS:
+     `suppressed_hash = "9f58fcc457d8ab90" equals the posted legacy hash;
+     the SaveDuplicateDecision rekey to StableID did not fire (index empty?)
+     or the re-read was skipped`. The test genuinely distinguishes the fix.
+
+4. THE DISTINGUISHING BUG (three Hash-indexed lookups) — FIXED.
+   - insights/trends.go:37 -> `models.ResolveByIdentity(pins, t)`.
+   - majorexpenses/engine.go:79 -> `models.ResolveByIdentity(opts.Pins, t)`.
+   - majorexpenses/engine.go:128 (AnnotateRecurringPayments) ->
+     `models.ResolveByIdentity(pins, first)`.
+   All three now resolve StableID-first with legacy-Hash fallback.
+
+5. SWEEP FOR OTHER SITES OF THE SAME CLASS. I re-ran the worker's sweep:
+   `git grep '\[t\.Hash\]' '\[.*\.Hash\]'` and every caller of
+   LoadTransactionPins/LoadDuplicateDecisions/LoadAmazonEnrichment. Every
+   PERSISTED sidecar consumer now goes through ResolveByIdentity or PinFor.
+   The remaining `[t.Hash]` sites are TRANSIENT in-request maps (built and
+   consumed within one request, never persisted, never rekeyed): the
+   Match result's PinnedHashes (engine.go:83, 253; handlers.go:377-378, 430;
+   curate/expenses.go:93; curate/register.go:129,135,230), dedup's seen set
+   (loader.go:747-748), the dual-form identity index idxByIdentity
+   (loader.go:1035,1037,1058,1061), amazon/matcher.go:164,
+   anomalies/anomalies.go:193, explorer/handlers.go:81
+   (hashToExpense from match results). None would silently miss after a
+   sidecar rekey.
+   ONE finding OUT OF SCOPE for A1: aliases.json is a fourth identity-keyed
+   sidecar (LoadAliases loader.go:896, SaveAlias loader.go:921,
+   applyAliases loader.go:951 reads `aliases[transactions[i].Hash]`). A1
+   did not touch it and the A1 brief explicitly scoped itself to "pins,
+   duplicate resolutions, Amazon enrichment." Aliases never rekey, so
+   `applyAliases` reading by Hash is internally consistent (no silent miss
+   introduced by A1), but aliases are still vulnerable to the
+   description-reformat orphaning that A1 fixed for the other three. Not
+   a defect of A1; flagging as a follow-on the lead may want to schedule.
+
+6. LEGACY FALLBACK GENUINELY WORKS. In /tmp/a1scratch I removed the
+   `if t.Hash != "" { ... m[t.Hash] ... }` branch from
+   models.ResolveByIdentity. Build OK. Two tests FAIL:
+   TestPinFor_LegacyHashSidecarStillResolves (`PinFor did not resolve a
+   legacy-hash-keyed pin`) and TestApplyAmazonEnrichment_LegacyHashSidecarStillResolves
+   (`EnrichedDescription = "", want the legacy-keyed label`).
+   TestApplyDuplicateDetection_LegacyPairKeyStillResolves still PASSES because
+   the dedup path uses its own dual-key idxByIdentity (loader.go:1033-1038),
+   not ResolveByIdentity — also correct.
+
+7. REKEY ON SAVE; ORPHANS PRESERVED. writePinsLocked (transaction_pins.go:64)
+   calls rekeyToStable; SaveAmazonEnrichment (amazon_enrichment.go:62) calls
+   rekeyToStable; writeDecisionsLocked (duplicate_decisions.go:155) calls
+   rekeyToStable plus the StableID rekey loop at lines 156-171.
+   rekeyToStable (stable_id.go:161-179) leaves a key alone when
+   `!ok || stable == key` — an unresolvable legacy key is preserved, not
+   dropped. TestSetTransactionPin_RekeysResolvedEntriesAndKeepsOrphans
+   (stable_id_test.go:246) asserts the orphan `0123456789abcdef` survives
+   (line 283). Count guard at line 271 precedes the lookups.
+
+8. DEDUP UNCHANGED. ComputeHash is not in the working-tree diff (untouched).
+   deduplicateTransactions (loader.go:742-752) still keys on `seen[t.Hash]`.
+   TestDeduplicateTransactions_IgnoresStableID (stable_id_test.go:432) verifies
+   BOTH directions: same Hash + different StableIDs -> 1 row (line 441);
+   different Hashes + identical StableID -> 2 rows (line 450).
+   TestLoadData_DedupUnchangedAcrossOverlappingExports (line 458) confirms
+   load-level dedup collapses an exact duplicate export to the first
+   occurrence's StableID (line 484).
+
+9. SCOPE DISCIPLINE (attempt 4 = one field only). `git diff HEAD --stat`:
+   loader.go 6+-1, stable_id.go +18, stable_id_test.go +103, resolve.go
+   +33-2, resolve_test.go +74. The loader.go and stable_id.go changes are
+   A1.3's role-swap fix and identityMatchesSuppressed helper
+   (stable_id.go:33-49) — these are the A1.3 fix the brief says is "not in
+   question," carried forward unchanged. The only NEW content in A1.4 vs
+   A1.3 is: resolve.go re-read block + schema description correction
+   (lines 26, 159-188, 194) and resolve_test.go's
+   TestResolveDuplicatesReportsThePersistedSuppressedHash (lines 351-422).
+   No A3 transfer classification, no A4 balances, no UI, no MCP additions.
+
+10. ROLE-SWAP REGRESSION TEST (A1.3, still required to pass). Revert test:
+    in /tmp/a1scratch I reverted loader.go:1080 to
+    `if pair.Left.Hash == decision.SuppressedHash`. Build OK;
+    TestApplyDuplicateDetection_SuppressEarlierInFile_KeptIsLeft FAILS:
+    `resolved Left = "2b0d013a1d6966cf" ("Lucid"), want the KEPT check
+    "78aa352ca55d57de"` and `resolved Right = ... want the SUPPRESSED bill
+    pay`. Roles inverted exactly as the brief describes. The test drives the
+    public write path (SaveDuplicateDecision) and calls LoadData BEFORE
+    SaveDuplicateDecision (stable_id_test.go:532), populating the
+    stableIDIndex that canonicalKey needs. Without that ordering the index is
+    empty, canonicalKey is a no-op, and the bug hides — the test's own
+    comment (lines 503-508) calls this out explicitly.
+
+11. identityMatchesSuppressed handles BOTH stored key forms (stable_id.go:41):
+    `key == t.StableID` when StableID non-empty, then `key == t.Hash` — so a
+    decision holding a StableID (post-A1) OR a legacy hash (pre-A1 decision
+    or a row outside the loaded set) both match correctly.
+
+12. coverage_test.go change (TestBuildPageData_PinnedHashesReachSummary)
+    replaces `pins[hash] == ""` with `dl.PinFor(ts.Transactions[0])`. The
+    old assertion encoded the pre-A1 key convention (direct hash index into
+    the pins map); behavior 3 (rekey on save) invalidates that convention,
+    so the change is the legitimate reason to edit a pre-existing test, not
+    papering over a regression. PinFor resolves either key form, so the test
+    still discriminates a real regression (a missing pin returns ok=false).
+
+No numbered constitution point violated. No criterion failed.

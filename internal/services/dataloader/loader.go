@@ -21,9 +21,10 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/accounts"
 	"budget2/internal/services/classifier"
-	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/storage"
+	"budget2/internal/services/transfers"
 )
 
 const aliasFile = "aliases.json"
@@ -50,15 +51,36 @@ type DataLoader struct {
 	// it does nothing for a caller that reads, edits in memory and writes
 	// back.
 	//
-	// NOT reentrant. The invariant, without exception: a public method takes
-	// writeMu and then calls only *Locked helpers; a *Locked helper never
-	// takes writeMu and never calls a public method.
+	// It serializes these sequences against EACH OTHER only. A restore is not
+	// another sequence: it rewrites the whole directory through storage's
+	// exclusive hold and never touches this mutex. Excluding it needs the
+	// storage hold as well, which is why these sequences open through
+	// beginWrite rather than taking this mutex directly.
+	//
+	// NOT reentrant. The invariant, without exception: a public method opens
+	// a sequence with beginWrite and then calls only *Locked helpers; a
+	// *Locked helper never opens one and never calls a public method.
 	writeMu sync.Mutex
 
 	// stateMu guards every field below it.
 	stateMu               sync.RWMutex
 	filteredTransferCount int
+	unassignedCount       int
 	enabledFiles          map[string]bool
+
+	// suspectedTransfers is the most recent load's transfer review queue:
+	// cross-account amount matches with no pattern behind them, which are
+	// suggested and never auto-paired. Replaced wholesale by every load.
+	suspectedTransfers []transfers.Suspected
+
+	// stableByHash maps each loaded row's legacy content Hash to its
+	// StableID, and stablePairKeys maps each detected near-duplicate
+	// pair's legacy hash-derived key to its StableID-derived one. Both
+	// are rebuilt by every load and are what lets a sidecar written
+	// before StableID existed be rekeyed opportunistically on its next
+	// write. Both maps are replaced wholesale, never mutated in place.
+	stableByHash   map[string]string
+	stablePairKeys map[string]string
 
 	// Populated by every LoadData call. Read-only for callers.
 	// The three lists partition the detected pairs: awaiting review,
@@ -66,6 +88,36 @@ type DataLoader struct {
 	unresolvedDuplicates []DuplicatePair
 	resolvedDuplicates   []DuplicatePair
 	keptBothDuplicates   []DuplicatePair
+}
+
+// beginWrite opens one sidecar read-modify-write. It takes both locks the
+// sequence needs: writeMu, which serializes these sequences against each
+// other, and the storage data-directory shared hold, which serializes them
+// against a restore.
+//
+// Both have to span the WHOLE load->modify->save. writeMu because two
+// concurrent editors would otherwise interleave. The storage hold because
+// storage locks only around the individual WriteFile: a restore granted the
+// exclusive hold between the load and the save replaces the file on disk, and
+// then this sequence writes back a value derived from the pre-restore
+// contents, resurrecting exactly the decisions, pins, aliases or major
+// expenses the restore rolled back — while the restore reports success.
+//
+// The returned transaction is what every *Locked helper reads and writes
+// through; going to dl.store directly inside a sequence would take the shared
+// lock a second time, which sync.RWMutex does not allow re-entrantly.
+//
+// Usage, without exception:
+//
+//	tx, done := dl.beginWrite()
+//	defer done()
+func (dl *DataLoader) beginWrite() (*storage.SharedTx, func()) {
+	dl.writeMu.Lock()
+	tx := dl.store.BeginShared()
+	return tx, func() {
+		tx.Release()
+		dl.writeMu.Unlock()
+	}
 }
 
 // columnMappings maps common bank export column names to our standard names
@@ -181,12 +233,35 @@ func (dl *DataLoader) enabledFilesSnapshot() map[string]bool {
 }
 
 // FilteredTransfers returns how many internal transfers the most recent load
-// filtered out. Replaces the former exported FilteredTransferCount field,
-// which could not be read safely while another goroutine was loading.
+// identified. Nothing is filtered any more: this counts rows CLASSIFIED
+// models.Transfer -- paired plus external -- and every one of them is still
+// in the ledger. The name and signature are kept so the existing UI keeps
+// working until the Transfers page ships. See GLOSSARY.md
+// ("Internal transfer").
 func (dl *DataLoader) FilteredTransfers() int {
 	dl.stateMu.RLock()
 	defer dl.stateMu.RUnlock()
 	return dl.filteredTransferCount
+}
+
+// UnassignedCount returns how many transactions from the most recent load
+// carry no AccountID -- their CSV file matched no account's FilePatterns.
+// Those rows load normally; this is the count the dashboard and explorer
+// surface so an unassigned file is never a silent pass-through.
+func (dl *DataLoader) UnassignedCount() int {
+	dl.stateMu.RLock()
+	defer dl.stateMu.RUnlock()
+	return dl.unassignedCount
+}
+
+// setUnassignedCount records the unassigned tally for the load that just
+// finished. Every LoadDataContext exit path goes through it, so a load that
+// finds no files or no rows clears the previous load's number instead of
+// leaving it stale.
+func (dl *DataLoader) setUnassignedCount(n int) {
+	dl.stateMu.Lock()
+	dl.unassignedCount = n
+	dl.stateMu.Unlock()
 }
 
 // LoadData loads and combines data from all CSV files in the directory
@@ -211,15 +286,29 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 
 	if len(files) == 0 {
 		log.Printf("No CSV files found in %s - returning empty dataset", dl.CSVDirectory)
+		dl.setUnassignedCount(0)
+		dl.setStableIndex(nil)
+		dl.setTransferState(0, nil)
 		return models.NewTransactionSet(nil), nil
 	}
 
 	log.Printf("Found %d CSV files in %s", len(files), dl.CSVDirectory)
 
+	// Accounts drive per-file attribution and the credit-kind sign
+	// override. A failure here is non-fatal, like every other sidecar the
+	// loader consults: every file then loads unassigned rather than not at
+	// all. Files are never silently dropped.
+	accts, err := accounts.Load(dl.store)
+	if err != nil {
+		log.Printf("Warning: could not load accounts: %v", err)
+		accts = nil
+	}
+
 	var allTransactions []models.Transaction
 
 	enabled := dl.enabledFilesSnapshot()
 
+	unassignedFiles := 0
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -233,25 +322,47 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 			continue
 		}
 
-		transactions, err := dl.loadCSVFile(file)
+		acct := accounts.Find(accts, accounts.MatchFile(accts, filename))
+
+		transactions, err := dl.loadCSVFileForAccount(file, acct)
 		if err != nil {
 			log.Printf("Warning: failed to load %s: %v", filename, err)
 			continue
 		}
 
-		log.Printf("Loaded %d transactions from %s", len(transactions), filename)
+		if acct == nil {
+			unassignedFiles++
+			log.Printf("Loaded %d transactions from %s (unassigned: no account matches this file)", len(transactions), filename)
+		} else {
+			log.Printf("Loaded %d transactions from %s (account %s)", len(transactions), filename, acct.ID)
+		}
 		allTransactions = append(allTransactions, transactions...)
 	}
 
 	if len(allTransactions) == 0 {
 		log.Printf("No transactions loaded from CSV files - returning empty dataset")
+		dl.setUnassignedCount(0)
+		dl.setStableIndex(nil)
+		dl.setTransferState(0, nil)
 		return models.NewTransactionSet(nil), nil
 	}
 
-	// Preprocess: filter transfers, classify, deduplicate
-	allTransactions = dl.filterInternalTransfers(allTransactions)
-	allTransactions = classifier.ClassifyTransactions(allTransactions)
+	// Assign StableID before anything drops or reorders rows: the
+	// occurrence index is counted in file order over everything parsed, so
+	// a row's identity does not shift when a later stage (transfer filter,
+	// dedup) removes some other row. Amounts are already post-flip and
+	// AccountID is already stamped, both done per file above.
+	dl.setStableIndex(assignStableIDs(allTransactions))
+
+	// Preprocess: deduplicate, classify transfers, classify income/outflow.
+	//
+	// Exact dedup runs FIRST so a duplicated row cannot manufacture a
+	// phantom transfer pair candidate. Transfer classification then types
+	// the rows that move money between the user's own accounts, and
+	// income/outflow classification skips everything it typed.
 	allTransactions = dl.deduplicateTransactions(allTransactions)
+	allTransactions = dl.classifyTransfers(allTransactions)
+	allTransactions = classifier.ClassifyTransactions(allTransactions)
 
 	// Detect near-duplicate pairs and apply user decisions. Failure
 	// modes are non-fatal: a corrupt decisions file still allows the
@@ -272,13 +383,46 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 		allTransactions[i].ComputeDerivedFields()
 	}
 
+	// Count unassigned rows on the final set, so the number the UI shows
+	// matches the ledger the user is looking at rather than a pre-dedup
+	// tally they cannot reconcile against anything.
+	unassigned := 0
+	for i := range allTransactions {
+		if allTransactions[i].AccountID == "" {
+			unassigned++
+		}
+	}
+	dl.setUnassignedCount(unassigned)
+	if unassigned > 0 {
+		log.Printf("%d transactions in %d files are not assigned to any account", unassigned, unassignedFiles)
+	}
+
 	log.Printf("Total transactions after processing: %d", len(allTransactions))
 
 	return models.NewTransactionSet(allTransactions), nil
 }
 
-// loadCSVFile loads transactions from a single CSV file
+// loadCSVFile loads transactions from a single CSV file that belongs to no
+// account. Rows come back with an empty AccountID and the sign convention
+// decided purely by the heuristic.
 func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error) {
+	return dl.loadCSVFileForAccount(filePath, nil)
+}
+
+// loadCSVFileForAccount loads transactions from a single CSV file, given the
+// account that owns it (nil when the file matched none).
+//
+// The account affects two things, in this order:
+//
+//  1. Sign convention. Kind credit FORCES the credit-card convention for
+//     this file, overriding usesCreditCardSignConvention -- including for
+//     files too small for the heuristic to fire on at all. Every other kind
+//     leaves the heuristic untouched, neither more nor less eager.
+//  2. Attribution. Every row is stamped with the account's ID.
+//
+// The order matters: the flip re-hashes each row on the post-flip amount, so
+// stamping after it keeps identity keyed to the amount the app actually uses.
+func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Account) ([]models.Transaction, error) {
 	file, err := dl.store.OpenFile(filePath)
 	if err != nil {
 		return nil, err
@@ -377,8 +521,13 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 		transactions = append(transactions, t)
 	}
 
-	if usesCreditCardSignConvention(transactions) {
-		log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
+	forcedByKind := acct != nil && acct.Kind == models.AccountKindCredit
+	if forcedByKind || usesCreditCardSignConvention(transactions) {
+		if forcedByKind {
+			log.Printf("Account %s is kind %q; forcing credit-card sign convention in %s", acct.ID, acct.Kind, filepath.Base(filePath))
+		} else {
+			log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
+		}
 		for i := range transactions {
 			transactions[i].Amount = -transactions[i].Amount
 			// Re-key on the post-flip amount so dedup, pins, and
@@ -387,6 +536,13 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 			// source and a bank-convention source hashes differently
 			// and survives deduplicateTransactions.
 			transactions[i].Hash = transactions[i].ComputeHash()
+		}
+	}
+
+	// Attribution: after parsing and the sign decision, before dedup.
+	if acct != nil && acct.ID != "" {
+		for i := range transactions {
+			transactions[i].AccountID = acct.ID
 		}
 	}
 
@@ -546,57 +702,6 @@ func parseAmount(s string) float64 {
 	return amount
 }
 
-// filterInternalTransfers removes internal transfers to avoid double-counting.
-// Two sources are consulted:
-//
-//  1. The hardcoded classifier.InternalTransferPatterns list (covers
-//     common bank/broker descriptions out of the box).
-//  2. User-declared major expenses flagged with IsInternalTransfer=true,
-//     matched via majorexpenses.MatchTransaction (same keyword/amount
-//     rules as the Major Expenses page). Lets every user filter their
-//     own broker without code changes.
-//
-// Major-expense load failure is non-fatal — we log and proceed with just
-// the hardcoded patterns so a corrupt major_expenses.json doesn't break
-// CSV ingestion entirely.
-func (dl *DataLoader) filterInternalTransfers(transactions []models.Transaction) []models.Transaction {
-	initialCount := len(transactions)
-
-	var transferDefs []models.MajorExpense
-	if defs, err := dl.LoadMajorExpenses(); err != nil {
-		log.Printf("Warning: could not load major expenses for transfer filtering: %v", err)
-	} else {
-		for _, d := range defs {
-			if d.IsInternalTransfer {
-				transferDefs = append(transferDefs, d)
-			}
-		}
-	}
-
-	var filtered []models.Transaction
-	for _, t := range transactions {
-		if classifier.IsInternalTransfer(&t) {
-			continue
-		}
-		if len(transferDefs) > 0 {
-			if _, ok := majorexpenses.MatchTransaction(t, transferDefs); ok {
-				continue
-			}
-		}
-		filtered = append(filtered, t)
-	}
-
-	count := initialCount - len(filtered)
-	dl.stateMu.Lock()
-	dl.filteredTransferCount = count
-	dl.stateMu.Unlock()
-	if count > 0 {
-		log.Printf("Filtered %d internal transfers", count)
-	}
-
-	return filtered
-}
-
 // deduplicateTransactions removes duplicate transactions based on hash
 func (dl *DataLoader) deduplicateTransactions(transactions []models.Transaction) []models.Transaction {
 	seen := make(map[string]bool)
@@ -753,15 +858,16 @@ func (dl *DataLoader) aliasPath() string {
 
 // LoadAliases reads the hash->displayName mapping from disk
 func (dl *DataLoader) LoadAliases() (map[string]string, error) {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	return dl.loadAliasesLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	return dl.loadAliasesLocked(tx)
 }
 
-// loadAliasesLocked is LoadAliases' body. Caller holds writeMu.
-func (dl *DataLoader) loadAliasesLocked() (map[string]string, error) {
+// loadAliasesLocked is LoadAliases' body. Caller holds the sequence opened
+// by beginWrite and passes its transaction.
+func (dl *DataLoader) loadAliasesLocked(tx *storage.SharedTx) (map[string]string, error) {
 	path := dl.aliasPath()
-	data, err := dl.store.ReadFile(path)
+	data, err := tx.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]string), nil
@@ -777,9 +883,9 @@ func (dl *DataLoader) loadAliasesLocked() (map[string]string, error) {
 
 // SaveAlias sets or removes an alias for a transaction hash
 func (dl *DataLoader) SaveAlias(hash, displayName string) error {
-	dl.writeMu.Lock()
-	defer dl.writeMu.Unlock()
-	aliases, err := dl.loadAliasesLocked()
+	tx, done := dl.beginWrite()
+	defer done()
+	aliases, err := dl.loadAliasesLocked(tx)
 	if err != nil {
 		return fmt.Errorf("load aliases: %w", err)
 	}
@@ -792,7 +898,7 @@ func (dl *DataLoader) SaveAlias(hash, displayName string) error {
 	if err != nil {
 		return err
 	}
-	return dl.store.WriteFile(dl.aliasPath(), data, 0644)
+	return tx.WriteFile(dl.aliasPath(), data, 0644)
 }
 
 // applyAliases sets DisplayName on transactions that have aliases
@@ -874,6 +980,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 		dl.unresolvedDuplicates = unresolved
 		dl.resolvedDuplicates = resolved
 		dl.keptBothDuplicates = keptBoth
+		dl.stablePairKeys = nil
 		dl.stateMu.Unlock()
 		return txns
 	}
@@ -884,20 +991,38 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 		decisions = nil
 	}
 
-	// Build hash → index lookup once.
-	idxByHash := make(map[string]int, len(txns))
+	// Build identity → index lookup once. Both key forms are indexed, so a
+	// decision recording a legacy hash resolves to the same row as one
+	// recording a StableID.
+	idxByIdentity := make(map[string]int, 2*len(txns))
 	for i, t := range txns {
-		idxByHash[t.Hash] = i
+		idxByIdentity[t.Hash] = i
+		if t.StableID != "" {
+			idxByIdentity[t.StableID] = i
+		}
 	}
+
+	// legacyKeys maps the pre-StableID pair key to the current one for
+	// every detected pair, so writeDecisionsLocked can move an entry the
+	// user decided before StableID existed.
+	legacyKeys := make(map[string]string, len(pairs))
 
 	for _, pair := range pairs {
 		decision, isResolved := decisions[pair.Key]
+		legacy := pairKey(pair.Left.Hash, pair.Right.Hash)
+		if legacy != pair.Key {
+			legacyKeys[legacy] = pair.Key
+			if !isResolved {
+				// Fall back to the key this pair had before StableID.
+				decision, isResolved = decisions[legacy]
+			}
+		}
 		if !isResolved {
 			// Tag both sides for badge rendering.
-			if i, ok := idxByHash[pair.Left.Hash]; ok {
+			if i, ok := idxByIdentity[pair.Left.Hash]; ok {
 				txns[i].DuplicatePairKey = pair.Key
 			}
-			if i, ok := idxByHash[pair.Right.Hash]; ok {
+			if i, ok := idxByIdentity[pair.Right.Hash]; ok {
 				txns[i].DuplicatePairKey = pair.Key
 			}
 			unresolved = append(unresolved, pair)
@@ -905,13 +1030,18 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 		}
 		switch decision.Outcome {
 		case DuplicateOutcomeKeptWinner:
-			if i, ok := idxByHash[decision.SuppressedHash]; ok {
+			if i, ok := idxByIdentity[decision.SuppressedHash]; ok {
 				txns[i].Suppressed = true
 			}
 			// Keep the user-side roles in the resolved list: Left = kept.
+			// decision.SuppressedHash is rekeyed to a StableID on save
+			// (duplicate_decisions.go canonicalKey), while pair.Left.Hash
+			// is a legacy content hash -- so a raw == can never be true
+			// once a decision has been through SaveDuplicateDecision. Match
+			// either identity form, the same way idxByIdentity does above.
 			leftKept := pair.Left
 			rightSuppressed := pair.Right
-			if pair.Left.Hash == decision.SuppressedHash {
+			if identityMatchesSuppressed(pair.Left, decision.SuppressedHash) {
 				leftKept, rightSuppressed = pair.Right, pair.Left
 			}
 			resolved = append(resolved, DuplicatePair{
@@ -931,6 +1061,7 @@ func (dl *DataLoader) applyDuplicateDetection(txns []models.Transaction) []model
 	dl.unresolvedDuplicates = unresolved
 	dl.resolvedDuplicates = resolved
 	dl.keptBothDuplicates = keptBoth
+	dl.stablePairKeys = legacyKeys
 	dl.stateMu.Unlock()
 	return txns
 }

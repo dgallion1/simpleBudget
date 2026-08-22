@@ -1,0 +1,327 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R6
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16, working tree
+(uncommitted; R1-R9 all co-resident). All R6-attributable edits confined to
+the four files in .swarm/manifests/R6.1.files.
+
+Attribution note: internal/handlers/accounts/handlers.go and
+internal/services/accounts/balance.go each carry R1's Mutate/loaded-bool work
+as well as R6's. R6's slice of handlers.go is exactly: the handleAddAnchor doc
+comment (lines 214-224), the filter block inside the Mutate callback (lines
+272-286), and the new sameCalendarDay helper (lines 316-322). R6's slice of
+balance.go is the doc comment on latestAnchorAtOrBefore only.
+
+-----------------------------------------------------------------------------
+1. handleAddAnchor filters same-calendar-day anchors inside the Mutate
+   callback; exactly one anchor per date, newest amount authoritative. PASS
+
+   file: internal/handlers/accounts/handlers.go:265-296
+     265  err = accounts.Mutate(store, func(accts []models.Account) (...) {
+     266      loaded = true
+     ...
+     276      filtered := make([]models.BalanceAnchor, 0, len(accts[i].Anchors)+1)
+     277      for _, a := range accts[i].Anchors {
+     278          if !sameCalendarDay(a.Date, date) { filtered = append(filtered, a) }
+     279      }
+     281-285 filtered = append(filtered, models.BalanceAnchor{Date, Amount, Note})
+     287      sort.Slice(filtered, ...Date.Before...)
+     288      accts[i].Anchors = filtered
+   The filter is lexically inside the Mutate closure (opened 265, closed 296);
+   the pre-existing sentinel/404 handling below it is R1's and is untouched.
+
+   cmd: go test -count=1 -race -v -run 'TestHandleAddAnchor' \
+        ./internal/handlers/accounts/
+   out: --- PASS: TestHandleAddAnchor_ReplacesSameDayAnchor (0.00s)
+        --- PASS: TestHandleAddAnchor_SameDayReplacementIsDeterministic (0.06s)
+        --- PASS: TestHandleAddAnchor_Persists
+        --- PASS: TestHandleAddAnchor_KeepsAnchorsSortedByDate
+        --- PASS: TestHandleAddAnchor_RendererMode_AnchorShownInPartial
+        ok  budget2/internal/handlers/accounts  1.214s
+
+   Additional evidence I generated (scratch copy of the tree at
+   $SCRATCH/b2cmp, repo untouched) for the "exactly one per date" claim with
+   MORE than one pre-existing same-day anchor -- a case the worker's tests do
+   not cover:
+   cmd: go test -run TestZZMultiSameDayCollapses ./internal/handlers/accounts/
+   seed: anchors 2026-08-15T00:00Z/$100, 2026-08-15T12:00Z/$200,
+         2026-08-15T23:59Z/$300, 2026-08-10/$50; POST anchor 2026-08-15 4210.55
+   out: CHECKER: 2 anchor(s) remain: [{2026-08-10 Amount:50 Note:other day}
+                                      {2026-08-15 Amount:4210.55 Note:new}]
+        CHECKER: BalanceAt(2026-08-20) = 4210.55
+   All three same-day anchors collapse to the new one; the neighbouring day
+   survives.
+
+-----------------------------------------------------------------------------
+2. Behaviour matches the MCP path; same-day semantics agree, incl. boundaries.
+   PASS
+
+   UI predicate:  internal/handlers/accounts/handlers.go:320-324
+       ay, am, ad := a.Date(); by, bm, bd := b.Date()
+       return ay == by && am == bm && ad == bd
+   MCP predicate: internal/services/mcpsvc/ledger/anchor.go, func sameDay
+       return a.Year()==b.Year() && a.Month()==b.Month() && a.Day()==b.Day()
+   Both compare wall-clock Y/M/D, each value in its OWN location.
+
+   Empirical cross-package comparison (scratch copy $SCRATCH/b2cmp; a table
+   test compiled into package accounts calling sameCalendarDay and into
+   package ledger calling sameDay, same 7 inputs, outputs diffed):
+   cmd: go test -v -run TestZZPredUI  ./internal/handlers/accounts/
+        go test -v -run TestZZPredMCP ./internal/services/mcpsvc/ledger/
+        diff <(ui) <(mcp)
+   out: IDENTICAL   (diff empty, exit 0)
+        stored 2026-08-15T00:00:00Z                       -> true  (both)
+        stored 2026-08-15T23:30:00Z (LATER time component)-> true  (both)
+        stored 2026-08-15T00:00:00-05:00                  -> true  (both)
+        stored 2026-08-15T23:00:00-05:00 (= 8/16 04:00Z)  -> true  (both)
+        stored 2026-08-16T01:00:00+09:00 (= 8/15 16:00Z)  -> false (both)
+        stored 2026-08-14T23:59:59Z                       -> false (both)
+        stored 2026-08-16T00:00:01Z                       -> false (both)
+   The two paths agree on every case, including the two zone-crossing cases
+   where wall-clock day and UTC-instant day disagree.
+
+   End-to-end through the real handler + JSON store (scratch $SCRATCH/b2cmp,
+   TestZZBoundaryEndToEnd), POSTing anchor_date=2026-08-15:
+     stored 2026-08-15T23:30:00Z          -> 1 anchor, Amount 4210.55
+     stored 2026-08-15T23:00:00-05:00     -> 1 anchor, Amount 4210.55
+     stored 2026-08-14T23:59:59Z          -> 2 anchors (correctly not merged)
+
+   OBSERVATION (not a criterion failure): the doc comment at handlers.go:316
+   says the anchors are compared "in a's location". The code compares each
+   value in its own location, not both in a's. The MCP twin carries no such
+   claim. Behaviour is correct and matches MCP; only the comment overstates.
+
+-----------------------------------------------------------------------------
+3. Determinism test's assertion depends on WHICH anchor survives. PASS
+
+   internal/handlers/accounts/handlers_test.go:525-575. Per iteration it
+   asserts len(Anchors)==1 (:556) AND, separately,
+   :559  if accts[0].Anchors[0].Amount != 4210.55 { t.Fatalf(...) }
+   :566-570 BalanceAt(...) != 4210.55 { t.Fatalf(...) }
+
+   Proved the amount assertion is load-bearing, not decorative, by mutation B
+   on a scratch copy ($SCRATCH/b2mutB): replace the same-day anchor by keeping
+   the OLD one -- count stays exactly 1, wrong anchor survives.
+   cmd: go test -v -run 'TestHandleAddAnchor_ReplacesSameDayAnchor|
+        TestHandleAddAnchor_SameDayReplacementIsDeterministic' \
+        ./internal/handlers/accounts/
+   out: handlers_test.go:498: anchor amount = 1000, want 4210.55
+        handlers_test.go:501: anchor note = "stale statement", want "corrected statement"
+        handlers_test.go:514: BalanceAt = 1000, want 4210.55
+        --- FAIL: TestHandleAddAnchor_ReplacesSameDayAnchor
+        handlers_test.go:559: iteration 0: authoritative amount = 1000, want 4210.55 on every run
+        --- FAIL: TestHandleAddAnchor_SameDayReplacementIsDeterministic
+   Both fail on the amount, with the count correct. The assertion therefore
+   depends on which anchor survives.
+
+   HONEST CAVEAT on the 50-iteration loop itself: I measured whether
+   sort.Slice actually reorders all-equal keys on this toolchain.
+   cmd: go run $SCRATCH/sortchk/main.go
+   out: n= 2 equal keys: 0/20000 runs reordered by sort.Slice
+        n= 3 equal keys: 0/20000 runs reordered by sort.Slice
+        n=13 equal keys: 0/20000 runs reordered by sort.Slice
+        n=20 equal keys: 0/20000 runs reordered by sort.Slice
+   So the loop's 50 repetitions are unlikely to expose sort.Slice's documented
+   instability at these sizes; the loop adds little over a single run in
+   practice. The brief's acceptance wording -- "the same sequence of adds
+   produces the same authoritative anchor every run" -- is nevertheless
+   satisfied, and criterion 3 as posed (assertion depends on the survivor, not
+   the count) is demonstrated above. Recording this so the lead can judge
+   whether the loop is worth its cost, not as a defect.
+
+-----------------------------------------------------------------------------
+4. latestAnchorAtOrBefore doc comment matches code; body byte-identical. PASS
+
+   Comment now reads "Ties on the same day resolve to the FIRST seen, because
+   a candidate only replaces the current best when it is strictly later"
+   (internal/services/accounts/balance.go). The code is
+   `if !found || ad.After(dayOf(best.Date))` -- strictly later -- so FIRST
+   seen is correct.
+
+   cmd: git show HEAD:internal/services/accounts/balance.go |
+          sed -n '/^func latestAnchorAtOrBefore/,/^}/p' > head.txt
+        sed -n '/^func latestAnchorAtOrBefore/,/^}/p' \
+          internal/services/accounts/balance.go > now.txt
+        diff head.txt now.txt; md5sum head.txt now.txt
+   out: (diff empty) BODY BYTE-IDENTICAL
+        ad4029d08ba187e77611df43b386ea8e  head.txt
+        ad4029d08ba187e77611df43b386ea8e  now.txt
+
+   cmd: git diff -U15 internal/services/accounts/balance.go
+   out: every +/- line is inside the comment block; the function body lines
+        appear as context only. Whole-file stat: 1 file changed, 7 ins, 3 del.
+
+   New unit test pinning the behaviour:
+   internal/services/accounts/balance_test.go:547
+   TestLatestAnchorAtOrBefore_SameDayTieResolvesToFirstSeen -- two anchors on
+   2026-08-15 (Note "first"/1000.00, Note "second"/4210.55), asserts the
+   returned anchor is Note=="first" && Amount==1000.00. Asserts the survivor,
+   not just ok.
+   cmd: go test -count=1 -race -v -run TestLatestAnchorAtOrBefore \
+        ./internal/services/accounts/
+   out: --- PASS: TestLatestAnchorAtOrBefore_SameDayTieResolvesToFirstSeen
+
+-----------------------------------------------------------------------------
+5. R1's work intact: load_failure_test.go in full, loaded-bool undisturbed.
+   PASS
+
+   cmd: go test -count=1 -race -v -run 'LoadFailureIs500|SaveFailureStays200' \
+        ./internal/handlers/accounts/
+   out: --- PASS: TestHandleDelete_LoadFailureIs500 (0.00s)
+        --- PASS: TestHandleAddAnchor_LoadFailureIs500 (0.00s)
+        --- PASS: TestHandleDeleteAnchor_LoadFailureIs500 (0.00s)
+        --- PASS: TestHandleDelete_SaveFailureStays200WithInlineError (0.00s)
+        --- PASS: TestHandleAddAnchor_SaveFailureStays200WithInlineError (0.00s)
+        --- PASS: TestHandleDeleteAnchor_SaveFailureStays200WithInlineError (0.00s)
+        ok  budget2/internal/handlers/accounts  1.021s
+   All six tests in the file ran; none skipped (euid != 0). I read the
+   assertions: assertLoadFailure500 requires w.Code==500, body containing the
+   byte-identical prefix "Failed to load accounts: " AND the underlying
+   "invalid accounts file" decode text; the save-failure tests require
+   w.Code==200, a non-empty data.Error, and that data.Error does NOT carry the
+   load-failure prefix.
+
+   loaded-bool discipline: cmd: grep -n loaded internal/handlers/accounts/handlers.go
+   out: 189/191/201 (handleDelete), 264/266/299 (handleAddAnchor),
+        342/344/368 (handleDeleteAnchor)
+   In handleAddAnchor `loaded := false` is at 264, the Mutate closure opens at
+   265, `loaded = true` is its FIRST statement at 266 -- before R6's filter
+   block at 272-286 -- and `if !loaded { renderError(..., 500) }` is the first
+   branch of the error handler at 299. R6's edit sits strictly after the
+   loaded assignment and cannot short-circuit it.
+
+-----------------------------------------------------------------------------
+6. Mutation reproduced on a scratch copy outside the repo. PASS
+
+   Scratch: $SCRATCH/b2mut (cp -a of the tree, .git removed). Reverted the
+   filter to the pre-fix unconditional append + sort:
+       accts[i].Anchors = append(accts[i].Anchors, models.BalanceAnchor{...})
+       sort.Slice(accts[i].Anchors, ...)
+   cmd: go build ./... && go test -v -run \
+        'TestHandleAddAnchor_ReplacesSameDayAnchor|TestHandleAddAnchor_SameDayReplacementIsDeterministic' \
+        ./internal/handlers/accounts/
+   out: handlers_test.go:491: expected exactly 1 anchor on 2026-08-15, got 2:
+          [{2026-08-15 Amount:1000 Note:stale statement}
+           {2026-08-15 Amount:4210.55 Note:corrected statement}]
+        --- FAIL: TestHandleAddAnchor_ReplacesSameDayAnchor
+        handlers_test.go:556: iteration 0: expected 1 anchor, got 2:
+          [{2026-08-15 Amount:1000} {2026-08-15 Amount:4210.55}]
+        --- FAIL: TestHandleAddAnchor_SameDayReplacementIsDeterministic
+   Both new handler tests fail, and the message names the defect: two anchors
+   persisted.
+
+   The "wrong amount authoritative" half is masked by the count t.Fatalf, so I
+   demonstrated it separately with a scratch test that skips the count fatal:
+   out: CHECKER: anchor count = 2, anchors = [{Amount:1000 Note:stale
+          statement} {Amount:4210.55 Note:corrected statement}]
+        CHECKER: BalanceAt authoritative amount = 1000 (intended 4210.55)
+        CHECKER: STALE amount 1000 is authoritative, not the new 4210.55
+   Under the reverted code the stale $1000 drives BalanceAt -- exactly the
+   defect the brief describes. Mutation B (criterion 3) covers the
+   complementary "count right, wrong survivor" direction.
+
+-----------------------------------------------------------------------------
+7. REPLACE, not REJECT: no new UI error state, no markup change. PASS
+
+   cmd: git diff --stat HEAD -- web/
+   out: (empty) -- no template file changed.
+
+   cmd: git status --porcelain | awk '{print $NF}' | grep -v '\.go$' | grep -v '^\.swarm'
+   out: (empty) -- no non-Go, non-.swarm file modified anywhere in the tree.
+
+   cmd: git show HEAD:internal/handlers/accounts/handlers.go | grep -n data.Error
+        grep -n data.Error internal/handlers/accounts/handlers.go
+   out: 12 occurrences at HEAD, 12 occurrences now, same twelve messages
+        (line numbers shift by the R1 refactor only). No data.Error or
+        data.ErrorField assignment was added; the three anchor-form validation
+        errors ("Anchor date and amount are required." / "must be in
+        YYYY-MM-DD format." / "must be a number, e.g. 4210.55.") are HEAD
+        strings, unchanged, and no duplicate-date error joins them.
+
+   cmd: diff <(git show HEAD:.../handlers.go | grep -oE '"[^"]*"' | sort) \
+             <(grep -oE '"[^"]*"' .../handlers.go | sort)
+   out: only four deltas, all R1's, none user-visible:
+          + "account not found"   (unexported sentinel, never rendered)
+          + "anchor not found"    (unexported sentinel, never rendered)
+          + "errors"              (import path)
+          - "failed to load accounts: %w"  (removed from applyForm by R1)
+        The rendered strings "Account not found" / "Anchor not found" /
+        "Failed to load accounts: " are unchanged.
+
+   FOR THE a11y CHECKER: no user-visible string and no rendered markup changed
+   under R6. The renderer-mode partial test
+   TestHandleAddAnchor_RendererMode_AnchorShownInPartial passes unchanged.
+
+-----------------------------------------------------------------------------
+8. go build ./... && go vet ./... && go test -race ./... clean. PASS
+
+   cmd: go build ./...  -> no output, BUILD_EXIT=0
+   cmd: go vet ./...    -> no output, VET_EXIT=0
+   cmd: go test -count=1 -race ./...   (completed 2026-08-19T17:15:53-04:00)
+   out: 48 packages "ok", 1 "[no test files]" (budget2/web), zero FAIL,
+        EXIT=0. Includes ok budget2/internal/handlers/accounts 6.218s,
+        ok budget2/internal/services/accounts 1.051s,
+        ok budget2/internal/services/mcpsvc/ledger 2.816s.
+
+   NOT CHARGED TO R6 -- live-tree artifact, recorded for the lead: an earlier
+   `go test -race ./...` at 17:09:58 failed with
+     --- FAIL: TestGetBalanceProjectionHistoricalAsOfSchedulesFromPastEvidenceOnly
+         accounts_test.go:477: crossing = "2026-05-01", want 2026-05-02
+     --- FAIL: TestGetBalanceProjectionFutureAsOfEvaluatesFreshnessAgainstRequestedDate
+         accounts_test.go:531: minimum = 1000.00, want 1300.00
+   Both are R5's acceptance tests in internal/services/mcpsvc/ledger/
+   accounts_test.go, whose mtime is 2026-08-19 17:10:25 -- R5's worker was
+   writing the tree mid-run. Re-ran the package 5x with -race afterwards: 5/5
+   ok. Neither file is in R6's manifest and neither test touches anchors
+   (git diff of internal/services/mcpsvc/ledger/accounts.go contains no
+   anchor/sameDay lines). The known R9 dashboard_parity flake did not fire.
+
+-----------------------------------------------------------------------------
+SCOPE
+
+   R6-attributable edits are confined to the four manifest files:
+     internal/handlers/accounts/handlers.go       (doc 214-224, filter
+                                                   272-286, helper 316-322)
+     internal/handlers/accounts/handlers_test.go  (pure addition @@ -456,6
+                                                   +456,121 @@, no deletions)
+     internal/services/accounts/balance.go        (doc comment only; function
+                                                   body md5-identical to HEAD)
+     internal/services/accounts/balance_test.go   (pure addition @@ -535,3
+                                                   +535,29 @@, no deletions)
+   grep -rn sameCalendarDay --include=*.go . returns hits in handlers.go only.
+
+   .swarm/critical.globs matched by R6's manifest: NONE. (The list is
+   internal/services/storage/**, internal/services/dataloader/**,
+   internal/services/retirement/engine/**, internal/services/transfers/**,
+   internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**.
+   balance.go is not accounts.go; the glob is a single named file. The tree's
+   modifications to accounts.go and confirm/** belong to R1 (Tier 3) and R4
+   (Tier 3) respectively, both already accepted.)
+
+   Other modified files in the tree (explorer, dashboard, mcpsvc/*, approval,
+   .swarm/*) carry R1-R5/R7-R9 work and are out of R6's scope.
+
+   I modified nothing. All mutation and probe work was done on copies under
+   the session scratchpad ($SCRATCH/b2mut, b2mutB, b2cmp, sortchk); the repo
+   working tree is byte-unchanged by me apart from this verdict file.
+
+-----------------------------------------------------------------------------
+LIVE-TREE TIMESTAMP NOTE (for the lead)
+
+   The working tree was being written by other workers throughout this
+   verification. Snapshot times of my evidence:
+     17:15:53  go test -race ./... EXIT=0 (criterion 8)
+     17:21:40  go build ./... && go vet ./... re-confirmed OK
+     17:21:xx  R6 + R1-regression tests re-run against the current bytes of
+               internal/handlers/accounts/handlers.go: ok (1.204s)
+   internal/handlers/accounts/handlers.go carries mtime 17:13:13, i.e. it was
+   touched after my first read; I re-read and re-tested it at 17:21 and the
+   R6 code at lines 264-296 and 316-322 is exactly as cited above.
+   Files that changed AFTER my full-suite run and are therefore NOT covered by
+   it: internal/services/accounts/projection.go (17:20:53) and
+   REVIEW_FIXES_SPEC.md (17:20:49) -- both R5's, outside R6's manifest. If the
+   lead needs a whole-suite green on the final merged tree, re-run
+   `go test -race ./...` after R5 and R8 land.

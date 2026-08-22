@@ -1,0 +1,760 @@
+{{/* Accounts settings page (/accounts).
+   Expects: pageData (internal/handlers/accounts.pageData) with:
+     - Title, ActiveTab
+     - Accounts []accountView (Account, MatchedFiles, IsFirst)
+     - UnassignedFiles []string
+     - AccountKinds []models.AccountKind
+     - DefaultThreshold float64
+     - Warnings []string (pattern-overlap warnings)
+     - Error string (validation/save error to surface)
+     - ErrorField string (field name the error pertains to, for focus)
+     - ConfirmDeleteID string (account whose delete-confirm panel is open)
+   Accessibility:
+     - One <h1>, landmark <main> (from base), logical heading order.
+     - Every input has a programmatically associated <label>.
+     - Validation errors: an aria-live region announces the error, and
+       the offending field carries aria-describedby pointing at it. A
+       data-focus-target attribute marks the field so client-side JS can
+       move focus to it (the base layout is HTML-only; focus handling is
+       progressive enhancement).
+     - Required fields and the expected date/currency formats are stated
+       in text, not via placeholder alone.
+     - Status is never color-only: low-balance flags pair color with an
+       icon and text; unassigned files carry a text label; the
+       pattern-overlap warning block pairs its amber background with an
+       icon and "Pattern overlap warning" text.
+     - The pattern-overlap warning is ANNOUNCED from #accounts-warnings-region,
+       a stable sr-only node in accounts-content, outside the #accounts-list
+       swap target (mirrors #accounts-error-region). role="status"/aria-live
+       on a node that lives inside accounts-list-partial would be destroyed
+       and recreated by every hx-swap="innerHTML", which several screen
+       readers do not reliably announce (a live region has to already be
+       registered before it changes to be picked up) — see
+       accounts-list-partial's comment for the mechanism. The visible amber
+       block does not itself carry a live-region role, so the warning is
+       announced exactly once, not twice.
+     - The pattern-overlap banner is dismissible (a real <button>, keyboard
+       operable) and the dismissal is keyed on the warning content itself
+       (ACCESSIBILITY.md point 14), so it does not re-announce or re-show on
+       every load while unchanged, but does reappear the moment the set of
+       warnings changes.
+     - ACCESSIBILITY.md point 16 (added 2026-08-20, S5): a dismissal is a
+       single decision (syncWarnings, in the script below) applied to BOTH
+       the visible banner and #accounts-warnings-region in the same call,
+       so the live region never asserts a warning the banner is not
+       showing, on the initial load or any later swap. See the script's
+       own comments for the mechanism and the reload-case decision.
+     - Full keyboard operability: every action is a real <button> or
+       <input type="submit">; the confirm step is a second submit, not a
+       click handler on a div.
+*/}}
+{{define "accounts-content"}}
+<div class="space-y-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Accounts</h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Tell the app which CSV files belong to which account. A file is
+            matched against each account&rsquo;s patterns in ascending account-ID
+            order; the first match wins. Files matching no account load as
+            <em>unassigned</em> &mdash; they are still visible, but their rows
+            carry no account attribution.
+        </p>
+    </div>
+
+    {{/* aria-live region: validation / save errors announced here. */}}
+    <div id="accounts-error-region" role="status" aria-live="polite" aria-atomic="true" class="sr-only">
+        {{if .Error}}{{.Error}}{{end}}
+    </div>
+
+    {{/* aria-live region: pattern-overlap warnings announced here, not from
+         the visible amber block inside accounts-list-partial below. This
+         node is stable across every HTMX swap of #accounts-list (the amber
+         block is not: hx-swap="innerHTML" destroys and recreates it on
+         every mutation), so a screen reader that has already registered
+         this region continues to hear updates to it, the same reasoning as
+         #accounts-error-region just above. Its text is kept in sync with
+         the current .Warnings by the script at the end of this template,
+         which only writes to it when the text actually changes — assigning
+         identical text on every swap would still count as a DOM mutation
+         to a screen reader's live-region observer, which is exactly the
+         "re-announced ... every page load" ACCESSIBILITY.md point 14 rules
+         out. The markup below carries no whitespace between the div tags
+         and the conditional they wrap: earlier this div's content was
+         indented onto its own line, so Go's text/template emitted the
+         surrounding literal newlines and indentation regardless of
+         .Warnings, leaving the region's server-rendered textContent
+         whitespace-padded while #accounts-warnings-data's
+         data-warnings-text (below, an attribute value with no such
+         padding) was not. The two were therefore never byte-equal even
+         when they carried the same warning content, which defeated the
+         same-text guard in the script below on every full page load. */}}
+    <div id="accounts-warnings-region" role="status" aria-live="polite" aria-atomic="true" class="sr-only">{{if .Warnings}}Pattern overlap warning: {{range $i, $w := .Warnings}}{{if $i}}; {{end}}{{$w}}{{end}}{{end}}</div>
+
+    {{/* Visible error banner, kept in sync with the live region. */}}
+    {{if .Error}}
+    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="font-medium text-red-700 dark:text-red-300">There&rsquo;s a problem with your submission</span>
+        </div>
+        <p class="mt-2 text-sm text-red-600 dark:text-red-400" id="accounts-error-text">{{.Error}}</p>
+    </div>
+    {{end}}
+
+    {{/* Pattern-overlap warnings render once, inside accounts-list-partial
+         below (#accounts-list), not here. That partial is both what the
+         full page includes on initial load and what every mutation swaps
+         in via HTMX, so one copy there covers both render paths without
+         double-rendering the block on a full page load. */}}
+    <div id="accounts-list">
+        {{template "accounts-list-partial" .}}
+    </div>
+</div>
+
+{{/* HTMX focus handling (ACCESSIBILITY.md point 10), plus keeping the
+     stable #accounts-warnings-region and the dismissible warnings banner in
+     sync across every swap of #accounts-list. After a swap, focus moves to
+     the first field flagged aria-invalid (the offending field on a
+     validation error), or to the swapped region's heading if there is no
+     error, so the user lands somewhere sensible inside the new markup
+     rather than being dropped at the top of the page. The aria-live region
+     above announces errors; syncWarnings below announces pattern-overlap
+     warnings the same way. This is progressive enhancement — HTMX itself
+     requires JS for any mutation to happen at all, so there is no separate
+     no-JS path to preserve here. */}}
+<script>
+    (function () {
+        // Tracks the last text actually written into the live region by
+        // syncWarnings, so the same-text guard a few lines down compares
+        // against what an assistive-technology user was last told, not
+        // against whatever the region's raw markup happens to contain.
+        // Seeded from #accounts-warnings-data's data-warnings-text (the
+        // SAME attribute syncWarnings itself reads below), not from
+        // region.textContent: the region's own markup is indented onto its
+        // own line by hand-formatted HTML in some editors, which text/html
+        // renders faithfully including surrounding whitespace, while the
+        // data attribute never carries that padding. Seeding from
+        // region.textContent made the two representations of the identical
+        // warning content compare unequal on every single full page load,
+        // defeating the guard entirely (see the comment on the region div
+        // above). Seeding from the same attribute the guard itself
+        // consults keeps the two comparable from the very first call.
+        var region = document.getElementById('accounts-warnings-region');
+        var initialWarningsData = document.getElementById('accounts-warnings-data');
+        var lastWarningsText = initialWarningsData
+            ? (initialWarningsData.getAttribute('data-warnings-text') || '')
+            : '';
+
+        // ACCESSIBILITY.md point 16: whatever suppresses the visible
+        // banner must, in the SAME action, leave the assistive-technology
+        // channel consistent with it. syncWarnings is that one action for
+        // every response shape (the initial full-page load, and every
+        // HTMX swap of #accounts-list): it decides ONCE, per call, whether
+        // the CURRENT warning set (identified by .WarningsKey) is the one
+        // already dismissed this session, and then drives both the banner
+        // and the live region off that single decision. The previous
+        // version decided the region's content first, independently of
+        // dismissal, and only afterward decided the banner's visibility --
+        // so a warning could be announced with no banner to show for it
+        // (dismiss, resolve, then recreate the identical overlap), or a
+        // dismissed warning could keep asserting itself to AT on every
+        // reload while the banner that would let a user dismiss it again
+        // stayed gone (dismiss, then reload with the set unchanged). Both
+        // were reproduced in a real browser -- see
+        // .swarm/verdicts/S4.3.judge-claude.verdict.
+        //
+        // For the reload case specifically: the choice made here is that
+        // the CLIENT is authoritative for "is this exact warning content
+        // already dismissed", and it reasserts that suppression on every
+        // load, including the live region -- not that the dismissal is
+        // reflected server-side. Teaching the server about a client-only,
+        // session-scoped dismissal would need a new request field (or a
+        // cookie) round-tripped on every GET, which is a bigger, session-
+        // vs-request plumbing change than a suppression-parity bug fix
+        // calls for, and it would fight the existing sessionStorage
+        // design's premise (no server or persisted-file state for
+        // dismissal at all). Reusing the same key comparison the banner
+        // already performs, and applying it to the region too, is the
+        // smallest change that removes the inconsistency.
+        //
+        // Reads the freshly-rendered payload that accounts-list-partial
+        // always includes (#accounts-warnings-data, inside the swap
+        // target) and applies it to the two things that live OUTSIDE the
+        // swap target and therefore are not replaced by
+        // hx-swap="innerHTML": the stable live region (only written to
+        // when the underlying announced state actually changed, which is
+        // what makes this "state change" rather than "every swap" per
+        // ACCESSIBILITY.md point 14) and the visible banner's
+        // session-scoped dismissal (keyed on WarningsKey, a fingerprint of
+        // the warning content, so a changed warning set is never mistaken
+        // for one already dismissed). Runs once immediately for the
+        // initial full-page load and again after every HTMX swap.
+        function syncWarnings() {
+            var data = document.getElementById('accounts-warnings-data');
+            if (!data) return;
+            var text = data.getAttribute('data-warnings-text') || '';
+            var key = data.getAttribute('data-warnings-key') || '';
+
+            // Decide dismissal FIRST, before touching the region, so the
+            // region write below can reflect it rather than race ahead of
+            // it. `key` fingerprints the CURRENT warning content;
+            // sessionStorage holds the key of the last content the user
+            // dismissed (there is only ever one banner, so only one
+            // dismissal to remember at a time).
+            var dismissed = false;
+            try {
+                var storedKey = sessionStorage.getItem('accounts-warnings-dismissed');
+                if (key && storedKey === key) {
+                    dismissed = true;
+                } else if (!key && storedKey) {
+                    // No warning is showing right now (a mutation resolved
+                    // the last overlap, or there simply is none on this
+                    // load), so the stored key no longer names anything
+                    // real. Clear it here, in the SAME action that clears
+                    // the live region just below: this is the root-cause
+                    // fix from the S4 dispute. The old code returned at
+                    // `if (!banner) return` before ever reaching the
+                    // dismissal key when there was no banner to check
+                    // against, so a resolve-then-recreate of the identical
+                    // warning silently inherited the stale key -- the
+                    // banner (and its dismiss control) stayed suppressed
+                    // on the recreate, while the region had already
+                    // re-announced the reappeared warning moments earlier
+                    // in this same function. The template's own comment on
+                    // #accounts-warnings-data already promised this: the
+                    // empty data carrier "can clear the live region and
+                    // the dismissal key too."
+                    try { sessionStorage.removeItem('accounts-warnings-dismissed'); } catch (e) {}
+                }
+            } catch (e) { /* sessionStorage may be unavailable; treat as not dismissed */ }
+
+            // What the AT channel should say right now. A dismissal
+            // suppresses the SAME content for an AT user as it does for a
+            // sighted one (ACCESSIBILITY.md point 16): when the current
+            // warning set is exactly the one already dismissed this
+            // session, the live region carries nothing -- on the very
+            // first load of a session exactly as much as on any later
+            // swap, which is what makes the reload case above hold.
+            var effectiveText = dismissed ? '' : text;
+            if (region && effectiveText !== lastWarningsText) {
+                region.textContent = effectiveText;
+                lastWarningsText = effectiveText;
+            }
+
+            var banner = document.getElementById('accounts-warnings-banner');
+            if (!banner) return;
+            if (dismissed) {
+                banner.remove();
+                return;
+            }
+            var dismissBtn = banner.querySelector('[data-dismiss-warnings]');
+            if (dismissBtn) {
+                dismissBtn.addEventListener('click', function () {
+                    try { sessionStorage.setItem('accounts-warnings-dismissed', key); } catch (e) {}
+
+                    // ACCESSIBILITY.md point 10: dismissing is a
+                    // state-changing action and must announce its own
+                    // result, and must not leave a live region asserting a
+                    // warning that is no longer visible. Re-use the same
+                    // region the warning itself was announced from (a
+                    // second sr-only region would just be one more thing to
+                    // keep in sync) and overwrite the stale warning text
+                    // with a short confirmation phrased to match the
+                    // banner ("Pattern overlap warning") and its dismiss
+                    // button ("Dismiss pattern overlap warning") -- earlier
+                    // this said "Account overlap warning dismissed.",
+                    // wording used nowhere else in the UI, chosen only to
+                    // dodge a test that string-scanned the whole response
+                    // body including the always-served <script> block; the
+                    // test is scoped correctly now (see
+                    // TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock),
+                    // so the natural, consistent wording is used instead.
+                    // lastWarningsText is updated to '' here too (matching
+                    // effectiveText for a now-dismissed set), not left
+                    // pointing at the dismissed warning's text: a later
+                    // syncWarnings() call for this same still-dismissed key
+                    // must keep computing effectiveText === '' and see "no
+                    // change" against a lastWarningsText that also already
+                    // reads ''.
+                    if (region) {
+                        region.textContent = 'Pattern overlap warning dismissed.';
+                        lastWarningsText = '';
+                    }
+
+                    // Move focus to the heading of the section that sits
+                    // immediately after the banner in the document (see
+                    // accounts-list-partial: the "Add an account" section
+                    // follows directly after #accounts-warnings-banner /
+                    // #accounts-warnings-data). The banner itself is about
+                    // to be removed, so it can no longer hold focus;
+                    // without this, focus would fall back to <body> and the
+                    // next Tab would restart from the top of the document
+                    // instead of continuing from where the banner was.
+                    // Chosen over the page's own <h1> (too far back, undoes
+                    // more of the user's position than necessary) and over
+                    // the dismiss button itself (about to be detached).
+                    // Mirrors the existing htmx:afterSwap fallback below,
+                    // which does the same tabindex="-1" + focus() dance for
+                    // #accounts-list-heading.
+                    var next = document.getElementById('accounts-new-heading');
+                    if (next) {
+                        next.setAttribute('tabindex', '-1');
+                        try { next.focus(); } catch (e) {}
+                    }
+
+                    banner.remove();
+                });
+            }
+        }
+        syncWarnings();
+
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            var target = evt.detail && evt.detail.target;
+            if (!target || target.id !== 'accounts-list') return;
+            syncWarnings();
+            // Prefer the field flagged for the error (data-focus-target
+            // mirrors ErrorField); fall back to any aria-invalid field;
+            // otherwise land on the list heading.
+            var focusable = target.querySelector('[data-focus-target]')
+                || target.querySelector('[aria-invalid="true"]');
+            if (focusable) {
+                try { focusable.focus(); } catch (e) {}
+                return;
+            }
+            var heading = target.querySelector('#accounts-list-heading');
+            if (heading) {
+                heading.setAttribute('tabindex', '-1');
+                try { heading.focus(); } catch (e) {}
+            }
+        });
+    })();
+</script>
+{{end}}
+
+{{/* accounts-list-partial is the HTMX swap target for every mutation.
+     A single write is the whole response to a create/update/delete/anchor
+     action, so the page never needs a second round-trip to reflect the
+     new state. Mirrors the majorexpenses "major-expenses-results" partial
+     pattern. */}}
+{{define "accounts-list-partial"}}
+<div class="space-y-4">
+    {{/* Re-announce errors inside the swapped region too, so a mutation
+         that fails validation surfaces the message in-place. */}}
+    {{if .Error}}
+    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4" role="alert">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="font-medium text-red-700 dark:text-red-300">There&rsquo;s a problem with your submission</span>
+        </div>
+        <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{.Error}}</p>
+    </div>
+    {{end}}
+
+    {{/* Pattern-overlap warnings are advisory: the save still happens
+         regardless (ACCESSIBILITY.md point 8: color is not the only
+         signal, so the icon and "Pattern overlap warning" text both carry
+         the meaning, not just the amber background).
+
+         This block does NOT carry role="status"/aria-live: it is destroyed
+         and recreated by hx-swap="innerHTML" on every mutation, and a live
+         region that is born with its content already in one paint is not
+         reliably announced by several screen readers. #accounts-warnings-
+         region (in accounts-content, outside #accounts-list) is the node
+         that announces instead; giving both a live-region role would
+         announce the same warning twice. This block is purely the sighted,
+         dismissible presentation of the same warnings.
+
+         Dismissible per ACCESSIBILITY.md point 14: the button below is a
+         real, keyboard-operable <button> with an accessible name that says
+         what it dismisses, and the dismissal (see the script in
+         accounts-content) is keyed on .WarningsKey — a fingerprint of the
+         current warning content — via sessionStorage, so it lasts only for
+         the session and only for this exact set of warnings; a changed
+         warning set is a state change and reappears/re-announces. */}}
+    {{if .Warnings}}
+    <div id="accounts-warnings-banner" class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+        <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
+            </svg>
+            <div class="flex-1 min-w-0">
+                <span class="font-medium text-amber-700 dark:text-amber-300">Pattern overlap warning</span>
+                <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside">
+                    {{range .Warnings}}<li>{{.}}</li>{{end}}
+                </ul>
+                {{/* text-amber-700 (not -600): -600 on amber-50 measures
+                     3.07:1, below point 7's 4.5:1 body-text floor. -700
+                     measures 4.84:1, matching the list text above it.
+                     Dark theme is unchanged (-400 on the dark amber
+                     background measures 9.25:1, already passing). */}}
+                <p class="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                    First match still wins by account-ID order, so loading is deterministic.
+                    Tighten the patterns if this is unintended.
+                </p>
+            </div>
+            <button type="button" data-dismiss-warnings
+                class="flex-shrink-0 text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 rounded p-1 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                aria-label="Dismiss pattern overlap warning">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+    {{end}}
+
+    {{/* Data carrier for the accounts-content script, present on every
+         response (full page and every accounts-list-partial swap) even
+         when there are no warnings, so a mutation that resolves the last
+         overlap can clear the live region and the dismissal key too. It is
+         `hidden` (removed from the accessibility tree) — its only job is
+         to hand fresh values to syncWarnings(), not to be read directly by
+         a screen reader. */}}
+    <span id="accounts-warnings-data" hidden
+        data-warnings-text="{{if .Warnings}}Pattern overlap warning: {{range $i, $w := .Warnings}}{{if $i}}; {{end}}{{$w}}{{end}}{{end}}"
+        data-warnings-key="{{.WarningsKey}}"></span>
+
+    {{/* Create form. Always visible so the user can add an account. */}}
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-new-heading">
+        <h2 id="accounts-new-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Add an account</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Required fields are marked with an asterisk (*).
+        </p>
+        <form hx-post="/accounts" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-4 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="acct-new-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Account ID <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                        <span class="sr-only">(required)</span>
+                    </label>
+                    <input type="text" id="acct-new-id" name="id" required
+                        autocomplete="off"
+                        data-focus-target="id"
+                        aria-describedby="acct-new-id-help"
+                        {{if eq .ErrorField "id"}}aria-invalid="true"{{end}}
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <p id="acct-new-id-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        A stable slug, e.g. <code>usaa-checking</code>. Transactions and
+                        your saved decisions reference it, so it must be unique and should
+                        not be renamed casually.
+                    </p>
+                </div>
+                <div>
+                    <label for="acct-new-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Name <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                        <span class="sr-only">(required)</span>
+                    </label>
+                    <input type="text" id="acct-new-name" name="name" required
+                        autocomplete="off"
+                        data-focus-target="name"
+                        {{if eq .ErrorField "name"}}aria-invalid="true"{{end}}
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="acct-new-institution" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Institution</label>
+                    <input type="text" id="acct-new-institution" name="institution"
+                        autocomplete="off"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="acct-new-kind" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kind</label>
+                    <select id="acct-new-kind" name="kind"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        {{range .AccountKinds}}
+                        <option value="{{.}}">{{title (printf "%s" .)}}</option>
+                        {{end}}
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <code>credit</code> forces the credit-card sign convention
+                        for this account&rsquo;s files, overriding the &ge;70%-positive
+                        heuristic. Other kinds leave the heuristic alone.
+                    </p>
+                </div>
+            </div>
+            <div>
+                <label for="acct-new-patterns" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    File patterns
+                </label>
+                <textarea id="acct-new-patterns" name="file_patterns" rows="3"
+                    aria-describedby="acct-new-patterns-help"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="usaa-checking*.csv&#10;usaa"></textarea>
+                <p id="acct-new-patterns-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    One pattern per line. Patterns are matched case-insensitively
+                    against the CSV filename: a glob first (<code>path.Match</code>),
+                    then a plain substring as a fallback. A pattern like
+                    <code>usaa</code> matches <code>usaa-checking.csv</code>.
+                </p>
+            </div>
+            <div>
+                <label for="acct-new-threshold" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Low-balance threshold
+                </label>
+                <input type="number" id="acct-new-threshold" name="low_balance_threshold"
+                    step="0.01" min="0"
+                    aria-describedby="acct-new-threshold-help"
+                    {{if eq .ErrorField "low_balance_threshold"}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                <p id="acct-new-threshold-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Enter a dollar amount, e.g. <code>500</code>. Leave blank or enter
+                    <code>0</code> to use the default of ${{printf "%.0f" .DefaultThreshold}}.
+                    Only meaningful for checking and savings accounts.
+                </p>
+            </div>
+            <div>
+                <button type="submit"
+                    class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    Add account
+                </button>
+            </div>
+        </form>
+    </section>
+
+    {{/* Existing accounts. */}}
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-list-heading">
+        <h2 id="accounts-list-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Your accounts</h2>
+        {{if not .Accounts}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">No accounts configured yet.</p>
+        {{else}}
+        <ul class="mt-3 space-y-4">
+            {{$root := .}}
+            {{range $acct := .Accounts}}
+            <li class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-medium text-gray-800 dark:text-gray-100">
+                            {{$acct.Account.Name}}
+                            {{if $acct.IsFirst}}
+                            <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">(first match wins)</span>
+                            {{end}}
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <span class="font-mono text-gray-700 dark:text-gray-300">{{$acct.Account.ID}}</span>
+                            {{if $acct.Account.Institution}}&middot; {{$acct.Account.Institution}}{{end}}
+                            &middot; <span class="font-mono">{{$acct.Account.Kind}}</span>
+                        </p>
+                    </div>
+                </div>
+
+                {{/* Edit form. */}}
+                <form hx-post="/accounts/{{$acct.Account.ID}}" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="acct-edit-name-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Name <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                <span class="sr-only">(required)</span>
+                            </label>
+                            <input type="text" id="acct-edit-name-{{$acct.Account.ID}}" name="name" value="{{$acct.Account.Name}}" required
+                                {{if and (eq $root.ErrorField "name") (eq $root.ConfirmDeleteID "")}}data-focus-target="name" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="acct-edit-institution-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Institution</label>
+                            <input type="text" id="acct-edit-institution-{{$acct.Account.ID}}" name="institution" value="{{$acct.Account.Institution}}"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="acct-edit-kind-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kind</label>
+                            <select id="acct-edit-kind-{{$acct.Account.ID}}" name="kind"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                {{range $root.AccountKinds}}
+                                <option value="{{.}}" {{if eq . $acct.Account.Kind}}selected{{end}}>{{title (printf "%s" .)}}</option>
+                                {{end}}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="acct-edit-threshold-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Low-balance threshold
+                            </label>
+                            <input type="number" id="acct-edit-threshold-{{$acct.Account.ID}}" name="low_balance_threshold"
+                                step="0.01" min="0"
+                                value="{{if gt $acct.Account.LowBalanceThreshold 0.0}}{{printf "%.2f" $acct.Account.LowBalanceThreshold}}{{end}}"
+                                aria-describedby="acct-edit-threshold-help-{{$acct.Account.ID}}"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <p id="acct-edit-threshold-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Blank or <code>0</code> uses the default (${{printf "%.0f" $root.DefaultThreshold}}).
+                            </p>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="acct-edit-patterns-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            File patterns
+                        </label>
+                        <textarea id="acct-edit-patterns-{{$acct.Account.ID}}" name="file_patterns" rows="3"
+                            aria-describedby="acct-edit-patterns-help-{{$acct.Account.ID}}"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">{{range $acct.Account.FilePatterns}}{{.}}&#10;{{end}}</textarea>
+                        <p id="acct-edit-patterns-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            One per line. Glob (<code>path.Match</code>) first, substring fallback.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="submit"
+                            class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            Save changes
+                        </button>
+                    </div>
+                </form>
+
+                {{/* Pattern editor: live matches for THIS account. */}}
+                <div class="mt-4">
+                    <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Matched files</h4>
+                    {{if $acct.MatchedFiles}}
+                    <ul class="mt-2 text-sm text-gray-700 dark:text-gray-300 list-disc list-inside">
+                        {{range $acct.MatchedFiles}}<li class="font-mono">{{.}}</li>{{end}}
+                    </ul>
+                    {{else}}
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        No CSV files in the data directory currently match this account&rsquo;s patterns.
+                    </p>
+                    {{end}}
+                </div>
+
+                {{/* Anchors. */}}
+                <div class="mt-4">
+                    <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Balance anchors</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        An anchor records the balance at the <strong>end</strong> of the
+                        anchor day. A transaction dated on the anchor day is already
+                        reflected in the amount and is not added again when rolling the
+                        balance forward.
+                    </p>
+                    {{if $acct.Account.Anchors}}
+                    <table class="mt-2 w-full text-sm">
+                        <caption class="sr-only">Balance anchors for {{$acct.Account.Name}}</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col" class="text-left font-medium text-gray-700 dark:text-gray-300 py-1">Date</th>
+                                <th scope="col" class="text-left font-medium text-gray-700 dark:text-gray-300 py-1">Amount</th>
+                                <th scope="col" class="text-left font-medium text-gray-700 dark:text-gray-300 py-1">Note</th>
+                                <th scope="col" class="sr-only">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range $acct.Account.Anchors}}
+                            <tr>
+                                <td class="py-1 text-gray-700 dark:text-gray-300">{{formatDate .Date}}</td>
+                                <td class="py-1 text-gray-700 dark:text-gray-300">{{formatMoney .Amount}}</td>
+                                <td class="py-1 text-gray-600 dark:text-gray-400">{{.Note}}</td>
+                                <td class="py-1">
+                                    <form hx-post="/accounts/{{$acct.Account.ID}}/anchor/{{.Date.Format "2006-01-02"}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                                        <button type="submit"
+                                            aria-label="Delete anchor dated {{formatDate .Date}}"
+                                            class="text-xs text-red-600 dark:text-red-400 hover:underline focus:outline-none focus:ring-2 focus:ring-red-400 rounded">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                    {{else}}
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">No anchors set.</p>
+                    {{end}}
+
+                    <form hx-post="/accounts/{{$acct.Account.ID}}/anchor" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                        <div class="md:col-span-1">
+                            <label for="acct-anchor-date-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Anchor date <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                <span class="sr-only">(required)</span>
+                            </label>
+                            <input type="date" id="acct-anchor-date-{{$acct.Account.ID}}" name="anchor_date" required
+                                pattern="\d{4}-\d{2}-\d{2}"
+                                aria-describedby="acct-anchor-date-help-{{$acct.Account.ID}}"
+                                {{if eq $root.ErrorField "anchor_date"}}data-focus-target="anchor_date" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <p id="acct-anchor-date-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Format: YYYY-MM-DD.
+                            </p>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label for="acct-anchor-amount-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Amount <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                <span class="sr-only">(required)</span>
+                            </label>
+                            <input type="number" id="acct-anchor-amount-{{$acct.Account.ID}}" name="anchor_amount" required
+                                step="0.01"
+                                aria-describedby="acct-anchor-amount-help-{{$acct.Account.ID}}"
+                                {{if eq $root.ErrorField "anchor_amount"}}data-focus-target="anchor_amount" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <p id="acct-anchor-amount-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Dollars, bank convention (positive = money you have), e.g. <code>4210.55</code>.
+                            </p>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label for="acct-anchor-note-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Note (optional)</label>
+                            <input type="text" id="acct-anchor-note-{{$acct.Account.ID}}" name="anchor_note"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div class="md:col-span-1">
+                            <button type="submit"
+                                class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                Add anchor
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {{/* Delete flow with explicit confirm. */}}
+                <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                    {{if eq $root.ConfirmDeleteID $acct.Account.ID}}
+                    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3" role="alert">
+                        <p class="text-sm font-medium text-red-700 dark:text-red-300">
+                            Deleting an account is destructive: its transactions become
+                            unassigned. This cannot be undone.
+                        </p>
+                        <div class="mt-2 flex items-center gap-2">
+                            <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                                <input type="hidden" name="confirm" value="yes">
+                                <button type="submit"
+                                    class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400">
+                                    Yes, delete &ldquo;{{$acct.Account.Name}}&rdquo;
+                                </button>
+                            </form>
+                            <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                                <button type="submit"
+                                    class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                    Cancel
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {{else}}
+                    <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
+                        <button type="submit"
+                            aria-label="Delete account {{$acct.Account.Name}} (asks for confirmation)"
+                            class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-red-600 dark:text-red-400 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-400">
+                            Delete account
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
+            </li>
+            {{end}}
+        </ul>
+        {{end}}
+    </section>
+
+    {{/* Unassigned files. */}}
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-unassigned-heading">
+        <h2 id="accounts-unassigned-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Unassigned files</h2>
+        {{if .UnassignedFiles}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            These CSV files match no account&rsquo;s patterns. They still load, but
+            their rows carry no account attribution.
+        </p>
+        <ul class="mt-2 text-sm text-gray-700 dark:text-gray-300 list-disc list-inside">
+            {{range .UnassignedFiles}}<li class="font-mono">{{.}}</li>{{end}}
+        </ul>
+        {{else}}
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            Every CSV file in the data directory matches an account, or no CSV files are present.
+        </p>
+        {{end}}
+    </section>
+</div>
+{{end}}

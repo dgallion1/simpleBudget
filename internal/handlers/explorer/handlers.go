@@ -5,6 +5,7 @@ package explorer
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"math"
@@ -100,6 +101,8 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/explorer", handleExplorer)
 	r.Get("/explorer/transactions", handleTransactionsPartial)
 	r.Get("/explorer/files", handleFileManager)
+	r.Get("/explorer/import/scan", handleImportScan)
+	r.Post("/explorer/import", handleImport)
 	r.Post("/explorer/files/toggle", handleFileToggle)
 	r.Post("/explorer/upload", handleFileUpload)
 	r.Post("/explorer/alias", handleAlias)
@@ -170,6 +173,8 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 			filtered = filtered.FilterByType(models.Income)
 		} else if txnType == "Outflow" {
 			filtered = filtered.FilterByType(models.Outflow)
+		} else if txnType == "Transfer" {
+			filtered = filtered.FilterByType(models.Transfer)
 		}
 	}
 
@@ -235,6 +240,15 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 		"HashToExpense":      hashToExpense,
 		"MajorExpenseFilter": majorExpenseID,
 	}
+
+	// Unassigned-files banner (A8): same count the dashboard shows, surfaced
+	// here too so a user browsing transactions is never left unaware that some
+	// came from CSVs matching no account. Files are never silently dropped.
+	unassignedCount := 0
+	if loader != nil {
+		unassignedCount = loader.UnassignedCount()
+	}
+	pageData["UnassignedCount"] = unassignedCount
 
 	templates.AttachDuplicateCount(pageData, loader)
 	if renderer != nil {
@@ -309,6 +323,8 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 			filtered = filtered.FilterByType(models.Income)
 		} else if txnType == "Outflow" {
 			filtered = filtered.FilterByType(models.Outflow)
+		} else if txnType == "Transfer" {
+			filtered = filtered.FilterByType(models.Transfer)
 		}
 	}
 
@@ -402,14 +418,348 @@ func handleFileManager(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// importScanEntry is one CSV discovered in ImportDirectory. It carries the
+// parsed transaction date range (derived through the same loader path as the
+// data-directory file listing — no second CSV parser) and an `exists` flag
+// set when a file of that name is already present in DataDirectory, so the UI
+// can pre-disable it.
+type importScanEntry struct {
+	Name    string `json:"name"`
+	Size    int64  `json:"size"`
+	MinDate string `json:"min_date"`
+	MaxDate string `json:"max_date"`
+	Exists  bool   `json:"exists"`
+}
+
+// handleImportScan lists *.csv files found directly inside ImportDirectory.
+// It is read-only: it never creates, modifies, or deletes a file. The actual
+// import (copy + optional source delete) is handleImport, POST
+// /explorer/import.
+//
+// Exclusions, per the §3 spec:
+//   - No recursion: only files directly in ImportDirectory are listed.
+//   - Symlinks are neither followed nor listed. The date-range parse reuses
+//     loader.GetFileInfo (via a throwaway DataLoader pointed at the import
+//     dir), which reads through os.Stat — so symlinks would otherwise be
+//     followed. We Lstat each candidate and drop any symlink before returning
+//     it, regardless of what it points at.
+//   - Non-CSV files are not listed (GetFileInfo already globs *.csv).
+//
+// A missing or unreadable ImportDirectory is not an error: the user may simply
+// have no Downloads folder. The handler returns 200 with an empty list and a
+// message the UI can show.
+func handleImportScan(w http.ResponseWriter, r *http.Request) {
+	entries, message := scanImportDirectory(cfg.ImportDirectory)
+
+	partialData := map[string]interface{}{
+		"ImportEntries": entries,
+		"ImportMessage": message,
+		"ImportPath":    cfg.ImportDirectory,
+	}
+
+	if renderer != nil {
+		_ = renderer.RenderPartial(w, "import-scan", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// scanImportDirectory enumerates importable CSVs in importDir. It is split
+// from the handler so tests can drive it directly without an HTTP recorder.
+//
+// It builds a short-lived DataLoader whose CSVDirectory is the import dir and
+// reuses GetFileInfo's existing scanCSVMetadata parse for the date range,
+// rather than re-implementing CSV parsing here. Symlinks are filtered out
+// after the fact with os.Lstat (GetFileInfo stats via os.Stat, which follows
+// links); everything else in GetFileInfo's inclusion rule — glob *.csv, drop
+// stat failures — is preserved.
+//
+// The exists flag is derived from the package-global loader, which is bound
+// to cfg.DataDirectory — the same source the file-manager page uses.
+func scanImportDirectory(importDir string) ([]importScanEntry, string) {
+	if importDir == "" {
+		return nil, "No import folder is configured."
+	}
+	if _, err := os.Stat(importDir); err != nil {
+		// Missing or unreadable — not an error. The user may simply have no
+		// Downloads folder.
+		return nil, "Import folder not found: " + importDir
+	}
+
+	importLoader := dataloader.New(importDir, store)
+	infos, err := importLoader.GetFileInfo()
+	if err != nil {
+		// A Glob error reads as "no files to import" for the caller's
+		// purposes; GetFileInfo already drops per-file stat failures.
+		return nil, "Could not read import folder: " + importDir
+	}
+
+	// Names already present in the data dir mark an import entry as existing.
+	dataNames := make(map[string]bool)
+	if files, err := loader.GetFileInfo(); err == nil {
+		for _, f := range files {
+			dataNames[f.Name] = true
+		}
+	}
+
+	entries := make([]importScanEntry, 0, len(infos))
+	for _, fi := range infos {
+		// GetFileInfo follows symlinks via os.Stat. Re-stat without following
+		// and drop any symlink, no matter what it targets.
+		if li, err := os.Lstat(fi.Path); err == nil && li.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		entries = append(entries, importScanEntry{
+			Name:    fi.Name,
+			Size:    fi.Size,
+			MinDate: fi.MinDate,
+			MaxDate: fi.MaxDate,
+			Exists:  dataNames[fi.Name],
+		})
+	}
+
+	if len(entries) == 0 {
+		return entries, "No CSV files found in import folder."
+	}
+	return entries, ""
+}
+
+// importOutcome is the per-file result of a folder import. It mirrors
+// uploadOutcome's shape (P12's batch upload) so the two panels can speak the
+// same vocabulary: "imported", "skipped", or "rejected", with a human reason.
+// SourceDeleted records whether the original in ImportDirectory was removed,
+// so the result panel can state that in text rather than leaving the user to
+// infer it from the presence of a delete tick.
+type importOutcome struct {
+	Name          string `json:"name"`
+	Status        string `json:"status"`
+	Reason        string `json:"reason,omitempty"`
+	SourceDeleted bool   `json:"source_deleted"`
+}
+
+// importDeps are the four filesystem/storage operations a single file import
+// performs. Production code always uses defaultImportDeps; tests substitute
+// one operation at a time to stage failures that real files cannot produce
+// reliably — above all a readback that returns short bytes, which is the only
+// thing standing between a truncated or encryption-failed write and an
+// irreversible source delete.
+type importDeps struct {
+	readSource func(path string) ([]byte, error)
+	write      func(path string, data []byte, perm os.FileMode) error
+	readBack   func(path string) ([]byte, error)
+	removeSrc  func(path string) error
+}
+
+// defaultImportDeps binds the real operations. The source lives outside the
+// data directory, so it is read with os.ReadFile and removed with os.Remove;
+// only the destination goes through store, so that encryption applies to what
+// lands in the data directory and the readback decrypts symmetrically. write
+// is bound to store.CreateExclusive, not store.WriteFile: a plain write
+// between a Stat and the write itself has a window where a concurrent upload
+// or import can create the destination first, and the write would then
+// overwrite it — see the upload path's uploadOneFile for the same reasoning.
+func defaultImportDeps() importDeps {
+	return importDeps{
+		readSource: os.ReadFile,
+		write:      func(path string, data []byte, perm os.FileMode) error { return store.CreateExclusive(path, data, perm) },
+		readBack:   func(path string) ([]byte, error) { return store.ReadFile(path) },
+		removeSrc:  os.Remove,
+	}
+}
+
+// handleImport copies selected CSVs out of ImportDirectory into the data
+// directory and, when asked, deletes the originals.
+//
+// Wire format (pinned by the §3 design so independent implementations agree):
+// form-encoded, with `name` repeated once per selected file — bare filenames
+// as returned by the scan — and an optional `delete_source` whose value must
+// be exactly the string "true" to enable deletion. Any other value, and the
+// field's absence, mean keep the sources.
+//
+// A processed batch is a 200 even when individual files were skipped or
+// rejected; the per-file outcomes travel in the body, matching P12's batch
+// upload. Only a malformed request — no `name` fields at all — is a 400, and
+// that path returns before touching the filesystem so it is provably inert.
+func handleImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	// Read names from PostForm, not Form: the selection belongs in the request
+	// body, and Form would also fold in URL query parameters.
+	names := make([]string, 0, len(r.PostForm["name"]))
+	for _, n := range r.PostForm["name"] {
+		if strings.TrimSpace(n) != "" {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		http.Error(w, "No files selected for import", http.StatusBadRequest)
+		return
+	}
+
+	deleteSource := r.PostFormValue("delete_source") == "true"
+
+	deps := defaultImportDeps()
+	outcomes := make([]importOutcome, 0, len(names))
+	for _, name := range names {
+		outcomes = append(outcomes, importOneFile(name, deleteSource, deps))
+	}
+
+	partialData := map[string]interface{}{
+		"Results":      outcomes,
+		"DeleteSource": deleteSource,
+		"ImportPath":   cfg.ImportDirectory,
+	}
+
+	if renderer != nil {
+		_ = renderer.RenderPartial(w, "import-result", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// importOneFile runs the six-step import for one selected name. It never
+// returns an error: a failure is the caller's outcome for that file, and the
+// rest of the batch continues.
+//
+// The source delete at the end is gated three ways, all of which must hold:
+// the write succeeded, the readback matched the expected byte length, and the
+// path resolved to a direct child of ImportDirectory. A file that was skipped
+// or rejected returns before reaching it, so it is never deleted.
+func importOneFile(name string, deleteSource bool, deps importDeps) importOutcome {
+	// Step 1 — validate the name with no filesystem call at all. filepath.Base
+	// strips every directory component, so a name that differs from its own
+	// Base carried a separator and cannot be a name the scan returned. "." and
+	// ".." are their own Base, so they are excluded by hand.
+	if name == "" || name == "." || name == ".." ||
+		name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "invalid filename"}
+	}
+
+	// The scan only ever offers *.csv; an explicitly posted non-CSV name is
+	// rejected here, still before any filesystem access.
+	if !strings.HasSuffix(strings.ToLower(name), ".csv") {
+		return importOutcome{Name: name, Status: "rejected", Reason: "only CSV files can be imported"}
+	}
+
+	if cfg.ImportDirectory == "" {
+		return importOutcome{Name: name, Status: "rejected", Reason: "no import folder is configured"}
+	}
+
+	// Step 2 — re-stat inside ImportDirectory and confirm a direct child.
+	// Lstat, not Stat: a symlink is never followed, so a link planted in the
+	// import folder cannot make an outside file look like a member of it — and
+	// cannot get that outside file deleted.
+	srcPath := filepath.Join(cfg.ImportDirectory, name)
+	info, err := os.Lstat(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not found in the import folder"}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return importOutcome{Name: name, Status: "rejected", Reason: "symlinks are not imported"}
+	}
+	if !info.Mode().IsRegular() {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not a regular file"}
+	}
+	if !isDirectChild(cfg.ImportDirectory, srcPath) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not directly inside the import folder"}
+	}
+
+	// Step 3 — a fast-path check: a name already in the data directory skips.
+	// This is only an optimization to skip reading the source when the
+	// destination is obviously already taken; it does not decide anything by
+	// itself. A Stat that failed for a reason other than "absent" is not read
+	// as absent: overwriting on a permission or I/O error would lose the
+	// existing file, and a source delete on top of that would make it
+	// unrecoverable.
+	destPath := filepath.Join(cfg.DataDirectory, name)
+	if _, err := store.Stat(destPath); err == nil {
+		return importOutcome{Name: name, Status: "skipped", Reason: "already exists in the data folder"}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not check the destination"}
+	}
+
+	// Step 4 — read the source, then write through store so encryption
+	// applies. The write itself is the real existence check: deps.write is
+	// bound to store.CreateExclusive, whose test and create are one
+	// indivisible step, so a destination created by a concurrent upload or
+	// import between the fast path above and this write still cannot be
+	// overwritten — the write fails with an error satisfying
+	// errors.Is(err, os.ErrExist) and this file is reported skipped, same as
+	// the fast path above, instead of clobbering the winner.
+	data, err := deps.readSource(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not read the source file"}
+	}
+	if err := deps.write(destPath, data, 0644); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return importOutcome{Name: name, Status: "skipped", Reason: "already exists in the data folder"}
+		}
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not save the file"}
+	}
+
+	// Step 5 — read the destination back and confirm the expected byte length.
+	// This is what makes "fully saved" mean something: without it a truncated
+	// or encryption-failed write would still clear the way for step 6.
+	back, err := deps.readBack(destPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "saved file could not be read back"}
+	}
+	if len(back) != len(data) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "saved file failed verification"}
+	}
+
+	outcome := importOutcome{Name: name, Status: "imported"}
+	if !deleteSource {
+		log.Printf("Imported file: %s", name)
+		return outcome
+	}
+
+	// Step 6 — all three guards have held: the write succeeded, the readback
+	// matched, and srcPath was confirmed a direct, non-symlink child of
+	// ImportDirectory. Only now is the original removed.
+	if err := deps.removeSrc(srcPath); err != nil {
+		outcome.Reason = "imported, but the source file could not be deleted"
+		log.Printf("Imported file: %s (source delete failed: %v)", name, err)
+		return outcome
+	}
+	outcome.SourceDeleted = true
+	outcome.Reason = "source file deleted"
+	log.Printf("Imported file: %s (source deleted)", name)
+	return outcome
+}
+
+// isDirectChild reports whether path names an entry sitting directly inside
+// dir. Both sides go through EvalSymlinks so that a symlinked import folder
+// (a symlinked ~/Downloads, /tmp on systems where it is a link) still matches,
+// while anything reached by leaving the folder does not. Callers Lstat path
+// first and reject symlinks, so EvalSymlinks here only resolves path's parent
+// components.
+func isDirectChild(dir, path string) bool {
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return false
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	return filepath.Dir(resolvedPath) == resolvedDir
+}
+
 func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 	isLocked := store.IsEncrypted() && !store.IsUnlocked()
 
 	data := map[string]interface{}{
-		"Title":       "File Manager",
-		"ActiveTab":   "filemanager",
-		"IsEncrypted": store.IsEncrypted(),
-		"IsLocked":    isLocked,
+		"Title":           "File Manager",
+		"ActiveTab":       "filemanager",
+		"IsEncrypted":     store.IsEncrypted(),
+		"IsLocked":        isLocked,
+		"ImportDirectory": cfg.ImportDirectory,
 	}
 
 	// Add auth method info if encrypted
@@ -464,14 +814,20 @@ func handleFileToggle(w http.ResponseWriter, r *http.Request) {
 	// Update loader
 	loader.SetEnabledFiles(enabledFiles)
 
-	// Return updated file list
+	// Return updated file list.
 	files, _ = loader.GetFileInfo()
 	partialData := map[string]interface{}{
 		"Files": files,
 	}
 
+	// Render the same `filemanager-file-list`
+	// partial the File Manager page uses on initial render, so the swapped-in
+	// table carries the sortable headers (data-sort-btn, scope="col") and the
+	// per-row data-* attributes the client-side sort JS re-wires on
+	// htmx:afterSettle. The `file-list` template (explorer.html) is the old
+	// non-sortable markup; rendering it here was the P13 sort-survival defect.
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "filemanager-file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -521,6 +877,10 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return updated file list plus the per-file outcomes of this batch.
+	// `filemanager-file-list` ignores .Results and only renders .Files, which
+	// is exactly what the #file-list swap target needs; the outcomes are kept
+	// for the JSON fallback. See handleFileToggle for why this renders
+	// filemanager-file-list rather than the legacy file-list partial.
 	files, _ := loader.GetFileInfo()
 	partialData := map[string]interface{}{
 		"Files":   files,
@@ -528,7 +888,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "filemanager-file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -552,11 +912,6 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 
 	destPath := filepath.Join(cfg.DataDirectory, filename)
 
-	// Collisions skip: never overwrite, never auto-rename.
-	if _, err := store.Stat(destPath); err == nil {
-		return uploadOutcome{Name: filename, Status: "skipped", Reason: "already exists"}
-	}
-
 	file, err := header.Open()
 	if err != nil {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
@@ -568,8 +923,15 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
 	}
 
-	// Write via storage (handles encryption if enabled)
-	if err := store.WriteFile(destPath, data, 0644); err != nil {
+	// Collisions skip: never overwrite, never auto-rename. The existence test
+	// is the create itself. A separate Stat first would let two uploads of the
+	// same name both pass it and then overwrite each other, and would read a
+	// permission or I/O error from Stat as "absent" and overwrite anyway.
+	// Writes via storage, so encryption still applies when enabled.
+	if err := store.CreateExclusive(destPath, data, 0644); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return uploadOutcome{Name: filename, Status: "skipped", Reason: "already exists"}
+		}
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error saving file"}
 	}
 
@@ -619,14 +981,15 @@ func handleFileDelete(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Deleted file: %s", filename)
 
-	// Return updated file list
+	// Return updated file list. See handleFileToggle for why this renders
+	// filemanager-file-list rather than the legacy file-list partial.
 	files, _ := loader.GetFileInfo()
 	partialData := map[string]interface{}{
 		"Files": files,
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "file-list", partialData)
+		_ = renderer.RenderPartial(w, "filemanager-file-list", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)

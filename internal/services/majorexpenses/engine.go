@@ -30,10 +30,14 @@ type MatchOptions struct {
 	// NewMerchantWindow is the trailing window (relative to the dataset's
 	// max date) used to detect first-time merchants.
 	NewMerchantWindow time.Duration
-	// Pins maps transaction Hash → MajorExpense.ID. A pin overrides
+	// Pins maps transaction identity → MajorExpense.ID. A pin overrides
 	// keyword/amount matching for that one transaction; if the pinned
 	// expense ID does not exist in defs, the pin is ignored and the
 	// transaction falls through to the regular matching rules.
+	//
+	// Keys are StableIDs for anything written since StableID landed and
+	// legacy content hashes for older entries, so lookups go through
+	// models.ResolveByIdentity rather than indexing by hash.
 	Pins map[string]string
 }
 
@@ -72,12 +76,12 @@ func Match(ts *models.TransactionSet, defs []models.MajorExpense, opts MatchOpti
 
 	for _, t := range ts.Transactions {
 		// 1. Honor explicit pin if it points to an existing expense.
-		if opts.Pins != nil && t.Hash != "" {
-			if id, ok := opts.Pins[t.Hash]; ok && validIDs[id] {
-				result.Groups[id] = append(result.Groups[id], t)
-				result.PinnedHashes[t.Hash] = true
-				continue
-			}
+		if id, _, ok := models.ResolveByIdentity(opts.Pins, t); ok && validIDs[id] {
+			result.Groups[id] = append(result.Groups[id], t)
+			// PinnedHashes stays keyed on Hash: it is what the UI
+			// renders on the row and posts back to the unpin route.
+			result.PinnedHashes[t.Hash] = true
+			continue
 		}
 		// 2. Fall back to keyword/amount matching.
 		if id, ok := MatchTransaction(t, defs); ok {
@@ -121,11 +125,9 @@ func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models
 		}
 		first := out[i].Transactions[0]
 		// Pin wins.
-		if pins != nil && first.Hash != "" {
-			if id, ok := pins[first.Hash]; ok && validIDs[id] {
-				out[i].MajorExpenseName = defByID[id].Name
-				continue
-			}
+		if id, _, ok := models.ResolveByIdentity(pins, first); ok && validIDs[id] {
+			out[i].MajorExpenseName = defByID[id].Name
+			continue
 		}
 		// Otherwise keyword/amount matching.
 		if id, ok := MatchTransaction(first, defs); ok {

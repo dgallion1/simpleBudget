@@ -1,0 +1,380 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A6
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Worktree: /home/darrell/bin/ai/budget2/.swarm/work/A6, branch work/A6, HEAD
+7cbe2e7 ("docs(swarm): record A2 rulings on oracle validation"). A1/A4 absent
+as expected.
+
+Read in full: .swarm/briefs/A6.md (from /home/darrell/bin/ai/budget2/.swarm/
+briefs/A6.md — the brief is NOT present inside the worktree, see note 10.1),
+GLOSSARY.md (Account / Account kind / BalanceAnchor), internal/models/
+account.go, internal/services/accounts/accounts.go, docs/superpowers/specs/
+2026-08-16-accounts-transfers-design.md §5, and all three A6 source files.
+
+Method note: because ruling 2026-08-16a in docs/superpowers/specs/
+2026-08-12-file-manager-import-design.md records a task that shipped broken in
+the browser with green tests, I did NOT establish behavior by reading the
+handler. I built the server binary OUTSIDE the repo, ran it against a fixture
+data directory outside the repo, and curled every real endpoint. Every
+behavioral claim below is backed by live HTTP output, not by code reading.
+
+---
+
+## 1. Manifest fidelity — PASS
+
+.swarm/manifests/A6.1.files:
+    cmd/server/main.go
+    internal/handlers/accounts/handlers.go
+    internal/handlers/accounts/handlers_test.go
+    web/templates/layouts/base.html
+    web/templates/pages/accounts.html
+
+`git status --porcelain`:
+     M cmd/server/main.go
+     M web/templates/layouts/base.html
+    ?? .swarm/manifests/A6.1.files
+    ?? .swarm/verdicts/A6.1.checker-a11y.verdict
+    ?? internal/handlers/accounts/
+    ?? web/templates/pages/accounts.html
+
+Exact match. (`internal/handlers/accounts/` expands to handlers.go +
+handlers_test.go, both listed.) The two extra entries are the manifest itself
+and the parallel a11y checker's verdict — neither is source. No stray file.
+
+## 2. Toolchain green — PASS
+
+    $ go build ./...
+    Go build: Success                      (exit 0)
+
+    $ go vet ./...
+    Go vet: No issues found                (exit 0)
+
+    $ go test ./...
+    ok  	budget2/internal/handlers/accounts	(cached)
+    ok  	budget2/internal/services/accounts	(cached)
+    ok  	budget2/internal/handlers/backup	25.593s
+    ok  	budget2/internal/services/storage	31.041s
+    ... 46 packages, every line "ok", zero FAIL. ?   budget2/web [no test files]
+    (Run without a grep/head pipe; tail applied to the completed output only.)
+
+    $ staticcheck ./...
+    staticcheck exit=0        (no diagnostics)
+
+    $ gofmt -l cmd/server/main.go internal/handlers/accounts/handlers.go \
+        internal/handlers/accounts/handlers_test.go
+    (no output — clean)
+
+Package-level verbose run: 19/19 tests PASS.
+    ok  	budget2/internal/handlers/accounts	0.127s
+
+## 3. CRUD round-trips through the store + validation errors surfaced — PASS
+
+Live server: binary built to scratch, BUDGET_DATA_DIR pointed at a scratch
+fixture dir holding usaa-checking.csv, usaa-credit-2026-08.csv,
+vanguard-2026.csv. Listening 127.0.0.1:18641.
+
+CREATE — POST /accounts (id=zz-check, name="ZZ Checking", kind=checking,
+file_patterns="usaa-check*.csv", low_balance_threshold=750) → 200. The sidecar
+written by accounts.Save, read back off disk:
+
+    {"accounts":[{"id":"zz-check","name":"ZZ Checking","institution":"USAA",
+      "kind":"checking","file_patterns":["usaa-check*.csv"],
+      "low_balance_threshold":750,"created_at":"2026-08-17T13:05:28...","...
+
+EDIT — POST /accounts/aa-all (name="AA Renamed", kind=savings,
+low_balance_threshold=1200) → 200; response HTML contains "AA Renamed"; disk:
+
+    [('zz-check','ZZ Checking','checking',750,0),
+     ('aa-all','AA Renamed','savings',1200,1)]
+
+Note the trailing 1: the pre-existing anchor survived the edit — the edit path
+merges fields rather than replacing the record (handlers.go:431-442), so anchor
+data is not silently destroyed by a name change.
+
+DELETE — see item 7. Persisted removal confirmed on disk.
+
+VALIDATION, duplicate ID — POST /accounts with id=aa-all (already exists) → 200,
+body carries the error verbatim from accounts.Validate (accounts.go:139):
+
+    duplicate account ID &#34;aa-all&#34;
+
+with `role="alert"` present (1 occurrence) and `aria-invalid="true"` on the
+offending field. Disk after: ['zz-check','aa-all'] — the second record was NOT
+written. This is genuinely routed through accounts.Save: handlers.go:443-454
+ALWAYS appends on create (never upserts), specifically so Validate sees the
+duplicate rather than the handler silently overwriting.
+
+VALIDATION, empty name — POST /accounts (id=no-name, name="   ") → 200, body:
+
+    account name is required
+
+Disk unchanged: ['zz-check','aa-all'].
+
+Judgment call recorded, not a defect: the empty-name error is raised by the
+handler's own pre-check (handlers.go:419-422) before accounts.Save is reached,
+so accounts.Validate's own empty-name string is never the one displayed. The
+user-visible outcome is identical (error shown, nothing persisted), and the
+brief's requirement is "surfaced to the user rather than swallowed", which
+holds. Same for empty ID.
+
+## 4. Pattern editor resolves against the data directory — PASS (strongest evidence)
+
+This is the item most at risk of being satisfied cosmetically, so I proved it
+three ways against the live server, all of which would fail if the page merely
+echoed the typed patterns.
+
+(a) GLOB RESOLUTION. The account was created with the pattern
+`usaa-check*.csv`. The rendered "Matched files" list does not contain that
+string; it contains the resolved filename:
+
+    <h4 ...>Matched files</h4>
+    <ul ...><li class="font-mono">usaa-checking.csv</li></ul>
+
+and the same file simultaneously disappeared from the Unassigned section, which
+before the create had listed all three fixtures:
+
+    before: usaa-checking.csv, usaa-credit-2026-08.csv, vanguard-2026.csv
+    after:  usaa-credit-2026-08.csv, vanguard-2026.csv
+
+An echo of the typed text cannot produce a different string, and cannot move a
+file between two sections.
+
+(b) FIRST MATCH WINS BY ASCENDING ACCOUNT ID. I then created a second account
+`aa-all` whose ID sorts BEFORE `zz-check` and whose pattern is the bare
+substring `usaa`. Live response:
+
+    === AA Catchall ===  Matched files
+      <li>usaa-checking.csv</li><li>usaa-credit-2026-08.csv</li>
+    === ZZ Checking ===  Matched files
+      "No CSV files in the data directory currently match this account's patterns."
+
+The catch-all took usaa-checking.csv away from the account holding the MORE
+SPECIFIC glob, purely because its ID sorts first. That is exactly
+accounts.MatchFile's documented contract (accounts.go:179-189, sortedByID at
+:234-239) and is the opposite of what a naive most-specific-wins or
+per-account-independent implementation would render. handlers.go:486-489 does
+in fact call accounts.MatchFile once per basename and then buckets by winner
+(:494-506), so the page and the loader cannot disagree.
+
+(c) SUBSTRING FALLBACK + UNASSIGNED. `usaa` (not a glob) matched both usaa
+files via accountMatches' substring fallback (accounts.go:225), and
+vanguard-2026.csv — matching nothing — remained listed under
+`id="accounts-unassigned-heading"` with the explanatory text "These CSV files
+match no account's patterns. They still load, but their rows carry no account
+attribution."
+
+The file list itself comes from a real glob of the data directory
+(handlers.go:565-585, filepath.Glob(dir+"/*.csv")), the same glob
+accounts.existingCSVBasenames uses (accounts.go:245-256).
+
+## 5. Anchor entry + end-of-day meaning — PASS (spot-checked; a11y lane owns the label wording)
+
+POST /accounts/aa-all/anchor (2026-08-01 / 4210.55 / "statement") → 200. Disk:
+
+    ('aa-all', [{'date':'2026-08-01T00:00:00Z','amount':4210.55,'note':'statement'}])
+
+Rendered partial contains the formatted amount `$4,210.55` and the end-of-day
+statement in text:
+
+    An anchor records the balance at the <strong>end</strong> of the anchor day.
+    A transaction dated on the anchor day is already reflected in the amount and
+    is not added again when rolling the balance forward.
+
+That matches the binding GLOSSARY/models.BalanceAnchor contract ("balance as of
+the END of Date"). Sorting on insert verified by
+TestHandleAddAnchor_KeepsAnchorsSortedByDate (PASS) and handlers.go:259.
+
+## 6. Threshold blank/zero = default, stated in UI — PASS (spot-checked)
+
+Live GET /accounts:
+
+    acct-new-threshold-help: "Enter a dollar amount, e.g. 500. Leave blank or
+      enter 0 to use the default of $500. Only meaningful for checking and
+      savings accounts."
+    acct-edit-threshold-help-aa-all: "Blank or 0 uses the default ($500)."
+
+Code path agrees: blank input leaves lowThreshold at 0 (handlers.go:376-384)
+and models.Account documents "Zero means use the default".
+
+## 7. Delete requires an explicit confirm step — PASS (requirement met; one defect noted, see 10.2)
+
+FIRST CLICK, no confirm token — POST /accounts/zz-check/delete with an empty
+body → 200. The account was NOT deleted:
+
+    disk after single click: ['zz-check','aa-all']
+
+and the response renders the confirm panel instead:
+
+    <div ... role="alert">
+      <p ...>Deleting an account is destructive: its transactions become
+       unassigned. This cannot be undone.</p>
+      <form hx-post="/accounts/zz-check/delete" ...>
+        <input type="hidden" name="confirm" value="yes">
+        <button type="submit" ...>Yes, delete &ldquo;ZZ Checking&rdquo;</button>
+
+CONFIRMED CLICK — POST /accounts/zz-check/delete with confirm=yes → 200,
+occurrences of "ZZ Checking" in the response: 0, and disk: ['aa-all'].
+
+So a single click provably cannot destroy an account; the destructive action is
+gated behind a second, differently-parameterized submit. Requirement met.
+
+## 8. Scope — PASS
+
+    $ grep -niE "balance(at|proj)|projection|transfer|dashboard card|mcpsvc|forecast" \
+        internal/handlers/accounts/handlers.go web/templates/pages/accounts.html
+    (no matches)
+
+No computed balances (A4), no funding projection (A5), no dashboard card or
+unassigned banner (A8), no transfers page (A7), no MCP tools (A9). The
+cmd/server/main.go diff is +3 lines only (import, Initialize, RegisterRoutes);
+the base.html diff is +6 lines only (desktop nav link, mobile nav link,
+`{{else if eq .ActiveTab "accounts"}}` branch). Nothing existing was modified or
+reformatted.
+
+## 9. Tests assert on what the handler RENDERS — PASS (this was the highest-risk item)
+
+The 2026-08-16a failure mode is a test that renders a DIFFERENT template than
+production does. I checked template-loading parity directly rather than trusting
+the test names:
+
+    production  cmd/server/main.go:76-77
+        templatesFS, _ := fs.Sub(web.EmbeddedFS, "templates")
+        renderer, err = templates.NewFromFS(templatesFS, false)
+
+    test        handlers_test.go:65-69
+        templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
+        rend, err := templates.NewFromFS(templatesFS, false)
+
+Byte-identical FS root and constructor. The renderer-mode tests therefore
+exercise the exact template set the server ships, closing the hole 2026-08-16a
+was about.
+
+Eight of the nineteen tests run in renderer mode and assert on markup, not on
+pageData:
+
+  - TestHandlePage_RendersFullPageInRendererMode — full page carries
+    <!doctype>/<html> and an <h1>, i.e. the base layout resolved
+    "accounts-content" rather than falling through to base.html's "Page Not
+    Found" branch.
+  - TestHandleCreate_RendererMode_SwapsAccountsListPartial — asserts the
+    mutation response does NOT contain <!doctype>/<html> (it is the partial),
+    DOES contain the new account name, and DOES contain
+    id="accounts-list-heading". This is the direct 2026-08-16a guard: it would
+    fail if the handler returned the full page or a different partial.
+  - TestHandleCreate_RendererMode_ValidationErrorSurfacedInPartial — asserts
+    "duplicate" text, role="alert"/aria-live, and aria-invalid="true" in the
+    swapped markup.
+  - TestHandleDelete_RendererMode_ConfirmPanelRendered — asserts name="confirm",
+    value="yes", "Yes, delete", and that the account is still listed.
+  - TestHandleDelete_RendererMode_ConfirmedDeleteRemovesAccount — asserts the
+    name is absent AND that the response is still the list section.
+  - TestHandleAddAnchor_RendererMode_AnchorShownInPartial — asserts the date,
+    the FORMATTED amount "$4,210.55" and the note in the swapped markup.
+  - Plus two page-level markup tests (labels, required/format text).
+
+Independent corroboration: I reproduced every one of those assertions against
+the live binary over HTTP (items 3-7 above), so the tests are not merely
+self-consistent with a stale template — they agree with the running server.
+
+Ruling 2026-08-16e — loop-based assertions without a preceding count assertion.
+Four `for ... range` in handlers_test.go:
+
+  - :42  ranges a string literal (fixture writing, not an assertion) — n/a.
+  - :598 ranges a string literal of five field IDs; the iteration count is fixed
+    by the literal and cannot be vacuously zero — n/a.
+  - :762 equalStrings helper, guarded by an explicit len(a)!=len(b) check — n/a.
+  - :372 `for _, v := range data.Accounts { got[v.Account.ID] = v.MatchedFiles }`
+    — FLAGGED per 2026-08-16e. There is no `len(data.Accounts) != 3` assertion
+    before it. It is a collect loop, not an assert loop, and the following
+    positive assertion (equalStrings(got["usaa-all"], want)) does fail if the
+    loop yields nothing — so it is not actually vacuous — but the two negative
+    assertions at :378 and :381 (`len(got[...]) != 0`) WOULD pass vacuously on an
+    empty page. Reporting as required by the ruling; non-blocking, because the
+    positive assertion anchors the loop.
+
+Test-coverage gap worth recording (non-blocking): the per-account "Matched
+files" list — the headline deliverable of item 4 — is asserted only at the
+pageData level (TestBuildPageData_PatternEditorListsMatchedFiles), never in
+rendered HTML. The Unassigned list from the identical pipeline IS asserted in
+HTML (TestHandlePage_RendererMode_UnassignedFilesShownByText, checking for
+"vanguard-2026.csv"), and I verified the matched-files markup myself against the
+live server (item 4a/4b), so the behavior is confirmed — but a template
+regression that dropped the matched-files <ul> would not be caught by the suite.
+
+---
+
+## 10. Notes and defects for the lead
+
+10.1 The task brief is not present in the worktree: `.swarm/briefs/A6.md` does
+not exist under .swarm/work/A6. I read it from the main tree at
+/home/darrell/bin/ai/budget2/.swarm/briefs/A6.md. Informational.
+
+10.2 DEFECT (not a violation of any written requirement; recommend a follow-up
+task rather than a rejection). The "Cancel" button inside the delete-confirm
+panel is a dead control. Both buttons in the panel post to the same endpoint;
+only the destructive one carries the token:
+
+    <form hx-post="/accounts/aa-all/delete" ...>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" ...>Yes, delete "..."</button></form>
+    <form hx-post="/accounts/aa-all/delete" ...>          <-- Cancel: no token
+      <button type="submit" ...>Cancel</button></form>
+
+handleDelete treats "no confirm token" as "open the confirm panel"
+(handlers.go:172-177), so Cancel re-renders the identical panel. Verified live:
+after posting the Cancel form, occurrences of "Yes, delete" in the response = 1,
+i.e. the panel is still open. The user has no way to dismiss the destructive
+panel short of reloading. No test covers Cancel. I did not fail the task on this
+because brief requirement 7 as written is "require an explicit confirm step
+rather than deleting on a single click", which is fully satisfied and proven
+above — the safety property holds; only the escape hatch is broken.
+
+10.3 DEFECT, accessibility lane (deferring the ruling to checker-a11y, recorded
+here because I found it while testing item 3's error surfacing). The HTMX focus
+script (accounts.html:99) does
+`target.querySelector('[data-focus-target]')`, but `data-focus-target="id"`
+(:165) and `data-focus-target="name"` (:182) are emitted UNCONDITIONALLY on the
+create form, not gated on ErrorField. So the first match in DOM order is always
+the create-form ID input. Verified live on a NAME-error response — the first
+data-focus-target element in the returned partial is:
+
+    <input type="text" id="acct-new-id" name="id" required autocomplete="off"
+     data-focus-target="id" aria-describedby="acct-new-id-help" ...>
+
+Focus therefore lands on the ID field for every error and every successful swap,
+never on the offending field. Errors are still announced (the partial's
+role="alert" block is newly inserted on each swap), so this is a focus-management
+defect, ACCESSIBILITY.md points 5 and 10, not an announcement defect.
+
+10.4 Observation, no action needed: pageData.Warnings and both template blocks
+that render pattern-overlap warnings are unreachable — the handler calls
+accounts.Save, never accounts.SaveWithWarnings, so Warnings is always empty. The
+brief does not ask for overlap warnings, so this is dead UI, not a miss.
+
+10.5 Observation: the renderer==nil JSON fallback (handlers.go:118, :534) is a
+test-only branch living in production code. It is unreachable in production —
+cmd/server/main.go:111 always passes a non-nil renderer — and the eight
+renderer-mode tests cover the real path, so it does not weaken item 9.
+
+---
+
+## Hygiene
+
+Read-only with respect to worktree source. The only file I wrote is this
+verdict. The server binary (budget2-a6), the fixture CSV data directory, the
+captured HTML responses and the server log were all created under the session
+scratchpad, outside the repository. The server was killed and the port
+confirmed closed:
+
+    $ curl -s -m 2 -o /dev/null -w "curl_rc=%{http_code}\n" \
+        http://127.0.0.1:18641/accounts
+    curl_rc=000
+    port closed (good)
+
+Final `git status --porcelain` shows only the expected A6 changes (plus the
+parallel a11y checker's verdict file), listed under item 1.

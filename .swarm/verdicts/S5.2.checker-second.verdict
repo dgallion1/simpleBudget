@@ -1,0 +1,108 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 2
+---
+Scope: .swarm/manifests/S5.2.files (web/templates/pages/accounts.html,
+internal/handlers/accounts/handlers_test.go, internal/handlers/transfers/
+handlers.go, internal/handlers/transfers/handlers_test.go,
+internal/services/accounts/projection_test.go,
+internal/handlers/accounts/warnings_client_regression_test.go,
+internal/handlers/accounts/testdata/js/warnings_dom_harness.js, Makefile).
+No edits made to the real repo; all mutation was done in an rsync'd scratch
+copy at scratchpad/atk/repo (outside .git, no .git dir even copied). The only
+file written inside the repo is this verdict.
+
+WHAT I TRIED TO BREAK, AND WHAT HELD:
+
+1. Original bug reproduction: swapped in the authenticated pre-S5 template
+   (md5 fb2a5b02af41e835bbe1fc52fd22ed69, confirmed still present at
+   scratchpad/b2a3 from the prior checker-tests run and matching the hash
+   that S5.1's checker-tests verdict recorded) -> harness correctly FAILs
+   both dismiss_resolve_recreate and dismiss_then_reload_unchanged.
+
+2. Subtler variant (task's suggested attack): reverted ONLY the region-write
+   line to raw `text`/ungated-by-`dismissed` while leaving the stale-key
+   sessionStorage-clearing fix intact (a hybrid that a careless partial
+   revert could produce) -> still caught: dismiss_then_reload_unchanged
+   FAILs.
+
+3. Three-checks requirement is real: truncated the harness's own `tests`
+   array to drop two of the three checks (harness still exits 0, prints
+   SUMMARY ALL_PASS) -> Go side correctly FAILs on the missing
+   "RESULT dismiss_then_reload_unchanged" line, not the exit code.
+
+4. Extraction fragility: added a `nonce="..."` attribute to <script> (still
+   extracts fine, PASS as expected); added a second unrelated <script>
+   block elsewhere in the file -> TestExtractSyncWarningsScript_
+   FindsExactlyOneBlock and the harness test both FAIL loudly (not a
+   silent pass); injected a JS string literal containing the substring
+   "</script>" inside the real script -> also fails loudly (regex
+   miscounts to 2 blocks, Fatal, no silent pass).
+
+5. Stub swap-boundary fidelity: verified against the real template that
+   #accounts-warnings-region (line 91) sits in the `accounts-content`
+   define block (lines 51-334), while #accounts-warnings-banner (379) and
+   #accounts-warnings-data (417) sit inside `accounts-list-partial`
+   (341-760), the block HTMX actually swaps via hx-target="#accounts-list"
+   hx-swap="innerHTML". The harness's renderSwap()/renderInitial() split
+   (region persists across swaps, banner+data get fresh nodes) matches this
+   structure, not just plausible-looking.
+
+6. Attempt 1's fix is untouched: current web/templates/pages/accounts.html
+   md5 is 163d70d7849ce363f1c463052805db32, byte-identical to the hash S5.1's
+   checker-tests verdict recorded for the fix it verified in a real browser.
+
+7. Scope: none of the S5.2 manifest files match .swarm/critical.globs
+   (storage/dataloader/retirement-engine/transfers-service/accounts.go/
+   mcpsvc-confirm); no go.mod, go.sum, or package.json touched.
+
+WHAT BROKE IT -- CRITERION FAILS:
+
+A. "This check cannot be silently skipped in CI" is false as written. The
+   node requirement is wired into `check-node`, which only `test` (and
+   transitively `check`/`check-full`) depend on. `test-unit`,
+   `test-integration`, `test-coverage`, and bare `race` -- all first-class
+   targets in this same Makefile -- depend on `check-go` only, not
+   `check-node`. Reproduced directly: with node removed from PATH
+   (env -i PATH=/usr/bin:/bin:<go-dir> ...), `make test-unit` exits 0 and
+   prints "ok budget2/internal/handlers/accounts 0.228s" with
+   TestSyncWarnings_ClientRegressionHarness silently SKIPped (buried at
+   line 169 of ~11,000 lines of -v output, alongside dozens of unrelated
+   SKIPs for e.g. YubiKey-plugin-not-installed). `test-unit` is not an
+   obscure target -- it is the one most likely to be reached for when
+   iterating on exactly this package (./internal/...), and there is no CI
+   workflow in this repo (only .github/workflows/release.yml, which does
+   not run tests) that pins the invocation to `make test`. On a node-less
+   CI runner or contributor machine using `test-unit`/`test-coverage`/
+   `race` instead of `test`, this regression check reports full green
+   while never having executed -- exactly the "advertises coverage that
+   does not exist" failure mode this task was dispatched to find.
+
+B. Secondary, weaker finding (does not independently justify FAIL but
+   supports it): the DOM stub's renderInitial()/renderSwap() always
+   construct region/data text from the exact string parameter with no
+   surrounding whitespace, so it structurally cannot detect a regression
+   in the template's own HTML rendering (as opposed to the extracted
+   <script>). I confirmed this concretely by restoring the pre-S5
+   multi-line-indented (whitespace-padded) markup for
+   #accounts-warnings-region while leaving the fixed script untouched --
+   the harness still PASSes. In this specific case the S5 fix also moved
+   the same-text guard's seed off region.textContent onto the
+   data-warnings-text attribute, so this particular whitespace reversion
+   is probably neutralized in a real browser too (not certain, browser
+   diff was not run) -- but the general blind spot (nothing here exercises
+   actual Go template rendering) is real and is exactly the kind of gap
+   the previous S5.1 checker-tests fault-injection was designed to surface
+   for other files.
+
+CONCLUSION: the core Go/JS logic of the new harness is well-built --
+extraction failures fail loudly, the three-named-checks guard is real and
+was verified to reject a harness that lies about completion, both the
+original bug and a subtler hybrid revert are caught, and the stub's
+swap-boundary model matches the real template's define-block structure.
+But item A is a genuine, reproduced gap in the Makefile enforcement the
+test's own comments claim to close ("this check cannot be silently skipped
+in CI"), on a target (`test-unit`) that is a natural, easily-reached-for
+alternative to `test`. FAIL on that basis.

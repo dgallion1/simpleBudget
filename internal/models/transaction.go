@@ -10,27 +10,50 @@ import (
 	"time"
 )
 
-// TransactionType indicates whether a transaction is income or an outflow
+// TransactionType indicates whether a transaction is income, an outflow,
+// or a movement between the user's own accounts.
 type TransactionType string
 
 const (
 	Income  TransactionType = "Income"
 	Outflow TransactionType = "Outflow"
+	// Transfer is money moving between the user's own accounts. It is
+	// neither income nor expense and is excluded from both: every
+	// aggregation filters by type, so a Transfer row falls out of Total
+	// Income and Total Expenses without a formula change. Unlike the
+	// drop-on-load filter it replaces, a Transfer row stays visible in
+	// the ledger. See GLOSSARY.md ("Transfer", "Internal transfer").
+	Transfer TransactionType = "Transfer"
 )
 
 // Transaction represents a single financial transaction
 type Transaction struct {
-	ID               string          `json:"id"`
-	Date             time.Time       `json:"date"`
-	Amount           float64         `json:"amount"`
+	ID                  string          `json:"id"`
+	Date                time.Time       `json:"date"`
+	Amount              float64         `json:"amount"`
 	Description         string          `json:"description"`
 	DisplayName         string          `json:"display_name,omitempty"`         // User-assigned alias
 	MajorExpenseName    string          `json:"major_expense_name,omitempty"`   // Derived; stamped at load time, not persisted to source CSVs
 	EnrichedDescription string          `json:"enriched_description,omitempty"` // Derived from external sources (e.g. Amazon order data); stamped at load time
-	Category         string          `json:"category"`
-	TransactionType  TransactionType `json:"transaction_type"`
-	SourceFile       string          `json:"source_file"`
-	Hash             string          `json:"hash"`
+	Category            string          `json:"category"`
+	TransactionType     TransactionType `json:"transaction_type"`
+	SourceFile          string          `json:"source_file"`
+	Hash                string          `json:"hash"`
+
+	// AccountID is the ID of the Account whose CSV this row came from,
+	// stamped at load time by matching the file's basename against each
+	// account's FilePatterns. Empty means unassigned -- the file matched
+	// no account. Unassigned rows load normally and are counted
+	// (DataLoader.UnassignedCount); they are never dropped.
+	AccountID string `json:"account_id,omitempty"`
+
+	// StableID is the description-independent identity every user
+	// decision (pins, near-duplicate resolutions, Amazon enrichment) is
+	// keyed on: `accountID|YYYY-MM-DD|amount-in-cents|n`. See
+	// StableIDFor and GLOSSARY.md. Stamped at load time, after the sign
+	// flip and account attribution, so the amount it encodes is the one
+	// the app actually uses. Hash remains for the legacy fallback.
+	StableID string `json:"stable_id,omitempty"`
 
 	// Status is the bank-reported lifecycle marker (e.g. "Posted",
 	// "Scheduled Bill Pay"). Optional; populated when the source CSV
@@ -46,6 +69,19 @@ type Transaction struct {
 	// an unresolved near-duplicate candidate pair. Used to render
 	// "possible duplicate" badges and link to the review panel.
 	DuplicatePairKey string `json:"duplicate_pair_key,omitempty"`
+
+	// TransferClass qualifies a TransactionType of Transfer:
+	// "paired" (the counterparty leg is loaded and linked through
+	// TransferPairKey) or "external" (the counterparty account's CSV is
+	// not loaded, e.g. a Vanguard contribution). A non-transfer row
+	// carries "". See GLOSSARY.md ("TransferClass").
+	TransferClass string `json:"transfer_class,omitempty"`
+
+	// TransferPairKey is shared by exactly the two legs of one paired
+	// transfer, so either leg resolves the pair. Empty on external
+	// transfers and on non-transfer rows. See GLOSSARY.md
+	// ("TransferPairKey").
+	TransferPairKey string `json:"transfer_pair_key,omitempty"`
 
 	// Derived fields (computed, not stored)
 	Month      string `json:"month,omitempty"` // "2024-01"
@@ -65,6 +101,59 @@ func (t *Transaction) ComputeHash() string {
 	input := fmt.Sprintf("%s|%s|%s", dateStr, desc, amount)
 	hash := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(hash[:8])
+}
+
+// StableIDFor builds the durable identity of one transaction:
+//
+//	accountID|YYYY-MM-DD|amount-in-cents|occurrence
+//
+// e.g. "usaa-checking|2025-05-04|-1234|0". occurrence is the 0-based index
+// among rows sharing the first three components, counted in file row order,
+// so several same-amount rows on one account and one day stay distinguishable
+// without the description.
+//
+// The description is deliberately absent: it is the one part of a bank export
+// that changes without the underlying transaction changing, and keying user
+// decisions on it means a reformatted description silently orphans them.
+// accountID is "file:<basename>" for rows whose file matched no account.
+// amountCents is the post-sign-normalization amount, so a credit-kind flip is
+// reflected in the identity.
+func StableIDFor(accountID string, date time.Time, amountCents int64, occurrence int) string {
+	return fmt.Sprintf("%s|%s|%d|%d", accountID, date.Format("2006-01-02"), amountCents, occurrence)
+}
+
+// AmountCents converts a transaction amount to integer cents, the unit
+// StableIDFor encodes. Rounding (rather than truncating) keeps values like
+// 12.34 off the 1233-cent cliff float64 would otherwise put them on.
+func AmountCents(amount float64) int64 {
+	return int64(math.Round(amount * 100))
+}
+
+// ResolveByIdentity looks a transaction up in a map keyed by transaction
+// identity, trying its StableID first and falling back to its legacy content
+// Hash. It returns the value, the key that matched, and whether one did.
+//
+// This is the single read path for every identity-keyed sidecar store
+// (transaction pins, duplicate decisions, Amazon enrichment). The fallback is
+// what lets a sidecar written before StableID existed keep working with no
+// migration step: entries are rekeyed opportunistically when their store is
+// next written, never in a one-shot pass.
+func ResolveByIdentity[V any](m map[string]V, t Transaction) (V, string, bool) {
+	var zero V
+	if len(m) == 0 {
+		return zero, "", false
+	}
+	if t.StableID != "" {
+		if v, ok := m[t.StableID]; ok {
+			return v, t.StableID, true
+		}
+	}
+	if t.Hash != "" {
+		if v, ok := m[t.Hash]; ok {
+			return v, t.Hash, true
+		}
+	}
+	return zero, "", false
 }
 
 // ComputeDerivedFields populates computed fields from Date

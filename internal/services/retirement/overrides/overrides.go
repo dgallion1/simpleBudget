@@ -79,6 +79,17 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 		if o.RothConversionEnd != nil {
 			s.RothConversion.EndYear = *o.RothConversionEnd
 		}
+		// The merged pair is what the engine runs, so it is what has to hold.
+		// validate() can only compare the years the request itself carries: a
+		// request supplying end_year alone is compared against nothing and
+		// lands on top of a saved start_year that may be later than it,
+		// producing a saved window that converts in no year at all. Checked
+		// here rather than unconditionally so that a scenario whose stored
+		// window is already inverted keeps previewing — only a request that
+		// touches the window has to leave it valid.
+		if err := validateMergedRothWindow(s.RothConversion); err != nil {
+			return nil, err
+		}
 	}
 	if o.SocialSecurityClaimAge != nil || o.SpouseClaimAge != nil {
 		if s.SocialSecurity == nil {
@@ -110,6 +121,15 @@ func (o Overrides) validate() error {
 	if o.ProjectionYears != nil && (*o.ProjectionYears < 1 || *o.ProjectionYears > 60) {
 		return &ValidationError{Err: fmt.Errorf("projection_years must be between 1 and 60, got %d", *o.ProjectionYears)}
 	}
+	if y := o.RothConversionStart; y != nil && *y < 0 {
+		return &ValidationError{Err: fmt.Errorf("roth_conversion_start_year must be >= 0, got %d", *y)}
+	}
+	if y := o.RothConversionEnd; y != nil && *y < 0 {
+		return &ValidationError{Err: fmt.Errorf("roth_conversion_end_year must be >= 0, got %d", *y)}
+	}
+	// Named-field check for the case where the request carries both years, so
+	// the error points at the request rather than at the merged result. The
+	// merged pair is checked separately in Apply.
 	if o.RothConversionStart != nil && o.RothConversionEnd != nil && *o.RothConversionEnd != 0 &&
 		*o.RothConversionEnd < *o.RothConversionStart {
 		return &ValidationError{Err: fmt.Errorf(
@@ -140,6 +160,29 @@ func (o Overrides) validate() error {
 	}
 	if r := o.InvestmentReturn; r != nil && (*r < -20 || *r > 50) {
 		return &ValidationError{Err: fmt.Errorf("investment_return must be between -20 and 50 percent, got %v", *r)}
+	}
+	return nil
+}
+
+// validateMergedRothWindow rejects a conversion window that is invalid once the
+// sparse overrides sit on top of the saved scenario, whichever half of the pair
+// the request supplied. EndYear 0 keeps its "indefinite" meaning.
+func validateMergedRothWindow(rc *models.RothConversionConfig) error {
+	if rc == nil {
+		return nil
+	}
+	if rc.StartYear < 0 {
+		return &ValidationError{Err: fmt.Errorf(
+			"merged roth conversion start year is %d: the window must start at or after year 0", rc.StartYear)}
+	}
+	if rc.EndYear < 0 {
+		return &ValidationError{Err: fmt.Errorf(
+			"merged roth conversion end year is %d: use 0 for an indefinite window", rc.EndYear)}
+	}
+	if rc.EndYear != 0 && rc.EndYear < rc.StartYear {
+		return &ValidationError{Err: fmt.Errorf(
+			"merged roth conversion window is year %d to year %d, which runs zero conversions in every year: end year must not be before start year",
+			rc.StartYear, rc.EndYear)}
 	}
 	return nil
 }

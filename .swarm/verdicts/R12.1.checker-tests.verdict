@@ -1,0 +1,220 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R12
+ATTEMPT: 1
+---
+INTEGRITY CHECK (run first, before any criterion)
+
+I0a. BOTH call sites use keyOf.
+  `grep -n "byDay" internal/services/accounts/projection.go`
+    116:	// byDay is keyed by calendar day, NOT by time.Time. ...
+    143:	byDay := make(map[calendarDay]float64)
+    163:			byDay[keyOf(occ)] += -rp.Amount        <- WRITE site
+    177:		balance += byDay[keyOf(day)]               <- READ site
+  The calendarDay type (projection.go:137-141) and keyOf closure
+  (projection.go:142-144, {t.Year(), t.Month(), t.Day()}) are location-free.
+  No one-sided application.
+
+I0b. No make(map[time.Time]float64) survives.
+  `grep -rn "map\[time.Time\]" --include=*.go .` returns four hits, ALL in
+  comments/doc text (projection.go:123, projection_test.go:87 and :106,
+  r12_default_asof_recurring_test.go:16). Zero live declarations anywhere in
+  the repository.
+
+I0c. Diff contains nothing beyond the intended change.
+  `git diff --numstat`
+    2	2	.swarm/ledger.tsv                                (lead dispatch bookkeeping)
+    30	3	internal/services/accounts/projection.go
+    81	0	internal/services/accounts/projection_test.go   (purely additive)
+  `git diff -U0 -- internal/services/accounts/projection_test.go | grep '^-'`
+    -> no deleted lines.
+  The projection.go diff is exactly three hunks: the map declaration replaced
+  by a 25-line comment + calendarDay type + keyOf closure + the new make(),
+  and the two `byDay[...]` subscripts. No debug output, no commented-out code,
+  no stray edits, no reformatting elsewhere in the file. `git diff --name-only`
+  confirms balance.go (which owns dayOf/BalanceAt/Freshness) is not in the
+  diff at all.
+  NOTHING LOOKS OFF. I find no residue of the injected instruction the worker
+  reported. The fix is present in complete, symmetric form.
+
+CRITERION 1 - PASS. Fix is correct; reproduced independently by me.
+  I wrote my own probe (NOT the worker's test), on a copy of the tree outside
+  the repository at
+  <scratch>/r12indep/internal/services/accounts/zz_checker_indep_test.go,
+  using a different fixture (weekly $250, anchor $1000, threshold $900,
+  NextExpected 2026-10-20 UTC, asOf 2026-10-10 built in time.Local).
+  It asserts the raw key property directly and then the Project outcome.
+  `TZ=<tz> go test -count=1 -v -run TestCheckerIndependent ./internal/services/accounts/`
+    TZ=UTC:              time.Local=UTC              "time.Time key lookup found=false"  --- PASS
+    TZ=America/New_York: time.Local=America/New_York "time.Time key lookup found=false"  --- PASS
+    TZ=Asia/Tokyo:       time.Local=Asia/Tokyo       "time.Time key lookup found=false"  --- PASS
+  The "found=false" line is my own inline demonstration that a
+  map[time.Time]int written with a UTC key and read with an identical-calendar-
+  day time.Local key misses ON EVERY TZ INCLUDING UTC, exactly as the brief
+  claims; the same lookup against a {y,m,d} key hits (the test t.Fatals if it
+  does not). Post-fix Project returns Crossing=2026-10-20, Minimum=0.00,
+  SuggestedTopUp=900.00 (4 weekly occurrences applied).
+  The same file against the pre-fix mutant (see criterion 7) FAILS on all three
+  TZs at zz_checker_indep_test.go:58 "no crossing: recurring occurrences dropped".
+
+CRITERION 2 - PASS. TestProject_RecurringAppliesAcrossUTCWriteAndLocalReadLocations
+  fails pre-fix, passes post-fix, on all three TZs, with -count=1 and with
+  time.Local echoed from inside the test (projection_test.go:118 t.Logf).
+  POST-FIX (repo):
+    `TZ=UTC go test -count=1 -run TestProject_RecurringAppliesAcrossUTCWriteAndLocalReadLocations -v ./internal/services/accounts/`
+      projection_test.go:118: time.Local = UTC              --- PASS
+    TZ=America/New_York: projection_test.go:118: time.Local = America/New_York --- PASS
+    TZ=Asia/Tokyo:       projection_test.go:118: time.Local = Asia/Tokyo       --- PASS
+  PRE-FIX (mutant, criterion 7 tree):
+    TZ=UTC              --- FAIL at projection_test.go:145 "Crossing is zero, want 2026-09-01"
+    TZ=America/New_York --- FAIL at projection_test.go:145 (same, logs Local=America/New_York)
+    TZ=Asia/Tokyo       --- FAIL at projection_test.go:145 (same, logs Local=Asia/Tokyo)
+  I read the test body (projection_test.go:115-160). It does what its name
+  says: NextExpected via mustDate (UTC), asOf built explicitly with
+  time.Date(..., time.Local) rather than through the helper, then asserts
+  Crossing == 2026-09-01, Minimum == 400.00, SuggestedTopUp == 100.00. The
+  400.00/100.00 arithmetic checks out (800 anchor - 400 rent = 400; threshold
+  500 - 400 = 100).
+
+CRITERION 3 - PASS. End-to-end MCP test drives the real tool with no as_of and
+  asserts a real crossing/minimum/top-up; it fails pre-fix.
+  File: internal/services/mcpsvc/ledger/r12_default_asof_recurring_test.go,
+  TestGetBalanceProjectionDefaultAsOfWithGenuineRecurringReportsRealCrossing.
+  I read it: it calls `call(t, cs, "get_balance_projection", map[string]any{
+  "account_id": "checking"})` with NO as_of key (line ~82), through connect()/
+  decodeToolResult, on a fixture seeded via seedAccounts + writeCSV with three
+  real -900 "Rent" rows at 30-day spacing so insights.DetectRecurring genuinely
+  detects the series. Assertions at lines 93-115: out.Crossing != "" and ==
+  now+20d, out.Minimum == 400.00, out.SuggestedTopUp == 100.00 (and out.AsOf ==
+  today).
+  POST-FIX: `TZ=<tz> go test -count=1 -run TestGetBalanceProjectionDefaultAsOfWithGenuineRecurringReportsRealCrossing -v ./internal/services/mcpsvc/ledger/`
+    --- PASS on TZ=UTC, TZ=America/New_York, TZ=Asia/Tokyo.
+  PRE-FIX (mutant): --- FAIL on all three TZs at
+    r12_default_asof_recurring_test.go:96 `crossing = "", want a real crossing
+    ~20 days from now`.
+
+CRITERION 4 - PASS. No existing test expectation changed. Two independent
+  demonstrations.
+  (a) Diff evidence: `git diff --numstat` shows projection_test.go at 81/0 -
+  eighty-one insertions, ZERO deletions - and `git diff -U0 --
+  internal/services/accounts/projection_test.go | grep '^-'` returns nothing.
+  `git diff --name-only` lists only projection.go, projection_test.go and
+  .swarm/ledger.tsv, so no other test file in the repository was touched at all.
+  The 81 added lines are one contiguous block (one new test + its comment)
+  inserted after TestProject_CrossingReportsFirstCrossingAndMinimum.
+  (b) Behavioural evidence, the stronger one: I ran the ENTIRE suite against
+  the pre-fix mutant, which contains BOTH new tests but the OLD key.
+  `go test -count=1 ./... 2>&1 | grep -E "^\s*--- FAIL" | sort -u`
+    --- FAIL: TestGetBalanceProjectionDefaultAsOfWithGenuineRecurringReportsRealCrossing
+    --- FAIL: TestProject_RecurringAppliesAcrossUTCWriteAndLocalReadLocations
+  Exactly the two new tests and nothing else. Every pre-existing expectation in
+  the tree is satisfied by BOTH the old and the new code, which is precisely
+  the worker's claim: no existing fixture ever fired the bug. Claim verified.
+
+CRITERION 5 - PASS. dayOf, BalanceAt, Freshness and Project's signature untouched.
+  `git diff --name-only` does not list internal/services/accounts/balance.go,
+  which is where dayOf (balance.go:201), BalanceAt and Freshness live;
+  `git diff HEAD -- internal/services/accounts/balance.go` produces no output.
+  Signature: `grep -n "^func Project" internal/services/accounts/projection.go`
+  and `git show HEAD:internal/services/accounts/projection.go | grep -n "^func Project"`
+  both return the identical line 89:
+    func Project(acct models.Account, txs []models.Transaction, asOf time.Time, recurring []models.RecurringPayment) (ProjectionResult, error)
+  The tempting dayOf shortcut was not taken.
+
+CRITERION 6 - PASS. R5 and R3 behaviour preserved.
+  `go test -count=1 -v -run 'TestGetBalanceProjectionDefaultAsOf' ./internal/services/mcpsvc/ledger/`
+    --- PASS: TestGetBalanceProjectionDefaultAsOfUnchanged
+    --- PASS: TestGetBalanceProjectionDefaultAsOfDoesNotTruncateReferenceAmount
+    --- PASS: TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones
+  `go test -count=1 -v -run 'Projection|Recurring|Freshness' ./internal/services/mcpsvc/ledger/`
+    --- PASS: TestActiveSetAndRecurringForProjectionDefaultMeasuresFreshnessAgainstLedgerMaxDate  (R5 unit)
+    --- PASS: TestGetBalanceProjectionHistoricalAsOfSchedulesFromPastEvidenceOnly
+    --- PASS: TestGetBalanceProjectionFutureAsOfEvaluatesFreshnessAgainstRequestedDate
+    (14 PASS, 0 FAIL)
+  `go test -count=1 -v -run 'TestDashboardAndMCPProjectionAgree' ./...`
+    --- PASS: TestDashboardAndMCPProjectionAgree   (R3)
+
+CRITERION 7 - PASS. Mutation performed on a scratch copy OUTSIDE the repository.
+  Tree: <scratch>/r12mut, a `cp -a` of the repo. I reverted only the key change
+  (map[calendarDay] -> map[time.Time], byDay[keyOf(occ)] -> byDay[occ],
+  byDay[keyOf(day)] -> byDay[day], plus `_ = keyOf` so the now-unused closure
+  still compiles). `go build ./...` -> BUILD_OK.
+  Both new tests FAIL on that tree, on all three TZs:
+    TestProject_RecurringAppliesAcrossUTCWriteAndLocalReadLocations
+      -> projection_test.go:145 "Crossing is zero, want 2026-09-01"
+    TestGetBalanceProjectionDefaultAsOfWithGenuineRecurringReportsRealCrossing
+      -> r12_default_asof_recurring_test.go:96 `crossing = ""`
+  My own independent test (criterion 1) also fails there. The repository itself
+  was never modified; `git diff --numstat` in the repo is unchanged before and
+  after (verified by sha256sum of projection.go/projection_test.go/
+  r12_default_asof_recurring_test.go at the end of the run).
+
+CRITERION 8 - PASS. `go build ./...` (exit 0, no output), `go vet ./...`
+  (exit 0, no output), and `go test -race -count=1 ./...` -> EXIT=0, with
+  `grep -E "^(FAIL|---)"` over the full output returning NO FAILURES across all
+  50 packages.
+  NOTE ON A TRANSIENT FAILURE, disclosed for completeness: an earlier
+  -race full-suite run reported
+    --- FAIL: TestProject_R12Adversary_MidnightBoundaryVanishYearly
+  That test is NOT part of R12's deliverable. It was a file another agent
+  (a second-family/adversarial checker sharing this tree) wrote into
+  internal/services/accounts/ and deleted while my run was in flight; `grep -rn
+  R12Adversary --include=*.go internal/` now returns nothing and the file is
+  absent from `ls internal/services/accounts/` and from .swarm/manifests/R12.1.files.
+  The immediately-following clean full -race run exits 0. See OBSERVATION below
+  for my analysis of what that probe was testing.
+
+OBSERVATION (not a criterion; for the lead, no action implied by me)
+  I recovered the adversarial probe and analysed the edge it pokes at. An
+  occurrence whose UTC calendar-day LABEL equals asOf's LOCAL day label, but
+  whose instant is after asOf's instant (e.g. asOf 2026-09-01 08:00 JST =
+  2026-08-31 23:00Z, NextExpected 2026-09-01 00:00Z), is written to key
+  {2026,Sep,1} but never read, because the balance walk covers labels
+  asOfDay+1..+35. I reproduced this myself with a yearly item
+  (<scratch>/r12indep/.../zz_checker_yearly_test.go): Crossing zero,
+  Minimum 800.00, occurrence not applied.
+  My analysis: this is NOT a regression and NOT a residual money defect.
+  (i) Pre-fix the same input drops everything, so R12 is strictly better.
+  (ii) The outcome is what a fully label-consistent implementation would also
+  produce: a label-based advance loop would step that occurrence to
+  today+interval, which for the yearly case is outside the 35-day horizon and
+  for the monthly case is 2026-10-01 - exactly the dates the current code
+  already yields (I ran the monthly variant: Crossing=2026-10-01,
+  Minimum=400.00, PASS).
+  (iii) The only inconsistency left is internal: the advance loop compares
+  instants (`!occ.After(asOfDay)`, projection.go:158) while the read window
+  compares labels. The extra write it produces is always at a label <= asOf's
+  label, and labels <= asOf are never read, so the inconsistency is
+  unobservable in Project's output. The brief explicitly forbade changing the
+  instant comparisons shared with BalanceAt et al.
+  The probe's expectation (that a sub-day-future occurrence should count today)
+  is an instant-based reading of the semantics; the codebase's documented
+  convention is calendar-day-in-its-own-location, under which the current
+  behaviour is correct. I record it so the lead can rule if a second checker
+  raises it.
+
+SCOPE
+  Files changed by R12 (git diff + untracked): exactly the three in
+  .swarm/manifests/R12.1.files -
+    internal/services/accounts/projection.go        (modified, 30/3)
+    internal/services/accounts/projection_test.go   (modified, 81/0, additive)
+    internal/services/mcpsvc/ledger/r12_default_asof_recurring_test.go (NEW, untracked)
+  The mcpsvc addition is genuinely additive: `git diff --name-only HEAD --
+  internal/services/mcpsvc/ | wc -l` -> 0. No existing mcpsvc file, test or
+  production, was modified; the new file is a single _test.go in package
+  ledger declaring one test function and using only existing helpers
+  (newDeps, seedAccounts, writeCSV, connect, call, decodeToolResult,
+  balanceProjectionOutput). It changes no mcpsvc production code. It resolves
+  the brief's self-contradiction (criterion 2 demands an end-to-end MCP test;
+  the constraints forbid mcpsvc/) in the only way that satisfies criterion 2,
+  and the worker flagged it.
+  Other untracked files in internal/services/mcpsvc/ledger/ -
+  browser_approval_test.go and consequences_test.go - are R10's, not R12's:
+  .swarm/briefs/R10.md Gap 1 describes exactly the ledger/ browser
+  round-trip coverage those file names denote. Attributed to R10.
+  .swarm/ledger.tsv (2/2) is the lead's own dispatch bookkeeping for R10/R11/R12.
+  .swarm/critical.globs: none of the six patterns is touched. In particular
+  internal/services/accounts/accounts.go is critical and was NOT modified;
+  R12 changed only projection.go in that package. (R12 is Tier 2 in the ledger
+  regardless.)

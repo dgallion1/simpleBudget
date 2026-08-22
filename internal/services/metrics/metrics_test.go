@@ -349,6 +349,54 @@ func TestCalculateMetrics_BasicTotals(t *testing.T) {
 	}
 }
 
+// TestCalculateMetrics_ExcludesTransfers is the metrics-side half of the
+// transfer contract (GLOSSARY: "Transfer"). Both legs of a paired transfer
+// and an external leg are present in the set and counted in
+// TransactionCount, but must appear in neither TotalIncome nor
+// TotalExpenses -- nor in the trends, which are built from the same by-type
+// buckets. The transfer amounts here are larger than the real ones, so a leg
+// leaking back in cannot be mistaken for a rounding difference.
+func TestCalculateMetrics_ExcludesTransfers(t *testing.T) {
+	paired := makeTransaction("Schwab MoneyLink", -9000, time.Date(2025, 1, 8, 0, 0, 0, 0, time.UTC), models.Transfer, "Transfer")
+	paired.TransferClass = "paired"
+	paired.TransferPairKey = "abc123abc123"
+	counterLeg := makeTransaction("Transfer in from Schwab", 9000, time.Date(2025, 1, 9, 0, 0, 0, 0, time.UTC), models.Transfer, "Deposit")
+	counterLeg.TransferClass = "paired"
+	counterLeg.TransferPairKey = "abc123abc123"
+	external := makeTransaction("Vanguard buy investment", -7000, time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC), models.Transfer, "Investing")
+	external.TransferClass = "external"
+
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		paired, counterLeg, external,
+	)
+
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0)
+
+	if m.TransactionCount != 5 {
+		t.Fatalf("TransactionCount = %v, want 5 -- transfers stay in the ledger", m.TransactionCount)
+	}
+	if !floatEqual(m.TotalIncome, 5000) {
+		t.Errorf("TotalIncome = %v, want 5000 (the 9000 credit leg must be excluded)", m.TotalIncome)
+	}
+	if !floatEqual(m.TotalExpenses, 1500) {
+		t.Errorf("TotalExpenses = %v, want 1500 (the 9000 debit and 7000 external legs must be excluded)", m.TotalExpenses)
+	}
+	if !floatEqual(m.NetSavings, 3500) {
+		t.Errorf("NetSavings = %v, want 3500", m.NetSavings)
+	}
+	if !floatEqual(m.SavingsRate, (3500.0/5000.0)*100) {
+		t.Errorf("SavingsRate = %v, want %v", m.SavingsRate, (3500.0/5000.0)*100)
+	}
+	if len(m.IncomeTrend) != 1 || !floatEqual(m.IncomeTrend[0], 5000) {
+		t.Errorf("IncomeTrend = %v, want [5000]", m.IncomeTrend)
+	}
+	if len(m.ExpensesTrend) != 1 || !floatEqual(m.ExpensesTrend[0], 1500) {
+		t.Errorf("ExpensesTrend = %v, want [1500]", m.ExpensesTrend)
+	}
+}
+
 func TestCalculateMetrics_ZeroIncome(t *testing.T) {
 	ts := makeTransactionSet(
 		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),

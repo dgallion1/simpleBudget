@@ -1,0 +1,139 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 5
+---
+Method: all mutation/attack probes ran in scratch copies outside the repo
+(rsync'd to /tmp/.../scratchpad/{b2test,b2accept,b2mut}). The only file I
+wrote inside the repo is this verdict; confirmed `git status --porcelain`
+unchanged apart from it.
+
+1. CACHED-PASS REPLAY (the strongest candidate hole named in the brief).
+   Ran the harness test with node present (PASS), then re-ran with node
+   stripped from PATH WITHOUT `go clean -testcache` and without touching
+   any source file. Result: FAILS fresh, not a cached PASS replay. A second
+   experiment (repeat run with node present) showed the test is in fact
+   NEVER served from cache at all — no `(cached)` marker appears even on a
+   truly unchanged rerun — because the test both shells out via
+   exec.Command and reads a file outside the package directory
+   (accounts.html), both of which the go test cache treats as impure and
+   always reruns. This hole does not exist.
+
+2. OTHER INVOCATION PATHS. With node stripped from PATH:
+   - `go test ./...` from repo root: FAILs, propagates.
+   - `make test`, `make test-unit`: FAIL (make test-unit exit 2).
+   - `-short`: still runs the guard test, still FAILs.
+   - `go vet ./...`, `make vet`, `make build`, `make clean`: all exit 0,
+     unaffected — no collateral damage on a node-less machine.
+   - `go test -run TestExtractSyncWarningsScript_FindsExactlyOneBlock`
+     (IDE-single-test style, excluding the harness test by name): the
+     guard does not fire. This is a real, inherent limit of a
+     per-test guard, but neither the test's doc comment nor the Makefile
+     comment nor the README claims to defeat -run filtering — they claim
+     only to defeat Makefile-target evasion and direct/CI invocation of
+     the full suite, which is what was actually tested. No overclaim.
+
+3. OPT-OUT TRUTHINESS. `BUDGET2_ALLOW_SKIP_JS=0` and `=false` both count
+   as "set" (os.Getenv != "") and produce a clean skip, which is a classic
+   boolean-env-var footgun for anyone writing `0` meaning "off" in a CI
+   config. However the code, the test's doc comment, and README.md's
+   Testing section all say "any non-empty value" consistently — the
+   documentation is accurate about this behavior, so it is not a doc
+   overclaim, only a design risk worth the lead's attention.
+
+4. BROKEN NODE. A `node` on PATH that exits 127 immediately: harness
+   FAILs cleanly (no hang, no false pass) via the missing-PASS-token
+   check, though the message is generic ("harness output does not report
+   PASS...") rather than surfacing the exec error explicitly — acceptable,
+   not misleading. A directory literally named `node` on PATH: LookPath
+   correctly treats it as not-found and produces the standard, correct
+   "node not found" message.
+
+5. RIGHT-REASON CHECK. node absent AND the harness JS given a syntax
+   error simultaneously: the LookPath check fires first and reports the
+   correct, unambiguous "`node` was not found on PATH" message — it does
+   not misattribute to a JS error.
+
+6. REGRESSION COVERAGE, hash-authenticated. Recovered the pre-S5 template
+   preserved by a prior attempt's scratch run and verified its md5
+   (fb2a5b02af41e835bbe1fc52fd22ed69) before using it. Run through the
+   current harness: both `dismiss_resolve_recreate` and
+   `dismiss_then_reload_unchanged` FAIL as required (guard_directions
+   correctly still passes — unrelated to this defect). Separately
+   reintroduced only the subtler partial revert (removing the stale-key-
+   clear branch that fixed the S4-era resolve→recreate bug) into the
+   current template: `dismiss_resolve_recreate` FAILs, the other two
+   checks correctly still PASS — confirms the harness discriminates the
+   specific defect rather than failing everything indiscriminately.
+   Forged-verdict resistance: replaced the harness with a script that
+   prints "PASS_BUT_NOT_REALLY" and a decoy line containing the word
+   "PASS" next to the check's name but not in `RESULT <name> PASS`
+   form, exits 0 — the anchored regex correctly rejects it and the Go
+   test FAILs.
+
+7. GO test S5(b)/(c)/(d)/(e) sub-criteria, each independently verified:
+   (b) TestWarningsKey_OrderInvariant: mutated warningsKey to sort its
+   input slice in place (`sorted := warnings; sort.Strings(sorted)`
+   instead of copy-then-sort) in a scratch copy — test correctly FAILs
+   ("warningsKey mutated its input slice in place"), confirming the
+   assertion is written against slice `b` (the unsorted one), not the
+   already-sorted `a`, so it cannot pass vacuously.
+   (c) TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock now
+   scans `renderedBodyWithoutScripts`, stripping <script> blocks before
+   the substring check, so it cannot be tripped by the dismiss-
+   confirmation string's legitimate reuse of "Pattern overlap warning".
+   (d) TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage
+   corrupts transfer_decisions.json and asserts the load-failure message,
+   and separately checks it does NOT contain "already confirmed/rejected"
+   or "not a known pair" — genuinely exercises describeAlreadyResolved's
+   first branch, not just its outcome. The doc comment enumerates all
+   four cases accurately.
+   (e) comment/code match confirmed by inspection.
+
+8. FULL SUITE. `go test -count=1 ./...` green across the whole module in
+   the actual repo tree (read-only), node present.
+
+9. `.swarm/tier3/S5/accept.sh` (rewritten oracle) run standalone against a
+   fresh rsync of the submitted tree: all 11 checks PASS, ORACLE: PASS.
+   It behaviourally tests the fake-verdict case (injects a harness that
+   reports FAIL while exiting 0) rather than grepping for a token, and
+   restores the harness via a trap even on interruption — a real
+   improvement over the attempt-4 oracle that shared the Makefile-scanning
+   blind spot. The rewrite legitimately drops the Makefile-idiom checks
+   (GOCMD alias / define / line-continuation enumeration): those attack
+   vectors are moot under the new design (there is nothing Make-side left
+   to evade), so this is not a coverage loss, it is dead-code removal
+   matching the redesign. I did not find a case the new oracle should
+   test and doesn't; the closest gap is that it does not exercise the
+   test-cache-replay angle explicitly, but I independently confirmed above
+   that Go's cache cannot replay a stale PASS here regardless.
+
+10. PROCESS DEVIATION — single worker instead of blind N-version at
+    Tier 3, as declared in REVIEW_AUG20_SPEC.md. The lead's stated
+    rationale is that N-version "exists to explore a design space" and
+    the user's directive removed that ambiguity. That rationale is in
+    tension with this project's own constitution (CLAUDE.md), which
+    states the Tier-3 N-version pair here "differ[s] by model tier only,
+    so N-version ... catches slips and misreadings rather than shared
+    blind spots" — i.e. its stated purpose at this project is NOT
+    exploring a design space, it is catching a single implementer's
+    mechanical errors, which remains a risk even when the design itself
+    is no longer in question (an off-by-one in the opt-out check, a
+    missed call site, a stale comment are all "slips," not design
+    choices). So the declared justification for skipping the blind pair
+    does not actually match the constitution's own reason for having it,
+    and I judge the deviation as under-justified — a shortcut taken after
+    a long, three-times-failed task, dressed in reasoning that doesn't
+    hold up against the document that authorizes N-version in the first
+    place. That said, this is a process finding, not a defect finding:
+    every angle I attacked against the actual attempt-5 artifact (the
+    "slip" class N-version exists to catch) held up under adversarial
+    testing above, so I am not withholding PASS on the work product
+    itself over it. The lead should treat this critique as a live
+    process gap to correct, not as retroactively invalidating attempt 5.
+
+No FAIL condition found in the implementation itself. Recommending PASS
+on the artifact, with the Tier-3 process deviation (item 10) flagged for
+the lead's attention as a documented but weakly-justified constitution
+gap.

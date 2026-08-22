@@ -1,0 +1,359 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A9
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Worktree /tmp/swarm-worktrees/budget2/work/A9 at 6cb5da3. NOTE: .swarm/briefs/A9.md
+still does not exist in this worktree (`ls .swarm/briefs/` -> A0-A7, P13, P14); the
+file exists only at /home/darrell/bin/ai/budget2/.swarm/briefs/A9.md, outside this
+tree. I verified against ACCOUNTS_TRANSFERS_SPEC.md row A9, GLOSSARY.md, and my
+check brief, as at attempt 1.
+
+I wrote the attempt-1 FAIL. I re-derived every attempt-2 claim by driving the
+tools, not by reading the diff and agreeing with myself. All scratch work
+(two full tree copies, four driver files) lives under the session scratchpad,
+OUTSIDE the repository.
+
+mtimes separate attempt 1 from attempt 2 cleanly: ledger/*.go 21:47-21:54 and
+server_test.go 21:48 are attempt-1 bytes, untouched; server.go 22:19,
+spend/search_test.go 22:17 and spend/search.go 22:21 are the attempt-2 work.
+I re-drove items 3-6 anyway rather than inheriting them.
+
+=== 1. Manifest fidelity -- PASS ===
+.swarm/manifests/A9.2.files lists 16 paths (A9.1's 14 plus spend/search.go and
+spend/search_test.go). `git status --porcelain`:
+   M internal/services/mcpsvc/server.go
+   M internal/services/mcpsvc/server_test.go
+   M internal/services/mcpsvc/spend/search.go
+   M internal/services/mcpsvc/spend/search_test.go
+  ?? internal/services/mcpsvc/ledger/   (12 files, exactly the 12 manifested)
+Exact 1:1, no unmanifested file, no missing file. The two new manifest entries
+are precisely the two files attempt 2 added to the change set.
+
+=== 2. Toolchain -- PASS (real output) ===
+  go build ./...    -> no output, exit 0
+  go vet ./...      -> no output, exit 0
+  go test ./...     -> exit 0. Run as `set -o pipefail; go test ./... | tee f |
+                       grep -v "^ok\|no test files"`; grep printed nothing and
+                       TEST_EXIT=0, i.e. all 49 package lines were ok/no-test.
+  staticcheck ./... -> no output, exit 0
+  gofmt -l $(cat .swarm/manifests/A9.2.files) -> empty (all 16 clean)
+
+=== 3. THE FIX DID NOT OVERSHOOT -- transfers are still LISTED -- PASS ===
+This was the first thing I checked, because dropping transfers from the results
+would trade the attempt-1 bug for a worse one.
+
+Driver (scratchpad copy) over a five-row fixture chosen so no sign accident can
+hide an error: Income +5000, Outflow -1200, Outflow +50 (a refund), Transfer
+-3000 (outbound), Transfer +700 (INBOUND -- so the transfer subtotal is not
+uniformly negative). Raw tool output:
+
+  search_transactions {}  ->
+   {"page":1,"per_page":50,"sum_amount":3850,"total":5,"total_pages":1,
+    "transactions":[
+      {"amount":700,"date":"2026-08-11","description":"USAA FUNDS TRANSFER IN","type":"Transfer"},
+      {"amount":-3000,"date":"2026-08-09","description":"SCHWAB FUNDS TRANSFER","type":"Transfer"},
+      {"amount":50,"date":"2026-08-08","description":"GROCERY STORE REFUND","type":"Outflow"},
+      {"amount":-1200,"date":"2026-08-07","description":"GROCERY STORE","type":"Outflow"},
+      {"amount":5000,"date":"2026-08-05","description":"PAYROLL DIRECT DEP","type":"Income"}]}
+
+Both halves hold: total=5 counts the transfers, BOTH Transfer rows appear in the
+page, and sum_amount=3850 = 5000 + (-1200) + 50, the Income+Outflow sum. The
+user can still see money they actually moved.
+
+Pagination carries them too, so they are not being dropped one layer down:
+  {"per_page":2}          -> total=5, total_pages=3, page 1 = the two Transfer rows
+  {"per_page":2,"page":3} -> total=5, total_pages=3, page 3 = the Income row
+A fix that had dropped transfers would report total=3 / total_pages=2 here.
+
+Default path narrowed to a transfer-only window:
+  {"start_date":"2026-08-09","end_date":"2026-08-11"} ->
+    total=2, both Transfer rows returned, sum_amount=0
+Correct and documented (rows listed, sum over Income+Outflow of an empty set).
+
+The sum is computed AFTER the amount filter, not over the unfiltered set:
+  {"min_amount":1000} -> total=3 (transfer -3000, outflow -1200, income 5000),
+                         sum_amount=3800 = 5000 + (-1200). Correct.
+
+=== 4. type:"transfer" now works -- PASS ===
+  {"type":"transfer"} -> {"sum_amount":-2300,"total":2,"transactions":[
+      {"amount":700,...,"type":"Transfer"},{"amount":-3000,...,"type":"Transfer"}]}
+  {"type":"Transfer"} and {"type":"TRANSFER"} -> identical (the switch is on
+      strings.ToLower, so casing is accepted as for the other values)
+  {"type":"bogus"}    -> IsError (message now names all three: "use \"income\",
+      \"outflow\", or \"transfer\"")
+Controls that the old branches are intact:
+  {"type":"income"}  -> total=1, sum_amount=5000
+  {"type":"outflow"} -> total=2, sum_amount=-1150 (refund netted, as documented)
+  {"type":"expense"} -> identical to outflow, alias preserved
+This closes the UI/MCP disagreement I cited at attempt 1: explorer/handlers.go:177
+accepts "Transfer" and spend/search.go:157 now does too.
+
+=== 5. sum_amount agrees with summarize_spending -- PASS, from ONE fixture ===
+Stub fixture above, same window, same session:
+  search_transactions {}  -> sum_amount   = 3850
+  summarize_spending  {}  -> {"total_income":5000,"total_expenses":1150,
+                              "net_savings":3850,"savings_rate":77,...}
+3850 == 3850. At attempt 1 these were 800 vs 3800.
+
+I did not stop at the stub. END-TO-END through the REAL *dataloader.DataLoader
+(so A3's classifier types the rows, not my hand-built set): three CSV rows
+PAYROLL +5000 / GROCERY -1200 / "SCHWAB BROKERAGE TRANSFER" -3000 written to a
+temp data dir, tools driven over dataloader.New(dir, store):
+  search_transactions {} -> {"sum_amount":3800,"total":3,"transactions":[
+     {"amount":-3000,...,"type":"Transfer","hash":"5381f2c03f12c74c"},
+     {"amount":-1200,...,"type":"Outflow"},{"amount":5000,...,"type":"Income"}]}
+  search_transactions {"type":"transfer"} -> total=1, sum_amount=-3000
+  summarize_spending  {} -> {"net_savings":3800,"total_income":5000,
+                             "total_expenses":1200,...}
+3800 == 3800 with the classifier in the loop, and the transfer row is listed
+with a real hash (so it is still pinnable).
+
+=== 6. The new tests FAIL against the pre-fix code -- PASS (verified) ===
+Copied the tree to the scratchpad, restored ONLY spend/search.go from HEAD
+(`git show HEAD:...search.go`, byte-identical confirmed by diff), kept the new
+search_test.go, rebuilt:
+
+  $ go test ./internal/services/mcpsvc/spend/ -run 'TestSearchTransactionsDefaultSumExcludesTransfers|TestSearchTransactionsFiltersByTypeTransfer' -v
+  === RUN   TestSearchTransactionsDefaultSumExcludesTransfers
+      search_test.go:363: sum_amount = 800 matches the NETTED-IN transfer total
+        (5000 + -1200 + -3000); the transfer must be excluded from the default sum
+  --- FAIL: TestSearchTransactionsDefaultSumExcludesTransfers (0.00s)
+  === RUN   TestSearchTransactionsFiltersByTypeTransfer
+      search_test.go:386: type "transfer" must be a valid filter, not an error
+  --- FAIL: TestSearchTransactionsFiltersByTypeTransfer (0.00s)
+  FAIL
+
+Both reproduce the attempt-1 defect exactly, and both PASS in the worktree:
+  --- PASS: TestSearchTransactionsDefaultSumExcludesTransfers (0.00s)
+  --- PASS: TestSearchTransactionsFiltersByTypeTransfer (0.00s)
+These are genuine regression tests, not tests written to the new code's shape.
+TestSearchTransactionsDefaultSumExcludesTransfers also asserts out.Total != 3 is
+fatal, so the "silently dropped the rows" failure mode is pinned by the suite
+itself, not only by my driver.
+
+=== 7. THE DESCRIPTIONS ARE TRUE OF THE CODE AS IT STANDS -- PASS ===
+Read against behavior, from the description string the CLIENT actually receives
+(ListTools over a live session), not from the source literal. Claim by claim,
+each checked against output quoted above:
+
+search_transactions description:
+ a) "type (income, outflow, or transfer; \"expense\" is also accepted as an
+    alias for outflow; omit for all three)" -- TRUE: all four values drive
+    successfully, omit returns all three types (total=5, all three types in the
+    page). The `type` field's own jsonschema string matches, and I read it back
+    off the wire: "income, outflow, or transfer (expense is accepted as an alias
+    for outflow); omit for all three".
+ b) "sum_amount is the signed sum over ALL matches, not just this page" -- TRUE:
+    per_page=2 still reports sum_amount 3850.
+ c) "on the default path (no type filter) it EXCLUDES Transfer rows even though
+    they are still listed (`total` and the page include them)" -- TRUE in both
+    halves, item 3. This is the sentence that would have been the inverse of the
+    code had the fix dropped the rows; it is not.
+ d) "netting it into a signed total would make this sum disagree with
+    summarize_spending's net_savings for the same window" -- TRUE: the
+    disagreement is exactly what attempt 1 measured (800 vs 3800) and exactly
+    what is now gone (3850 vs 3850, and 3800 vs 3800 end-to-end).
+ e) "with an explicit type filter the filtered set is already one type, so the
+    exclusion only matters on the default path" -- TRUE: type=transfer yields
+    sum_amount -2300, i.e. the transfers ARE summed when explicitly requested.
+ f) the pre-existing closing claim "sums here agree with those tools for the same
+    window (the dashboard, get_anomalies, get_price_creep, summarize_spending)"
+    -- was FALSE at attempt 1 and is TRUE now on the default path.
+
+The implementation cannot drift from (c)/(e): the switch keys on
+strings.ToLower(in.Type) with `case ""` (search.go:150) and the sum branches on
+`in.Type == ""` (search.go:174). ToLower(x)=="" iff x=="", so the two conditions
+are the same condition -- there is no argument (whitespace included: " " falls to
+default and errors) that takes the no-filter sum branch while a filter was
+applied, or vice versa.
+
+server.go:
+ g) "is a TRANSFER: the third transaction type (Transfer), alongside Income and
+    Outflow" -- TRUE (models/transaction.go:26).
+ h) "excluded from both totals by type filter" -- TRUE and now literal:
+    summarize_spending reports total_income 5000 / total_expenses 1200 with the
+    -3000 transfer in the ledger, and search.go:175-176 excludes via
+    FilterByType(Income)+FilterByType(Outflow).
+ i) "unlike the old drop-on-load filter the rows REMAIN in the ledger and are
+    visible through get_transfers" -- TRUE, driven: get_transfers returns them.
+ j) "The spending tools therefore do NOT COUNT savings or investment
+    contributions in their totals" (attempt 2 tightened this from "do NOT show",
+    which was the false half -- the rows ARE shown) -- TRUE of every default
+    path across all six tools, item 8.
+ k) "a question like \"how much went into the brokerage this year\" CAN now be
+    answered from the ledger tools (get_transfers)" and "answered by filtering to
+    checking and reading total_in", "positive = money received into this account,
+    negative = money sent out" -- TRUE, driven against a pattern-backed pair:
+      get_transfers {}                    -> count 3, total_in 3700, total_out -3000, net 700
+      get_transfers {"account_id":"checking"}  -> total_in 700, total_out -3000, net -2300
+      get_transfers {"account_id":"brokerage"} -> total_in 3000, total_out 0, net 3000
+    The question is answered (3000 into the brokerage) and the signs follow bank
+    convention in both directions.
+ l) "Four tools are guarded" -- TRUE: `grep 'Confirm.Mint("'` returns exactly 4
+    (shutdown_server, restore_backup, set_balance_anchor, resolve_transfer).
+ m) "COMPLETE list of all six SPENDING tools" -- TRUE: spend/register.go:64-71
+    registers exactly six.
+ n) The old false clauses are gone -- grep over server.go for "CANNOT be
+    answered", "filtered out at LOAD", "no \"transfer\" transaction type",
+    "do NOT show savings" returns nothing.
+
+I checked specifically for the A1-attempt-3 shape (a description asserting the
+inverse of the code in a machine-facing contract no test reads) and did not find
+it. The one place the two documents are in tension rather than contradiction:
+(j) says the spending tools do not count transfers "in their totals", while
+search_transactions with type="transfer" returns sum_amount -2300, which is a
+total of transfers. That is the caller explicitly asking for them, and the tool's
+own description -- the more specific contract, (e) -- states that rule
+explicitly, so a model reading both is not misled. Recorded as an observation,
+not a defect; a model cannot reach that number without naming the type itself.
+
+=== 8. THE CONSUMER CHECK -- PASS ===
+I re-enumerated the six spending tools from spend/register.go:64-71 myself
+(search_transactions, get_anomalies, get_price_creep, summarize_spending,
+get_recurring, get_trends) rather than trusting any list, and drove all six over
+the five-row transfer fixture in one session.
+
+All six are now correct, and five of them for the structural reason I
+established at attempt 1 -- they filter POSITIVELY by type rather than treating
+"not Income" as expense:
+  summarize_spending  spend/summary.go:80,113,135       FilterByType(Outflow)
+  get_trends          insights/trends.go:35,119,185     FilterByType Outflow/Income
+  get_recurring       insights/recurring.go:223         FilterByType(Outflow)
+  get_anomalies       spend/insights.go:145 + anomalies/anomalies.go:161
+                                                        TransactionType == Outflow && Amount < 0
+  get_price_creep     pricecreep/pricecreep.go:81       same
+Driven on the fixture: summarize_spending total_income 5000, total_expenses 1150,
+net_savings 3850 -- neither the -3000 nor the +700 transfer appears.
+get_anomalies/get_price_creep/get_recurring/get_trends return empty result sets
+on a fixture this small and none of them surfaced a transfer.
+
+search_transactions, the sixth and the one that was wrong, is now correct on both
+paths (items 3-5). It joins the other five by using the same positive filter:
+search.go:175-176.
+
+I re-swept the whole repo for the negative pattern rather than assuming attempt
+1's sweep still held: `grep -rn '!= models.Income|!= models.Outflow|!= "Income"|
+!= "Outflow"'` over internal/ excluding tests returns 5 hits, none in an MCP
+tool: majorexpenses/engine.go:282,323 and dataloader/near_duplicates.go:58
+exclude non-Outflow (safe -- a Transfer is now excluded where it would previously
+have been an Outflow), whatif/handlers.go:1164 and retirement/.../
+tax_optimizer_strategies.go:171 concern models.IncomeFixed (plan-side, not
+ledger typing).
+
+I also swept every FilterByType call site in the repo (`grep -rn FilterByType`,
+33 non-test hits) to find a consumer summing a type-unfiltered set: the
+handlers (dashboard:314-315,472-473,593,766,898,978; explorer:173-191,314-332;
+majorexpenses:346; whatif:1097), metrics/metrics.go:100-101 and curate/
+register.go:197 all filter positively; explorer already has an explicit
+models.Transfer branch. spend's Deps.load() (register.go:55-62) is still a
+pass-through that does not filter Transfer, so the loader's output reaches every
+tool unaltered -- the guarantee has to come from each tool, and now does.
+
+No tool the worker missed. Nothing consumes searchOutput.SumAmount inside the
+repo, so the change of meaning is confined to the MCP contract, which is where
+the description work in item 7 lands.
+
+=== 9. Confirm-token behavior, re-driven -- PASS ===
+Not inherited from attempt 1. I rebuilt the filesystem-fingerprint driver
+(sha256 over path+content of every regular file under the data dir, sorted) so
+any create/delete/byte-change anywhere shows up, each case carrying a
+valid-token CONTROL so "nothing changed" cannot pass vacuously.
+
+set_balance_anchor, against a seeded accounts.json (baseline fingerprint
+bfbdaf221032, 1 file):
+  (a) no token                     -> confirmed=false, token minted, unchanged
+  (b) garbage token                -> IsError, unchanged
+  (c) token replayed with amount 9999 -> IsError, unchanged
+  (d) token replayed for account "savings" -> IsError, unchanged
+  (e) token minted for resolve_transfer, redeemed here -> IsError, unchanged
+  (f) CONTROL, valid token -> confirmed=true, fingerprint bfbdaf221032 ->
+      5f5f8802475d, 1 file -> 2, and accounts.json on disk gained
+      {"date":"2026-08-15T00:00:00Z","amount":4210.55} in date order after the
+      pre-existing 2026-07-31 anchor
+  (g) replay of the now-spent token -> IsError, fingerprint unchanged
+Every rejection returned the one ErrBadToken sentence ("confirmation token is not
+valid for this call; call the tool again without a token to get a fresh preview
+and token"), so forged/wrong-args/wrong-tool/spent are indistinguishable to a
+caller -- deliberate, per confirm.go.
+
+resolve_transfer, against a real suspected pair (pair_key f2dd5ca97cb3, two
+cross-account equal-amount CSV rows). I asserted on transfer_decisions.json
+itself, not on the in-memory queue, so a sidecar written during a failed call
+could not hide:
+  (a) no token   -> preview, transfer_decisions.json = <absent>
+  (b) garbage    -> IsError, still <absent>
+  (c) a confirm-token replayed as verdict="reject" -> IsError, still <absent>
+      (the dangerous swap: the verdict the user approved cannot be changed)
+  (d) token minted for set_balance_anchor -> IsError, still <absent>
+  (e) CONTROL, valid token -> confirmed=true and the file appears:
+      {"decisions":{"f2dd5ca97cb3":{"pair_key":"f2dd5ca97cb3","stable_ids":
+        ["brokerage|2026-08-10|77777|0","checking|2026-08-10|-77777|0"],
+        "verdict":"confirm","decided_at":"..."}}}
+No refusal path wrote anything, on either tool.
+
+=== 10. Token discipline -- PASS ===
+One shared confirm.Registry, not a parallel mechanism: server.go:281-282 passes
+`Confirm: adminDeps.Confirm` and `Approvals: adminDeps.Approvals` into
+ledger.Deps, which is what makes the cross-tool rejections in 9(e) and 9(d) real
+rather than an artifact of separate registries. Check-then-ask-then-Redeem is
+used as admin/ does (Check at anchor.go:115 / resolve.go:116; Redeem only inside
+applyAnchor anchor.go:186 and applyResolveTransfer resolve.go:194, which are the
+only writers and both return before ensureSnapshot on a bad token).
+
+=== 11. No-anchor reports unavailable, never zero -- PASS (re-driven) ===
+Attempt-1's fixture (twoAccounts) carries anchors, so I seeded an account with
+NO anchors explicitly:
+  get_accounts           -> {"count":1,"accounts":[{"id":"checking",
+     "available":false,"balance":0,"low_balance":false,"threshold":500}]}
+  get_balance_projection -> {"account_id":"checking","available":false,
+     "has_reference":false,"threshold":500}   (no crossing, no suggested_top_up)
+CONTROL, after recording an anchor of 5000 through set_balance_anchor:
+  get_accounts           -> "available":true,"balance":5000,"anchor_date":"2026-08-01"
+  get_balance_projection -> "available":true,"minimum":5000,"as_of":"2026-08-18"
+So available=false is a live signal, not a stuck field, and low_balance stays
+false when the balance is unknown (an unknown balance is not "low").
+
+=== 12. Read-only tools are genuinely read-only -- PASS (re-driven) ===
+Full-directory fingerprint unchanged across get_accounts, get_transfers (bare and
+with account_id) and get_balance_projection; file count 1 before and after each.
+No sidecar written, no file created.
+
+=== 13. Scope -- PASS ===
+`git diff --name-only` = server.go, server_test.go, spend/search.go,
+spend/search_test.go; plus the new mcpsvc/ledger/ package. No templates, no
+static assets, no handlers -- nothing from A6/A7/A8 -- and no edit to
+internal/services/{accounts,transfers,dataloader,classifier} (A2-A5). Attempt 2
+added exactly the two spend/ files and touched server.go's description; the
+explorer and transfers handlers it disagreed with at attempt 1 were left alone,
+which is right -- the MCP side was the side that was wrong.
+
+=== Ruling 2026-08-16e (loop assertions) -- two advisory notes, not defects ===
+ - The two new tests have no loops. TestSearchTransactionsFiltersByTypeTransfer
+   indexes out.Transactions[0] after `if out.Total != 1 { t.Fatalf }`; Total is
+   the match count rather than len(out.Transactions), so on a hypothetical
+   paging regression this panics rather than reporting cleanly. It cannot pass
+   vacuously, which is what the ruling protects against.
+ - anchor_test.go's three "nothing was written" loops (:46, :129, :298) still
+   range over `accts` with no preceding assertion that accts is non-empty --
+   the same note I raised at attempt 1, unchanged because attempt 2 did not
+   touch that file. My item-9 fingerprint driver covers that ground with a
+   sensitivity control, so the BEHAVIOR is verified; this remains a
+   test-robustness note.
+ - Also noted: server_test.go's TestServerInstructionsCarryLoadBearingClaims
+   pins ~40 claims but attempt 2 added only "Four tools are guarded" to it. The
+   new transfer sentences -- "do NOT COUNT", "Five LEDGER tools", the
+   get_transfers sign convention -- are load-bearing by that test's own stated
+   purpose and are not pinned, so a future behavior change could falsify them
+   silently. Advisory: the claims are true today, verified above by driving, and
+   the brief's item 7 asks that they be true and use GLOSSARY vocabulary, which
+   they are and do (Transfer, TransferClass, Internal transfer, BalanceAnchor,
+   with GLOSSARY.md cited by name).
+
+=== Read-only discipline ===
+I wrote exactly one file in the worktree: this verdict. Final `git status
+--porcelain` shows only the four modified source files, the new ledger/ package,
+the two manifests and the verdict files -- no source file altered by me.

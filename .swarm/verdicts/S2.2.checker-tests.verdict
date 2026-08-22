@@ -1,0 +1,279 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S2
+ATTEMPT: 2
+---
+Tree verified: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted
+working tree. Manifest .swarm/manifests/S2.2.files =
+internal/services/transfers/transfers.go, transfers_test.go.
+
+METHOD. All mutation-based probes were run in throwaway copies under
+/tmp/claude-1000/.../scratchpad (budget2copy = merged tree, prefix/prefix2 =
+merged tree with transfers.go reverted to HEAD). Nothing in the repo was
+modified; `git status --porcelain` and md5sum of both manifest files were
+identical before and after (transfers.go 9bef617274989a93a4ef7a22f24a86e2,
+transfers_test.go 33734243c107de4fa4b50b78d8bfea1c). This verdict file is the
+only thing written inside the repo.
+
+I wrote my own 13-test fixture suite (zz_checker_verify_test.go, external
+package transfers_test) rather than relying on the worker's tests or the
+oracle. Every discriminating test was also run against the PRE-FIX
+implementation to prove it is not vacuous.
+
+--------------------------------------------------------------------------
+LEAD'S MERGE CLAIM (verify, do not accept)
+  $ diff -u /tmp/swarm-worktrees/budget2/S2/wt-primary/internal/services/transfers/transfers.go \
+           /home/darrell/bin/ai/budget2/internal/services/transfers/transfers.go
+  @@ -204,8 +204,7 @@
+   	var edges []transferEdge
+  -	for cents, idxs := range byCents {
+  -		_ = cents
+  +	for _, idxs := range byCents {
+  CONFIRMED: that hunk is the ONLY difference. transfers_test.go is byte-identical
+  to wt-primary (`diff` exit 0). wt-primary's own `git status --porcelain` shows
+  it touched only those two files, so nothing was grafted from wt-alt. `cents`
+  was already dead (`_ = cents`); the edit is behaviourally inert.
+  RESOLUTION line present in .swarm/tier3/S2/report.md.
+
+--------------------------------------------------------------------------
+C1 -- ORDER INDEPENDENCE.  PASS
+  My own 6-row fixture, 720 permutations, compared on a total fingerprint (every
+  row's StableID -> type/class/pairKey, the review queue IN ITS RETURNED ORDER
+  with index, and Paired/External/Classified).
+
+  $ go test -count=1 -run 'TestC1_|TestC1b_' -v ./internal/services/transfers/
+    --- PASS: TestC1_OrderIndependence720
+    --- PASS: TestC1b_OrderIndependenceOnOrderSensitiveFixture
+        all 720 permutations identical:
+        ROW A type=Transfer class=paired key=cfb6e8834699
+        ROW B type=Transfer class=paired key=cfb6e8834699
+        ROW C type=Transfer class=paired key=f5512816b939
+        ROW D type=Transfer class=paired key=f5512816b939
+        ROW E type=Transfer class=external key=
+        ROW F type= class= key=
+        PAIRED=4 EXTERNAL=1 CLASSIFIED=5
+
+  Non-vacuity: TestC1b's fixture (A chk -100 Jan10 pattern | B sav +100 Jan14 |
+  C sav +100 Jan11 | D mm -100 Jan11 pattern | E chk -100 Jan25 pattern |
+  F chk -47.63 Jan12) is order-DEPENDENT under HEAD. Same test, HEAD's
+  transfers.go:
+    --- FAIL: TestC1b_OrderIndependenceOnOrderSensitiveFixture
+        permutation 240 [C A B D E F] differs: HEAD pairs A-C and B-D for some
+        orders and A-B / C-D for others.
+  So C1's fixture actually exercises the defect. (My first fixture, TestC1_,
+  happens to be order-stable even pre-fix; C1b was added specifically because
+  of that, and is the load-bearing evidence for this criterion.)
+
+C2 -- GLOBALLY CLOSEST-DATE.  PASS
+  Exactly the briefed counterexample: A -100.00 Jan10 chk "INTERNAL TRANSFER TO
+  SAVINGS"; B +100.00 Jan14 sav "DEPOSIT"; C +100.00 Jan11 sav "DEPOSIT".
+  $ go test -count=1 -run 'TestC2_ClosestDateCounterexample' ./internal/services/transfers/
+    --- PASS   (all 6 permutations: A and C both class=paired and both carry
+                PairKeyFor("A","C"); B never class=paired and its key stays "";
+                Paired==2 in every order)
+  Non-vacuity, same test against HEAD:
+    --- FAIL: perm 2: A class="paired" key="53385784ae58" want "aeadac3a741b"
+      (HEAD lets B, 4 days out, consume A when B precedes C in the slice)
+
+  Additional probe the brief did not require, TestC2b_GlobalNotGreedy -- greedy
+  vs. global, where the pre-fix answer is wrong in EVERY order, not just some:
+  A chk -250 Jan10 pattern | B sav +250 Jan11 | D mm -250 Jan11 pattern.
+  Global optimum is D-B at distance 0, leaving A external.
+    fixed: --- PASS  (B and D share PairKeyFor("B","D"); A class=external)
+    HEAD:  --- FAIL: perm 0: B/D must pair at distance 0, got B="cfb6e8834699" D=""
+
+C3 -- NO ROW LOST OR DUPLICATED.  PASS
+  $ go test -count=1 -run 'TestC3_NoRowLostOrDuplicated' ./internal/services/transfers/
+    --- PASS  (720 permutations; len(Result.Transactions)==len(input) and each
+               of the 6 StableIDs occurs exactly once in each)
+
+C4 -- PRESERVED SEMANTICS.  PASS (7 sub-checks, each its own test, each over
+      all permutations of its fixture)
+  $ go test -count=1 -run 'TestC4' -v ./internal/services/transfers/
+    --- PASS: TestC4a_ConfirmedDecisionAppliedFirst
+        confirm decision on X/Y with NO pattern on either leg: X and Y carry
+        PairKeyFor("X","Y") in all 6 orders; the pattern-hit third row Z, whose
+        only candidate was consumed by the decision, falls through to external.
+    --- PASS: TestC4b_RejectedPairExcluded
+        rejected key => Paired==0, key absent from Suspected, and the pattern leg
+        typed external -- excluded from candidacy, not merely from pairing.
+    --- PASS: TestC4c_PatternGate
+        no pattern on either leg => Paired==0, External==0, exactly one
+        amount_match suggestion. One pattern hit on either leg => Paired==2.
+        This is the `pattern[i] || pattern[j]` gate, probed from the j side too.
+    --- PASS: TestC4d_SuggestionsNeverAutoPair
+        3-row patternless fixture: Classified()==0, 2 suggestions, both
+        amount_match; pass 3 types nothing.
+    --- PASS: TestC4e_ExternalPatternHit
+        counterparty-less pattern hit => TransactionType=Transfer,
+        TransferClass=external, TransferPairKey=="" ; non-pattern row untouched;
+        External==1, Paired==0, Classified()==1.
+    --- PASS: TestC4f_SuspectedSort
+        3 suggestions with Left dates Jan6/Jan13/Jan21: queue is ascending by
+        Left.Date, key-ordered on equal dates, and the queue ORDER is byte-stable
+        across all 720 permutations ([166743a4358b cd26f669ad88 4e2de8a54505]).
+    --- PASS: TestC4g_CountsAreRowCounts
+        Paired/External recomputed by walking rows and compared to Result;
+        equal in all 720 permutations (4/1), Classified()==Paired+External, and
+        every classed row also has TransactionType==models.Transfer.
+
+C5 -- TIES STILL REACH THE HUMAN.  PASS
+  Exactly the briefed probe: P1 chk -75.00 Jan10 pattern, P2 chk -75.00 Jan14
+  pattern, N sav +75.00 Jan12 non-pattern, equidistant (2 days) from both.
+  $ go test -count=1 -run 'TestC5' -v ./internal/services/transfers/
+    --- PASS: TestC5_TrueTieReachesHuman
+    --- PASS: TestC5_Dump -- identical in all 6 orders:
+        ROW N  type=       class=          key=
+        ROW P1 type=Transfer class=external key=
+        ROW P2 type=Transfer class=external key=
+        QUEUE[0] 02ae0f2063f7 L=N R=P2 reason=ambiguous
+        QUEUE[1] 58eb2d30ba98 L=N R=P1 reason=ambiguous
+        PAIRED=0 EXTERNAL=2 CLASSIFIED=2
+  Nothing auto-pairs; both edges are queued ReasonAmbiguous. HEAD, same test:
+    --- FAIL: perm 0: Paired=2, want 0  (HEAD pairs N with P1 -- first index --
+              and queues nothing).
+
+C6 -- INPUT NOT MUTATED.  PASS
+  $ go test -count=1 -run 'TestC6_InputNotMutated' ./internal/services/transfers/
+    --- PASS  (reflect.DeepEqual of a pre-call copy vs. the caller's slice after
+               Classify; plus &Result.Transactions[0] != &in[0], so the returned
+               slice is a fresh array, not an alias; plus a guard asserting the
+               fixture actually paired something so the check cannot pass
+               vacuously.)
+  The documented promise is transfers.go:143 "The input slice is not modified;
+  the returned slice is a fresh copy."
+
+C7 -- BUILD / VET / SUITE / FMT / LINT / RACE / REPEAT.  PASS
+  All run in the real repo (read-only operations):
+    $ go build ./...                       -> exit 0
+    $ go vet ./...                         -> exit 0
+    $ go test -count=1 ./...               -> exit 0; 48 packages "ok", 0 FAIL
+                                              (includes internal/services/accounts
+                                              with S1's change present, and
+                                              internal/services/dataloader)
+    $ gofmt -l internal/services/transfers/ -> no output (clean)
+    $ staticcheck ./internal/services/transfers/...  -> no output, exit 0
+    $ go test -race  -count=1 ./internal/services/transfers/...  -> ok, exit 0
+    $ go test        -count=5 ./internal/services/transfers/...  -> ok, exit 0
+    $ go test -race  -count=5 ./internal/services/transfers/...  -> ok, exit 0
+    $ go test -race -shuffle=on -count=10 ./internal/services/transfers/ -> ok, exit 0
+  Map-iteration nondeterminism specifically: my permutation suite under
+    $ go test -race -count=25 -run 'TestC1_|TestC1b_|TestC2|TestC5' ...  -> ok, exit 0
+  i.e. 25 independent map-seed runs x 720 permutations of the order-sensitive
+  fixture, all identical. Mechanism inspected and consistent with the result:
+  `byCents` map iteration only ACCUMULATES edges, and the subsequent
+  sort.Slice key is (dist, PairKeyFor(identities)) -- content-derived and a
+  total order over distinct edges -- so no slice position or map order survives
+  into the layer walk.
+
+  Executable oracle (run in a scratch copy so the repo is not touched; the
+  accept.sh used was byte-identical to .swarm/tier3/S2/accept.sh):
+    $ bash .swarm/tier3/S2/accept.sh
+      PASS go build ./... / PASS go vet ./... / PASS oracle: order independence,
+      closest date, no drop / PASS transfers package tests / PASS dataloader
+      package tests / PASS full suite
+      ORACLE: PASS      (exit 0)
+
+C8 -- NO DEBUG PRINTS OR INSTRUMENTATION.  PASS
+  $ grep -nE 'fmt\.Print|println|print\(|log\.|os\.Std(out|err)|spew|DEBUG|TODO|FIXME|XXX' \
+      internal/services/transfers/transfers.go   -> no matches (exit 1)
+  Import block (transfers.go:33-42) is crypto/sha256, encoding/hex, sort, time,
+  models, classifier, majorexpenses -- no fmt, no log, no os.
+
+C9 -- DELETED HELPER `nearest` HAS NO CALLERS.  PASS
+  $ grep -rn 'func nearest' --include=*.go .        -> no matches (exit 1)
+  $ grep -rn '\bnearest\b' --include=*.go .         -> 14 hits, ALL non-calls:
+      transfers.go:179,190,264 (prose in comments), transfers_test.go:342
+      (an error-message string), and 10 unrelated "nearest $100/$50/cent"
+      rounding comments in accounts/, retirement/, mcpsvc/. No call site, no
+      declaration.
+  `go build ./...` and `go vet ./...` also pass, which an unresolved call could
+  not survive.
+
+--------------------------------------------------------------------------
+ADJUDICATION OF THE FLAGGED SEMANTIC CONSEQUENCE (C5)
+
+Question posed: the pre-fix code auto-paired the first-indexed outflow on the
+C5 probe; the fixed code queues both edges. Does that contradict anything
+written down? Finding: NO. Specifically --
+
+  a) SPEC (REVIEW_AUG20_SPEC.md, S2 row): "exact ties go to the review queue as
+     ReasonAmbiguous". The fixed behaviour is that clause, applied; the pre-fix
+     behaviour is not.
+  b) Design doc, docs/superpowers/specs/2026-08-16-accounts-transfers-design.md
+     lines 147-149: "Unique candidate -> ...  Multiple candidates -> closest
+     date wins; exact tie -> suspected queue." The doc never names the SUBJECT
+     of "candidate". On the C5 probe the two readings are mutually unsatisfiable
+     -- P1 and P2 each have a unique candidate N, but N cannot pair with both --
+     so "unique candidate -> pair" has no consistent global solution here, while
+     "exact tie -> queue" does (N has two candidates at equal distance). The
+     queue is the only order-independent reading. Line 232 of the same doc lists
+     "ambiguous tie (two candidates, equal date distance -> queue)" as a required
+     test case, with no exception for which leg carries the pattern.
+  c) GLOSSARY.md:133-147 says "the unique such candidate auto-pairs". This is the
+     closest thing to contrary text, and I checked it carefully. It is silent on
+     the subject row too, and it cannot be applied to P1 and P2 simultaneously;
+     picking one requires slice position, which is the defect. Not a contradiction.
+  d) The package's OWN doc comment at HEAD, which the change carries forward,
+     states the intent explicitly (HEAD transfers.go, the removed lines 178-181):
+       "ambiguous marks rows a tie has already sent to review. They are
+        withdrawn from this pass entirely -- both as subjects and as candidates
+        -- because a row whose own counterparty is undecided must not become
+        someone else's 'unique' candidate and pair by default."
+     The C5 probe is exactly that sentence's case. The new code honours it; HEAD
+     only honoured it when the tied row happened to be visited first. This is
+     the strongest written evidence, and it points the same way as the change.
+     The replacement comment (transfers.go:186-200) restates it.
+  e) Existing tests: none contradicts. `git diff --numstat
+     internal/services/transfers/transfers_test.go` -> "155 0" -- 155 lines
+     added, ZERO deleted, so no pre-existing assertion was weakened, relaxed or
+     removed to make the change pass. TestClassify_AmbiguousTieGoesToReview
+     (transfers_test.go:144) asserts precisely the C5 shape from the other side
+     (pattern leg external, both edges queued ambiguous, Paired==0) and passes
+     unchanged. The full suite is green.
+
+--------------------------------------------------------------------------
+WORKER'S OWN TESTS -- READ AND CHECKED AGAINST THEIR NAMES
+
+transfers_test.go:450 TestClassify_ClosestDatePairingIsOrderIndependent -- does
+  enumerate all 24 permutations of a 4-row fixture and compares a fingerprint of
+  rows + suspected set + counts. Name matches content.
+transfers_test.go:486 TestClassify_ABCCounterexamplePairsClosestInEveryOrder --
+  pins the A/B/C counterexample over all 6 permutations, asserts the exact
+  expected PairKeyFor("chk|1","sav|2") and that B is not consumed. Name matches.
+transfers_test.go:512 TestClassify_PermutationsNeverDropOrDuplicateRows -- checks
+  length, no duplicate StableID, no unexpected ID, no missing ID. Name matches.
+Non-vacuity confirmed independently: with transfers.go reverted to HEAD and the
+NEW test file in place,
+  $ go test -count=1 -run 'TestClassify_ClosestDatePairingIsOrderIndependent|TestClassify_ABCCounterexamplePairsClosestInEveryOrder|TestClassify_PermutationsNeverDropOrDuplicateRows' ./internal/services/transfers/
+    --- FAIL: TestClassify_ClosestDatePairingIsOrderIndependent
+    --- FAIL: TestClassify_ABCCounterexamplePairsClosestInEveryOrder
+Both fail on the old code. They are real regression tests, not decoration.
+(TestClassify_PermutationsNeverDropOrDuplicateRows passes on HEAD too -- HEAD
+never dropped rows -- so it is a guard, not a regression test. Noted, not a
+defect: criterion 3 requires the property, not that it was previously broken.)
+
+--------------------------------------------------------------------------
+SCOPE
+
+Modified tracked files in the working tree (`git status --porcelain`):
+  M internal/services/transfers/transfers.go        <- S2 manifest
+  M internal/services/transfers/transfers_test.go   <- S2 manifest
+  M internal/services/accounts/projection.go        }  S1, already accepted,
+  M internal/services/accounts/projection_test.go   }  explicitly out of scope
+  M .swarm/ledger.tsv                               <- lead bookkeeping
+Untracked: .swarm/manifests/*, .swarm/tier3/S2/, .swarm/verdicts/*,
+REVIEW_AUG20_SPEC.md -- all swarm/lead artifacts, no product code.
+S2's code footprint is EXACTLY its manifest; no third file was touched.
+
+critical.globs: internal/services/transfers/** IS listed. S2 is ledger tier 3
+(`.swarm/ledger.tsv`: "S2  3  tests,second  pending  2  tier3-merged-wt-primary"),
+which is what the glob demands; REVIEW_AUG20_SPEC.md "Tier justification"
+records the hit as intentional. S1's projection.go is deliberately NOT in the
+globs (spec "critical.globs" section, user ruling 2026-08-19a). No critical glob
+was touched outside its permitted tier. Ledger attempt 2 matches this verdict's
+ATTEMPT: 2 and the S2.2 filename.
+
+No file in the repository was created or modified by this check except this
+verdict file.

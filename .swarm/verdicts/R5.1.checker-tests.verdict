@@ -1,0 +1,242 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R5
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2 (branch fix/review-aug16). Scratch trees used
+for all mutation work, never the repo:
+  $S = /tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad
+  $S/fixed  = byte-identical snapshot of the R5 tree (verified: diff of both
+              manifest files against the repo reports IDENTICAL)
+  $S/mutant = $S/fixed with the R5 change reverted (truncation removed;
+              recurringForProjection(deps, txns) -> DetectRecurring)
+
+=== C1 -- truncate ACTIVE at as_of, and DetectRecurringAt(ts, asOf) -- PASS ===
+Code: internal/services/mcpsvc/ledger/accounts.go:241-247 builds
+  active = ts.Active().FilterByDateRange(all.MinDate(), asOf)
+accounts.go:251 passes that truncated slice to accounts.Project AND to
+recurringForProjection(active, asOf); accounts.go:300-307
+  func recurringForProjection(ts *models.TransactionSet, asOf time.Time)
+  ... return insights.DetectRecurringAt(ts, asOf)
+Command: `git diff internal/services/mcpsvc/ledger/accounts.go` (hunks
+@@ -230,12 +230,25 @@ and @@ -273,14 +286,23 @@).
+
+Both DetectRecurringAt jobs are demonstrably driven by as_of:
+ (a) HISTORY TRUNCATION -- `TZ default go test -count=1 -run TestProbeI -v
+     ./internal/services/mcpsvc/ledger/` in $S/fixed, comparing the MCP
+     recurring input against the dashboard body
+     (insights.DetectRecurringAt(ts.Active(), asOf)) over five as_of values:
+       as_of=2026-03-15 dashboard=1 newMCP=1 identical=true
+       as_of=2026-04-01 dashboard=1 newMCP=1 identical=true
+       as_of=2026-06-10 dashboard=1 newMCP=1 identical=true
+       as_of=2026-08-15 dashboard=1 newMCP=1 identical=true
+       as_of=2026-12-01 dashboard=0 newMCP=0 identical=true | preR5MCP=1
+     The last row is the truncation/freshness job moving with as_of; pre-R5
+     it did not.
+ (b) FRESHNESS -- see C3 below (mutant schedules a stale series, fix does not).
+
+=== C2 -- historical as_of asserts a NON-EMPTY schedule on a genuinely
+          old-code-empty fixture -- PASS ===
+Fixture: accounts_test.go:452-457
+  2026-01-01,2026-02-01,2026-03-01 Rent -900.00   (series entirely before as_of)
+  2026-08-15 Misc Fee -20.00                       (pushes ledger max 4.5 months
+                                                    past the 2026-04-01 as_of)
+Anchor 2025-12-31 / 3700 (accounts_test.go:411-424). The shape the brief
+requires is present: series before as_of + a later row well past it.
+Assertions (accounts_test.go:477-485) are a NON-EMPTY schedule:
+crossing == "2026-05-01", minimum == 100, suggested_top_up == 400.
+Command (mutant): `cd $S/mutant && go test -count=1 -run TestGetBalanceProjection
+./internal/services/mcpsvc/ledger/`
+  --- FAIL: TestGetBalanceProjectionHistoricalAsOfSchedulesFromPastEvidenceOnly
+      accounts_test.go:478: crossing = "", want 2026-05-01
+      accounts_test.go:481: minimum = 1000.00, want 100.00
+      accounts_test.go:484: suggested_top_up = 0.00, want 400.00
+The old code really did schedule NOTHING on this fixture.
+
+=== C3 -- future as_of judges freshness against the requested date -- PASS ===
+Fixture: accounts_test.go:511-514, three Rent rows Jan/Feb/Mar 2026 and NO
+later rows, so the ledger max IS the series' own last occurrence -- the only
+fixture shape that can separate "ledger max" from "requested date".
+as_of 2026-08-01 (153 days stale). Assertions: crossing == "", minimum == 1000.
+Mutant output (same command as C2):
+  --- FAIL: TestGetBalanceProjectionFutureAsOfEvaluatesFreshnessAgainstRequestedDate
+      accounts_test.go:529: crossing = "2026-08-29", want empty
+      accounts_test.go:532: minimum = 100.00, want 1000.00
+      accounts_test.go:535: suggested_top_up = 400.00, want 0
+The mutant kept the stale series alive and scheduled it; the fix does not.
+
+=== C4 -- JUDGEMENT: does brief-criterion 3 ("no as_of => output unchanged")
+          hold on a fixture where recurring detection DOES fire? -- FAIL ===
+Answer, in two parts, both from commands.
+
+(4a) On the recurring dimension the answer is YES, but VACUOUSLY, and for a
+reason neither the worker nor the brief identified. I built four default-path
+fixtures where detection genuinely fires and ran them in BOTH trees
+(probe_test.go, `go test -count=1 -v -run TestProbe ./internal/services/
+mcpsvc/ledger/` in $S/fixed and $S/mutant, outputs diffed):
+  A-default-recent  (series ending 30d ago)  min=1000.00 crossing= top_up=0.00
+  B-default-stale   (series ending 140d ago) min=1000.00 crossing= top_up=0.00
+  C-default-future-rows                      min=1000.00 crossing= top_up=0.00
+  D-default-mod-stale                        min=1000.00 crossing= top_up=0.00
+  diff fixed vs mutant -> IDENTICAL   (also identical under TZ=UTC)
+Detection DOES fire on fixture A -- direct instrumentation in $S/fixed
+(TestProbeDiag) prints:
+  DIAG DetectRecurring(old ref=maxdate) count=1
+  DIAG   old rp desc="rent" freq="monthly" amt=900.00 next=2026-08-19 legs=3
+  DIAG DetectRecurringAt(ref=now)        count=1  (same item)
+yet accounts.Project applies no occurrence. Root cause, demonstrated:
+  TestProbeH, same fixture, two calls --
+    default (no as_of)      as_of=2026-08-19 minimum=1000.00 crossing=""
+    explicit as_of=2026-08-19 as_of=2026-08-19 minimum=100.00 crossing="2026-09-18"
+  Identical in fixed AND mutant, so PRE-EXISTING, not an R5 regression.
+  internal/services/accounts/projection.go:136 writes byDay[occ] where occ
+  derives from rp.NextExpected (Location = time.UTC); projection.go:117/149-150
+  read byDay[day] where day derives from dayOf(asOf) with asOf = time.Now()
+  (Location = time.Local). Go's map key equality on time.Time compares the
+  *Location pointer, verified independently:
+    $S/tz `go run .`  -> t1==t2: false, m[t2] found=false
+    TZ=UTC `go run .` -> t1==t2: false (Equal true), m[t2] found=false
+  => with as_of omitted, get_balance_projection can NEVER apply a recurring
+  item, in any timezone. The committed pin therefore proves no-drift on a
+  path where R5's recurring change is structurally unobservable. This is a
+  real production defect (MCP default projection is always flat and disagrees
+  with the dashboard, which uses asOf = ledger maxDate in UTC) but it lives in
+  internal/services/accounts/projection.go, OUTSIDE R5's manifest -- report to
+  the lead as a new task, not chargeable to R5.
+
+(4b) On a dimension the worker did not consider, the answer is NO: the default
+path's output DID change. accounts.Project:174 calls
+medianInboundPairedTransfer(acct, txs), which applies NO date filter of its
+own (projection.go:249-265) -- it is filtered only by whatever slice the
+handler hands it, and R5 changed that slice. TestProbeG (identical file in
+both trees), default path, checking with confirmed inbound paired transfers of
+100 and 200 in the past and 900 dated today+10:
+  FIXED : PROBEG default-path: has_ref=true reference_amount=150.00
+  MUTANT: PROBEG default-path: has_ref=true reference_amount=200.00
+A user-visible dollar figure ("you usually move $X") changed on the no-as_of
+path. Brief criterion 3 says "output is unchanged from current behaviour ...
+pin this so the default path cannot drift". It is not unchanged, and
+TestGetBalanceProjectionDefaultAsOfUnchanged (accounts_test.go:546-583) cannot
+catch it: its fixture contains no transfers at all and asserts has_reference
+== false. The pin is vacuous in both dimensions.
+The new value is arguably the more correct one, but that is a decision the
+brief did not authorize silently; the criterion as written is not met and the
+regression pin does not do the job it was written to do.
+
+=== C5 -- FilterByDateRange inclusivity vs Project/BalanceAt -- FAIL ===
+Same-day semantics MATCH. models/transaction.go:225 sets
+endDay = end-of-day 23:59:59.999999999 and :228 tests !t.Date.After(endDay);
+accounts/balance.go:63 tests txDay.After(anchorDay) && !txDay.After(atDay).
+Anchor = END-of-day, as_of = inclusive. Demonstrated end-to-end (TestProbeE/F,
+explicit UTC as_of):
+  E-asof-boundary as_of=2026-06-15 minimum=2900.00  (06-15 row -100 counted,
+                                                     06-16 row -200 excluded)
+  F-anchor-day    as_of=2026-06-15 minimum=2800.00  (anchor-day row not
+                                                     re-applied; 06-06 row is)
+
+BUT R5's new FilterByDateRange call is off by one day on the DEFAULT path, and
+the error is timezone-dependent. transaction.go:224-225 builds the boundary in
+end.Location(); as_of on the default path is time.Now() (Local), while
+transaction dates are UTC. TestProbeK in $S/fixed prints:
+  PROBEK tx.Date=2026-08-20 00:00:00 +0000 UTC loc="UTC"
+  PROBEK time.Now() loc="Local" offset=-04:00
+  PROBEK FilterByDateRange(min, time.Now()) kept 1 of 1 tomorrow-dated rows
+i.e. a row dated TOMORROW survives "as of today" west of UTC, while BalanceAt
+(dayOf comparison) excludes it -- the two boundaries inside one call disagree.
+It moves money on screen. TestProbeJ, future inbound transfer of 900:
+  local TZ (EDT, UTC-04): today+1 -> reference_amount=200.00 (wrongly included)
+                          today+2 -> reference_amount=150.00
+  TZ=Asia/Tokyo (UTC+09): today+1 -> reference_amount=150.00
+                          today+2 -> reference_amount=150.00
+Same data, same call, different answer depending on the server's timezone.
+The criterion explicitly names this risk ("dayOf truncation is used elsewhere.
+An off-by-one day here changes money figures"). Missing: normalise as_of to a
+day boundary in a single, consistent location (the dayOf convention already
+used by balance.go:201-203 and projection.go:117) before filtering, and pin it
+with a test at the today/tomorrow boundary. Explicit-as_of callers are
+unaffected (time.Parse yields UTC), which is why the committed tests pass.
+
+=== C6 -- recurringForProjection callers updated; get_accounts unchanged -- PASS ===
+Command: `grep -rn "recurringForProjection" --include=*.go .` -> exactly one
+call site, accounts.go:251, updated to (active, asOf); the only other hits are
+the definition (:300), doc comments (:240, :285, :291) and a dashboard comment
+(handlers/dashboard/accounts_card.go:243) plus a test comment.
+get_accounts (accounts.go:85-90, :91) still reads ts.Active().Transactions and
+`now := time.Now()`, and never calls recurringForProjection -- exactly as R3
+left it. `go build ./... && go vet ./...` both exit 0, so no stale caller.
+
+=== C7 -- mutation reproduced independently -- PASS ===
+Reverted R5 in $S/mutant (kept R3's Active()): `go build ./...` -> BUILD_OK.
+`cd $S/mutant && go test -count=1 -run TestGetBalanceProjection
+./internal/services/mcpsvc/ledger/` fails exactly the two R5 tests, with the
+messages quoted under C2 and C3, and for the right reasons: historical -> old
+code detected nothing (freshness measured against the 2026-08-15 ledger max);
+future -> old code kept a 153-day-stale series alive (freshness measured
+against its own last occurrence). TestGetBalanceProjectionDefaultAsOfUnchanged
+passes on the mutant too -- consistent with the C4 finding.
+
+=== C8 -- R3 parity test still passes; is agreement now STRUCTURAL? -- PASS,
+          with a caveat ===
+Command: `go test -race -count=1 -run TestDashboardAndMCPProjectionAgree -v
+./internal/services/mcpsvc/ledger/` -> --- PASS (0.16s).
+Structural: YES for the recurring input. TestProbeI (C1 above) shows the MCP
+recurring list is now element-for-element identical (description, amount,
+frequency, NextExpected) to the dashboard's
+insights.DetectRecurringAt(ts.Active(), asOf) at every as_of tested, including
+as_of far past the ledger max, whereas the pre-R5 body diverged there
+(preR5MCP=1 vs dashboard=0 at as_of=2026-12-01). The handler's extra
+FilterByDateRange is idempotent with DetectRecurringAt's own
+TransactionSetForRecurring truncation. Before R5 the two paths agreed only
+because dashboard/handlers.go:111-114 sets asOf = maxDate, which is the same
+value DetectRecurring's zero referenceDate happened to fall back to --
+coincidence, exactly as the brief says.
+Caveat (not a criterion, but it limits the claim): the two paths still pass
+DIFFERENT slices to accounts.Project -- dashboard/handlers.go:114 passes
+data.Active().Transactions untruncated, MCP passes the truncated slice. That is
+unobservable at the dashboard's own asOf (= maxDate, nothing after it) but is
+the mechanism behind the C4b reference_amount divergence. And per C4a the MCP
+default path never applies recurring at all, so MCP-with-no-as_of and the
+dashboard do NOT agree in production.
+
+=== C9 -- build / vet / race -- PASS ===
+In the repo: `go build ./...` -> BUILD_OK; `go vet ./...` -> VET_OK;
+`go test -race -count=1 ./...` -> exit 0, 48 packages "ok", zero FAIL/DATA RACE
+lines. Repeated on the uncontaminated $S/fixed snapshot: same, exit 0, 48 ok.
+The known dashboard_parity_test.go flake (R9) did not fire in any of these runs
+and is not charged to R5.
+
+=== SCOPE ===
+Manifest .swarm/manifests/R5.1.files lists exactly two files; both are the only
+files carrying R5's change, and both match my snapshot byte-for-byte. Nothing
+in .swarm/critical.globs is touched by R5 (internal/services/accounts/
+accounts.go is modified in the shared tree, but by R3/R6, not by R5's manifest).
+Contamination note, NOT chargeable to R5: between 17:17 and 17:20 a concurrent
+agent wrote untracked probe files into the shared working tree
+(internal/services/mcpsvc/ledger/zz_adversarial_default_test.go,
+internal/services/accounts/zz_dbg_test.go, zz_dbg2_test.go) and injected six
+`println("DEBUG ...")` calls into production code at
+internal/services/accounts/projection.go:119-156. Those temporarily broke
+`go vet ./internal/services/mcpsvc/ledger/`. They were removed again by 17:26
+and the repo is clean now (`grep -c println internal/services/accounts/
+projection.go` -> 0; `git status --short` shows no zz_ files). All of my own
+mutation and probe work was done in $S, never in the repo; `git status --short
+| grep -i probe` -> none.
+
+=== WHAT MUST CHANGE FOR A PASS ===
+1. (C5, defect) Normalise as_of to a consistent day boundary before
+   FilterByDateRange so the truncation cannot include tomorrow's rows west of
+   UTC, and so the handler's boundary agrees with BalanceAt's dayOf boundary.
+   Add a test pinning the today/tomorrow edge that fails under at least one
+   non-UTC TZ today.
+2. (C4b, brief criterion 3) Either keep the default path's reference_amount
+   identical to pre-R5 behaviour, or get the change sanctioned and pin the NEW
+   value with a fixture that actually contains a future-dated inbound paired
+   transfer. The current TestGetBalanceProjectionDefaultAsOfUnchanged fixture
+   has no transfers and no 3+-occurrence merchant, so it pins nothing the
+   change could move.
+3. (C4a, out of R5 scope, for the lead) Raise a separate task for
+   internal/services/accounts/projection.go: byDay is keyed by time.Time values
+   whose Location pointer differs between the writer (:136, UTC) and the reader
+   (:149-150, Local when asOf = time.Now()), so no recurring occurrence is ever
+   applied on any time.Now()-driven projection.

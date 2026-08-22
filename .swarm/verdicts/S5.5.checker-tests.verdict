@@ -1,0 +1,404 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 5
+---
+Environment: branch fix/review-aug16, working tree uncommitted, node v24.12.0,
+go1.26.6 linux/amd64, staticcheck on PATH. I wrote nothing in the repo but this
+file. Verified: `git status --porcelain | md5sum` = 77d9a9dc36eef7333b2358a55c31d98b
+at the end, and the five S5 files hash to
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html
+  0ff1eb2e9a40cca13fb8c12ed6483d61  internal/handlers/accounts/warnings_client_regression_test.go
+  eabf2674111a9e4cca17eddc76aa4325  internal/handlers/accounts/testdata/js/warnings_dom_harness.js
+  55ee77bedc32d98fa00c32f527e425a1  Makefile
+  6d54c257eaa542435813df128f7e8f84  README.md
+DISCLOSURE: two gitignored build artifacts changed as a side effect of
+criterion-4/5 commands I was asked to run: `make build` produced ./budget2
+(gitignored, .gitignore:2, absent from `git status`), and `make test-coverage`
+rewrote ./coverage.out (gitignored, .gitignore:6). No tracked file was touched.
+
+SUMMARY: 9 of 10 criteria PASS. Criterion 7 (comments and docs match the code)
+FAILS on two stale/overbroad documentation claims about the guard's reach. The
+guard itself is sound: I could not construct any Makefile target or plain
+`go test` invocation that runs this package's tests and silently skips the
+harness. The defect is documentation-only and is two sentences wide.
+
+=====================================================================
+(1) THE ORACLE -- PASS
+=====================================================================
+  $ bash .swarm/tier3/S5/accept.sh ; echo $?
+    == S5 oracle ==
+    PASS  go build ./...
+    PASS  go vet ./...
+    PASS  go test ./...
+    PASS  harness runs and passes when node is present
+          opt-out variable: BUDGET2_ALLOW_SKIP_JS
+    PASS  node absent and no opt-out -> test fails loudly
+    PASS  the failure message names node
+    PASS  opt-out set -> skips cleanly with a named reason
+    PASS  make test-unit fails when node is absent (exit 2)
+    PASS  the Makefile target-scanning machinery is gone
+    PASS  non-test targets (build, clean, vet, dev) do not require node
+    PASS  a harness reporting FAIL while exiting 0 fails the Go test
+    ORACLE: PASS
+    0
+Every property below was then established independently of accept.sh, by
+running the commands myself against a PATH with node's directory removed.
+
+JUDGEMENT ON THE REWRITTEN ORACLE (asked for explicitly). Deleting the
+Makefile-scanning checks did NOT drop coverage the run still needs. The old
+checks tried to prove a property over an unbounded space ("every recipe that
+could ever invoke go test carries the prerequisite") using literal patterns,
+which is why they shared the evasion blind spot. The new design makes the
+property structural -- the test function itself refuses -- so it is provable
+once, per invocation path, rather than enumerated over Make idioms. Nothing
+the old checks could see is now unseen: I re-ran the full target set by hand
+(item 4 below) and all of it fails.
+Three real weaknesses remain in accept.sh, none of them fatal, all worth
+recording because the oracle is the contract:
+  a. The opt-out variable is DISCOVERED by regex
+     (`[A-Z][A-Z0-9_]*(SKIP|ALLOW)[A-Z0-9_]*` | sort -u | head -1) rather than
+     named. It resolves correctly today (BUDGET2_ALLOW_SKIP_JS), but a future
+     token sorting earlier would silently redirect checks (a) and (b) at the
+     wrong variable and still print ORACLE: PASS.
+  b. It asserts only that the failure message "names node". Criterion 2 also
+     requires the harness and the opt-out route to be named; the oracle cannot
+     see that. I checked it directly (item 2).
+  c. It spot-checks only `make test-unit`. The other four invocation paths
+     criterion 4 names are unverified by the oracle. I ran all five (item 4).
+  d. Nothing in the oracle inspects comments or docs, which is exactly where
+     this attempt fails (item 7). The oracle cannot be the whole gate here.
+
+=====================================================================
+(2) NODE ABSENT, NO OPT-OUT -> HARD FAILURE -- PASS
+=====================================================================
+PATH built by deleting only node's own bin dir:
+  $ STRIPPED=$(printf '%s' "$PATH" | tr ':' '\n' \
+      | grep -v -F "$(dirname "$(command -v node)")" | paste -sd: -)
+  $ PATH="$STRIPPED" command -v node   -> (empty)  # node genuinely gone
+
+  $ PATH="$STRIPPED" go test -count=1 ./internal/handlers/accounts/
+    FAIL	budget2/internal/handlers/accounts	0.214s   (exit 1)
+Not a skip: `grep -c -- '--- SKIP'` over the verbose run returns 0 for this
+test, and the failure line is warnings_client_regression_test.go:141.
+The message (verbatim from make-test-unit output line 169) contains all three
+required elements:
+  - names node:        "`node` was not found on PATH"
+  - names the harness: "(testdata/js/warnings_dom_harness.js)" and
+                       "accounts.html's syncWarnings() script under node"
+  - names the opt-out: "or set BUDGET2_ALLOW_SKIP_JS=1 to deliberately opt out
+                        and get a clean skip instead of this failure"
+It also states the policy in terms: "so this test FAILS rather than skips when
+node is missing".
+Sibling test TestExtractSyncWarningsScript_FindsExactlyOneBlock still PASSes
+with node absent (make-test-unit line 167), so the node requirement is scoped
+to the one test that needs it.
+
+=====================================================================
+(3) OPT-OUT SEMANTICS -- PASS (documented, defensible, consistent)
+=====================================================================
+The rule in code is os.Getenv("BUDGET2_ALLOW_SKIP_JS") != "" -- presence, i.e.
+ANY non-empty value opts out. Measured, node absent:
+  $ PATH=$STRIPPED BUDGET2_ALLOW_SKIP_JS= go test ...      -> FAIL   (empty = not set)
+  $ PATH=$STRIPPED BUDGET2_ALLOW_SKIP_JS=0 go test -v ...  -> --- SKIP / ok
+  $ PATH=$STRIPPED BUDGET2_ALLOW_SKIP_JS=false go test ... -> ok
+So `=0` and `=false` DO opt out. That is the trap the brief warned about, but
+it is not silent and not undocumented: README.md:643-646 says "set
+BUDGET2_ALLOW_SKIP_JS to any non-empty value", the test's doc comment says "to
+any non-empty value" twice, and the failure message a user sees before ever
+setting it says "set BUDGET2_ALLOW_SKIP_JS=1". The rule stated is exactly the
+rule implemented. I accept it: it is the conventional Go presence check, the
+documentation is unambiguous, and the empty-string case (the one a shell most
+easily produces by accident, e.g. an unset variable expanded into the env)
+correctly does NOT opt out.
+The skip is clean and named:
+  --- SKIP: TestSyncWarnings_ClientRegressionHarness
+      "skipping client-side warnings regression harness: `node` was not found
+       on PATH, and BUDGET2_ALLOW_SKIP_JS is set, so this is a deliberate
+       opt-out rather than an accidental one..." -> package exits ok / 0.
+Additional property I checked that nobody asked for and that matters: the
+opt-out CANNOT silence a machine that has node. The env check sits inside the
+exec.LookPath error branch, so
+  $ BUDGET2_ALLOW_SKIP_JS=1 go test -count=1 -v -run TestSyncWarnings... 
+    --- PASS: TestSyncWarnings_ClientRegressionHarness (0.02s)
+i.e. a CI box with node installed still RUNS the harness even with the opt-out
+exported globally. That closes the obvious "set it in CI once and forget"
+evasion.
+
+=====================================================================
+(4) THE GUARD TRAVELS -- PASS
+=====================================================================
+All five invocation paths, node absent, each run to completion:
+  make test-unit      exit 2
+  make race           exit 2
+  make test-coverage  exit 2
+  make test           exit 2
+  go test ./...       exit 1
+  make check          exit 2   (vet static vuln test)
+Each fails through the TEST, not a Makefile prerequisite. Proof per run:
+  $ grep -niE 'node is required|check-node|Error: node|node not found' <output>
+    -> no match in any of the five
+  $ grep -n 'was not found on PATH' <output>
+    -> warnings_client_regression_test.go:141 in all five
+  followed by FAIL budget2/internal/handlers/accounts.
+Serious attempt to route around it, all with node absent:
+  - go test -short ./internal/handlers/accounts/         -> FAIL (no Short() gate)
+  - go test WITHOUT -count=1 after a green cached run    -> FAIL (cache does not
+    mask it; exec.LookPath's PATH read participates in the test cache key)
+  - build tags: the test file carries no //go:build line; `grep -n go:build
+    internal/handlers/accounts/*.go` -> none. No -tags value excludes it.
+  - TestMain: `grep -rn "func TestMain" internal/handlers/accounts/` -> none,
+    so there is no package-level hook that could turn the Fatal into a skip.
+  - a FAKE node (shim that exits 0 printing nothing) early on PATH -> FAIL
+    (the Go glue requires three `^RESULT <name> PASS` lines, not exit status).
+    So "install a stub node" is not an escape either; it fails closed.
+The only paths I found that do not fail are explicit test filters:
+  - go test -run TestExtractSyncWarningsScript ./internal/handlers/accounts/ -> ok
+  - GOFLAGS='-run=^$' go test ./internal/handlers/accounts/ -> ok [no tests to run]
+These do not run the harness test at all; a -run filter that excludes a named
+test is an unremovable property of `go test` itself, not of this design, and no
+Makefile target uses one. I do not count them against criterion 4, but I record
+them so nobody claims a stronger property than exists.
+Two targets DO run `go test` and exit 0 with node absent -- `make
+test-integration` (`go test -v ./cmd/server/...`, exit 0) and `make fuzz`
+(no fuzz packages, exit 0). Neither compiles internal/handlers/accounts, so
+neither skips the harness; they are not criterion-4 violations. They ARE the
+counterexample to a sentence in the test's doc comment -- see item 7.
+
+=====================================================================
+(5) SCANNING MACHINERY GONE, NON-TEST TARGETS INTACT -- PASS
+=====================================================================
+  $ grep -nE 'check-node|GOTEST_TARGETS|foreach|\$\(eval|MAKECMDGOALS' Makefile
+    167:# check-node prerequisite, hand-listed and then discovered by scanning
+That single hit is inside the explanatory comment; there is no check-node
+target, no $(foreach)/$(eval) injection, no MAKECMDGOALS inspection.
+  $ grep -n '\.PHONY' Makefile   -> line 73, no check-node entry.
+  $ git diff Makefile --stat     -> 1 file changed, 12 insertions(+)
+    and the 12 lines are all comment lines above `test:`. No recipe or
+    prerequisite changed anywhere in the Makefile.
+Every target's prerequisite is `check-go` (pre-existing) or nothing. The
+spurious dependency attempt 4 introduced is gone: `release:` (line 306) and
+`release-snapshot:` (line 301) have NO prerequisites, and `clean:` (line 148)
+has none either -- attempt 4's `clean: check-node` string-concatenation hazard
+no longer exists.
+Non-test targets, node absent:
+  make build       exit 0 (built ./budget2)
+  make vet         exit 0
+  make -n clean            -> rm -f budget2 / rm -rf dist / go clean   (rc 0)
+  make -n dev              -> go run ./cmd/server                      (rc 0)
+  make -n install-go       -> curl+untar recipe                        (rc 0)
+  make -n release-snapshot -> goreleaser release --snapshot --clean    (rc 0)
+  make release             -> "Error: version not specified..." exit 1 (its own
+                              designed behaviour, unrelated to node)
+  make -n release v=9.9.9  -> clean-tree check, tag, push. No node anywhere.
+I used `make -n` for clean/dev/install-go/release deliberately: running them
+for real would delete build outputs, start a server, overwrite a Go toolchain
+or push a tag. The dry runs show the full recipe text, which is what "does not
+require node" needs.
+There is no `install` target in this Makefile (only `install-go`); .PHONY line
+73 confirms the target list.
+
+=====================================================================
+(6) THE HARNESS STILL CATCHES THE REAL REGRESSION -- PASS
+=====================================================================
+Done entirely outside the repo. I copied the tree (excluding .git, binaries,
+data) to
+  .../scratchpad/s5/defectcopy
+and reintroduced the point-16 early return in the COPY's accounts.html only,
+by moving the banner lookup to the top of syncWarnings():
+    function syncWarnings() {
+        var data = document.getElementById('accounts-warnings-data');
+        if (!data) return;
+        var banner = document.getElementById('accounts-warnings-banner');
+        if (!banner) return;          <-- the S4/S5 defect, restored
+        var text = ...
+Result in the copy:
+  $ go test -count=1 -v -run TestSyncWarnings_ClientRegressionHarness ./internal/handlers/accounts/
+    RESULT dismiss_resolve_recreate FAIL {"postDismissBannerAbsent":true,
+      "postDismissStored":true,"bannerPresent":false,"dismissPresent":false,
+      "regionAssertsWarning":false,"parityOK":true,
+      "regionText":"Pattern overlap warning dismissed.", "dataText":"..."}
+    RESULT dismiss_then_reload_unchanged PASS {...}
+    RESULT guard_directions FAIL {"unrelatedWrites":0,"changedWrites":1,
+      "clearingEmpty":false}
+    --- FAIL: TestSyncWarnings_ClientRegressionHarness (0.02s)   exit 1
+Two of the three named checks go red on the exact defect this task exists to
+prevent. The repo's own template was never touched: its md5 is
+163d70d7849ce363f1c463052805db32 before and after.
+I also read the harness rather than trusting its check names. They assert what
+they claim: testDismissResolveRecreate actually dispatches the dismiss click,
+verifies the dismissal took effect (banner removed AND sessionStorage key
+stored) before proceeding, then drives resolve and recreate through
+renderSwap() with fresh DOM nodes and a fired htmx:afterSwap, and asserts the
+parity invariant rather than string equality of copy.
+testDismissThenReloadUnchanged builds a genuinely new DOM twice while carrying
+sessionStorage across, which is what a reload is. testGuardDirections counts
+actual textContent writes to the region (instrumented in the setter), so
+"unrelatedWrites === 0 / changedWrites === 1" is a real measurement, not a
+proxy. The Go glue requires `^RESULT <name> PASS(\s|$)` for all three names,
+so a harness that crashes mid-way (the catch block emits the FUNCTION name,
+e.g. testDismissResolveRecreate, not the check name) also fails closed.
+
+=====================================================================
+(7) COMMENTS AND DOCS MATCH THE CODE -- **FAIL**
+=====================================================================
+The README paragraph (README.md:637-648) is accurate: "requires node on PATH
+and fails the build (it does not skip) if node is missing, so this check cannot
+be silently routed around by running go test directly, make test-unit, an IDE
+test runner, or CI... set BUDGET2_ALLOW_SKIP_JS to any non-empty value". Every
+clause of that is demonstrated in items 2-4.
+The Makefile comment (Makefile:155-167) is accurate, including its closing
+line "No target below requires node -- the test does."
+Two other claims are not accurate.
+
+7a. STALE POINTER TO DELETED MACHINERY -- the harness header, which is in the
+S5.5 manifest, still credits the deleted Makefile guard:
+  internal/handlers/accounts/testdata/js/warnings_dom_harness.js:14-16
+    // `node` binary. See internal/handlers/accounts/warnings_client_regression_test.go
+    // for how it is wired into `go test`, and the Makefile `test` target for
+    // why a machine without node cannot silently skip it in CI.
+The Makefile `test` target is now `test: check-go` + `$(GO) test ./...` and
+nothing else; the comment directly above it says the opposite of what this
+sentence promises -- "That guard lives in the test itself, not here". A reader
+following the reference lands on a target that provides no such guarantee.
+This is the same defect class the criterion names: a comment attributing
+protection to a place the code does not deliver it. Attempt 5 rewrote the test
+comment and the Makefile comment for the new design and left this one behind.
+
+7b. OVERBROAD CLAIM IN THE TEST'S PACKAGE COMMENT --
+  internal/handlers/accounts/warnings_client_regression_test.go, package
+  comment, final sentence:
+    "The Makefile carries no node-checking machinery of its own any more;
+     `make test`, `make test-unit`, `make race`, and every other target that
+     runs `go test` fails through this test's own t.Fatal, not through a
+     Makefile prerequisite."
+Falsified, node absent:
+  $ PATH="$STRIPPED" make test-integration ; echo $?
+    --- PASS: TestMCPEndpointRejectsSpoofedHostOnLoopbackConnection (0.02s)
+    ok  	budget2/cmd/server	4.742s
+    0
+  $ PATH="$STRIPPED" make fuzz ; echo $?
+    No fuzz tests found. ...
+    0
+`test-integration` runs `$(GO) test -v ./cmd/server/...` -- it is a target that
+runs `go test`, and it does not fail. `fuzz` likewise. The sentence names three
+targets correctly and then universally quantifies over a set it does not hold
+for. The guarantee that IS true and that the design delivers is narrower:
+every target that runs THIS PACKAGE'S tests fails through this test's t.Fatal.
+I acknowledge a generous reading exists (that the clause describes the
+mechanism of failure rather than asserting universal failure), but the sentence
+carries no scoping qualifier, and this run has twice paid for comments whose
+generous reading was true and whose literal reading was not. A reader who
+believes the literal sentence concludes that a green `make test-integration`
+implies node was present.
+
+Both are documentation-only; neither weakens the guard. Fix is two sentences:
+scope 7b to the tests of this package, and repoint 7a at the test file. I am
+recording FAIL rather than nit because the criterion is explicit that an
+overclaim here is a FAIL, and because "the comment says the Makefile protects
+you" is precisely the belief that made attempts 2 and 4 look finished.
+
+=====================================================================
+(8) NOTHING EARLIER REGRESSED -- PASS
+=====================================================================
+Byte-identity against the md5s recorded in
+.swarm/verdicts/S5.1.checker-tests.verdict (and re-confirmed at S5.4):
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html            MATCH
+  de990125ada6a151d85dba1df4ccb2d3  internal/handlers/accounts/handlers_test.go  MATCH
+  0809c0e404fa9a629d2d293ab92cebc4  internal/handlers/transfers/handlers.go      MATCH
+  1253e8dfeb48a738769e36fc9eb0a382  internal/handlers/transfers/handlers_test.go MATCH
+  bc1caf37dbb8c61676eefd052bf6f769  internal/services/accounts/projection_test.go MATCH
+  d461d41603813b68a34872d410f31316  internal/handlers/accounts/handlers.go       MATCH
+    (last one against S4.3.checker-tests.verdict)
+So accounts.html is byte-identical to what the S5.1 lanes verified in a real
+browser, and attempt 5 confined itself to the test, the Makefile comment and
+the README.
+Items (b)-(e) re-read on their merits, not only by hash:
+ (b) TestWarningsKey_OrderInvariant asserts the non-mutation guard on
+     b = {"b","a"} (unsorted): `if b[0] != "b" || b[1] != "a"`. An in-place
+     sort is therefore catchable. Intact.
+ (c) TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock scans
+     renderedBodyWithoutScripts(w.Body.String()), not the raw body, so script
+     copy cannot trip it. Intact.
+ (d) internal/handlers/transfers/handlers.go:161 "Four cases fall out of that
+     read, all handled in describeAlreadyResolved"; the load-failure branch
+     test is at handlers_test.go:572-588. Intact.
+ (e) projection_test.go:370-383 -- the only remaining mention of
+     recurringBelongsToAccount is explicitly historical ("replaced the old
+     any-leg-membership recurringBelongsToAccount"), naming
+     recurringOwnerAccount as the current rule. Intact.
+Full suite with node PRESENT:
+  $ go test -count=1 ./...   -> exit 0, every package ok (no FAIL lines)
+
+=====================================================================
+(9) SCOPE -- PASS
+=====================================================================
+  $ git status --short go.mod go.sum    -> no output (unmodified)
+  $ find . -name package.json           -> none anywhere in the tree
+  $ ls node_modules                     -> does not exist
+No new Go dependency: the harness is invoked with exec.Command(node), and the
+test imports only os, os/exec, path/filepath, regexp, runtime, testing.
+.swarm/critical.globs contains internal/services/storage/**,
+internal/services/dataloader/**, internal/services/retirement/engine/**,
+internal/services/transfers/**, internal/services/accounts/accounts.go,
+internal/services/mcpsvc/confirm/**. Nothing in the S5.5 manifest falls in any
+of them (internal/services/accounts/projection_test.go is not accounts.go; the
+transfers files in the manifest are internal/HANDLERS/transfers, not
+internal/services/transfers). The modified internal/services/transfers/*.go in
+the working tree belong to S2, not to S5's manifest, and their content is
+unchanged by this attempt.
+Working-tree changes outside the manifest are the lead's own artifacts
+(.swarm/ledger.tsv, ACCESSIBILITY.md, REVIEW_AUG20_SPEC.md) and other tasks'
+files (projection.go, transfers.go, transfers_test.go) -- none attributable to
+attempt 5.
+
+=====================================================================
+(10) BUILD / VET / SUITE / GOFMT / STATICCHECK -- PASS
+=====================================================================
+  $ go build ./...      exit 0, no output
+  $ go vet ./...        exit 0, no output
+  $ go test -count=1 ./...   exit 0, all packages ok
+  $ gofmt -l <the six S5 Go files>   -> no output (all formatted)
+  $ staticcheck ./...   exit 0, no output
+
+=====================================================================
+PROCESS: THE DECLARED TIER-3 DEVIATION
+=====================================================================
+Asked for explicitly, so recorded either way. The lead's reasoning -- that the
+user's 2026-08-20f directive removed the design ambiguity N-version exists to
+explore -- is HALF right, and I do not fully accept it.
+Accepted: the directive did fix the design. There was no space left to search,
+and a second blind arm would have produced a near-identical implementation.
+Not accepted: CLAUDE.md's own Tier-3 text says that with both arms on Claude,
+N-version "catches slips and misreadings rather than shared blind spots". Slips
+and misreadings survive a fixed design -- and the only defects I found in this
+attempt (item 7) are exactly that class: two sentences left describing the old
+design. A comparison run would not reliably have caught them either (accept.sh
+inspects no comments, so both arms could diverge on comment text without any
+check firing), so I do not claim the deviation caused the failure. What I do
+claim is that the stated reason -- "no ambiguity left" -- addresses only the
+blind-spot rationale and not the slip-catching one that the constitution says
+is the operative benefit here.
+One mechanical consequence the lead should see before running the gate:
+.swarm/tier3/S5/report.md still carries the attempt-3 RESOLUTION line
+("RESOLUTION: merge wt-primary as-is; graft nothing from wt-alt...", written
+16:50, before accept.sh was rewritten at 17:34). Per CLAUDE.md, `gate.sh check`
+at Tier 3 requires "both the RESOLUTION line and a PASS from each lane at that
+attempt". The RESOLUTION requirement will therefore be satisfied at attempt 5
+by an artifact that adjudicates a different attempt's arms. That is a gate the
+deviation walks through rather than trips; whether it should be re-stated for
+attempt 5 is the lead's call, not mine.
+
+=====================================================================
+WHAT WOULD MAKE THIS PASS
+=====================================================================
+Nothing behavioural. Two comment edits:
+ 1. warnings_dom_harness.js:14-16 -- stop citing "the Makefile `test` target"
+    as the reason node cannot be silently skipped; the reason is the test's own
+    t.Fatal in warnings_client_regression_test.go.
+ 2. warnings_client_regression_test.go package comment, final sentence --
+    scope "every other target that runs `go test`" to targets that run this
+    package's tests, or drop the universal and keep the three named targets
+    (make test / test-unit / race, all verified true).
+Everything else in this attempt is verified correct.

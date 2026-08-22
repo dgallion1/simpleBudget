@@ -628,8 +628,12 @@ func TestBuildPageData_PinnedHashesReachSummary(t *testing.T) {
 	// wanted to cover. The exact summary struct is unexported, so we
 	// only verify the pin was stored — the coverage profile confirms
 	// the branch executed.
-	pins, _ := dl.LoadTransactionPins()
-	if pins[hash] == "" {
+	//
+	// Resolved through PinFor rather than indexed by hash: pins are
+	// stored under the transaction's StableID now, and the raw hash is
+	// only the legacy fallback key.
+	if id, ok := dl.PinFor(ts.Transactions[0]); !ok || id == "" {
+		pins, _ := dl.LoadTransactionPins()
 		t.Errorf("pin not stored: pins=%+v", pins)
 	}
 }

@@ -1,5 +1,9 @@
 {{define "explorer-content"}}
 <div class="flex flex-col h-full py-4">
+    <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-2">Data Explorer</h1>
+    <!-- Unassigned-files banner (A8) -->
+    {{template "unassigned_banner" .}}
+
     <!-- Fixed Filter Controls -->
     <div class="flex-shrink-0 bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-2">
         <form id="explorer-filter-form" hx-get="/explorer/transactions" hx-target="#transactions-container"
@@ -58,6 +62,7 @@
                         <option value="">All Types</option>
                         <option value="Income" {{if eq .Type "Income" }}selected{{end}}>Income</option>
                         <option value="Outflow" {{if eq .Type "Outflow" }}selected{{end}}>Expenses</option>
+                        <option value="Transfer" {{if eq .Type "Transfer" }}selected{{end}}>Transfers</option>
                     </select>
                 </div>
 
@@ -708,12 +713,18 @@
     <td class="w-32 p-3 text-sm truncate">
         {{if $me}}<span class="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs truncate block" title="{{$me}}">{{$me}}</span>{{end}}
     </td>
-    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
+    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600 dark:text-green-400{{else if eq .TransactionType "Transfer"}}text-indigo-600 dark:text-indigo-400{{else}}text-red-600 dark:text-red-400{{end}}">
         {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
     </td>
     <td class="w-20 p-3 text-center">
         {{if eq .TransactionType "Income"}}
         <span class="px-2 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded text-xs">Income</span>
+        {{else if eq .TransactionType "Transfer"}}
+        <span class="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded text-xs" title="Money moving between your own accounts">
+            <svg class="inline-block w-3 h-3 mr-0.5 align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
+            </svg>Transfer
+        </span>
         {{else}}
         <span class="px-2 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded text-xs">Expense</span>
         {{end}}
@@ -735,53 +746,6 @@
 </tr>
 {{end}}
 {{end}}
-
-{{define "file-list"}}
-<table class="w-full">
-    <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
-        <tr>
-            <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">File</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Transactions</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Date Range</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Enabled</th>
-            <th class="text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Actions</th>
-        </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-        {{range .Files}}
-        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-            <td class="p-3">
-                <div class="text-sm font-medium text-gray-900 dark:text-gray-100">{{.Name}}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{printf "%.1f" (div (toFloat .Size) 1024.0)}} KB</div>
-            </td>
-            <td class="p-3 text-center text-sm text-gray-600 dark:text-gray-400">{{.Transactions}}</td>
-            <td class="p-3 text-center text-xs text-gray-500 dark:text-gray-400">
-                {{if .MinDate}}{{.MinDate}} - {{.MaxDate}}{{else}}-{{end}}
-            </td>
-            <td class="p-3 text-center">
-                <input type="checkbox" {{if .Enabled}}checked{{end}} hx-post="/explorer/files/toggle"
-                    hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
-                    hx-target="#file-list" hx-swap="innerHTML"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
-            </td>
-            <td class="p-3 text-center">
-                <button hx-delete="/explorer/files/{{urlEncode .Name}}" hx-target="#file-list" hx-swap="innerHTML"
-                    class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm">
-                    Delete
-                </button>
-            </td>
-        </tr>
-        {{else}}
-        <tr>
-            <td colspan="5" class="p-8 text-center text-gray-500 dark:text-gray-400">
-                No CSV files found. Upload a file to get started.
-            </td>
-        </tr>
-        {{end}}
-    </tbody>
-</table>
-{{end}}
-
 
 {{define "summary-stats"}}
 <div id="summary-stats" class="flex flex-wrap items-center gap-2 text-sm" hx-swap-oob="true">

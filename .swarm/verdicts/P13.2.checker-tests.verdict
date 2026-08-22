@@ -1,0 +1,351 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P13
+ATTEMPT: 2
+---
+EVIDENCE:
+
+Working directory for every command below: /home/darrell/bin/ai/budget2
+(verified — `go build ./...` resolves the module; no rtk "Success" placeholder
+was accepted as toolchain output).
+
+Documents read in full: .swarm/briefs/P13.md,
+docs/superpowers/specs/2026-08-12-file-manager-import-design.md (§2 + the
+2026-08-16a ADR added on this branch), /home/darrell/work/agents2/ACCESSIBILITY.md.
+I did NOT read .swarm/verdicts/P13.2.checker-second.verdict (it appeared in the
+tree while I was working); this verdict is independent.
+
+
+=== 1. MANIFEST FIDELITY — PASS (with one note for the lead) ===
+
+.swarm/manifests/P13.2.files:
+    web/templates/pages/filemanager.html
+    internal/handlers/explorer/handlers.go
+    internal/handlers/explorer/handlers_test.go
+    web/templates/pages/explorer.html
+
+`git status --porcelain`:
+     M .swarm/ledger.tsv
+     M docs/superpowers/specs/2026-08-12-file-manager-import-design.md
+     M internal/handlers/explorer/handlers.go
+     M internal/handlers/explorer/handlers_test.go
+     M web/templates/pages/explorer.html
+     M web/templates/pages/filemanager.html
+    ?? .swarm/manifests/P13.1.files
+    ?? .swarm/manifests/P13.2.files
+    ?? .swarm/verdicts/P13.1.checker-second.verdict
+    ?? .swarm/verdicts/P13.1.checker-tests.verdict
+    ?? .swarm/verdicts/P13.2.checker-second.verdict
+
+All four manifest entries are modified. The two extra modified paths are
+lead-owned swarm process files, not worker output:
+  - .swarm/ledger.tsv: the single-line P13 row bump
+    `P13 2 tests,second pending 1 - -` -> `... pending 2 - attempt-1-failed-htmx-swap-loses-sort-markup`.
+  - the design doc: a +38/-0 append of the "2026-08-16a — P13 attempt 1
+    rejected" ADR, written in the lead's voice and describing the rejection.
+Neither is application code. No unmanifested source file changed.
+
+`gofmt -l internal/handlers/explorer/handlers.go internal/handlers/explorer/handlers_test.go`
+    (no output)
+P13 did not add gofmt deviations.
+
+
+=== 2. TOOLCHAIN — PASS ===
+
+$ go build ./...   -> BUILD_EXIT=0 (no output)
+$ go vet ./...     -> VET_EXIT=0 (no output)
+$ set -o pipefail; go test ./... 2>&1 | tail -60   -> TEST_EXIT=0
+  44 package lines, real per-package results, e.g.:
+    ok  budget2/internal/handlers/backup        24.554s
+    ok  budget2/internal/handlers/explorer      (cached)
+    ok  budget2/internal/templates              0.266s
+    ok  budget2/internal/services/dataloader    (cached)
+    ?   budget2/web  [no test files]
+  (pipefail set before the pipe, per the standing rule.)
+$ set -o pipefail; staticcheck ./...  -> SC_EXIT=0 (no output)
+
+Uncached run of the new test:
+$ go test -count=1 -run TestSwapPartials_RenderSortableFileList -v ./internal/handlers/explorer/
+    === RUN   TestSwapPartials_RenderSortableFileList
+    === RUN   TestSwapPartials_RenderSortableFileList/toggle
+    2026/08/16 16:22:35 Templates loaded successfully: 49 files
+    === RUN   TestSwapPartials_RenderSortableFileList/upload
+    === RUN   TestSwapPartials_RenderSortableFileList/delete
+    --- PASS: TestSwapPartials_RenderSortableFileList (0.03s)
+        --- PASS: .../toggle (0.01s)  --- PASS: .../upload (0.01s)  --- PASS: .../delete (0.01s)
+    ok  budget2/internal/handlers/explorer  0.034s   EXIT=0
+
+
+=== 3. TYPED COMPARISON, NOT STRING COMPARISON — PASS ===
+
+Source of the data: internal/models/user_profile.go:70-78 —
+`Size int64`, `Transactions int`, `MinDate string`, `MaxDate string`.
+internal/services/dataloader/loader.go:677-724 fills MinDate/MaxDate with
+`minD.Format("2006-01-02")` and leaves them "" when the scan finds no dates.
+So data-size is raw bytes, data-rows a raw int, data-mindate ISO or empty.
+
+Comparator read at web/templates/pages/filemanager.html:485-505 (`cmp`):
+  - name  -> localeCompare(..., {sensitivity:'base', numeric:true})
+  - rows / size / enabled -> `(parseInt(av,10)||0) - (parseInt(bv,10)||0)`
+  - mindate -> ""  mapped to Infinity, so empty sorts LAST ascending / FIRST
+    descending; otherwise ISO strings compared with `<` (lexical == chronological
+    for YYYY-MM-DD).
+It reads `a.getAttribute('data-'+column)` only — never cell text.
+
+Verified in a real browser against the running server (fixtures in a scratchpad
+data dir, never in the repo). Emitted attributes, initial page:
+    alpha-card.csv  rows=1   size=48    mindate="2025-03-01" en=1  cell="alpha-card.csv (0K)"
+    big25k.csv      rows=700 size=16714 mindate="2022-01-01" en=0  cell="big25k.csv (16K)"
+    mid-nodate.csv  rows=1   size=33    mindate=""           en=0
+    uploaded.csv    rows=1   size=50    mindate="2023-06-01" en=0
+    zeta-bank.csv   rows=2   size=76    mindate="2024-01-15" en=1
+Note the rendered File cell shows "(0K)"/"(16K)" while data-size carries 48 /
+16714 — the raw-vs-rendered split the brief demanded.
+
+  mindate ascending  -> 2022-01-01, 2023-06-01, 2024-01-15, 2025-03-01, ""   (empty LAST)
+  mindate descending -> "", 2025-03-01, 2024-01-15, 2023-06-01, 2022-01-01   (empty FIRST)
+  enabled ascending  -> 0,0,0,1,1
+
+Discriminating numeric test (rows 1/1/1/2/700 happens to sort the same way
+lexically, so I forced a case where the two answers differ). I overwrote the
+live DOM's data-rows with 9/10/100/2/25 and re-sorted:
+    result            ["2","9","10","25","100"]
+    numericWouldBe    ["2","9","10","25","100"]   matchesNumeric = true
+    lexicalWouldBe    ["10","100","2","25","9"]   matchesLexical = false
+data-size has no header button (the brief's sortable set is File/Rows/Date
+Range/On), but it is emitted as raw bytes and the comparator has the numeric
+branch for it, so the "25K vs 4K" hazard cannot arise.
+
+
+=== 4. THE HIGH-RISK ITEM — SORT SURVIVES HTMX SWAPS — PASS ===
+
+I did NOT infer the swap template from the page's include chain. I established
+it from the handler code and then from the real HTTP response bodies.
+
+(a) Which template each swap endpoint renders, from the Go source
+    (`grep -rn "RenderPartial(" --include=*.go`, non-test call sites):
+      internal/handlers/explorer/handlers.go:589  handleFileToggle  -> "filemanager-file-list"
+      internal/handlers/explorer/handlers.go:650  handleFileUpload  -> "filemanager-file-list"
+      internal/handlers/explorer/handlers.go:751  handleFileDelete  -> "filemanager-file-list"
+    At HEAD all three read `RenderPartial(w, "file-list", partialData)` (HEAD
+    handlers.go:583/640/740) — that was attempt 1's defect. No RenderPartial
+    call site anywhere in the tree passes a dynamic partial name that could
+    reach the file list (whatif/handlers.go:367 uses a variable, but it is a
+    whatif-scoped name and does not touch this table).
+
+(b) There is exactly one define of that name:
+      web/templates/pages/filemanager.html:1334  {{define "filemanager-file-list"}}
+    and it is the same block the initial page includes at filemanager.html:212
+    (`<div id="file-list">{{template "filemanager-file-list" .}}</div>`).
+    So swap markup and initial markup are literally the same template.
+
+(c) REAL RESPONSE BODIES. Built `go build -o <scratchpad>/p13bin ./cmd/server`
+    and ran it as
+      BUDGET_DATA_DIR=<scratchpad>/p13data BUDGET_LISTEN_ADDR=127.0.0.1:18913
+    against three fixture CSVs (one with no parseable dates). Server log:
+      "Templates loaded successfully: 49 files" ... no template errors at any point.
+
+    TOGGLE:
+    $ curl -s -X POST http://127.0.0.1:18913/explorer/files/toggle \
+        -d "file=zeta-bank.csv&enabled=false" -o toggle.html -w "HTTP %{http_code} bytes=%{size_download}\n"
+      HTTP 200  bytes=8215
+      data-sort-btn   count=4      scope="col"     count=5
+      data-name=      count=3      data-size=      count=3
+      data-rows=      count=3      data-mindate=   count=3
+      data-enabled=   count=3      aria-hidden="true" count=4
+      row attrs in the body:
+        data-name="alpha-card.csv" data-size="48"  data-rows="1" data-mindate="2025-03-01" data-enabled="1"
+        data-name="mid-nodate.csv" data-size="33"  data-rows="1" data-mindate=""           data-enabled="1"
+        data-name="zeta-bank.csv"  data-size="76"  data-rows="2" data-mindate="2024-01-15" data-enabled="0"
+
+    UPLOAD (multipart POST /explorer/upload):
+      HTTP 200  bytes=10019   data-sort-btn=4  scope="col"=5  data-name=4  data-mindate=4
+
+    DELETE (DELETE /explorer/files/mid-nodate.csv):
+      HTTP 200  bytes=8241    data-sort-btn=4  scope="col"=5  data-name=3  data-mindate=3
+
+    Legacy-partial markers in all three bodies: ">Delete<" = 0,
+    "Transactions</th>" = 0. The identical curl the ADR recorded returning 0
+    for attempt 1 now returns 4.
+
+(d) Re-apply logic lives OUTSIDE the swapped subtree. In the rendered page,
+    `<div id="file-list">` starts at byte offset 15823 and its `</table>`
+    closes at 24088; `window.FileManagerSort` is defined at 37862 and the
+    `document.body.addEventListener('htmx:afterSettle', ...)` is at 41636 —
+    both well after the swap target closes (script-after-table = true).
+    innerHTML swaps into #file-list therefore cannot destroy them.
+    Page has hx-boost occurrences: 0, so document.body is never replaced.
+
+(e) END-TO-END: sort state actually survives a real swap. With
+    name/descending active I clicked a row's On checkbox and waited for
+    htmx:afterSettle:
+      clickedRow        zeta-bank.csv
+      orderBeforeSwap   [zeta-bank.csv, uploaded.csv, alpha-card.csv]
+      orderAfterSwap    [zeta-bank.csv, uploaded.csv, alpha-card.csv]
+      ariaAfterSwap     name:descending, rows:-, mindate:-, enabled:-
+      arrowAfterSwap    name="▼", others ""
+      btnCountAfterSwap 4      scopeColAfterSwap 5
+      tableIsSameNode   false        <-- the table WAS genuinely replaced
+    Same-node = false proves the DOM was rebuilt by htmx, yet order, aria-sort
+    and the indicator all persisted. This is the exact scenario attempt 1 failed.
+
+(f) EXPLORER PAGE STILL RENDERS. The three handlers are shared with Explorer:
+      $ curl -s http://127.0.0.1:18913/explorer   -> HTTP 200, 40496 bytes
+      template-exec-error markers ("executing"/"no such template"/"incomplete
+      or empty"): 0;  <html> present: 1;  </body> present: 1;
+      occurrences of "file-list" on the Explorer page: 0.
+    Server log contains no template errors for the whole session.
+
+(g) THE DELETION OF {{define "file-list"}} (explorer.html, -47 lines) IS SAFE.
+    I proved nothing else referenced it, at HEAD, before the deletion:
+      $ git grep -n "file-list" HEAD -- ':!coverage.html'
+      the ONLY consumers were the define itself (explorer.html:739) and the
+      three RenderPartial("file-list") calls (handlers.go:583/640/740).
+      $ git grep -n 'template "file-list"' HEAD   -> no matches at all.
+    Explorer never invoked it, and explorer.html contains zero references to
+    /explorer/files or /explorer/upload (`grep -c` = 0, exit 1), i.e. the
+    Explorer page has no file-management UI and no #file-list container. The
+    define was markup reachable only through the three swap handlers; once
+    those were repointed it was dead. Working tree now has one remaining
+    "file-list" string: the container id at filemanager.html:211. (Stale
+    ./coverage.html at the repo root still shows the old source text; it is a
+    pre-existing generated artifact, not a reference.)
+
+(h) THE REGRESSION TEST EXISTS AND RENDERS THE SWAP PARTIAL, not the page.
+    internal/handlers/explorer/handlers_test.go:1478-1600,
+    TestSwapPartials_RenderSortableFileList, subtests toggle/upload/delete.
+    Each calls the handler directly (handleFileToggle / handleFileUpload /
+    handleFileDelete) into an httptest.ResponseRecorder and asserts on
+    rec.Body: data-sort-btn="name"|"rows"|"mindate"|"enabled", scope="col",
+    and data-name=/data-size=/data-rows=/data-mindate=/data-enabled=, plus a
+    negative assertion that ">Delete<" (the legacy partial's row action) is
+    absent. It asserts on the HTTP response body of the swap endpoint, which
+    is exactly the artifact attempt 1 got wrong, and it would have failed
+    against attempt 1 (whose bodies contained ">Delete<" and none of those
+    attributes).
+
+
+=== 5. ACCESSIBILITY (ACCESSIBILITY.md point numbers) — PASS ===
+
+Per the brief, the numbered BASELINE (A-1..A-9) applies; the
+"Project-specific" section (A-10..A-15) describes the swarm dashboard, a
+different app.
+
+A-4 Keyboard / A-5 Visible focus — PASS.
+  The trigger is a real element, not a click handler on a bare <th>:
+    buttonTags = [BUTTON:button, BUTTON:button, BUTTON:button, BUTTON:button]
+    tabIndex = 0 (natural tab order)
+  Real key presses through the browser, not synthetic events:
+    focus the "File" button, press Enter  -> aria-sort becomes "ascending"
+    press Space                            -> aria-sort becomes "descending"
+  Focus indicator on the focused button while :focus-visible matches (true):
+    box-shadow: rgb(99,102,241) 0 0 0 2px   (indigo-500 ring, 2px)
+    outline: solid rgba(0,0,0,0) 2px        (Tailwind focus:outline-none is a
+                                             transparent outline, not removal)
+  Ring contrast vs its adjacent background, computed from the actual colors:
+    light thead bg rgb(249,250,251): 4.26:1 ; dark thead bg ~rgb(24,32,48): 3.95:1
+  Both exceed the 3:1 A-5 threshold, so "never outline:none without an
+  equal-or-better replacement" is satisfied.
+
+A-7 Real table semantics — PASS. It is still a <table>; all five header cells
+  carry scope="col" (thScope = [col,col,col,col,col]), and the swap responses
+  contain scope="col" x5 as well, so semantics survive the swap.
+
+A-9 Never color-only — PASS. renderIndicators() (filemanager.html:517-539)
+  sets th.setAttribute('aria-sort', 'ascending'|'descending') on the active
+  header and th.removeAttribute('aria-sort') on every other. Observed live:
+    initial          name:-  rows:-  mindate:-  enabled:-
+    after name asc   name:ascending, others "-"
+    after name desc  name:descending, others "-"
+    after rows/mindate/enabled clicks the previous column's aria-sort is cleared
+  The ▲/▼ glyph is decorative and carries aria-hidden="true" on all four
+  arrow spans (verified in the DOM and 4x in the raw toggle response body);
+  the accessible names stay "File" / "Rows" / "Date Range" / "On".
+
+A-2 Both themes — PASS. Toggling the `dark` class on <html>:
+    dark : arrow color rgb(156,163,175), display block, focus ring rgb(99,102,241)
+    light: arrow color rgb(75,85,99),   display block
+  The indicator and the focus ring are visible in both.
+
+A-8 Icons — PASS for P13's arrow (decorative + aria-hidden).
+
+A-1 Automated audit — axe-core 4.11.1 run in-page against the live
+server-rendered File Manager with runOnly wcag2a/2aa/21a/21aa/22aa
+(axe served from a local scratchpad HTTP server; nothing written to the repo):
+  22 passes; violations: button-name (5 nodes), color-contrast (7), label (8).
+  ZERO of the 20 violation nodes is P13 markup —
+    anySortButtonImplicated = []   (filter on "data-sort" over all targets)
+  Every node is pre-existing:
+    - button-name x5 : the SVG trash buttons, `button[hx-delete="/explorer/files/..."]`
+    - color-contrast : the upload input, #auto-backup-dir, and the
+      `.ml-1.text-gray-400 dark:text-gray-500` "(0K)" size span in each row
+    - label          : the toggle checkboxes, #enc-password, #enc-confirm
+  I confirmed these are pre-existing byte-for-byte at HEAD:
+    `git show HEAD:web/templates/pages/filemanager.html | sed -n '1225,1248p'`
+    shows the same unlabelled checkbox, the same unnamed SVG delete button and
+    the same text-gray-400 size span. P13 changed none of them; the axe
+    selectors merely now mention tr[data-name=...] because P13 added that
+    attribute to the row. Judged by the standing "did P13 make it worse" rule:
+    P13 introduced zero new violations. NOTE FOR THE LEAD: those 20
+    pre-existing violations are real and unowned by P13 — worth a follow-up task.
+  Also: 0 duplicate ids on the page; exactly one #file-manager-table.
+  Browser console: 0 errors on every load.
+
+A-15 target size is out of scope (project-specific section), but measured
+anyway and it passes: all four sort buttons are exactly 24.0px tall and
+27.0-82.4px wide, with 140-305px between them.
+
+
+=== 6. SCOPE CREEP — PASS, with one deviation recorded ===
+
+  - No `?sort=` / `?order=` / `page=` / `limit=` / `offset=` query parameters
+    anywhere in filemanager.html (grep, excluding the data-sort-* attributes:
+    no matches). Sorting is entirely client-side.
+  - No pagination, no filtering added.
+  - No default sort order imposed: state.column starts null, initial aria-sort
+    is "-" on all four headers, and the observed initial row order
+    [alpha-card, big25k, mid-nodate, uploaded, zeta-bank] is exactly the
+    server's GetFileInfo/Glob order, untouched until a header is clicked.
+  - GetFileInfo is unmodified (loader.go untouched; not in the diff).
+
+  DEVIATION, flagged for the lead rather than failed:
+  The brief said "do not change any Go handler" (Scope) and checker note 6 said
+  "No Go handler changed". The worker changed three handlers —
+  handlers.go:589/650/751, each a one-token change of the RenderPartial
+  template name from "file-list" to "filemanager-file-list", plus explanatory
+  comments — and deleted the orphaned define. The full Go diff is +16/-5 with
+  no logic, routing, data or signature change (verified by reading the whole
+  diff), and internal/http/http.go and every other RenderPartial call site are
+  untouched. I do not score this as scope creep because it is the minimal fix
+  to the exact defect the lead's own ADR names: the ADR calls
+  `RenderPartial(w, "file-list", ...)` at handlers.go:583 "the P13
+  sort-survival defect", and attempt 2's acceptance criterion (the swap body
+  must carry the sort markup) is unreachable without either this change or
+  duplicating the whole sortable table into explorer.html, which would leave
+  two copies to drift. It is nonetheless a literal departure from the written
+  brief and the lead should confirm the ruling.
+
+
+=== HYGIENE ===
+
+Read-only with respect to repository source: I edited nothing. The server
+binary, the fixture data directory, the axe-core copy and all curl output live
+under the session scratchpad, never in the repo. Both temporary servers were
+killed and confirmed down ("server 18913 down", "axe server down"). Final
+`git status --porcelain` is unchanged from the start of my run — the same six
+modified paths and the .swarm manifests/verdicts, nothing else. The
+`.playwright-mcp/` directory inside the repo predates this run (dir mtime
+Aug 9, files from Jul 3-4) and is gitignored (.gitignore:27); my browser
+artifacts were written under /home/darrell/work/agents2.
+
+
+=== CONCLUSION ===
+
+PASS. Every numbered requirement is met, and the attempt-1 failure mode is
+closed by evidence rather than inference: the three swap handlers demonstrably
+render the same `filemanager-file-list` template as the initial page, their
+real HTTP response bodies carry 4 data-sort-btn buttons, 5 scope="col" headers
+and full per-row data-* attributes, a genuinely replaced table (tableIsSameNode
+= false) kept its sort order and aria-sort across a live htmx swap, and a Go
+test now asserts all of that against the swap endpoints' response bodies.

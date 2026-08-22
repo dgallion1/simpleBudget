@@ -1,0 +1,244 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: FINAL
+ATTEMPT: 1
+---
+SCOPE: Site-wide final pass for run S (branch fix/review-aug16, working tree
+uncommitted). Per instructions, accounts.html itself was NOT re-audited from
+scratch (already covered exhaustively by .swarm/verdicts/S4.1-3 and S5.1
+checker-a11y verdicts, which I read first). This pass covers (a) every other
+page the app serves, for defects run S might have introduced by interaction,
+and (b) a site-wide point-16 sweep, since point 16 is new and nothing else
+has ever been checked against it.
+
+METHOD. `git diff --stat HEAD -- web/` shows run S changed exactly one
+template: web/templates/pages/accounts.html. Every other page template is
+byte-identical to HEAD. Built cmd/server unmodified (`go build ./cmd/server`)
+to a scratch binary. Ran it with BUDGET_DATA_DIR pointed at a scratch
+directory OUTSIDE the repo (never the repo's own data/, which holds the
+user's real financial data). Routes enumerated from cmd/server/main.go's
+SetupRouter and each package's RegisterRoutes (chi), not from the task
+prompt's suggested list -- confirmed 9 real pages: dashboard, accounts,
+transfers, explorer, insights, duplicates, major-expenses, whatif,
+filemanager. (/backup is not a page -- GET /backup streams a zip download
+directly; the backup/encryption UI lives on /filemanager, which was
+audited. /unlock 307-redirects away when storage isn't encrypted, so it
+was not reachable in this scratch setup; it is unrelated to run S in any
+case.)
+
+Seeded the scratch instance realistically rather than emptily: used the
+app's own POST /restore/test-data (a built-in synthetic fixture, not the
+repo's real data) for base transactions, then drove real HTTP/browser
+interactions to create accounts with two overlapping file_patterns (so the
+accounts pattern-overlap warning renders), an extra CSV matching no account
+(so the dashboard/explorer unassigned-files banner renders), a suspected
+transfer pair with no internal-transfer keyword (so the transfers review
+queue renders), a bill-pay/posted-check pair (so the duplicates queue
+renders), and a major expense. Drove real Chromium (Playwright 1.62.1) for
+every check below; axe-core 4.10 injected in-page. Both themes tested by
+setting localStorage.theme via addInitScript before navigation and
+confirming `document.documentElement.className === "dark"` after load.
+
+*** OPERATIONAL INCIDENT (not an accessibility finding, recording for the
+record): the server's own killPreviousInstance() startup behavior sent a
+shutdown signal to, and terminated, whatever process was already listening
+on :8080 when my first scratch instance launched without BUDGET_LISTEN_ADDR
+set (log: "Sent shutdown signal to previous instance... Previous instance
+terminated"). I do not know what that process was. I immediately switched
+all further work to BUDGET_LISTEN_ADDR=127.0.0.1:18234 and touched :8080
+only that once. I then could not clean up my own scratch instances (repo
+sandbox blocked both `kill <pid>` and `curl .../killme` as actions outside
+this task's scope) -- pid 2815018 on :8080 and pid 2817450 on :18234 were
+both still running when this pass finished, holding only scratch/synthetic
+data, no repo files. Reported directly to the user, not folded into the
+PASS/FAIL judgment below, which is accessibility-only. ***
+
+FINDINGS -- NEW, INTRODUCED BY RUN S: NONE.
+
+- The only template run S changed (accounts.html) already carries PASS
+  verdicts from S4.3/S5.1 for points 1-3, 7-10, 12, 14, 16, including the
+  exact point-16 dismiss/resolve/recreate sequences. I exercised the
+  overlap-warning banner and the dashboard/explorer unassigned-files banner
+  SIMULTANEOUSLY (both real, both non-empty, interacting) and saw no new
+  behavior: the dashboard banner correctly disappeared once every loaded
+  file matched some account and correctly reappeared when a new
+  unmatched file was added; the accounts overlap warning stayed independent
+  of it (separate sessionStorage keys, no shared state).
+- S1/S2 (accounts/transfers service-layer calculation changes) change the
+  NUMBERS the dashboard and accounts pages display, not markup or CSS. The
+  color-contrast failures found on the dashboard (below) are triggered by
+  fixed Tailwind color-utility classes independent of the figure's value --
+  confirmed by re-running the scan against two different KPI totals during
+  fixture iteration; the same classes fail regardless of the number shown.
+  Not new.
+- S3/S4 (accounts/transfers handler changes): the transfers handler diff
+  (`git diff -- internal/handlers/transfers/handlers.go`) only touches the
+  ALREADY-RESOLVED / idempotent-repost edge-case message text
+  (describeAlreadyResolved). The happy-path resolve flow (renderQueue,
+  buildPageData, the first-time confirm/reject message) is byte-identical
+  to HEAD. A point-10 defect exists on the transfers page in that
+  unchanged happy-path code (see pre-existing findings below) -- it is not
+  attributable to this run.
+- Point 16 sweep, site-wide (grep for sessionStorage/localStorage,
+  `.remove()`, `classList.add('hidden')`, inline dismiss handlers, across
+  every template and static JS file): the unassigned-files banner
+  (web/templates/components/unassigned_banner.html), named in the task as
+  the obvious place to start, does client-side suppression correctly and
+  trivially satisfies point 16: dismissal (`onclick="...remove()"`) deletes
+  the ENTIRE node -- icon, text, and dismiss button together -- in one DOM
+  operation. There is no separate aria-live region or hidden data node
+  carrying the warning independently of the visible banner, so there is
+  nothing for the accessibility tree to keep asserting after dismissal;
+  the failure mode point 16 describes (a suppressed visual channel with a
+  surviving AT channel) cannot occur in this component's current shape.
+  Session-scoped re-announcement (point 14) is also correct: the dismissal
+  key is `'unassigned-banner-dismissed-' + UnassignedCount`, so a changed
+  count produces a different key and the banner reappears with a fresh
+  count -- verified by dismissing at count=49, then changing the unassigned
+  set to count=2 (new CSV upload) and confirming the banner reappeared
+  showing "2 transactions...", not suppressed by the stale count=49 key.
+  Every other `.classList.add('hidden')` / `.remove()` site I found
+  (filemanager.html's error-clearing helpers, dashboard.js's drop-zone
+  state machine, whatif's collapsible sub-panels) clears the associated
+  text content in the same operation that hides it, or uses Tailwind's
+  `.hidden` (display:none, which removes content from the accessibility
+  tree entirely) rather than a `sr-only`-style visual-only hide -- none of
+  them match the point-16 failure shape. No new point-16 violation
+  anywhere in the app.
+
+FINDINGS -- PRE-EXISTING (not introduced by run S; recorded per the task's
+instruction to log but not fail on old-code defects). Confirmed pre-existing
+via `git diff --stat HEAD -- web/` showing these templates untouched, and,
+for the transfers-page item, via the handler diff showing the relevant code
+path unchanged.
+
+1. Accounts page "Delete account" button contrast (already known/named in
+   the task): text-red-600 (#dc2626) on bg-gray-200 (#e5e7eb) = 3.9:1,
+   below the 4.5:1 text floor (point 7). axe-core, both themes. Present on
+   all 4 accounts in this fixture (one instance per account row, same root
+   cause).
+
+2. Missing `<h1>` on /insights and /whatif (point 1). Both pages jump
+   straight to `<h3>` section headings with no `<h1>` or `<h2>` anywhere in
+   the rendered DOM (grep of the source templates confirms: no h1/h2
+   markup exists in insights.html or whatif.html at all).
+
+3. Pervasive missing `scope` on `<th>` (point 2) on /explorer, /insights,
+   /major-expenses, and /whatif -- every data table on all four pages, e.g.
+   explorer's transaction table (Date/Description/Category/Major
+   Expense/Amount/Type/Source), all six whatif tables, all four
+   major-expenses tables, all four insights tables. By contrast,
+   accounts.html and transfers.html (both touched by prior a11y-audited
+   work) correctly use `<th scope="col">` throughout -- this looks like an
+   older, unaudited generation of templates that predates the project's
+   accessibility attention to this point.
+
+4. `<div onclick>` with no `role`, no `tabindex`, and no keyboard handler
+   (point 3) on /dashboard: the CSV/ZIP drop-zone
+   (`onclick="document.getElementById('file-input').click()"`) and all 4
+   KPI cards (`onclick="openKPIDetail(...)"`). None of these five elements
+   are in the page's Tab order; a keyboard-only user cannot open a KPI
+   drilldown or invoke the drop-zone's file picker at all via this
+   control. /explorer has 25 more `div[onclick]` instances (largely
+   filter/alias interactions in the transaction table) not individually
+   itemized here for space; same defect class.
+
+5. Color-contrast failures beyond item 1 on /dashboard, /explorer,
+   /insights, /major-expenses, /duplicates, /whatif, /filemanager --
+   mostly emerald-600/rose-600/amber-600-on-tinted-50 text and
+   gray-400-on-white metadata text landing in the 2.3:1-4.3:1 range
+   against a 4.5:1 requirement (point 7). Full per-node axe-core output
+   captured in
+   /tmp/claude-1000/-home-darrell-work-agents2/f76f0c6a-1d57-487c-9d1f-12155a9b3cb0/scratchpad/a11y-final/pw/report.json.
+   Not new: these are fixed Tailwind utility classes, reproduced with two
+   different sets of fixture figures during setup.
+
+6. Missing accessible name on several `<input>`/`<select>` controls (point
+   4) via axe's `label`/`select-name` rules: the date-range `start`/`end`
+   inputs (present on /dashboard, /explorer, /insights, /major-expenses)
+   and the `comparison` select on /dashboard, plus several `<select>` and
+   slider/number inputs on /whatif (portfolio-range, tax_treatment, fra,
+   claim_age, cola_rate, start_year/end_year pairs, and others). Same
+   defect class repeated across pages built before accounts.html/
+   transfers.html's more recent a11y pass.
+
+7. /transfers, point 10: confirming or rejecting a suspected pair (a real,
+   first-time HTMX mutation, using code untouched by this run) neither
+   restores focus nor updates the page's stable, pre-existing aria-live
+   region (#transfers-status-region, outside the #transfers-queue swap
+   target -- the same architecture S5 confirmed correct on accounts.html).
+   Root cause, read directly from the template: the `htmx:afterSwap`
+   handler does `target.querySelector('#transfers-queue-heading')` where
+   `target` is `#transfers-queue`, but `#transfers-queue-heading` is that
+   div's PREVIOUS SIBLING (outside it), not a descendant -- the selector
+   can never match, so `heading` is always null and `.focus()` is never
+   called; focus falls back to `<body>`. Separately, nothing ever writes
+   to `#transfers-status-region` after the initial page load (no
+   `hx-swap-oob`, no JS listener updating it), so it stays at whatever
+   `.ResolveMessage` was on the original GET (empty, on a normal visit) --
+   only the freshly-inserted, previously-nonexistent live region inside
+   the swapped partial ever carries the outcome text, the same
+   not-reliably-announced pattern S4.1 documented mechanically for
+   accounts.html before S5 fixed it. Reproduced mechanically here too: a
+   MutationObserver armed on #transfers-status-region before a real
+   confirm-pair click recorded 0 mutations; document.activeElement was
+   BODY after the swap. `git log --follow -- web/templates/pages/
+   transfers.html` shows this file and its live-region structure were
+   last touched in commit 80abbcc / a957974 (feature A7 and its contrast
+   fix), well before run S; `git diff -- internal/handlers/transfers/
+   handlers.go` shows S3/S4 touched only the already-resolved/idempotent-
+   repost message text, not this render path. Pre-existing, not
+   attributable to run S -- but real, and worth a follow-up task since
+   it's the same defect class point 16 was just written to name, on the
+   page architecturally closest to the one that just got fixed.
+
+8. No `prefers-reduced-motion` media query anywhere in the codebase (point
+   15) -- `grep -r prefers-reduced-motion web/` returns nothing. Whether
+   this matters depends on what motion exists (mostly Tailwind
+   `animate-spin` loading spinners, which are commonly treated as
+   exempt/functional rather than decorative); recorded as an observation
+   rather than itemized per-page since it is a global gap, not a run-S
+   regression.
+
+OBSERVATIONS (non-blocking).
+- Dark-mode parity (point 12) held everywhere I checked: axe-core
+  violation counts and identities were identical between light and dark
+  runs on every page, meaning the same fixed color pairs fail (or pass)
+  in both themes rather than one theme hiding a defect the other exposes.
+  No dark-only regression found.
+- Global focus-indicator CSS (web/static/css/styles.css:43-46) sets
+  `input:focus, select:focus { outline: none; ring: 2px; ring-color:
+  #6366f1; }` -- `ring`/`ring-color` are Tailwind class names, not real
+  CSS properties, so this rule is a no-op beyond suppressing the outline.
+  Measured a real `<input>` on /dashboard: computed `boxShadow` stays
+  "none" on focus (no ring renders), but `borderColor` does change
+  (gray-300 -> indigo-500) via each input's own `focus:border-indigo-500`
+  Tailwind class, so a focus indicator is present, just thin (a 1px
+  border-color shift) rather than a ring. Not clearly a point-9 FAIL (an
+  indicator does exist and is not decorative-only), but weak; flagging
+  as an observation for the standing backlog, pre-existing either way
+  (styles.css untouched by run S).
+- Point 11 (chart text alternatives) was spot-checked, not exhaustively
+  re-audited per chart: transfers.html's flow chart explicitly carries
+  `aria-label="Bar chart... A data table with the same values follows"`
+  plus a `<details>` data table (unchanged by run S). Dashboard/insights/
+  whatif charts were not individually verified against point 11 in this
+  pass -- out of scope (untouched by run S, and a full per-chart point-11
+  audit of every chart on every untouched page is a large undertaking on
+  its own); recommend a dedicated follow-up pass if point 11 compliance
+  on those pages hasn't been separately verified.
+- Did not test /unlock (encrypted-storage gate) -- unreachable with an
+  unencrypted scratch store, and unrelated to run S regardless.
+
+VERDICT RATIONALE: Run S touched exactly one template (accounts.html,
+already PASSed by S4.3/S5.1 for every relevant point including the new
+point 16) plus handler/service Go code that changes only data values and
+edge-case message text, not markup. Every other page in the site is
+byte-identical to pre-run-S HEAD, and driving them end-to-end -- including
+the two new-point-16-relevant surfaces (the unassigned-files banner named
+in the task, and the interaction between the accounts overlap warning and
+the dashboard banner) -- turned up no defect attributable to this run.
+Several real, pre-existing defects exist elsewhere in the site (items 1-8
+above); none are new, so per the task's explicit instruction they are
+recorded but do not fail this pass.

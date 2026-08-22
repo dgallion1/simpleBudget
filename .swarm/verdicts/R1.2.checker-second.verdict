@@ -1,0 +1,105 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R1
+ATTEMPT: 2
+---
+Scope: internal/services/accounts/accounts.go, internal/handlers/accounts/handlers.go,
+internal/services/mcpsvc/ledger/anchor.go, internal/services/mcpsvc/ledger/register.go
+(.swarm/manifests/R1.2.files), merged wt-primary per .swarm/tier3/R1/report.md RESOLUTION.
+
+CONFIRMED CORRECT (do not re-litigate):
+- accept.sh passes end-to-end: build, vet, pinned Mutate signature, no unserialized
+  save left at the four call sites, oracle tests (-race) pass, full suite (-race) passes.
+- Mutate's lock order matches storage.go's contract: package `mu` taken outside
+  BeginShared, SharedTx.ReadFile/WriteFile bypass dataMu re-entry correctly
+  (verified Storage.ReadFile itself takes no dataMu lock, so no recursive-RLock hazard).
+- ensureSnapshot (anchor.go) runs before Mutate opens, never inside the closure —
+  no cross-service call under the held section.
+- No closure body (handleDelete/handleAddAnchor/handleDeleteAnchor/applyForm/
+  applyAnchor/register.go adapter) calls back into accounts.Load/Save or another
+  service; grepped and read every fn body in scope.
+- Own concurrency test: 8 goroutines/account x 20 mutations across 8 DIFFERENT
+  accounts, plus 4 concurrent plain-Load readers throughout — zero lost writes,
+  zero torn/short reads (go test -race, reproduced independently of the oracle's
+  single-account 32-goroutine case).
+- register.go's storageAccountStore.SaveAccounts (the seam the task flagged as
+  highest-value): confirmed via grep that it has ZERO production callers anywhere
+  in the tree, so its blind-overwrite-inside-Mutate shape (which I reproduced can
+  lose a concurrent Mutate write if composed with LoadAccounts by a future caller)
+  does not currently falsify the "no lost writes" claim for any reachable code
+  path. This is a latent design footgun worth naming, not a live regression — not
+  the basis for this FAIL.
+- applyForm's returned `result` is the same slice passed into saveTx (verified
+  saveTx does not mutate elements), so callers still get post-computation state
+  consistent with what old accounts.Save-based code returned.
+
+REAL DEFECT — violates "no observable behaviour changed":
+
+1. HTTP status-code regression on 3 of the 4 required call sites (handleDelete,
+   handleAddAnchor, handleDeleteAnchor). Pre-merge (git show HEAD), a Load
+   failure in these three handlers hit a distinct branch:
+     accts, err := accounts.Load(store)
+     if err != nil {
+         renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
+         return
+     }
+   i.e. HTTP 500 with a "Failed to load accounts: ..." message, DISTINCT from
+   the save-failure branch (renderList/200 with data.Error).
+   After the merge, load and save are one Mutate closure, so a load failure
+   and a save failure are indistinguishable to the handler: both fall through
+   to the generic `data.Error = err.Error(); renderList(w, r, data)` branch,
+   which is HTTP 200.
+   Reproduced empirically (test written, run, and deleted after use — not left
+   in the tree): corrupted accounts.json, then POST /accounts/{id}/anchor via
+   handleAddAnchor through the real router (internal/handlers/accounts,
+   TestZZ_AddAnchorOnLoadFailure_StatusCode style harness using existing
+   setupTestEnv/newRouter/formPost helpers):
+     status=200 body={... "Error":"invalid accounts file: invalid character 'n' ..." ...}
+   Old code would have returned 500 via renderError with a "Failed to load
+   accounts: " prefix instead. Same shape applies to handleDelete and
+   handleDeleteAnchor (identical pre-merge pattern, confirmed by reading
+   git show HEAD for both). applyForm's callers (handleCreate/handleUpdate)
+   are NOT affected — they already collapsed Load and Save errors to the same
+   200/renderList path pre-merge, so no regression there.
+   This is exactly the class of defect the assignment asked me to hunt for
+   ("a 500 where there used to be a 404, or vice versa") — here it is 500
+   silently becoming 200 on a genuine backend failure (corrupt sidecar, or a
+   locked/encrypted store not yet unlocked, which routes through the same
+   accounts.Load error path). A client that checks response.ok / status code
+   (including HTMX's default error handling, which budget2 uses elsewhere)
+   would treat this failure as success.
+
+2. Secondary, same category as the lead's own rejection reason for wt-alt
+   (dropped OverlapWarnings): accounts.go's saveTx logs OverlapWarnings only
+   AFTER a successful tx.WriteFile (lines ~120-139); on a WriteFile failure it
+   returns early and never logs the already-computed warnings. The pre-merge
+   Save() (`warnings, err := SaveWithWarnings(...); for _, w := range warnings
+   { log.Printf(...) }`) logs those same warnings UNCONDITIONALLY, even when
+   the underlying write fails. So a write failure that coincides with an
+   overlap warning now produces fewer log lines than before. Narrower and
+   lower-severity than #1 (server-log-only, requires two simultaneous
+   conditions), but it is the same "silent side-effect drop on the save path"
+   category the lead flagged as disqualifying for the other implementation,
+   and it survives in the accepted one.
+
+3. Minor, error-text-only: anchor.go's applyAnchor previously produced a
+   distinct message for a LoadAccounts failure ("cannot reload accounts
+   before writing: %w") versus a SaveAccounts failure (wrapped with snapNote
+   and "the confirmation token has been spent either way..."). Post-merge,
+   both are folded into the single Mutate-error branch and always get the
+   snapNote-wrapped "token has been spent" wording, even for a bare load
+   failure where the write never even started. Confirmed via diff against
+   git show HEAD. Text-only (still an error, same category), listed for
+   completeness since the assignment asked specifically about error strings
+   on this path.
+
+CONCLUSION: the concurrency and restore-resurrection claims hold up under
+adversarial testing (cross-account races, reader/writer races, lock-order
+review). The third clause of the claim under test — "no observable behaviour
+changed" — does not hold: finding #1 is a reproducible HTTP status-code and
+response-shape regression on 3 of the 4 required call sites, not a hypothetical.
+Default-to-FAIL threshold is met by #1 alone; #2 and #3 corroborate that the
+save/error paths were not diffed carefully enough against git show HEAD before
+merge, matching the exact failure mode the lead already caught once in the
+rejected sibling implementation.

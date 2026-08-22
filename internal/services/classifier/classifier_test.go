@@ -9,12 +9,12 @@ import (
 
 func TestClassifyTransactions_Income(t *testing.T) {
 	tests := []struct {
-		name        string
-		desc        string
-		category    string
-		amount      float64
-		wantType    models.TransactionType
-		wantAmount  float64
+		name       string
+		desc       string
+		category   string
+		amount     float64
+		wantType   models.TransactionType
+		wantAmount float64
 	}{
 		// Positive amount + income keyword => Income, positive amount
 		{"payroll positive", "PAYROLL DEPOSIT", "", 1500, models.Income, 1500},
@@ -110,6 +110,54 @@ func TestClassifyTransactions_NegativeIncomeBecomesPositive(t *testing.T) {
 	}
 	if result[0].Amount != -2000 {
 		t.Errorf("got amount %v, want -2000", result[0].Amount)
+	}
+}
+
+// TestClassifyTransactions_SkipsTransferRows covers the seam between the
+// transfer-classification stage and this one. The credit leg's description
+// hits IncomeKeywords ("transfer in") and the debit leg is negative, so
+// without the skip they would be re-typed Income and Outflow and land back
+// in exactly the two totals a transfer must stay out of.
+func TestClassifyTransactions_SkipsTransferRows(t *testing.T) {
+	txns := []models.Transaction{
+		{Description: "SCHWAB MONEYLINK TRANSFER", Amount: -2000, TransactionType: models.Transfer, TransferClass: "paired", TransferPairKey: "abc123abc123"},
+		{Description: "TRANSFER IN FROM SCHWAB", Amount: 2000, TransactionType: models.Transfer, TransferClass: "paired", TransferPairKey: "abc123abc123"},
+		{Description: "PAYROLL", Amount: 1000},
+	}
+
+	result := ClassifyTransactions(txns)
+
+	if len(result) != 3 {
+		t.Fatalf("got %d rows, want 3", len(result))
+	}
+	for _, want := range []struct {
+		desc   string
+		typ    models.TransactionType
+		amount float64
+	}{
+		{"SCHWAB MONEYLINK TRANSFER", models.Transfer, -2000},
+		{"TRANSFER IN FROM SCHWAB", models.Transfer, 2000},
+		{"PAYROLL", models.Income, 1000},
+	} {
+		var got *models.Transaction
+		for i := range result {
+			if result[i].Description == want.desc {
+				got = &result[i]
+			}
+		}
+		if got == nil {
+			t.Fatalf("row %q missing from result", want.desc)
+		}
+		if got.TransactionType != want.typ {
+			t.Errorf("%q: type = %q, want %q", want.desc, got.TransactionType, want.typ)
+		}
+		if got.Amount != want.amount {
+			t.Errorf("%q: amount = %v, want %v", want.desc, got.Amount, want.amount)
+		}
+	}
+	// The pair key and class survive untouched.
+	if result[0].TransferPairKey != result[1].TransferPairKey || result[0].TransferPairKey == "" {
+		t.Errorf("pair keys did not survive classification: %q, %q", result[0].TransferPairKey, result[1].TransferPairKey)
 	}
 }
 

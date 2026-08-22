@@ -1,0 +1,120 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S4
+ATTEMPT: 3
+---
+Scope: internal/handlers/accounts/handlers.go, internal/handlers/accounts/handlers_test.go,
+web/templates/pages/accounts.html (per .swarm/manifests/S4.3.files). Confirmed no scope
+creep: the other modified files in the tree (projection.go, transfers/*) belong to
+S1/S2/S3 manifests, not S4's diff. No debug prints in the S4 diff (grep for
+console.log/fmt.Println/TODO/FIXME/XXX: none). Go tests for the package pass
+(`go test ./internal/handlers/accounts/...` -> ok).
+
+I attacked the client-side "two-variable state machine" (lastWarningsText vs.
+WarningsKey/sessionStorage) called out in the task brief. All server-side Go tests
+in handlers_test.go check markup/attributes only; NONE exercise the <script> block
+in accounts.html (there is no JS test harness in the repo: `find . -iname
+"*.spec.*" -o -iname "*.test.js"` under web/ returns nothing). So the script's
+actual runtime behavior is unverified by the worker's own test suite.
+
+I extracted the exact <script> body (accounts.html lines 114-234) verbatim into an
+isolated Node harness (a minimal DOM/sessionStorage shim, no behavior changed) and
+drove it through two sequences named in the task brief. Harness:
+/tmp/claude-1000/-home-darrell-work-agents2/f76f0c6a-1d57-487c-9d1f-12155a9b3cb0/scratchpad/harness.js
+
+FINDING 1 — dismiss, then a mutation that clears the warning, then the SAME
+warning set reappears: live region re-announces but the banner never comes back.
+Sequence: (1) load with warning W1/key K1 -> banner visible, region says
+"Pattern overlap warning: ...". (2) user dismisses -> sessionStorage[dismissed]=K1,
+banner removed, region says "Account overlap warning dismissed.",
+lastWarningsText is NOT updated (stays W1's text, by design per the code comment).
+(3) an intervening mutation clears the overlap (Warnings=[], key="") -> region
+text differs from lastWarningsText, so region.textContent is overwritten to ""
+and lastWarningsText is reset to "". (4) the identical warning set W1/K1
+reappears (e.g. user edits a FilePatterns field back to what it was) -> server
+re-renders the banner (Warnings non-empty) AND the region text; syncWarnings()
+sees text ("Pattern overlap warning: ...") != lastWarningsText ("") so it WRITES
+the warning text into the live region (a fresh aria-live announcement to screen
+readers) -- but then, in the same call, sees sessionStorage[dismissed] === K1
+and immediately banner.remove()s the just-rendered banner.
+Observed (harness output):
+  Step 4: region.textContent = "Pattern overlap warning: acct-1 and acct-2 both
+  match statement-2026.csv"; banner present after sync? false
+Required (per the worker's own design comment on WarningsKey: "a changed warning
+set is never mistaken for one already dismissed" -- implying an UNCHANGED set
+must stay uniformly dismissed): a screen-reader user gets an aria-live
+announcement asserting an active pattern-overlap warning exists, with no banner,
+no dismiss button, and nothing in the DOM to act on -- while a sighted user sees
+nothing at all. This is exactly the "announcement asserting a state that is not
+current" failure mode the task brief asked me to look for, and it is
+reachable by an ordinary user workflow (revert a pattern edit).
+
+FINDING 2 — full page reload after a dismissal, warnings unchanged: the live
+region permanently asserts a warning that the banner never shows.
+Sequence: (1) dismiss W1/K1 in a session (sessionStorage[dismissed]=K1).
+(2) reload the page (F5, or open a new tab that inherits sessionStorage) while
+the SAME overlap (W1/K1) is still present. On a full page GET, both the
+#accounts-warnings-region block and the #accounts-list partial (with the
+banner) are server-rendered directly from the unchanged .Warnings/.WarningsKey
+-- this is not conditioned on the dismissal at all, since the dismissal state
+lives only in the browser's sessionStorage, not in any request the server
+sees. So the region's template server-renders "Pattern overlap warning: ..."
+inline into the sr-only node, and the banner also server-renders. The <script>
+then seeds `lastWarningsText` from the region's own already-rendered text
+(line ~132: `var lastWarningsText = region ? region.textContent : ''`), so on
+the first syncWarnings() call text === lastWarningsText and the same-text
+guard is FALSE -- the region is left untouched, i.e. left containing
+"Pattern overlap warning: ..." -- while the banner is immediately removed
+because sessionStorage still matches K1.
+Observed (harness output, Scenario 2):
+  region.textContent on load = "Pattern overlap warning: acct-1 and acct-2 both
+  match statement-2026.csv"; banner present = false
+This is not a rare interleaving -- it is triggered by the single most common
+action on any web page (reload), immediately after the one interaction the
+banner itself offers (dismiss). It persists indefinitely: nothing will touch
+the region again until the warning content actually changes. Any assistive
+technology that reads page content directly (not only live-region-triggered
+announcements -- e.g. browsing/scanning modes, or simply navigating to the
+region's landmark) will find "Pattern overlap warning: ..." text sitting in
+the accessibility tree with no corresponding visible or interactive element
+anywhere on the page. ACCESSIBILITY.md point 14 requires banners to be
+"re-announced only on state change, not every page load within a session" --
+the implicit companion requirement, that the announced state matches what is
+actually presented, is violated: state has NOT changed (same key, still
+dismissed) yet the on-load DOM permanently disagrees with the banner about
+whether a warning is showing.
+
+Both findings trace to the same root cause the task brief predicted: the
+dismiss handler updates sessionStorage (content-keyed) but deliberately does
+NOT update lastWarningsText (raw-text-keyed), and the two independently
+gate two different things (live-region write vs. banner visibility) that the
+template's own comments assume move together ("does not re-announce or
+re-show on every load while unchanged, but does reappear the moment the set
+of warnings changes" -- reappear and re-announce are supposed to be the same
+event; they are not).
+
+Other angles attacked and NOT found broken:
+- warningsKey collisions: FNV-64a over sorted warnings joined with a NUL
+  separator between each element (internal/handlers/accounts/handlers.go,
+  warningsKey()) rules out the classic concatenation-ambiguity collision
+  (e.g. ["ab","c"] vs ["a","bc"]) since "ab\0c" != "a\0bc\0"... actually the
+  code appends a trailing 0 byte after every element including the last, so
+  the hash input is unambiguous per-element; did not find a practical
+  collision path via ordinary warning text (warning strings are built from
+  account IDs/basenames, which cannot contain NUL on any real filesystem).
+- Scope creep: none -- diff confined to the three manifest files.
+- Debug instrumentation: none found.
+- TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock: not vacuous --
+  legitimately asserts no "Pattern overlap warning" substring anywhere when
+  Warnings is empty, which is true for the region/data-node text too since
+  they're gated by the same {{if .Warnings}}.
+- Focus target #accounts-new-heading: exists on both full-page and every
+  accounts-list-partial swap (it is rendered unconditionally in the same
+  partial as the banner), so the dismiss handler's focus() call has a real
+  target in every response shape reachable through this code path.
+
+VERDICT: FAIL. Findings 1 and 2 are reproducible against the exact shipped
+<script> logic (not a paraphrase -- diffed against
+web/templates/pages/accounts.html lines 146-211, byte-for-byte match) and are
+untested by the worker's Go suite, which never touches the client script.

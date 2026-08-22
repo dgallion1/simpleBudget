@@ -1,0 +1,378 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 1
+---
+Tree: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted working
+tree. Manifest .swarm/manifests/S5.1.files =
+  web/templates/pages/accounts.html
+  internal/handlers/accounts/handlers_test.go
+  internal/handlers/transfers/handlers.go
+  internal/handlers/transfers/handlers_test.go
+  internal/services/accounts/projection_test.go
+
+METHOD. Every fault-injection probe ran in a COPY of the tree OUTSIDE the repo
+(rsync -a --exclude=.git into .../scratchpad/b2-{mut1,mut2,mut3,c1,c3,c3b,c3c,
+c4,c6}). The repo itself was never modified; `git status --short` is identical
+before and after and the only file I wrote inside the repo is this verdict.
+
+PRE-S5 BASELINE. `git diff` is useless for isolating S5 here: S1-S4 are also
+uncommitted, so HEAD (c363bb4) predates all of them. I recovered the true
+pre-S5 tree at .../scratchpad/b2a3 and AUTHENTICATED it against the hashes the
+S4.3 checker-tests verdict recorded:
+  $ md5sum b2a3/internal/handlers/accounts/handlers_test.go
+    8a45d649b8f77fb752a0eb26c7c75559   <- matches S4.3.checker-tests.verdict
+  $ md5sum b2a3/web/templates/pages/accounts.html
+    fb2a5b02af41e835bbe1fc52fd22ed69   <- matches S4.3.checker-tests.verdict
+Both are byte-identical to the S4-attempt-3 (= pre-S5) state. All pre/post
+diffs below are against that tree, not against HEAD.
+
+S5 file hashes at the end of my run:
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html
+  de990125ada6a151d85dba1df4ccb2d3  internal/handlers/accounts/handlers_test.go
+  0809c0e404fa9a629d2d293ab92cebc4  internal/handlers/transfers/handlers.go
+  1253e8dfeb48a738769e36fc9eb0a382  internal/handlers/transfers/handlers_test.go
+  bc1caf37dbb8c61676eefd052bf6f769  internal/services/accounts/projection_test.go
+
+SUMMARY: 9 of 10 criteria met. CRITERION 1 FAILS. The (a) fix is genuinely
+real -- I executed the shipped JS and watched both defects disappear -- but
+NOTHING in the shipped Go suite turns red when the defect is put back, which
+is what criterion 1 asks for in so many words.
+
+==================================================================
+CRITERION 1 -- (a) is real, not cosmetic.                       FAIL
+==================================================================
+Two independent findings. The first is favourable, the second is the failure.
+
+(1a) THE FIX IS REAL. Not inspection -- I executed it. The <script> IIFE was
+extracted verbatim from each accounts.html and run under node v24.12.0 against
+a minimal DOM/sessionStorage stub (.../scratchpad/harness.js), driving the two
+sequences the S5 row names.
+
+$ node harness.js b2a3/web/templates/pages/accounts.html   "PRE-S5 (S4.3)"
+  SEQUENCE 1: dismiss -> resolve overlap -> recreate the SAME overlap
+    after initial load (overlap present): region="Pattern overlap warning: ..." banner=PRESENT stored=null
+    after user clicks Dismiss:            region="Account overlap warning dismissed." banner=absent stored="k-abc123"
+    after mutation RESOLVES the overlap:  region="" banner=absent stored="k-abc123"   <-- key NOT cleared
+    after mutation RECREATES the overlap: region="Pattern overlap warning: ..." banner=absent stored="k-abc123"
+    VERDICT seq1: DEFECT: announced with NO banner/dismiss control
+  RELOAD CASE:
+    after full page reload: banner=absent regionText="Pattern overlap warning: ..."
+    VERDICT reload: DEFECT: AT tree asserts warning with no visible counterpart
+
+$ node harness.js /home/darrell/bin/ai/budget2/web/templates/pages/accounts.html "CURRENT (S5)"
+  SEQUENCE 1:
+    after mutation RESOLVES the overlap:  region="Pattern overlap warning dismissed." banner=absent stored=null   <-- key CLEARED in the same call
+    after mutation RECREATES the overlap: region="Pattern overlap warning: ..." banner=PRESENT stored=null
+    VERDICT seq1: PARITY OK
+  RELOAD CASE:
+    after full page reload: banner=absent regionText=""
+    VERDICT reload: PARITY OK (both suppressed)
+
+Both ACCESSIBILITY.md point 16 failures are gone. The worker's SECOND claimed
+bug is also real and also fixed -- I measured it end to end through the real
+renderer (probe zz_probe2_test.go in .../b2-c6, overlapping fixture, GET
+/accounts, regex-extract the region body and the data attribute):
+  CURRENT: region textContent = "Pattern overlap warning: file &#34;usaa-checking.csv&#34; ..."
+           data-warnings-text = "Pattern overlap warning: file &#34;usaa-checking.csv&#34; ..."
+           byte-equal = true
+  PRE-S5:  region textContent = "\n        Pattern overlap warning: ... \n    "
+           data-warnings-text = "Pattern overlap warning: ..."
+           byte-equal = false
+So the same-text guard really was defeated on every full page load before S5,
+and really does hold now.
+
+(1b) NOTHING IN THE SHIPPED SUITE GUARDS IT -- this is the failure.
+I restored the authenticated pre-S5 accounts.html (md5 fb2a5b02...) into a
+scratch copy of the CURRENT tree (so: S5 tests, pre-S5 template) and ran
+everything:
+  $ cd .../b2-c1 && go test -count=1 ./...
+    FULL_SUITE_WITH_PRE_S5_TEMPLATE_EXIT=0     (no FAIL lines at all)
+The regression turns nothing red.
+
+Stronger probe, to establish there is no partial guard either -- I replaced the
+ENTIRE script block with a no-op comment (.../b2-mut2):
+  $ go test -count=1 ./internal/handlers/accounts/...
+    ok  budget2/internal/handlers/accounts  0.216s     MUT2_EXIT=0
+Deleting syncWarnings outright leaves the package green. There is no
+executable oracle in the repo for any of item (a): no JS runner, no
+package.json, no playwright/puppeteer/chromedp (`grep -rln
+"playwright|puppeteer|chromedp|CDP" scripts/ Makefile` -> no matches; `find
+. -name "*.spec.*" -o -name "*_test.js"` -> no matches). The browser
+verification the S5 row calls for, and my node harness above, both live
+outside the repo and do not survive the commit.
+
+WHAT IS MISSING, precisely: an executable check inside the repo that goes red
+when syncWarnings' dismissal ordering regresses. It does not have to be a Go
+test -- a node-driven harness under scripts/ or testdata/ wired into `make
+test`, or a Go test that extracts the script block and evaluates it, would
+both satisfy "a regression turns something red". Today the only thing standing
+between this defect and its return is a comment.
+
+==================================================================
+CRITERION 2 -- (b) the guard now bites.                         PASS
+==================================================================
+Mutation applied in .../b2-mut3, handlers.go:633-635:
+    sorted := make([]string, len(warnings)); copy(sorted, warnings)  ->  sorted := warnings
+(i.e. sort.Strings now sorts the caller's slice in place).
+$ go test -count=1 -run TestWarningsKey_OrderInvariant ./internal/handlers/accounts/
+  --- FAIL: TestWarningsKey_OrderInvariant (0.00s)
+      handlers_test.go:804: warningsKey mutated its input slice in place:
+                            got [a b], want [b a] unchanged
+  MUT3_EXIT=1
+
+Then, in the SAME mutated tree, I reverted only the guard to its pre-S5 form
+(assert on `a`, which is already sorted):
+$ go test -count=1 -run TestWarningsKey_OrderInvariant ./internal/handlers/accounts/
+  ok  budget2/internal/handlers/accounts  0.003s      OLDGUARD_EXIT=0
+Old guard green, new guard red, same bug. This independently reproduces
+DEFECT D1 from .swarm/verdicts/S4.3.checker-tests.verdict lines 234-254, and
+closes it.
+
+==================================================================
+CRITERION 3 -- (c) the scan is scoped and cannot misfire.       PASS
+==================================================================
+(a) THE HELPER STRIPS CORRECTLY, and the phrase really is in the live body.
+Probe zz_probe_test.go in .../b2-c3, no-overlap fixture, GET /accounts:
+  whole-body contains "Pattern overlap warning" = true
+  stripped   contains "Pattern overlap warning" = false
+  script tag count in body = 9   ->  stripped script tag count = 0
+All 9 script elements the page actually serves are removed.
+
+(b) THE SCOPING IS LOAD-BEARING, not decoration. In .../b2-c3c I un-scoped the
+assertion back to the whole body, changing nothing else:
+    rendered := renderedBodyWithoutScripts(w.Body.String())  ->  rendered := w.Body.String()
+$ go test -count=1 -run TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock ./internal/handlers/accounts/
+  --- FAIL      C3_LOADBEARING_EXIT=1
+So with the new consistent wording ("Pattern overlap warning dismissed.") the
+old whole-body scan WOULD misfire, and the helper is what prevents it. That is
+exactly the coupling the S5 row says (c) exists to break.
+
+(c) NON-VACUITY. In .../b2-c3b I forced a warning onto the no-overlap page
+(handlers.go:600, `warnings = append(warnings, "MUTANT: spurious overlap")`):
+$ go test -count=1 -run TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock ./internal/handlers/accounts/
+  --- FAIL: ... handlers_test.go:533: non-overlapping config rendered the
+            overlap warning block      NONVAC_EXIT=1
+The test still detects a genuinely rendered warning block.
+
+(d) REGEX EDGE CASES, `(?s)<script[^>]*>.*?</script>` (table probe, b2-c3):
+  OK   plain                    A<script>X</script>B              -> AB
+  OK   attrs                    <script src="/x.js" defer>        -> AB
+  OK   attr-with-gt-in-value    <script data-q="a>b">             -> AB
+  OK   two-blocks-keeps-between A<script>X</script>MID<script>Y</script>B -> AMIDB
+  OK   type-attr                <script type="application/json">  -> AB
+  OK   newlines                 multi-line body                   -> AB
+  OK   unclosed                 A<script>X                        -> unchanged
+  DIFF uppercase                A<SCRIPT>X</SCRIPT>B              -> NOT stripped
+  DIFF close-in-js-string       <script>var s="</script>";</script>B -> leaves `";`
+The non-greedy `.*?` is what matters: the two-blocks case keeps MID, so the
+helper cannot OVER-strip across separate script elements and cannot make the
+test vacuously green. Both DIFF rows are UNDER-strips, whose only consequence
+is a false FAILURE, never a false pass -- and the second one is not even a
+bug, since an HTML parser also ends a script element at the first `</script>`
+inside a JS string. Uppercase `<SCRIPT>` occurs nowhere in web/templates
+(`grep -rn "<script" web/templates/` -> 20 hits, all lowercase). Nested
+<script> is not expressible in HTML. Criterion met; the two under-strips are
+recorded as an observation, not a finding.
+
+Cross-check that (c)'s reword did not break the sibling "renders once" test:
+that test counts `">Pattern overlap warning<"` (handlers_test.go:567), a form
+the JS string cannot match, and it passes (see criterion 6).
+
+==================================================================
+CRITERION 4 -- (d) the branch is covered.                       PASS
+==================================================================
+$ go test -count=1 -covermode=count -coverprofile=cov.out ./internal/handlers/transfers/
+  ok  budget2/internal/handlers/transfers  coverage: 84.5% of statements
+$ go tool cover -func=cov.out | grep describeAlreadyResolved
+  handlers.go:258:  describeAlreadyResolved   100.0%
+Raw counter for the load-failure block (handlers.go:260-262):
+  budget2/internal/handlers/transfers/handlers.go:260.16,262.3 1 1   <- count 1, was 0
+
+ATTRIBUTION -- it is the new test that covers it, and it reaches the RIGHT path:
+$ go test -count=1 -covermode=count -skip 'TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage' ...
+  handlers.go:260.16,262.3 1 0        <- back to zero without it
+$ go test -count=1 -covermode=count -run 'TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage' ...
+  handlers.go:260.16,262.3 1 1        <- load-failure branch  HIT
+  handlers.go:264.9,266.3  1 0        <- unknown-key branch   NOT hit
+  handlers.go:267.2,267.30 1 0        <- same-verdict branch  NOT hit
+This is the specific thing the brief asked me to check: the worker's mechanism
+(post an unknown pair key so ResolveTransfer fails on its in-memory check
+before touching the file, with the file corrupted to `{not valid json`) does
+land on the load-failure path and NOT on the unknown-key path. Confirmed by
+counter, not by argument.
+
+ASSERTIONS (handlers_test.go:579-612, read in full):
+  :599  w.Code != http.StatusOK          -> asserts 200, contract unchanged
+  :603  body contains "could not be read" -> the honest message
+  :606  body must NOT contain "already confirmed"/"already rejected" -> no guessed verdict
+  :609  body must NOT contain "not a known pair"  -> no wrong-cause claim
+NOT VACUOUS -- mutation in .../b2-c4, load-failure branch made to return the
+unknown-key message instead:
+  --- FAIL: TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage
+      :604 message should say the stored decision could not be read
+      :610 message must not claim the pair is simply unknown
+  C4_MUT_EXIT=1
+
+DOC COMMENT names all four cases: handlers.go:161-169 (handleResolve) plus the
+new enumerated 1-4 list above describeAlreadyResolved. I read both.
+
+==================================================================
+CRITERION 5 -- (e) the comment matches the code.                PASS
+==================================================================
+$ grep -rn "recurringBelongsToAccount" --include=*.go .
+  ./internal/services/accounts/projection_test.go:383: ... replaced the old
+      any-leg-membership recurringBelongsToAccount, which this comment used to name
+Sole surviving mention, and it is explicitly historical. The live name is
+recurringOwnerAccount (projection.go:278). The new comment also asserts the
+tie-break "keeps whichever AccountID sorts lexicographically greater
+("usaa" > "schwab")"; the code is projection.go:283-284,
+  leg.Date.Equal(ownerDate) && leg.AccountID > owner
+which is that rule exactly. Comment matches code, including the part it did
+not have to explain.
+
+==================================================================
+CRITERION 6 -- S4's preserved guarantees still hold.            PASS
+==================================================================
+$ go test -count=1 -v -run '<the 12 S4 guarantee tests>' ./internal/handlers/accounts/
+  --- PASS: TestBuildPageData_OverlapWarningsNameContestedBasename       (basename named)
+  --- PASS: TestHandleCreate_OverlapWarningsSurfacedInPartial            (mutation surfaces)
+  --- PASS: TestHandleUpdate_ResolvingOverlapClearsWarnings              (clears on resolve)
+  --- PASS: TestHandleDelete_ResolvingOverlapClearsWarnings              (clears on resolve)
+  --- PASS: TestBuildPageData_NoOverlapNoWarnings
+  --- PASS: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock
+  --- PASS: TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce   (exactly once, full page)
+  --- PASS: TestHandleCreate_RendererMode_OverlapWarningRendersOnceInPartialSwap (once, swap)
+  --- PASS: TestHandleCreate_RendererMode_DismissButtonAbsentWithoutWarnings
+  --- PASS: TestBuildPageData_WarningsKey_ChangesWithContent
+  --- PASS: TestHandleCreate_OverlapDoesNotBlockSave                     (overlapping saves persist)
+  --- PASS: TestWarningsKey_OrderInvariant                               (order-invariant + non-mutating)
+  ok  budget2/internal/handlers/accounts  0.068s
+All twelve, including the two S5 modified. Nothing regressed.
+
+==================================================================
+CRITERION 7 -- scope / critical globs.                          PASS
+==================================================================
+$ git diff --name-only
+  .swarm/ledger.tsv, ACCESSIBILITY.md,
+  internal/handlers/accounts/handlers.{go,_test.go},
+  internal/handlers/transfers/handlers.{go,_test.go},
+  internal/services/accounts/projection{.go,_test.go},
+  internal/services/transfers/transfers{.go,_test.go},
+  web/templates/pages/accounts.html
+That list is S1-S5 combined, so it is not by itself an answer. Diffing each
+file against the AUTHENTICATED pre-S5 tree isolates S5 exactly:
+  internal/services/accounts/projection.go     +0 / -0   <- untouched by S5
+  internal/services/transfers/transfers.go     +0 / -0   <- CRITICAL GLOB, untouched
+  internal/services/transfers/transfers_test.go +0 / -0  <- CRITICAL GLOB, untouched
+  internal/services/accounts/accounts.go       +0 / -0   <- CRITICAL GLOB, untouched
+  internal/handlers/accounts/handlers.go       +0 / -0   <- untouched by S5
+  internal/handlers/accounts/handlers_test.go  +37 / -5
+  internal/handlers/transfers/handlers.go      +17 / -3
+  internal/handlers/transfers/handlers_test.go +40 / -0
+  internal/services/accounts/projection_test.go +9 / -3
+  web/templates/pages/accounts.html            +135 / -37
+The five non-zero files are exactly .swarm/manifests/S5.1.files, no more.
+internal/services/dataloader/** does not appear in `git diff --name-only` at
+all. Corroborated by mtime: the five manifest files are stamped 15:35:30 -
+15:37:24 (the S5 work window); projection.go 13:28, transfers.go 13:40,
+accounts/handlers.go 14:24 all predate it.
+.swarm/ledger.tsv (15:26:43) and ACCESSIBILITY.md (15:26:43) predate the S5
+work window and are lead-authored Phase-0 files, not worker output.
+
+==================================================================
+CRITERION 8 -- no pre-existing assertion edited or deleted.     PASS
+==================================================================
+`git diff --numstat` shows 0 deletions in every *_test.go except
+projection_test.go (3), but that is measured against HEAD, which predates
+S1-S4, so it cannot see an S5 edit to an S4-added line. I read every deleted
+line against the authenticated pre-S5 tree instead. All 11 deletions in the
+Go files, in full:
+
+  internal/handlers/accounts/handlers_test.go (5) -- INTENDED, items (c) and (b):
+    -  if strings.Contains(w.Body.String(), "Pattern overlap warning") {
+    -    t.Errorf("non-overlapping config rendered the overlap warning block:\n%s", w.Body.String())
+        ^ item (c): re-scoped, not removed. The assertion still exists,
+          against renderedBodyWithoutScripts(...), and still bites (crit 3c).
+    -  // decision to make, not warningsKey's.
+    -  if a[0] != "a" || a[1] != "b" {
+    -    t.Errorf("warningsKey mutated its input slice in place: got %v, want [a b] unchanged", a)
+        ^ item (b): re-targeted from `a` to `b`, not removed. Still exists and
+          now actually fires (crit 2).
+  internal/handlers/transfers/handlers.go (3) -- INTENDED, item (d):
+    three doc-comment lines, rewritten into the four-case enumeration. No code.
+  internal/services/accounts/projection_test.go (3) -- INTENDED, item (e):
+    the three comment lines naming recurringBelongsToAccount. No code.
+  internal/handlers/transfers/handlers_test.go: +40 / -0, pure addition.
+
+COLLATERAL DELETIONS: none. Zero assertions were removed; two were rewritten,
+both under the S5 row's explicit mandate, and both verified stronger than
+what they replaced. Test-function count in accounts/handlers_test.go is 33
+before and 33 after -- no test added, none removed, consistent with (b) and
+(c) being in-place edits. The 5 pre-existing TestHandleResolve_* tests named
+in S3.1.checker-tests.verdict are all still present, plus the one new test.
+The +135/-37 in accounts.html is the item-(a) rewrite plus its comments; it
+contains no test assertions.
+
+==================================================================
+CRITERION 9 -- build, vet, suite, gofmt, staticcheck.           PASS
+==================================================================
+$ go build ./...                       BUILD_EXIT=0, no output
+$ go vet ./...                         VET_EXIT=0, no output
+$ go test -count=1 ./...               TEST_EXIT=0
+    all 48 packages ok, zero FAIL lines (full listing captured)
+$ gofmt -l internal/handlers/accounts internal/handlers/transfers \
+           internal/services/accounts internal/services/transfers \
+           internal/handlers/majorexpenses
+    internal/handlers/majorexpenses/handlers_test.go
+  Confirmed PRE-EXISTING, not inherited from S5:
+  $ git show HEAD:internal/handlers/majorexpenses/handlers_test.go > me_head.go
+  $ gofmt -l me_head.go   ->  me_head.go        (unformatted at HEAD too)
+  None of the five S5 files is listed.
+$ /home/darrell/go/bin/staticcheck ./internal/handlers/accounts/... \
+      ./internal/handlers/transfers/... ./internal/services/accounts/...
+    STATICCHECK_EXIT=0, no diagnostics
+
+==================================================================
+CRITERION 10 -- no debug prints or leftover instrumentation.    PASS
+==================================================================
+$ grep -n "console\.|debugger|alert(|XXX|FIXME|TODO" web/templates/pages/accounts.html
+    (none)
+$ grep -n "fmt\.Print|println(|log\.Print|t\.Log(|spew\.|litter\." \
+      internal/handlers/accounts/handlers_test.go \
+      internal/handlers/transfers/handlers_test.go \
+      internal/services/accounts/projection_test.go
+    (none)
+$ grep -n "fmt\.Print|println(" internal/handlers/transfers/handlers.go
+    (none)
+I also read every added line of the two Go source/test files end to end
+(37 + 17 lines): imports, comments, one helper, two re-scoped assertions. No
+instrumentation.
+
+==================================================================
+OBSERVATIONS (not criterion failures)
+==================================================================
+O1. In S5's sequence 1, after the mutation that RESOLVES the overlap, the live
+    region still reads "Pattern overlap warning dismissed." rather than "".
+    lastWarningsText was set to '' at dismiss time and effectiveText is also
+    '' on that call, so the same-text guard correctly skips the write and the
+    stale confirmation copy lingers. It asserts a dismissal, not an active
+    warning, so it does not violate point 16 as written; noted for
+    checker-a11y, whose lane this is.
+O2. scriptBlockRE is case-sensitive and stops at the first literal
+    "</script>". Both are under-strips (false failure, never false pass) and
+    neither is reachable from today's templates. Not a finding.
+
+==================================================================
+BOTTOM LINE
+==================================================================
+Items (b), (c), (d) and (e) are done properly and I proved each one by
+mutation, not by reading. Item (a) is a genuine, working fix -- I ran the
+shipped JS and both point-16 defects are gone, and the whitespace-padding bug
+the worker found alongside it is real and fixed too. But criterion 1 asks
+whether a regression turns something red, and it does not: restoring the
+byte-identical pre-S5 accounts.html leaves `go test ./...` at exit 0, and
+deleting syncWarnings entirely leaves the accounts package green. The work is
+correct and unguarded. What is missing is one executable check, inside the
+repo, that fails when syncWarnings' dismissal ordering regresses.

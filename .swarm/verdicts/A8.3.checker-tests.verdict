@@ -1,0 +1,191 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A8
+ATTEMPT: 3
+---
+EVIDENCE:
+
+Read in full: .swarm/briefs/A8.md (via /home/darrell/bin/ai/budget2/.swarm/briefs/A8.md
+-- not present in the worktree), ACCESSIBILITY.md, .swarm/manifests/A8.3.files,
+internal/services/accounts/{accounts.go,balance.go,projection.go},
+internal/handlers/dashboard/accounts_card.go, both new templates, and the full
+test diff.
+
+METHOD NOTE. This task failed twice, each time because a heading change fixed
+one state and broke or missed another. So every heading conclusion below is read
+out of SERVED HTML from a running binary, not reasoned from the template. Two
+binaries were built OUTSIDE the repo (A8 worktree, and a pre-A8 baseline from
+`git archive HEAD`), run against temp fixture dirs outside the repo via
+BUDGET_DATA_DIR, and all servers were stopped (`pgrep` -> "no servers running").
+The worktree was never written to except this verdict file; final
+`git status --porcelain` shows only the expected A8 changes.
+
+------------------------------------------------------------------
+1. MANIFEST FIDELITY -- PASS
+`sort .swarm/manifests/A8.3.files` vs `git status --porcelain | awk '{print $2}'`
+minus .swarm bookkeeping: `diff` -> IDENTICAL. 12 files, matching exactly.
+A8.3 adds web/templates/components/budget-vs-actual.html over A8.2 -- correctly
+declared, since that shared component's h3->h2 promotion is part of attempt 3.
+
+2. TOOLCHAIN -- PASS
+`go build ./... && go vet ./... && go test ./... && staticcheck ./...`, chain
+exit 0. Real counts from the captured output: `grep -c "^ok "` = 47 packages,
+`grep -n "FAIL\|panic:"` -> (none). staticcheck 2026.1 (v0.7.0) at
+/home/darrell/go/bin/staticcheck produced zero diagnostics.
+`gofmt -l` on every .go file in the manifest: no output (all formatted).
+
+3. HEADING OUTLINE IN BOTH STATES -- PASS (the attempt-2 defect is fixed)
+Outlines extracted from served HTML, three data fixtures:
+
+  fixture                       /dashboard                 /explorer
+  accounts configured           h1 h2 h2 h2 h2 h2 h2       h1
+  CSVs, NO accounts.json        h1 h2 h2 h2 h2 h2          h1
+  empty dir (true first run)    h1 h2 h2 h2 h2 h2          h1
+
+No-accounts dashboard, heading text in document order:
+  1 Dashboard          (h1)
+  2 Budget vs Actual Over Time
+  3 Spending by Major Expense
+  4 Spending Trend
+  5 Top Spending
+  6 Cumulative Balance
+Accounts-configured dashboard inserts "Accounts" (h2) at position 2.
+
+The attempt-2 failure was h1 -> h3 when the accounts card was suppressed by
+`{{if .AccountsCard.HasAny}}`. In attempt 3 the sibling sections are h2, so the
+outline is h1 -> h2 with NO level skipped in either state, and the state that
+actually failed (no accounts -- the default first run) is now the one with the
+simplest correct outline. Exactly one h1 per page in all three fixtures.
+
+4. NO OTHER PAGE'S HEADINGS CHANGED -- PASS
+Built the pre-A8 baseline with `git archive HEAD`, confirmed pre-A8 (dashboard
+has the four h3s, zero h1, no unassigned_banner). Served the same 10 pages from
+both binaries against identical fixtures and diffed the level+text outline per
+page:
+
+  page             result
+  dashboard        CHANGED (expected: h3xN -> h1 + h2xN)
+  explorer         CHANGED (expected: +[h1] Data Explorer)
+  accounts         SAME  (h1 h2 h2 h4 h4 h4 h4 h4 h4 h4 h4 h2)
+  duplicates       SAME  (h1)
+  major-expenses   SAME  (h1 h2 h3 h2)
+  insights         SAME  ()
+  whatif           SAME  (h3 h3 ... 28 headings)
+  transfers        SAME  (h1 h2)
+  filemanager      SAME  (h1 h2 h2)
+  root             SAME  ()
+
+Repeated under both the accounts-configured and no-accounts fixtures: identical
+result. Only the two pages A8 owns changed. Attempt 2's clean result is
+undisturbed. The shared-component risk was checked directly:
+`grep -rn budget-vs-actual` shows web/templates/pages/dashboard.html:138 as its
+only render site, so promoting its h3 to h2 cannot reach another page -- and the
+per-page diff confirms it empirically. base.html's h1 (line 176) is inside the
+404 `{{else}}` branch only, so no page gains a second h1 from the layout.
+
+5. THE TEST ASSERTS THE OUTLINE (it does not merely describe it) -- PASS
+handlers_http_test.go adds headingLevelRe/headingLevels/assertNoSkippedLevels,
+which parse the rendered body and fail on `l > prev+1`.
+TestHandleDashboard_HeadingOutlineNoSkippedLevels exercises BOTH states in one
+test: the no-accounts state (asserting the accounts card section is absent) and
+the with-accounts state (asserting it is present), calling assertNoSkippedLevels
+on each, plus exact-one-h1 via both `<h1` and `</h1>` counts.
+
+MUTATION TEST -- I did not take the assertion's word for it. In an out-of-repo
+copy of the tree (control run: `ok budget2/internal/handlers/dashboard`), I
+reverted ONLY budget-vs-actual.html's h2 back to attempt 2's h3:
+
+    --- FAIL: TestHandleDashboard_HeadingOutlineNoSkippedLevels (0.04s)
+        handlers_http_test.go:1266: heading outline skips a level: h1 -> h3
+    FAIL	budget2/internal/handlers/dashboard	0.042s
+
+That is attempt 2's exact defect, reproduced and caught by the new assertion.
+The comment-instead-of-assertion gap that let attempt 2 through is closed.
+TestExplorer_RendersExactlyOneH1 asserts the same for /explorer.
+
+6. HIGH-STAKES STATE: NO ANCHOR RENDERS UNKNOWN, NEVER $0.00 -- PASS
+Verified in RENDERED MARKUP, not handler state. A checking account with no
+anchors, served from the real binary, produced this card row:
+
+  "No Anchor Checking &middot; Local CU Data through Aug 13, 2026
+   Balance unknown  Set an anchor on the accounts page
+   No balance anchor set &mdash; the balance is unknown, not zero.
+   Projection unavailable &mdash; no balance anchor set."
+
+Programmatic check on that <li>: contains "$0.00"? False. Contains ANY `\$\d`?
+False. The row carries no dollar figure at all. TestAccountsCard_NoAnchor pins
+this, correctly scoping the assertion to extractAccountsCardSection so the KPI
+tiles' legitimate $0.00 cannot mask a regression.
+
+7. ALL FOUR CARD STATES RENDER DISTINCTLY -- PASS
+One fixture with four accounts, read out of the served dashboard:
+  low       Chase Everyday  $235.80  + "Below the $500 low-balance threshold" + icon
+  no-anchor Vanguard        "Balance unknown" (no figure) + "unknown, not zero" + icon
+  stale     Ally Savings    $7,512.50 + "Data is stale -- the balance may not
+                            reflect recent activity. Re-import the CSV..." + icon
+  healthy   USAA Checking   $8,412.66, no flag, no icon
+A stale CSV cannot look healthy: Ally shows a balance AND an explicit staleness
+sentence. Precedence in accounts_card.go is no-anchor > stale > low > healthy,
+so a stale-and-low account reports stale (the balance itself may be wrong) --
+sound judgment call, documented at the code site.
+
+8. LOW AND STALE ARE NOT COLOR-ONLY (ACCESSIBILITY.md point 8) -- PASS
+Each flag div contains an `<svg aria-hidden="true">` AND a `<span>` of literal
+text. Counted in served HTML: low/stale/no-anchor rows carry 1 icon each;
+healthy carries 0 (correctly, it has no flag). Meaning survives with color
+removed.
+
+9. PROJECTION LINE, ALL THREE STATES -- PASS
+  crossing     "Drops below $500 around Aug 14, 2026 -- no prior transfers to
+                reference. Suggested top-up: $300."
+  no-crossing  "Projected to stay above the $500 threshold for the next 35 days."
+  unavailable  "Projection unavailable -- no balance anchor set."
+All three observed in served markup (unavailable required a checking account
+with no anchor, since brokerage kinds get no projection line at all -- correct
+per spec, which scopes the line to checking/savings). accounts_card.go calls
+accounts.Project / BalanceAt / Freshness directly and adds no arithmetic of its
+own; the only new number is the presentation-layer staleAccountDays=45
+threshold, which is a UI concern and documented as such.
+
+10. UNASSIGNED BANNER ON BOTH PAGES -- PASS
+  fixture                  dashboard              explorer
+  3 unassigned txs         1 banner, count=3      1 banner, count=3
+  no accounts.json         1 banner, count=3      1 banner, count=3
+  all files assigned       0 banners              0 banners
+  empty dir                0 banners              0 banners
+Count 3 matches the loader's own log line ("Loaded 3 transactions from
+unknown-bank.csv (unassigned: no account matches this file)"). Both pages link
+to /accounts via a real `<a>`. Point 14: dismissal is a real `<button>` with
+aria-label and focus:ring-2, and sessionStorage keys the dismissal to the count
+so it is not re-announced every page load but does reappear on state change.
+
+11. SCOPE -- PASS
+`git status --porcelain` filtered for internal/services/{accounts,transfers},
+mcpsvc, handlers/{transfers,accounts}: NONE. No A2/A4/A5 service changes, no
+transfers page (A7), no MCP (A9). The Initialize signature gained a *storage
+param (blast radius: cmd/server/main.go:106 plus test call sites, all updated;
+nil store is tolerated and yields an empty card).
+
+12. RENDERED-OUTPUT ASSERTIONS (ruling 2026-08-16a / 2026-08-16e) -- PASS
+All 13 new tests drive the handler through a real renderer pointed at
+web/templates and assert on rec.Body, not handler structs. Ruling 2026-08-16e:
+the only `for ... range` in the new test files is fixture CSV writing
+(accounts_card_test.go:105), not an assertion loop, so no count-assertion
+precondition applies. All A8 tests run and pass (`-v`): AccountsCard_{Healthy,
+Low,Stale,NoAnchor}, ProjectionLine_{Crossing,NoCrossing,Unavailable},
+UnassignedBanner_{Present,Absent}, HeadingOutlineNoSkippedLevels,
+ExplorerUnassignedBanner_{Present,Absent}, Explorer_RendersExactlyOneH1.
+
+------------------------------------------------------------------
+NON-BLOCKING OBSERVATION (not a defect, no action required)
+assertNoSkippedLevels ends with `if l > prev { prev = l } else { prev = l }` --
+both branches identical, so it reduces to `prev = l`. Behavior is correct
+(each heading may be at most one level deeper than the previous), staticcheck
+does not flag it, and the mutation test proves the function works. Cosmetic.
+
+CONCLUSION: PASS. The attempt-2 defect is fixed in the state that actually
+failed, verified from served HTML in both states rather than inferred from the
+template; the fix is contained to the two pages A8 owns, proven by a per-page
+served-HTML diff against a pre-A8 baseline; and the new outline assertion was
+mutation-tested and does catch the exact regression that shipped in attempt 2.

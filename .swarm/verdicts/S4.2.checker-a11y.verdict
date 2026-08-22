@@ -1,0 +1,167 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: S4
+ATTEMPT: 2
+---
+METHOD: Real browser (Playwright/chromium, reused install from prior session),
+not template reading. Built the worktree (go build ./cmd/server) and ran it
+against an isolated data dir in scratchpad (BUDGET_DATA_DIR override; repo
+data/ and the working tree were never touched, confirmed via `git status`
+before/after). Created two accounts (a-wide: pattern "usaa", b-narrow:
+pattern "usaa-checking*.csv") plus real *.csv files on disk via the actual
+"Add an account" form to force accounts.OverlapWarnings non-empty through
+the same code path a user hits. Drove every check below with real DOM
+queries, MutationObserver, node-identity checks, keyboard-only interaction
+(page.keyboard.press, never .click for the dismiss control), computed-style
+contrast math cross-checked with axe-core 4.13 (both a Node-embedded run and
+`npx @axe-core/cli`), and a javaScriptEnabled:false browser context. Server
+killed after testing; `git status` confirms nothing in the repo was written
+except this verdict file.
+
+POINT 10, live-region existence/persistence — PASS.
+#accounts-warnings-region is present at GET /accounts, outside #accounts-list
+(`list.contains(region) === false`), with role="status" aria-live="polite"
+aria-atomic="true" class="sr-only". Tagged the node with a probe attribute
+and held a JS reference before two separate HTMX swaps (an unrelated edit,
+then a pattern edit); after both, `region === window.__region` and the probe
+attribute survived — this is the same physical node across swaps, unlike
+attempt 1 where the node was destroyed and recreated. The visible
+#accounts-warnings-banner carries no role/aria-live (confirmed via
+getAttribute), so exactly one thing announces.
+
+SAME-TEXT GUARD, both halves — PASS.
+With a MutationObserver on the region: (a) an unrelated mutation (editing
+b-narrow's low_balance_threshold, warnings text unchanged) produced
+mutationCount=0 — the guard correctly did not touch the DOM. (b) A real
+content change (editing b-narrow's patterns to also overlap usaa-credit.csv)
+produced mutationCount=1 and the region's text grew to include the second
+warning clause. The guard neither withholds real updates nor rewrites
+unchanged text.
+
+POINT 10, focus after HTMX swap replacing the focused element — OBSERVATION,
+unchanged, not charged to S4. Focused b-narrow's "Save changes" button,
+edited its threshold (unrelated to the "Add an account" form), submitted;
+document.activeElement after the swap was #acct-new-id. Grepped
+accounts.html: the unconditional `data-focus-target="id"` on that field
+(line ~280) is untouched by this diff (git diff scoped to handlers.go,
+handlers_test.go, and the warnings-specific HTML/script edits). This is the
+same bug attempt 1 recorded as pre-existing and out-of-scope; attempt 2 did
+not fix it and did not make it worse.
+
+POINT 14, dismiss control — PASS.
+Real `<button type="button" data-dismiss-warnings aria-label="Dismiss
+pattern overlap warning">`, tabIndex 0. Reached it with keyboard-only Tab
+navigation from document start (10 tabs, no click anywhere), confirmed a
+visible focus indicator (computed outline + a 2px amber box-shadow ring
+appears only while focused), and activated it with Enter (not .click()) —
+the banner disappeared. sessionStorage (not localStorage) holds the
+dismissal keyed on WarningsKey. Verified: dismissal survives a same-session
+reload (banner absent, sessionStorage key intact); editing b-narrow's
+patterns to add a second overlapping file changes WarningsKey and the
+banner reappears even though the old key is still stored (key comparison
+correctly fails); a brand-new browser context (fresh session storage)
+shows the banner again with no stored key, i.e. dismissal does not persist
+beyond the session; and throughout, #accounts-warnings-data /
+#accounts-warnings-region kept the warning text populated even while
+dismissed — dismissal is purely a visual/client-side suppression, it does
+not suppress the server-side computation.
+
+POINT 10 (second clause) — FAIL. "destructive or state-changing actions ...
+announce their result via an aria-live="polite" region," and focus handling
+around the dismiss action.
+Drove the dismiss button by keyboard only and instrumented
+document.activeElement plus every [aria-live] node before/after. Result:
+immediately after Enter, document.activeElement is <body> (the button's
+container, which held focus, was removed via banner.remove()) — no focus
+management moves it anywhere inside the page. The next Tab press lands on
+#acct-new-id, i.e. the tab sequence effectively restarts near the top of
+the document rather than continuing from where the banner was — a keyboard
+user loses their place. Simultaneously, #accounts-warnings-region's content
+is left completely unchanged by the dismissal (it still holds the old
+warning text, exactly as before), and no other aria-live node reports
+anything about the dismissal happening. So a screen-reader user who
+activates "Dismiss pattern overlap warning" gets no confirmation that
+anything happened and loses their keyboard position — this is precisely the
+failure mode the task brief asked to be ruled on ("a keyboard user who
+dismisses a banner must not be dumped at the top of the document with no
+announcement"), and it reproduces. Dismissing is a state-changing action
+(visible -> hidden) not gated to "confirm/reject, delete" by the
+constitution's wording ("destructive OR state-changing"), so point 10's
+second clause applies and is not met. This is new surface area introduced
+by S4 (the dismiss button did not exist in attempt 1), not a pre-existing
+bug, and is in scope.
+
+POINTS 7/12, contrast — PASS, arithmetic independently reproduced, no new
+failures anywhere.
+Measured actual getComputedStyle colors, composited them against their real
+ancestor background stack (not assumed swatch values), and computed WCAG
+relative-luminance contrast myself, then cross-checked with axe-core's
+color-contrast rule scoped directly to #accounts-warnings-banner:
+  LIGHT: explanatory text-xs (rgb(180,83,9) "amber-700" on composited
+    rgb(255,251,235)) = 4.842:1 — matches the worker's claimed figure
+    exactly. Dismiss-icon color is also amber-700 (not amber-500) = 4.842:1.
+    axe scoped scan: 0 color-contrast violations.
+  DARK: explanatory text-xs (amber-400 on composited ~rgb(84,67,65)) =
+    5.587:1; dismiss-icon (amber-400, same bg) = 5.587:1; heading text
+    (amber-300) = 6.468:1. axe scoped scan: 0 violations.
+Full-page axe-core scans (programmatic axe.run with wcag2a/wcag2aa/
+wcag22aa/best-practice tags, AND a separate `npx @axe-core/cli` run) in all
+four combinations — light/with-warning, dark/with-warning, light/
+no-warning (edited b-narrow to a disjoint pattern, confirmed banner and
+region both go empty), dark/no-warning — show exactly one violation type in
+every case: color-contrast on the two pre-existing "Delete account" button
+nodes (form[hx-post=".../delete"] > .bg-gray-200...), identical targets to
+attempt 1's documented baseline. No new violation of any kind (contrast,
+name, landmark, heading-order, region) in any theme/state combination.
+
+STRUCTURE (points 1-3, 9) — PASS, undisturbed.
+Exactly one <h1> ("Accounts"); heading order h1 -> h2 ("Add an account",
+"Your accounts", per-account h3, "Unassigned files") -> h3 -> h4 ("Matched
+files", "Balance anchors"), no skipped levels. Exactly one <main>, one
+<nav>, one <footer>. Matches attempt-1's baseline; the diff only touched
+the warnings block and script, per `git diff --stat`.
+
+JAVASCRIPT DISABLED — RULING: acceptable, matches the task's stated bar.
+Loaded /accounts in a `javaScriptEnabled: false` browser context and
+inspected the raw served HTML. The visible amber banner text ("Pattern
+overlap warning" + the list items) is present as ordinary static markup —
+it does not vanish, and a screen-reader or sighted user encountering it in
+normal document order still gets the information without any script
+running. #accounts-warnings-region is also server-rendered with the
+warning text already inside it (role="status" aria-live="polite"), so nothing
+is missing from the DOM; whether a given screen reader treats content
+already present at initial load as an "announcement" vs. just readable text
+is a known cross-AT inconsistency outside this task's control, and either
+way the information reaches the user. The dismiss button is present in the
+DOM but inert (its click handler never attaches without JS) — degraded
+dismissal, which the task brief accepts. No regression: nothing vanishes.
+
+ESCAPING — PASS.
+Registered a real file on disk with a name containing a double quote,
+single quote, ampersand, and angle brackets (`usaa-que"test'&<b>.csv`),
+forced it into an overlap warning, and fetched the RAW server response
+(not Playwright's re-serialized DOM) to inspect the literal bytes.
+data-warnings-text="...file &#34;usaa-que\&#34;test&#39;&amp;&lt;b&gt;.csv&#34;..."
+and the #accounts-warnings-region text-node content use the same
+`&#34;/&#39;/&amp;/&lt;/&gt;` entities — single-level encoding (no
+double-escaping), correct for both the attribute-value context and the
+text-node context. DOM-level check after parsing: region.childElementCount
+== 0 (no injected elements), no stray <b> element from the filename,
+script tag count unchanged. Go's html/template auto-escaping is doing its
+job in both places S4 interpolates warning text.
+
+OVERALL: FAIL. Every claim about the live-region redesign, the same-text
+guard, the dismiss button's keyboard operability/session semantics, the
+contrast numbers, and the escaping was independently reproduced and holds
+(points 10-clause-1's persistence problem and point 14's total absence,
+both of which failed attempt 1, are fixed). But the dismiss button itself
+is new S4 surface area, and exercising it by keyboard surfaces a real,
+reproducible point 10 (second clause) violation: dismissing the banner
+announces nothing via any aria-live region and drops focus to <body>,
+effectively resetting the keyboard user's position in the document. Fix
+needed for attempt 3: after banner.remove(), move focus somewhere sensible
+(e.g. the "Your accounts" heading, matching the existing htmx:afterSwap
+fallback pattern already in this same script) and/or emit a short
+confirmation via the existing #accounts-warnings-region or a second sr-only
+live region ("Pattern overlap warning dismissed").

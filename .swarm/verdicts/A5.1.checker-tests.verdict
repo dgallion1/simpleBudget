@@ -1,0 +1,522 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A5
+ATTEMPT: 1
+---
+EVIDENCE:
+
+## Summary
+
+The projection's logic is correct on every axis I could break EXCEPT the one
+the brief singled out by name. Requirement 6 says in so many words: "a
+shortfall of exactly 100 must not become 200." It does, for 24% of
+cent-valued inputs, because `roundUpToHundred` is the only float comparison
+in the file with no epsilon. The worker's boundary test passes only because
+its fixture (800 - 400) happens to be float-exact.
+
+FAIL on item 6. Items 1-5 and 7-10 pass, with four non-blocking notes.
+
+## What I read
+
+- `.swarm/briefs/A5.md` (task brief, in full)
+- `internal/services/accounts/projection.go` (265 lines, in full)
+- `internal/services/accounts/projection_test.go` (525 lines, in full)
+- `internal/services/accounts/balance.go` (A4's BalanceAt/Freshness/Drift)
+- `internal/models/transaction.go` (A3's merged Transfer symbols)
+- `internal/models/insights.go:6-17` (RecurringPayment)
+- `internal/services/insights/recurring.go` (Frequency vocabulary)
+- `internal/services/transfers/transfers.go:52-56,225-233,395-403` (who sets
+  TransferClass)
+- `ACCOUNTS_TRANSFERS_SPEC.md:122-129` (ruling 2026-08-16e, verbatim)
+
+## Method
+
+Per instruction I preferred mutation over reading. I copied the repo to a
+scratch tree OUTSIDE the repository
+(`$SCRATCH/mut`, 249M) and, for each guard I care about, broke it there and
+recorded which NAMED test died. The repository itself was never modified;
+`git status` is confirmed unchanged at the end of this file.
+
+20 mutations (M1-M20) plus one FIX-CHECK. Results inline below.
+
+---
+
+## 1. Manifest fidelity -- PASS (with note)
+
+`cat .swarm/manifests/A5.1.files`:
+
+    internal/services/accounts/projection.go
+    internal/services/accounts/projection_test.go
+
+`git diff --name-only` is EMPTY (no tracked file modified -- so A4's
+`balance.go` and A3's `models/transaction.go` are untouched; see items 10 and
+"merge note").
+
+`git ls-files --others --exclude-standard`:
+
+    .swarm/briefs/A7.md
+    .swarm/manifests/A5.1.files
+    internal/services/accounts/projection.go
+    internal/services/accounts/projection_test.go
+
+The two manifest entries match exactly. The two extra untracked paths are the
+manifest itself and `.swarm/briefs/A7.md`, which is the lead's brief for a
+DIFFERENT task (A7) and correctly outside A5's manifest.
+
+NOTE (non-blocking): the manifest does not list itself. Convention in this run
+is inconsistent -- `.swarm/manifests/A1.1.files` also omits itself, while
+`A1.3.files` includes itself. A5 matches the already-accepted A1.1 precedent,
+so I do not treat it as a deviation.
+
+## 2. Toolchain green -- PASS
+
+go1.26.6 linux/amd64; staticcheck 2026.1 (v0.7.0).
+
+    $ go build ./...        -> BUILD_EXIT=0, no output
+    $ go vet ./...          -> VET_EXIT=0,   no output
+    $ set -o pipefail; go test ./...   -> TEST_EXIT=0
+
+47 lines of test output (46 `ok` packages + `?  budget2/web [no test files]`),
+matching the expected ~46. Tail of the run:
+
+    ok  	budget2/internal/services/accounts	(cached)
+    ...
+    ok  	budget2/internal/services/transfers	(cached)
+    ok  	budget2/internal/templates	(cached)
+    ok  	budget2/internal/testutil	(cached)
+    ok  	budget2/internal/version	(cached)
+    ?   	budget2/web	[no test files]
+    TEST_EXIT=0
+
+    $ set -o pipefail; staticcheck ./...   -> SC_EXIT=0, no output
+
+    $ gofmt -l internal/services/accounts/projection.go \
+              internal/services/accounts/projection_test.go
+    (empty -- both clean)
+
+I did not pipe test output through grep/head without `set -o pipefail`.
+
+## 3. Advisory only (writes nothing) -- PASS
+
+PROVEN, not read. Package-level import analysis is NOT sufficient here: the
+`accounts` package as a whole imports `os` and `budget2/internal/services/
+storage` (from `accounts.go`/A6's settings code), so `go list -deps` cannot
+clear `Project`. I proved it at runtime instead.
+
+I built a standalone binary in the scratch tree that calls `Project` once with
+an anchor, two paired inbound transfers and a monthly recurring item, bracketed
+by stdout markers, and ran it under strace tracing every file-creating and
+file-writing syscall:
+
+    $ strace -f -e trace=openat,open,creat,unlink,unlinkat,rename,renameat,\
+      renameat2,mkdir,mkdirat,write,pwrite64,ftruncate ./probe-a5
+
+    MARKER-BEFORE-PROJECT
+    MARKER-AFTER-PROJECT
+    err=<nil> available=true threshold=500 crossing=2026-09-01 minimum=400
+      topup=100 ref=2000 hasref=true
+    === EXIT=0 ===
+    === any file opened for writing/creation? ===
+      (none)
+    === unlink/rename/mkdir/ftruncate calls? ===
+      (none)
+    === writes, with fd (1=stdout, 2=stderr) ===
+    178082 write(1, "MARKER-BEFORE-PROJECT
+    178082 write(1, "MARKER-AFTER-PROJECT
+    178082 write(1, "err=<nil> available=true thresho"..., 102) = 102
+    === files created in cwd during the run ===
+    (empty directory)
+
+Zero write-mode `openat`, zero `creat`, zero `unlink`/`rename`/`mkdir`/
+`ftruncate`. The only `write` syscalls in the entire process are the probe's
+own three fd-1 prints. No sidecar, no ledger write, no file of any kind.
+
+Input mutation, by mutation testing:
+
+    [M19 make Project sort the caller's anchors in place]  KILLED by:
+        --- FAIL: TestProject_DoesNotMutateInputs
+    [M20 make Project zero txs[0].Amount]                  KILLED by:
+        --- FAIL: TestProject_ReferenceMedianOddCount
+        --- FAIL: TestProject_ReferenceMedianEvenCount
+        --- FAIL: TestProject_DoesNotMutateInputs
+
+NOTE 1 (non-blocking, but it is a guard no test kills): a pure REORDER of the
+caller's transaction slice is undetected.
+
+    [M14 make Project sort txs in place]  SURVIVED -- no test killed this
+
+The cause is fixture size, not a missing assertion:
+`TestProject_DoesNotMutateInputs` (projection_test.go:416-418) builds `txs`
+with exactly ONE element, so an in-place sort is a no-op. The test DOES have
+the required length assertion (line 436) and DOES compare element-wise (line
+439-443), so with n>=2 it would catch it. The implementation genuinely does not
+reorder anything -- this is a weak test, not a defect. Worth a second
+transaction in the fixture.
+
+## 4. Unknown is not zero -- PASS (weighted; this is the one that moves money)
+
+Source: projection.go:96-100 returns early on `!start.Available` with only
+`AccountID`, `AsOf` and `Threshold` populated.
+
+MUTATION -- I removed the guard so it projects from the zero `start.Amount`:
+
+    [M1 unknown-becomes-zero: drop the !start.Available early return]
+      KILLED by:
+        --- FAIL: TestProject_NoAnchorIsUnavailableNotZero
+
+The guard is real and a named test kills it.
+
+The test fixture covers only "account has NO anchors at all". The more
+insidious real-world shape is "account HAS an anchor, but it is dated after
+asOf" (a future-dated export, or asOf before the first export). I probed that
+case directly rather than assuming BalanceAt covers it:
+
+    P1 anchor dated AFTER asOf      err=<nil> available=false threshold=500
+                                    crossingZero=true minimum=0 topup=0
+                                    ref=0 hasref=false
+
+Correct: unavailable, nothing rolled forward, no fabricated number.
+
+I also probed the OPPOSITE direction, which matters just as much -- a genuine
+zero balance must still project, or "unknown" would have swallowed a real fact:
+
+    P4 genuine zero balance         err=<nil> available=true threshold=500
+                                    crossingZero=false minimum=-400
+                                    topup=900 ref=0 hasref=false
+
+An anchor of $0.00 is Available:true and projects to -400 with a $900 top-up.
+Unknown and zero are discriminated in both directions. This item is sound.
+
+## 5. Threshold (override and default) -- PASS
+
+Both paths killed by distinct named tests:
+
+    [M3 ignore the default, always use the account value]  KILLED by:
+        --- FAIL: TestProject_DefaultThresholdWhenAccountThresholdZero
+    [M4 ignore the account override, always use the default]  KILLED by:
+        --- FAIL: TestProject_OverrideThresholdRespected
+
+`DefaultLowBalanceThreshold = 500.0` at projection.go:14; `thresholdFor`
+(projection.go:213-218) uses `> floatTolerance`, not `!= 0`.
+
+Crossing detection is also correctly guarded and correctly strict:
+
+    [M17 use <= threshold instead of strictly below]  KILLED by:
+        --- FAIL: TestProject_MixedRecurringFiltersByAccount
+    [M18 report the LAST crossing instead of the first]  KILLED by:
+        --- FAIL: TestProject_CrossingReportsFirstCrossingAndMinimum
+        --- FAIL: TestProject_DefaultThresholdWhenAccountThresholdZero
+        --- FAIL: TestProject_OverrideThresholdRespected
+
+Horizon:
+
+    [M15 shrink the window to 34 days]  KILLED by TestProject_HorizonIs35Days
+    [M16 stretch the window to 36 days] KILLED by
+        TestProject_OutflowBeyondHorizonExcluded
+
+## 6. Suggested top-up rounded UP to the nearest $100 -- ***FAIL***
+
+### The requirement
+
+Brief item 6, verbatim: "**Suggested top-up** = shortfall rounded UP to the
+nearest $100. Check an exact boundary (a shortfall of exactly 100 must not
+become 200) and a value just past one."
+
+### The code
+
+projection.go:224-229:
+
+    func roundUpToHundred(x float64) float64 {
+        if x < floatTolerance {
+            return 0
+        }
+        return math.Ceil(x/100) * 100
+    }
+
+Note that the negative-shortfall branch on the line above DOES use
+`floatTolerance`. The ceil does not. Every other float comparison in this file
+is epsilon-guarded -- projection.go:154 (`balance < out.Threshold -
+floatTolerance`), projection.go:214 (`acct.LowBalanceThreshold >
+floatTolerance`), projection.go:250 (`tx.Amount <= floatTolerance`). This one
+line is the sole exception, which reads as an oversight rather than a design
+choice.
+
+### The defect
+
+An unguarded `math.Ceil` turns any shortfall that is exactly a $100 multiple in
+DECIMAL, but a hair above it in float64, into the next $100. Cent-valued bank
+data produces exactly that dust. Twelve hand-built cases, each of which has a
+decimal shortfall of exactly $100.00 (start - outflow = 400.00, threshold 500):
+
+    start      outflow    minimum                  shortfall(=500-min)      topup
+    800.10     400.10     400                      100                      100.00
+    800.30     400.30     399.99999999999994       100.00000000000006       200.00  <== $200 for an exactly-$100 shortfall
+    800.70     400.70     400.00000000000006       99.999999999999943       100.00
+    1000.10    600.10     400                      100                      100.00
+    900.20     500.20     400.00000000000006       99.999999999999943       100.00
+    800.20     400.20     400.00000000000006       99.999999999999943       100.00
+    2000.10    1600.10    400                      100                      100.00
+    800.01     400.01     400                      100                      100.00
+    800.29     400.29     399.99999999999994       100.00000000000006       200.00  <== $200 for an exactly-$100 shortfall
+    1200.30    800.30     400                      100                      100.00
+    700.70     300.70     400.00000000000006       99.999999999999943       100.00
+    600.60     200.60     400                      100                      100.00
+
+$800.30 with a $400.30 monthly bill is entirely ordinary data.
+
+Swept over all 100 cent values, and again with five weekly occurrences so the
+dust accumulates:
+
+    cent sweep: 24 of 100 exactly-$100 shortfalls were rounded to $200
+    first offender: start=800.04 outflow=400.04 minimum=399.99999999999994 topup=200.00
+    5-occurrence weekly sweep: 40 of 100 rounded to $200 instead of $100
+
+24% and 40%. Not a corner case.
+
+### Why the existing tests miss it
+
+`TestProject_TopUpRoundingAtExactBoundary` (projection_test.go:203-221) uses
+800 - 400, and `TestRoundUpToHundred` (line 505-525) feeds
+`roundUpToHundred` the integer literals 100, 200, 101, 199, 250, 1. Every one
+of those is exactly representable in binary floating point, so the boundary is
+asserted only where it cannot break. The test proves the algebra, not the
+arithmetic.
+
+### Proof this is a real gap and not a behavior something pins
+
+I applied the one-line fix in the scratch tree and re-ran the full accounts
+suite:
+
+    [FIX-CHECK epsilon-guarded ceil: math.Ceil(x/100-floatTolerance)*100]
+      SURVIVED -- no test killed this mutation
+
+Not one existing test distinguishes the fixed version from the broken one --
+the boundary requirement is entirely untested on the axis where it fails. And
+the same fix removes the defect completely:
+
+    cent sweep: 0 of 100 exactly-$100 shortfalls were rounded to $200
+    5-occurrence weekly sweep: 0 of 100 rounded to $200 instead of $100
+
+### Impact
+
+This number tells the user how many real dollars to move between real bank
+accounts. Over-recommending by $100 can overdraw the SOURCE account. "Advisory"
+is not a defense: a figure presented as "move $200" when $100 suffices is
+authoritative and wrong, which is the precise failure class this projection
+exists to avoid.
+
+The opposite direction is not reachable: dust is ~1e-13, far below one cent, so
+a genuine $100.01 shortfall still correctly rounds to $200 (probe P5, below).
+The failure is one-directional and always an over-recommendation.
+
+Correct behavior IS produced when the arithmetic is float-exact, end to end:
+
+    P5 outflow 400.00 -> shortfall 100.00   minimum=400     topup=100
+    P5 outflow 400.01 -> shortfall 100.01   minimum=399.99  topup=200
+
+Both halves of item 6's stated check pass on exact values and the first half
+fails on cent values.
+
+### Suggested repair (for the worker, not applied by me)
+
+    return math.Ceil(x/100-floatTolerance) * 100
+
+plus a regression test using cent-valued fixtures -- e.g. start 800.30, monthly
+outflow 400.30, threshold 500, expect SuggestedTopUp == 100.
+
+## 7. Account isolation -- PASS (weighted; verified on both the recurring
+   side and the transaction side)
+
+RECURRING side. projection.go:120-122 filters via
+`recurringBelongsToAccount` (projection.go:176-183).
+
+    [M2 stop filtering recurring by account]  KILLED by:
+        --- FAIL: TestProject_OtherAccountsRecurringExcluded
+    [M2b invert the leg filter so only OTHER accounts match]  KILLED by:
+        --- FAIL: TestProject_CrossingReportsFirstCrossingAndMinimum
+        --- FAIL: TestProject_NoCrossingReportsHealthy
+        --- FAIL: TestProject_DefaultThresholdWhenAccountThresholdZero
+        --- FAIL: TestProject_OverrideThresholdRespected
+        --- FAIL: TestProject_TopUpRoundingAtExactBoundary
+        --- FAIL: TestProject_TopUpRoundingJustPastBoundary
+        --- FAIL: TestProject_OtherAccountsRecurringExcluded
+        --- FAIL: TestProject_HorizonIs35Days
+
+M2 is the exact bleed-through failure mode: a $4,000/mo schwab bill applied to
+a usaa forecast. A named test kills it. `TestProject_MixedRecurringFiltersByAccount`
+additionally pins the PER-LEG semantics (an item with one usaa leg and one
+schwab leg IS ours, applied once), so the filter is not a naive all-or-nothing
+check.
+
+TRANSACTION side (flows through A4's BalanceAt; the brief's item 7 covers it,
+so I probed it rather than trusting A4's acceptance). A $100,000 inflow
+belonging to another account, and an unassigned row, must not move the start:
+
+    P2 other account's txs excluded   available=true minimum=400 topup=100
+    P3 unassigned tx excluded         available=true minimum=400 topup=100
+
+Both correctly ignored -- minimum stays 400, exactly as with no foreign rows.
+
+The median reference is filtered by account too; see item 8 (M9).
+
+## 8. Median inbound paired transfer -- PASS (with note)
+
+`medianInboundPairedTransfer` (projection.go:238-265). Each filter, mutated:
+
+    [M8  drop the paired-class filter]              KILLED by
+        TestProject_ReferenceNoPriorTransfers
+    [M9  drop the account filter]                   KILLED by
+        TestProject_ReferenceNoPriorTransfers
+    [M10 drop the inbound (positive amount) filter] KILLED by
+        TestProject_ReferenceNoPriorTransfers
+    [M11 drop the TransactionType==Transfer filter] SURVIVED
+    [M12 even count returns upper-middle not mean]  KILLED by
+        TestProject_ReferenceMedianEvenCount
+    [M13 report zero as a number instead of absent] KILLED by
+        TestProject_ReferenceNoPriorTransfers
+
+Odd count: `TestProject_ReferenceMedianOddCount` asserts 2000 from
+{1000,2000,3000}. Even count: `TestProject_ReferenceMedianEvenCount` asserts
+2250 = (2000+2500)/2, and M12 proves the mean-of-two-middle branch is pinned.
+"No history" is `HasReference=false` with amount 0, and M13 proves the absent
+flag is what is asserted, not the zero.
+
+The even-count median divides in full precision (projection.go:264) with no
+intermediate rounding -- item 9 satisfied here.
+
+NOTE 2 (non-blocking, guard no test kills): M11 survived. The
+`tx.TransactionType != models.Transfer` check (projection.go:241) is redundant
+given the `TransferClass != "paired"` check on the next line, because a row can
+only acquire `TransferClass = ClassPaired` inside
+`transfers.pairLegs` (transfers.go:395-403), which sets
+`TransactionType = models.Transfer` on the same two lines. So no reachable
+input distinguishes the two checks and no test can kill M11. Defensive
+redundancy, not a defect -- but it is untested, so I flag it.
+
+NOTE 3 (non-blocking): projection.go:244 hard-codes the string literal
+`"paired"` rather than referencing `transfers.ClassPaired` (transfers.go:53).
+Renaming that constant would silently make the reference amount vanish with no
+compile error and no failing test. The brief spells the requirement with the
+literal ("TransferClass == \"paired\""), so A5 is spec-compliant; noting the
+coupling for the lead.
+
+## 9. Float discipline -- PASS
+
+`grep -n "==\|!=" internal/services/accounts/projection.go` returns eight
+hits, and NONE compares a float64:
+
+    93:  if err != nil                          (error)
+    178: if leg.AccountID == accountID          (string)
+    234: (comment)
+    241: if tx.TransactionType != models.Transfer  (string-kinded type)
+    244: if tx.TransferClass != "paired"        (string)
+    247: if tx.AccountID != acct.ID             (string)
+    255: if len(amounts) == 0                   (int)
+    260: if n%2 == 1                            (int)
+
+Every money comparison uses `floatTolerance` (= 1e-9, balance.go:16). Tests use
+`moneyEq` (balance_test.go:15-17, `math.Abs(a-b) < floatTolerance`).
+
+`projection_test.go:432` and `:440` do use exact `!=` on amounts / whole
+Transaction structs, but those are the mutation guards in
+`TestProject_DoesNotMutateInputs`, where bit-for-bit equality is the CORRECT
+assertion -- an unchanged input must be byte-identical, not merely close. Not a
+violation.
+
+Rounding appears in exactly one place, `roundUpToHundred` -- the deliberate
+$100 step. No intermediate rounding anywhere in the roll-forward. This
+requirement is satisfied as stated; item 6 fails on the SEPARATE point that
+that one rounding lacks an epsilon.
+
+## 10. Scope -- PASS
+
+`git diff --name-only` is empty: no tracked file was modified. Concretely:
+
+- A4's `internal/services/accounts/balance.go` -- UNMODIFIED (not in the diff,
+  not in the manifest).
+- No file under `web/`, `internal/templates/`, or `internal/handlers/` (A8's
+  UI) touched.
+- No file under `internal/services/mcpsvc/` (A9's MCP tools) touched.
+- Only the two new files in the manifest exist.
+
+## Merge note -- VERIFIED INDEPENDENTLY, no behavioral difference
+
+I did not take this on trust. The A5 worktree still exists at
+`/tmp/swarm-worktrees/budget2/work/A5` (branch `work/A5`, HEAD ff89ce2, i.e.
+before A3's e9ad6ae landed). Its `git status` shows
+`M internal/models/transaction.go` -- A5's dropped copy.
+
+`diff -u <merged>/internal/models/transaction.go <A5-worktree>/...` shows the
+differences are ENTIRELY comments, const-block gofmt alignment, and field
+ORDER within the struct. The load-bearing declarations are identical in both:
+
+    Transfer TransactionType = "Transfer"          (same identifier, same value)
+    TransferClass   string `json:"transfer_class,omitempty"`
+    TransferPairKey string `json:"transfer_pair_key,omitempty"`
+
+A5's own doc comment on TransferClass names the same value vocabulary --
+"paired" / "external" / "" -- as A3's. So no A5 behavior depended on a
+differing definition: the type of `TransferClass` is `string` in both, the
+constant `Transfer` carries the same underlying value in both, and
+`projection.go` compares against the literal `"paired"` which is
+`transfers.ClassPaired` in both. Field reordering within a struct is
+irrelevant to `projection.go`, which addresses fields by name only.
+
+Confirming the merge took A5's two files verbatim:
+
+    $ diff -u <merged>/internal/services/accounts/projection.go \
+              <A5-worktree>/internal/services/accounts/projection.go
+    P_EXIT=0   (identical)
+    $ diff -u <merged>/.../projection_test.go <A5-worktree>/.../projection_test.go
+    T_EXIT=0   (identical)
+
+And the merged tree builds, vets, tests and staticchecks clean (item 2), which
+is the mechanical confirmation that `projection.go` compiles against A3's
+definitions.
+
+Conclusion: the merge is coherent. This is NOT the cause of the item-6 failure,
+which is present identically in A5's own worktree.
+
+## Ruling 2026-08-16e -- loop assertions
+
+Ruling text (ACCOUNTS_TRANSFERS_SPEC.md:122-129): "Any loop-based probe
+assertion must be preceded by a count assertion", the rationale being that it
+"passes trivially on an empty set".
+
+Two loops in `projection_test.go` lack a preceding count assertion. Both
+iterate a slice built from an in-function literal, so neither can be vacuous on
+an empty set and neither triggers the ruling's actual hazard. Flagged for
+completeness as instructed:
+
+NOTE 4a: `TestRoundUpToHundred` (projection_test.go:519) loops over `cases`, an
+8-element literal declared four lines above. No `len(cases)` assertion.
+Cannot be empty.
+
+NOTE 4b: `TestProject_DoesNotMutateInputs` (projection_test.go:431) loops
+`for i := range anchorsBefore` and indexes `acct.Anchors[i]` without asserting
+`len(acct.Anchors) == len(anchorsBefore)` first -- it DOES make that assertion
+for `txs` (line 436) and `recurring` (line 444), so the omission on anchors is
+an inconsistency. Indexing is safe here regardless (the caller's slice header
+is a value copy, so its length cannot change), and the fixture is a 2-element
+literal.
+
+Neither is a defect. Both would be improved by a one-line count assertion.
+
+## Verdict
+
+FAIL on requirement 6.
+
+The projection is otherwise well built: the two failure modes I was told to
+weight -- projecting from an assumed zero when the balance is unknown, and
+another account's bills bleeding into this forecast -- are both correctly
+implemented AND both killed by named tests under mutation (M1, M2, M2b), and I
+confirmed the unknown/zero distinction holds in both directions and on the
+harder "anchor dated after asOf" shape the tests do not cover.
+
+But the suggested top-up is the number the user acts on, requirement 6 named
+the exact boundary to protect, and that boundary is wrong for 24-40% of
+cent-valued inputs while no test can tell the broken version from the fixed
+one. A user with an $800.30 balance and a $400.30 bill is told to move $200
+when $100 is correct. That is a one-line fix plus one regression test; it
+should be a fast attempt 2.

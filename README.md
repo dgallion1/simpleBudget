@@ -634,6 +634,32 @@ make validate
 
 The pre-commit hook runs `vet`, `staticcheck`, and `test` automatically on every commit.
 
+`TestSyncWarnings_ClientRegressionHarness` (`internal/handlers/accounts/warnings_client_regression_test.go`)
+runs accounts.html's client-side `syncWarnings()` script under `node` to check
+ACCESSIBILITY.md point 16's dismissal-ordering guarantees. It requires `node`
+on `PATH` and **fails the build** (it does not skip) if `node` is missing,
+so this check cannot be silently routed around by running `go test`
+directly, `make test-unit`, an IDE test runner, or CI. That guarantee is for
+a fresh run: `go test` keys its result cache in part on the `PATH` string, so
+a cached pass only survives node being removed if `PATH` also stays
+byte-for-byte unchanged since node was last present. That is not a rare edge
+case: on Debian and Ubuntu, the `nodejs` package installs `node` into
+`/usr/bin`, a directory that is already on `PATH` before install and stays on
+`PATH` after removal, so `apt remove nodejs` leaves `PATH` byte-for-byte
+unchanged and a stale cached pass can survive it. `make test`, `make
+test-unit`, `make test-coverage`, `make race`, and `make check` all close this
+hole themselves: each re-runs `internal/handlers/accounts` a second time with
+`-count=1`, forcing a real, uncached execution regardless of what the cache
+reported. A bare `go test ./...`, run outside the Makefile, is not covered by
+that rerun and can still replay a stale cached pass in this situation; use
+`go clean -testcache` or `go test -count=1` to settle it. If you are working
+on a machine without node and need a clean skip instead, set
+`BUDGET2_ALLOW_SKIP_JS` to any non-empty value:
+
+```bash
+BUDGET2_ALLOW_SKIP_JS=1 go test ./...
+```
+
 Test data is in `testdata/` with realistic sample transactions.
 `make validate` checks the current dashboard contract, including the `monthly`, `category`, `spending-trend`, `merchants`, and `cumulative` chart endpoints.
 `make fuzz` auto-discovers packages with `Fuzz*` tests. If none exist yet, it exits successfully with a guidance message instead of failing.

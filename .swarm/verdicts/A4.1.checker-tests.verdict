@@ -1,0 +1,243 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A4
+ATTEMPT: 1
+---
+EVIDENCE:
+
+SOURCES READ IN FULL
+- internal/services/accounts/balance.go (209 lines)
+- internal/services/accounts/balance_test.go (537 lines)
+- GLOSSARY.md "BalanceAnchor" (lines 124-131) — binding end-of-day definition
+- docs/superpowers/specs/2026-08-16-accounts-transfers-design.md §4
+- .swarm/manifests/A4.1.files
+(.swarm/briefs/A4.md does not exist in this worktree — briefs/ contains only
+A0.md, A2.md, P13.md, P14.md. I verified against GLOSSARY.md + spec §4 instead.)
+
+--------------------------------------------------------------------------
+1. MANIFEST FIDELITY — PASS
+Manifest lists exactly:
+    internal/services/accounts/balance.go
+    internal/services/accounts/balance_test.go
+`git status --porcelain --untracked-files=all`:
+    ?? .swarm/manifests/A4.1.files
+    ?? internal/services/accounts/balance.go
+    ?? internal/services/accounts/balance_test.go
+Both manifest files present; the only extra entry is the manifest itself.
+No tracked file is modified — `git diff --stat HEAD` is empty.
+
+--------------------------------------------------------------------------
+2. TOOLCHAIN GREEN — PASS
+`go build ./...`   -> exit 0, no diagnostics.
+`go vet ./...`     -> exit 0, no diagnostics.
+`staticcheck ./...` (/home/darrell/go/bin/staticcheck) -> exit 0, no output.
+`gofmt -l internal/services/accounts/balance.go internal/services/accounts/balance_test.go`
+    -> empty output (both formatted).
+
+`go test ./...` (raw, unfiltered via `rtk proxy`, EXIT=0) reported 44 `ok`
+packages + 1 `[no test files]`. Tail excerpt:
+    ok  	budget2/internal/services/accounts	0.015s
+    ok  	budget2/internal/services/storage	35.888s
+    ok  	budget2/internal/templates	0.531s
+    ok  	budget2/internal/testutil	0.005s
+    ok  	budget2/internal/version	0.003s
+    ?   	budget2/web	[no test files]
+    EXIT=0
+
+Verbose run of the 19 new tests: all PASS.
+`go test -count=1 -race ./internal/services/accounts/` -> ok, 1.015s, EXIT=0
+(uncached + race clean, so no cached-result masking).
+
+--------------------------------------------------------------------------
+3. THE BOUNDARY — anchors are end-of-day — PASS (independently mutation-tested)
+
+CODE (balance.go:60-65):
+    txDay := dayOf(tx.Date)
+    if txDay.After(anchorDay) && !txDay.After(atDay) {
+        sum += tx.Amount
+    }
+This is the half-open window (anchorDay, atDay] required by GLOSSARY.md:124-131
+and spec §4 ("plus the sum of that account's transaction amounts in
+(anchor.Date, date]"). dayOf() (balance.go:197-199) truncates to the calendar
+day in the same location, so the comparison is day-granular and the anchor's
+own time component cannot leak a same-day transaction in.
+
+I did NOT take the worker's mutation claim on trust. I re-derived it by
+mutating the comparison myself and running the suite. The mutants live in the
+scratchpad and were injected with `go test -overlay=<scratch>/overlay.json`,
+which substitutes the file in-memory at compile time — nothing was ever
+written into the worktree (integrity confirmed in item 9 below).
+
+M1 — the exact off-by-one under suspicion: `txDay.After(anchorDay)` changed to
+`!txDay.Before(anchorDay)` (i.e. `>`  becomes `>=`, inclusive of the anchor
+day). KILLED by assertion, and it produced precisely the double-counted value:
+    --- FAIL: TestBalanceAt_AnchorDayTransactionIsExcluded
+        balance_test.go:120: Amount = 4810.0000, want 4310.0000 (same-day tx must be excluded from the anchor)
+        balance_test.go:128: Amount matched the off-by-one value 4810.00; the anchor-day transaction was double-counted
+    --- FAIL: TestBalanceAt_AnchorDayTransactionExcludedEvenWithTimeComponent
+        balance_test.go:159: Amount = 1350.0000, want 1100.0000 (same-day 23:59 tx must be excluded from the anchor)
+    --- FAIL: TestBalanceAt_AnchorExactlyOnAtIsIncluded
+        balance_test.go:262: Amount = 2777.0000, want 2000.00 (same-day tx excluded, anchor stands)
+THREE independent tests fail on the inclusive boundary. The worker's claim is
+confirmed as truthful: the tests genuinely discriminate `>` from `>=`. They do
+not pass vacuously and they are not tautological — the 4810.00 value the
+assertion names is the real double-counted balance the mutant computes.
+
+TIME-COMPONENT CASE (explicitly required): M2b replaced the day-granular
+anchor comparison with a full-timestamp one (`tx.Date.After(anchor.Date)`).
+First attempt died on a compile error (unused `anchorDay`), which is NOT a
+valid kill, so I repaired the mutant with a blank assignment and re-ran:
+    --- FAIL: TestBalanceAt_AnchorDayTransactionExcludedEvenWithTimeComponent
+        balance_test.go:159: Amount = 1350.0000, want 1100.0000 (same-day 23:59 tx must be excluded from the anchor)
+balance_test.go:138-161 pins anchor at 2026-08-01 09:00 and a transaction at
+2026-08-01 23:59; the 23:59 row is correctly excluded (1000 + 100 = 1100, not
+1350). Requirement met.
+
+M3b — dropping the `at` upper bound. KILLED:
+    --- FAIL: TestBalanceAt_TransactionsAfterAtAreExcluded
+        balance_test.go:178: Amount = 1650.0000, want 1100.0000 (only txs on/before `at` count)
+
+--------------------------------------------------------------------------
+4. UNKNOWN IS NOT ZERO — PASS
+balance.go:47-50 returns `BalanceResult{Available: false}` with a zero Amount
+and zero AnchorDate; nothing downstream coerces the two facts together — the
+struct carries an explicit Available flag and the doc comment (balance.go:43-45)
+states the caller MUST distinguish them.
+
+M5 — coerced unavailable into an available zero
+(`{Available: false}` -> `{Available: true, Amount: 0}`). KILLED:
+    --- FAIL: TestBalanceAt_NoAnchorReturnsUnavailableNotZero
+        balance_test.go:217: Available = true, want false (no anchor at or before `at`)
+    --- FAIL: TestBalanceAt_AnchorOnlyFutureOfAtIsUnavailable
+        balance_test.go:240: Available = true, want false (the only anchor is after `at`)
+
+M8c — anchor selection ignoring the at-or-before restriction, so a FUTURE
+anchor becomes usable. KILLED (this mutant also required a repair after an
+initial build failure — my blank landed in the wrong one of the two functions
+that declare `atDay`):
+    --- FAIL: TestBalanceAt_LatestAtOrBeforeAnchorWins
+        balance_test.go:90: AnchorDate = 2026-08-30 00:00:00 +0000 UTC, want 2026-08-15
+        balance_test.go:93: Amount = 9999.0000, want 3050.0000
+    --- FAIL: TestBalanceAt_AnchorOnlyFutureOfAtIsUnavailable
+        balance_test.go:240: Available = true, want false (the only anchor is after `at`)
+
+--------------------------------------------------------------------------
+5. ACCOUNT ISOLATION — PASS
+Guarded in all three loops: balance.go:57 (BalanceAt), :83 (Freshness),
+:129 (Drift), each `if tx.AccountID != acct.ID { continue }`. Unassigned rows
+(AccountID == "") never equal a real account ID, so they are excluded by the
+same guard.
+
+M4 — isolation removed in BalanceAt. KILLED:
+    --- FAIL: TestBalanceAt_OtherAccountsAndUnassignedExcluded
+        balance_test.go:198: Amount = 1850.0000, want 1100.0000 (only this account's txs count)
+1850 = 1100 + 500 (other account) + 250 (unassigned), so the test discriminates
+BOTH leak paths, not just the other-account one.
+
+M9 — isolation removed in Freshness. KILLED:
+    --- FAIL: TestFreshness_WithTransactions
+        balance_test.go:282: latest = 2026-08-20 00:00:00 +0000 UTC, want 2026-08-12
+    --- FAIL: TestFreshness_WithoutTransactions
+        balance_test.go:296: Freshness ok = true, want false (no transactions for this account)
+
+--------------------------------------------------------------------------
+6. DRIFT SEMANTICS — the asymmetry — PASS
+balance.go:136: `if txDay.After(earlierDay) && !txDay.After(laterDay)`.
+Earlier anchor's own day EXCLUDED, later anchor's own day INCLUDED — the same
+(earlier, later] window shape as BalanceAt, which is what makes Predicted and
+Actual comparable (the later anchor is end-of-day, so it already reflects its
+own day's rows and the prediction must too).
+
+Both edges of the asymmetry are pinned by TestDrift_MissingRowsBetweenAnchors
+(balance_test.go:327-371), which deliberately plants a row on EACH anchor day
+(8/1 = 50.00 excluded, 8/15 = 200.00 included). I mutated each edge separately:
+
+M6 — later anchor's day wrongly EXCLUDED (`!After(laterDay)` -> `Before(laterDay)`). KILLED:
+    --- FAIL: TestDrift_MissingRowsBetweenAnchors
+        balance_test.go:363: Predicted = 1100.0000, want 1300.00 (1000 + 100 + 200; 8/1 tx excluded, 8/15 tx included)
+        balance_test.go:369: Difference = 400.0000, want 200.00 (Actual - Predicted)
+
+M7 — earlier anchor's day wrongly INCLUDED (`After(earlierDay)` -> `!Before(earlierDay)`). KILLED:
+    --- FAIL: TestDrift_MissingRowsBetweenAnchors
+        balance_test.go:363: Predicted = 1350.0000, want 1300.00 (1000 + 100 + 200; 8/1 tx excluded, 8/15 tx included)
+        balance_test.go:369: Difference = 150.0000, want 200.00 (Actual - Predicted)
+
+Each edge fails in its own direction (1100 vs 1350 against the correct 1300),
+so the test discriminates the asymmetry rather than merely the window width —
+a symmetric-but-shifted window would not produce these two distinct failures.
+Difference is Actual - Predicted (balance.go:141); a sign flip would yield -200
+and fail balance_test.go:368.
+
+M10 — Drift not sorting anchors. KILLED:
+    --- FAIL: TestDrift_UnsortedAnchorsProducesSortedReports
+        balance_test.go:509: From/To = 2026-08-15/2026-08-01, want 2026-08-01/2026-08-15
+
+--------------------------------------------------------------------------
+7. FLOAT COMPARISON — PASS
+`grep -n "==\|!=" internal/services/accounts/balance.go` returns only string
+comparisons on tx.AccountID (:57, :83, :129) and one comment (:41). There is
+NO float equality comparison anywhere in balance.go.
+Epsilon convention: `floatTolerance = 1e-9` (balance.go:16), matching the
+repo's existing convention — verified the cited precedent really exists:
+    internal/services/retirement/guardrails_test.go:10:const floatTolerance = 1e-9
+Tests compare money through moneyEq() (balance_test.go:15-17,
+`math.Abs(a-b) < floatTolerance`), never with `==`.
+Rounding is presentation-only: the only snap is Drift collapsing sub-epsilon
+float dust to exact 0 (balance.go:146-148); Predicted and Actual are stored at
+full precision and the sum accumulates in stored precision. No rounding occurs
+inside BalanceAt's computation.
+
+--------------------------------------------------------------------------
+8. SCOPE — PASS
+`grep -in "project|forecast|LowBalanceThreshold|topup|top-up|recurring"` over
+both new files returns NO matches — spec §4's projection bullet (A5) is
+correctly absent. No UI/template/handler files touched (A6/A8), no MCP files
+touched (A9). A2's existing code is untouched: `git diff --stat HEAD --
+internal/services/accounts/accounts.go` is empty and accounts.go is not in the
+manifest. The package's other files (accounts.go, accounts_test.go) retain
+their pre-existing 11:35 mtimes.
+
+--------------------------------------------------------------------------
+9. ADDITIONAL DUE DILIGENCE
+
+Ruling 2026-08-16e (vacuous loop assertions on an empty set): I checked every
+loop-based assertion in the new tests. The only assertion loop is
+balance_test.go:532 in TestBalanceAt_DoesNotMutateAnchors, iterating `before`,
+which is a copy of a hard-coded 2-element literal (balance_test.go:522-528) —
+it is not a set computed by the code under test and cannot be vacuously empty.
+Every Drift test that indexes into `reports` has a `len(reports)` count
+assertion in front of it (balance_test.go:354, 393, 417, 428, 457, 505), which
+is exactly the guard that ruling demands. No vacuous-pass pattern found.
+
+Ruling 2026-08-16a (tests passing while behavior was wrong): addressed head-on
+by the mutation campaign above rather than by inspection alone. Ten mutants
+across all three functions; every one that compiled was killed by a named
+assertion. Three mutants (M2, M3, M8) initially died from BUILD failures
+(unused variables) — I deliberately did not count those as kills, repaired
+them, and re-ran to obtain genuine behavioral kills. Control run M0
+(unmutated original through the identical overlay path) PASSES, proving the
+harness is not simply failing everything.
+
+READ-ONLY COMPLIANCE: mutants were injected via `go test -overlay`, never
+written into the repository. Verified afterward:
+    cmp <scratchpad>/mut/orig.go internal/services/accounts/balance.go
+    -> IDENTICAL (worktree source untouched)
+    git status --porcelain --untracked-files=all -> the same 3 untracked
+       entries as at the start; no modified tracked files.
+The only file I wrote inside the worktree is this verdict file.
+
+--------------------------------------------------------------------------
+NON-BLOCKING OBSERVATION (does not affect the verdict)
+balance_test.go:108 comment says "Including it would report 4710.00". The
+arithmetic is off: including the same-day 500.00 row yields 4210 + 500 + 100 =
+4810.00, which is what the mutant actually produced and what the assertions at
+:118 and :127-129 correctly name. Only the prose in that one comment is wrong;
+every executable assertion in the test is correct. Cosmetic.
+
+--------------------------------------------------------------------------
+CONCLUSION: PASS. All eight required items independently confirmed. The
+end-of-day anchor boundary (item 3) is implemented as the half-open window
+(anchorDay, atDay], and I proved by my own mutation — not by trusting the
+worker's claim — that flipping it to inclusive produces the double-counted
+4810.00 and is caught by three separate assertions.

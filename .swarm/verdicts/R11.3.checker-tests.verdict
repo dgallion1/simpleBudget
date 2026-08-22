@@ -1,0 +1,267 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R11
+ATTEMPT: 3
+---
+All ten criteria demonstrated by command output. One residual observation is
+recorded under criterion 2; it is not a blocker against the written contract.
+
+--- 1. ORACLE EXITS 0; ORACLE FILE UNMODIFIED --- PASS
+
+  $ bash .swarm/tier3/R11/accept.sh
+  === accept.sh exit: 0 ===        (REAL_EXIT=0)
+
+  IMPORTANT PROCESS NOTE. My FIRST oracle run reported exit 1:
+    ".swarm/tier3/R11/accept.sh: line 57: 1444777 Killed  go test -race -count=1 ./..."
+  This was MY fault, not the worker's: I was running mutation-test suites in a
+  scratch tree concurrently with the oracle's -race full suite.
+  /sys/fs/cgroup/.../memory.peak read 47319244800 (47 GB) at that moment. My
+  second run was truncated by my own 600s tool timeout (no trailer line was
+  ever written to the log, so accept.sh did not report an exit at all).
+  The THIRD run was solo, after `go clean -testcache`, with nothing else in
+  flight, and exited 0 with every package "ok". The exit-1 observation is a
+  resource artifact of the checker's own harness and carries no signal about
+  R11. Storage suite ran 212.584s uncached; full suite all "ok"; no FAIL lines.
+
+  Oracle integrity:
+    $ git diff HEAD --stat -- .swarm/tier3/
+      .swarm/tier3/R11/accept.sh | 24 +++++++++++++++++++++---
+    The diff is exactly the lead's step-5 insertion plus renumbering of the
+    old steps 5/6/7 to 6/7/8. No assertion was weakened or removed.
+
+    Oracle TEST unmodified, proven by hash rather than by diff:
+    $ md5sum .swarm/tier3/R11/oracle/zz_oracle_r11_test.go
+      793ddf990af28a1a20d62770098143e0
+    $ git show HEAD:.swarm/tier3/R11/oracle/zz_oracle_r11_test.go | md5sum
+      793ddf990af28a1a20d62770098143e0
+    Identical. `git diff HEAD --stat -- .swarm/tier3/R11/oracle/` is empty.
+
+--- 2. THE DIGIT GUARD vs os.CreateTemp's UNDOCUMENTED FORMAT --- PASS, with a
+        recorded residual weakness
+
+  ANSWER, PLAINLY: YES. This does trade a string coupling between two packages
+  for a string coupling to a standard-library implementation detail. That is a
+  real and correct characterisation, and I confirmed the mechanism directly.
+
+  The format is NOT an API contract. $GOROOT/src/os/tempfile.go:23:
+      func nextRandom() string {
+          return strconv.FormatUint(uint64(uint32(runtime_rand())), 10)
+      }
+  Base 10 lives here and nowhere else. The CreateTemp doc comment
+  (tempfile.go:26-34) promises only "adding a random string to the end" — it
+  says nothing about the alphabet, base or length. go1.26.6 linux/amd64.
+
+  I probed IsStagingName (verbatim copy, storage.go:409-431) against plausible
+  future formats:
+      go1.26 actual   accounts.json.tmp-3787632045       -> true
+      decimal (today) accounts.json.tmp-2496562633       -> true
+      9-digit (<=1.22) accounts.json.tmp-483920117       -> true
+      lowercase hex   accounts.json.tmp-9f3a1c2e         -> FALSE
+      uppercase hex   accounts.json.tmp-9F3A1C2E         -> FALSE
+      base36          accounts.json.tmp-1z9k4qx          -> FALSE
+      base64url       accounts.json.tmp-Ab3-_x9Z         -> FALSE
+      uuid-ish        accounts.json.tmp-3f2a1b4c-9d8e    -> FALSE
+  So a format change WOULD stop IsStagingName matching. The coupling is real.
+
+  BUT THE FAILURE MODE IS THE OPPOSITE ONE, AND THAT IS THE WHOLE POINT.
+  Attempt 2's coupling failed SILENTLY — no test in the tree could observe it.
+  This coupling fails LOUDLY, because the test derives its fixture from a REAL
+  os.CreateTemp call, so producer and matcher are compared against each other
+  on every single test run.
+
+  I proved that rather than asserting it, with an isomorphic mutation: I
+  inverted the guard to accept only NON-decimal suffixes, which is exactly what
+  a future Go emitting hex/base36 would do to the current guard. Result:
+    --- FAIL: TestSkipPredicate_StagingNames
+        snapshot_test.go:193: SkipPredicate did not skip
+        "sidecar.json.tmp-3807164669", a name produced by the real
+        atomicWrite/createExclusive staging path
+  A Go upgrade that changed the format would break the BUILD-TIME test at the
+  same instant it broke production behaviour. It cannot regress unobserved.
+
+  RESIDUAL WEAKNESS, recorded honestly and NOT a blocker: the tripwire is
+  single-sample, hence probabilistic rather than deterministic. The test draws
+  ONE random name. If a future format were 8-char lowercase hex, an all-decimal
+  draw has probability (10/16)^8 = 2.3%, so the test would spuriously pass
+  about 1 run in 43. (For 16-char hex it is 0.05%; for base36, ~0.005%.) So it
+  is a ~97.7%-reliable loud tripwire, not a guarantee. I verified the
+  accidental-pass case is real: IsStagingName("accounts.json.tmp-12345678")
+  -> true, i.e. an all-digit hex draw would slip through.
+
+  SHOULD IT BE CLOSED DIFFERENTLY? My judgement: acceptable as built, because
+  it is tripwired, and the brief required only that the fixture be derived from
+  the real staging path (it is). The cheapest deterministic close, if the lead
+  wants one, is to loop the derivation in newStagingName (e.g. 100 draws, assert
+  IsStagingName on each) — that makes detection certain at negligible cost and
+  needs no design change. The alternative the lead floated — matching the
+  separator without constraining the suffix — is strictly MORE robust against a
+  stdlib change but over-matches legitimate data; see criterion 6, where I show
+  that trade is currently free either way for real budget2 files. I do not
+  recommend deriving the pattern from a live CreateTemp call at RUNTIME: that
+  puts filesystem I/O into a pure predicate consulted per-file during a walk.
+
+--- 3. FIXTURE DERIVED FROM A REAL os.CreateTemp CALL --- PASS
+
+  internal/services/backup/snapshot_test.go:164
+      f, err := os.CreateTemp(dir, destBase+storage.StagingSuffix+"*")
+  Read in full (snapshot_test.go:156-176): helper newStagingName really creates
+  the file on disk, takes filepath.Base(f.Name()), closes and os.Remove()s it,
+  and returns only the generated name. No hand-typed literal, and the separator
+  comes from storage.StagingSuffix, not from a local ".tmp-" string.
+  Used at snapshot_test.go:191 to build the "current" fixture.
+
+--- 4. BOTH PRODUCERS BUILD FROM THE SINGLE EXPORTED CONSTANT --- PASS
+
+  $ grep -rn 'CreateTemp' internal/ --include=*.go | grep -v _test.go
+    internal/services/storage/storage.go:445  (createExclusive)
+    internal/services/storage/storage.go:502  (atomicWrite)
+  Both are byte-identical:
+      os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
+  These are the ONLY two non-test CreateTemp calls in the tree, and neither
+  contains a ".tmp-" literal. StagingSuffix is defined once, storage.go:394.
+  They cannot drift: changing the constant changes both producers and the
+  matcher (IsStagingName, storage.go:413) simultaneously.
+
+--- 5. LEGACY <base>.tmp ORPHAN STILL SKIPPED --- PASS
+
+  Two independent proofs, one of them end-to-end through a real ZIP:
+  (a) snapshot_test.go:102 plants "foo.tmp" in the data dir, snapshot_test.go:115
+      asserts it is absent from the actual snapshot archive
+      (TestSnapshot_SkipsCacheAndMarkers builds a real zip and reads its entries).
+  (b) snapshot_test.go:199-203 asserts skip("sidecar.json.tmp") is true.
+  Mechanism: storage.go:410 `strings.HasSuffix(base, legacyStagingSuffix)`.
+  Both proofs are load-bearing — MUT-4 below fails both.
+
+--- 6. report.tmp-notes.csv NOT SKIPPED — RESOLUTION JUDGED CORRECT --- PASS
+
+  snapshot_test.go:209-213 asserts skip("report.tmp-notes.csv") is false;
+  enforced by the digit guard at storage.go:421-427.
+
+  MY JUDGEMENT: the resolution is RIGHT, and I checked both directions of
+  misclassification against the actual file namespace rather than reasoning
+  abstractly. Being excluded from a backup is a SILENT, PERMANENT data loss in
+  a money-data store, whereas retaining one stale staging file is cosmetic. The
+  asymmetry favours under-skipping, which is what the guard does.
+
+  CAN ANY REAL budget2 FILE BE MISCLASSIFIED? No, in either direction.
+  - Internal writers use nine fixed names: accounts.json, aliases.json,
+    amazon_enrichment.json, deleted_major_expenses.json, duplicate_decisions.json,
+    major_expenses.json, transaction_pins.json, transfer_decisions.json, and
+    imported *.csv. None contains ".tmp".
+  - The ONLY user-controlled path into the data dir is the explorer upload,
+    internal/handlers/explorer/handlers.go:911, which hard-rejects anything not
+    ending ".csv": `if !strings.HasSuffix(strings.ToLower(filename), ".csv")`.
+    So a user file can never end in ".tmp" (legacy branch unreachable), and a
+    name like "budget.tmp-2024.csv" has non-digits after the separator, so the
+    current branch does not match it either.
+  The only name that could be wrongly skipped is a literal
+  "<something>.tmp-<all digits>" with NO extension, which no writer produces
+  and the upload path forbids. The guard costs nothing today.
+
+--- 7. tmpSuffix STILL CORRECT FOR THE BACKUP-ZIP STAGING FILE --- PASS
+
+  $ grep -n 'tmpSuffix' internal/services/backup/snapshot.go
+    19:  tmpSuffix = ".tmp"
+    88:  tmpPath := filepath.Join(s.cfg.BackupDir, backupNamePrefix+ts+backupNameSuffix+tmpSuffix)
+    135: matches, _ := filepath.Glob(filepath.Join(s.cfg.BackupDir, "*"+tmpSuffix))
+  UNTOUCHED: `git diff HEAD -- internal/services/backup/snapshot.go` shows hunks
+  only at @@ -228 and @@ -265. Lines 19, 88 and 135 appear in no hunk.
+  STILL CORRECT, and it is genuinely a different concern: :88/:135 stage and
+  reap the backup ZIP inside BackupDir, whereas IsStagingName concerns
+  atomicWrite/createExclusive leftovers inside DataDir. Different directory,
+  different producer, different lifecycle (cleanOrphanTmp reaps on an age
+  cutoff; SkipPredicate merely excludes). Covered by snapshot_test.go:253
+  ("budget_backup_OLD.zip.tmp") and asserted at snapshot_test.go:268.
+  The oracle's step-5 grep confirms the literal-suffix match is gone from
+  SkipPredicate specifically, while leaving this usage intact — which is the
+  correct outcome, not an oversight.
+
+--- 8. restore.go PRUNE PROTECTION WORKS END TO END --- PASS
+
+  Not a predicate unit test. I wrote my own test in a scratch copy OUTSIDE the
+  repo driving the real Service.FromZip, and deleted the scratch tree after.
+  restore.go:119 builds the predicate; restore.go:311 is where pruneExtras
+  consults it for files.
+
+  Setup: planted a REAL staging file via os.CreateTemp(dir,
+  "accounts.json"+storage.StagingSuffix+"*"), plus a legacy "accounts.json.tmp",
+  plus "stale.csv" and "report.tmp-notes.csv"; restored an archive containing
+  only "fresh.csv" (so everything planted is absent from the archive).
+
+    planted staging orphan: accounts.json.tmp-1994759186
+    Result: Restored=1 Pruned=2 PruneFailures=0 SkippedProtected=0
+    --- PASS
+
+  Interpretation: the staging orphan and the legacy orphan BOTH survived on
+  disk; Pruned=2 accounts for stale.csv and report.tmp-notes.csv, which proves
+  pruning genuinely ran and the survival is protection rather than a no-op.
+  That control matters — without it the test would pass vacuously. Confirmed
+  load-bearing: under MUT-2 the same test reports Pruned=3 and
+  "PRUNE PROTECTION BROKEN: staging orphan accounts.json.tmp-3021510352 was
+  deleted by restore pruning".
+
+--- 9. FOUR MUTATIONS REPRODUCED INDEPENDENTLY --- PASS
+
+  On a scratch copy at .../scratchpad/mut (outside the repo, .git removed, since
+  deleted). Baseline unmutated: backup ok, restore ok, storage ok.
+  Every mutation is caught by at least one IN-TREE test (not only by mine).
+
+  MUT-1  IsStagingName always false
+         CAUGHT: backup/TestSkipPredicate_StagingNames  (in-tree)
+                 backup/TestSnapshot_SkipsCacheAndMarkers  (in-tree)
+                 restore e2e (mine)
+  MUT-2  SkipPredicate reverted to strings.HasSuffix(base, tmpSuffix)
+         — i.e. the EXACT attempt-2 regression, re-injected
+         CAUGHT: TestSkipPredicate_StagingNames, snapshot_test.go:193
+                 "did not skip \"sidecar.json.tmp-3431170002\", a name produced
+                  by the real atomicWrite/createExclusive staging path"
+                 restore e2e (mine): Pruned 2->3, orphan deleted
+         This is the decisive one: the regression that escaped attempt 2 is now
+         caught by a test that lives in the tree.
+  MUT-3  digit guard removed entirely (return true after the empty check)
+         CAUGHT: TestSkipPredicate_StagingNames, snapshot_test.go:211
+                 "skipped \"report.tmp-notes.csv\", a legitimate file ..."
+                 restore e2e (mine): Pruned 2->1, legit file wrongly protected
+         (My first attempt at this mutation produced a build error, not a test
+          result; I discarded it and redid it cleanly. Reporting that so the
+          build-failure line in my transcript is not misread as evidence.)
+  MUT-4  legacy .tmp branch removed
+         CAUGHT: TestSnapshot_SkipsCacheAndMarkers, snapshot_test.go:118
+                 "entry \"foo.tmp\" should have been skipped"
+                 TestSkipPredicate_StagingNames, snapshot_test.go:201
+                 restore e2e (mine)
+  Source restored and re-verified green after each mutation.
+
+--- 10. BUILD / VET / RACE --- PASS
+
+  $ go build ./...   -> BUILD=0   (run independently of the oracle)
+  $ go vet ./...     -> VET=0
+  $ go test -race -count=1 ./...  (oracle step 8, uncached after go clean
+    -testcache): every package "ok", zero FAIL lines, no race reports.
+    internal/services/storage 212.584s, internal/services/backup 1.743s,
+    internal/services/restore 2.221s, internal/services/accounts 1.094s,
+    internal/services/mcpsvc/ledger 3.738s.
+  Note: the shared-tree R12 work in accounts/projection.go and the R10/R12
+  tests in mcpsvc/ledger are all GREEN in this run, so no failure anywhere in
+  the suite had to be attributed away from R11.
+
+--- SCOPE --- CLEAN
+
+  Modified source files exactly match .swarm/manifests/R11.3.files:
+    internal/services/storage/storage.go
+    internal/services/backup/snapshot.go
+    internal/services/backup/snapshot_test.go
+  `git diff HEAD --stat` shows the only other modified Go files are
+  internal/services/accounts/projection.go and projection_test.go, which are
+  the pre-existing HALTED R12 work the lead flagged as out of scope for R11 —
+  not touched by this attempt.
+  .swarm/critical.globs lists internal/services/storage/**; R11 is Tier 3,
+  which permits it.
+  Out-of-scope .tmp sites correctly left alone, as the brief required:
+  storage/migration.go:247, storage/migration.go:275, storage/auth.go:92.
+  accept.sh carries only the lead's step-5 addition; the oracle test is
+  byte-identical to HEAD.
+  I modified nothing in the repository. All mutation and end-to-end work was
+  done in a scratch tree outside it, now deleted; `find` confirms no
+  zz_checker* or staged oracle file remains in the working tree.

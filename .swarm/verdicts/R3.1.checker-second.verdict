@@ -1,0 +1,128 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R3
+ATTEMPT: 1
+---
+Claim under test: "a payment the user resolved as a duplicate can no longer
+be counted twice in any account balance, low-balance warning, or funding
+projection."
+
+REFUTED for the funding-projection clause. Balance and low-balance-warning
+clauses hold.
+
+## What the worker actually changed (confirmed via `git diff`)
+
+  internal/handlers/dashboard/handlers.go:114
+    - buildAccountsCard(store, data.Transactions, ...)
+    + buildAccountsCard(store, data.Active().Transactions, ...)
+
+  internal/services/mcpsvc/ledger/accounts.go:87, :235
+    - txns = ts.Transactions
+    + txns = ts.Active().Transactions
+
+Both edits are real and correctly filter the BALANCE argument at both named
+call sites. `TestGetAccountsCountsSuppressedDuplicateOnce`,
+`TestGetBalanceProjectionCountsSuppressedDuplicateOnce`, and
+`TestAccountsCard_SuppressedDuplicateCountedOnce` are DISCRIMINATING tests:
+I reverted the two-file diff (`git stash push` on just those two files) and
+re-ran them — all three FAIL against the pre-fix code with exactly the
+double-counted numbers the test comments predict ($400 vs $1300, wrongly
+tripped low_balance/crossing/top-up). I then restored the fix (`git stash
+pop`) and confirmed `go build ./...` is clean. This part of the claim is not
+a rubber-stamp; the tests genuinely pin the fix.
+
+## The defect: the dashboard's recurring/projection input is still raw
+
+`internal/handlers/dashboard/handlers.go:114` builds
+`detectRecurringForDashboard(data, asOf)` from the RAW `data` (not
+`data.Active()`), and `detectRecurringForDashboard` (accounts_card.go:241)
+passes that raw set straight into `insights.DetectRecurringAt` with no
+suppression filtering of its own. This is the twin call site the task brief
+did not name (the brief only named the balance argument, `BalanceAt`'s
+`txs`), and it was left unfixed. The MCP equivalent
+(`recurringForProjection`, accounts.go:276-284) DOES call `.Active()` before
+`insights.DetectRecurring`, so the two paths that are supposed to agree now
+disagree — this is exactly the "fixed at one call site, not its twin" shape
+the dispatch predicted.
+
+I built a fixture (a Go test placed temporarily in
+internal/handlers/dashboard/, run with `go test`, then removed — see
+commands below for reproduction) with 5 genuine monthly $900 occurrences of
+"Lucid Motors Payment" plus one resolved-duplicate row (Suppressed=true,
+same amount, 1 day after the 3rd occurrence — the same offset shape as the
+worker's own near-duplicate fixtures). Calling the exact production
+function `detectRecurringForDashboard` on the raw set vs.
+`insights.DetectRecurringAt` on `.Active()`:
+
+  raw (current production path):   freq="ongoing", Occurrences=6,
+                                    NextExpected=2026-05-25
+  active (correct):                freq="monthly", Occurrences=5,
+                                    NextExpected=2026-05-31
+
+The unsuppressed duplicate's near-zero interval corrupts the interval
+std-dev enough to knock the series out of the strict "monthly" band into
+the loose "ongoing" bucket. `accounts.Project`'s `frequencyIntervalDays`
+returns `ok=false` for "ongoing" (projection.go:193-208), so the recurring
+outflow is SKIPPED ENTIRELY in the projection loop — not double-counted,
+undercounted to zero. Feeding both recurring lists into the real
+`accounts.Project` (same account, same active balance input, only the
+recurring argument differs) produced:
+
+  buggy (raw recurring):    Crossing = zero (no crossing, "healthy")
+                             Minimum  = $1000.00
+                             SuggestedTopUp = $0.00
+  correct (active recurring): Crossing = 2026-05-31
+                             Minimum  = $100.00
+                             SuggestedTopUp = $400.00
+
+This is a full-severity funding-projection miss: the dashboard would render
+"healthy, no top-up needed" when the correct answer is a threshold crossing
+requiring a $400 top-up — directly contradicting the acceptance criterion
+"...the funding projection...count[s] the debit exactly once" (the R3 brief
+requires the projection to be correct in the presence of a resolved
+duplicate; it is not, because the duplicate is still feeding the recurring
+detector that seeds the projection).
+
+Reproduction (files were created and then deleted after confirming; not
+left in the tree):
+  - test file: internal/handlers/dashboard/zz_adversarial_r3_test.go
+    (TestZZAdversarial_RecurringPathIgnoresSuppression,
+     TestZZAdversarial_ProjectionLineDiverges)
+  - `go test ./internal/handlers/dashboard/ -run TestZZAdversarial -v`
+    reproduces both the classification divergence and the Crossing/Minimum
+    divergence deterministically.
+
+## Secondary findings
+
+- Worker's own tests do not exercise this path: both
+  `TestGetBalanceProjectionCountsSuppressedDuplicateOnce` and the dashboard
+  card test's comments explicitly note "No recurring items are detected" —
+  the fixtures were deliberately (or accidentally) built to avoid the one
+  code path that is still broken. The acceptance-criteria checklist ("the
+  funding projection...count[s] the debit exactly once") is satisfied only
+  for the non-recurring case.
+- `recurringForProjection` (mcpsvc, correct) double-filters
+  (`.Active()` on an already-`.Active()`-filtered `txns` argument at some
+  call sites) — harmless, not a defect, just redundant.
+- Grep for all `accounts.BalanceAt(`, `accounts.Freshness(`,
+  `accounts.Project(` call sites found exactly the ones named in the brief
+  plus the recurring seam; no other unfixed raw-set caller exists for
+  BalanceAt/Freshness/Project themselves. The gap is specifically the
+  recurring-detection input, which is upstream of Project's `recurring`
+  parameter and outside the brief's named locations.
+- Explorer test (`TestExplorerListsBothSidesOfAResolvedDuplicate`) does
+  discriminate: it asserts the suppressed row's description text is present
+  in the rendered body, which would fail if explorer accidentally switched
+  to `.Active()`. This criterion is legitimately met and explorer.go was
+  not touched by this diff (correctly out of scope per the brief).
+
+## Verdict rationale
+
+The claim as stated ("...or funding projection") is false as shipped. Two
+of three balance-adjacent guarantees hold (balance, low-balance warning);
+the funding-projection guarantee does not hold whenever the resolved
+duplicate sits inside a series the recurring engine would otherwise call
+monthly/weekly/etc. Per the "default to FAIL when ambiguous" instruction,
+and given this is not ambiguous but reproduced deterministically, I FAIL
+this attempt.

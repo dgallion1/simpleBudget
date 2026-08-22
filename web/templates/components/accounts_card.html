@@ -1,0 +1,111 @@
+{{/* Accounts card on the dashboard (A8).
+   Expects: AccountsCard (dashboard.accountsCardData) with:
+     - HasAny bool
+     - Accounts []accountCardView (Account, Institution, State, Balance,
+       Available, Threshold, Freshness, HasFreshness, Stale, Projection)
+   Accessibility (ACCESSIBILITY.md):
+     - One <h2> for the card heading (the page <h1> is in the dashboard chrome).
+     - Status is never color alone (point 8): low-balance flags pair an icon
+       AND text; stale data carries an icon AND text; no-anchor states
+       "balance unknown" in text, never as $0.00.
+     - Contrast >= 4.5:1 in both themes (points 7, 12): status text uses the
+       same red/amber text classes the accounts page uses, which meet AA in
+       light and dark.
+     - Keyboard operable (point 9): the card has no interactive elements; the
+       projection line links to /accounts (a real <a>), focusable by default.
+     - Currency sign semantics (point 13): balances use formatMoney; the
+       no-anchor state uses the word "unknown" rather than a bare number.
+   A zero balance and an unknown balance are different facts (GLOSSARY.md
+   "BalanceAnchor"); the no-anchor state renders "Balance unknown" and never
+   a dollar figure.
+*/}}
+{{define "accounts_card"}}
+{{if .AccountsCard.HasAny}}
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-card-heading">
+    <h2 id="accounts-card-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Accounts</h2>
+    <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+        {{range .AccountsCard.Accounts}}
+        {{$acct := .}}
+        {{$state := .State}}
+        <li class="py-3">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                        {{.Account.Name}}
+                        {{if .Institution}}<span class="text-gray-500 dark:text-gray-400 font-normal">&middot; {{.Institution}}</span>{{end}}
+                    </p>
+                    {{/* Data freshness: "data through Aug 12". Empty when no
+                         transactions belong to the account. */}}
+                    {{if .HasFreshness}}
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Data through {{formatDate .Freshness}}
+                    </p>
+                    {{else}}
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        No transactions loaded for this account
+                    </p>
+                    {{end}}
+                </div>
+                <div class="text-right flex-shrink-0">
+                    {{/* Balance: render a figure only when available. The
+                         no-anchor state renders "unknown" in text, NOT $0.00
+                         -- a zero balance and an unknown balance are different
+                         facts. */}}
+                    {{if .Available}}
+                    <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{formatMoney .Balance}}</p>
+                    {{else}}
+                    <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Balance unknown</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Set an anchor on the <a href="/accounts" class="underline text-indigo-600 dark:text-indigo-400">accounts page</a></p>
+                    {{end}}
+                </div>
+            </div>
+
+            {{/* Status flags: each state rendered with icon AND text, never
+                 color alone (ACCESSIBILITY.md point 8). State precedence is
+                 no-anchor > stale > low > healthy; only one flag shows. */}}
+            {{if eq $state "low"}}
+            <div class="mt-2 flex items-center gap-1.5 text-sm text-red-700 dark:text-red-400">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
+                </svg>
+                <span>Below the ${{printf "%.0f" .Threshold}} low-balance threshold</span>
+            </div>
+            {{else if eq $state "stale"}}
+            <div class="mt-2 flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l0 4m-9-4a9 9 0 1118 0 9 9 0 01-18 0z"></path>
+                </svg>
+                <span>Data is stale &mdash; the balance may not reflect recent activity. Re-import the CSV to update it.</span>
+            </div>
+            {{else if eq $state "no-anchor"}}
+            <div class="mt-2 flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.01 2.575-1.165 0-1.99.635-1.99 1.575M12 18h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span>No balance anchor set &mdash; the balance is unknown, not zero.</span>
+            </div>
+            {{end}}
+
+            {{/* Projection summary line (checking/savings only). Three
+                 states: crossing, no crossing, unavailable. Unavailable
+                 renders text, never a number. */}}
+            {{if .Projection}}
+            {{$projState := .ProjectionState}}
+            <div class="mt-1.5 text-xs text-gray-600 dark:text-gray-400">
+                {{if eq $projState "crossing"}}
+                Drops below ${{printf "%.0f" .Projection.Threshold}} around {{formatDate .Projection.Crossing}}
+                &mdash; {{if .Projection.HasReference}}you usually move ${{printf "%.0f" .Projection.ReferenceAmount}}.{{else}}no prior transfers to reference.{{end}}
+                Suggested top-up: ${{printf "%.0f" .Projection.SuggestedTopUp}}.
+                {{else if eq $projState "no-crossing"}}
+                Projected to stay above the ${{printf "%.0f" .Projection.Threshold}} threshold for the next 35 days.
+                {{else}}
+                Projection unavailable &mdash; no balance anchor set.
+                {{end}}
+            </div>
+            {{end}}
+        </li>
+        {{end}}
+    </ul>
+</section>
+{{end}}
+{{end}}

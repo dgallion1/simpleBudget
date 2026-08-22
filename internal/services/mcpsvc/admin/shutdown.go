@@ -88,7 +88,7 @@ func registerShutdown(s *mcp.Server, deps Deps) {
 			if err := deps.Confirm.Check(token, "shutdown_server", shutdownInput{}); err != nil {
 				return nil, shutdownOutput{}, err
 			}
-			if res, asked := askForApproval(deps, req, "shutdown_server", "",
+			if res, asked := askForApproval(deps, req, "shutdown_server", "", token,
 				"Stop the budget2 server?", shutdownConsequences); asked {
 				return res, shutdownOutput{}, nil
 			}
@@ -100,7 +100,7 @@ func registerShutdown(s *mcp.Server, deps Deps) {
 					RequestState: "shutdown_server",
 				}, shutdownOutput{}, nil
 			}
-		} else if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "shutdown_server", ""); viaBrowser {
+		} else if d, waitErr, viaBrowser := awaitApproval(ctx, deps, "shutdown_server", "", token); viaBrowser {
 			// A browser approval: the client's response only acknowledges that
 			// it showed the URL, so the decision is the one waiting here.
 			if d != confirm.Approved {

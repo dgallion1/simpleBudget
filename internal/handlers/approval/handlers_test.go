@@ -46,7 +46,7 @@ func post(t *testing.T, r http.Handler, path, decision string) *httptest.Respons
 // state the consequence is the same theater as a token.
 func TestPageShowsTheConsequences(t *testing.T) {
 	r, a := router(t)
-	p, _ := a.Create("restore_backup", "a.zip", "Restore a.zip?",
+	p, _ := a.Create("restore_backup", "a.zip", "op", "Restore a.zip?",
 		"ANY FILE THE ARCHIVE DOES NOT CONTAIN WOULD BE DELETED")
 
 	rec := get(t, r, "/mcp/approve/"+p.ID)
@@ -91,7 +91,7 @@ func TestPageShowsTheConsequences(t *testing.T) {
 
 func TestApprovingReleasesTheWaitingTool(t *testing.T) {
 	r, a := router(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 	got := make(chan confirm.Decision, 1)
 	go func() {
@@ -114,7 +114,7 @@ func TestApprovingReleasesTheWaitingTool(t *testing.T) {
 
 func TestDecliningReleasesTheWaitingToolWithARefusal(t *testing.T) {
 	r, a := router(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 	got := make(chan confirm.Decision, 1)
 	go func() {
@@ -139,7 +139,7 @@ func TestAnythingButApproveIsARefusal(t *testing.T) {
 	for _, value := range []string{"", "yes", "true", "APPROVE", "nonsense"} {
 		t.Run("value="+value, func(t *testing.T) {
 			r, a := router(t)
-			p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+			p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 			got := make(chan confirm.Decision, 1)
 			go func() {
@@ -162,7 +162,7 @@ func TestAnythingButApproveIsARefusal(t *testing.T) {
 
 func TestUnknownOrAnsweredRequestsAreGone(t *testing.T) {
 	r, a := router(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", "d")
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", "d")
 
 	if rec := get(t, r, "/mcp/approve/nope"); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown id: status = %d, want 404", rec.Code)
@@ -199,7 +199,7 @@ func TestWithoutARegistryTheePageIsHarmless(t *testing.T) {
 // scripting vector.
 func TestDetailIsEscaped(t *testing.T) {
 	r, a := router(t)
-	p, _ := a.Create("restore_backup", "a.zip", "t", `<script>alert(1)</script>`)
+	p, _ := a.Create("restore_backup", "a.zip", "op", "t", `<script>alert(1)</script>`)
 
 	body := get(t, r, "/mcp/approve/"+p.ID).Body.String()
 	if strings.Contains(body, "<script>alert(1)</script>") {

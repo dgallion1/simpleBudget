@@ -1,0 +1,177 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: FINAL
+ATTEMPT: 1
+---
+Scope reviewed: /home/darrell/work/agents2 (swarm/gate.sh, swarm/tier3-compare.sh,
+commit d8c863b) and /home/darrell/bin/ai/budget2 (branch fix/review-aug16,
+REVIEW_AUG20_SPEC.md, ACCESSIBILITY.md point 16, .swarm/ledger.tsv,
+.swarm/tier3/S2 and S5 accept.sh + report.md, all .swarm/verdicts and
+.swarm/manifests for run S).
+
+===========================================================================
+FINDING 1 (primary, FAIL-worthy) — swarm/gate.sh's fix for verdict_files()
+also silently defangs the two-consecutive-fails escalation trigger whenever
+either of the two attempts was individually resolved by judge overrule, not
+just for the same-attempt contradiction the commit describes.
+===========================================================================
+
+d8c863b's commit message scopes the fix to ONE case: `check_tier2` accepts an
+attempt via judge quorum but `escalate-scan`'s old `has_fail_at` still saw the
+underlying checker FAIL and flagged that SAME attempt for forced escalation,
+producing "accepted and escalated at once." That narrow case is real and the
+fix for it is correct.
+
+But the actual code change is broader: `cmd_escalate_scan`'s two-consecutive-
+fails trigger (swarm/gate.sh:294) now calls `unresolved_fail_at` (gate.sh:232)
+for BOTH attempt N and attempt N-1, and `unresolved_fail_at` returns "no fail"
+for ANY attempt whose FAIL was overruled by a judge panel — including attempts
+that have nothing to do with the same-attempt contradiction described in the
+commit. Reproduced directly, comparing the pre-commit gate (d8c863b^) against
+the current one, using a synthetic ledger/verdict fixture (task X, tier 2, two
+SEPARATE attempts, each independently disputed and independently resolved
+2-OVERRULE/1-UPHOLD by a full judge panel — a legitimate, constitution-
+compliant resolution at each individual attempt):
+
+  OLD gate (d8c863b^): escalate-scan writes X.flag (TARGET_TIER: 3,
+    REASON: two-consecutive-fails); `gate.sh check X` then FAILs with
+    "escalation pending — bump tier to 3 then re-verify" (exit 1).
+  NEW gate (current):  escalate-scan writes no flag at all;
+    `gate.sh check X` prints "OK: X accepted at tier 2 (attempt 2)" (exit 0).
+
+This is exactly the "ledger/verdict state that the amended gate accepts and
+the original would have rejected" the task description asked me to try to
+construct. A task that needed a full judge panel to rescue it on two
+consecutive attempts — the textbook signal the two-consecutive-fails trigger
+exists to catch, per CLAUDE.md's escalation-trigger list — now sails through
+to `accepted` at its current tier with no forced bump to Tier 3, purely
+because both rescues were judge-mediated rather than checker-clean. This
+did not fire in budget2 run S's own ledger (no task in .swarm/ledger.tsv has
+two consecutive judge-overruled attempts), so it has not caused a wrong
+acceptance in this run, but it is a genuine, demonstrated regression in the
+gate's escalation safety net, not merely a same-attempt bugfix as advertised.
+Reproduction commands and fixtures used are the ones described above (ad hoc,
+not committed — no files were written inside either repo other than this
+verdict).
+
+===========================================================================
+FINDING 2 (primary, FAIL-worthy) — REVIEW_AUG20_SPEC.md's Rulings section for
+the S4 dispute omits that one of the two OVERRULE votes rested in part on a
+factual error about the task's own tier, while the same paragraph advertises
+having "recorded honestly" a smaller premise error in the very same verdict.
+===========================================================================
+
+`.swarm/ledger.tsv` line for S4: `S4  2  tests,second,a11y  accepted  3
+worker-coder  gate-ok-attempt-3-judges-2overrule-1uphold` — S4 is Tier 2 by
+the time it was accepted, and `gate.sh check S4` confirms this now ("OK: S4
+accepted at tier 2 (attempt 3)"). This is only reachable because S4 was
+escalated FROM Tier 1 (its Phase-0 tier, per REVIEW_AUG20_SPEC.md's own task
+table and "Tier justification" section, both of which still say "S4 — Tier
+1") TO Tier 2 after two consecutive attempt fails:
+`.swarm/verdicts/S4.1.checker-a11y.verdict` = FAIL,
+`.swarm/verdicts/S4.2.checker-a11y.verdict` = FAIL,
+`.swarm/verdicts/S4.2.checker-tests.verdict` = FAIL — the exact
+two-consecutive-fails condition, which is the only route by which
+checker-second (an anthropic-vs-adversarial dual lane, not a Tier-1 concept)
+becomes a required check for S4 at all.
+
+`.swarm/verdicts/S4.3.judge-impact.verdict` argues its OVERRULE partly from a
+"Tier and delegation" section that states: "S4 is Tier 1 (advisory UI
+plumbing). Per CLAUDE.md, Tier 1 requires one lane only... Checker-second is
+an adversarial second lane designed for Tier 2+... For Tier 1, the explicit
+pass from the primary lane (a11y) carries weight." This premise is wrong at
+the time of attempt 3: S4 had already escalated to Tier 2, which is why
+checker-second's FAIL was a mandatory-lane dispute requiring judge
+adjudication in the first place, not a bonus opinion to be discounted. A
+Tier-1 dispute, per CLAUDE.md's "Disputes at Tier 1," is adjudicated by the
+boss alone (no judge panel) — the very fact that a 3-judge panel was convened
+for this dispute is itself inconsistent with judge-impact's stated premise
+that the task was still Tier 1.
+
+REVIEW_AUG20_SPEC.md's Ruling 2026-08-20c reviews this exact verdict set and
+explicitly calls out a DIFFERENT, smaller premise error in judge-impact's
+reasoning ("it falsified the premise judge-impact leaned on (checker-a11y
+checked data-warnings-text after reload, never the region's own content)"),
+framed as evidence the lead is "recording honestly." It does not mention the
+tier-classification error in the same verdict, and nowhere in
+REVIEW_AUG20_SPEC.md (task table, Tier-justification section, or Rulings) is
+S4's Tier 1→2 escalation itself ever documented — a grep for
+"escalat|two-consecutive|bump" in the file matches only unrelated text (S3's
+critical-glob language). CLAUDE.md requires that when escalate-scan bumps a
+tier, the reason is recorded; for S4 that record is missing from the
+narrative document entirely, and the ledger reason string
+("gate-ok-attempt-3-judges-2overrule-1uphold") documents only how attempt 3
+was finally accepted, not why the task was already at Tier 2 by then. The net
+effect: the document catches and narrates the reviewer's own smaller error
+but is silent on a structurally more serious one (a judge picking the wrong
+rulebook) in the same dispute it otherwise treats as a model of transparency.
+The final 2-1 OVERRULE outcome for S4 does not change (judge-standards
+OVERRULE is independent and unaffected), so this did not alter what shipped,
+but the self-audit is incomplete on a point the task specifically asked me to
+check for.
+
+===========================================================================
+Other things checked, no defect found
+===========================================================================
+
+- swarm/tier3-compare.sh: the `$rg`/`$rl` → `$rp`/`$ra` fix (line 39) is
+  correct and complete; `grep -rn '\$rg\b\|\$rl\b'` across swarm/ returns
+  nothing — no stale identifiers survive anywhere in the harness.
+- swarm/gate.sh verdict_files(): confirmed the described bug is real
+  (`bash -c 'f=(); printf "%s\n" "${f[@]}"'` prints one empty line) and the
+  `(( ${#f[@]} )) || return 0` fix correctly produces "no verdicts for
+  attempt N" instead of "invalid verdict: missing file" — verified against
+  both the old and new gate.sh on a synthetic empty-glob fixture.
+- check_tier1/check_tier2/check_tier3 themselves are unmodified by d8c863b;
+  the base quorum, duplicate-identity, and lane-distinctness rules are
+  unchanged and still enforced (duplicate judge checker/family still fail()s
+  inside check_tier2, unaffected by this commit).
+- Re-ran `gate.sh check S1..S5` against budget2's current ledger/verdicts:
+  all five print "OK: <task> accepted at tier <N> (attempt <M>)" matching the
+  ledger's tier/attempt/status columns exactly. `gate.sh done` correctly
+  reports only `pending: R9 (status=no-change)`, matching
+  REVIEW_AUG20_SPEC.md's disclosed, pre-existing R9 condition.
+- .swarm/manifests/S*.files union matches `git diff --name-only c363bb4` for
+  run S's working-tree footprint exactly (the two apparent extras,
+  warnings_client_regression_test.go and warnings_dom_harness.js, are new
+  untracked files that `git diff` without `--` `-u` flags for untracked
+  files doesn't list by name-only against a ref; `git status --short`
+  confirms both are `??` and genuinely present) — no under-reported
+  footprint, no unclaimed modified file.
+- .swarm/tier3/S5/accept.sh: read in full. The specific pass-by-default
+  `(inherited)` branch the task asked me to verify is gone (grep confirms no
+  such construct remains) and the check-5 rewrite (source-grep → behavioural
+  injection) and check-3b additions are accurately disclosed in report.md.
+  One residual (minor, not FAIL-worthy on its own): lines 183-188 loop over
+  four non-test Make targets calling `bad()` per offending target but then
+  unconditionally print a single `pass "non-test targets ... do not require
+  node"` after the loop regardless of whether any `bad()` fired inside it.
+  This does not flip the oracle's exit code (the `fails` counter is not
+  reset), but it can print a PASS line directly contradicting a FAIL line
+  about the same claim in the same run.
+- .swarm/tier3/S2/accept.sh: every check is gated by `go test`/`go build`/`go
+  vet` exit codes via the `step()` helper; no pass-by-default path found.
+- ACCESSIBILITY.md point 16: precise and citable (defines "client-side
+  suppression," names the three AT surfaces that must stay in parity, states
+  the failure condition in testable terms); does not contradict points 8, 10,
+  or 14.
+- S5's repeated, disclosed deviation from Tier-3 blind N-version dispatch for
+  attempts 5-8 (single worker, not two blind arms) is honestly flagged in
+  report.md ("Process deviation, recorded against the lead rather than
+  argued") and the constitution does not mechanically require gate.sh to
+  detect this — check_tier3 only requires a RESOLUTION line and a passing
+  Tier-2 check at the final attempt, which is satisfied. Recorded here as
+  scope-adjacent, not counted as a FAIL element on its own since it is
+  disclosed.
+
+===========================================================================
+Verdict
+===========================================================================
+FAIL. Finding 1 is a real, reproduced weakening of a named escalation
+safeguard in swarm/gate.sh, broader than the commit that introduced it
+discloses. Finding 2 is an incomplete self-audit in REVIEW_AUG20_SPEC.md: the
+lead documents catching one premise error in a judge's OVERRULE reasoning
+while silently missing a more fundamental one (the judge arguing from the
+wrong tier) in the same verdict, on a document whose explicit charter is to
+record the run's own errors accurately and completely.

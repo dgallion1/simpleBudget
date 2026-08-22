@@ -70,9 +70,9 @@ func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int {
 	return ParseStartYear(s.StartDate) + currentYear - taxBaseYear
 }
 
-// MedicareEligibleAdultCountAtYear returns the count (0, 1, or 2) of
+// MedicareEligibleAdultCountAtMonth returns the count (0, 1, or 2) of
 // household adults actually paying Medicare premiums in the given projection
-// year. Used to scale the per-person IRMAA surcharge to a household total.
+// month. Used to scale the per-person IRMAA surcharge to a household total.
 //
 // F-5: this counts enrolment, not age. IRMAA is a surcharge on Part B and
 // Part D premiums, so someone who keeps employer coverage past 65 has nothing
@@ -82,15 +82,17 @@ func YearsFromTaxBase(s *models.WhatIfSettings, currentYear int) int {
 // ignored HealthcarePerson.MedicareEligibleAge by hardcoding 65.
 //
 // When the multi-person healthcare model is populated it is authoritative,
-// matching GetTotalHealthcareCost. Plans on the legacy single-value model
-// carry no coverage detail, so they keep the age-65 rule.
+// matching GetTotalHealthcareCost — and matching it at the same resolution.
+// MedicareStartMonth is month-precise (F-067), and GetMonthlyCostAt starts
+// billing the Medicare premium from exactly that month, so this counts from
+// exactly that month too. Testing the enclosing year's first month instead
+// dropped the surcharge for every remaining month of the transition year,
+// while the premium being surcharged was already being billed.
 //
-// Resolution is one year, and the test below is on the year's FIRST month:
-// a person is counted only from the first projection year that begins at or
-// after their Medicare start. A start part-way through a projection year
-// therefore skips that year's surcharge entirely, understating IRMAA for the
-// transition year rather than overstating it.
-func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
+// Plans on the legacy single-value model carry no coverage detail and no
+// birth month, so they keep the age-65 rule at its native one-year
+// resolution; month/12 is the projection year those ages are defined against.
+func MedicareEligibleAdultCountAtMonth(s *models.WhatIfSettings, month int) int {
 	if s == nil {
 		return 0
 	}
@@ -98,7 +100,7 @@ func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
 	if len(s.HealthcarePersons) > 0 {
 		count := 0
 		for i := range s.HealthcarePersons {
-			if year*12 >= s.HealthcarePersons[i].MedicareStartMonth(s.StartDate) {
+			if month >= s.HealthcarePersons[i].MedicareStartMonth(s.StartDate) {
 				count++
 			}
 		}
@@ -106,6 +108,7 @@ func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
 		return min(count, 2)
 	}
 
+	year := month / 12
 	count := 0
 	if s.PrimaryAgeAt(year) >= 65 {
 		count++
@@ -114,6 +117,18 @@ func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
 		count++
 	}
 	return count
+}
+
+// MedicareEligibleAdultCountAtYear is MedicareEligibleAdultCountAtMonth
+// evaluated at the first month of the given projection year.
+//
+// It exists for callers that genuinely have only a year to work with — the
+// analysis layer's point-in-time snapshots, which price a single
+// representative month rather than accumulating twelve. Anything stepping
+// month by month should call MedicareEligibleAdultCountAtMonth directly, or
+// it will hold one year's count flat across a mid-year Medicare start.
+func MedicareEligibleAdultCountAtYear(s *models.WhatIfSettings, year int) int {
+	return MedicareEligibleAdultCountAtMonth(s, year*12)
 }
 
 // Age65CountForYear returns the number of filers aged 65 or older in the

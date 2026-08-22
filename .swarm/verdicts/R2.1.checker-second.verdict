@@ -1,0 +1,116 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R2
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16. Scope: only
+internal/handlers/explorer/handlers.go and handlers_test.go (per R2.1.files
+and instructions). dashboard/ and mcpsvc/ledger/ changes are R3/R7's
+in-flight work and were not evaluated.
+
+CLAIM UNDER TEST: "folder import can no longer overwrite an existing
+destination file, and can no longer delete a source file whose import was
+skipped." Attacked each listed vector plus independent empirical checks.
+
+1. Fake-stub attack (does the shipped race test prove the REAL write path is
+   exclusive?) — PARTIALLY CONFIRMED AS A DEFECT IN THE TEST, but the
+   underlying PRODUCTION CODE is independently verified correct:
+   - Read TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite
+     body (handlers_test.go:2576-2612) line by line. deps.write is fully
+     overridden; it does call the real store.CreateExclusive twice (so the
+     storage-layer exclusivity mechanism itself is real), but this insulates
+     the test from whether defaultImportDeps() is actually wired to
+     CreateExclusive in production.
+   - Verified by mutation on a scratch copy (not the repo): reverted
+     `write: func(...) { return store.CreateExclusive(...) }` back to
+     `store.WriteFile(...)` at handlers.go:565, keeping the ErrExist branch.
+     Ran `go test -race -count=1 -v ./internal/handlers/explorer/...`: ALL
+     ~100 tests pass, including the new race test itself. The shipped test
+     suite would NOT catch a regression that silently reverts the fix's core
+     wiring. (The primary checker's manifest independently found and
+     disclosed this same gap as "advisory, not a criterion" — I confirmed it
+     myself rather than taking their word for it.)
+   - To determine whether the CURRENT, unmutated production code is actually
+     correct (not just "looks correct on inspection"), I added a throwaway
+     test file exercising real goroutines against UNMODIFIED
+     defaultImportDeps() (no deps.write override at all): 16 concurrent
+     importOneFile("racer2.csv", false, deps) calls at the same destination
+     name. Ran `go test -race -count=10`: exactly 1 of 16 imported, 15
+     skipped, 0 unexpected, every run, 10/10, -race clean. This is genuine
+     evidence the production write path (store.CreateExclusive via hard-link,
+     storage.go:365-410) is exclusive under real concurrency, not just when a
+     stub is asked to behave that way. File was deleted immediately after;
+     `git status --short internal/handlers/explorer/` confirms no residue.
+   - Net: the claim holds functionally, but the delivered test suite has a
+     real regression-protection gap (no test pins the defaultImportDeps()
+     binding). Flagging as a finding, not failing the task, since (a) the
+     literal R2.md acceptance bullet — "a test in which the destination is
+     created between the check and the write ... exactly one write wins, the
+     loser reports skipped, the destination holds the winner's bytes, and the
+     loser's source file still exists on disk" — is met by the shipped test
+     as written, and (b) I independently proved the actual shipped code
+     satisfies the claim under real concurrency.
+
+2. ErrExist branch never reaches source deletion — CONFIRMED, no defect.
+   Traced every return in importOneFile (handlers.go:632-733): the ErrExist
+   branch (695-697) and the step-3 Stat pre-check (679-681) both `return`
+   immediately; deps.removeSrc is called at exactly one site (line 725),
+   reached only after write success + readback length match + Status
+   "imported". Both skip paths are also exercised by real tests
+   (TestHandleImport_CollisionSkipsAndKeepsSource for the Stat path,
+   TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite
+   for the ErrExist path) asserting SourceDeleted==false and mustExist(src).
+
+3. Divergent skip-reason strings — NOT FOUND. Step 3
+   ("already exists in the data folder") and the ErrExist branch
+   ("already exists in the data folder") are byte-identical
+   (handlers.go:679-681 vs 695-697). Confirmed by direct read of both
+   literals, not by trusting test names.
+
+4. Non-ErrExist write error (permission/IO) with destination present —
+   NOT FOUND. `if err := deps.write(...); err != nil { if errors.Is(err,
+   os.ErrExist) {...} return importOutcome{..., "rejected", "could not save
+   the file"} }` (handlers.go:694-699): any non-ErrExist error returns
+   "rejected" immediately, before step 5/6, so source is never deleted on
+   this path either. TestImportOneFile_WriteFailureNeverDeletes exercises
+   this (os.ErrPermission stub) and asserts removeSrc unreached.
+
+5. Encryption / readback length under an encrypted store — pre-existing
+   behavior, not changed by R2 (CreateExclusive already existed and was
+   already tested for the encrypted round-trip case in
+   internal/services/storage/create_exclusive_test.go, which predates this
+   diff and is outside R2's file scope). No regression introduced here; step
+   5's readback+length check is byte-identical to HEAD (structural diff
+   confirmed no delta in that block).
+
+6. Concurrency mechanism — genuinely serializes at the OS level, not merely
+   "relies on the filesystem" as a hand-wave: storage.go's createExclusive
+   stages a temp file then calls os.Link(tmp, path), which is atomic and
+   fails EEXIST for every loser; confirmed via storage's own
+   TestCreateExclusiveLetsExactlyOneConcurrentWriterWin (real goroutines,
+   -race) AND my own explorer-level real-goroutine test above.
+
+BUILD/TEST EVIDENCE (independently run, not copy-pasted from any manifest):
+  go build ./...                                    -> clean, exit 0
+  go vet ./...                                       -> clean, exit 0
+  go test -race -count=1 -v ./internal/handlers/explorer/...
+      -> all ~100 tests PASS, including the 8 import-outcome tests and the
+         new race test; ok budget2/internal/handlers/explorer
+  go test -race -count=1 ./internal/services/storage/...
+      -> ok budget2/internal/services/storage 209.506s (includes the
+         CreateExclusive exclusivity/encryption/no-staging-leftover tests)
+  go test -race -count=1 <all packages except dashboard/, mcpsvc/ledger/>
+      -> ran to completion through at least cmd/*, internal/config,
+         handlers/accounts, handlers/approval with no FAIL observed before
+         being superseded by the checks above; no failures encountered in
+         anything I sampled.
+
+SCOPE
+  Only internal/handlers/explorer/handlers.go (+22/-6) and handlers_test.go
+  (+44/-0, purely additive) attributed to R2 per .swarm/manifests/R2.1.files.
+  duplicate_suppression_test.go (untracked, same package) is R3's file per
+  its own header comment and is not part of R2's diff; it compiles and
+  passes but is not judged as R2 work.
+  dashboard/*, mcpsvc/ledger/* changes belong to R3/R7 and were not
+  evaluated for R2's verdict.

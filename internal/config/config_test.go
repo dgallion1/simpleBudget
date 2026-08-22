@@ -412,3 +412,43 @@ func TestBackupDir_LoadHonorsDefault(t *testing.T) {
 		t.Fatalf("BackupDir=%q does not contain expected default suffix", cfg.BackupDir)
 	}
 }
+
+func TestImportDir_DefaultUsesXDG(t *testing.T) {
+	t.Setenv("XDG_DOWNLOAD_DIR", "/tmp/xdg-downloads-test")
+	t.Setenv("BUDGET2_IMPORT_DIR", "")
+	cfg := DefaultConfig()
+	if cfg.ImportDirectory != "/tmp/xdg-downloads-test" {
+		t.Fatalf("ImportDirectory=%q want /tmp/xdg-downloads-test", cfg.ImportDirectory)
+	}
+}
+
+func TestImportDir_DefaultFallsBackToHome(t *testing.T) {
+	t.Setenv("XDG_DOWNLOAD_DIR", "")
+	t.Setenv("BUDGET2_IMPORT_DIR", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir on this system")
+	}
+	cfg := DefaultConfig()
+	want := filepath.Join(home, "Downloads")
+	if cfg.ImportDirectory != want {
+		t.Fatalf("ImportDirectory=%q want %q", cfg.ImportDirectory, want)
+	}
+}
+
+func TestImportDir_EnvOverride(t *testing.T) {
+	t.Setenv("BUDGET2_IMPORT_DIR", "/tmp/custom-imports")
+	cfg := Load()
+	if cfg.ImportDirectory != "/tmp/custom-imports" {
+		t.Fatalf("ImportDirectory=%q want /tmp/custom-imports", cfg.ImportDirectory)
+	}
+}
+
+func TestImportDir_LoadHonorsDefault(t *testing.T) {
+	t.Setenv("XDG_DOWNLOAD_DIR", "")
+	t.Setenv("BUDGET2_IMPORT_DIR", "")
+	cfg := Load()
+	if !strings.HasSuffix(cfg.ImportDirectory, "Downloads") {
+		t.Fatalf("ImportDirectory=%q does not end with Downloads", cfg.ImportDirectory)
+	}
+}

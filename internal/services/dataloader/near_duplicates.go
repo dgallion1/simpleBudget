@@ -114,7 +114,12 @@ func detectNearDuplicatePairs(txns []models.Transaction) []DuplicatePair {
 			used[i] = true
 			used[bestJ] = true
 			pairs = append(pairs, DuplicatePair{
-				Key:   pairKey(txns[i].Hash, txns[bestJ].Hash),
+				// Keyed on StableID when the rows have one, so a
+				// decision survives a description reformat. Rows
+				// without one (unit fixtures) key on Hash exactly as
+				// before; applyDuplicateDetection reads the legacy
+				// hash-derived key as a fallback either way.
+				Key:   pairKey(identityKey(txns[i]), identityKey(txns[bestJ])),
 				Left:  txns[i],
 				Right: txns[bestJ],
 			})
@@ -173,7 +178,9 @@ func dayDiff(a, b time.Time) int {
 }
 
 // pairKey is order-independent and deterministic. SHA-256 over
-// `min|max` of the two hashes ensures (A,B) and (B,A) hash identically.
+// `min|max` of the two identity keys ensures (A,B) and (B,A) hash
+// identically. Callers pass StableIDs for loaded rows and legacy content
+// hashes when reconstructing a pre-StableID key.
 func pairKey(hashA, hashB string) string {
 	lo, hi := hashA, hashB
 	if hi < lo {

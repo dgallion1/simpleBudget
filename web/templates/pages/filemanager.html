@@ -54,6 +54,55 @@
         </div>
     </div>
 
+    <!-- Import from Folder panel: lists CSVs found in ImportDirectory and
+         imports the ticked ones through POST /explorer/import, optionally
+         deleting the originals. -->
+    <section class="bg-white dark:bg-gray-800 rounded-lg shadow mb-4"
+             aria-labelledby="import-folder-heading">
+        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+            <h2 id="import-folder-heading" class="text-sm font-medium text-gray-700 dark:text-gray-300">Import from Folder</h2>
+            <button type="button"
+                hx-get="/explorer/import/scan" hx-target="#import-scan-list" hx-swap="innerHTML"
+                class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                Rescan
+            </button>
+        </div>
+        <div class="p-4 space-y-3">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                Import folder: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{{if .ImportDirectory}}{{.ImportDirectory}}{{else}}(not configured){{end}}</code>
+            </p>
+            <!-- The ticked entries and the delete-source flag are this form's
+                 fields, so htmx serializes exactly the pinned wire format:
+                 `name` repeated once per selection, plus `delete_source=true`
+                 only when the box is ticked. Entries already present in the
+                 data dir render disabled, and disabled inputs are never
+                 submitted. -->
+            <form id="import-form" class="space-y-3"
+                hx-post="/explorer/import" hx-target="#import-result" hx-swap="innerHTML">
+                <div id="import-scan-list" aria-live="polite" aria-busy="false">
+                    {{template "import-scan" .}}
+                </div>
+                <div class="flex items-center gap-3 pt-1">
+                    <label for="import-delete-source"
+                        class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" id="import-delete-source" name="delete_source" value="true"
+                            class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                        Delete source files after import
+                    </label>
+                    <button type="submit"
+                        class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        Import
+                    </button>
+                </div>
+            </form>
+            <!-- Result region. Outside the form, so an import never replaces
+                 the controls that triggered it and focus survives the swap;
+                 present on first paint so aria-live is already watching when
+                 the outcomes land. -->
+            <div id="import-result" role="status" aria-live="polite"></div>
+        </div>
+    </section>
+
     {{if and .IsEncrypted (not .IsLocked)}}
     <!-- Break-glass plaintext export modal -->
     <div id="plaintext-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -431,6 +480,131 @@
     <!-- Toast notification for restore status -->
     <div id="restore-toast" class="hidden fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all"></div>
 </div>
+
+<script>
+// File-list column sorting (P13). Client-side, typed comparison, survives
+// htmx swaps: active sort state lives on window and re-applies on
+// htmx:afterSettle, which fires after every #file-list swap (toggle,
+// delete, upload).
+window.FileManagerSort = (function() {
+    var state = { column: null, direction: 'asc' };
+
+    // Comparators operate on the raw data-* attribute strings already
+    // coerced to typed values. Files with no date range sort last in
+    // ascending order (and first in descending) rather than landing
+    // arbitrarily among dated rows.
+    function cmp(a, b, column) {
+        var av = a.getAttribute('data-' + column) || '';
+        var bv = b.getAttribute('data-' + column) || '';
+        var dir = state.direction === 'asc' ? 1 : -1;
+        var r;
+        if (column === 'name') {
+            r = av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true });
+        } else if (column === 'rows' || column === 'size') {
+            r = (parseInt(av, 10) || 0) - (parseInt(bv, 10) || 0);
+        } else if (column === 'enabled') {
+            r = (parseInt(av, 10) || 0) - (parseInt(bv, 10) || 0);
+        } else if (column === 'mindate') {
+            // Empty mindate = no parsed range. Treat as +Infinity so it
+            // sorts last ascending, first descending.
+            var an = av === '' ? Infinity : av;
+            var bn = bv === '' ? Infinity : bv;
+            if (an === bn) r = 0;
+            else if (an === Infinity) r = 1;
+            else if (bn === Infinity) r = -1;
+            else r = an < bn ? -1 : 1;
+        } else {
+            r = 0;
+        }
+        return r * dir;
+    }
+
+    function applySort() {
+        var table = document.getElementById('file-manager-table');
+        if (!table) return;
+        var tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        // Skip the empty-state row (colspan) — it has no data-* attrs.
+        var rows = Array.prototype.slice.call(
+            tbody.querySelectorAll('tr[data-name]'));
+        if (rows.length === 0) return;
+
+        // Stable sort: Array.prototype.sort is stable in all evergreen
+        // browsers and Node 10+.
+        rows.sort(function(a, b) { return cmp(a, b, state.column); });
+
+        var frag = document.createDocumentFragment();
+        rows.forEach(function(r) { frag.appendChild(r); });
+        tbody.appendChild(frag);
+        renderIndicators();
+    }
+
+    function renderIndicators() {
+        var table = document.getElementById('file-manager-table');
+        if (!table) return;
+        var ths = table.querySelectorAll('th[data-sort]');
+        ths.forEach(function(th) {
+            var col = th.getAttribute('data-sort');
+            var arrow = th.querySelector('[data-sort-arrow]');
+            var btn = th.querySelector('[data-sort-btn]');
+            if (col === state.column) {
+                th.setAttribute('aria-sort',
+                    state.direction === 'asc' ? 'ascending' : 'descending');
+                if (arrow) {
+                    arrow.classList.remove('hidden');
+                    arrow.textContent = state.direction === 'asc' ? '▲' : '▼';
+                }
+            } else {
+                th.removeAttribute('aria-sort');
+                if (arrow) {
+                    arrow.classList.add('hidden');
+                    arrow.textContent = '';
+                }
+            }
+        });
+    }
+
+    function toggleSort(column) {
+        if (state.column === column) {
+            state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            state.column = column;
+            state.direction = 'asc';
+        }
+        applySort();
+    }
+
+    function wireButtons() {
+        var table = document.getElementById('file-manager-table');
+        if (!table) return;
+        var btns = table.querySelectorAll('[data-sort-btn]');
+        btns.forEach(function(btn) {
+            if (btn.dataset.sortBound === '1') return;
+            btn.dataset.sortBound = '1';
+            btn.addEventListener('click', function() {
+                toggleSort(btn.getAttribute('data-sort-btn'));
+            });
+        });
+        // Re-apply any persisted sort after a swap rebuilt the table.
+        if (state.column) applySort();
+    }
+
+    return {
+        init: function() { wireButtons(); },
+        reapply: function() { wireButtons(); }
+    };
+})();
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.FileManagerSort) window.FileManagerSort.init();
+});
+// htmx:afterSettle fires after every swap into #file-list (toggle, delete,
+// upload) rebuilds the table markup. Re-wire the header buttons and
+// re-apply the persisted sort so the ordering survives.
+document.body.addEventListener('htmx:afterSettle', function() {
+    if (window.FileManagerSort) window.FileManagerSort.reapply();
+});
+</script>
 
 <script>
 // Auto-backup status card
@@ -1168,19 +1342,53 @@ document.addEventListener('DOMContentLoaded', function() {
 {{end}}
 
 {{define "filemanager-file-list"}}
-<table class="w-full text-sm">
+<table class="w-full text-sm" id="file-manager-table">
     <thead class="bg-gray-50 dark:bg-gray-900/50">
         <tr>
-            <th class="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">File</th>
-            <th class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">Rows</th>
-            <th class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">Date Range</th>
-            <th class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">On</th>
-            <th class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400"></th>
+            <th scope="col" data-sort="name"
+                class="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
+                <button type="button" data-sort-btn="name"
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    File
+                    <span data-sort-arrow="name" aria-hidden="true" class="sort-arrow hidden"></span>
+                </button>
+            </th>
+            <th scope="col" data-sort="rows"
+                class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">
+                <button type="button" data-sort-btn="rows"
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    Rows
+                    <span data-sort-arrow="rows" aria-hidden="true" class="sort-arrow hidden"></span>
+                </button>
+            </th>
+            <th scope="col" data-sort="mindate"
+                class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">
+                <button type="button" data-sort-btn="mindate"
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    Date Range
+                    <span data-sort-arrow="mindate" aria-hidden="true" class="sort-arrow hidden"></span>
+                </button>
+            </th>
+            <th scope="col" data-sort="enabled"
+                class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">
+                <button type="button" data-sort-btn="enabled"
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    On
+                    <span data-sort-arrow="enabled" aria-hidden="true" class="sort-arrow hidden"></span>
+                </button>
+            </th>
+            <th scope="col" class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400"></th>
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
         {{range .Files}}
-        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+            data-name="{{.Name}}"
+            data-size="{{.Size}}"
+            data-rows="{{.Transactions}}"
+            data-mindate="{{if .MinDate}}{{.MinDate}}{{end}}"
+            data-maxdate="{{if .MaxDate}}{{.MaxDate}}{{end}}"
+            data-enabled="{{if .Enabled}}1{{else}}0{{end}}">
             <td class="px-3 py-1.5">
                 <span class="font-medium text-gray-900 dark:text-gray-100">{{.Name}}</span>
                 <span class="text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)</span>
@@ -1213,4 +1421,50 @@ document.addEventListener('DOMContentLoaded', function() {
         {{end}}
     </tbody>
 </table>
+{{end}}
+
+{{define "import-scan"}}
+{{if .ImportMessage}}
+<p class="text-sm text-gray-500 dark:text-gray-400 py-2">{{.ImportMessage}}</p>
+{{end}}
+{{if .ImportEntries}}
+<ul class="divide-y divide-gray-100 dark:divide-gray-700" role="list">
+    {{range $i, $e := .ImportEntries}}
+    <li class="py-1.5 flex items-center gap-3">
+        <input type="checkbox" name="name" value="{{$e.Name}}" id="import-entry-{{$i}}"
+            {{if $e.Exists}}disabled{{else}}checked{{end}}
+            class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
+        <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
+            <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
+            <span class="text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
+            {{if $e.MinDate}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
+            {{if $e.Exists}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
+        </label>
+    </li>
+    {{end}}
+</ul>
+{{else if not .ImportMessage}}
+<p class="text-sm text-gray-500 dark:text-gray-400 py-2">Click Rescan to list CSV files in the import folder.</p>
+{{end}}
+{{end}}
+
+{{/* Per-file outcomes of POST /explorer/import, swapped into the page's
+     #import-result live region. Every outcome is spelled out in words —
+     "imported", "skipped", "rejected", and whether the source file was
+     deleted — so nothing depends on the badge colour to be understood. */}}
+{{define "import-result"}}
+{{if .Results}}
+<p class="text-sm font-medium text-gray-700 dark:text-gray-300">Import finished: {{len .Results}} file(s) processed.</p>
+<ul class="mt-1 space-y-1" role="list">
+    {{range .Results}}
+    <li class="text-sm text-gray-700 dark:text-gray-300">
+        <span class="font-medium text-gray-900 dark:text-gray-100">{{.Name}}</span>
+        <span class="font-medium {{if eq .Status "imported"}}text-emerald-700 dark:text-emerald-300{{else if eq .Status "skipped"}}text-amber-700 dark:text-amber-300{{else}}text-rose-700 dark:text-rose-300{{end}}">— {{.Status}}</span>
+        {{if .Reason}}<span class="text-gray-600 dark:text-gray-400">({{.Reason}})</span>{{end}}
+    </li>
+    {{end}}
+</ul>
+{{else}}
+<p class="text-sm text-gray-500 dark:text-gray-400">No files were selected for import.</p>
+{{end}}
 {{end}}

@@ -1,0 +1,117 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: R11
+ATTEMPT: 3
+---
+Scope confirmed: only internal/services/storage/storage.go, internal/services/
+backup/snapshot.go, internal/services/backup/snapshot_test.go modified (matches
+.swarm/manifests/R11.3.files). migration.go:247/275 and auth.go:92 untouched
+(out of scope, confirmed via git diff — empty). balance.go untouched (oracle
+step 4 confirms).
+
+Oracle (authoritative): ran .swarm/tier3/R11/accept.sh once, clean, uncontested
+(no concurrent process touching the tree — see note on interference below),
+exit 0. All 8 steps green including step 5's cross-package contract check
+(IsStagingName exported and referenced by name, storage.IsStagingName called
+from snapshot.go, no literal HasSuffix(base, tmpSuffix) remains) and the full
+suite under -race (backup 1.7s, restore 2.3s, storage 219s, everything else
+green). Re-ran independently after clearing stray background processes;
+result reproduced.
+
+PRIME TARGET — stdlib coupling on IsStagingName's digit guard:
+- Read go1.26.3 stdlib source (GOROOT/src/os/tempfile.go). CreateTemp's
+  doc comment guarantees only "adding a random string to the end"; the format
+  (decimal, via strconv.FormatUint(runtime_rand(),10)) is an implementation
+  detail, not a documented contract. Confirmed this is a real coupling to an
+  unexported implementation detail, exactly as flagged.
+- However this is NOT the same failure mode as attempt 2. Attempt 2's literal
+  ".tmp" in SkipPredicate was never checked against what atomicWrite actually
+  emitted, so drift was silent and undetected by any test. Here,
+  TestSkipPredicate_StagingNames's "current form" case (snapshot_test.go:184)
+  derives its fixture via a real os.CreateTemp(dir, base+storage.StagingSuffix
+  +"*") call — not a hand-typed string. If a future Go release changed the
+  random-suffix format (hex, base36, etc.), this exact test would start
+  failing loudly on the next `go test` after the toolchain upgrade, not pass
+  silently. The doc comment on StagingSuffix/IsStagingName explicitly states
+  the assumption ("decimal random", with a worked example). Verdict: this is
+  acceptable engineering with a documented, self-detecting assumption, not a
+  silent repeat of the attempt-2 defect.
+- Checked whether the digit guard is load-bearing or just decorative: traced
+  CSVDirectory (dataloader.New) back to cfg.DataDirectory in cmd/server/
+  main.go — user-provided bank-export CSVs live directly in the same DataDir
+  that SkipPredicate walks, with arbitrary user-chosen filenames (accounts.go
+  comment even shows "usaa-checking-2026.csv"). Without the digit guard, ANY
+  file merely containing the substring ".tmp-" (e.g. a user's oddly-named
+  export) would be silently excluded from backups and unprotected from
+  restore pruning. This is a real, not hypothetical, risk class given this
+  app's directory layout — the guard is genuinely load-bearing, not
+  decorative.
+
+Mutation testing (done in an isolated copy under /tmp, git-archived from HEAD
+plus the three working-tree diffs overlaid, never inside the repo):
+- Made IsStagingName case-insensitive: `go test ./internal/services/backup/...
+  ./internal/services/storage/... ./internal/services/restore/...` all still
+  PASS. This mutation escapes every committed test. The delivered code itself
+  IS correctly case-sensitive (verified directly with a standalone edge-case
+  test), so this is not a shipped defect, but it is an unproven line of
+  robustness — noted as a non-blocking finding.
+- Dropped the `if random == "" { return false }` guard: same result, escapes
+  every committed test. Delivered code has the guard and behaves correctly
+  (verified directly: IsStagingName("sidecar.json.tmp-") == false). Same
+  category: real behavior correct, mutation-resistance unproven.
+- "atomicWrite keeps a literal instead of StagingSuffix": not present in the
+  delivered diff — both createExclusive and atomicWrite reference the shared
+  `StagingSuffix` constant (storage.go, confirmed in diff).
+Net: the shipped code is correct on every case I could construct; two
+plausible mutations aren't caught by the committed suite but don't correspond
+to actual bugs in the delivered code.
+
+Directory interaction: SkipPredicate's isDir branch only checks
+`base == "cache"`; it never calls IsStagingName for directories (unchanged
+pre-existing behavior, not touched by this diff). Not a live risk — grepped
+the whole non-test tree for os.MkdirTemp; the only staging primitive used
+against DataDir is os.CreateTemp (files only), so no staging directory is
+ever produced there in production code.
+
+snapshot.go:88 and :135 (ZIP staging path, cleanOrphanTmp) confirmed
+byte-for-byte untouched via `git diff HEAD` — still use the literal
+`tmpSuffix` correctly. Checked for collision with the data-directory
+predicate: this file lives under BackupDir, which SkipPredicate excludes
+up front via the absBackup prefix/equality check before IsStagingName is ever
+reached — covered by TestSnapshot_RecursiveBackupGuard and
+TestSnapshot_OrphanTmpCleanedUp, both passing.
+
+restore.go:119 prune protection: pruneExtras takes the same
+backupsvc.SkipPredicate(...) instance restore.go builds at :119 and skips
+(does not remove) anything for which skip(path,false) is true — read
+end-to-end, not just the predicate in isolation. Since restore.go's wiring is
+unchanged by this diff and SkipPredicate is proven correct by the backup-
+package unit tests, protection extends by construction (single shared
+function), consistent with the "single source of truth" design the doc
+comment claims.
+
+Enumerated real data-directory filenames (accounts.json, *.csv from
+CSVDirectory, major_expenses.json, transaction_pins.json,
+duplicate_decisions.json, transfer_decisions.json, aliases.json,
+amazon_enrichment.json, whatif*.json, settings/*.json,
+.encryption-config.json, mcpsvc/snapshot's `<name>.<ts>.bak`) against
+IsStagingName: none contain ".tmp-" as a substring or end in bare ".tmp", so
+none are misclassified. No plausible real leftover (legacy or current form)
+escapes the predicate either — both forms are exercised by
+TestSkipPredicate_StagingNames.
+
+Process note: this session had several orphaned background `accept.sh` /
+`go test -race ./...` processes left running from earlier turns (including
+one I did not knowingly start, writing to accept3.out, plus leftovers from a
+duplicate invocation of my own). Killed all of them, confirmed no leaked
+`internal/services/storage/zz_oracle_r11_test.go` in the tree, confirmed
+`git status` shows only the expected worker diff, then ran accept.sh once
+more, alone, to completion (exit 0) before writing this verdict. Cleaned up
+all scratch files this turn created (mutation-test copy, accept*.out) from
+/tmp; did not touch pre-existing scratch files from earlier turns.
+
+Conclusion: no live misclassification of a real file in either direction
+demonstrated; the cross-package contract is compile-time coupled on the
+separator (cannot drift) and self-detecting on the digit-format assumption
+(cannot drift silently); the attempt-2 regression does not recur. PASS.

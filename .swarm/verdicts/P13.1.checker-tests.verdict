@@ -1,0 +1,308 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P13
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read in full: .swarm/briefs/P13.md, /home/darrell/work/agents2/ACCESSIBILITY.md,
+web/templates/pages/filemanager.html (script block 474-597, table block
+1334-1414, #file-list container 211-213), web/templates/layouts/base.html,
+internal/models/user_profile.go, internal/services/dataloader/loader.go,
+web/static/vendor/htmx.min.js. All commands executed with cwd
+/home/darrell/bin/ai/budget2 (verified: `pwd` printed the repo path and
+`ls go.mod` succeeded in the same shell as the build).
+
+I did not read .swarm/verdicts/P13.1.checker-second.verdict; every conclusion
+below is independently re-derived.
+
+--------------------------------------------------------------------------
+1. MANIFEST FIDELITY — PASS
+
+  $ cat .swarm/manifests/P13.1.files
+  web/templates/pages/filemanager.html
+
+  $ git status --porcelain
+   M web/templates/pages/filemanager.html
+  ?? .swarm/manifests/P13.1.files
+
+  $ git diff --name-only
+  web/templates/pages/filemanager.html
+
+Exact match. The manifest is untracked and self-excluded, which the brief
+identifies as this run's protocol, not a defect. Diffstat: 1 file changed,
+166 insertions(+), 7 deletions(-).
+
+--------------------------------------------------------------------------
+2. TOOLCHAIN — PASS
+
+  $ go build ./...
+  build exit: 0            (no diagnostic output)
+
+  $ go vet ./...
+  (no output)              exit 0
+
+  $ set -o pipefail; go test ./... 2>&1 | tail -60
+  ...
+  ok   budget2/internal/services/mcpsvc/admin      (cached)
+  ok   budget2/internal/services/restore           (cached)
+  ok   budget2/internal/services/retirement/engine (cached)
+  ok   budget2/internal/services/storage           (cached)
+  ok   budget2/internal/templates                  0.271s
+  ok   budget2/internal/testutil                   (cached)
+  ok   budget2/internal/version                    (cached)
+  ?    budget2/web                                 [no test files]
+  test exit: 0
+
+`set -o pipefail` was set before the pipe, so the exit code is the suite's, not
+tail's. The output is a real per-package "ok" listing across the repo's ~44
+packages, not a synthesized "Success" line. Note
+`budget2/internal/templates 0.271s` ran uncached — that is the package which
+parses these templates, so the edited template is exercised by a real test run.
+
+  $ which staticcheck
+  /home/darrell/go/bin/staticcheck
+  $ staticcheck ./...
+  (no output)              staticcheck exit: 0
+
+gofmt: `git diff --name-only | grep -c '\.go$'` returned 0. P13 changed no Go
+file, so the repo's pre-existing gofmt deviations are neither improved nor
+worsened by this task.
+
+--------------------------------------------------------------------------
+3. TYPED COMPARISON, NOT STRING COMPARISON — PASS
+
+Source of the raw values (internal/models/user_profile.go:70-78):
+    type FileInfo struct {
+        Name         string
+        Path         string
+        Size         int64      <- raw bytes
+        Enabled      bool
+        Transactions int
+        MinDate      string
+        MaxDate      string
+    }
+
+MinDate/MaxDate are produced at internal/services/dataloader/loader.go:702-708:
+        if !minD.IsZero() { minDate = minD.Format("2006-01-02") }
+        if !maxD.IsZero() { maxDate = maxD.Format("2006-01-02") }
+so they are ISO YYYY-MM-DD, and the empty string is the genuine "no parsed
+range" sentinel. Because MinDate is a `string`, the template guard
+`data-mindate="{{if .MinDate}}{{.MinDate}}{{end}}"` (filemanager.html:1379) is
+correctly falsy for no-range files. (Had MinDate been a time.Time, that `{{if}}`
+would always be true — checked deliberately; it is not.)
+
+Row attributes (filemanager.html:1376-1381) carry raw, not rendered, values:
+    data-name="{{.Name}}" data-size="{{.Size}}" data-rows="{{.Transactions}}"
+    data-mindate="..." data-maxdate="..."
+    data-enabled="{{if .Enabled}}1{{else}}0{{end}}"
+
+The rendered File cell at 1384 is `{{.Name}}` plus a separate span
+`({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)` — this is where the "25K" /
+"4K" text lives. The comparator never reads cell text; it reads
+`a.getAttribute('data-' + column)` (filemanager.html:487-488). Likewise the Date
+Range cell renders `{{.MinDate}} - {{.MaxDate}}` (1388) while the comparator
+sorts `data-mindate`.
+
+EXECUTABLE PROOF. I extracted `cmp()` verbatim (lines 486-510, unmodified) into
+a throwaway node script outside the repo and drove it with stub rows. Output:
+
+  size asc  : small.csv=4096 , big.csv=25600
+  size desc : big.csv=25600 , small.csv=4096
+  lexical would give: 25600 , 4096 <-- WRONG order for reference
+  mindate asc : b:2024-02-28 , a:2024-11-03 , c:(none) , d:(none)
+  mindate desc: c:(none) , d:(none) , a:2024-11-03 , b:2024-02-28
+  rows asc  : 9 , 25 , 100  (lexical would be 100,25,9)
+  enabled asc: off=0 , on=1
+  name asc  : apple.csv , file2.csv , file10.csv , Zebra.csv
+
+  - 4096 B (renders "4K") sorts BEFORE 25600 B (renders "25K") ascending. The
+    reference line shows a plain string sort inverts this. Byte count wins.
+  - Empty date ranges land LAST ascending and first descending, exactly as the
+    brief requires ("put them last in ascending order"), via the Infinity
+    sentinel at lines 500-505. Deterministic, not arbitrary.
+  - Rows sorts 9 < 25 < 100 (integer), not 100 < 25 < 9 (lexical).
+  - Dates compare as ISO strings, which is order-equivalent to date comparison
+    for the fixed-width YYYY-MM-DD format the Go layer emits.
+
+The scratch files were deleted; final `git status --porcelain` confirms no
+stray artifacts (see item 7).
+
+--------------------------------------------------------------------------
+4. THE HIGH-RISK ITEM — SORT SURVIVES HTMX SWAPS — PASS
+
+This is the item that looks correct on a static load even when broken, so I
+resolved it by locating every node in the DOM against the swap boundary rather
+than by reading the worker's comment.
+
+(a) WHAT THE SWAP DESTROYS. The swap container is
+    filemanager.html:211-213
+        <div id="file-list">
+            {{template "filemanager-file-list" .}}
+        </div>
+    and `filemanager-file-list` (define at 1334) is the ENTIRE
+    `<table id="file-manager-table">` — thead, the four header <button>s, and
+    tbody. All three swap sources target it with innerHTML:
+        line 12   upload form   hx-target="#file-list" hx-swap="innerHTML"
+        line 1393 On checkbox   hx-target="#file-list" hx-swap="innerHTML"
+        line 1397 delete button hx-target="#file-list" hx-swap="innerHTML"
+    So every swap replaces the header buttons with fresh server nodes: row
+    order is lost, aria-sort is lost, arrows revert to `hidden`, and every
+    click listener dies. A re-apply is genuinely required.
+
+(b) THE STATE LIVES OUTSIDE THE SWAPPED REGION. `state` is a closure variable
+    at filemanager.html:480 inside the IIFE assigned to
+    `window.FileManagerSort` (479-586). That IIFE is in the <script> spanning
+    lines 474-597 — a SIBLING of `#file-list`, which closes at line 213. An
+    innerHTML swap on #file-list replaces only that div's children, so the
+    script node and its closure are never touched. State survives.
+
+(c) THE LISTENER IS ON A NODE THAT IS NEVER SWAPPED.
+        filemanager.html:594
+        document.body.addEventListener('htmx:afterSettle', function() {
+            if (window.FileManagerSort) window.FileManagerSort.reapply();
+        });
+    document.body is not inside #file-list, so it is never replaced.
+
+(d) document.body IS NON-NULL AT REGISTRATION TIME — the specific trap. If this
+    script ran in <head>, `document.body` would be null, the line would throw,
+    and because the DOMContentLoaded registration at 588-590 comes FIRST, the
+    initial page load would still sort correctly while every swap silently
+    stopped re-applying. I verified it does not: base.html has <head> 5-63 and
+    <body> 65-254, and `{{template "filemanager-content" .}}` is invoked at
+    base.html:161 — inside <body>. The script at filemanager.html:594 is within
+    that block, so the <body> start tag is already parsed and document.body is
+    live. base.html:192/199/209/218 already register htmx handlers on
+    document.body the same way, confirming the pattern works in this app.
+
+(e) THE EVENT ACTUALLY REACHES BODY. From web/static/vendor/htmx.min.js:
+        new CustomEvent(e,{bubbles:true,cancelable:true,composed:true,detail:t})
+    (`grep -o "bubbles:[a-z!0-9]*" | sort -u` yields the single value
+    `bubbles:true` — there is no non-bubbling event path in this build), and
+    afterSettle is fired on the settled elements:
+        se(l.elts,function(e){ ... he(e,"htmx:afterSettle",o.eventInfo)});
+    The settled elements are the newly inserted table inside #file-list, a
+    descendant of body, so the event bubbles to the body listener. The event
+    name string matches the camelCase form htmx emits.
+
+(f) THE RE-APPLY IS CORRECT AND COMPLETE. reapply() -> wireButtons()
+    (567-580) re-queries `[data-sort-btn]` on the NEW table and re-binds; the
+    `btn.dataset.sortBound === '1'` guard prevents double-binding on the same
+    node but does not block fresh post-swap nodes, which arrive from the server
+    without that attribute. Then `if (state.column) applySort();` (line 579)
+    restores ordering, and applySort() calls renderIndicators() (529) which
+    re-sets aria-sort and the arrow glyph on the new <th>s. So ordering, the
+    listeners, aria-sort and the arrow are ALL restored after a swap — not just
+    the ordering.
+
+(g) NO CONFLICTS. `grep -n "afterSettle|afterSwap|file-list"` over
+    filemanager.html shows exactly one afterSettle registration (line 594) and
+    no other JS path that rewrites #file-list.
+
+Conclusion: the re-apply exists, is bound to document.body (never swapped),
+reads state held in a closure outside the swapped subtree, and fires on a
+bubbling event that htmx demonstrably emits. Toggling a file's On checkbox
+leaves the sort intact.
+
+--------------------------------------------------------------------------
+5. ACCESSIBILITY (cited against /home/darrell/work/agents2/ACCESSIBILITY.md) — PASS
+
+A-4 Keyboard / A-5 Visible focus — PASS. The sort trigger is a real
+  `<button type="button" data-sort-btn="...">` inside each <th>
+  (filemanager.html:1339, 1347, 1355, 1363). There is NO click handler on a
+  bare <th>: wireButtons binds only to `[data-sort-btn]` (line 570), which is
+  the button. Native <button> is Tab-reachable and fires click on both Enter
+  and Space, so no key handling is needed. Focus styling is
+  `focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`.
+  I checked that `outline: none` has an equal-or-better replacement that will
+  actually render: base.html:18 loads `https://cdn.tailwindcss.com`, the Play
+  CDN, which generates utilities on demand at runtime — so the
+  `focus-visible:ring-*` classes are not at risk of being purged out of a
+  precompiled stylesheet. Ring appears only for keyboard focus, which is the
+  intended focus-visible behavior.
+
+A-7 Real table semantics — PASS. Still a `<table>`; every header retains
+  `<th scope="col">` (1338, 1346, 1354, 1362, and the trailing actions column
+  at 1370). No div-grid substitution. The button was nested INSIDE the th
+  rather than replacing it, so the header cell's column association is intact.
+
+A-9 Never color-only — PASS. Sort state is programmatically determinable:
+  renderIndicators (532-555) sets `aria-sort="ascending"|"descending"` on the
+  active th and calls `th.removeAttribute('aria-sort')` on every other th, so
+  exactly one header ever carries it. The arrow is not the sole carrier. The
+  glyph span is `aria-hidden="true"` in the markup (1342, 1350, 1358, 1366) and
+  is only ever mutated via textContent, so it stays hidden from AT.
+
+A-2 Both themes — PASS. Every class added ships a dark counterpart:
+  `text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100`.
+  The arrow inherits the button's color, so it is visible on the light
+  `bg-gray-50` and dark `bg-gray-900/50` thead in turn. The indigo-500 focus
+  ring reads against both header backgrounds.
+
+A-15 Target size — PASS, at the boundary. `inline-flex items-center px-1
+  py-0.5` with text-sm gives 20px line-height + 4px padding = 24px height,
+  meeting WCAG 2.2 2.5.8's 24x24 minimum exactly; width far exceeds it. Worth
+  noting as no-margin rather than comfortable, but it is not a violation.
+
+A-13 Empty states — PASS, preserved. The `{{else}}` branch (1405-1409) still
+  renders the calm "No CSV files found." row, and it carries no data-name, so
+  applySort's `tbody.querySelectorAll('tr[data-name]')` (519) correctly excludes
+  it from sorting instead of shuffling it among data rows.
+
+A-14 does not apply — its "Project-specific" section describes the swarm
+  dashboard, and the brief scopes this check to the numbered baseline. For the
+  record P13 added no inline event-handler attributes.
+
+A-1 (axe run) is not part of my dispatched remit as checker-tests and requires
+  a live server; it belongs to checker-a11y. I flag it as not-run-by-me rather
+  than claim it.
+
+--------------------------------------------------------------------------
+6. NO SCOPE CREEP — PASS
+
+  $ grep -n "sort=|order=|?sort|&order|page=|limit=" web/templates/pages/filemanager.html
+  1338:  <th scope="col" data-sort="name"
+  1346:  <th scope="col" data-sort="rows"
+  1354:  <th scope="col" data-sort="mindate"
+  1362:  <th scope="col" data-sort="enabled"
+
+The only matches are `scope="col"` and the `data-sort` attributes. There are no
+`?sort=` / `?order=` query parameters, no pagination, no filtering.
+
+No Go handler changed: `git diff --name-only | grep -c '\.go$'` = 0, so
+GetFileInfo and every explorer handler are untouched. Sorting is entirely
+client-side.
+
+Default order unchanged: `state.column` initialises to `null` (line 480), and
+wireButtons only calls applySort when `state.column` is truthy (579). On first
+paint and on any swap before the user clicks a header, the server's ordering is
+left exactly as delivered.
+
+--------------------------------------------------------------------------
+7. READ-ONLY DISCIPLINE
+
+I modified no source file. The comparator harness was written to the session
+scratchpad outside the repository and deleted afterwards. Final state:
+
+  $ git status --porcelain
+   M web/templates/pages/filemanager.html
+  ?? .swarm/manifests/P13.1.files
+  ?? .swarm/verdicts/P13.1.checker-second.verdict
+
+Clean apart from the expected P13 change plus untracked swarm bookkeeping. (My
+own verdict file is written after this snapshot.)
+
+--------------------------------------------------------------------------
+NON-BLOCKING OBSERVATIONS (no requirement violated; reported, not fixed)
+
+  - filemanager.html:1340 etc.: the button class list contains `rounded` twice.
+    Cosmetic duplication, no behavioural or a11y effect.
+  - filemanager.html:539: `var btn = th.querySelector('[data-sort-btn]');` in
+    renderIndicators is assigned and never used. Dead local; harmless.
+  - filemanager.html:520: applySort returns early when the table has zero data
+    rows, so on an emptied list aria-sort is not re-applied to the header. With
+    no rows to describe there is nothing for aria-sort to reference, so this is
+    defensible rather than a defect.
+
+None of these affect items 1-6. Verdict stands: PASS.

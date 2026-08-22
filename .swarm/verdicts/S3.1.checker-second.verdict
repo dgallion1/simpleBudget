@@ -1,0 +1,29 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S3
+ATTEMPT: 1
+---
+Scope confirmed: `git diff HEAD -- internal/handlers/transfers/handlers.go internal/handlers/transfers/handlers_test.go` matches exactly the two files in .swarm/manifests/S3.1.files. No changes under internal/services/dataloader/** or internal/services/transfers/** in this diff (those changes present in the working tree belong to S2's manifest, verified via .swarm/manifests/S2.2.files). No scope creep.
+
+Attacks attempted and outcomes:
+
+1. Differential test (old handler + new tests). Restored `git show HEAD:internal/handlers/transfers/handlers.go` into a scratch copy, kept the new handlers_test.go, ran `go test ./internal/handlers/transfers/...`: TestHandleResolve_ConflictingRepostReportsStoredVerdict and TestHandleResolve_UnknownKeyReportsNoVerdictRecorded both FAIL against the old code (old code renders "already confirmed" for the conflicting-reject case, and "already confirmed" for a never-suspected key instead of "not a known pair"). This proves the tests exercise the real fix, not a tautology. Against the actual (new) code, `go test ./internal/handlers/transfers/... -v` -> all 11 tests PASS, `go vet` clean, `gofmt -l` clean, `go test -race` passes.
+
+2. Load-failure branch (describeAlreadyResolved's `err != nil` path from LoadTransferDecisions) has no first-party test. Wrote a standalone attack test in a scratch copy: confirmed a pair, reloaded, corrupted transfer_decisions.json to invalid JSON on disk, then POSTed a conflicting verdict for the same key. Result: HTTP 200 (not 4xx), body contains "Could not resolve transfer: the stored decision for pair ... could not be read (invalid transfer_decisions file: ...)", no panic. Matches the claimed fourth case and the idempotency-never-4xx contract.
+
+3. Race window: "decision written between ResolveTransfer failing and LoadTransferDecisions being read." Traced the locking: ResolveTransfer's "no suspected transfer pair with key" error path (dataloader/transfers.go:106-109) returns BEFORE acquiring dl.writeMu/beginWrite, so no lock is held when describeAlreadyResolved subsequently calls LoadTransferDecisions (which itself takes dl.writeMu + storage shared hold). Any concurrent write from another request is therefore either fully before or fully after the read — LoadTransferDecisions always returns a consistent, current snapshot. Since describeAlreadyResolved's contract is "report what is currently on disk" (not "report what was on disk at request start"), a race that lands a write in that window makes the report MORE current, not false. No interleaving found that produces a false claim.
+
+4. isAlreadyResolvedError substring match: grepped the whole tree for "no suspected transfer pair" — the string is produced in exactly one place (dataloader/transfers.go:108), formatted with %q so pairKey is escaped/quoted by Go, not concatenated into a format string. Sprintf calls in describeAlreadyResolved use pairKey/err as arguments, not as the format string itself, so a pairKey containing "%s", "%v" or regex metacharacters cannot corrupt or redirect the message (verified by reading, and the BadInput test already exercises malformed verdict values without incident).
+
+5. Decisions map holding a verdict that is neither confirm nor reject: verdictWord() has an explicit default branch returning the raw string rather than panicking; dec.Verdict == requested comparison is a plain string-typed equality, safe for any value. No panic path found.
+
+6. Idempotency/4xx contract: all four branches (matching re-post, conflicting re-post, unknown key, load failure) return HTTP 200 in both the existing suite and my added corruption test; none of the paths in the diff calls http.Error or returns non-200.
+
+7. XSS/format-string-into-HTML: ResolveMessage is rendered via `{{.ResolveMessage}}` in web/templates/pages/transfers.html, which is loaded through html/template (internal/templates/render.go), so auto-escaping applies; this is unchanged/pre-existing and not part of the S3 diff.
+
+8. Instrumentation: no fmt.Println/log debug additions in the diff (`git diff HEAD -- handlers.go | grep` for Print/TODO/FIXME/DEBUG found nothing beyond the pre-existing `log.Printf` call sites).
+
+One real but non-blocking finding: doc-vs-code completeness. The doc comment above handleResolve (lines 143-166) and the comment above describeAlreadyResolved (lines 238-243) both narrate three of the four cases in prose (matching re-post, conflicting re-post, unknown key) but never mention the fourth case that the code actually implements (LoadTransferDecisions failing / "could not be read", handlers.go:246-248). The code path is correct (verified above) and the SPEC.md S3 acceptance criteria does not require documenting this case, so this is a documentation completeness gap, not a functional defect or an incorrect claim in the comment. Flagging it rather than silently passing over it, but it does not change the verdict.
+
+No reproducible input/ordering was found that makes the handler report a verdict other than what is actually persisted, panic, or return a 4xx on any re-post/unknown-key/load-failure path. Tests are genuine (fail on old code, pass on new). Diff is scope-limited to the manifest. PASS.

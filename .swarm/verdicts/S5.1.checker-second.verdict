@@ -1,0 +1,131 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 1
+---
+Scope: .swarm/manifests/S5.1.files (accounts.html, accounts/handlers_test.go,
+transfers/handlers.go, transfers/handlers_test.go, accounts/projection_test.go).
+Read REVIEW_AUG20_SPEC.md's S5 row (a-e), ACCESSIBILITY.md point 16, and
+.swarm/verdicts/S4.3.judge-claude.verdict before attacking.
+
+METHOD: re-extracted the CURRENT <script> block from accounts.html (not the
+old S4 extraction) into a fresh Node/vm harness that loads the DOM in the
+correct order (elements exist before the script runs, matching real parse
+order -- the old harness had a bug where `region` was captured before the
+DOM existed and every write silently went to a detached global; fixed via
+vm.createContext per "page load"), then independently reproduced both
+sequences in a REAL Chromium browser (Playwright 1.62.1, playwright-core
+already vendored under scratchpad/pw) against a built server
+(go build ./cmd/server) on an isolated data dir
+(scratchpad/cs2/data, :18491) with two accounts whose patterns genuinely
+overlap a real CSV, plus CDP Accessibility.getFullAXTree, matching
+judge-claude's S4.3 method.
+
+1) SEQUENCE 1 (dismiss -> overlap resolved by a real edit -> SAME overlap
+recreated by a real edit) -- FIXED. Real browser, real HTMX form submits:
+  load:      region=warning text, banner=true, dismissBtn=true, storedKey=null
+  dismiss:   region="Pattern overlap warning dismissed.", banner=false, storedKey=<key>
+  resolved:  region unchanged (empty-content guard), banner=false, storedKey=null  <- cleared
+  recreated: region=warning text, banner=true, dismissBtn=true, storedKey=null
+Banner and region agree at every step; the S4 defect (region asserting an
+active warning with no banner/dismiss control) does not reproduce.
+
+2) SEQUENCE 2 (dismiss -> ordinary reload, warnings unchanged) -- FIXED.
+Real browser:
+  after dismiss+reload: region.textContent = "", banner absent.
+  CDP getFullAXTree: 0 un-ignored nodes containing "Pattern overlap warning".
+This is exactly what judge-claude's S4.3 verdict said would change the
+ruling ("If the sr-only region had been empty ... after dismiss+reload,
+sequence 2 would collapse"). It is empty.
+
+3) Root-cause mechanism (whitespace-padded region vs unpadded
+data-warnings-text defeating the same-text guard on every load) -- FIXED.
+Server-rendered region markup is now single-line (curl'd raw bytes: no
+leading/trailing whitespace inside the div). A document-wide
+MutationObserver installed via addInitScript before the page's own script,
+across two consecutive full loads with warnings unchanged and no
+dismissal, recorded zero mutations on #accounts-warnings-region on either
+load.
+
+4) Reworded confirmation + scoped test (item c) -- verified, not just read.
+scriptBlockRE = `(?s)<script[^>]*>.*?</script>` strips every <script> block
+(checked: no literal "</script" substring appears inside any script body in
+accounts.html or base.html, so the non-greedy match can't truncate early);
+"Pattern overlap warning" does not appear anywhere outside a script tag when
+Warnings is empty (both string- and attribute-guarded by {{if .Warnings}}).
+Ran the actual tests: TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock
+and TestHandlePage_RendererMode_OverlapRendersWarningBlockOnce both PASS.
+
+5) Item (b) TestWarningsKey_OrderInvariant -- verified the mutation-guard
+actually guards: asserts on `b` (unsorted input, ["b","a"]), not `a` (already
+sorted), so an in-place sort would be caught. PASS.
+
+6) Item (d) describeAlreadyResolved load-failure branch -- traced the call
+path: DataLoader.suspectedIdentities is a purely in-memory scan of
+dl.suspectedTransfers; it never touches transfer_decisions.json. So
+ResolveTransfer("whatever-key", ...) with an unseeded queue fails fast
+in-memory ("no suspected transfer pair with key"), routing the handler into
+describeAlreadyResolved, which is the function that DOES call
+LoadTransferDecisions() against the corrupted file. The test genuinely
+reaches the load-failure branch, not the unknown-key branch of that
+function. go test -run confirms PASS.
+
+7) Item (e) comment -- internal/services/accounts/projection_test.go's
+TestProject_MixedRecurringFiltersByAccount comment now names
+recurringOwnerAccount (current) instead of the deleted
+recurringBelongsToAccount, and matches the tie-break the test actually
+exercises.
+
+HYPOTHESIS I RAISED AND THEN DISPROVED (reporting for the record, not as a
+finding): a mutation handler's renderError() (accounts/handlers.go) writes a
+bare error <div> with status 400/404/500 and no accounts-warnings-data node,
+and every form in accounts.html targets hx-target="#accounts-list". I
+reasoned a race (e.g. double-clicking "Delete" on an anchor) could make
+htmx swap that bare error card into #accounts-list, destroying
+#accounts-warnings-data and the banner while leaving
+#accounts-warnings-region stale -- syncWarnings' `if (!data) return` would
+never run to clear it, a live point-16 violation. I built this in a Node
+harness and it "reproduced" there. I then drove the ACTUAL failure through a
+real browser against the real server (raced two genuine POSTs to the same
+anchor-delete endpoint, confirmed server-side that the second really is a
+404) and, critically, drove it through htmx's real client, not raw fetch:
+base.html's htmx:beforeSwap handler only forces a swap on 4xx when the
+response carries an HX-Retarget header, which accounts' renderError never
+sets, so htmx 2.0.4's default (no swap on non-2xx without that header)
+applies. Confirmed with page.evaluate(() => form.requestSubmit();
+form.requestSubmit()) on the live anchor-delete form: final DOM after both
+responses land reflects ONLY the first (successful) response's swap; the
+404 body never reaches #accounts-list, #accounts-warnings-data survives,
+and the region is untouched-but-correct. This branch of syncWarnings
+(missing-data-node) is therefore dead in production for accounts and not a
+live defect. Recording this so the next checker doesn't have to re-walk it.
+
+NON-BLOCKING OBSERVATION (not filed as a defect): the sessionStorage
+dismissal key is single-slot and content-keyed, not history-stacked. Dismiss
+warning-set W1 (key K1) -> a DIFFERENT overlap W2 (key K2) appears and is
+correctly shown/announced -> W1 (K1) reappears unchanged: it comes back
+suppressed (region empty, banner absent) with no independent dismissal for
+that reappearance, because storedKey is only cleared when the CURRENT key is
+empty (S5's fix), not when it changes to a different non-empty key.
+Confirmed via harness. This does not violate point 16 as written --
+banner and region stay in lockstep the whole time, so there is no channel
+divergence -- and the single-slot, content-keyed design is inherited from
+S3/S4, explicitly defended in the code's own comments, and outside
+REVIEW_AUG20_SPEC.md's S5 row (a), which is scoped to the
+`if (!banner) return` early-return bug. Flagging for the record in case a
+future point extends "state change" to cover this case explicitly.
+
+sessionStorage-throws path (Safari private mode) reasoned through against
+the source: getItem/setItem/removeItem are each individually try/caught;
+a throw on read defaults dismissed=false (warning stays visible, not
+stuck hidden); a throw on write during dismiss still hides the banner and
+writes the confirmation for THIS render (the two statements after the
+setItem try/catch are unconditional), but the dismissal does not persist,
+so the NEXT load/swap shows the warning again -- degraded, not stuck.
+
+go build ./... and go vet ./... clean; go test ./... green repo-wide
+(only budget2/web has no test files, unrelated).
+
+No sequence, ordering, or state I could construct broke S5's specific
+claims or ACCESSIBILITY.md point 16 as written. PASS.

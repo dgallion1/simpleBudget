@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"budget2/internal/config"
+	"budget2/internal/handlers/accounts"
 	"budget2/internal/handlers/approval"
 	"budget2/internal/handlers/backup"
 	"budget2/internal/handlers/dashboard"
@@ -32,6 +33,7 @@ import (
 	"budget2/internal/handlers/explorer"
 	"budget2/internal/handlers/insights"
 	"budget2/internal/handlers/majorexpenses"
+	"budget2/internal/handlers/transfers"
 	"budget2/internal/handlers/whatif"
 	backupsvc "budget2/internal/services/backup"
 	"budget2/internal/services/dataloader"
@@ -104,13 +106,14 @@ func SetupDependencies(c *config.Config) error {
 	}
 
 	// Initialize handler packages
-	dashboard.Initialize(loader, renderer, retirementMgr)
+	dashboard.Initialize(loader, renderer, retirementMgr, store)
 	explorer.Initialize(loader, renderer, cfg, store)
 	whatif.Initialize(loader, renderer, retirementMgr)
 	insights.Initialize(loader, renderer)
 	majorexpenses.Initialize(loader, renderer)
 	duplicates.Initialize(loader, renderer)
-	// A restore rewrites the settings files on disk behind the settings
+	accounts.Initialize(loader, store, renderer)
+	transfers.Initialize(loader, store, renderer) // A restore rewrites the settings files on disk behind the settings
 	// manager's back. The manager is the restore gate: it holds its lock
 	// for the restore's whole write+prune phase — so no in-flight save can
 	// interleave with a half-restored settings dir — and on release drops
@@ -127,7 +130,7 @@ func SetupDependencies(c *config.Config) error {
 		Store:       store,
 		SettingsDir: settingsDir,
 		SnapshotDir: filepath.Join(cfg.BackupDir, "mcp-snapshots"),
-		BaseURL:     mcpBaseURL(cfg.ListenAddr),
+		BaseURL:     mcpBaseURL(cfg.PublicBaseURL, cfg.ListenAddr),
 		Backups:     backupService,
 		// The same restore service the /restore route uses, so a tool-driven
 		// restore and a browser-driven one contend for one snapshot hold and
@@ -152,19 +155,64 @@ func SetupDependencies(c *config.Config) error {
 	return nil
 }
 
-// mcpBaseURL turns a listen address (":8080", "0.0.0.0:8080", "127.0.0.1:8080")
-// into a URL this same process can reach itself at, always substituting
-// "localhost" for the host part: the configured host may be unroutable from
-// the process itself (0.0.0.0) or absent entirely (":8080"), but the server
-// this call builds a URL for is always reachable via localhost.
-func mcpBaseURL(listenAddr string) string {
-	_, port, err := net.SplitHostPort(listenAddr)
+// mcpBaseURL returns the origin that browser-facing links from the MCP server
+// are rooted at: the approval URL a person clicks and open_page's target.
+//
+// Those links are for a human's browser, which is not necessarily on this
+// machine — the default listener (":8080") binds every interface. So an
+// explicitly advertised origin wins whenever one is configured.
+//
+// Without one, the URL is derived from listenAddr. A concrete host there is
+// kept, because it is the only evidence the process has about how it is
+// addressed. A wildcard bind ("", "0.0.0.0", "::") names no host at all, and
+// nothing in the process can tell which of its addresses a remote browser can
+// reach, so it falls back to localhost — correct for a same-machine browser,
+// and the reason startupBaseURLWarning exists for every other case.
+func mcpBaseURL(publicBaseURL, listenAddr string) string {
+	if u := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"); u != "" {
+		return u
+	}
+
+	host, port, err := net.SplitHostPort(listenAddr)
 	if err != nil {
 		// Not a valid host:port pair; fall back to the previous behavior
 		// rather than producing a malformed URL.
 		return "http://localhost" + listenAddr
 	}
-	return "http://" + net.JoinHostPort("localhost", port)
+	if isWildcardHost(host) {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+// isWildcardHost reports whether a listen address's host part names no
+// specific interface, and so cannot be used to build a URL anyone can follow.
+func isWildcardHost(host string) bool {
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		return true
+	}
+	return false
+}
+
+// startupBaseURLWarning returns a warning to log when browser-facing links
+// will point at localhost while the listener accepts remote connections, or
+// "" when there is nothing to warn about. In that configuration an approval
+// link sent to a remote user resolves to their own machine, and the guarded
+// operation waiting on it times out with nothing on screen to explain why.
+func startupBaseURLWarning(publicBaseURL, listenAddr string) string {
+	if strings.TrimSpace(publicBaseURL) != "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(listenAddr)
+	if err != nil || !isWildcardHost(host) {
+		return ""
+	}
+	return fmt.Sprintf(
+		"WARNING: listening on %s (all interfaces) with no public_base_url set. "+
+			"MCP approval and open_page links will point at localhost and will not work "+
+			"from another machine. Set BUDGET_PUBLIC_URL (or public_base_url in the config) "+
+			"to the address you reach this server at.", listenAddr)
 }
 
 // SetupRouter creates and configures the HTTP router.
@@ -247,6 +295,8 @@ func SetupRouter() chi.Router {
 		insights.RegisterRoutes(r)
 		majorexpenses.RegisterRoutes(r)
 		duplicates.RegisterRoutes(r)
+		accounts.RegisterRoutes(r)
+		transfers.RegisterRoutes(r)
 
 		backup.RegisterRoutes(r)
 	})
@@ -304,6 +354,9 @@ func run() (http.Handler, string, error) {
 	r := SetupRouter()
 
 	log.Printf("Server starting on %s", cfg.ListenAddr)
+	if warning := startupBaseURLWarning(cfg.PublicBaseURL, cfg.ListenAddr); warning != "" {
+		log.Print(warning)
+	}
 	return r, cfg.ListenAddr, nil
 }
 

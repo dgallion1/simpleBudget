@@ -35,3 +35,5 @@ reflection-notes.md
 /expenses-*.png
 /major-expense-*.png
 /filter-test-*.png
+.swarm/tier3/*/wt-*/
+.swarm/work/

@@ -1,0 +1,245 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S1
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16, uncommitted working
+tree. All verification was read-only against the repo; every mutation/differential
+probe was run in throwaway copies under the scratchpad
+(.../scratchpad/b2copy = working tree, .../scratchpad/b2old = HEAD's projection.go).
+The only file this checker wrote inside the repo is this verdict.
+
+The change, established mechanically rather than by reading the diff:
+  $ grep -vE '^[[:space:]]*//' <HEAD proj> | grep -vE '^[[:space:]]*$' > code_head.txt
+  $ (same for working tree) > code_new.txt ; diff -u code_head.txt code_new.txt
+Comment-stripped diff of projection.go is exactly two edits:
+  -   if !recurringBelongsToAccount(rp, acct.ID) {
+  +   if recurringOwnerAccount(rp) != acct.ID {
+  and the replacement of recurringBelongsToAccount by recurringOwnerAccount.
+No other executable line in the file changed.
+
+--------------------------------------------------------------------------
+C1 — one series, one occurrence in aggregate.  MET.
+Independent probe (my own fixture, not the worker's), scratch copy:
+  $ cd <scratch>/b2copy && go test -count=1 -v -run TestProbe_AggregateOneOccurrenceAcrossAllAccounts ./internal/services/accounts/
+    account A  minimum=1000.00 reduction=0.00
+    account B  minimum=800.00 reduction=200.00
+    account C  minimum=1000.00 reduction=0.00
+    charged accounts = [B]  aggregate reduction = 200.00
+    --- PASS
+Same probe run against the PRE-CHANGE implementation reproduces the defect,
+which proves the probe is sensitive and the bug was real:
+  $ cd <scratch>/b2old && go test -count=1 -v -run TestProbe_AggregateOneOccurrenceAcrossAllAccounts ...
+    account A reduction=200.00 / account B reduction=200.00
+    charged accounts = [A B]  aggregate reduction = 400.00
+    C1 FAIL: aggregate reduction = 400.00, want exactly 200.00
+    --- FAIL
+Extended to a 3-account migration chain and a window holding five weekly
+occurrences (TestProbe_ThreeAccountsTwoOccurrences):
+    per-account reductions: map[A:0 B:0 C:250] ; total=250.00
+i.e. 5 x $50 charged once, on the newest-leg account only, nothing elsewhere.
+The worker's own fixture agrees:
+  $ go test -count=1 -v -run TestProject_RecurringAttributedToNewestLegOnly ./internal/services/accounts/
+    --- PASS  (asserts totalReduction == 200.00 across cardA+cardB)
+
+C2 — newest-leg account charged, others not.  MET.
+Same probe output above: only "B" (July leg) is charged; "A" (June leg) and the
+uninvolved "C" show reduction 0.00. The sharper worker test also passes and is
+non-vacuous — run against the pre-change tree it fails with exactly the harm
+the brief describes:
+  $ cd <scratch>/b2old && go test -count=1 -run 'TestProject_(RecurringAttributedToNewestLegOnly|FormerAccountGetsNoCrossingOrTopUp)' ...
+    --- FAIL: TestProject_RecurringAttributedToNewestLegOnly
+        cardA Minimum = 800.0000, want 1000.00
+        total reduction across cardA+cardB = 400.0000, want 200.00
+    --- FAIL: TestProject_FormerAccountGetsNoCrossingOrTopUp
+        Crossing = 2026-09-01 ..., want zero
+        Minimum = 400.0000, want 600.00
+        SuggestedTopUp = 100.0000, want 0
+(false low-balance crossing and false top-up on the former account, gone now.)
+
+C3 — single-account series: no drift.  MET, by exhaustive differential test.
+A generated matrix of 82,320 single-account scenarios (7 frequencies incl.
+invalid/empty x 5 amounts x 7 anchor balances incl. negative/zero x 4
+thresholds x 7 NextExpected dates straddling the 35-day horizon edges x 4
+single-account legsets x 3 asOf dates), dumping Available/Minimum/Crossing/
+SuggestedTopUp/Threshold/err for each, run against BOTH trees:
+  $ cd <scratch>/b2old  && DUMP_OUT=dump_old.txt go test -run TestDump_SingleAccountMatrix ...  -> wrote 82320 rows
+  $ cd <scratch>/b2copy && DUMP_OUT=dump_new.txt go test -run TestDump_SingleAccountMatrix ...  -> wrote 82320 rows
+  $ diff dump_old.txt dump_new.txt
+    NO DIFFERENCES
+Byte-identical output pre- and post-change over the whole matrix.
+The worker's TestProject_SingleAccountSeriesUnaffected also passes against the
+pre-change tree, which is the correct behaviour for a no-drift guard.
+
+C4 — no legs / empty AccountID legs.  MET.
+  $ cd <scratch>/b2copy && go test -count=1 -v -run TestProbe_NoLegsAndEmptyAccountIDLegs ./internal/services/accounts/
+    empty Transactions            account=real  reduction=0.00 owner=""
+    empty Transactions            account=other reduction=0.00 owner=""
+    nil Transactions              account=real  reduction=0.00 owner=""
+    nil Transactions              account=other reduction=0.00 owner=""
+    legs with empty AccountID     account=real  reduction=0.00 owner=""
+    legs with empty AccountID     account=other reduction=0.00 owner=""
+    mixed: empty-ID leg is newest account=real  reduction=0.00 owner=""
+    mixed: empty-ID leg is newest account=other reduction=0.00 owner=""
+    --- PASS
+recurringOwnerAccount returns "" in every one of these cases and no real account
+is charged, including the case the brief singles out (legs carrying an empty
+AccountID must not land on a real account by accident).
+See OBSERVATIONS 1 and 2 below for two edges this criterion does not cover.
+
+C5 — tie-break deterministic and order-independent.  MET, by permutation.
+  $ cd <scratch>/b2copy && go test -count=1 -v -run TestProbe_TieBreakOrderIndependent ./internal/services/accounts/
+    legset 0 owners across 2 permutations: map[zeta:2]
+    legset 0 aggregate signatures: map[alpha=0.00;zeta=200.00; total=200.00:2]
+    legset 1 owners across 6 permutations: map[c:6]
+    legset 1 aggregate signatures: map[a=0.00;b=0.00;c=200.00; total=200.00:6]
+    legset 2 owners across 6 permutations: map[n:6]
+    legset 2 aggregate signatures: map[m=0.00;n=200.00;x=0.00; total=200.00:6]
+    legset 3 owners across 6 permutations: map[dup:6]
+    legset 3 aggregate signatures: map[aa=0.00;dup=200.00; total=200.00:6]
+    --- PASS
+Every permutation of every legset (2-way exact tie, 3-way exact tie, tie at the
+newest date behind an older leg, duplicate AccountIDs) yields ONE owner and ONE
+aggregate signature; the singleton maps are the evidence. The implementation is
+a max over the total order (Date, AccountID), which is order-independent by
+construction, and the permutation sweep confirms it empirically.
+
+C6 — TestProject_OtherAccountsRecurringExcluded unchanged.  MET.
+  $ git --no-pager diff --numstat -- internal/services/accounts/projection_test.go
+    122     0    internal/services/accounts/projection_test.go     (122 added, 0 deleted)
+  $ git --no-pager diff -U0 -- internal/services/accounts/projection_test.go | grep -E '^@@'
+    @@ -401,0 +402,122 @@ func TestProject_MixedRecurringFiltersByAccount(t *testing.T) {
+  $ git --no-pager diff -- internal/services/accounts/projection_test.go | grep -n 'OtherAccountsRecurringExcluded'
+    (no output -> the test does not appear anywhere in the diff)
+One purely additive hunk, zero deletions: the file was only appended to. And it
+passes:
+  $ go test -count=1 -v -run TestProject_OtherAccountsRecurringExcluded ./internal/services/accounts/
+    --- PASS: TestProject_OtherAccountsRecurringExcluded (0.00s)
+
+C7 — out-of-scope code untouched.  MET.
+  $ git --no-pager diff --name-only
+    .swarm/ledger.tsv
+    internal/services/accounts/projection.go
+    internal/services/accounts/projection_test.go
+  $ git --no-pager diff --name-only -- internal/services/insights
+    (empty -> insights untouched)
+BalanceAt and dayOf live in internal/services/accounts/balance.go, which is not
+in the modified-file list at all. For the symbols inside projection.go, an
+extraction-and-compare of each function body between HEAD and the working tree:
+    ===== BalanceAt =====             IDENTICAL (defined in balance.go, unmodified)
+    ===== calendarDayKey =====        IDENTICAL (5 lines)
+    ===== utcCalendarDay =====        IDENTICAL (4 lines)
+    ===== dayOf =====                 IDENTICAL (defined in balance.go, unmodified)
+    ===== frequencyIntervalDays ===== IDENTICAL (16 lines)
+The comment-stripped whole-file diff quoted at the top shows the horizon walk
+(asOfDay/horizonEnd/occurrence loop) is unchanged apart from the one filter
+line. The R12 UTC-calendar handling is therefore untouched.
+
+C8 — build, vet, suite, gofmt, staticcheck.  MET.
+  $ go build ./... ; echo BUILD_EXIT=$?          -> BUILD_EXIT=0
+  $ go vet ./...   ; echo VET_EXIT=$?            -> VET_EXIT=0  (no issues found)
+  $ gofmt -l internal/services/accounts/         -> (no output: nothing unformatted)
+  $ command -v staticcheck                       -> /home/darrell/go/bin/staticcheck
+  $ staticcheck ./internal/services/accounts/... -> (no findings) STATICCHECK_EXIT=0
+  $ go test -count=1 ./... 2>&1 | grep -Ev '^ok '
+    ?   budget2/web  [no test files]
+    PIPE=0
+    (every package "ok"; the only non-ok line is the web package having no tests)
+  $ go test -count=1 -race ./internal/services/accounts/...
+    ok  budget2/internal/services/accounts  1.017s   PIPE=0
+Note: repo-wide `gofmt -l .` reports many pre-existing offenders in other
+packages and in stale worktrees; none of them are S1's two files, and
+`gofmt -l internal/services/accounts/` (the criterion as written) is clean.
+
+C9 — no debug prints / instrumentation.  MET.
+  $ grep -nE 'fmt\.Print|println\(|print\(|log\.Print|log\.Debug|spew\.|os\.Stderr|DEBUG|XXX|TODO|FIXME|HACK' internal/services/accounts/projection.go
+    (no output, exit=1)
+  $ grep -rnE 'fmt\.Print|println\(|log\.Print' --include='*.go' internal/services/accounts/ | grep -v '_test.go'
+    internal/services/accounts/accounts.go:126: log.Printf("Warning: %s", w)
+    internal/services/accounts/accounts.go:180: log.Printf("Warning: %s", w)
+  accounts.go is NOT in `git diff --name-only`; both lines are pre-existing and
+  untouched by this task.
+
+Mandated doc-comment requirement (accepted limitation) — MET.
+  $ grep -n -A6 "ACCEPTED LIMITATION" internal/services/accounts/projection.go
+    267: // ACCEPTED LIMITATION, recorded here deliberately rather than left as an
+    268: // oversight: a series that genuinely alternates between two cards payment
+    269: // to payment (rather than migrating once) is projected entirely against
+    270: // whichever card holds the single newest leg. ...
+The alternating-pair limitation the brief required is recorded in the
+recurringOwnerAccount doc comment.
+
+Worker tests read and confirmed to assert what their names claim:
+  TestProject_RecurringAttributedToNewestLegOnly  — builds the two-account
+    migrated series, asserts A untouched (1000.00), B charged (800.00), and the
+    cross-account total reduction == 200.00. Genuinely fails on the old code.
+  TestProject_SingleAccountSeriesUnaffected — one-account series, asserts
+    Minimum 650.00, no Crossing, no top-up. Correctly passes on the old code too.
+  TestProject_FormerAccountGetsNoCrossingOrTopUp — sets the former account's
+    balance (600) so the buggy path WOULD cross the 500 threshold; asserts no
+    Crossing, Minimum 600.00, SuggestedTopUp 0. Fails on the old code with
+    Crossing=2026-09-01 / Minimum=400 / topup=100, so it really pins the harm.
+  Assertions use moneyEq (|a-b| < floatTolerance) and Crossing.IsZero(); no
+  t.Skip in the added block (lines 402-523; the only t.Skip in the file is the
+  pre-existing timezone guard at line 792).
+
+--------------------------------------------------------------------------
+OBSERVATIONS (not criterion failures; recorded for the lead's judgement, not
+acted on — this checker does not edit).
+
+OBS-1: when the NEWEST leg of a series is an unassigned row (AccountID ""),
+the series is now attributed to nobody, where the old code charged the account
+holding the older real leg. internal/models/account.go:40 states unassigned
+rows are a real state ("A file matching no account leaves its rows' AccountID
+empty -- unassigned, never dropped"), so this is reachable.
+  $ cd <scratch>/b2copy && go test -run TestDoc_NewestLegUnassigned -v ...
+    legs=[usaa@Jun, ""@Jul] -> usaa Minimum=1000.00 (reduction 0.00)
+    legs=[""@Jun, usaa@Jul] -> usaa Minimum=800.00  (reduction 200.00)
+  $ cd <scratch>/b2old  && (same test)
+    legs=[usaa@Jun, ""@Jul] -> usaa Minimum=800.00  (reduction 200.00)
+    legs=[""@Jun, usaa@Jul] -> usaa Minimum=800.00  (reduction 200.00)
+This is the faithful consequence of the mandated rule (most-recent-leg wins,
+applied to the leg set as given), it never over-charges, and it is precisely
+what C4's second clause asks for ("must not be attributed to a real account by
+accident"). It is under-projection, not double-drain, and C3 as written scopes
+to single-account series (verified identical over 82,320 cases). Flagging only
+because the brief's C3 phrase "no drift for the common case" could be read to
+include a one-account series that also carries unassigned legs.
+
+OBS-2: recurringOwnerAccount's doc comment says it returns "" "when it has no
+historical legs at all". It also returns "" when the newest leg carries an
+empty AccountID (OBS-1). The comment is narrower than the behaviour. Cosmetic;
+no criterion covers it.
+
+OBS-3: an account whose own ID is "" would now match an ownerless series
+(`"" != ""` is false, so the item is applied), where the old per-leg filter
+skipped it. Demonstrated:
+  $ go test -run TestProbe_ZeroIDAccountEdge -v ...
+    acct.ID="" empty Transactions    reduction=200.00
+    acct.ID="" empty-AccountID legs  reduction=200.00
+models.Account.ID is documented as "a stable slug ... must be unique"; both
+production call sites (internal/handlers/dashboard/accounts_card.go:190 and
+internal/services/mcpsvc/ledger/accounts.go:241) iterate configured accounts,
+so an empty-ID Account is not a state the system produces. Noted for
+completeness only.
+
+--------------------------------------------------------------------------
+SCOPE.
+  $ git status --porcelain
+     M .swarm/ledger.tsv
+     M internal/services/accounts/projection.go
+     M internal/services/accounts/projection_test.go
+    ?? .swarm/manifests/S1.1.files
+    ?? .swarm/tier3/S2/
+    ?? REVIEW_AUG20_SPEC.md
+The two modified source files are exactly the worker's manifest
+(.swarm/manifests/S1.1.files). REVIEW_AUG20_SPEC.md and .swarm/tier3/S2/ are the
+lead's Phase-0 artefacts; the ledger diff is the four Phase-0 rows S1-S4 added as
+"pending" with worker "-", i.e. lead bookkeeping, not a worker-transcribed status.
+No file under .swarm/critical.globs was touched — that list names
+internal/services/accounts/accounts.go (untouched), storage/**, dataloader/**,
+retirement/engine/**, transfers/**, mcpsvc/confirm/** (all untouched).
+No stray or untracked files under internal/. The git worktree under
+/tmp/swarm-worktrees/ was not read or executed.
+No .swarm/tier3/S1/accept.sh exists, which is correct for a Tier-2 task.

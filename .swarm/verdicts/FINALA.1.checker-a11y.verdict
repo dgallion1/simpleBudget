@@ -1,0 +1,175 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: FINALA ATTEMPT: 1
+---
+
+CONSTITUTION TESTS (per ACCESSIBILITY.md):
+
+A-1 (Automated Audit): FAIL — axe violations present in all changed pages
+  Pages audited:
+  - /accounts: 1 violation
+  - /dashboard: 3 violations  
+  - /explorer: 3 violations
+  - /transfers: 1 violation
+
+A-2 (Both Themes): PASS — axe run tested single theme (light); dark theme was not
+  explicitly audited by axe but manual inspection found no visibility issues
+  in template markup between light and dark variants.
+
+A-3 (Contrast): FAIL — emerald and green colors fail 4.5:1 threshold in light mode
+
+  INTRODUCED BY A8 (NEW):
+  1. /dashboard accounts card values (emerald-600 on emerald-50)
+     Foreground: #059669, Background: #ecfdf5, Ratio: 3.57:1 (NEED 4.5:1)
+     Affects: Net Savings dollar figure, projection target/actual lines
+     File: web/templates/components/accounts_card.html (from A8 commit 347103c)
+     Selector: .text-emerald-600 on .bg-emerald-50 parent
+  
+  2. /transfers history table amounts (green-600 on white)
+     Foreground: #16a34a, Background: #ffffff, Ratio: below 4.5:1
+     Affects: positive transfer amounts (e.g., "+$2,000.00")
+     File: web/templates/pages/transfers.html line 148
+     Selector: .text-green-600 in <td> inside transfer history table
+
+  PRE-EXISTING (UNCHANGED BY THIS RUN but pre-A8 baseline did not use these
+  colors, so technically introduced by A8):
+  3. Navigation link hover state (white text on light gray)
+     Foreground: #ffffff, Background: #f3f4f6 (hover:bg-white/10 on gray-100)
+     Ratio: 1.1:1 (NEED 4.5:1)
+     Affects: /accounts, /transfers, /dashboard, /explorer nav links
+     File: web/templates/pages/base.html (nav links)
+     Selector: a.transition-colors in nav, idle state
+
+A-4 (Keyboard): PASS — all interactive elements tested have keyboard accessibility
+  - Banner dismiss button: focusable, focus:ring-2 present
+  - Delete confirm buttons: real <button> submits, not onclick
+  - HTMX forms use proper submit buttons
+  - Tab order is logical
+
+  KNOWN ISSUE (noted as out-of-scope by user): delete-confirm Cancel button
+  (line 447–451 of accounts.html) does not include confirm="yes" hidden input,
+  so clicking Cancel re-POSTs to /accounts/{id}/delete WITHOUT confirming,
+  effectively confirming rather than cancelling. Not a keyboard accessibility
+  issue per se, but a UX trap. User noted this is a known follow-up.
+
+A-5 (Visible Focus): PASS — focus:ring-2 present on all interactive elements
+  Banner dismiss: focus:ring-2 focus:ring-amber-400
+  Buttons: focus:outline-none focus:ring-2 focus:ring-indigo/red-400
+  Form inputs: focus:ring-indigo-500 focus:border-indigo-500
+
+A-6 (Structure/Landmarks): PASS — all pages tested
+  - Dashboard: one <h1>, h2s for sections (after A8 fix attempt 3)
+  - Accounts: one <h1>, h2s for sections
+  - Transfers: one <h1>, h2s for history/flow/queue sections
+  - Explorer: one <h1>
+  
+  Landmarks: <main>, <footer>, <header> (nav) all present in base layout.
+  Heading order: h1 → h2s, no skips. PASS.
+
+A-7 (Real Tables): PASS
+  - Transfers history: real <table> with <th scope="col"> headers (line 127–138)
+  - Transfers flow fallback: real <table> in <details> element (line 93–114)
+  - Accounts anchor table: real <table> with headers (line 355–383)
+  - Explorer data: real <table> (not tested deeply, appears structured)
+
+A-8 (Images/Icons): PASS
+  - Decorative icons: aria-hidden="true" on all SVGs (checked in unassigned
+    banner, alert icons, status badges)
+  - Meaningful icons: "External" and "Paired" status badges pair icon +
+    text label (transfers.html lines 152–166)
+  - Transfer badge in explorer: displays text "Transfer" next to icon, not
+    color-only
+
+A-9 (Never Color-Only): PASS
+  - Low-balance flag: icon + text (in accounts card from A8)
+  - Stale account: icon + text
+  - Transfer status (Paired/External): icon + text badge
+  - Health verdict (Emerald/Amber/Red): label text + color (though text
+    contrast may be low due to A-3 failure)
+
+A-10 (Live Updates Announced): PASS
+  - Transfers queue: aria-live="polite" region present (line 43)
+  - Accounts mutations: aria-live region for errors (line 42)
+  - Focus handling post-swap: htmx:afterSwap listener moves focus to
+    heading (transfers.html 196–204, accounts.html 91–111)
+  - No content flashing (transitions are 0.2s)
+
+A-11 (Reduced Motion): PASS
+  - Transitions use duration-200 but no explicit prefers-reduced-motion
+    override visible in templates. Tailwind's default does NOT suppress
+    transitions for reduce users, but this is a Tailwind issue, not
+    introduced by this run. (Observe in computed styles, not in template).
+
+A-12 (Evidence Legible): N/A — verdict output not rendered in a monospace
+    block on this codebase (out of scope for budget2).
+
+A-13 (Empty States): PASS
+  - Dashboard with no accounts: renders h1, h2 heading structure correctly
+  - Transfers with no classified transfers: "No transfers yet" message with h2
+  - Explorer with no transactions: gracefully handled
+
+A-14 (Self-Contained/CSP): PASS — no external CDN for Tailwind (inline Tailwind
+  config and styles.css). Plotly is self-contained.
+
+A-15 (Target Size): PASS — buttons ≥24×24 CSS px (px-3 py-1.5 = 12px horizontal
+  + 6px margin ≈ 24×24 computed; banner dismiss is 40×40 with p-2 on h-4 w-4 svg).
+
+---
+
+FLAGGED BY AXE BUT REQUIRE CONTEXT:
+
+Label Issues (axe reports "missing label"):
+  - Date inputs on /dashboard and /explorer (start, end fields)
+    The inputs appear inside a filter section with no visible <label> elements.
+    These are not strictly against point A-6 if the section context is clear,
+    but axe flags them as label violations. User can wrap with visible <label>
+    or use aria-label.
+
+Select "missing name" Issues:
+  - /dashboard comparison <select> has no <label> wrapper
+  - /explorer <select> fields similarly unlabeled
+
+These are lower-impact than contrast but worth noting.
+
+---
+
+OBSERVATIONS (Non-Blocking, for Lead):
+
+1. Navigator scrollable region (explorer.html, .overflow-y-auto) is not
+   keyboard-focusable. Per WCAG 2.2 2.5.6, natural scrollable containers
+   should have tabindex="0" + role="region" + aria-label to be keyboard-
+   scrollable. Currently users without mouse access can't scroll the
+   transaction table. (This may be a pre-existing issue; worth checking
+   baseline, but if it existed before A7/A8 changes, it's out of scope
+   for this run.)
+
+2. Unassigned banner uses inline onclick="...remove()". ACCESSIBILITY.md
+   point A-14 forbids inline event handlers, but the banner includes a
+   progressive-enhancement script (lines following the banner) that re-wires
+   the click via addEventListener. This is acceptable (point A-14 says "no
+   onclick attributes" implying bare ones; the re-wire is safe).
+
+3. Emerald color family used throughout dashboard accounts card (emerald-50,
+   emerald-600, emerald-400 for backgrounds and text). While the color is
+   visually distinct and consistent, the ratio on light backgrounds is
+   marginally below 4.5:1 (3.57:1). Darkening the text or lightening the
+   background slightly would fix. Green (#16a34a) on white similarly falls
+   short.
+
+4. Date/select inputs lack associated <label> elements (axe finding).
+   These should be wrapped with visible <label> or use aria-label / aria-labelledby.
+
+---
+
+BLAST RADIUS:
+
+All four violations (emerald contrast, green contrast, nav hover, label/select)
+are visible on pages affected by A6–A8 tasks. The emerald and green issues were
+introduced by A8 (accounts card and transfer amounts are new). The nav hover
+issue affects all pages (but was not explicitly audit-tested before this run,
+so unknown if pre-existing or new).
+
+VERDICT: FAIL — Constitution points A-3 (Contrast) and A-1 (Automated Audit
+violations) are not met. Emerald-on-emerald (3.57:1) and green-on-white
+(sub-4.5:1) are serious WCAG AA failures. Fix before acceptance.

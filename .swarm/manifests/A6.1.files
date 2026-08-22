@@ -1,0 +1,5 @@
+cmd/server/main.go
+internal/handlers/accounts/handlers.go
+internal/handlers/accounts/handlers_test.go
+web/templates/layouts/base.html
+web/templates/pages/accounts.html

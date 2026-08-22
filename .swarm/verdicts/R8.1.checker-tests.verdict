@@ -1,0 +1,193 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R8
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16 (git branch --show-current).
+Scope declared in .swarm/manifests/R8.1.files: exactly one path,
+  internal/handlers/explorer/import_binding_race_test.go (new, untracked, 3999 bytes,
+  mtime 2026-08-19 17:04:27).
+Tier 1: I am the sole checker. All mutation experiments were run on rsync copies under
+the session scratchpad (b2mut8, b2mut8b, b2mut8c, b2del); the repo itself was never
+edited by this checker (verified after the fact: `git diff --stat internal/handlers/explorer/`
+still reports only handlers.go 22+/6- and handlers_test.go 44+/0-, and
+md5sum of the new test file is 777cacd82480aca27285156a9f135cb8).
+
+CRITERION 1 — NO PRODUCTION CODE CHANGED BY R8: MET
+  handlers.go IS modified in the working tree, but that modification is byte-for-byte
+  R2's accepted work, not R8's. Evidence:
+    `git diff --stat internal/handlers/explorer/handlers.go`
+      -> "1 file changed, 22 insertions(+), 6 deletions(-)"
+    `git diff -U0 internal/handlers/explorer/handlers.go | grep '^@@'`
+      -> @@ -557 +557,5 @@ / @@ -561 +565 @@ / @@ -668,3 +672,5 @@ / @@ -680 +686,8 @@ /
+         @@ -685,0 +699,3 @@
+  Both the diffstat and all five hunk headers are identical to the values recorded in
+  .swarm/verdicts/R2.1.checker-tests.verdict ("handlers.go (+22 -6)" and the hunk list
+  "+557,5 / +565 / +672,5 / +686,8 / +699,3") at R2's acceptance. handlers_test.go is
+  likewise still exactly "+44 -0", R2's recorded value. Nothing was added or removed
+  since R2 was accepted.
+  Corroborating mtimes (`ls -la --time-style=full-iso internal/handlers/explorer/*.go`):
+    handlers.go and handlers_test.go both 2026-08-19 16:02:24 (R2's edit)
+    import_binding_race_test.go            2026-08-19 17:04:27 (R8's edit, 1h later)
+  Whole-tree sweep for anything else R8 might have touched:
+    `find . -newermt "2026-08-19 16:30" -type f` -> the only non-.swarm Go file in the
+    explorer package is import_binding_race_test.go. The other listed files
+    (accounts, mcpsvc/*) are other tasks' in-flight work, older than or unrelated to R8
+    and outside R8's package; none of them is attributable to R8.
+  R8's contribution is therefore additive and test-only: one new _test.go file.
+
+CRITERION 2 — the new test uses the production binding, no stub anywhere in its path: MET
+  Read the whole file. import_binding_race_test.go:41
+    deps := defaultImportDeps() // no stub: the real production binding
+  is the sole construction of importDeps in the file, and it is passed unmodified to
+  importOneFile at :61. There is no assignment to deps.write, deps.readSource,
+  deps.readBack or deps.removeSrc anywhere in the file:
+    `grep -n "deps" internal/handlers/explorer/import_binding_race_test.go` -> exactly three
+      hits: :14 (a prose comment referring to R2's test stubbing deps.write), :41 (the
+      construction above) and :61 (`importOneFile("race.csv", false, deps)`). There is no
+      assignment of the form `deps.<field> =` anywhere in the file.
+  Contrast with R2's test, handlers_test.go:2582, which does `deps.write = func(...)`.
+  The chain the new test exercises is entirely production code:
+    defaultImportDeps (handlers.go:562-569) -> write closure (handlers.go:565)
+    -> store.CreateExclusive (storage.go:365) -> createExclusive (storage.go:383)
+    -> os.Link (storage.go:410), the atomic EEXIST step.
+  The test's imports are only path/filepath, sync, testing — no fake/mock package.
+
+CRITERION 3 — DECISIVE MUTATION, reproduced independently: MET
+  Scratch copy: rsync -a --exclude .git of the repo to <scratchpad>/b2mut8.
+  Mutation applied with `sed -i '565s/store.CreateExclusive(path, data, perm)/store.WriteFile(path, data, perm)/'`
+  giving handlers.go:565
+    write:      func(path string, data []byte, perm os.FileMode) error { return store.WriteFile(path, data, perm) },
+  The errors.Is(err, os.ErrExist) skip branch was KEPT — verified by
+  `grep -n "os.ErrExist" handlers.go` -> still present at :699 (and :692 comment, :932 upload).
+  `go build ./...` -> BUILD_OK.
+  (a) The new test dies under the mutation:
+      go test -race -count=1 -run '^TestImportOneFile_ProductionWriteBindingIsExclusive$' ./internal/handlers/explorer/
+        --- FAIL: TestImportOneFile_ProductionWriteBindingIsExclusive (0.00s)
+            import_binding_race_test.go:82: round 0: unexpected outcome {... Status:rejected Reason:saved file failed verification ...}
+            import_binding_race_test.go:82: round 0: unexpected outcome {... Status:rejected Reason:could not save the file ...}
+            import_binding_race_test.go:91: round 0: 12 goroutines reported skipped, want 15
+        EXIT=1
+      Kill rate measured over 30 independent processes on the mutant:
+        MUTANT_RUNS=30 PASS=0 FAIL=30  (the mutation is killed 30/30, never survives)
+  (b) R2's stubbed test survives the same mutation, which is the whole point of R8:
+      go test -race -count=1 -run '^TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite$' -v ./internal/handlers/explorer/
+        --- PASS: TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite (0.00s)
+        ok  budget2/internal/handlers/explorer  1.011s  EXIT=0
+  (c) The pre-R8 explorer suite as a whole survives the mutation (reproducing R2's
+      recorded residual gap): with import_binding_race_test.go moved out of the mutant,
+        go test -race -count=1 ./internal/handlers/explorer/
+        -> ok  budget2/internal/handlers/explorer  5.116s   EXIT=0
+      With R8's file present, the same suite fails. R8 closes exactly the gap it was
+      dispatched to close.
+  FINDING (documentation accuracy, not a functional failure): the test's own doc comment,
+  import_binding_race_test.go:20-23, predicts that under a WriteFile revert "every
+  goroutine in this test would report 'imported' instead of exactly one". That is not what
+  actually happens. Because handlers.go:680's step-3 fast-path Stat still skips the late
+  arrivals, the observed mutant signature is imported==1 with 12 skipped and 3 rejected
+  ("saved file failed verification" from a torn readback, "could not save the file" from
+  store.WriteFile's non-unique temp file). The test still fails, deterministically, 30/30 —
+  but via the skipped-count and unexpected-outcome assertions, not the imported-count one.
+  The stated mechanism in the comment is wrong; the test is not.
+
+CRITERION 4 — STABILITY, 30 runs under -race: MET, 30/30
+  30 independent `go test -race -count=1 -run '^TestImportOneFile_ProductionWriteBindingIsExclusive$' ./internal/handlers/explorer/`
+  process invocations against the unmutated repo:
+      STABILITY_RUNS=30 PASS=30 FAIL=0
+  Log: <scratchpad>/r8_stability.log — 30 "ok" lines, and
+  `grep -i "fail\|WARNING\|DATA RACE" r8_stability.log` returns only the summary line
+  (no "WARNING: DATA RACE", no FAIL).
+  Each run is itself 10 rounds x 16 goroutines, so this is 300 rounds / 4800 goroutine
+  imports without a single failure.
+  Additional scheduler stress beyond the 30 required (30 further runs):
+      GOMAXPROCS=1 PASS=10 FAIL=0
+      GOMAXPROCS=2 PASS=10 FAIL=0
+      GOMAXPROCS=8 PASS=10 FAIL=0
+  Total: 60/60 passes, 0 failures, 0 race-detector reports. This is not a flake in the
+  class of the known dashboard_parity_test.go issue (R9).
+
+CRITERION 5 — assertions are meaningful, and specifically catch TWO successes: MET
+  The assertions are read from import_binding_race_test.go:73-104:
+    :77-79   imported++ counted per outcome Status=="imported"
+    :80-84   skipped++ and Reason must equal "already exists in the data folder", else t.Errorf
+    :85-86   any other Status -> other++ and t.Errorf with the full outcome
+    :87-89   if imported != 1  -> t.Fatalf   (exact equality, so 0 and >=2 both fail)
+    :90-92   if skipped != goroutines-1 (15) -> t.Fatalf
+    :93-95   if other != 0 -> t.Fatalf
+    :97      mustExist(t, src, ...) — handlers_test.go:2316, os.Lstat + Fatalf
+    :99-104  store.ReadFile(dataDir/race.csv) must equal importCSV byte-for-byte
+  "Would fail if two goroutines both succeeded" is demonstrated, not inferred. Third
+  scratch copy <scratchpad>/b2mut8c with two edits: the step-3 fast-path Stat block deleted,
+  and write bound to an always-succeeding atomic overwrite (CreateTemp + Rename, so there is
+  no tearing and no EEXIST). Every goroutine then legitimately imports:
+      --- FAIL: TestImportOneFile_ProductionWriteBindingIsExclusive (0.00s)
+          import_binding_race_test.go:87: round 0: 16 of 16 goroutines reported imported
+          (want exactly 1) — defaultImportDeps().write is no longer exclusive
+  The imported!=1 branch fires on over-success, not only on under-success. The Reason-string
+  check at :82 is likewise load-bearing: the "skipped" reason is compared for equality, so a
+  skip produced by the wrong branch with a different reason would be reported.
+  The destination-content assertion is meaningful because all 16 goroutines write identical
+  bytes only under the exclusive binding (one write, no partial states); mutant A produced
+  "saved file failed verification" precisely because that invariant broke.
+
+CRITERION 6 — deleteSource=false: justified, and the deletion half is covered elsewhere: MET,
+  with one narrow residual noted.
+  (a) The worker's stated reason (import_binding_race_test.go:54-58) is empirically correct,
+      not a convenience. Fourth scratch copy <scratchpad>/b2del: the same test with
+      importOneFile("race.csv", true, deps) and the mustExist assertion dropped, production
+      code otherwise untouched:
+          DELETESOURCE_TRUE_VARIANT: PASS=0 FAIL=10   (10/10 runs fail)
+      with outcomes such as
+          round 0: unexpected outcome {Name:race.csv Status:rejected Reason:not found in the import folder}  (131 occurrences)
+          round 0: 0 goroutines reported skipped, want 15
+      The cause is real and unavoidable: the winner's step-6 os.Remove (handlers.go:725)
+      races the losers' step-2 os.Lstat (:659) and step-4 deps.readSource (:694), so losers
+      are rejected as "not found in the import folder" instead of skipped. With
+      deleteSource=true the outcome partition is genuinely nondeterministic. Choosing false
+      was the correct call for a test whose value depends on being stable.
+  (b) The source-deletion half of R2's brief ("a skipped import must not delete its source")
+      IS covered by separate, currently-passing tests:
+        - internal/handlers/explorer/handlers_test.go:2418-2448
+          TestHandleImport_CollisionSkipsAndKeepsSource — goes through handleImport, which
+          uses the UNSTUBBED production deps (`grep -n "defaultImportDeps()" handlers.go`
+          -> :605, inside handleImport), posts delete_source=true (:2427), and asserts
+          Status=="skipped" (:2433), !SourceDeleted (:2436), mustExist(src) (:2440) and that
+          the destination was not overwritten (:2445). This is the step-3 fast-path skip.
+        - internal/handlers/explorer/handlers_test.go:2576-2612
+          TestImportOneFile_ConcurrentCreateBetweenCheckAndWriteSkipsWithoutOverwrite —
+          deleteSource=true (:2592), asserts !SourceDeleted (:2599) and mustExist(src)
+          (:2611). This is the os.ErrExist skip branch, but with a stubbed write.
+      Control flow confirms the two are exhaustive: `grep -n removeSrc handlers.go` gives one
+      call site, :725, reached only after Status was set to "imported"; both skip returns
+      (:681 fast path, :700 ErrExist) return earlier.
+  (c) Residual, for the lead's awareness only — not a criterion failure and not something
+      R8 was asked to do: no test exercises the combination "ErrExist skip branch + delete
+      source enabled + unstubbed production binding". That cell is covered by the stubbed
+      test (b) only. Per (a) it cannot be covered by a deterministic concurrency test of this
+      shape. If the lead wants it closed it needs a different design (e.g. pre-creating the
+      destination and driving a single import with delete_source=true), which is a new task.
+
+CRITERION 7 — build, vet, race tests clean: MET
+  `go build ./...`                                          -> no output, BUILD_EXIT=0
+  `go vet ./...`                                            -> no output, VET_EXIT=0
+  `go test -race -count=1 ./internal/handlers/explorer/...`  -> ok budget2/internal/handlers/explorer 4.083s, EXIT=0
+  Beyond the criterion, the whole module:
+  `go test -race -count=1 ./...`                             -> FULL_EXIT=0, no FAIL lines
+  (run with other tasks' in-flight work present; the known R9 parity flake did not fire
+  on this run).
+
+SCOPE
+  Files attributable to R8: internal/handlers/explorer/import_binding_race_test.go only —
+  exactly the single entry in .swarm/manifests/R8.1.files. New file, purely additive,
+  _test.go, package explorer (internal test), so it cannot be linked into the binary.
+  handlers.go and handlers_test.go are modified in the tree but their diffs are identical to
+  the ones recorded at R2's acceptance (diffstat + all five hunk headers), so R8 did not
+  touch production code, honouring its test-only remit.
+  .swarm/critical.globs (internal/services/storage/**, internal/services/dataloader/**,
+  internal/services/retirement/engine/**, internal/services/transfers/**,
+  internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**): none touched
+  by R8. store.CreateExclusive and storage.createExclusive were read and consumed, never
+  modified.
+  This checker edited nothing. All four mutants live under the session scratchpad
+  (<scratchpad>/b2mut8, b2mut8b, b2mut8c, b2del), outside the repository.

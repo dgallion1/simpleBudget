@@ -13,6 +13,7 @@ import (
 	"budget2/internal/services/mcpsvc/admin"
 	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/mcpsvc/curate"
+	"budget2/internal/services/mcpsvc/ledger"
 	"budget2/internal/services/mcpsvc/plan"
 	"budget2/internal/services/mcpsvc/snapshot"
 	"budget2/internal/services/mcpsvc/spend"
@@ -89,13 +90,15 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"description verbatim. All spending tools exclude transactions the user has already resolved as " +
 	"duplicates. Money moving between the user's own accounts -- credit-card payments and " +
 	"brokerage/ACH transfers (Schwab, Fidelity, Vanguard, E*TRADE, Coinbase, Robinhood, \"usaa " +
-	"funds transfer\"), plus any major expense the user has flagged is_internal_transfer -- is an " +
-	"INTERNAL TRANSFER, filtered out at LOAD TIME before any spending tool ever sees it: there is " +
-	"no \"transfer\" transaction type at all, and a transfer is neither income nor expense. The " +
-	"ledger therefore does NOT show savings or investment contributions, so net_savings and " +
-	"savings_rate describe income minus spending, NOT money actually moved into savings -- a " +
-	"question like \"how much went into the brokerage this year\" CANNOT be answered from these " +
-	"tools." +
+	"funds transfer\"), plus any major expense the user has flagged is_internal_transfer -- is a " +
+	"TRANSFER: the third transaction type (Transfer), alongside Income and Outflow. A Transfer is " +
+	"neither income nor expense and is excluded from both totals by type filter, but unlike the old " +
+	"drop-on-load filter the rows REMAIN in the ledger and are visible through get_transfers. The " +
+	"spending tools therefore do NOT COUNT savings or investment contributions in their totals, so net_savings and " +
+	"savings_rate describe income minus spending, NOT money actually moved into savings -- but a " +
+	"question like \"how much went into the brokerage this year\" CAN now be answered from the " +
+	"ledger tools (get_transfers), which report the Transfer flows the spending tools exclude by " +
+	"design. See GLOSSARY.md (\"Transfer\", \"TransferClass\", \"Internal transfer\")." +
 	" There are also five curation tools covering the user's declared \"major expenses\" -- their own " +
 	"labels for spending they already understand. list_major_expenses and list_exceptions read; " +
 	"pin_transactions, upsert_major_expense and delete_major_expense WRITE TO THE USER'S DATA, so " +
@@ -129,7 +132,20 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"adds a zip to the backup directory and changes nothing else, so it is safe to call before suggesting " +
 	"anything the user might want to walk back. list_backups reads that directory back, newest first, and " +
 	"is the only place a restore_backup name may come from." +
-	" Two tools are guarded, and both take two calls: the first returns what would happen plus a single-use " +
+	" Five LEDGER tools report the account and transfer state the spending tools exclude by type. " +
+	"get_accounts lists the configured accounts with their current balance (rolled forward from the " +
+	"latest BalanceAnchor), freshness, and whether each is below its low-balance threshold; an account " +
+	"with no anchor reports available=false (UNAVAILABLE, not $0). get_balance_projection is the 35-day " +
+	"funding forecast for one account: crossing date, minimum projected balance, suggested top-up, and a " +
+	"reference amount (the median of confirmed inbound paired transfers); it reports available=false when " +
+	"there is no anchor to project from. get_transfers reports the Transfer flows -- paired (both legs " +
+	"loaded, linked by a shared pair key) and external (counterparty CSV not loaded) -- filterable by date " +
+	"range, institution, or account, so a question like \"how much did I move into checking this year\" is " +
+	"answered by filtering to checking and reading total_in. Amounts are SIGNED in bank convention: " +
+	"positive = money received into this account, negative = money sent out. set_balance_anchor and " +
+	"resolve_transfer WRITE TO THE USER'S DATA (accounts.json and transfer_decisions.json), so both are " +
+	"guarded and take the same two-call confirm_token flow the housekeeping guarded tools do." +
+	" Four tools are guarded, and all take two calls: the first returns what would happen plus a single-use " +
 	"confirm_token, the second must echo that token. Calling one twice yourself is NOT the user agreeing; " +
 	"show them the first call's answer and wait for a real answer. On a client that can prompt, the second " +
 	"call ALSO asks the user directly -- best case by opening a page in their browser showing the whole " +
@@ -141,7 +157,13 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"after it runs nothing in this session can undo that -- every tool stops answering and only the user can " +
 	"start the server again. restore_backup overwrites the whole data directory from an archive AND DELETES " +
 	"every file that archive does not contain, so anything imported or decided since it was taken is lost; " +
-	"it takes a safety snapshot first, which is the only route back and only via another restore."
+	"it takes a safety snapshot first, which is the only route back and only via another restore. " +
+	"set_balance_anchor records a BalanceAnchor on an account -- every balance and projection is rolled " +
+	"forward from an anchor, so a wrong amount makes the dashboard lie about the user's money; a second " +
+	"anchor on the same day overwrites the first. resolve_transfer confirms or rejects a suspected " +
+	"transfer pair; confirming a pair that was not actually a transfer silently erases real income or " +
+	"real spending from the totals, so confirm is the load-bearing verdict. Both write a .bak first when " +
+	"there is a prior file to protect."
 
 // NewServer builds the MCP server. A nil Loader disables spend's, curate's
 // and admin's tools; registration itself never touches a dependency. Other
@@ -248,6 +270,22 @@ func NewServer(deps Deps) *mcp.Server {
 			adminDeps.Shutdown = deps.Shutdown
 		}
 		admin.Register(s, adminDeps)
+		// The ledger tools read accounts/transfers through the same loader
+		// and store the /accounts page uses, and write through the same
+		// confirm-token flow the guarded admin tools use. They share the
+		// admin registry and approvals so a token minted by one guarded
+		// tool cannot be redeemed by another.
+		ledgerDeps := ledger.Deps{
+			Transactions: deps.Loader,
+			Accounts:     ledger.NewAccountStore(deps.Store),
+			Transfers:    deps.Loader,
+			Store:        deps.Store,
+			Snapshots:    snapshot.New(deps.Loader.CSVDirectory, filepath.Join(deps.SnapshotDir, "data")),
+			Confirm:      adminDeps.Confirm,
+			Approvals:    adminDeps.Approvals,
+			BaseURL:      deps.BaseURL,
+		}
+		ledger.Register(s, ledgerDeps)
 	}
 	return s
 }

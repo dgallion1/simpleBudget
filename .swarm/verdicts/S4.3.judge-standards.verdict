@@ -1,0 +1,88 @@
+VERDICT: OVERRULE
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: S4
+ATTEMPT: 3
+---
+I independently re-extracted the verbatim <script> block from
+web/templates/pages/accounts.html (lines ~130-211) into checker-second's
+Node harness and re-ran it. Both findings reproduce exactly as described:
+
+  Finding 1 (dismiss -> warnings clear -> same set W1/K1 returns):
+    region.textContent = "Pattern overlap warning: ..." ; banner present = false
+  Finding 2 (reload after dismissal, warnings unchanged):
+    region.textContent on load = "Pattern overlap warning: ..." ; banner present = false
+
+So the FACTS in the contested verdict are correct and I do not dispute them.
+The question for this lens is narrower: does either sequence violate a
+numbered point in ACCESSIBILITY.md as written?
+
+POINT 14 — "Banners ... are dismissible via keyboard and re-announced only
+on state change, not every page load within a session." This sentence
+imposes exactly two constraints: (a) keyboard dismissibility, (b) bounded
+re-announcement cadence (state-change-gated, not every-load). It says
+nothing about the banner's visibility being required to track the live
+region's content, or vice versa.
+  - Finding 1: the SET truly transitions empty -> non-empty at step 4 (an
+    intervening mutation cleared it, then it returned). By the code's own
+    key/text comparison — the same mechanism that makes the "not on every
+    load" half of point 14 pass — this is a genuine state change, and
+    re-announcing on it is exactly what point 14's second clause asks for.
+    Nothing in the text requires the banner to reappear in lockstep with
+    that announcement; point 14 constrains the announcement, not banner
+    visibility.
+  - Finding 2: on reload, syncWarnings() seeds lastWarningsText from
+    region.textContent and therefore performs ZERO live-region mutation.
+    No re-announcement occurs at all — literally satisfying "not every
+    page load within a session," which is the exact defect attempt 1 was
+    failed for and attempt 3 fixes. The complaint here is that stale text
+    sits, un-reannounced, in a role="status" sr-only node while the banner
+    is gone — a real AT-parity problem, but not a violation of a clause
+    that only bounds re-announcement frequency.
+  checker-second itself labels the gap "the implicit companion
+  requirement" — its own word, "implicit," concedes it is not textually
+  present in point 14.
+
+POINT 10 — covers (i) focus restoration after an HTMX swap and (ii)
+destructive/state-changing actions announcing their result via
+aria-live="polite". The dismiss action IS state-changing and DOES announce
+its result ("Account overlap warning dismissed.") through the polite
+region, verified independently by checker-a11y with a MutationObserver and
+consistent with my harness run. Neither finding touches focus restoration
+or the dismiss action's own announcement; both are about what happens
+later, to a different write of the same region, triggered by unrelated
+events (an intervening mutation, or a reload). Point 10 as written does not
+reach that.
+
+POINT 8 and the rest of the list — point 8 is about color-alone encoding
+and is inapposite. I read all 15 points against both findings and found no
+other point that speaks to "a live region / hidden status node whose
+content has no visible counterpart." Structure (1-3), forms (4-6), contrast
+(7,12), charts (11), currency signs (13), and motion (15) are all
+orthogonal. Point 9 (keyboard operability, visible focus) is unaffected.
+
+CONCLUSION ON THE LENS. Reading ACCESSIBILITY.md as written, not as it
+should be written, the two sequences checker-second demonstrates are real
+and reproducible, but they do not violate any of the document's 15 numbered
+points. The document explicitly narrows enforcement to point numbers
+("Checkers cite point numbers in verdicts; 'vibes' verdicts are invalid"),
+and the contested verdict's own reasoning has to reach for an "implicit
+companion requirement" to land the FAIL — which is importing a requirement
+the text does not contain. Per the instructions governing this ruling, that
+means OVERRULE on this lens, with a documentation gap flagged for the lead:
+
+RECOMMENDED AMENDMENT to ACCESSIBILITY.md, point 14 (or a new point 16):
+add an explicit AT-parity clause, e.g.: "The aria-live region's content
+must never assert a warning's presence when no corresponding visible
+banner is on the page, and must never remain silently stale (unannounced
+and un-cleared) after a dismissal; if a banner is suppressed by a
+client-side dismissal, the paired live/status region's underlying content
+must be suppressed or cleared in the same action, not merely the visible
+banner." This would give a future checker a citable point number for
+exactly the two sequences found here, instead of requiring "implicit"
+inference from point 14's cadence clause.
+
+This ruling is confined to the standards lens: it does not say the work is
+defect-free (checker-second's engineering finding stands as valid input to
+the lead), only that FAILing attempt 3 against ACCESSIBILITY.md's current
+text is not supportable.

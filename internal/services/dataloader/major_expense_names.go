@@ -55,12 +55,12 @@ func (dl *DataLoader) applyMajorExpenseNames(transactions []models.Transaction) 
 		if t.Suppressed {
 			continue
 		}
-		// Pin wins when it points to an existing expense.
-		if pins != nil && t.Hash != "" {
-			if id, ok := pins[t.Hash]; ok && validIDs[id] {
-				transactions[i].MajorExpenseName = nameByID[id]
-				continue
-			}
+		// Pin wins when it points to an existing expense. Resolved
+		// StableID-first with a legacy-hash fallback, so pins written
+		// before StableID existed keep applying untouched.
+		if id, _, ok := models.ResolveByIdentity(pins, t); ok && validIDs[id] {
+			transactions[i].MajorExpenseName = nameByID[id]
+			continue
 		}
 		// Otherwise fall back to keyword/amount matching.
 		if id, ok := majorexpenses.MatchTransaction(t, defs); ok {

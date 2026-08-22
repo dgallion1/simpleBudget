@@ -1,0 +1,398 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: S5
+ATTEMPT: 4
+---
+SUMMARY: criteria 3-10 all PASS with cited command evidence. Item 1 (the
+mid-run oracle amendment) is cleared -- I reproduced the strictness claim
+rather than taking it on trust. The FAIL is confined to ITEM 2: the single
+point of failure the merge introduced is REACHABLE and SILENT, which is the
+condition the brief itself defines as "a worse defect than the one this task
+fixed". One line of Makefile would close it.
+
+Environment: node v24.12.0, go1.26.6 linux/amd64, branch fix/review-aug16,
+working tree uncommitted. I wrote nothing in the repo but this file; verified
+with `sha256sum -c` before and after every experiment (all four watched files
+OK) and `git status --short` unchanged.
+
+=====================================================================
+ITEM 1 -- THE MID-RUN ORACLE AMENDMENT: CLEARED, NOT SELF-SERVING
+=====================================================================
+Read `.swarm/tier3/S5/accept.sh` check 5 in full. It no longer greps the
+glue's source. It overwrites
+internal/handlers/accounts/testdata/js/warnings_dom_harness.js with a harness
+that prints `RESULT <name> FAIL {}` for all three named checks and
+`process.exit(0)`, requires `go test -run
+TestSyncWarnings_ClientRegressionHarness` to FAIL, then restores.
+
+I did NOT accept "strictly stronger" as an assertion. I constructed the
+discriminating case -- a glue that PASSES the old grep while being genuinely
+broken -- in a scratch copy at $SCRATCH/b2 (rsync of the repo, repo itself
+untouched):
+
+  regressed the matcher to the attempt-3 defect
+    passRE := regexp.MustCompile(regexp.QuoteMeta(name))      // name-only
+  and added `var wantPassToken = "PASS"` so the SOURCE carries the exact
+  token the old grep demanded.
+
+  $ grep -q 'PASS"' internal/handlers/accounts/warnings_client_regression_test.go
+    -> OLD check5 (grep for PASS"): PASSES the broken glue  <-- FALSE PASS
+  $ <inject RESULT..FAIL + exit 0>; go test -run TestSyncWarnings_...
+    -> AMENDED check5: go test rc=0 (oracle reports FAIL -> defect CAUGHT)
+
+So there exists a broken implementation the old grep accepts and the amended
+check rejects, and (see criterion 6 below) no shape of broken glue I could
+build survives the amended check. The amendment is a strict strengthening,
+evidence-backed, not merely argued. It cannot have converted a broken arm into
+a passing one: a name-matching arm fails the injected fixture BECAUSE the
+fixture contains all three check names, which is exactly what makes it
+discriminate name-matching from PASS-matching.
+
+It also could not have changed the arm selection. The amendment touches check
+5 only; wt-alt lost 6 checks, all of them check-3 Makefile-wiring items
+(`.swarm/tier3/S5/report.md`, wt-alt output block), and wt-alt's check-5 line
+reads PASS both before and after. Disclosure in the report, in the section
+"Oracle defect found and fixed mid-run", is accurate as written. I do not
+find the amendment self-serving.
+
+ONE PROCESS DEFECT IN THE AMENDED ORACLE (not a criterion, reported as fact):
+check 5 mutates a TRACKED repo file in place and restores with a plain `cp`
+at the end of the branch. There is no `trap ... EXIT/INT/TERM`. `set -u` is
+set but not `-e`. An interrupted or killed oracle run therefore leaves a
+FORGED harness (all-FAIL, exit 0) sitting in the working tree, which a later
+`make test` would then legitimately fail on -- confusing but loud -- and which
+a careless `git add -A` would commit. It also makes accept.sh unsafe to run
+concurrently with another checker reading the same tree. I ran it anyway per
+the brief and confirmed clean restoration:
+  $ sha256sum -c .../pre.sha
+    web/templates/pages/accounts.html: OK
+    internal/handlers/accounts/testdata/js/warnings_dom_harness.js: OK
+    internal/handlers/accounts/warnings_client_regression_test.go: OK
+    Makefile: OK
+
+=====================================================================
+ITEM 2 -- THE SINGLE POINT OF FAILURE: **REACHABLE AND SILENT** -> FAIL
+=====================================================================
+Makefile:179-180 is the whole guard:
+
+  GOTEST_TARGETS := $(shell awk '/^[A-Za-z0-9_.-]+:/{split($$0,a,":"); t=a[1]} index($$0,"$$(GO)" " test"){print t}' $(firstword $(MAKEFILE_LIST)) | sort -u)
+  $(foreach t,$(GOTEST_TARGETS),$(eval $(t): check-node))
+
+`test:` at Makefile:189 now reads `test: check-go` -- the explicit check-node
+prerequisite from attempt 2 is GONE. Every target's guard is derived, and
+there is NO assertion anywhere that the derivation produced anything. There
+is no `$(if $(strip $(GOTEST_TARGETS)),,$(error ...))`, no Go test that
+asserts the wiring, and `.swarm/tier3/S5/accept.sh` is not run by any repo
+tooling (`ls .github/workflows/` -> `release.yml` only; grepping it for
+`go test|make |node` returns nothing, so NOTHING in CI runs the suite at all).
+The scan is the only thing standing between the developer and a silent skip,
+and nothing watches the scan.
+
+I demonstrated total, silent evaporation twice, in scratch copies:
+
+CASE A -- someone renames the Go variable (`sed 's/$(GO) test/$(GOCMD) test/g'`):
+  $ make -pn | grep -E "^(test|test-unit|race|fuzz|test-coverage|test-integration):"
+    test-coverage: check-go
+    test-integration: check-go
+    fuzz: check-go
+    test-unit: check-go
+    race: check-go
+    test: check-go
+  ALL SIX guards gone. `make -n test` -> prints the test command, rc=0, and
+  make emits not one word of diagnostic.
+
+CASE B -- the go-test targets move into an included fragment
+(`Makefile` lines 189-228 moved to `mk/test.mk`, `include mk/test.mk`):
+  $ make -pn | grep -E "^(test|test-unit|race|fuzz|test-coverage|test-integration):"
+    test-coverage: check-go   test-integration: check-go   fuzz: check-go
+    test-unit: check-go       race: check-go               test: check-go
+  ALL SIX guards gone, because the scan reads only
+  `$(firstword $(MAKEFILE_LIST))`. `make -n test-unit` prints
+  `/home/darrell/go-sdk/go/bin/go test -v ./internal/...`, rc=0, no warning.
+
+In both cases the repo returns EXACTLY to the attempt-2 defect -- `make test`
+green with the harness silently skipped -- with no signal of any kind. This
+is the failure mode the brief names: "A guard that evaporates without a sound
+is a worse defect than the one this task fixed." It is reachable by ordinary
+maintenance edits, it fails quietly, and it now takes all six targets at once
+because the explicit prerequisite floor was removed.
+
+WHAT IS MISSING (precise): an assertion, adjacent to the scan, that the scan
+found something -- e.g.
+  ifeq ($(strip $(GOTEST_TARGETS)),)
+  $(error GOTEST_TARGETS scan matched no targets: the check-node guard has
+          silently evaporated. See Makefile:158-180.)
+  endif
+That converts every scenario above from silent regression into a hard,
+immediate make error. It costs three lines and cannot regress anything.
+(A stronger form would also cross-check the derived set against a
+`make -pn`-derived list, but the emptiness guard alone closes the total-loss
+case, which is the one that matters.)
+
+=====================================================================
+CRITERION-BY-CRITERION
+=====================================================================
+
+(3) ORACLE -- PASS
+$ bash .swarm/tier3/S5/accept.sh   (from /home/darrell/bin/ai/budget2)
+== S5 oracle ==
+PASS  go build ./...
+PASS  go vet ./...
+PASS  go test ./...
+PASS  harness runs and passes when node is present
+      node guard target: check-node
+      go-test targets: fuzz race test test-coverage test-integration test-unit
+PASS  target 'fuzz' requires the node guard
+PASS  target 'race' requires the node guard
+PASS  target 'test' requires the node guard
+PASS  target 'test-coverage' requires the node guard
+PASS  target 'test-integration' requires the node guard
+PASS  target 'test-unit' requires the node guard
+PASS  make test-unit fails when node is absent (exit 2)
+PASS  bare 'go test' skips cleanly with a named reason when node is absent
+PASS  a harness reporting FAIL while exiting 0 fails the Go test
+
+ORACLE: PASS
+ORACLE_EXIT=0
+
+(4) EVERY go-test TARGET FAILS FAST WITHOUT NODE -- PASS (independent of oracle)
+First I enumerated the go-test targets myself, from the Makefile text, not
+from the oracle's awk:
+  $ grep -n $'^\t.*go test\|^\t.*\$(GO) test\|gotestsum' Makefile
+    190: $(GO) test ./...                                  [test]
+    202: $(GO) test -race ./...                            [race]
+    212/216: $(GO) test -fuzz=... (both fuzz branches)      [fuzz]
+    220: $(GO) test -v ./internal/...                      [test-unit]
+    223: $(GO) test -v ./cmd/server/...                    [test-integration]
+    226: $(GO) test -coverprofile=coverage.out ./...       [test-coverage]
+  (184/186 also contain the string "go test" but inside check-node's own
+  error MESSAGE, not as `$(GO) test`; correctly not matched, so check-node
+  does not become its own prerequisite.)
+  Exactly six -- matches the oracle's list independently.
+
+Then, with node's directory removed from PATH
+(/home/darrell/.config/nvm/versions/node/v24.12.0/bin stripped; `PATH=$STRIPPED
+command -v node` -> rc=1; go still resolves):
+  make test              : rc=2 elapsed=8ms
+  make test-unit         : rc=2 elapsed=8ms
+  make test-integration  : rc=2 elapsed=8ms
+  make test-coverage     : rc=2 elapsed=8ms
+  make race              : rc=2 elapsed=8ms
+  make fuzz              : rc=2 elapsed=8ms
+each with:
+  ERROR: node is required by TestSyncWarnings_ClientRegressionHarness
+  (internal/handlers/accounts/testdata/js/warnings_dom_harness.js) but was
+  not found in PATH. ...
+  make: *** [Makefile:186: check-node] Error 1
+8ms = fails BEFORE any compilation; "fast" is measured, not assumed.
+
+Indirect reach, which the rejected wt-alt arm got wrong, also holds:
+  make check       : rc=2, same check-node error (reaches test via `check`)
+  make check-full  : rc=2, same
+
+With node PRESENT:
+  $ make test  -> ... ok budget2/internal/version (cached) ... make-test-rc=0
+
+Bare go test without node:
+  $ PATH=$STRIPPED go test -count=1 ./...  -> rc=0, zero failures
+  $ PATH=$STRIPPED go test -v -run TestSyncWarnings_ClientRegressionHarness ./internal/handlers/accounts/
+    warnings_client_regression_test.go:112: skipping client-side warnings
+    regression harness: `node` was not found on PATH. ... `make test` requires
+    node and will fail, not skip, if it is missing.
+    --- SKIP: TestSyncWarnings_ClientRegressionHarness (0.00s)   rc=0
+  Named reason, names node, names the harness path, and points at make.
+
+(5) FUTURE TARGETS -- claim CONFIRMED; uncovered constructions found and listed
+Scratch copy of Makefile, three targets appended by hand, none wired:
+  $ make -pn | grep '^bench-integration:'  -> bench-integration: check-node
+  $ make -pn | grep '^covered-later:'      -> covered-later: check-go check-node
+  $ make -pn | grep '^smoke-legacy:'       -> smoke-legacy:            [NOT covered]
+So a future target written in the house idiom
+(`\t$(GO) test -bench=. ./internal/...`) IS covered with nobody remembering
+to wire it. The claim in Makefile:169-178 and in
+warnings_client_regression_test.go:18-23 is true as stated.
+
+Plausible targets that are NOT covered (all silent):
+  a) bare `go test ./...` in the recipe (smoke-legacy above) -- the single
+     most likely way a new contributor writes it; `go` is on PATH anyway.
+  b) `$(GO)  test ./...` (two spaces) -> `double-space:` with no prereq.
+     Cosmetic whitespace defeats the guard.
+  c) a recipe that expands a `define`d variable:
+       define RUN_TESTS
+       \t$(GO) test ./...
+       endef
+       uses-define:
+       \t$(RUN_TESTS)
+     -> `uses-define:` with NO prereq. Worse, the define's body line was
+     attributed to the PRECEDING target header, so an unrelated target
+     (`gotestsum-target`) wrongly acquired check-node:
+       GOTEST_TARGETS := fuzz gotestsum-target race test test-coverage test-integration test-unit
+       gotestsum-target: check-node        <- false positive
+       uses-define:                        <- false negative
+     Both errors at once from one construct. This is the same misattribution
+     class as the `clean` trap in item 7, generalised: ANY non-recipe line
+     containing `$(GO) test` tags the previous target header and hides the
+     real one.
+  d) `gotestsum`, `$(GO) -C dir test`, or a renamed variable -- none match.
+  e) the include/rename cases in item 2 above, which take everything.
+
+(6) FAKED VERDICT REJECTED -- PASS
+Done in the scratch copy so the repo was never mutated by me. Baseline first:
+  real harness -> ok budget2/internal/handlers/accounts 0.019s
+Then seven adversarial harness outputs:
+  all three FAIL, exit 0                  -> go test rc=1  REJECTED
+  one of three FAIL, exit 0               -> rc=1  REJECTED
+  silent, exit 0 (harness never ran)      -> rc=1  REJECTED
+  names present, no RESULT verb, exit 0   -> rc=1  REJECTED
+  "RESULT <name> PASSED", exit 0          -> rc=1  REJECTED (prefix not enough)
+  indented "  RESULT <name> PASS", exit 0 -> rc=1  REJECTED ((?m)^ anchor holds)
+  all three PASS, exit 3                  -> rc=1  REJECTED (runErr path)
+  all three PASS, exit 0                  -> rc=0  accepted (correct: a harness
+     that forges well-formed PASS lines cannot be caught by output inspection;
+     the harness is version-controlled and is itself the thing under review)
+Failure message on the first case, read in full:
+  harness output does not report PASS for check "dismiss_resolve_recreate" --
+  harness may not have run to completion, or reported a failure; full output: ...
+The matcher at warnings_client_regression_test.go:147 is
+`(?m)^RESULT <name> PASS(\s|$)` and behaves as its comment (lines 136-141)
+claims. Restored and re-ran the real harness: ok, 0.018s.
+
+I also confirmed the harness is a REAL regression guard, not decoration --
+this was the criterion that failed S5 attempt 1. In the scratch copy I
+reintroduced the exact point-16 defect (`var banner = ...; if (!banner)
+return;` early in syncWarnings) into accounts.html:
+  --- FAIL: TestSyncWarnings_ClientRegressionHarness (0.02s)
+    RESULT dismiss_resolve_recreate FAIL {"bannerPresent":false,
+      "dismissPresent":false,"regionAssertsWarning":false,...}
+    RESULT dismiss_then_reload_unchanged PASS {...}
+    RESULT guard_directions FAIL {"changedWrites":1,"clearingEmpty":false}
+    SUMMARY SOME_FAILED
+  rc=1
+The Go suite now turns red when the client fix regresses. That gap is closed.
+Harness has no npm dependency: `grep require(` -> only `const fs =
+require('fs')` (node builtin). No package.json exists in the repo.
+
+(7) SELF-REFERENCE TRAP -- PASS
+  $ grep -n 'GOTEST_TARGETS :=' Makefile | grep -c '$(GO) test'   -> 0
+  The scanner writes `"$$(GO)" " test"` (two concatenated awk literals), so
+  the line does not contain the token it searches for. The comment at
+  Makefile:177-178 documents exactly this.
+  $ make -pn | grep -E "^GOTEST_TARGETS"
+    GOTEST_TARGETS := fuzz race test test-coverage test-integration test-unit
+  $ make -pn | grep -E "^[A-Za-z0-9_.-]+:" | grep -w check-node
+    fuzz: check-go check-node        race: check-go check-node
+    test: check-go check-node        test-coverage: check-go check-node
+    test-integration: check-go check-node   test-unit: check-go check-node
+    (.PHONY line also lists check-node, as a name, correctly not a prereq)
+  Prerequisites of the targets that must NOT have acquired node:
+    clean:            (none)          build: check-go
+    vet: check-go                     dev:   check-go
+    all: build   run: build   fmt: check-go   tidy: check-go
+    deps: check-go   static:  (none)  vuln:  (none)
+    install-go: (none)   help: (none)
+  None carries check-node. Confirmed.
+  I also proved the trap is REAL and the mitigation load-bearing: collapsing
+  the concatenation back to `index($$0,"$$(GO) test")` in a scratch copy gives
+    GOTEST_TARGETS := clean fuzz race test test-coverage test-integration test-unit
+    clean: check-node
+  i.e. `make clean` would then need node. That failure at least is LOUD --
+  unlike the item-2 failure -- but it means the odd-looking string
+  concatenation must never be "tidied up" by a formatter or a helpful editor.
+
+(8) EARLIER S5/S4 GUARANTEES -- PASS
+Byte-identity of the client fix to what the S5.1 lanes verified, against the
+md5s recorded in .swarm/verdicts/S5.1.checker-tests.verdict:
+  163d70d7849ce363f1c463052805db32  web/templates/pages/accounts.html   MATCH
+  de990125ada6a151d85dba1df4ccb2d3  internal/handlers/accounts/handlers_test.go   MATCH
+  0809c0e404fa9a629d2d293ab92cebc4  internal/handlers/transfers/handlers.go       MATCH
+  1253e8dfeb48a738769e36fc9eb0a382  internal/handlers/transfers/handlers_test.go  MATCH
+  bc1caf37dbb8c61676eefd052bf6f769  internal/services/accounts/projection_test.go MATCH
+All five unchanged since the S5.1 lanes signed off. Additionally
+  d461d41603813b68a34872d410f31316  internal/handlers/accounts/handlers.go
+matches the md5 in .swarm/verdicts/S4.3.checker-tests.verdict, so the Tier-3
+merge did not disturb S4's handler either.
+
+Items (b)-(e) checked on their merits, not just by hash:
+ (b) TestWarningsKey_OrderInvariant (handlers_test.go:783-806) asserts on `b`
+     = {"b","a"} (unsorted), so an aliasing implementation is catchable. I
+     PROVED it: replacing `sorted := make(...); copy(...)` with
+     `sorted := warnings` in the scratch copy gives
+       --- FAIL: TestWarningsKey_OrderInvariant
+         handlers_test.go:804: warningsKey mutated its input slice in place:
+         got [a b], want [b a] unchanged
+     The guard fires on the in-place sort. Named-for-what-it-tests: yes.
+ (c) TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock
+     (handlers_test.go:512-535) asserts on
+     `renderedBodyWithoutScripts(w.Body.String())`, not the raw body, with the
+     reason stated at 527-530. Scoped as required; unrelated script copy
+     cannot trip it.
+ (d) transfers/handlers.go:161-169 enumerates all four cases including
+     "the decisions file itself cannot be read (present but unparsable)".
+     TestHandleResolve_DecisionsFileUnreadableReportsHonestMessage
+     (handlers_test.go:579+) writes `{not valid json` to
+     transfer_decisions.json, drives POST /transfers/resolve, and asserts the
+     body says "could not be read" AND does not say "already confirmed" /
+     "already rejected" / "not a known pair". It asserts what its name claims.
+ (e) projection_test.go:370-373 names the per-leg filter; the only surviving
+     mention of `recurringBelongsToAccount` (line 383) is explicitly
+     historical -- "S1 replaced the old any-leg-membership
+     recurringBelongsToAccount, which this comment used to name". Comment
+     matches the code.
+
+Full suite:
+  $ go test -count=1 ./...   -> SUITE_RC=0, every package ok, 0 failures
+
+(9) SCOPE -- PASS
+  $ git status --short go.mod go.sum package.json  -> no output; go.mod and
+    go.sum are NOT modified. `ls package.json` -> No such file. The user
+    decision "no go.mod dependency" is honoured; the harness uses only node's
+    builtin fs.
+  Every file in .swarm/manifests/S5.4.files checked against
+  .swarm/critical.globs programmatically: 9/9 "ok", 0 critical hits.
+  (internal/services/transfers/** IS a critical glob and IS modified in the
+  tree, but by S2 -- .swarm/manifests/S2.2.files -- not by S5; S5.4's manifest
+  does not contain it. internal/services/accounts/accounts.go, also critical,
+  is unmodified.)
+  Tracked modifications outside S5.4's manifest, all attributable elsewhere:
+    internal/services/accounts/projection.go        -> S1.1 manifest
+    internal/services/transfers/transfers.go,
+      transfers_test.go                             -> S2.2 manifest
+    .swarm/ledger.tsv                               -> swarm bookkeeping
+    ACCESSIBILITY.md                                -> lead-authored (point 16),
+      in NO manifest; noting it, not charging it to S5.
+  Tier-3 worktrees were correctly created OUTSIDE the repo: .swarm/tier3/S5/
+  contains only accept.sh and report.md (contrast .swarm/tier3/A1/wt-glm and
+  wt-local, left inside the tree by the older run -- pre-existing, not S5).
+  Ledger row: S5 tier=3 checks=tests,second,a11y status=pending attempt=4;
+  .swarm/flags/S5.flag TARGET_TIER: 3, REASON: two-consecutive-fails --
+  consistent with the recorded tier.
+
+(10) BUILD / VET / SUITE / GOFMT / STATICCHECK -- PASS
+  $ go build ./...      -> BUILD_RC=0, no output
+  $ go vet ./...        -> VET_RC=0, no output
+  $ go test -count=1 ./...  -> SUITE_RC=0
+  $ staticcheck ./...   -> staticcheck_rc=0, no output
+  $ gofmt -l <each .go file in .swarm/manifests/S5.4.files>
+      internal/handlers/accounts/handlers.go                     clean
+      internal/handlers/accounts/handlers_test.go                clean
+      internal/handlers/accounts/warnings_client_regression_test.go  clean
+      internal/handlers/transfers/handlers.go                    clean
+      internal/handlers/transfers/handlers_test.go               clean
+      internal/services/accounts/projection_test.go              clean
+    All six S5 Go files are gofmt-clean.
+    `gofmt -l .` lists 27 files in the main tree (plus copies inside
+    .claude/worktrees, .swarm/tier3/A1/wt-*, .swarm/work/A4, .swarm/work/A6).
+    None is an S5 file. I confirmed the pre-existing status of a sample by
+    running gofmt against the HEAD blobs -- internal/handlers/majorexpenses/
+    handlers_test.go, internal/models/dashboard.go and internal/version/
+    version.go are all already unformatted at HEAD (c363bb4). The brief named
+    only majorexpenses as pre-existing; in fact all 27 are, and none is S5's.
+
+=====================================================================
+WHAT WOULD MAKE THIS PASS
+=====================================================================
+Add an emptiness assertion beside the scan at Makefile:179-180 so that a
+scan matching nothing is a hard make error rather than a silent loss of all
+six guards. Nothing else in criteria 3-10 is outstanding. I did not repair
+it; that is the worker's edit, not mine.

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -371,32 +372,11 @@ func (s *Storage) writeFileLocked(path string, data []byte, perm os.FileMode) er
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Invalidate before staging, so no reader serves the old bytes from cache
-	// while the new ones are on their way to disk. The encryption failures
-	// below return before touching disk, so they need no second invalidation.
-	s.invalidateCache(path)
-
-	// Skip encryption for certain files
-	if !s.shouldSkipEncryption(path) {
-		// Encrypt if enabled and unlocked
-		if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
-			if isAgeEncrypted(data) {
-				// Already encrypted (e.g. restoring a backup blob). Pass through.
-			} else {
-				recipient, err := s.provider.Recipient()
-				if err != nil {
-					return fmt.Errorf("failed to get recipient: %w", err)
-				}
-				encrypted, err := encryptData(data, recipient)
-				if err != nil {
-					return fmt.Errorf("failed to encrypt: %w", err)
-				}
-				data = encrypted
-			}
-		}
+	payload, err := s.encodeForWrite(path, data)
+	if err != nil {
+		return err
 	}
-
-	err := s.atomicWrite(path, data, perm)
+	err = s.atomicWrite(path, payload, perm)
 
 	// Invalidate again now that the rename has published (or failed to
 	// publish) the new bytes. This is what orders the cache against the
@@ -406,6 +386,164 @@ func (s *Storage) writeFileLocked(path string, data []byte, perm os.FileMode) er
 	// cheaper than guessing.
 	s.invalidateCache(path)
 	return err
+}
+
+// encodeForWrite invalidates path's cache entry and returns the bytes that
+// should land on disk, encrypting them when the store is encrypted and
+// unlocked. Caller holds mu. Split out of writeFileLocked so that every write
+// path — atomic replace and atomic create-if-absent alike — applies one
+// encryption rule rather than two that can drift.
+func (s *Storage) encodeForWrite(path string, data []byte) ([]byte, error) {
+	// Invalidate before staging, so no reader serves the old bytes from cache
+	// while the new ones are on their way to disk. invalidateCache, not a bare
+	// delete: it also bumps the generation, which is what bars an in-flight
+	// read from publishing pre-write bytes it has already loaded.
+	s.invalidateCache(path)
+
+	// Skip encryption for certain files
+	if s.shouldSkipEncryption(path) {
+		return data, nil
+	}
+
+	// Encrypt if enabled and unlocked
+	if s.encrypted && s.provider != nil && s.provider.IsUnlocked() {
+		if isAgeEncrypted(data) {
+			// Already encrypted (e.g. restoring a backup blob). Pass through.
+			return data, nil
+		}
+		recipient, err := s.provider.Recipient()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get recipient: %w", err)
+		}
+		encrypted, err := encryptData(data, recipient)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt: %w", err)
+		}
+		return encrypted, nil
+	}
+
+	return data, nil
+}
+
+// CreateExclusive writes data to path only when path does not already exist,
+// returning an error satisfying errors.Is(err, os.ErrExist) when it does.
+//
+// Unlike Stat-then-WriteFile, the test and the create are one indivisible
+// step. That sequence has two failure modes this does not: two concurrent
+// callers can both observe "absent" and then overwrite each other, and a Stat
+// that fails for any reason other than non-existence (a permission error, an
+// I/O error) reads as "absent" and proceeds to overwrite.
+func (s *Storage) CreateExclusive(path string, data []byte, perm os.FileMode) error {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	payload, err := s.encodeForWrite(path, data)
+	if err != nil {
+		return err
+	}
+	err = createExclusive(path, payload, perm)
+
+	// Same post-publish invalidation as writeFileLocked: this is a write
+	// path, and on the EEXIST branch it is a write path that just proved
+	// the file's on-disk state is not what the caller assumed.
+	s.invalidateCache(path)
+	return err
+}
+
+// StagingSuffix separates a staging file's destination-derived prefix from
+// the random component os.CreateTemp appends, in both createExclusive below
+// and atomicWrite further down: <destination-base>+StagingSuffix+<random>.
+// It is exported, and IsStagingName below is built on it, so that a
+// consumer needing to recognise (or, in a test, construct) a staging name
+// derives it from here instead of duplicating the separator as a string
+// literal in another package — the two cannot drift apart because there is
+// only one definition.
+//
+// legacyStagingSuffix is the pre-fix staging name, <destination-base>.tmp,
+// used by both functions before concurrent writers could otherwise share
+// one staging file (see atomicWrite's doc comment). Neither function
+// produces it anymore, but a crash before this change could have orphaned
+// one in a real data directory, so IsStagingName still recognises it.
+const (
+	StagingSuffix       = ".tmp-"
+	legacyStagingSuffix = ".tmp"
+)
+
+// IsStagingName reports whether base is the name of a staging file produced
+// by createExclusive or atomicWrite: <destination-base>+StagingSuffix+
+// <decimal random>, e.g. "sidecar.json.tmp-2496562633". It also recognises
+// the legacyStagingSuffix form for staging files orphaned by a crash before
+// staging names were randomised.
+//
+// Consumers that need to treat a leftover staging file specially — notably
+// backup.SkipPredicate, which must exclude one from a snapshot and from
+// restore-time pruning — call this instead of matching a string literal of
+// their own, so a future change to the staging convention is a compile-time
+// change here rather than a silent behavior change somewhere else.
+func IsStagingName(base string) bool {
+	if strings.HasSuffix(base, legacyStagingSuffix) {
+		return true
+	}
+	i := strings.LastIndex(base, StagingSuffix)
+	if i < 0 {
+		return false
+	}
+	random := base[i+len(StagingSuffix):]
+	if random == "" {
+		return false
+	}
+	for _, r := range random {
+		if r < '0' || r > '9' {
+			// Not the decimal suffix os.CreateTemp generates — a legitimate
+			// file name that merely contains StagingSuffix as a substring
+			// (e.g. "report.tmp-notes.txt") is not a staging leftover.
+			return false
+		}
+	}
+	return true
+}
+
+// createExclusive stages the payload beside its destination and publishes it
+// with a hard link. Link, not rename: rename silently replaces an existing
+// destination, link fails with EEXIST. That is what makes this both atomic
+// against a concurrent creator and all-or-nothing against a crash.
+func createExclusive(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	// Staged in the destination directory so the link stays inside one
+	// filesystem, and under a unique name so concurrent callers cannot
+	// collide on the staging file itself.
+	f, err := os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return err
+	}
+
+	if err := os.Link(tmpPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("storage: %s already exists: %w", path, os.ErrExist)
+		}
+		return err
+	}
+	return nil
 }
 
 // OpenFile returns a reader for a potentially encrypted file. Context-less
@@ -423,20 +561,44 @@ func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadClos
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-// atomicWrite writes data to a file atomically using a temp file
+// atomicWrite writes data to a file atomically using a temp file. The
+// staging file is created under a unique name (mirroring createExclusive
+// above) so that concurrent writers to the same destination — permitted by
+// WriteFile's shared lock — never share a staging file: each writer gets its
+// own temp file, so neither a spurious rename failure nor torn content from
+// two writers' bytes interleaving in one staging file can occur.
 func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	// Write to temp file
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, perm); err != nil {
+	// Staged in the destination directory (same filesystem, so the rename
+	// below is atomic) under a unique name so concurrent callers cannot
+	// collide on the staging file itself.
+	f, err := os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	// If the rename below succeeds this is a no-op (nothing left at
+	// tmpPath); if we return early on an error this cleans up the staging
+	// file so a failed write doesn't litter the data directory.
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
 		return err
 	}
 
-	// Atomic rename
+	// Rename, unlike Link, replaces an existing destination, which is what
+	// gives atomicWrite its rewrite semantics.
 	return os.Rename(tmpPath, path)
 }
 
@@ -578,4 +740,76 @@ func (w *ExclusiveWriter) MkdirAll(path string, perm os.FileMode) error {
 		return fmt.Errorf("storage: mkdir attempted after the exclusive hold was released")
 	}
 	return os.MkdirAll(path, perm)
+}
+
+// SharedTx holds the data directory shared for the length of one
+// read-modify-write, so a restore's exclusive hold cannot be granted partway
+// through it.
+//
+// The problem it solves: WriteFile takes the shared lock for the write alone.
+// A sidecar update reads a JSON file, edits the decoded value, and writes it
+// back, and only the last of those three steps was inside the lock. A restore
+// acquiring the exclusive hold in between replaces the file on disk, and then
+// the blocked writer wakes up and persists a value it derived from the
+// pre-restore contents — resurrecting decisions, pins, aliases, or major
+// expenses the restore had just rolled back, with the restore reporting
+// success.
+//
+// Its WriteFile bypasses the lock the transaction already holds, for the same
+// reason ExclusiveWriter's does: sync.RWMutex is not reentrant, so a second
+// RLock while a restore is queued for the write lock blocks forever. Nothing
+// inside a transaction may call the plain Storage write methods.
+//
+// ReadFile does not need that treatment — Storage's read path takes no data
+// lock at all — but is provided so a transaction reads and writes through one
+// handle rather than two, and so the read is unambiguously inside the hold.
+//
+// Scope rule, inherited from dataMu: a transaction may span storage calls and
+// pure computation on their contents, and must not span a call into another
+// service. Holding it across the settings manager would put a shared holder
+// behind the settings rewrite gate that a restore takes ahead of the exclusive
+// hold, which is the ABBA deadlock the gate ordering exists to prevent.
+type SharedTx struct {
+	s        *Storage
+	released bool
+}
+
+// BeginShared holds the data directory shared until Release, admitting other
+// shared holders but excluding a restore. Callers MUST Release, normally by
+// defer.
+//
+// Lock order where a caller takes more than one: the caller's own
+// serialization for these sequences (dataloader's writeMu) -> this. Never the
+// reverse, and nothing that holds the data lock in either mode may then wait
+// on that serialization.
+func (s *Storage) BeginShared() *SharedTx {
+	s.dataMu.RLock()
+	return &SharedTx{s: s}
+}
+
+// Release gives the shared hold back. Safe to call more than once so a
+// deferred Release cannot double-unlock a mutex after an explicit one.
+func (t *SharedTx) Release() {
+	if t == nil || t.released {
+		return
+	}
+	t.released = true
+	t.s.dataMu.RUnlock()
+}
+
+// ReadFile reads through the transaction. Same semantics as Storage.ReadFile.
+func (t *SharedTx) ReadFile(path string) ([]byte, error) {
+	if t.released {
+		return nil, fmt.Errorf("storage: read attempted after the shared hold was released")
+	}
+	return t.s.ReadFile(path)
+}
+
+// WriteFile writes through the transaction. Same semantics as
+// Storage.WriteFile, minus the locking it would deadlock on.
+func (t *SharedTx) WriteFile(path string, data []byte, perm os.FileMode) error {
+	if t.released {
+		return fmt.Errorf("storage: write attempted after the shared hold was released")
+	}
+	return t.s.writeFileLocked(path, data, perm)
 }

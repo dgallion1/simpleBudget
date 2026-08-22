@@ -9,6 +9,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/storage"
+	"budget2/internal/services/transfers"
 )
 
 // helper to create a temp dir with files and return a loader + cleanup func
@@ -118,40 +119,55 @@ func TestParseAmount_AllFormats(t *testing.T) {
 	}
 }
 
-func TestFilterInternalTransfers(t *testing.T) {
+func TestClassifyTransfers_TypesPatternHitsWithoutDropping(t *testing.T) {
 	_, loader, cleanup := setupTestDir(t, nil)
 	defer cleanup()
 
 	transactions := []models.Transaction{
-		{Description: "Grocery Store", Amount: -50.00},
-		{Description: "transfer to savings", Amount: -200.00},
-		{Description: "Paycheck", Amount: 3000.00},
+		{Description: "Grocery Store", Amount: -50.00, AccountID: "a", StableID: "a|1"},
+		{Description: "USAA funds transfer to savings", Amount: -200.00, AccountID: "a", StableID: "a|2"},
+		{Description: "Paycheck", Amount: 3000.00, AccountID: "a", StableID: "a|3"},
 	}
 
-	result := loader.filterInternalTransfers(transactions)
-	if len(result) > len(transactions) {
-		t.Error("filtered result should not be longer than input")
+	result := loader.classifyTransfers(transactions)
+	if len(result) != len(transactions) {
+		t.Fatalf("classification dropped rows: got %d, want %d", len(result), len(transactions))
 	}
-	// Verify FilteredTransferCount is set correctly
-	if loader.FilteredTransfers() != len(transactions)-len(result) {
-		t.Errorf("FilteredTransferCount = %d, expected %d", loader.FilteredTransfers(), len(transactions)-len(result))
+	if loader.FilteredTransfers() != 1 {
+		t.Fatalf("FilteredTransfers() = %d, want 1", loader.FilteredTransfers())
+	}
+	for _, txn := range result {
+		wantType := models.TransactionType("")
+		wantClass := ""
+		if txn.Description == "USAA funds transfer to savings" {
+			wantType, wantClass = models.Transfer, transfers.ClassExternal
+		}
+		if txn.TransactionType != wantType {
+			t.Errorf("%q: TransactionType = %q, want %q", txn.Description, txn.TransactionType, wantType)
+		}
+		if txn.TransferClass != wantClass {
+			t.Errorf("%q: TransferClass = %q, want %q", txn.Description, txn.TransferClass, wantClass)
+		}
 	}
 }
 
-func TestFilterInternalTransfers_NoTransfers(t *testing.T) {
+func TestClassifyTransfers_NoTransfers(t *testing.T) {
 	_, loader, cleanup := setupTestDir(t, nil)
 	defer cleanup()
 
 	transactions := []models.Transaction{
-		{Description: "Grocery Store", Amount: -50.00},
+		{Description: "Grocery Store", Amount: -50.00, AccountID: "a", StableID: "a|1"},
 	}
 
-	result := loader.filterInternalTransfers(transactions)
+	result := loader.classifyTransfers(transactions)
 	if len(result) != 1 {
-		t.Errorf("expected 1 transaction, got %d", len(result))
+		t.Fatalf("expected 1 transaction, got %d", len(result))
+	}
+	if result[0].TransactionType == models.Transfer {
+		t.Error("a plain grocery row must not be typed Transfer")
 	}
 	if loader.FilteredTransfers() != 0 {
-		t.Errorf("expected 0 filtered, got %d", loader.FilteredTransfers())
+		t.Errorf("FilteredTransfers() = %d, want 0", loader.FilteredTransfers())
 	}
 }
 
@@ -798,9 +814,10 @@ func TestParseDebitCredit_IndexOutOfBounds(t *testing.T) {
 	}
 }
 
-func TestFilterInternalTransfers_UserFlaggedMajorExpense(t *testing.T) {
+func TestClassifyTransfers_UserFlaggedMajorExpense(t *testing.T) {
 	// A user-declared major expense flagged as IsInternalTransfer should
-	// drop matching transactions just like the hardcoded patterns do.
+	// type matching transactions Transfer just like the hardcoded
+	// patterns do -- and, unlike the old filter, leave them in the ledger.
 	store := models.MajorExpenseStore{Expenses: []models.MajorExpense{
 		{
 			ID:                 "tx-1",
@@ -816,29 +833,38 @@ func TestFilterInternalTransfers_UserFlaggedMajorExpense(t *testing.T) {
 	defer cleanup()
 
 	transactions := []models.Transaction{
-		{Description: "Grocery Store", Amount: -50.00},
-		{Description: "MY CUSTOM BROKER ACH", Amount: -1000.00}, // should be dropped
-		{Description: "Paycheck", Amount: 3000.00},
+		{Description: "Grocery Store", Amount: -50.00, AccountID: "a", StableID: "a|1"},
+		{Description: "MY CUSTOM BROKER ACH", Amount: -1000.00, AccountID: "a", StableID: "a|2"},
+		{Description: "Paycheck", Amount: 3000.00, AccountID: "a", StableID: "a|3"},
 	}
-	result := loader.filterInternalTransfers(transactions)
-	if len(result) != 2 {
-		t.Fatalf("expected 2 surviving txns, got %d: %+v", len(result), result)
+	result := loader.classifyTransfers(transactions)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 surviving txns, got %d: %+v", len(result), result)
 	}
-	for _, txn := range result {
-		if txn.Description == "MY CUSTOM BROKER ACH" {
-			t.Error("flagged-major-expense transaction should have been filtered out")
+	var broker *models.Transaction
+	for i := range result {
+		if result[i].Description == "MY CUSTOM BROKER ACH" {
+			broker = &result[i]
 		}
 	}
+	if broker == nil {
+		t.Fatal("flagged-major-expense transaction must stay in the ledger")
+	}
+	if broker.TransactionType != models.Transfer || broker.TransferClass != transfers.ClassExternal {
+		t.Errorf("broker row: type/class = %q/%q, want %q/%q",
+			broker.TransactionType, broker.TransferClass, models.Transfer, transfers.ClassExternal)
+	}
 	if loader.FilteredTransfers() != 1 {
-		t.Errorf("FilteredTransferCount = %d, want 1", loader.FilteredTransfers())
+		t.Errorf("FilteredTransfers() = %d, want 1", loader.FilteredTransfers())
 	}
 }
 
-func TestFilterInternalTransfers_NonFlaggedMajorExpenseDoesNotFilter(t *testing.T) {
+func TestClassifyTransfers_NonFlaggedMajorExpenseIsNotATransfer(t *testing.T) {
 	// A regular major expense (IsInternalTransfer=false) must NOT cause
-	// matching transactions to be dropped — that would silently remove
-	// real spending. Bug guard: this is the contract that distinguishes
-	// the new flag from the existing major-expense matching system.
+	// matching transactions to be typed Transfer — that would silently
+	// remove real spending from every total. Bug guard: this is the
+	// contract that distinguishes the flag from ordinary major-expense
+	// matching.
 	store := models.MajorExpenseStore{Expenses: []models.MajorExpense{
 		{
 			ID:       "tx-2",
@@ -854,36 +880,47 @@ func TestFilterInternalTransfers_NonFlaggedMajorExpenseDoesNotFilter(t *testing.
 	defer cleanup()
 
 	transactions := []models.Transaction{
-		{Description: "WEGMANS GROCERY", Amount: -75.00},
+		{Description: "WEGMANS GROCERY", Amount: -75.00, AccountID: "a", StableID: "a|1"},
 	}
-	result := loader.filterInternalTransfers(transactions)
+	result := loader.classifyTransfers(transactions)
 	if len(result) != 1 {
-		t.Errorf("regular major-expense match must not be filtered; got %d surviving txns", len(result))
+		t.Fatalf("expected 1 surviving txn, got %d", len(result))
+	}
+	if result[0].TransactionType == models.Transfer {
+		t.Error("a regular major-expense match must not be typed Transfer")
 	}
 	if loader.FilteredTransfers() != 0 {
-		t.Errorf("FilteredTransferCount = %d, want 0", loader.FilteredTransfers())
+		t.Errorf("FilteredTransfers() = %d, want 0", loader.FilteredTransfers())
 	}
 }
 
-func TestFilterInternalTransfers_WithTransfers(t *testing.T) {
+func TestClassifyTransfers_CountsEveryClassifiedRow(t *testing.T) {
 	_, loader, cleanup := setupTestDir(t, nil)
 	defer cleanup()
 
-	// Use a known internal transfer pattern from the classifier
+	// Two known internal-transfer patterns plus two ordinary rows.
 	transactions := []models.Transaction{
-		{Description: "Grocery Store", Amount: -50.00},
-		{Description: "USAA funds transfer credit", Amount: -200.00},
-		{Description: "Internal Transfer to Savings", Amount: -500.00},
-		{Description: "Paycheck", Amount: 3000.00},
+		{Description: "Grocery Store", Amount: -50.00, AccountID: "a", StableID: "a|1"},
+		{Description: "USAA funds transfer credit", Amount: -200.00, AccountID: "a", StableID: "a|2"},
+		{Description: "Internal Transfer to Savings", Amount: -500.00, AccountID: "a", StableID: "a|3"},
+		{Description: "Paycheck", Amount: 3000.00, AccountID: "a", StableID: "a|4"},
 	}
 
-	result := loader.filterInternalTransfers(transactions)
-	if loader.FilteredTransfers() == 0 {
-		t.Error("expected some transfers to be filtered")
+	result := loader.classifyTransfers(transactions)
+	if len(result) != len(transactions) {
+		t.Fatalf("classification dropped rows: got %d, want %d", len(result), len(transactions))
 	}
-	if len(result)+loader.FilteredTransfers() != len(transactions) {
-		t.Errorf("filtered count mismatch: %d result + %d filtered != %d total",
-			len(result), loader.FilteredTransfers(), len(transactions))
+	classified := 0
+	for _, txn := range result {
+		if txn.TransactionType == models.Transfer {
+			classified++
+		}
+	}
+	if classified != 2 {
+		t.Fatalf("classified %d rows as Transfer, want 2", classified)
+	}
+	if loader.FilteredTransfers() != classified {
+		t.Errorf("FilteredTransfers() = %d, want %d", loader.FilteredTransfers(), classified)
 	}
 }
 

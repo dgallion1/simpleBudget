@@ -1,0 +1,72 @@
+VERDICT: UPHOLD
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: R5
+ATTEMPT: 2
+---
+Independently reproduced the agreed fact before ruling: on a scratch copy,
+swapping accounts.go:307's `asOf.Location()` for `time.Now().Location()`
+leaves `go test ./internal/services/mcpsvc/ledger/...` green under both
+TZ=America/New_York and TZ=Asia/Tokyo. Confirmed.
+
+The brief's "Attempt 2" section has two separate evidence obligations, and
+they must be read separately:
+
+1. "A test pinning the today/tomorrow edge that FAILS under a non-UTC TZ if
+   the boundary is wrong. Run it under at least two TZ values."
+2. "Mutation check per fix, on a scratch copy outside the repo."
+
+On (1): the text is genuinely ambiguous as to whether it covers the
+explicit-as_of path. Evidence-bullet 1 explicitly says "A default-path
+test"; bullet 2 drops that qualifier. Read against the surrounding
+narrative -- the numbered defect list states "Explicit as_of is unaffected
+[by the off-by-one bug]... which is exactly why the committed tests miss
+it" -- the more natural referent for bullet 2 is bug 3, which is
+default-path-only, and the delivered
+TestGetBalanceProjectionDefaultAsOfReferenceAmountStableAcrossTimezones
+satisfies that reading. I do not resolve this ambiguity against the worker:
+where the lead's text underspecifies which path a requirement binds, the
+run bears that cost, not the worker who satisfied a defensible reading.
+
+On (2), however, the text is NOT ambiguous. "Required fix" enumerates three
+things: the as_of-absent branch, the as_of-present branch, and,
+"Additionally, normalise as_of to a day boundary ... so the truncation
+boundary and BalanceAt's boundary agree." That normalisation is squarely
+one of the enumerated fixes, and it lives entirely on the explicit-as_of
+path (accounts.go:300-309) -- it is the one piece of Attempt-2-required
+code the "default path" reading of bullet 1 cannot cover. "Mutation check
+per fix" carries no path qualifier and no exception; on its plain text it
+binds this fix too.
+
+The worker's own code comment at accounts.go:303-306 states the
+normalisation "is a no-op in practice ... here so the boundary is correct
+by construction rather than by the parse format's coincidence" -- i.e., the
+worker knew the guarantee is currently unreachable-input-only and wrote the
+line specifically to be correct independent of that coincidence. A mutation
+check "per fix" for a line whose entire stated purpose is defense against a
+Location-source mistake has to test a Location-source mistake. checker-tests'
+own Criterion 4 mutation (removing the normalisation line entirely) only
+proves the fix is currently a no-op given reachable inputs -- it does not
+exercise the failure mode the fix exists to prevent, and is not equivalent
+to "mutation check per fix" in the sense the brief's other mutation
+checks use the phrase (Criterion 6's mutations each flip a real branch and
+show a committed test catches the resulting wrong output). checker-second's
+mutation is the direct analogue for this fix: it flips the Location source,
+which is exactly the bug pattern (a boundary built in the wrong Location,
+disagreeing with BalanceAt's boundary in a non-UTC TZ) that this entire
+attempt exists to close -- one call frame away from where attempt 1 was
+faulted for it. No committed test catches it, confirmed above.
+
+Because "mutation check per fix" is unambiguous text and is not satisfied
+for the normalisation fix regardless of how bullet 1's scope is read, the
+Evidence-required list as written is not fully met. checker-second's FAIL
+is correct on the standard as written; the ambiguity in bullet 1 does not
+rescue the shortfall in bullet 2, which has no comparable ambiguity.
+
+Ruling: UPHOLD. FAIL stands; the task returns to the worker. The
+outstanding gap is narrow and should be stated precisely in the next
+dispatch: add a committed test (any TZ-sensitive fixture where an explicit
+as_of's day boundary, if built in a non-UTC-derived Location, would
+include/exclude a different set of rows than BalanceAt's own boundary) that
+fails under the swapped-Location mutation reproduced here, run under at
+least two TZ values, alongside the existing default-path pin.

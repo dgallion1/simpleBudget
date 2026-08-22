@@ -1,0 +1,128 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R3
+ATTEMPT: 2
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/review-aug16. Mutation work done on
+an out-of-repo scratch copy at
+/tmp/claude-1000/-home-darrell-work-agents2/6b77f711-9b6d-4e6e-ae1b-78859d900ee1/scratchpad/R3mut
+(cp -a of the tree). Nothing in the repo was edited by this checker.
+
+1. detectRecurringForDashboard filters to Active(); dashboard and MCP agree — PASS
+   `git diff -- internal/handlers/dashboard/accounts_card.go` shows
+   accounts_card.go:251 now `return insights.DetectRecurringAt(ts.Active(), asOf)`
+   (was `insights.DetectRecurringAt(ts, asOf)`), with a comment naming the MCP twin.
+   MCP twin unchanged and already filtering: accounts.go:284
+   `ts := models.NewTransactionSet(txns).Active()` in recurringForProjection.
+   handlers.go:114 passes `data.Active().Transactions` for the balance argument.
+   Direct probe on the criterion-2 fixture (temporary probe test in the scratch copy,
+   since deleted):
+     FIXED (Active) recurring: 1 item, description="lucid" freq="monthly" amount=900.00 next=2026-06-01
+     RAW  (unfiltered)       : 1 item, description="lucid" freq="ongoing" amount=900.00 next=2026-05-25
+   i.e. the unfiltered input really does reclassify monthly -> ongoing, and the fix
+   removes that. Agreement of the two production paths is pinned end-to-end by
+   TestDashboardAndMCPProjectionAgree (criterion 3).
+   Observation (not a criterion breach): the MCP path calls insights.DetectRecurring
+   (recurring.go:197 -> DetectRecurringAt(ts, time.Time{})) while the dashboard calls
+   DetectRecurringAt(ts, asOf). The asOf argument still differs; agreement is pinned
+   at fixture level by the parity test, not structurally.
+
+2. TestAccountsCard_ProjectionIgnoresSuppressedRecurringLeg, non-vacuous, asserts
+   crossing + minimum + top-up — PASS
+   internal/handlers/dashboard/accounts_card_test.go:570. Fixture (lines 592-599):
+   six Lucid outflows Jan-May 2026 at -900, of which 2026-03-02 has Suppressed=true —
+   five active occurrences, well past the 3-occurrence detection minimum. Detection
+   genuinely fires: the probe above returns exactly 1 monthly $900 item for the
+   Active() input (contrast attempt 1's two-row fixture, which yields an empty
+   recurring slice). Assertions at lines 617/622/625/628: Crossing == 2026-06-01,
+   Minimum == 1500.00, SuggestedTopUp == 500.00, ProjectionState == projectionCrossing.
+   Runs and passes clean: `go test ./internal/handlers/dashboard/ -run
+   TestAccountsCard_ProjectionIgnoresSuppressedRecurringLeg -v -count=1` ->
+   `--- PASS`. No t.Skip anywhere in the new tests (grep -n "t.Skip" over all three
+   new/changed test files returned nothing).
+
+3. TestDashboardAndMCPProjectionAgree drives both real paths — PASS
+   internal/services/mcpsvc/ledger/dashboard_parity_test.go:98. Two genuinely
+   different code paths against one store:
+     - MCP: connect(t, deps) (register_test.go:62 -> mcp.NewServer + Register(srv, deps)
+       + in-memory transport) then call(t, cs, "get_balance_projection", ...) and
+       call(t, cs, "get_accounts", ...) — real tool invocation over a client session.
+     - Dashboard: dashboard.Initialize(loader, rend, nil, dashStore) + chi router +
+       dashboard.RegisterRoutes(r) + r.ServeHTTP on GET /dashboard (lines 162-168) —
+       the real HTTP handler, asserting rendered text.
+   Same fixture dir and the same *dataloader.DataLoader instance feed both (dir/loader
+   from newDepsCapturingLoader, line 99). asOf is the same on both sides: MCP is passed
+   2026-05-02 explicitly; the dashboard derives asOf = data.MaxDate() (handlers.go:110),
+   which is the 2026-05-02 check row — deterministic, not time.Now().
+   Both sides pinned to the same numbers: MCP crossing 2026-06-01 / minimum 50.00 /
+   top-up 500.00 (lines 142-150); dashboard "Drops below $500 around Jun 1, 2026" and
+   "Suggested top-up: $500." (lines 180-185). Not two calls into one code path.
+
+4. DECISIVE mutation, reproduced independently — PASS
+   Scratch copy, `sed -i 's/insights.DetectRecurringAt(ts.Active(), asOf)/insights.DetectRecurringAt(ts, asOf)/'`
+   on accounts_card.go (grep confirms line 251 reverted). `go build ./...` succeeds —
+   so what follows is behavioural failure, not a compile error.
+   `go test ./... ` on the mutant tree: exactly two failures across the WHOLE tree —
+     --- FAIL: TestAccountsCard_ProjectionIgnoresSuppressedRecurringLeg
+     --- FAIL: TestDashboardAndMCPProjectionAgree
+   Failure reasons are the right ones:
+     accounts_card_test.go:618 Crossing = 0001-01-01 (none), want 2026-06-01
+     accounts_card_test.go:623 Minimum = 2400.00, want 1500.00
+     accounts_card_test.go:626 SuggestedTopUp = 0.00, want 500.00
+     accounts_card_test.go:629 ProjectionState = "no-crossing", want "crossing"
+     dashboard_parity_test.go:181 dashboard crossing disagrees with MCP; the rendered
+       body under mutation contains "Drops below $500 around May 31, 2026" (MCP side
+       still Jun 1) — exactly the divergence the amendment describes.
+   Every other test in dashboard, mcpsvc/ledger and explorer PASSED under this mutation
+   (`go test -v ... | grep "^--- FAIL"` lists only those two), so the two new tests are
+   the sole coverage for the recurring-input defect.
+
+5. Attempt-1 criteria still hold — PASS
+   Clean tree: TestAccountsCard_SuppressedDuplicateCountedOnce (accounts_card_test.go:413,
+   balance $619.57 rendered once, no "low-balance threshold" text),
+   TestGetAccountsCountsSuppressedDuplicateOnce (accounts_test.go, balance 1300 not 400,
+   low_balance false), TestGetBalanceProjectionCountsSuppressedDuplicateOnce (minimum
+   1300, no crossing, top-up 0), TestExplorerListsBothSidesOfAResolvedDuplicate
+   (explorer/duplicate_suppression_test.go:17, both "Lucid" and "Check #55501" present) —
+   all `--- PASS` with -count=1.
+   Second mutation (scratch, accounts_card.go restored): reverted handlers.go:114 to
+   `data.Transactions` and both mcpsvc `txns = ts.Active().Transactions` back to
+   `ts.Transactions`. Failures: TestAccountsCard_SuppressedDuplicateCountedOnce,
+   TestGetAccountsCountsSuppressedDuplicateOnce,
+   TestGetBalanceProjectionCountsSuppressedDuplicateOnce, TestDashboardAndMCPProjectionAgree.
+   So those tests are load-bearing, not decorative.
+   Third mutation: inserted `data = data.Active()` into explorer handleExplorer ->
+   `--- FAIL: TestExplorerListsBothSidesOfAResolvedDuplicate` at
+   duplicate_suppression_test.go:61 ("must still list the suppressed side"). The explorer
+   test is therefore non-vacuous — the suppression really takes effect in that fixture.
+   All new tests are left in the working tree (listed in .swarm/manifests/R3.2.files),
+   not throwaways; attempt 1's deletion problem does not recur.
+
+6. Protected code untouched — PASS
+   `git status --short internal/services/accounts/balance.go internal/services/accounts/projection.go internal/models/transaction.go`
+   prints nothing: BalanceAt (balance.go:46), Freshness (balance.go:79), Project
+   (projection.go:89) and Active() (models/transaction.go:465) are unmodified.
+   internal/services/accounts/accounts.go IS modified (+81/-0) but the added symbols are
+   Mutate/loadTx/saveTx — R1's account-store transaction work, not in R3.2's manifest.
+   internal/handlers/explorer/handlers.go diff is CreateExclusive/import-race (R2);
+   internal/services/mcpsvc/ledger/resolve.go diff is the deps.load() call before
+   SuspectedTransfers (R7). Neither is R3 content; R3's only explorer file is the new
+   duplicate_suppression_test.go.
+
+7. Build / vet / race / gofmt — PASS
+   `go build ./...` exit 0; `go vet ./...` exit 0.
+   `go test -race ./...` exit 0 — every package ok, including
+   budget2/internal/handlers/dashboard 7.845s, budget2/internal/services/mcpsvc/ledger
+   2.287s, budget2/internal/handlers/explorer 8.076s.
+   `gofmt -l` over all seven R3.2 manifest files printed nothing.
+
+Scope: the seven files in .swarm/manifests/R3.2.files account for every R3-attributable
+change. Source diff is 3 lines total (accounts_card.go:251, handlers.go:114 and the two
+mcpsvc lines from attempt 1); test files are pure additions (accounts_card_test.go
++299/-0, accounts_test.go +155/-0, plus two new files), so no existing dashboard or
+mcpsvc test was altered or deleted. No path in .swarm/critical.globs was touched by R3
+(internal/services/accounts/accounts.go is in the globs and is modified, but by R1, which
+carries it in its own manifest). Note: dashboard_parity_test.go introduces a new test-only
+import from package ledger to budget2/internal/handlers/dashboard; it builds and vets
+clean, but it is a new coupling direction worth the lead's awareness.

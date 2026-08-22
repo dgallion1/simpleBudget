@@ -1,0 +1,4 @@
+web/templates/pages/filemanager.html
+internal/handlers/explorer/handlers.go
+internal/handlers/explorer/handlers_test.go
+web/templates/pages/explorer.html

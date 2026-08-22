@@ -1,0 +1,400 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: A1
+ATTEMPT: 4
+---
+EVIDENCE:
+
+Read in full: .swarm/briefs/A1.md (incl. the pinned API), .swarm/tier3/A1/report.md
+(adjudication + RESOLUTION), .swarm/manifests/A1.1/A1.3/A1.4.files, .swarm/ledger.tsv,
+and the working-tree files internal/services/mcpsvc/admin/resolve.go,
+resolve_test.go, register.go, internal/services/dataloader/duplicate_decisions.go,
+stable_id.go, loader.go, internal/models/transaction.go. I also read
+.swarm/verdicts/A1.3.checker-tests.verdict -- my own predecessor's -- and used its
+cited line numbers as scope anchors (item 1b). I did not read
+A1.3.checker-second.verdict and defer to no other checker's conclusion.
+
+Scratch copies live OUTSIDE the repo under
+/tmp/claude-1000/-home-darrell-work-agents2/e77cc9b5-a7ea-4593-a19e-1669b194a03a/scratchpad/
+(b2a4-probe, b2a4-nofix, b2a4-readfail). No repository source was edited.
+
+=====================================================================
+SUMMARY: attempt 4 is CORRECT and narrowly scoped. The reported
+suppressed_hash is now the value on disk -- I proved it with my own probe
+that parses duplicate_decisions.json with encoding/json into a locally
+declared struct, touching no dataloader code, and I proved the same probe
+MISMATCHES when the re-read is reverted. Both claims in the corrected
+schema string are true of the code. Nothing outside resolve.go /
+resolve_test.go changed relative to attempt 3.
+=====================================================================
+
+1. SCOPE -- PASS (checked first, since attempt 4 was authorized for one field)
+
+1a. Whole-tree delta. `git status --porcelain` in /home/darrell/bin/ai/budget2:
+
+    M .swarm/ledger.tsv
+    M internal/services/dataloader/loader.go
+    M internal/services/dataloader/stable_id.go
+    M internal/services/dataloader/stable_id_test.go
+    M internal/services/mcpsvc/admin/resolve.go
+    M internal/services/mcpsvc/admin/resolve_test.go
+    ?? .swarm/manifests/A1.3.files
+    ?? .swarm/manifests/A1.4.files
+    ?? .swarm/verdicts/A1.3.checker-second.verdict
+    ?? .swarm/verdicts/A1.3.checker-tests.verdict
+
+Attempt 3 modified exactly four source files (loader.go, stable_id.go,
+stable_id_test.go, resolve.go). Attempt 4's set is those four plus
+resolve_test.go. No file that carries the sidecar resolution appears at all:
+transaction_pins.go, duplicate_decisions.go, amazon_enrichment.go,
+near_duplicates.go, major_expense_names.go, models/transaction.go,
+insights/trends.go, majorexpenses/engine.go and
+handlers/majorexpenses/coverage_test.go are all still exactly as committed in
+6435ed5. `git diff --stat -- internal/services/mcpsvc/admin/register.go` is
+empty, so DecisionStore was NOT widened -- LoadDuplicateDecisions was already
+on the interface (register.go:67-71).
+
+1b. loader.go's role-swap fix is byte-for-byte the already-verified one.
+`git diff` on loader.go is a single hunk: five comment lines plus
+`if pair.Left.Hash == decision.SuppressedHash {` ->
+`if identityMatchesSuppressed(pair.Left, decision.SuppressedHash) {`, and
+`grep -n identityMatchesSuppressed` puts it at loader.go:1080 -- the exact line
+the attempt-3 verdict reverted in its scratch copy. stable_id.go's diff is the
++18/-0 helper, and the helper's `func` line is at stable_id.go:41, matching the
+attempt-3 citation of "stable_id.go:41-49". Its body is unchanged:
+
+    func identityMatchesSuppressed(t models.Transaction, key string) bool {
+        if key == "" { return false }
+        if t.StableID != "" && key == t.StableID { return true }
+        return key == t.Hash
+    }
+
+1c. stable_id_test.go is unchanged. I did not have an attempt-3 snapshot, so I
+used eleven independent line-number anchors the attempt-3 verdict cited and
+checked each still lands on the same construct:
+
+    19  -> `for _, txn := range txns {`                (byDescription loop)
+    68  -> `for desc, wantID := range want {`
+    246 -> func TestSetTransactionPin_RekeysResolvedEntriesAndKeepsOrphans
+    362 -> func TestApplyDuplicateDetection_LegacyPairKeyStillResolves
+    432 -> func TestDeduplicateTransactions_IgnoresStableID
+    534 -> `t.Fatalf("LoadData: %v", err)`
+    552 -> `if pair.Left.Hash != billPay.Hash {`
+    565 -> `}); err != nil {`                          (SaveDuplicateDecision)
+    586 -> `t.Errorf("resolved Left = %q (%q), want the KEPT check %q",`
+    590 -> `t.Errorf("resolved Right = %q (%q), want the SUPPRESSED bill pay %q",`
+
+All eleven match. A single inserted or deleted line anywhere above 586 would
+have shifted the tail; none did.
+
+1d. resolve.go's own delta is +33/-2, two hunks only: the jsonschema string on
+resolveOutput.SuppressedHash (line 26) and the post-save re-read block
+(lines 159-188) plus `SuppressedHash: reportedSuppressed`. resolveInput's
+SuppressedHash description (line 20) is untouched and still correctly says
+"the hash of the side to EXCLUDE, from list_duplicates" -- the input really is
+a legacy hash. resolve_test.go's delta is +74/-0: one added import
+("encoding/json") and one appended test. Nothing was deleted or weakened.
+
+1e. Manifest fidelity. A1.4.files (21 lines) minus A1.3.files (19 lines) is
+exactly two entries:
+
+    internal/services/mcpsvc/admin/resolve_test.go
+    .swarm/manifests/A1.4.files
+
+and A1.3.files minus A1.4.files is empty. A1.3.files was itself the 17 paths of
+`git show --stat --name-only --format='' 6435ed5` plus A1.3.files plus
+resolve.go. The only working-tree paths absent from the manifest are the two
+A1.3 verdict files, which are .swarm bookkeeping the brief excludes.
+
+2. TOOLCHAIN -- PASS
+
+All from /home/darrell/bin/ai/budget2. Test output taken through `rtk proxy`
+so it is unfiltered; `set -o pipefail` used before every pipe.
+
+    $ go build ./...        -> BUILD_EXIT=0
+    $ go vet ./...          -> VET_EXIT=0
+    $ staticcheck ./...     -> no output, SC_EXIT=0
+    $ set -o pipefail; rtk proxy go test -count=1 ./...
+      45 packages report "ok", zero FAIL, plus `?  budget2/web  [no test files]`,
+      TEST_EXIT=0. Tail includes:
+        ok  budget2/internal/services/dataloader        0.978s
+        ok  budget2/internal/services/mcpsvc/admin      4.061s
+        ok  budget2/internal/models                     0.007s
+    $ gofmt -l $(grep '\.go$' .swarm/manifests/A1.4.files)
+      no output, GOFMT_EXIT=0
+
+3. ORACLE -- PASS
+
+    $ bash .swarm/tier3/A1/accept.sh
+    CHECK 1 build: PASS
+    CHECK 2 vet: PASS
+    CHECK 3 existing-tests: PASS
+    CHECK 4 probe-compiles: PASS
+    CHECK 5 stable-id-format: PASS
+    CHECK 6 occurrence-index-separates-collisions: PASS
+    CHECK 7 unassigned-uses-file-prefix: PASS
+    CHECK 8 stable-id-uses-post-flip-amount: PASS
+    CHECK 9 legacy-pin-still-resolves: PASS
+    CHECK 10 pin-rewrites-to-stable-id: PASS
+    SUMMARY: 10 passed, 0 failed
+    ORACLE_EXIT=0
+
+No residue: `find . -name '*zz_probe*' -not -path './.git/*'` returns nothing.
+
+4. THE REPORTED VALUE IS GENUINELY THE PERSISTED ONE -- PASS
+   (verified against the file's bytes, parsed independently of the loader)
+
+I did not rely on the worker's test. I wrote my own,
+zzchecker_probe_test.go, in the scratch copy b2a4-probe only. It drives the
+real MCP tool through the existing newLiveDeps/connect harness, then reads
+duplicate_decisions.json with os.ReadFile and unmarshals it into a struct
+declared inside the test function -- no dataloader type, no LoadDuplicateDecisions,
+no dataloader package reference of any kind in the parsing path.
+
+Against the real attempt-4 code:
+
+    PROBE posted pair_key          = "ebf6c2daa009e909"
+    PROBE posted kept_hash         = "e39db59e2dd7770f"
+    PROBE posted suppressed_hash   = "9f58fcc457d8ab90"
+    PROBE reported suppressed_hash = "file:checking.csv|2024-02-06|-25000|0"
+    PROBE duplicate_decisions.json bytes:
+    {
+      "decisions": {
+        "ebf6c2daa009e909": {
+          "kept_hash": "file:checking.csv|2024-02-03|-25000|0",
+          "suppressed_hash": "file:checking.csv|2024-02-06|-25000|0",
+          "outcome": "kept_winner",
+          "decided_at": "2026-08-17T19:21:27.726275329Z"
+        }
+      }
+    }
+    PROBE persisted suppressed_hash = "file:checking.csv|2024-02-06|-25000|0"
+    PROBE MATCH: reported == persisted == "file:checking.csv|2024-02-06|-25000|0"
+
+(The only assertion that fired in my probe was my own over-strict
+`out.Note == ""` check: the note present is the pre-existing, unrelated
+"no .bak was taken: duplicate_decisions.json did not exist yet..." from
+ensureDecisionsSnapshot on a fresh install. That is my probe's bug, not the
+code's -- see item 6 for the notes that DO matter.)
+
+This is the same fixture, same pair key and same posted hash "9f58fcc457d8ab90"
+that the attempt-3 verdict's probe recorded as MISMATCH. The defect is
+resolved at exactly the point it was found.
+
+I also confirmed the map KEY question that the re-read depends on. The posted
+pair_key survives to disk unchanged ("ebf6c2daa009e909" above), so
+`stored[key]` hits. That is not luck: pair.Key is built from
+`pairKey(identityKey(left), identityKey(right))` (near_duplicates.go:122) and
+identityKey returns StableID for a loaded row, so after resolve.go's
+`deps.load()` the key is ALREADY the StableID-derived pair key;
+writeDecisionsLocked's `rekeyToStable(decisions, dl.stablePairKeyIndex())`
+(duplicate_decisions.go:155) indexes legacy pair keys only, so it cannot move
+it, and SaveDuplicateDecision deletes the legacy aliases first
+(duplicate_decisions.go:113-115).
+
+5. THE NEW TEST GENUINELY FAILS AGAINST THE OLD BEHAVIOR -- PASS
+
+Scratch copy b2a4-nofix: resolve.go reverted to the attempt-3 form -- the
+31-line re-read block deleted and `SuppressedHash: reportedSuppressed` put back
+to `SuppressedHash: decision.SuppressedHash`. Nothing else touched (verified by
+`diff -u` against the real file: one hunk, -31/+1).
+
+    $ go test ./internal/services/mcpsvc/admin/ \
+        -run TestResolveDuplicatesReportsThePersistedSuppressedHash -v
+    === RUN   TestResolveDuplicatesReportsThePersistedSuppressedHash
+        resolve_test.go:385: suppressed_hash = "9f58fcc457d8ab90" equals the
+            posted legacy hash; the SaveDuplicateDecision rekey to StableID did
+            not fire (index empty?) or the re-read was skipped
+    --- FAIL: TestResolveDuplicatesReportsThePersistedSuppressedHash
+    FAIL    budget2/internal/services/mcpsvc/admin  0.007s
+
+That guard Fatals before the file comparison, so I ran MY probe in the same
+reverted copy to prove the discriminating assertion -- reported vs the bytes on
+disk -- also fails, rather than only the heuristic:
+
+    PROBE reported suppressed_hash = "9f58fcc457d8ab90"
+    PROBE persisted suppressed_hash = "file:checking.csv|2024-02-06|-25000|0"
+    MISMATCH: reported "9f58fcc457d8ab90",
+              persisted "file:checking.csv|2024-02-06|-25000|0"
+
+Same fixture, same posted values, opposite outcome. The test is not one that
+passes either way.
+
+The test also drives the PUBLIC write path (mcp CallTool "resolve_duplicates"
+via connect(), not the store directly) and the LoadData-before-save ordering is
+supplied by the tool itself: resolve.go:115 `deps.load()` runs before
+SaveDuplicateDecision at :155, which is what populates the StableID index
+canonicalKey needs. Without it canonicalKey is a no-op, posted would equal
+persisted, and the test's :385 guard would fire -- exactly the trap the test's
+own comment names.
+
+6. THE RE-READ FAILURE PATH -- PASS (does not fail a successful save, does not
+   silently claim an unverified value)
+
+Scratch copy b2a4-readfail, my own zzchecker_readfail_test.go: a DecisionStore
+wrapper that delegates SaveDuplicateDecision to the real loader but makes the
+POST-SAVE LoadDuplicateDecisions either return an error or return a map without
+the key. Both branches exercised:
+
+    [error]   res.IsError = false
+    [error]   reported suppressed_hash = "9f58fcc457d8ab90"   (the posted value)
+    [error]   note = "no .bak was taken: ...; suppressed_hash is the posted
+              value, not the persisted one: the post-save re-read failed:
+              synthetic re-read failure"
+    [error]   on-disk decision still present:
+              map[... suppressed_hash:file:checking.csv|2024-02-06|-25000|0
+              outcome:kept_winner]
+
+    [missing] res.IsError = false
+    [missing] reported suppressed_hash = "9f58fcc457d8ab90"
+    [missing] note = "no .bak was taken: ...; suppressed_hash is the posted
+              value, not the persisted one: the saved decision was not found
+              under the posted pair_key on re-read"
+    [missing] on-disk decision still present: (same)
+    --- PASS: TestZZCheckerProbe_ReReadErrorDoesNotFailTheTool
+    --- PASS: TestZZCheckerProbe_ReReadMissingKeyDoesNotFailTheTool
+
+So: the tool still returns success (resolve.go:211 `return nil, out, nil`; the
+branches only append to `note`), the write is still on disk, the value reported
+is labelled as the posted one, and the pre-existing snapshot note is preserved
+and appended to rather than clobbered (resolve.go:169-173, 183-187). Nothing is
+claimed that was not verified.
+
+7. THE SCHEMA WORDING IS NOW TRUE OF THE CODE -- PASS
+
+resolve.go:26 now reads:
+
+  "for kept_winner, the stored identity of the suppressed side as it is
+   persisted in duplicate_decisions.json; SaveDuplicateDecision rekeys the
+   posted hash to the row's StableID, so this may be a StableID rather than
+   the legacy content hash list_duplicates reports"
+
+Judged against behavior, not against the previous wording:
+
+ - "as it is persisted in duplicate_decisions.json" -- TRUE. Item 4 is the
+   proof: reported == the bytes in the file, parsed independently.
+ - "this may be a StableID rather than the legacy content hash list_duplicates
+   reports" -- TRUE, and now actually reachable. The observed value
+   "file:checking.csv|2024-02-06|-25000|0" IS a StableID, while
+   list_duplicates emits t.Hash (admin/duplicates.go). The attempt-3 verdict's
+   objection (b) was that the input validation at resolve.go:139-145 forbids a
+   StableID from ever appearing -- that objection applied to a value ECHOED
+   from the input. It no longer applies: the value now comes from the store,
+   not from `in.SuppressedHash`, so the validation constrains only what may be
+   POSTED and nothing about what may be reported.
+ - "for kept_winner" -- TRUE. kept_both persists SuppressedHash "" and the
+   re-read returns "", so the field stays empty and omitempty drops it.
+   TestResolveDuplicatesWritesKeptBoth (resolve_test.go:127-129, asserting it
+   is empty) and TestUndoResolveOfKeptBothOnlyRequeuesNothingWasEverSuppressed
+   both still PASS.
+
+8. RE-RAN THE SWEEP MYSELF (item 4 of the brief) -- PASS
+
+I did not take the report's or my predecessor's list on trust.
+
+`git grep -nE '\[[A-Za-z_][A-Za-z0-9_.]*\.Hash\]' -- '*.go'` minus tests -> 23
+hits. The three sites the Tier-3 adjudication says wt-glm broke are all fixed:
+
+    internal/services/insights/trends.go:37
+        if id, _, ok := models.ResolveByIdentity(pins, t); ok {
+    internal/services/majorexpenses/engine.go:79
+        if id, _, ok := models.ResolveByIdentity(opts.Pins, t); ok && validIDs[id] {
+    internal/services/majorexpenses/engine.go:128   (AnnotateRecurringPayments)
+        if id, _, ok := models.ResolveByIdentity(pins, first); ok && validIDs[id] {
+
+and the three sidecar stores likewise (transaction_pins.go:96,
+amazon_enrichment.go:85, major_expense_names.go:61). Every remaining hit is a
+map built in-memory from the loaded rows in the same function or package and
+never read back from a sidecar: explorer/handlers.go:81,
+majorexpenses/handlers.go:377-378 and :430, engine.go:83 and :253,
+curate/expenses.go:93, curate/pins.go:75/91, curate/register.go:129/135/230,
+amazon/matcher.go:164, anomalies.go:193-194, loader.go:747-748 (dedup, correctly
+Hash-only), loader.go:1035/1058/1061 (idxByIdentity, which indexes BOTH forms --
+loader.go:1030-1039), stable_id.go:78-79 (index builder), and
+models/transaction.go:131 (the fallback inside ResolveByIdentity itself).
+
+Equality shape, `git grep -nE '\.Hash\s*[=!]=|[=!]=\s*[A-Za-z_][A-Za-z0-9_.]*\.Hash'`
+minus tests -> 9 hits: seven `t.Hash != ""` emptiness guards, plus
+stable_id.go:48 (the helper, correct) and resolve.go:140 (validates MCP INPUT
+against a freshly detected UNRESOLVED pair, which by definition carries no
+stored decision, so no rekeyed value reaches it). I found no site missed, in
+either shape, and none introduced by attempt 4.
+
+9. LEGACY FALLBACK, REKEY-ON-SAVE, DEDUP -- PASS (re-proved by execution)
+
+Although models/transaction.go is untouched, I re-ran the destructive proof
+rather than inheriting it. In b2a4-nofix I deleted the
+`if t.Hash != "" { if v, ok := m[t.Hash]; ok { return v, t.Hash, true } }`
+block from models.ResolveByIdentity (transaction.go:130-134) and changed
+nothing else:
+
+    --- FAIL: TestResolveByIdentity                        (internal/models)
+    --- FAIL: TestPinFor_LegacyHashSidecarStillResolves    (dataloader)
+    --- FAIL: TestApplyAmazonEnrichment_LegacyHashSidecarStillResolves
+    --- FAIL: TestApplyAmazonEnrichment_StampsField
+    --- FAIL: TestApplyMajorExpenseNames_PinOverridesMatching
+    --- FAIL: TestAnalyzeMajorExpenseTrends_PinOverridesKeyword   (insights)
+    --- FAIL: TestMatch_PinOverridesKeywordMatch             (majorexpenses)
+    --- FAIL: TestMatch_PinSuppressesAnomalyFlag
+    --- FAIL: TestAnnotateRecurringPayments_PinWins
+    --- FAIL: TestListMajorExpensesCountsPinsAndHonorsTheWindow  (curate)
+
+Ten named tests across five packages, including all three formerly-broken
+consumer sites -- positive proof they route through ResolveByIdentity rather
+than indexing by Hash. Rekey-on-save with orphan preservation is unchanged
+(rekeyToStable, stable_id.go:161-179, explicitly leaves an unresolvable legacy
+key alone; writeDecisionsLocked `continue`s when neither side resolves,
+duplicate_decisions.go:160-162) and is covered by
+TestSetTransactionPin_RekeysResolvedEntriesAndKeepsOrphans plus oracle CHECK 10.
+Dedup is untouched: loader.go's only diff hunk is at 1074-1080, nowhere near
+deduplicateTransactions at 742-760, which still keys solely on seen[t.Hash];
+TestDeduplicateTransactions_IgnoresStableID (stable_id_test.go:432) asserts both
+directions and passes.
+
+10. SCOPE OF FEATURE, AND RULING 2026-08-16e -- PASS
+
+No transfer classification, no balance logic, no template or UI change, no new
+MCP tool -- attempt 4 adds no tool and no interface method, only a re-read of a
+method already on DecisionStore. The pre-existing coverage_test.go change is
+not part of attempt 4 at all (that file is unmodified in the working tree).
+Loop assertions: the new test
+TestResolveDuplicatesReportsThePersistedSuppressedHash contains no loop
+(`grep 'for \|range '` over its body returns nothing but a t.Fatal string), and
+it asserts `len(doc.Decisions) == 0 -> Fatalf` before indexing the map, so it
+cannot pass vacuously on an empty file.
+
+=====================================================================
+OBSERVATIONS -- neither blocks acceptance; recorded for the lead
+=====================================================================
+
+O1. The comment at resolve.go:177-182 is muddled and should not be read as a
+    statement of fact: "SaveDuplicateDecision does not rekey the map KEY on its
+    own (that pass lives in writeDecisionsLocked, which SaveDuplicateDecision
+    also calls)" -- the parenthetical concedes what the main clause denies, and
+    writeDecisionsLocked DOES rekey map keys (duplicate_decisions.go:155). The
+    CONCLUSION it draws is nonetheless correct, and I verified it two ways
+    (item 4): the posted pair_key is already a StableID-derived key by the time
+    it is used, so rekeyToStable cannot move it, and the probe shows the entry
+    persisted under the posted key. Comment wording only.
+
+O2. In the two fallback branches the field carries the posted value while the
+    schema description says "as it is persisted". The `note` in the same output
+    object states this explicitly and in plain words, and this fallback is the
+    behavior the authorization for attempt 4 specifies, so I do not treat the
+    description as false. If the lead wants belt-and-braces, the description
+    could add "unless note says otherwise".
+
+O3. Still open from attempt 3, unchanged and outside this scope:
+    internal/services/mcpsvc/admin/undo.go:57 pre-checks `decisions[key]`
+    without consulting dl.legacyPairKeysFor(key), so undo_resolve can report
+    "has no decision recorded" for a pre-StableID decision that
+    ClearDuplicateDecision would in fact have cleared. It fails loudly rather
+    than silently and predates attempt 3.
+
+FINAL STATE: no repository source was edited by me. `git status --porcelain`
+at the end is identical to the start apart from this verdict file. All scratch
+work (b2a4-probe, b2a4-nofix, b2a4-readfail, including every test file I wrote)
+is under
+/tmp/claude-1000/-home-darrell-work-agents2/e77cc9b5-a7ea-4593-a19e-1669b194a03a/scratchpad/
+and nothing named zz_probe or zzchecker exists inside the repo.

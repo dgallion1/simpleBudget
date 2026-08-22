@@ -1,0 +1,131 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: S5
+ATTEMPT: 8
+---
+Scope: .swarm/manifests/S5.8.files. Did NOT run .swarm/tier3/S5/accept.sh
+(checker-tests owns the oracle this round). All mutation testing done in a
+scratch copy at /tmp/.../scratchpad/budget2-copy; the real repo tree is
+untouched (git status in the repo matches pre-attack state, verified after).
+
+1. Is the -count=1 rerun load-bearing (not `-`, `|| true`, `-k`, sub-make,
+   masking)?
+   Read Makefile source directly: `test`, `test-unit`, `test-coverage`,
+   `race` each carry the accounts rerun as a plain, unprefixed recipe line
+   (no `-`, no trailing `|| true`, no `.IGNORE`, no `.ONESHELL`, no MAKEFLAGS
+   override in the file). `make -n test|test-unit|test-coverage|race` prints
+   the literal `go test -count=1 ./internal/handlers/accounts` line.
+   Reproduced the exact PATH-frozen node-deletion scenario end to end in the
+   scratch copy, in a single persistent shell (env resets between separate
+   Bash tool calls, which matters for a PATH-keyed cache test): built a
+   fixed PATH dir standing in for /usr/bin, ran `go test` with node present
+   to warm the cache (real PASS, not -count=1), deleted the node symlink
+   from that dir without touching PATH, then:
+     - plain `go test ./internal/handlers/accounts/...` (no -count=1)
+       replayed `ok ... (cached)` — the hole is real and reproduced.
+     - `make test` (real invocation, not -n): exit 2, second recipe line
+       fails with "node not found on PATH", `make: *** [Makefile:187: test]
+       Error 1`.
+     - `make test-unit`: exit 2, same failure.
+     - `make race`: exit 2, same failure (~3 min build, ran to completion).
+     - `make test-coverage`: exit 2, same failure, after all other packages
+       report real `ok` results (cache for the rest of the suite intact).
+   Converse checked: in `make test`'s recipe the FIRST `go test ./...`
+   passed (cached) and did NOT mask the second line's genuine failure; make
+   aborted the recipe on the second line's non-zero exit as expected. No
+   masking either direction.
+   `make -n check` shows `check`'s `test` prerequisite pulls in the same
+   rerun line, so README's claim that `make check` also closes the hole
+   holds.
+
+   Oracle-design note (asked for explicitly): `make -n`, by itself, is not
+   proof of enforcement in general — a `-`-prefixed recipe line, a trailing
+   `|| true`, or a false `ifeq` branch would all still satisfy a
+   text-pattern check against `-n` output while not enforcing anything. The
+   accept.sh 3b check is therefore a weak proxy in isolation. It happens to
+   be correct here only because I independently confirmed, by actually
+   executing (not dry-running) all four targets under the adversarial
+   scenario, that the recipe lines are real, unguarded, unswallowed
+   commands. This is a property of the current Makefile text, not something
+   the oracle itself proves — worth the record's note that a future edit
+   adding `-` or `|| true` to that line would still pass 3b's `make -n`
+   check.
+
+2. Reproduced scenario, every `make` path: `test`, `test-unit`,
+   `test-coverage`, `race`, and (transitively via prerequisite) `check`,
+   `check-full` all fail correctly under the adversarial condition, per
+   above. Did not find a `make` path that still passes: `test-integration`
+   and `fuzz` don't run this package at all (untouched, correctly out of
+   scope — the file's own comment says so and the oracle's per-file grep
+   list matches).
+
+3. Cost claim: measured in the real repo (node present, warm cache):
+   `go test ./...` full suite ≈0.33s; `go test -count=1
+   ./internal/handlers/accounts/...` ≈0.55s. Matches "well under a second"
+   / README's implicit "~0.5s" framing from the task context. Full
+   uncached suite (internal/services/storage alone) runs ~26-33s in this
+   environment, confirming the rest of the suite keeps its cache rather
+   than the whole suite going uncached: `grep -qE 'test .*-count=1
+   \./\.\.\.'` against `make -n test` output — absent, as required.
+
+4. Prose: "narrow" is gone from both the comment and README's description
+   of the PATH-unchanged case (the one surviving "narrow" hit in the test
+   file is an unrelated pre-existing use — "a narrow sanity check" — about
+   a different test, not the cache hole). The Debian/Ubuntu /usr/bin claim
+   matches what checker-second verified from the distro package in attempt
+   7 (not re-verified this round; unchanged prose). The
+   stat-vs-open/read distinction ("accounts.html being opened (read) ...
+   the harness JS being stat'd") matches the actual code:
+   extractSyncWarningsScript calls os.ReadFile on accounts.html;
+   TestSyncWarnings_ClientRegressionHarness calls os.Stat (not a read) on
+   the harness JS. Both comment and README now state plainly, in their own
+   sentence, that a bare `go test ./...` outside the Makefile is NOT
+   covered by the rerun and can still replay a stale cached pass — this is
+   not folded into a `make`-and-`go test` are equivalent framing; a reader
+   parsing either paragraph linearly hits that exact caveat.
+
+5. Regression / no-drift checks:
+   - Guard fires (no cache in play): `env -i` with a clean PATH and no
+     BUDGET2_ALLOW_SKIP_JS, real repo: FAIL, correct message naming node.
+   - Opt-out skips cleanly: same, with BUDGET2_ALLOW_SKIP_JS=1: `--- SKIP`,
+     message names node and the opt-out, PASS overall.
+   - Harness still catches the point-16 defect class: in the scratch copy,
+     reintroduced an early `if (!banner) return;` before the sessionStorage
+     key is cleared (the same structural bug S5 exists to fix) into
+     accounts.html. `TestSyncWarnings_ClientRegressionHarness` failed:
+     `RESULT dismiss_resolve_recreate FAIL` and `RESULT guard_directions
+     FAIL`, harness correctly caught it. Did not re-derive the exact
+     pre-S5 fb2a5b02... byte-for-byte revert (would require reconstructing
+     text already authenticated by checker-tests in S5.1/S5.2; the
+     equivalent-defect injection above exercises the same code path and
+     the same two named checks).
+   - accounts.html in the real repo is unchanged by attempt 8 (still
+     contains the S4/S5 dispute fix verified above); no diff introduced
+     this attempt on that file's logic.
+   - Full suite: `go build ./...`, `go vet ./...`, and `go test -count=1
+     ./...` (node present, real repo) all green, 48 packages, no failures.
+
+6. Scope: `.swarm/critical.globs` checked — none of `internal/services/
+   transfers/**`, `dataloader/**`, `retirement/engine/**`,
+   `accounts/accounts.go`, `mcpsvc/confirm/**` appear modified by this
+   round (handlers.go files under internal/handlers/** are not in the glob
+   list). No go.mod/go.sum diff (`git status --porcelain | grep 'go\.(mod
+   |sum)'` empty). Item (e): projection_test.go's comment now names
+   `recurringOwnerAccount` and correctly attributes the old
+   `recurringBelongsToAccount` name as deleted; matches the live function
+   name in projection.go. warnings_client_regression_test.go: only the
+   package-comment block (lines 1-65) differs in content from what attempt
+   7's verdict quoted; the executable code (LookPath check, skip/fail
+   messages, harness invocation, PASS-regex verification loop) is
+   unchanged and its behaviour matches exactly what attempt 7's checker
+   documented (confirmed via direct execution above, not by inspection
+   alone). Could not diff byte-for-byte against an attempt-7 snapshot (file
+   has never been committed across this whole run), so this is a behavioural
+   equivalence check, not a textual guarantee — noted rather than asserted
+   as certain.
+
+No defect found against any of the five angles. The Makefile rerun is
+genuinely load-bearing (proven by execution, not just by `make -n`), the
+prose no longer understates or overstates the hole, the cost claim holds,
+and the regression guards all fire correctly.

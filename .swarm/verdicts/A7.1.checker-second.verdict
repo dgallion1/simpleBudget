@@ -1,0 +1,32 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: glm
+TASK: A7
+ATTEMPT: 1
+---
+EVIDENCE:
+
+Read: ACCOUNTS_TRANSFERS_SPEC.md task table (A7 row, line 50), docs/superpowers/specs/2026-08-16-accounts-transfers-design.md §5 (lines 38-48), GLOSSARY.md (Transfer/TransferClass/TransferPairKey, lines 92-104), ACCESSIBILITY.md (points 1-15), internal/handlers/transfers/handlers.go + handlers_test.go, web/templates/pages/transfers.html, git diffs of explorer.html/explorer handlers.go/main.go/base.html.
+
+1. MANIFEST FIDELITY — PASS. .swarm/manifests/A7.1.files lists 7 files: internal/handlers/transfers/handlers.go, handlers_test.go, cmd/server/main.go, internal/handlers/explorer/handlers.go, web/templates/pages/transfers.html, web/templates/pages/explorer.html, web/templates/layouts/base.html. `git diff --name-only` returns the 4 tracked mods; `git ls-files --others --exclude-standard` returns the 3 new files (transfers/, transfers.html). Exact match. `.impeccable/` is untracked and correctly absent from the manifest.
+
+2. TOOLCHAIN GREEN — PASS.
+   - `go build ./...` → "Go build: Success" EXIT 0.
+   - `go vet ./...` → "Go vet: No issues found" EXIT 0.
+   - `set -o pipefail; go test ./...` → "4306 passed in 48 packages" EXIT 0 (~46 packages as expected).
+   - `staticcheck ./...` → EXIT 0, no output.
+   - `gofmt -l` on the 4 Go manifest files → EXIT 0 (no diffs). HTML files are not Go (gofmt errors on them, as expected).
+
+3. REVIEW QUEUE PERSISTS — PASS. Driven via the handler, not read. handlers_test.go TestHandleResolve_ConfirmPersistsAndDropsFromQueue: seeds the queue (GET /transfers), POSTs confirm with the pair_key from mustSuspectedPairKey, asserts the partial re-renders empty ("No suspected transfer pairs awaiting review") + announces "Confirmed pair", then reloads via dl.LoadData() and asserts SuspectedTransfers() == 0 AND both legs are now typed Transfer/paired (lines 264-276). TestHandleResolve_RejectPersistsAndNeverResuggested: POST reject → reload → queue stays 0, rows NOT typed Transfer (lines 321-333). TestHandleResolve_IdempotentRepost: confirm twice for the now-absent key → 200 (not 4xx) + "already" no-op message (lines 348-376). The handler calls loader.ResolveTransfer (handlers.go:153) which writes transfer_decisions.json (dataloader/transfers.go:95-130); isAlreadyResolvedError (handlers.go:179) catches the "no suspected transfer pair with key" error for the idempotent re-post. Live-server run confirmed the queue partial returns HTTP 200.
+
+4. EXPLORER BADGE FIX IS REAL — PASS. Rendered markup (curl'd from a live server with a paired-transfer fixture): a Transfer row renders `<span class="px-2 py-1 bg-indigo-100... text-indigo-700..." title="Money moving between your own accounts"><svg ...>...Transfer</span>` — its own badge with an SVG icon AND text label "Transfer", distinct from the green "Income" badge and the red "Expense" badge. Amount column uses indigo for Transfer rows. NOT color alone (ACCESSIBILITY.md point 8): icon + text label + title attribute. The old `{{else}}` Expense branch no longer catches Transfer rows (explorer.html diff adds an `{{else if eq .TransactionType "Transfer"}}` branch). The explorer handler also adds a Transfer filter branch (handlers.go:175, 316) and the filter dropdown gains a `<option value="Transfer">` (explorer.html diff line +58).
+
+5. CHART TEXT ALTERNATIVE (point 11) — PASS. Live render: the chart container `#chart-transfers-flow` with `data-chart-payload` (JSON `"y":[2000]`) is immediately followed by a `<details>` disclosure "Show data table (same values as the chart)" containing a `<table>` with `<th scope="col">` headers (Month/From/To/Amount) carrying the SAME values (2026-05, Schwab, USAA, $2,000.00). A text summary `Largest flow: Schwab to USAA moved $2000.00 from Schwab to USAA in 2026-05.` precedes the chart. TestHandlePage_ChartDataTableFallbackCarriesSameNumbers asserts both the table ($2,000.00, 2026-05, Schwab, USAA) and the chart payload (2000) carry the same value. Point 11 satisfied (adjacent data table + text summary).
+
+6. ASSERT-ON-RENDERED-OUTPUT (ruling 2026-08-16a) — PASS. The handler returns the `transfers-queue-partial` template for mutations (handleResolve → renderQueue → renderer.RenderPartial("transfers-queue-partial", data), handlers.go:140, 166). TestHandleQueuePartial_RendersQueue (handlers_test.go:386-408) asserts on THAT partial: it must NOT include the full-page `<h1>Transfers</h1>` and MUST include the suspected legs + exactly 1 Confirm button. The resolve tests (Confirm/Reject/Idempotent) assert on the swapped `#transfers-queue` markup ("Confirmed pair", "No suspected transfer pairs awaiting review", "already"). setupTestEnvWithRenderer wires a real templates.Renderer from the embedded FS so the assertions hit actual rendered HTML, not JSON.
+
+7. SCOPE — PASS. `git diff --stat` touches only: cmd/server/main.go (+3-1, wiring transfers.Initialize + RegisterRoutes), internal/handlers/explorer/handlers.go (+4, Transfer filter branch), web/templates/layouts/base.html (+6, nav link + content slot), web/templates/pages/explorer.html (+8-1, badge + filter option), plus the new internal/handlers/transfers/ package and web/templates/pages/transfers.html. No changes to internal/services/transfers/ (A3 classification), internal/services/accounts/ balance logic (A4/A5), dashboard card (A8), or MCP tools (A9).
+
+RULING 2026-08-16e (count-before-loop): the two `for _, desc := range [...]` loops (handlers_test.go:278, 321) iterate a fixed 2-element slice, and findTxnByDesc asserts `len(found) != 1` (line 449) inside each iteration — a count assertion guards every probe. The `for _, tc := range cases` (line 415) is a fixed 2-case table test. No vacuous-empty-set risk.
+
+Live-server verification: built `go build -o /tmp/a7-budget ./cmd/server` (Success), ran against a temp fixture dir OUTSIDE the repo (/tmp/tmp.*/data) with the test's exact CSVs (schwabTransferCSV + usaaTransferCSV). Server log: "Classified 3 transactions as transfers (2 paired, 1 external)" — matches the unit test. curl /transfers → HTTP 200, rendered HTML confirms chart + data table + badges + aria-live + single h1 + main landmark + th scope. curl /transfers/queue → HTTP 200. curl /explorer → HTTP 200, Transfer badge renders with icon + text.

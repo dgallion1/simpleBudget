@@ -1,0 +1,269 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: R1
+ATTEMPT: 3
+---
+Verified in /home/darrell/bin/ai/budget2, branch fix/review-aug16, working tree
+as delivered. Contract: .swarm/briefs/R1.md section "Attempt 3 (2026-08-19) —
+behaviour-parity fixes on the merged result". Scope: .swarm/manifests/R1.3.files.
+Attempt-2 baseline for the "unchanged" diffs is the winning worktree
+/tmp/swarm-worktrees/budget2/R1/wt-primary (merged unmodified per
+.swarm/tier3/R1/report.md RESOLUTION); its four in-scope files were copied to
+<scratch>/a2/ and diffed. No file in the repo was created or modified by this
+verification other than this verdict file.
+
+====================================================================
+1. HTTP 500 restored on load failure, save failure still 200   => PASS
+====================================================================
+(a) Byte-identical message + status, all three handlers.
+Command:
+  git show HEAD:internal/handlers/accounts/handlers.go \
+    | grep 'Failed to load accounts.*StatusInternalServerError' \
+    | sed 's/^[[:space:]]*//' | sort -u | md5sum
+  grep 'Failed to load accounts.*StatusInternalServerError' \
+      internal/handlers/accounts/handlers.go \
+    | sed 's/^[[:space:]]*//' | sort -u | md5sum
+Output: c29bedb186d34d00db6705be97055658  (both) — the statement text
+  renderError(w, "Failed to load accounts: "+err.Error(), http.StatusInternalServerError)
+is byte-identical to HEAD; only the leading indentation differs (one extra tab,
+the new `if !loaded {` nesting).
+Occurrence map (grep -n 'Failed to load accounts'):
+  HEAD    :111 :181 :246 :296   (buildPageData, handleDelete, handleAddAnchor,
+                                 handleDeleteAnchor)
+  current :121 :202 :283 :342   (same four sites)
+
+(b) Empirical, through the real router:
+  go test -count=1 -v -run 'LoadFailure|SaveFailure' ./internal/handlers/accounts/
+  --- PASS: TestHandleDelete_LoadFailureIs500
+  --- PASS: TestHandleAddAnchor_LoadFailureIs500
+  --- PASS: TestHandleDeleteAnchor_LoadFailureIs500
+Each corrupts accounts.json, POSTs via newRouter(), and asserts
+w.Code == 500 AND the body contains "Failed to load accounts: " AND the
+underlying "invalid accounts file" text
+(internal/handlers/accounts/load_failure_test.go:38-52, 54-100).
+
+(c) The other half — a save/validation failure is still 200 with the inline
+error, NOT a new 500:
+  --- PASS: TestHandleDelete_SaveFailureStays200WithInlineError
+  --- PASS: TestHandleAddAnchor_SaveFailureStays200WithInlineError
+  --- PASS: TestHandleDeleteAnchor_SaveFailureStays200WithInlineError
+(load_failure_test.go:126-202: readable accounts.json + chmod 0500 store dir,
+asserts 200, a non-empty inline body["Error"], and that the error does NOT
+carry the load-failure prefix.)
+These are non-vacuous: see the over-fix mutation under criterion 5, which makes
+all three fail with "status = 500, want 200".
+
+====================================================================
+2. The `loaded` mechanism holds on EVERY path                  => PASS
+====================================================================
+Mechanism read: internal/services/accounts/accounts.go:80-99 (Mutate). fn is
+reached only after `s == nil` and loadTx both succeed; saveTx is reached only
+after fn returns nil. `loaded = true` is the FIRST statement of every closure —
+verified by `grep -n -A2 'accounts.Mutate(store, func(accts'`
+(handlers.go:190/191, 259/260, 316/317) and
+`grep -n -A2 'accounts.Mutate(deps.Store, func(accts'` (anchor.go:210/211).
+`grep -n loaded` shows exactly four declare/set/test triples and no other use;
+each `loaded` is a per-request local, read synchronously after Mutate returns
+(Mutate never calls fn on another goroutine), so there is no shared-state hazard.
+applyForm (handlers.go:451) deliberately has no `loaded` — correct per brief.
+
+Enumeration, each confirmed by execution rather than reading (checker probe
+staged and run ONLY in the scratch copy <scratch>/mut, never in the repo;
+source kept at <scratch>/mut/internal/handlers/accounts/zz_checker_crit2_test.go):
+  go test -count=1 -v -run 'TestZZCrit2' ./internal/handlers/accounts/
+  --- PASS: TestZZCrit2_FnErrorIsNot500
+        addAnchor missing-account status=404  (fn returns errAccountNotFound
+        AFTER being called -> loaded=true -> 404, not the !loaded 500)
+  --- PASS: TestZZCrit2_AnchorNotFoundIsNot500
+        deleteAnchor missing-anchor status=404 (errAnchorNotFound, same)
+  --- PASS: TestZZCrit2_SaveValidationFailureIsNot500
+        saveTx-Validate-failure status=200 (duplicate IDs written raw so
+        Validate trips inside saveTx, after a successful load -> 200 inline)
+  --- PASS: TestZZCrit2_NilStorageMatchesHEAD
+        nil-store status=500, body contains
+        "Failed to load accounts: accounts: nil storage" — identical to what
+        HEAD produced, since HEAD's accounts.Load(nil) returned that same
+        string into the same renderError (asserted in the probe by calling
+        accountssvc.Load(nil) and comparing).
+  write failure  -> covered by the three SaveFailureStays200 tests above
+                    (loaded=true, 200 inline).
+CONCLUSION: the only two paths that leave `loaded` false are the nil-storage
+guard and loadTx — neither is a save. No save/validation/write failure can
+reach the 500 branch.
+
+====================================================================
+3. Overlap warnings logged unconditionally in saveTx           => PASS
+====================================================================
+Diff vs the attempt-2 baseline:
+  diff -u <scratch>/a2/internal/services/accounts/accounts.go \
+          internal/services/accounts/accounts.go
+shows the 3-line `for _, w := range warnings { log.Printf("Warning: %s", w) }`
+block moved from AFTER the successful tx.WriteFile to immediately after
+`warnings := OverlapWarnings(...)` (accounts.go:124-127), i.e. before marshal
+and before write. Nothing else changed in the file.
+
+Parity with HEAD proven by execution, not inspection (probe run in the scratch
+copy only, <scratch>/mut/internal/services/accounts/zz_checker_crit3_test.go):
+  go test -count=1 -v -run 'TestZZCrit3' ./internal/services/accounts/
+  --- PASS: TestZZCrit3_SaveAndMutateLogIdenticallyOnWriteFailure
+    Save   logged on write failure: "Warning: file \"acme-checking.csv\" matches multiple accounts (a-acme, b-acme); \"a-acme\" wins by ID order\n"
+    Mutate logged on write failure: "Warning: file \"acme-checking.csv\" matches multiple accounts (a-acme, b-acme); \"a-acme\" wins by ID order\n"
+The probe forces the write to fail (chmod 0500) and compares HEAD's untouched
+Save path against Mutate: byte-identical log output. Validate-failure parity
+also holds — HEAD's SaveWithWarnings returns nil warnings before computing them
+on a Validate error (HEAD accounts.go:192-195), and saveTx returns at
+accounts.go:121-123 before OverlapWarnings, so neither logs.
+
+====================================================================
+4. applyAnchor's load-failure message is distinct again        => PASS
+====================================================================
+  git show HEAD:internal/services/mcpsvc/ledger/anchor.go \
+    | grep 'cannot reload accounts before writing' | sed 's/^[[:space:]]*//' | md5sum
+  grep 'cannot reload accounts before writing' internal/services/mcpsvc/ledger/anchor.go \
+    | sed 's/^[[:space:]]*//' | md5sum
+Output: 3dad4d6d4d16ae98f14201dda4cfec8f (both). HEAD:198 -> current:248,
+  return nil, setBalanceAnchorOutput{}, fmt.Errorf("cannot reload accounts before writing: %w", err)
+byte-identical, no snapNote, no spent-token wording.
+The other two messages are preserved verbatim: the vanished-account string
+(HEAD:223 -> current:241) and the save-failure snapNote string
+(HEAD:226 -> current:250), both matched by grep 'confirmation token has been spent'.
+Behaviour:
+  go test -count=1 -v -run 'TestApplyAnchor_(LoadFailureMessageIsDistinct|SaveFailureMessageIsUnchanged)' ./internal/services/mcpsvc/ledger/
+  --- PASS: TestApplyAnchor_LoadFailureMessageIsDistinct
+  --- PASS: TestApplyAnchor_SaveFailureMessageIsUnchanged
+(anchor_load_failure_test.go:31-66 asserts the load error DOES contain
+"cannot reload accounts before writing" and does NOT contain "confirmation
+token has been spent"; :68-111 asserts the inverse for a forced write failure.)
+
+====================================================================
+5. Nine new tests exist, persist, and are non-vacuous          => PASS
+====================================================================
+Files present in the working tree (git ls-files --others --exclude-standard):
+  internal/handlers/accounts/load_failure_test.go            (6 tests)
+  internal/services/accounts/mutate_warnings_test.go         (1 test)
+  internal/services/mcpsvc/ledger/anchor_load_failure_test.go(2 tests)
+Total 9. All nine actually RUN (not skipped — euid != 0):
+  go test -count=1 -v -run 'LoadFailure|SaveFailure|LogsOverlapWarnings' \
+      ./internal/handlers/accounts/ ./internal/services/accounts/ ./internal/services/mcpsvc/ledger/
+  9 x "--- PASS", three "ok" lines, zero SKIP.
+NOTE (fact, not a finding): the three files are untracked, not committed. The
+brief's word is "COMMITTED"; they are persisted on disk in the tree, matching
+this run's standing convention (R2's and R3's accepted test files are likewise
+untracked at verification time — the lead commits). Flagged for the lead.
+
+MUTATION CHECK — performed by me, independently, in a scratch copy OUTSIDE the
+repo (<scratch>/mut, an rsync of the tree minus .git/.claude/data). Baseline
+there: all 9 PASS. Each fix reverted individually by restoring the attempt-2
+file, then restored (diff -q confirmed "same" after each):
+
+  MUTATION 1 — revert handlers.go to the attempt-2 version (drop the three
+  `if !loaded { renderError(...500) }` blocks):
+    --- FAIL: TestHandleDelete_LoadFailureIs500
+          status = 200, want 500; body={..."Error":"invalid accounts file: invalid character 'n'..."}
+    --- FAIL: TestHandleAddAnchor_LoadFailureIs500        (same reason)
+    --- FAIL: TestHandleDeleteAnchor_LoadFailureIs500     (same reason)
+    --- PASS x3 on the SaveFailureStays200 controls
+  Right reason: the exact 500->200 regression the brief names.
+
+  MUTATION 1b — the OPPOSITE error the criterion warns about: turn every
+  Mutate error into a 500 (`if !loaded {` -> `if loaded || !loaded {`, x3):
+    --- PASS x3 LoadFailureIs500
+    --- FAIL: TestHandleDelete_SaveFailureStays200WithInlineError
+          status = 500, want 200 (save failure surfaces inline)
+    --- FAIL: TestHandleAddAnchor_SaveFailureStays200WithInlineError   (same)
+    --- FAIL: TestHandleDeleteAnchor_SaveFailureStays200WithInlineError(same)
+  So the "unchanged 200" half is genuinely load-bearing, not decoration.
+
+  MUTATION 2 — revert accounts.go to the attempt-2 version (log after write):
+    --- FAIL: TestMutate_LogsOverlapWarningsEvenWhenWriteFails
+          expected the overlap warning to be logged even though the write
+          failed; got log output: ""
+  Right reason: the warnings are computed but never emitted on write failure.
+
+  MUTATION 3 — revert anchor.go to the attempt-2 version:
+    --- FAIL: TestApplyAnchor_LoadFailureMessageIsDistinct
+          error = " (the confirmation token has been spent either way; ...): invalid accounts file: ..."
+          — both assertions fire: missing "cannot reload accounts before
+          writing" AND carrying the spent-token wording.
+    --- PASS: TestApplyAnchor_SaveFailureMessageIsUnchanged (correct control)
+
+====================================================================
+6. Concurrency work UNCHANGED from attempt 2                   => PASS
+====================================================================
+Baseline = /tmp/swarm-worktrees/budget2/R1/wt-primary (the merged winner;
+`git status --short` there shows the four attempt-2 modified files, HEAD 1a8636d
+= the repo's HEAD).
+  diff -u <a2>/internal/services/accounts/accounts.go internal/services/accounts/accounts.go
+    -> ONE hunk pair: the 3-line warning-log block relocated (criterion 3).
+       Mutate (nil guard, mu.Lock/defer Unlock, s.BeginShared, defer tx.Release,
+       loadTx, fn, saveTx), the `var mu sync.Mutex` declaration, loadTx's body
+       and saveTx's Validate/marshal/tx.WriteFile sequence are all identical.
+  diff -u <a2>/internal/services/mcpsvc/ledger/register.go .../register.go
+    -> rc=0, no differences at all (the SaveAccounts-through-Mutate adapter is
+       untouched).
+  diff -u <a2>/internal/handlers/accounts/handlers.go .../handlers.go
+    -> purely additive: `loaded := false` before each Mutate call, `loaded = true`
+       as the closure's first statement, and the `if !loaded { ...500... }`
+       guard inside the existing error branch. No Mutate call, closure body,
+       sentinel or lock-related line changed.
+  diff -u <a2>/internal/services/mcpsvc/ledger/anchor.go .../anchor.go
+    -> purely additive in the same shape, plus the `if !loaded` message branch.
+       ensureSnapshot remains OUTSIDE the Mutate section (anchor.go:199 before
+       the Mutate at :210).
+Lock order and BeginShared usage therefore carry over from the attempt-2
+verification unchanged, and the oracle's concurrency tests still pass (below).
+
+====================================================================
+7. Oracle, build, vet, full -race suite                        => PASS
+====================================================================
+  bash .swarm/tier3/R1/accept.sh    -> "=== accept.sh exit: 0 ===", ORACLE_EXIT=0
+    step 1 build: no output (clean)
+    step 2 vet:   no output (clean)
+    step 3: internal/services/accounts/accounts.go:80:func Mutate(s *storage.Storage, fn func([]models.Account) ([]models.Account, error)) error {
+    step 4: "-- direct Save calls outside the accounts service (expect none): none — ok"
+    step 5: ok  budget2/internal/services/accounts  1.363s (oracle tests, -race)
+    step 6: all 47 packages "ok" under -race, budget2/web [no test files];
+            no FAIL line anywhere. internal/services/mcpsvc/ledger 3.286s — the
+            known R9 dashboard_parity flake did NOT occur on this run.
+  go build ./...  -> BUILD_EXIT=0 ("Go build: Success")
+  go vet ./...    -> VET_EXIT=0 ("Go vet: No issues found")
+  Stability of the three in-scope packages, 5 consecutive runs:
+    go test -race -count=1 ./internal/services/accounts/ ./internal/handlers/accounts/ ./internal/services/mcpsvc/ledger/
+    -> ok / ok / ok on all 5. (No t.Parallel() anywhere in those three
+       packages, so the new tests' global log.SetOutput and chmod fixtures
+       cannot race sibling tests.)
+  Oracle integrity: `git ls-files .swarm/tier3/R1/` lists accept.sh and
+  oracle/zz_oracle_r1_test.go; `git diff HEAD --stat -- .swarm/tier3/` is empty
+  — neither was edited. accept.sh's staged copy was removed by the script:
+  `git status --short internal/services/accounts/` shows no zz_oracle file.
+
+====================================================================
+SCOPE
+====================================================================
+.swarm/manifests/R1.3.files lists 6 paths; all 6 are present and account for
+every attempt-3 change:
+  internal/handlers/accounts/handlers.go              (M, additive vs attempt 2)
+  internal/services/accounts/accounts.go              (M, log block moved)
+  internal/services/mcpsvc/ledger/anchor.go           (M, additive vs attempt 2)
+  internal/handlers/accounts/load_failure_test.go            (new)
+  internal/services/accounts/mutate_warnings_test.go         (new)
+  internal/services/mcpsvc/ledger/anchor_load_failure_test.go(new)
+internal/services/mcpsvc/ledger/register.go is modified vs HEAD but byte-
+identical to attempt 2 (diff rc=0) — attempt-2 scope, untouched by attempt 3.
+Everything else in `git diff HEAD --name-only` is the declared out-of-scope
+R2/R3/R7 work (handlers/dashboard/*, handlers/explorer/*, mcpsvc/ledger/
+accounts.go + accounts_test.go, resolve.go + resolve_test.go) plus .swarm
+bookkeeping (.swarm/briefs/R1.md R3.md R4.md R7.md, .swarm/ledger.tsv,
+manifests, verdicts, tier3/R1/report.md). Not assessed here.
+
+critical.globs: .swarm/critical.globs lists internal/services/accounts/accounts.go
+(plus storage/**, dataloader/**, retirement/engine/**, transfers/**,
+mcpsvc/confirm/**). accounts.go IS touched — permitted, the ledger row
+`R1  3  tests,second  building  3` puts R1 at tier 3. None of the other
+critical globs appears in the changed-file list.
+
+Checker artifacts: both probes (zz_checker_crit2_test.go, zz_checker_crit3_test.go)
+and all four mutations were confined to the scratch copy <scratch>/mut, never
+the repo. `git status --short` in the repo shows only the R1/R2/R3/R7 files
+above; no checker file was added to or left in /home/darrell/bin/ai/budget2.

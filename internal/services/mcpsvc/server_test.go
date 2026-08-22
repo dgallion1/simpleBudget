@@ -61,7 +61,7 @@ func TestNewServerExposesTheAssumptionsResource(t *testing.T) {
 // NewServer(Deps{}) would stay green even if spend.Register were deleted
 // from NewServer outright. A non-nil Loader (and the
 // Settings/SettingsDir/SnapshotDir plan.Register needs) closes that hole.
-func TestNewServerRegistersAllTwentySixTools(t *testing.T) {
+func TestNewServerRegistersAllThirtyOneTools(t *testing.T) {
 	dir := t.TempDir()
 	settingsDir := filepath.Join(dir, "settings")
 	store, err := storage.New(dir)
@@ -94,13 +94,14 @@ func TestNewServerRegistersAllTwentySixTools(t *testing.T) {
 		"get_trends", "list_major_expenses", "list_exceptions", "pin_transactions", "upsert_major_expense",
 		"delete_major_expense", "get_status", "list_data_files", "list_duplicates", "resolve_duplicates",
 		"undo_resolve", "run_backup", "list_backups", "restore_backup", "shutdown_server",
+		"get_accounts", "get_balance_projection", "get_transfers", "set_balance_anchor", "resolve_transfer",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 26 {
-		t.Errorf("expected exactly 26 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 31 {
+		t.Errorf("expected exactly 31 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 
@@ -242,10 +243,10 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"run_backup adds a zip to the backup directory and changes nothing else",
 		// list_backups is the only sanctioned source of a restore_backup name.
 		"is the only place a restore_backup name may come from",
-		// Both guarded tools are unrecoverable in their own way: each needs a
-		// confirm token that only a preview call can mint, and neither has an
+		// The guarded tools are unrecoverable in their own way: each needs a
+		// confirm token that only a preview call can mint, and none has an
 		// undo path once redeemed.
-		"Two tools are guarded",
+		"Four tools are guarded",
 		"shutdown_server stops the server",
 		"Calling one twice yourself is NOT the user agreeing",
 		// The elicitation contract: the tools ask a real person when the

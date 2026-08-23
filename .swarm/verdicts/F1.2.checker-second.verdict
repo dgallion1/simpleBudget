@@ -1,0 +1,98 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F1
+ATTEMPT: 2
+---
+Scope: internal/services/storage/migration.go (+ migration_cache_test.go), attempt 2,
+against ruling 2026-08-22d (confidentiality, not staleness).
+
+What I attacked and what held up:
+
+1. Plaintext reachability after delete(s.cache, path): traced cacheEntry.data —
+   ReadFileContext always returns a defensive copy (storage.go:306-309,
+   342-344), never the entry's own backing array, so no external caller can
+   hold an alias into the map's storage. After invalidateCache's delete, the
+   evicted cacheEntry and its []byte are unreachable from Storage and
+   collectable. No aliasing/backup/snapshot path found that retains it
+   (backup's buildZip reads raw on-disk bytes via os.ReadFile directly,
+   never through s.cache, so it can't be a residency vector for this map).
+
+2. Bypass paths: grepped the whole package (and auth.go) for
+   os.WriteFile/os.Rename/os.Remove. Only three helpers mutate a
+   cache-eligible data path outside migration.go: writeFileLocked,
+   CreateExclusive, removeLocked — all pre-existing, all already bracket
+   invalidateCache on both sides (unrelated to this task). migration.go's
+   three helpers are the only other data-file mutators, and all three now
+   bracket correctly per my read of the shipped file.
+
+3. Verify/marker/config exclusion: grepped every reference to verifyFile,
+   markerFile, configFile across the entire repo (not just this package).
+   All three are always read via raw os.ReadFile/os.Stat, never via
+   s.ReadFile/s.ReadFileContext. The "never read through cache" argument for
+   excluding them holds under a full-repo search, not just a package-local
+   one.
+
+4. Concurrency: encryptFileWithRecipient/decryptFileWithIdentity/
+   rollbackEncryptionWithIdentity are unexported; grepped all production
+   callers — reachable only from EnableEncryptionWithProvider/
+   DisableEncryption, both of which hold s.mu.Lock() for the entire call.
+   Tests call the unexported helpers directly without the lock, but that's
+   single-threaded test-only access, not a production interleaving.
+
+5. Regression: ran the full package suite against the merged tree unmodified
+   — all Cache/Rollback/Migration tests plus the full suite pass (`go test
+   ./internal/services/storage/...` → ok, 40s). Ordinary reads still cache
+   (TestReadCachesUnmigratedFile passes).
+
+The defect (test-coverage gap, not a live leak):
+
+The report's "mutation-confirmed" claim is demonstrated for exactly one of
+three structurally identical call sites. I reproduced the same class of bug
+(invalidateCache moved from before the fallible transform to after it — the
+exact wt-alt mistake the report calls out) in the other two helpers, on a
+throwaway copy under /tmp, and re-ran the full package suite each time:
+
+  a) decryptFileWithIdentity: moved its invalidateCache from before
+     decryptData to immediately after it (mirrors the rejected wt-alt
+     placement). `go test ./internal/services/storage/...` → ok, no
+     failures. TestDecryptFileWithIdentityCorruptData exercises the decrypt
+     failure but never populates the cache first, so it can't observe
+     residency; no test does.
+
+  b) rollbackEncryptionWithIdentity: moved its invalidateCache from before
+     decryptData to after it, i.e. removed all protection on the
+     decrypt-failure branch (the `continue` on decryptData err). `go test
+     ./internal/services/storage/...` → ok, no failures.
+     TestRollbackEncryptionWithBadDecrypt exercises exactly this branch
+     (wrong identity -> decrypt fails -> continue) but only asserts the file
+     stays encrypted on disk; it never populates the cache beforehand, so it
+     cannot see a stranded plaintext entry. TestRollbackEncryptionEvictsCache
+     dPlaintext populates the cache first but only exercises the
+     decrypt-succeeds path, so it doesn't cover this branch either.
+
+Both mutations reintroduce, in the two helpers not covered by
+TestEncryptFailureDoesNotLeavePlaintextCached, precisely the failure-path
+residency bug that is this task's entire subject and that the Tier-3 report
+identifies as "the exact condition this task exists to remove" — with zero
+detection anywhere in the suite. Rollback is the more serious of the two
+gaps: the report's own framing (and this brief's "angles" list) singles out
+rollback as "already the failure path," yet it is the one call site with the
+weakest test defense of all three.
+
+Direction of the defect: this is not a live confidentiality breach in the
+shipped code today — I read the actual migration.go and both
+decryptFileWithIdentity and rollbackEncryptionWithIdentity already place
+invalidateCache correctly (before the transform). The gap is that this
+correct placement is unverified for 2 of the 3 helpers: a future edit
+reproducing the exact wt-alt mistake in either helper would reintroduce
+plaintext-residency-on-failure silently, with the full suite still green.
+Given the constitution's explicit warning about "a fix applied at one call
+site but not its twin," and that the task's own framing treats rollback as
+the highest-value failure path to defend, I'm treating this as a real
+defect in the attempt rather than an out-of-scope nice-to-have.
+
+What I did not find: no live plaintext-residency defect, no bypass of the
+three data-file mutators, no incorrect verify/marker/config exclusion, no
+concurrency hole in the production call graph, no regression in ordinary
+caching behavior.

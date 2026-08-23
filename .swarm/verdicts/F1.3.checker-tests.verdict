@@ -1,0 +1,215 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F1
+ATTEMPT: 3
+---
+All commands run from /home/darrell/bin/ai/budget2 unless noted. All mutation
+work was done on copies under
+/tmp/claude-1000/-home-darrell-work-agents2/.../scratchpad/{f1base,f1probe,
+precheck,nopub,mut_*}; the repo's own files were never edited. Proof:
+  $ sha256sum internal/services/storage/{migration.go,migration_cache_test.go}
+    BEFORE any of my work  -> f92bdd44...a36ad  /  770185ce...31ad7
+    AFTER  all of my work  -> f92bdd44...a36ad  /  770185ce...31ad7
+  $ git status --porcelain (after) -> identical to before; no zz_oracle_f1_test.go
+    residue from the oracle's planted file.
+
+ORACLE (authoritative floor)
+  $ bash .swarm/tier3/F1/accept.sh
+    CHECK 01-migration-cache-residency: PASS
+    CHECK 02-package-suite-race: PASS
+    CHECK 05-encrypt-placement-defended: PASS (suite detected the mutation)
+    CHECK 06-decrypt-placement-defended: PASS (suite detected the mutation)
+    CHECK 07-rollback-placement-defended: PASS (suite detected the mutation)
+    CHECK 03-build: PASS
+    CHECK 04-vet: PASS
+    --- passed=7 failed=0    ORACLE_EXIT=0
+
+POINT 1 -- migration.go byte-identical to attempt 2.  MET (by three
+independent proxies; stated honestly, because no byte-for-byte attempt-2
+snapshot of the merged file exists anywhere on disk -- it was never committed,
+and the two Tier-3 worktrees hold the ARMS' files, not the merged one:
+  $ sha256sum /tmp/swarm-worktrees/budget2/F1/wt-{primary,alt}/.../migration.go
+    -> 40d4b7e2... and 2462676582..., neither equal to the repo's f92bdd44...,
+       which is expected: the merged file is wt-primary + wt-alt's graft.)
+  (a) mtime ordering.
+      $ stat -c '%y %n' on the four artifacts:
+        migration.go                       2026-08-23 15:50:09
+        .swarm/verdicts/F1.2.checker-tests 2026-08-23 16:24:20
+        .swarm/verdicts/F1.2.checker-secon 2026-08-23 16:33:14
+        .swarm/tier3/F1/accept.sh          2026-08-23 16:34:51  (05-07 added)
+        migration_cache_test.go            2026-08-23 16:45:08  (attempt 3)
+      migration.go predates BOTH attempt-2 verdicts by ~34 min and the attempt-3
+      test edit by ~55 min. It was not written during attempt 3.
+  (b) line-for-line correspondence with what attempt 2 measured.
+      $ grep -n 'invalidateCache' internal/services/storage/migration.go
+        253, 274, 295, 313, 335, 346
+      The F1.2.checker-tests verdict cites exactly 253/274/295/313/335/346 as
+      the six call sites, and F1.2.checker-second cites 253,274,295,313 the same
+      way. A single added or removed line anywhere above 253 would shift these.
+  (c) structural diff matches attempt 2's recorded description.
+      $ git diff HEAD -- migration.go | non-comment, non-blank added/removed:
+        +	s.invalidateCache(path)
+        -	return os.Rename(tmpPath, path)
+        +	err = os.Rename(tmpPath, path)
+        +	s.invalidateCache(path)
+        +	return err
+        (x2, for encrypt and decrypt)
+        +		s.invalidateCache(path)   (x2, rollback)
+      Exactly six invalidateCache insertions plus two rename rewrites, and no
+      added `continue` in rollbackEncryptionWithIdentity -- which is verbatim
+      what F1.2.checker-tests SCOPE recorded and what the report's RESOLUTION
+      line required (wt-alt's `continue` rejected).
+  (d) manifest agrees: $ cat .swarm/manifests/F1.3.files
+        internal/services/storage/migration_cache_test.go     (that file only)
+
+POINT 2 -- the two new tests really reach the intended error path.  MET, by
+direct instrumentation rather than inference.
+  Scratch copy .../scratchpad/f1probe: added fmt.Fprintf probes to
+  decryptFileWithIdentity (after the os.ReadFile, at the isAgeEncrypted guard,
+  and immediately after decryptData) and to rollbackEncryptionWithIdentity's
+  decryptData. Then:
+  $ go test -count=1 -v -run 'TestDecryptFailureDoesNotLeavePlaintextCached|
+      TestRollbackEncryptionWithDecryptFailureEvictsCachedPlaintext'
+      ./internal/services/storage/
+    PROBE decryptFileWithIdentity path=.../data.csv len=216 isAge=true
+    PROBE decryptFileWithIdentity decryptData err=identity did not match any of
+          the recipients: incorrect identity for recipient block
+    --- PASS: TestDecryptFailureDoesNotLeavePlaintextCached (1.41s)
+    PROBE rollback path=.../f1.csv isAge=true decryptData err=identity did not
+          match any of the recipients: incorrect identity for recipient block
+    --- PASS: TestRollbackEncryptionWithDecryptFailureEvictsCachedPlaintext
+  So in both tests: os.ReadFile succeeded (len=216), isAgeEncrypted was TRUE so
+  the helper did NOT return early, decryptData WAS called, and it failed with
+  the age identity-mismatch error -- the intended failure, not a read error and
+  not an early return. Both tests also require err != nil from the helper
+  (migration_cache_test.go:354-356 and, for rollback, the loop's `continue` is
+  observed via the on-disk assertion at 452), so a silently-succeeding transform
+  would fail the test rather than pass it.
+
+POINT 3 -- assertion is on plaintext CONTENT, not entry absence.  MET.
+  Read (migration_cache_test.go):
+    line 361: if stillCached && bytes.Contains(entry.data, []byte("55555.55"))
+    line 443: if stillCached && bytes.Contains(entry.data, []byte("99999.99"))
+  (and the attempt-2 encrypt test, line 283, the same shape with "12345.67").
+  Demonstrated, not merely read -- these are the assertions that actually fire
+  under mutation:
+    mut decrypt/move  -> migration_cache_test.go:362: plaintext still resident
+                         in cache after a failed decryption
+    mut rollback/move -> migration_cache_test.go:444: plaintext still resident
+                         in cache after a failed rollback decryption
+    mut encrypt/move  -> migration_cache_test.go:284: plaintext still resident
+                         in cache after a failed encryption
+  An entry holding other bytes would not trip any of these.
+
+  Specifically checked, per the brief's warning about asserting on an entry
+  that was never populated: the cache genuinely holds the PLAINTEXT before the
+  failing call.
+  (i) The tests assert the precondition rather than assuming it, and the
+      assertion is real -- scratch copy .../scratchpad/nopub with publishCache
+      turned into a no-op:
+      $ go test -v -run '<the three placement tests>' ./internal/services/storage/
+        migration_cache_test.go:273: precondition failed: plaintext not cached
+                                      before migration           FAIL (encrypt)
+        migration_cache_test.go:351: precondition failed: plaintext not cached
+                                      before decrypt attempt     FAIL (decrypt)
+        migration_cache_test.go:432: setup invariant broken: file should be
+                                      cached before rollback     FAIL (rollback)
+      So none of the three can reach its post-condition on an unpopulated cache.
+  (ii) The tests' preconditions check EXISTENCE only, not content, so I proved
+      the content half myself. Scratch copy .../scratchpad/precheck, a test
+      replicating each setup exactly and dumping the cached bytes:
+        PRECHECK decrypt:  cached bytes="account,balance\nchecking,55555.55\n"
+                           containsSecret=true isCiphertext=false
+        PRECHECK rollback: cached bytes="account,balance\nsavings,99999.99\n"
+                           containsSecret=true isCiphertext=false
+      The entry present before the failing call is the decrypted plaintext, not
+      the ciphertext. Recorded qualification, not a miss: point 3 concerns the
+      post-condition, which is content-based; the precondition's existence-only
+      form cannot produce a false PASS because (i) makes an empty cache fatal
+      and the mutations in point 4 show the entry holds the secret.
+
+POINT 4 -- all three placements defended.  MET, verified independently of the
+oracle's checks 05-07, and with a stronger mutation set (move AND delete).
+  I re-implemented the mutation myself (.../scratchpad/mutate.py), applied it to
+  six fresh copies of a pristine tree, and ran the WHOLE package suite verbosely
+  on each so I could see exactly which tests failed and why:
+
+   helper                          mode    passing  FAIL lines
+   encryptFileWithRecipient        move    193      1: TestEncryptFailureDoes
+                                                       NotLeavePlaintextCached
+   encryptFileWithRecipient        delete  193      1: same
+   decryptFileWithIdentity         move    193      1: TestDecryptFailureDoes
+                                                       NotLeavePlaintextCached
+   decryptFileWithIdentity         delete  193      1: same
+   rollbackEncryptionWithIdentity  move    193      1: TestRollbackEncryption
+                                                       WithDecryptFailureEvicts
+                                                       CachedPlaintext
+   rollbackEncryptionWithIdentity  delete  193      1: same
+
+  Every mutant: exit=1, exactly ONE '--- FAIL' line, and it is the named test
+  the comment in migration_cache_test.go claims will fail ("Move the
+  invalidateCache call ... and this test fails; nothing else in the suite
+  does" -- confirmed literally, for all three).
+  The detection is not a compile or format artifact:
+    $ gofmt -l internal/services/storage/migration.go in each mutant -> no output
+    $ grep -c '=== RUN' on a mutant's log -> 198 tests ran, 193 passed.
+  The applied mutation is the wt-alt-losing placement, verified by diff:
+    $ diff -u f1base/.../migration.go mut_decryptFileWithIdentity_move/.../migration.go
+      -	s.invalidateCache(path)          (removed from above decryptData)
+      +	s.invalidateCache(path)          (re-inserted below the err check)
+  Non-vacuity in the other direction: the same three tests PASS on the pristine
+  copy --
+    $ (in f1base) go test -count=1 -v -run '<the three>' ./internal/services/storage/
+      --- PASS: TestEncryptFailureDoesNotLeavePlaintextCached (0.00s)
+      --- PASS: TestDecryptFailureDoesNotLeavePlaintextCached (1.40s)
+      --- PASS: TestRollbackEncryptionWithDecryptFailureEvictsCachedPlaintext
+      ok  budget2/internal/services/storage  2.717s
+  This closes the exact gap checker-second raised at attempt 2 (its items (a)
+  and (b): decrypt and rollback mutations previously left the suite green).
+
+POINT 5 -- attempt-2 properties still hold.  MET.
+  $ (in f1base) go test -count=1 -v -run 'TestEnableEncryptionEvictsCachedPlain
+    text|TestDisableEncryptionEvictsCachedPlaintext|TestRollbackEncryptionEvicts
+    CachedPlaintext|TestMigrationRoundTripPreservesContent|TestReadCachesUnmigra
+    tedFile' ./internal/services/storage/
+      --- PASS: TestEnableEncryptionEvictsCachedPlaintext (1.01s)
+      --- PASS: TestDisableEncryptionEvictsCachedPlaintext (2.59s)
+      --- PASS: TestMigrationRoundTripPreservesContent (2.58s)
+      --- PASS: TestReadCachesUnmigratedFile (0.00s)
+      --- PASS: TestRollbackEncryptionEvictsCachedPlaintext (1.72s)
+      ok  budget2/internal/services/storage  7.953s
+  Independently corroborated by oracle check 01, whose planted fixtures are the
+  lead's own and additionally verify the on-disk file really is age-encrypted
+  before concluding, and that content survives the round trip.
+
+POINT 6 -- build, vet, race.  MET.
+  $ go build ./...  -> no output, BUILD_EXIT=0
+  $ go vet ./...    -> no output, VET_EXIT=0
+  $ go test -race -count=1 -timeout 600s ./internal/services/storage/
+      ok  budget2/internal/services/storage  260.788s   RACE_EXIT=0
+  Corroborated by oracle checks 02/03/04 inside accept.sh's own shell.
+  $ gofmt -l internal/services/storage/migration.go \
+        internal/services/storage/migration_cache_test.go  -> no output.
+
+PRE-EXISTING GOFMT OFFENDER -- confirmed myself, not taken on trust.
+  $ git show HEAD:internal/services/storage/edge_cases_test.go > /tmp/.../edge_head.go
+    && gofmt -l /tmp/.../edge_head.go   -> /tmp/.../edge_head.go
+    (already unformatted at HEAD; gofmt -d shows it is alignment of the
+     mockBrokenProvider method block, nothing to do with this task)
+  $ git diff --stat HEAD -- internal/services/storage/edge_cases_test.go
+    -> empty; the file is untouched by this attempt.
+  $ gofmt -l ./internal ./cmd -> 27 files repo-wide, all pre-existing; neither
+    of this task's two files is among them.
+
+SCOPE
+  $ git status --porcelain | grep '\.go$'
+     M internal/services/storage/migration.go        (attempt 1/2 work, unchanged
+                                                      here -- see point 1)
+    ?? internal/services/storage/migration_cache_test.go   (the attempt-3 file)
+  No other Go file is modified or added anywhere in the repo. Non-Go changes are
+  swarm bookkeeping only: .swarm/ledger.tsv (one appended F1 row), .swarm/
+  manifests/F1.{1,2,3}.files, .swarm/tier3/F1/, .swarm/verdicts/F1.2.*.
+  $ cat .swarm/critical.globs -> internal/services/storage/** IS critical.
+  $ grep '^F1' .swarm/ledger.tsv -> F1  3  tests,second  pending  3  worker-coder
+    Tier 3, which is what a critical glob requires. Permitted.

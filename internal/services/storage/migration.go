@@ -237,6 +237,21 @@ func (s *Storage) encryptFileWithRecipient(path string, recipient age.Recipient)
 		return nil
 	}
 
+	// Invalidate before encrypting, not merely before staging. path is about
+	// to stop being the plaintext ReadFileContext may have cached; this is the
+	// confidentiality half of invalidateCache (see its doc), not the staleness
+	// half -- the point is to shrink the window in which a decrypted copy of a
+	// migrated file can be read back out of s.cache, not to protect a reader
+	// from stale bytes.
+	//
+	// Above encryptData rather than below it, which is what the two blind arms
+	// disagreed about: encryptData can fail, and on that path the later
+	// placement returns with the plaintext still resident -- exactly the
+	// residency this change exists to remove, at exactly the moment the
+	// migration is going wrong. Costs one re-read on a path that is already
+	// failing.
+	s.invalidateCache(path)
+
 	// Encrypt
 	encrypted, err := encryptData(data, recipient)
 	if err != nil {
@@ -249,7 +264,15 @@ func (s *Storage) encryptFileWithRecipient(path string, recipient age.Recipient)
 		return err
 	}
 
-	return os.Rename(tmpPath, path)
+	err = os.Rename(tmpPath, path)
+
+	// Invalidate again now that the rename has published (or failed to
+	// publish) the new bytes. Unconditional, same reasoning as
+	// writeFileLocked: a failed rename leaves the file's state unproven, and
+	// this is also what guarantees the pre-migration plaintext is evicted
+	// from the map rather than left to be missed later by mtime/size.
+	s.invalidateCache(path)
+	return err
 }
 
 // decryptFileWithIdentity decrypts a single file in place using any age.Identity
@@ -265,6 +288,12 @@ func (s *Storage) decryptFileWithIdentity(path string, identity age.Identity) er
 		return nil
 	}
 
+	// Invalidate before decrypting, for the same reason as
+	// encryptFileWithRecipient: decryptData can fail, and the entry being
+	// evicted already holds plaintext, so a failure below must not leave it
+	// resident.
+	s.invalidateCache(path)
+
 	// Decrypt
 	decrypted, err := decryptData(data, identity)
 	if err != nil {
@@ -277,7 +306,12 @@ func (s *Storage) decryptFileWithIdentity(path string, identity age.Identity) er
 		return err
 	}
 
-	return os.Rename(tmpPath, path)
+	err = os.Rename(tmpPath, path)
+
+	// Invalidate again after the rename lands (or fails). Unconditional, same
+	// reasoning as encryptFileWithRecipient's second call.
+	s.invalidateCache(path)
+	return err
 }
 
 // rollbackEncryptionWithIdentity attempts to decrypt files that were encrypted during a failed migration
@@ -292,6 +326,14 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 			continue
 		}
 
+		// Same invalidate-before/invalidate-after bracket as
+		// decryptFileWithIdentity, and above decryptData for the same reason:
+		// a rollback is already the failure path, and a decrypt that fails
+		// here must not leave the plaintext resident. Deliberately not
+		// touching the bare os.WriteFile below (non-atomic, unlike its
+		// siblings) -- that is a separate, out-of-scope defect.
+		s.invalidateCache(path)
+
 		decrypted, err := decryptData(data, identity)
 		if err != nil {
 			continue
@@ -300,5 +342,7 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 		if err := os.WriteFile(path, decrypted, 0644); err != nil {
 			log.Printf("rollback: failed to restore %s: %v", path, err)
 		}
+
+		s.invalidateCache(path)
 	}
 }

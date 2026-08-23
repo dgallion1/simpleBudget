@@ -44,3 +44,4 @@ S5	3	tests,second,a11y	accepted	8	worker-coder	gate-ok-tier3-attempt-8-after-hal
 P16	3	tests,second	accepted	1	lead	gate-ok-tier3-attempt-1-one-arm-ruling-2026-08-22a-judges-2overrule-1uphold
 P17	3	tests,second	accepted	1	lead	gate-ok-tier3-attempt-1-one-arm-ruling-2026-08-22a-judges-3overrule-0uphold
 P18	1	tests	accepted	1	lead	gate-ok-attempt-1-criteria-written-post-hoc-see-LEDGER_P16_P18_SPEC
+F1	3	tests,second	accepted	3	tier3-merged-wt-primary+alt-graft	gate-ok-tier3-attempt-3-oracle-grades-detection-not-just-behaviour

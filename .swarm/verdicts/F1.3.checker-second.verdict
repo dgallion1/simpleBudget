@@ -1,0 +1,97 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F1
+ATTEMPT: 3
+---
+Scope confirmed by `git status --porcelain`: only migration_cache_test.go is new;
+migration.go shows modified relative to HEAD (404fe1a) but that is the
+pre-existing attempt-2 change, not new work this attempt. All mutation work
+below was done on scratch copies under /tmp; the repo's working tree was never
+touched (verified with `git status --porcelain` before/after).
+
+What I attacked:
+
+1. Vacuous-pass hypothesis (the angle I was pointed at: precondition asserts
+   entry existence only, not content). Built my own standalone probe test
+   (not copied from either checker) replicating the decrypt-failure test's
+   setup and dumped the cached bytes directly:
+     cached ok=true data="account,balance\nchecking,55555.55\n"
+   The precondition genuinely caches decrypted plaintext, not ciphertext or a
+   placeholder — confirmed by direct inspection, not inference from
+   ReadFileContext's source. Ruled out.
+
+2. Are checks 05-07 gradeable by something other than the claimed tests?
+   Reproduced the mutation independently (own Python, not the oracle's
+   script), applied one mutation at a time to fresh isolated copies, ran
+   `go test -v` on each in isolation:
+     encryptFileWithRecipient (move)        -> exactly 1 FAIL:
+       TestEncryptFailureDoesNotLeavePlaintextCached
+     decryptFileWithIdentity (move)         -> exactly 1 FAIL:
+       TestDecryptFailureDoesNotLeavePlaintextCached
+     rollbackEncryptionWithIdentity (move)  -> exactly 1 FAIL:
+       TestRollbackEncryptionWithDecryptFailureEvictsCachedPlaintext
+   198 tests ran each time (not a compile/gofmt artifact — gofmt -l reported
+   clean on the mutated file, `go build` of the package succeeded). Detection
+   comes from the named new tests, not something incidental. This is the
+   exact gap that sank attempt 2 (rollback and decrypt were undefended) and
+   it is now closed for all three helpers, verified by me independently of
+   both the oracle script and the primary lane's mutation runs.
+
+3. Is migration.go really unchanged from attempt 2? No byte-for-byte
+   attempt-2 snapshot exists (never committed), so this can only be
+   corroborated, not proven from a git object. I corroborated it a different
+   way than the primary lane (which used sha256 + mtime + wt-primary/wt-alt
+   worktree diffs): I matched the CURRENT migration_cache_test.go's line
+   numbers for the five pre-existing tests (18, 59, 104, 148, 186) against
+   the line numbers cited by the independently-written F1.2.checker-tests
+   verdict, written before attempt 3 existed. They match exactly, which they
+   would not if any line had shifted above them. I also confirmed
+   TestRollbackEncryptionWithBadDecrypt and
+   TestPublishCacheKeepsEntryFromUncontendedRead (cited as pre-existing
+   guards in the attempt-2 verdicts) are still present, untouched, in their
+   own files. I cannot rule out a change that happened to preserve exact
+   line counts elsewhere in the file, but combined with the primary lane's
+   hash/mtime evidence this is strong enough that I am not treating it as an
+   open question.
+
+4. Other undefended error paths (failed rename, failed rollback write,
+   failed read, partial migration abort). Read EnableEncryptionWithProvider
+   and DisableEncryption in full. DisableEncryption's decrypt loop
+   (migration.go:185-189) returns on the first failure with NO rollback call
+   at all, unlike EnableEncryptionWithProvider's encrypt loop — a partially
+   decrypted state is left as-is. This predates the fix (present verbatim in
+   the pristine 404fe1a tree, confirmed by diff) and is not in this task's
+   scope (F1 is the cache-invalidation ordering inside the three helpers,
+   not migration transaction semantics). Not counted against this attempt.
+   Failed-rename and failed-rollback-write paths: both already covered by
+   the existing unconditional post-transform invalidateCache call, which
+   attempt 2 already defended for encrypt/decrypt and which is unconditional
+   in all three helpers regardless of the rename/write outcome.
+
+5. Regression. Diffed pristine 404fe1a's three helpers against the current
+   file: pristine had ZERO invalidateCache calls in any of the three
+   helpers, so this is a strict addition, not a reordering of pre-existing
+   protection. Ran `go build ./...`, `go vet ./internal/services/storage/...`,
+   and `gofmt -l` on both changed files from the actual repo tree (not a
+   copy): all clean, no output, no diagnostics.
+
+6. Did attempt 3 weaken anything? Both new tests construct a fresh `New(dir)`
+   Storage per test, no shared/global state, no t.Parallel(); no side-channel
+   by which one test's cache population could mask a different test's
+   missing invalidation.
+
+What I could not fully establish: a byte-for-byte guarantee that migration.go
+is identical to attempt 2 (no committed snapshot exists — see point 3), and
+whether DisableEncryption's missing rollback-on-partial-failure (point 4) was
+already known/out-of-scope before this attempt as opposed to newly noticed by
+me; I read it as pre-existing and out of scope but flag it here for the
+record rather than silently drop it, since it is a genuine gap adjacent to
+this task's subject (plaintext/state handling on migration failure), just not
+a cache-residency defect and not part of F1's brief.
+
+Direction: no defect found in either direction (no live confidentiality leak,
+no coverage gap). All three placements checker-second's attempt-2 finding
+called out as undefended (decrypt, rollback) are now individually mutation-
+confirmed defended, verified by me independently rather than taken on the
+primary lane's or the oracle's word.

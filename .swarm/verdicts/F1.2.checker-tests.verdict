@@ -1,0 +1,192 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F1
+ATTEMPT: 2
+---
+ORACLE (the floor)
+  $ bash .swarm/tier3/F1/accept.sh   (cwd /home/darrell/bin/ai/budget2)
+    CHECK 01-migration-cache-residency: PASS
+    CHECK 02-package-suite-race: PASS
+    CHECK 03-build: PASS
+    CHECK 04-vet: PASS
+    --- passed=4 failed=0   (exit 0)
+  $ git status --porcelain  after the run -> no zz_oracle_f1_test.go residue;
+    working tree unchanged. The oracle's planted file cleans itself up.
+
+POINT 1 -- EnableEncryption leaves no pre-migration plaintext cached, and bumps
+the generation.  MET.
+  Named test: TestEnableEncryptionEvictsCachedPlaintext (migration_cache_test.go
+  :18-55). Read: it seeds via s.WriteFile+s.ReadFile, asserts the entry EXISTS
+  before migration (line 34, "setup invariant broken"), samples cacheGeneration,
+  runs EnableEncryption, then asserts s.cache[csvFile] absent (line 49) AND
+  genAfter != genBefore (line 52). Both halves of the claim are asserted.
+  Mutation (scratch copy /tmp/.../f1mut, never the repo):
+    $ remove BOTH encrypt-side invalidateCache calls (migration.go:253,274)
+      -> --- FAIL: TestEnableEncryptionEvictsCachedPlaintext (0.83s)
+         --- FAIL: TestEncryptFailureDoesNotLeavePlaintextCached
+  Oracle's independent fixture TestOracleF1EnableDropsPlaintext additionally
+  asserts the on-disk file really is age-encrypted before concluding.
+
+POINT 2 -- DisableEncryption, same in the other direction.  MET.
+  Named test: TestDisableEncryptionEvictsCachedPlaintext (lines 59-100), same
+  shape, precondition asserted at line 79, absence at line 94, generation at 97.
+  Mutation:
+    $ remove BOTH decrypt-side calls (migration.go:295,313)
+      -> --- FAIL: TestDisableEncryptionEvictsCachedPlaintext (2.46s)
+
+POINT 3 -- rollbackEncryptionWithIdentity.  MET.
+  Named test: TestRollbackEncryptionEvictsCachedPlaintext (lines 186-228). It
+  calls s.rollbackEncryptionWithIdentity directly with a real identity and a
+  genuinely age-encrypted file, asserts cached-before (line 209) and
+  absent-after + generation advanced (lines 222,225).
+  Mutation:
+    $ remove BOTH rollback calls (migration.go:335,346)
+      -> --- FAIL: TestRollbackEncryptionEvictsCachedPlaintext (1.67s)
+
+POINT 4 -- data round-trips byte for byte.  MET.
+  Named test: TestMigrationRoundTripPreservesContent (lines 104-143); it reads
+  once BEFORE migrating so a surviving stale entry could not masquerade as a
+  correct read, then compares bytes after encrypt and again after decrypt.
+  Mutation: truncate the decrypted payload by one byte in
+  decryptFileWithIdentity ->
+    --- FAIL: TestMigrationRoundTripPreservesContent (2.51s)
+      migration_cache_test.go:141: content mismatch after decrypt migration:
+      got "col1,col2\n1,2\n3,4" want "col1,col2\n1,2\n3,4\n"
+  (plus 8 pre-existing migration tests, so the round-trip property is not
+  resting on this one test alone).
+
+POINT 5 -- an ordinary read still caches; the fix is not a no-op.  MET.
+  Named test: TestReadCachesUnmigratedFile (lines 148-180) -- asserts the entry
+  exists AND that entry.data equals the written bytes, then re-reads.
+  Mutation: make publishCache a no-op (storage.go) ->
+    --- FAIL: TestReadCachesUnmigratedFile
+    --- FAIL: TestPublishCacheKeepsEntryFromUncontendedRead
+    (and the four residency tests fail at their cached-before preconditions,
+     which is itself evidence those preconditions are real assertions)
+  So the residency tests cannot be passing vacuously against a dead cache.
+
+POINT 6 -- race suite, build, vet.  MET.
+  $ go test -race -count=1 -timeout 600s ./internal/services/storage/
+    ok  budget2/internal/services/storage  250.084s
+  $ go build ./... ; echo $?   -> build_exit=0, 0 bytes of output
+  $ go vet ./...   ; echo $?   -> vet_exit=0,   0 bytes of output
+  $ go test -count=1 ./...     -> every package ok (repo-wide, exit 0)
+  Oracle checks 02/03/04 corroborate all three inside accept.sh's own shell.
+  $ gofmt -l internal/services/storage/migration.go \
+        internal/services/storage/migration_cache_test.go   -> no output.
+
+POINT 7 -- marker (.encrypted) and verification (.encryption-verify) files are
+correctly excluded.  CONFIRMED INDEPENDENTLY, not inherited.
+  (a) Static: every touch of them is a raw syscall, never the caching reader.
+      $ grep -rn 'markerFile|verifyFile' --include=*.go . | grep -v _test.go
+        migration.go:44,49 os.WriteFile(verifyPath)  migration.go:101-102
+        os.WriteFile(markerPath)  migration.go:143 os.ReadFile(verifyPath)
+        migration.go:192 os.Remove  storage.go:90 os.Stat  storage.go:162
+        os.ReadFile
+  (b) Call-graph: the four places that could pass an attacker- or
+      user-influenced path to Storage.ReadFile/OpenFile cannot reach them.
+      - backup plaintext export (handlers.go:406 store.OpenFile) is gated by
+        backupsvc.SkipPredicate, whose last statement is
+        `return storage.IsEncryptionStateFile(base)` (snapshot.go:277).
+      - explorer import readBack (handlers.go:566) rejects any name without a
+        .csv suffix before any filesystem access (handlers.go:643-645).
+      - retirement scenariosReferencingFile globs "whatif*.json".
+      - SharedTx.ReadFile just delegates to Storage.ReadFile.
+  (c) Dynamic: I instrumented a scratch copy, printing PROBE_ lines from the
+      top of ReadFileContext and from publishCache whenever
+      IsEncryptionStateFile(base) held, then ran the WHOLE repo suite:
+      $ go test -count=1 ./...  -> suite_exit=0, grep -c PROBE_ -> 0
+      Zero reaches, repo-wide.
+  (d) Migration never rewrites them either:
+      shouldSkipEncryption(.encrypted)=true, (.encryption-verify)=true,
+      (.encryption-config.json)=true  (scratch test, all three logged true).
+  Recorded qualification: ReadFileContext applies no base-name exclusion of its
+  own. A scratch probe calling s.ReadFile(markerPath) / s.ReadFile(verifyPath)
+  directly logged "marker cached ... true" and "verify cached ... true". The
+  exclusion is therefore sound but rests on caller discipline, not on a guard.
+  No such caller exists today, so the exclusion is not a defect -- it is a
+  property that a future caller could silently break.
+
+PLACEMENT TEST -- TestEncryptFailureDoesNotLeavePlaintextCached discriminates.
+  $ move s.invalidateCache(path) in encryptFileWithRecipient from above
+    encryptData to below it (wt-primary's original placement), gofmt-clean,
+    builds, then run the full package suite -v:
+      --- FAIL: TestEncryptFailureDoesNotLeavePlaintextCached (0.00s)
+        migration_cache_test.go:284: plaintext still resident in cache after a
+        failed encryption
+      passing_tests=184, and that is the ONLY --- FAIL line.
+  So the test defends the placement, not merely the presence, and the report's
+  claim "fails that test and nothing else in the suite" is confirmed. The test
+  reaches the otherwise-unreachable path with failingRecipient{} whose Wrap
+  returns an error (lines 234-238) -- real error injection, not a stub name.
+
+LOCK ORDERING -- sound, single order s.mu -> cacheMu.
+  $ sed -n on migration.go: EnableEncryptionWithProvider (line 25) and
+    DisableEncryption (line 116) both open with `s.mu.Lock(); defer
+    s.mu.Unlock()` -- held for the whole run.
+  $ invalidateCache (storage.go:243-248) takes only s.cacheMu.Lock/Unlock.
+  $ script-extracted all five cacheMu critical sections in the package
+    (storage.go:226, 244, 253, 263, 303) and grepped each for `s.mu`:
+      every one reported "s.mu inside = NONE".
+    The near miss is ReadFileContext: cacheMu.RLock at 303, RUnlock at 308 and
+    311, s.mu.RLock only at 314 -- after the release, never nested.
+  $ grep of all 11 s.mu acquisitions shows the only nesting is the other way
+    (Lock() at storage.go:214 -> cacheMu.Lock at 226; migration.go:25/116 ->
+    invalidateCache). No path takes cacheMu and then wants s.mu, so ABBA is
+    structurally impossible.
+  Runtime corroboration: scratch test, 8 goroutines hammering ReadFile against
+  repeated EnableEncryption/DisableEncryption cycles, -race, 180s timeout:
+    --- PASS: TestCheckerLockOrderNoDeadlock (42.72s)
+    "completed 1 enable/disable cycles against 8 concurrent readers with no
+    deadlock", contents intact afterwards, race detector silent.
+
+FINDING (does not fail a numbered point, recorded per the brief's standing
+instruction about undefended lines).
+  Single-call mutation: I removed each of the six invalidateCache calls one at
+  a time and ran the full package suite each time.
+    migration.go:253 (encrypt, pre-transform)  -> FAIL
+      TestEncryptFailureDoesNotLeavePlaintextCached          DEFENDED
+    migration.go:274 (encrypt, post-rename)    -> ok, 39.693s  UNDEFENDED
+    migration.go:295 (decrypt, pre-transform)  -> ok, 39.674s  UNDEFENDED
+    migration.go:313 (decrypt, post-rename)    -> ok, 39.770s  UNDEFENDED
+    migration.go:335 (rollback, pre-transform) -> ok, 39.853s  UNDEFENDED
+    migration.go:346 (rollback, post-rename)   -> ok, 39.913s  UNDEFENDED
+  Five of six survive single removal. The reason is masking, not absence of
+  coverage: each helper brackets the transform on both sides, so with either
+  member of a pair present the property still holds on the success path, and
+  publishCache's generation check independently refuses a late publish. Removing
+  a whole pair does fail a named test in every case (see points 1-3), and
+  removing all six fails four tests at once:
+    $ mutant all_six -> FAIL Enable, Disable, Rollback, EncryptFailure.
+  The one call that is individually load-bearing is exactly the one the lead
+  added a test for. The other five are documented defence-in-depth ("Mutations
+  invalidate on BOTH sides", invalidateCache doc) that no single test pins.
+  This is the same shape as the previously recorded correct-but-untested
+  CreateExclusive invalidation; naming it, not treating it as a criterion miss,
+  since points 1-3 state properties and each property is mutation-confirmed.
+
+SCOPE
+  $ git status --porcelain
+      M .swarm/ledger.tsv
+      M internal/services/storage/migration.go
+     ?? .swarm/manifests/F1.1.files, F1.2.files
+     ?? .swarm/tier3/F1/
+     ?? internal/services/storage/migration_cache_test.go
+  The only source files touched are the two named in .swarm/manifests/F1.2.files.
+  $ git diff -U2 HEAD -- migration.go, comment lines stripped -> the entire
+    non-comment change is six `s.invalidateCache(path)` insertions plus two
+    `return os.Rename(t,p)` -> `err = os.Rename(t,p); ...; return err`
+    rewrites that preserve the returned value. No error handling altered; in
+    particular rollbackEncryptionWithIdentity has no added `continue`, matching
+    the report's RESOLUTION line that rejected wt-alt's.
+  internal/services/storage/** IS in .swarm/critical.globs; the ledger row
+  carries tier 3, which is what a critical glob requires. Permitted.
+  Pre-existing gofmt offender confirmed, not inherited on trust:
+    $ git show HEAD:internal/services/storage/edge_cases_test.go > /tmp/x.go
+      && gofmt -l /tmp/x.go   -> /tmp/x.go   (already unformatted at HEAD)
+    $ git diff --stat HEAD -- edge_cases_test.go -> 0 lines (untouched here)
+  All mutation work was done on copies under
+  /tmp/.../scratchpad/f1mut and .../f1inst; both were diffed back to the repo
+  afterwards (SCRATCH_MIGRATION_IDENTICAL, SCRATCH_STORAGE_IDENTICAL) and the
+  repo's own files were never edited.

@@ -1,0 +1,107 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: P16
+ATTEMPT: 1
+---
+Scope: internal/services/storage/storage.go, cache_test.go (commits 06176ef,
+79ef006), plus the 2026-08-22 hand merge 2a5c068. All experiments run in a
+disposable git worktree at 5eeca01 (`git worktree add ... 5eeca01`), never
+touching the tracked repo at /home/darrell/bin/ai/budget2.
+
+What I confirmed holds (criteria 1, 2, 4, 6 from LEDGER_P16_P18_SPEC.md):
+
+1. Reverted the fix to its exact pre-06176ef shape (removed only the
+   post-atomicWrite `s.invalidateCache(path)` call in writeFileLocked, leaving
+   the pre-write invalidate via encodeForWrite intact -- i.e. "invalidate
+   before staging, never touch it again", the bug as described).
+   TestReadFileConcurrentWriterNeverServesStale failed at round 4 under
+   `-race`: `ReadFile returned "BBBB" after WriteFile("AAAA") returned; the
+   cache is serving stale data`. Confirms the bug is real and the fix's
+   mechanism (the post-write invalidate) is what closes it.
+
+2. Removed `s.cacheGen++` from `invalidateCache` only (left Lock's own bump).
+   Three tests failed: TestReadFileConcurrentWriterNeverServesStale (round
+   50), TestPublishCacheRejectsEntryOvertakenByWrite, and
+   TestRemoveOrdersCacheAgainstUnlink. The counter is load-bearing, not
+   decoration.
+
+3. Removed only Lock's `s.cacheGen++` (map clear left in place).
+   TestLockBarsPublishFromReadStartedBeforeLock failed on both counts the
+   commit names: "a read started before Lock put plaintext back into the
+   cleared cache" and "ReadFile succeeded while the store was locked" --
+   matches 79ef006's claim exactly.
+
+4. `go test -race -count=1 ./internal/services/storage/...` on the real
+   5eeca01 tree: ok, 220s.
+
+5. Checked encodeForWrite/writeFileLocked, CreateExclusive, removeLocked by
+   reading: each calls invalidateCache once before the disk change and once
+   after (writeFileLocked's post-atomicWrite call, CreateExclusive's
+   post-createExclusive call, removeLocked's own before+after pair). All
+   three named write paths are correctly ordered on both sides.
+
+WHAT BREAKS THE CLAIM:
+
+`internal/services/storage/migration.go` (EnableEncryptionWithProvider,
+DisableEncryption, and their helpers encryptFileWithRecipient,
+decryptFileWithIdentity, rollbackEncryptionWithIdentity) rewrite files in
+place at the exact same paths ReadFileContext caches -- via raw
+os.WriteFile+os.Rename / os.WriteFile, entirely bypassing
+Storage.invalidateCache. None of these five functions call invalidateCache,
+delete from s.cache, or touch cacheGen. This is the same file the P16 note
+for the second lane names as merged by hand and directs auditing for exactly
+this shape of gap ("ask whether any write path reaches disk through a code
+path that skips the generation bump") -- and migration.go is such a path.
+
+Reproduced with a scratch test (TestZZMigrationDoesNotBumpGeneration, run
+with `-race`, deleted after the run, never landed in the tracked repo):
+
+  - Cached a plaintext ReadFile of ledger.csv (gen=2, entry present).
+  - Called s.EnableEncryption(...), which rewrites the same path on disk via
+    encryptFileWithRecipient. Result: cacheGeneration() still == 2, and the
+    pre-encryption plaintext entry is STILL present in s.cache keyed to that
+    path ("cache entry for path still present after EnableEncryption: true").
+  - Called s.DisableEncryption(...), which rewrites the path again via
+    decryptFileWithIdentity. cacheGeneration() again unmoved.
+  - Direct proof of the user-visible consequence, same technique the shipped
+    tests use (os.Chtimes to a frozen mtime to model coarse/frozen-mtime
+    filesystems, matching WriteFile's own doc comment): sampled gen, did an
+    equal-length in-place os.WriteFile + Chtimes-to-frozen rewrite of the
+    kind migration.go performs, then called publishCache with the pre-rewrite
+    bytes and the sampled gen. It INSTALLED -- "publishCache installed a
+    pre-migration-shaped entry ("AAAA") after an equal-length in-place
+    rewrite -- because nothing bumped cacheGen for that rewrite, gen was
+    still valid." (This step used a bare os.WriteFile to stand in for
+    migration.go's own writer, since migration.go's real writer is
+    unreachable from the test package boundary without more scaffolding; the
+    generation-counter proof in the two steps above -- gen genuinely
+    unmoved across two real EnableEncryption/DisableEncryption calls -- is
+    the load-bearing evidence and needs no stand-in.)
+
+Consequence: the cache-hit fast path in ReadFileContext
+(`s.cacheMu.RLock(); if entry, ok := s.cache[path]; ok && entry.modTime==...
+&& entry.size==...`) never touches s.mu and is gated only on the entry still
+being present with matching (modTime, size) -- not on cacheGen at all, hits
+skip the generation check entirely and rely solely on invalidateCache having
+deleted the entry. Because migration.go's five write paths never call
+invalidateCache, a stale pre-migration entry is not merely vulnerable to a
+generation race, it is never removed from the map at all. It survives until
+some other operation (a WriteFile/Remove/CreateExclusive to the same path)
+happens to invalidate it. On the coarse/frozen-mtime filesystems the fix's
+own doc comment names (WSL2 9p, some network mounts, CI sandboxes), or simply
+whenever the pre- and post-migration file sizes coincide, a read immediately
+after EnableEncryption/DisableEncryption can serve pre-migration bytes
+indefinitely -- the exact bug class 06176ef claims to have closed everywhere,
+reachable through a door the fix did not seal.
+
+This is inside the stated scope: the ledger note explicitly assigns the
+second lane to audit this file's other write paths for a skipped generation
+bump, and migration.go's writers are in the same package, share s.cache and
+cacheMu, and were not touched by 06176ef/79ef006/2a5c068. None of the new
+tests in cache_test.go exercise EnableEncryption or DisableEncryption.
+
+Criterion 3 ("Both sides of every mutation invalidate") is satisfied for the
+three paths it names (atomic replace, CreateExclusive, Remove) but the P16
+claim is broader than those three paths, and the second-lane note asks the
+broader question directly. On that broader question the answer is no.

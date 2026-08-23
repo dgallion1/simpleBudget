@@ -1,0 +1,85 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: P17
+ATTEMPT: 1
+---
+Attacked LEDGER_P16_P18_SPEC.md's P17 criteria (1-5) and the tier-3 process
+requirement. Summary: the five written behavioral criteria all held up under
+direct adversarial testing, but the task is Tier 3 and the mandatory tier-3
+acceptance artifacts do not exist and per the spec's own text cannot be
+retroactively created -- that is the basis for FAIL, not a code defect.
+
+Technical criteria (1-5), each attacked directly rather than read off the
+commit message:
+
+1. staticcheck ./... at pinned v0.8.0 exits 0 at HEAD -- confirmed
+   (`go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./...`, exit 0).
+   Isolated the "last SA4023" claim by checking out 7fe9b98^ in a scratch
+   worktree and running the same pinned staticcheck there: it reports
+   exactly one finding, SA4023 at ssh_provider.go:79, nothing else in the
+   whole module. So this commit's file was provably the only offender and
+   removing it is what cleared the module. Claim holds.
+
+2. "Byte for byte" unchanged behavior -- did not trust the diff read. Wrote
+   a throwaway _test.go (never committed, deleted immediately after,
+   `git status` confirms clean) that drives NewSSHProvider + Unlock on a
+   real encrypted-key fixture using the existing test helpers
+   (createTestEncryptedSSHKey), and asserted err.Error() equals the exact
+   string byte-for-byte. Ran it against HEAD: pass. Ran the *same* test
+   against 7fe9b98^ (parent, pre-fix) in a scratch worktree: pass, identical
+   string. Confirmed identical on both sides of the commit, not merely
+   "looks the same in the diff." Also checked the shadowed-variable detail:
+   the new code introduces a fresh `err := decryptSSHKey(...)` inside the if
+   block (shadowing the outer read err) and returns unconditionally instead
+   of checking err != nil first -- this only matches old behavior *because*
+   decryptSSHKey is unconditionally erroring; verified that by reading
+   decryptSSHKey's body, which has no branches, no build tags, and returns
+   a hardcoded fmt.Errorf with no conditional path to a nil error. It cannot
+   ever succeed as written, so this is safe today, but the new code is more
+   fragile than the old code: if decryptSSHKey were ever edited to return
+   (data, nil) on success, the old code would have used the plaintext; the
+   new code would still return an error (fmt.Errorf wrapping nil produces a
+   non-nil error string containing "%!w(<nil>)"), silently breaking
+   passphrase support instead of surfacing it. Not a defect against current
+   behavior, but worth flagging as a latent trap the commit message doesn't
+   mention.
+
+3. Stub and test still present and reachable, not just present-but-dead:
+   ran `go test ./internal/services/storage/... -run
+   'TestDecryptSSHKey|TestSSHProviderUnlockWithPassphrase' -v` -- both PASS,
+   both call decryptSSHKey along a still-live path (direct call, and via
+   loadIdentity -> Unlock). Neither is orphaned coverage.
+
+4. No other caller depended on the removed assignment: grepped
+   `loadIdentity|keyData` across internal/services/storage/*.go
+   (non-test) -- decryptSSHKey and the removed keyData reassignment have
+   exactly one call site, in the code the commit touched. No other
+   AuthProvider (age_provider.go, yubikey_provider.go) touches this.
+
+5. Suite green: `go test ./internal/services/storage/...` -> ok, 35s.
+
+Where the claim fails: this row is Tier 3 (ledger: `P17  3  tests,second
+pending  1  lead  sa4023-dead-decrypt-path-escalated-critical-glob-
+unverified`), and internal/services/storage/** is in .swarm/critical.globs.
+LEDGER_P16_P18_SPEC.md's own closing section, "What this document does NOT
+do," states in plain language: it does not make P17 acceptable at tier 3;
+gate.sh check requires .swarm/tier3/P17/report.md with a RESOLUTION line
+from two blind arms, and "no such arms exist or can now be created for code
+that is already on master." I confirmed .swarm/tier3/P17/ does not exist at
+all (only .swarm/manifests/P17.1.files is present for this task; other
+tier-3 tasks like P15, R1, R4, R11, R12, S2, A1-A3 all have their own
+.swarm/tier3/<task>/ directories with oracles). There is no accept.sh oracle
+and no report.md for P17, and per the spec's own admission there cannot be
+one after the fact.
+
+That means: even though I could not break the behavioral claim after
+sustained adversarial testing (criteria 1-5 genuinely hold), the artifact
+this checker's PASS is supposed to feed into -- gate.sh check requiring a
+RESOLUTION line at this tier -- cannot exist for this task as currently
+scoped. Reporting this as PASS would represent the work as acceptable when
+the mechanical gate the constitution requires for tier-3 tasks cannot be
+satisfied, and the spec document itself flags this as an unresolved,
+user-level decision rather than something a checker verdict should paper
+over. Defaulting to FAIL on that unresolved structural gap, per instruction,
+rather than silently PASSing criteria that were never the whole test.

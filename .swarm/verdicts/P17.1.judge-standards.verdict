@@ -1,0 +1,93 @@
+VERDICT: OVERRULE
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: P17
+ATTEMPT: 1
+---
+Q1 — what a verdict is a statement about.
+CLAUDE.md defines the checker roles by what they test against the work, not
+the paperwork: the primary verifier "asks 'does this meet the criteria?' and
+must cite the command proving each one," and checker-second "asks 'what would
+make this wrong?', defaults to FAIL on ambiguity." Both are questions about
+the artifact. checker-second's own verdict concedes it applied exactly that
+test and the artifact survived: "the five written behavioral criteria all
+held up under direct adversarial testing" and, at the close, "I could not
+break the behavioral claim after sustained adversarial testing (criteria 1-5
+genuinely hold)." Its FAIL is not a claim about ssh_provider.go; it is a
+claim about a missing file, `.swarm/tier3/P17/report.md`, which is process
+evidence, not a work criterion. CLAUDE.md's own sentence on this — "Tier
+decides how it is verified; a mechanically gate decides when it is
+accepted" — separates the two: tier is a verification method, the gate is
+the acceptance mechanism, and a checker's PASS/FAIL is supposed to answer
+the verification question, not pre-empt the gate's bookkeeping. checker-second
+folded a gate concern into a criteria verdict.
+
+Q2 — is FAIL-forever coherent, and does the standard offer another remedy.
+CLAUDE.md's tier-3 procedure assumes a task is dispatched to two arms *before*
+either is written. P17 is a row that reached tier 3 by escalate-scan hitting
+`internal/services/storage/**` in `.swarm/critical.globs` *after* `7fe9b98`
+was already written in a lead session and merged. No text in CLAUDE.md
+contemplates retroactive tier-3 assignment to an already-merged single-author
+commit, so the "two blind worktrees, one accept.sh oracle" machinery
+checker-second cites is, for this row, not a requirement the work failed to
+meet — it is a requirement that was never satisfiable for this row's history.
+A standard that produces a FAIL with literally no path to PASS is not
+enforcing a standard, it is dead-lettering a task regardless of merit,
+which is the same defect class the S4 dispute hit from the other direction:
+there a real defect existed with no numbered point to cite, and was overruled
+into a new point (ACCESSIBILITY.md #16). Here a numbered process point *does*
+exist and is cited correctly, but the row cannot satisfy it no matter what
+the worker or checkers do — which is the mirror image, and the fix is also
+the mirror: not "add a citable point" but "apply the user's remedy for rows
+that cannot satisfy the citable point." User ruling 2026-08-22a is exactly
+that remedy, issued for this defect class: "record the gap honestly," not
+fabricate an N-version story, not revert shipped CI-green code. That remedy
+has been executed: `.swarm/tier3/P17/report.md` states plainly there is one
+arm, why, and defers the standards question to this panel.
+
+Q3 — does the report remove the FAIL's ground, and is `check_tier3`'s
+RESOLUTION-line check real work or a formality here.
+Mechanically: `swarm/gate.sh`'s `check_tier3()` requires only that
+`$SWARM_DIR/tier3/$task/report.md` exists and contains a line matching
+`^RESOLUTION:`, then falls through to `check_tier2()` for the dual-family
+PASS/dispute logic. I read the report and confirmed both: it exists, and its
+last line begins `RESOLUTION: single arm accepted as the merge base, with
+N-version deliberately forgone under user ruling 2026-08-22a...`. Read
+honestly, this check is not doing the substantive job the RESOLUTION line
+does for a normal tier-3 row — there, RESOLUTION records a judgment call
+made *after comparing two independent implementations*, which is real
+adjudicative work. Here there was nothing to compare, so the line records an
+admission, not a synthesis. I will say that plainly: as applied to this row,
+`check_tier3`'s RESOLUTION-line requirement is a formality — it is satisfied
+by the act of writing down "there is only one arm and here is why," not by
+any comparison the process was designed to force. But a formality is not the
+same as a loophole. The user ruling did not ask the report to fake a
+comparison; it asked for exactly what this report is: an honest record in
+place of a fabricated or reverted one. The report does what the ruling
+required. checker-second's FAIL predates the report ("I confirmed
+`.swarm/tier3/P17/` does not exist at all") — that observation was accurate
+when written and is no longer true. Its behavioral findings (criteria 1-5,
+plus the shared latent-`%!w(<nil>)` observation) remain correct and cost the
+work nothing, since neither checker counted them against a criterion.
+
+Ruling: OVERRULE. checker-second correctly found no defect in the work and
+said so; its FAIL rests on a tier-3 artifact gap that (a) is now closed by
+the report the user ordered be written for exactly this situation, and (b)
+was never closable in the form checker-second demanded (a second blind arm)
+because the row was escalated onto an already-merged commit. Upholding a
+FAIL that the checker itself says does not reflect a code defect, against a
+row that cannot satisfy the letter of a requirement written for a different
+sequencing of events, would make tier assignment punitive rather than
+diagnostic — the opposite of what CLAUDE.md's escalation mechanism is for
+("re-verify at the new tier," not "block forever because the new tier
+arrived late").
+
+Recommended amendment: CLAUDE.md's Tier 3 section should add a clause for
+rows escalated onto code that was written and merged before the escalation
+existed (post-hoc critical-glob hits, boss-authored commits later found to
+match a glob, etc.): dispatch is skipped, `.swarm/tier3/<task>/report.md` is
+written directly with a `RESOLUTION:` line stating single-arm status and the
+reason, and the dual-checker Tier-2 pass on the merged result is treated as
+the full verification. This would make in writing what user ruling
+2026-08-22a already established in practice, so the next inherited row does
+not need a three-judge panel to reach the same place P17 did.

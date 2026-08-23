@@ -1,0 +1,75 @@
+VERDICT: UPHOLD
+CHECKER: judge-impact
+FAMILY: impact
+TASK: P16
+ATTEMPT: 1
+---
+## Concrete Scenario
+
+Darrell's plaintext account ledger is cached at (mtime=X, size=1000, data=plaintext).
+He calls EnableEncryption. The file is rewritten on disk via migration.go's 
+encryptFileWithRecipient, which calls os.Rename(tmpPath, path) but never calls 
+invalidateCache. The cache entry remains in s.cache, cacheGen unmoved.
+
+On a filesystem with frozen mtime (WSL2 9p, some network mounts) or if 
+os.Chtimes happens to preserve the timestamp, the new encrypted file has 
+(mtime=X, size=1050 because age overhead). ReadFileContext's cache-hit check 
+at storage.go:304 compares only (mtime, size), not cacheGen—a deliberate 
+design to rely on the mtime+size key. Size mismatch (1000 ≠ 1050) causes a 
+cache miss, so the stale plaintext is not served here.
+
+However, the vulnerability is real: if the encrypted file's size happened to be 
+exactly 1000 bytes (unlikely but possible with different age implementation, 
+changes to overhead, or bugs), the cache would serve pre-encryption plaintext 
+indefinitely. The same gap exists in reverse: encrypted file cached, then 
+decrypted but sizes match, would serve stale ciphertext as plaintext to the 
+parser, causing a parse error.
+
+## Why This Is In Scope For P16
+
+The LEDGER_P16_P18_SPEC.md explicitly directs the second lane:
+"In particular, ask whether any write path reaches disk through a code path 
+that skips the generation bump."
+
+Migration.go's five write paths (encryptFileWithRecipient, decryptFileWithIdentity, 
+rollbackEncryptionWithIdentity, plus marker/config writes) all reach disk without 
+calling invalidateCache or bumping cacheGen.
+
+P16's claim is: "Storage could serve stale bytes forever... where mtime is coarse 
+or frozen and the rewrite is the same length, that entry keeps matching the new 
+file." This is precisely the condition migration.go does not protect against.
+
+## The Severity
+
+Likelihood: Very low. Age encryption overhead (50+ bytes minimum) makes size 
+collisions improbable. File size checks likely save this in practice.
+
+But consequence if it happens: Silent encryption bypass. For a personal finance 
+app storing bank credentials and transactions, any path where cached plaintext 
+could be served instead of ciphertext (or vice versa) violates the encryption 
+guarantee, even if hidden.
+
+The characteristic failure mode of budget2 (recorded in prior rulings) is 
+confident wrong numbers. A stale cache serving pre-encryption plaintext as-is 
+would be invisible to Darrell until reconciliation—too late.
+
+## User Impact of UPHOLD vs. OVERRULE
+
+**UPHOLD (reject P16):** P16 goes back to the worker to either:
+- Extend the fix to migration.go's write paths (call invalidateCache after each), or
+- Narrow P16's claim to exclude frozen-mtime, same-length scenarios and document the gap.
+
+Result: No immediate harm to Darrell. Encryption protection is complete.
+
+**OVERRULE (accept P16):** The gap remains. Darrell is safe in practice (size changes 
+are likely), but a code path exists where stale encryption-protected data could 
+be served from cache indefinitely, violating the principle that encryption protects 
+at all times, not just statistically.
+
+## Recommendation
+
+UPHOLD. P16's scope includes migration.go per the spec's direction to the second 
+lane, and the fix is incomplete. The risk to Darrell is low due to practical file 
+size mismatches, but closing the gap ensures encryption is protection-by-design, 
+not protection-by-accident.
+

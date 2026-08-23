@@ -41,6 +41,6 @@ S2	3	tests,second	accepted	2	tier3-merged-wt-primary	gate-ok-tier3-attempt-2
 S3	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1
 S4	2	tests,second,a11y	accepted	3	worker-coder	gate-ok-attempt-3-judges-2overrule-1uphold
 S5	3	tests,second,a11y	accepted	8	worker-coder	gate-ok-tier3-attempt-8-after-halt-and-two-user-decisions
-P16	3	tests,second	pending	1	lead	escalated-critical-glob-implemented-in-lead-session-unverified
-P17	3	tests,second	pending	1	lead	sa4023-dead-decrypt-path-escalated-critical-glob-unverified
-P18	1	tests	pending	1	lead	ci-workflow-implemented-in-lead-session-unverified
+P16	3	tests,second	accepted	1	lead	gate-ok-tier3-attempt-1-one-arm-ruling-2026-08-22a-judges-2overrule-1uphold
+P17	3	tests,second	accepted	1	lead	gate-ok-tier3-attempt-1-one-arm-ruling-2026-08-22a-judges-3overrule-0uphold
+P18	1	tests	accepted	1	lead	gate-ok-attempt-1-criteria-written-post-hoc-see-LEDGER_P16_P18_SPEC

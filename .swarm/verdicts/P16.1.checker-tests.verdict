@@ -1,0 +1,204 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P16
+ATTEMPT: 1
+---
+Scope of evidence. All commands run at /home/darrell/bin/ai/budget2, master @
+5eeca01. Mutation experiments were run in a detached scratch worktree at
+/tmp/.../scratchpad/p16wt created with `git worktree add ... 5eeca01`; the
+worktree was removed at the end and `git status --short` in the main tree shows
+only other checkers' verdict files (P17.1.*, P18.1.*) — no tracked file was
+modified by this verification.
+
+Baseline (prerequisite for everything below):
+  $ go build ./...              -> build exit=0
+  $ go vet ./...                -> VET_EXIT=0
+  $ go test -count=1 ./...      -> SUITE_EXIT=0 (no non-ok lines)
+
+--------------------------------------------------------------------
+CRITERION 1 — the stale-read bug is real and is fixed.  PASS
+--------------------------------------------------------------------
+Reverted the fix in the scratch tree with a 4-hunk mutation restoring the
+pre-fix semantics exactly as described by 06176ef's own diff (git diff in the
+worktree, "+1 -6"):
+  - publishCache: `if s.cacheGen != gen { return }` replaced by `_ = gen`
+    (pre-fix publish was an unconditional `s.cache[path] = entry`)
+  - writeFileLocked: post-atomicWrite `s.invalidateCache(path)` deleted
+  - CreateExclusive: post-createExclusive `s.invalidateCache(path)` deleted
+  - removeLocked: post-os.Remove `s.invalidateCache(path)` deleted
+
+PRE-FIX (scratch tree):
+  $ go test -race -count=1 -run TestReadFileConcurrentWriterNeverServesStale \
+      ./internal/services/storage/
+  --- FAIL: TestReadFileConcurrentWriterNeverServesStale (0.00s)
+      cache_test.go:92: round 2: ReadFile returned "BBBB" after
+      WriteFile("AAAA") returned; the cache is serving stale data
+  FAIL  budget2/internal/services/storage  0.011s   EXIT=1
+  Repeated three more times: failed at round 28, round 4, round 4 — always
+  the same assertion at cache_test.go:92. The failure is the exact symptom
+  the commit message describes (Storage.ReadFile disagreeing with the write
+  that had already returned).
+
+POST-FIX (master @ 5eeca01):
+  $ go test -race -count=3 -run 'TestReadFileConcurrentWriterNeverServesStale|
+      TestPublishCache|TestRemoveOrdersCacheAgainstUnlink|TestLock' -v ./...storage/
+  --- PASS: TestReadFileConcurrentWriterNeverServesStale (0.07s) x3   EXIT=0
+
+Discrepancy recorded, not treated as failure: the commit claims "fails on the
+old code at round 1"; observed first failure was at round 2, 28, 4, 4 across
+four runs. The test is a race stress loop, so the round index is inherently
+non-deterministic. The claim's substance — the test fails against the pre-fix
+code, quickly, under -race — is demonstrated. The precise number is not.
+
+I read the test before citing it (internal/services/storage/cache_test.go:29-107).
+It does what its name says: 4 concurrent reader goroutines, a writer alternating
+two EQUAL-LENGTH payloads ("AAAA"/"BBBB") with os.Chtimes pinning mtime to a
+frozen value after every write, and the assertion is a serial read taken while
+the writer is quiescent. The equal length + frozen mtime are what defeat the
+mtime+size staleness key, which is precisely the condition the bug needs.
+
+--------------------------------------------------------------------
+CRITERION 2 — the generation counter is what does the work.  PASS
+--------------------------------------------------------------------
+Deleted only `s.cacheGen++` from invalidateCache (storage.go:246); one-line
+diff, nothing else changed.
+
+  $ go test -race -count=1 -run '<the five cache tests>' -v ./...storage/
+      cache_test.go:92:  round 16: ReadFile returned "BBBB" after
+                         WriteFile("AAAA") returned; the cache is serving stale data
+  --- FAIL: TestReadFileConcurrentWriterNeverServesStale
+      cache_test.go:165: publishCache installed an entry overtaken by a write: "AAAA"
+      cache_test.go:173: Storage.ReadFile = "AAAA", disk holds "BBBB"
+  --- FAIL: TestPublishCacheRejectsEntryOvertakenByWrite
+      cache_test.go:265: publishCache installed an entry for a file Remove had
+                         already unlinked
+  --- FAIL: TestRemoveOrdersCacheAgainstUnlink
+  --- PASS: TestPublishCacheKeepsEntryFromUncontendedRead
+  --- PASS: TestLockBarsPublishFromReadStartedBeforeLock
+  --- PASS: TestLockUnderConcurrentReadsLeavesNoPlaintext
+  FAIL  budget2/internal/services/storage  13.384s   EXIT=1
+
+Three tests fail with the bump removed, including one asserting the exact
+end-user symptom (ReadFile = "AAAA" while the disk holds "BBBB"). The counter
+is load-bearing, not decoration.
+
+--------------------------------------------------------------------
+CRITERION 3 — both sides of every mutation invalidate.  PASS (with findings)
+--------------------------------------------------------------------
+Lines named, in internal/services/storage/storage.go @ 5eeca01:
+
+  Atomic replace — writeFileLocked (line 371):
+    BEFORE: line 401, s.invalidateCache(path), first statement of
+            encodeForWrite, called at line 375 before any disk contact.
+    AFTER:  line 387, s.invalidateCache(path), after `err = s.atomicWrite(
+            path, payload, perm)` at line 379, unconditional, before
+            `return err` at 388.
+
+  CreateExclusive (line 436):
+    BEFORE: line 401 (same encodeForWrite, called at line 443).
+    AFTER:  line 452, after `err = createExclusive(path, payload, perm)`
+            at line 447, unconditional, before `return err` at 453.
+
+  removeLocked (line 667), reached by Storage.Remove and ExclusiveWriter.Remove:
+    BEFORE: line 672.  AFTER: line 674, straddling `err := os.Remove(path)`
+            at line 673.
+
+Merge-resolution question (2a5c068, the encodeForWrite split) answered by
+grep: `grep -n "invalidateCache" internal/services/storage/*.go` returns
+exactly four call sites (387, 401, 452, 672, 674 — 401 shared by two callers)
+and encodeForWrite is called from exactly two places, writeFileLocked:375 and
+CreateExclusive:443. The refactor did not create a write path that skips the
+pre-invalidation: the single shared helper is the only encoder, and it
+invalidates before it encodes. There is exactly one publish site
+(storage.go:339) and exactly one generation sample (storage.go:292, before the
+os.Stat at 295 as the comment claims).
+
+Two findings for the lead, neither of which fails this criterion as written
+(the criterion asks for the lines, and the lines are there):
+
+  F1. CreateExclusive's post-invalidation (line 452) is not covered by any
+      test. Deleting only that line and running the whole package:
+        $ go test -count=1 ./internal/services/storage/
+        ok  budget2/internal/services/storage  32.582s   EXIT=0
+      The line is correct and required by the criterion; nothing would notice
+      if a future edit removed it.
+
+  F2. Write paths OUTSIDE storage.go reach disk with no invalidation at all:
+      migration.go:248-252 (encryptFileWithIdentity), 276-280
+      (decryptFileWithIdentity), 300 (rollbackEncryptionWithIdentity), and
+      migration.go:49/102/192/193 (verify + marker files). These rewrite real
+      data files in place during EnableEncryption/DisableEncryption and never
+      touch s.cache or s.cacheGen. This is pre-existing (it predates 06176ef),
+      is outside the P16 manifest, and is not a stale-serving hazard of the
+      P16 shape because age encryption/decryption necessarily changes the
+      file's SIZE, so the mtime+size key cannot match afterwards. Reported
+      because the brief asked the question directly. auth.go:93-103 writes
+      only .encryption-config.json, which loadConfig reads via os.ReadFile,
+      never through the cache.
+
+--------------------------------------------------------------------
+CRITERION 4 — Lock bumps the generation too.  PASS
+--------------------------------------------------------------------
+Deleted only `s.cacheGen++` from Lock (storage.go:228); one-line diff shown by
+git diff in the worktree.
+
+  $ go test -race -count=1 -run TestLockBarsPublishFromReadStartedBeforeLock \
+      -v ./internal/services/storage/
+      cache_test.go:326: a read started before Lock put plaintext back into
+                         the cleared cache: "AAAA"
+      cache_test.go:330: ReadFile succeeded while the store was locked
+  --- FAIL: TestLockBarsPublishFromReadStartedBeforeLock (7.93s)   EXIT=1
+
+Both counts the commit names fail, in the order it names them: the entry lands
+(line 326), and the follow-up ReadFile then succeeds against a locked store
+(line 330), serving plaintext the lock was supposed to have removed. On master
+the same test passes (see criterion 1's -count=3 run).
+
+I also checked 79ef006's own disclaimer, since it is a claim in the commit
+message: with Lock's bump removed,
+  $ go test -race -count=1 -run TestLockUnderConcurrentReadsLeavesNoPlaintext -v
+  --- PASS: TestLockUnderConcurrentReadsLeavesNoPlaintext (5.35s)   EXIT=0
+The commit says this test "passes without the bump ... it guards the property,
+it does not reproduce the gap." That is accurate — the author disclosed the
+weaker test rather than passing it off as the reproduction.
+
+--------------------------------------------------------------------
+CRITERION 5 — uncontended reads still cache.  PASS
+--------------------------------------------------------------------
+TestPublishCacheKeepsEntryFromUncontendedRead (cache_test.go:176-215) passes on
+master (criterion 1's -count=3 run). It is not a tautology: mutating
+publishCache to never install (`if s.cacheGen != gen || true { return }`, i.e.
+the cache degraded to a no-op) makes it fail:
+  $ go test -race -count=1 -run TestPublishCacheKeepsEntryFromUncontendedRead -v
+      cache_test.go:199: an uncontended ReadFile did not populate the cache
+  --- FAIL: TestPublishCacheKeepsEntryFromUncontendedRead (0.00s)   EXIT=1
+It asserts both halves: the entry is in s.cache after one read, and a second
+read is actually served from it (the file is rewritten behind Storage's back
+and the read still returns the cached "AAAA").
+
+--------------------------------------------------------------------
+CRITERION 6 — green under the race detector.  PASS
+--------------------------------------------------------------------
+  $ go test -race -count=1 ./internal/services/storage/...
+  ok  budget2/internal/services/storage  219.420s   EXIT=0
+
+--------------------------------------------------------------------
+SCOPE
+--------------------------------------------------------------------
+`git show --stat 06176ef` -> internal/services/storage/cache_test.go,
+internal/services/storage/storage.go (2 files). `git show --stat 79ef006` ->
+internal/services/storage/cache_test.go (1 file). Both are exactly the two
+paths in .swarm/manifests/P16.1.files. Nothing outside the manifest.
+
+internal/services/storage/** IS in .swarm/critical.globs. The ledger row is
+`P16  3  tests,second  pending  1  lead
+escalated-critical-glob-implemented-in-lead-session-unverified`, i.e. tier 3,
+which is what a critical glob requires — so the tier assignment is correct.
+
+Process gap, out of scope for these six criteria but stated for the lead:
+`.swarm/tier3/P16/` does not exist, so there is no accept.sh oracle to run and
+no report.md with a RESOLUTION line. LEDGER_P16_P18_SPEC.md's closing section
+says this explicitly and calls it an open decision for the user. My PASS is a
+statement about the six written criteria only; it is not a statement that the
+tier-3 process was followed, because it was not.

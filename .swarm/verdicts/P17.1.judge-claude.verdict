@@ -1,0 +1,275 @@
+VERDICT: OVERRULE
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: P17
+ATTEMPT: 1
+---
+Dispute judge, primary lane (`anthropic`), correctness lens. Task P17 — "drop
+the dead decrypt path in loadIdentity (SA4023)", commit 7fe9b98, one file
+internal/services/storage/ssh_provider.go. Contested verdict:
+checker-second (lane `adversarial`) FAIL. Ruling: OVERRULE.
+
+I re-derived every factual claim myself rather than reading either verdict for
+truth. Repo /home/darrell/bin/ai/budget2, HEAD on master;
+`git merge-base --is-ancestor 7fe9b98 HEAD` -> exit 0. All comparison work done
+on `git archive` exports under the session scratchpad; the working tree was not
+modified (the only dirty paths are .swarm ledger/verdict/report artifacts,
+present before I started).
+
+====================================================================
+1. IS THE WORK CORRECT? — YES, and I proved it independently.
+====================================================================
+
+1a. The removed branch is genuinely unreachable.
+
+`git show 7fe9b98^:internal/services/storage/ssh_provider.go` gives the pre-fix
+form:
+
+    if p.passphrase != "" {
+        keyData, err = decryptSSHKey(keyData, []byte(p.passphrase))
+        if err != nil {
+            return fmt.Errorf("failed to decrypt SSH key: %w", err)
+        }
+    }
+
+decryptSSHKey (pre-fix line 102, post-fix line 102, byte-identical across the
+commit — `git diff 7fe9b98^ 7fe9b98` touches only the loadIdentity hunk and its
+comment) is:
+
+    func decryptSSHKey(keyData []byte, passphrase []byte) ([]byte, error) {
+        return nil, fmt.Errorf("encrypted SSH keys require passphrase decryption support (not yet implemented)")
+    }
+
+A single unconditional return statement, no branches, no build tags, no
+alternative file for this symbol (`git grep -n decryptSSHKey -- '*.go'` returns
+exactly four production/test sites: ssh_provider.go:76 comment, :81 the sole
+call site, :101-102 the definition, ssh_provider_test.go:245-248). fmt.Errorf on
+a non-empty literal cannot return nil. Therefore `err != nil` was invariantly
+true and the fall-through with the reassigned keyData was dead code. That is
+exactly what the linter said, in its own words.
+
+1b. Criterion 1 — staticcheck. Verified on BOTH trees with the version pinned in
+CI (.github/workflows/test.yml), not just at HEAD:
+
+    pre  (7fe9b98^): go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./...
+      internal/services/storage/ssh_provider.go:79:6: this comparison is always true (SA4023)
+        ...:78:3: the lhs of the comparison is the 2nd return value of this function call
+        ...:101:6: budget2/internal/services/storage.decryptSSHKey never returns a nil interface value
+      STATICCHECK_EXIT=1   (this was the ONLY diagnostic in the whole module)
+    post (7fe9b98):  same command
+      STATICCHECK_EXIT=0   (no output at all)
+
+Checked this is repair and not suppression: `git ls-files | grep -i
+staticcheck.conf` -> nothing; `git grep -ln SA4023` -> only ssh_provider.go's
+new comment plus two .swarm/spec docs, i.e. no `//lint:ignore SA4023` anywhere.
+Criterion 1 MET, and "last SA4023 in the repo" is literally true.
+
+1c. Criterion 2 — behavior unchanged, byte for byte. I did NOT reuse either
+checker's harness. I wrote my own in-package differential test
+(judge_p17_test.go) driving only the exported surface (NewSSHProvider + Unlock)
+and dropped the identical file into both exported trees. It probes six cases,
+including two neither checker reported: the ordering of the file-read error
+against the passphrase branch, and the errors.Is(err, ErrSSHKeyEncrypted)
+result. For each case it prints err.Error(), err==nil, errors.Unwrap(err).Error()
+and errors.Is:
+
+    A_pass   encrypted-marker key + passphrase
+    A_empty  encrypted-marker key + ""            (exercises the ErrSSHKeyEncrypted/parse path)
+    B_pass   real plain ed25519 key + passphrase  (the branch under change)
+    C_empty  real plain ed25519 key + ""          (the success path)
+    D_pass   missing private key + passphrase     (read error must still win)
+    D_empty  missing private key + ""
+    E        direct stub call
+
+Result on pre and post, after normalising only the t.TempDir() random path
+(`sed -E 's#/tmp/TestJudgeP17[0-9]+#TMPDIR#g'`):
+
+    diff pre.norm post.norm  ->  NORMALIZED_IDENTICAL
+
+Every field matches, including:
+  B_pass/A_pass ERR = "failed to decrypt SSH key: encrypted SSH keys require
+    passphrase decryption support (not yet implemented)"  — the exact literal
+    criterion 2 names;
+  UNWRAP = "encrypted SSH keys require passphrase decryption support (not yet
+    implemented)" — so the %w chain survives and errors.Is/As are unaffected;
+  C_empty ERR=<nil>, NIL=true — the success path is untouched;
+  D_pass identical on both sides — the read error still precedes the passphrase
+    branch, so the shadowed `err :=` introduced no ordering change;
+  A_empty "failed to parse SSH key: ssh: no key found" identical — the
+    ErrSSHKeyEncrypted sentinel logic below the hunk is unperturbed.
+
+The only pre/post delta in the raw output was the tempdir nonce. Criterion 2
+MET, on my own instrument.
+
+1d. Criterion 3 — stub and its test still present. ssh_provider.go:102 stub
+intact; ssh_provider_test.go:244 TestDecryptSSHKey and :252
+TestSSHProviderUnlockWithPassphrase intact and still exercising live paths
+(direct call, and via loadIdentity<-Unlock). `git diff --stat 7fe9b98^ 7fe9b98
+-- internal/services/storage/ssh_provider_test.go` -> EMPTY: the commit did not
+touch the test file at all, so the "deliberately not deleted" claim is not a
+claim, it is a diff fact. MET.
+
+1e. Criterion 4 — no other caller depended on the removed assignment. The
+removed statement assigned to a function-local `keyData` inside
+(*SSHProvider).loadIdentity. Its only downstream consumer is
+agessh.ParseIdentity at ssh_provider.go:85, reachable only when
+p.passphrase == "" because the branch now returns unconditionally — and case
+C_empty proves that path still succeeds byte-identically. No other production
+caller of decryptSSHKey exists (grep above). MET.
+
+1f. Criterion 5 — suite green. `go build ./...` -> BUILD_OK; `go vet ./...` ->
+exit 0, no output; `go test ./internal/services/storage/... -count=1` ->
+"ok budget2/internal/services/storage 32.897s". MET.
+
+Scope: `git show --stat 7fe9b98` -> one file, 8 insertions / 7 deletions,
+matching .swarm/manifests/P17.1.files exactly.
+
+All five written criteria hold under my own commands. checker-second reached the
+same conclusion on all five after sustained attack and says so in writing.
+
+====================================================================
+2. DOES THE PROCESS GAP MAKE CORRECT WORK INCORRECT? — NO.
+====================================================================
+
+checker-second's FAIL rests on one ground, stated plainly and honestly: P17 is a
+tier-3 ledger row with no .swarm/tier3/P17/accept.sh oracle and (when it ruled)
+no report.md. I take that objection seriously and it was right to raise it. It
+is nonetheless not a ground for FAIL, for three reasons that are about
+correctness, not about convenience.
+
+First, a FAIL is a proposition about the work. The constitution's remedy for a
+majority UPHOLD is explicit: "majority UPHOLD sends the task back to the
+worker." Ask what a worker would do on receipt of this task. The code is
+correct — I proved it, and so did the checker that failed it. There is no edit
+that would answer the objection, because the objection is not about the code:
+it is that no blind second arm was run before 7fe9b98 was merged to master. A
+worker cannot retroactively un-merge history and become blind to code it can
+already read. A verdict whose prescribed remedy cannot in principle address its
+own stated defect is misclassified, and that misclassification is itself a
+correctness error.
+
+Second, the gap checker-second names is already enforced mechanically, by the
+gate, one layer up. /home/darrell/work/agents2/swarm/gate.sh:187-192:
+
+    check_tier3() {
+      local task="$1" attempt="$2" rep="$SWARM_DIR/tier3/$1/report.md"
+      [[ -f "$rep" ]]               || fail "$task: no divergence report at $rep"
+      grep -q '^RESOLUTION:' "$rep" || fail "$task: report has no RESOLUTION line"
+      check_tier2 "$task" "$attempt"
+    }
+
+The report-plus-RESOLUTION requirement is a gate precondition evaluated
+independently of any verdict, and check_tier2 is then still applied on top. So
+overruling this FAIL bypasses precisely nothing: P17 cannot reach `accepted`
+unless .swarm/tier3/P17/report.md exists and carries a RESOLUTION line, no
+matter how I rule. Encoding that same requirement a second time inside a checker
+verdict does not add a safeguard; it double-counts one, and it does so in the
+channel whose only lever is worker rework. The constitution assigns these jobs
+separately on purpose: "checkers and judges write verdict files... The gate
+enforces the vote count and the distinct-lane requirement mechanically."
+
+Third — and this is the heart of it — a missing oracle is a statement about how
+much confidence anyone is entitled to have, not a finding that the work is
+wrong. Those are not the same thing, and the difference is measurable here. The
+constitution itself bounds what P17's absent second arm could have bought:
+"The two arms differ by model tier only, so N-version here catches slips and
+misreadings rather than shared blind spots — weigh the comparison accordingly."
+The thing a second Haiku arm was there to catch is a slip or a misreading in an
+8-line dead-branch removal. Against that, what actually exists on this row is: a
+pinned external oracle that is not an LLM at all and that flags the exact
+construct (staticcheck v0.8.0, exit 1 before / exit 0 after, one diagnostic in
+the module); a six-case differential behavioral harness run against both trees
+with byte-identical output including the unwrap chain and error ordering; and
+two independent adversarial reviews that converged on all five criteria. I ran
+the linter and the harness myself, on trees I exported myself. That evidence is
+stronger for this change than a second model-tier arm would have been, not
+weaker. P17 also reached tier 3 by escalate-scan hitting
+`internal/services/storage/**` in critical.globs, not by anyone judging the
+change hard — the ledger reason says so:
+"sa4023-dead-decrypt-path-escalated-critical-glob-unverified".
+
+Since checker-second ruled, .swarm/tier3/P17/report.md has been written under
+user ruling 2026-08-22a. I read it. It does not fabricate a second arm; its arm
+table lists `second | — | does not exist`, it states outright that no blind
+second arm exists or can now be created for merged code, and it records the
+concession in the RESOLUTION line itself ("N-version deliberately forgone"). It
+also explicitly refers the standards question to this panel rather than
+resolving it by assertion. `grep -c '^RESOLUTION:'` -> 1, so it satisfies the
+gate line quoted above. The gap is now recorded rather than concealed, which is
+the disposition the constitution prefers when the alternative is a fabricated
+N-version story.
+
+I want to be exact about what OVERRULE does and does not mean. It does not
+bless implementing critical-glob code in a lead session with no brief, no
+manifest-bearing dispatch and no verdict — that was a real process failure, and
+LEDGER_P16_P18_SPEC.md is right to say so in plain language. It does not certify
+that P17 received tier-3 verification; it demonstrably did not, and the report
+says so on its face. It holds only that the five acceptance criteria are
+factually and functionally met, which is the question a checker verdict answers
+and the question my lens governs.
+
+====================================================================
+3. THE %!w(<nil>) ISSUE — FUTURE HAZARD, NOT A PRESENT DEFECT.
+====================================================================
+
+Both checkers flagged it and neither counted it; I agree with not counting it,
+and I confirmed the mechanism rather than assuming it. The surviving branch is:
+
+    if p.passphrase != "" {
+        _, err := decryptSSHKey(keyData, []byte(p.passphrase))
+        return fmt.Errorf("failed to decrypt SSH key: %w", err)
+    }
+
+with no `if err != nil` guard. I checked what Go actually does with a nil
+operand under %w on this toolchain (go1.26.3):
+
+    var err error // nil
+    e := fmt.Errorf("failed to decrypt SSH key: %w", err)
+    // nil?=false  text="failed to decrypt SSH key: %!w(<nil>)"  unwrap=<nil>
+
+So a nil error yields a NON-nil error whose text carries the %!w(<nil>) verb
+error and whose Unwrap is nil. If decryptSSHKey were ever implemented to return
+(plaintext, nil), the pre-fix code would have used the plaintext and proceeded;
+this code would return that malformed non-nil error, silently breaking
+passphrase support at the moment someone tries to add it, and breaking it in a
+way whose symptom is a mangled string rather than an obvious failure.
+
+Present defect? No. Reaching it requires decryptSSHKey to return a nil error,
+and it has exactly one return statement returning a non-nil fmt.Errorf.
+staticcheck states the same invariant independently at ssh_provider.go:101:6:
+"decryptSSHKey never returns a nil interface value". My case B_pass/A_pass
+outputs are byte-identical pre and post, so no reachable input produces it
+today. Criterion 2 asks whether behavior is unchanged, and it is.
+
+Future hazard? Yes, and worth naming precisely: the commit did not change
+behavior, but it did trade away a latent safety property the old code had. The
+old shape degraded gracefully if the stub were implemented; the new shape does
+not. That is a real, if small, regression in robustness — invisible to every
+criterion on the row, invisible to the test suite, and invisible to staticcheck.
+It is out of scope for P17, whose scope was "the dead path only" and whose
+criterion 3 would FAIL a checker that widened it. It belongs in a separate,
+small follow-up: either a comment on the stub warning that loadIdentity's caller
+wraps unconditionally, or restoring the `if err != nil` guard at the same time
+the stub is implemented. It should not gate this row, and it should not be lost.
+Recording it here so it survives the acceptance.
+
+====================================================================
+RULING
+====================================================================
+
+OVERRULE. The five acceptance criteria in LEDGER_P16_P18_SPEC.md § "P17" are
+met, verified by my own commands on my own exports: staticcheck exit 1 -> 0 with
+the single SA4023 removed and no suppression; behavior byte-identical across the
+commit on a six-case differential harness including the unwrap chain, the
+errors.Is sentinel and error ordering; stub and test untouched by the diff;
+single call site, no other dependent caller; build, vet and the storage suite
+green; scope exactly the one manifest file. checker-second could not refute any
+of it and says so, and it deserves credit for surfacing the process gap rather
+than waving it through — that is the job working, not failing. But its FAIL is a
+statement about entitlement to confidence, routed into the one channel whose
+remedy is worker rework, for a defect no worker can remedy, duplicating a
+condition gate.sh already enforces on its own and will still enforce after this
+ruling. The verdict does not stand as a finding about the work.
+
+The %!w(<nil>) fragility is a future hazard, not a present defect, and warrants
+a separate small follow-up task rather than a FAIL on this row.

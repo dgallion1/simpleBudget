@@ -1,0 +1,86 @@
+VERDICT: OVERRULE
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: P16
+ATTEMPT: 1
+---
+Ruling on the letter of LEDGER_P16_P18_SPEC.md § "P16", not on whether the
+underlying gap in migration.go is worth fixing (it may be; see below).
+
+1. Criterion 3's actual text, not just its header, decides this. The header
+   reads "Both sides of every mutation invalidate" — that phrase alone would
+   support checker-second's reading. But the body immediately narrows it:
+   "Each write path — the atomic replace, `CreateExclusive`, and `Remove` —
+   invalidates before the disk change and again after it. Name the line for
+   each; a path that invalidates only once fails this criterion." This is an
+   enumeration with a named failure condition ("invalidates only once"),
+   applied to three named paths — not "any write path in the package that
+   never invalidates fails this criterion." checker-tests named the six
+   required line numbers for exactly those three paths (storage.go:387, 401,
+   452, 672/674) and checker-second's own item 5 independently confirms the
+   same three are correctly ordered. Criterion 3, read as written, is met.
+
+2. The "Note for the second lane" is the only textual hook broad enough to
+   reach migration.go, and it does not reach that far. It reads: "this file
+   was merged by hand on 2026-08-22 (2a5c068) against a conflicting refactor
+   that split encryption into encodeForWrite. The merge resolution is in
+   scope. In particular, ask whether any write path reaches disk through a
+   code path that skips the generation bump." "This file" is storage.go — the
+   merge commit's own message says so explicitly ("internal/services/
+   storage/storage.go was the only semantic one" of the conflicts) and
+   describes only encodeForWrite, writeFileLocked and CreateExclusive.
+   migration.go was not touched by 2a5c068, was not part of the conflict,
+   and predates 06176ef by a separate feature history (age encryption,
+   c07cb4c onward). The note widened where to look inside the merged file's
+   write paths — it did not license auditing every write path in the package
+   regardless of the merge. checker-tests answered the note's actual
+   question (grep for encodeForWrite call sites, confirming the split did
+   not create a skipped-invalidation path); checker-second answered a
+   different, broader question the note does not ask.
+
+3. The manifest (storage.go, cache_test.go) does not by itself bar a
+   checker from citing an adjacent defect — nothing in CLAUDE.md says a
+   FAIL is invalid merely for naming a file outside the manifest, and
+   checker-tests.md's own scope instruction ("nothing modified outside what
+   the brief authorizes") governs what the *worker* may touch, not what a
+   checker may look at. So the manifest boundary alone would not decide this
+   dispute either way; criterion 3's own enumerated scope is what decides it
+   (point 1).
+
+4. This is the same shape as the S4 precedent, not a different one.
+   ACCESSIBILITY.md point 16 records that a FAIL resting on an "implicit
+   companion requirement" no numbered point carried was overruled, and the
+   defect class was made citable only by adding new text afterward.
+   Criterion 3 here names its own scope in exactly the way that dispute
+   found missing; checker-second's FAIL extends "every mutation" past what
+   the criterion's own enumeration and the second-lane note support. Per
+   that precedent, the fix is to overrule and add text, not to uphold a FAIL
+   the current text does not carry.
+
+5. On the merits, for completeness: checker-second's own evidence weakens
+   the claim further. Its first reproduction (real EnableEncryption/
+   DisableEncryption calls) shows the cache entry lingers and cacheGen is
+   unmoved, but does not show a stale ReadFile — because, as checker-tests
+   found and checker-second does not dispute, encryption/decryption changes
+   file size, so the mtime+size cache key misses and the next read goes to
+   disk correctly. To get an actual stale-read, checker-second substituted
+   a bare os.WriteFile equal-length rewrite standing in for migration.go's
+   writer, explicitly noting "migration.go's real writer is unreachable
+   from the test package boundary." That is evidence about a hypothetical
+   same-size migration writer, not about migration.go as it exists. The gap
+   in the package is real (no invalidateCache call sites in migration.go);
+   the specific stale-read hazard criterion 1 is about is not demonstrated
+   through it.
+
+FAIL is set aside. checker-tests' PASS stands as the operative verdict for
+P16 at this attempt.
+
+Recommendation (the amendment this defect needs to become citable, matching
+how point 16 was added after S4): add a criterion, or a project-wide point in
+a storage/caching standard, requiring that every function in the storage
+package that rewrites a file at a cached path call invalidateCache on both
+sides, not only the three paths reachable through Storage's own write API.
+migration.go's encrypt/decrypt/rollback helpers should be named explicitly.
+Until that text exists, a checker can flag the migration.go gap as a defect
+report to the lead (as checker-tests did) but cannot fail P16's criterion 3
+on it.

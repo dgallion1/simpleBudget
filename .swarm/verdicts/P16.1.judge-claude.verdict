@@ -1,0 +1,145 @@
+VERDICT: OVERRULE
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: P16
+ATTEMPT: 1
+---
+Lens: correctness. I did not read the other judges' verdicts. All experiments
+were run in a disposable worktree at 5eeca01 created with `git worktree add`
+under the session scratchpad and removed afterwards; `git status --short` in
+/home/darrell/bin/ai/budget2 shows no tracked source file modified by me.
+
+THE QUESTION I WAS ASKED TO SETTLE
+
+checker-second's FAIL rests on one factual claim: that migration.go's missing
+invalidateCache reopens the P16 stale-read bug class -- i.e. that a read after
+EnableEncryption/DisableEncryption can be SERVED pre-migration bytes.
+checker-tests' PASS rests on the counter-claim that age framing changes file
+size, so the cached (mtime,size) key cannot match and the entry is stranded
+rather than served. I went and measured both.
+
+FINDING 1 -- checker-second's LEAK finding is factually correct, and I
+reproduced it independently.
+
+  after Enable: gen 2->2  entryStillInMap=true  size 4->186  mtimeEq=false
+
+EnableEncryption and DisableEncryption move `cacheGen` not at all, and the
+pre-migration entry is still in `s.cache` afterwards. Confirmed by reading:
+none of EnableEncryptionWithProvider (migration.go:24), DisableEncryption
+(:115), encryptFileWithRecipient (:228), decryptFileWithIdentity (:256),
+rollbackEncryptionWithIdentity (:284) calls invalidateCache, deletes from
+s.cache, or touches cacheGen. checker-tests conceded the same code in F2.
+checker-second is also right that the cache-HIT fast path (storage.go:303-311)
+takes only cacheMu.RLock and is gated solely on (modTime,size) -- it never
+consults cacheGen and never takes s.mu, so a migration holding s.mu.Lock does
+not bar a hit. Nothing in that paragraph is wrong.
+
+FINDING 2 -- but the step from "stale entry survives" to "stale bytes served"
+does not hold, and checker-second's own reproduction is where it breaks.
+
+(a) The size argument is true, and I measured its magnitude rather than
+assuming it. age framing adds a fixed 182-byte floor (header + poly1305 tag),
+growing by 16 bytes per additional 64KiB chunk, and ciphertext size is a
+deterministic function of plaintext size:
+
+  plaintext=0      ciphertext=182     delta=182  sizeDeterministic=true
+  plaintext=4      ciphertext=186     delta=182  sizeDeterministic=true
+  plaintext=65536  ciphertext=65718   delta=182  sizeDeterministic=true
+  plaintext=65537  ciphertext=65735   delta=198  sizeDeterministic=true
+  plaintext=200000 ciphertext=200230  delta=230  sizeDeterministic=true
+
+`len(ciphertext) > len(plaintext)` held for every input; a `t.Errorf` guard on
+`len(ct) <= n` never fired. So NO single migration write can leave the file at
+the size a pre-migration stat recorded. Both migration writers that touch data
+files (encryptFileWithRecipient:248-252, decryptFileWithIdentity:276-280) also
+early-return WITHOUT writing when the file is already in the target state
+(isAgeEncrypted checks at :236 and :264), so the "no-op" paths introduce no
+staleness either. `shouldSkipEncryption` files (storage.go:615) are skipped by
+the Walk at migration.go:64 and are never written at all, so their entries stay
+coherent -- that direction is safe, not hazardous.
+
+(b) I then attacked the size argument where it is weakest, which is the case
+checker-tests did not analyse: the round trip. Enable-then-Disable restores the
+ORIGINAL size exactly, so with mtime frozen to the pre-migration value (the
+coarse/frozen-mtime model the fix's own doc comment names) the stranded entry
+becomes key-matching again and IS served. I forced exactly that:
+
+  after Disable+frozen mtime: gen=2 entryStillInMap=true size=4(orig 4) keyMatch=true
+  round-trip read="AAAA" err=<nil>  disk="AAAA"
+
+The entry is served -- and it is CORRECT. That is the point checker-tests
+reached by a shortcut and checker-second missed entirely. The deeper reason the
+defect is unexploitable is not really the size delta; it is that the cache
+stores the LOGICAL (decrypted) view while migration only re-encodes the
+PHYSICAL representation. `decryptData(encryptData(x)) == x` held exactly for
+every size I tested. So a migration-era stranded entry, whenever its key
+happens to match again, matches a file whose logical content is byte-identical
+to what the entry holds. To make the entry logically wrong you must change the
+content, and every content change goes through writeFileLocked, CreateExclusive
+or removeLocked -- all three of which `delete(s.cache, path)`, so the stale
+entry is destroyed before it can diverge. I could not construct a sequence that
+escapes this, and I tried the concurrent one: a reader's stat at :295 is taken
+outside s.mu while its os.ReadFile at :317 is under s.mu.RLock, so a reader can
+straddle a migration -- but a straddling reader publishes an entry keyed to a
+pre-migration stat, which the size delta then strands, and a reader that stats
+post-rename reads and publishes the post-migration logical content. Neither
+yields wrong bytes.
+
+(c) I checked the one same-size rewrite that does exist in migration.go, which
+neither checker examined. `.encryption-verify` is rewritten by Enable
+(migration.go:49) with FRESH random age ciphertext at a CONSTANT size, and
+os.Remove'd by Disable (:193) with no invalidation -- an Enable/Disable/Enable
+cycle genuinely produces same-size-different-content at that path. That would
+be a real stale serve if the file were cached. It is not: every reader of it
+uses bare os.ReadFile (storage.go:162, migration.go:144), never
+ReadFileContext. The `.encrypted` marker is only os.Stat'd (storage.go:91) and
+its content is the constant "encrypted". loadConfig reads the config with
+os.ReadFile. So the last hole closes too.
+
+(d) checker-second's own reproduction concedes the gap. Its generation-counter
+steps are sound and I reproduced them, but they prove the LEAK. The step that
+purports to prove the SERVE substitutes "a bare os.WriteFile to stand in for
+migration.go's own writer" performing an "equal-length in-place rewrite" -- and
+an equal-length rewrite is precisely the thing migration.go provably cannot
+perform (finding 2a). The verdict is candid that this is a stand-in; but the
+stand-in is not a model of the code under test, it is a model of a different
+writer, and it is the only evidence offered for the user-visible consequence.
+The consequence sentence -- "a read immediately after
+EnableEncryption/DisableEncryption can serve pre-migration bytes indefinitely"
+-- is not supported by the code as written. That is what decides this ruling.
+
+ON THE SIX WRITTEN CRITERIA
+
+I spot-checked rather than re-ran the mutation battery, since both lanes agree
+on criteria 1, 2, 4 and 6 and their reported outputs match each other. Criterion
+3 names three write paths -- atomic replace, CreateExclusive, Remove -- and both
+lanes independently confirmed before+after invalidation on all three
+(storage.go:401/387, :401/452, :672/674). The second-lane note's specific
+question was about the 2a5c068 hand merge: whether the encodeForWrite split
+created a write path that skips the bump. I verified the answer myself:
+encodeForWrite (:396) invalidates as its first statement and is called from
+exactly two sites (:375, :443), each of which also post-invalidates. The merge
+resolution is sound.
+
+SCOPE, AND WHICH WAY IT CUTS
+
+I decline to resolve this on scope. The brief invited the broader question, and
+"out of manifest" is not an answer to "is it broken". I resolve it on the merits
+and the merits favour the PASS. But the finding is not nothing, and I want the
+record to be precise about what survives: after EnableEncryption, DECRYPTED
+PLAINTEXT for a now-encrypted file remains resident in s.cache indefinitely,
+until a Lock(), a write to that path, or process exit. That is a confidentiality
+hygiene defect, not a stale-read defect -- and it is the mirror image of the
+property 79ef006 added Lock's cacheGen bump to protect. It deserves a
+follow-up task (add invalidateCache to the five migration writers; the fix is
+mechanical). Separately and outside P16 entirely,
+rollbackEncryptionWithIdentity:300 writes with a bare non-atomic os.WriteFile
+where its two sibling helpers use write-tmp-plus-rename, so a concurrent reader
+can observe a torn file during rollback. Neither belongs in P16, whose six
+criteria are met, and neither is grounds to send this worker's work back --
+there is nothing here for the P16 worker to fix in the P16 diff.
+
+RULING: OVERRULE. The FAIL is set aside. checker-second did its job -- it found
+real code that no test covers and that the lead should act on -- but its
+load-bearing causal claim is false, and a FAIL that returns a task to a worker
+must be right about the harm, not just about the smell.

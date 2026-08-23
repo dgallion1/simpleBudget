@@ -1,0 +1,19 @@
+VERDICT: OVERRULE
+CHECKER: judge-impact
+FAMILY: impact
+TASK: P17
+ATTEMPT: 1
+---
+User-impact analysis: OVERRULE the FAIL.
+
+**Observable change to user: None.** Both checkers independently confirmed the error string is byte-identical across the commit boundary. A user attempting to unlock encrypted storage with a passphrase-protected SSH key receives the exact same error message before and after: "failed to decrypt SSH key: encrypted SSH keys require passphrase decryption support (not yet implemented)". No change to observability, error legibility, or data access.
+
+**Passphrase-protected key user: No regression.** This user (Darrell) was already unable to unlock encrypted storage because passphrase decryption is unimplemented. After this commit, they remain unable, with identical error messaging. No new barrier was introduced; no user is newly locked out.
+
+**Latent %!w(<nil>) fragility: Noted, not current harm.** Both checkers identified that the surviving code path unconditionally wraps errors—if decryptSSHKey is later implemented to return (plaintext, nil), fmt.Errorf would format nil as "%!w(<nil>)" instead of proceeding. This is a forward-compatibility trap, real but latent. It does not affect Darrell's current use and belongs to a follow-up task ("Defer: prevent %!w(<nil>) trap in SSH passphrase path before implementation"), not to P17.
+
+**Procedural context: Gap explicit and user-ruled.** checker-second's FAIL rests on tier-3 process—no blind second arm exists, and none can now be created for code already merged. The SPEC acknowledges this plainly as "an open decision for the user." The tier3/P17/report.md documents the gap explicitly and references user ruling 2026-08-22a, which accepts the single-arm baseline. The procedural shortfall is recorded and adjudicated, not concealed.
+
+**Cost-benefit: UPHOLD causes harm; OVERRULE does not.** Enforcing FAIL would require reverting a commit that provably changed nothing observable to Darrell, solely to satisfy a tier-3 process that cannot be retroactively satisfied. The production cost (loss of staticcheck SA4023 clearance, indefinite acceptance limbo) outweighs the procedural benefit, especially since the gap is explicit, user-ruled, and documented. The code poses no current user harm and no new future harm beyond the latent fragility both checkers already noted.
+
+**Ruling: Accept the work.** P17 caused zero observable harm to the user and removed a linter warning. The tier-3 process gap is explicit, user-adjudicated, and no behavioral regression occurred.

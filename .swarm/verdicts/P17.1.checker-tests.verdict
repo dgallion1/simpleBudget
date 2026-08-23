@@ -1,0 +1,174 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P17
+ATTEMPT: 1
+---
+Task P17 — "drop the dead decrypt path in loadIdentity (SA4023)", commit 7fe9b98,
+manifest internal/services/storage/ssh_provider.go, ledger tier 3, attempt 1.
+Criteria taken from LEDGER_P16_P18_SPEC.md section "P17 — drop the dead decrypt
+path in loadIdentity (SA4023)" (5 numbered items).
+
+Preliminaries
+- `git merge-base --is-ancestor 7fe9b98 HEAD` -> exit 0 ("7fe9b98 is ancestor of HEAD").
+- `git status --short` in /home/darrell/bin/ai/budget2 -> clean before and after
+  every command below; nothing was edited by this checker.
+- `go build ./...` -> exit 0. `go vet ./...` -> exit 0 (no issues found).
+- `go test ./...` (full suite) -> FULL_TEST_EXIT=0, no FAIL lines in output.
+- NOTE: there is no executable oracle for this task. `ls .swarm/tier3/P17/` ->
+  "NO .swarm/tier3/P17 directory" (tier3 dirs exist only for A1 A2 A3 P15 R1 R11
+  R12 R4 S2 S5). P17 is an inherited row escalated to tier 3 after the fact
+  (ledger reason: "sa4023-dead-decrypt-path-escalated-critical-glob-unverified"),
+  so no accept.sh exit status could be cited. Every criterion below is instead
+  backed by a named command.
+
+--------------------------------------------------------------------------
+CRITERION 1 — `staticcheck ./...` exits 0, and this was the repo's last SA4023.
+MET.
+
+Command (repo root, pinned to the CI version in .github/workflows/test.yml:68):
+  go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./...
+Output:
+  STATICCHECK_EXIT=0
+  --- output (lines: 0) ---
+  (no diagnostics at all)
+
+"Last SA4023" established by running the same pinned binary on the pre-fix tree,
+exported with `git archive 7fe9b98^ | tar -x -C <scratch>/pre`:
+  PRE_EXIT=1
+  internal/services/storage/ssh_provider.go:79:6: this comparison is always true (SA4023)
+        internal/services/storage/ssh_provider.go:78:3: the lhs of the comparison is the 2nd return value of this function call
+        internal/services/storage/ssh_provider.go:101:6: budget2/internal/services/storage.decryptSSHKey never returns a nil interface value
+  --- SA4023 count pre: 1
+So the pre-fix tree carried exactly one SA4023 — the one this commit removed —
+and the post-fix tree carries zero. Checked that this is not suppression rather
+than repair: `find . -name staticcheck.conf -not -path "./.claude/*"` returned
+nothing, and the only lint directives in the tree are
+internal/services/mcpsvc/confirm/ask_test.go:109 (`//lint:ignore SA1019 ...`) and
+internal/services/retirement/settings_crud_test.go:351 (`//nolint:` for chmod) —
+neither touches SA4023 or the storage package.
+
+--------------------------------------------------------------------------
+CRITERION 2 — Behavior unchanged, byte for byte; the passphrase branch still
+returns exactly "failed to decrypt SSH key: encrypted SSH keys require
+passphrase decryption support (not yet implemented)". Asserted on the string.
+MET.
+
+Method: exported both trees (`git archive 7fe9b98^` -> <scratch>/pre,
+`git archive 7fe9b98` -> <scratch>/post) and dropped the SAME in-package harness
+(harness_p17_test.go) into internal/services/storage in each. The harness calls
+the exported API (NewSSHProvider + Unlock) and logs the raw error text, so it
+compares observable behavior, not code shape. Three cases:
+  A. passphrase-protected key file, Unlock("somepassphrase")
+  B. plain valid ed25519 key, Unlock("somepassphrase")  (the branch under change)
+  C. plain valid ed25519 key, Unlock("")                (the untouched success path)
+
+`go test ./internal/services/storage/ -run TestP17ErrStringHarness -v` on PRE:
+  CASE_A_ERR>>>failed to decrypt SSH key: encrypted SSH keys require passphrase decryption support (not yet implemented)<<<
+  CASE_A_NIL>>>false<<<
+  CASE_A_UNWRAP>>>encrypted SSH keys require passphrase decryption support (not yet implemented)<<<
+  CASE_B_ERR>>>failed to decrypt SSH key: encrypted SSH keys require passphrase decryption support (not yet implemented)<<<
+  CASE_B_NIL>>>false<<<
+  CASE_C_ERR>>><nil><<<
+  CASE_C_NIL>>>true<<<
+Same command on POST produced the identical six lines.
+
+`diff <scratch>/pre.out <scratch>/post.out` reported one differing line and only
+one:
+  10c10
+  < ok  budget2/internal/services/storage  0.008s
+  ---
+  > ok  budget2/internal/services/storage  0.004s
+i.e. the go test wall-clock line. Every CASE_* line is byte-identical, including
+the errors.Unwrap chain (CASE_A_UNWRAP), so `%w` wrapping is preserved and
+errors.Is/As behavior is unchanged. The literal in the criterion matches the
+produced string exactly.
+
+Recorded as a note, not a failure: the new branch returns
+`fmt.Errorf("failed to decrypt SSH key: %w", err)` unconditionally, so if
+decryptSSHKey were ever implemented to succeed it would format a nil error as
+`%!w(<nil>)` rather than continuing. That is latent, not current: the stub at
+internal/services/storage/ssh_provider.go:102-107 has a single return statement,
+`return nil, fmt.Errorf("encrypted SSH keys require passphrase decryption support (not yet implemented)")`,
+and staticcheck itself confirms it "never returns a nil interface value". Today's
+behavior is identical, which is what criterion 2 asks.
+
+--------------------------------------------------------------------------
+CRITERION 3 — The stub and its test are still present (deliberately not deleted).
+MET.
+
+Stub present: `grep -n "func decryptSSHKey" -A 20 internal/services/storage/ssh_provider.go`
+-> line 102 `func decryptSSHKey(keyData []byte, passphrase []byte) ([]byte, error) {`
+with the body intact through line 107.
+
+Test present: internal/services/storage/ssh_provider_test.go:244 `func TestDecryptSSHKey`,
+which at line 246 calls `_, err := decryptSSHKey([]byte("data"), []byte("pass"))`
+and errors if err == nil — i.e. it asserts what its name claims. The sibling
+TestSSHProviderUnlockWithPassphrase (line 252) drives the same branch through the
+public Unlock().
+
+Both still run and pass:
+  go test ./internal/services/storage/ -run 'TestDecryptSSHKey|TestSSHProviderUnlockWithPassphrase' -v
+  --- PASS: TestDecryptSSHKey (0.00s)
+  --- PASS: TestSSHProviderUnlockWithPassphrase (0.00s)
+  EXIT=0
+
+Scope confirmed not over-reached: `git diff 7fe9b98^ 7fe9b98 --stat -- internal/services/storage/ssh_provider_test.go`
+produced empty output — the test file was not touched by the commit at all.
+
+--------------------------------------------------------------------------
+CRITERION 4 — No other caller depended on the removed assignment. Established by
+search.
+MET.
+
+The removed statement was `keyData, err = decryptSSHKey(keyData, []byte(p.passphrase))`
+— an assignment to a function-local variable inside (*SSHProvider).loadIdentity.
+
+  grep -rn "decryptSSHKey" --include="*.go" .
+Excluding the two stale .claude/worktrees copies (not part of the build; they are
+the tier-3 arm worktrees), the only hits in the tracked tree are:
+  internal/services/storage/ssh_provider.go:81   (the single call site, in loadIdentity)
+  internal/services/storage/ssh_provider.go:101-102 (the definition)
+  internal/services/storage/ssh_provider_test.go:246 (TestDecryptSSHKey)
+No other production caller exists.
+
+  grep -n "keyData" internal/services/storage/ssh_provider.go
+  69:  keyData, err := os.ReadFile(p.keyPath)
+  81:  _, err := decryptSSHKey(keyData, []byte(p.passphrase))
+  85:  identity, err := agessh.ParseIdentity(keyData)
+  210: keyData, err := os.ReadFile(keyPath)   <- unrelated local in DetectSSHKeys
+  215: keyStr := string(keyData)              <- same unrelated local
+The only downstream consumer of loadIdentity's keyData is agessh.ParseIdentity at
+line 85, which is reachable only when p.passphrase == "" because the passphrase
+branch now returns unconditionally. Confirmed empirically by harness CASE_C
+(passphrase == "" -> CASE_C_NIL true, identity parsed, no error) on both trees.
+
+Callers of loadIdentity: `grep -rn "loadIdentity" --include="*.go" .` shows
+ssh_provider.go:143 (Unlock) as the sole caller of the SSH one; the other hits are
+the independent AgeProvider.loadIdentity and YubiKeyProvider.loadIdentity methods
+and their tests, which do not touch this code.
+
+--------------------------------------------------------------------------
+CRITERION 5 — The suite is green: `go test ./internal/services/storage/...` exits 0.
+MET.
+
+  go test ./internal/services/storage/...
+  ok  budget2/internal/services/storage  35.154s
+  STORAGE_TEST_EXIT=0
+
+Also the whole repo: `go test ./...` -> FULL_TEST_EXIT=0.
+
+--------------------------------------------------------------------------
+SCOPE
+`git show --stat --format="" 7fe9b98` -> "internal/services/storage/ssh_provider.go |
+15 ++++++++-------, 1 file changed, 8 insertions(+), 7 deletions(-)". Exactly the
+one file in .swarm/manifests/P17.1.files; nothing else touched.
+
+The file matches `internal/services/storage/**` in .swarm/critical.globs. The
+ledger records P17 at tier 3 (`P17  3  tests,second  pending  1  lead  ...`), and
+tier 3 permits critical-glob changes, so this is authorized. The commit's diff is
+the dead-path removal plus a replacement comment; no production logic beyond the
+flagged statement was altered.
+
+Working tree of /home/darrell/bin/ai/budget2 left clean; all comparison work was
+done on `git archive` exports under the session scratchpad.

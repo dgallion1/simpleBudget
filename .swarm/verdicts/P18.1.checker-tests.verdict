@@ -1,0 +1,172 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: P18
+ATTEMPT: 1
+---
+Repo /home/darrell/bin/ai/budget2 at master 5eeca01, working tree clean
+(`git status --short` printed nothing). Criteria taken from
+LEDGER_P16_P18_SPEC.md section "P18 — CI workflow on pull requests" (six
+numbered items). Commit messages read in full for 32c9d1f, 133d1f5, 36da2de.
+
+Baseline sanity, run locally as uid 1000 (`id -u` -> 1000, which matters: the
+32c9d1f message notes the chmod-based write-failure tests fail wholesale under
+root):
+  $ go build ./...                  -> BUILD_EXIT=0
+  $ go vet ./...                    -> VET_EXIT=0
+  $ go test -timeout 12m ./...      -> TEST_EXIT=0 (no non-ok lines)
+
+--- CRITERION 1: triggers on pull_request and on pushes to master. MET.
+
+  $ python3 -c "import yaml,json; d=yaml.safe_load(open('.github/workflows/test.yml')); print(json.dumps(d[True]))"
+  TRIGGERS: {"pull_request": null, "push": {"branches": ["master"]}}
+
+Both triggers are also demonstrated to fire in practice, not merely parse:
+  $ gh run list --repo dgallion1/simpleBudget --workflow=test.yml --limit 15
+  completed success "Merge pull request #42: ..."  Test  master            push          32582086390  18m9s
+  completed success "Accounts & transfers, ..."    Test  fix/review-aug16  pull_request  32581017016  14m14s
+i.e. one real `pull_request` run and one real `push`-on-master run, both
+success.
+
+--- CRITERION 2: three separately-reported jobs (build/vet/test, staticcheck,
+race). MET.
+
+  $ python3 ... print(list(d['jobs'].keys()))
+  JOB IDS: ['test', 'staticcheck', 'race']
+   job test        | name= build, vet, test | timeout-minutes= 15
+   job staticcheck | name= staticcheck      | timeout-minutes= 15
+   job race        | name= race detector    | timeout-minutes= 45
+
+They are three top-level jobs with no `needs:` between them, so they report
+independently; confirmed on the real PR run, where all three appear as
+separate check entries with separate durations:
+  $ gh pr checks 42 --repo dgallion1/simpleBudget
+  build, vet, test   pass   4m11s   .../job/97050281123
+  race detector      pass  14m11s   .../job/97050281036
+  staticcheck        pass     28s   .../job/97050280926
+Three distinct job IDs under one run ID => a lint failure and a test failure
+would surface as two separate red checks, which is the split the criterion
+demands.
+
+--- CRITERION 3: explicit `go test -timeout` in BOTH test jobs, each below its
+own job's timeout-minutes. MET. Numbers, as requested:
+
+  $ grep -n 'timeout-minutes\|go test' .github/workflows/test.yml
+  23:    timeout-minutes: 15                        <- job `test`
+  45:      - run: go test -timeout 12m ./...        <- job `test`
+  77:    timeout-minutes: 45                        <- job `race`
+  93:      - run: go test -race -timeout 40m ./...  <- job `race`
+
+  job `test`: -timeout 12m vs timeout-minutes 15  -> 12 < 15, MET
+  job `race`: -timeout 40m vs timeout-minutes 45  -> 40 < 45, MET
+
+Both are explicit (neither relies on go test's default 10m per-package cap,
+which is 36da2de's subject), and both sit under their job budget, so a hung
+package panics with a Go stack dump inside the job rather than being killed
+opaquely by the runner. The third job (staticcheck) runs no `go test` and is
+correctly out of scope for this criterion, which names "both test jobs".
+
+Observation, not a failure: `-timeout` is a per-package cap, so 12m does not
+bound the whole `./...` invocation to under the 15m job budget if several
+packages are individually slow. The criterion as written asks only that each
+-timeout be below its job's timeout-minutes, and it is. Measured margins on
+the real run are comfortable (test job 4m11s of 15m; race job 14m11s of 45m).
+
+--- CRITERION 4: staticcheck pinned, not @latest. MET.
+
+  $ grep -n 'staticcheck@' .github/workflows/test.yml
+  68:      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./...
+  $ grep -c '@latest' .github/workflows/test.yml
+  0
+Pinned to v0.8.0, matching 133d1f5's stated reason. The pinned invocation is
+confirmed to be what actually executed on the PR run (see criterion 6).
+
+--- CRITERION 5: Go version comes from go.mod via go-version-file. MET.
+
+  $ grep -n 'go-version' .github/workflows/test.yml
+  33:          go-version-file: go.mod
+  59:          go-version-file: go.mod
+  82:          go-version-file: go.mod
+All three jobs; no hardcoded `go-version:` anywhere in the file.
+
+  $ head -5 go.mod
+  go 1.26
+  toolchain go1.26.6
+
+Confirmed to resolve correctly at runtime, from the downloaded run log
+(gh api repos/dgallion1/simpleBudget/actions/runs/32581017016/logs, unzipped):
+  "0_build, vet, test.txt":125  go-version-file: go.mod
+  "0_build, vet, test.txt":130  Setup go version spec 1.26
+  "0_build, vet, test.txt":135  Successfully set up Go version 1.26
+  "0_build, vet, test.txt":148  go version go1.26.6 linux/amd64
+  "1_race detector.txt":130     Setup go version spec 1.26
+  "2_staticcheck.txt":130       Setup go version spec 1.26
+So the version came from the file (spec 1.26 == go.mod's `go 1.26`), not from
+a pin, and the toolchain directive supplied 1.26.6.
+
+--- CRITERION 6: has actually run green on a real pull request. MET. This is
+the criterion that needed a live run, and it has one.
+
+  $ gh pr view 42 --repo dgallion1/simpleBudget --json ...
+  {"number":42,"state":"MERGED","headRefName":"fix/review-aug16",
+   "headRefOid":"2a5c068a9bc54e39b12a63d890a712a5ddecbfc8","baseRefName":"master",
+   "mergedAt":"2026-08-22T15:34:00Z"}
+
+  $ gh run view 32581017016 --repo dgallion1/simpleBudget
+  ✓ fix/review-aug16 Test #42 · 32581017016
+  Triggered via pull_request about 8 hours ago
+  JOBS
+  ✓ staticcheck in 28s (ID 97050280926)
+  ✓ race detector in 14m11s (ID 97050281036)
+  ✓ build, vet, test in 4m11s (ID 97050281123)
+
+  $ gh run view 32581017016 --json event,conclusion,status,headSha,jobs
+  event pull_request  conclusion success  status completed
+  headSha 2a5c068a9bc54e39b12a63d890a712a5ddecbfc8  workflow Test
+   job: staticcheck      success
+   job: race detector    success
+   job: build, vet, test success
+Run URL: https://github.com/dgallion1/simpleBudget/actions/runs/32581017016
+
+The run exercised the FINAL version of the workflow, including 36da2de:
+  $ git merge-base --is-ancestor 36da2de 2a5c068a... -> YES
+  $ git cat-file -p master:.github/workflows/test.yml | sha256sum
+    2a7d18ba34b5ab1ca4465f40b6f9f90becb0c8e781d9bbad09fbb356f3b0e616
+  $ git cat-file -p 2a5c068a...:.github/workflows/test.yml | sha256sum
+    2a7d18ba34b5ab1ca4465f40b6f9f90becb0c8e781d9bbad09fbb356f3b0e616
+Byte-identical, so the green PR run is evidence about the file now on master
+and not about an earlier revision of it.
+
+Step-level confirmation that the exact commands in criteria 3, 4 and 5 are the
+ones that ran and passed on that PR:
+  $ gh api repos/dgallion1/simpleBudget/actions/jobs/97050281123 --jq '.name,.conclusion,(.steps[]|...)'
+  build, vet, test / success
+    step 4  Run go build ./...                -> success
+    step 5  Run go vet ./...                  -> success
+    step 6  Run go test -timeout 12m ./...    -> success
+  $ ... /actions/jobs/97050281036
+  race detector / success
+    step 4  Run go test -race -timeout 40m ./... -> success
+  $ ... /actions/jobs/97050280926
+  staticcheck / success
+    step 4  Run go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./... -> success
+And from the race job log, the race suite genuinely executed rather than
+short-circuiting: "1_race detector.txt":199-204 show the -timeout 40m command
+echoed followed by per-package `ok` lines (e.g. budget2/cmd/server 62.601s).
+
+--- SCOPE
+
+  $ git show --stat --format='' 32c9d1f  -> .github/workflows/test.yml | 57 +
+  $ git show --stat --format='' 133d1f5  -> .github/workflows/test.yml | 23 +
+  $ git show --stat --format='' 36da2de  -> .github/workflows/test.yml | 15 +, 2 -
+All three commits touch exactly one file, which is exactly what
+.swarm/manifests/P18.1.files names. Nothing in .swarm/critical.globs is
+touched (those globs cover internal/services/... only). Working tree clean; I
+modified no source file and created no artifact other than this verdict.
+
+Ledger row confirmed as the one under test:
+  $ grep -P '^P18' .swarm/ledger.tsv
+  P18  1  tests  pending  1  lead  ci-workflow-implemented-in-lead-session-unverified
+
+--- SUMMARY: 6 of 6 criteria met, each with a command whose output demonstrates
+it. VERDICT: PASS.

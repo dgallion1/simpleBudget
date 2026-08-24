@@ -133,10 +133,16 @@ func (s *Storage) DisableEncryption(credentials string) error {
 		}
 	}
 
-	// Get identity for decryption
+	// Get identity for decryption, and the recipient needed to re-encrypt
+	// anything this call decrypts if the loop below fails partway through.
 	identity, err := provider.Identity()
 	if err != nil {
 		return fmt.Errorf("failed to get identity: %w", err)
+	}
+
+	recipient, err := provider.Recipient()
+	if err != nil {
+		return fmt.Errorf("failed to get recipient: %w", err)
 	}
 
 	// Verify credentials
@@ -181,11 +187,35 @@ func (s *Storage) DisableEncryption(credentials string) error {
 		return fmt.Errorf("failed to scan files: %w", err)
 	}
 
-	// Decrypt each file
+	// Decrypt each file. If one fails partway through, everything decrypted
+	// so far is plaintext on disk while s.encrypted is about to remain true
+	// -- the store would be lying about its own state. Restore the invariant
+	// by re-encrypting what was already decrypted before returning.
+	var decryptedSoFar []string
 	for _, path := range filesToDecrypt {
 		if err := s.decryptFileWithIdentity(path, identity); err != nil {
-			return fmt.Errorf("failed to decrypt %s: %w", filepath.Base(path), err)
+			decryptErr := fmt.Errorf("failed to decrypt %s: %w", filepath.Base(path), err)
+			if len(decryptedSoFar) == 0 {
+				return decryptErr
+			}
+			failed := s.rollbackDecryptionWithRecipient(decryptedSoFar, recipient)
+			if len(failed) > 0 {
+				// No end-to-end test reaches this branch (both encryptData
+				// and atomicWrite would have to fail during the rollback
+				// itself, on top of the decrypt failure that triggered it).
+				// Two prior attempts to construct one were abandoned:
+				// provider injection here would need a new
+				// DisableEncryptionWithProvider entry point, and forcing the
+				// failure via RLIMIT_FSIZE is process-wide and truncated the
+				// test binary's own output in a prototype. The branch itself
+				// is covered directly at the rollbackDecryptionWithRecipient
+				// level (see migration_decrypt_rollback_test.go); this
+				// formatting line is not.
+				return fmt.Errorf("%w; additionally, %d of %d already-decrypted file(s) could NOT be re-encrypted and remain PLAINTEXT ON DISK despite encryption still being reported as enabled: %s -- back these up and address them manually", decryptErr, len(failed), len(decryptedSoFar), strings.Join(failed, ", "))
+			}
+			return fmt.Errorf("%w; the %d file(s) already decrypted before this failure were successfully re-encrypted, so no data was left as plaintext", decryptErr, len(decryptedSoFar))
 		}
+		decryptedSoFar = append(decryptedSoFar, path)
 	}
 
 	// Remove marker, verification, and config files (best effort)
@@ -342,4 +372,71 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 
 		s.invalidateCache(path)
 	}
+}
+
+// rollbackDecryptionWithRecipient attempts to re-encrypt files that were
+// decrypted during a failed DisableEncryption, restoring the encrypted
+// invariant that a partial failure would otherwise break: without this,
+// files already decrypted before the failing one stay plaintext on disk
+// while s.encrypted remains true, so the store's declared state would be a
+// lie.
+//
+// This is the decrypt-side counterpart to rollbackEncryptionWithIdentity,
+// but it does not share that function's shape: rollbackEncryptionWithIdentity
+// is void and only logs a file it cannot restore, which is exactly the
+// "best-effort recovery that swallows its own failure" pattern fixed
+// elsewhere in this file. A swallowed failure here would recreate that same
+// defect one level down -- the caller must be told which files, if any,
+// could not be put back, because those files are exposed plaintext and
+// nothing else in this codepath will ever say so. So this returns the
+// full paths of every file it could not restore, instead of just logging.
+//
+// Best-effort, not stop-at-first-failure: it keeps going past a file it
+// cannot re-encrypt rather than aborting, because the goal is to minimize
+// how much data is left exposed. Stopping early would strand every
+// not-yet-attempted file as plaintext for no benefit -- there is nothing to
+// protect by leaving them unencrypted, and re-encrypting as many as possible
+// is strictly better than re-encrypting none.
+func (s *Storage) rollbackDecryptionWithRecipient(files []string, recipient age.Recipient) []string {
+	// Full paths, not basenames: the error this feeds tells the user these
+	// files are still plaintext and to deal with them by hand, so it has to
+	// say where they are. Taken from the losing Tier-3 arm, which got this
+	// right where the winning one used filepath.Base.
+	var failed []string
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			// Can't even confirm the file's current state; treat as
+			// unrestored rather than silently skipping it.
+			failed = append(failed, path)
+			continue
+		}
+
+		if isAgeEncrypted(data) {
+			// Already encrypted -- nothing to restore.
+			continue
+		}
+
+		// Same invalidate-before/invalidate-after bracket as
+		// encryptFileWithRecipient, and above encryptData for the same
+		// reason: this is already the failure path, and a re-encrypt that
+		// fails here must not leave the plaintext resident in the cache.
+		s.invalidateCache(path)
+
+		encrypted, err := encryptData(data, recipient)
+		if err != nil {
+			failed = append(failed, path)
+			s.invalidateCache(path)
+			continue
+		}
+
+		// Publish by rename via atomicWrite, the same convention every
+		// other writer in this file uses (see StagingSuffix's doc comment).
+		if err := s.atomicWrite(path, encrypted, 0644); err != nil {
+			failed = append(failed, path)
+		}
+
+		s.invalidateCache(path)
+	}
+	return failed
 }

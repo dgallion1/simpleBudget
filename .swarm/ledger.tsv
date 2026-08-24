@@ -46,4 +46,5 @@ P17	3	tests,second	accepted	1	lead	gate-ok-tier3-attempt-1-one-arm-ruling-2026-0
 P18	1	tests	accepted	1	lead	gate-ok-attempt-1-criteria-written-post-hoc-see-LEDGER_P16_P18_SPEC
 F1	3	tests,second	accepted	3	tier3-merged-wt-primary+alt-graft	gate-ok-tier3-attempt-3-oracle-grades-detection-not-just-behaviour
 F2	3	tests,second	accepted	2	tier3-merged-wt-primary	gate-ok-tier3-attempt-2-atomicwrite-reuse-perm-finding-unreachable-see-report
-F3	3	tests,second	pending	1	tier3-blind-2arm	disable-encryption-partial-failure-leaves-plaintext-on-disk
+F3	3	tests,second	merged-unverified	4	worker-coder	ruling-2026-08-24b-reduced-verification-no-lane-verdicts-gate-will-report-this-row
+F4	3	tests,second	pending	1	tier3-blind-2arm	migration-forces-0644-discarding-a-hand-set-0600

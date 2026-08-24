@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"filippo.io/age"
 )
@@ -451,5 +452,115 @@ func TestRollbackEncryptionWithDecryptFailureEvictsCachedPlaintext(t *testing.T)
 	}
 	if !bytes.Equal(onDisk, enc) {
 		t.Errorf("failed rollback decryption modified the file on disk")
+	}
+}
+
+// blockingRecipient wraps a real age.Recipient but pauses inside Wrap until
+// told to continue, letting a test observe cache state while encryptData is
+// still in flight rather than only after the call returns.
+type blockingRecipient struct {
+	inner   age.Recipient
+	started chan struct{}
+	proceed chan struct{}
+}
+
+func (r blockingRecipient) Wrap(fileKey []byte) ([]*age.Stanza, error) {
+	close(r.started)
+	<-r.proceed
+	return r.inner.Wrap(fileKey)
+}
+
+// TestRollbackDecryptionInvalidatesCacheBeforeReencrypt defends the placement
+// of rollbackDecryptionWithRecipient's pre-transform invalidateCache call, the
+// fourth helper with this shape that F1's oracle does not know to mutate (it
+// mutates only encryptFileWithRecipient, decryptFileWithIdentity, and
+// rollbackEncryptionWithIdentity by name).
+//
+// A post-hoc check -- call the helper with a failing recipient, then inspect
+// the cache after it returns -- does NOT distinguish the correct placement
+// from the bug here, unlike the analogous tests for the other three helpers.
+// rollbackDecryptionWithRecipient's own error branch (failed = append(...);
+// s.invalidateCache(path)) already evicts the cache on the way out, so moving
+// the pre-transform call below encryptData is invisible to any assertion made
+// after the call completes -- the failure path ends up invalidated either
+// way. What the misplacement actually changes is the WINDOW during which a
+// concurrent reader could observe a stale cache entry while encryptData is
+// running, exactly the residency window described in
+// encryptFileWithRecipient's own doc comment. So this test inspects cache
+// state WHILE encryptData is in flight, using a recipient whose Wrap blocks
+// until released, rather than only after rollbackDecryptionWithRecipient
+// returns.
+//
+// Move the first invalidateCache call in rollbackDecryptionWithRecipient
+// below encryptData and this test fails; nothing else in the suite does.
+func TestRollbackDecryptionInvalidatesCacheBeforeReencrypt(t *testing.T) {
+	dir := t.TempDir()
+	csvFile := filepath.Join(dir, "data.csv")
+	secret := []byte("account,balance\nchecking,12345.67\n")
+	if err := os.WriteFile(csvFile, secret, 0644); err != nil {
+		t.Fatalf("WriteFile setup failed: %v", err)
+	}
+
+	s, err := New(dir)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	provider, err := GenerateAgeIdentity(filepath.Join(dir, "key.txt"))
+	if err != nil {
+		t.Fatalf("GenerateAgeIdentity failed: %v", err)
+	}
+	realRecipient, err := provider.Recipient()
+	if err != nil {
+		t.Fatalf("Recipient failed: %v", err)
+	}
+
+	// Populate the cache with the plaintext via an ordinary read, the same
+	// setup as the sibling placement tests above.
+	if _, err := s.ReadFile(csvFile); err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	s.cacheMu.RLock()
+	_, cached := s.cache[csvFile]
+	s.cacheMu.RUnlock()
+	if !cached {
+		t.Fatalf("precondition failed: plaintext not cached before rollback")
+	}
+
+	br := blockingRecipient{
+		inner:   realRecipient,
+		started: make(chan struct{}),
+		proceed: make(chan struct{}),
+	}
+
+	resultCh := make(chan []string, 1)
+	go func() {
+		resultCh <- s.rollbackDecryptionWithRecipient([]string{csvFile}, br)
+	}()
+
+	select {
+	case <-br.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for encryptData to start")
+	}
+
+	// encryptData is now blocked inside Wrap, ahead of the transform
+	// completing. The pre-transform invalidateCache must already have run.
+	s.cacheMu.RLock()
+	entry, stillCachedDuringEncrypt := s.cache[csvFile]
+	s.cacheMu.RUnlock()
+	if stillCachedDuringEncrypt && bytes.Contains(entry.data, []byte("12345.67")) {
+		t.Errorf("plaintext still resident in cache while encryptData is in flight -- invalidateCache runs after the transform, not before")
+	}
+
+	close(br.proceed)
+
+	select {
+	case failed := <-resultCh:
+		if len(failed) != 0 {
+			t.Fatalf("expected rollback to succeed with a working recipient, got failed=%v", failed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for rollbackDecryptionWithRecipient to return")
 	}
 }

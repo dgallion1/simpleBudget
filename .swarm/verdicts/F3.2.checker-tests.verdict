@@ -1,0 +1,219 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F3
+ATTEMPT: 2
+---
+ORACLE (authoritative, run in the main tree)
+  $ bash .swarm/tier3/F3/accept.sh
+    CHECK 01-partial-failure-behaviour: PASS
+    CHECK 02-f1-oracle-still-green: PASS
+    CHECK 03-f2-oracle-still-green: PASS
+    CHECK 05-build: PASS
+    CHECK 06-vet: PASS
+    passed=5 failed=0            (exit 0)
+  Nested, from /tmp/f3_f1.out and /tmp/f3_f2.out:
+    F1: 01-migration-cache-residency, 02-package-suite-race,
+        05-encrypt-placement-defended, 06-decrypt-placement-defended,
+        07-rollback-placement-defended, 03-build, 04-vet -> passed=7 failed=0
+    F2: 01-atomic-publish-and-no-leftovers, 02-no-legacy-fixed-staging-name,
+        03-f1-properties-intact, 04-package-suite-race, 05-build, 06-vet
+        -> passed=6 failed=0
+  The oracle exits 0. I am nonetheless returning FAIL, on point 3, for a
+  property the oracle does not grade and no test in the tree defends.
+
+POINT 1 -- a partway failure leaves no plaintext on disk: PASS
+  $ bash .swarm/tier3/F3/accept.sh
+    CHECK 01-partial-failure-behaviour: PASS
+    (planted TestOracleF3PartialFailureLeavesNoPlaintext asserts isAgeEncrypted
+    on every previously-decrypted file after the failed call)
+  $ go test -count=1 -v -run 'TestDisableEncryptionPartialFailure' ./internal/services/storage/
+    --- PASS: TestDisableEncryptionPartialFailureRestoresEncryptedInvariant (6.10s)
+  MUTATION (scratch copy /tmp/.../mut1): the rollback call in the decrypt loop
+  replaced with `var failed []string; _ = recipient`
+    $ go test -count=1 -run 'TestDisableEncryptionPartialFailure|TestRollbackDecryption' ./internal/services/storage/
+      --- FAIL: TestDisableEncryptionPartialFailureRestoresEncryptedInvariant
+          migration_decrypt_rollback_test.go:101: .../a.csv left as plaintext on
+            disk after failed DisableEncryption -- confidentiality invariant broken
+          migration_decrypt_rollback_test.go:101: .../b.csv left as plaintext ...
+  The named test is real evidence: it fails, on the right line, for the right
+  reason, when the fix is removed.
+
+POINT 2 -- error names the failing file, and unrestorable files by FULL PATH:
+  PASS at the helper level; a documented gap at the error level.
+  Failing file is named:
+    accept.sh check 01 (TestOracleF3PartialFailureIsReported asserts
+    strings.Contains(err, "zz.csv")); migration_decrypt_rollback_test.go:78
+    asserts "zzz-broken.csv". Observed error text (scratch demo test):
+      failed to decrypt aaa-broken.csv: failed to read header: parsing age
+      header: unexpected intro: ...
+  Full paths, not basenames -- MUTATION (scratch copy mut2): every
+  `failed = append(failed, path)` in rollbackDecryptionWithRecipient changed to
+  `filepath.Base(path)`
+    $ go test -count=1 -run 'TestRollbackDecryption|TestDisableEncryptionPartialFailure' ./internal/services/storage/
+      --- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+          :223 expected failed=[/tmp/.../unreadable.csv], got [unreadable.csv]
+      --- FAIL: TestRollbackDecryptionReportsFullPaths
+          :302 report names "exposed.csv", which does not say where the file is;
+               want a path under "/tmp/TestRollbackDecryptionReportsFullPaths.../001"
+    Both assertions the report claims defend the graft do in fact defend it.
+  Neither is vacuous:
+    $ id -u  ->  1000 (not root), so the chmod 0000 fixtures really do fail to
+    read; TestRollbackDecryptionReportsFullPaths reported PASS, not SKIP, in the
+    verbose run above, so its t.Skip guard (line 294) did not fire.
+  GAP (not scored as the failing point): the branch of DisableEncryption that
+  actually surfaces those paths to the user -- the "could NOT be re-encrypted
+  and remain PLAINTEXT ON DISK ... <full paths> -- back these up and address
+  them manually" message at migration.go:203 -- has no test at all.
+    MUTATION (scratch copy mut5): the entire `if len(failed) > 0 { ... }` block
+    deleted, so the call always claims a successful restore
+      $ go build ./... && go vet ./... && go test -count=1 ./internal/services/storage/
+        ok  budget2/internal/services/storage  63.968s
+    Mitigating: DisableEncryption holds s.mu, and decrypt and re-encrypt of the
+    same path use the same directory, so in-process there is no way to make a
+    file restorable at decrypt time and unrestorable at rollback time. I could
+    not construct an end-to-end fixture either. I record this as a known
+    untested branch rather than as the failing point.
+
+POINT 3 -- first file fails, nothing decrypted yet, error must be the plain
+  decrypt error with no claim of re-encryption: FAIL (undefended, and the test
+  named for it does not exercise it)
+  The implementation is CORRECT. Scratch test seeding ".a-broken.csv" (sorts
+  before ".encryption-verify") on an unmutated copy:
+    ERRTEXT>>> failed to decrypt .a-broken.csv: failed to read header: parsing
+      age header: unexpected intro: "age-encryption.org-v1\n"
+    -- no "re-encrypted" claim. Correct.
+  But nothing in the tree defends it.
+  (a) MUTATION (scratch copy mut3): the guard
+        if len(decryptedSoFar) == 0 { return decryptErr }
+      deleted from migration.go:198-200
+      $ go build ./... && go test -count=1 ./internal/services/storage/
+        ok  budget2/internal/services/storage  63.882s
+      The whole package suite is green with the guard gone. On the same mutated
+      tree my scratch first-file-fails test shows the regression the guard
+      exists to prevent:
+        ERRTEXT>>> failed to decrypt .a-broken.csv: ...; the 0 file(s) already
+          decrypted before this failure were successfully re-encrypted, so no
+          data was left as plaintext
+      i.e. exactly the "claims an action it did not take" behaviour the Tier-3
+      report (lines 81-84) gives as a reason wt-alt lost.
+  (b) TestDisableEncryptionPartialFailureNothingDecryptedYet
+      (migration_decrypt_rollback_test.go:134) never reaches the branch its name
+      claims. DisableEncryption's walk collects every age-encrypted file, which
+      includes ".encryption-verify" (storage.go:24), and "." sorts before "a",
+      so the verify file is decrypted successfully first. Instrumented copy
+      (log.Printf of decryptedSoFar at the failure site):
+        $ go test -count=1 -v -run TestDisableEncryptionPartialFailureNothingDecryptedYet ./internal/services/storage/
+          INSTR filesToDecrypt=[.../001/.encryption-verify .../001/aaa-broken.csv]
+          INSTR failing on .../001/aaa-broken.csv,
+                decryptedSoFar=[.../001/.encryption-verify] (len=1)
+          --- PASS
+      len(decryptedSoFar)==1, not 0. The test passes because it asserts only
+      that the file is named and that IsEncrypted stays true -- both of which
+      hold on the OTHER branch. It never asserts the absence of a re-encryption
+      claim, which is the entire content of point 3.
+  WHAT IS MISSING, precisely: (i) the fixture must make the failing file sort
+  before ".encryption-verify" (e.g. name it ".a-broken.csv") so decryptedSoFar
+  is genuinely empty, and (ii) the test must assert
+  !strings.Contains(err.Error(), "re-encrypted"). With those two changes the
+  mut3 mutation is detected; without them the guard can be deleted and nothing
+  in the repo notices.
+
+POINT 4 -- s.encrypted stays true, marker file survives: PASS
+  $ bash .swarm/tier3/F3/accept.sh -> check 01 PASS, which runs the planted
+    TestOracleF3PartialFailureKeepsEncryptedState (asserts s.encrypted and
+    os.Stat(markerFile)).
+  $ go test -count=1 -v -run 'TestDisableEncryptionPartialFailure' ./internal/services/storage/
+    both tests PASS; assertions at migration_decrypt_rollback_test.go:86-91 and
+    :159-161.
+
+POINT 5 -- success path unchanged: PASS
+  $ bash .swarm/tier3/F3/accept.sh -> check 01 PASS, which runs the planted
+    TestOracleF3SuccessPathUnchanged (file decrypted on disk, s.encrypted false).
+  Additionally migration_decrypt_rollback_test.go:108-127 removes the broken
+  file, re-runs DisableEncryption to success, and byte-compares a.csv and b.csv
+  against the originals -- so the restore round-trip is proven lossless, not
+  merely re-encrypted.
+  git diff shows no change to the marker/verify/config removal or the
+  s.encrypted = false / s.provider = nil / s.config = nil block.
+
+POINT 6 -- F1 and F2 intact: PASS
+  $ bash .swarm/tier3/F1/accept.sh  -> passed=7 failed=0 (includes the three
+    "placement-defended" mutation checks: encryptFileWithRecipient,
+    decryptFileWithIdentity, rollbackEncryptionWithIdentity, each reporting
+    "PASS (suite detected the mutation)")
+  $ bash .swarm/tier3/F2/accept.sh  -> passed=6 failed=0
+  Checked myself rather than trusting the oracles --
+  $ grep -n "os.WriteFile\|atomicWrite\|invalidateCache\|encryptData(\|decryptData(" internal/services/storage/migration.go
+    encryptFileWithRecipient:      invalidateCache 272 < encryptData 275;
+                                   atomicWrite 284; invalidateCache 291
+    decryptFileWithIdentity:       invalidateCache 312 < decryptData 315;
+                                   atomicWrite 322; invalidateCache 326
+    rollbackEncryptionWithIdentity: invalidateCache 346 < decryptData 348;
+                                   atomicWrite 358; invalidateCache 362
+    rollbackDecryptionWithRecipient (new): invalidateCache 413 < encryptData 415;
+                                   atomicWrite 424; invalidateCache 428
+    The only os.WriteFile calls left (49, 102) are the verify and marker
+    metadata files, unchanged by this diff.
+  OBSERVATION (not scored): the new helper's pre-transform invalidateCache is
+  correct but undefended, and F1's oracle mutates only the three helpers it
+  names. MUTATION (scratch copy mut4): moved rollbackDecryptionWithRecipient's
+  invalidateCache below encryptData -- exactly the losing-arm placement F1
+  attempt 3 added checks 05-07 to catch
+    $ go test -count=1 ./internal/services/storage/
+      ok  budget2/internal/services/storage  64.151s
+  This is the same class of hole F1's own oracle notes ("a correct line no test
+  defends is one refactor away from being wrong again"), now reopened in the
+  one helper that oracle cannot see.
+
+POINT 7 -- build, vet, race: PASS
+  On the main tree, via the oracle: CHECK 05-build: PASS, CHECK 06-vet: PASS,
+  and the race suite via F1 check 02 and F2 check 04, both PASS.
+  Independently, on a byte-identical copy (/tmp/.../pristine):
+    $ go build ./...   -> no output, rc 0
+    $ go vet ./...     -> no output, rc 0
+    $ go test -race -count=1 -timeout 900s ./internal/services/storage/
+      ok  budget2/internal/services/storage  384.843s
+
+BEST-EFFORT vs STOP-AT-FIRST-FAILURE -- independent read: best-effort is right.
+  Each file is an independent exposure; no ordering or consistency invariant
+  couples them, so aborting after the first restore failure converts a partial
+  exposure into a strictly larger one with nothing gained. rollback is also
+  monotone: for any given file it either re-encrypts it or leaves it exactly as
+  it was, so continuing cannot make any file worse. The usual argument for
+  fail-fast -- stop before you compound the damage -- has no purchase here. And
+  the information fail-fast would have surfaced is not lost, because the helper
+  returns the complete list rather than the first failure. Both arms chose this
+  and both were right, for the reason the code comment gives.
+
+FORMATTING
+  $ gofmt -l internal/services/storage/migration.go internal/services/storage/migration_decrypt_rollback_test.go
+    (no output -- both files formatted)
+  $ gofmt -l ./internal/services/storage/
+    internal/services/storage/edge_cases_test.go
+  $ git log -1 --format="%h %ad" --date=short -- internal/services/storage/edge_cases_test.go
+    acfa82a 2026-05-30
+  Pre-existing, last touched nearly three months before F1/F2/F3 (2026-08-24),
+  and one of ~28 unformatted files repo-wide. Not attributable to this task.
+
+STALE COMMENT (minor, not scored)
+  migration.go:381 still reads "So this returns the basenames of every file it
+  could not restore", contradicting migration.go:390-393 and the actual
+  behaviour after the full-path graft. Documentation now describes the losing
+  behaviour.
+
+SCOPE: clean.
+  $ git status --short
+    M .swarm/ledger.tsv                                  (lead bookkeeping)
+    M internal/services/storage/migration.go             (in manifest)
+    ?? internal/services/storage/migration_decrypt_rollback_test.go (in manifest)
+    ?? .swarm/manifests/F3.2.files, .swarm/tier3/F3/report.md (task artifacts)
+    ?? .claude/skills/{ship,ui-ux-pro-max,whatif-verify}/ -- untracked, mtimes
+       2026-04-11 / 2026-07-03, months older than this task; unrelated.
+  git diff --name-only HEAD lists exactly .swarm/ledger.tsv and
+  internal/services/storage/migration.go. Both code files are in
+  .swarm/manifests/F3.2.files. internal/services/storage/** is in
+  .swarm/critical.globs; F3 is Tier 3, which permits it.
+  The ledger diff is the attempt bump 1 -> 2 and the worker field only.
+  No planted oracle files left behind: ls internal/services/storage/zz_* ->
+  "No such file or directory".

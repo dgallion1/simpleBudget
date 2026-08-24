@@ -1,0 +1,245 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F3
+ATTEMPT: 3
+---
+ORACLE (authoritative, run in the main tree, ~21 min)
+  $ bash .swarm/tier3/F3/accept.sh
+    CHECK 01-partial-failure-behaviour: PASS
+    CHECK 02-f1-oracle-still-green: PASS
+    CHECK 03-f2-oracle-still-green: PASS
+    CHECK 07-nothing-decrypted-guard-defended: PASS (suite detected the mutation)
+    CHECK 08-new-helper-placement-defended: PASS (suite detected the mutation)
+    CHECK 05-build: PASS
+    CHECK 06-vet: PASS
+    passed=7 failed=0        exit 0
+  Nested, from /tmp/f3_f1.out and /tmp/f3_f2.out:
+    F1: 01-migration-cache-residency, 02-package-suite-race,
+        05/06/07-placement-defended, 03-build, 04-vet -> passed=7 failed=0
+    F2: 01-atomic-publish-and-no-leftovers, 02-no-legacy-fixed-staging-name,
+        03-f1-properties-intact, 04-package-suite-race, 05-build, 06-vet
+        -> passed=6 failed=0
+  Point 1 is met.
+
+POINT 2 -- checks 07 and 08 pass BECAUSE the named tests detect the mutation.
+  Both mutations reproduced by hand on scratch copies of the tree
+  (/tmp/.../scratchpad/mutA, mutB), applying byte-for-byte the same python
+  transforms accept.sh applies, and the FULL package suite run verbosely on
+  each so that the failing test is identified rather than assumed.
+
+  07 -- guard `if len(decryptedSoFar) == 0 { return decryptErr }` deleted:
+    $ cd mutA && go test -count=1 -v ./internal/services/storage/
+      --- PASS: TestDisableEncryptionPartialFailureRestoresEncryptedInvariant (6.00s)
+      --- FAIL: TestDisableEncryptionPartialFailureNothingDecryptedYet (0.85s)
+        migration_decrypt_rollback_test.go:178: error claims a re-encryption
+        happened when nothing was decrypted yet: failed to decrypt
+        .a-broken.csv: ...; the 0 file(s) already decrypted before this failure
+        were successfully re-encrypted, so no data was left as plaintext
+      FAIL  budget2/internal/services/storage  60.697s   (mutA_exit=1)
+    Exactly ONE test in the package fails, it is the test named for the branch,
+    and it fails on line 178 -- the assertion `!strings.Contains(err, "re-encrypted")`
+    that is the entire content of the property. Attempt 2's defect is also
+    proven fixed by the mutant's own error text: it reports "the 0 file(s)",
+    i.e. len(decryptedSoFar)==0, so ".a-broken.csv" genuinely IS the first file
+    the walk reaches, ahead of ".encryption-verify". At attempt 2 the same
+    instrumented run showed decryptedSoFar=[.encryption-verify] (len=1).
+
+  08 -- pre-transform `s.invalidateCache(path)` moved below encryptData:
+    $ cd mutB && go test -count=1 -v ./internal/services/storage/
+      --- FAIL: TestRollbackDecryptionInvalidatesCacheBeforeReencrypt (0.00s)
+        migration_cache_test.go:553: plaintext still resident in cache while
+        encryptData is in flight -- invalidateCache runs after the transform,
+        not before
+      FAIL  budget2/internal/services/storage  60.932s   (mutB_exit=1)
+    Again exactly one failure, the named test, on the line that states the
+    property. Not incidental.
+
+POINT 2a -- THE CLAIM I WAS ASKED TO SCRUTINISE: is the blocking machinery
+  necessary, or would a simpler test have discriminated? The worker is RIGHT,
+  and I established it by construction rather than by reading its argument.
+  I wrote the naive post-hoc probe it says cannot work (zz_probe_test.go:
+  seed the cache via s.ReadFile, call rollbackDecryptionWithRecipient, inspect
+  s.cache AFTER the call returns) and ran it on the correct tree and on mutB:
+    correct tree: PROBE failing-recipient: stillCached=false genDelta=2  -> PASS
+                  PROBE working-recipient: stillCached=false genDelta=2  -> PASS
+    mutB:         PROBE failing-recipient: stillCached=false genDelta=1  -> PASS
+                  PROBE working-recipient: stillCached=false genDelta=2  -> PASS
+  Cache CONTENTS are identical in every combination -- the helper's error
+  branch (`failed = append(...); s.invalidateCache(path); continue`) evicts on
+  the way out, so a state assertion made after the call cannot see the
+  difference. Confirmed, not taken on trust.
+
+  I then tested the one simpler discriminator the worker did NOT mention and I
+  found myself: the private s.cacheGen counter, which differs 2 vs 1 on the
+  failing-recipient path above. It is NOT a valid test of the property, and I
+  proved that with a third mutation (mutE) that moves the invalidate to
+  immediately AFTER encryptData but BEFORE the err check -- the plaintext is
+  resident for the whole transform, the worst version of the bug:
+    $ cd mutE && go test -count=1 -v -run 'TestProbe|TestRollbackDecryptionInvalidatesCacheBeforeReencrypt' ./internal/services/storage/
+      --- FAIL: TestRollbackDecryptionInvalidatesCacheBeforeReencrypt
+          migration_cache_test.go:553: plaintext still resident in cache while
+          encryptData is in flight ...
+      zz_probe_test.go:36: PROBE failing-recipient: ... genDelta=2  --- PASS
+      zz_probe_test.go:72: PROBE working-recipient: ... genDelta=2  --- PASS
+  genDelta=2 is exactly the correct tree's value, so a counter-based test would
+  have passed a tree with the defect fully present. Only the blocking test
+  catches it. The machinery is necessary; a post-hoc test of either kind would
+  have been the same class of non-test I rejected at attempt 2.
+
+POINT 2b -- soundness of the blocking test.
+  Channel-synchronised, not timing-dependent: migration_cache_test.go:467-471
+  `close(r.started); <-r.proceed` inside Wrap; the test waits on `<-br.started`
+  (line 542) and releases with `close(br.proceed)` (556). The two 5s
+  time.After arms are failure backstops only; neither carries a passing path.
+  No deadlock when the assertion fails: line 552-554 is t.Errorf, not t.Fatal,
+  so `close(br.proceed)` at 556 still runs. Demonstrated, not reasoned:
+    $ cd mutB && timeout 120 go test -race -count=3 -v -run 'TestRollbackDecryptionInvalidatesCacheBeforeReencrypt' ./internal/services/storage/
+      --- FAIL (0.00s) x3, each with the line-553 message
+      FAIL  budget2/internal/services/storage  0.017s
+    Fails 3/3, deterministically, in 17ms total -- it returns rather than
+    hanging, and the 120s timeout did not fire.
+  Safe under -race and repetition on the unmutated tree:
+    $ cd base && go test -race -count=5 -v -run 'TestRollbackDecryptionInvalidatesCacheBeforeReencrypt' ./internal/services/storage/
+      --- PASS x5, ok 1.024s, no WARNING: DATA RACE
+    $ cd base && go test -race -count=2 -v -run 'TestRollbackDecryptionInvalidatesCacheBeforeReencrypt|TestDisableEncryptionPartialFailureNothingDecryptedYet' ./internal/services/storage/
+      --- PASS x2 each, ok 12.056s
+  The one construct worth checking is `entry.data` read at line 552 after
+  RUnlock at 551: cache is map[string]*cacheEntry, and grep shows cacheEntry
+  values are only ever constructed fresh (storage.go:339 publishCache(&cacheEntry{...}))
+  and copied out (306-307), never mutated in place, so the pointer read is not
+  a race -- and -race agrees over 5 runs. `close(r.started)` cannot double-close:
+  one recipient means age calls Wrap once, and -count=5 makes fresh channels
+  per run (no panic observed).
+
+POINT 3 -- migration.go has no production-code change from attempt 2 beyond
+  the corrected comment: MET, and pinned to the line.
+  $ diff -u /tmp/swarm-worktrees/budget2/F3/wt-primary/internal/services/storage/migration.go \
+           /home/darrell/bin/ai/budget2/internal/services/storage/migration.go
+    Only 3 hunks: line 381 "basenames" -> "full paths" (comment); a 4-line
+    comment block at 390-393; and the graft itself, three occurrences of
+    `failed = append(failed, filepath.Base(path))` -> `failed = append(failed, path)`.
+  That bounds the arm-to-now delta. To separate attempt 2 from attempt 3 I used
+  the line numbers the attempt-2 verdict recorded from the attempt-2 tree:
+    F3.2 verdict: guard at 198-200; error at :203; rollbackDecryptionWithRecipient
+    invalidateCache 413 < encryptData 415; atomicWrite 424; invalidateCache 428;
+    stale comment at 381.
+  $ awk 'NR==198||NR==199||NR==200||NR==203||NR==381||NR==413||NR==415||NR==424||NR==428' internal/services/storage/migration.go
+    198: if len(decryptedSoFar) == 0 {   199: return decryptErr   200: }
+    203: return fmt.Errorf("%w; additionally, %d of %d ... PLAINTEXT ON DISK ...
+    381: // full paths of every file it could not restore, instead of just logging.
+    413: s.invalidateCache(path)   415: encrypted, err := encryptData(...)
+    424: if err := s.atomicWrite(...)   428: s.invalidateCache(path)
+  Every one of the eight code line numbers is IDENTICAL to attempt 2, which is
+  only possible if no line was added or removed anywhere above line 428 --
+  the 4-line comment block at 390-393 was therefore already present at attempt
+  2 (adding it now would have pushed 413 to 417). The sole attempt-3 edit is
+  the one word on line 381, inside a comment. The graft was already in place at
+  attempt 2, corroborated independently by that verdict's mut2 ("every
+  `failed = append(failed, path)` changed to filepath.Base(path)").
+
+POINT 4 -- attempt-2 properties still hold.
+  No plaintext after a partial failure -- oracle check 01 (planted
+  TestOracleF3PartialFailureLeavesNoPlaintext), plus my own mutation mutD
+  (rollback call replaced by `var failed []string; _ = recipient`):
+    --- FAIL: TestDisableEncryptionPartialFailureRestoresEncryptedInvariant
+      :101 .../a.csv left as plaintext on disk after failed DisableEncryption
+      :101 .../b.csv left as plaintext on disk after failed DisableEncryption
+  Full paths in the report -- mutation mutC (all 3 appends reverted to
+  filepath.Base, "mutC applied, replacements: 3"):
+    --- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+      :244 expected failed=[/tmp/.../unreadable.csv], got [unreadable.csv]
+    --- FAIL: TestRollbackDecryptionReportsFullPaths
+      :323 report names "exposed.csv", which does not say where the file is
+    Both graft-defending assertions still fire; neither is vacuous (id -u=1000,
+    the chmod 0000 fixture really is unreadable, so the t.Skip at :315 did not
+    fire -- the test reported PASS, not SKIP, on the unmutated tree).
+  Plain error when nothing was decrypted -- point 2 above (mutA).
+  s.encrypted and the marker survive -- oracle check 01
+  (TestOracleF3PartialFailureKeepsEncryptedState), and
+  migration_decrypt_rollback_test.go:86-91 and :180-182.
+  Success path unchanged -- oracle check 01 (TestOracleF3SuccessPathUnchanged),
+  plus migration_decrypt_rollback_test.go:108-127, which removes the broken
+  file, re-runs DisableEncryption to success and byte-compares a.csv and b.csv
+  against the originals, so the restore round-trip is proven lossless.
+  Test-file changes are strictly strengthening:
+  $ diff -u <(git show HEAD:internal/services/storage/migration_cache_test.go) internal/services/storage/migration_cache_test.go
+    112 added lines, ZERO removed lines -- purely additive (blockingRecipient +
+    the new test). No existing assertion was weakened or deleted.
+
+POINT 5 -- F1 and F2 intact, checked by hand as well as by the nested oracles.
+  $ awk '...' internal/services/storage/migration.go   (all four helpers)
+    encryptFileWithRecipient:       invalidateCache 272 < encryptData 275;
+                                    atomicWrite 284; invalidateCache 291
+    decryptFileWithIdentity:        invalidateCache 312 < decryptData 315;
+                                    atomicWrite 322; invalidateCache 326
+    rollbackEncryptionWithIdentity: invalidateCache 346 < decryptData 348;
+                                    atomicWrite 358; invalidateCache 362
+    rollbackDecryptionWithRecipient: invalidateCache 413 < encryptData 415;
+                                    atomicWrite 424; invalidateCache 428
+  Invalidate-before-transform holds in all four; every data write publishes via
+  atomicWrite.
+  $ grep -n "os.WriteFile" internal/services/storage/migration.go
+    49, 102 only -- the verify and marker metadata files, untouched by F3.
+  $ grep -n "StagingSuffix\|legacyStagingSuffix" internal/services/storage/storage.go
+    471: StagingSuffix = ".tmp-"   472: legacyStagingSuffix = ".tmp"
+    F2's randomised staging name (<base>+".tmp-"+<random>) is in place, with the
+    legacy fixed name handled only as orphan cleanup.
+  Nested oracles agree: F1 passed=7 failed=0, F2 passed=6 failed=0.
+
+POINT 6 -- build, vet, gofmt, race.
+  $ go build ./...   -> rc 0        (on a full rsync copy, /tmp/.../scratchpad/full)
+  $ go vet ./...     -> rc 0, no output
+  Also oracle CHECK 05-build: PASS, CHECK 06-vet: PASS in the real tree.
+  $ gofmt -l internal/services/storage/migration.go \
+            internal/services/storage/migration_cache_test.go \
+            internal/services/storage/migration_decrypt_rollback_test.go
+    (no output -- all three manifest files clean)
+  $ go test -race -count=1 -timeout 1200s ./internal/services/storage/   (unmutated)
+    206 tests passed, 1 package, rc 0
+  Additionally the race suite is run twice more inside the nested oracles
+  (F1 check 02, F2 check 04), both PASS.
+
+KNOWN GAP -- still real, still honestly recorded, no vacuous test added.
+  $ grep -rn "PLAINTEXT\|could NOT be re-encrypted\|address them manually" \
+      internal/services/storage/*_test.go
+    (no match -- nothing in the suite so much as mentions this branch)
+  I reproduced the gap mutation myself (mutGap): the whole
+  `if len(failed) > 0 { return fmt.Errorf(...PLAINTEXT ON DISK...) }` block
+  replaced by `_ = s.rollbackDecryptionWithRecipient(...)`, so the call always
+  claims a successful restore.
+    $ cd mutGap && go test -count=1 ./internal/services/storage/
+      ok  budget2/internal/services/storage  61.278s   (gap_suite_rc=0)
+  The suite is green with the user-facing exposure warning deleted. This is
+  the same gap I recorded at attempt 2 and it is unchanged. Critically, no test
+  was added at attempt 3 that appears to cover it: the two new tests are named
+  for, and assert, the guard branch and the cache placement respectively, and
+  both are proven to fail when their own branch is broken (mutA, mutB). There
+  is no test standing in front of this branch giving false assurance. The gap
+  is a coverage hole with an honest label, which is the right disposition
+  given that neither the worker nor I could construct an end-to-end fixture --
+  DisableEncryption holds s.mu, and decrypt and re-encrypt of the same path go
+  through the same directory, so in-process no file can be restorable at
+  decrypt time and unrestorable at rollback time. I did not attempt the
+  RLIMIT_FSIZE route; the worker's stated reason for rejecting it (the limit is
+  process-wide and truncated its own test output) is correct on its face -- Go
+  runs all tests in one process, so an RLIMIT_FSIZE low enough to break
+  atomicWrite would also break the testing package's own writes.
+  One process note, not scored: this reasoning lives only in verdict files and
+  worker messages, not in any file in the repo. If F3 is accepted, the gap
+  should be written into SPEC.md or a comment at migration.go:202, or the next
+  person to touch this function will not know it is undefended.
+
+SCOPE
+  $ git status --short -- internal
+    M internal/services/storage/migration.go
+    M internal/services/storage/migration_cache_test.go
+    ?? internal/services/storage/migration_decrypt_rollback_test.go
+  Exactly the three files in .swarm/manifests/F3.3.files; nothing else under
+  internal/ touched. .swarm/critical.globs lists internal/services/storage/**,
+  which this task is permitted to modify at Tier 3 (ledger: F3 tier 3).
+  Ledger/oracle/report changes are lead artifacts, not worker code.
+  All my mutation work was done on copies under
+  /tmp/claude-1000/.../scratchpad/{base,mutA,mutB,mutC,mutD,mutE,mutGap,full};
+  the tracked tree is byte-identical to the state I received, and the oracle's
+  planted zz_oracle_f3_test.go was cleaned up (ls: No such file or directory).

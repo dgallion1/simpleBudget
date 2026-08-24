@@ -1,0 +1,107 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F3
+ATTEMPT: 3
+---
+Formed my own view before reading checker-tests's verdict in depth; then read
+it and independently re-ran/re-derived its central claims before deciding
+where to attack further.
+
+CONFIRMED (independently reproduced, not taken on trust):
+- filepath.Walk's lexical order is a documented guarantee (`go doc
+  path/filepath.Walk`: "The files are walked in lexical order, which makes
+  the output deterministic"), so the `.a-broken.csv` fixture naming is not
+  fragile / implementation-detail-dependent. Concern dismissed.
+- Check 07 (nothing-decrypted guard) and check 08 (invalidateCache placement)
+  both genuinely fail on their respective mutations when I applied the same
+  mutations by hand on a fresh scratch copy (`/tmp/.../scratchpad/mut07`,
+  `mut08`), not the oracle's copy.
+- The blocking test (`TestRollbackDecryptionInvalidatesCacheBeforeReencrypt`)
+  does not hold `s.mu` (it calls `rollbackDecryptionWithRecipient` directly,
+  which takes no lock), package has no `t.Parallel`, so no cross-test
+  contention. Ran it under `-race -run ...` on the mutated tree: fails
+  deterministically in 12ms, no hang, no leaked-goroutine effect on other
+  tests (t.Errorf not t.Fatal before `close(br.proceed)`). No soundness
+  defect found here.
+
+NEW FINDING NOT IN checker-tests's verdict, direction: undefended branch
+(not a live bug today, but a real coverage hole in a confidentiality-critical
+helper, and one that IS constructible where the disclosed "known gap" is not).
+
+`rollbackDecryptionWithRecipient` has three failure branches: ReadFile fails,
+encryptData fails, atomicWrite fails. Only the first (via a chmod-0000 file)
+is exercised by any test. I mutated the other two to swallow their errors
+(stop appending to `failed`) on a scratch copy and ran the full package
+suite unmutated-elsewhere:
+
+  $ cd mutEncData && go test -count=1 ./internal/services/storage/
+    ok  budget2/internal/services/storage  59.5s   <- green with the
+        encryptData-failure branch silently swallowed
+
+  $ cd mutAtomic2 && go test -count=1 ./internal/services/storage/
+    ok  budget2/internal/services/storage  59.5s   <- green with the
+        atomicWrite-failure branch silently swallowed
+
+Both are constructible, and trivially so, using tools already present in the
+same file:
+  - encryptData-failure: `failingRecipient{}` already exists at
+    migration_cache_test.go:235 (used to test encryptFileWithRecipient's
+    failure path). `s.rollbackDecryptionWithRecipient([]string{plain},
+    failingRecipient{})` reaches the branch with zero new scaffolding. I
+    wrote this as a throwaway test and confirmed: PASS on the correct tree
+    (failed=[path]), FAIL on mutEncData (failed=[]).
+  - atomicWrite-failure: chmod the containing directory 0555 before calling
+    the helper directly (the same "directory, not path" technique the repo's
+    own migration_atomic_test.go already documents and uses). Confirmed:
+    PASS on the correct tree (failed=[path], file left plaintext, rename
+    never happened), FAIL on mutAtomic2 (failed=[]).
+
+This is a stronger finding than it looks next to the already-disclosed
+"KNOWN GAP" in checker-tests's verdict, because that gap (DisableEncryption's
+`if len(failed) > 0 { ...PLAINTEXT ON DISK... }` message branch) was argued
+-- correctly, I checked the reasoning -- to be infeasible to construct
+in-process, since decrypt and rollback of the same file go through the same
+directory synchronously with no test hook between them: making the directory
+unwritable early enough to fail the rollback also fails the initial decrypt.
+That argument does NOT transfer to these two branches, because they don't
+need to go through DisableEncryption's loop at all -- they can be hit by
+calling the helper directly, exactly the way the existing
+TestRollbackDecryptionWithRecipientReportsUnrestorableFiles test already
+calls it for the ReadFile-failure branch. Nobody extended that same
+direct-call pattern to the other two branches of the same four-branch loop,
+despite the fixture for one of them (failingRecipient) sitting nine lines
+away in the same file.
+
+Severity, stated in the terms the brief asked for: this is the
+undefended-but-correct kind, not the plaintext-survives-on-disk kind -- I
+verified on the unmutated tree that production code handles both branches
+correctly (reports the failed path, leaves the file's on-disk bytes
+untouched). It is not today's live bug. But it is exactly the class that
+sank attempt 2 ("two correct branches had no test behind them"), found in
+the same function that attempt 3 was built specifically to defend against
+that failure mode, in a helper whose own doc comment states its entire
+purpose is "the caller must be told which files, if any, could not be
+restored... nothing else in this codepath will ever say so." Two of its four
+exit paths currently have nothing standing in front of that claim, and
+unlike the disclosed gap, both were fixable with roughly five minutes of
+work apiece and no new test infrastructure.
+
+WHAT I TRIED AND DID NOT PURSUE FURTHER (given time budget):
+- Full 20-minute oracle run: not re-run end-to-end (checker-tests's log plus
+  my own reproduction of checks 07/08/01 in isolation was treated as
+  sufficient corroboration of the mechanical claims; my attack surface was
+  the coverage gap, not the oracle's arithmetic).
+- Did not attempt to build an end-to-end DisableEncryption-level fixture for
+  the disclosed PLAINTEXT ON DISK message branch; I agree with the existing
+  reasoning that it requires an in-call timing seam the production code does
+  not have. Not pursued further.
+- Did not check provider.Recipient()-returns-error path (line ~140) for
+  coverage; it's structurally required for the code to compile/run at all
+  and is a low-value target.
+
+Recommend: send back for two throwaway-sized additive tests defending the
+encryptData- and atomicWrite-failure branches of rollbackDecryptionWithRecipient
+(both fixtures already demonstrated above), or an explicit written
+acknowledgment of the gap alongside the already-disclosed one if the boss
+decides it's out of scope for this attempt.

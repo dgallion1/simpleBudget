@@ -1,0 +1,202 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F2
+ATTEMPT: 2
+---
+ORACLE (authoritative)
+  $ bash .swarm/tier3/F2/accept.sh
+    CHECK 01-atomic-publish-and-no-leftovers: PASS
+    CHECK 02-no-legacy-fixed-staging-name: PASS
+    CHECK 03-f1-properties-intact: PASS
+    CHECK 04-package-suite-race: PASS
+    CHECK 05-build: PASS
+    CHECK 06-vet: PASS
+    ---
+    passed=6 failed=0
+
+POINT 1 -- rollback restores plaintext through a 0444 destination (publishes by
+rename, not by writing the target). MET.
+  Behaviour: oracle check 01 plants TestOracleF2RollbackPublishesByRename
+  (chmod 0444 on the destination, then rollbackEncryptionWithIdentity, then
+  compares bytes) -> PASS. In-tree twin:
+  $ go test -count=1 -v -run TestRollbackEncryptionPublishesByRenameNotWrite ./internal/services/storage/
+    --- PASS: TestRollbackEncryptionPublishesByRenameNotWrite (1.39s)
+  I read that test (migration_atomic_test.go:23-59): it chmods file1 to 0444,
+  calls the helper, and fails unless the on-disk bytes equal the plaintext. It
+  asserts what its name claims.
+  MUTATION M1 (scratch copy under /tmp, repo untouched): replaced
+  `s.atomicWrite(path, decrypted, 0644)` with `os.WriteFile(path, decrypted, 0644)`
+  in rollbackEncryptionWithIdentity.
+    --- FAIL: TestRollbackEncryptionPublishesByRenameNotWrite (1.39s)
+        migration_atomic_test.go:57: rollback did not restore plaintext for a
+        read-only destination: got "age-encryption.org/v1\n-> scrypt ..."
+    log line: rollback: failed to restore .../f1.csv: permission denied
+    and the oracle under M1: passed=3 failed=3 (checks 01, 03, 04 fail).
+  This also demonstrates the silent-failure behaviour the report flags: the
+  only signal from the broken version is a log line.
+
+POINT 2 -- a completed migration in either direction leaves nothing satisfying
+IsStagingName. MET.
+  Oracle check 01's second planted test (TestOracleF2NoStagingLeftovers:
+  EnableEncryption + DisableEncryption over three seeded files, then ReadDir
+  with IsStagingName) -> PASS. In-tree twin:
+  $ go test -count=1 -v -run TestMigrationRoundTripLeavesNoStagingFiles ./internal/services/storage/
+    --- PASS: TestMigrationRoundTripLeavesNoStagingFiles (4.90s)
+  The test walks the dir after EnableEncryption, after DisableEncryption, and
+  after a direct rollbackEncryptionWithIdentity call, asserting !IsStagingName
+  at each point (migration_atomic_test.go:67-127). Mechanism: atomicWrite
+  (storage.go:570-597) stages via os.CreateTemp, defers os.Remove(tmpPath), and
+  publishes with os.Rename, which consumes the staging file.
+
+POINT 3 -- no helper stages at path + ".tmp". MET, and verified behaviourally,
+not only by the oracle's grep.
+  $ grep -n "invalidateCache\|encryptData(\|decryptData(\|atomicWrite" internal/services/storage/migration.go
+    265:	err = s.atomicWrite(path, encrypted, 0644)
+    303:	err = s.atomicWrite(path, decrypted, 0644)
+    339:	if err := s.atomicWrite(path, decrypted, 0644); err != nil {
+  $ go test -count=1 -v -run TestMigrationHelpersDoNotUseLegacyFixedStagingName ./internal/services/storage/
+    --- PASS (3 subtests: encryptFileWithRecipient, decryptFileWithIdentity,
+              rollbackEncryptionWithIdentity)
+  MUTATIONS M2/M3/M4 (scratch): reinstated `tmpPath := path + ".tmp"` +
+  os.WriteFile + os.Rename in each helper in turn. Each time exactly the
+  matching subtest failed and no other test did:
+    M2 -> --- FAIL: .../encryptFileWithRecipient (0.41s)
+    M3 -> --- FAIL: .../decryptFileWithIdentity (0.83s)
+    M4 -> --- FAIL: .../rollbackEncryptionWithIdentity (0.82s)
+  M4 kept the rename (legacy name, still atomic), and property 1's test
+  correctly stayed green -- the two properties are separately discriminated.
+
+  JUDGEMENT ON ORACLE CHECK 02 (asked for explicitly). The grep alone is not
+  adequate, but the shipped work does not rely on it.
+  MUTATION E3 (scratch): staged at the legacy fixed name spelled as
+  `suffix := legacyStagingSuffix; tmpPath := path + suffix`.
+    grep -qE '\+ "\.tmp"' migration.go -> no match, so oracle check 02 PASSES
+    on a tree that does stage at the legacy fixed name (false negative).
+    go test -run TestMigrationHelpersDoNotUseLegacyFixedStagingName
+      --- FAIL: .../encryptFileWithRecipient (0.49s)
+  The grep is also false-positive on prose: an earlier run of E3 whose *comment*
+  contained the character sequence tripped it. So check 02 is the weakest check
+  in the oracle in both directions; the worker's sentinel test is the real
+  guarantee and it is behavioural and per-helper. Point 3 is met on that test's
+  evidence, not on the grep's.
+
+POINT 4 -- F1's properties intact. MET.
+  $ bash .swarm/tier3/F1/accept.sh
+    CHECK 01-migration-cache-residency: PASS
+    CHECK 02-package-suite-race: PASS
+    CHECK 05-encrypt-placement-defended: PASS (suite detected the mutation)
+    CHECK 06-decrypt-placement-defended: PASS (suite detected the mutation)
+    CHECK 07-rollback-placement-defended: PASS (suite detected the mutation)
+    CHECK 03-build: PASS
+    CHECK 04-vet: PASS
+    ---
+    passed=7 failed=0
+  Checks 05-07 are F1's own placement mutations, so F1's oracle re-proves on
+  this tree that moving invalidateCache below the transform is still caught.
+  Bracketing, by line number:
+    encryptFileWithRecipient   253 invalidateCache | 256 encryptData | 265 atomicWrite | 272 invalidateCache
+    decryptFileWithIdentity    293 invalidateCache | 296 decryptData | 303 atomicWrite | 307 invalidateCache
+    rollbackEncryptionWithIdentity 327 invalidateCache | 329 decryptData | 339 atomicWrite | 343 invalidateCache
+  Invalidate is above the fallible transform in all three, and brackets it.
+  migration_cache_test.go is unchanged:
+    $ git diff --stat HEAD -- internal/services/storage/migration_cache_test.go  -> empty
+  and all eight of its tests pass under -race:
+    $ go test -count=1 -race -v -run '^(TestEnableEncryptionEvictsCachedPlaintext|...)$' ./internal/services/storage/
+      --- PASS: TestEnableEncryptionEvictsCachedPlaintext (5.20s)
+      --- PASS: TestDisableEncryptionEvictsCachedPlaintext (15.33s)
+      --- PASS: TestMigrationRoundTripPreservesContent (15.78s)
+      --- PASS: TestReadCachesUnmigratedFile (0.00s)
+      --- PASS: TestRollbackEncryptionEvictsCachedPlaintext (10.57s)
+      --- PASS: TestEncryptFailureDoesNotLeavePlaintextCached (0.00s)
+      --- PASS: TestDecryptFailureDoesNotLeavePlaintextCached (7.98s)
+      --- PASS: TestRollbackEncryptionWithDecryptFailureEvictsCachedPlaintext (8.18s)
+      ok  budget2/internal/services/storage  64.179s
+
+POINT 5 -- no deadlock from calling s.atomicWrite under s.mu. MET; checked
+myself rather than taken on trust.
+  $ awk '/^func \(s \*Storage\) atomicWrite/,/^}/' internal/services/storage/storage.go | grep -nE '\bs\.[A-Za-z]+|Lock\(|Unlock\('
+    (no output)
+  atomicWrite's body calls only filepath.Dir/Base, os.MkdirAll, os.CreateTemp,
+  f.Write, f.Close, os.Chmod, os.Rename, os.Remove -- no method on *Storage and
+  no lock at all, so its reachable set contains no lock and cannot close a
+  cycle. The holders:
+  $ grep -n "func (s \*Storage) EnableEncryptionWithProvider" -A3 migration.go -> s.mu.Lock(); defer s.mu.Unlock()  (lines 24-26)
+  $ same for DisableEncryption (lines 115-117)
+  I also enumerated every acquisition site in the package
+  ($ awk '/^func /{fn=$0} /\.(Lock|RLock)\(\)/{...}' internal/services/storage/*.go)
+  to check the second-order risk, since the helpers do take cacheMu via
+  invalidateCache while holding s.mu. Ordering is uniformly s.mu -> cacheMu:
+  Storage.Lock() takes s.mu then cacheMu; ReadFileContext takes cacheMu and
+  RUnlocks it *before* s.mu.RLock() (storage.go, "s.cacheMu.RUnlock()" precedes
+  "s.mu.RLock()"). No site takes s.mu while holding cacheMu, so no reverse edge
+  exists either.
+  Live corroboration: the -race package suite exercises EnableEncryption/
+  DisableEncryption -> atomicWrite under s.mu and completed in 307s against a
+  600s timeout without hanging.
+
+POINT 6 -- build, vet, race. MET.
+  $ go build ./...  -> exit 0, no output
+  $ go vet ./...    -> exit 0, no output
+  $ go test -race -count=1 -timeout 600s ./internal/services/storage/
+    ok  budget2/internal/services/storage  307.827s
+
+THE ARM'S DISCLOSURE ABOUT TestMigrationRoundTripLeavesNoStagingFiles --
+DISPUTED. The claim ("not independently mutation-discriminating; no portable
+mutation of this diff makes it fail alone") is falsified.
+  MUTATION E1 (scratch, confined to migration.go): in encryptFileWithRecipient,
+  replaced the atomicWrite call with hand-rolled staging under the correct
+  StagingSuffix convention that publishes the bytes but only removes the
+  staging file on error paths -- i.e. exactly the "forgot the cleanup" slip,
+  and the same hand-rolled shape wt-alt actually wrote.
+    $ go test -count=1 ./internal/services/storage/
+      --- FAIL: TestMigrationRoundTripLeavesNoStagingFiles (5.72s)
+      FAIL
+    That is the whole failure list for the package: the test failed alone.
+  So the test is stronger than advertised. It discriminates the leaked-staging-
+  file class, which is precisely the regression a future refactor away from
+  atomicWrite would introduce.
+  For contrast, two mutations it does NOT catch, so the boundary is on record:
+    E2 (atomicWrite leaks on every write): caught, but not alone --
+      TestReadFileConcurrentWriterNeverServesStale and
+      TestRollbackEncryptionPublishesByRenameNotWrite fail too.
+    E1b (staging file created above the `isAgeEncrypted` early return, so only
+      the already-encrypted skip path leaks): NOT caught -- full package suite
+      printed "ok budget2/internal/services/storage 50.465s". No test in the
+      package drives a migration helper over an already-encrypted file with a
+      leftover check. A real but narrow blind spot; not a criterion here.
+
+ROLLBACK'S SIGNATURE STILL ONLY LOGS -- opinion, as asked, on work that is out
+of scope for this task. Acceptable as shipped, and now materially less urgent
+than it was before this change. The reason: pre-fix, the most likely cause of a
+swallowed rollback failure was a non-writable destination, which M1 shows was
+both reachable and silent. Publishing by rename removes that cause; what remains
+reachable is directory-level failure (ENOSPC, read-only mount), under which the
+encrypt that triggered the rollback would almost certainly have failed the same
+way. The residual defect is real -- EnableEncryption's "failed to encrypt <file>"
+cannot distinguish "restored" from "left partially encrypted", and a caller that
+wanted to warn the user which one happened has no way to -- but it is an
+error-reporting gap on a path that no longer has a common trigger, not a data
+integrity gap. Worth a separate task alongside F3 (DisableEncryption's missing
+rollback), not a reason to reject F2.
+
+SCOPE.
+  $ git diff --name-only  ->  .swarm/ledger.tsv, internal/services/storage/migration.go
+  $ git ls-files --others --exclude-standard  ->  .swarm/manifests/F2.{1,2}.files,
+      .swarm/tier3/F2/accept.sh, .swarm/tier3/F2/report.md,
+      internal/services/storage/migration_atomic_test.go
+  Source changes match .swarm/manifests/F2.2.files exactly (migration.go +
+  migration_atomic_test.go); everything else is swarm bookkeeping.
+  internal/services/storage/** IS in .swarm/critical.globs; the ledger row is
+  "F2  3  tests,second  pending  2 ..." -- Tier 3, which is what a critical glob
+  requires, and the Tier-3 process was followed (accept.sh predates dispatch,
+  report.md carries "RESOLUTION: wt-primary merged unmodified").
+  $ gofmt -l internal/services/storage/migration.go internal/services/storage/migration_atomic_test.go -> empty.
+  $ gofmt -l internal/services/storage/ -> edge_cases_test.go, only. Confirmed
+  pre-existing, not this work's doing:
+    $ git show HEAD:internal/services/storage/edge_cases_test.go > /tmp/edge_head.go
+    $ gofmt -l /tmp/edge_head.go  -> /tmp/edge_head.go  (already unformatted at HEAD)
+    $ git log -1 --format='%h %ad %s' --date=short -- .../edge_cases_test.go
+      acfa82a 2026-05-30 fix(storage): invalidate read cache on size change, not mtime alone
+  All mutation work was done on a copy at /tmp/.../scratchpad/f2; the repo's own
+  files were never edited.

@@ -258,13 +258,11 @@ func (s *Storage) encryptFileWithRecipient(path string, recipient age.Recipient)
 		return err
 	}
 
-	// Write to temp file then atomic rename
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, encrypted, 0644); err != nil {
-		return err
-	}
-
-	err = os.Rename(tmpPath, path)
+	// Stage beside the destination and publish by rename, via the same
+	// atomicWrite routine ordinary writes use (see StagingSuffix's doc
+	// comment on why consumers derive the staging name from one place
+	// instead of each spelling out their own fixed ".tmp" convention).
+	err = s.atomicWrite(path, encrypted, 0644)
 
 	// Invalidate again now that the rename has published (or failed to
 	// publish) the new bytes. Unconditional, same reasoning as
@@ -300,13 +298,9 @@ func (s *Storage) decryptFileWithIdentity(path string, identity age.Identity) er
 		return err
 	}
 
-	// Write to temp file then atomic rename
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, decrypted, 0644); err != nil {
-		return err
-	}
-
-	err = os.Rename(tmpPath, path)
+	// Stage beside the destination and publish by rename, same convention as
+	// encryptFileWithRecipient above.
+	err = s.atomicWrite(path, decrypted, 0644)
 
 	// Invalidate again after the rename lands (or fails). Unconditional, same
 	// reasoning as encryptFileWithRecipient's second call.
@@ -329,9 +323,7 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 		// Same invalidate-before/invalidate-after bracket as
 		// decryptFileWithIdentity, and above decryptData for the same reason:
 		// a rollback is already the failure path, and a decrypt that fails
-		// here must not leave the plaintext resident. Deliberately not
-		// touching the bare os.WriteFile below (non-atomic, unlike its
-		// siblings) -- that is a separate, out-of-scope defect.
+		// here must not leave the plaintext resident.
 		s.invalidateCache(path)
 
 		decrypted, err := decryptData(data, identity)
@@ -339,7 +331,12 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 			continue
 		}
 
-		if err := os.WriteFile(path, decrypted, 0644); err != nil {
+		// Publish by rename via atomicWrite rather than writing the
+		// destination directly. Renaming over path needs write permission on
+		// its directory, not on path itself, so this also fixes rollback's
+		// previous inability to publish (and silent swallowing of that
+		// failure) when the destination file itself was not writable.
+		if err := s.atomicWrite(path, decrypted, 0644); err != nil {
 			log.Printf("rollback: failed to restore %s: %v", path, err)
 		}
 

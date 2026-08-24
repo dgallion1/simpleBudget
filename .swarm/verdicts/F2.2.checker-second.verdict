@@ -1,0 +1,81 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F2
+ATTEMPT: 2
+---
+Attacked the claim (all three migration.go helpers now publish via
+s.atomicWrite, staging under randomised StagingSuffix, rename-publish)
+independently of the primary lane's writeup.
+
+What I verified myself, not by trusting the report:
+
+- Re-ran both oracles from clean, myself: `.swarm/tier3/F1/accept.sh` ->
+  passed=7 failed=0; `.swarm/tier3/F2/accept.sh` -> passed=6 failed=0.
+  `go build ./...` and `go vet ./...` clean.
+- Deadlock: read atomicWrite's body directly (storage.go:570-599) and
+  confirmed by grep that it calls no *Storage method and takes no lock
+  (`awk` over the function body matching `\bs\.[A-Za-z]+\(|Lock\(|Unlock\(`
+  -> no output). All three callers already hold s.mu exclusively
+  (EnableEncryptionWithProvider / DisableEncryption, migration.go:25-26,
+  116-117) before calling the helpers, so no new lock is acquired inside
+  the critical section. invalidateCache only takes cacheMu (storage.go:243-
+  248), consistent with the existing s.mu -> cacheMu ordering elsewhere.
+- Staging-leak reachability: read all three helpers' skip/early-return
+  paths (already-encrypted skip in encryptFileWithRecipient, not-encrypted
+  skip in decryptFileWithIdentity, read-failure/not-encrypted/decrypt-
+  failure `continue`s in rollbackEncryptionWithIdentity) and confirmed none
+  of them can execute after atomicWrite has created a staging file, because
+  atomicWrite is called strictly after every skip check in all three. No
+  reachable leak in the shipped code (this matches the primary lane's own
+  conclusion that its E1b mutation was hypothetical, not present as-shipped).
+- Compared against pristine 1512086: encryptFileWithRecipient and
+  decryptFileWithIdentity already staged-and-renamed before this task
+  (tmpPath := path + ".tmp"; os.WriteFile; os.Rename) — F2's actual change
+  for those two is only the staging-name randomisation. rollbackEncryption-
+  WithIdentity is the one helper whose publish mechanism actually changed
+  (bare os.WriteFile(path, ...) -> s.atomicWrite(path, ...)).
+
+Two live behavioural side effects I found and verified with scratch tests
+(never committed; confirmed clean via `git status --porcelain` after each):
+
+1. Permission reset on rollback. Wrote
+   TestAdversarialRollbackPermissionReset: chmod a destination to 0600
+   before calling rollbackEncryptionWithIdentity. Result: file ends at
+   0644, not 0600. Root cause: os.WriteFile onto an *existing* file (the
+   pristine rollback's mechanism) does not change the file's mode, but
+   atomicWrite always chmods the staging file to the hardcoded 0644 before
+   renaming it over the destination, unconditionally replacing whatever
+   mode bits were there. This is a genuine, silent behaviour change from
+   rollback's own predecessor: no error, no log line, permissions are just
+   quietly loosened. It is not new for encrypt/decrypt (they already had
+   this property pre-F2), only for rollback.
+2. Same root cause, symlink destination: TestAdversarialSymlinkDestination
+   showed rollback via rename replaces a symlink destination with a
+   regular file rather than writing through it, breaking the link.
+
+Neither is data loss or a torn file — no content is corrupted, no bytes
+are lost, and the destination always ends up either the correct plaintext
+or the correct ciphertext. Both are silent metadata/topology changes on a
+narrow, arguably-not-reachable-in-this-codebase input (a data file under
+baseDir with hand-set restrictive permissions or a symlink in place of a
+regular file). They are real and I verified them myself rather than taking
+the report's word, but they fall outside every criterion this task was
+scoped against (atomicity, read-only-destination publish, legacy-name
+removal, no leftovers, F1 properties, no deadlock) and they extend a
+tradeoff (chmod-then-rename via the shared atomicWrite) that the rest of
+this file and package already rely on for the other two helpers and for
+every other writer in storage.go. Recording as a finding for a future task,
+not as grounds to fail this one.
+
+Tried and failed to break: read-only-destination publish (independently
+corroborated atomicWrite's mechanism -- MkdirAll, CreateTemp in the same
+directory, Write, Close, Chmod, os.Rename -- rename needs dir write, not
+target write, so the primary lane's read that the test isn't passing for a
+spurious reason holds up); F1's cache-invalidation bracket placement
+(re-ran F1's own placement-mutation oracle myself, 7/7); no-deadlock
+(traced the call graph myself rather than trusting the writeup);
+race-safety of the whole package (both oracles include `go test -race`
+and both passed under my own run).
+
+VERDICT: PASS.

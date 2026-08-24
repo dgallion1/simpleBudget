@@ -22,8 +22,10 @@ Thumbs.db
 .aider*
 .gitnexus
 
-# Agent / tooling state (per-machine, not source)
-.claude/
+# Agent / tooling state (per-machine, not source) — but .claude/skills/
+# is source: skills are checked in so every session gets them
+.claude/*
+!.claude/skills/
 .playwright-mcp/
 .superpowers/
 .worktrees/

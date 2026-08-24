@@ -1,0 +1,58 @@
+# Retirement plan — "will I be OK?"
+
+The what-if engine projects the saved retirement plan forward. Five reads,
+one write. A `whatif://assumptions` MCP resource describes what the engine
+does **not** model — read it before making claims about what a projection
+proves.
+
+## list_scenarios (read)
+
+The saved what-if scenarios with a one-line summary of each. Scenario
+filenames from here are what every other planner tool's `scenario` param
+takes; omitting `scenario` always means the active scenario.
+
+## get_analysis (read)
+
+The full analysis for a scenario: headline balances, per-year projection,
+and the derived figures the what-if page shows.
+
+Params: `scenario` (optional).
+
+## get_months (read)
+
+Month-by-month projection detail for an inclusive month range — for
+explaining *why* a year looks the way it does (which flows hit in which
+month).
+
+Params: `from_month`, `to_month` (0-based, inclusive, at most 120 months per
+call), `scenario`.
+
+## run_scenario (read — nothing is saved)
+
+Re-runs a scenario with changed assumptions and returns the resulting
+analysis. This is the "what if" tool: use it to answer hypotheticals without
+touching the plan. `overrides` changes only the fields you pass; omitted
+fields keep the scenario's value.
+
+Params: `scenario`, `overrides`.
+
+## open_page (read)
+
+Returns the URL of the what-if page, switching the active scenario first if
+you name one. **Call this before `apply_changes`** and give the user the
+URL — the page is where they see what the write did.
+
+Params: `scenario` (optional, switches to it).
+
+## apply_changes ✏️ (write → the saved plan)
+
+Saves changed assumptions to the plan and returns the resulting analysis.
+Same `overrides` shape as `run_scenario`: omitted fields keep their current
+value.
+
+- Before its first write to a scenario in a session, the scenario is
+  snapshotted to a `.bak` under `<backup-dir>/mcp-snapshots`. **There is no
+  in-app undo** — restoring that file by hand is the only recovery path, so
+  tell the user which fields you changed and to what.
+- Prefer `run_scenario` for exploration; reach for `apply_changes` only when
+  the user has said they want the change kept.

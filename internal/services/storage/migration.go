@@ -254,6 +254,28 @@ func (s *Storage) createProviderUnlocked() (AuthProvider, error) {
 	}
 }
 
+// filePerm returns the current permission bits of the file at path, so a
+// migration helper can pass them to atomicWrite instead of a hardcoded mode.
+// atomicWrite chmods its staging file to whatever perm it is given before
+// renaming it over the destination, which means the destination's existing
+// mode is replaced unless the caller supplies it back. Migration changes a
+// file's encoding, not who is allowed to read it, so every helper below
+// stats the file it is about to rewrite and threads that mode through.
+//
+// Every call site here has just read path successfully (that is how it got
+// the bytes it is about to transform), so this Stat should not fail except
+// through a concurrent deletion of the file out from under the migration --
+// there is no reasonable default to invent for a file that turns out not to
+// exist, so that is surfaced as an error rather than silently falling back
+// to some fixed mode.
+func filePerm(path string) (os.FileMode, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat %s to preserve its permissions: %w", path, err)
+	}
+	return info.Mode().Perm(), nil
+}
+
 // encryptFileWithRecipient encrypts a single file in place using any age.Recipient
 func (s *Storage) encryptFileWithRecipient(path string, recipient age.Recipient) error {
 	// Read original file
@@ -288,11 +310,18 @@ func (s *Storage) encryptFileWithRecipient(path string, recipient age.Recipient)
 		return err
 	}
 
+	// Preserve the file's existing mode across the rewrite (see filePerm's
+	// doc): encryption changes encoding, not who can read the file.
+	perm, err := filePerm(path)
+	if err != nil {
+		return err
+	}
+
 	// Stage beside the destination and publish by rename, via the same
 	// atomicWrite routine ordinary writes use (see StagingSuffix's doc
 	// comment on why consumers derive the staging name from one place
 	// instead of each spelling out their own fixed ".tmp" convention).
-	err = s.atomicWrite(path, encrypted, 0644)
+	err = s.atomicWrite(path, encrypted, perm)
 
 	// Invalidate again now that the rename has published (or failed to
 	// publish) the new bytes. Unconditional, same reasoning as
@@ -328,9 +357,16 @@ func (s *Storage) decryptFileWithIdentity(path string, identity age.Identity) er
 		return err
 	}
 
+	// Preserve the file's existing mode across the rewrite (see filePerm's
+	// doc): decryption changes encoding, not who can read the file.
+	perm, err := filePerm(path)
+	if err != nil {
+		return err
+	}
+
 	// Stage beside the destination and publish by rename, same convention as
 	// encryptFileWithRecipient above.
-	err = s.atomicWrite(path, decrypted, 0644)
+	err = s.atomicWrite(path, decrypted, perm)
 
 	// Invalidate again after the rename lands (or fails). Unconditional, same
 	// reasoning as encryptFileWithRecipient's second call.
@@ -366,7 +402,15 @@ func (s *Storage) rollbackEncryptionWithIdentity(files []string, identity age.Id
 		// its directory, not on path itself, so this also fixes rollback's
 		// previous inability to publish (and silent swallowing of that
 		// failure) when the destination file itself was not writable.
-		if err := s.atomicWrite(path, decrypted, 0644); err != nil {
+		//
+		// Preserve the file's existing mode across the rewrite (see
+		// filePerm's doc) rather than handing atomicWrite a hardcoded one. A
+		// Stat failure here is treated the same as an atomicWrite failure:
+		// logged, and the file left as it was rather than republished under
+		// some invented mode.
+		if perm, err := filePerm(path); err != nil {
+			log.Printf("rollback: failed to restore %s: %v", path, err)
+		} else if err := s.atomicWrite(path, decrypted, perm); err != nil {
 			log.Printf("rollback: failed to restore %s: %v", path, err)
 		}
 
@@ -432,7 +476,16 @@ func (s *Storage) rollbackDecryptionWithRecipient(files []string, recipient age.
 
 		// Publish by rename via atomicWrite, the same convention every
 		// other writer in this file uses (see StagingSuffix's doc comment).
-		if err := s.atomicWrite(path, encrypted, 0644); err != nil {
+		//
+		// Preserve the file's existing mode across the rewrite (see
+		// filePerm's doc) rather than handing atomicWrite a hardcoded one.
+		// A Stat failure here is treated the same as an atomicWrite
+		// failure: this file could not be confirmed restored, so it is
+		// reported to the caller rather than republished under some
+		// invented mode.
+		if perm, err := filePerm(path); err != nil {
+			failed = append(failed, path)
+		} else if err := s.atomicWrite(path, encrypted, perm); err != nil {
 			failed = append(failed, path)
 		}
 

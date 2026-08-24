@@ -319,8 +319,11 @@ an answer, look at spending patterns, and curate the Major Expenses page.
 nothing is listening when a Claude Code session starts, they will not be
 available. There is no separate MCP process.
 
-Twenty-six tools in four groups: six planner tools, six spending tools,
-five curation tools, and nine housekeeping tools.
+Thirty-one tools in five groups: six planner tools, six spending tools, five
+ledger tools, five curation tools, and nine housekeeping tools. A checked-in
+Claude Code skill (`.claude/skills/budget2-mcp/`) routes a session across
+them: five branches by what is being asked, crossed with a
+read-only / write-with-`.bak` / guarded safety ladder.
 
 Six planner tools: `list_scenarios`, `get_analysis`, `get_months`, and
 `run_scenario` are read-only; `open_page` returns the what-if page URL,
@@ -355,6 +358,29 @@ outflows into merchant groups with consistent amounts at consistent intervals.
 spending velocity (burn rate) against the immediately preceding window of equal
 length. All six exclude transactions the user has already marked as a resolved
 duplicate.
+
+Five ledger tools cover accounts and transfers. `get_accounts` lists the
+configured accounts with each one's balance, freshness (the account's latest
+transaction date), and whether it is below its low-balance threshold; a
+balance is rolled forward from the account's latest BalanceAnchor plus the
+transactions after it, so an account with no anchor reports
+`available=false` — an unavailable balance, not $0. `get_balance_projection`
+rolls one account forward 35 days and reports the first date it crosses the
+low-balance threshold, the projected minimum, and a suggested top-up;
+advisory only, nothing is written. `get_transfers` returns the
+Transfer-typed flows the ledger recorded — `paired` when both legs are
+loaded and share a pair key, `external` when the counterparty's CSV is not —
+with amounts signed in bank convention; filtering by `account_id` shows that
+account's leg only. The other two **write, behind the same guard as
+`restore_backup` and `shutdown_server`** (the two-call token flow described
+below): `set_balance_anchor` records an end-of-day balance on an account —
+load-bearing, since every balance and projection rolls forward from it, and
+a second anchor on the same day overwrites the first — and
+`resolve_transfer` confirms or rejects a suspected transfer pair, where a
+wrong confirm silently reclassifies real income or spending as a transfer.
+Each copies the sidecar it changes (`accounts.json`,
+`transfer_decisions.json`) to a `.bak` under
+`<backup-dir>/mcp-snapshots/data` before its first change of the session.
 
 Five curation tools cover the Major Expenses page. `list_major_expenses` returns
 the declared expenses with each one's in-window match count and net total, and
@@ -391,9 +417,11 @@ before any change the user might want to walk back. `list_backups` reads the
 backup directory back — the archives newest first, with the timestamp and size
 of each — and is the only sanctioned source of a name for `restore_backup`.
 
-Two housekeeping tools are **guarded**: each takes two calls, the first
-returning a preview plus a single-use confirmation token bound to that tool
-(and, for `restore_backup`, to that one archive name), the second echoing the
+Four tools are **guarded** — `restore_backup` and `shutdown_server` here,
+plus the two ledger writes above: each takes two calls, the first returning
+a preview plus a single-use confirmation token bound to that tool and its
+arguments (for `restore_backup`, that one archive name; for the ledger
+writes, the exact anchor or pair-and-verdict), the second echoing the
 token to proceed. On a client that supports MCP elicitation, that second call
 also puts the question to you directly, by whichever of these the client can
 do:

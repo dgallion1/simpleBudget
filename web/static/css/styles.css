@@ -40,11 +40,16 @@
     background-color: rgba(255, 255, 255, 0.04);
 }
 
-/* Form focus states */
+/* Form focus states.
+   `ring`/`ring-color` are Tailwind-only utility tokens, not real CSS
+   properties -- as plain declarations they parsed to nothing, which meant
+   `outline: none` removed the native focus indicator sitewide and replaced
+   it with no visible substitute. box-shadow is a real property and renders
+   the equivalent 2px indigo ring on its own, independent of whether the
+   Tailwind CDN build has loaded. */
 input:focus, select:focus {
     outline: none;
-    ring: 2px;
-    ring-color: #6366f1;
+    box-shadow: 0 0 0 2px #6366f1;
 }
 
 /* Scrollbar styling */

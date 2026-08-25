@@ -1,0 +1,4 @@
+web/templates/pages/filemanager.html
+web/templates/layouts/base.html
+web/static/css/styles.css
+CHANGELOG.md

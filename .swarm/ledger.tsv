@@ -50,3 +50,4 @@ F3	3	tests,second	accepted	5	worker-coder	gate-ok-attempt-5-root-proof-atomicwri
 F4	3	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-filePerm-stat-failure-test-closes-dual-lane-fail
 Q1	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1
 T1	1	tests	accepted	1	worker-coder	gate-ok-attempt-1
+T2	2	a11y,second	accepted	1	worker-coder	gate-ok-attempt-1-11-findings-closed

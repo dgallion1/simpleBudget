@@ -64,6 +64,7 @@
 
 <body class="bg-gray-100 dark:bg-gray-900 {{if eq .ActiveTab "explorer"}}h-screen overflow-hidden{{else}}min-h-screen{{end}} transition-colors duration-200">
     <!-- Navigation -->
+    <header>
     <nav
         class="bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-gray-800 dark:to-gray-900 text-white shadow-lg">
         <div class="container mx-auto px-4">
@@ -150,6 +151,7 @@
             </div>
         </div>
     </nav>
+    </header>
 
     <!-- Main Content -->
     <main class="{{if eq .ActiveTab "whatif"}}max-w-[120rem] mx-auto px-4{{else}}container mx-auto px-4{{end}} {{if eq .ActiveTab "explorer"}}h-[calc(100vh-4rem)]{{else}}py-6{{end}}">

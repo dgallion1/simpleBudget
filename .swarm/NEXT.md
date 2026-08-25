@@ -97,7 +97,11 @@ Priority order: T1 (best effort-to-value), T2 (largest user-visible debt),
 T3 (matters because verification runs as root), then T4–T6 (want a design
 decision each; small code).
 
-### T1 — handleImport's render path is untested. Tier 1, checks `tests`.
+### T1 — DONE (accepted 2026-08-25, attempt 1; landed as PR #48).
+`TestHandleImport_WithRenderer_RendersImportResultBlock` covers the render
+path; mutant-kill proven with asymmetry (verdict `.swarm/verdicts/T1.1.*`).
+
+### T1 (original brief, retained for context) — handleImport's render path is untested. Tier 1, checks `tests`.
 Every `handleImport` test runs with `renderer == nil` (JSON fallback), so no
 Go test executes the template-render call in
 `internal/handlers/filemanager/…` (find it: `grep -rn "Import finished"
@@ -108,7 +112,18 @@ helper, asserting the response body contains "Import finished".
 **Accept**: the new test fails when the handler's template name is mutated on
 a scratch copy; package tests green; gofmt/vet clean.
 
-### T2 — File Manager page accessibility. Tier 2, checks `a11y,second`.
+### T2 — DONE (accepted 2026-08-25, attempt 1). The recount found 11
+patterns / 31 instances (audit: `.swarm/briefs/T2-audit.md`, supersedes both
+historical counts); all eleven fixed and verified by live-trace re-audit plus
+adversarial sweep (verdicts `.swarm/verdicts/T2.1.*`). Residue for a future
+pass: `#age-encryption-error` (filemanager.html) lacks `role="alert"` — a
+sixth error div outside the audit's five F6 locations; and two audit
+observations worth their own decisions: the site's styling depends entirely
+on `cdn.tailwindcss.com` at runtime (no vendored build — an offline user
+gets an unstyled page, at odds with the README's local-only promise), and
+several icon buttons rely on `title`-only accessible names.
+
+### T2 (original brief, retained for context) — File Manager page accessibility. Tier 2, checks `a11y,second`.
 Pre-existing WCAG violations, byte-identical since before the P-run: at least
 unlabelled toggle checkboxes, an unnamed SVG delete button, low-contrast size
 text. The two prior audits DISAGREE (20 vs 6 findings) and the discrepancy

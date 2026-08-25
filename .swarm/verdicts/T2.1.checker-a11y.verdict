@@ -1,0 +1,236 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: T2
+ATTEMPT: 1
+---
+REPO STATE
+- HEAD: ec65c0bc1b8e822ba3db6b338b3e329860d589b8, branch claude/t2-filemanager-a11y
+- git status --porcelain: M .swarm/ledger.tsv, M CHANGELOG.md, M web/static/css/styles.css,
+  M web/templates/layouts/base.html, M web/templates/pages/filemanager.html,
+  ?? .swarm/briefs/T2-audit.md, ?? .swarm/manifests/T2.1.files (matches manifest scope).
+
+BUILD & ISOLATION
+- `go build -o $SCRATCH/budget2 ./cmd/server` — exit 0.
+- Ran with BUDGET_DATA_DIR=<scratch>/data (seeded with testdata/transactions.csv +
+  transactions_edge.csv), BUDGET2_BACKUP_DIR=<scratch>/backups,
+  BUDGET_LISTEN_ADDR=127.0.0.1:8093. Server log: "Templates loaded successfully: 53
+  files", "Server starting on 127.0.0.1:8093".
+- `curl -o /dev/null -w %{http_code} /filemanager` -> 200. Also /dashboard -> 200,
+  /explorer -> 200 (pre-scan sanity).
+
+AUTOMATED SCAN (Playwright 1.56.1 chromium-1194 + @axe-core/playwright 4.13, installed
+locally in scratchpad since no global/preinstalled copy existed in this environment)
+- LIGHT (default): violations: 0, passes: 45.
+- Clicked #theme-toggle -> confirmed document.documentElement.classList contains
+  'dark' -> DARK theme axe run: violations: 0, passes: 45.
+- Same CDN-blocked caveat as the recount applies (cdn.tailwindcss.com unreachable, so
+  axe's own color-contrast pass/fail is not usable evidence) — confirmed the caveat
+  is still live by checking network egress is unchanged; contrast for F8/F9 is
+  verified arithmetically below, independent of axe.
+- Zero violations on both themes for the axe-detectable patterns is direct evidence
+  F1 (button-name), F2/F3 (label/select-name), F4 (empty-table-header) are closed —
+  axe reads the DOM/ARIA tree regardless of CSS availability, so this evidence is
+  valid despite the CDN caveat.
+
+F1 — delete button aria-label (Point: WCAG 4.1.2 / constitution point 3 "operable and
+identifiable")
+- filemanager.html:1439 (post-fix line): `aria-label="Delete {{.Name}}"` present.
+- axe button-name: 0 violations (both themes). CLOSED.
+
+F2 — seven unlabeled inputs (Point 4)
+- CSV upload input :16 `aria-label="CSV files to upload"`.
+- #restore-file-input :43 `aria-label="Restore from backup zip file"`.
+- per-row enabled checkbox :1439 `aria-label="Enable {{.Name}}"`.
+- #enc-password :349 / #enc-confirm :354 now `<label for=...>` wired (label text
+  "Password"/"Confirm Password").
+- #unlock-password :265-266 gets `aria-label="{{...}}Password"` (branch axe couldn't
+  reach live in either audit run; verified statically — present regardless of
+  IsLocked/AuthMethod branch).
+- axe label: 0 violations (both themes, unencrypted test data — same limitation the
+  audit noted; #unlock-password verified by direct template read, matching the
+  audit's method for reaching that branch). CLOSED — all 7 instances confirmed.
+
+F3 — two unlabeled selects (Point 4)
+- #ssh-key-select :422 gets `<label for="ssh-key-select">SSH Key Path</label>`.
+- #yubikey-select :452 gets `<label for="yubikey-select">...</label>` plus
+  `aria-describedby="yubikey-encryption-error"`.
+- axe select-name: 0 violations (both themes). CLOSED.
+
+F4 — empty Actions <th> (Point 2)
+- filemanager.html:1413: `<th scope="col" ...><span class="sr-only">Actions</span></th>`.
+- axe empty-table-header: 0 violations (both themes). CLOSED.
+
+F5 — #file-list aria-live + focus restoration (Point 10) — LIVE TRACE
+- Static: `<div id="file-list" aria-live="polite" tabindex="-1">` (line 222); new
+  `htmx:afterSwap` listener in base.html-adjacent script block (filemanager.html
+  ~line 618-630) calls `evt.detail.target.focus()` when target.id === 'file-list'.
+- LIVE (Playwright): focused the delete button for transactions_edge.csv
+  (`document.activeElement` = that button), clicked it (hx-delete fired), waited
+  700ms for the htmx swap. Result:
+    activeElementIsFileListOrInside: true
+    activeElementId: "file-list"
+    fileListAriaLive: "polite"
+    rowCountNow: 1 (row actually removed, confirming the real handler ran, not a
+    no-op)
+- This is a genuine live trace of the handler executing, not a grep. CLOSED.
+
+F6 — five encryption-form error regions inert to AT (Point 5) — LIVE + STATIC
+- LIVE: filled #enc-password="password1", #enc-confirm="password2-mismatch",
+  clicked #enable-encryption-btn. Result:
+    errVisible: true, errRole: "alert", errText: "Passwords do not match",
+    activeId: "enc-confirm" (the offending field), confirmDescribedBy:
+    "enc-confirm-hint enable-encryption-error", passwordDescribedBy:
+    "enc-password-hint enable-encryption-error"
+  — role="alert" present before failure too (static getAttribute check), so it's
+  wired at render, not just at failure time.
+- STATIC (remaining 4 wiring sets, confirmed by direct template/JS read):
+  - #unlock-error: role="alert" (line 267); JS handler (~1259) now calls
+    passwordInput.focus() before .select(). aria-describedby="unlock-error" on
+    #unlock-password (line 266).
+  - #disable-encryption-error: role="alert" (line 305); both
+    #disable-encryption-password and #disable-encryption-passphrase get
+    aria-describedby="disable-encryption-error"; catch handler (~1369) adds
+    `if (passwordInput) passwordInput.focus();`.
+  - #ssh-encryption-error: role="alert" (line 425); #ssh-key-select and
+    #ssh-key-passphrase both aria-describedby="ssh-encryption-error"; missing-key
+    check (~1313) adds `sshSelect.focus();`.
+  - #yubikey-encryption-error: role="alert" (line 480); #yubikey-select
+    aria-describedby="yubikey-encryption-error"; shared submitEncryptionForm catch
+    (line ~1206-1215) focuses `form.querySelector('input:not([type=hidden]),
+    select')` — applies to yubikeyForm, ageForm, sshForm, enableForm alike.
+- OBSERVATION (non-blocking, not in T2-audit.md's F6 scope of 5 locations, and not
+  on the Clean list either — the audit only enumerated unlock/disable/enable/ssh/
+  yubikey): `#age-encryption-error` (filemanager.html:406) still has no
+  `role="alert"`. It DOES get the generic submitEncryptionForm focus-management fix
+  (since ageForm is passed through the same shared function), but is still
+  unannounced by aria-live/role on its own. Since the audit's F6 explicitly scoped
+  to 5 named divs and did not flag this one, this is not a regression and not a
+  required-and-missed fix per the constitution's cited baseline; flagging for the
+  lead as an observation only.
+- CLOSED (all 5 audited instances).
+
+F7 — visible "Minimum 8 characters" text (Point 6)
+- filemanager.html: `<p id="enc-password-hint" ...>Minimum 8 characters.</p>` under
+  #enc-password, `<p id="enc-confirm-hint" ...>Minimum 8 characters.</p>` under
+  #enc-confirm, both wired via aria-describedby from the respective inputs.
+- Confirmed present in rendered DOM (not just template source) via the F6 live
+  script's page load. CLOSED.
+
+F8 — encryption status badge contrast (Points 7, 12) — ARITHMETIC (axe
+color-contrast not valid evidence per CDN caveat, reconfirmed present in this run)
+- Re-derived WCAG relative-luminance contrast myself (sanity-checked formula against
+  black/white = 21:1 exactly):
+    amber-700 #B45309 on white #FFFFFF = 5.02:1  (PASS, >= 4.5)
+    green-700 #15803D on white #FFFFFF = 5.02:1  (PASS, >= 4.5; worker's report says
+      ~5.01, rounding-level difference, same conclusion)
+    dark:text-amber-400 #FBBF24 on dark:bg-gray-800 #1F2937 = 8.79:1 (unchanged,
+      already passing)
+    dark:text-green-400 #4ADE80 on #1F2937 = 8.42:1 (unchanged, already passing)
+- Both themes now clear 4.5:1. CLOSED.
+
+F9 — file-size annotation contrast, both themes (Points 7, 12) — ARITHMETIC
+- Fix changes `text-gray-400 dark:text-gray-500` -> `text-gray-500 dark:text-gray-400`
+  at both instances (filemanager.html:1427, :1461 post-fix), matching the page's
+  established convention. Container is the "Data Files" card,
+  `bg-white dark:bg-gray-800` (filemanager.html:228).
+    LIGHT: gray-500 #6B7280 on white #FFFFFF = 4.83:1  (PASS, >= 4.5)
+    DARK: gray-400 #9CA3AF on gray-800 #1F2937 = 5.78:1  (PASS, >= 4.5)
+  Note: my computed dark-theme figure (5.78:1) differs from the "6.99:1" figure
+  quoted in the task brief / T2-audit.md's Clean-list entry for this class pairing —
+  that 6.99 figure is gray-400 on gray-900 (#111827, the page body background used
+  by the audit's Clean-list general-text example), not gray-800 (the actual card
+  background F9's spans render inside, which the audit itself used to compute the
+  PRE-fix 3.04:1 failure it cites for F9). Verified both figures by hand (gray-600 on
+  white = 7.56:1 confirms the audit's other stated Clean-list number, and gray-400 on
+  gray-900 = 6.99:1 exactly matches it) — the discrepancy is inherited from the
+  audit's own doc using two different dark backgrounds for two different Clean-list
+  examples, not a bug in the fix. Regardless of which gray-8xx figure is used, both
+  themes clear the 4.5:1 threshold. CLOSED.
+
+F10 — invalid ring/ring-color CSS + 6 under-specified focus rings (Point 9) — LIVE
+TRACE
+- styles.css diff: `input:focus, select:focus { outline: none; ring: 2px;
+  ring-color: #6366f1; }` -> `{ outline: none; box-shadow: 0 0 0 2px #6366f1; }` —
+  real CSS property, confirmed by reading the file (no `ring`/`ring-color` tokens
+  remain anywhere in styles.css).
+- Six named checkbox/radio elements gain `focus:ring-2` alongside their existing
+  `focus:ring-indigo-500`; CSV file input gets its own `focus:outline-none
+  focus:ring-2 focus:ring-indigo-500`.
+- LIVE (Playwright, real .focus() calls, computed style read at each stop):
+    CSV file input:          boxShadow "rgb(99,102,241) 0px 0px 0px 2px" (was none)
+    #import-delete-source:   boxShadow "rgb(99,102,241) 0px 0px 0px 2px"
+    #auto-backup-toggle:     boxShadow "rgb(99,102,241) 0px 0px 0px 2px"
+    age_option=generate radio: boxShadow "rgb(99,102,241) 0px 0px 0px 2px"
+    age_option=existing radio:  boxShadow "rgb(99,102,241) 0px 0px 0px 2px"
+    per-row enabled checkbox: boxShadow "rgb(99,102,241) 0px 0px 0px 2px"
+  All six show outlineStyle:"none" but a REAL box-shadow ring rendering even with the
+  Tailwind CDN unreachable (this rules the styles.css plain-CSS fallback in, not a
+  `focus:ring-2` utility class that would need the CDN) — this is exactly the
+  live-testable claim the task brief called out.
+- Import-scan per-file checkbox (:1467, only rendered mid-scan-flow) verified
+  statically: `focus:ring-2` added alongside `focus:ring-indigo-500`, same pattern
+  as the five live-tested siblings. CLOSED (7/7 elements).
+
+F11 — <header> landmark (Point 1)
+- base.html: `<header>` now wraps the `<nav>` (diff: opens before `<nav
+  class="bg-gradient-to-r ...">`, closes after `</nav>`, before `<!-- Main
+  Content -->`).
+- LIVE: document.querySelectorAll('header').length on /filemanager = 1;
+  header contains nav (`header nav` selector matched); hasMain/hasNav/hasFooter all
+  true; htmlLang="en". CLOSED.
+
+REGRESSION — Clean list re-check (live, /filemanager)
+- Point 1: h1Count=1, h1Text="File Manager"; heading sequence
+  [H1,H2,H2,H2,H2] — no skipped levels; header/nav/main/footer all present.
+- Point 2: all 5 <th> on the file table carry scope="col" (Array:
+  ["col","col","col","col","col"]); sortable headers remain real <button>s inside
+  <th> (unchanged by diff).
+- Point 3: divOnclick / spanOnclick count = 0.
+- Point 4 (previously-passing inputs): #import-delete-source, #auto-backup-toggle,
+  import-scan checkboxes, "Current Password"/SSH-passphrase labels — all untouched
+  by the diff except focus-ring class additions; still have their original <label>
+  wiring (diff shows only class-attribute edits on these, no label removal).
+- Point 8: encryption status still pairs color with text ("Locked"/"Unlocked"/"Not
+  encrypted") — unchanged by the F8 fix (only the color value changed, not the
+  text-plus-color pattern).
+- Point 9 (focus order): no positive tabindex anywhere in filemanager.html or
+  base.html (grep) — only the new, correct tabindex="-1" on #file-list.
+- Point 10 (import-scan flow, previously passing): #import-result still
+  role="status" aria-live="polite"; #import-scan-list still present. Untouched by
+  diff.
+- Point 15: no animate-* classes and no prefers-reduced-motion additions anywhere in
+  the three changed files (grep, 0 matches) — nothing new to violate reduced-motion.
+- Axe 0 violations both themes corroborates the DOM-structural parts of all the
+  above simultaneously.
+
+SITEWIDE SPOT-CHECKS (base.html / styles.css are shared)
+- /dashboard -> 200, /explorer -> 200 (both templates untouched by this diff; axe
+  found pre-existing 'label'/'select-name' violations on both, but dashboard.html
+  and explorer's other templates are NOT in the diff's file list — confirmed via
+  `git diff --stat` — so these are pre-existing, out-of-scope issues, not
+  regressions introduced by T2's changes to base.html/styles.css).
+- /duplicates and /transfers each have their own page-level `<header>` (pre-existing,
+  inside <main>, so per the HTML/ARIA spec they do NOT get the implicit "banner"
+  role since they're descendants of <main> — only base.html's new header, which
+  sits outside <main>, is the page's landmark banner). Axe found 0 violations on
+  both pages — specifically no landmark/banner-duplication flag — confirming the
+  new sitewide <header> wrap does not create a duplicate-banner regression.
+
+CAVEATS / OBSERVATIONS (non-blocking)
+- Same CDN-blocked-sandbox caveat as the recount: axe's color-contrast rule is not
+  valid evidence here; F8/F9 verified by hand-computed WCAG luminance math instead
+  (formula sanity-checked against black/white = 21:1).
+- #age-encryption-error (filemanager.html:406) lacks role="alert" — out of the T2
+  audit's F6 scope (not one of the 5 named locations), gets the shared
+  focus-management fix but not the ARIA-alert fix. Not a regression, not a required
+  fix per this task's baseline; noted for the lead.
+- Server process left running on 127.0.0.1:8093 in the scratchpad sandbox; process
+  termination command was blocked by the environment's auto-mode classifier
+  (unrelated to repo state — nothing was written to the repo except this verdict).
+
+CONCLUSION
+All 11 findings (F1-F11) verified closed against ACCESSIBILITY.md points 1, 2, 4, 5,
+6, 7, 9, 10, 12 and WCAG 4.1.2, with live traces for F5/F6/F10 (not grep-only) and
+independent arithmetic for F8/F9. No Clean-list regression found. No regression on
+spot-checked other pages from the shared base.html/styles.css edits.

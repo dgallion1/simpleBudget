@@ -2862,6 +2862,32 @@ func TestImportResult_Render_Outcomes(t *testing.T) {
 	}
 }
 
+// Every handleImport test above (and TestImportResult_Render_Outcomes) runs
+// with renderer == nil or calls RenderToString directly, so none of them ever
+// executes the handler's own `renderer.RenderPartial(w, "import-result", …)`
+// call — a typo in that literal template name would still ship a green suite
+// with an empty response body (ruling 2026-08-16a's failure shape). This
+// drives the handler itself through HTTP with a real renderer configured, so
+// the literal name in handlers.go is what gets exercised.
+func TestHandleImport_WithRenderer_RendersImportResultBlock(t *testing.T) {
+	setupTestEnvWithRenderer(t)
+	importDir := t.TempDir()
+	cfg.ImportDirectory = importDir
+	seedImportFile(t, importDir, "render.csv", importCSV)
+
+	rec := postImport(t, url.Values{"name": {"render.csv"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Import finished") {
+		t.Fatalf("expected rendered import-result block containing %q; got: %s", "Import finished", strunc(body, 900))
+	}
+	if !strings.Contains(body, "imported") {
+		t.Errorf("expected per-file outcome word %q in body; got: %s", "imported", strunc(body, 900))
+	}
+}
+
 // A symlinked ImportDirectory (a symlinked ~/Downloads, or /tmp where it is a
 // link) is still a legitimate import folder: the direct-child check resolves
 // both sides, so files inside it import normally.

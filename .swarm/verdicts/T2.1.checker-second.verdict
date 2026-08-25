@@ -1,0 +1,161 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T2
+ATTEMPT: 1
+---
+Repo state: HEAD=ec65c0bc1b8e822ba3db6b338b3e329860d589b8, branch claude/t2-filemanager-a11y,
+git status --porcelain showed only the expected modified files (ledger.tsv, CHANGELOG.md,
+styles.css, base.html, filemanager.html) plus untracked brief/manifest/verdict files. All repo
+writes by me were limited to this verdict file; server/scratch artifacts lived under
+/tmp/claude-0/.../scratchpad.
+
+I attempted to refute the claim ("all 11 findings closed, nothing else broken") using the full
+attack surface. Every attack failed to find a defect; two non-blocking observations were found
+(details below) that do not sink the PASS.
+
+ATTACK 1 — Sitewide blast radius
+- `go build ./cmd/server` and `go build ./...` both succeed.
+- Ran the server (BUDGET_LISTEN_ADDR=127.0.0.1:8094) against a scratch copy of both seeded
+  testdata CSVs. Server log: "Templates loaded successfully: 53 files" (no parse break from the
+  new <header> in base.html).
+- Curled every registered GET page route (grepped `cmd/server/main.go` r.Get + all
+  `internal/handlers/*/handlers.go` RegisterRoutes): /dashboard(200,35578B) /explorer(200,78801B)
+  /insights(200,111264B) /major-expenses(200,461674B) /duplicates(200,11697B) /accounts(200,24560B)
+  /transfers(200,17186B) /whatif(200,271748B) /filemanager(200,76196B) /unlock(307->/dashboard,
+  expected pre-existing redirect-when-unlocked behavior, unrelated to this diff). All 200 with
+  non-empty bodies; no sitewide breakage.
+- Verified <header>/<nav>/<main>/<footer> counts are exactly 1 each and well-nested on
+  /dashboard, /explorer, /filemanager, /whatif — no duplicate or dangling tags.
+- Grepped styles.css and base.html's inline <style> block for selectors that assume nav is a
+  direct child of body, or for other `outline`/`box-shadow` rules that could collide with the new
+  `input:focus, select:focus { box-shadow: ... }` rule — found none. The only other box-shadow
+  rules in styles.css target `.hover-lift:hover` and a card style, unrelated elements/properties.
+- Specificity check: plain-CSS `input:focus`/`select:focf1qs` selector = (0,1,1); a compiled
+  Tailwind `.focus\:ring-2:focus` utility = (0,2,0) — Tailwind wins on `box-shadow` (single
+  property, no stacking) wherever/whenever the CDN is reachable, so a page with its own real
+  working Tailwind ring is never "hidden" by the new plain-CSS floor; the floor only fires where
+  nothing else would have rendered (CDN down, or width utility missing) — additive-only per
+  ACCESSIBILITY.md point 9, never conflicting.
+- Confirmed via `curl --max-time 5 https://cdn.tailwindcss.com` (exit 56 / connection failure)
+  that the CDN is genuinely unreachable in this sandbox too, matching the audit's stated
+  environment, so the live box-shadow measurement below is a true CDN-independent-floor proof,
+  not an artifact of Tailwind having loaded anyway.
+
+ATTACK 2 — Vacuity of ARIA fixes
+- Rendered /filemanager with two seeded CSV rows (transactions.csv, transactions_edge.csv) and
+  grepped the SERVED HTML (not the template source):
+  `aria-label="Delete transactions.csv"`, `aria-label="Delete transactions_edge.csv"`,
+  `aria-label="Enable transactions.csv"`, `aria-label="Enable transactions_edge.csv"` — both rows
+  interpolate the real file name correctly, no template-var leakage.
+- `<div id="file-list" aria-live="polite" tabindex="-1">` present in served HTML unconditionally
+  (not itself replaced by the swap, so it survives every toggle/delete).
+- Cross-referenced every `aria-describedby` value against every `id=` in the template: all seven
+  distinct describedby targets (disable-encryption-error, enable-encryption-error, enc-confirm-hint,
+  enc-password-hint, ssh-encryption-error, unlock-error, yubikey-encryption-error) resolve to a
+  real id in the same document — no dangling/typo'd references.
+- Checked all five role="alert" divs' ancestor chains: none sit inside a parent that is itself
+  `class="hidden"` at the time the div's own hidden class is removed (e.g. unlock-error is a
+  sibling of, not nested inside, the conditionally-hidden #password-field div).
+
+ATTACK 3 — F5 htmx:afterSwap handler
+- The handler guards on `evt.detail.target.id === 'file-list'`. Grepped all hx-target values in
+  filemanager.html: delete button, toggle checkbox, AND the CSV-upload form all target
+  `#file-list` (three call sites, not just the two the audit named — upload also correctly
+  re-focuses #file-list on swap, harmless since a successful upload immediately does
+  `window.location.reload()` anyway). Import-scan uses `#import-scan-list` and `#import-result` —
+  different targets, correctly excluded by the id guard.
+- Live Playwright test (headless chromium, /opt/pw-browsers/chromium-1194) against the running
+  server: clicking "Rescan" (targets #import-scan-list) leaves focus on the Rescan button itself
+  — the afterSwap handler correctly does NOT fire/misfire for that target. Clicking a row's
+  Delete button moves `document.activeElement` to `{id:"file-list", tag:"DIV"}` as intended.
+- `document.getElementById('file-list').tabIndex` reads `-1` (confirms programmatically
+  focusable, never a sequential-tab stop — standard, spec-guaranteed browser behavior for
+  tabindex="-1", so it does not add a useless tab stop for mouse/keyboard users).
+
+ATTACK 4 — F6 focus() paths, diffed across call sites, tested live
+- Diffed every errorDiv.classList.remove('hidden') site against the newly added .focus() calls:
+  unlock-form (passwordInput.focus()+select()), enable-encryption-form (both the length-check and
+  mismatch branches call passwordInput.focus()/confirmInput.focus() respectively),
+  ssh-encryption-form (sshSelect.focus() on missing-key), disable-encryption-form
+  (`if (passwordInput) passwordInput.focus()`, correctly null-guarded for the YubiKey branch which
+  renders no password field), and the shared submitEncryptionForm() catch (used by
+  age/ssh/yubikey submits) which focuses the first non-hidden input/select in the form. No reveal
+  site was found that skips the focus call.
+- Live-tested two real failure paths end-to-end against the running server:
+  (a) enable-encryption password-mismatch: filled two different valid-length passwords, submitted
+  -> `#enable-encryption-error` became `{hidden:false, text:"Passwords do not match"}`, active
+  element became `#enc-confirm`.
+  (b) unlock wrong-password against a real encrypted store (enabled encryption via the UI, then
+  restarted the server so it came up genuinely Locked): submitted a wrong password -> after
+  waiting for the real ~1.3s backend round trip, `#unlock-error` shows
+  `{role:"alert", hidden:false, text:"Incorrect password"}`, active element `#unlock-password`
+  (matches server log: "Storage unlock failed: incorrect credentials", 401). My first attempt at
+  this test used too short a wait and produced a false negative (looked like the div never
+  revealed) — re-run with a wait matched to the logged request latency showed the fix working
+  correctly; flagging this in case another checker hits the same timing trap.
+  Neither path showed the .focus() call fighting or suppressing the role="alert" announcement —
+  they fire together (double-channel, not silence), which point 5's text permits.
+- Observation (not a fail): the enable-encryption-form's client-side `password.length < 8` branch
+  is unreachable through normal browser submission — `#enc-password` already carries
+  `required minlength="8"` (pre-existing, not part of this diff), so the browser's native
+  constraint validation blocks the `submit` event entirely and focuses the field itself before the
+  new JS-side `.focus()` in that branch ever runs. This dead-code path predates the diff (verified
+  by testing the identical scenario on `git stash`'d pre-diff tree — same HTML attributes existed
+  before), so it is not a regression introduced here, just an inert branch the diff's `.focus()`
+  call can't reach. It does not defeat F6 (native validation itself both blocks submission and
+  focuses the field) and does not affect the reachable mismatch/wrong-password paths verified
+  above.
+
+ATTACK 5 — F10 CDN-independent floor
+- Live Playwright focus of the CSV multi-upload `<input type=file>` (the element the audit
+  specifically called out as having no focus:ring-* utility class at all) measured, with the CDN
+  confirmed unreachable: `box-shadow: rgb(99, 102, 241) 0px 0px 0px 2px`, `outlineStyle: none` —
+  this is the plain-CSS floor rendering correctly, not a Tailwind utility (CDN is down).
+- All six named checkboxes/radios now carry `focus:ring-2` alongside their pre-existing
+  `focus:ring-indigo-500`, and — independent of that — get the same CSS-floor box-shadow from the
+  `input:focus` rule since `<input type=checkbox>`/`<input type=radio>` are still `<input>`
+  elements matched by that selector. Cosmetic note (not a fail per the attack brief's own framing):
+  a square-cornered box-shadow ring around a `rounded` checkbox is a minor visual mismatch, not a
+  compliance failure.
+
+ATTACK 6 — Contrast, independently re-derived
+- Re-implemented WCAG relative-luminance contrast from scratch (not the worker's numbers):
+  amber-700 (#B45309) / green-700 (#15803D) on white = 5.02 / 5.02 (pass, >4.5); dark-mode
+  amber-400/green-400 on gray-800 = 8.79 / 8.42 (pass, unchanged); the swapped gray pair
+  gray-500 (#6B7280) on white = 4.83 (pass) and gray-400 (#9CA3AF) on gray-800 = 5.78 (pass) — all
+  four independently confirm the worker's claimed values (worker reported 5.02/5.01, I got
+  5.02/5.02 — same to rounding).
+- `git diff` of filemanager.html/base.html/styles.css contains exactly these class-token changes:
+  text-amber-600->700, text-green-600->700, text-gray-400/dark:text-gray-500 ->
+  text-gray-500/dark:text-gray-400 (both occurrences, F9 said 2), plus the focus:ring-2 additions
+  and the aria-*/label/header additions. No other color class (bg-, border-, other text- pairs)
+  was touched anywhere in the diff.
+
+ATTACK 7 — Template integrity / scope
+- `go build ./cmd/server` and `go build ./...` both succeed; server logs "Templates loaded
+  successfully: 53 files".
+- `go test ./internal/handlers/explorer/... ./cmd/server/...` shows 2 pre-existing failures
+  (TestHandleFileUpload_WriteError, TestHandleFileDelete_RemoveError) that simulate write/remove
+  permission errors; reproduced identically on the pre-diff tree via `git stash` (process runs as
+  root here, so permission-based fault injection doesn't trigger regardless of this diff) —
+  confirmed NOT a regression caused by this task.
+- Full diff review: every filemanager.html/base.html hunk traces to F1 (delete aria-label), F2
+  (upload input / restore-file-input / enc-password / enc-confirm / unlock-password aria-labels,
+  plus two additional previously-mislabeled fields the audit itself didn't enumerate —
+  disable-encryption-password / disable-encryption-passphrase, only reachable when IsEncrypted is
+  true, i.e. the exact same "branch axe/auditor couldn't reach live" blind spot the audit called
+  out for unlock-password; not a scope violation, it's the same pattern the audit explicitly
+  endorsed fixing, just one more branch of it), F3 (label-for wiring for ssh-key-select /
+  yubikey-select), F4 (sr-only Actions header), F5 (file-list aria-live/tabindex/afterSwap), F6
+  (role=alert + aria-describedby + focus() calls), F7 (visible "Minimum 8 characters." text), F8/F9
+  (contrast token swaps), F10 (box-shadow fix + focus:ring-2 additions), F11 (<header> wrap). No
+  unrelated edit found. CHANGELOG.md and ledger.tsv changes are documentation/bookkeeping, in scope.
+
+Minor documentation nit (not a fail): CHANGELOG.md's own claim "No visual/behavioral change for
+mouse users" is slightly overstated — F7's "Minimum 8 characters." hint text is new visible
+content for all users, sighted or not, and its own PR text elsewhere accurately describes the F7
+change. Cosmetic-documentation issue only, does not affect finding closure or introduce a defect.
+
+No refutation succeeded against any of the 11 findings or the constitution's blast-radius
+concerns. PASS.

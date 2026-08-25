@@ -13,7 +13,8 @@
             hx-encoding="multipart/form-data" hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
             class="flex items-center gap-2">
             <input type="file" name="file" accept=".csv" multiple
-                class="text-sm text-gray-500 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600">
+                aria-label="CSV files to upload"
+                class="text-sm text-gray-500 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <button type="submit"
                 class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
                 Upload
@@ -39,7 +40,7 @@
                 </svg>
                 <span id="restore-btn-text">Restore</span>
             </button>
-            <input type="file" id="restore-file-input" accept=".zip" class="hidden" onchange="handleRestoreFile(this.files)">
+            <input type="file" id="restore-file-input" accept=".zip" class="hidden" onchange="handleRestoreFile(this.files)" aria-label="Restore from backup zip file">
             {{if and .IsEncrypted (not .IsLocked)}}
             <button type="button" onclick="openPlaintextExportModal()"
                 title="Decrypt all data and download as plaintext zip"
@@ -86,7 +87,7 @@
                     <label for="import-delete-source"
                         class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
                         <input type="checkbox" id="import-delete-source" name="delete_source" value="true"
-                            class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                            class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
                         Delete source files after import
                     </label>
                     <button type="submit"
@@ -168,7 +169,7 @@
             <label class="flex items-center gap-2 cursor-pointer select-none">
                 <span class="text-xs text-gray-500 dark:text-gray-400" id="auto-backup-toggle-label">Loading…</span>
                 <input type="checkbox" id="auto-backup-toggle"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                    class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
             </label>
         </div>
         <div class="p-4 space-y-1.5">
@@ -218,7 +219,7 @@
                 </button>
             </div>
         </div>
-        <div id="file-list">
+        <div id="file-list" aria-live="polite" tabindex="-1">
             {{template "filemanager-file-list" .}}
         </div>
     </div>
@@ -244,7 +245,7 @@
                 {{end}}
                 Data Encryption
             </h2>
-            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-amber-600 dark:text-amber-400{{else}}text-green-600 dark:text-green-400{{end}}{{else}}text-gray-500 dark:text-gray-400{{end}}">
+            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-amber-700 dark:text-amber-400{{else}}text-green-700 dark:text-green-400{{end}}{{else}}text-gray-500 dark:text-gray-400{{end}}">
                 {{if .IsEncrypted}}{{if .IsLocked}}Locked{{else}}Unlocked{{end}}{{else}}Not encrypted{{end}}
             </span>
         </div>
@@ -261,9 +262,11 @@
                 <div id="password-field" {{if or (eq .AuthMethod "age") (eq .AuthMethod "yubikey")}}class="hidden"{{end}}>
                     <input type="password" name="password" id="unlock-password" {{if and (ne .AuthMethod "age") (ne .AuthMethod "ssh") (ne .AuthMethod "yubikey")}}required{{end}}
                         placeholder="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
+                        aria-label="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
+                        aria-describedby="unlock-error"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
-                <div id="unlock-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="unlock-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <button type="submit" id="unlock-btn"
                     class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                     {{if eq .AuthMethod "age"}}Unlock with Age Identity
@@ -286,20 +289,22 @@
                 </p>
                 {{if eq .AuthMethod "password"}}
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
-                    <input type="password" name="password" required minlength="8"
+                    <label for="disable-encryption-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
+                    <input type="password" name="password" id="disable-encryption-password" required minlength="8"
+                        aria-describedby="disable-encryption-error"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
                 {{else if eq .AuthMethod "ssh"}}
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Passphrase (if encrypted)</label>
-                    <input type="password" name="password" placeholder="Leave empty if key is not encrypted"
+                    <label for="disable-encryption-passphrase" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Passphrase (if encrypted)</label>
+                    <input type="password" name="password" id="disable-encryption-passphrase" placeholder="Leave empty if key is not encrypted"
+                        aria-describedby="disable-encryption-error"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
                 {{else if eq .AuthMethod "yubikey"}}
                 <!-- YubiKey doesn't need a password field - just touch to authenticate -->
                 {{end}}
-                <div id="disable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="disable-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <button type="submit" id="disable-encryption-btn"
                     class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
                     Disable Encryption
@@ -339,14 +344,18 @@
                 <form id="enable-encryption-form" class="method-form space-y-3" data-method="password">
                     <input type="hidden" name="method" value="password">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                        <label for="enc-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
                         <input type="password" name="password" id="enc-password" required minlength="8"
+                            aria-describedby="enc-password-hint enable-encryption-error"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <p id="enc-password-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
+                        <label for="enc-confirm" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
                         <input type="password" name="confirmPassword" id="enc-confirm" required minlength="8"
+                            aria-describedby="enc-confirm-hint enable-encryption-error"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <p id="enc-confirm-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
                     </div>
                     <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
                         <p class="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
@@ -356,7 +365,7 @@
                             <span>Remember your password! Data cannot be recovered without it.</span>
                         </p>
                     </div>
-                    <div id="enable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="enable-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" id="enable-encryption-btn"
                         class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                         Enable Encryption
@@ -372,12 +381,12 @@
                     <div>
                         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-2">
                             <input type="radio" name="age_option" value="generate" checked
-                                class="text-indigo-600 focus:ring-indigo-500" onchange="toggleAgeOption()">
+                                class="text-indigo-600 focus:ring-2 focus:ring-indigo-500" onchange="toggleAgeOption()">
                             Generate new identity
                         </label>
                         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                             <input type="radio" name="age_option" value="existing"
-                                class="text-indigo-600 focus:ring-indigo-500" onchange="toggleAgeOption()">
+                                class="text-indigo-600 focus:ring-2 focus:ring-indigo-500" onchange="toggleAgeOption()">
                             Use existing identity
                         </label>
                     </div>
@@ -407,18 +416,20 @@
                         Use your SSH key for encryption. Works with ed25519 and RSA keys.
                     </p>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Path</label>
+                        <label for="ssh-key-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Path</label>
                         <select name="ssh_key_path" id="ssh-key-select"
+                            aria-describedby="ssh-encryption-error"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                             <option value="">Loading keys...</option>
                         </select>
                     </div>
                     <div id="ssh-passphrase-field" class="hidden">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Key Passphrase</label>
-                        <input type="password" name="passphrase" placeholder="Enter passphrase if key is encrypted"
+                        <label for="ssh-key-passphrase" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Key Passphrase</label>
+                        <input type="password" name="passphrase" id="ssh-key-passphrase" placeholder="Enter passphrase if key is encrypted"
+                            aria-describedby="ssh-encryption-error"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                     </div>
-                    <div id="ssh-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="ssh-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                         Enable Encryption
                     </button>
@@ -436,8 +447,8 @@
                         <p class="text-sm text-gray-500 dark:text-gray-400">Detecting YubiKey...</p>
                     </div>
                     <div id="yubikey-identities" class="hidden space-y-2">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Available YubiKey Identities</label>
-                        <select id="yubikey-select" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <label for="yubikey-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Available YubiKey Identities</label>
+                        <select id="yubikey-select" aria-describedby="yubikey-encryption-error" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                             <option value="">Select an identity...</option>
                         </select>
                     </div>
@@ -466,7 +477,7 @@
                             <span>YubiKey encryption requires touching your key when unlocking. Keep your YubiKey accessible.</span>
                         </p>
                     </div>
-                    <div id="yubikey-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="yubikey-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" id="yubikey-submit-btn" disabled
                         class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         Enable Encryption
@@ -603,6 +614,19 @@ document.addEventListener('DOMContentLoaded', function() {
 // re-apply the persisted sort so the ordering survives.
 document.body.addEventListener('htmx:afterSettle', function() {
     if (window.FileManagerSort) window.FileManagerSort.reapply();
+});
+// htmx:afterSwap fires immediately after the delete button or the
+// enable/disable checkbox replaces #file-list's contents. The element that
+// had focus (the deleted row's button, or the toggled row's checkbox) is
+// gone from the DOM at that point, so focus would otherwise silently revert
+// to <body>. #file-list itself is the hx-target, not part of the swapped
+// innerHTML, so it survives every swap and is a stable landing spot
+// regardless of whether the action left any rows in the table (tabindex="-1"
+// on the div makes it programmatically focusable without adding a tab stop).
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail && evt.detail.target && evt.detail.target.id === 'file-list') {
+        evt.detail.target.focus();
+    }
 });
 </script>
 
@@ -1184,6 +1208,10 @@ function submitEncryptionForm(form, errorDivId) {
         btn.textContent = originalText;
         errorDiv.textContent = err.message;
         errorDiv.classList.remove('hidden');
+        // Move focus to the first non-hidden field in the form so the
+        // aria-describedby'd error is reachable immediately after failure.
+        const firstField = form.querySelector('input:not([type=hidden]), select');
+        if (firstField) firstField.focus();
     });
 }
 
@@ -1231,6 +1259,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 errorDiv.textContent = err.message;
                 errorDiv.classList.remove('hidden');
                 if (passwordInput) {
+                    passwordInput.focus();
                     passwordInput.select();
                 }
             });
@@ -1252,12 +1281,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (password.length < 8) {
                 errorDiv.textContent = 'Password must be at least 8 characters';
                 errorDiv.classList.remove('hidden');
+                passwordInput.focus();
                 return;
             }
 
             if (password !== confirmPassword) {
                 errorDiv.textContent = 'Passwords do not match';
                 errorDiv.classList.remove('hidden');
+                confirmInput.focus();
                 return;
             }
 
@@ -1279,6 +1310,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!sshSelect.value) {
                 document.getElementById('ssh-encryption-error').textContent = 'Please select an SSH key';
                 document.getElementById('ssh-encryption-error').classList.remove('hidden');
+                sshSelect.focus();
                 return;
             }
             submitEncryptionForm(sshForm, 'ssh-encryption-error');
@@ -1334,6 +1366,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.textContent = 'Disable Encryption';
                 errorDiv.textContent = err.message;
                 errorDiv.classList.remove('hidden');
+                if (passwordInput) passwordInput.focus();
             });
         });
     }
@@ -1377,7 +1410,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span data-sort-arrow="enabled" aria-hidden="true" class="sort-arrow hidden"></span>
                 </button>
             </th>
-            <th scope="col" class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400"></th>
+            <th scope="col" class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400"><span class="sr-only">Actions</span></th>
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1391,7 +1424,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data-enabled="{{if .Enabled}}1{{else}}0{{end}}">
             <td class="px-3 py-1.5">
                 <span class="font-medium text-gray-900 dark:text-gray-100">{{.Name}}</span>
-                <span class="text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)</span>
+                <span class="text-gray-500 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)</span>
             </td>
             <td class="px-2 py-1.5 text-center text-gray-600 dark:text-gray-400">{{.Transactions}}</td>
             <td class="px-2 py-1.5 text-center text-xs text-gray-500 dark:text-gray-400">
@@ -1401,10 +1434,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 <input type="checkbox" {{if .Enabled}}checked{{end}} hx-post="/explorer/files/toggle"
                     hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
                     hx-target="#file-list" hx-swap="innerHTML"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                    aria-label="Enable {{.Name}}"
+                    class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
             </td>
             <td class="px-2 py-1.5 text-center">
                 <button hx-delete="/explorer/files/{{urlEncode .Name}}" hx-target="#file-list" hx-swap="innerHTML"
+                    aria-label="Delete {{.Name}}"
                     class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -1433,10 +1468,10 @@ document.addEventListener('DOMContentLoaded', function() {
     <li class="py-1.5 flex items-center gap-3">
         <input type="checkbox" name="name" value="{{$e.Name}}" id="import-entry-{{$i}}"
             {{if $e.Exists}}disabled{{else}}checked{{end}}
-            class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
+            class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
         <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
             <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
-            <span class="text-gray-400 dark:text-gray-500 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
+            <span class="text-gray-500 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
             {{if $e.MinDate}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
             {{if $e.Exists}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
         </label>

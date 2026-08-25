@@ -37,6 +37,10 @@ forever — do NOT "fix" it). Recent history:
    - `internal/services/storage`: `TestRollbackDecryptionWithRecipientReportsUnrestorableFiles`
    - `internal/services/mcpsvc/curate`: `TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp`,
      `TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken`
+   - `internal/handlers/explorer`: `TestHandleFileDelete_RemoveError`,
+     `TestHandleFileUpload_WriteError`
+     (found during T1, confirmed pre-existing via stash; same class), plus a
+     root-only SKIP in `TestHandleImport_FailedWriteKeepsSource`
    Run full suites as an unprivileged user. Working recipe: copy the tree,
    `chmod -R a+rwX <copy>`, give `nobody` its own `HOME`/`GOCACHE`/`GOPATH`/
    `GOMODCACHE` under /tmp (the root-owned caches are unreadable to it), then
@@ -115,8 +119,8 @@ finding cluster.
 recounted list on the File Manager page; no visual regression on the other
 pages' shared components.
 
-### T3 — make the three root-broken fixtures root-proof. Tier 2, checks
-`tests,second`. The three tests in "Environment facts #1" fail under root.
+### T3 — make the root-broken fixtures root-proof (four known). Tier 2, checks
+`tests,second`. The tests in "Environment facts #1" fail under root.
 Options per test: a root-proof injection (the ENAMETOOLONG pattern, or
 rename-onto-directory), or an explicit documented `t.Skip` under uid 0 —
 prefer injection; a skip recreates the F3 attempt-4 problem (an undefended

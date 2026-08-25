@@ -1,0 +1,149 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T1
+ATTEMPT: 1
+---
+REPO STATE (main tree, read-only for me)
+  $ git rev-parse HEAD            -> b4b22c8e24f3c155fde98b34a0ef0ddf79f3d8de
+  $ git branch --show-current     -> claude/t1-import-render-test
+  $ git status --porcelain        ->  M .swarm/NEXT.md
+                                      M .swarm/ledger.tsv
+                                      M internal/handlers/explorer/handlers_test.go
+                                     ?? .swarm/manifests/T1.1.files
+ISOLATION: every command below ran in copies (/tmp/claude-0/t1-check,
+/tmp/claude-0/t1-base, /tmp/t1-nobody, /tmp/t1-mutant{,-base,2}); the only
+write to the main tree is this verdict file. All mutant copies deleted
+(`rm -rf /tmp/t1-mutant*` -> `ls: cannot access '/tmp/t1-mutant*'`).
+
+--- CRITERION 1: test exists, right helper, right wire format, asserts BODY,
+    goes through the HANDLER --- PASS
+  $ git diff internal/handlers/explorer/handlers_test.go
+  Adds (handlers_test.go:2865-2889, +26 lines, nothing else):
+    func TestHandleImport_WithRenderer_RendersImportResultBlock(t *testing.T) {
+        setupTestEnvWithRenderer(t)          <- real renderer installed
+        importDir := t.TempDir(); cfg.ImportDirectory = importDir
+        seedImportFile(t, importDir, "render.csv", importCSV)
+        rec := postImport(t, url.Values{"name": {"render.csv"}})
+        ... rec.Code != http.StatusOK -> Fatalf
+        body := rec.Body.String()
+        !strings.Contains(body, "Import finished") -> Fatalf
+        !strings.Contains(body, "imported")        -> Errorf
+  - setupTestEnvWithRenderer (handlers_test.go:1301) sets the package global
+    `renderer = rend` from web/templates, so the handler takes the
+    renderer != nil branch.
+  - postImport (handlers_test.go:2276) is the SAME helper the nil-renderer
+    tests use: POST /explorer/import, Content-Type
+    application/x-www-form-urlencoded, form-encoded body, then
+    `handleImport(rec, req)` — identical wire format, and the assertion is on
+    the recorder's BODY, not on JSON (no decodeImportResult call) and not on
+    a direct renderer.RenderToString call (that is the pre-existing
+    TestImportResult_Render_Outcomes at :2842, which this test does not use).
+  - The literal under test is handlers.go:618
+    `_ = renderer.RenderPartial(w, "import-result", partialData)`, reached
+    only via the handler. The string "Import finished" exists exactly once in
+    product code: web/templates/pages/filemanager.html:1457, inside
+    `{{define "import-result"}}` (line 1455).
+    ($ grep -rn "Import finished" . | grep -v '^./.git/')
+
+--- CRITERION 2: new test passes --- PASS
+  $ cd /tmp/claude-0/t1-check && go test -count=1 \
+      -run 'TestHandleImport_WithRenderer_RendersImportResultBlock' -v \
+      ./internal/handlers/explorer/
+    --- PASS: TestHandleImport_WithRenderer_RendersImportResultBlock (0.02s)
+    ok  	budget2/internal/handlers/explorer	0.030s
+  Also green at uid 65534 (see criterion 4 run):
+    --- PASS: TestHandleImport_WithRenderer_RendersImportResultBlock (0.03s)
+
+--- CRITERION 3: MUTANT KILL WITH ASYMMETRY --- PASS (both halves)
+  Mutant A — scratch copies /tmp/t1-mutant (with T1 test) and
+  /tmp/t1-mutant-base (HEAD test file, T1 test reverted via
+  `git checkout -- internal/handlers/explorer/handlers_test.go`):
+    $ sed -i 's/RenderPartial(w, "import-result", partialData)/RenderPartial(w, "import-resultX", partialData)/' .../handlers.go
+    $ grep -n import-resultX .../handlers.go
+      618:		_ = renderer.RenderPartial(w, "import-resultX", partialData)
+  (a) NEW TEST DIES on the mutant (run as nobody):
+    $ cd /tmp/t1-mutant && go test -count=1 -run '^TestHandleImport' -v ./internal/handlers/explorer/
+      --- FAIL: TestHandleImport_WithRenderer_RendersImportResultBlock (0.02s)
+      FAIL	budget2/internal/handlers/explorer	0.034s
+    Failure reason (isolated run):
+      handlers_test.go:2880: expected 200, got 500; body: Internal Server Error
+  (b) OLD SUITE IS BLIND — every pre-existing test still passes on the same
+      mutant. Same run as (a): all 20 other TestHandleImport*/TestHandleImportScan*
+      tests report PASS (KeepsSourceWhenNotDeleting, DeletesSourceWhenRequested,
+      DeleteSourceOnlyOnLiteralTrue, CollisionSkipsAndKeepsSource,
+      TraversalNameRejected, NonCSVRejected, SymlinkNotFollowedTargetSurvives,
+      FailedWriteKeepsSource, EmptyBatchIs400AndInert, BlankNameIs400,
+      MissingSourceRejected, MixedBatchDeletesOnlyImported, RouteRegistered,
+      SymlinkedImportDirectoryStillImports, + 6 ImportScan tests).
+      And the WHOLE package on the mutant without the T1 test is green:
+    $ cd /tmp/t1-mutant-base && go test -count=1 ./internal/handlers/explorer/
+      ok  	budget2/internal/handlers/explorer	0.548s
+    => the template-name typo shipped an unrendered response with a fully
+       green pre-T1 suite; the new test is the only thing that catches it.
+  Mutant B (stronger: valid-but-wrong template, 200 + non-empty body, so the
+  BODY assertion rather than the status code must do the killing):
+    $ sed -i 's/..."import-result", partialData)/..."import-scan", partialData)/' /tmp/t1-mutant2/.../handlers.go   (line 618)
+    $ go test -run '^TestHandleImport_WithRenderer_RendersImportResultBlock$' -v
+      handlers_test.go:2884: expected rendered import-result block containing
+        "Import finished"; got:
+        <p class="text-sm text-gray-500 ...">Click Rescan to list CSV files in the import folder.</p>
+      --- FAIL: TestHandleImport_WithRenderer_RendersImportResultBlock (0.02s)
+    => the "Import finished" body assertion is load-bearing, not incidental.
+
+--- CRITERION 4: package health / pre-existing failures --- PASS, with a
+    correction to the worker's claim
+  As root (uid 0), WITH the T1 change:
+    $ cd /tmp/claude-0/t1-check && go test -count=1 ./internal/handlers/explorer/
+      --- FAIL: TestHandleFileDelete_RemoveError (0.00s)
+      --- FAIL: TestHandleFileUpload_WriteError (0.00s)
+      FAIL	budget2/internal/handlers/explorer	0.763s
+  BASELINE at HEAD (T1 test reverted, same container, same uid 0):
+    $ cd /tmp/claude-0/t1-base && git checkout -- internal/handlers/explorer/handlers_test.go
+    $ go test -count=1 ./internal/handlers/explorer/
+      --- FAIL: TestHandleFileDelete_RemoveError (0.00s)
+      --- FAIL: TestHandleFileUpload_WriteError (0.00s)
+      FAIL	budget2/internal/handlers/explorer	0.575s
+    => IDENTICAL failure set before and after T1: T1 introduces no failure.
+  As an unprivileged user (NEXT.md "Environment facts #1" recipe: copy tree,
+  chmod -R a+rwX, private HOME/GOCACHE/GOPATH/GOMODCACHE under /tmp):
+    $ su nobody -s /bin/bash -c '... cd /tmp/t1-nobody && go test -count=1 ./internal/handlers/explorer/'
+      uid=65534(nobody) gid=65534(nogroup)
+      ok  	budget2/internal/handlers/explorer	0.647s
+    => the whole package, INCLUDING the new test, is green at uid != 0; both
+       root failures are the chmod-fixture class described in NEXT.md.
+  FINDING (not a T1 defect, but the brief's premise is understated): the
+  claim was ONE pre-existing root failure (TestHandleFileDelete_RemoveError).
+  There are TWO: TestHandleFileUpload_WriteError fails under root as well,
+  and it is equally pre-existing (present in the HEAD baseline above) and
+  equally green at uid 65534. NEXT.md "Environment facts #1" lists only
+  TestHandleFileDelete_RemoveError for internal/handlers/explorer and should
+  gain TestHandleFileUpload_WriteError before T3 uses that list as its
+  work item inventory.
+  Root-only skip claim: TestHandleImport_FailedWriteKeepsSource is NOT
+  skipped at uid 65534 — it PASSES there
+  ($ ... -run '^TestHandleImport' -v -> --- PASS: TestHandleImport_FailedWriteKeepsSource (0.00s)),
+  consistent with a uid-0-only skip.
+
+--- CRITERION 5: gofmt / vet --- PASS
+  $ cd /tmp/claude-0/t1-check && gofmt -l internal/handlers/explorer/handlers_test.go
+    (no output, exit 0)
+  $ go vet ./internal/handlers/explorer/
+    (no output, exit 0)
+
+--- CRITERION 6: scope --- PASS
+  $ cat .swarm/manifests/T1.1.files
+    internal/handlers/explorer/handlers_test.go
+  $ git diff --stat
+    .swarm/NEXT.md                              |  7 +++++--   (lead's, ignored)
+    .swarm/ledger.tsv                           |  1 +         (lead's, ignored)
+    internal/handlers/explorer/handlers_test.go | 26 ++++++++++++++++++++++++++
+  $ git diff --stat -- internal/
+    internal/handlers/explorer/handlers_test.go | 26 ++++++++++++++++++++++++++
+    1 file changed, 26 insertions(+)
+  Only the manifest's single file changed under internal/; the change is
+  test-only (26 insertions, 0 deletions — no production code touched, no
+  existing test modified). Untracked: only .swarm/manifests/T1.1.files.
+  Nothing in .swarm/critical.globs (storage, dataloader, retirement/engine,
+  transfers, accounts.go, mcpsvc/confirm) is touched, so no escalation
+  trigger from this manifest.

@@ -112,6 +112,7 @@ func Register(s *mcp.Server, deps Deps) {
 	registerGetAccounts(s, deps)
 	registerGetBalanceProjection(s, deps)
 	registerGetTransfers(s, deps)
+	registerGetSuspectedTransfers(s, deps)
 	registerSetBalanceAnchor(s, deps)
 	registerResolveTransfer(s, deps)
 }

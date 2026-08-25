@@ -14,7 +14,7 @@ description: >-
 
 # budget2 MCP tools
 
-The budget2 server exposes 31 tools over MCP. This skill is a router: find
+The budget2 server exposes 32 tools over MCP. This skill is a router: find
 the branch that matches what the user is asking, then read that branch's
 reference file before calling its tools — every branch has gotchas that are
 cheaper to read than to rediscover.
@@ -49,7 +49,8 @@ Tools by branch:
 - **Spending** (all read-only): `summarize_spending`, `search_transactions`,
   `get_trends`, `get_recurring`, `get_price_creep`, `get_anomalies`
 - **Accounts & transfers**: `get_accounts`, `get_balance_projection`,
-  `get_transfers` (reads); `set_balance_anchor` 🔒, `resolve_transfer` 🔒
+  `get_transfers`, `get_suspected_transfers` (reads); `set_balance_anchor` 🔒,
+  `resolve_transfer` 🔒
 - **Retirement plan**: `list_scenarios`, `get_analysis`, `get_months`,
   `run_scenario`, `open_page` (reads); `apply_changes` ✏️
 - **Major expenses**: `list_major_expenses`, `list_exceptions` (reads);
@@ -63,7 +64,7 @@ Tools by branch:
 Every tool sits on one of three rungs. Know which rung you are on before you
 call.
 
-1. **Read-only (20 tools).** Call freely. Nothing can go wrong beyond a wrong
+1. **Read-only (21 tools).** Call freely. Nothing can go wrong beyond a wrong
    answer, and the reference files exist to prevent those.
 2. **Writes with a safety net (7 tools, ✏️).** Six of them (`resolve_duplicates`,
    `undo_resolve`, `upsert_major_expense`, `pin_transactions`,

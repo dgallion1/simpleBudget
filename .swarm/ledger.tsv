@@ -48,3 +48,4 @@ F1	3	tests,second	accepted	3	tier3-merged-wt-primary+alt-graft	gate-ok-tier3-att
 F2	3	tests,second	accepted	2	tier3-merged-wt-primary	gate-ok-tier3-attempt-2-atomicwrite-reuse-perm-finding-unreachable-see-report
 F3	3	tests,second	accepted	5	worker-coder	gate-ok-attempt-5-root-proof-atomicwrite-test-ruling-2026-08-24c
 F4	3	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-filePerm-stat-failure-test-closes-dual-lane-fail
+Q1	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1

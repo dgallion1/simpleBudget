@@ -60,6 +60,25 @@ an empty result).
   — you see the one leg in that account. To see both legs of a pair, omit
   `account_id`.
 
+## get_suspected_transfers (read)
+
+The transfer **review queue**: candidate pairs the classifier found but
+would not auto-pair. A suspected pair is two cross-account, opposite-sign,
+equal-amount rows inside the pairing window that no transfer pattern backs —
+coincidentally equal amounts are common, so these are only ever *suggested*.
+`reason` is `amount_match` (no pattern hit on either leg) or `ambiguous`
+(several pattern-backed candidates tied on date distance).
+
+No params. An empty result (`count` 0) means nothing is currently awaiting
+review — a normal answer, not an error.
+
+- **This is the tool `resolve_transfer`'s `pair_key` must come from.** It
+  replaces reading the `/transfers` page by hand — the same "Suspected
+  pairs" queue, but reachable in-session. Never invent a `pair_key`.
+- Legs are shaped like `get_transfers`' rows (`date`, `description`,
+  `account_id`, signed `amount`, `category`), so the two tools read the same
+  to a model.
+
 ## set_balance_anchor 🔒 (guarded write → accounts.json)
 
 Records a BalanceAnchor. Anchors are load-bearing: every balance and
@@ -85,13 +104,12 @@ suggests these — a human verdict is what pairs them.
 
 Params: `pair_key`, `verdict` (`confirm` or `reject`), `confirm_token`.
 
-- `pair_key` must come from the **suspected-pair review queue** — the user,
-  or the `/transfers` page (the "Suspected pairs" section, an HTMX swap
-  target). `get_transfers` only returns pairs already classified as
-  Transfer, so a key read from it is already resolved and `resolve_transfer`
-  will refuse it with "no longer a suspected transfer awaiting review". No
-  MCP tool currently exposes the suspected queue itself — this is a known
-  gap, not an oversight. **Never invent a `pair_key`.**
+- `pair_key` must come from **`get_suspected_transfers`** — the same queue
+  the `/transfers` page shows under "Suspected pairs" (an HTMX swap target),
+  now reachable in-session. `get_transfers` only returns pairs already
+  classified as Transfer, so a key read from it is already resolved and
+  `resolve_transfer` will refuse it with "no longer a suspected transfer
+  awaiting review". **Never invent a `pair_key`.**
 
 - `confirm` is the load-bearing verdict: both legs become Transfer/paired on
   the next load, pattern hit or not — and if the rows were NOT actually a

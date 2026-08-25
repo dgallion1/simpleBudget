@@ -319,7 +319,7 @@ an answer, look at spending patterns, and curate the Major Expenses page.
 nothing is listening when a Claude Code session starts, they will not be
 available. There is no separate MCP process.
 
-Thirty-one tools in five groups: six planner tools, six spending tools, five
+Thirty-two tools in five groups: six planner tools, six spending tools, six
 ledger tools, five curation tools, and nine housekeeping tools. A checked-in
 Claude Code skill (`.claude/skills/budget2-mcp/`) routes a session across
 them: five branches by what is being asked, crossed with a
@@ -359,7 +359,7 @@ spending velocity (burn rate) against the immediately preceding window of equal
 length. All six exclude transactions the user has already marked as a resolved
 duplicate.
 
-Five ledger tools cover accounts and transfers. `get_accounts` lists the
+Six ledger tools cover accounts and transfers. `get_accounts` lists the
 configured accounts with each one's balance, freshness (the account's latest
 transaction date), and whether it is below its low-balance threshold; a
 balance is rolled forward from the account's latest BalanceAnchor plus the
@@ -371,7 +371,11 @@ advisory only, nothing is written. `get_transfers` returns the
 Transfer-typed flows the ledger recorded — `paired` when both legs are
 loaded and share a pair key, `external` when the counterparty's CSV is not —
 with amounts signed in bank convention; filtering by `account_id` shows that
-account's leg only. The other two **write, behind the same guard as
+account's leg only. `get_suspected_transfers` returns the review queue of
+candidate pairs the classifier would not auto-pair — coincidentally equal
+amounts are common, so these are only ever suggested — and its `pair_key`
+values are exactly what `resolve_transfer` accepts; `get_transfers`' keys are
+already-resolved and refused. The other two **write, behind the same guard as
 `restore_backup` and `shutdown_server`** (the two-call token flow described
 below): `set_balance_anchor` records an end-of-day balance on an account —
 load-bearing, since every balance and projection rolls forward from it, and

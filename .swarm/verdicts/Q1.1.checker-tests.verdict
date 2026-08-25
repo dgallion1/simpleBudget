@@ -1,0 +1,248 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Q1
+ATTEMPT: 1
+---
+REPO STATE
+  git rev-parse HEAD  -> b66025795bd7662a3fc81c386788c20c6e884aaf
+  git branch          -> claude/verify-f3-f4
+  git status --porcelain (work is uncommitted, as expected):
+     M .claude/skills/budget2-mcp/SKILL.md
+     M .claude/skills/budget2-mcp/references/accounts-transfers.md
+     M .swarm/ledger.tsv
+     M CHANGELOG.md
+     M README.md
+     M internal/services/mcpsvc/ledger/register.go
+     M internal/services/mcpsvc/ledger/resolve.go
+     M internal/services/mcpsvc/server_test.go
+    ?? .swarm/briefs/Q1.md
+    ?? .swarm/manifests/Q1.1.files
+    ?? internal/services/mcpsvc/ledger/suspected.go
+    ?? internal/services/mcpsvc/ledger/suspected_test.go
+  All verification ran in an isolated copy at /tmp/claude-0/q1-tests (cp -a).
+  The only write to the main tree is this verdict file.
+
+------------------------------------------------------------------
+CRITERION A — build / vet / gofmt                            PASS
+------------------------------------------------------------------
+  $ go build ./...
+      (no output)  BUILD_RC=0
+  $ go vet ./internal/services/mcpsvc/...
+      (no output)  VET_MCPSVC_RC=0
+  $ go vet ./...
+      (no output)  VET_ALL_RC=0        [brief text says ./... ; both run, both clean]
+  $ gofmt -l internal/services/mcpsvc/ledger/suspected.go \
+             internal/services/mcpsvc/ledger/suspected_test.go \
+             internal/services/mcpsvc/ledger/register.go \
+             internal/services/mcpsvc/ledger/resolve.go \
+             internal/services/mcpsvc/server_test.go
+      (empty output = every .go file in .swarm/manifests/Q1.1.files is gofmt-clean)
+
+------------------------------------------------------------------
+CRITERION B — five behaviors, real mcp.Client                PASS
+------------------------------------------------------------------
+  Transport is real, not a direct handler call: suspected_test.go uses connect()
+  from register_test.go:62-84, which does mcp.NewServer + Register(srv, deps),
+  mcp.NewInMemoryTransports(), srv.Connect, mcp.NewClient, client.Connect, and
+  returns a *mcp.ClientSession. call() (register_test.go:123) issues a real
+  cs.CallTool; decodeToolResult() (:132) JSON-marshals res.StructuredContent, so
+  the json tags on the output structs are genuinely exercised over the wire.
+
+  $ go test -count=1 -v -run 'GetSuspectedTransfers' ./internal/services/mcpsvc/ledger/
+    --- PASS: TestGetSuspectedTransfersRoundTripsPairsFromTheQueue (0.00s)          [B.1]
+    --- PASS: TestGetSuspectedTransfersOnEmptyQueue (0.00s)                          [B.2]
+    --- PASS: TestGetSuspectedTransfersWithoutTransferSourceReportsIt (0.00s)        [B.3]
+    --- PASS: TestGetSuspectedTransfersLoadFailureDoesNotReadQueue (0.00s)           [B.4]
+    --- PASS: TestGetSuspectedTransfersPairKeyIsAcceptedByResolveTransferPreview     [B.5]
+    ok  	budget2/internal/services/mcpsvc/ledger	0.023s
+
+  NON-VACUITY PROVEN BY MUTATION (copy at /tmp/claude-0/q1-mut, each mutation
+  reverted afterwards; sanity re-run "ok" after every revert):
+
+  B.1 asserts SIGNED amounts — mutated suspected.go:104
+      `Amount: round2(t.Amount)` -> `Amount: -round2(t.Amount)`:
+    --- FAIL: TestGetSuspectedTransfersRoundTripsPairsFromTheQueue
+        suspected_test.go:120: pairs[0].left = {... Amount:777.77 ...}, want amount=-777.77
+        suspected_test.go:129: pairs[0].right = {... Amount:-777.77 ...}, want amount=777.77
+    (Confirms both legs' signs are asserted, and that -777.77/+777.77 opposite
+     signs are checked leg-by-leg, not just by magnitude.)
+
+  B.1 asserts REASONS — mutated `Reason: sp.Reason` -> `Reason: ""`:
+    --- FAIL: TestGetSuspectedTransfersRoundTripsPairsFromTheQueue
+    (Test source lines 116-118 and 139-141 compare against transfers.ReasonAmountMatch
+     and transfers.ReasonAmbiguous, i.e. the real package constants, not literals.)
+    B.1 also asserts both legs' date (2026-08-10), account_id (checking/brokerage,
+    checking/savings), description == Label(), category present and omitempty-empty,
+    count == 2, and pair-order preservation (pairs[0]=amount-match, pairs[1]=ambiguous).
+
+  B.4 asserts the queue is NEVER READ, not merely that an error came back
+      (test line 191 checks fake.suspectedCalled). Mutated suspected.go to call
+      SuspectedTransfers() before deps.load():
+    --- FAIL: TestGetSuspectedTransfersLoadFailureDoesNotReadQueue
+        suspected_test.go:192: SuspectedTransfers() was called despite the load failing
+
+  B.5 ROUND-TRIPS FOR REAL. resolve.go:96-101 validates the key against the live
+      suspected queue (`if !suspectedContains(suspected, key)` -> error), so the
+      preview call only succeeds for a key actually in the queue. Mutated the test
+      to substitute a literal `"bogus-not-in-queue"` for `queue.Pairs[0].PairKey`:
+    --- FAIL: TestGetSuspectedTransfersPairKeyIsAcceptedByResolveTransferPreview
+        suspected_test.go:210: tool call returned an error result
+      i.e. the test passes ONLY because the key came out of get_suspected_transfers'
+      own StructuredContent. Both calls go over the same *mcp.ClientSession. The test
+      further asserts Confirmed == false (it really is the FIRST/preview call),
+      ConfirmToken != "", and PairKey echoed back equal to the key from the queue.
+
+  B.2/B.3: empty queue -> count 0 with a non-error result (decodeToolResult fails
+  the test on res.IsError); nil Transfers -> toolErrorText requires res.IsError and
+  asserts the message contains "no transfer source is configured".
+
+------------------------------------------------------------------
+CRITERION C — read-only, and load() before the queue read     PASS
+------------------------------------------------------------------
+  Read internal/services/mcpsvc/ledger/suspected.go end to end (115 lines).
+  Handler body (lines 67-95) calls exactly: recoverToError, deps.load(),
+  deps.Transfers.SuspectedTransfers(), suspectedLegRowFor (t.Date.Format,
+  t.Label(), round2). Nothing else.
+  $ grep -nE "ResolveTransfer|Snapshot|Confirm|Save|Write|Store|Mint|Apply|Set[A-Z]" \
+        internal/services/mcpsvc/ledger/suspected.go
+      (no matches, rc=1)
+  deps.load() itself is read-only (register.go:89-98: IsEncrypted/IsUnlocked
+  guards, then d.Transactions.LoadData()).
+
+  ORDERING: suspected.go line 79 `if _, err := deps.load(); err != nil` precedes
+  line 83 `suspected := deps.Transfers.SuspectedTransfers()`, with the resolve.go
+  rationale reproduced verbatim in the comment at lines 74-78. Enforced by test,
+  not just by reading — see the B.4 mutation above.
+
+  THE FAKE WOULD HAVE RECORDED A WRITE: fakeTransferSource.ResolveTransfer sets
+  resolveCalled (suspected_test.go:31-34) and the round-trip test asserts
+  !fake.resolveCalled (:147-149). Proven live by inserting
+  `_ = deps.Transfers.ResolveTransfer("x", transfers.VerdictReject)` into the handler:
+    --- FAIL: TestGetSuspectedTransfersRoundTripsPairsFromTheQueue
+        suspected_test.go:148: ResolveTransfer was called; get_suspected_transfers must be read-only
+  So the read-only assertion is a live detector, not decoration.
+
+------------------------------------------------------------------
+CRITERION D — go test ./internal/services/mcpsvc/...          PASS
+------------------------------------------------------------------
+  As root (uid 0):
+  $ go test -count=1 ./internal/services/mcpsvc/...
+      ok mcpsvc, admin, confirm, ledger, plan, snapshot, spend
+      FAIL budget2/internal/services/mcpsvc/curate
+        --- FAIL: TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp
+        --- FAIL: TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken
+
+  The PRE-EXISTING claim was verified independently, two ways:
+
+  (1) Same-tree stash, i.e. HEAD b660257 with Q1 removed entirely:
+      $ git stash push -u -m checkq1   (working tree clean afterwards)
+      $ go test -count=1 -run 'TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp|TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken' ./internal/services/mcpsvc/curate/
+        --- FAIL: TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp (0.01s)
+        --- FAIL: TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken (0.01s)
+      $ git stash pop  -> all 12 Q1 paths restored
+      => the two failures exist without Q1's change. Q1 does not touch
+         internal/services/mcpsvc/curate at all (see manifest).
+
+  (2) Root-artifact confirmed, not merely asserted: both tests build their
+      fixture with os.Chmod(path, 0o000) (delete_test.go:140, upsert_test.go:159)
+      and expect the subsequent read/backup to fail. Root bypasses DAC, so the
+      read succeeds and the expected error never appears. Re-ran the whole suite
+      as uid=1000(ubuntu) with go1.26.6 and unprivileged caches:
+      $ su ubuntu -c '... go test -count=1 ./internal/services/mcpsvc/...'
+        go version go1.26.6 linux/amd64
+        ok  budget2/internal/services/mcpsvc         0.103s
+        ok  budget2/internal/services/mcpsvc/admin   4.620s
+        ok  budget2/internal/services/mcpsvc/confirm 0.047s
+        ok  budget2/internal/services/mcpsvc/curate  0.345s
+        ok  budget2/internal/services/mcpsvc/ledger  0.431s
+        ok  budget2/internal/services/mcpsvc/plan    5.453s
+        ok  budget2/internal/services/mcpsvc/snapshot 0.015s
+        ok  budget2/internal/services/mcpsvc/spend   1.218s
+      Entire mcpsvc tree green, curate included. Criterion D is met.
+
+  Whole-repo regression check, also as uid=1000:
+      $ su ubuntu -c '... go test -count=1 ./...' | grep -vE '^ok|no test files'
+        (no output — no failing package anywhere in the module)
+
+  REGISTRATION COUNT:
+  $ go test -count=1 -v -run 'TestNewServerRegisters' ./internal/services/mcpsvc/
+      --- PASS: TestNewServerRegistersAllThirtyTwoTools (0.03s)
+      ok  budget2/internal/services/mcpsvc  0.040s
+    The updated server_test.go want-list does include "get_suspected_transfers"
+    (diff line: `"get_accounts", "get_balance_projection", "get_transfers",
+    "get_suspected_transfers",`) and the exact-count assertion moved 31 -> 32.
+    Registration itself: register.go Register() gained
+    `registerGetSuspectedTransfers(s, deps)`.
+
+------------------------------------------------------------------
+CRITERION E — docs                                            PASS
+------------------------------------------------------------------
+  resolve.go, all three strings name get_suspected_transfers:
+  $ grep -n "get_suspected_transfers" internal/services/mcpsvc/ledger/resolve.go
+    16: pair_key jsonschema — "the pair_key from get_suspected_transfers (not from
+        get_transfers, which only returns already-resolved pairs) ..."
+    53: tool Description   — "Never invent a pair_key; call get_suspected_transfers
+        for one (the same queue the /transfers page shows) -- get_transfers only
+        returns already-resolved pairs and its keys will be refused."
+    71: error              — "pair_key is required; call get_suspected_transfers for
+        one (get_transfers only returns already-resolved pairs)"
+    Both required carry-overs kept: the /transfers mention (line 53) and the
+    get_transfers-keys-are-refused warning (lines 16, 53, 71).
+
+  README.md (git diff README.md):
+    line 322: "Thirty-two tools in five groups: six planner tools, six spending
+              tools, six ledger tools, five curation tools, and nine housekeeping
+              tools."  (6+6+6+5+9 = 32, arithmetic consistent)
+    line 362: "Six ledger tools cover accounts and transfers."  (was "Five")
+    lines 374-378: new prose in the ledger paragraph describing the tool, its
+              suggestion-only nature, and that its pair_key values are what
+              resolve_transfer accepts while get_transfers' are refused.
+
+  .claude/skills/budget2-mcp/SKILL.md (git diff):
+    line 17: "The budget2 server exposes 32 tools over MCP."   (was 31)
+    line 51-53 accounts branch: "`get_transfers`, `get_suspected_transfers` (reads);
+              `set_balance_anchor` lock, `resolve_transfer` lock"
+    line 67: "1. **Read-only (21 tools).**"                    (was 20)
+    Ladder arithmetic re-checked by reading lines 62-90: 21 read-only + 7 (safety
+    net) + 4 (guarded) = 32. Consistent.
+
+  .claude/skills/budget2-mcp/references/accounts-transfers.md (git diff):
+    New "## get_suspected_transfers (read)" subsection (+19 lines) covering
+    read-only status, reason values, empty-is-normal, leg shape, and explicitly
+    "This is the tool `resolve_transfer`'s `pair_key` must come from."
+    resolve_transfer's key-source bullet rewritten: the stale "No MCP tool
+    currently exposes the suspected queue itself — this is a known gap" sentence
+    is DELETED and replaced with "`pair_key` must come from **`get_suspected_transfers`**
+    — the same queue the `/transfers` page shows ... now reachable in-session."
+
+  CHANGELOG.md (git diff): new "### MCP — `get_suspected_transfers` closes the
+    pair_key dead end (2026-08-25)" block at the top of "## Unreleased", four
+    bullets in the file's established bold-lede style.
+
+  No stale counts left behind:
+  $ grep -rn "31 tools\|Thirty-one\|thirty-one\|Five ledger\|five ledger\|20 tools" \
+        README.md CHANGELOG.md .claude/skills/budget2-mcp/ docs/
+      (no matches)
+
+  (Brief item 4, the teaching Description, is not itself an A-E criterion but is
+   present: suspected.go:53-66 covers suggestions/coincidental amounts, both
+   reason values, keys-go-to-resolve_transfer, confirm being load-bearing,
+   empty-is-not-an-error, signed amounts, READ-ONLY, and the /transfers page.)
+
+------------------------------------------------------------------
+SCOPE                                                         CLEAN
+------------------------------------------------------------------
+  Files touched == .swarm/manifests/Q1.1.files exactly (9 paths), plus swarm
+  bookkeeping: .swarm/ledger.tsv (one appended row
+  "Q1  2  tests,second  building  1  worker-coder  brief-.swarm/briefs/Q1.md"),
+  .swarm/briefs/Q1.md and .swarm/manifests/Q1.1.files themselves. No other path
+  in git status.
+  server_test.go is outside internal/services/mcpsvc/ledger/ but is the legitimate
+  mechanical consequence of registering a 32nd tool, and it does list the new tool
+  by name (verified in the diff and by the passing run above).
+  .swarm/critical.globs contains storage/**, dataloader/**, retirement/engine/**,
+  transfers/**, accounts/accounts.go, mcpsvc/confirm/**. NONE is touched:
+  suspected.go only imports budget2/internal/services/transfers (reads the
+  ReasonAmountMatch/ReasonAmbiguous constants via compile-time checks at lines
+  111-114); it modifies no file under any critical glob. No auto-escalation applies.

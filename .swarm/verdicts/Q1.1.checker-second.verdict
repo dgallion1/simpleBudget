@@ -1,0 +1,149 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Q1
+ATTEMPT: 1
+---
+git rev-parse HEAD: b66025795bd7662a3fc81c386788c20c6e884aaf
+git status --porcelain: matches manifest (suspected.go, suspected_test.go new;
+register.go, resolve.go, server_test.go, README.md, CHANGELOG.md, SKILL.md,
+accounts-transfers.md modified). All work uncommitted on
+claude/verify-f3-f4, as expected. All checks below run against a scratch
+copy at /tmp/claude-0/.../scratchpad/simplebudget; the ONLY write to
+/home/user/simplebudget was this verdict file.
+
+ATTACK 1 — end-to-end pair_key stability across two independent loads
+(get_suspected_transfers' load, then resolve_transfer's load). Read
+internal/services/transfers/transfers.go: PairKeyFor(idA, idB) is
+sha256(lo|hi) truncated to 12 hex chars, a pure function of the two legs'
+Identity() (StableID, or fallback). internal/models/transaction.go:
+StableIDFor(accountID, date, amountCents, occurrence) is itself a pure
+function of content, and dataloader/stable_id.go assigns it deterministically
+from parsed CSV rows on every load. So two loads of the SAME underlying CSV
+data produce the same StableIDs, hence the same PairKeyFor, hence the same
+pair_key -- consistent with resolve.go's own pre-existing re-validation
+comment ("SuspectedTransfers() only reflects the most recent load ... after
+the CSVs change the cached queue would be stale") already covering the case
+where data DOES change between calls (both the mint and the write-time
+re-check call deps.load() fresh and re-check suspectedContains, so a changed
+key after a real data change is refused, not silently accepted). This is
+pre-existing behavior this task rides on, not a new risk it introduces.
+No dead-end and no undocumented invalidation window found.
+
+ATTACK 2 — mutation testing on a scratch copy of suspected.go, full package
+`go test -count=1 ./internal/services/mcpsvc/ledger/...` re-run after each,
+then reverted from clean backup:
+  1. Skip deps.load(): TestGetSuspectedTransfersLoadFailureDoesNotReadQueue
+     failed (caught).
+  2. Swap Left/Right ordering: TestGetSuspectedTransfersRoundTripsPairsFromTheQueue
+     failed on both leg assertions (caught).
+  3. Drop reason (hardcode ""): same round-trip test failed (caught).
+  4. Unsign amounts (math.Abs): same round-trip test failed on the -777.77
+     assertion (caught).
+  5. Add a write call (ResolveTransfer) inside the handler: same round-trip
+     test failed via the `fake.resolveCalled` assertion (caught) -- confirms
+     criterion C's read-only check is a live tripwire, not decorative.
+  6. Removed the nil-Transfers guard: build broke (unused fmt import) before
+     a test could even run -- inconclusive as a mutation (compile-time, not
+     logic), but the removed branch is still directly exercised and asserted
+     by TestGetSuspectedTransfersWithoutTransferSourceReportsIt, which passed
+     against the unmutated code.
+Every meaningful mutation attempted was caught by the existing suite. No
+undefended claim found.
+
+ATTACK 3 — read-only claim. Read suspected.go top to bottom: the only calls
+into deps are deps.load() (via TransactionSource.LoadData) and
+deps.Transfers.SuspectedTransfers(). No call into ResolveTransfer, Snapshots,
+Confirm, or Store. Confirmed deps.load() -> dataloader.LoadData ->
+LoadDataContext does file reads (CSV glob, accounts.Load) and only
+in-memory-state writes (dl.setUnassignedCount/setStableIndex/setTransferState,
+mutex-protected caches) -- no disk writes found in the portion read. Parity
+check: get_transfers.go (internal/services/mcpsvc/ledger/transfers.go) also
+calls deps.load() unconditionally as its own read path, so triggering load()
+is consistent with the package's existing "read-only" tools, not a new
+exception carved out for this one. C's fake-recording assertion
+(fake.resolveCalled) is exercised in the round-trip test and was proven live
+by mutation 5 above.
+
+ATTACK 4 — doc honesty. Read the full Description string in suspected.go:
+explicitly states "This is READ-ONLY; it neither resolves nor changes
+anything," explicitly calls out that confirm is resolve_transfer's
+load-bearing verdict (does not imply confirm/reject happens in this tool),
+states empty result is a normal answer not an error, states the /transfers
+page shows the same queue, and states the signed-amount convention matches
+get_transfers. No overpromise found. resolve.go's three strings (Description,
+pair_key jsonschema, and the "pair_key is required" error) all name
+get_suspected_transfers by name AND all three retain the
+get_transfers-keys-are-refused warning verbatim in substance (grep-verified,
+see below) -- criterion 5 fully met, not just partially.
+
+Grep verification of doc criteria (E):
+  - resolve.go: 3/3 strings updated (Description line ~53, jsonschema tag
+    line 16, error line 71), each naming get_suspected_transfers and each
+    retaining the get_transfers-refusal warning.
+  - README.md line 322-323: "Thirty-two tools in five groups: ... six
+    ledger tools ..."; line 362 "Six ledger tools cover accounts and
+    transfers."; line 374 documents get_suspected_transfers in the ledger
+    paragraph with pair_key sourcing explained.
+  - SKILL.md line 17: "exposes 32 tools"; line 52 lists
+    get_suspected_transfers on the accounts branch; line 67 "Read-only (21
+    tools)". Ladder arithmetic checked: 21 + 7 (write-with-safety-net,
+    unchanged) + 4 (guarded, unchanged) = 32, internally consistent.
+  - accounts-transfers.md: new "## get_suspected_transfers (read)" subsection
+    at line 63; resolve_transfer subsection (line 98) updated to cite
+    get_suspected_transfers as the pair_key source.
+  - CHANGELOG.md: "Unreleased" section carries a new, dated
+    "get_suspected_transfers closes the pair_key dead end" entry in the
+    file's established style (bolded lead sentences, design/root-cause
+    framing).
+  - grep -rn "thirty-one|Thirty-one|31 tools|five ledger" --include=*.md .:
+    only hit is inside .swarm/briefs/Q1.md's own task description (not a
+    doc artifact) -- no stale leftover counts anywhere in shipped docs.
+
+ATTACK 5 — server_test.go count bump. Read the updated want-list directly
+(not just the count assertion): "get_suspected_transfers" is explicitly
+named in the want-list at line 97, alongside the other 5 ledger tools, and
+len(res.Tools) != 32 is checked separately. A mutation that added any 32nd
+tool without registering get_suspected_transfers specifically would fail
+the named-tool loop, not just the count -- criterion 5's "not just a count
+bump" concern is answered.
+
+ATTACK 6 — suite health / root artifacts. Ran
+`go test -count=1 ./internal/services/mcpsvc/...` as root on the scratch
+copy: ledger, mcpsvc, admin, confirm, plan, snapshot, spend all pass;
+curate FAILS on TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp and
+TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken (both chmod-0000 backup
+fixtures that root can still write through). Verified these are NOT
+introduced by Q1: `git stash -u` in the scratch copy (removing every Q1
+change) and re-ran `go test ./internal/services/mcpsvc/curate/...` on the
+unmodified base commit -- identical two failures, same test names, same
+root-cause. Stash was popped back cleanly afterward; scratch copy restored.
+This confirms via direct reproduction (not by trusting the claim) that the
+two curate failures are pre-existing root-environment artifacts unrelated
+to Q1, and that the new suspected-transfer tests (which use fakes, not
+chmod fixtures, per the brief's own framing) are genuinely root-safe: the
+ledger package alone is green in both the before and after runs.
+NOTE for the record: criterion D's literal text ("go test ... green") is
+technically not met as root when read against the WHOLE
+./internal/services/mcpsvc/... command, because of this pre-existing,
+already-known curate defect -- this is an out-of-scope observation (not a
+Q1 defect) that the primary verifier should also be citing with the same
+stash evidence, not simply asserting.
+
+MECHANICAL CHECKS:
+  - go build ./... : rc 0, no output.
+  - go vet ./... : clean, no output.
+  - gofmt -l on all 5 changed/new .go files: empty (all formatted).
+  - go test -count=1 -v -run GetSuspectedTransfers ./internal/services/mcpsvc/ledger/...:
+    all 5 new tests PASS (round-trip, empty queue, nil-dep, load-failure,
+    resolve_transfer-preview-accepts-the-key).
+
+CONCLUSION: Every attack attempted was defended by the existing test suite,
+the read-only claim holds under both static reading and a live mutation
+(fake write call caught), pair_key stability across independent loads is
+sound and matches the package's pre-existing staleness-handling pattern,
+doc criteria are fully and consistently updated with no stale counts, and
+the tool-count assertion names the tool rather than merely bumping a number.
+The one genuine gap found (curate's pre-existing root-artifact failures) is
+verified pre-existing and out of Q1's scope, not a defect in this task.
+PASS.

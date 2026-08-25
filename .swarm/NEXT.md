@@ -1,224 +1,170 @@
-# NEXT — state of the File Manager swarm run
+# NEXT — state of the swarm and the open work
 
-Rewritten 2026-08-16. A relaunched session starts cold; this file is the handoff.
-
-Revised 2026-08-21: P16 added, and step 1 rewritten. It told you to verify the
-session was routed through a LiteLLM gateway that no longer exists — following
-it as written would have stopped a relaunched session from dispatching anything.
+Rewritten 2026-08-25. A relaunched session starts cold; this file is the
+handoff. It is written for a lead session running cheaper models: every task
+below carries its own context, acceptance criteria, and the traps already hit
+once. The previous NEXT.md (File Manager era, 2026-08-16/21) is in git
+history; nothing in it is still actionable.
 
 ## Where things stand
 
-Branch `fix/review-aug16`. **The File Manager run is COMPLETE.** All 15 tasks
-are accepted with verified evidence; `swarm/gate.sh done` exits 0. The final
-accessibility pass found no regressions.
+Every ledger row is `accepted` except R9, which sits at `no-change`
+permanently and by design (an honest non-finding; `gate.sh done` reports it
+forever — do NOT "fix" it). Recent history:
 
-P15's blocker was resolved by user ruling 2026-08-16c: an Anthropic-family
-model substituted for the unavailable `worker-local` as the second blind
-implementer. The `worker-local` infrastructure problem described below is no
-longer live: the gateway it depended on was dropped 2026-08-19 and
-`worker-local` is a Claude Haiku agent now.
+- **F1–F4** (storage/encryption-migration fixes, merged 2026-08-24 under
+  ruling 2026-08-24b with reduced verification) were retroactively verified.
+  F4 accepted at attempt 2, F3 at attempt 5 — each needed one more test-only
+  attempt; the full attempt-by-attempt record, including what each lane found,
+  is in `.swarm/tier3/F3/report.md` and `.swarm/tier3/F4/report.md`.
+  Merged as PR #45.
+- **Q1** (`get_suspected_transfers` MCP tool) accepted at Tier 2, attempt 1.
+  Landed as PR #46. The MCP surface is now 32 tools in six groups; the
+  checked-in skill at `.claude/skills/budget2-mcp/` routes sessions across
+  them and MUST be updated whenever the tool surface changes (counts live in
+  SKILL.md, README.md, and `internal/services/mcpsvc/server_test.go`'s
+  registration want-list — all three drift independently; Q1 fixed all
+  three, keep them in lockstep).
+- Rulings 2026-08-24a/b/c are recorded in the two tier3 reports above, not in
+  a SPEC.md (this repo has none).
 
-| Task | Scope | Tier | Status |
-|------|-------|------|--------|
-| P12 | Multi-file upload | 1 | accepted, merged, pushed |
-| P13 | Sortable columns | 2 | **accepted at attempt 2**, committed `ce963e2` |
-| P14 | `ImportDirectory` config + scan endpoint | 2 | **accepted at attempt 1**, committed `04ba148` |
-| P15 | Import execute + source delete | 3 | **accepted at attempt 2**, committed `0a8225a` |
+## Environment facts — read before running anything
 
-Three runs have finished since: accounts & transfers (A0–A9), the review-fix
-run (R1–R13) and run S (S1–S5). All rows are accepted. See
-`.swarm/NEXT-accounts.md`, `ACCOUNTS_TRANSFERS_SPEC.md` and
-`REVIEW_AUG20_SPEC.md`.
+1. **Verification containers may run as root (uid 0).** Three pre-existing
+   tests rely on `chmod`-denial fixtures that root bypasses
+   (`CAP_DAC_OVERRIDE`), so they FAIL (or a mutation goes undetected) under
+   root while being green at any normal uid:
+   - `internal/services/storage`: `TestRollbackDecryptionWithRecipientReportsUnrestorableFiles`
+   - `internal/services/mcpsvc/curate`: `TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp`,
+     `TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken`
+   Run full suites as an unprivileged user. Working recipe: copy the tree,
+   `chmod -R a+rwX <copy>`, give `nobody` its own `HOME`/`GOCACHE`/`GOPATH`/
+   `GOMODCACHE` under /tmp (the root-owned caches are unreadable to it), then
+   `su nobody -s /bin/bash -c 'cd <copy> && …'`.
+2. **Oracle race timeouts are calibrated, not sacred.** The storage package's
+   `-race` suite needs ~1030s on a loaded 4-CPU container. All four oracles
+   (`.swarm/tier3/F{1,2,3,4}/accept.sh`) now carry 1800s. If a new oracle
+   adds a race check, budget 1800s and say why in a comment.
+3. **Toolchain**: go.mod pins `toolchain go1.26.6`; any go command
+   auto-downloads it on first use (a build can transiently fail mid-download —
+   retry once before diagnosing).
+4. **Root-proof failure injection** (the F3 lesson): to force a write failure
+   that root cannot bypass, use a kernel limit, not permissions — e.g. a
+   255-byte basename (NAME_MAX) is valid to create and read, but
+   `atomicWrite`'s staging name (`base + ".tmp-" + random`) exceeds the limit
+   and `os.CreateTemp` fails ENAMETOOLONG at any uid. See
+   `TestRollbackDecryptionReportsPathOnAtomicWriteFailure`.
+5. **Oracles plant test files in the package** (`zz_oracle_*_test.go`), so two
+   oracle runs in one tree collide. Every checker copies the repo
+   (`cp -a`, keep `.git`) and runs only in its copy; the sole write to the
+   main tree is its verdict file.
 
-Merged with `master` 2026-08-22. `master` brought three rows this branch had no
-part in — P16 (storage read-cache write ordering, landed as PR #32), P17
-(SA4023 dead decrypt path) and P18 (CI workflow on pull requests) — all three
-written directly in a lead session and carried in the ledger as `pending`,
-unverified. They are kept as `pending` here rather than backfilled.
+## Process crib — the mechanics that get botched
 
-`gate.sh done` therefore exits 1 on four lines: R9, which sits at `no-change`
-because no defect existed, plus P16–P18. No verdict was fabricated to make
-either an honest non-finding or somebody else's unverified work look like an
-acceptance.
+- Ledger `.swarm/ledger.tsv`, TAB-separated:
+  `task_id  tier  checks  status  attempt  worker  reason`.
+- Verdict files: `.swarm/verdicts/<task>.<attempt>.<checker>.verdict`.
+  Headers are one `KEY: value` PER LINE — `VERDICT:`, `CHECKER:`, `FAMILY:`,
+  `TASK:`, `ATTEMPT:` — then `---`, then evidence. The gate refused a verdict
+  whose fourth line read `TASK: Q1 ATTEMPT: 1`; the checker had to fix its
+  own file (the lead NEVER edits or writes a checker's verdict).
+- Lanes: primary verifier writes `FAMILY: anthropic`; `checker-second`
+  writes `FAMILY: adversarial`. Two distinct families must PASS at the
+  ledger's attempt number. Tier 3 additionally requires a `RESOLUTION:` line
+  in `.swarm/tier3/<task>/report.md`.
+- Gate (from the repo root; script lives in the agents2 repo):
+  `bash <agents2>/swarm/gate.sh check <task>` — status may become `accepted`
+  only after it exits 0, output pasted into the accepting message. Then
+  `escalate-scan`. `done` must end reporting only R9.
+- Workers write `.swarm/manifests/<task>.<attempt>.files` (repo-relative
+  paths, one per line). Workers never commit; the lead commits after the gate.
+- `.swarm/critical.globs` — a manifest touching these escalates the task one
+  tier via `escalate-scan`. It covers `internal/services/storage/**`,
+  `dataloader/**`, `retirement/engine/**`, `transfers/**`,
+  `accounts/accounts.go`, `mcpsvc/confirm/**`. Assign Tier 3 up front for
+  tasks that must touch them (T5/T6 below) instead of being surprised.
+- Hard stop: two failed attempts at Tier 3 (or three anywhere) halts the task
+  and reports to the user. F3 hit this; only an explicit user ruling reopens
+  the attempt budget. Never loop silently.
 
-## Follow-ups this run deliberately did not absorb
+## Open tasks
 
-1. **Pre-existing accessibility violations on the File Manager page.** Unlabelled
-   toggle checkboxes, an unnamed SVG delete button, and low-contrast text, all
-   byte-identical at the run's starting point. Counts disagree between the two
-   audits — the P13 axe run reported 20, the final pass reported 6 (5 contrast
-   plus the unnamed button). The discrepancy is unreconciled; whoever takes the
-   follow-up should re-count rather than trust either number.
-2. **`handleImport`'s render call is untested.** Every `handleImport` test runs
-   with `renderer == nil` (JSON fallback), so no Go test executes
-   `handlers.go:601`. Live curl confirmed correct behavior today, but an edit
-   changing only the template name would ship an empty body with a green suite —
-   the same failure shape as ruling 2026-08-16a. Cheap fix: one handler test
-   using `setupTestEnvWithRenderer` asserting the body contains "Import
-   finished".
+Priority order: T1 (best effort-to-value), T2 (largest user-visible debt),
+T3 (matters because verification runs as root), then T4–T6 (want a design
+decision each; small code).
 
-## How to dispatch (this session learned it the hard way)
+### T1 — handleImport's render path is untested. Tier 1, checks `tests`.
+Every `handleImport` test runs with `renderer == nil` (JSON fallback), so no
+Go test executes the template-render call in
+`internal/handlers/filemanager/…` (find it: `grep -rn "Import finished"
+internal/`). A typo in the template NAME would ship an empty body with a
+green suite (the exact failure shape of ruling 2026-08-16a).
+**Change**: one handler test using the existing `setupTestEnvWithRenderer`
+helper, asserting the response body contains "Import finished".
+**Accept**: the new test fails when the handler's template name is mutated on
+a scratch copy; package tests green; gofmt/vet clean.
 
-This lead session was **not** gateway-routed, so the Agent tool could not
-resolve `worker-glm` / `checker-glm`. Workers and checkers were dispatched as
-headless subprocesses instead, which works:
+### T2 — File Manager page accessibility. Tier 2, checks `a11y,second`.
+Pre-existing WCAG violations, byte-identical since before the P-run: at least
+unlabelled toggle checkboxes, an unnamed SVG delete button, low-contrast size
+text. The two prior audits DISAGREE (20 vs 6 findings) and the discrepancy
+was never reconciled — **step 1 is a fresh `checker-a11y` recount against
+ACCESSIBILITY.md; trust neither old number**. Then one worker task per
+finding cluster.
+**Accept**: axe (or the repo's audit method) reports zero violations of the
+recounted list on the File Manager page; no visual regression on the other
+pages' shared components.
 
-```bash
-cd /home/darrell/bin/ai/budget2 && \
-env -i HOME="$HOME" PATH="$PATH" TERM=dumb \
-  claude -p --agent worker-coder --permission-mode acceptEdits \
-    --allowedTools "Read,Write,Edit,Glob,Grep,Bash" \
-    --add-dir /home/darrell/bin/ai/budget2 < brief.md
-```
+### T3 — make the three root-broken fixtures root-proof. Tier 2, checks
+`tests,second`. The three tests in "Environment facts #1" fail under root.
+Options per test: a root-proof injection (the ENAMETOOLONG pattern, or
+rename-onto-directory), or an explicit documented `t.Skip` under uid 0 —
+prefer injection; a skip recreates the F3 attempt-4 problem (an undefended
+branch in root environments).
+**Accept**: full module `go test ./...` green AS ROOT and as uid≠0; each
+reworked test still kills its original mutation at both uids (state the
+mutation per test in the brief; the storage one is in F3's report).
+NOTE: two of the three live in `mcpsvc/curate` (not critical); the storage
+one is under `internal/services/storage/**` → assign Tier 3 or expect an
+escalation flag.
 
-The gateway env vars this block used to carry are gone — see the note on
-independence lanes below; `ANTHROPIC_BASE_URL` is not something to set or to
-check.
+### T4 — decide: does mode preservation include setgid/sticky bits? Decision
+first, then Tier 1 code. `filePerm` (internal/services/storage/migration.go)
+uses `Mode().Perm()`, which strips setuid/setgid/sticky — a data file with
+02644 silently loses the bit on migration. Recorded by checker-second in
+`.swarm/verdicts/F4.1.checker-second.verdict`. Either declare bits out of
+contract (document at `filePerm` + F4 report) or preserve them
+(`Mode() & (fs.ModePerm|fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky)`) with a
+test per bit. ASK THE USER which; do not choose silently.
 
-**Independence is a lane, not a vendor.** The LiteLLM gateway was dropped on
-2026-08-19; there is no proxy and no local endpoint, and the `worker-glm` /
-`checker-glm` aliases are gone. Every agent runs on Claude, with the model
-chosen per agent in `.claude/agents/*.md` frontmatter. The second opinion now
-comes from a different **job** and a different **model tier**: the primary
-verifier asks "does this meet the criteria?" and cites the command proving each
-one; `checker-second` asks "what would make this wrong?", defaults to FAIL on
-ambiguity, and is doing its job badly if it never disagrees.
+### T5 — auth.go's ad-hoc staging. Tier 3 (touches storage critical glob),
+checks `tests,second`. `internal/services/storage/auth.go` `saveConfig`
+stages with a fixed ad-hoc `.tmp` name outside the `atomicWrite` /
+`StagingSuffix` regime the F2 work established (orphan cleanup does not know
+about it; a crash can leave the temp file). Route it through `atomicWrite`
+(mind T4's outcome for the mode argument).
+**Accept**: no fixed-name staging remains (`grep -n '\.tmp"' internal/services/storage/`),
+crash-window behavior covered by a test, package suite green at both uids.
 
-`gate.sh` still enforces two distinct `FAMILY` values mechanically. Write
-`anthropic` for the primary verifier and `adversarial` for `checker-second`;
-judges write `anthropic`, `adversarial`, and `impact`. `glm` and `local` still
-validate only so pre-2026-08-19 verdicts keep parsing — writing either today
-satisfies the gate and verifies nothing. Two PASSes are weaker evidence than
-the old cross-vendor pair; that reduction was accepted deliberately (user
-decision 2026-08-19).
+### T6 — atomicWrite vs symlinked destinations. Decision first, then Tier 3
+if changed. `atomicWrite` publishes by rename, so a symlinked destination is
+replaced by a regular file (the data lands beside the link, not at its
+target). Flagged during F4, deliberately not bundled. Either document "the
+data directory does not honour symlinks" (README + a comment at atomicWrite)
+or resolve symlinks before staging — the latter reopens the F2 atomicity
+analysis, so it needs its own design note. ASK THE USER which.
 
-Four traps, all hit at least once:
+## Not tasks — do not "fix" these
 
-1. **`env -i` is required.** Without it the child inherits this session's
-   host-auth socket, silently uses host credentials, and dies with
-   `400 No connected db`.
-2. **`cd` into the repo first, and pass `--add-dir`.** A worker launched from
-   `agents2` cannot run the Go toolchain against budget2; the `rtk` hook then
-   prints a misleading `Go build: Success` for a tree with no `go.mod`. The
-   first P14 worker correctly refused to claim green and proved the false
-   success with a planted syntax error.
-3. **`--allowedTools` is variadic** — pass it as ONE comma-separated string and
-   feed the prompt on **stdin**, or the brief's words get parsed as tool rules.
-4. **The Anthropic-family checker** (`checker-tests`) has no agent definition;
-   dispatch it via the lead session's own Agent tool, which is genuinely
-   Anthropic-routed, and have it write `FAMILY: anthropic`.
-
-### checker-second misreports its own family
-
-**SUPERSEDED 2026-08-19** — kept as the record of why the gate checks
-`FAMILY` at all. There is no gateway and no GLM routing now; see the
-independence-lane note above for what to write today.
-
-`checker-second` routes to Z.ai GLM (verified: querying the `checker-glm` alias
-returns "Created by Z.ai... GLM model family"), but in long agentic contexts it
-sometimes writes `FAMILY: anthropic`, which silently defeats the two-family
-quorum. It did this on both P13 runs and got it right on P14.
-
-**Always include the routing fact in the checker brief** — that which model ran
-is infrastructure the dispatcher knows and the model cannot observe. Do NOT edit
-a verdict file to fix it; re-dispatch with the fact stated. Wording used:
-
-> This session is routed through a LiteLLM gateway. Your agent definition
-> specifies model `checker-glm`, which the gateway resolves to Z.ai's GLM.
-> Therefore your `FAMILY:` field MUST be exactly `glm`. This says nothing about
-> what your verdict should be.
-
-## The P15 blocker — `worker-local` cannot resolve
-
-**SUPERSEDED 2026-08-19** — historical. `worker-local` is a Claude Haiku
-agent now, and the Tier-3 second arm differs by model tier, not by vendor.
-
-Tier 3 requires two blind implementations from different families:
-`worker-coder` (GLM, available) and `worker-local` (Qwen on the Spark,
-**unavailable**). Established 2026-08-16:
-
-- `spark.local` does not resolve from nix3; only
-  `spark.otter-lungfish.ts.net` (100.127.56.27) does.
-  `litellm-config.yaml` still points `worker-local` at
-  `http://spark.local:8000/v1` with `api_key: "unused"`.
-- Something *is* listening on spark:8000 and it answers
-  `{"error":"Unauthorized"}` — i.e. a vLLM with an API key. The only
-  vLLM-backed unit running is `openjarvis.service` ("OpenJarvis API server
-  (vLLM-backed)"). There is **no** separate Qwen3-32B unit on the box
-  (`systemctl --user list-unit-files | grep -i vllm` finds nothing).
-- So the swarm's `worker-local` would have to be repointed at OpenJarvis's own
-  inference server, using a key from `~/.openjarvis/.env`, contending with it
-  for the GPU.
-
-That is a change to personal infrastructure and was deliberately NOT made
-autonomously. Options, for the user to choose:
-
-1. **Bring up a dedicated Qwen vLLM** on another port and repoint
-   `worker-local` at `spark.otter-lungfish.ts.net:<port>`. Faithful to
-   CLAUDE.md, $0 marginal cost, costs GPU memory alongside OpenJarvis.
-2. **Repoint `worker-local` at the existing vLLM** (tailnet hostname + real
-   API key). Cheapest to set up; couples the swarm to a personal service and
-   whatever model it serves, which may not be Qwen.
-3. **Substitute an Anthropic-family model** as P15's second blind implementer.
-   No infra change and preserves Tier 3's intent (two independent blind
-   implementations from different families), but deviates from CLAUDE.md's
-   literal text and from its `$0 worker-local` cost discipline.
-4. **Defer P15** and proceed to the accounts/transfers run.
-
-Note `judge-local` has the same dependency, so a Tier-2 dispute needing three
-judges is also currently unservable.
-
-## P15 mechanics, once unblocked
-
-`swarm/tier3-setup.sh P15` cuts its two blind worktrees from `HEAD` — run it
-only now that P14 has merged, or the oracle's scan check fails in both
-worktrees for reasons unrelated to either implementation.
-
-The oracle at `.swarm/tier3/P15/accept.sh` (13 checks) was written and
-validated before dispatch: 3 pass on a tree without the feature, 10 fail,
-output byte-identical across runs. It asserts on filesystem effects and HTTP
-status codes rather than response bodies, because `tier3-compare.sh` diffs the
-two worktrees' output literally. Every safety check also requires a non-404
-status so an unimplemented endpoint cannot satisfy it vacuously. The request
-wire format is pinned in the design doc §3 — both blind workers must get it.
-
-## Before `gate.sh done`
-
-Run `checker-a11y` across the File Manager page, then review every
-lead-authored file. **Known and already triaged:** an axe run during P13
-verification found 20 pre-existing WCAG violations on that page (unlabelled
-toggle checkboxes, unnamed SVG delete buttons, low-contrast size text), all
-byte-identical at HEAD and none introduced by this run. Recorded in the design
-doc; they deserve their own task rather than being folded into P15.
-
-## Decisions already made — do not relitigate
-
-Recorded in `docs/superpowers/specs/2026-08-12-file-manager-import-design.md`,
-including rulings 2026-08-12a, **2026-08-16a** (P13 attempt 1 rejected: the
-swap target is a different template — both checkers passed broken work by
-reading the include chain instead of the handler) and **2026-08-16b** (P13's
-three one-token handler changes are in scope).
-
-- Browsers cannot delete a file chosen via `<input type="file">`. That is why
-  the source delete needs a server-side folder import at all.
-- The import folder is pinned to one configured directory, default
-  `~/Downloads`, overridable by `BUDGET2_IMPORT_DIR`.
-- Name collisions skip. No overwrite, no auto-rename; the source is never
-  deleted for a file that was not imported.
-- No file-level dedup — `LoadData` already dedups transactions across enabled
-  files.
-
-## Verification lesson worth keeping
-
-A checker may not conclude that an htmx swap preserves anything by reading the
-template include; it must establish which template the *handler* renders and,
-where feasible, assert against the endpoint's real response body. Both
-attempt-1 checkers failed this and passed a feature that was visibly broken
-after a single click. The cheap decisive test:
-
-```bash
-curl -s -X POST http://127.0.0.1:<port>/explorer/files/toggle \
-  -d "filename=<one>.csv&enabled=true" | grep -c "data-sort-btn"
-```
-
-0 means broken, non-zero means fixed.
+- R9 `no-change` in the ledger: permanent, honest, correct.
+- CHANGELOG's "Twenty-six tools" line: historical record of 2026-08-15.
+- The `PLAINTEXT ON DISK` branch in migration.go has a comment explaining why
+  it has no end-to-end test (not constructible in-process); the reasoning is
+  also in F3's report. A vacuous test there would be worse than the gap.
+- go-sdk v1.7.0 cannot send `notifications/elicitation/complete`; the browser
+  approval flow survives without it. SDK limitation, tracked in CHANGELOG
+  (2026-08-16 entry).
+- F4's report cites regression grep counts ("10 invalidateCache / 14
+  atomicWrite sites") that don't match a fresh grep; the underlying
+  invariant was re-verified directly (see F4.1 verdicts). Stale prose, not a
+  defect.

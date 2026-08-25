@@ -13,7 +13,7 @@ import (
 )
 
 type resolveTransferInput struct {
-	PairKey string `json:"pair_key" jsonschema:"the pair_key from get_transfers or the suspected queue; the two legs of a suspected pair share this key"`
+	PairKey string `json:"pair_key" jsonschema:"the pair_key from the suspected review queue (not from get_transfers, which only returns already-resolved pairs); the two legs of a suspected pair share this key"`
 	Verdict string `json:"verdict" jsonschema:"confirm to mark the pair a real transfer (both legs are paired on the next load, pattern hit or not), or reject to mark it a coincidence (never suggested or auto-paired again)"`
 
 	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"the token returned by a previous call for this same pair and verdict; omit it to get the preview and a fresh token"`
@@ -50,8 +50,9 @@ func registerResolveTransfer(s *mcp.Server, deps Deps) {
 			"prompt, the second call ALSO puts the question to the user directly and does nothing unless they " +
 			"say yes -- read human_approval in the result: \"refused\" means they said no and you must not " +
 			"retry, \"not asked\" means this client could not reach anybody so the token alone authorized the " +
-			"write, so say plainly what was recorded. Never invent a pair_key; call get_transfers or read the " +
-			"review queue for one. transfer_decisions.json is copied to a .bak before the first change of a " +
+			"write, so say plainly what was recorded. Never invent a pair_key; read the suspected review queue " +
+			"for one -- get_transfers only returns already-resolved pairs and its keys will be refused. " +
+			"transfer_decisions.json is copied to a .bak before the first change of a " +
 			"session that has a file to copy; on a fresh install with no decisions file yet there is nothing " +
 			"to back up, so none is taken.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in resolveTransferInput) (res *mcp.CallToolResult, out resolveTransferOutput, err error) {
@@ -66,7 +67,7 @@ func registerResolveTransfer(s *mcp.Server, deps Deps) {
 
 		key := strings.TrimSpace(in.PairKey)
 		if key == "" {
-			return nil, resolveTransferOutput{}, fmt.Errorf("pair_key is required; call get_transfers or read the suspected review queue for one")
+			return nil, resolveTransferOutput{}, fmt.Errorf("pair_key is required; read the suspected review queue for one (get_transfers only returns already-resolved pairs)")
 		}
 		verdict := strings.TrimSpace(in.Verdict)
 		var v transfers.Verdict

@@ -47,10 +47,9 @@ Reverses one `resolve_duplicates` decision, putting the pair back in the
 review queue: a `kept_winner` undo restores the suppressed transaction; a
 `kept_both` undo simply re-flags the pair (nothing was suppressed).
 
-Params: `pair_key` (of an already-resolved pair), and for `kept_winner`
-undos `suppressed_hash` — note this is the identity as **persisted** in
-`duplicate_decisions.json`, which may be a StableID rather than the legacy
-hash `list_duplicates` reported.
+Params: `pair_key` (of an already-resolved pair) — that is the only
+parameter; a `kept_winner` undo needs nothing further to identify which side
+was suppressed, since that was already recorded when it was resolved.
 
 ## run_backup ✏️ (additive only — the safe one)
 

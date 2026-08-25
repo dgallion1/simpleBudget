@@ -83,8 +83,15 @@ opposite-sign, equal-amount rows inside the pairing window that no transfer
 pattern backs. Coincidentally equal amounts are common, so the app only ever
 suggests these — a human verdict is what pairs them.
 
-Params: `pair_key` (from `get_transfers` or the review queue — **never
-invent one**), `verdict` (`confirm` or `reject`), `confirm_token`.
+Params: `pair_key`, `verdict` (`confirm` or `reject`), `confirm_token`.
+
+- `pair_key` must come from the **suspected-pair review queue** — the user,
+  or the `/transfers` page (the "Suspected pairs" section, an HTMX swap
+  target). `get_transfers` only returns pairs already classified as
+  Transfer, so a key read from it is already resolved and `resolve_transfer`
+  will refuse it with "no longer a suspected transfer awaiting review". No
+  MCP tool currently exposes the suspected queue itself — this is a known
+  gap, not an oversight. **Never invent a `pair_key`.**
 
 - `confirm` is the load-bearing verdict: both legs become Transfer/paired on
   the next load, pattern hit or not — and if the rows were NOT actually a

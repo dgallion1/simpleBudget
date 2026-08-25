@@ -65,10 +65,15 @@ call.
 
 1. **Read-only (20 tools).** Call freely. Nothing can go wrong beyond a wrong
    answer, and the reference files exist to prevent those.
-2. **Writes with a safety net (7 tools, ✏️).** Each one copies the file it is
-   about to change to a `.bak` under `<backup-dir>/mcp-snapshots` before its
-   first change of the session. Reversible by hand, but real: tell the user
-   what you wrote, and remember there is no in-app undo for the plan.
+2. **Writes with a safety net (7 tools, ✏️).** Six of them (`resolve_duplicates`,
+   `undo_resolve`, `upsert_major_expense`, `pin_transactions`,
+   `delete_major_expense`, `apply_changes`) copy the file they are about to
+   change to a `.bak` under `<backup-dir>/mcp-snapshots` before their first
+   change of the session. `run_backup` is different: it is purely additive —
+   it writes a full, timestamped archive of the data directory rather than a
+   `.bak` of a file it is changing, and changes nothing existing. All seven
+   are reversible by hand, but real: tell the user what you wrote, and
+   remember there is no in-app undo for the plan.
 3. **Guarded (4 tools, 🔒).** `restore_backup`, `shutdown_server`,
    `resolve_transfer`, `set_balance_anchor`. Two-call protocol with a
    single-use token and a human-approval step. These are the tools where a

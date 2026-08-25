@@ -1,0 +1,254 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F3
+ATTEMPT: 4
+---
+Tree under test: /home/user/simplebudget
+  $ git -C /home/user/simplebudget rev-parse HEAD
+    c9c5d5dabbf3ad76db467dfdcdf90fc820357505
+  $ git -C /home/user/simplebudget status --porcelain
+     M .swarm/tier3/F4/report.md
+    ?? .swarm/verdicts/F3.4.checker-second.verdict      (neither is mine)
+
+ISOLATION. Nothing was run in /home/user/simplebudget. Copies used:
+  /tmp/claude-0/f3-tests        oracle run as root
+  /tmp/claude-0/f3-tests-suite  build/vet/gofmt/suite as root
+  /tmp/claude-0/f3-ubuntu       oracle + suite run as uid 1000 ("ubuntu")
+  /tmp/claude-0/f3-mut09, f3-mut10   hand mutations
+The only write to the real tree is this verdict file.
+
+MACHINE. 4 CPUs (nproc=4). Two other checkers were running concurrently for
+the first ~50 minutes (load average peaked at 9.5). I am running as uid 0
+(`id -u` -> 0); the attempt-1..3 checkers ran at uid 1000 (F3.3 verdict:
+"id -u=1000"). Both facts turn out to matter, so every headline command below
+was run in BOTH environments.
+
+=====================================================================
+CRITERION 1 -- `bash .swarm/tier3/F3/accept.sh` all checks PASS, exit 0.
+  NOT MET. The oracle exits 1 in both environments I could construct.
+
+  (a) as root, cwd /tmp/claude-0/f3-tests, ~46 min:
+      CHECK 01-partial-failure-behaviour: PASS
+      CHECK 02-f1-oracle-still-green: FAIL (want 0, got 1)
+      CHECK 03-f2-oracle-still-green: FAIL (want 0, got 1)
+      CHECK 07-nothing-decrypted-guard-defended: PASS (suite detected the mutation)
+      CHECK 08-new-helper-placement-defended: PASS (suite detected the mutation)
+      CHECK 09-encrypt-failure-reporting-defended: PASS (suite detected the mutation)
+      CHECK 10-atomicwrite-failure-reporting-defended: PASS (suite detected the mutation)
+      CHECK 05-build: PASS
+      CHECK 06-vet: PASS
+      ---
+      passed=7 failed=2
+
+  (b) as uid 1000, cwd /tmp/claude-0/f3-ubuntu, machine near-idle
+      (su ubuntu, PATH=/usr/local/go/bin, GOMODCACHE/GOCACHE copied out of
+      /root so the unprivileged user could build), ~40 min:
+      identical matrix -- CHECK 02 and CHECK 03 FAIL, everything else PASS
+      ---
+      passed=7 failed=2
+      ORACLE_EXIT=1
+
+  WHY 02 AND 03 FAIL, established rather than assumed. Both nested oracles
+  fail on exactly one sub-check each, and both are the same command:
+    $ grep -n "package-suite-race" -B3 .swarm/tier3/F1/accept.sh
+      168: go test -race -count=1 -timeout 600s ./internal/services/storage/
+    $ grep -n "package-suite-race" -B3 .swarm/tier3/F2/accept.sh
+      134: go test -race -count=1 -timeout 600s ./internal/services/storage/
+    /tmp/f3_f1.out (uid-1000 run):  CHECK 02-package-suite-race: FAIL (want 0, got 1)
+                                    everything else PASS, passed=6 failed=1
+    /tmp/f3_f2.out (uid-1000 run):  CHECK 04-package-suite-race: FAIL (want 0, got 1)
+                                    01,02,03,05,06 PASS, passed=5 failed=1
+    $ grep -E "^(panic:|FAIL)" /tmp/f1_race.out /tmp/f2_race.out
+      panic: test timed out after 10m0s
+      FAIL  budget2/internal/services/storage  600.251s
+      panic: test timed out after 10m0s
+      FAIL  budget2/internal/services/storage  600.274s
+  The stack at the timeout is scrypt inside age.Encrypt on an ordinary test,
+  not a deadlock. Measured runtime of that same command on the idle box with
+  a bigger budget (see criterion 4): 1026.965s, rc 0, "ok". So the F1/F2
+  oracles' 600s budget is ~40% below what this 4-CPU host needs; on the host
+  attempts 1-3 were graded on, it fit.
+  This failure is NOT attributable to attempt 4: F1/F2 accept.sh are
+  pre-existing artifacts, attempt 4 added no production code (criterion 3),
+  and the suite they time out on is green given enough time (criterion 4).
+  I am recording the criterion as unmet because it is unmet as written --
+  the oracle exits 1 -- not because I found a defect in the work. What it
+  would take to satisfy it here: raise the -timeout in F1's check 02 and F2's
+  check 04 (a lead decision about the oracles, outside this task's scope), and
+  run at uid != 0 (see criterion 4).
+
+=====================================================================
+CRITERION 2 -- checks 09 and 10 pass BECAUSE the two named tests detect
+  their mutations.  MET for 09 and 10 at uid 1000; and I found that check 10
+  is SPURIOUS at uid 0. Detail below, because this is the substantive finding.
+
+  accept.sh's mutate_and_expect_failure only reports "suite detected the
+  mutation", never which test, so I reproduced both mutations by hand,
+  applying byte-for-byte the same python snippets accept.sh embeds
+  (/tmp/claude-0/mut_enc.py, /tmp/claude-0/mut_aw.py) on fresh copies.
+
+  Mutation 09 (drop `failed = append(failed, path)` from the encryptData
+  error branch) -- confirmed to apply cleanly:
+    $ cd /tmp/claude-0/f3-mut09 && git diff -- internal/services/storage/migration.go
+      @@ -469,7 +469,6 @@ func (s *Storage) rollbackDecryptionWithRecipient(
+              encrypted, err := encryptData(data, recipient)
+              if err != nil {
+      -                failed = append(failed, path)
+                       s.invalidateCache(path)
+    Named test, as uid 1000:
+      --- FAIL: TestRollbackDecryptionReportsPathOnEncryptFailure (0.00s)
+          migration_decrypt_rollback_test.go:362: expected failed=[.../plain.csv], got []
+    Full package suite on the mutant as uid 0: the only two failures are that
+    named test and TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+    (the latter is the root artifact of criterion 4, red on the unmutated tree
+    too). No other test in the package notices.
+
+  Mutation 10 (drop `failed = append(failed, path)` from the atomicWrite
+  error branch) -- applies cleanly on top of F4's filePerm change:
+    $ cd /tmp/claude-0/f3-mut10 && git diff -- internal/services/storage/migration.go
+      @@ -486,7 +486,6 @@
+              } else if err := s.atomicWrite(path, encrypted, perm); err != nil {
+      -                failed = append(failed, path)
+                }
+    FULL package suite on the mutant, as uid 1000 -- exactly one failure, the
+    named test:
+      $ storage-mut10.test (uid 1000, whole suite, -test.v)
+        --- FAIL: TestRollbackDecryptionReportsPathOnAtomicWriteFailure (2.53s)
+        FAIL
+      (targeted run gives the assertion line:
+        migration_decrypt_rollback_test.go:435: expected
+        failed=[.../sub/plain.csv], got [])
+
+  FINDING (check 10 is not evidence at uid 0). The new test opens with
+  `if os.Geteuid() == 0 { t.Skip("root bypasses unix file permissions") }`
+  (migration_decrypt_rollback_test.go:397-399), so as root it never runs:
+    $ storage-mut10.test -test.run TestRollbackDecryptionReportsPathOnAtomicWriteFailure -test.v   # as root
+        migration_decrypt_rollback_test.go:398: root bypasses unix file permissions
+      --- SKIP: TestRollbackDecryptionReportsPathOnAtomicWriteFailure (0.00s)
+      PASS
+  The skip guard is correct engineering -- the mechanism genuinely cannot work
+  as root -- but it means the oracle's "CHECK 10: PASS (suite detected the
+  mutation)" in run (a) above was produced by the unrelated pre-existing root
+  failure of criterion 4, not by the test the check is meant to grade. A root
+  grader gets a green check 10 for the wrong reason. Only the uid-1000
+  reproduction above actually establishes check 10.
+
+  Both tests assert what their names claim (read in full,
+  migration_decrypt_rollback_test.go:328-450): 09 writes a plaintext file,
+  calls s.rollbackDecryptionWithRecipient([]string{plainFile},
+  failingRecipient{}) and requires failed == [full path] plus byte-identical
+  on-disk content; 10 chmods the *containing directory* to 0500 so
+  os.CreateTemp for atomicWrite's staging file fails, and requires the same.
+  Neither is a name-only test.
+
+=====================================================================
+CRITERION 3 -- attempt 4 added NO production code beyond the PLAINTEXT ON
+  DISK comment.  MET.
+
+  The pre-attempt-4 state is NOT reachable from git: attempts 1-4 are squashed
+  into one commit and the clone is fresh.
+    $ git log --oneline -- internal/services/storage/
+      90bc39c fix(storage): migration must not change a file's permission bits   (F4)
+      01d6853 fix(storage): restore encryption when DisableEncryption fails partway  (F3, all attempts)
+      bb8cf76 ... (F2)   1512086 ... (F1)
+    $ git reflog   -> clone 2026-08-25 12:08, no F3 worktrees, no stashes, no branches
+  So I established it from the line-number anchors the attempt-3 verdict
+  recorded on the attempt-3 tree (F3.3.checker-tests.verdict, POINT 3:
+  "guard at 198-200; error at :203; ... invalidateCache 413 < encryptData 415;
+  atomicWrite 424; invalidateCache 428; comment at 381"), against the
+  end-of-attempt-4 file:
+    $ git show 01d6853:internal/services/storage/migration.go > /tmp/claude-0/mig_F3final.go
+    $ awk 'NR>=198 && NR<=214' ...
+      198: if len(decryptedSoFar) == 0 {   199: return decryptErr   200: }
+      201: failed := s.rollbackDecryptionWithRecipient(decryptedSoFar, recipient)
+      202: if len(failed) > 0 {
+      203-213: an 11-line comment ("No end-to-end test reaches this branch ...")
+      214: return fmt.Errorf("... PLAINTEXT ON DISK ...")
+    $ awk 'NR==392||NR==424||NR==426||NR==435||NR==439' /tmp/claude-0/mig_F3final.go
+      392: // full paths of every file it could not restore, instead of just logging.
+      424: s.invalidateCache(path)
+      426: encrypted, err := encryptData(data, recipient)
+      435: if err := s.atomicWrite(path, encrypted, 0644); err != nil {
+      439: s.invalidateCache(path)
+    $ wc -l /tmp/claude-0/mig_F3final.go  -> 442 (the helper is the last function)
+  Lines 198-202 are at their attempt-3 numbers unchanged; every one of the five
+  attempt-3 anchors below the branch is at attempt-3 number + 11, with the
+  content the attempt-3 verdict recorded; the file ends with the helper. An
+  11-line comment insertion at 203 is the only edit consistent with all six
+  anchors -- any added or removed line of code anywhere from 1..442 would move
+  at least one of them off. (Bound, stated honestly: a *balanced* insert+delete
+  of equal size inside one of the unanchored stretches would also preserve
+  them. For the two stretches that matter, F3.3.checker-second independently
+  pinned the content at attempt 3 -- it applied these same two mutations then
+  and recorded that `failed = append(failed, path)` was present in both
+  branches and that "production code handles both branches correctly".)
+  Manifest agrees: .swarm/manifests/F3.4.files lists exactly
+    internal/services/storage/migration.go
+    internal/services/storage/migration_decrypt_rollback_test.go
+  the second being a _test.go file. The comment is still present on master at
+  migration.go:203-213 (F4's later edit did not disturb it).
+
+=====================================================================
+CRITERION 4 -- unmutated storage suite green.
+  MET at uid 1000. NOT MET at uid 0, for a reason that predates attempt 4.
+
+  uid 1000, /tmp/claude-0/f3-ubuntu, idle box:
+    $ go test -count=1 ./internal/services/storage/
+      ok  budget2/internal/services/storage  157.001s      plain_rc=0
+    $ go test -race -count=1 -timeout 1200s ./internal/services/storage/
+      ok  budget2/internal/services/storage  1026.965s     race_rc=0
+  (that 1026.965s is the number that explains criterion 1's two failures.)
+
+  uid 0, /tmp/claude-0/f3-tests-suite:
+    $ go test -count=1 ./internal/services/storage/
+      --- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles (9.70s)
+          migration_decrypt_rollback_test.go:245: expected
+          failed=[/tmp/TestRollback.../unreadable.csv], got []
+      FAIL  budget2/internal/services/storage  340.884s     plain_rc=1
+    $ go test -race -count=1 -timeout 1200s ./internal/services/storage/
+      FAIL  budget2/internal/services/storage  1200.396s    race_rc=1
+      (that one is the 600s/1200s capacity issue, run under load 9)
+  Cross-check that the plain failure is purely the uid: the same compiled test
+  binary, same tree, whole suite, run as uid 1000 -> PASS.
+
+  The failing test is NOT one of attempt 4's -- it is the attempt-2/3 test for
+  the ReadFile-failure branch, and it has no `os.Geteuid() == 0` guard, so as
+  root its chmod-0000 fixture is readable and the rollback succeeds. Worth the
+  lead's attention as a robustness gap (attempt 4's own new test guards for
+  exactly this and the older sibling does not), but it is outside what attempt
+  4 was authorised to touch.
+
+=====================================================================
+CRITERION 5 -- build, vet, gofmt.  MET.
+  $ cd /tmp/claude-0/f3-tests-suite && go build ./...   -> BUILD_OK (rc 0)
+  $ go vet ./...                                        -> VET_OK   (rc 0)
+  $ gofmt -l internal/services/storage/migration.go \
+             internal/services/storage/migration_decrypt_rollback_test.go
+    (no output, exit 0 -- both manifest files clean)
+  Corroborated inside both oracle runs: CHECK 05-build: PASS, CHECK 06-vet: PASS.
+
+=====================================================================
+SCOPE.  Clean.
+  Manifest is two files, both under internal/services/storage/**, which is in
+  .swarm/critical.globs; ledger has F3 at tier 3, which permits it
+  (`F3  3  tests,second  merged-unverified  4  worker-coder  ...`).
+  Nothing outside the manifest is modified: the real tree's only dirty paths
+  are .swarm/tier3/F4/report.md (F4's lead artifact) and
+  .swarm/verdicts/F3.4.checker-second.verdict (the other lane). All my
+  mutation and oracle work was done on copies under /tmp/claude-0/; I made no
+  edit to any file in /home/user/simplebudget other than this verdict.
+
+=====================================================================
+BOTTOM LINE for the lead.  Criteria 2, 3 and 5 are proven. Criterion 4 is
+proven at uid 1000 and fails at uid 0 on a pre-existing test. Criterion 1 --
+the oracle, which the brief makes authoritative -- exits 1 in both
+environments, on two checks that reduce to a `-timeout 600s` in F1's and F2's
+accept.sh being shorter than this host's 1027s -race runtime. I found no
+defect in attempt 4's own change: the two new tests exist, assert their named
+properties, and each is the sole test that dies under its own mutation. But I
+cannot certify a criterion whose command exits 1, so this is FAIL rather than
+PASS-with-caveats. Making it PASSable here needs two things that are the
+lead's to authorise, not the worker's: a larger -race timeout in the F1/F2
+oracles, and either a non-root grading environment or a root guard on
+TestRollbackDecryptionWithRecipientReportsUnrestorableFiles.

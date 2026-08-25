@@ -131,7 +131,11 @@ fi
 go test -count=1 -run 'Cache|Migration|Rollback|Encryption' ./"$PKG"/ >/dev/null 2>&1
 ck "03-f1-properties-intact" 0 "$?"
 
-go test -race -count=1 -timeout 600s ./"$PKG"/ >/tmp/f2_race.out 2>&1
+# Timeout raised 600s -> 1800s on 2026-08-24 (ruling 2026-08-24c): on a
+# loaded 4-CPU container the race suite needs ~1030s and passes with no
+# races; 600s was a machine-speed assumption from the author's box, and it
+# made this check fail on hardware where the suite is genuinely green.
+go test -race -count=1 -timeout 1800s ./"$PKG"/ >/tmp/f2_race.out 2>&1
 race_rc=$?
 ck "04-package-suite-race" 0 "$race_rc"
 (( race_rc == 0 )) || tail -20 /tmp/f2_race.out

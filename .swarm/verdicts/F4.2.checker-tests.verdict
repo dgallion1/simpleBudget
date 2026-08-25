@@ -1,0 +1,169 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F4
+ATTEMPT: 2
+---
+SETUP / TREE STATE
+  `cd /home/user/simplebudget && git rev-parse HEAD`
+      c9c5d5dabbf3ad76db467dfdcdf90fc820357505
+  `git merge-base --is-ancestor 90bc39c HEAD` -> YES (the F4 fix commit
+      90bc39c "fix(storage): migration must not change a file's permission bits"
+      is in this history; `git log --oneline -3` shows c9c5d5d, 90bc39c, 01d6853).
+  `git status --porcelain` (uncommitted attempt-2 state, expected):
+       M .swarm/ledger.tsv
+       M .swarm/tier3/F4/accept.sh
+       M .swarm/tier3/F4/report.md
+       M internal/services/storage/migration_perm_test.go
+      ?? .swarm/manifests/F4.2.files
+      ?? .swarm/verdicts/F3.4.checker-second.verdict
+      ?? .swarm/verdicts/F4.1.checker-second.verdict
+      ?? .swarm/verdicts/F4.1.checker-tests.verdict
+  Copies used (nothing was ever run in /home/user/simplebudget):
+      /tmp/claude-0/f4t2       oracle run, as unprivileged user `nobody` (uid 65534)
+      /tmp/claude-0/f4t2-root  unmutated targeted tests / gofmt / vet (root)
+      /tmp/claude-0/f4t2-mut   filePerm stat-error mutant
+  Toolchain: go.mod pins `go 1.26` / `toolchain go1.26.6`; every run reports
+      "go version go1.26.6 linux/amd64" (the module auto-switches from the
+      installed 1.24.7), so all runs below used the same toolchain.
+  The only write this checker made to the main tree is this verdict file.
+
+CRITERION 1 -- oracle exits 0: **MET**
+  Command (single run, unprivileged, from the root of my copy):
+      su nobody -s /bin/bash -c 'export PATH=/usr/local/go/bin:/usr/bin:/bin
+        HOME=/tmp/claude-0/f4t2-home GOCACHE=/tmp/claude-0/f4t2-gocache
+        GOPATH=/tmp/claude-0/f4t2-gopath GOFLAGS=-mod=mod;
+        cd /tmp/claude-0/f4t2 && id -u && go version && date
+        && bash .swarm/tier3/F4/accept.sh; echo "ORACLE_EXIT=$?"; date'
+  Full log (/tmp/claude-0/f4t2-oracle2.log):
+      65534
+      go version go1.26.6 linux/amd64
+      Tue Aug 25 14:47:50 UTC 2026
+      CHECK 01-migration-preserves-mode: PASS
+      CHECK 02-package-suite-race: PASS
+      CHECK 03-build: PASS
+      CHECK 04-vet: PASS
+      ---
+      passed=4 failed=0
+      ORACLE_EXIT=0
+      Tue Aug 25 15:05:16 UTC 2026
+  `id -u` = 65534 confirms it really ran as `nobody`, so the root/chmod-0000
+  artifact that fails F3's TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+  is out of the picture; that test did not fail here.
+  Supporting detail from the same run:
+      tail /tmp/f4_oracle.out -> "ok  budget2/internal/services/storage  15.027s"
+      tail /tmp/f4_race.out   -> "ok  budget2/internal/services/storage  1026.946s"
+  1026.9s is comfortably inside the raised 1800s budget and above the old 900s
+  one, which is exactly the attempt-1 finding; no race was reported.
+  Copy fidelity (so the exit-0 run is a run of the attempt-2 tree, not a drifted
+  copy): `diff -r --brief /home/user/simplebudget/internal /tmp/claude-0/f4t2/internal`
+  -> no differences ("internal/ trees identical"); `diff .../F4/accept.sh` between
+  main tree and copy -> identical. Before the run, `git status --porcelain`
+  executed as nobody inside the copy printed the same 4 modified + 4 untracked
+  paths listed above.
+  DISCLOSED FALSE START (my recipe, not the code): my first oracle run
+  (/tmp/claude-0/f4t2-oracle.log) gave "CHECK 03-build: FAIL (want 0, got 1),
+  passed=3 failed=1, ORACLE_EXIT=1" with checks 01/02/04 PASS. Reproducing the
+  suppressed output showed the cause was git, not Go:
+      go build ./... -> "error obtaining VCS status: exit status 128
+                        Use -buildvcs=false to disable VCS stamping." (x3)
+      git status as nobody -> "fatal: detected dubious ownership in repository
+                        at '/tmp/claude-0/f4t2'" (exit 128)
+  i.e. buildvcs stamping failed because I had `nobody` reading a root-owned
+  .git. `chown -R nobody:nogroup` on the copy made `git status` exit 0 for that
+  account, and the full re-run above is the exit-0 result reported. As a cross
+  check the same `go build ./...` and `go vet ./...` in /tmp/claude-0/f4t2-root
+  as root gave ROOT_BUILD_EXIT=0 / ROOT_VET_EXIT=0. No repo file and no line of
+  accept.sh was altered to obtain the passing run.
+
+CRITERION 2 -- the new test discriminates (and so does the oracle): **MET**
+  Mutant tree /tmp/claude-0/f4t2-mut, filePerm's error branch replaced with
+  `return 0644, nil`. Mutation scope verified:
+      diff /home/user/simplebudget/internal/services/storage/migration.go \
+           /tmp/claude-0/f4t2-mut/internal/services/storage/migration.go
+      274c274
+      < 		return 0, fmt.Errorf("failed to stat %s to preserve its permissions: %w", path, err)
+      ---
+      > 		return 0644, nil
+      and `diff` of migration_perm_test.go between the two trees -> identical
+      ("test file identical to main tree"), so the test under mutation is
+      byte-for-byte the attempt-2 test.
+  (a) The repo test FAILS:
+      go test -count=1 -v -run 'TestFilePermStatFailureReturnsError' ./internal/services/storage/
+        === RUN   TestFilePermStatFailureReturnsError
+            migration_perm_test.go:231: filePerm on missing file
+              /tmp/TestFilePermStatFailureReturnsError1817307213/001/missing.csv
+              returned nil error, mode -rw-r--r--
+        --- FAIL: TestFilePermStatFailureReturnsError (0.00s)
+        FAIL	budget2/internal/services/storage	0.008s      EXIT=1
+      Line 231 is the test's `t.Fatalf("filePerm on missing file %s returned nil
+      error, mode %v", path, mode)` -- the err==nil branch, i.e. the exact
+      contract attempt 1 found undefended.
+  (b) The ORACLE also fails on the same mutant. I extracted the planted file
+      verbatim from the heredoc in accept.sh (awk between `cat > "$PLANTED"
+      <<'GO'` and `GO`, 159 lines) into the mutant tree as
+      internal/services/storage/zz_oracle_f4_test.go and ran check 01's command:
+      go test -count=1 -run 'TestOracleF4' ./internal/services/storage/
+        --- FAIL: TestOracleF4FilePermStatFailure (0.00s)
+            zz_oracle_f4_test.go:137: filePerm on a missing file returned mode
+              -rw-r--r-- and no error; the contract is to surface the stat
+              failure, never to invent a default
+        FAIL	budget2/internal/services/storage	13.527s     CHECK01_RC=1
+      Only TestOracleF4FilePermStatFailure failed; the other four TestOracleF4*
+      tests passed, so the new planted check is what catches this mutant and it
+      catches it narrowly. Both layers now grade the contract that attempt 1
+      showed a `return 0644, nil` mutant could slip through.
+  TEST-QUALITY READ (does the test assert what its name claims): the body calls
+  filePerm on a path inside t.TempDir() that was never created, then requires
+  (i) err != nil, (ii) err.Error() contains the path, (iii) the returned mode is
+  0 rather than an invented default. Name and assertions agree, and (a) proves
+  the assertions are load-bearing rather than vacuous.
+
+CRITERION 3 -- attempt 2 is test-only: **MET**
+  `git diff --name-status HEAD` in /home/user/simplebudget:
+      M .swarm/ledger.tsv
+      M .swarm/tier3/F4/accept.sh
+      M .swarm/tier3/F4/report.md
+      M internal/services/storage/migration_perm_test.go
+  `git ls-files --others --exclude-standard` -> only .swarm/ artifacts
+      (.swarm/manifests/F4.2.files and three verdict files).
+  `git diff HEAD -- . ':(exclude).swarm'` -> exactly one file,
+  internal/services/storage/migration_perm_test.go: +1 import ("strings") and
+  +19 lines appending TestFilePermStatFailureReturnsError. No hunk touches any
+  non-test file; migration.go and every other production file are unchanged
+  from HEAD. This matches .swarm/manifests/F4.2.files, which lists that single
+  path. The three .swarm changes (ledger.tsv, accept.sh timeout 900->1800 plus
+  planted TestOracleF4FilePermStatFailure, report.md attempt-1 section) are the
+  lead's recorded oracle/bookkeeping edits.
+  SCOPE vs critical.globs: .swarm/critical.globs lists
+  `internal/services/storage/**`; the ledger row is
+  `F4  3  tests,second  merged-unverified  2  worker-coder
+   attempt-2-adds-filePerm-stat-failure-test-after-dual-lane-fail-at-1`,
+  tier 3, which permits touching that path. Nothing outside it was modified.
+
+CRITERION 4 -- targeted tests / gofmt / vet clean unmutated: **MET**
+  In /tmp/claude-0/f4t2-root (unmutated copy of the working tree), as root:
+      go test -count=1 -v -run 'FilePerm|PreservesMode|OrdinaryMode' ./internal/services/storage/
+        --- PASS: TestEncryptFileWithRecipientPreservesMode (2.51s)
+        --- PASS: TestDecryptFileWithIdentityPreservesMode (3.29s)
+        --- PASS: TestRollbackEncryptionWithIdentityPreservesMode (3.20s)
+        --- PASS: TestRollbackDecryptionWithRecipientPreservesMode (2.14s)
+        --- PASS: TestEncryptFileWithRecipientOrdinaryModeUnchanged (2.04s)
+        --- PASS: TestFilePermStatFailureReturnsError (0.00s)
+        ok  	budget2/internal/services/storage	13.248s
+      All six run: the four per-helper 0600 tests, the 0644-stays-0644 guard,
+      and the new stat-failure test.
+      gofmt -l internal/services/storage/migration_perm_test.go  -> no output (clean)
+      go vet ./internal/services/storage/                        -> VET_EXIT=0
+  The oracle run under criterion 1 independently re-establishes vet and build
+  clean for the whole module (checks 03/04) as an unprivileged user.
+
+NOTES CARRIED FORWARD (not criteria)
+  - Attempt-1 evidence (.swarm/verdicts/F4.1.checker-tests.verdict) established
+    end-to-end 0600 preservation via an independent probe, four helpers each
+    caught only by its own named test, and the hardcode-0600 evasion caught.
+    Attempt 2 changes no production code, so that evidence still describes this
+    tree; the four PreservesMode tests plus the OrdinaryMode guard re-run green
+    above and the oracle's own end-to-end checks 01 passed on this tree.
+  - The report's out-of-scope finding (atomicWrite replaces a symlinked
+    destination with a regular file) is untouched by attempt 2 and remains open.

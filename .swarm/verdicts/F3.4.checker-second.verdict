@@ -1,0 +1,126 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F3
+ATTEMPT: 4
+---
+HEAD at check time: c9c5d5dabbf3ad76db467dfdcdf90fc820357505 (repo untouched;
+all runs done in copies under /tmp/claude-0/f3-second*). Attempt 4's actual
+diff lives squashed inside commit 01d6853152d1e75f315971366a7b1f69330e492f
+("fix(storage): restore encryption when DisableEncryption fails partway") --
+there is no separate attempt-4 commit to `git log -p`, so attack #3 (diff the
+attempt-4-only change) was done by content inspection against the report's
+description, not a clean git diff; noted as a limitation below.
+
+Environment check done first, per the brief's explicit instruction:
+`id -u` = 0. This container runs test processes as root. That single fact is
+the whole story below.
+
+ATTACK #1 -- re-run my own attempt-3 mutation on the current tree
+(`.swarm/verdicts/F3.3.checker-second.verdict`, my prior work, read in full):
+
+Two separate scratch copies, one mutation each, in
+`rollbackDecryptionWithRecipient` (internal/services/storage/migration.go):
+
+  mut1: dropped `failed = append(failed, path)` from the encryptData-error
+        branch (line ~472).
+  mut2: dropped `failed = append(failed, path)` from the atomicWrite-error
+        branch (line ~489, now guarded by an F4-added filePerm branch ahead
+        of it -- confirmed filePerm itself still succeeds under the test's
+        0500-directory fixture, since Stat only needs r-x, so the atomicWrite
+        branch is still the one reached).
+
+  $ cd mut1 && go test -v -run TestRollbackDecryptionReportsPathOnEncryptFailure ./internal/services/storage/
+    --- FAIL: TestRollbackDecryptionReportsPathOnEncryptFailure
+    expected failed=[.../plain.csv], got []
+  $ cd mut1 && go test -count=1 ./internal/services/storage/...   (full package)
+    --- FAIL: TestRollbackDecryptionReportsPathOnEncryptFailure   <- mutant caught
+    (plus one unrelated pre-existing failure, see below)
+  => encryptData branch: genuinely closed. Test does not depend on
+     permission bits (uses failingRecipient{}), unaffected by root.
+
+  $ cd mut2 && go test -v -run TestRollbackDecryptionReportsPathOnAtomicWriteFailure ./internal/services/storage/
+    migration_decrypt_rollback_test.go:398: root bypasses unix file permissions
+    --- SKIP: TestRollbackDecryptionReportsPathOnAtomicWriteFailure
+    PASS
+  $ cd mut2 && go test -count=1 ./internal/services/storage/...   (full package)
+    FAIL   budget2/internal/services/storage   260.565s
+    (the ONLY failure is the unrelated pre-existing test below --
+     TestRollbackDecryptionReportsPathOnAtomicWriteFailure is silently
+     skipped, non-verbose, and never appears as a failure)
+  => atomicWrite branch: MUTANT ESCAPES in this environment. The test
+     written to defend it does not run at all here.
+
+  Reproduced under -race -count=3 as well: same three SKIPs, deterministic,
+  no flakiness -- this is not a timing fluke, it is a hard root-vs-non-root
+  branch in the test itself (os.Geteuid() == 0 guard at
+  migration_decrypt_rollback_test.go:397-399).
+
+CONCLUSION ON THE CENTRAL QUESTION: my attempt-3 finding is CLOSED for the
+encryptData branch and NOT CLOSED for the atomicWrite branch, in the actual
+environment available to run checks. This is exactly the failure mode
+attack #2 in the dispatch brief predicted before I ran anything.
+
+ATTACK #2 -- vacuous/inert tests, expanded: this environment also broke an
+OLDER, pre-existing test that has no root guard.
+TestRollbackDecryptionWithRecipientReportsUnrestorableFiles (predates
+attempt 4; already referenced in my own attempt-3 verdict) chmods a file to
+0000 to force os.ReadFile to fail. As root, ReadFile succeeds anyway, so:
+
+  $ cd /tmp/claude-0/f3-second (unmutated, correct tree) && \
+    go test -v -run TestRollbackDecryptionWithRecipientReportsUnrestorableFiles ./internal/services/storage/
+    --- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+    expected failed=[.../unreadable.csv], got []
+
+This fails on the CORRECT, unmutated, current tree -- no mutation involved.
+`go test ./internal/services/storage/...` does not print "ok" in this
+container at all, contradicting the report.md claim ("unmutated package
+suite ok ... 60.691s") and every "mutation N reproduced" claim recorded
+there, none of which specify what environment (root or not) they were run
+in. Whatever environment produced those claims is not the one available to
+me. This is a second, independent instance of the same class of defect:
+permission-based fault injection throughout this test file is not
+root-safe, and only the newest test (defending atomicWrite) was written
+defensively enough to notice and bail out cleanly instead of failing
+outright.
+
+ATTACK #3 -- weakened assertions: could not do a clean attempt-3-vs-4 git
+diff (squashed commit, noted above). Content inspection of the full test
+file (migration_decrypt_rollback_test.go, 452 lines) shows the two new
+tests (TestRollbackDecryptionReportsPathOnEncryptFailure,
+TestRollbackDecryptionReportsPathOnAtomicWriteFailure) appended at the end;
+all four pre-existing tests in the file retain their original strict
+assertions (exact failed-slice contents, exact byte-for-byte content
+checks, IsEncrypted()/marker-file checks). No loosening found. Limitation:
+this is inspection, not a diff against a captured attempt-3 tree, since
+none was preserved.
+
+ATTACK #4 -- production-code-only-a-comment claim: read the full diff for
+migration.go in 01d6853 (the squash commit). The only addition inside
+rollbackDecryptionWithRecipient beyond the four append-to-failed statements
+already present is the multi-line comment at the PLAINTEXT-ON-DISK
+formatting branch in DisableEncryption, documenting why that branch has no
+end-to-end test. No other logic changed in that function. (The extra
+filePerm branch visible in the current tree is F4's later, separate commit
+90bc39c -- out of scope for grading F3 attempt 4, noted only because it
+changed which line number the atomicWrite branch lives at.)
+
+ATTACK #5 -- -race -count=3 on the two new tests: done above, deterministic,
+no pollution of other tests observed in isolated -run scoping.
+
+NOT RUN: the full 20-30 minute oracle. Not needed -- attack #1 alone, run
+directly against the oracle's own claimed discriminators (checks 09/10),
+produced a clean disagreement with the report's claim in the only
+environment I have to check in.
+
+VERDICT RATIONALE: The task claims to close two undefended branches. One is
+closed unconditionally. The other is closed only in an environment where
+`os.Geteuid() != 0`, and the container I am required to check in is uid 0.
+In this environment, right now, mutating away the atomicWrite branch's
+error-reporting produces a full green run of every test written to catch it
+-- the new test skips instead of running. That is not a hypothetical
+portability concern; it is the identical "correct code, no test behind it"
+defect class that sank attempts 2 and 3, reproduced by direct mutation,
+in the same helper, in the environment available for verification. Default
+to FAIL on ambiguity, per role -- and this one is not even ambiguous, it is
+demonstrated.

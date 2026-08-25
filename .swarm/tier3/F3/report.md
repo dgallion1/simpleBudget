@@ -234,3 +234,30 @@ long as it stands, which is the correct outcome — the work is merged and the
 lead's own checks are recorded above, and anyone reading the ledger can see
 exactly which verification was and was not performed. If the two lanes are ever
 run against this attempt, the row can move to `accepted` on their evidence.
+
+## Attempt 4 two-lane verification (2026-08-24, retroactive) — both lanes FAIL
+
+The two lanes this report said could move the row to `accepted` were run.
+Verdicts: `.swarm/verdicts/F3.4.checker-tests.verdict` (FAIL) and
+`.swarm/verdicts/F3.4.checker-second.verdict` (FAIL). Neither found a defect
+in attempt 4's own change; both failed it on environment grounds that are
+nonetheless real:
+
+- checker-second (adversarial): the verification container runs as root, and
+  `TestRollbackDecryptionReportsPathOnAtomicWriteFailure` self-skips at uid 0
+  (its 0500-directory injection is bypassed by root), so in any root
+  environment the atomicWrite-failure branch is back to undefended — the
+  attempt-3 finding, reproduced. The encryptData branch is confirmed closed.
+- checker-tests (primary): the oracle exits 1 in both root and uid-1000 runs
+  because the NESTED F1/F2 oracles carry `-timeout 600s` on a race suite that
+  needs ~1027s on this 4-CPU host; criteria 2, 3 and 5 were proven.
+- Both lanes: `TestRollbackDecryptionWithRecipientReportsUnrestorableFiles`
+  (pre-attempt-4) fails outright under root — chmod-0000 fixtures do not deny
+  root. Environment was never pinned for any earlier "suite ok" claim.
+
+RULING 2026-08-24c (user, this session): attempt 5 authorized. Scope:
+test-only — make the atomicWrite-failure test fail (not skip) under root by
+using a root-proof failure injection; the lead recalibrates the F1/F2 nested
+oracle race timeouts (600s -> 1800s, recorded in those scripts), mirroring
+the F4 attempt-2 path. Full two-lane verification at attempt 5; the gate
+decides acceptance.

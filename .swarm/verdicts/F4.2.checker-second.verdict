@@ -1,0 +1,120 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F4
+ATTEMPT: 2
+---
+git rev-parse HEAD: c9c5d5dabbf3ad76db467dfdcdf90fc820357505
+git status --porcelain (uncommitted attempt-2 changes, expected):
+ M .swarm/ledger.tsv
+ M .swarm/tier3/F4/accept.sh
+ M .swarm/tier3/F4/report.md
+ M internal/services/storage/migration_perm_test.go
+?? .swarm/manifests/F4.2.files
+?? .swarm/verdicts/F3.4.checker-second.verdict
+?? .swarm/verdicts/F4.1.checker-second.verdict
+?? .swarm/verdicts/F4.1.checker-tests.verdict
+(F4.2.files manifest lists exactly migration_perm_test.go, matching what actually changed.)
+
+All mutation/probe work below was done in an isolated cp -a copy at
+/tmp/claude-0/f4-second-2/repo. The only write to /home/user/simplebudget was
+this verdict file.
+
+ATTACK 1 — re-run attempt-1's refutation (filePerm stat-failure -> `return
+0644, nil`): FINDING NOW CLOSED.
+  - Mutated internal/services/storage/migration.go's filePerm to
+    `if err != nil { return 0644, nil }` (kept migration.go.orig for restore).
+  - New test alone, -race -count=3:
+      go test -run TestFilePermStatFailureReturnsError -v -race -count=3 ./internal/services/storage/
+    -> FAIL x3, all three reporting
+      "filePerm on missing file .../missing.csv returned nil error, mode -rw-r--r--"
+    i.e. it deterministically catches the mutant under race detector across 3
+    repeats -- not a flake.
+  - Full package suite on the mutant (root env):
+      go test -count=1 ./internal/services/storage/
+    -> FAIL, exactly two failures: TestFilePermStatFailureReturnsError (the
+    new test, as expected) and TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+    (the pre-existing root-environment flake documented in attempt-1's
+    verdict and the report -- unrelated to F4, does not count against it).
+    In attempt 1 the same full-suite run on this exact mutant produced only
+    the one (unrelated) failure; now it produces that plus the new catch.
+    Finding closed at the whole-suite level, not just in isolation.
+  - Oracle check-01 against the mutant: extracted accept.sh's planted block
+    (which now includes TestOracleF4FilePermStatFailure) into
+    zz_oracle_f4_test.go and ran `go test -count=1 -run TestOracleF4 -v
+    ./internal/services/storage/` against the mutant:
+      TestOracleF4EnablePreservesMode        PASS
+      TestOracleF4DisablePreservesMode       PASS
+      TestOracleF4RollbackHelpersPreserveMode PASS
+      TestOracleF4FilePermStatFailure        FAIL (mode=-rw-r--r--, no error)
+      TestOracleF4OrdinaryModeUnchanged      PASS
+    The oracle itself (check 01) now discriminates against this exact
+    mutant, closing the "task's own acceptance oracle would accept a
+    filePerm that silently defaults to 0644" gap from attempt 1.
+
+ATTACK 2 — vacuity / root-independence of the new test:
+  - Restored migration.go from migration.go.orig (diff against orig is
+    empty; build succeeds), confirmed on the CORRECT tree:
+      go test -run TestFilePermStatFailureReturnsError -v -race -count=3 ./internal/services/storage/
+    -> PASS x3 (ok, 1.032s).
+  - The test uses filepath.Join(t.TempDir(), "missing.csv") -- a path that
+    was simply never created, not a chmod-denied file -- so os.Stat fails
+    with ENOENT regardless of uid. Ran the whole environment as root
+    (id -> uid=0) throughout; the test discriminated correctly in both
+    directions under root. Confirmed root-proof by construction and by
+    result, not assumed.
+
+ATTACK 3 — weakening / scope of the diff:
+  git diff -- internal/services/storage/migration_perm_test.go shows a pure
+  addition: one new `strings` import and one new function
+  (TestFilePermStatFailureReturnsError), appended after the existing tests.
+  No existing test, assertion, or helper touched. git diff --stat for the
+  whole tree shows changes confined to migration_perm_test.go (test-only,
+  +20/-0), accept.sh (+20/-1, oracle-only), report.md (+32, doc-only,
+  additive), and ledger.tsv (attempt bump). migration.go itself has zero
+  diff against HEAD. Matches the manifest (F4.2.files lists exactly
+  migration_perm_test.go) and the task's stated scope (test-only worker
+  task).
+
+ATTACK 4 — oracle edits (lead's changes to accept.sh):
+  - Timeout raise 900s -> 1800s: not evaluated as a live risk here beyond
+    what's already established. Ran the UNMUTATED full package suite
+    (non-race, root env) twice during this session (once as part of attack
+    1's restore-and-confirm, once standalone) and both completed in ~157-
+    162s with the suite otherwise green (one known unrelated root flake).
+    Did not re-run the full `-race` suite at 1800s myself (the -race
+    evidence for the core PreservesMode/OrdinaryModeUnchanged tests was
+    independently gathered at attempt 1, 397s under heavy load, no races);
+    relying on attacks 1-3 above as the conclusive basis for this verdict,
+    per the task's own framing that this check is optional.
+  - TestOracleF4FilePermStatFailure discriminates correctly: confirmed FAIL
+    on the mutant, PASS on the correct tree (attack 1 above) -- it is not a
+    tautology or a no-op assertion.
+
+ATTACK 5 — additional stat-failure-contract probes (parent dir missing,
+dangling symlink) -- OUT OF SCOPE, RECORDED, NO NEW GAP:
+  Wrote a throwaway probe test (not committed anywhere) exercising filePerm
+  on (a) a path whose parent directory doesn't exist, (b) a symlink whose
+  target doesn't exist. Both correctly return a non-nil error (os.Stat
+  follows symlinks and reports ENOENT in both cases; the existing
+  `err != nil` branch in filePerm, now correctly returning the error rather
+  than defaulting, catches them for free). No additional gap found beyond
+  what attempt 1 identified and attempt 2 fixes.
+
+VERDICT RATIONALE:
+Attempt 1's specific, concrete finding -- `filePerm`'s stat-failure branch
+mutated to `return 0644, nil` passed the entire suite AND the oracle -- is
+now closed on both fronts: the new in-repo test
+(TestFilePermStatFailureReturnsError) fails on that exact mutant, stably
+under -race -count=3, and does so with zero interference with any existing
+test (pure addition, confirmed by diff); and the oracle's own planted test
+(TestOracleF4FilePermStatFailure, also new in this attempt) independently
+fails on the same mutant, closing the "task's own acceptance oracle would
+accept this" half of the finding too. The test is not vacuous (fails on
+mutant, passes on correct tree) and is root-environment-proof by
+construction (ENOENT via nonexistent path, not permission-denial via
+chmod). The change is strictly test/oracle/doc-additive; no production code
+or existing assertion was touched. I attempted to construct further gaps
+(parent-dir-missing, dangling-symlink) and could not -- both correctly
+error via the same code path. This lane's attempt-1 finding is closed;
+PASS.

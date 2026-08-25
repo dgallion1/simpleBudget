@@ -3,6 +3,7 @@ package storage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -215,5 +216,24 @@ func TestEncryptFileWithRecipientOrdinaryModeUnchanged(t *testing.T) {
 
 	if got := modeOfFile(t, path); got != 0644 {
 		t.Errorf("encryptFileWithRecipient changed mode 0644 -> %v", got)
+	}
+}
+
+// TestFilePermStatFailureReturnsError defends filePerm's own contract: when
+// it cannot stat the file, it must return the error, not a plausible-looking
+// default mode. A default here is how a permissions fix quietly becomes a
+// permissions bug for the one caller whose file vanished underneath it.
+func TestFilePermStatFailureReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.csv")
+
+	mode, err := filePerm(path)
+	if err == nil {
+		t.Fatalf("filePerm on missing file %s returned nil error, mode %v", path, mode)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("filePerm error %q does not name path %s", err.Error(), path)
+	}
+	if mode != 0 {
+		t.Errorf("filePerm on stat failure returned invented mode %v, want 0", mode)
 	}
 }

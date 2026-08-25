@@ -60,3 +60,35 @@ hardcoding 0600 — which would pass every other check and be wrong.
 alongside the permissions finding and deliberately not bundled with it: whether
 the data directory should honour symlinks is a different question from whether
 a rewrite should preserve a mode.
+
+RESOLUTION: single-arm run under user ruling 2026-08-24b — there were no blind
+arms and hence no divergence to resolve; the sole worker-coder implementation
+stands as merged, subject to the two-lane verification whose verdicts accompany
+the ledger attempt.
+
+## Attempt 1 two-lane verification (2026-08-24, retroactive) — both lanes FAIL
+
+The retroactive verification this report anticipated was run: checker-tests
+(anthropic lane) and checker-second (adversarial lane), verdicts at
+`.swarm/verdicts/F4.1.*.verdict`. Both FAIL, concordantly:
+
+- The substance held. checker-tests reproduced the 0600 end-to-end measurement
+  with its own probe binary; all four per-helper mutations are caught by their
+  own named test and no other; the hardcode-0600 evasion is caught; -race
+  clean.
+- `filePerm`'s stat-failure contract ("surface the error, never default") was
+  claimed deliberate but had zero coverage: a `return 0644, nil` mutant passed
+  the entire package suite AND this oracle, in both lanes independently.
+- The oracle's race check carried a 900s timeout that a loaded 4-CPU container
+  cannot meet even though the suite passes (~1040s, no races) — an environment
+  assumption, not a property.
+
+Lead actions on the oracle (recorded, since the oracle is the acceptance
+authority): timeout raised to 1800s; planted check `TestOracleF4FilePermStatFailure`
+added so the stat-failure contract is graded rather than narrated. Attempt 2
+is dispatched as a test-only worker task adding the equivalent in-repo test.
+
+Environment note for future verification: this container runs as root, where
+chmod-based fixtures behave differently (the pre-existing F3 test
+`TestRollbackDecryptionWithRecipientReportsUnrestorableFiles` fails under
+root; proven pre-existing at 90bc39c^). Run suites as an unprivileged user.

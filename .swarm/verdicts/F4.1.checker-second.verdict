@@ -1,0 +1,171 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F4
+ATTEMPT: 1
+---
+git rev-parse HEAD (at read time): c9c5d5dabbf3ad76db467dfdcdf90fc820357505
+(90bc39c is the F4 fix commit itself, one behind HEAD; HEAD's only diff is a
+docs commit plus an uncommitted `.swarm/tier3/F4/report.md` edit — `git diff
+--stat` on the main tree showed 5 insertions there, not app code.)
+
+All work below done in isolated copies: /tmp/claude-0/f4-second/repo and
+/tmp/claude-0/f4-second/repo2 (both `cp -a` of /home/user/simplebudget). Only
+this verdict file was written to the main tree.
+
+ATTACK 1 — per-helper mutation coverage: REFUTED (fix holds)
+Reverted each of the four `s.atomicWrite(path, X, perm)` call sites in
+migration.go back to a hardcoded `0644` (`_ = perm` added to keep it
+compiling), one at a time, restoring between:
+  - encryptFileWithRecipient (line 324)        -> FAIL: TestEncryptFileWithRecipientPreservesMode only
+  - decryptFileWithIdentity (line 369)          -> FAIL: TestDecryptFileWithIdentityPreservesMode only
+  - rollbackEncryptionWithIdentity (line 413)   -> FAIL: TestRollbackEncryptionWithIdentityPreservesMode only
+  - rollbackDecryptionWithRecipient (line 488)  -> FAIL: TestRollbackDecryptionWithRecipientPreservesMode only
+Each mutant produced exactly one failing test, its own named test, confirming
+migration_perm_test.go's tests call each helper directly and don't hide
+behind another helper's test — matches the report's claim.
+
+ATTACK 2 — hardcode-0600 evasion: REFUTED (fix holds)
+Hardcoded all four atomicWrite calls to 0600 instead of preserving `perm`.
+Caught: `TestEncryptFileWithRecipientOrdinaryModeUnchanged` failed
+("changed mode 0644 -> -rw-------"). The oracle's/test suite's ordinary-file
+check does its job.
+
+ATTACK 3 — filePerm's error path: CONFIRMED UNDEFENDED (grounds for FAIL)
+Mutated `filePerm` to `return 0644, nil` on stat failure instead of
+propagating the error (the report explicitly claims propagating is
+deliberate: "a plausible default is how a permissions fix quietly becomes a
+permissions bug").
+  - `go test -count=1 -run 'PreservesMode|OrdinaryModeUnchanged|TestOracleF4' -v ./...`
+    on the mutant: all 6 tests PASS.
+  - Full package suite on the mutant (`go test -count=1 ./...`): exactly one
+    FAIL, `TestRollbackDecryptionWithRecipientReportsUnrestorableFiles`.
+  - That same failure reproduces on the UNMUTATED tree run standalone
+    (`go test -count=1 -run TestRollbackDecryptionWithRecipientReportsUnrestorableFiles`
+    -> same FAIL, same "expected failed=[...unreadable.csv], got []"). Root
+    cause: the test makes a file "unreadable" via `os.Chmod(path, 0000)`, but
+    this container runs as root (`id -u` = 0), and root bypasses DAC
+    permission checks, so `os.ReadFile` never fails for that test regardless
+    of my mutation. (Independent confirmation: another concurrently-running
+    checker process was observed re-running this package's tests via
+    `su nobody` specifically to get real permission-denial semantics —
+    i.e. this is a known root-environment artifact, not evidence my mutant
+    was caught.)
+  - Net result: the filePerm error-path mutant produces ZERO new test
+    failures beyond a pre-existing, unrelated, root-environment false
+    failure. The claimed "stat failure returns the error, no default"
+    behavior — called out by name in this task's own dispatch text as part
+    of the fix — has no test that would catch a regression to a silent
+    0644 (or any) default.
+  - CONFIRMED AGAIN via the actual oracle, not just my own proxy invocation:
+    ran the real `.swarm/tier3/F4/accept.sh` against this same mutant (in
+    repo, restored via migration.go.orig afterward):
+        CHECK 01-migration-preserves-mode: PASS
+        CHECK 02-package-suite-race: FAIL (want 0, got 1)
+        CHECK 03-build: PASS
+        CHECK 04-vet: PASS
+        passed=3 failed=1
+    Check 01 -- the oracle's own TestOracleF4* behavioral tests, the same
+    shape as PreservesMode -- PASSES on the mutant: the oracle itself does
+    not catch it either. Check 02's single failure is `go test -race
+    ./internal/services/storage/`, i.e. the same package suite that
+    contains the one pre-existing root-environment flake identified above
+    (TestRollbackDecryptionWithRecipientReportsUnrestorableFiles); it is not
+    evidence the mutant was caught, it is the same false failure recurring
+    under -race. Checks 03/04 (build, vet) are unaffected by this class of
+    mutation and trivially pass. So the task's own acceptance oracle,
+    exactly as written, would accept a filePerm that silently defaults to
+    0644 (or any hardcoded mode) on stat failure.
+  - This is exactly the class of defect this task exists to prevent: an
+    accidental future default is how "preserve the mode" quietly regresses,
+    and nothing here would notice.
+
+ATTACK 4 — special mode bits (setuid/setgid/sticky): CONFIRMED GAP, scope is
+arguable (recorded, not primary basis for the verdict)
+Planted `TestSpecialBitsThroughEncrypt` in repo2 (root, so free to set these
+bits): wrote a file 0644, chmod'd it `ModeSetgid|ModeSticky|0644` (06644),
+ran it through `encryptFileWithRecipient`. Result:
+  before: gtrw-r--r-- (024000644)
+  after:  -rw-r--r--  (0644)
+setgid and sticky bits are both silently dropped, because `filePerm` uses
+`info.Mode().Perm()`, which by Go's own definition masks to the low 9 bits
+only. `atomicWrite`'s own `os.Chmod(tmpPath, perm)` then applies only that
+masked value.
+Scope judgment: the fix's doc comments and code consistently use "permission
+bits" to mean exactly `Perm()` (the narrow Unix rwx sense), which is also
+the only sense the original bug (ledger 0600->0644) exercised, and no
+CSV/JSON data file in this app plausibly carries setgid/sticky in practice.
+I record this as a real, reproducible, out-of-narrow-scope gap rather than a
+refutation of the criterion as the worker/lead defined it — but note the
+commit title's literal wording ("must not change a file's permission bits")
+is broader than what the implementation actually preserves, so a strict
+reading of the title alone is contradicted.
+
+ATTACK 5 — concurrency/robustness: DID NOT BREAK THE FIX
+`go test -race -count=3 -run 'PreservesMode|OrdinaryModeUnchanged' -v
+./internal/services/storage/` on the clean tree (repo2): completed all 3
+rounds (15 test executions total: 5 tests x 3) -- `PASS`, `ok
+budget2/internal/services/storage 397.088s`. No race reported in any round
+(system was under heavy shared load from concurrent checkers, hence the long
+wall time).
+Umask check: host umask is 0022, but every test sets its target mode via
+explicit `os.Chmod(path, 0600)` after creation, not by relying on the
+creation call's mode combined with umask, so umask does not affect these
+tests' fixtures either way.
+
+ATTACK 6 — regression claims (F1-F3 properties): MIXED — structural
+properties intact, but the report's own cited NUMBERS do not check out
+  - `zero legacy .tmp staging names`: TRUE for the atomicWrite/createExclusive
+    convention (both use `StagingSuffix = ".tmp-"` plus a random suffix, per
+    storage.go). BUT `internal/services/storage/auth.go:92`
+    (`saveConfig`) still does its own hand-rolled
+    `tmpPath := configPath + ".tmp"` + `os.WriteFile` + `os.Rename`,
+    entirely bypassing `atomicWrite`/`StagingSuffix`. It happens to still be
+    recognized by `IsStagingName` (matches `legacyStagingSuffix`), and it's
+    outside migration.go / F4's four helpers, so I record this as a NEW
+    FINDING OUTSIDE THIS TASK'S SCOPE, not a refutation of F4 — but the
+    report's blanket claim "zero legacy .tmp staging names" is not literally
+    true of the package as a whole.
+  - `10 invalidateCache sites, 14 atomicWrite sites`: my grep of the current
+    tree (both repo and repo2, non-test .go files, whole repo) finds 14
+    `s.invalidateCache(` call sites (not 10) and 5 `s.atomicWrite(`/
+    `.atomicWrite(` call sites (not 14). I could not reconstruct a grep
+    methodology that produces the report's exact numbers. Directly reading
+    migration.go confirms the actually-load-bearing property — each of the
+    four helpers has the correct invalidateCache-before / atomicWrite /
+    invalidateCache-after bracket (rollbackDecryptionWithRecipient has a
+    third invalidateCache on its encryptData-failure branch, consistent with
+    F3's design) — so the underlying F1/F3 invariant is intact by direct
+    inspection even though the report's cited counts are wrong. This is a
+    factual error in the report's own verification narrative, not a code
+    defect; I record it because it undermines confidence in the
+    "confirmed present" claim as literally stated.
+  - Did not run the full nested F3/F1/F2 oracle chain (~25-30 min per the
+    report's own accounting) since targeted inspection was conclusive and
+    non-ambiguous for the properties that matter to F4.
+
+VERDICT RATIONALE:
+Attacks 1, 2, and 5 could not break the core fix — it is well-defended
+against every mutation matching the actual reported bug (hardcoded 0644,
+hardcoded 0600, per-helper regressions, races). That part of the work is
+solid.
+Attack 3, however, found a concrete, reproducible, and currently
+zero-coverage gap in a behavior the report itself calls out as a deliberate,
+important design decision ("no default... how a permissions fix quietly
+becomes a permissions bug"). A worker or future refactor could silently
+reintroduce exactly the failure mode this class of bug represents
+(hardcoded/defaulted mode on write) via filePerm's error path, and no test
+in this package — including the oracle's own tests, which share the same
+shape as migration_perm_test.go's — would catch it. Per this lane's
+standard, defaulting to FAIL on ambiguity and treating an explicitly-claimed
+but unverified behavior as a gap worth failing on: this task does not yet
+meet its acceptance criteria as stated in its own dispatch text and report.
+Attack 4 (special bits) is recorded as a secondary, scope-arguable finding
+that reinforces rather than independently drives this verdict; attack 6's
+saveConfig finding is out of scope and also recorded, not scored against F4.
+
+Remediation suggestion for the re-run: add a test that makes the target path
+disappear between the successful read and the filePerm stat call (e.g.
+os.Remove(path) injected via a hook, or restructure so the race window is
+testable), and assert on the returned error / that atomicWrite is never
+called with an invented mode.

@@ -1,0 +1,186 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F4
+ATTEMPT: 1
+---
+SCOPE / SETUP
+  git rev-parse HEAD (in /home/user/simplebudget) = c9c5d5dabbf3ad76db467dfdcdf90fc820357505
+  F4 commit under test = 90bc39cc97f2bf7a2be23c554fb5fceb4e9c2fcf
+  `git diff --stat 90bc39c..HEAD -- internal/services/storage/` -> empty: the F4
+  code is byte-identical in the tested tree to what F4 committed.
+  `git show --stat 90bc39c` -> 5 files: .swarm/ledger.tsv, .swarm/manifests/F4.1.files,
+  .swarm/tier3/F4/report.md, internal/services/storage/migration.go,
+  internal/services/storage/migration_perm_test.go. Manifest .swarm/manifests/F4.1.files
+  lists exactly the two code files. internal/services/storage/** is in
+  .swarm/critical.globs; ledger row `F4  3  tests,second  merged-unverified  1  worker-coder`
+  is tier 3, which permits it. Nothing outside the brief's scope was touched.
+  All runs in isolated copies: /tmp/claude-0/f4-tests (oracle, root),
+  /tmp/claude-0/f4-nr (oracle, non-root), /tmp/claude-0/f4-e2e, /tmp/claude-0/f4-m1..m6,
+  /tmp/claude-0/f4-pre (90bc39c^). The only write to /home/user/simplebudget is this file.
+
+ENVIRONMENT (material to two criteria)
+  `id -u` = 0. `capsh --print` shows cap_dac_override in the bounding set, and a direct
+  demonstration -- create a file, `chmod 000`, `cat` it -> "ROOT COULD READ A 0000 FILE".
+  So any fixture that relies on chmod to deny access does not discriminate as root.
+  4 CPUs (`nproc` = 4), and a concurrent checker was running the F1/F2/F3 oracle chain
+  throughout; the storage package suite took 320s here where the report records 66s.
+  Both facts bear on criteria 1 and 6 and are handled explicitly below by re-running as
+  the unprivileged user `nobody` (repo copy + module cache copied and chowned; the go
+  toolchain works under that account -- "NR_BUILD_VET_OK").
+
+CRITERION 1 -- oracle passes, exit 0: **NOT MET**
+  Run A (root), `cd /tmp/claude-0/f4-tests && bash .swarm/tier3/F4/accept.sh`:
+      CHECK 01-migration-preserves-mode: PASS
+      CHECK 02-package-suite-race: FAIL (want 0, got 1)
+      FAIL  budget2/internal/services/storage  900.335s
+      CHECK 03-build: PASS
+      CHECK 04-vet: PASS
+      passed=3 failed=1
+  Run B (non-root `nobody`, same script, /tmp/claude-0/f4-nr):
+      CHECK 01-migration-preserves-mode: PASS
+      CHECK 02-package-suite-race: FAIL (want 0, got 1)
+      FAIL  budget2/internal/services/storage  900.252s
+      CHECK 03-build: PASS
+      CHECK 04-vet: PASS
+      passed=3 failed=1
+  The oracle exits non-zero in both runs, so the criterion as written is not satisfied.
+  What check 02 failed on, precisely:
+    - Run B contains no `--- FAIL` line at all; the 900.252s figure is exactly the
+      script's `-timeout 900s` budget, and the dump is a timeout goroutine trace
+      (`.../storage/storage.go:418 encodeForWrite` mid-work), not a data race and not
+      an assertion failure.
+    - The same command with the brief's 1200s budget passes: as `nobody` in
+      /tmp/claude-0/f4-nr, `go test -race -count=1 -timeout 1200s ./internal/services/storage/`
+      -> "ok  budget2/internal/services/storage  1036.428s", race_exit=0. 1036s > the
+      oracle's 900s budget on this 4-CPU, contended machine.
+    - Run A (root) would have failed check 02 regardless of timing, because of the
+      capability artifact described under criterion 6.
+  Neither cause is attributable to F4's change: check 01, the check that tests F4's
+  actual property, PASSED in both runs. Recorded as FAIL because the criterion asks for
+  exit 0 and no run I made produced it; the lead adjudicates whether a 900s budget that
+  this machine cannot meet counts against the task.
+
+CRITERION 2 -- mode preservation end to end: **MET**
+  Independent reproduction, not the worker's test: /tmp/claude-0/f4-e2e/cmd/permprobe
+  (a small main.go using storage.New / EnableEncryption / DisableEncryption).
+  `cd /tmp/claude-0/f4-e2e && go run ./cmd/permprobe`:
+      BEFORE EnableEncryption:     -rw------- (octal 0600)
+      AFTER  EnableEncryption:     -rw------- (octal 0600)
+      AFTER  DisableEncryption:    -rw------- (octal 0600)
+      content after round trip: "account,balance\nchecking,1.00\n"
+  The probe demonstrably discriminates on this machine: the identical binary run in
+  /tmp/claude-0/f4-m1 (encryptFileWithRecipient reverted to atomicWrite(..., 0644)) gives
+      BEFORE EnableEncryption:     -rw------- (octal 0600)
+      AFTER  EnableEncryption:     -rw-r--r-- (octal 0644)
+      AFTER  DisableEncryption:    -rw-r--r-- (octal 0644)
+  i.e. the historical bug exactly as the report describes it, so the 0600/0600 result
+  above is a real measurement and not root ignoring modes.
+
+CRITERION 3 -- each of the four helpers independently defended: **MET**
+  Four hand mutations, one per helper, each on its own scratch copy of the merged tree
+  (diffs verified against /home/user/simplebudget with `diff`):
+    m1 line 324 encryptFileWithRecipient        perm -> 0644
+    m2 line 369 decryptFileWithIdentity         perm -> 0644
+    m3 lines 411/413 rollbackEncryptionWithIdentity  perm -> 0644
+    m4 lines 486/488 rollbackDecryptionWithRecipient perm -> 0644
+  (`_ = perm` / `_, err :=` added only to keep the compiler quiet about the now-unused
+  variable; `go build ./internal/services/storage/` succeeds in each.)
+  `go test -count=1 -v -run '<the five mode tests>' ./internal/services/storage/` per copy:
+    m1: --- FAIL: TestEncryptFileWithRecipientPreservesMode
+        "migration_perm_test.go:66: encryptFileWithRecipient changed mode 0600 -> -rw-r--r--"
+        other four tests PASS
+    m2: --- FAIL: TestDecryptFileWithIdentityPreservesMode
+        "migration_perm_test.go:108: decryptFileWithIdentity changed mode 0600 -> -rw-r--r--"
+        other four tests PASS
+    m3: --- FAIL: TestRollbackEncryptionWithIdentityPreservesMode
+        "migration_perm_test.go:149: rollbackEncryptionWithIdentity changed mode 0600 -> -rw-r--r--"
+        other four tests PASS
+    m4: --- FAIL: TestRollbackDecryptionWithRecipientPreservesMode
+        "migration_perm_test.go:185: rollbackDecryptionWithRecipient changed mode 0600 -> -rw-r--r--"
+        other four tests PASS
+  Each mutation is caught by exactly the test named for its helper and by no other, so
+  no helper's test masks another's mutation. Read of
+  internal/services/storage/migration_perm_test.go confirms the mechanism rather than
+  taking it on trust: each test obtains recipient/identity from s.provider and then calls
+  s.encryptFileWithRecipient / s.decryptFileWithIdentity /
+  s.rollbackEncryptionWithIdentity / s.rollbackDecryptionWithRecipient directly on a file
+  it seeded and chmod'd 0600 (lines 61, 103, 146, 179) -- not through
+  EnableEncryption/DisableEncryption. This also settles the root question: mode
+  assertions still discriminate here, since four mutations produced four failures.
+
+CRITERION 4 -- 0644 stays 0644: **MET**
+  Both layers carry the guard and both detect the "hardcode 0600" cheat. Mutant m6
+  (encryptFileWithRecipient -> atomicWrite(path, encrypted, 0600)), with the oracle's
+  planted zz_oracle_f4_test.go extracted from accept.sh and compiled in:
+      --- PASS: TestEncryptFileWithRecipientPreservesMode
+      --- PASS: TestDecryptFileWithIdentityPreservesMode
+      --- PASS: TestRollbackEncryptionWithIdentityPreservesMode
+      --- PASS: TestRollbackDecryptionWithRecipientPreservesMode
+      migration_perm_test.go:217: encryptFileWithRecipient changed mode 0644 -> -rw-------
+      --- FAIL: TestEncryptFileWithRecipientOrdinaryModeUnchanged
+      --- PASS: TestOracleF4EnablePreservesMode
+      --- PASS: TestOracleF4DisablePreservesMode
+      --- PASS: TestOracleF4RollbackHelpersPreserveMode
+      zz_oracle_f4_test.go:143: EnableEncryption changed mode 0644 -> -rw-------
+      --- FAIL: TestOracleF4OrdinaryModeUnchanged
+  Every 0600-preservation test passes under this mutant; only the two ordinary-mode
+  guards fail. That is precisely the property the report claims for the oracle's
+  fourth check.
+
+CRITERION 5 -- filePerm surfaces the stat error: **code MET, detection NOT DEFENDED (finding)**
+  Code, internal/services/storage/migration.go:271-277:
+      func filePerm(path string) (os.FileMode, error) {
+          info, err := os.Stat(path)
+          if err != nil {
+              return 0, fmt.Errorf("failed to stat %s to preserve its permissions: %w", path, err)
+          }
+          return info.Mode().Perm(), nil
+      }
+  It returns the error and does not default. But nothing in the repo or in the oracle
+  would catch a regression to a default. Mutant m5 replaces that error return with
+  `return 0644, nil`; `go build` and `go vet` clean; then the FULL package suite plus the
+  oracle's four planted TestOracleF4* tests, compiled into one binary and run as the
+  unprivileged user (/tmp/claude-0/m5.test, TMPDIR under /tmp/claude-0/nrtmp):
+      PASS            (exit 0, whole package, nothing failed)
+  Every existing test hands filePerm a file that exists, so the error branch is never
+  exercised. The fix is right; it is simply undefended by any test. Recorded here as the
+  brief instructs; it is a coverage gap, not a defect in behaviour.
+
+CRITERION 6 -- unmutated suite green, build/vet/gofmt clean: **MET non-root; one
+  pre-existing test fails as root (not caused by F4)**
+  In /tmp/claude-0/f4-e2e (merged tree, probe removed):
+      go build ./...  -> build_exit=0
+      go vet ./...    -> vet_exit=0
+      go test -count=1 ./internal/services/storage/ -> test_exit=1, with exactly one
+        failure: "--- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+        migration_decrypt_rollback_test.go:245: expected failed=[.../unreadable.csv], got []"
+  That failure is pre-existing and environmental, established two ways:
+    (a) The same single test, run on the tree at 90bc39c^ (pre-F4, extracted to
+        /tmp/claude-0/f4-pre): "--- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles
+        ... expected failed=[...], got []". It fails identically without F4's change.
+    (b) The test's fixture is `os.Chmod(unreadableFile, 0000)` and it expects the read to
+        fail (migration_decrypt_rollback_test.go:231-237); as root with cap_dac_override
+        the read succeeds, so nothing is reported unrestorable.
+  Removing the artifact makes the suite green: the same package test binary run as
+  `nobody` (cd .../f4-e2e/internal/services/storage; storage.test -test.count=1) ->
+      PASS, nonroot_exit=0
+  Race, as `nobody` in /tmp/claude-0/f4-nr:
+      go test -race -count=1 -timeout 1200s ./internal/services/storage/
+      -> "ok  budget2/internal/services/storage  1036.428s", race_exit=0  (no races)
+  gofmt, in /home/user/simplebudget on the two manifest files:
+      gofmt -l internal/services/storage/migration.go internal/services/storage/migration_perm_test.go
+      -> no output (clean)
+
+SUMMARY
+  Criteria 2, 3, 4, 6 are demonstrated by commands whose output is quoted above; the
+  substance of F4 -- all four helpers preserve the mode, each defended by its own direct
+  test, with the 0644-stays-0644 guard that blocks the hardcode-0600 cheat -- holds up
+  under independent reproduction and six hand mutations.
+  Criterion 1 is not met: the oracle exits 1 in both a root and a non-root run, on check
+  02 only, which is the nested regression guard (package suite under -race, 900s budget)
+  and not F4's own check. Non-root the failure is a pure timeout at 900.252s on a 4-CPU
+  contended machine; the identical command at the brief's 1200s budget passes with
+  exit 0 and no races.
+  Criterion 5's code is correct but no test or oracle check would catch a
+  `return 0644, nil` fallback (mutant m5 passes the entire suite plus the oracle tests).

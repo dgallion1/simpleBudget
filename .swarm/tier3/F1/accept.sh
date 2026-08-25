@@ -165,7 +165,11 @@ rm -f "$PLANTED"
 
 # The package's own suite must stay green, under the race detector: this
 # touches locking, and the whole point of the surrounding work was ordering.
-go test -race -count=1 -timeout 600s ./"$PKG"/ >/tmp/f1_race.out 2>&1
+# Timeout raised 600s -> 1800s on 2026-08-24 (ruling 2026-08-24c): on a
+# loaded 4-CPU container the race suite needs ~1030s and passes with no
+# races; 600s was a machine-speed assumption from the author's box, and it
+# made this check fail on hardware where the suite is genuinely green.
+go test -race -count=1 -timeout 1800s ./"$PKG"/ >/tmp/f1_race.out 2>&1
 race_rc=$?
 ck "02-package-suite-race" 0 "$race_rc"
 (( race_rc == 0 )) || tail -20 /tmp/f1_race.out

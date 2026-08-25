@@ -144,6 +144,20 @@ func TestOracleF4RollbackHelpersPreserveMode(t *testing.T) {
 	}
 }
 
+// filePerm's stat-failure contract: the error is surfaced, never a default.
+// The report calls this behavior deliberate ("a plausible default is how a
+// permissions fix quietly becomes a permissions bug"), and both attempt-1
+// verification lanes proved a `return 0644, nil` mutant passed the entire
+// suite AND this oracle. Added 2026-08-24 after those verdicts, so the claim
+// is graded, not just narrated.
+func TestOracleF4FilePermStatFailure(t *testing.T) {
+	dir := t.TempDir()
+	perm, err := filePerm(filepath.Join(dir, "does-not-exist.csv"))
+	if err == nil {
+		t.Errorf("filePerm on a missing file returned mode %v and no error; the contract is to surface the stat failure, never to invent a default", perm)
+	}
+}
+
 // The ordinary case must not drift either: a file written 0644 stays 0644.
 // Without this, "preserve the mode" could be satisfied by hardcoding 0600.
 func TestOracleF4OrdinaryModeUnchanged(t *testing.T) {
@@ -186,7 +200,11 @@ rm -f "$PLANTED"
 # than running the detection chain once, on the merged result, by hand. That
 # run is the lead's job and is recorded in the report; do not assume this
 # check did it.
-go test -race -count=1 -timeout 900s ./"$PKG"/ >/tmp/f4_race.out 2>&1
+# Timeout raised 900s -> 1800s on 2026-08-24: on a loaded 4-CPU container the
+# suite needs ~1040s and passes with no races; 900s was a machine-speed
+# assumption from the author's box, not a property of the code, and it made
+# this check fail on hardware where the suite is genuinely green.
+go test -race -count=1 -timeout 1800s ./"$PKG"/ >/tmp/f4_race.out 2>&1
 race_rc=$?
 ck "02-package-suite-race" 0 "$race_rc"
 (( race_rc == 0 )) || tail -20 /tmp/f4_race.out

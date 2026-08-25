@@ -1,0 +1,101 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: F3
+ATTEMPT: 5
+---
+HEAD: c9c5d5dabbf3ad76db467dfdcdf90fc820357505 (repo untouched; all runs done
+in a scratch copy at /tmp/claude-0/f3-5-second/repo). `git status --porcelain`
+on the real repo showed the expected attempt-5 diff
+(migration_decrypt_rollback_test.go) plus other in-flight swarm artifacts not
+part of F3: .swarm/ledger.tsv, .swarm/tier3/{F1,F2,F3,F4}/*, and
+internal/services/storage/migration_perm_test.go + F4.2 manifest/verdicts --
+the last two belong to F4 attempt 2 per .swarm/manifests/F4.2.files and
+.swarm/ledger.tsv (F4 row lists that file; F3's own manifest
+.swarm/manifests/F3.5.files lists only migration_decrypt_rollback_test.go).
+Not scored against F3.
+
+Environment: `id -u` = 0 (root), confirmed before and during every run below.
+Filesystem: ext4 (`df -T .` on /), NAME_MAX=255, standard.
+
+ATTACK #1 -- re-run my attempt-4 refutation on the current tree, as root.
+Baseline (unmutated, correct tree):
+  $ go test -v -race -count=3 -run TestRollbackDecryptionReportsPathOnAtomicWriteFailure ./internal/services/storage/
+    --- PASS (x3), no SKIP, 41.4s total, deterministic.
+Mutant (migration.go:489, dropped `failed = append(failed, path)` from the
+atomicWrite-error branch, same line my attempt-4 mutation targeted):
+  $ go build ./... && go test -v -race -count=3 -run TestRollbackDecryptionReportsPathOnAtomicWriteFailure ./internal/services/storage/
+    --- FAIL (x3): "expected failed=[.../aaa...a.csv], got []"
+The mutant that escaped clean (SKIP -> PASS) at attempt 4 is now caught on
+every one of 3 runs under -race, as root. My attempt-4 finding is CLOSED.
+migration.go restored byte-for-byte afterward (`git diff --stat` empty).
+
+ATTACK #2 -- injection precision. Instrumented storage.go's atomicWrite
+(only occurrence touched, confirmed by python replace count=1, distinct from
+the textually similar createExclusive a few lines above) with a println on
+CreateTemp's error, rebuilt, ran the single test:
+  DEBUG-CREATETEMP-ERROR: open .../aaa...a.csv.tmp-2483604782: file name too long
+  --- PASS
+This confirms execution reaches os.ReadFile (succeeds, per the test's own
+precondition assertion) -> isAgeEncrypted -> encryptData (succeeds,
+non-failing recipient) -> filePerm (succeeds, Stat of a valid 255-byte name)
+-> atomicWrite -> os.CreateTemp -> ENAMETOOLONG, exactly the branch the test
+claims to pin. Not the ReadFile branch, not encryptData. storage.go restored
+byte-for-byte after (`git diff --stat` empty).
+
+ATTACK #3 -- NAME_MAX arithmetic. Read storage.go: StagingSuffix = ".tmp-"
+(5 bytes, unconditional literal). Read GOROOT src/os/tempfile.go: CreateTemp's
+random suffix is `itoa.Uitoa(uint(uint32(runtime_rand())))` -- unpadded
+decimal, length >= 1 always (even value 0 renders as "0"), so worst case adds
+only 1 byte. With base=255 bytes exactly, the staging name's fixed prefix
+alone (255 + len(".tmp-") = 260) already exceeds NAME_MAX=255 before any
+random digits are appended -- the mechanism does not depend on the random
+suffix's length at all, so it cannot flake regardless of runtime_rand()'s
+output. PATH_MAX: t.TempDir() nesting depth doesn't threaten this (ENAMETOOLONG
+here is a per-component check, and total path length from /tmp is nowhere
+near 4096). This host is ext4 (confirmed above); tmpfs shares the same
+255-byte NAME_MAX on Linux. Portability to non-Linux (windows) is explicitly
+skipped by the test itself. No fragility found.
+
+ATTACK #4 -- weakening. `git diff HEAD -- internal/services/storage/migration_decrypt_rollback_test.go`
+reviewed in full (29 removed / 36 added lines, single test rewritten). The
+final assertion is unchanged in strength: `len(failed) != 1 || failed[0] !=
+plainFile` (exact full-path match, not count-only), followed by the
+plaintext-untouched readback check (byte-for-byte content compare) -- both
+survive intact. The `os.Geteuid() == 0` skip is removed (not narrowed to
+something that still admits a false PASS); the windows skip remains, msg
+updated. No other test in the file touched (diff is scoped to this one
+test's body and its comment). No production code changed:
+`git diff --stat HEAD -- internal/services/storage/migration.go
+internal/services/storage/storage.go` is empty on the real repo, and my
+scratch copy's mutations were reverted before comparison -- confirmed
+test-only, matching RULING 2026-08-24c's scope.
+
+ATTACK #5 -- out-of-scope pre-existing failure, status check only.
+  $ go test -v -run TestRollbackDecryptionWithRecipientReportsUnrestorableFiles ./internal/services/storage/
+    --- FAIL: expected failed=[.../unreadable.csv], got []
+Unchanged from attempt 4 (same chmod-0000 technique, still bypassed by root).
+Attempt 5 did not touch this test and did not make it worse. Recorded, not
+scored against F3 per the dispatch brief's scope note.
+
+ATTACK #6 -- fragility/leakage/collateral damage.
+  $ go test -count=1 ./internal/services/storage/...   (full package, root, 116s)
+    FAIL -- the ONLY failure is the out-of-scope
+    TestRollbackDecryptionWithRecipientReportsUnrestorableFiles from attack
+    #5; the atomicWrite test passes inside the full suite too. No new
+    failures introduced anywhere else in the package by removing the skip.
+  Fixture hygiene: `dir := t.TempDir()`, `plainFile := filepath.Join(dir,
+  base)` -- everything written lives under t.TempDir(), auto-cleaned; nothing
+  written outside it.
+  Hygiene: `go build ./...`, `go vet ./internal/services/storage/...`,
+  `gofmt -l` all clean on the reworked file.
+
+CONCLUSION: I tried to reconstruct my attempt-4 refutation on the current
+tree and could not -- the mutant that previously escaped as SKIP now fails
+deterministically as root, across three raced runs. I tried to find a case
+where the injected failure lands somewhere other than atomicWrite's
+CreateTemp and could not -- confirmed by direct instrumentation, not just
+code reading. I tried to find a loosened assertion, an out-of-scope
+production change, a NAME_MAX edge case that could flake, and new collateral
+damage from removing the skip, and found none. My attempt-4 finding
+(atomicWrite-failure branch undefended under root) is CLOSED by attempt 5.

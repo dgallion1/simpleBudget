@@ -380,22 +380,30 @@ func TestRollbackDecryptionReportsPathOnEncryptFailure(t *testing.T) {
 // file's full path must still land in the returned failed slice.
 //
 // atomicWrite publishes by renaming a staging file it creates with
-// os.CreateTemp inside the destination's own directory (see
-// TestRollbackEncryptionPublishesByRenameNotWrite for the read-only
-// *destination* case, which rename tolerates). To fail atomicWrite itself
-// the *directory* has to be unwritable, so os.CreateTemp cannot create the
-// staging file in the first place -- a read-only destination file is not
-// enough, since rename does not need write permission on the file it
-// replaces.
+// os.CreateTemp inside the destination's own directory, under the name
+// <destination-basename> + StagingSuffix + <random digits> (see
+// StagingSuffix's doc comment in storage.go). This used to be forced by
+// chmodding the containing directory 0500 so os.CreateTemp could not create
+// the staging file -- but that is a DAC permission check, and root bypasses
+// DAC permission checks (CAP_DAC_OVERRIDE), so as root the chmod never
+// actually blocked the write and the test self-skipped via
+// os.Geteuid() == 0, leaving this branch undefended in exactly the
+// environment (root containers) it runs in. This version forces the same
+// os.CreateTemp failure a different way: it names the data file with a
+// basename of exactly 255 bytes, the NAME_MAX limit ext4 and tmpfs enforce
+// per path component (both t.TempDir() resolves to on Linux). A 255-byte
+// name is itself a valid, creatable, readable filename -- but atomicWrite's
+// staging name, built by appending StagingSuffix and a random suffix to
+// that same basename, is necessarily longer than NAME_MAX, so
+// os.CreateTemp fails with ENAMETOOLONG. That is a kernel-enforced
+// filesystem limit, not a permission bit, so it fails identically for uid 0
+// and for an ordinary user -- there is nothing here for root to bypass.
 //
 // Drop `failed = append(failed, path)` from the atomicWrite error branch and
 // this test fails; nothing else in the suite does.
 func TestRollbackDecryptionReportsPathOnAtomicWriteFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("permission semantics differ on windows")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("root bypasses unix file permissions")
+		t.Skip("NAME_MAX arithmetic below assumes POSIX per-component filename limits; windows path-length semantics differ")
 	}
 
 	dir := t.TempDir()
@@ -411,23 +419,26 @@ func TestRollbackDecryptionReportsPathOnAtomicWriteFailure(t *testing.T) {
 		t.Fatalf("Recipient failed: %v", err)
 	}
 
-	subdir := filepath.Join(dir, "sub")
-	if err := os.Mkdir(subdir, 0755); err != nil {
-		t.Fatalf("Mkdir setup failed: %v", err)
+	// Exactly NAME_MAX (255) bytes: the file itself is valid, but
+	// atomicWrite's staging name -- this basename + StagingSuffix + random
+	// digits -- is not (see doc comment above).
+	base := strings.Repeat("a", 255-len(".csv")) + ".csv"
+	if len(base) != 255 {
+		t.Fatalf("test bug: basename is %d bytes, want 255", len(base))
 	}
-	plainFile := filepath.Join(subdir, "plain.csv")
+	plainFile := filepath.Join(dir, base)
 	plaintext := []byte("account,balance\nchecking,77.00\n")
 	if err := os.WriteFile(plainFile, plaintext, 0644); err != nil {
 		t.Fatalf("WriteFile setup failed: %v", err)
 	}
-
-	// Directory read-only after the file already exists inside it: encryptData
-	// still succeeds (it never touches disk), but atomicWrite's os.CreateTemp
-	// for the staging file fails.
-	if err := os.Chmod(subdir, 0o500); err != nil {
-		t.Fatalf("Chmod setup failed: %v", err)
+	// Confirm the setup assumption directly: the 255-byte name is readable,
+	// so rollbackDecryptionWithRecipient's leading os.ReadFile succeeds and
+	// the forced failure lands in the atomicWrite branch specifically, not
+	// the read branch (TestRollbackDecryptionReportsFullPaths) or the
+	// encrypt branch (TestRollbackDecryptionReportsPathOnEncryptFailure).
+	if _, err := os.ReadFile(plainFile); err != nil {
+		t.Fatalf("precondition failed: 255-byte filename is not readable: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(subdir, 0o755) })
 
 	failed := s.rollbackDecryptionWithRecipient([]string{plainFile}, recipient)
 
@@ -435,12 +446,8 @@ func TestRollbackDecryptionReportsPathOnAtomicWriteFailure(t *testing.T) {
 		t.Fatalf("expected failed=[%s], got %v", plainFile, failed)
 	}
 
-	// Restore write access to read the file back: atomicWrite's staging file
-	// never got created (let alone renamed into place), so the original
-	// plaintext must be untouched.
-	if err := os.Chmod(subdir, 0o755); err != nil {
-		t.Fatalf("Chmod restore failed: %v", err)
-	}
+	// atomicWrite's staging file was never created (let alone renamed into
+	// place), so the original plaintext must be untouched.
 	raw, err := os.ReadFile(plainFile)
 	if err != nil {
 		t.Fatalf("ReadFile after rollback failed: %v", err)

@@ -1,0 +1,195 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: F3
+ATTEMPT: 5
+---
+Tree under test: /home/user/simplebudget (attempt-5 changes are UNCOMMITTED in the
+working tree; HEAD predates them).
+  $ git -C /home/user/simplebudget rev-parse HEAD
+    c9c5d5dabbf3ad76db467dfdcdf90fc820357505
+  $ git -C /home/user/simplebudget status --porcelain
+     M .swarm/ledger.tsv
+     M .swarm/tier3/F1/accept.sh          (lead: nested race timeout 600s -> 1800s)
+     M .swarm/tier3/F2/accept.sh          (lead: same)
+     M .swarm/tier3/F3/report.md          (lead: attempt-4 verification + RULING 2026-08-24c)
+     M .swarm/tier3/F4/accept.sh          (F4, in flight)
+     M .swarm/tier3/F4/report.md          (F4, in flight)
+     M internal/services/storage/migration_decrypt_rollback_test.go   <-- F3.5 manifest
+     M internal/services/storage/migration_perm_test.go               (F4.2 manifest, not mine)
+    ?? .swarm/manifests/F3.5.files  ?? .swarm/manifests/F4.2.files
+    ?? .swarm/verdicts/F3.4.*  F4.1.*  F4.2.*  (pre-existing)
+    ?? .swarm/verdicts/F3.5.checker-second.verdict  (the other lane; appeared mid-run, not mine)
+
+ISOLATION. Nothing was run in /home/user/simplebudget. Copies used:
+  /tmp/claude-0/f3t5     oracle, run as uid 65534 (nobody)
+  /tmp/claude-0/f3root   root runs: correct-tree test, -race -count=3, gofmt/vet/build
+  /tmp/claude-0/f3mut    root run: atomicWrite-branch mutation
+  /tmp/claude-0/f3mutfp  root run: filePerm-branch mutation (branch-routing control)
+Unprivileged env for nobody: HOME/GOPATH/GOCACHE/GOMODCACHE under /tmp/claude-0/f3home
+(module + build caches copied out of /root, which is 0700). The ONLY write I made to
+the real tree is this verdict file. Machine: nproc=4, load ~1.0 during the oracle.
+
+=====================================================================
+CRITERION 1 -- `bash .swarm/tier3/F3/accept.sh` all checks PASS, exit 0, run
+  UNPRIVILEGED.  MET.
+
+  $ cp -a /home/user/simplebudget /tmp/claude-0/f3t5 && chmod -R a+rwX /tmp/claude-0/f3t5
+  $ nohup su nobody -s /bin/bash -c 'source /tmp/claude-0/f3env.sh;
+        cd /tmp/claude-0/f3t5 && bash .swarm/tier3/F3/accept.sh; echo "ORACLE_EXIT=$?"' \
+        > /tmp/claude-0/f3t5-oracle.log 2>&1 &
+  (uid confirmed before launch: `su nobody ... id` -> uid=65534(nobody) gid=65534(nogroup))
+
+  /tmp/claude-0/f3t5-oracle.log, complete, ~47 min wall:
+    CHECK 01-partial-failure-behaviour: PASS
+    CHECK 02-f1-oracle-still-green: PASS
+    CHECK 03-f2-oracle-still-green: PASS
+    CHECK 07-nothing-decrypted-guard-defended: PASS (suite detected the mutation)
+    CHECK 08-new-helper-placement-defended: PASS (suite detected the mutation)
+    CHECK 09-encrypt-failure-reporting-defended: PASS (suite detected the mutation)
+    CHECK 10-atomicwrite-failure-reporting-defended: PASS (suite detected the mutation)
+    CHECK 05-build: PASS
+    CHECK 06-vet: PASS
+    ---
+    passed=9 failed=0
+    ORACLE_EXIT=0
+
+  The two checks that failed at attempt 4 (02, 03) now pass, and pass because the
+  nested suites finished rather than because anything was loosened past the truth:
+    $ tail -3 /tmp/f1_race.out -> ok  budget2/internal/services/storage  859.678s
+    $ tail -3 /tmp/f2_race.out -> ok  budget2/internal/services/storage  847.853s
+  i.e. the -race suite completed green in 860s/848s against the 1800s budget the lead
+  set (F1 accept.sh:172, F2 accept.sh:138). Nested tallies: /tmp/f3_f1.out
+  "passed=7 failed=0", /tmp/f3_f2.out "passed=6 failed=0". Planted check-01 suite:
+  /tmp/f3_oracle.out "ok  budget2/internal/services/storage  27.809s".
+  The oracle cleaned up after itself: no zz_oracle_f3_test.go remains in
+  /tmp/claude-0/f3t5/internal/services/storage/.
+
+  Note on why unprivileged mattered: attempt 4 recorded that
+  TestRollbackDecryptionWithRecipientReportsUnrestorableFiles (chmod-0000 fixture,
+  pre-existing) fails under root. Running as nobody, the full package suite inside
+  every nested oracle is green, which is what makes checks 02/03 and the mutation
+  checks meaningful rather than confounded by that root artifact.
+
+=====================================================================
+CRITERION 2 -- the reworked test DISCRIMINATES AS ROOT (PASS not SKIP on the
+  correct tree; FAILS when the branch is removed); -race -count=3 stable.  MET.
+
+  (a) Correct tree, as uid 0:
+    $ cd /tmp/claude-0/f3root && id -u -> 0
+    $ go test -count=1 -v -run 'TestRollbackDecryptionReportsPathOnAtomicWriteFailure' \
+          ./internal/services/storage/
+      === RUN   TestRollbackDecryptionReportsPathOnAtomicWriteFailure
+      --- PASS: TestRollbackDecryptionReportsPathOnAtomicWriteFailure (2.66s)
+      ok  budget2/internal/services/storage  2.679s        RC=0
+    PASS, not SKIP -- the attempt-4 finding ("--- SKIP ... root bypasses unix file
+    permissions") is gone. The uid-0 skip guard is removed from the source; the only
+    remaining skip is runtime.GOOS == "windows" (test file:405-407).
+
+  (b) Same tree as (a) with the branch removed, as uid 0. Mutation applied by
+      script, byte-equivalent to accept.sh's MUT_AW:
+    $ cd /tmp/claude-0/f3mut && python3 -c "...remove the single line
+        'failed = append(failed, path)' from
+        '} else if err := s.atomicWrite(path, encrypted, perm); err != nil {'..."
+      MUTATION APPLIED
+    $ sed -n '484,492p' internal/services/storage/migration.go
+        if perm, err := filePerm(path); err != nil {
+            failed = append(failed, path)
+        } else if err := s.atomicWrite(path, encrypted, perm); err != nil {
+        }
+    $ go test -count=1 -v -run 'TestRollbackDecryptionReportsPathOnAtomicWriteFailure' \
+          ./internal/services/storage/                         # as uid 0
+      migration_decrypt_rollback_test.go:446: expected
+        failed=[/tmp/TestRollback.../aaa...(255 bytes)....csv], got []
+      --- FAIL: TestRollbackDecryptionReportsPathOnAtomicWriteFailure (2.56s)
+      FAIL  budget2/internal/services/storage  2.587s          RC=1
+    Named line: migration_decrypt_rollback_test.go:446, the `len(failed) != 1 ||
+    failed[0] != plainFile` assertion. Because -run selected only this test, the
+    failure cannot be the pre-existing root artifact of criterion 4; it is this test.
+
+  (c) The forced failure really lands in the atomicWrite branch, not the filePerm
+      branch that sits immediately above it (control I added; the two share a
+      failed-append and would otherwise be indistinguishable):
+    $ cd /tmp/claude-0/f3mutfp   # remove ONLY the filePerm-branch append
+      FILEPERM-BRANCH APPEND REMOVED
+    $ go test -count=1 -v -run 'TestRollbackDecryptionReportsPathOnAtomicWriteFailure' ...
+      --- PASS: ... (1.61s)
+    Still green, so filePerm succeeds on the 255-byte name and the report comes from
+    the atomicWrite branch. Combined with (b): this test kills the atomicWrite branch
+    and only the atomicWrite branch.
+
+  (d) Race stability, as uid 0, on the correct tree:
+    $ cd /tmp/claude-0/f3root && go test -race -count=3 -v \
+          -run 'TestRollbackDecryptionReportsPathOnAtomicWriteFailure' ./internal/services/storage/
+      --- PASS: ... (14.71s)   --- PASS: ... (11.17s)   --- PASS: ... (11.08s)
+      ok  budget2/internal/services/storage  38.077s     RC=0
+    3/3 PASS under -race, no data race reported.
+
+  (e) Also PASS (not SKIP) as the unprivileged user, so the mechanism is uid-agnostic
+      as the doc comment claims:
+    $ su nobody -s /bin/bash -c '... cd /tmp/claude-0/f3t5 && go test -count=1 -v -run
+        "TestRollbackDecryptionReportsPathOnAtomicWriteFailure" ./internal/services/storage/'
+      --- PASS: TestRollbackDecryptionReportsPathOnAtomicWriteFailure (1.68s)
+
+  Test content read in full (migration_decrypt_rollback_test.go:404-458) and it
+  asserts what its name claims: it builds a 255-byte basename (asserting the length
+  itself, :426-428), asserts the file IS readable first so the failure cannot be the
+  ReadFile branch (:439-441), calls s.rollbackDecryptionWithRecipient and requires
+  failed == [full path] (:445-447), then requires the on-disk plaintext byte-identical
+  (:451-457). Not a name-only test.
+
+=====================================================================
+CRITERION 3 -- attempt 5 is test-only and strictly within its manifest.  MET.
+
+  $ cat .swarm/manifests/F3.5.files -> internal/services/storage/migration_decrypt_rollback_test.go
+  $ git diff --stat
+      internal/services/storage/migration_decrypt_rollback_test.go | 63 ++++++------
+    -- and, outside F3, only .swarm/* lead artifacts plus
+    internal/services/storage/migration_perm_test.go, which is the sole entry of
+    .swarm/manifests/F4.2.files (F4's in-flight work, not F3's).
+  No production file is modified: migration.go does not appear in `git status
+  --porcelain` at all, so attempt 5 touched zero non-test Go source.
+
+  Confined to the one test, established by line numbers rather than by eye:
+  $ git diff -U0 <file> | grep -E '^@@'
+      @@ -383,7  +383,18 @@   @@ -395,4 +406 @@   @@ -414,3 +422,6 @@
+      @@ -418 +429 @@       @@ -423,6 +434,7 @@   @@ -430 +441,0 @@   @@ -438,6 +449,2 @@
+  $ grep -n '^func ' <file>
+      25, 146, 191, 282, 343 (TestRollbackDecryptionReportsPathOnEncryptFailure),
+      404 (TestRollbackDecryptionReportsPathOnAtomicWriteFailure)  <- last func, file ends 459
+  The preceding function's body closes at line 375; the doc comment for the
+  AtomicWrite test starts at 377. Every hunk lies in [383,455], i.e. inside that doc
+  comment and that test body. No other test's lines are in any hunk.
+  $ diff <(git show HEAD:<file> | grep '^func ' | sort) <(grep '^func ' <file> | sort)
+      IDENTICAL_FUNC_SET      (no test added, removed or renamed)
+  Import block unchanged (no hunk touches lines 1-24); "os", "runtime", "strings" were
+  already imported at HEAD.
+
+=====================================================================
+CRITERION 4 -- gofmt / vet / build.  MET.
+  $ cd /tmp/claude-0/f3root
+  $ gofmt -l internal/services/storage/migration_decrypt_rollback_test.go
+      (no output, exit 0 -- clean)
+  $ go vet ./internal/services/storage/            -> vet_rc=0
+  $ go build ./...                                  -> build_rc=0
+  Corroborated inside the unprivileged oracle run: CHECK 05-build: PASS,
+  CHECK 06-vet: PASS (go build ./... and go vet ./... over the whole module).
+
+=====================================================================
+SCOPE.  Clean.
+  Manifest is one file under internal/services/storage/**, which is in
+  .swarm/critical.globs; the ledger row permits it at tier 3:
+    F3  3  tests,second  merged-unverified  5  worker-coder
+       attempt-5-root-proof-atomicwrite-test-ruling-2026-08-24c
+  Nothing outside .swarm/manifests/F3.5.files was modified by this attempt (the other
+  dirty paths belong to the lead's oracle-timeout edit, F3's report, and F4). All my
+  runs were on copies under /tmp/claude-0/; the only file I wrote in the real tree is
+  this verdict.
+
+BOTTOM LINE. All four criteria are met with a cited command each. The attempt-4
+blockers are both closed and closed for the right reason: the atomicWrite-failure
+branch is now defended at uid 0 (ENAMETOOLONG is kernel-enforced -- proven by the
+root mutation killing exactly this test), and the nested F1/F2 race suites finish in
+~850s inside the lead's 1800s budget rather than being timed out at 600s. The oracle,
+which the brief makes authoritative, exits 0 with 9/9 checks PASS as an unprivileged
+user.

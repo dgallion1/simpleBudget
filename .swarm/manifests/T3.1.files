@@ -1,0 +1,4 @@
+internal/services/storage/migration_decrypt_rollback_test.go
+internal/services/mcpsvc/curate/delete_test.go
+internal/services/mcpsvc/curate/upsert_test.go
+internal/handlers/explorer/handlers_test.go

@@ -15,9 +15,11 @@ package majorexpenses
 //     transaction_pins.json, deleted_major_expenses.json) makes the
 //     corresponding Load* call return an "invalid …file" error without
 //     touching the storage layer.
-//  4. chmod(0o500) on the data dir blocks every subsequent write, so
-//     any handler whose mutation path ends in a Save fails. A t.Cleanup
-//     restores 0o755 so t.TempDir can do its own cleanup.
+//  4. makeDirWriteBlocked blocks every subsequent write to the data dir
+//     (chmod 0o500 at an ordinary uid; a read-only bind mount under
+//     root, whose CAP_DAC_OVERRIDE ignores the chmod -- see its doc
+//     comment), so any handler whose mutation path ends in a Save
+//     fails. A t.Cleanup undoes it so t.TempDir can do its own cleanup.
 
 import (
 	"context"
@@ -27,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -46,14 +49,47 @@ func chiCtx(req *http.Request, kv ...string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-// makeChmodReadOnly chmods dir to 0o500 (no write) and registers a
-// cleanup that restores 0o755 so t.TempDir can rm-rf at end.
-func makeChmodReadOnly(t *testing.T, dir string) {
+// makeDirWriteBlocked makes dir reject new writes (new files, staged
+// renames) while leaving existing files inside it fully readable, and
+// registers a cleanup that undoes it so t.TempDir can rm-rf at the end.
+//
+// Every _SaveFails test below drives a load-modify-save handler: the
+// production code reads the very file it is about to rewrite before it
+// rewrites it (e.g. AddMajorExpense reads major_expenses.json, appends,
+// and writes the same file back). That rules out the EISDIR/ENOTEMPTY/
+// directory-in-place tricks used elsewhere in this rework: putting
+// anything other than the real file at the target path would make the
+// EARLIER read fail too, so the test would be proving "load breaks" not
+// "save fails," and a mutation to the save path alone would go undetected.
+//
+// chmod 0o500 (r-x, no w) captures exactly the asymmetry needed --
+// existing entries stay readable, new entries/renames are refused -- but
+// root's CAP_DAC_OVERRIDE bypasses that permission check outright, so
+// under root the old fixture let every write through and the test failed.
+// EROFS from a read-only mount is not a permission check at all -- it is
+// enforced by the VFS at the mount layer, so CAP_DAC_OVERRIDE has nothing
+// to bypass; reads of files already open/openable under the mount are
+// unaffected. Bind-mounting dir onto itself and then remounting that bind
+// read-only needs CAP_SYS_ADMIN, which only root has and only root needs
+// here (an unprivileged uid is never exempt from the plain chmod, so it
+// keeps using that path).
+func makeDirWriteBlocked(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatalf("chmod 0500 %s: %v", dir, err)
+	if os.Geteuid() != 0 {
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatalf("chmod 0500 %s: %v", dir, err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+		return
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if err := syscall.Mount(dir, dir, "", syscall.MS_BIND, ""); err != nil {
+		t.Fatalf("bind mount %s onto itself: %v", dir, err)
+	}
+	if err := syscall.Mount("", dir, "", syscall.MS_BIND|syscall.MS_REMOUNT|syscall.MS_RDONLY, ""); err != nil {
+		_ = syscall.Unmount(dir, syscall.MNT_DETACH)
+		t.Fatalf("remount %s read-only: %v", dir, err)
+	}
+	t.Cleanup(func() { _ = syscall.Unmount(dir, syscall.MNT_DETACH) })
 }
 
 // formEncoded wraps a body string in the standard form-encoded request
@@ -444,7 +480,7 @@ func TestHandleAdd_PinHashFailureLogged(t *testing.T) {
 func TestHandleAdd_SaveFails(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	form := url.Values{"name": {"X"}, "keywords": {"x"}}
 	w := httptest.NewRecorder()
@@ -458,7 +494,7 @@ func TestHandleUpdate_SaveFails(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
 	list, _ := dl.AddMajorExpense(makeExpense("s", "S", []string{"s"}, 0, 0))
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	form := url.Values{"name": {"S2"}, "keywords": {"s"}}
 	w := httptest.NewRecorder()
@@ -472,7 +508,7 @@ func TestHandleDelete_SaveFails(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
 	list, _ := dl.AddMajorExpense(makeExpense("d", "D", nil, 0, 0))
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	w := httptest.NewRecorder()
 	newRouter().ServeHTTP(w, httptest.NewRequest("DELETE", "/major-expenses/"+list[0].ID, nil))
@@ -489,7 +525,7 @@ func TestHandleRestore_SaveFails(t *testing.T) {
 	if err := dl.ArchiveMajorExpense(id); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	w := httptest.NewRecorder()
 	newRouter().ServeHTTP(w, httptest.NewRequest("POST", "/major-expenses/"+id+"/restore", nil))
@@ -506,7 +542,7 @@ func TestHandleDiscard_SaveFails(t *testing.T) {
 	if err := dl.ArchiveMajorExpense(id); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	w := httptest.NewRecorder()
 	newRouter().ServeHTTP(w, httptest.NewRequest("DELETE", "/major-expenses/deleted/"+id, nil))
@@ -519,7 +555,7 @@ func TestHandlePin_SaveFails(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
 	list, _ := dl.AddMajorExpense(makeExpense("p", "P", nil, 0, 0))
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	form := url.Values{"hash": {"h1"}, "expense_id": {list[0].ID}}
 	w := httptest.NewRecorder()
@@ -533,7 +569,7 @@ func TestHandleBulkPin_SaveFails(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
 	list, _ := dl.AddMajorExpense(makeExpense("bp", "BP", nil, 0, 0))
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	form := url.Values{"expense_id": {list[0].ID}, "hashes": {"h1", "h2"}}
 	w := httptest.NewRecorder()
@@ -550,7 +586,7 @@ func TestHandleUnpin_SaveFails(t *testing.T) {
 	if err := dl.SetTransactionPin("h1", list[0].ID); err != nil {
 		t.Fatalf("seed pin: %v", err)
 	}
-	makeChmodReadOnly(t, dl.CSVDirectory)
+	makeDirWriteBlocked(t, dl.CSVDirectory)
 
 	w := httptest.NewRecorder()
 	newRouter().ServeHTTP(w, httptest.NewRequest("DELETE", "/major-expenses/pins/h1", nil))

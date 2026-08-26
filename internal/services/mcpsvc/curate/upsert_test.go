@@ -156,10 +156,25 @@ func TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read pins before: %v", err)
 	}
-	if err := os.Chmod(pinsPath, 0o000); err != nil {
-		t.Fatalf("chmod: %v", err)
+
+	// Swap the file for an empty directory of the same name instead of
+	// chmod 0o000. Ensure's first move is os.ReadFile(src); a directory
+	// there fails that call with EISDIR at any uid, including root -- unlike
+	// chmod 0000, which root's CAP_DAC_OVERRIDE lets it read straight
+	// through. EISDIR also deliberately does NOT satisfy errors.Is(err,
+	// fs.ErrNotExist) (see upsert.go's check just below): a dangling-symlink
+	// (ENOENT) injection would be indistinguishable from "no prior pins
+	// file" and get tolerated instead of skipping the pin, which is the
+	// opposite of what this test defends. The file genuinely exists on disk
+	// throughout (as a directory standing in for it here, then restored to
+	// its real content below), matching the test's premise that
+	// transaction_pins.json "already exists... but cannot be read."
+	if err := os.Remove(pinsPath); err != nil {
+		t.Fatalf("remove transaction_pins.json: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(pinsPath, 0o644) })
+	if err := os.Mkdir(pinsPath, 0o755); err != nil {
+		t.Fatalf("mkdir transaction_pins.json placeholder: %v", err)
+	}
 	cs := connect(t, deps)
 
 	roof := models.Transaction{Date: day(2026, 2, 14), Description: "ACME ROOFING", Amount: -4500}
@@ -182,8 +197,12 @@ func TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken(t *testing.T) {
 		t.Errorf("notes = %q, want the update applied despite the pin skip", list[0].Notes)
 	}
 
-	if err := os.Chmod(pinsPath, 0o644); err != nil {
-		t.Fatalf("chmod restore: %v", err)
+	// Put the real file back before reading it again below.
+	if err := os.Remove(pinsPath); err != nil {
+		t.Fatalf("remove transaction_pins.json placeholder: %v", err)
+	}
+	if err := os.WriteFile(pinsPath, before, 0o644); err != nil {
+		t.Fatalf("restore transaction_pins.json: %v", err)
 	}
 	after, err := os.ReadFile(pinsPath)
 	if err != nil {

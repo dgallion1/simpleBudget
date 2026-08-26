@@ -2695,16 +2695,28 @@ func TestHandleRestoreWriteError(t *testing.T) {
 	tmpDir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Make data directory read-only to cause write failures.
+	// Root-proof: a 0555 (read-only) tmpDir relied on CAP_DAC_OVERRIDE being
+	// absent, which root's verification container does not honor -- root
+	// ignores the write-permission bit and the restore would succeed,
+	// defeating this test's whole point.
+	//
+	// Instead, pre-create a DIRECTORY at the exact path the archive entry
+	// restores to. restore.Service.FromZip's write goes through
+	// storage.atomicWrite: it stages the new bytes under a unique temp name
+	// in tmpDir (that succeeds -- tmpDir itself is untouched and writable)
+	// and then publishes with os.Rename(tmpPath, dest). Renaming a regular
+	// file onto a path that is an existing directory fails with EISDIR --
+	// a path-type mismatch the kernel enforces unconditionally, not a
+	// permission check, so CAP_DAC_OVERRIDE has nothing to bypass.
 	zipBuf := createZipBuffer(t, map[string]string{
 		"test.csv": "data",
 	})
 
 	body, contentType := createMultipartBody(t, "file", "backup.zip", zipBuf.Bytes())
 
-	// Remove write permissions
-	os.Chmod(tmpDir, 0555)
-	defer os.Chmod(tmpDir, 0755)
+	if err := os.Mkdir(filepath.Join(tmpDir, "test.csv"), 0755); err != nil {
+		t.Fatalf("seed directory-in-place at test.csv: %v", err)
+	}
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/restore", body)

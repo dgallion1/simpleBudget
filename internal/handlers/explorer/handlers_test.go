@@ -1863,13 +1863,27 @@ func TestHandleAlias_SaveError(t *testing.T) {
 func TestHandleFileUpload_WriteError(t *testing.T) {
 	dataDir := setupTestEnv(t)
 
-	// Make the data directory read-only so WriteFile fails
-	// Create a subdirectory that we'll use as DataDirectory that's read-only
-	roDir := filepath.Join(dataDir, "readonly")
-	if err := os.MkdirAll(roDir, 0555); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
+	// Root-proof: DataDirectory is a plain FILE rather than the usual
+	// directory, instead of a 0555 read-only directory (which root's
+	// CAP_DAC_OVERRIDE ignores). CreateExclusive's staging step is
+	// os.MkdirAll(filepath.Dir(destPath), ...), and MkdirAll fails with
+	// ENOTDIR ("not a directory") when a path component already exists as a
+	// non-directory -- a kernel-level failure no uid, root included, can
+	// bypass.
+	//
+	// Deliberately NOT a directory sitting at the exact destination
+	// filename: createExclusive publishes by hard-linking a staged temp
+	// file onto the destination (os.Link), and linking onto a path that
+	// already exists -- file or directory -- fails with EEXIST, which
+	// CreateExclusive already maps to the "skipped: already exists"
+	// outcome, not the "error saving file" outcome this test defends.
+	// ENOTDIR at the MkdirAll step, before any of that, avoids the
+	// collision entirely.
+	notADir := filepath.Join(dataDir, "readonly")
+	if err := os.WriteFile(notADir, []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
-	cfg.DataDirectory = roDir
+	cfg.DataDirectory = notADir
 
 	uploaded := []byte("Date,Description,Amount\n2024-01-01,Test,10.00\n")
 	req := newUploadRequest(t, "test.csv", uploaded)
@@ -1891,18 +1905,29 @@ func TestHandleFileUpload_WriteError(t *testing.T) {
 func TestHandleFileDelete_RemoveError(t *testing.T) {
 	dataDir := setupTestEnv(t, sampleCSV)
 
-	// Make the directory read-only so Remove fails
 	filePath := filepath.Join(dataDir, "test0.csv")
 	// First verify file exists
 	if _, err := os.Stat(filePath); err != nil {
 		t.Fatalf("file should exist: %v", err)
 	}
-	// Make directory non-writable
-	if err := os.Chmod(dataDir, 0555); err != nil {
-		t.Fatalf("Chmod: %v", err)
+
+	// Root-proof: replace test0.csv with a non-empty directory instead of
+	// making the parent directory read-only (0555). store.Remove is a plain
+	// os.Remove, and os.Remove on a non-empty directory fails with ENOTEMPTY
+	// at any uid, including root -- a 0555 parent directory does not stop
+	// root, whose CAP_DAC_OVERRIDE lets it write into (and remove from) it
+	// anyway. The handler's earlier store.Stat check still finds something
+	// at the path (a directory, not "not exist"), so it reaches the Remove
+	// call this test defends.
+	if err := os.Remove(filePath); err != nil {
+		t.Fatalf("remove seeded test0.csv: %v", err)
 	}
-	// Restore permissions on cleanup
-	t.Cleanup(func() { os.Chmod(dataDir, 0755) })
+	if err := os.Mkdir(filePath, 0755); err != nil {
+		t.Fatalf("mkdir test0.csv placeholder: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(filePath, "keepme"), []byte("x"), 0644); err != nil {
+		t.Fatalf("seed non-empty placeholder directory: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/explorer/files/test0.csv", nil)
 	rec := httptest.NewRecorder()
@@ -2538,24 +2563,28 @@ func TestHandleImport_SymlinkNotFollowedTargetSurvives(t *testing.T) {
 }
 
 // A write that cannot succeed must leave the source in place. Staged for real
-// by making the data directory unwritable.
+// with a root-proof injection: a 255-byte (NAME_MAX) basename whose
+// deps.write is store.CreateExclusive in production, and its staging name is
+// <destination-base> + ".tmp-" + a random suffix (see StagingSuffix). At the
+// NAME_MAX limit that staged name overflows and os.CreateTemp fails with
+// ENAMETOOLONG -- a kernel limit no uid, including root, can bypass, unlike
+// the 0555 unwritable data directory this replaced (root's CAP_DAC_OVERRIDE
+// writes through that regardless). See
+// TestRollbackDecryptionReportsPathOnAtomicWriteFailure for the same pattern
+// used elsewhere in this codebase. This also cannot be an EEXIST-style
+// injection (e.g. a directory already at the destination): CreateExclusive
+// maps errors.Is(err, os.ErrExist) to a "skipped" outcome, not the
+// "rejected" outcome this test defends.
 func TestHandleImport_FailedWriteKeepsSource(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("running as root: an unwritable directory does not block writes")
-	}
 	dataDir, importDir := setupImportScanEnv(t)
-	src := seedImportFile(t, importDir, "delta.csv", importCSV)
+	longName := strings.Repeat("d", 251) + ".csv" // 255 bytes, valid on its own
+	src := seedImportFile(t, importDir, longName, importCSV)
 
-	if err := os.Chmod(dataDir, 0555); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dataDir, 0755) })
-
-	rec := postImport(t, url.Values{"name": {"delta.csv"}, "delete_source": {"true"}})
+	rec := postImport(t, url.Values{"name": {longName}, "delete_source": {"true"}})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
 	}
-	out := importOutcomeFor(t, decodeImportResult(t, rec), "delta.csv")
+	out := importOutcomeFor(t, decodeImportResult(t, rec), longName)
 	if out.Status != "rejected" {
 		t.Errorf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
 	}
@@ -2564,7 +2593,7 @@ func TestHandleImport_FailedWriteKeepsSource(t *testing.T) {
 	}
 
 	mustExist(t, src, "a failed write must leave the source in place")
-	mustNotExist(t, filepath.Join(dataDir, "delta.csv"), "nothing may land when the write fails")
+	mustNotExist(t, filepath.Join(dataDir, longName), "nothing may land when the write fails")
 }
 
 // The race the fix closes: a concurrent uploader or importer creates the

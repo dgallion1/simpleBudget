@@ -1,0 +1,201 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T3
+ATTEMPT: 1
+---
+Repo: /home/user/simplebudget, HEAD 00abacd027c9c33a6864721e5429b617500bdaf9,
+branch claude/t3-root-proof-fixtures. `git status --porcelain` before any of
+my commands (matches what checker-tests recorded): four *_test.go files
+modified, .swarm/ledger.tsv and .swarm/tier3/T3/report.md are the lead's,
+.swarm/manifests/T3.1.files untracked. All test/build/mutant runs below were
+executed in my own `cp -a` copies under /tmp/claude-0/.../scratchpad/t3check/;
+the only write to /home/user/simplebudget is this file.
+
+============================================================
+PART A — the seven reworked tests themselves: NO DEFECT FOUND.
+============================================================
+I tried hard to break these and could not. Recording this in full because a
+PASS-shaped result on this part should not be mistaken for a PASS overall
+(see PART B, which is why the verdict is FAIL).
+
+A1. Wrong-reason-failure attack, traced against production source, not test
+    prose:
+  - storage (internal/services/storage/migration.go:451
+    `rollbackDecryptionWithRecipient`): the loop's FIRST operation on each
+    path is `os.ReadFile(path)`, no earlier Stat/Lstat/walk that could skip a
+    dangling symlink. A symlink to a nonexistent target fails exactly there
+    (ENOENT), landing on `failed = append(failed, path); continue` — the same
+    branch chmod-0000 used to force before root bypassed it. Confirmed for
+    BOTH reworked tests (TestRollbackDecryptionWithRecipientReportsUnrestorable
+    Files and TestRollbackDecryptionReportsFullPaths — the second one was not
+    in NEXT.md's original inventory but was reworked too, a bonus fix).
+  - curate delete (delete.go:118-124) and upsert (upsert.go:179-181): both
+    read `deps.Snapshots.Ensure(f, now)`, which is `snapshot.go:75
+    os.ReadFile(src)` with NO earlier existence check of its own. Swapping
+    the file for an empty directory makes that ReadFile fail with EISDIR
+    (confirmed via the test's own failure text when mutated, see A3 below:
+    "read .../major_expenses.json: is a directory"). EISDIR does not satisfy
+    `errors.Is(err, fs.ErrNotExist)`, so it lands on the abort/skip branch
+    the two tests defend, not the tolerated "file doesn't exist yet" branch a
+    dangling-symlink injection would have hit instead. This is the exact
+    concern flagged in the task brief and it holds.
+  - explorer upload (handlers.go `createExclusive`, storage.go:513-517):
+    `dir := filepath.Dir(path); os.MkdirAll(dir, 0755)` — Go's MkdirAll does
+    an explicit `Stat` + `IsDir()` check and returns `&PathError{Err:
+    syscall.ENOTDIR}` when the path exists as a non-directory, a logic check
+    with no permission dependency root can bypass. Confirmed this reaches the
+    SAME outcome branch as the original chmod test: handlers.go:932-935 maps
+    any non-`os.ErrExist` error from `store.CreateExclusive` to
+    `Status: "rejected", Reason: "error saving file"` — identical to what the
+    old 0555-directory fixture produced for non-root (CreateTemp EACCES).
+  - explorer delete (`storage.go:672 removeLocked` → plain `os.Remove`, NOT
+    RemoveAll): a non-empty directory placeholder makes `os.Remove` fail with
+    ENOTEMPTY, a kernel invariant (VFS unlink refuses a non-empty directory)
+    no uid bypasses. `store.Stat` earlier in handlers.go:970 still finds the
+    directory (not ErrNotExist), so the code reaches the exact `store.Remove`
+    call and 500 branch the test defends.
+  - explorer import ENAMETOOLONG (255-byte NAME_MAX basename): verified
+    NAME_MAX=255 empirically on BOTH the container's actual /tmp (ext4,
+    `getconf NAME_MAX /tmp` = 255) and on tmpfs (/dev/shm probe: a 255-byte
+    name creates fine, a 265-byte one — the same name plus the real
+    `StagingSuffix + <5-digit random>` used by `createExclusive` — fails
+    ENAMETOOLONG). Confirmed this hits the same `deps.write` non-ErrExist
+    branch as the original 0555-directory fixture (rejected / "could not
+    save the file"), not some earlier or later branch.
+
+A2. Assertion weakening: full `git diff` of all four files read in full.
+    Only chmod/cleanup lines were replaced with kernel-enforced setup/
+    restore; every assertion, every `t.Fatalf`/`t.Errorf` check, is
+    unchanged; the one root-only `t.Skip` (in
+    TestHandleImport_FailedWriteKeepsSource) was removed, not added; no test
+    renamed; no `t.Skip` newly introduced anywhere in these four files
+    (grepped: the only remaining Skips are a pre-existing Windows guard and
+    two pre-existing symlink-support guards, none in the seven reworked
+    tests, none uid-conditioned).
+
+A3. Mutants the worker did not try, constructed and run myself in throwaway
+    copies (isolated from the main tree):
+  - storage: dropped the `failed = append(failed, path)` line entirely on
+    the ReadFile-error branch → BOTH storage tests FAIL as designed
+    ("expected failed=[...], got []" / "want 1 unrestored file, got 0").
+  - curate delete: widened the tolerance to swallow ANY Ensure error (not
+    just fs.ErrNotExist) → TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp
+    FAILS ("expected an explicit refusal ... got: read .../major_expenses.
+    json: is a directory") — this also independently proves the injected
+    errno is EISDIR, not ErrNotExist, confirming A1.
+  - curate upsert: neutered the pin-skip-note guard → FAILS ("expected a
+    note explaining the pin was skipped").
+  - explorer delete: `_ = store.Remove(filePath)` (swallow the error) →
+    FAILS ("expected 500 for remove error, got 200").
+  - explorer upload: any CreateExclusive error mapped to "skipped" instead
+    of "rejected" → FAILS ("expected status rejected, got {...Status:
+    skipped}").
+  - explorer import: a shallow "ignore write error, keep going" mutant
+    (`_ = deps.write(...)`) surprisingly still PASSED — but this is not a
+    rework regression: it passes because Step 5's independent readback
+    check (`deps.readBack(destPath)`) also fails when nothing was written,
+    landing on the same "rejected" outcome via a different guard — the
+    SAME defense-in-depth existed under the original chmod fixture (an
+    unwritable directory also makes the write no-op, and readback would
+    equally fail). A faithful reconstruction of the mutation this test is
+    actually built to catch — ignore BOTH the write error and the readback
+    error, unconditionally proceed to delete the source — correctly FAILS
+    ("a failed write must leave the source in place ... no such file or
+    directory").
+  All mutants killed except the one shown to be pre-existing and unrelated
+  to the rework.
+
+A4. Cross-uid, race, environment: ran the seven targeted tests, and the full
+    `storage`/`curate`/`explorer` package suites, both as root (uid 0, this
+    container's actual identity) and as `nobody` (uid 65534, via the NEXT.md
+    `cp -a` + `chmod -R a+rwX` + isolated HOME/GOCACHE/GOPATH/GOMODCACHE +
+    `su nobody` recipe) — all green both ways, including the full
+    `storage` package (~120s, includes its slow race-relevant tests) and
+    `curate`/`explorer` (fast, no race flag needed for stability there).
+    `-race -count=3` on all seven, both uids: 100% PASS, zero flakes, zero
+    `DATA RACE` warnings. No `t.Parallel` in any of the four files, so no
+    fixture-path collision with parallel neighbors is possible.
+
+============================================================
+PART B — why the verdict is FAIL: the task's own Accept bar is not met.
+============================================================
+NEXT.md's T3 section states, verbatim: "**Accept**: full module `go test
+./...` green AS ROOT and as uid≠0; each reworked test still kills its
+original mutation at both uids." I ran exactly that command, as root, on a
+clean `cp -a` copy of this branch (nohup, full log kept, no truncation):
+
+  cd <copy> && go test ./... -count=1
+
+Result: FAIL, in EIGHT packages, 49 individual `--- FAIL:` lines, NONE of
+them in the three packages T3 touched (storage/curate/explorer all report
+`ok`):
+  FAIL  budget2/cmd/enrich-amazon            (TestRun_SaveEnrichmentError)
+  FAIL  budget2/internal/config              (TestLoadUserSettingsPermissionError)
+  FAIL  budget2/internal/handlers/backup     (TestHandleRestoreWriteError)
+  FAIL  budget2/internal/handlers/majorexpenses (8 x *_SaveFails)
+  FAIL  budget2/internal/handlers/whatif     (30 x *_SaveError / *_NonTypedError)
+  FAIL  budget2/internal/services/retirement (8 x *_SaveFailure/*_SaveError/
+                                               *_ReadError/*_RemoveError/
+                                               *_WriteError/TestCRUD_SaveErrors)
+Sample lines (grep -c "FAIL:" on the full log = 49):
+  --- FAIL: TestRun_SaveEnrichmentError
+  --- FAIL: TestLoadUserSettingsPermissionError
+  --- FAIL: TestHandleRestoreWriteError
+  --- FAIL: TestHandleAdd_SaveFails / TestHandleUpdate_SaveFails / ... (majorexpenses)
+  --- FAIL: TestHandleWhatIfRothConversion_SaveError / ... (30 in whatif)
+  --- FAIL: TestPurgeRemovedIncomeSource_SaveFailure / TestCRUD_SaveErrors / ... (retirement)
+Re-ran the same full module suite as `nobody` (uid 65534): all of the above
+pass (whatif 215s ok, retirement 247s ok, etc.) — confirming these are the
+SAME defect class NEXT.md's "Environment facts #1" describes (a
+chmod/read-only-directory fixture that root's CAP_DAC_OVERRIDE bypasses),
+just in packages "Environment facts #1" never inventoried. (One unrelated
+node-tooling failure, `internal/handlers/accounts`
+TestSyncWarnings_ClientRegressionHarness, appeared only in my nobody run
+because my `su nobody` PATH omitted node; it is a PATH artifact of my own
+harness, not a uid-permission defect, and is excluded from the count above.)
+
+These 49 failures are pre-existing and untouched by this task (T3's diff
+touches only the four *_test.go files in storage/curate/explorer, confirmed
+by `git diff --stat` and `git diff internal/ | grep '^+++'`, matching
+checker-tests' criterion 1) — they were already broken under root before
+this branch existed, in code T3 never went near. That does not satisfy the
+literal Accept line, though: "full module `go test ./...` green AS ROOT" is
+false, by a wide margin (49 failing tests, 8 packages, six of which were
+never mentioned in "Environment facts #1"'s inventory of "five... plus a
+sixth"). checker-tests' PASS verdict never ran `go test ./...` at the module
+level — its Criterion 2 command is scoped to
+`./internal/services/storage/ ./internal/services/mcpsvc/curate/
+./internal/handlers/explorer/` only, and its Criterion 3/4/6 stay within the
+same three packages. That is a reasonable reading of "the affected
+packages," but it is not what NEXT.md's Accept line says, and nothing in the
+worker's report, the manifest, or the primary verdict documents this as a
+deliberate, sign-off narrowing of scope.
+
+Net effect: this is either (a) a real gate failure — the written Accept
+criterion for T3 is unmet and "Environment facts #1" undercounted this
+defect class by roughly 7x — or (b) a scope/documentation defect in NEXT.md
+itself (the Accept line should have read "the three affected packages," to
+match its own "Environment facts #1" inventory, and the newly-discovered ~49
+tests belong in a new task). Either way, accepting T3 at this attempt
+without the lead explicitly resolving which of (a)/(b) applies — and without
+a corrected NEXT.md entry or a new task opened for the other ~8 packages —
+would let a materially incomplete claim ("full module green") through the
+gate unchallenged. Per my brief, I default to FAIL on this ambiguity rather
+than silently accept the narrower scope checker-tests assumed.
+
+============================================================
+Distinguishing refutation from observation, per the brief's instruction:
+============================================================
+- REFUTATION (drives the FAIL): the literal, written T3 Accept criterion
+  ("full module go test ./... green AS ROOT") is mechanically false, with
+  reproducible evidence (49 `--- FAIL:` lines, full log retained at
+  /tmp/claude-0/.../scratchpad/t3check/root-full.log during my run).
+- OBSERVATIONS (not refutations, no defect found): every wrong-reason-
+  failure attack (A1), assertion-weakening check (A2), constructed mutant
+  (A3, five of six killed cleanly, the sixth's survival independently
+  explained as pre-existing defense-in-depth rather than a rework
+  regression), and cross-uid/race run (A4) on the seven reworked tests
+  came back clean. If the task's scope is later clarified/ruled to be the
+  three named packages only (matching "Environment facts #1"), PART A alone
+  would support a PASS on the merits of the actual diff.

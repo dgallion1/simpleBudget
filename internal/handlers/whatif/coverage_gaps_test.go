@@ -778,20 +778,33 @@ func TestHandleWhatIfUpdateHealthcare_UnlinkWithNameAndAge(t *testing.T) {
 
 // ── handleSwitchScenario generic (non-typed) error branch ───────────────────
 
-// A Stat failure that is NOT os.IsNotExist (permission denied on the
-// settings dir) must fall through to the generic 500 renderError branch.
+// A Stat failure that is NOT os.IsNotExist must fall through to the generic
+// 500 renderError branch.
+//
+// SwitchScenario never calls saveInternal (it only Stats the target file and
+// flips sm.filename in memory), so it needs its own injection independent of
+// makeSaveFail's save-failure mechanism -- this used to reuse makeSaveFail's
+// settingsDir-destroyed-to-a-plain-FILE trick (before that, chmod 0o000,
+// which root's CAP_DAC_OVERRIDE reads straight through), piggybacking on the
+// fact that destroying the directory made every Stat underneath it fail
+// ENOTDIR. makeSaveFail's root-proof replacement deliberately keeps
+// settingsDir itself real and readable (so loads keep succeeding and only
+// writes fail), which means a lookup of a genuinely absent scenario file now
+// correctly returns ENOENT -- the typed ScenarioNotFoundError, not this
+// test's generic branch. Root-proof replacement here: an overlong scenario
+// basename. scenarioPath's own validation only checks string shape (starts
+// with "whatif", ends in ".json", no slashes or ".."), so a basename that
+// satisfies all of that but exceeds NAME_MAX (255 bytes, the F3/
+// TestRenameScenario_WriteError precedent) passes validation and reaches
+// sm.store.Stat(path), which then fails ENAMETOOLONG at the kernel level --
+// not os.IsNotExist -- at any uid.
 func TestHandleSwitchScenario_GenericError(t *testing.T) {
-	_, settingsDir, cleanup := setupTestEnvWithDir(t)
+	_, _, cleanup := setupTestEnvWithDir(t)
 	defer cleanup()
 
-	if err := os.Chmod(settingsDir, 0o000); err != nil {
-		t.Fatalf("chmod 0o000: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chmod(settingsDir, 0o755)
-	})
+	longName := "whatif" + strings.Repeat("x", 250) + ".json" // 261 bytes > NAME_MAX (255)
 
-	form := url.Values{"filename": {"whatif_other.json"}}
+	form := url.Values{"filename": {longName}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/scenarios/switch", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

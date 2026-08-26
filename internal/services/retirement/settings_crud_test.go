@@ -344,11 +344,13 @@ func TestCRUD_SaveErrors(t *testing.T) {
 		t.Fatalf("seed AddBigTicketItem: %v", err)
 	}
 
-	// Make settings dir read-only to trigger save errors
-	if err := os.Chmod(settingsDir, 0555); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	defer os.Chmod(settingsDir, 0755) //nolint: make writable again for cleanup
+	// Root-proof: settingsDir stays a real, readable directory but rejects
+	// writes (see corruptSettingsDirToFile in coverage_gaps4_test.go), not a
+	// bare chmod 0555 (root's CAP_DAC_OVERRIDE reads/writes through
+	// permission bits regardless). Every method below succeeds through its
+	// loadInternal (a no-op MkdirAll plus a read of the data already seeded
+	// above) and fails on its saveInternal write.
+	corruptSettingsDirToFile(t, settingsDir)
 
 	// Each method should return an error from saveInternal
 	if _, err := sm.AddIncomeSource(models.IncomeSource{ID: "i2"}); err == nil {

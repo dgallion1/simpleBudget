@@ -133,13 +133,13 @@ func TestRun_DryRunDoesNotWrite(t *testing.T) {
 
 func TestIsAmazonDesc(t *testing.T) {
 	cases := map[string]bool{
-		"AMZN MKTP US":    true,
-		"Amazon.com*ABC":  true,
-		"AMAZON PRIME":    true,
-		"Walmart":         false,
-		"AMZN":            true,
-		"":                false,
-		"some amazon ad":  true,
+		"AMZN MKTP US":   true,
+		"Amazon.com*ABC": true,
+		"AMAZON PRIME":   true,
+		"Walmart":        false,
+		"AMZN":           true,
+		"":               false,
+		"some amazon ad": true,
 	}
 	for in, want := range cases {
 		if got := isAmazonDesc(in); got != want {
@@ -271,9 +271,18 @@ B02,"a","UPS",USD,"NA","NA","NA","NA",2024-06-05,111-MUL-0002,Closed,1,"V",New,"
 	}
 }
 
-// TestRun_SaveEnrichmentError chmods the data dir 0o500 AFTER
-// LoadData has cached the CSV, so the SaveAmazonEnrichment write
-// fails. The .tmp write inside atomicWrite triggers the error.
+// TestRun_SaveEnrichmentError forces the SaveAmazonEnrichment write to fail
+// by seeding a DIRECTORY at the exact path it writes to
+// (dataDir/amazon_enrichment.json), root-proof unlike the chmod 0o500 this
+// replaced: chmod relies on the write-permission bit, which root's
+// CAP_DAC_OVERRIDE ignores (root could still write, and the test would
+// observe run() succeeding). SaveAmazonEnrichment's write goes through
+// dataloader's SharedTx.WriteFile -> storage.atomicWrite, which stages the
+// new bytes under a unique temp name in dataDir (that succeeds; dataDir
+// itself is untouched) and publishes with os.Rename(tmpPath, dest). Renaming
+// a regular file onto a path that is an existing directory fails with
+// EISDIR -- a path-type mismatch the kernel enforces unconditionally, not a
+// permission check, so no uid can bypass it.
 func TestRun_SaveEnrichmentError(t *testing.T) {
 	silenceStdout(t)
 	tmp := t.TempDir()
@@ -295,12 +304,13 @@ B01,2024-06-01,111-S-0001,"Widget",2024-06-02,12.34`
 		t.Fatal(err)
 	}
 
-	// Block writes to the data dir but keep it readable so LoadData /
-	// existing CSVs still work.
-	if err := os.Chmod(dataDir, 0o500); err != nil {
-		t.Fatalf("chmod: %v", err)
+	// See the doc comment above: a directory-in-place at the save target
+	// makes atomicWrite's publish rename fail with EISDIR at any uid, while
+	// leaving dataDir itself fully readable/writable so LoadData and the
+	// existing CSVs are unaffected.
+	if err := os.Mkdir(filepath.Join(dataDir, "amazon_enrichment.json"), 0755); err != nil {
+		t.Fatalf("seed directory-in-place at amazon_enrichment.json: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dataDir, 0o755) })
 
 	err := run(amazonDir, dataDir, 5, false, 0)
 	if err == nil || !strings.Contains(err.Error(), "save enrichment") {

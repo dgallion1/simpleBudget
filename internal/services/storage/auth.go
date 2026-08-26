@@ -146,20 +146,6 @@ func writeFileSync(path string, data []byte, perm os.FileMode) error {
 	return f.Close()
 }
 
-// syncDir flushes a directory entry change (here, a rename) to stable
-// storage. Failures are deliberately ignored: some filesystems refuse fsync
-// on a directory handle, and by the time this is called the rename has
-// already succeeded — reporting an error would make callers treat a published
-// config as unwritten.
-func syncDir(dir string) {
-	d, err := os.Open(dir)
-	if err != nil {
-		return
-	}
-	_ = d.Sync()
-	_ = d.Close()
-}
-
 // removeConfig deletes the encryption configuration file
 func removeConfig(baseDir string) error {
 	configPath := filepath.Join(baseDir, configFile)

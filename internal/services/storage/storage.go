@@ -510,6 +510,12 @@ func IsStagingName(base string) bool {
 // with a hard link. Link, not rename: rename silently replaces an existing
 // destination, link fails with EEXIST. That is what makes this both atomic
 // against a concurrent creator and all-or-nothing against a crash.
+//
+// Durability comes from the same two barriers as atomicWrite — stageDurable
+// fsyncs the bytes before the link, syncDir fsyncs the new directory entry
+// after it. Kept identical on purpose: this is the create-if-absent half of
+// the same publish, and a create that survives a crash empty is no better
+// than a rewrite that does.
 func createExclusive(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -519,21 +525,10 @@ func createExclusive(path string, data []byte, perm os.FileMode) error {
 	// Staged in the destination directory so the link stays inside one
 	// filesystem, and under a unique name so concurrent callers cannot
 	// collide on the staging file itself.
-	f, err := os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
-	if err != nil {
-		return err
-	}
-	tmpPath := f.Name()
+	tmpPath, err := stageDurable(dir, filepath.Base(path), data, perm)
+	// Deferred before the error check; see atomicWrite.
 	defer func() { _ = os.Remove(tmpPath) }()
-
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpPath, perm); err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -543,6 +538,7 @@ func createExclusive(path string, data []byte, perm os.FileMode) error {
 		}
 		return err
 	}
+	syncDir(dir)
 	return nil
 }
 
@@ -561,45 +557,111 @@ func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadClos
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-// atomicWrite writes data to a file atomically using a temp file. The
-// staging file is created under a unique name (mirroring createExclusive
-// above) so that concurrent writers to the same destination — permitted by
-// WriteFile's shared lock — never share a staging file: each writer gets its
-// own temp file, so neither a spurious rename failure nor torn content from
-// two writers' bytes interleaving in one staging file can occur.
+// stageDurable writes data to a uniquely named staging file beside path and
+// flushes it to stable storage, returning the staging path for the caller to
+// publish with a rename (atomicWrite) or a link (createExclusive).
+//
+// The path is returned even on failure, and cleaning it up is the caller's
+// job — both callers already defer exactly that removal for the case where
+// publishing fails, so routing every failure through one deferred Remove
+// keeps there from being a second cleanup path that only a disk error can
+// reach and no test can cover. On a CreateTemp failure the path is empty and
+// os.Remove("") is a harmless no-op.
+//
+// The order — write, chmod the open handle, fsync, close — is deliberate.
+// Chmod goes through the *File rather than the path so the mode change is
+// part of the inode state the following Sync flushes; chmod'ing after the
+// fsync would leave the permissions of a freshly published file unproven
+// after a crash. The fsync itself is what the two publishers below need in
+// order to mean anything: rename and link make a directory entry point at an
+// inode, and if that inode's data is still only in the page cache, a crash
+// leaves a correctly named file with nothing (or stale blocks) in it.
+//
+// saveConfig in auth.go does the same thing without CreateTemp, because it
+// wants the fixed <destination>.tmp name that IsStagingName recognises. If
+// the durability rules here change, change them there too.
+func stageDurable(dir, base string, data []byte, perm os.FileMode) (string, error) {
+	f, err := os.CreateTemp(dir, base+StagingSuffix+"*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := f.Name()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return tmpPath, err
+	}
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return tmpPath, err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return tmpPath, err
+	}
+	return tmpPath, f.Close()
+}
+
+// syncDir flushes a directory entry change — the rename or link that
+// publishes a staging file — to stable storage. Without it the new name
+// itself can be lost to a crash even though the bytes it points at are
+// durable.
+//
+// Failures are ignored on purpose: some filesystems refuse fsync on a
+// directory handle, and by the time this runs the publish has already
+// succeeded, so surfacing an error here would make callers treat a written
+// file as unwritten and retry a write that already happened.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
+}
+
+// atomicWrite writes data to a file atomically and durably, via a temp file.
+//
+// Atomic: the staging file is created under a unique name (mirroring
+// createExclusive above) so that concurrent writers to the same destination —
+// permitted by WriteFile's shared lock — never share a staging file. Each
+// writer gets its own temp file, so neither a spurious rename failure nor
+// torn content from two writers' bytes interleaving in one staging file can
+// occur.
+//
+// Durable: stageDurable fsyncs the bytes before the rename and the directory
+// is fsynced after it. This is the write path behind every public write in
+// the package — WriteFile/WriteFileContext, ExclusiveWriter.WriteFile,
+// SharedTx.WriteFile — plus the migration republish, so without the barriers
+// a crash shortly after any save could leave a zero-length file where the
+// user's data used to be. That costs two fsyncs per write; the writes here
+// are human-paced except during a migration or restore, where correctness
+// outweighs the throughput.
 func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	// Staged in the destination directory (same filesystem, so the rename
-	// below is atomic) under a unique name so concurrent callers cannot
-	// collide on the staging file itself.
-	f, err := os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*")
-	if err != nil {
-		return err
-	}
-	tmpPath := f.Name()
-	// If the rename below succeeds this is a no-op (nothing left at
-	// tmpPath); if we return early on an error this cleans up the staging
-	// file so a failed write doesn't litter the data directory.
+	// Staged in the destination directory, so the rename below stays within
+	// one filesystem and is therefore atomic.
+	tmpPath, err := stageDurable(dir, filepath.Base(path), data, perm)
+	// Deferred before the error check, because stageDurable hands back the
+	// staging path whether or not it succeeded. If the rename below succeeds
+	// this is a no-op (nothing left at tmpPath); otherwise it keeps a failed
+	// write from littering the data directory.
 	defer func() { _ = os.Remove(tmpPath) }()
-
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpPath, perm); err != nil {
+	if err != nil {
 		return err
 	}
 
 	// Rename, unlike Link, replaces an existing destination, which is what
 	// gives atomicWrite its rewrite semantics.
-	return os.Rename(tmpPath, path)
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	syncDir(dir)
+	return nil
 }
 
 // IsEncryptionStateFile reports whether base names one of the files that

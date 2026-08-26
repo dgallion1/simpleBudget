@@ -1,0 +1,133 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T10
+ATTEMPT: 1
+---
+Repo /home/user/simplebudget, branch claude/t9-11-residue, uncommitted working
+tree. Manifest .swarm/manifests/T10.1.files = internal/config/config.go,
+internal/config/config_test.go, docs/api/internal/config.md, CHANGELOG.md.
+All commands run from the repo root as root.
+
+CRITERION 1 — deletion complete. PASS
+  $ grep -rn "SaveUserSettings\|LoadUserSettings\|UserSettingsFile" --include="*.go" .
+    (no output; GO_EXIT=1)
+  Zero hits in Go source anywhere in the tree, tests included.
+  $ grep -cn "SaveUserSettings\|LoadUserSettings\|UserSettingsFile" docs/api/internal/config.md
+    0
+  Repo-wide (non-.git) grep returns only historical/record text:
+    - .swarm/verdicts/T3.*, T6.*, P14.1, .swarm/tier3/T6/report.md, .swarm/NEXT.md
+      (prior-task records, not code or live docs)
+    - CHANGELOG.md:282 — "config: Added 18 tests ... LoadUserSettings,
+      SaveUserSettings" — pre-existing v1.9.1 history; `git diff CHANGELOG.md`
+      shows a single hunk at @@ -2,6 +2,15 @@, so line 282 is untouched.
+    - CHANGELOG.md:5-6 — the new Unreleased entry for this very removal.
+  No live Go or live doc reference survives.
+
+CRITERION 2 — build/vet/tests clean. PASS
+  $ go build ./...            -> BUILD_OK, build_exit=0
+  $ go vet ./...              -> VET_OK,   vet_exit=0
+  $ go test -count=1 ./internal/config/   -> ok  budget2/internal/config  0.009s (cfg_exit=0)
+  $ go test -count=1 ./...    -> every package "ok" (49 packages, budget2/web has
+    no test files); TEST_PIPE_EXIT=0. Notable long packages all green:
+      ok budget2/cmd/server 32.441s
+      ok budget2/internal/handlers/whatif 376.245s
+      ok budget2/internal/services/retirement 424.518s
+      ok budget2/internal/services/storage 320.579s
+      ok budget2/internal/services/backup 0.705s
+      ok budget2/internal/services/restore 1.136s
+    Zero FAIL lines. Nothing that used the removed API is broken; the compiler
+    plus the full suite prove no live caller existed.
+
+CRITERION 3 — SettingsDirectory kept and functioning. PASS
+  $ git diff -U0 -- internal/config/ | grep -n "SettingsDirectory"
+    (no output; exit 1) — not one SettingsDirectory line was added or removed.
+  ensureDirectories() body (config.go) still reads:
+      dirs := []string{ c.DataDirectory, c.UploadsDirectory, c.SettingsDirectory }
+      ... os.MkdirAll(dir, 0755)
+  $ grep -rn "SettingsDirectory" --include="*.go" .
+    still live at config.go:34 (field), :83 (DefaultConfig), :108 (Load's
+    BUDGET_DATA_DIR branch), :134 (ensureDirectories); cmd/server/main_test.go
+    lines 31, 385, 410, 629, 762 and cmd/server/mcp_mount_test.go lines 35, 68.
+  TestEnsureDirectoriesCreates still stats cfg.SettingsDirectory and asserts it
+  is a created directory; it PASSes in the verbose run.
+  $ go test -count=1 ./cmd/...
+    ok budget2/cmd/enrich-amazon 13.026s / ok budget2/cmd/server 22.075s /
+    ok budget2/cmd/validate 0.050s  (cmd_exit=0)
+
+CRITERION 4 — remaining tests not gutted. PASS
+  $ diff <(git show HEAD:internal/config/config_test.go | grep -o "^func Test[A-Za-z0-9_]*") \
+         <(grep -o "^func Test[A-Za-z0-9_]*" internal/config/config_test.go)
+    13,20d12
+    < func TestLoadUserSettingsFileNotExist
+    < func TestLoadUserSettingsValid
+    < func TestLoadUserSettingsInvalidJSON
+    < func TestLoadUserSettingsReadError
+    < func TestSaveUserSettings
+    < func TestSaveUserSettingsMarshalError
+    < func TestSaveUserSettingsWriteError
+    < func TestSaveAndLoadRoundTrip
+  Exactly eight functions removed, every one of them named for and bodied
+  entirely on the deleted surface (each constructs &Config{UserSettingsFile: ...}
+  and calls Load/SaveUserSettings — confirmed by reading the removed hunks in
+  `git diff internal/config/config_test.go`). No other test function removed,
+  renamed or added.
+  Within surviving tests the diff removes exactly two assertion blocks, both
+  UserSettingsFile-only:
+    TestDefaultConfig  -  if cfg.UserSettingsFile != filepath.Join(wd,"data","settings","user_settings.json")
+    TestLoadDataDir    -  if cfg.UserSettingsFile != filepath.Join(tmp,"settings","user_settings.json")
+  Both functions survive with all their other assertions (TestDefaultConfig
+  still checks StaticDirectory etc.; TestLoadDataDir still checks
+  SettingsDirectory at lines 155-156). No unrelated assertion deleted.
+  $ go test -count=1 -v ./internal/config/
+    20 tests RUN, 20 --- PASS, 0 FAIL: DefaultConfigGetwdError, DefaultConfig,
+    LoadDefaults, LoadListenAddr, LoadDebugTrue/One/OtherValue, LoadDataDir,
+    LoadTemplatesDir, LoadStaticDir, EnsureDirectoriesCreates,
+    EnsureDirectoriesInvalidPath, BackupDir_* (4), ImportDir_* (4).
+
+CRITERION 5 — gofmt and import removals. PASS
+  $ gofmt -l internal/config/config.go internal/config/config_test.go
+    (empty output, exit 0) — both files formatted.
+  $ grep -n "json\.\|math\.\|\"encoding/json\"\|\"math\"" internal/config/config.go internal/config/config_test.go
+    (no output; exit 1) — no residual json.* or math.* selector use in either
+    file, so the dropped "encoding/json" (config.go) and "encoding/json"+"math"
+    (config_test.go) imports were genuinely unused after the deletion. Reading
+    the diffs confirms every json.Marshal/json.Unmarshal/math.Inf call removed
+    sat inside a deleted function; no surviving code lost a json/math call.
+    (Struct tags `json:"..."` on the remaining fields are unaffected — they are
+    not import references, and `go build ./...` is clean.)
+
+CRITERION 6 — scope. PASS
+  $ git status --porcelain
+     M .swarm/ledger.tsv
+     M CHANGELOG.md
+     M docs/api/internal/config.md
+     M internal/config/config.go
+     M internal/config/config_test.go
+     M internal/services/backup/snapshot.go
+     M internal/services/restore/restore.go
+     M web/templates/components/whatif/scenario-chain-card.html
+     M web/templates/components/whatif/spending-phases.html
+     M web/templates/layouts/base.html
+     M web/templates/pages/explorer.html
+     M web/templates/pages/filemanager.html
+    ?? .swarm/manifests/{T9,T10,T11}.1.files
+  All four T10 manifest files are present among the changes. The remaining
+  code changes belong to concurrent tasks and are demonstrably not T10's:
+    - snapshot.go (+5) and restore.go (+3) are comment-only additions about
+      symlink/Lstat and writer.Remove semantics (T11) — read in full, zero
+      executable lines changed, zero config references.
+    - the five web/templates/*.html files carry aria-label/role="alert"
+      changes (T9), plus T9's own CHANGELOG entry.
+    - .swarm/ledger.tsv is the lead's bookkeeping (T9/T10/T11 queued -> building).
+  CHANGELOG.md is legitimately shared by T9 and T10; T10's hunk is the
+  "Config — removed dead SaveUserSettings/LoadUserSettings (2026-08-26)" entry
+  and its claims are accurate against the diffs verified above.
+  $ cat .swarm/critical.globs
+    internal/services/storage/**, internal/services/dataloader/**,
+    internal/services/retirement/engine/**, internal/services/transfers/**,
+    internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**
+  T10 touched none of these paths. Nothing modified outside the T10 manifest is
+  attributable to T10.
+
+All six criteria are demonstrated by command output. VERDICT: PASS.

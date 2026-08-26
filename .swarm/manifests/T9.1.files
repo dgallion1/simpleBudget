@@ -1,0 +1,6 @@
+web/templates/pages/filemanager.html
+web/templates/pages/explorer.html
+web/templates/layouts/base.html
+web/templates/components/whatif/scenario-chain-card.html
+web/templates/components/whatif/spending-phases.html
+CHANGELOG.md

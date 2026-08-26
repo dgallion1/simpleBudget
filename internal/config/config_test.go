@@ -1,8 +1,6 @@
 package config
 
 import (
-	"encoding/json"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,9 +57,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.StaticDirectory != filepath.Join(wd, "web", "static") {
 		t.Errorf("StaticDirectory = %q, want %q", cfg.StaticDirectory, filepath.Join(wd, "web", "static"))
-	}
-	if cfg.UserSettingsFile != filepath.Join(wd, "data", "settings", "user_settings.json") {
-		t.Errorf("UserSettingsFile = %q, want %q", cfg.UserSettingsFile, filepath.Join(wd, "data", "settings", "user_settings.json"))
 	}
 }
 
@@ -160,9 +155,6 @@ func TestLoadDataDir(t *testing.T) {
 	if cfg.SettingsDirectory != filepath.Join(tmp, "settings") {
 		t.Errorf("SettingsDirectory = %q, want %q", cfg.SettingsDirectory, filepath.Join(tmp, "settings"))
 	}
-	if cfg.UserSettingsFile != filepath.Join(tmp, "settings", "user_settings.json") {
-		t.Errorf("UserSettingsFile = %q, want %q", cfg.UserSettingsFile, filepath.Join(tmp, "settings", "user_settings.json"))
-	}
 }
 
 func TestLoadTemplatesDir(t *testing.T) {
@@ -223,170 +215,6 @@ func TestEnsureDirectoriesInvalidPath(t *testing.T) {
 
 	// Should not panic; just logs warnings
 	cfg.ensureDirectories()
-}
-
-func TestLoadUserSettingsFileNotExist(t *testing.T) {
-	tmp := t.TempDir()
-	cfg := &Config{
-		UserSettingsFile: filepath.Join(tmp, "nonexistent.json"),
-	}
-
-	settings, err := cfg.LoadUserSettings()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if settings == nil {
-		t.Fatal("expected non-nil empty map")
-	}
-	if len(settings) != 0 {
-		t.Errorf("expected empty map, got %v", settings)
-	}
-}
-
-func TestLoadUserSettingsValid(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-	data := map[string]any{"theme": "dark", "count": float64(42)}
-	b, _ := json.Marshal(data)
-	os.WriteFile(settingsFile, b, 0644)
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	settings, err := cfg.LoadUserSettings()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if settings["theme"] != "dark" {
-		t.Errorf("theme = %v, want dark", settings["theme"])
-	}
-	if settings["count"] != float64(42) {
-		t.Errorf("count = %v, want 42", settings["count"])
-	}
-}
-
-func TestLoadUserSettingsInvalidJSON(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "bad.json")
-	os.WriteFile(settingsFile, []byte("{not json}"), 0644)
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	_, err := cfg.LoadUserSettings()
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-// TestLoadUserSettingsReadError (renamed from …PermissionError; see
-// reasoning below) defends LoadUserSettings' os.ReadFile branch: any read
-// error OTHER than os.IsNotExist is returned to the caller (an empty map is
-// only for a genuinely missing file). Root-proof: chmod(0000) is a
-// permission check, and CAP_DAC_OVERRIDE lets root read straight through a
-// 0000 regular file, so under root the old fixture made LoadUserSettings
-// succeed and the test failed outright.
-//
-// Rename reasoning: the branch this test defends is error-kind-agnostic --
-// config.go tests only `os.IsNotExist(err)`, nothing that keys on
-// permission specifically. So any non-ENOENT read failure exercises the
-// exact same line, and "PermissionError" no longer describes what is
-// injected. A directory-in-place at the settings path is used instead:
-// os.ReadFile on a path that is a directory fails with EISDIR, a path-type
-// mismatch the kernel enforces unconditionally (no uid, permission bit, or
-// capability bypasses it) -- and, like a permission error, it is not
-// os.IsNotExist, so it still lands in and proves the same "return nil, err"
-// branch the original test targeted.
-func TestLoadUserSettingsReadError(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-	if err := os.Mkdir(settingsFile, 0755); err != nil {
-		t.Fatalf("seed directory-in-place at settings.json: %v", err)
-	}
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	_, err := cfg.LoadUserSettings()
-	if err == nil {
-		t.Fatal("expected a read error")
-	}
-	// This should NOT be os.IsNotExist, so it should return the error, not an empty map
-	if os.IsNotExist(err) {
-		t.Fatal("expected a read error, not IsNotExist")
-	}
-}
-
-func TestSaveUserSettings(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	settings := map[string]any{"key": "value"}
-
-	err := cfg.SaveUserSettings(settings)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify by reading back
-	data, err := os.ReadFile(settingsFile)
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
-	var loaded map[string]any
-	if err := json.Unmarshal(data, &loaded); err != nil {
-		t.Fatalf("failed to parse saved settings: %v", err)
-	}
-	if loaded["key"] != "value" {
-		t.Errorf("key = %v, want value", loaded["key"])
-	}
-}
-
-func TestSaveUserSettingsMarshalError(t *testing.T) {
-	tmp := t.TempDir()
-	cfg := &Config{UserSettingsFile: filepath.Join(tmp, "settings.json")}
-	// math.Inf cannot be marshaled to JSON
-	settings := map[string]any{"bad": math.Inf(1)}
-	err := cfg.SaveUserSettings(settings)
-	if err == nil {
-		t.Fatal("expected marshal error for Inf value")
-	}
-}
-
-func TestSaveUserSettingsWriteError(t *testing.T) {
-	// Point to a directory that doesn't exist and can't be created
-	cfg := &Config{UserSettingsFile: "/dev/null/impossible/settings.json"}
-	err := cfg.SaveUserSettings(map[string]any{"a": "b"})
-	if err == nil {
-		t.Fatal("expected error writing to invalid path")
-	}
-}
-
-func TestSaveAndLoadRoundTrip(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	original := map[string]any{
-		"name":    "test",
-		"enabled": true,
-		"rate":    3.14,
-	}
-
-	if err := cfg.SaveUserSettings(original); err != nil {
-		t.Fatalf("save error: %v", err)
-	}
-
-	loaded, err := cfg.LoadUserSettings()
-	if err != nil {
-		t.Fatalf("load error: %v", err)
-	}
-
-	if loaded["name"] != "test" {
-		t.Errorf("name = %v, want test", loaded["name"])
-	}
-	if loaded["enabled"] != true {
-		t.Errorf("enabled = %v, want true", loaded["enabled"])
-	}
-	if loaded["rate"] != 3.14 {
-		t.Errorf("rate = %v, want 3.14", loaded["rate"])
-	}
 }
 
 func TestBackupDir_DefaultUsesXDG(t *testing.T) {

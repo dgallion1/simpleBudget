@@ -1,0 +1,82 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: T9
+ATTEMPT: 1
+---
+1. git status --porcelain scope check:
+   `git status --porcelain` shows modified: .swarm/ledger.tsv, CHANGELOG.md,
+   docs/api/internal/config.md, internal/config/config.go,
+   internal/config/config_test.go, internal/services/backup/snapshot.go,
+   internal/services/restore/restore.go,
+   web/templates/components/whatif/scenario-chain-card.html,
+   web/templates/components/whatif/spending-phases.html,
+   web/templates/layouts/base.html, web/templates/pages/explorer.html,
+   web/templates/pages/filemanager.html; plus untracked
+   .swarm/manifests/{T9,T10,T11}.1.files.
+   T9.1.files lists exactly: filemanager.html, explorer.html, base.html,
+   scenario-chain-card.html, spending-phases.html, CHANGELOG.md (blank
+   trailing line 7). All five template files and CHANGELOG.md are present
+   in the diff and match T9's scope. internal/config/*, docs/api/internal/config.md
+   belong to T10.1.files; internal/services/backup/snapshot.go and
+   internal/services/restore/restore.go belong to T11.1.files — both
+   confirmed as the other tasks' declared files, not judged here. No
+   template outside the five listed changed.
+
+2. Fix 1 — role="alert" on #age-encryption-error:
+   `grep -n 'role="alert"' web/templates/pages/filemanager.html` shows all
+   six error divs now carry it: #unlock-error (269), #disable-encryption-error
+   (307), #enable-encryption-error (368), #age-encryption-error (406, the
+   T9 fix), #ssh-encryption-error (432), #yubikey-encryption-error (480).
+   Diff confirms #age-encryption-error's markup is byte-identical in
+   structure to #unlock-error's pattern
+   (`role="alert" class="hidden text-sm text-red-600 dark:text-red-400"`).
+
+3. Fix 2 — ten aria-label additions, text matches title exactly, verified by diff:
+   - filemanager.html:1001 title="Copy" aria-label="Copy" (brew)
+   - filemanager.html:1008 title="Copy" aria-label="Copy" (apt)
+   - filemanager.html:1016 title="Copy" aria-label="Copy" (pacman)
+   - filemanager.html:1126 title="Copy command" aria-label="Copy command"
+     — inside the `setupDiv.innerHTML = \`...\`` JS template literal;
+     read lines 1115-1135: the backtick string is unbroken, the new
+     `aria-label="Copy command"` attribute uses double quotes consistently
+     with every other attribute in that same generated HTML string, no
+     quote/backtick collision.
+   - explorer.html:23 (clear-search) title="Clear search" aria-label="Clear search"
+   - base.html:112 (#theme-toggle) title="Toggle dark mode" aria-label="Toggle dark mode"
+   - base.html:129 (#theme-toggle-mobile) title="Toggle dark mode" aria-label="Toggle dark mode"
+   - scenario-chain-card.html:40 title="Remove" aria-label="Remove"
+   - spending-phases.html:49 title="Remove phase" aria-label="Remove phase"
+   (That is 9 distinct button elements across 5 files — filemanager.html
+   contributes 4 of the "ten sites" cited in the task description, i.e.
+   the three per-OS Copy buttons plus the YubiKey "Copy command" button;
+   total across all five files = 9 buttons touched by this task, consistent
+   with the CHANGELOG's own count of "Nine icon-only buttons.")
+   Each aria-label string is character-identical to its title string.
+
+4. Completeness sweep:
+   `grep -rnE '<(button|a)[^>]*title="[^"]*"' web/templates/ | grep -v
+   'aria-label\|aria-labelledby'` returns exactly one remaining hit:
+   explorer.html:703, `<a ... title="Unresolved duplicate">dup?</a>` — this
+   anchor has visible text content ("dup?"), so it is out of scope per the
+   task's own carve-out for elements with visible text. No icon-only
+   button/anchor relying on title alone remains anywhere in web/templates/.
+   Worker's completeness claim confirmed.
+
+5. Go build/tests: `go test -count=1 ./internal/handlers/...` — all packages
+   pass (accounts, approval, backup, dashboard, duplicates, explorer,
+   insights, majorexpenses, transfers, whatif), exit code 0. No Go files are
+   part of T9's manifest and none were touched by this diff.
+
+6. Regression check on T2's eleven fixes: all five T2 error divs
+   (#unlock-error, #disable-encryption-error, #enable-encryption-error,
+   #ssh-encryption-error, #yubikey-encryption-error) retain role="alert".
+   Previously-labeled buttons/inputs retain their aria-labels unchanged:
+   CSV upload input ("CSV files to upload"), #restore-file-input ("Restore
+   from backup zip file"), the unlock password field (conditional SSH/password
+   label), and the per-row "Enable {{.Name}}" / "Delete {{.Name}}" buttons
+   (lines 1437, 1442). No T2 pattern was disturbed.
+
+All six verification steps hold; ACCESSIBILITY.md points 4/5 (announced
+errors) and 4 (accessible names for controls without a genuine visible
+label) are satisfied for the touched elements, matching WCAG 4.1.2 and 4.1.3.

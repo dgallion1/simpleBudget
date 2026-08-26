@@ -180,15 +180,14 @@ contract (document at `filePerm` + F4 report) or preserve them
 (`Mode() & (fs.ModePerm|fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky)`) with a
 test per bit. ASK THE USER which; do not choose silently.
 
-### T5 — DONE (accepted 2026-08-26, attempt 1, ruling 2026-08-26d single-arm;
-landed as PR #52). `saveConfig` now stages via
-`os.CreateTemp(baseDir, configFile+StagingSuffix+"*")` + chmod 0600 + rename
-with a deferred staging removal; four kernel-enforced tests. Premise
-corrected in the report: no orphan-deletion sweep exists anywhere
-(`IsStagingName` is backup-exclusion/restore-protection only) — the fix buys
-the collision, error-path hygiene, and a true storage.go comment. Recorded
-observation for a future task: no fsync before rename (pre-existing).
-Evidence: .swarm/verdicts/T5.1.*, .swarm/tier3/T5/report.md.
+### T5 — DONE (accepted 2026-08-26, attempt 1, ruling 2026-08-26d):
+saveConfig stages via CreateTemp + StagingSuffix with error-path cleanup;
+stays package-level and non-encrypting (it writes the encryption config
+itself). Build finding worth knowing: there is NO orphan-deletion sweep in
+this codebase — IsStagingName exists for backup-exclusion and
+restore-prune protection only. Recorded observation (pre-existing, both
+lanes): saveConfig does not fsync before rename. Evidence:
+.swarm/verdicts/T5.1.*, .swarm/tier3/T5/report.md.
 
 ### T5 (original brief, retained for context) — auth.go's ad-hoc staging. Tier 3 (touches storage critical glob),
 checks `tests,second`. `internal/services/storage/auth.go` `saveConfig`

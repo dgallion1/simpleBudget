@@ -1,0 +1,158 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T5
+ATTEMPT: 1
+---
+REPO STATE (cited)
+  $ git rev-parse HEAD            -> 99d52053607c019f8eb5a0332bb182bd7f2f99f4
+  $ git rev-parse --abbrev-ref HEAD -> claude/t5-auth-staging
+  $ git status --porcelain        ->  M .swarm/ledger.tsv
+                                      M internal/services/storage/auth.go
+                                      M internal/services/storage/auth_test.go
+                                      ?? .swarm/manifests/T5.1.files
+                                      ?? .swarm/tier3/T5/
+  $ id -u -> 0 (root; all test runs below are as uid 0)
+  report.md read in full, including "Premise corrected" (lines 29-39) and the
+  RESOLUTION line (line 41). Verification below is written against the
+  corrected premise: recognition/exclusion only, no deletion sweep.
+
+1. THE CODE  -- PASS
+  Read /home/user/simplebudget/internal/services/storage/auth.go:83-135.
+  - os.CreateTemp(baseDir, configFile+StagingSuffix+"*")   line 110
+  - tmpPath := f.Name(); defer func(){ _ = os.Remove(tmpPath) }()  lines 114-119
+    (armed immediately AFTER CreateTemp returns nil error -- the early return at
+    111-113 precedes it, so no Remove of a never-created file)
+  - explicit os.Chmod(tmpPath, 0600)                        line 130
+  - return os.Rename(tmpPath, configPath)                   line 134
+  - f.Write / f.Close error paths each return before rename (121-127)
+  Legacy fixed name absent:
+    $ grep -n '\.tmp' internal/services/storage/auth.go -> only line 98, inside
+      the doc comment ("unlike the old fixed \".tmp\" name this replaces").
+    $ grep -rn 'configPath + "\.tmp"|configPath+"\.tmp"' --include='*.go' .
+      -> rc=1, no match anywhere in the repo.
+  Package-level, non-encrypting:
+    $ grep -rn 'func saveConfig|saveConfig\(' --include='*.go' internal/ | grep -v _test
+      -> auth.go:99 `func saveConfig(baseDir string, config *EncryptionConfig) error`
+         (plain func, no *Storage receiver); single non-test caller
+         migration.go:93, which sits inside `func (s *Storage)
+         EnableEncryptionWithProvider` (migration.go:24) -- confirming the doc
+         comment's stated reason. Body calls only os.CreateTemp/Write/Close/
+         Chmod/Rename: no atomicWrite, no Storage.WriteFile, no encrypt call.
+  WHY in the doc comment: lines 85-98 state atomicWrite is a *Storage method
+  that writes through the encrypting path; that this file is the one that must
+  never be encrypted; and that it must be writable before *Storage finishes
+  constructing. Criterion met.
+
+2. THE CLAIMS IN THE CORRECTED REPORT  -- PASS (one wording nuance, non-blocking)
+  (a) $ grep -rn '\.tmp' --include='*.go' internal/ cmd/ pkg/
+      In non-test code under internal/services/storage/ the only occurrences are
+      comments (storage.go:465,477,502; migration.go:332; auth.go:98) plus the
+      constant definitions storage.go:471-472. No storage-package producer of
+      the legacy name remains. NOTE (outside T5 scope, recorded as fact): the
+      backup package still produces fixed ".tmp" staging names --
+      backup/meta.go:62, backup/service.go:120 (`tmp := s.enabledPath()+".tmp"`,
+      under <DataDir>/settings), backup/snapshot.go:19 tmpSuffix -- these are
+      that package's own regime (cleanOrphanTmp) and are still recognised by
+      IsStagingName's legacy branch. Criterion as written ("non-test storage
+      code") holds.
+  (b) Read storage.go:456-507. IsStagingName returns true for the legacy shape
+      (HasSuffix(base, legacyStagingSuffix=".tmp"), line 487) and for the new
+      shape <base>+".tmp-"+<all-decimal, non-empty> (lines 490-506), rejecting
+      "report.tmp-notes.txt"-style false positives. Both shapes recognised.
+  (c) $ grep -rn 'IsStagingName|SkipPredicate' --include='*.go' . | grep -v _test
+      Consumers exist as described and were spot-read:
+        backup/snapshot.go:274 `if storage.IsStagingName(base) { return true }`
+          inside SkipPredicate (snapshot.go:236-279), the walk-exclusion rule;
+          used by snapshot.go:225, handlers/backup/handlers.go:268,377.
+        restore/restore.go:119 `skip := backupsvc.SkipPredicate(...)`, applied at
+          restore.go:155 -> res.SkippedProtected++ / continue -- the stale-extras
+          protection. Consistent with the report: exclusion/recognition only;
+          I found no deletion sweep, matching the corrected premise.
+  (d) cmd/server/main.go:335 `storage.New(c.DataDirectory)` (-> baseDir) and
+      main.go:101 `DataDir: cfg.DataDirectory` (backup config). They coincide in
+      production. Confirmed.
+  NUANCE (non-blocking): storage.go:467-468 literally reads "Neither function
+  produces it anymore", i.e. it is scoped to createExclusive/atomicWrite, not to
+  the whole package; the report's paraphrase ("it claims nothing produces the
+  legacy name anymore") is looser than the comment's text. The substantive fact
+  the report asserts -- that the storage package no longer produces the legacy
+  name -- is now true (2a). No criterion turns on this.
+
+3. TESTS  -- PASS
+  $ go test -count=1 -run 'TestSaveConfig' -v ./internal/services/storage/
+    --- PASS: TestSaveConfig (0.00s)
+    --- PASS: TestSaveConfigStagingModeAndNoLeftover (0.00s)
+    --- PASS: TestSaveConfigOrphanRecognitionAndSweep (0.00s)
+    --- PASS: TestSaveConfigStagingCreateFailureLeavesNoLitter (0.00s)
+    --- PASS: TestSaveConfigRenameFailureLeavesNoLitter (0.00s)
+    ok  budget2/internal/services/storage  0.006s      (run as uid 0)
+  Read auth_test.go:103-321. Each asserts what its name claims:
+   - StagingModeAndNoLeftover: Stat(configPath).Mode().Perm() != 0600 -> Errorf;
+     ReadDir(dir) must be exactly one entry == configFile, and no entry may
+     satisfy IsStagingName. Real 0600 + no-leftover assertions.
+   - OrphanRecognitionAndSweep: plants configFile+StagingSuffix+"1234567890" and
+     configFile+".tmp", asserts IsStagingName true for both and false for the
+     real configFile, then removes recognised names and asserts both orphans are
+     gone and the real config survives. It exercises the recognition primitive
+     (the header explains the import cycle preventing a direct SkipPredicate
+     call); it does not derive the planted name from saveConfig's own output, so
+     it is a recognition test, not a coupling test -- consistent with its stated
+     claim and with the corrected premise that exclusion coverage predates T5.
+   - StagingCreateFailureLeavesNoLitter: kernel mechanism verified independently.
+     I reproduced the arithmetic in a standalone root program under
+     /tmp/claude-0/errcheck: baseDir len 4065 -> os.CreateTemp(dir,
+     name+".tmp-"+"*") returns *fs.PathError with errno "file name too long"
+     (ENAMETOOLONG), while the legacy fixed path (len 4092/4094 with the real
+     24-byte configFile) writes successfully. ENAMETOOLONG is a kernel length
+     check, not a DAC check, hence unaffected by root's CAP_DAC_OVERRIDE -- and
+     the test does in fact pass as uid 0 above. Asserts err != nil, destination
+     absent, and ReadDir(dir) empty.
+   - RenameFailureLeavesNoLitter: destination pre-created as a directory; my
+     standalone root probe shows os.Rename(regular-file, existing-dir) fails with
+     *os.LinkError errno "file exists" (EEXIST) as uid 0. Kernel invariant, not a
+     permission check -- root cannot bypass it. (Minor comment inaccuracy: the
+     header names EISDIR/ENOTDIR; Linux returns EEXIST here. The test asserts
+     only err != nil, so the assertion is unaffected.) Asserts the destination is
+     still an untouched directory and that no entry other than configFile
+     remains.
+
+4. MUTANT KILLS (scratch copies, root)  -- PASS
+  (i) /tmp/claude-0/t5-mut-i -- saveConfig reverted to `tmpPath := configPath +
+      ".tmp"` + os.WriteFile + os.Rename (rest of the file unchanged):
+      $ go test -count=1 -run 'TestSaveConfig' ./internal/services/storage/
+        --- FAIL: TestSaveConfigStagingCreateFailureLeavesNoLitter (0.00s)
+            auth_test.go:265: expected saveConfig to fail when the staging path
+            exceeds PATH_MAX
+        --- FAIL: TestSaveConfigRenameFailureLeavesNoLitter (0.00s)
+            auth_test.go:318: staging litter left behind after a failed rename:
+            .encryption-config.json.tmp
+        FAIL  budget2/internal/services/storage
+  (ii) /tmp/claude-0/t5-mut-ii -- only the line
+       `defer func() { _ = os.Remove(tmpPath) }()` deleted:
+      $ go test -count=1 -run 'TestSaveConfig' ./internal/services/storage/
+        --- FAIL: TestSaveConfigRenameFailureLeavesNoLitter (0.00s)
+            auth_test.go:318: staging litter left behind after a failed rename:
+            .encryption-config.json.tmp-282715591
+        FAIL  budget2/internal/services/storage
+      (the other three still pass, i.e. this test is the sole and specific
+      guard on the deferred cleanup, as its header claims)
+
+5. FULL PACKAGE + HYGIENE  -- PASS
+  $ go test -count=1 ./internal/services/storage/
+      ok  budget2/internal/services/storage  110.969s
+  $ go build ./...                     -> rc=0
+  $ gofmt -l internal/services/storage/auth.go internal/services/storage/auth_test.go
+      -> no output (clean), rc=0
+  $ go vet ./internal/services/storage/ -> rc=0, no diagnostics
+  SCOPE: $ git diff --name-only -- '*.go'
+      internal/services/storage/auth.go
+      internal/services/storage/auth_test.go
+    -- exactly the two files in .swarm/manifests/T5.1.files. The only other
+    tracked modification is .swarm/ledger.tsv (bookkeeping, not production
+    code); untracked additions are .swarm/manifests/T5.1.files and
+    .swarm/tier3/T5/. auth.go is under the critical glob
+    internal/services/storage/**, which the task's Tier 3 assignment permits.
+  ISOLATION: mutant work done in /tmp/claude-0/t5-mut-i, /tmp/claude-0/t5-mut-ii
+  and /tmp/claude-0/errcheck. The only main-tree write by this checker is this
+  verdict file.

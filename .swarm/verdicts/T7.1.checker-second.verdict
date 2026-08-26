@@ -1,0 +1,113 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T7
+ATTEMPT: 1
+---
+Attacks attempted, per the dispatch instructions:
+
+1. REPRODUCIBILITY — regenerated with the pinned recipe from tailwind.config.js's
+   comment (`npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i
+   web/static/css/tailwind.src.css -o /tmp/t7/regen.css --minify`, node22,
+   into scratch, not overwriting the repo). `cmp /tmp/t7/regen.css
+   web/static/css/tailwind.css` -> byte-identical (59176 bytes both). No repo
+   package.json/package-lock/node_modules leftovers (`git status --short`
+   clean of any). PASS.
+
+2. ATTACKED THE ORACLE (swarm/t7-coverage.sh) — found a real gap, then
+   checked whether it currently causes a defect:
+   - The perl extractor only walks `web/templates/**/*.html` and
+     `web/static/js/**/*.js`. It never reads any `internal/` or `cmd/` Go
+     file. Its "Go code" coverage is entirely the hand-typed
+     `@dynamic_safelist` array, cross-checked only against itself (does the
+     literal safelist string show up in the CSS) — it is not derived from
+     Go source by extraction.
+   - I independently grepped `internal/` and `cmd/` for `class="` outside
+     `_test.go` files and found THREE Go handler files the oracle never
+     looks at that embed literal Tailwind classes in HTML fragments:
+     `internal/handlers/whatif/handlers.go:617-624`,
+     `internal/handlers/majorexpenses/handlers.go:609-616`,
+     `internal/handlers/accounts/handlers.go:669-676` — each a
+     `renderError()` building `<div class="p-4 bg-red-50
+     dark:bg-red-900/30 border border-red-200 dark:border-red-800
+     rounded-lg">...<span class="text-red-700 dark:text-red-300
+     font-medium">Error</span>...<p class="mt-2 text-sm text-red-600
+     dark:text-red-400">%s</p></div>` via `fmt.Sprintf`. None of these
+     tokens are in the `dynamic_safelist`/`safelist`, and the manifest's
+     stronger claim ("every class the app can ever emit ... is present in
+     the built CSS") is not actually proven by the oracle for this code path
+     — CHANGELOG/tailwind.config.js's own scoping is honest here (they only
+     claim render.go, not "all Go code"), so this isn't a misrepresentation,
+     but it is a real fragility: a future edit to these three functions
+     could silently ship unstyled error banners and the gate would still
+     say exit 0.
+   - I then checked whether the CURRENT tokens from those three files are
+     actually present in the built CSS (correcting for Tailwind's
+     backslash-escaped selectors, e.g. `.dark\:bg-red-900\/30:is(.dark *)`):
+     every one of `p-4, bg-red-50, dark:bg-red-900/30, border,
+     border-red-200, dark:border-red-800, rounded-lg, flex, items-center,
+     w-5, h-5, text-red-500, dark:text-red-400, mr-2, mt-2, text-sm,
+     text-red-600, text-red-700, dark:text-red-300, font-medium` resolves to
+     a real selector in `web/static/css/tailwind.css` (confirmed via
+     python re-check with correct CSS escaping, not the buggy naive grep I
+     tried first). They are covered today, coincidentally, because the same
+     literal tokens also occur inside scanned `.html` templates (e.g.
+     `accounts_card.html`, `guardrails.html`). No live counterexample found.
+   - Also found `internal/handlers/approval/handlers.go` embeds its own
+     literal `class="tool"/"detail"/"primary"/"danger"/"note"` HTML, but it
+     ships a fully self-contained inline `<style>pageCSS</style>` (its own
+     hand-written CSS, not Tailwind, not the CDN) — out of scope for this
+     Tailwind-vendoring task, not a regression.
+
+3. VARIANT/ARBITRARY-VALUE STACKS — sampled hostile cases from templates:
+   `text-[10px]`/`text-[11px]` (kpis.html, insights/major-expenses/whatif
+   verdict bars), `min-w-[14rem]`/`min-w-[12rem]`, `max-h-[80vh]`/`max-h-[50vh]`
+   (kpi-detail.html), the full toggle-switch `after:` stack in
+   spending-phases.html (`after:content-['']`, `after:top-[2px]`,
+   `after:left-[2px]`, `after:h-5`, `after:w-5`, `peer-checked:after:*`,
+   `peer-focus:ring-4`, `dark:peer-focus:ring-blue-800`), `top-1/2`,
+   `-translate-y-1/2` — all present as real selectors in the built CSS once
+   checked with correct CSS-identifier escaping (backslash before `[`, `]`,
+   `/`, `:`; `:is(.dark *)` wrapper for `dark:` variants). PASS.
+
+4. UNLOCK PAGE — `git diff web/templates/pages/unlock.html` shows the same
+   CDN-script-to-`<link href="/static/css/tailwind.css">` swap as base.html,
+   nothing else in its `<head>` references a remote host. Started the real
+   server (`BUDGET_DATA_DIR=/tmp/t7/data go run ./cmd/server`, no encryption
+   configured) and fetched live: `/static/css/tailwind.css` -> 200,
+   `text/css`, 59176 bytes (matches committed file exactly);
+   `/` -> redirects to `/dashboard` (200) whose rendered HTML contains the
+   `<link>` tag and zero occurrences of `cdn.tailwindcss` or `cdn.`; hitting
+   `/unlock` directly redirected away since no encryption is configured in
+   this bare setup (matches the task's documented expectation) — verified
+   statically instead, confirmed correct. `web/embed.go` has
+   `//go:embed templates static`, so `tailwind.css` is embedded for
+   production (non-debug) builds too, not just filesystem-served in dev.
+
+5. OFFLINE SWEEP — `grep -rEn "https?://" web/templates/ web/static/js/
+   web/static/css/styles.css` (styles.css and js/templates only, excluding
+   the built tailwind.css whose only http:// hits are inert
+   `xmlns="http://www.w3.org/2000/svg"` data-URI/namespace strings) returns
+   nothing outside `w3.org` SVG namespace strings in JS
+   (`document.createElementNS`) — no new remote styling dependency.
+
+6. REGRESSION — `go build ./...` exit 0. `go test -count=1
+   ./internal/handlers/...` -> all 10 packages ok (accounts, approval,
+   backup, dashboard, duplicates, explorer, insights, majorexpenses,
+   transfers, whatif). `git diff --stat web/static/css/styles.css` empty
+   (untouched). `git status --short` shows no `.go` files touched, matching
+   the CHANGELOG's own claim ("No Go code changed").
+
+`bash swarm/t7-coverage.sh` re-run: exit 0, "OK: 715 literal utility-looking
+class tokens covered (45 whitelisted, 50 dynamic-safelist entries verified
+present)" — matches the manifest claim exactly.
+
+No concrete counterexample (an emittable class absent from the built CSS)
+was found despite deliberately probing the oracle's known blind spot (Go
+handler files outside render.go), variant/arbitrary-value stacks, the
+unlock page, and reproducibility. The one real weakness found — the oracle
+provides no independent extraction/verification for Tailwind classes
+embedded in `internal/handlers/{whatif,majorexpenses,accounts}/handlers.go`
+`renderError()` — is a legitimate gap in the proof's rigor (a future edit
+there is unguarded) but does not make the task's claim false today; it is
+reported as a finding, not grounds for FAIL.

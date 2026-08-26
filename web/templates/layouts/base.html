@@ -14,16 +14,8 @@
     <!-- Plotly for charts -->
     <script src="/static/vendor/plotly.min.js"></script>
 
-    <!-- Tailwind CSS via CDN (for development) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {}
-            }
-        }
-    </script>
+    <!-- Tailwind CSS (vendored static build, see tailwind.config.js for the regen command) -->
+    <link href="/static/css/tailwind.css" rel="stylesheet">
 
     <!-- Theme initialization (before page render to prevent flash) -->
     <script>

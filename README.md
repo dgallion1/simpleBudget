@@ -504,7 +504,7 @@ budget2/
 
 - **Backend**: Go 1.25+ with Chi router
 - **Frontend**: HTMX for dynamic updates, Plotly.js for charts
-- **Styling**: Tailwind CSS via CDN
+- **Styling**: Tailwind CSS, vendored as a static build at `web/static/css/tailwind.css` (regenerate with `npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i web/static/css/tailwind.src.css -o web/static/css/tailwind.css --minify`, per the comment atop `tailwind.config.js`) so pages render fully styled offline
 - **Storage**: File-based (CSV for transactions, JSON for settings)
 - **Encryption**: Age (filippo.io/age) with multiple auth methods (password, SSH, Age identity, YubiKey)
 

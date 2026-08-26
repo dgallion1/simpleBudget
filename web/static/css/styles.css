@@ -119,8 +119,10 @@ input:focus, select:focus {
 
 /* What-If tab bar — active tab indicator.
    whatif-tabs.js toggles .wf-tab-active; the buttons carry Tailwind
-   `text-gray-500 border-transparent` utilities, and the CDN build injects
-   its stylesheet after this one, so !important is required to win. */
+   `text-gray-500 border-transparent` utilities, and tailwind.css is linked
+   after this file, so !important is required to win. (It used to be the CDN
+   build appending its <style> at runtime; the ordering, and therefore the
+   need for !important, is unchanged.) */
 .wf-tab-active {
     color: rgb(79 70 229) !important;              /* indigo-600 */
     border-bottom-color: rgb(79 70 229) !important;
@@ -132,8 +134,9 @@ input:focus, select:focus {
 
 /* Quick Adjust tab strip — active pill.
    quick-adjust-scripts.html toggles .qa-tab-active; the buttons carry
-   Tailwind text-color utilities injected later by the CDN build, so
-   !important is required to win. Same white pill in both themes. */
+   Tailwind text-color utilities from tailwind.css, which is linked after
+   this file, so !important is required to win. Same white pill in both
+   themes. */
 .qa-tab-active {
     background-color: #fff !important;
     color: rgb(17 24 39) !important;   /* gray-900 */

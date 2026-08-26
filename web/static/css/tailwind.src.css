@@ -1,0 +1,10 @@
+/*
+ * Source for web/static/css/tailwind.css — do not edit the compiled file.
+ *
+ * Rebuild with `make css` after adding a class name that the current build
+ * does not already contain. The compiled output is committed so that a clean
+ * checkout runs offline without a Node toolchain.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -14,17 +14,6 @@
     <!-- Plotly for charts -->
     <script src="/static/vendor/plotly.min.js"></script>
 
-    <!-- Tailwind CSS via CDN (for development) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {}
-            }
-        }
-    </script>
-
     <!-- Theme initialization (before page render to prevent flash) -->
     <script>
             (function () {
@@ -60,6 +49,25 @@
             min-height: 300px;
         }
     </style>
+
+    <!--
+      Tailwind, compiled ahead of time by `make css` and served from /static.
+      This replaced a script tag pointing at the Tailwind Play CDN, which
+      compiled utilities in the browser and left every page unstyled with no
+      network — contradicting the README's local-only promise.
+
+      Last in <head> on purpose. The CDN script appended its generated <style>
+      to the end of <head> at runtime, so Tailwind's utilities have always won
+      ties against styles.css and the block above. Several rules depend on
+      that ordering (see the !important notes on .wf-tab-active and
+      .qa-tab-active in styles.css, and .transition-all, which Tailwind's own
+      utility of the same name overrides). Moving this link earlier is not a
+      tidy-up; it changes which declarations win.
+
+      darkMode: 'class' now lives in tailwind.config.js, replacing the inline
+      `tailwind.config` object the CDN script used to be handed.
+    -->
+    <link href="/static/css/tailwind.css" rel="stylesheet">
 </head>
 
 <body class="bg-gray-100 dark:bg-gray-900 {{if eq .ActiveTab "explorer"}}h-screen overflow-hidden{{else}}min-h-screen{{end}} transition-colors duration-200">

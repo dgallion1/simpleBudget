@@ -70,7 +70,7 @@ ifdef GO_OVERRIDE
     NEED_GO_INSTALL :=
 endif
 
-.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz check check-full
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js css css-verify build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz check check-full
 
 all: build
 
@@ -102,6 +102,8 @@ help:
 	@echo "  watch          - Run with hot reload (requires air)"
 	@echo "  validate       - Validate running server"
 	@echo "  vendor-js      - Download JS dependencies"
+	@echo "  css            - Compile web/static/css/tailwind.css (commit the result)"
+	@echo "  css-verify     - Fail if the committed tailwind.css is stale"
 	@echo "  install-go     - Install Go $(GO_VERSION) locally"
 	@echo "  release        - Create and push a release tag (usage: make release v=1.0.0)"
 	@echo "  release-snapshot - Test release locally without pushing"
@@ -267,6 +269,56 @@ deps: check-go
 # Install air: go install github.com/air-verse/air@latest
 watch: check-go
 	air
+
+# Tailwind CSS
+#
+# The site used to load https://cdn.tailwindcss.com and compile utilities in
+# the browser, so an offline user got an unstyled page. The stylesheet is now
+# compiled here and committed, which is what lets a clean checkout run with no
+# network and no Node toolchain.
+#
+# The version is pinned to what the CDN was serving when it was replaced, so
+# the compiled sheet renders what the site already rendered. Bumping it is a
+# visual change, not a dependency bump: rebuild and look at the pages.
+TAILWIND_VERSION := 3.4.17
+ifeq ($(GO_OS),darwin)
+    TAILWIND_OS := macos
+else
+    TAILWIND_OS := $(GO_OS)
+endif
+ifeq ($(GO_ARCH),amd64)
+    TAILWIND_ARCH := x64
+else
+    TAILWIND_ARCH := $(GO_ARCH)
+endif
+TAILWIND_BIN := tmp/tailwindcss-$(TAILWIND_VERSION)$(BINARY_EXT)
+TAILWIND_URL := https://github.com/tailwindlabs/tailwindcss/releases/download/v$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_OS)-$(TAILWIND_ARCH)$(BINARY_EXT)
+TAILWIND_ARGS := -c tailwind.config.js -i web/static/css/tailwind.src.css
+
+# Fetch the standalone CLI into tmp/ (gitignored). A single binary, so this
+# needs no npm install and leaves no node_modules behind.
+$(TAILWIND_BIN):
+	$(MKDIR) tmp
+	curl -fL $(TAILWIND_URL) -o $(TAILWIND_BIN)
+ifneq ($(OS),Windows_NT)
+	chmod +x $(TAILWIND_BIN)
+endif
+
+# Rebuild the committed stylesheet. Run after adding a class name that is not
+# already in it, and commit web/static/css/tailwind.css with the change.
+css: $(TAILWIND_BIN)
+	./$(TAILWIND_BIN) $(TAILWIND_ARGS) -o web/static/css/tailwind.css --minify
+	@echo "web/static/css/tailwind.css rebuilt - commit it"
+
+# Catch the failure mode this design introduces: a class added to a template
+# without rerunning `make css`, which renders fine for whoever has a warm
+# browser cache and wrong for everyone else. Rebuilds to a scratch file and
+# compares.
+css-verify: $(TAILWIND_BIN)
+	./$(TAILWIND_BIN) $(TAILWIND_ARGS) -o tmp/tailwind.check.css --minify
+	@cmp -s tmp/tailwind.check.css web/static/css/tailwind.css \
+		&& echo "tailwind.css is up to date" \
+		|| { echo "ERROR: web/static/css/tailwind.css is stale - run 'make css' and commit the result"; exit 1; }
 
 # Download vendor JS libraries (requires curl)
 vendor-js:

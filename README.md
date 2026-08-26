@@ -263,6 +263,23 @@ JavaScript libraries may not have downloaded.
 make vendor-js
 ```
 
+### Pages render as unstyled HTML
+
+The stylesheet at `web/static/css/tailwind.css` is missing or was not rebuilt
+after a class name was added. It is committed, so a clean checkout has it; a
+tree where it was deleted, or where a template gained a class the committed
+build does not contain, needs it regenerated.
+
+**Fix:**
+```bash
+make css
+```
+
+`make css-verify` reports whether the committed file is up to date without
+overwriting it. Both download a pinned Tailwind CLI into `tmp/` on first use
+and need network for that one step; the built stylesheet is what makes the
+running site work without any.
+
 ### Go auto-installation fails
 
 If the automatic Go installation fails (network issues, permissions, etc.):
@@ -498,7 +515,7 @@ budget2/
 
 - **Backend**: Go 1.25+ with Chi router
 - **Frontend**: HTMX for dynamic updates, Plotly.js for charts
-- **Styling**: Tailwind CSS via CDN
+- **Styling**: Tailwind CSS, compiled ahead of time and served locally (`make css`)
 - **Storage**: File-based (CSV for transactions, JSON for settings)
 - **Encryption**: Age (filippo.io/age) with multiple auth methods (password, SSH, Age identity, YubiKey)
 

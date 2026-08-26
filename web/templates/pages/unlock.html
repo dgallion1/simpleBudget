@@ -8,17 +8,6 @@
     <title>Unlock - Financial Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
-    <!-- Tailwind CSS via CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {}
-            }
-        }
-    </script>
-
     <!-- Theme initialization -->
     <script>
         (function () {
@@ -29,6 +18,13 @@
             }
         })();
     </script>
+
+    <!--
+      Tailwind, compiled ahead of time by `make css`. Same vendored sheet the
+      rest of the site uses; see the note in layouts/base.html for why it is
+      the last thing in <head>.
+    -->
+    <link href="/static/css/tailwind.css" rel="stylesheet">
 </head>
 
 <body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center transition-colors duration-200">

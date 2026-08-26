@@ -2,10 +2,20 @@
 // listen address, data/settings/uploads/backup directory paths, and feature
 // flags. Defaults follow the XDG base-directory spec for cross-user
 // installs and fall back to repo-relative paths for development.
+//
+// It resolves paths; it does not read or write anything under them. In
+// particular there is deliberately no user-settings accessor here. An earlier
+// LoadUserSettings/SaveUserSettings pair (removed 2026-08-26) read and wrote
+// data/settings/user_settings.json with a bare os.ReadFile/os.WriteFile,
+// which would have bypassed services/storage entirely: no encryption for a
+// user who has enabled it, no atomic publish, no cache invalidation. It had
+// zero call sites, so nothing was broken by it — it was a trap waiting to be
+// wired up. Everything under SettingsDirectory that the app actually persists
+// (whatif.json and friends) goes through services/storage, and anything added
+// later must too.
 package config
 
 import (
-	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -37,9 +47,6 @@ type Config struct {
 	StaticDirectory    string `json:"static_directory"`
 	BackupDir          string `json:"backup_dir"`
 	ImportDirectory    string `json:"import_directory"`
-
-	// File paths
-	UserSettingsFile string `json:"user_settings_file"`
 }
 
 // defaultBackupDir returns the default location for automatic backup zips.
@@ -87,7 +94,6 @@ func DefaultConfig() *Config {
 		SettingsDirectory:  filepath.Join(wd, "data", "settings"),
 		TemplatesDirectory: filepath.Join(wd, "web", "templates"),
 		StaticDirectory:    filepath.Join(wd, "web", "static"),
-		UserSettingsFile:   filepath.Join(wd, "data", "settings", "user_settings.json"),
 		BackupDir:          defaultBackupDir(filepath.Join(wd, "data")),
 		ImportDirectory:    defaultImportDir(filepath.Join(wd, "data")),
 	}
@@ -111,7 +117,6 @@ func Load() *Config {
 		cfg.DataDirectory = dataDir
 		cfg.UploadsDirectory = filepath.Join(dataDir, "uploads")
 		cfg.SettingsDirectory = filepath.Join(dataDir, "settings")
-		cfg.UserSettingsFile = filepath.Join(dataDir, "settings", "user_settings.json")
 	}
 	if templatesDir := os.Getenv("BUDGET_TEMPLATES_DIR"); templatesDir != "" {
 		cfg.TemplatesDirectory = templatesDir
@@ -145,32 +150,4 @@ func (c *Config) ensureDirectories() {
 			log.Printf("Warning: could not create directory %s: %v", dir, err)
 		}
 	}
-}
-
-// LoadUserSettings loads user settings from JSON file
-func (c *Config) LoadUserSettings() (map[string]interface{}, error) {
-	data, err := os.ReadFile(c.UserSettingsFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return make(map[string]interface{}), nil
-		}
-		return nil, err
-	}
-
-	var settings map[string]interface{}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return nil, err
-	}
-
-	return settings, nil
-}
-
-// SaveUserSettings saves user settings to JSON file
-func (c *Config) SaveUserSettings(settings map[string]interface{}) error {
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(c.UserSettingsFile, data, 0644)
 }

@@ -1,8 +1,6 @@
 package config
 
 import (
-	"encoding/json"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,9 +57,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.StaticDirectory != filepath.Join(wd, "web", "static") {
 		t.Errorf("StaticDirectory = %q, want %q", cfg.StaticDirectory, filepath.Join(wd, "web", "static"))
-	}
-	if cfg.UserSettingsFile != filepath.Join(wd, "data", "settings", "user_settings.json") {
-		t.Errorf("UserSettingsFile = %q, want %q", cfg.UserSettingsFile, filepath.Join(wd, "data", "settings", "user_settings.json"))
 	}
 }
 
@@ -160,9 +155,6 @@ func TestLoadDataDir(t *testing.T) {
 	if cfg.SettingsDirectory != filepath.Join(tmp, "settings") {
 		t.Errorf("SettingsDirectory = %q, want %q", cfg.SettingsDirectory, filepath.Join(tmp, "settings"))
 	}
-	if cfg.UserSettingsFile != filepath.Join(tmp, "settings", "user_settings.json") {
-		t.Errorf("UserSettingsFile = %q, want %q", cfg.UserSettingsFile, filepath.Join(tmp, "settings", "user_settings.json"))
-	}
 }
 
 func TestLoadTemplatesDir(t *testing.T) {
@@ -195,8 +187,8 @@ func TestEnsureDirectoriesCreates(t *testing.T) {
 	tmp := t.TempDir()
 
 	cfg := &Config{
-		DataDirectory:    filepath.Join(tmp, "data"),
-		UploadsDirectory: filepath.Join(tmp, "data", "uploads"),
+		DataDirectory:     filepath.Join(tmp, "data"),
+		UploadsDirectory:  filepath.Join(tmp, "data", "uploads"),
 		SettingsDirectory: filepath.Join(tmp, "data", "settings"),
 	}
 
@@ -216,160 +208,13 @@ func TestEnsureDirectoriesInvalidPath(t *testing.T) {
 	// Use a path under /dev/null which can't contain subdirectories.
 	// This exercises the error log branch. It should not panic.
 	cfg := &Config{
-		DataDirectory:    "/dev/null/impossible",
-		UploadsDirectory: "/dev/null/impossible/uploads",
+		DataDirectory:     "/dev/null/impossible",
+		UploadsDirectory:  "/dev/null/impossible/uploads",
 		SettingsDirectory: "/dev/null/impossible/settings",
 	}
 
 	// Should not panic; just logs warnings
 	cfg.ensureDirectories()
-}
-
-func TestLoadUserSettingsFileNotExist(t *testing.T) {
-	tmp := t.TempDir()
-	cfg := &Config{
-		UserSettingsFile: filepath.Join(tmp, "nonexistent.json"),
-	}
-
-	settings, err := cfg.LoadUserSettings()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if settings == nil {
-		t.Fatal("expected non-nil empty map")
-	}
-	if len(settings) != 0 {
-		t.Errorf("expected empty map, got %v", settings)
-	}
-}
-
-func TestLoadUserSettingsValid(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-	data := map[string]any{"theme": "dark", "count": float64(42)}
-	b, _ := json.Marshal(data)
-	os.WriteFile(settingsFile, b, 0644)
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	settings, err := cfg.LoadUserSettings()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if settings["theme"] != "dark" {
-		t.Errorf("theme = %v, want dark", settings["theme"])
-	}
-	if settings["count"] != float64(42) {
-		t.Errorf("count = %v, want 42", settings["count"])
-	}
-}
-
-func TestLoadUserSettingsInvalidJSON(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "bad.json")
-	os.WriteFile(settingsFile, []byte("{not json}"), 0644)
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	_, err := cfg.LoadUserSettings()
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestLoadUserSettingsPermissionError(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-	os.WriteFile(settingsFile, []byte("{}"), 0644)
-	// Remove read permission
-	os.Chmod(settingsFile, 0000)
-	t.Cleanup(func() { os.Chmod(settingsFile, 0644) })
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	_, err := cfg.LoadUserSettings()
-	if err == nil {
-		t.Fatal("expected permission error")
-	}
-	// This should NOT be os.IsNotExist, so it should return the error, not an empty map
-	if os.IsNotExist(err) {
-		t.Fatal("expected permission error, not IsNotExist")
-	}
-}
-
-func TestSaveUserSettings(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	settings := map[string]any{"key": "value"}
-
-	err := cfg.SaveUserSettings(settings)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify by reading back
-	data, err := os.ReadFile(settingsFile)
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
-	var loaded map[string]any
-	if err := json.Unmarshal(data, &loaded); err != nil {
-		t.Fatalf("failed to parse saved settings: %v", err)
-	}
-	if loaded["key"] != "value" {
-		t.Errorf("key = %v, want value", loaded["key"])
-	}
-}
-
-func TestSaveUserSettingsMarshalError(t *testing.T) {
-	tmp := t.TempDir()
-	cfg := &Config{UserSettingsFile: filepath.Join(tmp, "settings.json")}
-	// math.Inf cannot be marshaled to JSON
-	settings := map[string]any{"bad": math.Inf(1)}
-	err := cfg.SaveUserSettings(settings)
-	if err == nil {
-		t.Fatal("expected marshal error for Inf value")
-	}
-}
-
-func TestSaveUserSettingsWriteError(t *testing.T) {
-	// Point to a directory that doesn't exist and can't be created
-	cfg := &Config{UserSettingsFile: "/dev/null/impossible/settings.json"}
-	err := cfg.SaveUserSettings(map[string]any{"a": "b"})
-	if err == nil {
-		t.Fatal("expected error writing to invalid path")
-	}
-}
-
-func TestSaveAndLoadRoundTrip(t *testing.T) {
-	tmp := t.TempDir()
-	settingsFile := filepath.Join(tmp, "settings.json")
-
-	cfg := &Config{UserSettingsFile: settingsFile}
-	original := map[string]any{
-		"name":    "test",
-		"enabled": true,
-		"rate":    3.14,
-	}
-
-	if err := cfg.SaveUserSettings(original); err != nil {
-		t.Fatalf("save error: %v", err)
-	}
-
-	loaded, err := cfg.LoadUserSettings()
-	if err != nil {
-		t.Fatalf("load error: %v", err)
-	}
-
-	if loaded["name"] != "test" {
-		t.Errorf("name = %v, want test", loaded["name"])
-	}
-	if loaded["enabled"] != true {
-		t.Errorf("enabled = %v, want true", loaded["enabled"])
-	}
-	if loaded["rate"] != 3.14 {
-		t.Errorf("rate = %v, want 3.14", loaded["rate"])
-	}
 }
 
 func TestBackupDir_DefaultUsesXDG(t *testing.T) {

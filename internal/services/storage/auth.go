@@ -80,7 +80,22 @@ func loadConfig(baseDir string) (*EncryptionConfig, error) {
 	return &config, nil
 }
 
-// saveConfig writes the encryption configuration to disk
+// saveConfig writes the encryption configuration to disk.
+//
+// Staging follows the same convention as atomicWrite/createExclusive in
+// storage.go — a uniquely named temp file under StagingSuffix, written,
+// chmod'd, then renamed over the destination — but this function cannot
+// call atomicWrite itself, because atomicWrite is a *Storage method that
+// writes through Storage's encrypting path. This file, the encryption
+// config, is the one file that must never be encrypted (it is what makes
+// decryption possible in the first place), and it must be writable before
+// a *Storage even finishes constructing (EnableEncryptionWithProvider
+// calls saveConfig while still assembling encryption state). Duplicating
+// the staging convention here rather than routing through Storage keeps
+// this file out of the encrypting path while still producing a staging
+// name that the regime's orphan recognition (IsStagingName) and backup
+// exclusion (backup.SkipPredicate, which walks baseDir/DataDir) know
+// about — unlike the old fixed ".tmp" name this replaces.
 func saveConfig(baseDir string, config *EncryptionConfig) error {
 	configPath := filepath.Join(baseDir, configFile)
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -88,9 +103,31 @@ func saveConfig(baseDir string, config *EncryptionConfig) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	// Write atomically
-	tmpPath := configPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	// Staged in baseDir (same filesystem as configPath, so the rename below
+	// is atomic) under a unique name so concurrent saves cannot collide on
+	// the staging file itself — mirrors atomicWrite/createExclusive (see
+	// StagingSuffix's doc comment in storage.go).
+	f, err := os.CreateTemp(baseDir, configFile+StagingSuffix+"*")
+	if err != nil {
+		return fmt.Errorf("failed to create staging file: %w", err)
+	}
+	tmpPath := f.Name()
+	// If the rename below succeeds this is a no-op (nothing left at
+	// tmpPath); if we return early on an error this cleans up the staging
+	// file so a failed save doesn't litter baseDir (mirrors atomicWrite's
+	// error hygiene).
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+	// os.CreateTemp already creates the file at 0600, but chmod explicitly
+	// to match atomicWrite's approach rather than relying on the default.
+	if err := os.Chmod(tmpPath, 0600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 

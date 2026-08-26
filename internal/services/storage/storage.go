@@ -567,6 +567,18 @@ func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadClos
 // WriteFile's shared lock — never share a staging file: each writer gets its
 // own temp file, so neither a spurious rename failure nor torn content from
 // two writers' bytes interleaving in one staging file can occur.
+//
+// The rename below replaces whatever currently sits at path, symlink or not:
+// if path is a symlink, the rename removes the link and puts a regular file
+// in its place, so the file the link used to point at is left untouched and
+// silently stops receiving further writes. That is the contract, not an
+// oversight — resolving the symlink first would relocate staging to the
+// target's directory, reopening the atomicity reasoning above for a
+// filesystem this function does not control, cannot stay atomic if the
+// target lives on a different filesystem than the link, and would add a
+// resolve-to-rename race to the most safety-critical write path in the
+// package. Files under Storage are expected to be real files; symlinks in
+// the data directory are not honoured.
 func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {

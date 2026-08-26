@@ -1,0 +1,180 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T6
+ATTEMPT: 4
+---
+Repo /home/user/simplebudget, branch claude/t6-symlink-contract. HEAD =
+99d5205 (= merge-base with main; `git log --oneline main..HEAD | wc -l` -> 0),
+so the cumulative branch diff is `git diff HEAD` on the working tree.
+All behavioural probes were run in a `cp -a` copy at /tmp/t6check/repo; the
+main tree was not modified except this verdict file.
+
+CRITERION 1 — docs-only discipline across the whole branch diff. PASS.
+  `git diff HEAD --name-only` ->
+    .swarm/ledger.tsv, README.md, internal/config/config.go,
+    internal/handlers/backup/handlers.go,
+    internal/services/storage/migration.go,
+    internal/services/storage/storage.go
+  Exactly the four .go files named in the brief plus README.md plus .swarm
+  bookkeeping. `git ls-files --others --exclude-standard` -> 11 paths, all
+  under .swarm/. `git diff HEAD --name-only | grep '_test\.go'` -> none.
+  Comment-only proof, not eyeballed: I built a go/scanner token-stream
+  comparator (/tmp/t6check/toks) that scans with mode 0 (comments skipped)
+  and diffs the token streams of `git show HEAD:<f>` against the working
+  tree. Output:
+    internal/services/storage/storage.go    COMMENT-ONLY: 3204 code tokens identical
+    internal/config/config.go               COMMENT-ONLY:  867 code tokens identical
+    internal/handlers/backup/handlers.go    COMMENT-ONLY: 6310 code tokens identical
+    internal/services/storage/migration.go  COMMENT-ONLY: 1881 code tokens identical
+  No code token changed in any of the four files.
+  `gofmt -l <four files>` -> empty (exit 0).
+  `go build ./...` -> BUILD-OK. `go vet ./...` -> VET-OK.
+  README.md: single added prose paragraph at line 84, immediately after the
+  "### Step 3: Create the data directory" `mkdir -p data` block (verified with
+  `sed -n '76,90p' README.md`). Text matches the brief verbatim.
+
+CRITERION 2 — "can replace the link with a regular file; the file it pointed
+to then goes stale". PASS, behaviourally.
+  Planted test in the /tmp copy exercising the REAL Storage save path
+  (Storage.WriteFile -> WriteFileContext -> writeFileLocked -> atomicWrite):
+  /tmp/t6check/repo/internal/services/storage/zz_t6_symlink_check_test.go,
+  TestT6_StorageSavePathReplacesSymlinkAndTargetGoesStale.
+  `go test -count=1 -run TestT6_ -v ./internal/services/storage/` ->
+    OK: after save, .../001/budget.csv is a regular file (mode -rw-r--r--)
+    OK: old target .../002/real-target.csv still holds "ORIGINAL" (untouched by the save)
+    OK: STALE - later save landed in .../001/budget.csv ("SAVE-TWO") while old target still "ORIGINAL"
+    --- PASS
+  The test asserts a precondition (Lstat shows ModeSymlink before the save),
+  then asserts ModeSymlink is CLEAR and Mode().IsRegular() after, then asserts
+  a SECOND save also fails to reach the old target — i.e. "goes stale" is
+  asserted as an ongoing property, not just a one-shot miss.
+  (First run of this test failed; cause was my own authoring error — I passed
+  a relative path where Storage.WriteFile takes an absolute one, matching
+  internal/services/storage/storage_test.go:36. Corrected and re-run. Not a
+  defect in the work under review.)
+
+CRITERION 3 — "can write straight through it, silently changing the file it
+points to". PASS, behaviourally, on the LIVE path (not just the pattern).
+  (a) Exact-pattern tests for both migration.go writes, in the same file:
+      TestT6_MigrationVerifyWritePatternWritesThroughSymlink ->
+        OK: symlink .../.encryption-verify survived (mode Lrwxrwxrwx) and
+        target silently changed ORIGINAL -> "CIPHERTEXT-BYTES"
+      TestT6_MigrationMarkerWritePatternWritesThroughSymlink ->
+        OK: marker symlink survived (mode Lrwxrwxrwx); target changed
+        ORIGINAL -> "encrypted"
+  (b) Stronger: end-to-end through the real exported function.
+      /tmp/t6check/repo/internal/services/storage/zz_t6_live_check_test.go,
+      TestT6_LiveEnableEncryptionWritesThroughMarkerSymlinks, plants BOTH
+      .encryption-verify and .encrypted as symlinks to files outside the data
+      dir (planted after New() so the guard `if s.encrypted` at migration.go:28
+      does not short-circuit), then calls the real
+      s.EnableEncryptionWithProvider with a GenerateAgeIdentity provider.
+      `go test -count=1 -run TestT6_Live -v ./internal/services/storage/` ->
+        OK .encrypted: symlink survived (mode Lrwxrwxrwx); target
+           marker-target silently changed ORIGINAL -> 9 bytes ("encrypted"...)
+        OK .encryption-verify: symlink survived (mode Lrwxrwxrwx); target
+           verify-target silently changed ORIGINAL -> 249 bytes
+           ("age-encryption.org/v"...)
+        --- PASS
+      Both halves of the README's "or" are therefore demonstrated on live code
+      paths, one per half.
+
+CRITERION 4 — the four comments' factual claims hold against the code.
+PASS on every command-verifiable claim; one sub-claim is design rationale and
+is reported as unverifiable rather than passed on inspection.
+
+  4a storage.go (atomicWrite, lines 570-582).
+     "The rename below replaces whatever currently sits at path, symlink or
+     not ... the file the link used to point at is left untouched and silently
+     stops receiving further writes" — proven by Criterion 2's test.
+     "cannot stay atomic if the target lives on a different filesystem than
+     the link" — demonstrated: /tmp is ext4 and /dev/shm is tmpfs per
+     `df -T /tmp /dev/shm`; `go run /tmp/t6check/exdev.go` ->
+       os.Rename(/tmp/... -> /dev/shm/...) err = invalid cross-device link
+     "resolving the symlink first would relocate staging to the target's
+     directory ... would add a resolve-to-rename race to the most
+     safety-critical write path in the package" — this is counterfactual
+     design rationale about code that does not exist. NO COMMAND CAN
+     DEMONSTRATE IT; I did not pass it on inspection. It is consistent with
+     the actual body (os.CreateTemp(dir, ...) where dir = filepath.Dir(path),
+     storage.go:594) but that is reasoning, not evidence.
+
+  4b config.go (SaveUserSettings, lines 168-176).
+     "writes with a bare os.WriteFile, which follows a symlink at the
+     destination instead of replacing it" — body is
+     `return os.WriteFile(c.UserSettingsFile, data, 0644)` (config.go:183),
+     and behaviourally proven:
+     /tmp/t6check/repo/internal/config/zz_t6_settings_check_test.go,
+     TestT6_SaveUserSettingsFollowsSymlink ->
+       OK: symlink survived (mode Lrwxrwxrwx); target real-settings.json
+       changed ORIGINAL -> "{\n  \"theme\": \"dark\"\n}"
+     "It has no call sites in the running server today" — CONFIRMED.
+     `grep -rn "SaveUserSettings" . | grep -v ^./.git/ | grep -v ^./.swarm/`
+     -> 14 hits, all of which are: CHANGELOG.md:273, docs/api/internal/
+     config.md (4 hits), internal/config/config_test.go (6 hits: lines 314,
+     321, 341, 346, 352, 355, 372), and the declaration + its doc comment in
+     config.go itself. Zero non-test production callers.
+
+  4c handlers/backup/handlers.go (HandlePlotly, lines 677-681).
+     "This write is a bare os.WriteFile" — handlers.go:682 is
+     `os.WriteFile(cachePath, data, 0644)`. "only an app-managed cache" —
+     cachePath is `filepath.Join(cfg.DataDirectory, "cache", "plotly.min.js")`
+     (handlers.go:643), written only from the CDN-fetch fallback and read back
+     at :646. It is app-generated content, not user data. Write-through
+     behaviour for this identical `os.WriteFile(path, data, 0644)` shape is
+     the same call proven in 3(a)/4b.
+
+  4d migration.go (lines 44-48). The comment sits directly above
+     `verifyPath := filepath.Join(s.baseDir, verifyFile)` (line 49), whose
+     write is line 54. "the marker write below" resolves correctly:
+     `grep -n "os.WriteFile|markerFile|verifyFile" migration.go` ->
+       49: verifyPath := filepath.Join(s.baseDir, verifyFile)
+       54: os.WriteFile(verifyPath, encrypted, 0644)
+      106: markerPath := filepath.Join(s.baseDir, markerFile)
+      107: os.WriteFile(markerPath, []byte("encrypted"), 0644)
+     Line 107 is the only other bare write in the file and is BELOW the
+     comment, as claimed. Constants asserted by
+     TestT6_MarkerConstantsMatchCommentClaims ->
+       OK: verifyFile=".encryption-verify" markerFile=".encrypted"
+     (storage.go:21 markerFile = ".encrypted", storage.go:24 verifyFile =
+     ".encryption-verify"). Both are app-managed marker files, not user data.
+     Write-through for both proven live in 3(b).
+
+  Worker-added tests: NONE. The manifest .swarm/manifests/T6.4.files lists
+  README.md and internal/services/storage/migration.go only, and
+  `git diff HEAD --name-only | grep _test.go` is empty, consistent with a
+  docs-only task. There is therefore no worker test whose name I need to
+  check against its assertions.
+
+CRITERION 5 — full test suite. PASS.
+  `cd /home/user/simplebudget && go test -count=1 ./...` as root (`id -u` -> 0),
+  full log at /tmp/t6check/fulltest.log. All 49 packages `ok`, one
+  `[no test files]` (budget2/web), final line `EXIT=0`. Longest packages:
+  internal/services/retirement 166.276s, whatif 141.761s,
+  retirement/analysis 138.610s, internal/services/storage 120.356s.
+
+SCOPE. Clean. Only the six tracked files above differ from HEAD; every
+untracked path is under .swarm/. .swarm/critical.globs lists
+`internal/services/storage/**`, which both storage.go and migration.go match;
+T6 is Tier 3 in .swarm/ledger.tsv, which is the tier that permits critical-glob
+edits, so this is authorised rather than a violation.
+
+OBSERVATION (non-blocking, for the lead's judgement, not a criterion failure).
+The README's final clause is an imperative — "Don't point symlinks into or out
+of `data/`." The "out of" direction is exactly what Criteria 2 and 3 prove. The
+"into" direction (an external symlink whose TARGET is a path inside data/) I
+probed directly:
+/tmp/t6check/repo/internal/services/storage/zz_t6_into_check_test.go,
+TestT6_Probe_SymlinkPointingIntoDataDir ->
+  PROBE RESULT: external symlink still a symlink=true; reading through it
+  yields "V2" (dest was replaced by rename at the same path)
+i.e. an inbound symlink keeps working across a Storage save, because the rename
+republishes at the same path. This does not falsify anything the README
+asserts: the assertive sentence is the preceding one, and "Don't ..." is
+prescriptive advice that can be conservative without being untrue. Recording it
+as a fact so the lead adjudicates rather than discovers it later.
+
+Under the claim shape stated in the brief — the README asserts only that
+symlinks in data/ are unsupported and that BOTH failure modes exist, with no
+completeness claim — every assertion made is backed by command output above.

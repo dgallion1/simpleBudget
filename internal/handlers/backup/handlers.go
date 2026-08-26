@@ -674,6 +674,11 @@ func HandlePlotly(w http.ResponseWriter, r *http.Request) {
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
 		log.Printf("Warning: could not create cache directory: %v", err)
 	}
+	// This write is a bare os.WriteFile: if cachePath is a symlink, it writes
+	// through the link rather than replacing it, outside the stage-and-rename
+	// contract documented on storage.atomicWrite. That is acceptable here
+	// because this is only an app-managed cache (worst case, the cached bytes
+	// land in the link's target); it is not a pattern to copy for user data.
 	if err := os.WriteFile(cachePath, data, 0644); err != nil {
 		log.Printf("Warning: could not cache plotly.min.js: %v", err)
 	} else {

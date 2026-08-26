@@ -165,7 +165,15 @@ func (c *Config) LoadUserSettings() (map[string]interface{}, error) {
 	return settings, nil
 }
 
-// SaveUserSettings saves user settings to JSON file
+// SaveUserSettings saves user settings to JSON file.
+//
+// It writes with a bare os.WriteFile, which follows a symlink at the
+// destination instead of replacing it, unlike the stage-and-rename
+// contract on storage.atomicWrite (internal/services/storage). It has
+// no call sites in the running server today; route it through Storage's
+// staging write before wiring it into a handler, or the symlink
+// contract described in the README and storage.atomicWrite becomes
+// false for this file.
 func (c *Config) SaveUserSettings(settings map[string]interface{}) error {
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {

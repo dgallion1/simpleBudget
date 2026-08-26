@@ -180,7 +180,17 @@ contract (document at `filePerm` + F4 report) or preserve them
 (`Mode() & (fs.ModePerm|fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky)`) with a
 test per bit. ASK THE USER which; do not choose silently.
 
-### T5 — auth.go's ad-hoc staging. Tier 3 (touches storage critical glob),
+### T5 — DONE (accepted 2026-08-26, attempt 1, ruling 2026-08-26d single-arm;
+landed as PR #52). `saveConfig` now stages via
+`os.CreateTemp(baseDir, configFile+StagingSuffix+"*")` + chmod 0600 + rename
+with a deferred staging removal; four kernel-enforced tests. Premise
+corrected in the report: no orphan-deletion sweep exists anywhere
+(`IsStagingName` is backup-exclusion/restore-protection only) — the fix buys
+the collision, error-path hygiene, and a true storage.go comment. Recorded
+observation for a future task: no fsync before rename (pre-existing).
+Evidence: .swarm/verdicts/T5.1.*, .swarm/tier3/T5/report.md.
+
+### T5 (original brief, retained for context) — auth.go's ad-hoc staging. Tier 3 (touches storage critical glob),
 checks `tests,second`. `internal/services/storage/auth.go` `saveConfig`
 stages with a fixed ad-hoc `.tmp` name outside the `atomicWrite` /
 `StagingSuffix` regime the F2 work established (orphan cleanup does not know
@@ -189,7 +199,22 @@ about it; a crash can leave the temp file). Route it through `atomicWrite`
 **Accept**: no fixed-name staging remains (`grep -n '\.tmp"' internal/services/storage/`),
 crash-window behavior covered by a test, package suite green at both uids.
 
-### T6 — atomicWrite vs symlinked destinations. Decision first, then Tier 3
+### T6 — DONE (accepted 2026-08-26, attempt 4, rulings 2026-08-26e/f).
+The user ruled: document "symlinks are not honoured", don't resolve them.
+Docs-only, but it took four attempts because attempts 1-3 each made a
+completeness claim ("every write replaces", "saves are stage+rename", "the
+one exception is data/cache/") that the adversarial lane falsified with
+another bare-write path — in order: SaveUserSettings (dead code),
+HandlePlotly's live cache write, migration.go's live `.encryption-verify`/
+`.encrypted` marker writes. The lesson, now in the tier3 report: in a
+codebase with unswept write paths, docs must not claim completeness.
+Attempt 4's README asserts non-support plus both proven failure modes as
+possibilities; all four bypass/contract sites carry comments (atomicWrite,
+SaveUserSettings, HandlePlotly, migration.go). Ruling 2026-08-26f carried
+the task past the two-failed-attempts hard stop. Evidence:
+.swarm/verdicts/T6.{1,2,3,4}.*, .swarm/tier3/T6/report.md.
+
+### T6 (original brief, retained for context) — atomicWrite vs symlinked destinations. Decision first, then Tier 3
 if changed. `atomicWrite` publishes by rename, so a symlinked destination is
 replaced by a regular file (the data lands beside the link, not at its
 target). Flagged during F4, deliberately not bundled. Either document "the

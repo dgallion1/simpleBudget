@@ -41,6 +41,11 @@ func (s *Storage) EnableEncryptionWithProvider(provider AuthProvider, config *En
 	}
 
 	// Create verification file first
+	// Marker files here and at the marker write below are written with a bare
+	// os.WriteFile, which writes through a symlink at the destination rather
+	// than replacing it, outside the stage-and-rename contract documented on
+	// atomicWrite. That's fine for these app-managed marker files; it is not
+	// a pattern to copy for user data.
 	verifyPath := filepath.Join(s.baseDir, verifyFile)
 	encrypted, err := encryptData([]byte(verifyMagic), recipient)
 	if err != nil {

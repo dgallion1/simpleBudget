@@ -1,0 +1,152 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T6
+ATTEMPT: 1
+---
+Repo state: HEAD 99d52053607c019f8eb5a0332bb182bd7f2f99f4, branch
+claude/t6-symlink-contract. `git status --porcelain`: M .swarm/ledger.tsv,
+M README.md, M internal/services/storage/storage.go, plus untracked
+.swarm/manifests/T6.1.files and .swarm/tier3/T6/ (report.md) — matches the
+worker's claimed docs-only scope. Read both diffs in full and
+.swarm/tier3/T6/report.md in full before testing.
+
+Diff scope (criterion 4, docs-only discipline): `git diff HEAD --stat` shows
+exactly README.md (+2) and internal/services/storage/storage.go (+12,
+comment-only, verified line-by-line — no code token changed, only a new
+comment block above atomicWrite) plus the ledger line. `gofmt -l`, `go build
+./...`, `go vet ./...` on the real tree all clean/silent. This mechanical
+criterion PASSES.
+
+Report/ruling (criterion 5): RESOLUTION line present, ruling 2026-08-26e
+text matches what the comment says (replace-on-write, symlink target goes
+stale, deliberate rejection of resolve-first). Consistent.
+
+============================================================
+CORE CLAIM — independently reproduced on a scratch copy (attack 2, both
+halves)
+============================================================
+Built a standalone repro under /tmp (not in the repo) mirroring
+atomicWrite's staging+rename: symlink -> target with "original" content,
+staged tmp file + os.Rename(tmp, link). Confirmed: Lstat on the destination
+after the write shows a REGULAR file (symlink gone), target file left with
+its old content untouched, i.e. the comment's central claim is TRUE for
+atomicWrite itself.
+Dangling-symlink case: pointed the link at a nonexistent path, ran the same
+stage+rename; write succeeded, no crash, destination became a regular file
+containing the new bytes, and the (never-existing) former target path still
+does not exist. Consistent with the documented contract; no contradiction
+found in either half of attack 2.
+
+============================================================
+ATTACK 3 (WORDING TRAP) — a write path THROUGH the link, bypassing Storage
+==> REFUTATION FOUND, THIS IS WHY THE VERDICT IS FAIL
+============================================================
+The README's added sentence is unqualified: "The files you keep in `data/`
+need to be real files, not symlinks: if one is a symlink, SimpleBudget will
+replace it with a regular file the next time it writes to it, and the file
+the link originally pointed to will stop being updated." It sits directly
+under "### Step 3: Create the data directory" / `mkdir -p data`, i.e. it is
+presented as a universal property of the `data/` directory, not scoped to
+CSV/transaction files handled through Storage.
+
+`grep -rn "os\.WriteFile" --include=*.go internal cmd | grep -v _test.go`
+surfaces internal/config/config.go:175:
+
+    func (c *Config) SaveUserSettings(settings map[string]interface{}) error {
+        data, err := json.MarshalIndent(settings, "", "  ")
+        ...
+        return os.WriteFile(c.UserSettingsFile, data, 0644)
+    }
+
+`UserSettingsFile` defaults to `filepath.Join(wd, "data", "settings",
+"user_settings.json")` (config.go:90) and is re-derived under
+`BUDGET_DATA_DIR` at config.go:114 (`filepath.Join(dataDir, "settings",
+"user_settings.json")`) — i.e. it is unambiguously inside the same `data/`
+tree the README sentence describes, not some separate location. This write
+does NOT go through internal/services/storage.Storage; it is a bare
+`os.WriteFile` call, which uses O_CREATE|O_WRONLY|O_TRUNC and, unlike
+atomicWrite's stage+rename, FOLLOWS a symlink at the destination rather than
+replacing it.
+
+Verified empirically (own Go program, /tmp scratch dir, not the repo):
+    symlink -> target ("original")
+    os.WriteFile(symlinkPath, []byte("NEWDATA"), 0644)
+    Lstat(symlinkPath).Mode() -> Lrwxrwxrwx (STILL a symlink, not replaced)
+    ReadFile(target) -> "NEWDATA" (target DID get updated, not "stop being
+      updated")
+    ReadFile(symlinkPath) -> "NEWDATA"
+
+This is the exact opposite of both halves of the README's claim for this
+file: the symlink is not replaced with a regular file, and the original
+target does not stop being updated — it keeps being written through
+indefinitely. One counterexample inside the documented directory falsifies
+the blanket sentence as written.
+
+Honest counter-consideration, disclosed rather than suppressed: grepping the
+whole repo for call sites (`grep -rn "SaveUserSettings("` and
+"LoadUserSettings(") turns up only the definitions, config_test.go, and
+docs/api/internal/config.md — no handler, cmd, or MCP admin surface
+currently calls either method. So in the CURRENT wiring, this path is dead
+code and a user would not hit the contradiction through the running server
+today. I weighed treating this as a mere "recorded observation" rather than
+a refutation on that basis, but reject that reading: (a) the exported,
+tested, documented method still performs a live write into `data/settings/`
+the moment anything calls it, and the checklist's own attack-surface
+instruction (#3) is worded exactly as "grep for os.WriteFile outside
+storage/ touching DataDirectory... One counterexample -> the sentence
+overclaims -> FAIL" with no reachability-from-a-handler qualifier; (b) the
+README sentence is written as an unconditional promise about the directory,
+not about "everything currently wired into a handler" — it should either be
+scoped to storage-mediated writes or the config package's DataDirectory
+write path should be fixed/excluded before the claim is published this
+broadly.
+
+============================================================
+Attack 1 — other write/delete/backup paths (completeness), non-blocking
+observations
+============================================================
+(a) createExclusive (uploads, internal/services/storage/storage.go:508+):
+uses os.Link(tmpPath, path) — Link on an existing symlink destination fails
+with EEXIST regardless of whether the link is live or dangling (does not
+follow the link for the EEXIST check), so createExclusive never touches the
+symlink's target and never publishes through it. Consistent with the
+contract's "not honoured" framing; not misleading.
+(b) internal/handlers/explorer's delete-original path in defaultImportDeps
+(handlers.go ~555-567) uses os.Remove on a path OUTSIDE the data directory
+(ImportDirectory), not inside it — out of scope for this contract.
+(c) Storage.Remove / removeLocked (storage.go ~672-687) is a plain
+os.Remove — POSIX unlink on a symlink removes the link itself, consistent
+with "symlinks are not honoured," not misleading (the README sentence only
+talks about writes, not deletes, so this doesn't need separate coverage;
+recorded as an observation).
+(d) backup Snapshot's buildZip (internal/services/backup/snapshot.go:167)
+walks DataDir with filepath.Walk (which does not descend into a symlinked
+directory but also does not skip a symlinked FILE) and does os.ReadFile on
+every non-dir entry, including a symlink — this reads through the link and
+archives the TARGET's bytes under the link's relative name, storing content
+rather than the link itself. Restore's pruneExtras (restore.go ~278-330)
+uses writer.Remove (os.Remove/unlink), so restoring over a re-created
+symlink removes the link rather than the target. This asymmetry (backup
+follows/dereferences; write and restore-prune do not) is a real,
+independent completeness gap in the "symlinks are not honoured" framing
+that the comment/README do not mention, but I record it as an OBSERVATION,
+not a second refutation, because the added sentence's literal claim is
+scoped to "writes" ("the next time it writes to it") and backup/restore are
+not writes to that path in the sense described — a careful reader would not
+be actively misled about atomicWrite's behavior by this omission the way
+they would be by the false SaveUserSettings counterexample above.
+
+============================================================
+Conclusion
+============================================================
+Mechanical docs-only criteria (4, 5) PASS. The core atomicWrite claim (2)
+independently reproduces TRUE, including the dangling-symlink edge case.
+But attack 3's counterexample is real, reproducible, and inside the exact
+directory the sentence is about: internal/config.go's SaveUserSettings
+writes into data/settings/user_settings.json with a bare os.WriteFile that
+writes THROUGH a symlink rather than replacing it, and leaves the original
+target receiving updates rather than going stale — the precise inverse of
+what the README now promises for "the files you keep in `data/`." The
+sentence overclaims. FAIL per the checklist's own stated bar ("one
+counterexample -> FAIL").

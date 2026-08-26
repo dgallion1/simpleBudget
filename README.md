@@ -81,6 +81,8 @@ If Go is not installed, the build will automatically download and install Go 1.2
 mkdir -p data
 ```
 
+The files you keep in `data/` need to be real files, not symlinks. Symlinks there are not supported: depending on the code path, a save can replace the link with a regular file — the file it pointed to then goes stale — or write straight through it, silently changing the file it points to. Don't point symlinks into or out of `data/`.
+
 ## Preparing Your Data
 
 SimpleBudget reads transaction data from CSV files. You'll need to export transactions from your bank and format them correctly.

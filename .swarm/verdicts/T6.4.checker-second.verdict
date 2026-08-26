@@ -1,0 +1,69 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T6
+ATTEMPT: 4
+---
+Scope/discipline (attack 3):
+- `git diff HEAD --name-only`: .swarm/ledger.tsv, README.md, internal/config/config.go,
+  internal/handlers/backup/handlers.go, internal/services/storage/migration.go,
+  internal/services/storage/storage.go. The last four .go files were diffed line-by-line
+  filtering out comment (`//`) and blank lines: zero non-comment lines changed in any of
+  them — the whole diff across all four files, cumulative from attempts 1-4, is comments
+  only. Attempt 4's own contribution (per manifest) is README.md (+2 lines) and
+  migration.go (+5 lines, one comment block); confirmed via `git diff HEAD --
+  internal/services/storage/migration.go` and `-- README.md`.
+- `gofmt -l` on all four .go files: clean (no output).
+- `go build ./...`: BUILD_OK. `go vet ./...`: VET_OK.
+
+Attack 1 — false-claim check on the new "can X or Y" wording:
+(a) "a save can replace the link with a regular file [target goes stale]" — verified via
+    storage.atomicWrite (storage.go:582-609): stages to a temp file in the same dir, then
+    os.Rename onto `path`; rename unlinks whatever is at `path` (symlink or not) and
+    installs the new inode, so a pre-existing symlink is destroyed and its old target
+    receives no further writes. Claim holds; not refuted.
+(b) "a save can write straight through it, silently changing the file it points to" —
+    verified two live sites: HandlePlotly's bare os.WriteFile(cachePath, ...) at
+    handlers.go (write-through cache save, no user-facing error on success) and
+    migration.go's two bare os.WriteFile calls (verifyPath at line ~48, markerPath at
+    line ~103) inside EnableEncryptionWithProvider, reachable from POST
+    /encryption/enable via HandleEnableEncryption / HandleEnableEncryptionWithMethod
+    (handlers.go:110,590,871,917,958,1003). Checked whether the write-through is actually
+    surfaced as an error, which would falsify "silently": on success neither path returns
+    or logs any error to the caller/user — HandleEnableEncryption only logs+errors on
+    failure of EnableEncryption itself, not on a successful write that happened to land
+    through a symlink. "Silently" holds; not refuted.
+(c) Per-comment factual checks against code:
+    - SaveUserSettings (config.go): `grep -rn "SaveUserSettings(" --include=*.go .` finds
+      only the function definition — still zero live call sites, comment's claim holds.
+    - HandlePlotly (handlers.go): confirmed the write it describes is the bare
+      os.WriteFile(cachePath, data, 0644) immediately below the comment, matches.
+    - migration.go's comment claims to cover "here and at the marker write below": both
+      verifyPath (`.encryption-verify`, const verifyFile) and markerPath (`.encrypted`,
+      const markerFile) writes are bare os.WriteFile calls — confirmed both sites, comment
+      accurately describes both.
+    - atomicWrite: confirmed stage-in-same-dir via os.CreateTemp + os.Rename, i.e.
+      genuinely stage-and-rename.
+
+Attack 2 — omission check under the non-exhaustive wording:
+- uploads' createExclusive (storage.go createExclusive, os.Link+EEXIST): if a symlink
+  already sits at the upload destination, os.Link fails with os.ErrExist. Traced the only
+  two callers: uploadOneFile (explorer/handlers.go:931) reports outcome
+  {Status:"skipped", Reason:"already exists"} back to the client — a third behavior
+  (refuse, loudly, no data touched) distinct from both documented modes. Judged against
+  the task's own standard ("only a FAIL if a careful reader would be actively misled, not
+  merely un-informed"): this third mode is strictly safer than either documented failure
+  mode (no silent corruption, no stale target, error surfaced to the user) and does not
+  contradict the README's imperative "don't point symlinks into or out of data/" — if
+  anything it's consistent with "don't do this, it won't work right." Not misleading;
+  recorded as an observation, not a FAIL.
+- Symlinked directories (e.g. data/subdir -> elsewhere): writes through a symlinked
+  parent honour the link. The warning clause "Don't point symlinks into or out of
+  `data/`" is worded at the directory-boundary level (not "files" specifically) and a
+  symlinked subdirectory is naturally read as a symlink "out of data/" — covered by the
+  imperative even though the preceding sentence's two examples are phrased in terms of
+  files. Borderline, but not actively misleading: the rule given still correctly tells
+  the reader what not to do for this case too.
+
+All three attack vectors failed to produce a false claim or an actively misleading
+omission. PASS.

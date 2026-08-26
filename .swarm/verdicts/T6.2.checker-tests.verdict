@@ -1,0 +1,147 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T6
+ATTEMPT: 2
+---
+All four criteria verified by command output. Evidence below.
+
+=== CRITERION 1 — docs-only discipline ===
+
+(a) config.go change is comment-only (no code token changed).
+Method: compiled a go/scanner-based token dumper (scanner mode 0 = comments
+skipped) and diffed the token stream of HEAD's file against the working tree's.
+  $ ./strip src/config_head.txt > cfg_head.tok
+  $ ./strip /home/user/simplebudget/internal/config/config.go > cfg_new.tok
+  $ diff cfg_head.tok cfg_new.tok
+  -> [NO TOKEN DIFF: config.go is comment-only]   (867 tokens compared)
+This is stronger than reading the diff: every lexical token (idents, literals,
+operators, punctuation) is identical; only comment text changed.
+
+(b) storage.go carries only attempt 1's comment block.
+  $ diff st_head.tok st_new.tok
+  -> [NO TOKEN DIFF: storage.go is comment-only]  (3204 tokens compared)
+  $ git diff HEAD -- internal/services/storage/storage.go
+  -> single added block: 12 comment lines appended to atomicWrite's doc comment
+     ("The rename below replaces whatever currently sits at path, symlink or
+     not: ... symlinks in the data directory are not honoured."). No other hunk.
+
+(c) README carries only the contract prose.
+  $ git diff HEAD -- README.md
+  -> +2 lines at README.md:84 (one prose paragraph + blank line). No other hunk.
+
+(d) gofmt / build / vet.
+  $ gofmt -l internal/config/config.go internal/services/storage/storage.go
+  -> (empty list), exit 0
+  $ go build ./...   -> build-exit=0, no output
+  $ go vet ./...     -> vet-exit=0, no output
+  (Note: my first gofmt invocation mistakenly included README.md and reported
+  "illegal character U+0023 '#'". That was my harness error — README is not a
+  Go file. Re-run on the .go files only is clean, as recorded above.)
+
+(e) Full test suite:
+  $ go test ./...  -> 48 packages "ok", FAIL count = 0.
+
+=== CRITERION 2 — README claim is TRUE as now scoped ===
+
+Behavioral proof driving the REAL Storage.WriteFile (not a re-implementation)
+in a `cp -a` copy of the repo under /tmp, with a planted test
+(symlink_contract_verify_test.go): a symlink in the data dir pointing at a file
+in another directory, then a save over it.
+
+  $ go test ./internal/services/storage/ -run TestVerifyReadmeSymlinkClaim -v
+  BEFORE: data/budget.json mode=Lrwxrwxrwx isSymlink=true
+  AFTER : data/budget.json mode=-rw-r--r-- isSymlink=false isRegular=true
+  AFTER : content at data/budget.json = "NEW SAVED CONTENT"
+  AFTER : content at former target    = "ORIGINAL TARGET CONTENT"
+  --- PASS
+
+This confirms both halves of the README sentence: (i) "the link itself is
+replaced with a regular file" — Lrwxrwxrwx -> -rw-r--r--, IsRegular()==true;
+(ii) "the file the link pointed to stops being updated" — the former target
+still holds its original bytes while the new bytes landed at the link's path.
+
+Harness note (recorded for honesty): my first run of this test called
+s.WriteFile("budget.json", ...) and the write did not land at the link. That
+was MY bug, not a product bug: writeFileLocked passes the caller's `path`
+straight to atomicWrite with no baseDir join, so a relative path resolves
+against the process CWD. Verified against real call sites, which all pass full
+paths (e.g. internal/services/dataloader/transfer_decisions.go:70
+`tx.WriteFile(dl.transferDecisionsPath(), ...)`,
+internal/services/retirement/settings.go:793 `sm.store.WriteFile(sm.filepath(),
+...)`). Re-run with the absolute link path is the PASS shown above.
+
+=== CRITERION 3 — SaveUserSettings comment is TRUE ===
+
+(a) Empirical: bare os.WriteFile follows the symlink. Drove the REAL
+Config.SaveUserSettings (not a stand-in) in the /tmp repo copy:
+  $ go test ./internal/config/ -run TestVerifySaveUserSettingsFollowsSymlink -v
+  AFTER: settings path isSymlink=true (mode=Lrwxrwxrwx)
+  AFTER: content written THROUGH link into target = { "newKey": "newValue" }
+  --- PASS
+So the link is left in place and the TARGET is updated — the exact opposite of
+atomicWrite's replace semantics, as the comment states.
+
+(b) No call sites in the running server.
+  $ grep -rn "SaveUserSettings" --include=*.go .
+  -> only internal/config/config_test.go (lines 314,321,341,346,352,355,372)
+     and the definition/doc-comment at internal/config/config.go:168,177.
+  $ grep -rn "LoadUserSettings" --include=*.go .
+  -> only internal/config/config_test.go and the definition at config.go:150,151.
+  Non-Go mentions are docs only: docs/api/internal/config.md, CHANGELOG.md,
+  .swarm/tier3/T6/report.md. No handler, no cmd/, no route. Claim confirmed.
+
+=== CRITERION 4 — attempt-1 counterexample now covered ===
+
+(a) The unconditional per-directory promise is gone. README.md:84 now reads:
+"The files you keep in `data/` need to be real files, not symlinks.
+SimpleBudget saves by writing a fresh file and renaming it into place, so when
+it saves over a symlink, the link itself is replaced with a regular file and
+the file the link pointed to stops being updated."
+The first sentence is a requirement addressed to the user about files THEY
+keep; the consequence clause is conditioned on the save mechanism just
+described ("saves by writing a fresh file and renaming it into place, so...").
+It no longer asserts a behaviour for every file in data/. Confirmed sole
+symlink mention: `grep -n -i "symlink\|symbolic link" README.md` -> line 84 only.
+
+(b) The out-of-contract path is documented at its source: internal/config/
+config.go:168-176, immediately above SaveUserSettings, naming bare os.WriteFile,
+the symlink-following behaviour, the absence of call sites, and the requirement
+to route through Storage's staging write before wiring into a handler.
+
+FINDING (reported, not a criterion failure — for lead/adversarial lane):
+grep for bare writes in production code
+  $ grep -rn "os.WriteFile(" --include=*.go internal/ cmd/ | grep -v _test.go
+surfaces three further bare-write paths that land inside the data directory and
+are NOT documented:
+  - internal/handlers/backup/handlers.go:643,677 — writes
+    <DataDirectory>/cache/plotly.min.js. Unlike SaveUserSettings this one IS
+    live: cmd/server/main.go:251 registers `r.Get("/static/vendor/
+    plotly.min.js", backup.HandlePlotly)`.
+  - internal/services/storage/migration.go:49 (verifyFile) and :102
+    (markerFile), both under s.baseDir.
+(The remaining hits — storage/auth.go:93, backup/meta.go:63,
+backup/service.go:121 — write a .tmp then os.Rename, i.e. they DO follow the
+stage-and-rename contract, so they are consistent with the README.)
+I do not treat these as falsifying criteria 2 or 4, for two reasons that are
+matters of fact rather than taste: (1) all three are app-generated artifacts
+(a redownloadable CDN asset cache, an encryption marker, an encryption verify
+file), not "files you keep in data/", which is the README sentence's explicit
+subject — this is a different kind of object from attempt 1's counterexample,
+which was a user settings file; (2) the direction of the discrepancy is safe:
+the README tells users not to use symlinks at all, and these paths FOLLOW a
+symlink rather than replacing it, so a user who ignored the advice would not
+suffer the data loss the README warns about. The lead may still wish to have
+these documented; that is an adjudication call, not a criterion failure.
+
+=== SCOPE ===
+  $ git diff HEAD --name-only
+  .swarm/ledger.tsv, README.md, internal/config/config.go,
+  internal/services/storage/storage.go
+Manifest T6.2 = README.md + internal/config/config.go (both present).
+storage.go is attempt 1's comment block, carried forward, and is under
+.swarm/critical.globs (internal/services/storage/**) — permitted at Tier 3, and
+proven comment-only by the token diff above, so no critical code changed.
+No untracked files outside .swarm/. No _test.go files added (correct for a
+docs-only task). All my verification tests were written only into the /tmp
+copy; the main tree is unmodified by me apart from this verdict file.

@@ -1,0 +1,123 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T8
+ATTEMPT: 1
+---
+Every criterion below is backed by a command I ran; output lines are quoted.
+
+C1. MECHANICAL — MET (with one bookkeeping note).
+  NOTE: `git diff origin/master...HEAD --stat` prints NOTHING, because the work is
+  not committed: HEAD == origin/master == f36f438, and the change lives in the
+  working tree (ledger status is still "building"). The equivalent evidence is
+  `git status --porcelain`, which shows exactly the manifest's three files and
+  nothing else outside .swarm bookkeeping:
+      M internal/services/storage/auth.go
+      M internal/services/storage/storage.go
+      ?? internal/services/storage/durability_test.go
+  vs .swarm/manifests/T8.1.files = storage.go, auth.go, durability_test.go — exact match.
+  `git diff origin/master --stat` (working tree): auth.go +15/-2, storage.go +52/-3,
+  .swarm/NEXT.md +30, .swarm/ledger.tsv +5. The lead must commit before merge; the
+  substance of the file set is correct.
+  `gofmt -l storage.go auth.go durability_test.go` -> empty (exit 0).
+  `go build ./...` -> exit 0, no output. `go vet ./...` -> exit 0, no output.
+
+C2. LINE-BY-LINE READ OF ALL THREE PUBLISH PATHS — MET.
+  Read in full: storage.go:543-580 (createExclusive), storage.go:621-660 (atomicWrite),
+  auth.go:99-146 (saveConfig). All three have the identical sequence
+  Write -> fileSync -> Close -> Chmod -> Rename/Link -> syncDir.
+  fileSync error handling, all three sites: `if err := fileSync(f); err != nil {
+  _ = f.Close(); return <err> }` at storage.go:563, storage.go:644, auth.go:129 —
+  identical shape to the Write-failure branch directly above it, so the publish
+  aborts, the existing `defer func() { _ = os.Remove(tmpPath) }()` cleans staging,
+  destination untouched.
+  syncDir error handling, all three sites: storage.go:580 `return syncDir(dir)`,
+  storage.go:660 `return syncDir(dir)`, auth.go:145 `return syncDir(baseDir)`, each
+  preceded by `if err := os.Rename/os.Link(...); err != nil { return err }`. No site
+  discards either seam's error; there is no `_ =` on either seam anywhere in
+  non-test code (verified by grep of all 11 fileSync/syncDir occurrences module-wide).
+  saveConfig wrapping style: the fileSync error is wrapped `fmt.Errorf("failed to
+  write config: %w", err)`, matching its adjacent Write/Close/Chmod branches; the
+  syncDir error is returned unwrapped, which matches the unwrapped `os.Rename` error
+  return immediately above it (and the pre-change `return os.Rename(...)`). Internally
+  consistent and errors.Is-transparent — TestSaveConfigDirSyncFailurePropagates
+  asserts via errors.Is and passes.
+  syncDir syncs the DIRECTORY, not the file — storage.go:524-533:
+      var syncDir = func(dir string) error {
+          d, err := os.Open(dir)        // opens the dir path, not the staging file
+          if err != nil { return err }  // open error wins, returns immediately
+          err = d.Sync()
+          if cerr := d.Close(); err == nil { err = cerr }  // sync error beats close error
+          return err
+      }
+  First error among open/sync/close wins, as specified.
+  Completeness: `grep 'os.Rename\|os.Link' internal/services/storage/*.go` (non-test)
+  returns exactly 3 hits — storage.go:574, storage.go:657, auth.go:142 — i.e. the three
+  paths fixed are ALL the publish paths in the package; none was missed.
+
+C3. NEW TESTS PASS — MET.
+  `go test -count=1 -run 'Sync|Durab' ./internal/services/storage/ -v` -> all 9 PASS,
+  "ok budget2/internal/services/storage 0.015s". The 9: AtomicWrite/CreateExclusive/
+  SaveConfig x {SyncsStagingFileAndDirectoryOnSuccess, SyncFailureAbortsPublish,
+  DirSyncFailurePropagates}.
+  I read durability_test.go end to end: the names match the assertions. The
+  "OnSuccess" tests record the path passed to each seam and assert
+  IsStagingName(syncedStaging) and syncedDir == dir (not merely that a call happened).
+  The "AbortsPublish" tests inject errInjectedSync, assert errors.Is on the return,
+  assert the destination still holds the ORIGINAL bytes (or was never created, for
+  createExclusive), and assert no staging leftover. The "DirSyncFailurePropagates"
+  tests assert errors.Is AND that the rename/link did land — so they pin the
+  after-publish position of syncDir, not just its existence.
+  Stability: `go test -count=5 -race -run 'Sync|Durab' ...` -> "ok ... 1.349s".
+  No test in the package calls t.Parallel (grep -c: none), so the package-var seam
+  overrides cannot race.
+
+C4. MUTANT KILLS — MET, all four killed. Done in `cp -a` copy /tmp/t8mut, one mutant
+    at a time, source restored from a pristine copy between each; final revert verified
+    byte-identical to the main tree ("SCRATCH REVERTED == MAIN TREE") and the reverted
+    tree passes.
+  (a) fileSync call deleted from atomicWrite (storage.go:644-647 removed) -> KILLED by
+      --- FAIL: TestAtomicWriteSyncsStagingFileAndDirectoryOnSuccess
+      --- FAIL: TestAtomicWriteSyncFailureAbortsPublish
+  (b) atomicWrite `return syncDir(dir)` -> `return nil` (storage.go:660) -> KILLED by
+      --- FAIL: TestAtomicWriteSyncsStagingFileAndDirectoryOnSuccess
+      --- FAIL: TestAtomicWriteDirSyncFailurePropagates
+  (c) saveConfig calls fileSync but drops the error (auth.go:129-132 -> `_ = fileSync(f)`)
+      -> KILLED by
+      --- FAIL: TestSaveConfigSyncFailureAbortsPublish
+      Correct discrimination: TestSaveConfigSyncsStagingFileAndDirectoryOnSuccess still
+      passes here, because the call is still made — the failing test is precisely the
+      error-handling one.
+  (d) createExclusive `return syncDir(dir)` -> `return nil` (storage.go:580) -> KILLED by
+      --- FAIL: TestCreateExclusiveSyncsStagingFileAndDirectoryOnSuccess
+      --- FAIL: TestCreateExclusiveDirSyncFailurePropagates
+
+C5. FULL SUITES PASS AS ROOT — MET.
+  `id -u` -> 0 (root).
+  `go test -count=1 ./internal/services/storage/` -> "ok budget2/internal/services/storage
+  136.670s", exit 0 (within the ~140s expectation).
+  `go test -count=1 ./...` (module) -> exit 0 with zero FAIL lines (output filtered of
+  `ok`/`no test files` was empty): "MODULE-SUITE-EXIT=0".
+
+C6. T5 STAGING-CLEANUP CONTRACT STILL HOLDS — MET, and the assertion provably bites.
+  The three *SyncFailureAbortsPublish tests each ReadDir the directory after the injected
+  fileSync failure and t.Errorf on any entry that is not the destination file
+  (durability_test.go:127-135, 222-228, 314-322) — for createExclusive the loop errors on
+  ANY entry at all, since the destination must not exist.
+  Reading an assertion is not evidence it fires, so I ran an extra mutant (e): removed
+  atomicWrite's `defer func() { _ = os.Remove(tmpPath) }()`. Result:
+      --- FAIL: TestAtomicWriteSyncFailureAbortsPublish
+          durability_test.go:133: staging leftover after a sync failure: ledger.csv.tmp-2693589793
+  So the check catches a real `*.tmp-*` leftover on the fileSync-failure path.
+
+SCOPE.
+  Only the three manifest files changed, plus .swarm bookkeeping (.swarm/NEXT.md +30,
+  .swarm/ledger.tsv +5 adding rows T7-T11), plus new untracked .swarm/manifests/T8.1.files
+  and .swarm/tier3/T8/. All three source files are under internal/services/storage/**,
+  which IS in .swarm/critical.globs — permitted at Tier 3, which this task is
+  (ledger: "T8  3  tests,second  building  1  worker-coder").
+  The fileSync/syncDir seams are referenced only inside package storage (11 non-test
+  occurrences, all in storage.go/auth.go; 1 test file). No public API added.
+  I modified nothing in the main tree; `git status --porcelain` after my run is identical
+  to before, and no `*.tmp-*` litter was left by my test runs. All mutation work was
+  confined to /tmp/t8mut.

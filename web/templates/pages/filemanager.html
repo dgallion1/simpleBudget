@@ -140,7 +140,7 @@
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-red-500 focus:border-transparent">
                 </div>
                 {{end}}
-                <div id="plaintext-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="plaintext-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <div class="flex justify-end gap-2 pt-1">
                     <button type="button" onclick="closePlaintextExportModal()"
                         class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600">
@@ -192,7 +192,7 @@
                     Open
                 </button>
             </p>
-            <p id="auto-backup-error" class="text-sm text-red-600 dark:text-red-400 hidden"></p>
+            <p id="auto-backup-error" role="alert" class="text-sm text-red-600 dark:text-red-400 hidden"></p>
         </div>
     </div>
 
@@ -263,7 +263,7 @@
                         placeholder="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                 </div>
-                <div id="unlock-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="unlock-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <button type="submit" id="unlock-btn"
                     class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                     {{if eq .AuthMethod "age"}}Unlock with Age Identity
@@ -299,7 +299,7 @@
                 {{else if eq .AuthMethod "yubikey"}}
                 <!-- YubiKey doesn't need a password field - just touch to authenticate -->
                 {{end}}
-                <div id="disable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="disable-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                 <button type="submit" id="disable-encryption-btn"
                     class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
                     Disable Encryption
@@ -356,7 +356,7 @@
                             <span>Remember your password! Data cannot be recovered without it.</span>
                         </p>
                     </div>
-                    <div id="enable-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="enable-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" id="enable-encryption-btn"
                         class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                         Enable Encryption
@@ -394,7 +394,7 @@
                             <span>Keep your identity file safe! Store it separately from your data.</span>
                         </p>
                     </div>
-                    <div id="age-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="age-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                         Enable Encryption
                     </button>
@@ -418,7 +418,7 @@
                         <input type="password" name="passphrase" placeholder="Enter passphrase if key is encrypted"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                     </div>
-                    <div id="ssh-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="ssh-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
                         Enable Encryption
                     </button>
@@ -466,7 +466,7 @@
                             <span>YubiKey encryption requires touching your key when unlocking. Keep your YubiKey accessible.</span>
                         </p>
                     </div>
-                    <div id="yubikey-encryption-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="yubikey-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
                     <button type="submit" id="yubikey-submit-btn" disabled
                         class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         Enable Encryption
@@ -974,14 +974,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="flex items-center gap-1">
                                 <strong>macOS:</strong>
                                 <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">brew install age-plugin-yubikey</code>
-                                <button onclick="copyCmd('brew install age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy">
+                                <button onclick="copyCmd('brew install age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy" aria-label="Copy command: brew install age-plugin-yubikey">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
                             </div>
                             <div class="flex items-center gap-1">
                                 <strong>Ubuntu/Debian:</strong>
                                 <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">sudo apt install pcscd</code>
-                                <button onclick="copyCmd('sudo apt install pcscd')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy">
+                                <button onclick="copyCmd('sudo apt install pcscd')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy" aria-label="Copy command: sudo apt install pcscd">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
                                 <span class="ml-1">then download from <a href="https://github.com/str4d/age-plugin-yubikey/releases" target="_blank" class="underline hover:no-underline">Releases</a></span>
@@ -989,7 +989,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="flex items-center gap-1">
                                 <strong>Arch Linux:</strong>
                                 <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">pacman -S age-plugin-yubikey</code>
-                                <button onclick="copyCmd('pacman -S age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy">
+                                <button onclick="copyCmd('pacman -S age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy" aria-label="Copy command: pacman -S age-plugin-yubikey">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
                             </div>
@@ -1099,7 +1099,7 @@ function setupNewYubiKey() {
                         </p>
                         <div class="flex items-center gap-2 mb-3">
                             <code class="flex-1 bg-gray-800 text-green-400 px-3 py-2 rounded font-mono text-sm">${data.setup_command}</code>
-                            <button onclick="copyCmd('${data.setup_command}')" class="p-2 bg-gray-700 hover:bg-gray-600 rounded" title="Copy command">
+                            <button onclick="copyCmd('${data.setup_command}')" class="p-2 bg-gray-700 hover:bg-gray-600 rounded" title="Copy command" aria-label="Copy setup command">
                                 <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                                 </svg>
@@ -1405,6 +1405,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </td>
             <td class="px-2 py-1.5 text-center">
                 <button hx-delete="/explorer/files/{{urlEncode .Name}}" hx-target="#file-list" hx-swap="innerHTML"
+                    aria-label="Delete {{.Name}}"
                     class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>

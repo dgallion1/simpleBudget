@@ -241,6 +241,13 @@ judgment, merge-on-green. Five rows added to the ledger:
   backup's snapshot walk dereferences symlinked files while restore's prune
   unlinks them; document at the source per the T6 pattern (no completeness
   claims — that lesson cost three attempts).
+New observation from the T11 build (recorded, not commissioned): a
+symlinked DIRECTORY inside the data directory aborts the entire backup
+snapshot — buildZip's walk sees it as a non-dir entry (Lstat), calls
+os.ReadFile on it, gets EISDIR, and the walk errors out. A stray symlink
+dir silently breaks backups until removed. Future bug candidate; the T11
+comment documents only the true narrower claim (contents not walked).
+
 - **T7** — vendor the Tailwind styling (tier 2, a11y+second): the site
   currently styles itself from `cdn.tailwindcss.com` at runtime; offline
   users get an unstyled page, at odds with the local-only promise. Executed

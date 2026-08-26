@@ -1,0 +1,139 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T11
+ATTEMPT: 1
+---
+Repo /home/user/simplebudget, branch claude/t9-11-residue, uncommitted working
+tree. Manifest .swarm/manifests/T11.1.files = internal/services/backup/snapshot.go,
+internal/services/restore/restore.go. No .swarm/tier3/T11 oracle exists
+(`ls .swarm/tier3/T11` -> "No such file or directory"), so criteria below are the
+brief's; each is cited to the command that demonstrates it.
+
+CRITERION 1 -- COMMENT-ONLY, BUILD/VET/FMT CLEAN: PASS
+  `git diff --numstat internal/services/backup/snapshot.go internal/services/restore/restore.go`
+    5  0  internal/services/backup/snapshot.go
+    3  0  internal/services/restore/restore.go
+  8 added lines, 0 deleted, 0 context lines altered.
+  `git diff -U0 ... | grep '^+' | grep -v '^+++' | grep -vP '^\+\s*//'`
+    -> no output, exit 1: every added line begins with `//` (leading TAB on the
+    five snapshot lines, confirmed via `cat -A`).
+  Rigorous token check (/tmp/t11/tokcmp, go/scanner in mode 0 = comments skipped,
+  base extracted with `git show HEAD:<file>`):
+    snapshot.base.go: 1664 tokens / working snapshot.go: 1664 tokens
+      RESULT: TOKEN STREAMS IDENTICAL (comment-only change)   EXIT=0
+    restore.base.go: 1605 tokens / working restore.go: 1605 tokens
+      RESULT: TOKEN STREAMS IDENTICAL (comment-only change)   EXIT=0
+    (identical token count AND element-wise identical token+literal stream, so no
+    code token was added, removed or changed in either file)
+  `gofmt -l internal/services/backup/snapshot.go internal/services/restore/restore.go`
+    -> empty output, exit 0.
+  `go build ./...` -> BUILD_EXIT=0, no output.
+  `go vet ./...`  -> VET_EXIT=0, no output.
+
+CRITERION 2a -- CODE PATHS AS DESCRIBED: PASS
+  snapshot.go:167-171 sits immediately above snapshot.go:172
+  `err = filepath.Walk(s.cfg.DataDir, func(path string, info os.FileInfo, walkErr error) error {`
+  Inside that closure: line 181 `if info.IsDir() { ... return nil }` (dir branch),
+  line 190 `rel, err := filepath.Rel(s.cfg.DataDir, path)`, line 195
+  `rel = filepath.ToSlash(rel)`, line 197 `raw, err := os.ReadFile(path)`, line 202
+  `w, err := zw.Create(rel)`. So non-dir entries are read with os.ReadFile and
+  archived under the walked path's own relative name -- as the comment states.
+  restore.go:278-284 is the contiguous doc comment of
+  `func (s *Service) pruneExtras(writer *storage.ExclusiveWriter, ...)` at line 285.
+  Trace of the removal path (grep + read of internal/services/storage/storage.go):
+    restore.go:320  `if err := writer.Remove(pathAbs); err != nil {`   (stale files)
+    restore.go:340  `if err := writer.Remove(dir); ...`                (empty dirs)
+    storage.go:788  `func (w *ExclusiveWriter) Remove(path string) error {`
+    storage.go:792  `return w.s.removeLocked(path)`
+    storage.go:725  `func (s *Storage) removeLocked(path string) error {`
+    storage.go:731  `err := os.Remove(path)`
+  writer.Remove bottoms out in os.Remove with no Lstat/Readlink/RemoveAll and no
+  symlink resolution anywhere on the path -- "writer.Remove to os.Remove" is exact.
+
+CRITERION 2b -- BEHAVIORAL SPOT-CHECK ON THIS KERNEL: PASS
+  /tmp/t11/behav/main.go builds a tree with a symlinked file and a symlinked
+  directory pointing outside the walked root, then walks it exactly as buildZip does.
+  Output:
+    walk visit rel=link.txt       IsDir()=false lstat-mode=SYMLINK(lstat)
+        os.ReadFile(link.txt) -> "TARGET-BYTES-XYZ"  (archived under rel name "link.txt")
+    walk visit rel=linkdir        IsDir()=false lstat-mode=SYMLINK(lstat)
+        os.ReadFile(linkdir) -> ERROR: read .../data/linkdir: is a directory
+    walk visit rel=real.txt       IsDir()=false lstat-mode=regular
+        os.ReadFile(real.txt) -> "REAL-FILE-BYTES"
+  -> symlink (file OR dir) is visited with info.IsDir()==false, i.e. a non-dir entry
+     "regardless of its target"; the symlinked file's bytes returned by os.ReadFile
+     are the TARGET's bytes ("TARGET-BYTES-XYZ"), keyed under the LINK's relative
+     name "link.txt"; and linkdir/inner.txt is never visited -- the symlinked
+     directory's contents are not walked. All three snapshot-comment claims hold.
+  Part B (os.Remove on a symlink):
+    link path after os.Remove: GONE (unlinked) -> lstat ...: no such file or directory
+    target after os.Remove(link): readErr=<nil> content="TARGET-BYTES-XYZ"
+    target lstat: exists=true size=16
+  -> unlink, not a target wipe: the link is dropped, the target survives with its
+     content intact. The restore-comment claim holds.
+
+CRITERION 3 -- NO COMPLETENESS CLAIM (T6 LESSON): PASS
+  Mechanical scan of the added lines:
+  `grep -inE '\b(always|every|all|only|never|any|guarantee[sd]?|cannot|impossible)\b' /tmp/t11/added.txt`
+    -> no matches (exit 1).
+  Wording judged directly, not just grepped. snapshot.go: "filepath.Walk uses Lstat,
+  so a symlink is a non-dir entry regardless of its target: a symlinked file is read
+  through by os.ReadFile below and archived under the link's relative name, while a
+  symlinked directory's contents are not walked here." Every clause is scoped to this
+  walk ("below", "here") and is a direct consequence of Lstat, verified in 2b for both
+  a file target and a directory target. restore.go: "Removal goes through writer.Remove
+  to os.Remove -- unlink, not a target wipe -- so pruning a symlink drops the link at
+  that path and leaves whatever it pointed at untouched." Scoped to "that path";
+  no assertion about broader backup/restore behaviour, no exhaustive quantifier.
+
+CRITERION 4 -- CROSS-REFERENCE ACCURATE, NOT AN OVERCLAIM: PASS
+  Snapshot comment: "Matches the data directory's contract (see storage.atomicWrite):
+  symlinks there are not honoured."
+  internal/services/storage/storage.go:605-615, the doc comment of
+  `func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error`
+  (line 621), reads: "The rename below replaces whatever currently sits at path,
+  symlink or not: if path is a symlink, the rename removes the link and puts a regular
+  file in its place, so the file the link used to point at is left untouched ... Files
+  under Storage are expected to be real files; symlinks in the data directory are not
+  honoured."
+  The referenced symbol exists, is spelled correctly, and the quoted contract is
+  verbatim ("symlinks in the data directory are not honoured"). The cross-reference
+  asserts nothing storage.go does not already assert.
+
+CRITERION 5 -- SCOPE: PASS
+  `git diff --name-only` lists 12 tracked files. Attribution:
+    internal/services/backup/snapshot.go, internal/services/restore/restore.go  -> T11 manifest (both, exactly)
+    web/templates/{pages/filemanager,pages/explorer,layouts/base,components/whatif/scenario-chain-card,components/whatif/spending-phases}.html, CHANGELOG.md -> .swarm/manifests/T9.1.files
+    internal/config/config.go, internal/config/config_test.go, docs/api/internal/config.md, CHANGELOG.md -> .swarm/manifests/T10.1.files
+    .swarm/ledger.tsv -> lead-owned
+  No file outside T11's manifest is attributable to T11; T9/T10 are concurrent tasks
+  on this branch and are not judged here. Untracked additions are only the three
+  manifests (T9.1/T10.1/T11.1.files).
+  `cat .swarm/critical.globs` lists internal/services/storage/**, dataloader/**,
+  retirement/engine/**, transfers/**, accounts/accounts.go, mcpsvc/confirm/** --
+  none of these appear in `git diff --name-only`. storage.go was READ for the
+  cross-reference check and is unmodified. Tier-1 boundary respected.
+
+CRITERION 6 -- BACKUP/RESTORE TESTS GREEN: PASS
+  `go test -count=1 ./internal/services/backup/ ./internal/services/restore/`
+    ok  budget2/internal/services/backup   0.663s
+    ok  budget2/internal/services/restore  1.138s
+    TEST_EXIT=0
+  Additionally, informationally, the whole tree is green on this branch:
+  `go test -count=1 ./...` -> FULL_TEST_EXIT=0 with no FAIL lines.
+  No tests were added by this task (0 test files in the manifest); as a doc-only
+  change that is correct, and there is consequently no worker-authored test whose
+  assertions could misname what they check.
+
+NON-BLOCKING PRECISION NOTES (facts for the lead; neither is a false statement and
+neither fails a criterion as written):
+  (i) For a symlinked DIRECTORY, the spot-check shows os.ReadFile returns
+      "is a directory" (EISDIR). In buildZip that error is returned from the walk fn
+      and aborts the snapshot (snapshot.go:197-200, then 214-216). The comment says
+      only that such a directory's "contents are not walked here" -- true, and it makes
+      no claim that the snapshot succeeds -- but it is silent on the abort.
+  (ii) "a symlinked file is read through by os.ReadFile below" elides the
+      `if skip(path, false) { return nil }` at snapshot.go:187, which sits between the
+      walk visit and the ReadFile; a symlinked file matching the skip predicate is not
+      read. The comment carries no "always", so this is an elision, not an overclaim.

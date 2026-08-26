@@ -5,7 +5,6 @@
 package config
 
 import (
-	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -37,9 +36,6 @@ type Config struct {
 	StaticDirectory    string `json:"static_directory"`
 	BackupDir          string `json:"backup_dir"`
 	ImportDirectory    string `json:"import_directory"`
-
-	// File paths
-	UserSettingsFile string `json:"user_settings_file"`
 }
 
 // defaultBackupDir returns the default location for automatic backup zips.
@@ -87,7 +83,6 @@ func DefaultConfig() *Config {
 		SettingsDirectory:  filepath.Join(wd, "data", "settings"),
 		TemplatesDirectory: filepath.Join(wd, "web", "templates"),
 		StaticDirectory:    filepath.Join(wd, "web", "static"),
-		UserSettingsFile:   filepath.Join(wd, "data", "settings", "user_settings.json"),
 		BackupDir:          defaultBackupDir(filepath.Join(wd, "data")),
 		ImportDirectory:    defaultImportDir(filepath.Join(wd, "data")),
 	}
@@ -111,7 +106,6 @@ func Load() *Config {
 		cfg.DataDirectory = dataDir
 		cfg.UploadsDirectory = filepath.Join(dataDir, "uploads")
 		cfg.SettingsDirectory = filepath.Join(dataDir, "settings")
-		cfg.UserSettingsFile = filepath.Join(dataDir, "settings", "user_settings.json")
 	}
 	if templatesDir := os.Getenv("BUDGET_TEMPLATES_DIR"); templatesDir != "" {
 		cfg.TemplatesDirectory = templatesDir
@@ -145,40 +139,4 @@ func (c *Config) ensureDirectories() {
 			log.Printf("Warning: could not create directory %s: %v", dir, err)
 		}
 	}
-}
-
-// LoadUserSettings loads user settings from JSON file
-func (c *Config) LoadUserSettings() (map[string]interface{}, error) {
-	data, err := os.ReadFile(c.UserSettingsFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return make(map[string]interface{}), nil
-		}
-		return nil, err
-	}
-
-	var settings map[string]interface{}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return nil, err
-	}
-
-	return settings, nil
-}
-
-// SaveUserSettings saves user settings to JSON file.
-//
-// It writes with a bare os.WriteFile, which follows a symlink at the
-// destination instead of replacing it, unlike the stage-and-rename
-// contract on storage.atomicWrite (internal/services/storage). It has
-// no call sites in the running server today; route it through Storage's
-// staging write before wiring it into a handler, or the symlink
-// contract described in the README and storage.atomicWrite becomes
-// false for this file.
-func (c *Config) SaveUserSettings(settings map[string]interface{}) error {
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(c.UserSettingsFile, data, 0644)
 }

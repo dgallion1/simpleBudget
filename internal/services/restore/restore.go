@@ -279,6 +279,9 @@ func (s *Service) FromZip(ctx context.Context, content []byte) (Result, error) {
 // then removes directories left empty, deepest first. Returns (removed,
 // failures); failures are logged with their cause and never abort the
 // restore, because a half-pruned tree is still a correctly restored one.
+// Removal goes through writer.Remove to os.Remove -- unlink, not a target
+// wipe -- so pruning a symlink drops the link at that path and leaves
+// whatever it pointed at untouched.
 func (s *Service) pruneExtras(writer *storage.ExclusiveWriter, dataAbs string, archiveEntries map[string]struct{}, skip func(path string, isDir bool) bool) (int, int) {
 	var dirs []string
 	removed := 0

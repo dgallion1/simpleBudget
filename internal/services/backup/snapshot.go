@@ -164,6 +164,11 @@ func (s *Service) buildZip(ctx context.Context, tmpPath string) (int, int64, err
 
 	skip := s.skipPredicate()
 
+	// filepath.Walk uses Lstat, so a symlink is a non-dir entry regardless of
+	// its target: a symlinked file is read through by os.ReadFile below and
+	// archived under the link's relative name, while a symlinked directory's
+	// contents are not walked here. Matches the data directory's contract
+	// (see storage.atomicWrite): symlinks there are not honoured.
 	err = filepath.Walk(s.cfg.DataDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr

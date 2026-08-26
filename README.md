@@ -265,6 +265,22 @@ JavaScript libraries may not have downloaded.
 make vendor-js
 ```
 
+### Pages render as unstyled HTML
+
+`web/static/css/tailwind.css` is a committed build artifact. A clean checkout
+has it; a tree where it was deleted, or where a template gained a class the
+committed build does not contain, needs it regenerated.
+
+**Fix:**
+```bash
+make css
+```
+
+`make css-verify` reports whether the committed file is up to date without
+overwriting it. Both download a pinned Tailwind CLI into `tmp/` on first use
+and need network for that one step; the built stylesheet is what makes the
+running site work without any.
+
 ### Go auto-installation fails
 
 If the automatic Go installation fails (network issues, permissions, etc.):
@@ -504,7 +520,7 @@ budget2/
 
 - **Backend**: Go 1.25+ with Chi router
 - **Frontend**: HTMX for dynamic updates, Plotly.js for charts
-- **Styling**: Tailwind CSS, vendored as a static build at `web/static/css/tailwind.css` (regenerate with `npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i web/static/css/tailwind.src.css -o web/static/css/tailwind.css --minify`, per the comment atop `tailwind.config.js`) so pages render fully styled offline
+- **Styling**: Tailwind CSS, vendored as a static build at `web/static/css/tailwind.css` (regenerate with `make css`) so pages render fully styled offline
 - **Storage**: File-based (CSV for transactions, JSON for settings)
 - **Encryption**: Age (filippo.io/age) with multiple auth methods (password, SSH, Age identity, YubiKey)
 

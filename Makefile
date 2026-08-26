@@ -70,7 +70,7 @@ ifdef GO_OVERRIDE
     NEED_GO_INSTALL :=
 endif
 
-.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz check check-full
+.PHONY: all build run dev clean test test-unit test-integration test-coverage fmt lint tidy deps validate validate-v watch vendor-js css css-verify build-all build-linux build-windows build-darwin help install-go check-go release release-snapshot vet static vuln race fuzz check check-full
 
 all: build
 
@@ -102,6 +102,8 @@ help:
 	@echo "  watch          - Run with hot reload (requires air)"
 	@echo "  validate       - Validate running server"
 	@echo "  vendor-js      - Download JS dependencies"
+	@echo "  css            - Rebuild web/static/css/tailwind.css (commit the result)"
+	@echo "  css-verify     - Fail if the committed tailwind.css is stale"
 	@echo "  install-go     - Install Go $(GO_VERSION) locally"
 	@echo "  release        - Create and push a release tag (usage: make release v=1.0.0)"
 	@echo "  release-snapshot - Test release locally without pushing"
@@ -267,6 +269,62 @@ deps: check-go
 # Install air: go install github.com/air-verse/air@latest
 watch: check-go
 	air
+
+# Tailwind CSS
+#
+# web/static/css/tailwind.css is a committed build artifact — it is what lets a
+# clean checkout render styled with no network (see tailwind.config.js). Being
+# committed, it can go stale: add a class to a template, forget to regenerate,
+# and the page renders correctly for whoever still has the old CSS cached and
+# wrong for everyone else, with nothing failing to build. These two targets
+# make regenerating it a command rather than a recipe to copy out of a comment,
+# and make staleness a test failure.
+#
+# The standalone CLI is used rather than `npx tailwindcss`: it is a single
+# binary, so this needs no npm install and leaves no node_modules or
+# package.json in the repo root to clean up afterwards. It lands in tmp/, which
+# is gitignored.
+#
+# Pinned to 3.4.17 — the version cdn.tailwindcss.com was serving when the
+# runtime CDN was dropped. Bumping it is a visual change, not a dependency
+# bump: rebuild and look at the pages.
+TAILWIND_VERSION := 3.4.17
+ifeq ($(GO_OS),darwin)
+    TAILWIND_OS := macos
+else
+    TAILWIND_OS := $(GO_OS)
+endif
+ifeq ($(GO_ARCH),amd64)
+    TAILWIND_ARCH := x64
+else
+    TAILWIND_ARCH := $(GO_ARCH)
+endif
+TAILWIND_BIN := tmp/tailwindcss-$(TAILWIND_VERSION)$(BINARY_EXT)
+TAILWIND_URL := https://github.com/tailwindlabs/tailwindcss/releases/download/v$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_OS)-$(TAILWIND_ARCH)$(BINARY_EXT)
+TAILWIND_ARGS := -c tailwind.config.js -i web/static/css/tailwind.src.css
+
+$(TAILWIND_BIN):
+	$(MKDIR) tmp
+	curl -fL $(TAILWIND_URL) -o $(TAILWIND_BIN)
+ifneq ($(OS),Windows_NT)
+	chmod +x $(TAILWIND_BIN)
+endif
+
+# Rebuild the committed stylesheet. Run after adding a class name that is not
+# already in it, and commit the result alongside the change.
+css: $(TAILWIND_BIN)
+	./$(TAILWIND_BIN) $(TAILWIND_ARGS) -o web/static/css/tailwind.css --minify
+	@echo "web/static/css/tailwind.css rebuilt - commit it"
+
+# Rebuild to a scratch file and compare. Complements swarm/t7-coverage.sh:
+# that script asks whether the committed CSS covers the class tokens it can
+# find in the templates, this one asks whether the committed CSS is what the
+# current tree actually builds.
+css-verify: $(TAILWIND_BIN)
+	./$(TAILWIND_BIN) $(TAILWIND_ARGS) -o tmp/tailwind.check.css --minify
+	@cmp -s tmp/tailwind.check.css web/static/css/tailwind.css \
+		&& echo "tailwind.css is up to date" \
+		|| { echo "ERROR: web/static/css/tailwind.css is stale - run 'make css' and commit the result"; exit 1; }
 
 # Download vendor JS libraries (requires curl)
 vendor-js:

@@ -80,7 +80,25 @@ func loadConfig(baseDir string) (*EncryptionConfig, error) {
 	return &config, nil
 }
 
-// saveConfig writes the encryption configuration to disk
+// saveConfig writes the encryption configuration to disk, atomically and
+// durably.
+//
+// Atomic: the bytes land in a staging file that is renamed over the
+// destination, so a concurrent reader never observes a half-written config.
+//
+// Durable: the staging file is fsynced before the rename, and the containing
+// directory is fsynced after it. Both matter. os.WriteFile returns once the
+// data is in the page cache, so a crash between the rename and the kernel's
+// own flush can publish a config file of the right name and zero length —
+// and this is the one file whose loss makes every encrypted file in the data
+// directory unreadable, since it names the recipient the data was encrypted
+// to. The directory fsync is what makes the rename itself survive the same
+// crash.
+//
+// A staging file left behind by a crash is named <destination>.tmp, which
+// IsStagingName already recognises (see legacyStagingSuffix), so a leftover
+// is excluded from snapshots and restore-time pruning rather than mistaken
+// for real data.
 func saveConfig(baseDir string, config *EncryptionConfig) error {
 	configPath := filepath.Join(baseDir, configFile)
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -88,13 +106,58 @@ func saveConfig(baseDir string, config *EncryptionConfig) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	// Write atomically
-	tmpPath := configPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	tmpPath := configPath + legacyStagingSuffix
+	if err := writeFileSync(tmpPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
+	// A staging file that never gets published would otherwise sit next to
+	// the real config holding a recipient that was never adopted.
+	defer func() { _ = os.Remove(tmpPath) }()
 
-	return os.Rename(tmpPath, configPath)
+	if err := os.Rename(tmpPath, configPath); err != nil {
+		return fmt.Errorf("failed to publish config: %w", err)
+	}
+	syncDir(baseDir)
+	return nil
+}
+
+// writeFileSync writes data to path with the given permissions and flushes it
+// to stable storage before returning. Unlike os.WriteFile it also chmods an
+// existing file to perm, so a staging file orphaned by an earlier crash under
+// a looser mode cannot silently widen the permissions of what replaces the
+// config.
+func writeFileSync(path string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// syncDir flushes a directory entry change (here, a rename) to stable
+// storage. Failures are deliberately ignored: some filesystems refuse fsync
+// on a directory handle, and by the time this is called the rename has
+// already succeeded — reporting an error would make callers treat a published
+// config as unwritten.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
 
 // removeConfig deletes the encryption configuration file

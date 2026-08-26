@@ -92,3 +92,11 @@ Environment note for future verification: this container runs as root, where
 chmod-based fixtures behave differently (the pre-existing F3 test
 `TestRollbackDecryptionWithRecipientReportsUnrestorableFiles` fails under
 root; proven pre-existing at 90bc39c^). Run suites as an unprivileged user.
+
+## Follow-up resolved (T4, 2026-08-26)
+
+The setgid/sticky observation recorded by checker-second at attempt 1 is
+settled by ruling 2026-08-26c: special bits are OUT of `filePerm`'s
+contract — migration rewrites only data files, where those bits are
+meaningless. The contract is now stated at the function itself. See
+.swarm/tier3/T4/report.md.

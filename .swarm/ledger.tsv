@@ -52,3 +52,4 @@ Q1	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1
 T1	1	tests	accepted	1	worker-coder	gate-ok-attempt-1
 T2	2	a11y,second	accepted	1	worker-coder	gate-ok-attempt-1-11-findings-closed
 T3	3	tests,second	accepted	3	worker-coder	gate-ok-attempt-3-full-module-root-clean-baseline-parity
+T4	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-doc-only-contract

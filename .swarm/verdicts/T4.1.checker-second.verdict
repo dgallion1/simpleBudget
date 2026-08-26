@@ -1,0 +1,98 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T4
+ATTEMPT: 1
+---
+Repo state: HEAD=b276905baa1b8ba71b5850331b115744b2611417, branch
+claude/t4-fileperm-contract. `git status --porcelain` shows only expected
+uncommitted state (.swarm/ledger.tsv, .swarm/tier3/F4/report.md,
+internal/services/storage/migration.go modified; .swarm/manifests/T4.1.files
+and .swarm/tier3/T4/ untracked). No other repo files touched.
+
+ATTACK 1 — "migration only ever rewrites data files, never executables or
+directories":
+Traced every call site of filePerm (grep across internal/services/storage):
+encryptFileWithRecipient, decryptFileWithIdentity,
+rollbackEncryptionWithIdentity, rollbackDecryptionWithRecipient — the four
+migration helpers, all in migration.go. Their path lists come from:
+ - EnableEncryptionWithProvider's filepath.Walk: skips info.IsDir(), skips
+   shouldSkipEncryption (marker/verify/config files, /cache/ paths), keeps
+   only ext == ".csv" || ".json". Directories are never passed to
+   encryptFileWithRecipient/atomicWrite.
+ - DisableEncryption's filepath.Walk: skips info.IsDir(), and appends any
+   non-dir file whose content matches isAgeEncrypted(data) -- NOT
+   extension-filtered and NOT gated by shouldSkipEncryption. This is a real
+   asymmetry: verifyFile (.encryption-verify, an encryption-state marker,
+   not a CSV/JSON data file) is itself genuine age-ciphertext written by
+   EnableEncryptionWithProvider, so it gets swept into filesToDecrypt and is
+   read/decrypted/re-written via atomicWrite+filePerm before being removed
+   a few lines later by `os.Remove(verifyPath)`. So "(CSVs, JSON sidecars)"
+   is not a literally exhaustive enumeration of what passes through
+   filePerm/atomicWrite -- verifyFile does too.
+   This does NOT, however, refute the comment's operative claim, which is
+   about executables and directories being the only place special bits
+   carry meaning: verifyFile is written via os.WriteFile(verifyPath,
+   encrypted, 0644) (no special bits, ever) and is not a directory or
+   executable, so this asymmetry supplies no counterexample to the actual
+   ruling being defended. Recorded as a precision nit, not a refutation.
+ - filepath.Walk does recurse into subdirectories (e.g. hypothetical nested
+   data/settings/*.csv) but only ever hands non-dir file paths to
+   atomicWrite; the directory entries themselves are never chmod'd/written.
+   No counterexample: "never rewrites... directories" holds.
+ - Checked whether a setgid *directory* could make atomicWrite's rename
+   behave as if it preserved a special bit the comment denies: setgid on a
+   directory only affects inherited *group ownership* of new entries (and
+   setgid propagation to new subdirectories), not the *mode bits* of a new
+   regular file, which are set explicitly and exclusively by
+   os.Chmod(tmpPath, perm) in atomicWrite using filePerm's Perm()-only
+   value. No interaction found that contradicts the comment.
+No executable-with-meaningful-special-bit or directory counterexample found
+under normal operation. The verifyFile finding is real but does not carry
+special-bit meaning, so it doesn't break the claim being certified.
+
+ATTACK 2 — "does not thread them through to atomicWrite":
+Grep of every atomicWrite call fed by filePerm (migration.go:333, 378, 422,
+497) confirms each passes exactly the `perm` returned by filePerm (i.e.
+Mode().Perm(), 0777 bits only) -- no wider FileMode value is ever
+constructed or passed. filePerm's body: `return info.Mode().Perm(), nil`
+strips ModeSetuid/ModeSetgid/ModeSticky by construction (Perm() masks to
+os.ModePerm = 0777). Wording check: the added comment explicitly frames
+this as "a decision (ruling 2026-08-26c), not an oversight," correctly
+attributing the limitation to filePerm's choice rather than implying
+atomicWrite/os.Chmod can't accept special bits (it can -- os.Chmod on Unix
+does translate ModeSetuid/ModeSetgid/ModeSticky to real chmod bits since Go
+1.10). No misleading wording found.
+
+ATTACK 3 — comment-only discipline:
+`git diff -- '*.go'` limited to migration.go; every added/removed
+non-context line is a `//` comment line (confirmed via `git diff | grep -E
+'^[+-]' | grep -v '^[+-]//'` returning nothing but the diff headers).
+`gofmt -l internal/services/storage/migration.go` -> empty (clean).
+`go build ./...` -> succeeds. No behavior change.
+
+ATTACK 4 — ruling citation:
+.swarm/tier3/T4/report.md records RULING 2026-08-26c with wording matching
+the comment closely: "migration only ever rewrites data files (CSVs, JSON
+sidecars) — never executables or directories, the only places special bits
+mean anything." The added comment reproduces this claim consistently. No
+contradiction between the cited ruling and the comment's content.
+
+ATTACK 5 — behavioral spot-check (as root):
+`go test -count=1 -run 'PreservesMode|OrdinaryMode|FilePermStatFailure'
+./internal/services/storage/` -> PASS, all 6 subtests
+(TestEncryptFileWithRecipientPreservesMode,
+TestDecryptFileWithIdentityPreservesMode,
+TestRollbackEncryptionWithIdentityPreservesMode,
+TestRollbackDecryptionWithRecipientPreservesMode,
+TestEncryptFileWithRecipientOrdinaryModeUnchanged,
+TestFilePermStatFailureReturnsError), ok in 14.113s.
+
+CONCLUSION: No counterexample found that refutes the comment's core factual
+claims (special bits stripped by design; never threaded to atomicWrite;
+never meaningful because migration never touches executables/directories).
+One precision nit identified (verifyFile also flows through
+filePerm/atomicWrite despite not being a CSV/JSON "data file") but it does
+not carry special-bit meaning and does not undermine the ruling being
+recorded. Diff is byte-verified comment-only, builds clean, cited ruling
+matches, tests hold as root.

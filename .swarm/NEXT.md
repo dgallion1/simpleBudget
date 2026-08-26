@@ -165,7 +165,13 @@ NOTE: two of the three live in `mcpsvc/curate` (not critical); the storage
 one is under `internal/services/storage/**` → assign Tier 3 or expect an
 escalation flag.
 
-### T4 — decide: does mode preservation include setgid/sticky bits? Decision
+### T4 — DONE (accepted 2026-08-26, attempt 1, ruling 2026-08-26c): special
+bits declared OUT of filePerm's contract, stated in the function's own
+comment; both lanes verified the comment's factual claims against the code
+(walks skip directories; only data files rewritten). Evidence:
+.swarm/verdicts/T4.1.*, .swarm/tier3/T4/report.md.
+
+### T4 (original brief, retained for context) — decide: does mode preservation include setgid/sticky bits? Decision
 first, then Tier 1 code. `filePerm` (internal/services/storage/migration.go)
 uses `Mode().Perm()`, which strips setuid/setgid/sticky — a data file with
 02644 silently loses the bit on migration. Recorded by checker-second in

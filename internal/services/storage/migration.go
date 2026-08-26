@@ -268,6 +268,15 @@ func (s *Storage) createProviderUnlocked() (AuthProvider, error) {
 // there is no reasonable default to invent for a file that turns out not to
 // exist, so that is surfaced as an error rather than silently falling back
 // to some fixed mode.
+//
+// Mode().Perm() deliberately returns only the 0777 permission bits; it
+// strips setuid, setgid, and the sticky bit, and this function does not
+// thread them through to atomicWrite. That is a decision (ruling
+// 2026-08-26c), not an oversight: migration only ever rewrites data files
+// (CSVs, JSON sidecars), never executables or directories, which are the
+// only places the special bits carry meaning, so preserving them would add
+// critical-path code and test surface to defend a scenario with no
+// practical path to occur.
 func filePerm(path string) (os.FileMode, error) {
 	info, err := os.Stat(path)
 	if err != nil {

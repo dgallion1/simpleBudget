@@ -1,0 +1,105 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T4
+ATTEMPT: 1
+---
+REPO STATE
+  branch: claude/t4-fileperm-contract
+  `git rev-parse HEAD` -> b276905baa1b8ba71b5850331b115744b2611417
+  `git status --porcelain` ->
+     M .swarm/ledger.tsv
+     M .swarm/tier3/F4/report.md
+     M internal/services/storage/migration.go
+    ?? .swarm/manifests/T4.1.files
+    ?? .swarm/tier3/T4/
+  manifest .swarm/manifests/T4.1.files lists exactly: internal/services/storage/migration.go
+  Verification build/vet/test run in an isolated copy (cp -a to scratchpad); the only
+  main-tree write made by this checker is this verdict file.
+
+CRITERION 1 — COMMENT-ONLY, single .go file
+  MET.
+  `git diff --name-only -- '*.go'` -> internal/services/storage/migration.go (sole .go change).
+  `git diff --name-only` -> the same file plus .swarm/ledger.tsv and .swarm/tier3/F4/report.md
+  (lead bookkeeping artifacts, not code).
+  `git diff --numstat -- internal/services/storage/migration.go` -> "9  0  internal/services/storage/migration.go"
+  (9 insertions, 0 deletions).
+  `git diff -U0 -- internal/services/storage/migration.go | grep '^+' | grep -v '^+++' | grep -vE '^\+[[:space:]]*//'`
+  produced NO output -> every added line is a `//` comment line; the companion grep for
+  removed lines ('^-' minus '---') also produced no output. The 9 added lines are prose
+  (no //go: directives), inserted into filePerm's doc comment block above
+  `func filePerm(path string) (os.FileMode, error)` at line 280. Behavior is
+  byte-for-byte unchanged.
+
+CRITERION 2 — THE CONTRACT TEXT IS TRUE (read from code, not from the comment)
+  MET, all three sub-claims.
+
+  (a) "Mode().Perm() ... this function does not thread them through to atomicWrite"
+      internal/services/storage/migration.go:280-286 — filePerm does
+      `info, err := os.Stat(path)` then `return info.Mode().Perm(), nil`; no special-bit
+      handling. Mode().Perm() masks to 0777, so setuid/setgid/sticky are dropped, exactly
+      as the comment states.
+      The result reaches atomicWrite's chmod in all four helpers
+      (`grep -n "filePerm\|atomicWrite" internal/services/storage/migration.go`):
+        - encryptFileWithRecipient      : perm at :324 -> s.atomicWrite(path, encrypted, perm) at :333
+        - decryptFileWithIdentity       : perm at :371 -> s.atomicWrite(path, decrypted, perm) at :378
+        - rollbackEncryptionWithIdentity: perm at :420 -> s.atomicWrite(path, decrypted, perm) at :422
+        - rollbackDecryptionWithRecipient: perm at :495 -> s.atomicWrite(path, encrypted, perm) at :497
+      No helper reassigns or masks perm between the call and the write.
+      internal/services/storage/storage.go:570 atomicWrite applies it verbatim:
+      `if err := os.Chmod(tmpPath, perm); err != nil { return err }` before
+      `os.Rename(tmpPath, path)`. So the preserved set is precisely the 0777 bits and
+      nothing more — the comment describes the actual code.
+
+  (b) "migration only ever rewrites data files ... never executables or directories"
+      Both migration walks were read.
+      Encrypt path, EnableEncryptionWithProvider (migration.go:55-75): filepath.Walk over
+      s.baseDir; `if info.IsDir() { return nil }` skips directories outright; then
+      shouldSkipEncryption(path); then `ext := strings.ToLower(filepath.Ext(path))` and the
+      file is collected ONLY `if ext == ".csv" || ext == ".json"`. So the rewrite set is
+      CSV/JSON data files under the data dir — matching "CSVs, JSON sidecars".
+      shouldSkipEncryption (storage.go) further excludes encryption-state files and anything
+      under a /cache/ directory (e.g. plotly.min.js).
+      Decrypt path, DisableEncryption (migration.go:166-185): same
+      `if info.IsDir() { return nil }` directory skip; a file is collected only if
+      `isAgeEncrypted(data)` — i.e. only files the encrypt path itself produced, the same
+      CSV/JSON set.
+      Rollback helpers operate on the already-collected `files` slices from those two walks
+      and additionally re-check isAgeEncrypted before rewriting (:394, :468), so they cannot
+      widen the set.
+      Conclusion: no directory and no non-.csv/.json file is ever passed to
+      filePerm/atomicWrite by migration. The comment's factual premise holds.
+
+  (c) "ruling 2026-08-26c"
+      /home/user/simplebudget/.swarm/tier3/T4/report.md exists (1413 bytes) and states:
+      "RULING 2026-08-26c (user): `filePerm` (internal/services/storage/migration.go)
+      uses `Mode().Perm()`, which strips setuid/setgid/sticky ... The user ruled the bits
+      OUT of contract: migration only ever rewrites data files (CSVs, JSON sidecars) --
+      never executables or directories, the only places special bits mean anything".
+      This is the same claim, in the same terms, as the added comment, and the report also
+      carries the required "RESOLUTION:" line (single-arm doc-only run under ruling
+      2026-08-26c). The F4 report's appended "Follow-up resolved (T4, 2026-08-26)" section
+      cross-references it.
+
+CRITERION 3 — HYGIENE (all run in the isolated copy)
+  MET.
+  `go build ./...`                                  -> BUILD_RC=0
+  `gofmt -l internal/services/storage/migration.go` -> no output (file is gofmt-clean)
+  `go vet ./internal/services/storage/`             -> no output, VET_RC=0
+  `id -u` -> 0 ; `go test -count=1 ./internal/services/storage/`
+     -> "ok  	budget2/internal/services/storage	151.277s", TEST_RC=0
+     i.e. the full storage suite passes AS ROOT with no unprivileged workaround,
+     confirming the post-T3 baseline holds.
+
+TESTS ADDED
+  None, and none were expected: this is a doc-only task (report.md: "No behavior change,
+  no test change"). `git diff --name-only` confirms no *_test.go file was touched.
+
+SCOPE
+  Only code file changed is internal/services/storage/migration.go, which is the single
+  entry in the manifest. It matches .swarm/critical.globs pattern
+  `internal/services/storage/**`; T4 is Tier 3 in .swarm/ledger.tsv
+  ("T4	3	tests,second	building	1	worker-coder	doc-only-ruling-2026-08-26c-single-arm"),
+  so touching the critical glob is permitted at this tier. The other two modified paths
+  (.swarm/ledger.tsv, .swarm/tier3/F4/report.md) are lead bookkeeping, expected per the
+  brief. No source file outside the authorized one was modified.

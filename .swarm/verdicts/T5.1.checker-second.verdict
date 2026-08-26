@@ -1,0 +1,161 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T5
+ATTEMPT: 1
+---
+REPO STATE
+  $ git rev-parse HEAD -> 99d52053607c019f8eb5a0332bb182bd7f2f99f4
+  $ git status --porcelain ->
+     M .swarm/ledger.tsv
+     M internal/services/storage/auth.go
+     M internal/services/storage/auth_test.go
+     ?? .swarm/manifests/T5.1.files
+     ?? .swarm/tier3/T5/
+  Read report.md in full (including "Premise corrected" section, lines 29-39,
+  and the RESOLUTION line). Read auth.go diff in full, storage.go lines
+  440-603 (StagingSuffix/legacyStagingSuffix/IsStagingName/createExclusive/
+  atomicWrite), migration.go's sole call site, and backup/snapshot.go's
+  SkipPredicate (confirms IsStagingName is actually consumed, not just
+  claimed). checker-tests's own verdict was also read post-hoc for
+  cross-comparison (not as a substitute for independent verification;
+  every claim below was reproduced by me from scratch).
+
+ATTACK 1 -- crash-window semantics
+  (a) same-filesystem rename: os.CreateTemp(baseDir, ...) stages directly in
+      baseDir; configPath = filepath.Join(baseDir, configFile) is the same
+      directory. Confirmed by reading the code -- no cross-fs rename risk.
+      NOT REFUTED.
+  (b) fsync gap: neither the old code (os.WriteFile(tmpPath,...) then
+      os.Rename, `git show HEAD:internal/services/storage/auth.go`) nor the
+      new code calls fsync before rename. A power-loss between rename
+      landing and data reaching platter could still produce a truncated/
+      empty config on some filesystems/mount options. VERIFIED PRE-EXISTING
+      (both old and new code share this gap byte-for-byte) -- RECORDED AS
+      OBSERVATION, NOT A REGRESSION. The window is not widened by this change.
+  (c) chmod-after-close-before-rename window: `go doc os.CreateTemp` states
+      the file "is created with mode 0o600 (before umask)" -- confirmed via
+      stdlib doc. Umask can only clear bits, and 0600 has no group/other bits
+      to clear, so there is no window, before or after the explicit chmod,
+      where the staging file is more permissive than 0600. The explicit
+      os.Chmod(tmpPath, 0600) is genuinely redundant, as the comment claims.
+      NOT REFUTED. EncryptionConfig's fields (Method, RecipientID,
+      SSHKeyPath, AgeIdentityPath, YubiKeyIdentity, YubiKeyRecipient) are
+      paths/method/public-recipient identifiers, not raw salts or wrapped
+      keys -- so the secrecy stakes of this file are "reveals key-file
+      locations and auth method," moderate but real; 0600 is appropriate
+      and, per (c), never actually breached.
+  Bonus (not asked, volunteered): the OLD code's fixed, predictable staging
+  name (configPath+".tmp") combined with os.WriteFile's lack of O_EXCL is a
+  textbook predictable-tmpfile-name pattern; the NEW code's CreateTemp uses
+  O_CREATE|O_EXCL with an unpredictable name, closing that class of issue
+  incidentally. Not claimed by the report, not required, but confirms the
+  fix is not merely cosmetic.
+
+ATTACK 2 -- concurrency claim wording
+  $ grep -rn 'saveConfig(' internal/services/storage/*.go | grep -v _test
+    -> only definition (auth.go:99) and one call site (migration.go:93),
+       inside EnableEncryptionWithProvider, which takes s.mu.Lock() at
+       migration.go:25 and holds it for the whole function (no unlock/
+       relock in between). So within one *Storage instance, saveConfig
+       cannot race with itself today -- the "concurrent saves collide"
+       framing describes the regime-level convention/consistency argument,
+       not a demonstrated live bug in this codebase's actual call graph.
+  The report's own wording ("What it actually buys: no fixed-name collision
+  between concurrent saves...") stays at the level of what the code permits
+  structurally, and does not claim to have found or fixed an exploitable
+  concurrent-caller bug in production. No overclaim found. NOT REFUTED
+  (recorded as a scope observation, matching the adversarial brief's
+  instruction not to penalize accurately-hedged claims).
+
+ATTACK 3 -- the tests
+  (a) ENAMETOOLONG test: computes `target`/`dir` growth relative to
+      len(t.TempDir())-derived `root`, not a hardcoded absolute path, so it
+      is self-relative rather than environment-lucky (verified by reading
+      the loop: `for len(dir) < target { ... dir = filepath.Join(dir,
+      strings.Repeat("a", segLen)) }`). Ran:
+        $ go test ./internal/services/storage/... -run \
+          'TestSaveConfigStagingCreateFailureLeavesNoLitter' -v -count=10
+          -> 10/10 PASS
+        $ go test ./internal/services/storage/... -run 'SaveConfig' -v \
+          -race -count=5
+          -> all 5 iterations x 5 subtests PASS (race detector active)
+      Held on this filesystem across repetition; construction is
+      self-relative so it does not depend on this environment's specific
+      TMPDIR depth. NOT REFUTED.
+  (b) rename-failure test: read auth_test.go -- asserts (i) destination
+      remains a directory (`info.IsDir()`) i.e. untouched, AND (ii) ReadDir
+      has no entries besides the pre-existing configFile directory, i.e. no
+      staging litter. Both checked, as the attack brief required. NOT
+      REFUTED.
+  (c) my own mutant, not attempted by the worker: changed the final line to
+      `os.Rename(tmpPath, filepath.Join(baseDir, configFile+"-wrong"))`
+      (kept configPath referenced via `_ = configPath` to preserve
+      compilation) and ran `-run SaveConfig`:
+        --- FAIL: TestSaveConfig (nil-pointer panic: loadConfig returns
+            nil,nil for a missing file, then loaded.Method dereferences nil)
+      This is a PRE-EXISTING test (not part of T5's diff -- it is above the
+      new test block in auth_test.go) that already catches a
+      wrong-destination mutant, albeit via an ugly panic rather than a clean
+      t.Fatal. TestSaveConfigStagingModeAndNoLeftover (T5's own new test)
+      would independently also catch it (Stat(configPath) fails, ReadDir
+      shows the wrong-named file instead of exactly one entry named
+      configFile). Reverted immediately after
+      (`cp .../scratchpad/auth.go.bak auth.go`; `diff` confirmed byte-
+      identical to original; rebuilt clean). So: severity is LOW as the
+      brief anticipated ("the load path would fail loudly") -- confirmed
+      empirically, not just asserted. NOT REFUTED, no new gap found.
+  Additional mutants I planted (going beyond the assigned attack list):
+    - reverted the whole function to the pre-fix `configPath+".tmp"` +
+      os.WriteFile: TestSaveConfigStagingCreateFailureLeavesNoLitter and
+      TestSaveConfigRenameFailureLeavesNoLitter both FAIL as expected.
+    - deleted only `defer func() { _ = os.Remove(tmpPath) }()`: only
+      TestSaveConfigRenameFailureLeavesNoLitter FAILs (with the exact
+      leftover staging name reported), CreateFailure test still passes --
+      confirms the tests' claimed division of labor is real, not asserted-
+      but-untested. Reverted after each; `diff` against the untouched backup
+      confirmed exact restoration; `go build ./...` clean.
+
+ATTACK 4 -- regression
+  $ go test ./internal/services/storage/... -run 'Encrypt|Encryption|Auth|Config' -v
+    -> 60+ tests, all PASS (0 skips beyond none, no failures), ~72s.
+  $ go test ./internal/services/storage/...   (full package, no -run filter)
+    -> ok, 110.844s, all green.
+  A full-package `-race` run was also launched for extra rigor beyond what
+  the attack list required (it explicitly scoped -race to the ENAMETOOLONG
+  test, which I satisfied above); it was still running in the background
+  past this verification window and is not required to reach this verdict
+  given the targeted -race pass (count=5) and the full non-race pass already
+  obtained. Recorded as an incomplete bonus check, not a gap in required
+  coverage.
+
+ATTACK 5 -- scope/hygiene
+  $ git diff HEAD --name-only -> .swarm/ledger.tsv (bookkeeping),
+    internal/services/storage/auth.go, internal/services/storage/auth_test.go.
+    No other source file touched; no assertion in any pre-existing test was
+    weakened (auth_test.go's diff is purely additive -- new tests appended
+    after the pre-existing TestRemoveConfig/TestGetAuthMethod block, verified
+    by `git diff` hunk context).
+  $ gofmt -l internal/services/storage/auth.go internal/services/storage/auth_test.go
+    -> clean (no output)
+  $ go vet ./internal/services/storage/... -> clean
+  $ go build ./... -> rc=0
+
+CROSS-CHECK WITH PRIMARY LANE
+  checker-tests's verdict (T5.1.checker-tests.verdict, read after my own
+  independent work was complete) reaches PASS via largely the same evidence
+  (same two mutants, same ENAMETOOLONG mechanism, same scope diff) plus one
+  additional finding of its own: the rename-failure test's doc comment names
+  EISDIR/ENOTDIR but Linux actually returns EEXIST for
+  rename(regular-file -> existing-empty-directory); the test's assertion
+  (err != nil) is unaffected. I consider this correctly flagged as a
+  non-blocking comment inaccuracy, not a functional gap -- it does not
+  change my verdict.
+
+CONCLUSION
+  No refutation found across crash-window, concurrency-claim wording,
+  test-fragility, mutant-survival, regression, or scope/hygiene attack
+  surfaces. The one genuine pre-existing gap (no fsync before rename) is
+  shared identically with the code this replaces and is not widened by this
+  change -- recorded as an observation per the brief's explicit instruction,
+  not treated as a refutation. PASS.

@@ -241,6 +241,16 @@ judgment, merge-on-green. Five rows added to the ledger:
   backup's snapshot walk dereferences symlinked files while restore's prune
   unlinks them; document at the source per the T6 pattern (no completeness
   claims — that lesson cost three attempts).
+Observation from T7 verification (recorded, not commissioned): the
+coverage oracle `swarm/t7-coverage.sh` scans templates and web/static/js
+but NOT Go source, so the literal Tailwind classes embedded in
+`renderError()` fmt.Sprintf fragments (internal/handlers/{whatif,
+majorexpenses,accounts}/handlers.go) and in internal/templates/render.go
+are guarded only by the hand-maintained safelist. All resolve in the
+built CSS today (adversarially verified with correct CSS escaping), but
+a future edit to those fragments would not be caught by the script —
+extend its extraction to internal/ if that becomes a recurring edit site.
+
 New observation from the T11 build (recorded, not commissioned): a
 symlinked DIRECTORY inside the data directory aborts the entire backup
 snapshot — buildZip's walk sees it as a non-dir entry (Lstat), calls

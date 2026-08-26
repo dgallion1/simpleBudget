@@ -1,0 +1,74 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: T7
+ATTEMPT: 1
+---
+
+1. git status --porcelain matches manifest exactly:
+   M .swarm/ledger.tsv (lead bookkeeping, expected)
+   M CHANGELOG.md, M README.md, M web/templates/layouts/base.html, M web/templates/pages/unlock.html
+   ?? .swarm/manifests/T7.1.files, ?? swarm/, ?? tailwind.config.js, ?? web/static/css/tailwind.css, ?? web/static/css/tailwind.src.css
+   `find . -maxdepth 2 -iname node_modules -o -iname "package*.json"` → empty. No leftover npm artifacts.
+
+2. `grep -rn "cdn.tailwindcss.com" web/ internal/ cmd/` → no matches (empty).
+   base.html:18 `<link href="/static/css/tailwind.css" rel="stylesheet">` precedes styles.css at line 32.
+   unlock.html:12 same link, also precedes the theme-init script.
+   Diffs (git diff) for both files show ONLY the CDN <script>+inline-config block swapped for the <link>; the
+   dark-mode init <script> block (localStorage theme read, prefers-color-scheme check, classList add/remove
+   'dark') is byte-identical/untouched in both files. tailwind.config.js declares `darkMode: 'class'`, matching
+   the classList('dark') strategy used by both init scripts.
+
+3. `bash swarm/t7-coverage.sh` → exit 0: "OK: 715 literal utility-looking class tokens covered (45
+   whitelisted, 50 dynamic-safelist entries verified present)."
+   Audited the script (perl, read in full): File::Find walks web/templates/**/*.html and web/static/js/**/*.js
+   (matches tailwind.config.js content globs exactly). Extraction covers class="…"/className="…" (double and
+   single quoted), classList.add/remove/contains (all args), and classList.toggle (first arg only, correctly
+   documented rationale for major-expenses.html's toggle('hidden', mode !== 'checked') case). Go template
+   {{...}} actions are stripped before attribute parsing so embedded quotes don't corrupt matching. Tokens
+   containing ${}` are dropped (JS template-literal splices), consistent with those being handled instead by
+   the dynamic-safelist cross-check.
+   Spot-checked 10 whitelist entries against source of truth:
+     - chart-container, loading, hover-lift, table-striped, table-hover, major-expenses-pin-check*,
+       major-expense-detail-row, wf-tab-active, qa-tab-active, num → all found in web/static/css/styles.css.
+     - alias-display, date-range-btn, income-display-toggle, insight-preset-btn, method-tab → grep for
+       `\.<token>\b` across web/static/css/ returns nothing for all five, confirming "no CSS rule" claim.
+     - 'light'/'dark' whitelist entries: confirmed no bare `.dark{...}`/`.light{...}` rule exists anywhere
+       (only compound selectors like `.dark .table-striped …` and Tailwind's `.dark\:foo:is(.dark *)`).
+     - 'verdict-' fragment: confirmed the literal template text is `class="verdict-{{$v.Health}} ...
+       {{verdictBandClass $v.Health}}"` across dashboard/insights/major-expenses/whatif verdict-bar.html,
+       i.e. after stripping {{...}} the leftover literal really is the bare "verdict-" fragment.
+
+4. Independently verified internal/templates/render.go's five class-producing functions (colorClass,
+   successRateTextClass, successRateBarClass, verdictClasses map + verdictBandClass/verdictLabelClass/
+   verdictValueClass) — read every return branch (lines 703-797). Every one of the 47 concrete class strings
+   they can return is present in tailwind.config.js's safelist AND (checked independently with a Python regex
+   that CSS-escapes each token and searches web/static/css/tailwind.css for the literal selector, matching the
+   coverage script's own method) resolves to an actual selector in tailwind.css. Zero missing.
+
+5. Live render check: started `go run ./cmd/server` with BUDGET_DATA_DIR=/tmp scratch dir and
+   BUDGET_LISTEN_ADDR on a free port (127.0.0.1:38255).
+   - /dashboard, /explorer, /filemanager → HTTP 200. / and /unlock → HTTP 307 → /dashboard (fresh data dir has
+     no PIN configured, so unlock is not reachable in this state — expected, not a failure; unlock.html's
+     head markup was independently confirmed in check 2 via source read).
+   - All three 200 pages: exactly 1 occurrence of "tailwind.css", 0 occurrences of "cdn.tailwindcss.com".
+   - `curl -sI /static/css/tailwind.css` → 200, Content-Length: 59176 (matches the manifest's claimed 59,176
+     bytes and `wc -c` on the file exactly).
+   - Spot-checked 10 class tokens extracted live from the fetched dashboard HTML — including dark: variants,
+     fraction-opacity utilities, and bracketed arbitrary values: bg-white/20, dark:bg-emerald-900/20,
+     dark:hover:bg-indigo-900/30, min-h-[140px], min-w-[2.5rem], text-[10px], dark:from-gray-800,
+     dark:hover:border-indigo-500, hover:bg-white/10, dark:text-emerald-300 — all 10 resolve to a real
+     selector in tailwind.css.
+   - Server process killed after checks (verified port no longer responds). Note: an unrelated pre-existing
+     server process (pid 496, started 20:22, before this check began at 20:28) was left running on a
+     different port — it predates this verification and was not touched.
+
+6. Accessibility regression: `grep -rn 'role="alert"' web/templates/` → 8 matches, unchanged content (T2/T9
+   error banners in accounts.html/filemanager.html). `grep -rl 'aria-label' web/templates/` → 19 files.
+   T7's diff touches only two <head> blocks (CDN removal); no template's accessibility markup was touched.
+
+7. `go test -count=1 ./internal/handlers/...` → all 10 packages ok (accounts, approval, backup, dashboard,
+   duplicates, explorer, insights, majorexpenses, transfers, whatif), exit code 0.
+
+All seven checks pass with no gaps found in the coverage script's extraction logic or the Go-source
+safelist claim.

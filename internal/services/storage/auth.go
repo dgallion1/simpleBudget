@@ -104,45 +104,28 @@ func saveConfig(baseDir string, config *EncryptionConfig) error {
 	}
 
 	// Staged in baseDir (same filesystem as configPath, so the rename below
-	// is atomic) under a unique name so concurrent saves cannot collide on
-	// the staging file itself — mirrors atomicWrite/createExclusive (see
-	// StagingSuffix's doc comment in storage.go). The staging file is
-	// fsync'd before the rename, and baseDir itself is fsync'd after, via
-	// the same fileSync/syncDir seams atomicWrite and createExclusive use
-	// (storage.go) — this file is the encryption config, and losing it to a
-	// crash makes every other encrypted file unreadable.
-	f, err := os.CreateTemp(baseDir, configFile+StagingSuffix+"*")
-	if err != nil {
-		return fmt.Errorf("failed to create staging file: %w", err)
-	}
-	tmpPath := f.Name()
-	// If the rename below succeeds this is a no-op (nothing left at
-	// tmpPath); if we return early on an error this cleans up the staging
-	// file so a failed save doesn't litter baseDir (mirrors atomicWrite's
-	// error hygiene).
+	// is atomic) through stageDurable (storage.go), the same helper
+	// atomicWrite and createExclusive publish through: unique staging name,
+	// chmod via the open handle, fsync'd before the rename — this file is
+	// the encryption config, and losing it to a crash makes every other
+	// encrypted file unreadable.
+	tmpPath, err := stageDurable(baseDir, configFile, data, 0600)
+	// Deferred before the error check, because stageDurable hands back the
+	// staging path whether or not it succeeded. If the rename below succeeds
+	// this is a no-op (nothing left at tmpPath); otherwise it keeps a failed
+	// save from littering baseDir (mirrors atomicWrite's error hygiene).
 	defer func() { _ = os.Remove(tmpPath) }()
-
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-	if err := fileSync(f); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-	// os.CreateTemp already creates the file at 0600, but chmod explicitly
-	// to match atomicWrite's approach rather than relying on the default.
-	if err := os.Chmod(tmpPath, 0600); err != nil {
+	if err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, configPath); err != nil {
 		return err
 	}
-	return syncDir(baseDir)
+	// Best-effort by design — see syncDir's doc for why a post-publish
+	// failure is not returned.
+	_ = syncDir(baseDir)
+	return nil
 }
 
 // removeConfig deletes the encryption configuration file

@@ -135,11 +135,14 @@ func TestAtomicWriteSyncFailureAbortsPublish(t *testing.T) {
 	}
 }
 
-// TestAtomicWriteDirSyncFailurePropagates defends the second seam: a syncDir
-// failure, occurring after a rename that already landed, must still be
-// returned to the caller rather than swallowed — the caller must not be told
-// the write is durable when it isn't.
-func TestAtomicWriteDirSyncFailurePropagates(t *testing.T) {
+// TestAtomicWriteDirSyncFailureDoesNotFailTheWrite defends the second seam's
+// error contract: syncDir runs after a rename that already landed, so its
+// failure must be swallowed, not returned — a caller told the write failed
+// would report a completed save as rejected, and the migration rollback
+// would re-encrypt every file except the one the "failed" write actually
+// published as plaintext (see syncDir's doc). Reintroducing
+// `return syncDir(dir)` fails this test.
+func TestAtomicWriteDirSyncFailureDoesNotFailTheWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ledger.csv")
 
@@ -149,13 +152,12 @@ func TestAtomicWriteDirSyncFailurePropagates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if err := s.atomicWrite(path, []byte("hello"), 0644); !errors.Is(err, errInjectedSync) {
-		t.Fatalf("atomicWrite error = %v, want errInjectedSync", err)
+	if err := s.atomicWrite(path, []byte("hello"), 0644); err != nil {
+		t.Fatalf("atomicWrite error = %v, want nil — a post-publish syncDir failure must not surface", err)
 	}
 
-	// The rename already landed before syncDir runs, so the content is in
-	// place even though the durability guarantee is not — the point of this
-	// test is only that the error reaches the caller.
+	// The rename landed before syncDir ran, and the nil return above is what
+	// keeps the caller's picture consistent with that.
 	got, readErr := os.ReadFile(path)
 	if readErr != nil {
 		t.Fatalf("ReadFile: %v", readErr)
@@ -228,17 +230,17 @@ func TestCreateExclusiveSyncFailureAbortsPublish(t *testing.T) {
 	}
 }
 
-// TestCreateExclusiveDirSyncFailurePropagates is
-// TestAtomicWriteDirSyncFailurePropagates's counterpart for the link-based
-// publish path.
-func TestCreateExclusiveDirSyncFailurePropagates(t *testing.T) {
+// TestCreateExclusiveDirSyncFailureDoesNotFailTheWrite is
+// TestAtomicWriteDirSyncFailureDoesNotFailTheWrite's counterpart for the
+// link-based publish path.
+func TestCreateExclusiveDirSyncFailureDoesNotFailTheWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ledger.csv")
 
 	overrideSyncDir(t, func(d string) error { return errInjectedSync })
 
-	if err := createExclusive(path, []byte("hello"), 0644); !errors.Is(err, errInjectedSync) {
-		t.Fatalf("createExclusive error = %v, want errInjectedSync", err)
+	if err := createExclusive(path, []byte("hello"), 0644); err != nil {
+		t.Fatalf("createExclusive error = %v, want nil — a post-publish syncDir failure must not surface", err)
 	}
 
 	got, readErr := os.ReadFile(path)
@@ -322,21 +324,20 @@ func TestSaveConfigSyncFailureAbortsPublish(t *testing.T) {
 	}
 }
 
-// TestSaveConfigDirSyncFailurePropagates is
-// TestAtomicWriteDirSyncFailurePropagates's counterpart: a syncDir failure
-// after a successful rename must still reach the caller.
-func TestSaveConfigDirSyncFailurePropagates(t *testing.T) {
+// TestSaveConfigDirSyncFailureDoesNotFailTheSave is
+// TestAtomicWriteDirSyncFailureDoesNotFailTheWrite's counterpart: a syncDir
+// failure after a successful rename must not surface to the caller.
+func TestSaveConfigDirSyncFailureDoesNotFailTheSave(t *testing.T) {
 	dir := t.TempDir()
 
 	overrideSyncDir(t, func(d string) error { return errInjectedSync })
 
 	err := saveConfig(dir, &EncryptionConfig{Method: AuthMethodPassword})
-	if !errors.Is(err, errInjectedSync) {
-		t.Fatalf("saveConfig error = %v, want errInjectedSync", err)
+	if err != nil {
+		t.Fatalf("saveConfig error = %v, want nil — a post-publish syncDir failure must not surface", err)
 	}
 
-	// The rename already landed before syncDir runs, so the config is in
-	// place even though the durability guarantee is not.
+	// The rename landed before syncDir ran; the config must be in place.
 	loaded, loadErr := loadConfig(dir)
 	if loadErr != nil {
 		t.Fatalf("loadConfig: %v", loadErr)

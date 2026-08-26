@@ -55,3 +55,8 @@ T3	3	tests,second	accepted	3	worker-coder	gate-ok-attempt-3-full-module-root-cle
 T4	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-doc-only-contract
 T5	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-staging-regime
 T6	3	tests,second	accepted	4	worker-coder	attempt-4-both-lanes-pass-gate-0
+T7	2	a11y,second	queued	0	worker-coder	tailwind-vendor-ruling-2026-08-26g
+T8	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-durability-seams
+T9	1	a11y	queued	0	worker-coder	t2-residue-a11y-ruling-2026-08-26g
+T10	1	tests	queued	0	worker-coder	dead-code-saveusersettings-ruling-2026-08-26g
+T11	1	tests	queued	0	worker-coder	backup-symlink-note-ruling-2026-08-26g

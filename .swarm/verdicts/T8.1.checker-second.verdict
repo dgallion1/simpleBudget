@@ -1,0 +1,92 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T8
+ATTEMPT: 1
+---
+Scope read: internal/services/storage/storage.go (fileSync/syncDir seams,
+createExclusive, atomicWrite), auth.go (saveConfig), durability_test.go (9
+new tests). Diffed against f36f438 (pre-T8 HEAD) to isolate exactly what
+this attempt changed:
+  git diff f36f438 -- internal/services/storage/auth.go internal/services/storage/storage.go
+confirms the only behavioral change is: fileSync(f) before Close in all
+three paths, syncDir(dir) after Rename/Link in all three paths, both errors
+returned (wrapped with %w in saveConfig, preserving errors.Is).
+
+1. Completeness within scope. Grepped the package for other
+   os.WriteFile/os.Rename/os.Link/os.CreateTemp call sites:
+   `grep -n "os.WriteFile\|os.Rename\|os.Link\|CreateTemp" internal/services/storage/*.go`
+   finds two more direct os.WriteFile calls in migration.go (verifyPath,
+   markerPath) that bypass the staging regime entirely and are therefore not
+   synced. These predate this branch (migration.go is untouched by T8's
+   diff; confirmed via `git status`/`git diff --stat` showing only auth.go,
+   storage.go, and the new test file changed) and are explicitly disclosed
+   in a pre-existing doc comment at migration.go:44-48 ("written with a bare
+   os.WriteFile ... outside the stage-and-rename contract ... not a pattern
+   to copy for user data"). The new doc comment on the fileSync/syncDir
+   seams (storage.go:509) claims coverage of "every stage-and-publish write
+   in this package" — accurate, since migration.go's writes are not
+   stage-and-publish (no staging file/rename). No overclaim found. Traced
+   Storage.WriteFile -> WriteFileContext -> atomicWrite to confirm the
+   user-data path funnels through the fixed function.
+
+2. Error-path holes. Read all three functions end to end. In each: Write
+   error closes f and returns (ignoring the close error, consistent with
+   pre-existing pattern); fileSync error likewise closes-and-returns,
+   dropping only the Close error, never the fileSync error; a successful
+   fileSync is followed by a checked Close() whose error is returned before
+   Chmod/Rename/Link runs; after a successful Rename/Link, syncDir(dir)'s
+   return value is what the function returns (createExclusive's syncDir(dir)
+   is the final statement, not "return nil"; atomicWrite and saveConfig
+   match). syncDir's own body ("first error among open/Sync/Close wins") is
+   correct as read, though see item 3 for a coverage gap in verifying that
+   specific internal precedence directly. Confirmed the directory argument
+   matches in all three (filepath.Dir(path) for the two storage.go
+   functions, baseDir for saveConfig) against what the tests assert.
+
+3. Mutation testing (scratch copy under /tmp/sb_scratch, restored/deleted
+   after). Ran real mutants against the actual test suite:
+   - Default fileSync mutated to a no-op (`return nil` instead of
+     `f.Sync()`): full package suite still passes
+     (`go test -count=1 ./internal/services/storage/...` -> ok, 134s). This
+     survivor is real but the task's own framing calls it out as
+     untestable-in-principle with seam-based tests (verifying an actual
+     fsync syscall occurred requires instrumentation outside a Go unit
+     test); grounding instead comes from reading the default implementation
+     directly, which does call f.Sync() and, in syncDir, opens the real
+     directory and calls d.Sync(). Recorded as an observation, not a
+     defect.
+   - atomicWrite's post-rename syncDir(dir) argument swapped to
+     syncDir(filepath.Dir(dir)) (wrong directory): caught —
+     TestAtomicWriteSyncsStagingFileAndDirectoryOnSuccess fails
+     ("syncDir called with .../NNN, want .../NNN/001").
+   - atomicWrite's syncDir error swallowed (`_ = syncDir(dir); return nil`
+     instead of `return syncDir(dir)`): caught —
+     TestAtomicWriteDirSyncFailurePropagates fails ("atomicWrite error =
+     <nil>, want errInjectedSync").
+   No planted mutant that represents a genuine, fixable defect survived.
+
+4. Concurrency. No test in the package (not just durability_test.go) calls
+   t.Parallel — confirmed by grep across all *_test.go files in the
+   package; the one hit is a comment, not a call — so the package-level
+   var seams are never mutated concurrently by this suite.
+   `go test -race -count=1 -timeout 1800s ./internal/services/storage/...`
+   passed clean in 822s (0 "--- FAIL", 0 "DATA RACE", within the task's
+   ~1030s budget). Note: a first attempt without an explicit -timeout hit
+   Go's default 600s test-binary timeout and was killed mid-scrypt-KDF
+   under race instrumentation (encryption tests are CPU-bound and much
+   slower under -race) — that is an artifact of my own invocation, not a
+   race or product defect; the corrected run with adequate timeout is
+   clean.
+
+5. Regression. `go test -count=1 ./...` is green across every package
+   (storage 202.245s, including EnableEncryption/DisableEncryption and the
+   T5 saveConfig-staging-regime tests), and `go build ./...` succeeds.
+
+Attacks attempted and their outcomes: (1) scope-completeness — found two
+disclosed, pre-existing, out-of-scope writes, no overclaim; (2)
+error-path trace — no swallowed error, no wrong-directory bug, no
+unchecked Close; (3) mutation testing — two real mutants caught, one
+survivor honestly grounded as inherent to seam testing; (4) race —
+clean once given an adequate timeout; (5) full-suite regression — green.
+No FAIL-worthy defect found.

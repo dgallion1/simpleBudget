@@ -106,7 +106,11 @@ func saveConfig(baseDir string, config *EncryptionConfig) error {
 	// Staged in baseDir (same filesystem as configPath, so the rename below
 	// is atomic) under a unique name so concurrent saves cannot collide on
 	// the staging file itself — mirrors atomicWrite/createExclusive (see
-	// StagingSuffix's doc comment in storage.go).
+	// StagingSuffix's doc comment in storage.go). The staging file is
+	// fsync'd before the rename, and baseDir itself is fsync'd after, via
+	// the same fileSync/syncDir seams atomicWrite and createExclusive use
+	// (storage.go) — this file is the encryption config, and losing it to a
+	// crash makes every other encrypted file unreadable.
 	f, err := os.CreateTemp(baseDir, configFile+StagingSuffix+"*")
 	if err != nil {
 		return fmt.Errorf("failed to create staging file: %w", err)
@@ -122,6 +126,10 @@ func saveConfig(baseDir string, config *EncryptionConfig) error {
 		_ = f.Close()
 		return fmt.Errorf("failed to write config: %w", err)
 	}
+	if err := fileSync(f); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("failed to write config: %w", err)
+	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
@@ -131,7 +139,10 @@ func saveConfig(baseDir string, config *EncryptionConfig) error {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
-	return os.Rename(tmpPath, configPath)
+	if err := os.Rename(tmpPath, configPath); err != nil {
+		return err
+	}
+	return syncDir(baseDir)
 }
 
 // removeConfig deletes the encryption configuration file

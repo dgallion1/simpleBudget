@@ -221,6 +221,36 @@ data directory does not honour symlinks" (README + a comment at atomicWrite)
 or resolve symlinks before staging — the latter reopens the F2 atomicity
 analysis, so it needs its own design note. ASK THE USER which.
 
+## Follow-up run — ruling 2026-08-26g
+
+After T1–T6 closed, the user authorized ("push it through, I mostly take
+your advice") working the recorded observation backlog on the lead's
+judgment, merge-on-green. Five rows added to the ledger:
+
+- **T8** — fsync durability (tier 3, single-arm + dual lanes): none of the
+  three stage-and-publish paths (`atomicWrite`, `createExclusive`,
+  `saveConfig`) syncs the file before close or the directory after
+  rename/link. Both T5 lanes recorded the gap as pre-existing. Design in
+  `.swarm/tier3/T8/report.md`.
+- **T9** — T2 accessibility residue (tier 1, a11y): `#age-encryption-error`
+  lacks `role="alert"`; icon buttons with `title`-only accessible names.
+- **T10** — remove dead `SaveUserSettings`/`LoadUserSettings` (tier 1,
+  tests): zero live call sites; T6 documented them as outside the symlink
+  contract — deletion removes the trap entirely.
+- **T11** — backup/restore symlink asymmetry note (tier 1, tests, doc-only):
+  backup's snapshot walk dereferences symlinked files while restore's prune
+  unlinks them; document at the source per the T6 pattern (no completeness
+  claims — that lesson cost three attempts).
+- **T7** — vendor the Tailwind styling (tier 2, a11y+second): the site
+  currently styles itself from `cdn.tailwindcss.com` at runtime; offline
+  users get an unstyled page, at odds with the local-only promise. Executed
+  last: largest and needs a toolchain decision (static build preferred;
+  vendored JIT script the fallback).
+
+Sequencing: T8 first (own branch/PR), then T9+T10+T11 batched on one
+branch/PR, then T7 (own branch/PR). One worker in the main tree at a time;
+each branch cut from the then-current master.
+
 ## Not tasks — do not "fix" these
 
 - R9 `no-change` in the ledger: permanent, honest, correct.

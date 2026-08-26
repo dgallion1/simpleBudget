@@ -506,10 +506,40 @@ func IsStagingName(base string) bool {
 	return true
 }
 
+// fileSync and syncDir are the durability half of every stage-and-publish
+// write in this package: an fsync of the staging file before it is
+// published, and an fsync of the containing directory after, so that a
+// crash cannot lose either the bytes or the rename/link that made them
+// visible. They are package-level vars, not direct os calls, so a test can
+// observe that a publish called them or make either fail, at any uid,
+// without a chmod fixture.
+var fileSync = func(f *os.File) error { return f.Sync() }
+
+// syncDir fsyncs the directory at dir, which is what makes a preceding
+// rename or link durable rather than merely visible: without it, a crash can
+// still lose the directory entry even though the file it points at was
+// itself fsynced. The directory is opened read-only (Linux permits an
+// O_RDONLY descriptor to be fsynced) and closed either way; the first error
+// among open, Sync, and Close wins.
+var syncDir = func(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = d.Sync()
+	if cerr := d.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 // createExclusive stages the payload beside its destination and publishes it
 // with a hard link. Link, not rename: rename silently replaces an existing
 // destination, link fails with EEXIST. That is what makes this both atomic
-// against a concurrent creator and all-or-nothing against a crash.
+// against a concurrent creator and all-or-nothing against a crash. The
+// staging file is fsync'd before the link, and the directory is fsync'd
+// after, so the publish survives a crash rather than merely surviving a
+// clean shutdown.
 func createExclusive(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -530,6 +560,10 @@ func createExclusive(path string, data []byte, perm os.FileMode) error {
 		_ = f.Close()
 		return err
 	}
+	if err := fileSync(f); err != nil {
+		_ = f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
@@ -543,7 +577,7 @@ func createExclusive(path string, data []byte, perm os.FileMode) error {
 		}
 		return err
 	}
-	return nil
+	return syncDir(dir)
 }
 
 // OpenFile returns a reader for a potentially encrypted file. Context-less
@@ -579,6 +613,11 @@ func (s *Storage) OpenFileContext(ctx context.Context, path string) (io.ReadClos
 // resolve-to-rename race to the most safety-critical write path in the
 // package. Files under Storage are expected to be real files; symlinks in
 // the data directory are not honoured.
+//
+// The staging file is fsync'd before the rename below, and the destination
+// directory is fsync'd after, so a crash between "rename returned" and "the
+// bytes are actually on disk" cannot lose either the content or the rename
+// itself.
 func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -602,6 +641,10 @@ func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error 
 		_ = f.Close()
 		return err
 	}
+	if err := fileSync(f); err != nil {
+		_ = f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
@@ -611,7 +654,10 @@ func (s *Storage) atomicWrite(path string, data []byte, perm os.FileMode) error 
 
 	// Rename, unlike Link, replaces an existing destination, which is what
 	// gives atomicWrite its rewrite semantics.
-	return os.Rename(tmpPath, path)
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return syncDir(dir)
 }
 
 // IsEncryptionStateFile reports whether base names one of the files that

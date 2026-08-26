@@ -1,0 +1,164 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T6
+ATTEMPT: 1
+---
+REPO STATE
+  cd /home/user/simplebudget && git rev-parse HEAD
+    -> 99d52053607c019f8eb5a0332bb182bd7f2f99f4
+  git branch --show-current -> claude/t6-symlink-contract
+  git status --porcelain ->
+     M .swarm/ledger.tsv
+     M README.md
+     M internal/services/storage/storage.go
+    ?? .swarm/manifests/T6.1.files
+    ?? .swarm/tier3/T6/
+  Uncommitted, as the brief states is expected; the two .swarm entries are lead
+  artifacts (ledger row `T6 3 tests,second building 1 worker-coder
+  doc-only-ruling-2026-08-26e-single-arm`, T6 tier3 dir), not worker code.
+  Verification was performed on an isolated copy at
+  $SCRATCH/t6copy (cp -a of the repo, same HEAD 99d5205); `diff -r --brief`
+  of internal/services/storage and README.md between the copy and the main tree
+  reported rc=0 (identical), so all results below transfer. The ONLY main-tree
+  write made by this checker is this verdict file.
+
+CRITERION 1 — DOCS-ONLY. MET.
+  a) git diff internal/services/storage/storage.go
+     Single hunk at storage.go:567, 12 added lines, 0 removed. Mechanical check
+     that every changed line is a `//` comment:
+       git diff -U0 internal/services/storage/storage.go | grep -E '^[+-]' \
+         | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-]\s*//'
+       -> no output, rc=1 (grep found no non-comment changed line)
+     i.e. every +/- line in the Go file is a comment line. The added text is a
+     doc-comment block appended to the existing atomicWrite doc comment,
+     immediately above `func (s *Storage) atomicWrite(...)`; the function body
+     (MkdirAll / CreateTemp / Write / Close / Chmod / os.Rename) is byte-for-byte
+     unchanged.
+  b) git diff README.md
+     git diff -U0 README.md | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | cat -A
+       -> "+The files you keep in `data/` need to be real files, not symlinks: ...$"
+       -> "+$"
+     Exactly two added lines, zero removed: one sentence plus one blank line,
+     inserted after the `mkdir -p data` block and before "## Preparing Your Data".
+     Period count in the added prose line = 1 (one sentence).
+  c) git diff --name-only -- '*.go'
+       -> internal/services/storage/storage.go   (that line only)
+     git diff --name-only -> .swarm/ledger.tsv, README.md,
+       internal/services/storage/storage.go
+     Manifest .swarm/manifests/T6.1.files lists exactly
+       internal/services/storage/storage.go
+       README.md
+     which matches the non-lead portion of the diff exactly.
+
+CRITERION 2 — THE CLAIMS ARE TRUE.
+  (a) No symlink resolution in the package. MET.
+      grep -rnE 'EvalSymlinks|Readlink|Lstat|Symlink' internal/services/storage/
+        -> 3 hits, all in migration_decrypt_rollback_test.go (lines 234, 235, 314),
+           all os.Symlink used to construct a dangling link as test fixture.
+      Zero hits in any non-test file of the package: no filepath.EvalSymlinks,
+      no os.Readlink, no os.Lstat anywhere in production code. Reading
+      atomicWrite (storage.go:579-613) confirms the destination is the
+      caller-supplied `path` verbatim: dir := filepath.Dir(path); staging via
+      os.CreateTemp(dir, filepath.Base(path)+StagingSuffix+"*"); publication via
+      `return os.Rename(tmpPath, path)`. os.Rename does not follow a symlink at
+      the destination — it unlinks it — so the comment's claim is structurally
+      correct, and nothing between WriteFile and the rename rewrites the path
+      (WriteFile -> WriteFileContext -> writeFileLocked -> encodeForWrite ->
+      atomicWrite, storage.go:349-389, all pass `path` through unmodified).
+
+  (b) BEHAVIORAL PROOF — the load-bearing check. MET.
+      On the scratch copy only, added
+      internal/services/storage/zz_t6_symlink_proof_test.go
+      (TestT6SymlinkContractProof), which: creates a real file in a temp dir
+      OUTSIDE the data directory; constructs a real Storage via New(dataDir);
+      os.Symlink's that outside file into the data dir under the data filename
+      "transactions.csv"; asserts the pre-condition via os.Lstat that it really
+      is a symlink and reads the target's bytes through it; then drives a real
+      Storage write with s.WriteFile(link, newBytes, 0600); then asserts both
+      documented claims. Command and full transcript:
+
+        cd $SCRATCH/t6copy && go test -count=1 -v \
+          -run TestT6SymlinkContractProof ./internal/services/storage/
+        === RUN   TestT6SymlinkContractProof
+            PRE : Lstat(link).Mode()=Lrwxrwxrwx symlink=true; ReadFile(link)="ORIGINAL TARGET CONTENT\n"
+            POST: Lstat(link).Mode()=-rw------- symlink=false regular=true; content="NEW BYTES WRITTEN BY STORAGE\n"
+            POST: target /tmp/TestT6SymlinkContractProof2794732470/002/real-target.csv content="ORIGINAL TARGET CONTENT\n" (UNCHANGED -> silently stale)
+            dataDir entry: transactions.csv
+        --- PASS: TestT6SymlinkContractProof (0.00s)
+        PASS
+        ok  	budget2/internal/services/storage	0.005s
+
+      This proves, by observation rather than by reading the prose:
+        CLAIM "the rename removes the link and puts a regular file in its place"
+          -> Lstat mode went Lrwxrwxrwx (ModeSymlink set) before the write to
+             -rw------- with IsRegular()==true after it; the test fails hard if
+             ModeSymlink is still set or if the entry is not regular.
+        CLAIM "the file the link used to point at is left untouched and silently
+        stops receiving further writes"
+          -> the outside target still reads "ORIGINAL TARGET CONTENT\n" after the
+             write, while the data-dir path now holds "NEW BYTES WRITTEN BY
+             STORAGE\n". The new bytes went to the link's location, not the
+             target's.
+      Also observed: the data dir contains only transactions.csv afterwards, so
+      no staging file leaked.
+      The scratch test file was deleted after the run
+      (rm -f .../zz_t6_symlink_proof_test.go), and the whole scratch copy lives
+      outside the repo; `diff -r --brief` against the main tree afterwards
+      reported rc=0, confirming nothing was left behind.
+
+CRITERION 3 — RULING CITATION AND REASONING MATCH. MET.
+  /home/user/simplebudget/.swarm/tier3/T6/report.md
+    line 9:  "RULING 2026-08-26e (user): atomicWrite publishes by staging +
+             rename; a symlinked destination is replaced by a regular file and
+             the link's target elsewhere goes silently stale."
+    line 26: "RESOLUTION: single-arm doc-only run under ruling 2026-08-26e — no
+             divergence to resolve; verification confirms the diff is docs-only
+             and the claims are true against the code."
+  A RESOLUTION line is present (gate requirement satisfied). The three reasons
+  the report gives for ruling AGAINST resolving symlinks map one-to-one onto the
+  comment's three reasons:
+    report "would relocate staging to the target's directory (reopening the F2
+      atomicity analysis)" == comment "would relocate staging to the target's
+      directory, reopening the atomicity reasoning above for a filesystem this
+      function does not control"
+    report "break on cross-filesystem targets where rename cannot be atomic"
+      == comment "cannot stay atomic if the target lives on a different
+      filesystem than the link"
+    report "introduce a resolve-to-rename race — real risk in the most
+      safety-critical write path" == comment "would add a resolve-to-rename race
+      to the most safety-critical write path in the package"
+  The report's stated contract ("files in the data directory are real files;
+  symlinks are not honoured") is reproduced verbatim in sense by the comment's
+  closing line and by the README sentence. No claim appears in the comment that
+  is absent from the ruling.
+
+CRITERION 4 — HYGIENE. MET. (run in $SCRATCH/t6copy, verified byte-identical to
+  the main tree for the changed files; whoami=root uid=0)
+    go build ./...                                   -> rc=0, no output
+    gofmt -l internal/services/storage/storage.go    -> no output, rc=0
+    go vet ./internal/services/storage/              -> rc=0, no output
+    go test -count=1 -run 'TestSaveConfig|PreservesMode|Atomic' \
+      ./internal/services/storage/                   -> ok budget2/internal/services/storage 9.219s, rc=0
+  The -v re-run confirms the filter actually selected tests rather than matching
+  nothing:
+    --- PASS: TestSaveConfig (0.00s)
+    --- PASS: TestAtomicWriteCreatesDirectory (0.00s)
+    --- PASS: TestRollbackDecryptionReportsPathOnAtomicWriteFailure (2.62s)
+    --- PASS: TestEncryptFileWithRecipientPreservesMode (1.35s)
+    --- PASS: TestDecryptFileWithIdentityPreservesMode (2.06s)
+    --- PASS: TestRollbackEncryptionWithIdentityPreservesMode (2.01s)
+    --- PASS: TestRollbackDecryptionWithRecipientPreservesMode (1.38s)
+    PASS -> 7 tests, 0 failures.
+  As the brief directs, the FULL suite was NOT run: the Go diff is comment-only
+  (criterion 1 proves it mechanically), so no compiled behavior can have changed
+  and a full-suite run would add no evidence beyond the compile that `go build`
+  and `go vet` already performed.
+
+SCOPE
+  Worker-authored changes are confined to the two files named in the manifest:
+  internal/services/storage/storage.go and README.md. .swarm/ledger.tsv is a
+  lead artifact. .swarm/critical.globs lists internal/services/storage/** as
+  critical; this task is Tier 3 in the ledger (`T6  3  tests,second`), which is
+  the tier that permits touching that glob, and the change there is comments
+  only. No other package, no test file, no build config was modified.

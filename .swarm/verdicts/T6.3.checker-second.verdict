@@ -1,0 +1,141 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T6
+ATTEMPT: 3
+---
+Attack 1 (sweep every live write path under internal/ and cmd/ that can land in data/) FOUND A COUNTEREXAMPLE — this alone is fatal to the enumeration claim.
+
+README ~line 84 (attempt 3, current):
+"The files you keep in `data/` need to be real files, not symlinks. When
+SimpleBudget saves one of your files, it does not follow a symlink there:
+it either replaces the link with a regular file ... or refuses to write
+over it. The one exception is the app's own download cache (`data/cache/`),
+which it writes in place, so don't rely on symlinking that either."
+
+This claims exactly two behaviors (replace-the-link / refuse) plus exactly
+one disclosed exception (data/cache/). A third, undisclosed, LIVE exception
+exists: internal/services/storage/migration.go writes two files directly
+into s.baseDir (== c.DataDirectory, the same "data/" the README is talking
+about) with bare os.WriteFile, which follows a symlink at the destination
+instead of replacing or refusing:
+
+  internal/services/storage/migration.go:44-48
+    verifyPath := filepath.Join(s.baseDir, verifyFile)   // ".encryption-verify"
+    ...
+    os.WriteFile(verifyPath, encrypted, 0644)
+
+  internal/services/storage/migration.go:100-102
+    markerPath := filepath.Join(s.baseDir, markerFile)   // ".encrypted"
+    os.WriteFile(markerPath, []byte("encrypted"), 0644)
+
+Neither goes through storage.atomicWrite's stage+rename, and neither is
+data/cache/.
+
+Reachability (live, unconditional, not behind a feature flag or dead code
+like attempt 1's SaveUserSettings):
+  cmd/server/main.go:301  backup.RegisterRoutes(r)          (registered inside
+                                                              the lock-check
+                                                              middleware group)
+  internal/handlers/backup/handlers.go:110
+    r.Post("/encryption/enable", HandleEnableEncryptionWithMethod)
+  HandleEnableEncryptionWithMethod → default case →
+    handleEnablePasswordEncryption (line ~856) →
+    store.EnableEncryption(password) → EnableEncryptionWithProvider
+    (migration.go:24) → the two os.WriteFile calls above.
+  So POST /encryption/enable with no method (or method=password), the
+  default encryption setup path, hits both writes.
+
+Reproduction (mirrors migration.go:44-48 exactly, run in
+/tmp/t6repro/repro.go):
+  - created data/.encryption-verify as a symlink to an external file
+    outside.txt containing "ORIGINAL-CONTENT-OUTSIDE"
+  - called os.WriteFile(verifyPath, []byte("ENCRYPTED-VERIFY-BLOB"), 0644)
+    (the literal statement at migration.go:49)
+  - result:
+      verifyPath is still a symlink after write: true
+      outside.txt content after write: ENCRYPTED-VERIFY-BLOB
+  i.e. the symlink was NOT replaced with a regular file (contradicting arm
+  1 of the README sentence), and the write was NOT refused (contradicting
+  arm 2) — it silently followed the link and overwrote the link's target,
+  the same failure mode the task's own HandlePlotly comment describes for
+  data/cache/, but for a file the README does not list as an exception.
+
+Is ".encryption-verify"/".encrypted" a "file you keep in data/"? They are
+hidden files the app itself creates directly inside the data directory
+(same directory the README addresses as a whole — "the files you keep in
+`data/` need to be real files"), not user content, but also not the one
+named exception (data/cache/). Whether or not a user would call these
+"their" files, the sentence's own structure — "it either replaces or
+refuses ... the ONE exception is data/cache/" — is falsified: there are at
+least two exceptions in the running server, and the README lists one.
+This is exactly the class of gap the task instructions called out
+(un-swept write path with the same follow-symlink failure mode as
+HandlePlotly, silently uncovered by the enumeration).
+
+Other paths swept and cleared (no further live counterexamples found):
+  - internal/services/storage/auth.go saveConfig: tmp+rename, OK.
+  - internal/services/storage/age_provider.go: os.OpenFile(O_CREATE|
+    O_WRONLY|O_EXCL) — refuses on existing destination (including a
+    symlink target that already exists), consistent with "refuses" arm;
+    also identityPath is a user-supplied arbitrary path, not necessarily
+    under data/.
+  - internal/services/backup/snapshot.go buildZip: os.OpenFile(O_EXCL) into
+    a fresh tmp name, then rename — refuses/atomic, OK; cleanOrphanTmp only
+    os.Remove()s stale *.tmp.
+  - internal/services/backup/service.go saveEnabled: tmp+rename, OK.
+  - internal/services/backup/meta.go writeMetaAtomic: tmp+rename, OK.
+  - internal/services/mcpsvc/snapshot/snapshot.go Ensure: os.WriteFile to a
+    freshly-timestamped filename (name+timestamp+".bak") — bare write, not
+    stage+rename, and not the cache exception either; in practice the
+    destination name is fresh per call so a pre-existing symlink there is
+    an unlikely setup, but the code is technically a second/third
+    unenumerated bare-write path into an app-managed subdirectory. Recorded
+    as a secondary observation, not the basis of this FAIL (the migration.go
+    case above is unambiguous and requires no such priming assumption).
+  - internal/config/config.go SaveUserSettings: still dead code (no call
+    sites), attempt-2 comment stands, not itself a new violation of the
+    README sentence (it doesn't run), but its existence plus the
+    migration.go finding shows the "replace or refuse, cache is the only
+    exception" framing keeps needing new asterisks as more of the tree is
+    swept — the enumeration strategy itself is not holding up.
+
+Attack 2 (does "refuses to write over it" ever actually happen on a live
+path?): age_provider.go's O_EXCL identity-file create is the only literal
+"refuse" example found and it is reachable (age/SSH/YubiKey identity setup
+flows), so this arm is not vacuous. Not the basis for FAIL.
+
+Attack 3 (re-verify the three code comments against current code):
+  - storage.atomicWrite comment: accurately describes the rename-over-a-
+    symlink behavior; consistent with observed code and Attack 1's own
+    repro semantics for os.Rename vs os.WriteFile.
+  - config.SaveUserSettings comment: accurate — still no call sites
+    (`grep -rn SaveUserSettings` other than the definition and its own
+    doc comment turned up nothing under internal/handlers or cmd).
+  - HandlePlotly comment: accurate description of the code immediately
+    below it.
+  None of the three comments themselves are false. The defect is in the
+  README's enumeration, which the comments do not fully cover (migration.go
+  has no comment and is not the "cache" the HandlePlotly comment excuses).
+
+Attack 4 (docs-only discipline): `git diff HEAD` touches exactly
+README.md, internal/config/config.go, internal/handlers/backup/handlers.go,
+internal/services/storage/storage.go, and .swarm/ledger.tsv; all Go changes
+are comment-only (no code tokens changed). gofmt -l on the three .go files:
+clean. go build ./...: OK. go vet ./...: OK. This discipline point is
+satisfied but does not rescue the substantive falsification above.
+
+Attack 5 (symlinked directories / "backups" as "your files"): not reached
+as an independent FAIL basis since Attack 1 already succeeds; recorded as
+an open question the sentence also does not address (a symlinked directory
+under data/, e.g. data/settings -> elsewhere, saves through it transparently
+and none of "replaces/refuses/cache exception" describes that case either),
+but not adjudicated further here since the migration.go finding is already
+sufficient and dispositive.
+
+CONCLUSION: The attempt-3 enumeration ("it either replaces or refuses; the
+one exception is data/cache/") is falsified by a live, unconditionally
+registered write path (POST /encryption/enable, default password method)
+that writes two files directly into the data directory via bare
+os.WriteFile, following rather than replacing a symlink at the
+destination — reproduced above. FAIL.

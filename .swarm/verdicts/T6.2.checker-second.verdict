@@ -1,0 +1,83 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T6
+ATTEMPT: 2
+---
+ATTACK 1 (falsifiability of the rescoped README sentence) — SUCCEEDED, this is the deciding failure.
+
+README:84 now reads: "The files you keep in `data/` need to be real files, not symlinks.
+SimpleBudget saves by writing a fresh file and renaming it into place, so when it saves
+over a symlink, the link itself is replaced with a regular file and the file the link
+pointed to stops being updated."
+
+This is still an unconditional claim about how SimpleBudget's live save mechanism behaves
+for files under data/. Sweeping internal/ and cmd/ (excluding _test.go) for os.WriteFile /
+os.Create / O_WRONLY|O_TRUNC|O_APPEND finds a LIVE, wired counterexample the worker did not
+address:
+
+  internal/handlers/backup/handlers.go:642-681  func HandlePlotly(w, r)
+    cachePath := filepath.Join(cfg.DataDirectory, "cache", "plotly.min.js")   // L643
+    ...
+    if err := os.WriteFile(cachePath, data, 0644); err != nil {               // L677
+    (bare os.WriteFile: O_WRONLY|O_CREATE|O_TRUNC, no O_EXCL, no staging file, no rename)
+
+  cmd/server/main.go:251
+    r.Get("/static/vendor/plotly.min.js", backup.HandlePlotly)
+
+This is not a dead/test-only function like SaveUserSettings — it is routed to a live HTTP
+GET endpoint in the running server (confirmed by grep on cmd/server/main.go, and exercised
+by TestHandlePlotlyCDNFetchSuccess in handlers_test.go, which mocks the CDN and asserts the
+200 response written to this exact path). cachePath is literally under cfg.DataDirectory,
+which config.go defines as `<wd>/data` (config.go:85 `DataDirectory: filepath.Join(wd,
+"data")`) — i.e. it IS "the files you keep in `data/`" the README sentence is about, not an
+out-of-scope directory.
+
+Reproduction (run in scratchpad, mirrors what HandlePlotly does on a cache miss):
+  $ mkdir -p symtest/data/cache
+  $ echo "original target content" > realtarget.js
+  $ ln -s "$PWD/realtarget.js" data/cache/plotly.min.js
+  $ cat repro.go   # os.WriteFile("data/cache/plotly.min.js", []byte("NEW CDN BYTES"), 0644)
+  $ go run repro.go
+  before: mode= Lrwxrwxrwx
+  after:  mode= Lrwxrwxrwx  is symlink still? true
+  $ cat realtarget.js
+  NEW CDN BYTES
+
+Result: the symlink at the data/-relative path SURVIVES (still Lrwxrwxrwx afterward), and
+the file the link pointed to (realtarget.js) DOES receive the new bytes and keeps being
+updated. This is the EXACT INVERSE of the README's new sentence: "the link itself is
+replaced with a regular file and the file the link pointed to stops being updated." The
+same category of bug that failed attempt 1 (SaveUserSettings) still lives on a genuinely
+live, wired, tested code path that attempt 2 did not touch, rescope around, or even
+mention. The manifest for T6.2 only lists README.md and internal/config/config.go as
+changed (plus the pre-existing storage.go comment) — HandlePlotly was not examined.
+
+Consequence for the rest of the review, given attack 1 already fails the task:
+
+ATTACK 2 (accuracy of the new SaveUserSettings comment) — the comment's individual claims
+check out in isolation (bare os.WriteFile follows symlinks: confirmed by the same repro
+above; atomicWrite really does stage-then-rename: confirmed by reading
+internal/services/storage/storage.go's atomicWrite body, temp file + os.Rename; no call
+sites outside tests: `grep -rn SaveUserSettings --include=*.go` outside config.go itself
+hits only internal/config/config_test.go). But an accurate comment on one bypassing
+function does not rescue an unconditional README claim that a second, live, bypassing
+function (HandlePlotly's cache write) falsifies.
+
+ATTACK 3 (docs-only discipline) — PASSED on its own terms: `git diff HEAD` shows only
+README.md, internal/config/config.go, internal/services/storage/storage.go, and
+.swarm/ledger.tsv changed; the config.go and storage.go diffs are comment-only (no code
+token changed); gofmt -l on both changed .go files produced no output; `go build ./...`
+and `go vet ./...` are clean. This attack failed to find a violation, but it does not
+offset the falsified claim above.
+
+ATTACK 4 (wording traps: dangling symlink, symlinked directory) — not reached as a
+deciding factor since attack 1 already establishes FAIL; noting for the record that the
+sentence's "the file the link pointed to stops being updated" wording was not re-tested
+against the directory-symlink case because the primary counterexample already stands.
+
+CONCLUSION: The README's rescoped sentence is still a general, falsifiable claim about
+SimpleBudget's save behavior for data/, and it is false for at least one live, wired,
+tested call path (HandlePlotly's plotly.min.js cache write), reproduced above. Attempt 2
+narrowed the doc's wording around the SaveUserSettings bug found in attempt 1 but did not
+sweep for other live bypasses of the same class, and one exists. FAIL.
